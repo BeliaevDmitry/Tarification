@@ -1,23 +1,40 @@
 package org.example.model;
 
-import lombok.Getter;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 
-@Getter
+@Data
+@AllArgsConstructor
 public class TarifficationPerson {
-    // Геттеры
     String fioTeacher;
     String numberSchoolBuilding;
-    String subject;
-    String classLoad;
+    String subjectName;
+    String className;
     Integer load;
-    String groupLoad;
+    String groupName;
+    Integer groupLoad;
 
-    public TarifficationPerson(String fioTeacher, String numberSchoolBuilding, String subject, String classLoad, Integer load) {
+    public TarifficationPerson(String fioTeacher,
+                               String numberSchoolBuilding,
+                               String subjectName,
+                               String className,
+                               Integer load) {
         this.fioTeacher = fioTeacher;
         this.numberSchoolBuilding = numberSchoolBuilding;
-        this.subject = subject;
-        this.classLoad = classLoad;
+        this.subjectName = subjectName;
+        this.className = className;
         this.load = load;
+        this.groupLoad = load; // ← Инициализируем стандартным значением
+        this.groupName = ""; // ← Инициализируем пустой строкой
     }
 
+    public TarifficationPerson(TarifficationPerson other) {
+        this.fioTeacher = other.fioTeacher;
+        this.numberSchoolBuilding = other.numberSchoolBuilding;
+        this.subjectName = other.subjectName;
+        this.className = other.className;
+        this.load = other.load;
+        this.groupName = other.groupName != null ? other.groupName : "";
+        this.groupLoad = other.groupLoad != null ? other.groupLoad : 0;
+    }
 }
