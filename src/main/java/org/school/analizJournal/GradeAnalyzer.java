@@ -1,4 +1,4 @@
-package org.example;
+package org.school.analizJournal;
 
 import org.apache.poi.EncryptedDocumentException;
 import org.apache.poi.ss.usermodel.*;

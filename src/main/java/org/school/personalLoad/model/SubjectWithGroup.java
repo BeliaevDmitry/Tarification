@@ -1,4 +1,4 @@
-package org.example.model;
+package org.school.personalLoad.model;
 
 import lombok.Data;
 

@@ -1,8 +1,8 @@
-package org.example.service;
+package org.school.personalLoad.service;
 
 import org.apache.poi.ss.usermodel.Sheet;
-import org.example.model.SubjectWithGroup;
-import org.example.model.TarifficationPerson;
+import org.school.personalLoad.model.SubjectWithGroup;
+import org.school.personalLoad.model.TarifficationPerson;
 
 import java.util.List;
 

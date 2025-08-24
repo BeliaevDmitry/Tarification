@@ -1,10 +1,10 @@
-package org.example;
+package org.school;
 
 import org.apache.poi.EncryptedDocumentException;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.example.model.SubjectWithGroup;
-import org.example.model.TarifficationPerson;
+import org.school.personalLoad.model.SubjectWithGroup;
+import org.school.personalLoad.model.TarifficationPerson;
 
 import java.io.File;
 import java.io.FileOutputStream;
