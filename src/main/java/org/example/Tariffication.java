@@ -33,7 +33,7 @@ public abstract class Tariffication {
 
                 List<TarifficationPerson> TarifficationListCurrent = analyzeSheet(sheet);
                 List<SubjectWithGroup> SubjectWithGroupListCurrent = searchGroup(sheet);
-                TarifficationListCurrent = addingsGroup(TarifficationListCurrent, SubjectWithGroupListCurrent);
+                TarifficationListCurrent = addingGroup(TarifficationListCurrent, SubjectWithGroupListCurrent);
 
                 Tariffication.addAll(TarifficationListCurrent);
                 SubjectWithGroup.addAll(SubjectWithGroupListCurrent);
@@ -240,7 +240,7 @@ public abstract class Tariffication {
         list.sort(Comparator.comparing(person -> person.getFioTeacher()));
     }
 
-    private static List<TarifficationPerson> addingsGroup(List<TarifficationPerson> list, List<SubjectWithGroup> groupList) {
+    public static List<TarifficationPerson> addingGroup(List<TarifficationPerson> list, List<SubjectWithGroup> groupList) {
         // Создаем Set для быстрого поиска совпадений по subjectName + className
         Set<String> groupKeys = new HashSet<>();
 
@@ -297,7 +297,7 @@ public abstract class Tariffication {
         }
     }
 
-    public static List<TarifficationPerson> findAllByFields(List<TarifficationPerson> list,
+    private static List<TarifficationPerson> findAllByFields(List<TarifficationPerson> list,
                                                             String subject, String className) {
         return list.stream()
                 .filter(person -> person.getSubjectName().equals(subject) &&
