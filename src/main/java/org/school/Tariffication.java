@@ -9,7 +9,7 @@ public class Tariffication {
     public static void main(String[] args) throws IOException {
         //String inputPath = "C:\\Users\\dimah\\Desktop\\1 полугодие нагрузка 2025-2026.xlsx";
 
-        String googleSheetsUrl = "https://docs.google.com/spreadsheets/d/1CgxahrURqJw79TtINoEsgfyZoVMO4NKuQxhk0NwDOHg/export?format=xlsx";
+        String googleSheetsUrl = "https://docs.google.com/spreadsheets/d/1_2XDnInfHUKfj8jrzyU7EtzQz9G2oUTRZ-ALz1cePfU/export?format=xlsx";
         String nameFileDownload = "Нагрузка 1 полугодие автоскачанный";
         // Создаем экземпляр сервиса
         DownloadService downloadService = new DownloadService(googleSheetsUrl, nameFileDownload);

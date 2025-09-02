@@ -4,11 +4,13 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.ss.usermodel.FormulaEvaluator;
+import org.school.personalLoad.service.DownloadService;
 
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,26 +19,27 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
 
-import org.school.personalLoad.service.DownloadService;
+public class AnalizPracticumNewOnlineMESH {
 
-public class AnalizPracticumNew {
+    private static final String COOKIE_FILE_PATH = "C:\\Users\\dimah\\Downloads\\mos_ru_cookie.txt";
 
     public static void main(String[] args) {
         try {
-            // Пути к файлам
-            String practicumFilePath = "C:\\Users\\dimah\\Downloads\\journals.xlsx";
             String outputFilePath = "C:\\Users\\dimah\\Desktop\\Ошибки в практикумах.xlsx";
 
-            // Скачиваем основной файл из Google Sheets
+            // Скачиваем файл из МЭШ с авторизацией
+            String practicumFilePath = downloadMosRuFile();
+            System.out.println("Файл из МЭШ успешно скачан: " + practicumFilePath);
+
+            // Скачиваем основной файл из Google Sheets через DownloadService
             String googleSheetsUrl = "https://docs.google.com/spreadsheets/d/1CgxahrURqJw79TtINoEsgfyZoVMO4NKuQxhk0NwDOHg/export?format=xlsx";
             String nameFileDownload = "ЕГЭ 2026 автоскачанный";
 
-            // Создаем экземпляр сервиса
             DownloadService downloadService = new DownloadService(googleSheetsUrl, nameFileDownload);
-
             String mainFilePath = downloadService.downloadFile();
-            System.out.println("Файл успешно скачан: " + mainFilePath);
+            System.out.println("Файл из Google Sheets успешно скачан: " + mainFilePath);
 
             // Обработка файлов
             processExcelFiles(practicumFilePath, mainFilePath, outputFilePath);
@@ -49,7 +52,72 @@ public class AnalizPracticumNew {
         }
     }
 
+    private static String downloadMosRuFile() throws IOException {
+        String mosRuUrl = "https://dnevnik.mos.ru/export/journal.xlsx?group_ids=12017593,12017583,12017606,12017081,12018737,12015950,12015994,12018248,12016533,12016475,12012769,12012808,12012792,12013410,12013560,12013562,12013338,12013454,12020896,12021067,12021052,12014448,12014599,12014626,12014640,12014708,12014713,12014731,12094222,12015276,12015231,12015489";
+        String downloadPath = "C:\\Users\\dimah\\Downloads\\mos_ru_journal.xlsx";
 
+        System.out.println("Начинаю скачивание файла из МЭШ...");
+
+        // Получаем куки для авторизации
+        String cookie = getMosRuAuthCookie();
+        if (cookie == null || cookie.isEmpty()) {
+            throw new IOException("Не удалось получить авторизацию в МЭШ");
+        }
+
+        // Скачиваем файл с авторизацией
+        HttpURLConnection connection = (HttpURLConnection) new URL(mosRuUrl).openConnection();
+        connection.setRequestProperty("Cookie", cookie);
+        connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
+
+        try (InputStream in = connection.getInputStream()) {
+            Files.copy(in, Path.of(downloadPath), StandardCopyOption.REPLACE_EXISTING);
+        }
+
+        System.out.println("Файл из МЭШ успешно скачан: " + downloadPath);
+        return downloadPath;
+    }
+
+    private static String getMosRuAuthCookie() throws IOException {
+        // Попробуем прочитать куки из файла (если уже авторизованы)
+        try {
+            if (Files.exists(Path.of(COOKIE_FILE_PATH))) {
+                String savedCookie = Files.readString(Path.of(COOKIE_FILE_PATH));
+                if (isCookieValid(savedCookie)) {
+                    return savedCookie;
+                }
+            }
+        } catch (IOException e) {
+            System.out.println("Не удалось прочитать сохраненные куки: " + e.getMessage());
+        }
+
+        // Запрашиваем cookie у пользователя
+        System.out.println("\n=== ИНСТРУКЦИЯ ДЛЯ РУЧНОЙ АВТОРИЗАЦИИ ===");
+        System.out.println("1. Откройте браузер и войдите в МЭШ: https://dnevnik.mos.ru");
+        System.out.println("2. После входа откройте инструменты разработчика (F12)");
+        System.out.println("3. Перейдите во вкладку Network (Сеть)");
+        System.out.println("4. Обновите страницу (F5)");
+        System.out.println("5. Найдите любой запрос и скопируйте значение Cookie");
+        System.out.println("6. Вставьте значение Cookie ниже:");
+
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("\nВведите значение Cookie: ");
+        String cookie = scanner.nextLine();
+
+        // Сохраняем куки для будущего использования
+        try {
+            Files.writeString(Path.of(COOKIE_FILE_PATH), cookie);
+        } catch (IOException e) {
+            System.out.println("Не удалось сохранить куки: " + e.getMessage());
+        }
+
+        return cookie;
+    }
+
+    private static boolean isCookieValid(String cookie) {
+        return cookie != null && cookie.contains("sessionid") && cookie.contains("csrftoken");
+    }
+
+    // Остальные методы без изменений
     public static void processExcelFiles(String practicumPath, String mainPath, String outputPath) throws IOException {
         // 1. Читаем данные из практикума (первый файл)
         List<Student> practicumStudents = readPracticumData(practicumPath);
@@ -220,7 +288,7 @@ public class AnalizPracticumNew {
             Row row = sheet.createRow(rowNum++);
             row.createCell(0).setCellValue(student.getName());
 
-            // Получаем класс из основной таблицы по ФИО
+            // Получаем класс из основной таблиции по ФИО
             String studentClass = classByLastNameMap.get(student.getName().trim().toLowerCase());
             if (studentClass == null) {
                 studentClass = "Не найден";
@@ -383,13 +451,8 @@ public class AnalizPracticumNew {
             this.group = group;
         }
 
-        public String getName() {
-            return name;
-        }
-
-        public String getGroup() {
-            return group;
-        }
+        public String getName() { return name; }
+        public String getGroup() { return group; }
     }
 
     static class MainStudent {
@@ -403,16 +466,8 @@ public class AnalizPracticumNew {
             this.practicumGroup = practicumGroup;
         }
 
-        public String getLastName() {
-            return lastName;
-        }
-
-        public String getStudentClass() {
-            return studentClass;
-        }
-
-        public String getPracticumGroup() {
-            return practicumGroup;
-        }
+        public String getLastName() { return lastName; }
+        public String getStudentClass() { return studentClass; }
+        public String getPracticumGroup() { return practicumGroup; }
     }
 }
