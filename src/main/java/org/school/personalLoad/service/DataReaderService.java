@@ -29,7 +29,8 @@ public class DataReaderService {
             int teacherLoadInRow = getCellValueAsInt(teacherRow.getCell(2));
 
             if (fioTeacher.equals("по УП") || fioTeacher.equals("выставлено выше") ||
-                    fioTeacher.equals("выставлено") || fioTeacher.equals("количество групп")) {
+                    fioTeacher.equals("выставлено") || fioTeacher.equals("количество групп")
+                    || fioTeacher.equals("системный") ) {
                 continue;
             }
 
