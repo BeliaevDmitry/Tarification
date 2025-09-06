@@ -2,26 +2,59 @@ package org.school.personalLoad.service;
 
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.school.personalLoad.model.TarifficationChanges;
 import org.school.personalLoad.model.SubjectWithGroup;
 import org.school.personalLoad.model.TarifficationPerson;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 public class ReportService {
 
+    private final DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
+
     public void createReport(List<TarifficationPerson> tarifficationList,
                              List<SubjectWithGroup> subjectWithGroupList,
+                             List<TarifficationChanges> changes,
                              String outputPath) throws IOException {
         try (Workbook workbook = new XSSFWorkbook()) {
             createTarifficationSheet(workbook, tarifficationList);
             createGroupsSheet(workbook, subjectWithGroupList);
+            createChangesSheet(workbook, changes);
 
             try (FileOutputStream fos = new FileOutputStream(outputPath)) {
                 workbook.write(fos);
             }
         }
+    }
+
+    private void createChangesSheet(Workbook workbook, List<TarifficationChanges> changes) {
+        if (changes == null || changes.isEmpty()) return;
+
+        Sheet sheet = workbook.createSheet("Изменения тарификации");
+        Row headerRow = sheet.createRow(0);
+        String[] headers = {"ФИО педагога", "Корпус", "Предмет", "Класс", "Группа",
+                "Количество часов", "Часов в группе", "Тип изменения", "Дата изменения"};
+
+        createHeaderRow(headerRow, headers, workbook, IndexedColors.LIGHT_ORANGE);
+
+        int rowNum = 1;
+        for (TarifficationChanges change : changes) {
+            Row row = sheet.createRow(rowNum++);
+            row.createCell(0).setCellValue(change.getFioTeacher());
+            row.createCell(1).setCellValue(change.getNumberSchoolBuilding());
+            row.createCell(2).setCellValue(change.getSubjectName());
+            row.createCell(3).setCellValue(change.getClassName());
+            row.createCell(4).setCellValue(change.getGroupName() != null ? change.getGroupName() : "");
+            row.createCell(5).setCellValue(change.getLoad());
+            row.createCell(6).setCellValue(change.getGroupLoad() != null ? change.getGroupLoad() : 0);
+            row.createCell(7).setCellValue(change.getChangeTypeRussian());
+            row.createCell(8).setCellValue(change.getChangeDate().format(dateFormatter));
+        }
+
+        autoSizeColumns(sheet, headers.length);
     }
 
     private void createTarifficationSheet(Workbook workbook, List<TarifficationPerson> tarifficationList) {

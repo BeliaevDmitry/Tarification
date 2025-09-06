@@ -3,8 +3,9 @@ package org.school.analizJournal;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
-import org.apache.poi.ss.usermodel.FormulaEvaluator;
+import org.school.analizJournal.config.JournalConfig;
 import org.school.personalLoad.service.DownloadService;
+import org.school.personalLoad.config.AppConfig;
 
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -23,22 +24,20 @@ import java.util.Scanner;
 
 public class AnalizPracticumNewOnlineMESH {
 
-    private static final String COOKIE_FILE_PATH = "C:\\Users\\dimah\\Downloads\\mos_ru_cookie.txt";
-
     public static void main(String[] args) {
         try {
-            String outputFilePath = "C:\\Users\\dimah\\Desktop\\контингент практикумы.xlsx";
+            String outputFilePath = AppConfig.getPracticumOutputPath();
 
             // Скачиваем файлы из МЭШ с авторизацией
             List<String> practicumFilePaths = downloadMosRuFiles();
             System.out.println("Все файлы из МЭШ успешно скачаны");
 
             // Скачиваем основной файл из Google Sheets
-            String googleSheetsUrl = "https://docs.google.com/spreadsheets/d/1CgxahrURqJw79TtINoEsgfyZoVMO4NKuQxhk0NwDOHg/export?format=xlsx";
-            String nameFileDownload = "ЕГЭ 2026 автоскачанный";
-
-            DownloadService downloadService = new DownloadService(googleSheetsUrl, nameFileDownload);
-            String mainFilePath = downloadService.downloadFile();
+            DownloadService downloadService = new DownloadService();
+            String mainFilePath = downloadService.downloadFile(
+                    AppConfig.PRACTICUM_SHEETS_URL,
+                    AppConfig.PRACTICUM_FILE_NAME
+            );
             System.out.println("Файл из Google Sheets успешно скачан: " + mainFilePath);
 
             // Обработка файлов
@@ -65,36 +64,21 @@ public class AnalizPracticumNewOnlineMESH {
         System.out.println("Получен cookie, начинаю скачивание файлов...");
 
         // 1. Основной файл с множеством групп
-        String mainUrl = "https://dnevnik.mos.ru/export/journal.xlsx?group_ids=12017593,12017583," +
-                "12017633,12017606,12017081,12018737,12015950,12015994,12016050,12018248,12016533," +
-                "12016475,12012769,12012808,12012792,12013410,12013560,12013562,12013338,12013454," +
-                "12020969,12020896,12021067,12021052," +
-                "12014448,12014456,12014599,12014626,12014640,12014708,12014713,12014731,12094222,12015276,12015231,12015489,12094228";
-        String mainFilePath = "C:\\Users\\dimah\\Downloads\\mos_ru_journal_main.xlsx";
+        String mainUrl = JournalConfig.getMainMeshUrl();
+        String mainFilePath = JournalConfig.getMeshFilePath(JournalConfig.MESH_MAIN_FILE);
 
         System.out.println("Скачиваю основной файл...");
         String mainFile = tryDownloadFile(mainUrl, mainFilePath, cookie);
         downloadedFiles.add(mainFile);
 
         // 2. Дополнительные файлы
-        String[] additionalUrls = {
-                "https://dnevnik.mos.ru/export/journal.xlsx?group_ids=12017068&extended=false&start_at=2025-09-01T00:00:00.000Z&stop_at=2025-10-03T00:00:00.000Z",
-                "https://dnevnik.mos.ru/export/journal.xlsx?group_ids=12015933&extended=false&start_at=2025-09-01T00:00:00.000Z&stop_at=2025-10-03T00:00:00.000Z",
-                "https://dnevnik.mos.ru/export/journal.xlsx?group_ids=12014553&extended=false&start_at=2025-09-01T00:00:00.000Z&stop_at=2025-10-03T00:00:00.000Z",
-                "https://dnevnik.mos.ru/export/journal.xlsx?group_ids=12013377&extended=false&start_at=2025-09-01T00:00:00.000Z&stop_at=2025-10-03T00:00:00.000Z"
-        };
-
-        String[] additionalFilePaths = {
-                "C:\\Users\\dimah\\Downloads\\mos_ru_journal_extra1.xlsx",
-                "C:\\Users\\dimah\\Downloads\\mos_ru_journal_extra2.xlsx",
-                "C:\\Users\\dimah\\Downloads\\mos_ru_journal_extra3.xlsx",
-                "C:\\Users\\dimah\\Downloads\\mos_ru_journal_extra4.xlsx"
-        };
-
-        for (int i = 0; i < additionalUrls.length; i++) {
+        for (int i = 0; i < JournalConfig.MESH_ADDITIONAL_GROUP_IDS.length; i++) {
             System.out.println("Скачиваю дополнительный файл " + (i + 1) + "...");
             try {
-                String additionalFile = tryDownloadFile(additionalUrls[i], additionalFilePaths[i], cookie);
+                String additionalUrl = JournalConfig.getAdditionalMeshUrl(JournalConfig.MESH_ADDITIONAL_GROUP_IDS[i]);
+                String additionalFilePath = JournalConfig.getExtraMeshFilePath(i + 1);
+
+                String additionalFile = tryDownloadFile(additionalUrl, additionalFilePath, cookie);
                 downloadedFiles.add(additionalFile);
                 System.out.println("✅ Дополнительный файл " + (i + 1) + " скачан");
             } catch (IOException e) {
@@ -111,8 +95,8 @@ public class AnalizPracticumNewOnlineMESH {
 
         // 1. Пробуем прочитать сохраненный cookie
         try {
-            if (Files.exists(Path.of(COOKIE_FILE_PATH))) {
-                String savedCookie = Files.readString(Path.of(COOKIE_FILE_PATH)).trim();
+            if (Files.exists(Path.of(JournalConfig.COOKIE_FILE_PATH))) {
+                String savedCookie = Files.readString(Path.of(JournalConfig.COOKIE_FILE_PATH)).trim();
                 System.out.println("Найден сохраненный cookie, длина: " + savedCookie.length() + " символов");
                 return savedCookie;
             }
@@ -122,7 +106,7 @@ public class AnalizPracticumNewOnlineMESH {
 
         // 2. Запрашиваем ручной ввод
         System.out.println("\n📋 ДЛЯ РАБОТЫ ПРОГРАММЫ НУЖЕН COOKIE ОТ МЭШ:");
-        System.out.println("1. Откройте Chrome и перейдите на: https://dnevnik.mos.ru");
+        System.out.println("1. Откройте Chrome и перейдите на: " + JournalConfig.MESH_BASE_URL);
         System.out.println("2. Убедитесь, что вы авторизованы (должен открыться электронный дневник)");
         System.out.println("3. Нажмите F12 → вкладка Console (Консоль)");
         System.out.println("4. Введите команду: document.cookie");
@@ -148,17 +132,16 @@ public class AnalizPracticumNewOnlineMESH {
 
     // ПРОБУЕМ СКАЧАТЬ ФАЙЛ С COOKIE
     private static String tryDownloadFile(String fileUrl, String savePath, String cookie) throws IOException {
-        int maxAttempts = 3;
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            System.out.println("Попытка скачивания " + attempt + " из " + maxAttempts + "...");
+        for (int attempt = 1; attempt <= JournalConfig.MAX_DOWNLOAD_ATTEMPTS; attempt++) {
+            System.out.println("Попытка скачивания " + attempt + " из " + JournalConfig.MAX_DOWNLOAD_ATTEMPTS + "...");
 
             try {
                 HttpURLConnection connection = (HttpURLConnection) new URL(fileUrl).openConnection();
                 connection.setRequestProperty("Cookie", cookie);
-                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+                connection.setRequestProperty("User-Agent", JournalConfig.USER_AGENT);
                 connection.setRequestProperty("Accept", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-                connection.setConnectTimeout(30000);
-                connection.setReadTimeout(30000);
+                connection.setConnectTimeout(JournalConfig.CONNECTION_TIMEOUT);
+                connection.setReadTimeout(JournalConfig.READ_TIMEOUT);
                 connection.setInstanceFollowRedirects(true);
 
                 System.out.println("Отправляю запрос к: " + fileUrl);
@@ -174,12 +157,12 @@ public class AnalizPracticumNewOnlineMESH {
                 } else if (responseCode == 403 || responseCode == 401) {
                     System.out.println("❌ Доступ запрещен. Cookie невалиден.");
                     // Удаляем невалидный cookie файл
-                    Files.deleteIfExists(Path.of(COOKIE_FILE_PATH));
+                    Files.deleteIfExists(Path.of(JournalConfig.COOKIE_FILE_PATH));
                     throw new IOException("Cookie невалиден. Удалите файл cookie и попробуйте снова.");
                 } else {
                     System.out.println("⚠️ Неожиданный код ответа: " + responseCode);
-                    if (attempt < maxAttempts) {
-                        Thread.sleep(2000); // Ждем перед повторной попыткой
+                    if (attempt < JournalConfig.MAX_DOWNLOAD_ATTEMPTS) {
+                        Thread.sleep(JournalConfig.RETRY_DELAY_MS);
                     }
                 }
 
@@ -190,11 +173,11 @@ public class AnalizPracticumNewOnlineMESH {
                 throw new IOException("Прервано ожидание", e);
             } catch (IOException e) {
                 System.out.println("Ошибка при попытке " + attempt + ": " + e.getMessage());
-                if (attempt == maxAttempts) {
+                if (attempt == JournalConfig.MAX_DOWNLOAD_ATTEMPTS) {
                     throw e;
                 }
                 try {
-                    Thread.sleep(2000);
+                    Thread.sleep(JournalConfig.RETRY_DELAY_MS);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     throw new IOException("Прервано ожидание", ie);
@@ -202,14 +185,14 @@ public class AnalizPracticumNewOnlineMESH {
             }
         }
 
-        throw new IOException("Не удалось скачать файл после " + maxAttempts + " попыток");
+        throw new IOException("Не удалось скачать файл после " + JournalConfig.MAX_DOWNLOAD_ATTEMPTS + " попыток");
     }
 
     // СОХРАНЕНИЕ COOKIE В ФАЙЛ
     private static void saveCookieToFile(String cookie) {
         try {
-            Files.writeString(Path.of(COOKIE_FILE_PATH), cookie);
-            System.out.println("✅ Cookie сохранен в файл: " + COOKIE_FILE_PATH);
+            Files.writeString(Path.of(JournalConfig.COOKIE_FILE_PATH), cookie);
+            System.out.println("✅ Cookie сохранен в файл: " + JournalConfig.COOKIE_FILE_PATH);
         } catch (IOException e) {
             System.out.println("⚠️ Не удалось сохранить cookie: " + e.getMessage());
         }

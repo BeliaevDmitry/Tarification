@@ -1,84 +1,84 @@
 package org.school.personalLoad.controller;
 
-import org.apache.poi.EncryptedDocumentException;
 import org.apache.poi.ss.usermodel.*;
+import org.school.personalLoad.config.HibernateConfig;
 import org.school.personalLoad.model.SubjectWithGroup;
 import org.school.personalLoad.model.TarifficationPerson;
-import org.school.personalLoad.service.DataProcessingService;
-import org.school.personalLoad.service.DataReaderService;
-import org.school.personalLoad.service.ReportService;
+import org.school.personalLoad.service.*;
+import org.school.personalLoad.model.TarifficationChanges;
+import org.school.personalLoad.service.impl.DatabaseServiceImpl;
 
 import java.io.File;
-import java.io.IOException;
+import java.io.FileInputStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Pattern;
 
 public class TarifficationController {
 
+    private final DataReaderService dataReaderService;
     private final DataProcessingService dataProcessingService;
     private final ReportService reportService;
-
-    // Паттерн для фильтрации листов
-    private static final Pattern SHEET_PATTERN = Pattern.compile(".*корп.*", Pattern.CASE_INSENSITIVE);
+    private final DatabaseService databaseService;
 
     public TarifficationController() {
+        HibernateConfig.getSessionFactory();
+        this.dataReaderService = new DataReaderService();
         this.dataProcessingService = new DataProcessingService();
         this.reportService = new ReportService();
+        this.databaseService = new DatabaseServiceImpl();
     }
 
     public void processTariffication(String inputPath, String outputPath) {
-        processTariffication(inputPath, outputPath, SHEET_PATTERN);
-    }
+        try {
+            // 1. Чтение и обработка данных из Excel
+            List<TarifficationPerson> tarifficationList = new ArrayList<>();
+            List<SubjectWithGroup> groupList = new ArrayList<>();
+            readExcelData(inputPath, tarifficationList, groupList);
 
-    public void processTariffication(String inputPath, String outputPath, Pattern sheetPattern) {
-        try (Workbook workbook = WorkbookFactory.create(new File(inputPath))) {
-            // Создаем FormulaEvaluator для всего workbook
-            FormulaEvaluator formulaEvaluator = workbook.getCreationHelper().createFormulaEvaluator();
-            DataReaderService dataReaderService = new DataReaderService(formulaEvaluator);
+            // 2. Обработка данных
+            dataProcessingService.addingGroup(tarifficationList, groupList);
+            dataProcessingService.sortByFIO(tarifficationList);
 
-            List<TarifficationPerson> tariffication = new ArrayList<>();
-            List<SubjectWithGroup> subjectWithGroup = new ArrayList<>();
+            // 3. Сравнение с ИСТОРИЕЙ и сохранение
+            List<TarifficationChanges> changes = databaseService.compareAndSave(tarifficationList);
 
-            for (int sheetIndex = 0; sheetIndex < workbook.getNumberOfSheets(); sheetIndex++) {
-                Sheet sheet = workbook.getSheetAt(sheetIndex);
-                String sheetName = sheet.getSheetName();
+            // 4. Сортируем
+            List<TarifficationChanges> allHistory = databaseService.getAllHistory();
+            dataProcessingService.sortHistoryByDate(allHistory);
 
-                // Проверяем, нужно ли обрабатывать этот лист
-                if (!shouldProcessSheet(sheetName, sheetPattern)) {
-                    System.out.println("Пропускаем лист: " + sheetName);
-                    continue;
-                }
+            // 5. Создание отчета
+            reportService.createReport(tarifficationList, groupList, allHistory, outputPath);
 
-                System.out.println("Анализируем лист: " + sheetName);
+            System.out.println("✅ Успешно обработано: " + tarifficationList.size() + " записей");
+            System.out.println("✅ Найдено изменений: " + changes.size());
 
-                List<TarifficationPerson> tarifficationListCurrent = dataReaderService.analyzeSheet(sheet);
-                List<SubjectWithGroup> subjectWithGroupListCurrent = dataReaderService.searchGroup(sheet);
-
-                tarifficationListCurrent = dataProcessingService.addingGroup(
-                        tarifficationListCurrent, subjectWithGroupListCurrent
-                );
-
-                tariffication.addAll(tarifficationListCurrent);
-                subjectWithGroup.addAll(subjectWithGroupListCurrent);
-            }
-
-            dataProcessingService.sortByFIO(tariffication);
-            reportService.createReport(tariffication, subjectWithGroup, outputPath);
-
-            System.out.println("Отчет успешно создан: " + outputPath);
-            System.out.println("Всего записей: " + tariffication.size());
-
-        } catch (IOException | EncryptedDocumentException e) {
-            System.err.println("Ошибка при обработке файла: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("❌ Ошибка при обработке файла: " + e.getMessage());
             e.printStackTrace();
         }
     }
 
-    private boolean shouldProcessSheet(String sheetName, Pattern sheetPattern) {
-        if (sheetPattern == null) {
-            return true;
+    private void readExcelData(String inputPath,
+                               List<TarifficationPerson> tarifficationList,
+                               List<SubjectWithGroup> groupList) throws Exception {
+        try (FileInputStream fis = new FileInputStream(new File(inputPath));
+             Workbook workbook = WorkbookFactory.create(fis)) {
+
+            FormulaEvaluator evaluator = workbook.getCreationHelper().createFormulaEvaluator();
+            dataReaderService.setFormulaEvaluator(evaluator);
+
+            for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
+                Sheet sheet = workbook.getSheetAt(i);
+                String sheetName = sheet.getSheetName().toLowerCase();
+
+                if (sheetName.contains("корп")) {
+                    System.out.println("📊 Анализируем лист: " + sheet.getSheetName());
+                    tarifficationList.addAll(dataReaderService.analyzeSheet(sheet));
+                    groupList.addAll(dataReaderService.searchGroup(sheet));
+                } else {
+                    System.out.println("⏭️ Пропускаем лист: " + sheet.getSheetName());
+                }
+            }
         }
-        return sheetPattern.matcher(sheetName).matches();
     }
 }

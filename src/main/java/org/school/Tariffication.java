@@ -1,25 +1,31 @@
 package org.school;
 
+import org.school.personalLoad.config.AppConfig;
+import org.school.personalLoad.config.HibernateConfig;
 import org.school.personalLoad.controller.TarifficationController;
+import org.school.personalLoad.service.DatabaseService;
 import org.school.personalLoad.service.DownloadService;
 
-import java.io.IOException;
 
 public class Tariffication {
-    public static void main(String[] args) throws IOException {
-        //String inputPath = "C:\\Users\\dimah\\Desktop\\1 полугодие нагрузка 2025-2026.xlsx";
+    public static void main(String[] args) {
+        try {
+            DownloadService downloadService = new DownloadService();
+            TarifficationController controller = new TarifficationController();
 
-        String googleSheetsUrl = "https://docs.google.com/spreadsheets/d/1_2XDnInfHUKfj8jrzyU7EtzQz9G2oUTRZ-ALz1cePfU/export?format=xlsx";
-        String nameFileDownload = "Нагрузка 1 полугодие автоскачанный";
-        // Создаем экземпляр сервиса
-        DownloadService downloadService = new DownloadService(googleSheetsUrl, nameFileDownload);
+            // Скачиваем файл
+            String inputPath = downloadService.downloadFile(
+                    AppConfig.TARIFFICATION_SHEETS_URL,
+                    AppConfig.TARIFFICATION_FILE_NAME
+            );
 
-        // Вызываем метод для скачивания
-        String inputPath = downloadService.downloadFile();
+            // Обрабатываем данные
+            controller.processTariffication(inputPath, AppConfig.getTarifficationOutputPath());
 
-        String outputPath = "C:\\Users\\dimah\\Desktop\\Тарификация.xlsx";
-
-        TarifficationController controller = new TarifficationController();
-        controller.processTariffication(inputPath, outputPath);
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            HibernateConfig.shutdown();
+        }
     }
 }

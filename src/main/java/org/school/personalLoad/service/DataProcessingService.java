@@ -1,12 +1,10 @@
 package org.school.personalLoad.service;
 
-
 import org.school.personalLoad.model.SubjectWithGroup;
+import org.school.personalLoad.model.TarifficationChanges;
 import org.school.personalLoad.model.TarifficationPerson;
 
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class DataProcessingService {
@@ -24,38 +22,27 @@ public class DataProcessingService {
         return list;
     }
 
-    private void processSingleMatch(List<TarifficationPerson> list, TarifficationPerson match) {
+    private void processSingleMatch(List<TarifficationPerson> result, TarifficationPerson match) {
         String nameSubject = match.getSubjectName();
         String className = match.getClassName();
         Integer groupLoad = match.getLoad() / 2;
 
-        TarifficationPerson secondGroup = new TarifficationPerson(match);
 
-        match.setGroupName(nameSubject + " " + className + " ГР-1");
+        TarifficationPerson secondGroup = new TarifficationPerson(match);
+        String groupNameBase = formatGroupNameBase(nameSubject, className);
+
+       // Изменяем оригинальную запись
+        match.setGroupName(groupNameBase + " 1 гр");
         match.setGroupLoad(groupLoad);
 
-        secondGroup.setGroupName(nameSubject + " " + className + " ГР-2");
+        // 4. Изменяем копию
+        secondGroup.setGroupName(groupNameBase + " 2 гр");
         secondGroup.setGroupLoad(groupLoad);
 
-        removeByFields(list, nameSubject, className);
-        list.add(match);
-        list.add(secondGroup);
-    }
-
-    private void processDoubleMatch(List<TarifficationPerson> list, List<TarifficationPerson> matches) {
-        if ((matches.get(0).getGroupName() == null || matches.get(0).getGroupName().isEmpty()) &&
-                (matches.get(1).getGroupName() == null || matches.get(1).getGroupName().isEmpty())) {
-
-            String nameSubject = matches.get(0).getSubjectName();
-            String className = matches.get(0).getClassName();
-
-            matches.get(0).setGroupName(nameSubject + " " + className + " ГР-1");
-            matches.get(1).setGroupName(nameSubject + " " + className + " ГР-2");
-
-            removeByFields(list, nameSubject, className);
-            list.add(matches.get(0));
-            list.add(matches.get(1));
-        }
+        // 5. Добавляем обе записи обратно в список
+        removeByFields(result, nameSubject, className);
+        result.add(match);
+        result.add(secondGroup);
     }
 
     public void removeByFields(List<TarifficationPerson> list, String targetSubject, String targetClass) {
@@ -68,13 +55,39 @@ public class DataProcessingService {
         }
     }
 
-    public List<TarifficationPerson> findAllByFields(List<TarifficationPerson> list, String subject, String className) {
-        return list.stream()
-                .filter(person -> person.getSubjectName().equals(subject) && person.getClassName().equals(className))
-                .collect(Collectors.toList());
+    private void processDoubleMatch(List<TarifficationPerson> result, List<TarifficationPerson> matches) {
+        if (matches.size() < 2) return;
+
+        String nameSubject = matches.get(0).getSubjectName();
+        String className = matches.get(0).getClassName();
+        String groupNameBase = formatGroupNameBase(nameSubject, className);
+
+        matches.get(0).setGroupName(groupNameBase + " 1 гр");
+        matches.get(1).setGroupName(groupNameBase + " 2 гр");
+
+        // Обновляем записи в результате
+        removeByFields(result, nameSubject, className);
+        result.add(matches.get(0));
+        result.add(matches.get(1));
+    }
+
+    private String formatGroupNameBase(String subjectName, String className) {
+        String cleanedSubjectName = subjectName.replaceAll("\\s*(ООО|НОО|СОО)\\s*", "").trim();
+        String formattedClassName = className.replaceAll("[\\s-]+", "");
+        return cleanedSubjectName + " " + className + " " + formattedClassName;
     }
 
     public void sortByFIO(List<TarifficationPerson> list) {
         list.sort(Comparator.comparing(TarifficationPerson::getFioTeacher));
+    }
+
+    public void sortHistoryByDate(List<TarifficationChanges> historyList) {
+        historyList.sort(Comparator.comparing(TarifficationChanges::getChangeDate));
+    }
+
+    public List<TarifficationPerson> findAllByFields(List<TarifficationPerson> list, String subject, String className) {
+        return list.stream()
+                .filter(person -> person.getSubjectName().equals(subject) && person.getClassName().equals(className))
+                .collect(Collectors.toList());
     }
 }
