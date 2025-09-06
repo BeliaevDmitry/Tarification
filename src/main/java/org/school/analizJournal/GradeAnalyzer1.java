@@ -1,22 +1,21 @@
-package org.example;
+package org.school.analizJournal;
 
 import org.apache.poi.EncryptedDocumentException;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 
 import java.io.*;
 import java.util.*;
 
-public abstract  class GradeAnalyzer {
+public abstract  class GradeAnalyzer1 {
 
     static {
         System.setProperty("org.apache.poi.util.POILogger", "org.apache.poi.util.NullLogger");
     }
 
     public static void main(String[] args) {
-        String inputPath = "C:\\Users\\dimah\\Рабочий стол\\1.xlsx";
-        String outputPath = "C:\\Users\\dimah\\Рабочий стол\\report.xlsx";
+        String inputPath = "C:\\Users\\dimah\\Desktop\\1.xlsx";
+        String outputPath = "C:\\Users\\dimah\\Desktop\\report.xlsx";
 
         try (Workbook workbook = WorkbookFactory.create(new File(inputPath))) {
             List<ProblemRecord> allProblems = new ArrayList<>();
