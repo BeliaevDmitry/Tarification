@@ -118,13 +118,77 @@ public class DataProcessingService {
         String className = matches.get(0).getClassName();
         String groupNameBase = formatGroupNameBase(nameSubject, className);
 
-        matches.get(0).setGroupName(groupNameBase + " 1 гр");
-        matches.get(1).setGroupName(groupNameBase + " 2 гр");
 
-        // Обновляем записи в результате
-        removeByFields(result, nameSubject, className);
-        result.add(matches.get(0));
-        result.add(matches.get(1));
+        if ((matches.get(0).getFioTeacher().equals(historicalMatches.get(0).getFioTeacher())
+                || matches.get(0).getFioTeacher().equals(historicalMatches.get(1).getFioTeacher()))
+                &&
+                (matches.get(1).getFioTeacher().equals(historicalMatches.get(0).getFioTeacher())
+                || matches.get(1).getFioTeacher().equals(historicalMatches.get(1).getFioTeacher()))) {
+
+            removeByFields(result, nameSubject, className);
+            result.add(historicalMatches.get(0));
+            result.add(historicalMatches.get(1));
+
+        } else if (matches.get(0).getFioTeacher().equals(historicalMatches.get(0).getFioTeacher())
+                || matches.get(0).getFioTeacher().equals(historicalMatches.get(1).getFioTeacher())) {
+
+            TarifficationPerson secondGroup = new TarifficationPerson(matches.get(0));
+            removeByFields(result, nameSubject, className);
+            if (matches.get(0).getFioTeacher().equals(historicalMatches.get(0).getFioTeacher())) {
+                result.add(historicalMatches.get(0));
+                if (extractGroupNumber(historicalMatches.get(0).getGroupName()) == 1) {
+                    secondGroup.setGroupName(groupNameBase + " 2 гр");
+                    result.add(secondGroup);
+                } else if (extractGroupNumber(historicalMatches.get(0).getGroupName()) == 2) {
+                    secondGroup.setGroupName(groupNameBase + " 1 гр");
+                    result.add(secondGroup);
+                }
+            } else if (matches.get(0).getFioTeacher().equals(historicalMatches.get(1).getFioTeacher())) {
+                result.add(historicalMatches.get(0));
+                if (extractGroupNumber(historicalMatches.get(1).getGroupName()) == 1) {
+                    secondGroup.setGroupName(groupNameBase + " 2 гр");
+                    result.add(secondGroup);
+                } else if (extractGroupNumber(historicalMatches.get(1).getGroupName()) == 2) {
+                    secondGroup.setGroupName(groupNameBase + " 1 гр");
+                    result.add(secondGroup);
+                }
+            } else {
+                System.out.println("ошибка в группах");
+            }
+        } else if (matches.get(1).getFioTeacher().equals(historicalMatches.get(0).getFioTeacher())
+                || matches.get(1).getFioTeacher().equals(historicalMatches.get(1).getFioTeacher())) {
+
+            TarifficationPerson secondGroup = new TarifficationPerson(matches.get(0));
+            removeByFields(result, nameSubject, className);
+            if (matches.get(1).getFioTeacher().equals(historicalMatches.get(0).getFioTeacher())) {
+                result.add(historicalMatches.get(0));
+                if (extractGroupNumber(historicalMatches.get(0).getGroupName()) == 1) {
+                    secondGroup.setGroupName(groupNameBase + " 2 гр");
+                    result.add(secondGroup);
+                } else if (extractGroupNumber(historicalMatches.get(0).getGroupName()) == 2) {
+                    secondGroup.setGroupName(groupNameBase + " 1 гр");
+                    result.add(secondGroup);
+                }
+            } else if (matches.get(1).getFioTeacher().equals(historicalMatches.get(1).getFioTeacher())) {
+                result.add(historicalMatches.get(0));
+                if (extractGroupNumber(historicalMatches.get(1).getGroupName()) == 1) {
+                    secondGroup.setGroupName(groupNameBase + " 2 гр");
+                    result.add(secondGroup);
+                } else if (extractGroupNumber(historicalMatches.get(1).getGroupName()) == 2) {
+                    secondGroup.setGroupName(groupNameBase + " 1 гр");
+                    result.add(secondGroup);
+                }
+            } else {
+
+                matches.get(0).setGroupName(groupNameBase + " 1 гр");
+                matches.get(1).setGroupName(groupNameBase + " 2 гр");
+
+                // Обновляем записи в результате
+                removeByFields(result, nameSubject, className);
+                result.add(matches.get(0));
+                result.add(matches.get(1));
+            }
+        }
     }
 
 
