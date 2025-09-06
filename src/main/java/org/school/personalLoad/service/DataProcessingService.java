@@ -112,82 +112,118 @@ public class DataProcessingService {
     private void processDoubleMatch(List<TarifficationPerson> result,
                                     List<TarifficationPerson> matches,
                                     List<TarifficationPerson> historicalMatches) {
+
+        // Проверка на минимальное количество matches
         if (matches.size() < 2) return;
 
+        // Проверка на наличие исторических данных. Если их нет, обрабатываем как новый случай.
+        if (historicalMatches == null || historicalMatches.isEmpty()) {
+            String nameSubject = matches.get(0).getSubjectName();
+            String className = matches.get(0).getClassName();
+            String groupNameBase = formatGroupNameBase(nameSubject, className);
+
+            matches.get(0).setGroupName(groupNameBase + " 1 гр");
+            matches.get(1).setGroupName(groupNameBase + " 2 гр");
+
+            removeByFields(result, nameSubject, className);
+            result.add(matches.get(0));
+            result.add(matches.get(1));
+            return;
+        }
+
+        // Основная логика, если historicalMatches не пуст
+        // (по условию, если не пуст, то size == 2)
         String nameSubject = matches.get(0).getSubjectName();
         String className = matches.get(0).getClassName();
         String groupNameBase = formatGroupNameBase(nameSubject, className);
 
+        // Исправленное условие с правильной расстановкой скобок
+        boolean bothTeachersMatchHistory =
+                (historicalMatches.get(0).getFioTeacher().equals(matches.get(0).getFioTeacher())
+                        || historicalMatches.get(1).getFioTeacher().equals(matches.get(0).getFioTeacher()))
+                        &&
+                        (historicalMatches.get(0).getFioTeacher().equals(matches.get(1).getFioTeacher())
+                                || historicalMatches.get(1).getFioTeacher().equals(matches.get(1).getFioTeacher()));
 
-        if ((matches.get(0).getFioTeacher().equals(historicalMatches.get(0).getFioTeacher())
-                || matches.get(0).getFioTeacher().equals(historicalMatches.get(1).getFioTeacher()))
-                &&
-                (matches.get(1).getFioTeacher().equals(historicalMatches.get(0).getFioTeacher())
-                || matches.get(1).getFioTeacher().equals(historicalMatches.get(1).getFioTeacher()))) {
+        boolean firstTeacherMatches = historicalMatches.get(0).getFioTeacher().equals(matches.get(0).getFioTeacher())
+                || historicalMatches.get(1).getFioTeacher().equals(matches.get(0).getFioTeacher());
 
+        boolean secondTeacherMatches = historicalMatches.get(0).getFioTeacher().equals(matches.get(1).getFioTeacher())
+                || historicalMatches.get(1).getFioTeacher().equals(matches.get(1).getFioTeacher());
+
+
+        if (bothTeachersMatchHistory) {
+            // Случай 1: Оба текущих преподавателя совпадают с историческими
             removeByFields(result, nameSubject, className);
             result.add(historicalMatches.get(0));
             result.add(historicalMatches.get(1));
 
-        } else if (matches.get(0).getFioTeacher().equals(historicalMatches.get(0).getFioTeacher())
-                || matches.get(0).getFioTeacher().equals(historicalMatches.get(1).getFioTeacher())) {
+        } else if (firstTeacherMatches) {
+            // Случай 2: Совпадает только первый преподаватель из matches
+            processSingleTeacherMatch(result, matches, historicalMatches, nameSubject, className, groupNameBase, 0);
 
-            TarifficationPerson secondGroup = new TarifficationPerson(matches.get(0));
+        } else if (secondTeacherMatches) {
+            // Случай 3: Совпадает только второй преподаватель из matches
+            processSingleTeacherMatch(result, matches, historicalMatches, nameSubject, className, groupNameBase, 1);
+
+        } else {
+            // Случай 4: Не совпадает ни один преподаватель
+            matches.get(0).setGroupName(groupNameBase + " 1 гр");
+            matches.get(1).setGroupName(groupNameBase + " 2 гр");
+
             removeByFields(result, nameSubject, className);
-            if (matches.get(0).getFioTeacher().equals(historicalMatches.get(0).getFioTeacher())) {
-                result.add(historicalMatches.get(0));
-                if (extractGroupNumber(historicalMatches.get(0).getGroupName()) == 1) {
-                    secondGroup.setGroupName(groupNameBase + " 2 гр");
-                    result.add(secondGroup);
-                } else if (extractGroupNumber(historicalMatches.get(0).getGroupName()) == 2) {
-                    secondGroup.setGroupName(groupNameBase + " 1 гр");
-                    result.add(secondGroup);
-                }
-            } else if (matches.get(0).getFioTeacher().equals(historicalMatches.get(1).getFioTeacher())) {
-                result.add(historicalMatches.get(0));
-                if (extractGroupNumber(historicalMatches.get(1).getGroupName()) == 1) {
-                    secondGroup.setGroupName(groupNameBase + " 2 гр");
-                    result.add(secondGroup);
-                } else if (extractGroupNumber(historicalMatches.get(1).getGroupName()) == 2) {
-                    secondGroup.setGroupName(groupNameBase + " 1 гр");
-                    result.add(secondGroup);
-                }
-            } else {
-                System.out.println("ошибка в группах");
-            }
-        } else if (matches.get(1).getFioTeacher().equals(historicalMatches.get(0).getFioTeacher())
-                || matches.get(1).getFioTeacher().equals(historicalMatches.get(1).getFioTeacher())) {
+            result.add(matches.get(0));
+            result.add(matches.get(1));
+        }
+    }
 
-            TarifficationPerson secondGroup = new TarifficationPerson(matches.get(0));
-            removeByFields(result, nameSubject, className);
-            if (matches.get(1).getFioTeacher().equals(historicalMatches.get(0).getFioTeacher())) {
-                result.add(historicalMatches.get(0));
-                if (extractGroupNumber(historicalMatches.get(0).getGroupName()) == 1) {
-                    secondGroup.setGroupName(groupNameBase + " 2 гр");
-                    result.add(secondGroup);
-                } else if (extractGroupNumber(historicalMatches.get(0).getGroupName()) == 2) {
-                    secondGroup.setGroupName(groupNameBase + " 1 гр");
-                    result.add(secondGroup);
-                }
-            } else if (matches.get(1).getFioTeacher().equals(historicalMatches.get(1).getFioTeacher())) {
-                result.add(historicalMatches.get(0));
-                if (extractGroupNumber(historicalMatches.get(1).getGroupName()) == 1) {
-                    secondGroup.setGroupName(groupNameBase + " 2 гр");
-                    result.add(secondGroup);
-                } else if (extractGroupNumber(historicalMatches.get(1).getGroupName()) == 2) {
-                    secondGroup.setGroupName(groupNameBase + " 1 гр");
-                    result.add(secondGroup);
-                }
-            } else {
+    /**
+     * Вспомогательный метод для обработки случая, когда совпадает только один преподаватель.
+     * @param matchIndex индекс совпавшего преподавателя в списке matches (0 или 1)
+     */
+    private void processSingleTeacherMatch(List<TarifficationPerson> result,
+                                           List<TarifficationPerson> matches,
+                                           List<TarifficationPerson> historicalMatches,
+                                           String nameSubject,
+                                           String className,
+                                           String groupNameBase,
+                                           int matchIndex) {
 
-                matches.get(0).setGroupName(groupNameBase + " 1 гр");
-                matches.get(1).setGroupName(groupNameBase + " 2 гр");
+        // Индекс другого преподавателя (не совпавшего)
+        int otherMatchIndex = (matchIndex == 0) ? 1 : 0;
 
-                // Обновляем записи в результате
-                removeByFields(result, nameSubject, className);
-                result.add(matches.get(0));
-                result.add(matches.get(1));
-            }
+        // Определяем, какой именно исторический преподаватель совпал
+        TarifficationPerson historicalMatch;
+        TarifficationPerson otherHistorical;
+
+        if (matches.get(matchIndex).getFioTeacher().equals(historicalMatches.get(0).getFioTeacher())) {
+            historicalMatch = historicalMatches.get(0);
+            otherHistorical = historicalMatches.get(1);
+        } else {
+            historicalMatch = historicalMatches.get(1);
+            otherHistorical = historicalMatches.get(0);
+        }
+
+        // Создаем запись для второй группы на основе актуальных данных
+        TarifficationPerson secondGroup = new TarifficationPerson(matches.get(otherMatchIndex));
+
+        removeByFields(result, nameSubject, className);
+        result.add(historicalMatch); // Добавляем историческую запись
+
+        // Определяем номер группы для новой записи на основе номера группы исторического преподавателя
+        Integer historicalGroupNumber = extractGroupNumber(historicalMatch.getGroupName());
+
+        if (historicalGroupNumber == 1) {
+            secondGroup.setGroupName(groupNameBase + " 2 гр");
+            result.add(secondGroup);
+        } else if (historicalGroupNumber == 2) {
+            secondGroup.setGroupName(groupNameBase + " 1 гр");
+            result.add(secondGroup);
+        } else {
+            // Если по какой-то причине не удалось определить номер группы у исторической записи
+            System.out.println("Ошибка: не удалось определить номер группы для исторической записи");
+            // Добавляем обе исходные записи как есть
+            result.add(matches.get(otherMatchIndex));
         }
     }
 
