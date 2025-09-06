@@ -14,11 +14,11 @@ import java.util.stream.Collectors;
 public class DatabaseServiceImpl implements DatabaseService {
 
     private final TarifficationPersonDAO currentDAO;
-    private final TarifficationChangesDAO historyDAO;
+    private final TarifficationChangesDAO ChangesDAO;
 
     public DatabaseServiceImpl() {
         this.currentDAO = new TarifficationPersonDAO();
-        this.historyDAO = new TarifficationChangesDAO();
+        this.ChangesDAO = new TarifficationChangesDAO();
 
         if (DatabaseConfig.CLEAR_HISTORY_ON_START) {
             System.out.println("🗑️ История очищена по запросу (CLEAR_HISTORY_ON_START = true)");
@@ -37,7 +37,7 @@ public class DatabaseServiceImpl implements DatabaseService {
 
         // 2. Сохраняем изменения в историю (если включено)
         if (!changes.isEmpty() && DatabaseConfig.KEEP_HISTORY) {
-            historyDAO.saveAll(changes);
+            ChangesDAO.saveAll(changes);
             System.out.println("💾 Изменения сохранены в историю: " + changes.size() + " записей");
         }
 
@@ -76,7 +76,7 @@ public class DatabaseServiceImpl implements DatabaseService {
 
     // Дополнительные методы для работы с историей
     public List<TarifficationChanges> getAllHistory() {
-        return historyDAO.findAll();
+        return ChangesDAO.findAll();
     }
 
     public void saveCurrentTariffication(List<TarifficationPerson> tarifficationList) {
@@ -86,9 +86,18 @@ public class DatabaseServiceImpl implements DatabaseService {
     }
 
     public void fullReset() {
-        historyDAO.deleteAllHistory();
+        ChangesDAO.deleteAllHistory();
         currentDAO.deleteAll();
         System.out.println("✅ Полный сброс: история и текущая тарификация очищены");
+    }
+
+
+    public List<TarifficationPerson> findAllByFieldsHistory(String subject, String className, String NumberSchoolBuilding) {
+        List<TarifficationPerson> oldTariffications = currentDAO.findAll();
+        return oldTariffications.stream()
+                .filter(person -> person.getSubjectName().equals(subject) && person.getClassName().equals(className)
+                        && person.getNumberSchoolBuilding().equals(NumberSchoolBuilding))
+                .collect(Collectors.toList());
     }
 
     private TarifficationChanges createHistoryRecord(TarifficationPerson current,
