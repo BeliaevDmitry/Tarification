@@ -22,10 +22,10 @@ public class TarifficationController {
 
     public TarifficationController() {
         HibernateConfig.getSessionFactory();
-        this.dataReaderService = new DataReaderService();
-        this.dataProcessingService = new DataProcessingService();
-        this.reportService = new ReportService();
         this.databaseService = new DatabaseServiceImpl();
+        this.dataReaderService = new DataReaderService();
+        this.dataProcessingService = new DataProcessingService(databaseService); // ← Передаем databaseService
+        this.reportService = new ReportService();
     }
 
     public void processTariffication(String inputPath, String outputPath) {

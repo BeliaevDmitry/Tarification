@@ -12,6 +12,7 @@ public interface DatabaseService {
 
     /**
      * Сравнивает новую тарификацию с предыдущей и сохраняет изменения
+     *
      * @param newTariffication список новых данных тарификации
      * @return список обнаруженных изменений
      */
@@ -19,6 +20,7 @@ public interface DatabaseService {
 
     /**
      * Сравнивает новую тарификацию с историей изменений
+     *
      * @param newTariffication список новых данных тарификации
      * @return список обнаруженных изменений
      */
@@ -26,6 +28,7 @@ public interface DatabaseService {
 
     /**
      * Сохраняет текущую версию тарификации в базу данных
+     *
      * @param tarifficationList список данных тарификации для сохранения
      */
     void saveCurrentTariffication(List<TarifficationPerson> tarifficationList);
@@ -37,7 +40,18 @@ public interface DatabaseService {
 
     /**
      * Возвращает всю историю изменений
+     *
      * @return список всех записей истории
      */
     List<TarifficationChanges> getAllHistory();
+
+    /**
+     * Возвращает список педагогов по предмету, классу, корпусу
+     *
+     * @param subject              название предмета
+     * @param className            название класса
+     * @param NumberSchoolBuilding название корпуса
+     * @return список педагогов
+     */
+    List<TarifficationPerson> findAllByFieldsHistory(String subject, String className, String NumberSchoolBuilding);
 }
