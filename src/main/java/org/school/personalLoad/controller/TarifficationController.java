@@ -47,7 +47,8 @@ public class TarifficationController {
             dataProcessingService.sortHistoryByDate(allHistory);
 
             // 5. Создание отчета
-            reportService.createReport(tarifficationList, groupList, allHistory, outputPath);
+            List <String> listGroup=  databaseService.findAllUniqueClassAndGroupNames(); // получаем уникальный спсиок классов и групп
+            reportService.createReport(tarifficationList, groupList, allHistory, outputPath,listGroup);
 
             System.out.println("✅ Успешно обработано: " + tarifficationList.size() + " записей");
             System.out.println("✅ Найдено изменений: " + changes.size());

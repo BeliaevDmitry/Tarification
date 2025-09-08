@@ -54,4 +54,6 @@ public interface DatabaseService {
      * @return список педагогов
      */
     List<TarifficationPerson> findAllByFieldsHistory(String subject, String className, String NumberSchoolBuilding);
+
+    List<String> findAllUniqueClassAndGroupNames();
 }

@@ -18,12 +18,13 @@ public class ReportService {
     public void createReport(List<TarifficationPerson> tarifficationList,
                              List<SubjectWithGroup> subjectWithGroupList,
                              List<TarifficationChanges> changes,
-                             String outputPath) throws IOException {
+                             String outputPath,
+                             List<String> listGroup) throws IOException {
         try (Workbook workbook = new XSSFWorkbook()) {
             createTarifficationSheet(workbook, tarifficationList);
             createGroupsSheet(workbook, subjectWithGroupList);
             createChangesSheet(workbook, changes);
-
+            createUniqueNamesSheet(workbook, listGroup);
             try (FileOutputStream fos = new FileOutputStream(outputPath)) {
                 workbook.write(fos);
             }
@@ -34,6 +35,8 @@ public class ReportService {
         if (changes == null || changes.isEmpty()) return;
 
         Sheet sheet = workbook.createSheet("Изменения тарификации");
+        sheet.createFreezePane(0, 1, 0, 1);
+
         Row headerRow = sheet.createRow(0);
         String[] headers = {"ФИО педагога", "Корпус", "Предмет", "Класс", "Группа",
                 "Количество часов", "Часов в группе", "Тип изменения", "Дата изменения"};
@@ -59,6 +62,8 @@ public class ReportService {
 
     private void createTarifficationSheet(Workbook workbook, List<TarifficationPerson> tarifficationList) {
         Sheet sheet = workbook.createSheet("Тарификация");
+        sheet.createFreezePane(0, 1, 0, 1);
+
         Row headerRow = sheet.createRow(0);
         String[] headers = {"ФИО педагога", "Корпус", "Предмет", "Класс", "группа", "Количество часов", "Количество часов в группе"};
 
@@ -81,6 +86,8 @@ public class ReportService {
 
     private void createGroupsSheet(Workbook workbook, List<SubjectWithGroup> subjectWithGroupList) {
         Sheet sheet = workbook.createSheet("Группы");
+        sheet.createFreezePane(0, 1, 0, 1);
+
         Row headerRow = sheet.createRow(0);
         String[] headers = {"корпус", "Предмет", "Класс", "Количество групп"};
 
@@ -111,6 +118,25 @@ public class ReportService {
             headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
             cell.setCellStyle(headerStyle);
         }
+    }
+
+    private void createUniqueNamesSheet(Workbook workbook, List<String> listGroup) {
+        if (listGroup == null || listGroup.isEmpty()) return;
+
+        Sheet sheet = workbook.createSheet("Уникальные названия групп");
+        sheet.createFreezePane(0, 1, 0, 1);
+        Row headerRow = sheet.createRow(0);
+        String[] headers = {"Уникальные названия групп/классов по УП"};
+
+        createHeaderRow(headerRow, headers, workbook, IndexedColors.LIGHT_GREEN);
+
+        int rowNum = 1;
+        for (String name : listGroup) {
+            Row row = sheet.createRow(rowNum++);
+            row.createCell(0).setCellValue(name);
+        }
+
+        autoSizeColumns(sheet, headers.length);
     }
 
     private void autoSizeColumns(Sheet sheet, int columnCount) {
