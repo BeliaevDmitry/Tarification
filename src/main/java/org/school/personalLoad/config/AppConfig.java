@@ -16,6 +16,8 @@ public class AppConfig {
     public static final String DOWNLOAD_DIRECTORY = "C:\\Users\\dimah\\Downloads\\";
     public static final String OUTPUT_DIRECTORY = "C:\\Users\\dimah\\Desktop\\";
 
+    public static final String OFFLINE_FILES_DIRECTORY = "C:\\Users\\dimah\\Desktop\\журнал\\";
+
     // Output file names
     public static final String TARIFFICATION_OUTPUT = "Тарификация.xlsx";
     public static final String PRACTICUM_OUTPUT = "контингент практикумы.xlsx";
@@ -36,5 +38,10 @@ public class AppConfig {
 
     public static String getDownloadPath(String fileName) {
         return DOWNLOAD_DIRECTORY + fileName;
+    }
+
+    // Helper method для получения пути к офлайн папке
+    public static String getOfflineFilesPath() {
+        return OFFLINE_FILES_DIRECTORY;
     }
 }

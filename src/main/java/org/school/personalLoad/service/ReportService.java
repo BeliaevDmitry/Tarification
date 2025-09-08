@@ -9,7 +9,9 @@ import org.school.personalLoad.model.TarifficationPerson;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public class ReportService {
 
@@ -19,12 +21,14 @@ public class ReportService {
                              List<SubjectWithGroup> subjectWithGroupList,
                              List<TarifficationChanges> changes,
                              String outputPath,
-                             List<String> listGroup) throws IOException {
+                             List<String> listGroup,
+                             Map<String, List<String>> disabledStudentsGroups) throws IOException {
         try (Workbook workbook = new XSSFWorkbook()) {
             createTarifficationSheet(workbook, tarifficationList);
             createGroupsSheet(workbook, subjectWithGroupList);
             createChangesSheet(workbook, changes);
             createUniqueNamesSheet(workbook, listGroup);
+            createDisabledStudentsSheet(workbook, disabledStudentsGroups);
             try (FileOutputStream fos = new FileOutputStream(outputPath)) {
                 workbook.write(fos);
             }
@@ -134,6 +138,41 @@ public class ReportService {
         for (String name : listGroup) {
             Row row = sheet.createRow(rowNum++);
             row.createCell(0).setCellValue(name);
+        }
+
+        autoSizeColumns(sheet, headers.length);
+    }
+
+    private void createDisabledStudentsSheet(Workbook workbook, Map<String, List<String>> disabledStudentsGroups) {
+        if (disabledStudentsGroups == null || disabledStudentsGroups.isEmpty()) {
+            return;
+        }
+
+        Sheet sheet = workbook.createSheet("Инвалиды и группы");
+        sheet.createFreezePane(0, 1, 0, 1);
+
+        // Создаем заголовки
+        Row headerRow = sheet.createRow(0);
+        String[] headers = {"ФИО Ребенка", "Группы"};
+        createHeaderRow(headerRow, headers, workbook, IndexedColors.LIGHT_YELLOW);
+
+        // Сортируем студентов по ФИО для удобства чтения
+        List<String> sortedStudents = new ArrayList<>(disabledStudentsGroups.keySet());
+        sortedStudents.sort(String::compareToIgnoreCase);
+
+        int rowNum = 1;
+        for (String student : sortedStudents) {
+            List<String> groups = disabledStudentsGroups.get(student);
+            if (groups != null && !groups.isEmpty()) {
+                Row row = sheet.createRow(rowNum++);
+
+                // Колонка 1: ФИО ребенка
+                row.createCell(0).setCellValue(student);
+
+                // Колонка 2: Все группы через запятую в одну ячейку
+                String groupsString = String.join(", ", groups);
+                row.createCell(1).setCellValue(groupsString);
+            }
         }
 
         autoSizeColumns(sheet, headers.length);
