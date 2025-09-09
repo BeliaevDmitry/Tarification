@@ -22,12 +22,13 @@ public class ReportService {
                              List<TarifficationChanges> changes,
                              String outputPath,
                              List<String> listGroup,
-                             Map<String, List<String>> disabledStudentsGroups) throws IOException {
+                             Map<String, List<String>> disabledStudentsGroups,
+                             Map<String, Integer> classInfo) throws IOException {
         try (Workbook workbook = new XSSFWorkbook()) {
             createTarifficationSheet(workbook, tarifficationList);
             createGroupsSheet(workbook, subjectWithGroupList);
             createChangesSheet(workbook, changes);
-            createUniqueNamesSheet(workbook, listGroup);
+            createUniqueNamesSheet(workbook, listGroup, classInfo);
             createDisabledStudentsSheet(workbook, disabledStudentsGroups);
             try (FileOutputStream fos = new FileOutputStream(outputPath)) {
                 workbook.write(fos);
@@ -124,20 +125,49 @@ public class ReportService {
         }
     }
 
-    private void createUniqueNamesSheet(Workbook workbook, List<String> listGroup) {
-        if (listGroup == null || listGroup.isEmpty()) return;
-
+    private void createUniqueNamesSheet(Workbook workbook, List<String> listGroup, Map<String, Integer> classInfo) {
         Sheet sheet = workbook.createSheet("Уникальные названия групп");
         sheet.createFreezePane(0, 1, 0, 1);
-        Row headerRow = sheet.createRow(0);
-        String[] headers = {"Уникальные названия групп/классов по УП"};
 
+        // Создаем заголовки
+        Row headerRow = sheet.createRow(0);
+        String[] headers = {"Уникальные названия групп/классов по УП", "", "Классы из журналов", "Численность"};
         createHeaderRow(headerRow, headers, workbook, IndexedColors.LIGHT_GREEN);
 
+        // Заполняем группы из УП (колонка A)
         int rowNum = 1;
-        for (String name : listGroup) {
-            Row row = sheet.createRow(rowNum++);
-            row.createCell(0).setCellValue(name);
+        if (listGroup != null && !listGroup.isEmpty()) {
+            for (String name : listGroup) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(name);
+            }
+        }
+
+        // Заполняем информацию о классах из журналов (колонки C и D)
+        if (classInfo != null && !classInfo.isEmpty()) {
+            // Сортируем классы для удобства чтения
+            List<String> sortedClasses = new ArrayList<>(classInfo.keySet());
+            sortedClasses.sort(String::compareToIgnoreCase);
+
+            int classRowNum = 1;
+            for (String className : sortedClasses) {
+                Row row;
+                if (classRowNum < sheet.getLastRowNum() + 1) {
+                    row = sheet.getRow(classRowNum);
+                    if (row == null) {
+                        row = sheet.createRow(classRowNum);
+                    }
+                } else {
+                    row = sheet.createRow(classRowNum);
+                }
+
+                row.createCell(2).setCellValue(className); // Колонка C
+                row.createCell(3).setCellValue(classInfo.get(className)); // Колонка D
+                classRowNum++;
+            }
+
+            // Обновляем максимальный rowNum
+            rowNum = Math.max(rowNum, classRowNum);
         }
 
         autoSizeColumns(sheet, headers.length);

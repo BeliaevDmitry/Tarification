@@ -30,6 +30,65 @@ public class GroupSearchService {
         return findGroupsInOfflineFiles(disabledStudents, offlineFolderPath);
     }
 
+    public Map<String, Integer> collectClassInfo(String offlineFolderPath) throws Exception {
+        Map<String, Integer> classInfo = new ConcurrentHashMap<>();
+
+        File folder = new File(offlineFolderPath);
+        File[] excelFiles = folder.listFiles((dir, name) ->
+                name.toLowerCase().endsWith(".xlsx") || name.toLowerCase().endsWith(".xls"));
+
+        if (excelFiles == null) return classInfo;
+
+        ExecutorService executor = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
+
+        for (File file : excelFiles) {
+            executor.submit(() -> processFileForClassInfo(file, classInfo));
+        }
+
+        executor.shutdown();
+        executor.awaitTermination(30, TimeUnit.MINUTES);
+
+        return classInfo;
+    }
+
+    private void processFileForClassInfo(File file, Map<String, Integer> classInfo) {
+        try (FileInputStream fis = new FileInputStream(file);
+             Workbook workbook = WorkbookFactory.create(fis)) {
+
+            for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
+                processSheetForClassInfo(workbook.getSheetAt(i), classInfo);
+            }
+        } catch (Exception e) {
+            System.err.println("Ошибка в файле " + file.getName() + ": " + e.getMessage());
+        }
+    }
+
+    private void processSheetForClassInfo(Sheet sheet, Map<String, Integer> classInfo) {
+        // Получаем название класса из ячейки U41
+        String className = getCellValueAsString(sheet.getRow(40) == null ? null : sheet.getRow(40).getCell(20));
+        if (className == null || className.isEmpty()) return;
+
+        // Подсчитываем численность класса (столбец B, начиная со 2 строки, максимум 40)
+        int studentCount = 0;
+        for (int rowNum = 1; rowNum <= 41; rowNum++) { // Ограничиваем 41 строкой для безопасности
+            Row row = sheet.getRow(rowNum);
+            if (row == null) continue;
+
+            Cell cell = row.getCell(1); // Столбец B
+            String studentName = getCellValueAsString(cell);
+
+            if (!studentName.isEmpty()) {
+                studentCount++;
+                if (studentCount >= 40) break; // Максимум 40 учеников
+            }
+        }
+
+        // Сохраняем информацию о классе
+        synchronized (classInfo) {
+            classInfo.put(className, studentCount);
+        }
+    }
+
     private List<String> readDisabledStudents(String onlineFilePath) throws Exception {
         List<String> students = new ArrayList<>();
 
