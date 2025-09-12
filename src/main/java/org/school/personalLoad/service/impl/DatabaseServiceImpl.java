@@ -100,6 +100,33 @@ public class DatabaseServiceImpl implements DatabaseService {
                 .collect(Collectors.toList());
     }
 
+
+    public List<String> findAllUniqueClassAndGroupNames() {
+        List<TarifficationPerson> allPersons = currentDAO.findAll();
+
+        // Используем Set для автоматического обеспечения уникальности
+        Set<String> uniqueNames = new HashSet<>();
+
+        for (TarifficationPerson person : allPersons) {
+            // Добавляем className (если не null и не пустой)
+            if (person.getClassName() != null && !person.getClassName().trim().isEmpty()) {
+                uniqueNames.add(person.getClassName().trim());
+            }
+
+            // Добавляем groupName (если не null и не пустой)
+            if (person.getGroupName() != null && !person.getGroupName().trim().isEmpty()) {
+                uniqueNames.add(person.getGroupName().trim());
+            }
+        }
+
+        // Преобразуем Set в отсортированный List
+        List<String> result = new ArrayList<>(uniqueNames);
+        Collections.sort(result);
+
+        return result;
+    }
+
+
     private TarifficationChanges createHistoryRecord(TarifficationPerson current,
                                                      TarifficationChanges.ChangeType changeType) {
         TarifficationChanges history = new TarifficationChanges();

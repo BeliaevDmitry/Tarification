@@ -1,4 +1,4 @@
-package org.school.email;
+package org.school.email.service;
 
 import org.school.email.config.EmailConfig;
 

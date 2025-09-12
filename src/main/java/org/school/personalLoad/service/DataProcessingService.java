@@ -50,6 +50,27 @@ public class DataProcessingService {
         String className = match.getClassName();
         Integer groupLoad = match.getLoad() / 2;
 
+        // Проверка на null и пустой список historicalMatches
+        if (historicalMatches == null || historicalMatches.isEmpty()) {
+            TarifficationPerson secondGroup = new TarifficationPerson(match);
+            String groupNameBase = formatGroupNameBase(nameSubject, className);
+
+            // Изменяем оригинальную запись
+            match.setGroupName(groupNameBase + " 1 гр");
+            match.setGroupLoad(groupLoad);
+
+            // Изменяем копию
+            secondGroup.setGroupName(groupNameBase + " 2 гр");
+            secondGroup.setGroupLoad(groupLoad);
+
+            // Добавляем обе записи обратно в список
+            removeByFields(result, nameSubject, className);
+            result.add(match);
+            result.add(secondGroup);
+            return;
+        }
+
+        // Оригинальная логика для не-null historicalMatches
         if (historicalMatches.get(0).getFioTeacher().equals(historicalMatches.get(1).getFioTeacher())) {
             removeByFields(result, nameSubject, className);
             result.add(historicalMatches.get(0));
@@ -83,7 +104,6 @@ public class DataProcessingService {
                 result.add(secondGroup);
             }
         } else {
-
             TarifficationPerson secondGroup = new TarifficationPerson(match);
             String groupNameBase = formatGroupNameBase(nameSubject, className);
 
@@ -91,11 +111,11 @@ public class DataProcessingService {
             match.setGroupName(groupNameBase + " 1 гр");
             match.setGroupLoad(groupLoad);
 
-            // 4. Изменяем копию
+            // Изменяем копию
             secondGroup.setGroupName(groupNameBase + " 2 гр");
             secondGroup.setGroupLoad(groupLoad);
 
-            // 5. Добавляем обе записи обратно в список
+            // Добавляем обе записи обратно в список
             removeByFields(result, nameSubject, className);
             result.add(match);
             result.add(secondGroup);
@@ -137,7 +157,6 @@ public class DataProcessingService {
         String className = matches.get(0).getClassName();
         String groupNameBase = formatGroupNameBase(nameSubject, className);
 
-        // Исправленное условие с правильной расстановкой скобок
         boolean bothTeachersMatchHistory =
                 (historicalMatches.get(0).getFioTeacher().equals(matches.get(0).getFioTeacher())
                         || historicalMatches.get(1).getFioTeacher().equals(matches.get(0).getFioTeacher()))
@@ -179,6 +198,7 @@ public class DataProcessingService {
 
     /**
      * Вспомогательный метод для обработки случая, когда совпадает только один преподаватель.
+     *
      * @param matchIndex индекс совпавшего преподавателя в списке matches (0 или 1)
      */
     private void processSingleTeacherMatch(List<TarifficationPerson> result,
@@ -239,7 +259,12 @@ public class DataProcessingService {
     }
 
     private String formatGroupNameBase(String subjectName, String className) {
-        String cleanedSubjectName = subjectName.replaceAll("\\s*(ООО|НОО|СОО)\\s*", "").trim();
+        // Обрабатываем оба случая: "У ООО" и "ООО У"
+        String cleanedSubjectName = subjectName
+                .replaceAll("\\s*(НОО|ООО|СОО)\\s*У\\s*", "")  // Затем "ООО У"
+                .replaceAll("\\s*(НОО|ООО|СОО)\\s*", "")       // Затем просто уровни
+                .trim();
+
         String formattedClassName = className.replaceAll("[\\s-]+", "");
         return cleanedSubjectName + " " + className + " " + formattedClassName;
     }
