@@ -1,6 +1,7 @@
 package org.school.personalLoad.service;
 
 import org.apache.poi.ss.usermodel.*;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.util.*;
@@ -30,6 +31,72 @@ public class GroupSearchService {
         return findGroupsInOfflineFiles(disabledStudents, offlineFolderPath);
     }
 
+    /**
+     * Новый метод для сбора информации о классах, численности и преподавателях
+     */
+    public Map<String, ClassInfo> collectClassInfo(String offlineFolderPath) throws Exception {
+        Map<String, ClassInfo> classInfo = new ConcurrentHashMap<>();
+
+        File folder = new File(offlineFolderPath);
+        File[] excelFiles = folder.listFiles((dir, name) ->
+                name.toLowerCase().endsWith(".xlsx") || name.toLowerCase().endsWith(".xls"));
+
+        if (excelFiles == null) return classInfo;
+
+        ExecutorService executor = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
+
+        for (File file : excelFiles) {
+            executor.submit(() -> processFileForClassInfo(file, classInfo));
+        }
+
+        executor.shutdown();
+        executor.awaitTermination(30, TimeUnit.MINUTES);
+
+        return classInfo;
+    }
+
+    private void processFileForClassInfo(File file, Map<String, ClassInfo> classInfo) {
+        try (FileInputStream fis = new FileInputStream(file);
+             Workbook workbook = WorkbookFactory.create(fis)) {
+
+            for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
+                processSheetForClassInfo(workbook.getSheetAt(i), classInfo);
+            }
+        } catch (Exception e) {
+            System.err.println("Ошибка в файле " + file.getName() + ": " + e.getMessage());
+        }
+    }
+
+    private void processSheetForClassInfo(Sheet sheet, Map<String, ClassInfo> classInfo) {
+        // Получаем название класса из ячейки U41
+        String className = getCellValueAsString(sheet.getRow(40) == null ? null : sheet.getRow(40).getCell(20));
+        if (className == null || className.isEmpty()) return;
+
+        // Получаем ФИО преподавателя из ячейки U43
+        String teacherName = getCellValueAsString(sheet.getRow(42) == null ? null : sheet.getRow(42).getCell(20));
+
+        // Подсчитываем численность класса (столбец B, начиная со 2 строки, максимум 40)
+        int studentCount = 0;
+        for (int rowNum = 1; rowNum <= 41; rowNum++) { // Ограничиваем 41 строкой для безопасности
+            Row row = sheet.getRow(rowNum);
+            if (row == null) continue;
+
+            Cell cell = row.getCell(1); // Столбец B
+            String studentName = getCellValueAsString(cell);
+
+            if (!studentName.isEmpty()) {
+                studentCount++;
+                if (studentCount >= 40) break; // Максимум 40 учеников
+            }
+        }
+
+        // Сохраняем информацию о классе
+        synchronized (classInfo) {
+            classInfo.put(className, new ClassInfo(className, studentCount, teacherName));
+        }
+    }
+
+
     private List<String> readDisabledStudents(String onlineFilePath) throws Exception {
         List<String> students = new ArrayList<>();
 
@@ -43,7 +110,7 @@ public class GroupSearchService {
                 Row row = sheet.getRow(i);
                 if (row == null) continue;
 
-                Cell cell = row.getCell(10); // Столбец K
+                Cell cell = row.getCell(11); // Столбец L
                 if (cell != null) {
                     String name = getCellValueAsString(cell).trim();
                     if (!name.isEmpty()) students.add(name);
@@ -119,15 +186,18 @@ public class GroupSearchService {
         if (cell == null) return "";
         try {
             switch (cell.getCellType()) {
-                case STRING: return cell.getStringCellValue().trim();
-                case NUMERIC: return String.valueOf((int) cell.getNumericCellValue());
+                case STRING:
+                    return cell.getStringCellValue().trim();
+                case NUMERIC:
+                    return String.valueOf((int) cell.getNumericCellValue());
                 case FORMULA:
                     try {
                         return String.valueOf((int) cell.getNumericCellValue());
                     } catch (Exception e) {
                         return cell.getStringCellValue().trim();
                     }
-                default: return "";
+                default:
+                    return "";
             }
         } catch (Exception e) {
             return "";
@@ -139,4 +209,25 @@ public class GroupSearchService {
                 foundName.contains(targetName) ||
                 targetName.contains(foundName);
     }
+
+    /**
+     * Вспомогательный класс для хранения информации о классе
+     */
+    public static class ClassInfo {
+        private final String className;
+        private final int studentCount;
+        private final String teacherName;
+
+        public ClassInfo(String className, int studentCount, String teacherName) {
+            this.className = className;
+            this.studentCount = studentCount;
+            this.teacherName = teacherName;
+        }
+
+        public String getClassName() { return className; }
+        public int getStudentCount() { return studentCount; }
+        public String getTeacherName() { return teacherName; }
+    }
+
+
 }

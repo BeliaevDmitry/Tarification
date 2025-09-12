@@ -54,14 +54,18 @@ public class TarifficationController {
             // 5. Поиск групп для инвалидов (новая функциональность)
             Map<String, List<String>> disabledStudentsGroups = findGroupsForDisabledStudents(inputPath);
 
-            // 6. Создание отчета с передачей информации о группах инвалидов
+            // 7. Собираем информацию о классах, численности и преподавателях
+            Map<String, GroupSearchService.ClassInfo> classInfo = collectClassInfo(getOfflineFilesPath());
+
+            // 8. Создание отчета с передачей информации о классах
             List<String> listGroup = databaseService.findAllUniqueClassAndGroupNames();
             reportService.createReport(tarifficationList, groupList, allHistory, outputPath,
-                    listGroup, disabledStudentsGroups);
+                    listGroup, disabledStudentsGroups, classInfo);
 
             System.out.println("✅ Успешно обработано: " + tarifficationList.size() + " записей");
             System.out.println("✅ Найдено изменений: " + changes.size());
             System.out.println("✅ Найдено групп для инвалидов: " + disabledStudentsGroups.size() + " студентов");
+            System.out.println("✅ Собрана информация о " + classInfo.size() + " классах");
 
         } catch (Exception e) {
             System.err.println("❌ Ошибка при обработке файла: " + e.getMessage());
@@ -70,6 +74,18 @@ public class TarifficationController {
     }
 
     /**
+     * Метод для сбора информации о классах, численности и преподавателях
+     */
+    private Map<String, GroupSearchService.ClassInfo> collectClassInfo(String offlineFolderPath) {
+        try {
+            return groupSearchService.collectClassInfo(offlineFolderPath);
+        } catch (Exception e) {
+            System.err.println("❌ Ошибка при сборе информации о классах: " + e.getMessage());
+            return Map.of();
+        }
+    }
+
+       /**
      * Метод для поиска групп для инвалидов
      * Использует текущий файл как онлайн-файл и указанную в конфиге офлайн-папку
      */
