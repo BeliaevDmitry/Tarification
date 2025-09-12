@@ -54,13 +54,13 @@ public class TarifficationController {
             // 5. Поиск групп для инвалидов (новая функциональность)
             Map<String, List<String>> disabledStudentsGroups = findGroupsForDisabledStudents(inputPath);
 
-            // 7. Собираем информацию о классах и численности (новая функциональность)
-            Map<String, Integer> classInfo = collectClassInfo(getOfflineFilesPath());
+            // 7. Собираем информацию о классах, численности и преподавателях
+            Map<String, GroupSearchService.ClassInfo> classInfo = collectClassInfo(getOfflineFilesPath());
 
-            // 8. Создание отчета с передачей информации о классах и численности
+            // 8. Создание отчета с передачей информации о классах
             List<String> listGroup = databaseService.findAllUniqueClassAndGroupNames();
             reportService.createReport(tarifficationList, groupList, allHistory, outputPath,
-                    listGroup, disabledStudentsGroups, classInfo); // Добавляем classInfo
+                    listGroup, disabledStudentsGroups, classInfo);
 
             System.out.println("✅ Успешно обработано: " + tarifficationList.size() + " записей");
             System.out.println("✅ Найдено изменений: " + changes.size());
@@ -74,18 +74,18 @@ public class TarifficationController {
     }
 
     /**
-     * Метод для сбора информации о классах и численности
+     * Метод для сбора информации о классах, численности и преподавателях
      */
-    private Map<String, Integer> collectClassInfo(String offlineFolderPath) {
+    private Map<String, GroupSearchService.ClassInfo> collectClassInfo(String offlineFolderPath) {
         try {
             return groupSearchService.collectClassInfo(offlineFolderPath);
         } catch (Exception e) {
             System.err.println("❌ Ошибка при сборе информации о классах: " + e.getMessage());
-            return Map.of(); // Возвращаем пустую карту в случае ошибки
+            return Map.of();
         }
     }
 
-    /**
+       /**
      * Метод для поиска групп для инвалидов
      * Использует текущий файл как онлайн-файл и указанную в конфиге офлайн-папку
      */

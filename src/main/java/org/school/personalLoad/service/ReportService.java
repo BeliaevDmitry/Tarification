@@ -10,8 +10,10 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 public class ReportService {
 
@@ -23,7 +25,7 @@ public class ReportService {
                              String outputPath,
                              List<String> listGroup,
                              Map<String, List<String>> disabledStudentsGroups,
-                             Map<String, Integer> classInfo) throws IOException {
+                             Map<String, GroupSearchService.ClassInfo> classInfo) throws IOException {
         try (Workbook workbook = new XSSFWorkbook()) {
             createTarifficationSheet(workbook, tarifficationList);
             createGroupsSheet(workbook, subjectWithGroupList);
@@ -125,52 +127,199 @@ public class ReportService {
         }
     }
 
-    private void createUniqueNamesSheet(Workbook workbook, List<String> listGroup, Map<String, Integer> classInfo) {
+    private void createUniqueNamesSheet(Workbook workbook, List<String> listGroup, Map<String, GroupSearchService.ClassInfo> classInfo) {
         Sheet sheet = workbook.createSheet("Уникальные названия групп");
         sheet.createFreezePane(0, 1, 0, 1);
 
-        // Создаем заголовки
+        // Создаем заголовки - ДОБАВЛЯЕМ КОЛОНКУ "Предмет"
         Row headerRow = sheet.createRow(0);
-        String[] headers = {"Уникальные названия групп/классов по УП", "", "Классы из журналов", "Численность"};
+        String[] headers = {"Классы из журналов (оригинал)", "ФИО преподавателя (оригинал)", "Численность", "Класс", "Предмет", "", "Уникальные названия групп/классов по УП"};
         createHeaderRow(headerRow, headers, workbook, IndexedColors.LIGHT_GREEN);
 
-        // Заполняем группы из УП (колонка A)
         int rowNum = 1;
-        if (listGroup != null && !listGroup.isEmpty()) {
-            for (String name : listGroup) {
-                Row row = sheet.createRow(rowNum++);
-                row.createCell(0).setCellValue(name);
+        int processedCount = 0;
+        int skippedCount = 0;
+
+        // РАЗДЕЛ 1: Классы из журналов
+        if (classInfo != null && !classInfo.isEmpty()) {
+            System.out.println("Обрабатываем " + classInfo.size() + " классов из журналов...");
+
+            // Сортируем классы для удобства чтения
+            List<GroupSearchService.ClassInfo> sortedClasses = new ArrayList<>(classInfo.values());
+            sortedClasses.sort((c1, c2) -> {
+                String clean1 = extractCleanClassName(c1.getClassName());
+                String clean2 = extractCleanClassName(c2.getClassName());
+                return clean1.compareTo(clean2);
+            });
+
+            for (GroupSearchService.ClassInfo classInfoItem : sortedClasses) {
+                String cleanClassName = extractCleanClassName(classInfoItem.getClassName());
+                String subject = extractSubject(classInfoItem.getClassName());
+
+                if (!cleanClassName.isEmpty()) {
+                    Row row = sheet.createRow(rowNum++);
+                    processedCount++;
+
+                    row.createCell(0).setCellValue(classInfoItem.getClassName());
+                    row.createCell(1).setCellValue(classInfoItem.getTeacherName() != null ? classInfoItem.getTeacherName() : "");
+                    row.createCell(2).setCellValue(classInfoItem.getStudentCount());
+                    row.createCell(3).setCellValue(cleanClassName);
+                    row.createCell(4).setCellValue(subject); // Колонка D: Предмет
+                    // Колонка E оставляем пустой
+                } else {
+                    skippedCount++;
+                    System.out.println("Не удалось извлечь класс из: " + classInfoItem.getClassName());
+                }
             }
         }
 
-        // Заполняем информацию о классах из журналов (колонки C и D)
-        if (classInfo != null && !classInfo.isEmpty()) {
-            // Сортируем классы для удобства чтения
-            List<String> sortedClasses = new ArrayList<>(classInfo.keySet());
-            sortedClasses.sort(String::compareToIgnoreCase);
+        System.out.println("Обработано классов: " + processedCount + ", пропущено: " + skippedCount);
 
-            int classRowNum = 1;
-            for (String className : sortedClasses) {
-                Row row;
-                if (classRowNum < sheet.getLastRowNum() + 1) {
-                    row = sheet.getRow(classRowNum);
-                    if (row == null) {
-                        row = sheet.createRow(classRowNum);
-                    }
-                } else {
-                    row = sheet.createRow(classRowNum);
-                }
-
-                row.createCell(2).setCellValue(className); // Колонка C
-                row.createCell(3).setCellValue(classInfo.get(className)); // Колонка D
-                classRowNum++;
+        // РАЗДЕЛ 2: Группы из УП
+        if (listGroup != null && !listGroup.isEmpty()) {
+            System.out.println("Добавляем " + listGroup.size() + " групп из УП...");
+            for (String group : listGroup) {
+                Row row = sheet.createRow(rowNum++);
+                String subject = extractSubject(group);
+                row.createCell(4).setCellValue(subject); // Колонка D: Предмет для групп из УП
+                row.createCell(6).setCellValue(group); // Колонка F: группа из УП
             }
-
-            // Обновляем максимальный rowNum
-            rowNum = Math.max(rowNum, classRowNum);
         }
 
         autoSizeColumns(sheet, headers.length);
+        System.out.println("Итого строк в отчете: " + rowNum);
+    }
+
+    /**
+     * Метод для извлечения предмета из названия (извлекает все слова до цифр)
+     * Примеры:
+     * "Биология 10-К 10К группа, Биология" -> "Биология"
+     * "Обществознание 9-А 9А группа" -> "Обществознание"
+     * "Основы безопасности и защиты Родины 8-М группа" -> "Основы безопасности и защиты Родины"
+     */
+    private String extractSubject(String text) {
+        if (text == null || text.isEmpty()) return "";
+
+        // Ищем все слова до первой цифры
+        java.util.regex.Matcher matcher = Pattern.compile("^([^0-9]+)").matcher(text);
+        if (matcher.find()) {
+            String subject = matcher.group(1).trim();
+
+            // Убираем лишние слова в конце (группа, класс и т.д.)
+            subject = subject.replaceAll("\\s*(группа|класс|,|;|:|\\.)\\s*$", "");
+
+            return subject;
+        }
+
+        // Если не нашли цифр, возвращаем первое слово
+        String[] words = text.split("\\s+");
+        if (words.length > 0) {
+            return words[0];
+        }
+
+        return "";
+    }
+
+    /**
+     * Метод для очистки названия класса из журнала - возвращает ТОЛЬКО номер класса в формате "цифра-буква"
+     */
+    /**
+     * Метод для очистки названия класса из журнала - возвращает ТОЛЬКО номер класса в формате "цифра-буква"
+     */
+    private String extractCleanClassName(String className) {
+        if (className == null || className.isEmpty()) return "";
+
+        // 1. Сначала пытаемся найти самые распространенные паттерны
+        String[] patterns = {
+                "\\b\\d{1,2}-[А-ЯA-Z]\\b",      // 10-А, 9-Б, 11-В
+                "\\b\\d{1,2}[А-ЯA-Z]\\b",       // 10А, 9Б, 11В
+                "\\b\\d{1,2}-[а-яa-z]\\b",      // 10-а, 9-б (строчные)
+                "\\b\\d{1,2}[а-яa-z]\\b",       // 10а, 9б (строчные)
+                "\\b\\d{1,2}-[А-ЯA-Z][А-ЯA-Z]\\b", // 10-АБ, 9-МГ
+                "\\b\\d{1,2}[А-ЯA-Z][А-ЯA-Z]\\b"   // 10АБ, 9МГ
+        };
+
+        for (String pattern : patterns) {
+            java.util.regex.Matcher matcher = Pattern.compile(pattern)
+                    .matcher(className);
+            if (matcher.find()) {
+                String found = matcher.group();
+
+                // Приводим к стандартному формату: цифра-заглавная_буква
+                if (found.contains("-")) {
+                    String[] parts = found.split("-");
+                    if (parts.length == 2) {
+                        return parts[0] + "-" + parts[1].toUpperCase();
+                    }
+                } else {
+                    // Разделяем цифры и буквы
+                    String digits = found.replaceAll("[^0-9]", "");
+                    String letters = found.replaceAll("[^А-ЯA-Zа-яa-z]", "").toUpperCase();
+                    if (!digits.isEmpty() && !letters.isEmpty()) {
+                        return digits + "-" + letters;
+                    }
+                }
+                return found.toUpperCase();
+            }
+        }
+
+        // 2. Если не нашли по паттернам, ищем вручную в строке
+        String[] words = className.split(" ");
+        for (String word : words) {
+            if (word.matches(".*\\d.*") && word.matches(".*[А-ЯA-Zа-яa-z].*")) {
+                // Извлекаем цифры и буквы
+                String digits = word.replaceAll("[^0-9]", "");
+                String letters = word.replaceAll("[^А-ЯA-Zа-яa-z]", "").toUpperCase();
+
+                if (!digits.isEmpty() && !letters.isEmpty()) {
+                    return digits + "-" + letters;
+                }
+            }
+        }
+
+        // 3. Если ничего не нашли, возвращаем пустую строку
+        return "";
+    }
+
+    /**
+     * Метод для извлечения класса из названия группы УП
+     * Примеры:
+     * "Иностранный (английский) язык 9-Ф 9Ф 1 гр" -> "9-Ф"
+     * "Информатика 10-Б 10Б 2 гр" -> "10-Б"
+     * "Математика 5А" -> "5А"
+     */
+    private String extractClassName(String fullGroupName) {
+        if (fullGroupName == null || fullGroupName.isEmpty()) {
+            return "";
+        }
+
+        // 1. Ищем паттерны с дефисом: 9-А, 10-Б, 11-В и т.д.
+        java.util.regex.Matcher matcher = Pattern.compile("\\b\\d{1,2}-[А-ЯA-Z]\\b")
+                .matcher(fullGroupName);
+        if (matcher.find()) {
+            String found = matcher.group();
+            String[] parts = found.split("-");
+            if (parts.length == 2) {
+                return parts[0] + "-" + parts[1].toUpperCase();
+            }
+            return found;
+        }
+
+        // 2. Ищем паттерны без дефиса: 9А, 10Б, 11В и преобразуем в 9-А, 10-Б
+        matcher = Pattern.compile("\\b\\d{1,2}[А-ЯA-Z]\\b")
+                .matcher(fullGroupName);
+        if (matcher.find()) {
+            String found = matcher.group();
+            String digits = found.replaceAll("[^0-9]", "");
+            String letter = found.replaceAll("[^А-ЯA-Z]", "").toUpperCase();
+            if (!digits.isEmpty() && !letter.isEmpty()) {
+                return digits + "-" + letter;
+            }
+            return found;
+        }
+
+        // 3. Если не нашли, возвращаем пустую строку
+        return "";
     }
 
     private void createDisabledStudentsSheet(Workbook workbook, Map<String, List<String>> disabledStudentsGroups) {
