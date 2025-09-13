@@ -3,14 +3,14 @@ package org.school;
 import org.school.personalLoad.config.AppConfig;
 import org.school.personalLoad.config.HibernateConfig;
 import org.school.personalLoad.controller.TarifficationController;
-import org.school.personalLoad.service.DatabaseService;
 import org.school.personalLoad.service.DownloadService;
+import org.school.personalLoad.service.impl.DownloadServiceImpl;
 
 
 public class Tariffication {
     public static void main(String[] args) {
         try {
-            DownloadService downloadService = new DownloadService();
+            DownloadService downloadService = new DownloadServiceImpl();
             TarifficationController controller = new TarifficationController();
 
             // Скачиваем файл

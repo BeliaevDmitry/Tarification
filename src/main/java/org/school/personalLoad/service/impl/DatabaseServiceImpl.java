@@ -38,13 +38,14 @@ public class DatabaseServiceImpl implements DatabaseService {
         // 2. Сохраняем изменения в историю (если включено)
         if (!changes.isEmpty() && DatabaseConfig.KEEP_HISTORY) {
             ChangesDAO.saveAll(changes);
-            System.out.println("💾 Изменения сохранены в историю: " + changes.size() + " записей");
+            System.out.println("💾 Изменения тарификации сохранены в историю и содержат : "
+                    + changes.size() + " записей");
         }
 
         // 3. Сохраняем новую версию тарификации
         saveCurrentTariffication(newTariffication);
 
-        System.out.println("✅ Данные сохранены, найдено изменений: " + changes.size());
+        System.out.println("✅ Новая тарификация сохранена в базу данных");
         return changes;
     }
 
@@ -82,7 +83,7 @@ public class DatabaseServiceImpl implements DatabaseService {
     public void saveCurrentTariffication(List<TarifficationPerson> tarifficationList) {
 
         currentDAO.saveAll(tarifficationList);
-        System.out.println("💾 Сохранено записей в текущую тарификацию: " + tarifficationList.size());
+        System.out.println("💾 Сохранено записей в базу данных: " + tarifficationList.size());
     }
 
     public void fullReset() {
