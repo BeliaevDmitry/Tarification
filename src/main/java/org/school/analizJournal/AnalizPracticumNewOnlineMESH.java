@@ -6,6 +6,7 @@ import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.school.analizJournal.config.JournalConfig;
 import org.school.personalLoad.service.DownloadService;
 import org.school.personalLoad.config.AppConfig;
+import org.school.personalLoad.service.impl.DownloadServiceImpl;
 
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -33,7 +34,7 @@ public class AnalizPracticumNewOnlineMESH {
             System.out.println("Все файлы из МЭШ успешно скачаны");
 
             // Скачиваем основной файл из Google Sheets
-            DownloadService downloadService = new DownloadService();
+            DownloadService downloadService = new DownloadServiceImpl();
             String mainFilePath = downloadService.downloadFile(
                     AppConfig.PRACTICUM_SHEETS_URL,
                     AppConfig.PRACTICUM_FILE_NAME
