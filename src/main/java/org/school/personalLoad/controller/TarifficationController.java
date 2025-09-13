@@ -46,12 +46,12 @@ public class TarifficationController {
 
             // 3. Сравнение с ИСТОРИЕЙ и сохранение
             List<TarifficationChanges> changes = databaseService.compareAndSave(tarifficationList);
+            List<TarifficationChanges> allHistory = databaseService.getAllHistory();
 
             // 4. Сортируем историю
-            List<TarifficationChanges> allHistory = databaseService.getAllHistory();
             dataProcessingService.sortHistoryByDate(allHistory);
 
-            // 5. Поиск групп для инвалидов (новая функциональность)
+            // 5. Поиск групп для инвалидов
             Map<String, List<String>> disabledStudentsGroups = findGroupsForDisabledStudents(inputPath);
 
             // 7. Собираем информацию о классах, численности и преподавателях
@@ -64,7 +64,7 @@ public class TarifficationController {
 
             System.out.println("✅ Успешно обработано: " + tarifficationList.size() + " записей");
             System.out.println("✅ Найдено изменений: " + changes.size());
-            System.out.println("✅ Найдено групп для инвалидов: " + disabledStudentsGroups.size() + " студентов");
+            System.out.println("✅ Найдено групп для инвалидов: " + disabledStudentsGroups.size() + " обучающихся");
             System.out.println("✅ Собрана информация о " + classInfo.size() + " классах");
 
         } catch (Exception e) {
@@ -85,7 +85,7 @@ public class TarifficationController {
         }
     }
 
-       /**
+    /**
      * Метод для поиска групп для инвалидов
      * Использует текущий файл как онлайн-файл и указанную в конфиге офлайн-папку
      */
@@ -119,9 +119,6 @@ public class TarifficationController {
                     System.out.println("📊 Анализируем лист: " + sheet.getSheetName());
                     tarifficationList.addAll(dataReaderService.analyzeSheet(sheet));
                     groupList.addAll(dataReaderService.searchGroup(sheet));
-                } else if (sheetName.contains("контингент")) {
-                    System.out.println("📊 Анализируем лист Контингент для поиска инвалидов: " + sheet.getSheetName());
-                    // Этот лист будет использоваться для поиска инвалидов
                 } else {
                     System.out.println("⏭️ Пропускаем лист: " + sheet.getSheetName());
                 }
