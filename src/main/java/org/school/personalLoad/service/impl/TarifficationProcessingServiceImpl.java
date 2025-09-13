@@ -3,17 +3,17 @@ package org.school.personalLoad.service.impl;
 import org.school.personalLoad.model.SubjectWithGroup;
 import org.school.personalLoad.model.TarifficationChanges;
 import org.school.personalLoad.model.TarifficationPerson;
-import org.school.personalLoad.service.DataProcessingService;
+import org.school.personalLoad.service.TarifficationProcessingService;
 import org.school.personalLoad.service.DatabaseService;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class DataProcessingServiceImpl implements DataProcessingService {
+public class TarifficationProcessingServiceImpl implements TarifficationProcessingService {
     private final DatabaseService databaseService; // ← Добавляем поле
 
     // Конструктор с зависимостью
-    public DataProcessingServiceImpl(DatabaseService databaseService) {
+    public TarifficationProcessingServiceImpl(DatabaseService databaseService) {
         this.databaseService = databaseService;
     }
 
@@ -57,11 +57,11 @@ public class DataProcessingServiceImpl implements DataProcessingService {
             String groupNameBase = formatGroupNameBase(nameSubject, className);
 
             // Изменяем оригинальную запись
-            match.setGroupName(groupNameBase + " 1 гр");
+            match.setGroupNameEducationalPlan(groupNameBase + " 1 гр");
             match.setGroupLoad(groupLoad);
 
             // Изменяем копию
-            secondGroup.setGroupName(groupNameBase + " 2 гр");
+            secondGroup.setGroupNameEducationalPlan(groupNameBase + " 2 гр");
             secondGroup.setGroupLoad(groupLoad);
 
             // Добавляем обе записи обратно в список
@@ -81,12 +81,12 @@ public class DataProcessingServiceImpl implements DataProcessingService {
             String groupNameBase = formatGroupNameBase(nameSubject, className);
             removeByFields(result, nameSubject, className);
             result.add(historicalMatches.get(0));
-            if (extractGroupNumber(historicalMatches.get(0).getGroupName()) == 1) {
-                secondGroup.setGroupName(groupNameBase + " 2 гр");
+            if (extractGroupNumber(historicalMatches.get(0).getGroupNameEducationalPlan()) == 1) {
+                secondGroup.setGroupNameEducationalPlan(groupNameBase + " 2 гр");
                 secondGroup.setGroupLoad(groupLoad);
                 result.add(secondGroup);
-            } else if (extractGroupNumber(historicalMatches.get(0).getGroupName()) == 2) {
-                secondGroup.setGroupName(groupNameBase + " 1 гр");
+            } else if (extractGroupNumber(historicalMatches.get(0).getGroupNameEducationalPlan()) == 2) {
+                secondGroup.setGroupNameEducationalPlan(groupNameBase + " 1 гр");
                 secondGroup.setGroupLoad(groupLoad);
                 result.add(secondGroup);
             }
@@ -95,12 +95,12 @@ public class DataProcessingServiceImpl implements DataProcessingService {
             String groupNameBase = formatGroupNameBase(nameSubject, className);
             removeByFields(result, nameSubject, className);
             result.add(historicalMatches.get(1));
-            if (extractGroupNumber(historicalMatches.get(1).getGroupName()) == 1) {
-                secondGroup.setGroupName(groupNameBase + " 2 гр");
+            if (extractGroupNumber(historicalMatches.get(1).getGroupNameEducationalPlan()) == 1) {
+                secondGroup.setGroupNameEducationalPlan(groupNameBase + " 2 гр");
                 secondGroup.setGroupLoad(groupLoad);
                 result.add(secondGroup);
-            } else if (extractGroupNumber(historicalMatches.get(1).getGroupName()) == 2) {
-                secondGroup.setGroupName(groupNameBase + " 1 гр");
+            } else if (extractGroupNumber(historicalMatches.get(1).getGroupNameEducationalPlan()) == 2) {
+                secondGroup.setGroupNameEducationalPlan(groupNameBase + " 1 гр");
                 secondGroup.setGroupLoad(groupLoad);
                 result.add(secondGroup);
             }
@@ -109,11 +109,11 @@ public class DataProcessingServiceImpl implements DataProcessingService {
             String groupNameBase = formatGroupNameBase(nameSubject, className);
 
             // Изменяем оригинальную запись
-            match.setGroupName(groupNameBase + " 1 гр");
+            match.setGroupNameEducationalPlan(groupNameBase + " 1 гр");
             match.setGroupLoad(groupLoad);
 
             // Изменяем копию
-            secondGroup.setGroupName(groupNameBase + " 2 гр");
+            secondGroup.setGroupNameEducationalPlan(groupNameBase + " 2 гр");
             secondGroup.setGroupLoad(groupLoad);
 
             // Добавляем обе записи обратно в список
@@ -143,8 +143,8 @@ public class DataProcessingServiceImpl implements DataProcessingService {
             String className = matches.get(0).getClassName();
             String groupNameBase = formatGroupNameBase(nameSubject, className);
 
-            matches.get(0).setGroupName(groupNameBase + " 1 гр");
-            matches.get(1).setGroupName(groupNameBase + " 2 гр");
+            matches.get(0).setGroupNameEducationalPlan(groupNameBase + " 1 гр");
+            matches.get(1).setGroupNameEducationalPlan(groupNameBase + " 2 гр");
 
             removeByFields(result, nameSubject, className);
             result.add(matches.get(0));
@@ -188,8 +188,8 @@ public class DataProcessingServiceImpl implements DataProcessingService {
 
         } else {
             // Случай 4: Не совпадает ни один преподаватель
-            matches.get(0).setGroupName(groupNameBase + " 1 гр");
-            matches.get(1).setGroupName(groupNameBase + " 2 гр");
+            matches.get(0).setGroupNameEducationalPlan(groupNameBase + " 1 гр");
+            matches.get(1).setGroupNameEducationalPlan(groupNameBase + " 2 гр");
 
             removeByFields(result, nameSubject, className);
             result.add(matches.get(0));
@@ -232,13 +232,13 @@ public class DataProcessingServiceImpl implements DataProcessingService {
         result.add(historicalMatch); // Добавляем историческую запись
 
         // Определяем номер группы для новой записи на основе номера группы исторического преподавателя
-        Integer historicalGroupNumber = extractGroupNumber(historicalMatch.getGroupName());
+        Integer historicalGroupNumber = extractGroupNumber(historicalMatch.getGroupNameEducationalPlan());
 
         if (historicalGroupNumber == 1) {
-            secondGroup.setGroupName(groupNameBase + " 2 гр");
+            secondGroup.setGroupNameEducationalPlan(groupNameBase + " 2 гр");
             result.add(secondGroup);
         } else if (historicalGroupNumber == 2) {
-            secondGroup.setGroupName(groupNameBase + " 1 гр");
+            secondGroup.setGroupNameEducationalPlan(groupNameBase + " 1 гр");
             result.add(secondGroup);
         } else {
             // Если по какой-то причине не удалось определить номер группы у исторической записи

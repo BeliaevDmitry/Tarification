@@ -21,15 +21,6 @@ public interface DataReaderService {
     void setFormulaEvaluator(FormulaEvaluator formulaEvaluator);
 
     /**
-     * Анализирует лист Excel и извлекает данные о персоналиях тарификации
-     *
-     * @param sheet лист Excel для анализа
-     * @return список персоналий тарификации
-     * @throws IOException если произошла ошибка чтения данных
-     */
-    List<TarifficationPerson> analyzeSheet(Sheet sheet) throws IOException;
-
-    /**
      * Ищет информацию о группах (предметах с делением на группы) в листе Excel
      *
      * @param sheet лист Excel для поиска
@@ -38,6 +29,6 @@ public interface DataReaderService {
     List<SubjectWithGroup> searchGroup(Sheet sheet);
 
     void readExcelData(String inputPath,
-                              List<TarifficationPerson> tarifficationList,
-                              List<SubjectWithGroup> groupList) throws Exception;
+                       List<TarifficationPerson> tarifficationList,
+                       List<SubjectWithGroup> groupList) throws Exception;
 }

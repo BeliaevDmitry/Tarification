@@ -19,7 +19,7 @@ public class TarifficationPerson {
     private String subjectName;
     private String className;
     private Integer load;
-    private String groupName;
+    private String groupNameEducationalPlan;
     private Integer groupLoad;
 
     public TarifficationPerson() {
@@ -37,7 +37,7 @@ public class TarifficationPerson {
         this.className = className;
         this.load = load;
         this.groupLoad = load;
-        this.groupName = "";
+        this.groupNameEducationalPlan = "";
     }
 
     public TarifficationPerson(TarifficationPerson other) {
@@ -46,7 +46,7 @@ public class TarifficationPerson {
         this.subjectName = other.subjectName;
         this.className = other.className;
         this.load = other.load;
-        this.groupName = other.groupName != null ? other.groupName : "";
+        this.groupNameEducationalPlan = other.groupNameEducationalPlan != null ? other.groupNameEducationalPlan : "";
         this.groupLoad = other.groupLoad != null ? other.groupLoad : 0;
     }
 }

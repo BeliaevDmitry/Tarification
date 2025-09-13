@@ -17,7 +17,7 @@ import static org.school.personalLoad.config.AppConfig.getOfflineFilesPath;
 public class TarifficationController {
 
     private final DataReaderService dataReaderService;
-    private final DataProcessingService dataProcessingService;
+    private final TarifficationProcessingService tarifficationProcessingService;
     private final ReportService reportService;
     private final DatabaseService databaseService;
     private final GroupSearchService groupSearchService;
@@ -26,7 +26,7 @@ public class TarifficationController {
         HibernateConfig.getSessionFactory();
         this.databaseService = new DatabaseServiceImpl();
         this.dataReaderService = new DataReaderServiceImpl();
-        this.dataProcessingService = new DataProcessingServiceImpl(databaseService);
+        this.tarifficationProcessingService = new TarifficationProcessingServiceImpl(databaseService);
         this.reportService = new ReportServiceImpl();
         this.groupSearchService = new GroupSearchServiceImpl(); // Новый сервис
     }
@@ -39,8 +39,8 @@ public class TarifficationController {
             dataReaderService.readExcelData(inputPath, tarifficationList, groupList);
 
             // 2. Обработка данных
-            dataProcessingService.addingGroup(tarifficationList, groupList);
-            dataProcessingService.sortByFIO(tarifficationList);
+            tarifficationProcessingService.addingGroup(tarifficationList, groupList);
+            tarifficationProcessingService.sortByFIO(tarifficationList);
 
             System.out.println("✅ Успешно обработано: " + tarifficationList.size() + " записей");
 
@@ -49,7 +49,7 @@ public class TarifficationController {
             List<TarifficationChanges> allHistory = databaseService.getAllHistory();
 
             // 4. Сортируем историю
-            dataProcessingService.sortHistoryByDate(allHistory);
+            tarifficationProcessingService.sortHistoryByDate(allHistory);
 
             // 5. Поиск групп для инвалидов
             Map<String, List<String>> disabledStudentsGroups =

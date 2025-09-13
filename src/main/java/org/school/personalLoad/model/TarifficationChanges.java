@@ -18,7 +18,7 @@ public class TarifficationChanges {
     private String subjectName;
     private String className;
     private Integer load;
-    private String groupName;
+    private String groupNameEducationalPlan;
     private Integer groupLoad;
 
     @Enumerated(EnumType.STRING)

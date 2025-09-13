@@ -48,7 +48,7 @@ public class DataReaderServiceImpl implements DataReaderService { //
     }
 
 
-    public List<TarifficationPerson> analyzeSheet(Sheet sheet) throws IOException {
+    private List<TarifficationPerson> analyzeSheet(Sheet sheet) throws IOException {
         List<TarifficationPerson> tarifficationList = new ArrayList<>();
         String numberSchoolBuilding = sheet.getSheetName();
 

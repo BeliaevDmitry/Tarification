@@ -58,7 +58,7 @@ public class ReportServiceImpl implements ReportService {
             row.createCell(1).setCellValue(change.getNumberSchoolBuilding());
             row.createCell(2).setCellValue(change.getSubjectName());
             row.createCell(3).setCellValue(change.getClassName());
-            row.createCell(4).setCellValue(change.getGroupName() != null ? change.getGroupName() : "");
+            row.createCell(4).setCellValue(change.getGroupNameEducationalPlan() != null ? change.getGroupNameEducationalPlan() : "");
             row.createCell(5).setCellValue(change.getLoad());
             row.createCell(6).setCellValue(change.getGroupLoad() != null ? change.getGroupLoad() : 0);
             row.createCell(7).setCellValue(change.getChangeTypeRussian());
@@ -84,7 +84,7 @@ public class ReportServiceImpl implements ReportService {
             row.createCell(1).setCellValue(record.getNumberSchoolBuilding());
             row.createCell(2).setCellValue(record.getSubjectName());
             row.createCell(3).setCellValue(record.getClassName());
-            row.createCell(4).setCellValue(record.getGroupName());
+            row.createCell(4).setCellValue(record.getGroupNameEducationalPlan());
             row.createCell(5).setCellValue(record.getLoad());
             row.createCell(6).setCellValue(record.getGroupLoad());
         }
@@ -92,7 +92,8 @@ public class ReportServiceImpl implements ReportService {
         autoSizeColumns(sheet, headers.length);
     }
 
-    private void createGroupsSheet(Workbook workbook, List<SubjectWithGroup> subjectWithGroupList) {
+    private void createGroupsSheet(Workbook workbook,
+                                   List<SubjectWithGroup> subjectWithGroupList) {
         Sheet sheet = workbook.createSheet("Группы");
         sheet.createFreezePane(0, 1, 0, 1);
 
@@ -113,7 +114,8 @@ public class ReportServiceImpl implements ReportService {
         autoSizeColumns(sheet, headers.length);
     }
 
-    private void createHeaderRow(Row headerRow, String[] headers, Workbook workbook, IndexedColors color) {
+    private void createHeaderRow(Row headerRow, String[] headers, Workbook workbook,
+                                 IndexedColors color) {
         for (int i = 0; i < headers.length; i++) {
             Cell cell = headerRow.createCell(i);
             cell.setCellValue(headers[i]);
@@ -141,7 +143,8 @@ public class ReportServiceImpl implements ReportService {
     /**
      * Лист с классами из журналов МЭШ
      */
-    private void createMESHClassesSheet(Workbook workbook, Map<String, GroupOrClassInfo> classInfo) {
+    private void createMESHClassesSheet(Workbook workbook, Map<String,
+            GroupOrClassInfo> classInfo) {
         Sheet sheet = workbook.createSheet("Названия групп и классов по МЭШ");
         sheet.createFreezePane(0, 1, 0, 1);
 
@@ -161,28 +164,28 @@ public class ReportServiceImpl implements ReportService {
             // Сортируем классы для удобства чтения
             List<GroupOrClassInfo> sortedClasses = new ArrayList<>(classInfo.values());
             sortedClasses.sort((c1, c2) -> {
-                String clean1 = extractCleanClassName(c1.getClassName());
-                String clean2 = extractCleanClassName(c2.getClassName());
+                String clean1 = extractCleanClassName(c1.getClassNameMesh());
+                String clean2 = extractCleanClassName(c2.getClassNameMesh());
                 return clean1.compareTo(clean2);
             });
 
             for (GroupOrClassInfo classInfoItem : sortedClasses) {
-                String cleanClassName = extractCleanClassName(classInfoItem.getClassName());
-                String subject = extractSubject(classInfoItem.getClassName());
+                String cleanClassName = extractCleanClassName(classInfoItem.getClassNameMesh());
+                String subject = extractSubject(classInfoItem.getClassNameMesh());
 
                 if (!cleanClassName.isEmpty()) {
                     Row row = sheet.createRow(rowNum++);
                     processedCount++;
 
-                    row.createCell(0).setCellValue(classInfoItem.getClassName());
-                    row.createCell(1).setCellValue(classInfoItem.getTeacherName() != null ?
-                            classInfoItem.getTeacherName() : "");
-                    row.createCell(2).setCellValue(classInfoItem.getStudentCount());
+                    row.createCell(0).setCellValue(classInfoItem.getClassNameMesh());
+                    row.createCell(1).setCellValue(classInfoItem.getTeacherNameMesh() != null ?
+                            classInfoItem.getTeacherNameMesh() : "");
+                    row.createCell(2).setCellValue(classInfoItem.getStudentCountMesh());
                     row.createCell(3).setCellValue(cleanClassName);
                     row.createCell(4).setCellValue(subject);
                 } else {
                     skippedCount++;
-                    System.out.println("Не удалось извлечь класс из: " + classInfoItem.getClassName());
+                    System.out.println("Не удалось извлечь класс из: " + classInfoItem.getClassNameMesh());
                 }
             }
         }
@@ -324,41 +327,9 @@ public class ReportServiceImpl implements ReportService {
      * "Информатика 10-Б 10Б 2 гр" -> "10-Б"
      * "Математика 5А" -> "5А"
      */
-    private String extractClassName(String fullGroupName) {
-        if (fullGroupName == null || fullGroupName.isEmpty()) {
-            return "";
-        }
 
-        // 1. Ищем паттерны с дефисом: 9-А, 10-Б, 11-В и т.д.
-        java.util.regex.Matcher matcher = Pattern.compile("\\b\\d{1,2}-[А-ЯA-Z]\\b")
-                .matcher(fullGroupName);
-        if (matcher.find()) {
-            String found = matcher.group();
-            String[] parts = found.split("-");
-            if (parts.length == 2) {
-                return parts[0] + "-" + parts[1].toUpperCase();
-            }
-            return found;
-        }
-
-        // 2. Ищем паттерны без дефиса: 9А, 10Б, 11В и преобразуем в 9-А, 10-Б
-        matcher = Pattern.compile("\\b\\d{1,2}[А-ЯA-Z]\\b")
-                .matcher(fullGroupName);
-        if (matcher.find()) {
-            String found = matcher.group();
-            String digits = found.replaceAll("[^0-9]", "");
-            String letter = found.replaceAll("[^А-ЯA-Z]", "").toUpperCase();
-            if (!digits.isEmpty() && !letter.isEmpty()) {
-                return digits + "-" + letter;
-            }
-            return found;
-        }
-
-        // 3. Если не нашли, возвращаем пустую строку
-        return "";
-    }
-
-    private void createDisabledStudentsSheet(Workbook workbook, Map<String, List<String>> disabledStudentsGroups) {
+    private void createDisabledStudentsSheet(Workbook workbook, Map<String,
+            List<String>> disabledStudentsGroups) {
         if (disabledStudentsGroups == null || disabledStudentsGroups.isEmpty()) {
             return;
         }
