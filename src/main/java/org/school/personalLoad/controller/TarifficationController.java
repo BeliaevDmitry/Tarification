@@ -39,7 +39,7 @@ public class TarifficationController {
             dataReaderService.readExcelData(inputPath, tarifficationList, groupList);
 
             // 2. Обработка данных
-            tarifficationProcessingService.addingGroup(tarifficationList, groupList);
+            tarifficationList = tarifficationProcessingService.addingGroup(tarifficationList, groupList);
             tarifficationProcessingService.sortByFIO(tarifficationList);
 
             System.out.println("✅ Успешно обработано: " + tarifficationList.size() + " записей");

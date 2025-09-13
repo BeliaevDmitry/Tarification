@@ -19,8 +19,11 @@ public class TarifficationProcessingServiceImpl implements TarifficationProcessi
 
     public List<TarifficationPerson> addingGroup(List<TarifficationPerson> list,
                                                  List<SubjectWithGroup> groupList) {
+        // Создаем копию списка для безопасной модификации
+        List<TarifficationPerson> result = new ArrayList<>(list);
+
         for (SubjectWithGroup group : groupList) {
-            List<TarifficationPerson> listMatches = findAllByFields(list, group.getSubjectName(),
+            List<TarifficationPerson> listMatches = findAllByFields(result, group.getSubjectName(),
                     group.getClassName(), group.getNumberSchoolBuilding());
 
             List<TarifficationPerson> listMatchesInTariffication =
@@ -28,12 +31,12 @@ public class TarifficationProcessingServiceImpl implements TarifficationProcessi
                             group.getClassName(), group.getNumberSchoolBuilding());
 
             if (listMatches.size() == 1) {
-                processSingleMatch(list, listMatches.get(0), listMatchesInTariffication);
+                processSingleMatch(result, listMatches.get(0), listMatchesInTariffication);
             } else if (listMatches.size() == 2) {
-                processDoubleMatch(list, listMatches, listMatchesInTariffication);
+                processDoubleMatch(result, listMatches, listMatchesInTariffication);
             }
         }
-        return list;
+        return result;
     }
 
     public void sortByFIO(List<TarifficationPerson> list) {
