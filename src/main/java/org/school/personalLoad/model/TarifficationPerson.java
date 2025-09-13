@@ -21,6 +21,7 @@ public class TarifficationPerson {
     private Integer load;
     private String groupNameEducationalPlan;
     private Integer groupLoad;
+    private String groupNameMesh;
 
     public TarifficationPerson() {
         // Пустой конструктор обязателен для Hibernate!
@@ -38,6 +39,8 @@ public class TarifficationPerson {
         this.load = load;
         this.groupLoad = load;
         this.groupNameEducationalPlan = "";
+        this.groupNameMesh = "";
+
     }
 
     public TarifficationPerson(TarifficationPerson other) {
@@ -48,5 +51,6 @@ public class TarifficationPerson {
         this.load = other.load;
         this.groupNameEducationalPlan = other.groupNameEducationalPlan != null ? other.groupNameEducationalPlan : "";
         this.groupLoad = other.groupLoad != null ? other.groupLoad : 0;
+        this.groupNameMesh = other.groupNameMesh != null ? other.groupNameMesh : "";
     }
 }
