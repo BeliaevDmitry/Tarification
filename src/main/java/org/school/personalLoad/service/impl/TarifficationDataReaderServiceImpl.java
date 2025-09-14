@@ -3,7 +3,7 @@ package org.school.personalLoad.service.impl;
 import org.apache.poi.ss.usermodel.*;
 import org.school.personalLoad.model.SubjectWithGroup;
 import org.school.personalLoad.model.TarifficationPerson;
-import org.school.personalLoad.service.DataReaderService;
+import org.school.personalLoad.service.TarifficationDataReaderService;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -11,11 +11,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-public class DataReaderServiceImpl implements DataReaderService { //
+public class TarifficationDataReaderServiceImpl implements TarifficationDataReaderService { //
 
     private FormulaEvaluator formulaEvaluator;
 
-    public DataReaderServiceImpl() {
+    public TarifficationDataReaderServiceImpl() {
         // Простой конструктор
     }
 
@@ -48,7 +48,7 @@ public class DataReaderServiceImpl implements DataReaderService { //
     }
 
 
-    public List<TarifficationPerson> analyzeSheet(Sheet sheet) throws IOException {
+    private List<TarifficationPerson> analyzeSheet(Sheet sheet) throws IOException {
         List<TarifficationPerson> tarifficationList = new ArrayList<>();
         String numberSchoolBuilding = sheet.getSheetName();
 

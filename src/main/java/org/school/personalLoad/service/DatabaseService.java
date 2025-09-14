@@ -16,7 +16,7 @@ public interface DatabaseService {
      * @param newTariffication список новых данных тарификации
      * @return список обнаруженных изменений
      */
-    List<TarifficationChanges> compareAndSave(List<TarifficationPerson> newTariffication);
+    void compareAndSave(List<TarifficationPerson> newTariffication);
 
     /**
      * Сравнивает новую тарификацию с историей изменений

@@ -29,7 +29,7 @@ public class DatabaseServiceImpl implements DatabaseService {
     /**
      * Основной метод: сравнивает и сохраняет данные
      */
-    public List<TarifficationChanges> compareAndSave(List<TarifficationPerson> newTariffication) {
+    public void compareAndSave(List<TarifficationPerson> newTariffication) {
         System.out.println("🔄 Начало сравнения и сохранения данных...");
 
         // 1. Сначала сравниваем с предыдущей версией
@@ -46,7 +46,6 @@ public class DatabaseServiceImpl implements DatabaseService {
         saveCurrentTariffication(newTariffication);
 
         System.out.println("✅ Новая тарификация сохранена в базу данных");
-        return changes;
     }
 
     /**
@@ -115,8 +114,8 @@ public class DatabaseServiceImpl implements DatabaseService {
             }
 
             // Добавляем groupName (если не null и не пустой)
-            if (person.getGroupName() != null && !person.getGroupName().trim().isEmpty()) {
-                uniqueNames.add(person.getGroupName().trim());
+            if (person.getGroupNameEducationalPlan() != null && !person.getGroupNameEducationalPlan().trim().isEmpty()) {
+                uniqueNames.add(person.getGroupNameEducationalPlan().trim());
             }
         }
 
@@ -136,7 +135,7 @@ public class DatabaseServiceImpl implements DatabaseService {
         history.setSubjectName(current.getSubjectName() != null ? current.getSubjectName() : "");
         history.setClassName(current.getClassName() != null ? current.getClassName() : "");
         history.setLoad(current.getLoad());
-        history.setGroupName(current.getGroupName() != null ? current.getGroupName() : "");
+        history.setGroupNameEducationalPlan(current.getGroupNameEducationalPlan() != null ? current.getGroupNameEducationalPlan() : "");
         history.setGroupLoad(current.getGroupLoad() != null ? current.getGroupLoad() : 0);
         history.setChangeType(changeType);
         history.setChangeDate(LocalDateTime.now());
@@ -211,7 +210,7 @@ public class DatabaseServiceImpl implements DatabaseService {
 
     private String createKey(TarifficationPerson person) {
         return createKey(person.getFioTeacher(), person.getNumberSchoolBuilding(),
-                person.getSubjectName(), person.getClassName(), person.getGroupName());
+                person.getSubjectName(), person.getClassName(), person.getGroupNameEducationalPlan());
     }
 
     private String createKey(String fio, String building, String subject, String className, String group) {

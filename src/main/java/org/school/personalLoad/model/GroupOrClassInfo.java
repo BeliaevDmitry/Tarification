@@ -2,17 +2,17 @@ package org.school.personalLoad.model;
 //информация по педагогам и предметам из МЭШ
 
 public class GroupOrClassInfo {
-    private final String className;
-    private final int studentCount;
-    private final String teacherName;
+    private final String classNameMesh;
+    private final int studentCountMesh;
+    private final String teacherNameMesh;
 
-    public GroupOrClassInfo(String className, int studentCount, String teacherName) {
-        this.className = className;
-        this.studentCount = studentCount;
-        this.teacherName = teacherName;
+    public GroupOrClassInfo(String classNameMesh, int studentCountMesh, String teacherNameMesh) {
+        this.classNameMesh = classNameMesh;
+        this.studentCountMesh = studentCountMesh;
+        this.teacherNameMesh = teacherNameMesh;
     }
 
-    public String getClassName() { return className; }
-    public int getStudentCount() { return studentCount; }
-    public String getTeacherName() { return teacherName; }
+    public String getClassNameMesh() { return classNameMesh; }
+    public int getStudentCountMesh() { return studentCountMesh; }
+    public String getTeacherNameMesh() { return teacherNameMesh; }
 }

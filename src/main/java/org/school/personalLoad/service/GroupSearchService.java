@@ -30,32 +30,4 @@ public interface GroupSearchService {
      * @throws Exception если произошла ошибка при обработке файлов
      */
     Map<String, GroupOrClassInfo> collectClassInfo(String offlineFolderPath) throws Exception;
-
-    /**
-     * Вспомогательный класс для хранения информации о классе
-     */
-    class ClassInfo {
-        private final String className;
-        private final int studentCount;
-        private final String teacherName;
-
-        public ClassInfo(String className, int studentCount, String teacherName) {
-            this.className = className;
-            this.studentCount = studentCount;
-            this.teacherName = teacherName;
-        }
-
-        public String getClassName() { return className; }
-        public int getStudentCount() { return studentCount; }
-        public String getTeacherName() { return teacherName; }
-
-        @Override
-        public String toString() {
-            return "ClassInfo{" +
-                    "className='" + className + '\'' +
-                    ", studentCount=" + studentCount +
-                    ", teacherName='" + teacherName + '\'' +
-                    '}';
-        }
-    }
 }

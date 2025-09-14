@@ -9,7 +9,7 @@ import java.util.List;
 /**
  * Интерфейс сервиса для обработки данных тарификации
  */
-public interface DataProcessingService {
+public interface TarifficationProcessingService {
 
     /**
      * Добавляет информацию о группах к данным тарификации

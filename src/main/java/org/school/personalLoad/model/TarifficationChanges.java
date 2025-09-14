@@ -6,7 +6,7 @@ import javax.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "\"tariffication_changes\"") // ← Добавьте кавычки
+@Table(name = "\"tariffication_changes\"") //
 @Data
 public class TarifficationChanges {
     @Id
@@ -18,8 +18,9 @@ public class TarifficationChanges {
     private String subjectName;
     private String className;
     private Integer load;
-    private String groupName;
+    private String groupNameEducationalPlan;
     private Integer groupLoad;
+    private String groupNameMesh;
 
     @Enumerated(EnumType.STRING)
     private ChangeType changeType;

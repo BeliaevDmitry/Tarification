@@ -7,8 +7,8 @@ import lombok.Data;
 public class SubjectWithGroup {
     private String subjectName; //название предмета
     private String className; // название класса
-    private String groupName; // название группы
-    String numberSchoolBuilding; // номер корпуса
+    private String groupNameEducationalPlan; // название группы
+    private String numberSchoolBuilding; // номер корпуса
     public SubjectWithGroup(String subjectName, String className, String numberSchoolBuilding) {
         this.subjectName = subjectName;
         this.className = className;

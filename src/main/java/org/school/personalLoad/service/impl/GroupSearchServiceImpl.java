@@ -22,7 +22,7 @@ public class GroupSearchServiceImpl implements GroupSearchService {
     public Map<String, List<String>> findGroupsForDisabledStudents(String onlineFilePath,
                                                                    String offlineFolderPath) throws Exception {
 
-        // 1. Читаем список инвалидов
+        // 1. находим лист "Контингент" с инвалидами в колонке K
         List<String> disabledStudents = readDisabledStudents(onlineFilePath);
         if (disabledStudents.isEmpty()) {
             System.out.println("⚠️ Не найдено студентов-инвалидов в файле");
