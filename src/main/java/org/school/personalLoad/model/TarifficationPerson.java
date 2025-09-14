@@ -2,6 +2,7 @@ package org.school.personalLoad.model;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
+
 import javax.persistence.*;
 
 @Data
@@ -22,6 +23,7 @@ public class TarifficationPerson {
     private String groupNameEducationalPlan;
     private Integer groupLoad;
     private String groupNameMesh;
+    private String classNameMesh;
 
     public TarifficationPerson() {
         // Пустой конструктор обязателен для Hibernate!
@@ -40,6 +42,7 @@ public class TarifficationPerson {
         this.groupLoad = load;
         this.groupNameEducationalPlan = "";
         this.groupNameMesh = "";
+        this.classNameMesh = "";
 
     }
 
@@ -52,5 +55,6 @@ public class TarifficationPerson {
         this.groupNameEducationalPlan = other.groupNameEducationalPlan != null ? other.groupNameEducationalPlan : "";
         this.groupLoad = other.groupLoad != null ? other.groupLoad : 0;
         this.groupNameMesh = other.groupNameMesh != null ? other.groupNameMesh : "";
+        this.classNameMesh = other.classNameMesh != null ? other.classNameMesh : "";
     }
 }

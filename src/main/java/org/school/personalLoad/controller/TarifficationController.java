@@ -21,6 +21,7 @@ public class TarifficationController {
     private final ReportService reportService;
     private final DatabaseService databaseService;
     private final GroupSearchService groupSearchService;
+    private final TarifficationNamingService tarifficationNamingService;
 
     public TarifficationController() {
         HibernateConfig.getSessionFactory();
@@ -29,6 +30,7 @@ public class TarifficationController {
         this.tarifficationProcessingService = new TarifficationProcessingServiceImpl(databaseService);
         this.reportService = new ReportServiceImpl();
         this.groupSearchService = new GroupSearchServiceImpl(); // Новый сервис
+        this.tarifficationNamingService = new TarifficationNamingServiceImpl();
     }
 
     public void processTariffication(String inputPath, String outputPath) {
@@ -41,8 +43,11 @@ public class TarifficationController {
             // 2. Обработка данных
             tarifficationList = tarifficationProcessingService.addingGroup(tarifficationList, groupList);
             tarifficationProcessingService.sortByFIO(tarifficationList);
-
             System.out.println("✅ Успешно обработано: " + tarifficationList.size() + " записей");
+            Map<String, String[]> loadNamingMapping = tarifficationNamingService.loadNamingMapping(inputPath);
+            System.out.println("✅ найдено " + loadNamingMapping.size() + " записей отличия от записи в МЭШ и тарификации");
+            tarifficationNamingService.applyNamingMapping(tarifficationList, loadNamingMapping);
+            System.out.println("✅ отличия от записи в МЭШ и тарификации добавлены");
 
             // 3. Сравнение с ИСТОРИЕЙ и сохранение
             databaseService.compareAndSave(tarifficationList);
