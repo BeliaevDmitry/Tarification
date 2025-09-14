@@ -16,7 +16,7 @@ import static org.school.personalLoad.config.AppConfig.getOfflineFilesPath;
 
 public class TarifficationController {
 
-    private final DataReaderService dataReaderService;
+    private final TarifficationDataReaderService tarifficationDataReaderService;
     private final TarifficationProcessingService tarifficationProcessingService;
     private final ReportService reportService;
     private final DatabaseService databaseService;
@@ -25,7 +25,7 @@ public class TarifficationController {
     public TarifficationController() {
         HibernateConfig.getSessionFactory();
         this.databaseService = new DatabaseServiceImpl();
-        this.dataReaderService = new DataReaderServiceImpl();
+        this.tarifficationDataReaderService = new TarifficationDataReaderServiceImpl();
         this.tarifficationProcessingService = new TarifficationProcessingServiceImpl(databaseService);
         this.reportService = new ReportServiceImpl();
         this.groupSearchService = new GroupSearchServiceImpl(); // Новый сервис
@@ -36,7 +36,7 @@ public class TarifficationController {
             // 1. Чтение и обработка данных из Excel
             List<TarifficationPerson> tarifficationList = new ArrayList<>();
             List<SubjectWithGroup> groupList = new ArrayList<>();
-            dataReaderService.readExcelData(inputPath, tarifficationList, groupList);
+            tarifficationDataReaderService.readExcelData(inputPath, tarifficationList, groupList);
 
             // 2. Обработка данных
             tarifficationList = tarifficationProcessingService.addingGroup(tarifficationList, groupList);
@@ -45,7 +45,7 @@ public class TarifficationController {
             System.out.println("✅ Успешно обработано: " + tarifficationList.size() + " записей");
 
             // 3. Сравнение с ИСТОРИЕЙ и сохранение
-            List<TarifficationChanges> changes = databaseService.compareAndSave(tarifficationList);
+            databaseService.compareAndSave(tarifficationList);
             List<TarifficationChanges> allHistory = databaseService.getAllHistory();
 
             // 4. Сортируем историю
@@ -68,9 +68,6 @@ public class TarifficationController {
                     listGroup, disabledStudentsGroups, classInfo);
 
             System.out.println("✅ отчёт собран и записан в файл ");
-
-
-
 
         } catch (Exception e) {
             System.err.println("❌ Ошибка при обработке файла: " + e.getMessage());

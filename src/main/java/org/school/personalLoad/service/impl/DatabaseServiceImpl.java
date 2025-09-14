@@ -29,7 +29,7 @@ public class DatabaseServiceImpl implements DatabaseService {
     /**
      * Основной метод: сравнивает и сохраняет данные
      */
-    public List<TarifficationChanges> compareAndSave(List<TarifficationPerson> newTariffication) {
+    public void compareAndSave(List<TarifficationPerson> newTariffication) {
         System.out.println("🔄 Начало сравнения и сохранения данных...");
 
         // 1. Сначала сравниваем с предыдущей версией
@@ -46,7 +46,6 @@ public class DatabaseServiceImpl implements DatabaseService {
         saveCurrentTariffication(newTariffication);
 
         System.out.println("✅ Новая тарификация сохранена в базу данных");
-        return changes;
     }
 
     /**
