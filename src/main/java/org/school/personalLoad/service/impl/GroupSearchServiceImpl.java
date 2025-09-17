@@ -112,7 +112,7 @@ public class GroupSearchServiceImpl implements GroupSearchService {
                 Row row = sheet.getRow(i);
                 if (row == null) continue;
 
-                Cell cell = row.getCell(11); // Столбец L
+                Cell cell = row.getCell(15); // Столбец P
                 if (cell != null) {
                     String name = getCellValueAsString(cell).trim();
                     if (!name.isEmpty()) students.add(name);
