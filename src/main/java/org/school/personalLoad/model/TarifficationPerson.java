@@ -8,12 +8,12 @@ import javax.persistence.*;
 @Data
 @AllArgsConstructor
 @Entity
-@Table(name = "\"tariffication_person\"") // ← Добавьте кавычки
+@Table(name = "\"tariffication_person\"")
 public class TarifficationPerson {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id; // ← ДОБАВЬТЕ ID поле!
+    private Long id;
 
     private String fioTeacher;
     private String numberSchoolBuilding;
@@ -22,11 +22,25 @@ public class TarifficationPerson {
     private Integer load;
     private String groupNameEducationalPlan;
     private Integer groupLoad;
+
+    // Связь с таблицей naming_mesh
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumns({
+            @JoinColumn(name = "subjectName", referencedColumnName = "subjectName", insertable = false, updatable = false),
+            @JoinColumn(name = "className", referencedColumnName = "className", insertable = false, updatable = false),
+            @JoinColumn(name = "groupNameEducationalPlan", referencedColumnName = "groupNameEducationalPlan", insertable = false, updatable = false)
+    })
+    private NamingMesh namingMesh;
+
+    // Транзиентные поля (не сохраняются в БД)
+    @Transient
     private String groupNameMesh;
+
+    @Transient
     private String classNameMesh;
 
     public TarifficationPerson() {
-        // Пустой конструктор обязателен для Hibernate!
+        // Пустой конструктор
     }
 
     public TarifficationPerson(String fioTeacher,
@@ -41,9 +55,6 @@ public class TarifficationPerson {
         this.load = load;
         this.groupLoad = load;
         this.groupNameEducationalPlan = "";
-        this.groupNameMesh = "";
-        this.classNameMesh = "";
-
     }
 
     public TarifficationPerson(TarifficationPerson other) {
@@ -54,7 +65,15 @@ public class TarifficationPerson {
         this.load = other.load;
         this.groupNameEducationalPlan = other.groupNameEducationalPlan != null ? other.groupNameEducationalPlan : "";
         this.groupLoad = other.groupLoad != null ? other.groupLoad : 0;
-        this.groupNameMesh = other.groupNameMesh != null ? other.groupNameMesh : "";
-        this.classNameMesh = other.classNameMesh != null ? other.classNameMesh : "";
+        this.namingMesh = other.namingMesh;
+    }
+
+    // Геттеры для mesh полей
+    public String getGroupNameMesh() {
+        return namingMesh != null ? namingMesh.getGroupNameMesh() : "";
+    }
+
+    public String getClassNameMesh() {
+        return namingMesh != null ? namingMesh.getClassNameMesh() : "";
     }
 }

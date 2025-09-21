@@ -32,5 +32,6 @@ public interface ReportService {
                       String outputPath,
                       List<String> listGroup,
                       Map<String, List<String>> disabledStudentsGroups,
-                      Map<String, GroupOrClassInfo> classInfo) throws IOException;
+                      Map<String, GroupOrClassInfo> classInfo,
+                      List<TarifficationChanges> namingMeshChanges) throws IOException;
 }

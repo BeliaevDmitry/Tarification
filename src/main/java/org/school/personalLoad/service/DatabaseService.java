@@ -2,58 +2,27 @@ package org.school.personalLoad.service;
 
 import org.school.personalLoad.model.TarifficationChanges;
 import org.school.personalLoad.model.TarifficationPerson;
+import org.school.personalLoad.model.NamingMesh;
 
 import java.util.List;
+import java.util.Optional;
 
-/**
- * Интерфейс для работы с данными тарификации
- */
 public interface DatabaseService {
 
-    /**
-     * Сравнивает новую тарификацию с предыдущей и сохраняет изменения
-     *
-     * @param newTariffication список новых данных тарификации
-     * @return список обнаруженных изменений
-     */
     void compareAndSave(List<TarifficationPerson> newTariffication);
-
-    /**
-     * Сравнивает новую тарификацию с историей изменений
-     *
-     * @param newTariffication список новых данных тарификации
-     * @return список обнаруженных изменений
-     */
+    void compareAndSave(List<TarifficationPerson> newTariffication, List<NamingMesh> namingMeshes);
     List<TarifficationChanges> compareWithHistory(List<TarifficationPerson> newTariffication);
-
-    /**
-     * Сохраняет текущую версию тарификации в базу данных
-     *
-     * @param tarifficationList список данных тарификации для сохранения
-     */
-    void saveCurrentTariffication(List<TarifficationPerson> tarifficationList);
-
-    /**
-     * Полностью очищает историю и текущую тарификацию
-     */
-    void fullReset();
-
-    /**
-     * Возвращает всю историю изменений
-     *
-     * @return список всех записей истории
-     */
     List<TarifficationChanges> getAllHistory();
-
-    /**
-     * Возвращает список педагогов по предмету, классу, корпусу
-     *
-     * @param subject              название предмета
-     * @param className            название класса
-     * @param NumberSchoolBuilding название корпуса
-     * @return список педагогов
-     */
+    void saveCurrentTariffication(List<TarifficationPerson> tarifficationList);
+    void fullReset();
     List<TarifficationPerson> findAllByFieldsHistory(String subject, String className, String NumberSchoolBuilding);
-
     List<String> findAllUniqueClassAndGroupNames();
+
+    // Новые методы для NamingMesh
+    List<NamingMesh> getAllNamingMeshes();
+    void saveNamingMeshes(List<NamingMesh> namingMeshes);
+    Optional<NamingMesh> findNamingMesh(String subjectName, String className, String groupNameEducationalPlan);
+    List<TarifficationPerson> findAllPersonsWithMesh();
+    List<TarifficationPerson> findPersonsByTeacherWithMesh(String fioTeacher);
+    void updateNamingMeshRelations();
 }

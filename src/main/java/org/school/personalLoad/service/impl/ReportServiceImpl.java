@@ -26,21 +26,116 @@ public class ReportServiceImpl implements ReportService {
                              String outputPath,
                              List<String> listGroup,
                              Map<String, List<String>> disabledStudentsGroups,
-                             Map<String, GroupOrClassInfo> classInfo) throws IOException {
+                             Map<String, GroupOrClassInfo> classInfo,
+                             List<TarifficationChanges> namingMeshChanges) throws IOException {
         try (Workbook workbook = new XSSFWorkbook()) {
             createTarifficationSheet(workbook, tarifficationList);
             createGroupsSheet(workbook, subjectWithGroupList);
             createChangesSheet(workbook, changes);
+            createNamingMeshChangesSheet(workbook, namingMeshChanges); // Новый лист
             createUniqueNamesSheet(workbook, listGroup, classInfo);
             createDisabledStudentsSheet(workbook, disabledStudentsGroups);
+
             try (FileOutputStream fos = new FileOutputStream(outputPath)) {
                 workbook.write(fos);
             }
         }
     }
 
+    /**
+     * Создание листа для изменений NamingMesh
+     */
+    private void createNamingMeshChangesSheet(Workbook workbook, List<TarifficationChanges> namingMeshChanges) {
+        if (namingMeshChanges == null || namingMeshChanges.isEmpty()) {
+            System.out.println("ℹ️ Изменений NamingMesh не найдено, лист не создается");
+            return;
+        }
+
+        Sheet sheet = workbook.createSheet("Изменения связей УП-МЭШ");
+        sheet.createFreezePane(0, 1, 0, 1);
+
+        Row headerRow = sheet.createRow(0);
+        String[] headers = {"Предмет", "Класс по УП", "Группа по УП",
+                "Группа по МЭШ", "Класс по МЭШ",
+                "Тип изменения", "Дата изменения", "Описание"};
+
+        createHeaderRow(headerRow, headers, workbook, IndexedColors.LIGHT_CORNFLOWER_BLUE);
+
+        int rowNum = 1;
+        int addedCount = 0;
+        int removedCount = 0;
+        int modifiedCount = 0;
+
+        for (TarifficationChanges change : namingMeshChanges) {
+            Row row = sheet.createRow(rowNum++);
+
+            // Подсчет типов изменений
+            switch (change.getChangeType()) {
+                case ADDED -> addedCount++;
+                case REMOVED -> removedCount++;
+                case MESH_MAPPING_CHANGED -> modifiedCount++;
+            }
+
+            row.createCell(0).setCellValue(change.getSubjectName() != null ? change.getSubjectName() : "");
+            row.createCell(1).setCellValue(change.getClassName() != null ? change.getClassName() : "");
+            row.createCell(2).setCellValue(change.getGroupNameEducationalPlan() != null ? change.getGroupNameEducationalPlan() : "");
+            row.createCell(3).setCellValue(change.getGroupNameMesh() != null ? change.getGroupNameMesh() : "");
+            row.createCell(4).setCellValue(getClassNameMeshFromDescription(change)); // Извлекаем класс МЭШ
+            row.createCell(5).setCellValue(change.getChangeTypeRussian());
+            row.createCell(6).setCellValue(change.getChangeDate() != null ?
+                    change.getChangeDate().format(dateFormatter) : "");
+            row.createCell(7).setCellValue(change.getFioTeacher() != null ? change.getFioTeacher() : "");
+        }
+
+        // Добавляем строку с итогами
+        Row summaryRow = sheet.createRow(rowNum++);
+        summaryRow.createCell(0).setCellValue("ИТОГО:");
+        summaryRow.createCell(1).setCellValue("Добавлено: " + addedCount);
+        summaryRow.createCell(2).setCellValue("Удалено: " + removedCount);
+        summaryRow.createCell(3).setCellValue("Изменено: " + modifiedCount);
+        summaryRow.createCell(4).setCellValue("Всего: " + namingMeshChanges.size());
+
+        // Стиль для итоговой строки
+        CellStyle summaryStyle = workbook.createCellStyle();
+        Font font = workbook.createFont();
+        font.setBold(true);
+        summaryStyle.setFont(font);
+        summaryStyle.setFillForegroundColor(IndexedColors.LIGHT_YELLOW.getIndex());
+        summaryStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+        for (int i = 0; i < 5; i++) {
+            summaryRow.getCell(i).setCellStyle(summaryStyle);
+        }
+
+        autoSizeColumns(sheet, headers.length);
+
+        System.out.println("📊 Создан лист изменений NamingMesh: " +
+                addedCount + " добавлено, " +
+                removedCount + " удалено, " +
+                modifiedCount + " изменено");
+    }
+
+    /**
+     * Извлекает класс МЭШ из описания или использует группу МЭШ
+     */
+    private String getClassNameMeshFromDescription(TarifficationChanges change) {
+        if (change.getFioTeacher() != null && change.getFioTeacher().contains("Класс МЭШ")) {
+            // Пытаемся извлечь из описания
+            String description = change.getFioTeacher();
+            java.util.regex.Matcher matcher = Pattern.compile("Класс МЭШ '([^']+)'").matcher(description);
+            if (matcher.find()) {
+                return matcher.group(1);
+            }
+        }
+        // Если не нашли в описании, используем группу МЭШ (обычно они совпадают)
+        return change.getGroupNameMesh() != null ? change.getGroupNameMesh() : "";
+    }
+
     private void createChangesSheet(Workbook workbook, List<TarifficationChanges> changes) {
-        if (changes == null || changes.isEmpty()) return;
+        if (changes == null || changes.isEmpty()) {
+            System.out.println("ℹ️ Изменений тарификации не найдено, лист не создается");
+            return;
+        }
 
         Sheet sheet = workbook.createSheet("Изменения тарификации");
         sheet.createFreezePane(0, 1, 0, 1);
@@ -52,8 +147,20 @@ public class ReportServiceImpl implements ReportService {
         createHeaderRow(headerRow, headers, workbook, IndexedColors.LIGHT_ORANGE);
 
         int rowNum = 1;
+        int addedCount = 0;
+        int removedCount = 0;
+        int modifiedCount = 0;
+
         for (TarifficationChanges change : changes) {
             Row row = sheet.createRow(rowNum++);
+
+            // Подсчет типов изменений
+            switch (change.getChangeType()) {
+                case ADDED -> addedCount++;
+                case REMOVED -> removedCount++;
+                case MODIFIED -> modifiedCount++;
+            }
+
             row.createCell(0).setCellValue(change.getFioTeacher());
             row.createCell(1).setCellValue(change.getNumberSchoolBuilding());
             row.createCell(2).setCellValue(change.getSubjectName());
@@ -65,7 +172,32 @@ public class ReportServiceImpl implements ReportService {
             row.createCell(8).setCellValue(change.getChangeDate().format(dateFormatter));
         }
 
+        // Добавляем строку с итогами
+        Row summaryRow = sheet.createRow(rowNum++);
+        summaryRow.createCell(0).setCellValue("ИТОГО:");
+        summaryRow.createCell(1).setCellValue("Добавлено: " + addedCount);
+        summaryRow.createCell(2).setCellValue("Удалено: " + removedCount);
+        summaryRow.createCell(3).setCellValue("Изменено: " + modifiedCount);
+        summaryRow.createCell(4).setCellValue("Всего: " + changes.size());
+
+        // Стиль для итоговой строки
+        CellStyle summaryStyle = workbook.createCellStyle();
+        Font font = workbook.createFont();
+        font.setBold(true);
+        summaryStyle.setFont(font);
+        summaryStyle.setFillForegroundColor(IndexedColors.LIGHT_GREEN.getIndex());
+        summaryStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+        for (int i = 0; i < 5; i++) {
+            summaryRow.getCell(i).setCellStyle(summaryStyle);
+        }
+
         autoSizeColumns(sheet, headers.length);
+
+        System.out.println("📊 Создан лист изменений тарификации: " +
+                addedCount + " добавлено, " +
+                removedCount + " удалено, " +
+                modifiedCount + " изменено");
     }
 
     private void createTarifficationSheet(Workbook workbook, List<TarifficationPerson> tarifficationList) {
@@ -73,7 +205,8 @@ public class ReportServiceImpl implements ReportService {
         sheet.createFreezePane(0, 1, 0, 1);
 
         Row headerRow = sheet.createRow(0);
-        String[] headers = {"ФИО педагога", "Корпус", "Предмет", "Класс", "группа", "Количество часов", "Количество часов в группе"};
+        String[] headers = {"ФИО педагога", "Корпус", "Предмет", "Класс", "группа",
+                "Количество часов", "Количество часов в группе", "Класс МЭШ", "Группа МЭШ"};
 
         createHeaderRow(headerRow, headers, workbook, IndexedColors.GREY_25_PERCENT);
 
@@ -87,13 +220,22 @@ public class ReportServiceImpl implements ReportService {
             row.createCell(4).setCellValue(record.getGroupNameEducationalPlan());
             row.createCell(5).setCellValue(record.getLoad());
             row.createCell(6).setCellValue(record.getGroupLoad());
+
+            // Добавляем поля МЭШ
+            row.createCell(7).setCellValue(record.getClassNameMesh() != null ? record.getClassNameMesh() : "");
+            row.createCell(8).setCellValue(record.getGroupNameMesh() != null ? record.getGroupNameMesh() : "");
         }
 
         autoSizeColumns(sheet, headers.length);
+        System.out.println("✅ Создан лист тарификации: " + (rowNum - 1) + " записей");
     }
 
-    private void createGroupsSheet(Workbook workbook,
-                                   List<SubjectWithGroup> subjectWithGroupList) {
+    private void createGroupsSheet(Workbook workbook, List<SubjectWithGroup> subjectWithGroupList) {
+        if (subjectWithGroupList == null || subjectWithGroupList.isEmpty()) {
+            System.out.println("ℹ️ Групп не найдено, лист не создается");
+            return;
+        }
+
         Sheet sheet = workbook.createSheet("Группы");
         sheet.createFreezePane(0, 1, 0, 1);
 
@@ -112,6 +254,7 @@ public class ReportServiceImpl implements ReportService {
         }
 
         autoSizeColumns(sheet, headers.length);
+        System.out.println("✅ Создан лист групп: " + (rowNum - 1) + " записей");
     }
 
     private void createHeaderRow(Row headerRow, String[] headers, Workbook workbook,
@@ -143,12 +286,15 @@ public class ReportServiceImpl implements ReportService {
     /**
      * Лист с классами из журналов МЭШ
      */
-    private void createMESHClassesSheet(Workbook workbook, Map<String,
-            GroupOrClassInfo> classInfo) {
+    private void createMESHClassesSheet(Workbook workbook, Map<String, GroupOrClassInfo> classInfo) {
+        if (classInfo == null || classInfo.isEmpty()) {
+            System.out.println("ℹ️ Классов МЭШ не найдено, лист не создается");
+            return;
+        }
+
         Sheet sheet = workbook.createSheet("Названия групп и классов по МЭШ");
         sheet.createFreezePane(0, 1, 0, 1);
 
-        // Создаем заголовки
         Row headerRow = sheet.createRow(0);
         String[] headers = {"Классы из журналов МЭШ (оригинал)", "ФИО преподавателя",
                 "Численность", "Класс (очищенный)", "Предмет"};
@@ -158,191 +304,86 @@ public class ReportServiceImpl implements ReportService {
         int processedCount = 0;
         int skippedCount = 0;
 
-        if (classInfo != null && !classInfo.isEmpty()) {
-            System.out.println("Обрабатываем " + classInfo.size() + " классов из журналов МЭШ...");
+        System.out.println("Обрабатываем " + classInfo.size() + " классов из журналов МЭШ...");
 
-            // Сортируем классы для удобства чтения
-            List<GroupOrClassInfo> sortedClasses = new ArrayList<>(classInfo.values());
-            sortedClasses.sort((c1, c2) -> {
-                String clean1 = extractCleanClassName(c1.getClassNameMesh());
-                String clean2 = extractCleanClassName(c2.getClassNameMesh());
-                return clean1.compareTo(clean2);
-            });
+        List<GroupOrClassInfo> sortedClasses = new ArrayList<>(classInfo.values());
+        sortedClasses.sort((c1, c2) -> {
+            String clean1 = extractCleanClassName(c1.getClassNameMesh());
+            String clean2 = extractCleanClassName(c2.getClassNameMesh());
+            return clean1.compareTo(clean2);
+        });
 
-            for (GroupOrClassInfo classInfoItem : sortedClasses) {
-                String cleanClassName = extractCleanClassName(classInfoItem.getClassNameMesh());
-                String subject = extractSubject(classInfoItem.getClassNameMesh());
+        for (GroupOrClassInfo classInfoItem : sortedClasses) {
+            String cleanClassName = extractCleanClassName(classInfoItem.getClassNameMesh());
+            String subject = extractSubject(classInfoItem.getClassNameMesh());
 
-                if (!cleanClassName.isEmpty()) {
-                    Row row = sheet.createRow(rowNum++);
-                    processedCount++;
+            if (!cleanClassName.isEmpty()) {
+                Row row = sheet.createRow(rowNum++);
+                processedCount++;
 
-                    row.createCell(0).setCellValue(classInfoItem.getClassNameMesh());
-                    row.createCell(1).setCellValue(classInfoItem.getTeacherNameMesh() != null ?
-                            classInfoItem.getTeacherNameMesh() : "");
-                    row.createCell(2).setCellValue(classInfoItem.getStudentCountMesh());
-                    row.createCell(3).setCellValue(cleanClassName);
-                    row.createCell(4).setCellValue(subject);
-                } else {
-                    skippedCount++;
-                    System.out.println("Не удалось извлечь класс из: " + classInfoItem.getClassNameMesh());
-                }
+                row.createCell(0).setCellValue(classInfoItem.getClassNameMesh());
+                row.createCell(1).setCellValue(classInfoItem.getTeacherNameMesh() != null ?
+                        classInfoItem.getTeacherNameMesh() : "");
+                row.createCell(2).setCellValue(classInfoItem.getStudentCountMesh());
+                row.createCell(3).setCellValue(cleanClassName);
+                row.createCell(4).setCellValue(subject);
+            } else {
+                skippedCount++;
             }
         }
 
         autoSizeColumns(sheet, headers.length);
-        System.out.println("Обработано классов МЭШ: " + processedCount + ", пропущено: " + skippedCount);
+        System.out.println("✅ Создан лист классов МЭШ: " + processedCount + " обработано, " + skippedCount + " пропущено");
     }
 
     /**
      * Лист с группами из УП
      */
     private void createUPGroupsSheet(Workbook workbook, List<String> listGroup) {
+        if (listGroup == null || listGroup.isEmpty()) {
+            System.out.println("ℹ️ Групп УП не найдено, лист не создается");
+            return;
+        }
+
         Sheet sheet = workbook.createSheet("Названия групп и классов по УП");
         sheet.createFreezePane(0, 1, 0, 1);
 
-        // Создаем заголовки
         Row headerRow = sheet.createRow(0);
         String[] headers = {"Предмет", "Полное название группы/класса"};
         createHeaderRow(headerRow, headers, workbook, IndexedColors.LIGHT_BLUE);
 
         int rowNum = 1;
 
-        if (listGroup != null && !listGroup.isEmpty()) {
-            System.out.println("Добавляем " + listGroup.size() + " групп из УП...");
+        System.out.println("Добавляем " + listGroup.size() + " групп из УП...");
 
-            // Сортируем группы для удобства чтения
-            List<String> sortedGroups = new ArrayList<>(listGroup);
-            sortedGroups.sort(String::compareToIgnoreCase);
+        List<String> sortedGroups = new ArrayList<>(listGroup);
+        sortedGroups.sort(String::compareToIgnoreCase);
 
-            for (String group : sortedGroups) {
-                Row row = sheet.createRow(rowNum++);
+        for (String group : sortedGroups) {
+            Row row = sheet.createRow(rowNum++);
 
-                String subject = extractSubject(group);
-
-                row.createCell(0).setCellValue(subject);
-                row.createCell(1).setCellValue(group);
-            }
+            String subject = extractSubject(group);
+            row.createCell(0).setCellValue(subject);
+            row.createCell(1).setCellValue(group);
         }
 
         autoSizeColumns(sheet, headers.length);
-        System.out.println("Добавлено групп УП: " + (rowNum - 1));
+        System.out.println("✅ Создан лист групп УП: " + (rowNum - 1) + " записей");
     }
 
-    /**
-     * Метод для извлечения предмета из названия (извлекает все слова до цифр)
-     * Примеры:
-     * "Биология 10-К 10К группа, Биология" -> "Биология"
-     * "Обществознание 9-А 9А группа" -> "Обществознание"
-     * "Основы безопасности и защиты Родины 8-М группа" -> "Основы безопасности и защиты Родины"
-     */
-    private String extractSubject(String text) {
-        if (text == null || text.isEmpty()) return "";
-
-        // Ищем все слова до первой цифры
-        java.util.regex.Matcher matcher = Pattern.compile("^([^0-9]+)").matcher(text);
-        if (matcher.find()) {
-            String subject = matcher.group(1).trim();
-
-            // Убираем лишние слова в конце (группа, класс и т.д.)
-            subject = subject.replaceAll("\\s*(группа|класс|,|;|:|\\.)\\s*$", "");
-
-            return subject;
-        }
-
-        // Если не нашли цифр, возвращаем первое слово
-        String[] words = text.split("\\s+");
-        if (words.length > 0) {
-            return words[0];
-        }
-
-        return "";
-    }
-
-    /**
-     * Метод для очистки названия класса из журнала - возвращает ТОЛЬКО номер класса в формате "цифра-буква"
-     */
-    /**
-     * Метод для очистки названия класса из журнала - возвращает ТОЛЬКО номер класса в формате "цифра-буква"
-     */
-    private String extractCleanClassName(String className) {
-        if (className == null || className.isEmpty()) return "";
-
-        // 1. Сначала пытаемся найти самые распространенные паттерны
-        String[] patterns = {
-                "\\b\\d{1,2}-[А-ЯA-Z]\\b",      // 10-А, 9-Б, 11-В
-                "\\b\\d{1,2}[А-ЯA-Z]\\b",       // 10А, 9Б, 11В
-                "\\b\\d{1,2}-[а-яa-z]\\b",      // 10-а, 9-б (строчные)
-                "\\b\\d{1,2}[а-яa-z]\\b",       // 10а, 9б (строчные)
-                "\\b\\d{1,2}-[А-ЯA-Z][А-ЯA-Z]\\b", // 10-АБ, 9-МГ
-                "\\b\\d{1,2}[А-ЯA-Z][А-ЯA-Z]\\b"   // 10АБ, 9МГ
-        };
-
-        for (String pattern : patterns) {
-            java.util.regex.Matcher matcher = Pattern.compile(pattern)
-                    .matcher(className);
-            if (matcher.find()) {
-                String found = matcher.group();
-
-                // Приводим к стандартному формату: цифра-заглавная_буква
-                if (found.contains("-")) {
-                    String[] parts = found.split("-");
-                    if (parts.length == 2) {
-                        return parts[0] + "-" + parts[1].toUpperCase();
-                    }
-                } else {
-                    // Разделяем цифры и буквы
-                    String digits = found.replaceAll("[^0-9]", "");
-                    String letters = found.replaceAll("[^А-ЯA-Zа-яa-z]", "").toUpperCase();
-                    if (!digits.isEmpty() && !letters.isEmpty()) {
-                        return digits + "-" + letters;
-                    }
-                }
-                return found.toUpperCase();
-            }
-        }
-
-        // 2. Если не нашли по паттернам, ищем вручную в строке
-        String[] words = className.split(" ");
-        for (String word : words) {
-            if (word.matches(".*\\d.*") && word.matches(".*[А-ЯA-Zа-яa-z].*")) {
-                // Извлекаем цифры и буквы
-                String digits = word.replaceAll("[^0-9]", "");
-                String letters = word.replaceAll("[^А-ЯA-Zа-яa-z]", "").toUpperCase();
-
-                if (!digits.isEmpty() && !letters.isEmpty()) {
-                    return digits + "-" + letters;
-                }
-            }
-        }
-
-        // 3. Если ничего не нашли, возвращаем пустую строку
-        return "";
-    }
-
-    /**
-     * Метод для извлечения класса из названия группы УП
-     * Примеры:
-     * "Иностранный (английский) язык 9-Ф 9Ф 1 гр" -> "9-Ф"
-     * "Информатика 10-Б 10Б 2 гр" -> "10-Б"
-     * "Математика 5А" -> "5А"
-     */
-
-    private void createDisabledStudentsSheet(Workbook workbook, Map<String,
-            List<String>> disabledStudentsGroups) {
+    private void createDisabledStudentsSheet(Workbook workbook, Map<String, List<String>> disabledStudentsGroups) {
         if (disabledStudentsGroups == null || disabledStudentsGroups.isEmpty()) {
+            System.out.println("ℹ️ Инвалидов не найдено, лист не создается");
             return;
         }
 
         Sheet sheet = workbook.createSheet("Инвалиды и группы");
         sheet.createFreezePane(0, 1, 0, 1);
 
-        // Создаем заголовки
         Row headerRow = sheet.createRow(0);
         String[] headers = {"ФИО Ребенка", "Группы"};
         createHeaderRow(headerRow, headers, workbook, IndexedColors.LIGHT_YELLOW);
 
-        // Сортируем студентов по ФИО для удобства чтения
         List<String> sortedStudents = new ArrayList<>(disabledStudentsGroups.keySet());
         sortedStudents.sort(String::compareToIgnoreCase);
 
@@ -351,17 +392,60 @@ public class ReportServiceImpl implements ReportService {
             List<String> groups = disabledStudentsGroups.get(student);
             if (groups != null && !groups.isEmpty()) {
                 Row row = sheet.createRow(rowNum++);
-
-                // Колонка 1: ФИО ребенка
                 row.createCell(0).setCellValue(student);
-
-                // Колонка 2: Все группы через запятую в одну ячейку
                 String groupsString = String.join(", ", groups);
                 row.createCell(1).setCellValue(groupsString);
             }
         }
 
         autoSizeColumns(sheet, headers.length);
+        System.out.println("✅ Создан лист инвалидов: " + (rowNum - 1) + " записей");
+    }
+
+    // Вспомогательные методы (без изменений)
+    private String extractSubject(String text) {
+        if (text == null || text.isEmpty()) return "";
+        java.util.regex.Matcher matcher = Pattern.compile("^([^0-9]+)").matcher(text);
+        if (matcher.find()) {
+            String subject = matcher.group(1).trim();
+            subject = subject.replaceAll("\\s*(группа|класс|,|;|:|\\.)\\s*$", "");
+            return subject;
+        }
+        String[] words = text.split("\\s+");
+        return words.length > 0 ? words[0] : "";
+    }
+
+    private String extractCleanClassName(String className) {
+        if (className == null || className.isEmpty()) return "";
+        String[] patterns = {
+                "\\b\\d{1,2}-[А-ЯA-Z]\\b", "\\b\\d{1,2}[А-ЯA-Z]\\b",
+                "\\b\\d{1,2}-[а-яa-z]\\b", "\\b\\d{1,2}[а-яa-z]\\b",
+                "\\b\\d{1,2}-[А-ЯA-Z][А-ЯA-Z]\\b", "\\b\\d{1,2}[А-ЯA-Z][А-ЯA-Z]\\b"
+        };
+        for (String pattern : patterns) {
+            java.util.regex.Matcher matcher = Pattern.compile(pattern).matcher(className);
+            if (matcher.find()) {
+                String found = matcher.group();
+                if (found.contains("-")) {
+                    String[] parts = found.split("-");
+                    if (parts.length == 2) return parts[0] + "-" + parts[1].toUpperCase();
+                } else {
+                    String digits = found.replaceAll("[^0-9]", "");
+                    String letters = found.replaceAll("[^А-ЯA-Zа-яa-z]", "").toUpperCase();
+                    if (!digits.isEmpty() && !letters.isEmpty()) return digits + "-" + letters;
+                }
+                return found.toUpperCase();
+            }
+        }
+        String[] words = className.split(" ");
+        for (String word : words) {
+            if (word.matches(".*\\d.*") && word.matches(".*[А-ЯA-Zа-яa-z].*")) {
+                String digits = word.replaceAll("[^0-9]", "");
+                String letters = word.replaceAll("[^А-ЯA-Zа-яa-z]", "").toUpperCase();
+                if (!digits.isEmpty() && !letters.isEmpty()) return digits + "-" + letters;
+            }
+        }
+        return "";
     }
 
     private void autoSizeColumns(Sheet sheet, int columnCount) {
