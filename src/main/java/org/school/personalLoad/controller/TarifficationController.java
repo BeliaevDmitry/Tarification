@@ -81,12 +81,11 @@ public class TarifficationController {
             // 9. Создание отчета с передачей информации о классах
             List<String> listGroup = databaseService.findAllUniqueClassAndGroupNames();
             reportService.createReport(tarifficationList, groupList, allHistory, outputPath,
-                    listGroup, disabledStudentsGroups, classInfo, namingMeshChanges);
+                    disabledStudentsGroups, classInfo, namingMeshChanges);
 
             System.out.println("✅ отчёт собран и записан в файл ");
 
-
-        } catch (Exception e) {
+            } catch (Exception e) {
             System.err.println("❌ Ошибка при обработке файла: " + e.getMessage());
             e.printStackTrace();
         }

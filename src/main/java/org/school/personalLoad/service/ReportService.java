@@ -21,7 +21,6 @@ public interface ReportService {
      * @param subjectWithGroupList список предметов с группами
      * @param changes история изменений тарификации
      * @param outputPath путь для сохранения файла отчета
-     * @param listGroup список уникальных названий групп/классов
      * @param disabledStudentsGroups карта групп для студентов-инвалидов
      * @param classInfo информация о классах из журналов
      * @throws IOException если произошла ошибка при создании файла
@@ -30,7 +29,6 @@ public interface ReportService {
                       List<SubjectWithGroup> subjectWithGroupList,
                       List<TarifficationChanges> changes,
                       String outputPath,
-                      List<String> listGroup,
                       Map<String, List<String>> disabledStudentsGroups,
                       Map<String, GroupOrClassInfo> classInfo,
                       List<TarifficationChanges> namingMeshChanges) throws IOException;

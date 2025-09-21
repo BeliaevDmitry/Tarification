@@ -24,7 +24,6 @@ public class ReportServiceImpl implements ReportService {
                              List<SubjectWithGroup> subjectWithGroupList,
                              List<TarifficationChanges> changes,
                              String outputPath,
-                             List<String> listGroup,
                              Map<String, List<String>> disabledStudentsGroups,
                              Map<String, GroupOrClassInfo> classInfo,
                              List<TarifficationChanges> namingMeshChanges) throws IOException {
@@ -33,7 +32,6 @@ public class ReportServiceImpl implements ReportService {
             createGroupsSheet(workbook, subjectWithGroupList);
             createChangesSheet(workbook, changes);
             createNamingMeshChangesSheet(workbook, namingMeshChanges); // Новый лист
-            createUniqueNamesSheet(workbook, listGroup, classInfo);
             createDisabledStudentsSheet(workbook, disabledStudentsGroups);
 
             try (FileOutputStream fos = new FileOutputStream(outputPath)) {
@@ -206,7 +204,8 @@ public class ReportServiceImpl implements ReportService {
                 modifiedCount + " изменено");
     }
 
-    private void createTarifficationSheet(Workbook workbook, List<TarifficationPerson> tarifficationList) {
+    private void createTarifficationSheet(Workbook workbook,
+                                          List<TarifficationPerson> tarifficationList) {
         Sheet sheet = workbook.createSheet("Тарификация");
         sheet.createFreezePane(0, 1, 0, 1);
 
