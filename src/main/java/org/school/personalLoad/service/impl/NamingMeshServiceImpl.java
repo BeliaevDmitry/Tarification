@@ -49,20 +49,20 @@ public class NamingMeshServiceImpl implements NamingMeshService {
             // 4. Сравниваем и находим изменения
             changes = compareNamingMeshes(currentNamingMeshes, newNamingMeshes);
 
-            // 5. Очищаем старые данные и сохраняем новые
-            if (!newNamingMeshes.isEmpty()) {
-                namingMeshDAO.deleteAll(); // Сначала удаляем все старые данные
-                namingMeshDAO.saveAll(newNamingMeshes);
-                System.out.println("💾 Сохранено записей naming mesh: " + newNamingMeshes.size());
-            }
+            // 5. ОБНОВЛЯЕМ СУЩЕСТВУЮЩИЕ ЗАПИСИ И ДОБАВЛЯЕМ НОВЫЕ
+            saveOrUpdateNamingMeshes(newNamingMeshes);
+            System.out.println("💾 Обновлено/добавлено записей naming mesh: " + newNamingMeshes.size());
 
-            // 6. Сохраняем изменения в историю МЭШ
+            // 6. УДАЛЯЕМ ТОЛЬКО ТЕ ЗАПИСИ, КОТОРЫХ НЕТ В НОВОМ ФАЙЛЕ
+            deleteMissingNamingMeshes(currentNamingMeshes, newNamingMeshes);
+
+            // 7. Сохраняем изменения в историю МЭШ
             if (!changes.isEmpty()) {
                 meshChangesDAO.saveAll(changes);
                 System.out.println("📝 Сохранено записей изменений МЭШ: " + changes.size());
             }
 
-            // 7. Обновляем связи в существующих записях тарификации
+            // 8. Обновляем связи в существующих записях тарификации
             updateNamingMeshRelations();
 
         } catch (Exception e) {
@@ -72,6 +72,67 @@ public class NamingMeshServiceImpl implements NamingMeshService {
         }
 
         return changes;
+    }
+
+    /**
+     * Сохранение или обновление записей NamingMesh
+     */
+    private void saveOrUpdateNamingMeshes(List<NamingMesh> newNamingMeshes) {
+        for (NamingMesh newMesh : newNamingMeshes) {
+            try {
+                Optional<NamingMesh> existing = namingMeshDAO.findById(
+                        newMesh.getSubjectName(),
+                        newMesh.getClassName(),
+                        newMesh.getGroupNameEducationalPlan()
+                );
+
+                if (existing.isPresent()) {
+                    // ОБНОВЛЯЕМ существующую запись
+                    NamingMesh current = existing.get();
+                    current.setClassNameMesh(newMesh.getClassNameMesh());
+                    current.setGroupNameMesh(newMesh.getGroupNameMesh());
+                    namingMeshDAO.update(current);
+                } else {
+                    // ДОБАВЛЯЕМ новую запись
+                    namingMeshDAO.save(newMesh);
+                }
+            } catch (Exception e) {
+                System.err.println("⚠️ Ошибка при обработке записи: " +
+                        newMesh.getSubjectName() + ", " +
+                        newMesh.getClassName() + ", " +
+                        newMesh.getGroupNameEducationalPlan() + ": " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Удаление записей, которых нет в новом файле
+     */
+    private void deleteMissingNamingMeshes(List<NamingMesh> currentNamingMeshes, List<NamingMesh> newNamingMeshes) {
+        int deletedCount = 0;
+
+        // Создаем множество ключей новых записей для быстрого поиска
+        Set<String> newKeys = new HashSet<>();
+        for (NamingMesh newMesh : newNamingMeshes) {
+            newKeys.add(createNamingMeshKey(newMesh));
+        }
+
+        // Удаляем записи, которых нет в новом файле
+        for (NamingMesh currentMesh : currentNamingMeshes) {
+            String currentKey = createNamingMeshKey(currentMesh);
+            if (!newKeys.contains(currentKey)) {
+                try {
+                    namingMeshDAO.delete(currentMesh);
+                    deletedCount++;
+                } catch (Exception e) {
+                    System.err.println("⚠️ Ошибка при удалении записи: " + currentKey + ": " + e.getMessage());
+                }
+            }
+        }
+
+        if (deletedCount > 0) {
+            System.out.println("🗑️ Удалено отсутствующих записей: " + deletedCount);
+        }
     }
 
     /**
@@ -352,13 +413,13 @@ public class NamingMeshServiceImpl implements NamingMeshService {
                         case "Класс по УП":
                             indexes.put("className", cell.getColumnIndex());
                             break;
-                        case "группа по УП":
+                        case "Группа по УП":
                             indexes.put("groupName", cell.getColumnIndex());
                             break;
                         case "Класс по МЭШ":
                             indexes.put("classNameMesh", cell.getColumnIndex());
                             break;
-                        case "группа по МЭШ":
+                        case "Группа по МЭШ":
                             indexes.put("groupNameMesh", cell.getColumnIndex());
                             break;
                     }

@@ -261,8 +261,8 @@ public class ReportServiceImpl implements ReportService {
         sheet.createFreezePane(0, 1, 0, 1);
 
         Row headerRow = sheet.createRow(0);
-        String[] headers = {"ФИО педагога", "Корпус", "Предмет", "Класс", "группа",
-                "Количество часов", "Количество часов в группе", "Класс МЭШ", "Группа МЭШ"};
+        String[] headers = {"ФИО педагога", "Корпус", "Предмет", "Класс по УП", "Группа по УП",
+                 "Класс по МЭШ", "Группа по МЭШ", "Количество часов в группе", };
 
         createHeaderRow(headerRow, headers, workbook, IndexedColors.GREY_25_PERCENT);
 
@@ -274,12 +274,12 @@ public class ReportServiceImpl implements ReportService {
             row.createCell(2).setCellValue(record.getSubjectName());
             row.createCell(3).setCellValue(record.getClassName());
             row.createCell(4).setCellValue(record.getGroupNameEducationalPlan());
-            row.createCell(5).setCellValue(record.getLoad());
-            row.createCell(6).setCellValue(record.getGroupLoad());
+
+            row.createCell(7).setCellValue(record.getGroupLoad());
 
             // Добавляем поля МЭШ
-            row.createCell(7).setCellValue(record.getClassNameMesh() != null ? record.getClassNameMesh() : "");
-            row.createCell(8).setCellValue(record.getGroupNameMesh() != null ? record.getGroupNameMesh() : "");
+            row.createCell(5).setCellValue(record.getClassNameMesh() != null ? record.getClassNameMesh() : "");
+            row.createCell(6).setCellValue(record.getGroupNameMesh() != null ? record.getGroupNameMesh() : "");
         }
 
         autoSizeColumns(sheet, headers.length);

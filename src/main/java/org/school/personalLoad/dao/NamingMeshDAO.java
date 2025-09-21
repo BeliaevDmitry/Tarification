@@ -139,4 +139,28 @@ public class NamingMeshDAO {
             }
         }
     }
+    public void update(NamingMesh namingMesh) {
+        Transaction transaction = null;
+        Session session = null;
+        try {
+            session = HibernateConfig.getSessionFactory().openSession();
+            transaction = session.beginTransaction();
+            session.update(namingMesh); // Используем update вместо save
+            transaction.commit();
+        } catch (Exception e) {
+            if (transaction != null && transaction.isActive()) {
+                try {
+                    transaction.rollback();
+                } catch (Exception rollbackEx) {
+                    System.err.println("Ошибка при откате транзакции: " + rollbackEx.getMessage());
+                }
+            }
+            throw new RuntimeException("Ошибка при обновлении NamingMesh", e);
+        } finally {
+            if (session != null && session.isOpen()) {
+                session.close();
+            }
+        }
+    }
+
 }
