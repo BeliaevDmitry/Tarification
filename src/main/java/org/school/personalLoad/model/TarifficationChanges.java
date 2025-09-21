@@ -63,11 +63,4 @@ public class TarifficationChanges {
     public String getChangeDescription() {
         return fioTeacher != null ? fioTeacher : "";
     }
-
-    /**
-     * Метод для установки описания изменения (используется для naming mesh)
-     */
-    public void setChangeDescription(String description) {
-        this.fioTeacher = description;
-    }
 }

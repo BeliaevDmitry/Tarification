@@ -13,6 +13,8 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import static org.school.personalLoad.model.TarifficationChanges.ChangeType.MESH_MAPPING_CHANGED;
+
 
 public class NamingMeshServiceImpl implements NamingMeshService {
 
@@ -232,23 +234,26 @@ public class NamingMeshServiceImpl implements NamingMeshService {
 
         if (headerRow != null) {
             for (Cell cell : headerRow) {
-                String cellValue = getCellValueAsString(cell).trim();
-                switch (cellValue) {
-                    case "Предмет":
-                        indexes.put("subject", cell.getColumnIndex());
-                        break;
-                    case "Класс по УП":
-                        indexes.put("className", cell.getColumnIndex());
-                        break;
-                    case "группа по УП":
-                        indexes.put("groupName", cell.getColumnIndex());
-                        break;
-                    case "Класс по МЭШ":
-                        indexes.put("classNameMesh", cell.getColumnIndex());
-                        break;
-                    case "группа по МЭШ":
-                        indexes.put("groupNameMesh", cell.getColumnIndex());
-                        break;
+                String cellValue = getCellValueAsString(cell);
+                if (cellValue != null) { // Добавляем проверку на null
+                    cellValue = cellValue.trim(); // Теперь безопасно использовать trim()
+                    switch (cellValue) {
+                        case "Предмет":
+                            indexes.put("subject", cell.getColumnIndex());
+                            break;
+                        case "Класс по УП":
+                            indexes.put("className", cell.getColumnIndex());
+                            break;
+                        case "группа по УП":
+                            indexes.put("groupName", cell.getColumnIndex());
+                            break;
+                        case "Класс по МЭШ":
+                            indexes.put("classNameMesh", cell.getColumnIndex());
+                            break;
+                        case "группа по МЭШ":
+                            indexes.put("groupNameMesh", cell.getColumnIndex());
+                            break;
+                    }
                 }
             }
         }
@@ -343,7 +348,7 @@ public class NamingMeshServiceImpl implements NamingMeshService {
             if (currentMesh != null && !isMeshEqual(currentMesh, newMesh)) {
                 String changeDescription = buildChangeDescription(currentMesh, newMesh);
                 changes.add(createMeshChangeRecord(newMesh,
-                        TarifficationChanges.ChangeType.MESH_MAPPING_CHANGED, changeDescription));
+                        MESH_MAPPING_CHANGED, changeDescription));
             }
         }
 
@@ -393,7 +398,8 @@ public class NamingMeshServiceImpl implements NamingMeshService {
         change.setChangeDate(LocalDateTime.now());
 
         // Добавляем описание в поле FIO (временно)
-        change.setFioTeacher(description);
+        change.setChangeType(MESH_MAPPING_CHANGED);
+
 
         return change;
     }

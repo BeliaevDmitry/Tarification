@@ -154,6 +154,10 @@ public class ReportServiceImpl implements ReportService {
         for (TarifficationChanges change : changes) {
             Row row = sheet.createRow(rowNum++);
 
+            // Добавляем проверку на null
+            Integer load = change.getLoad();
+            Integer groupLoad = change.getGroupLoad();
+
             // Подсчет типов изменений
             switch (change.getChangeType()) {
                 case ADDED -> addedCount++;
@@ -166,8 +170,10 @@ public class ReportServiceImpl implements ReportService {
             row.createCell(2).setCellValue(change.getSubjectName());
             row.createCell(3).setCellValue(change.getClassName());
             row.createCell(4).setCellValue(change.getGroupNameEducationalPlan() != null ? change.getGroupNameEducationalPlan() : "");
-            row.createCell(5).setCellValue(change.getLoad());
-            row.createCell(6).setCellValue(change.getGroupLoad() != null ? change.getGroupLoad() : 0);
+            // Используем проверку на null
+            row.createCell(5).setCellValue(load != null ? load : 0);
+            row.createCell(6).setCellValue(groupLoad != null ? groupLoad : 0);
+
             row.createCell(7).setCellValue(change.getChangeTypeRussian());
             row.createCell(8).setCellValue(change.getChangeDate().format(dateFormatter));
         }
