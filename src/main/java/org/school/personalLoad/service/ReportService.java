@@ -1,9 +1,6 @@
 package org.school.personalLoad.service;
 
-import org.school.personalLoad.model.GroupOrClassInfo;
-import org.school.personalLoad.model.TarifficationChanges;
-import org.school.personalLoad.model.SubjectWithGroup;
-import org.school.personalLoad.model.TarifficationPerson;
+import org.school.personalLoad.model.*;
 
 import java.io.IOException;
 import java.util.List;
@@ -31,5 +28,5 @@ public interface ReportService {
                       String outputPath,
                       Map<String, List<String>> disabledStudentsGroups,
                       Map<String, GroupOrClassInfo> classInfo,
-                      List<TarifficationChanges> namingMeshChanges) throws IOException;
+                      List<TarifficationChangesMesh> meshChanges) throws IOException;
 }

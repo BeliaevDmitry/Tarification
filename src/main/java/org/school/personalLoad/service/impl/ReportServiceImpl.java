@@ -2,10 +2,7 @@ package org.school.personalLoad.service.impl;
 
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.school.personalLoad.model.GroupOrClassInfo;
-import org.school.personalLoad.model.TarifficationChanges;
-import org.school.personalLoad.model.SubjectWithGroup;
-import org.school.personalLoad.model.TarifficationPerson;
+import org.school.personalLoad.model.*;
 import org.school.personalLoad.service.ReportService;
 
 import java.io.FileOutputStream;
@@ -26,12 +23,12 @@ public class ReportServiceImpl implements ReportService {
                              String outputPath,
                              Map<String, List<String>> disabledStudentsGroups,
                              Map<String, GroupOrClassInfo> classInfo,
-                             List<TarifficationChanges> namingMeshChanges) throws IOException {
+                             List<TarifficationChangesMesh> meshChanges) throws IOException {
         try (Workbook workbook = new XSSFWorkbook()) {
             createTarifficationSheet(workbook, tarifficationList);
             createGroupsSheet(workbook, subjectWithGroupList);
             createChangesSheet(workbook, changes);
-            createNamingMeshChangesSheet(workbook, namingMeshChanges); // Новый лист
+            createNamingMeshChangesSheet(workbook, meshChanges); // Новый лист
             createDisabledStudentsSheet(workbook, disabledStudentsGroups);
 
             try (FileOutputStream fos = new FileOutputStream(outputPath)) {
@@ -41,11 +38,11 @@ public class ReportServiceImpl implements ReportService {
     }
 
     /**
-     * Создание листа для изменений NamingMesh
+     * Создание листа для изменений связей УП-МЭШ (обновленная версия для TarifficationChangesMesh)
      */
-    private void createNamingMeshChangesSheet(Workbook workbook, List<TarifficationChanges> namingMeshChanges) {
-        if (namingMeshChanges == null || namingMeshChanges.isEmpty()) {
-            System.out.println("ℹ️ Изменений NamingMesh не найдено, лист не создается");
+    private void createNamingMeshChangesSheet(Workbook workbook, List<TarifficationChangesMesh> meshChanges) {
+        if (meshChanges == null || meshChanges.isEmpty()) {
+            System.out.println("ℹ️ Изменений связей УП-МЭШ не найдено, лист не создается");
             return;
         }
 
@@ -53,47 +50,72 @@ public class ReportServiceImpl implements ReportService {
         sheet.createFreezePane(0, 1, 0, 1);
 
         Row headerRow = sheet.createRow(0);
-        String[] headers = {"Предмет", "Класс по УП", "Группа по УП",
-                "Группа по МЭШ", "Класс по МЭШ",
-                "Тип изменения", "Дата изменения", "Описание"};
+        String[] headers = {
+                "ID изменения", "ФИО педагога", "Предмет", "Класс",
+                "Группа УП (старая)", "Группа УП (новая)",
+                "Группа МЭШ (старая)", "Группа МЭШ (новая)",
+                "Нагрузка группы", "Тип изменения", "Дата изменения", "Краткое описание"
+        };
 
         createHeaderRow(headerRow, headers, workbook, IndexedColors.LIGHT_CORNFLOWER_BLUE);
 
         int rowNum = 1;
-        int addedCount = 0;
-        int removedCount = 0;
-        int modifiedCount = 0;
+        int nameAddedCount = 0;
+        int nameRemovedCount = 0;
+        int nameModifiedCount = 0;
+        int mappingAddedCount = 0;
+        int mappingRemovedCount = 0;
+        int mappingModifiedCount = 0;
 
-        for (TarifficationChanges change : namingMeshChanges) {
+        for (TarifficationChangesMesh change : meshChanges) {
             Row row = sheet.createRow(rowNum++);
 
             // Подсчет типов изменений
-            switch (change.getChangeType()) {
-                case ADDED -> addedCount++;
-                case REMOVED -> removedCount++;
-                case MESH_MAPPING_CHANGED -> modifiedCount++;
+            switch (change.getMeshChangeType()) {
+                case MESH_NAME_ADDED -> nameAddedCount++;
+                case MESH_NAME_REMOVED -> nameRemovedCount++;
+                case MESH_NAME_MODIFIED -> nameModifiedCount++;
+                case MESH_MAPPING_ADDED -> mappingAddedCount++;
+                case MESH_MAPPING_REMOVED -> mappingRemovedCount++;
+                case MESH_MAPPING_MODIFIED -> mappingModifiedCount++;
             }
 
-            row.createCell(0).setCellValue(change.getSubjectName() != null ? change.getSubjectName() : "");
-            row.createCell(1).setCellValue(change.getClassName() != null ? change.getClassName() : "");
-            row.createCell(2).setCellValue(change.getGroupNameEducationalPlan() != null ? change.getGroupNameEducationalPlan() : "");
-            row.createCell(3).setCellValue(change.getGroupNameMesh() != null ? change.getGroupNameMesh() : "");
-            row.createCell(4).setCellValue(getClassNameMeshFromDescription(change)); // Извлекаем класс МЭШ
-            row.createCell(5).setCellValue(change.getChangeTypeRussian());
-            row.createCell(6).setCellValue(change.getChangeDate() != null ?
+            row.createCell(0).setCellValue(change.getId() != null ? change.getId() : 0);
+            row.createCell(1).setCellValue(change.getFioTeacher() != null ? change.getFioTeacher() : "");
+            row.createCell(2).setCellValue(change.getSubjectName() != null ? change.getSubjectName() : "");
+            row.createCell(3).setCellValue(change.getClassName() != null ? change.getClassName() : "");
+            row.createCell(4).setCellValue(change.getOldGroupNameEducationalPlan() != null ? change.getOldGroupNameEducationalPlan() : "");
+            row.createCell(5).setCellValue(change.getNewGroupNameEducationalPlan() != null ? change.getNewGroupNameEducationalPlan() : "");
+            row.createCell(6).setCellValue(change.getOldGroupNameMesh() != null ? change.getOldGroupNameMesh() : "");
+            row.createCell(7).setCellValue(change.getNewGroupNameMesh() != null ? change.getNewGroupNameMesh() : "");
+            row.createCell(8).setCellValue(change.getGroupLoad() != null ? change.getGroupLoad() : 0);
+            row.createCell(9).setCellValue(change.getMeshChangeTypeRussian());
+            row.createCell(10).setCellValue(change.getChangeDate() != null ?
                     change.getChangeDate().format(dateFormatter) : "");
-            row.createCell(7).setCellValue(change.getFioTeacher() != null ? change.getFioTeacher() : "");
+            row.createCell(11).setCellValue(change.getChangeSummary());
         }
 
-        // Добавляем строку с итогами
-        Row summaryRow = sheet.createRow(rowNum++);
-        summaryRow.createCell(0).setCellValue("ИТОГО:");
-        summaryRow.createCell(1).setCellValue("Добавлено: " + addedCount);
-        summaryRow.createCell(2).setCellValue("Удалено: " + removedCount);
-        summaryRow.createCell(3).setCellValue("Изменено: " + modifiedCount);
-        summaryRow.createCell(4).setCellValue("Всего: " + namingMeshChanges.size());
+        // Добавляем строки с итогами
+        addSummaryRows(sheet, rowNum, nameAddedCount, nameRemovedCount, nameModifiedCount,
+                mappingAddedCount, mappingRemovedCount, mappingModifiedCount, meshChanges.size(), workbook);
 
-        // Стиль для итоговой строки
+        autoSizeColumns(sheet, headers.length);
+
+        System.out.println("📊 Создан лист изменений связей УП-МЭШ: " +
+                nameAddedCount + " названий добавлено, " +
+                nameRemovedCount + " названий удалено, " +
+                nameModifiedCount + " названий изменено, " +
+                mappingAddedCount + " связей добавлено, " +
+                mappingRemovedCount + " связей удалено, " +
+                mappingModifiedCount + " связей изменено");
+    }
+
+    /**
+     * Добавление строк с итогами
+     */
+    private void addSummaryRows(Sheet sheet, int startRow, int nameAdded, int nameRemoved, int nameModified,
+                                int mappingAdded, int mappingRemoved, int mappingModified, int total, Workbook workbook) {
+
         CellStyle summaryStyle = workbook.createCellStyle();
         Font font = workbook.createFont();
         font.setBold(true);
@@ -101,16 +123,44 @@ public class ReportServiceImpl implements ReportService {
         summaryStyle.setFillForegroundColor(IndexedColors.LIGHT_YELLOW.getIndex());
         summaryStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
 
-        for (int i = 0; i < 5; i++) {
-            summaryRow.getCell(i).setCellStyle(summaryStyle);
+        CellStyle totalStyle = workbook.createCellStyle();
+        totalStyle.setFont(font);
+        totalStyle.setFillForegroundColor(IndexedColors.LIGHT_GREEN.getIndex());
+        totalStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+        // Итоги по названиям
+        Row nameSummaryRow = sheet.createRow(startRow++);
+        nameSummaryRow.createCell(0).setCellValue("ИТОГО по названиям МЭШ:");
+        nameSummaryRow.createCell(1).setCellValue("Добавлено: " + nameAdded);
+        nameSummaryRow.createCell(2).setCellValue("Удалено: " + nameRemoved);
+        nameSummaryRow.createCell(3).setCellValue("Изменено: " + nameModified);
+        applyStyleToRow(nameSummaryRow, summaryStyle, 4);
+
+        // Итоги по связям
+        Row mappingSummaryRow = sheet.createRow(startRow++);
+        mappingSummaryRow.createCell(0).setCellValue("ИТОГО по связям УП-МЭШ:");
+        mappingSummaryRow.createCell(1).setCellValue("Добавлено: " + mappingAdded);
+        mappingSummaryRow.createCell(2).setCellValue("Удалено: " + mappingRemoved);
+        mappingSummaryRow.createCell(3).setCellValue("Изменено: " + mappingModified);
+        applyStyleToRow(mappingSummaryRow, summaryStyle, 4);
+
+        // Общий итог
+        Row totalRow = sheet.createRow(startRow);
+        totalRow.createCell(0).setCellValue("ВСЕГО ИЗМЕНЕНИЙ:");
+        totalRow.createCell(1).setCellValue(total);
+        applyStyleToRow(totalRow, totalStyle, 2);
+    }
+
+    /**
+     * Применение стиля к ячейкам строки
+     */
+    private void applyStyleToRow(Row row, CellStyle style, int cellCount) {
+        for (int i = 0; i < cellCount; i++) {
+            Cell cell = row.getCell(i);
+            if (cell != null) {
+                cell.setCellStyle(style);
+            }
         }
-
-        autoSizeColumns(sheet, headers.length);
-
-        System.out.println("📊 Создан лист изменений NamingMesh: " +
-                addedCount + " добавлено, " +
-                removedCount + " удалено, " +
-                modifiedCount + " изменено");
     }
 
     /**
@@ -262,18 +312,20 @@ public class ReportServiceImpl implements ReportService {
         System.out.println("✅ Создан лист групп: " + (rowNum - 1) + " записей");
     }
 
-    private void createHeaderRow(Row headerRow, String[] headers, Workbook workbook,
-                                 IndexedColors color) {
+    private void createHeaderRow(Row headerRow, String[] headers, Workbook workbook, IndexedColors color) {
+        CellStyle headerStyle = workbook.createCellStyle();
+        Font font = workbook.createFont();
+        font.setBold(true);
+        headerStyle.setFont(font);
+        headerStyle.setFillForegroundColor(color.getIndex());
+        headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        headerStyle.setAlignment(HorizontalAlignment.CENTER);
+        headerStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        headerStyle.setWrapText(true);
+
         for (int i = 0; i < headers.length; i++) {
             Cell cell = headerRow.createCell(i);
             cell.setCellValue(headers[i]);
-
-            CellStyle headerStyle = workbook.createCellStyle();
-            Font font = workbook.createFont();
-            font.setBold(true);
-            headerStyle.setFont(font);
-            headerStyle.setFillForegroundColor(color.getIndex());
-            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
             cell.setCellStyle(headerStyle);
         }
     }
@@ -456,6 +508,10 @@ public class ReportServiceImpl implements ReportService {
     private void autoSizeColumns(Sheet sheet, int columnCount) {
         for (int i = 0; i < columnCount; i++) {
             sheet.autoSizeColumn(i);
+            // Устанавливаем минимальную ширину для колонок
+            if (sheet.getColumnWidth(i) < 3000) {
+                sheet.setColumnWidth(i, 3000);
+            }
         }
     }
 }

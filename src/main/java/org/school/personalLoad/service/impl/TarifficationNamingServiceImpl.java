@@ -28,7 +28,7 @@ public class TarifficationNamingServiceImpl implements TarifficationNamingServic
     // Ожидаемые заголовки столбцов
     private static final String[] EXPECTED_HEADERS = {
             "ФИО педагога", "Корпус", "Предмет", "Класс", "группа",
-            "Название по УП", "схождение 1 есть 0 нет", "Название в МЭШ/тарификации"
+            "Название по УП", "схождение 1 есть 0 нет"
     };
 
     @Override

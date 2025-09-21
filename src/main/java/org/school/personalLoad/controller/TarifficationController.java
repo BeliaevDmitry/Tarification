@@ -7,6 +7,10 @@ import org.school.personalLoad.service.*;
 import org.school.personalLoad.model.TarifficationChanges;
 import org.school.personalLoad.service.impl.*;
 import org.school.personalLoad.model.GroupOrClassInfo;
+import org.school.personalLoad.model.TarifficationChangesMesh; // Добавляем импорт
+import org.school.personalLoad.dao.TarifficationChangesMeshDAO; // Добавляем импорт
+
+
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,6 +27,7 @@ public class TarifficationController {
     private final GroupSearchService groupSearchService;
     private final TarifficationNamingService tarifficationNamingService;
     private final NamingMeshService namingMeshService;
+
 
     public TarifficationController() {
         HibernateConfig.getSessionFactory();
@@ -41,7 +46,7 @@ public class TarifficationController {
     public void processTariffication(String inputPath, String outputPath) {
         try {
             // 1. Обработка NamingMesh из того же файла
-            List<TarifficationChanges> namingMeshChanges = new ArrayList<>();
+            List<TarifficationChangesMesh> namingMeshChanges = new ArrayList<>();
             System.out.println("🔄 Начинаем обработку NamingMesh из файла...");
             namingMeshChanges = namingMeshService.processNamingMeshFile(inputPath);
             System.out.println("✅ Обработка NamingMesh завершена. Найдено изменений: " + namingMeshChanges.size());

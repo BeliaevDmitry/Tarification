@@ -2,10 +2,11 @@ package org.school.personalLoad.service.impl;
 
 import org.apache.poi.ss.usermodel.*;
 import org.school.personalLoad.dao.NamingMeshDAO;
-import org.school.personalLoad.dao.TarifficationChangesDAO;
+import org.school.personalLoad.dao.TarifficationChangesMeshDAO;
+import org.school.personalLoad.dao.impl.TarifficationChangesMeshDAOImpl;
 import org.school.personalLoad.dao.TarifficationPersonDAO;
 import org.school.personalLoad.model.NamingMesh;
-import org.school.personalLoad.model.TarifficationChanges;
+import org.school.personalLoad.model.TarifficationChangesMesh;
 import org.school.personalLoad.service.NamingMeshService;
 
 import java.io.FileInputStream;
@@ -13,24 +14,22 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.*;
 
-import static org.school.personalLoad.model.TarifficationChanges.ChangeType.MESH_MAPPING_CHANGED;
-
-
 public class NamingMeshServiceImpl implements NamingMeshService {
 
     private final NamingMeshDAO namingMeshDAO;
-    private final TarifficationChangesDAO changesDAO;
+    private final TarifficationChangesMeshDAO meshChangesDAO;
     private final TarifficationPersonDAO personDAO;
 
     public NamingMeshServiceImpl() {
         this.namingMeshDAO = new NamingMeshDAO();
-        this.changesDAO = new TarifficationChangesDAO();
+        this.meshChangesDAO = new TarifficationChangesMeshDAOImpl();
         this.personDAO = new TarifficationPersonDAO();
+
     }
 
     @Override
-    public List<TarifficationChanges> processNamingMeshFile(String filePath) {
-        List<TarifficationChanges> changes = new ArrayList<>();
+    public List<TarifficationChangesMesh> processNamingMeshFile(String filePath) {
+        List<TarifficationChangesMesh> changes = new ArrayList<>();
 
         try {
             System.out.println("📖 Начинаем обработку файла naming mesh: " + filePath);
@@ -43,22 +42,27 @@ public class NamingMeshServiceImpl implements NamingMeshService {
             List<NamingMesh> currentNamingMeshes = namingMeshDAO.findAll();
             System.out.println("💾 Текущих записей в БД: " + currentNamingMeshes.size());
 
-            // 3. Сравниваем и находим изменения
+            // 3. Удаляем дубликаты из новых данных
+            newNamingMeshes = removeDuplicates(newNamingMeshes);
+            System.out.println("🧹 После удаления дубликатов: " + newNamingMeshes.size() + " записей");
+
+            // 4. Сравниваем и находим изменения
             changes = compareNamingMeshes(currentNamingMeshes, newNamingMeshes);
 
-            // 4. Сохраняем новые данные
+            // 5. Очищаем старые данные и сохраняем новые
             if (!newNamingMeshes.isEmpty()) {
+                namingMeshDAO.deleteAll(); // Сначала удаляем все старые данные
                 namingMeshDAO.saveAll(newNamingMeshes);
                 System.out.println("💾 Сохранено записей naming mesh: " + newNamingMeshes.size());
             }
 
-            // 5. Сохраняем изменения в историю
+            // 6. Сохраняем изменения в историю МЭШ
             if (!changes.isEmpty()) {
-                changesDAO.saveAll(changes);
-                System.out.println("📝 Сохранено записей изменений: " + changes.size());
+                meshChangesDAO.saveAll(changes);
+                System.out.println("📝 Сохранено записей изменений МЭШ: " + changes.size());
             }
 
-            // 6. Обновляем связи в существующих записях тарификации
+            // 7. Обновляем связи в существующих записях тарификации
             updateNamingMeshRelations();
 
         } catch (Exception e) {
@@ -68,6 +72,109 @@ public class NamingMeshServiceImpl implements NamingMeshService {
         }
 
         return changes;
+    }
+
+    /**
+     * Удаление дубликатов из списка NamingMesh
+     */
+    private List<NamingMesh> removeDuplicates(List<NamingMesh> namingMeshes) {
+        if (namingMeshes == null || namingMeshes.isEmpty()) {
+            return namingMeshes;
+        }
+
+        Map<String, NamingMesh> uniqueMap = new LinkedHashMap<>();
+        for (NamingMesh mesh : namingMeshes) {
+            String key = createNamingMeshKey(mesh);
+            // Сохраняем только первую уникальную запись
+            if (!uniqueMap.containsKey(key)) {
+                uniqueMap.put(key, mesh);
+            } else {
+                System.out.println("⚠️ Обнаружен дубликат: " + key);
+            }
+        }
+
+        return new ArrayList<>(uniqueMap.values());
+    }
+
+    /**
+     * Сравнение старых и новых naming mesh
+     */
+    private List<TarifficationChangesMesh> compareNamingMeshes(List<NamingMesh> current, List<NamingMesh> newMeshes) {
+        List<TarifficationChangesMesh> changes = new ArrayList<>();
+
+        if (newMeshes == null) {
+            return changes;
+        }
+
+        // Создаем мапы для быстрого поиска
+        Map<String, NamingMesh> currentMap = createNamingMeshMap(current);
+        Map<String, NamingMesh> newMap = createNamingMeshMap(newMeshes);
+
+        // 1. Поиск удаленных записей
+        for (NamingMesh currentMesh : current) {
+            String key = createNamingMeshKey(currentMesh);
+            if (!newMap.containsKey(key)) {
+                changes.add(createMeshChangeRecord(currentMesh, null,
+                        TarifficationChangesMesh.MeshChangeType.MESH_MAPPING_REMOVED));
+            }
+        }
+
+        // 2. Поиск добавленных записей
+        for (NamingMesh newMesh : newMeshes) {
+            String key = createNamingMeshKey(newMesh);
+            if (!currentMap.containsKey(key)) {
+                changes.add(createMeshChangeRecord(null, newMesh,
+                        TarifficationChangesMesh.MeshChangeType.MESH_MAPPING_ADDED));
+            }
+        }
+
+        // 3. Поиск измененных записей
+        for (NamingMesh newMesh : newMeshes) {
+            String key = createNamingMeshKey(newMesh);
+            NamingMesh currentMesh = currentMap.get(key);
+
+            if (currentMesh != null && !isMeshEqual(currentMesh, newMesh)) {
+                changes.add(createMeshChangeRecord(currentMesh, newMesh,
+                        TarifficationChangesMesh.MeshChangeType.MESH_MAPPING_MODIFIED));
+            }
+        }
+
+        return changes;
+    }
+
+
+
+    /**
+     * Создание записи об изменении для таблицы МЭШ
+     */
+    private TarifficationChangesMesh createMeshChangeRecord(NamingMesh oldMesh, NamingMesh newMesh,
+                                                            TarifficationChangesMesh.MeshChangeType changeType) {
+        TarifficationChangesMesh meshChange = new TarifficationChangesMesh();
+
+        if (newMesh != null) {
+            // Для добавленных и измененных записей
+            meshChange.setSubjectName(newMesh.getSubjectName());
+            meshChange.setClassName(newMesh.getClassName());
+            meshChange.setOldGroupNameEducationalPlan(oldMesh != null ? oldMesh.getGroupNameEducationalPlan() : "");
+            meshChange.setNewGroupNameEducationalPlan(newMesh.getGroupNameEducationalPlan());
+            meshChange.setOldGroupNameMesh(oldMesh != null ? oldMesh.getGroupNameMesh() : "");
+            meshChange.setNewGroupNameMesh(newMesh.getGroupNameMesh());
+            meshChange.setGroupLoad(0); // Можно установить актуальное значение, если доступно
+        } else if (oldMesh != null) {
+            // Для удаленных записей
+            meshChange.setSubjectName(oldMesh.getSubjectName());
+            meshChange.setClassName(oldMesh.getClassName());
+            meshChange.setOldGroupNameEducationalPlan(oldMesh.getGroupNameEducationalPlan());
+            meshChange.setNewGroupNameEducationalPlan("");
+            meshChange.setOldGroupNameMesh(oldMesh.getGroupNameMesh());
+            meshChange.setNewGroupNameMesh("");
+            meshChange.setGroupLoad(0);
+        }
+
+        meshChange.setMeshChangeType(changeType);
+        meshChange.setChangeDate(LocalDateTime.now());
+
+        return meshChange;
     }
 
     @Override
@@ -128,16 +235,17 @@ public class NamingMeshServiceImpl implements NamingMeshService {
         Optional<NamingMesh> existing = findNamingMesh(subjectName, className, groupNameEducationalPlan);
         if (existing.isPresent()) {
             try {
-                // Используем DAO для удаления
-                namingMeshDAO.delete(existing.get());
+                NamingMesh mesh = existing.get();
 
-                // Создаем запись об изменении
-                TarifficationChanges change = createMeshChangeRecord(
-                        existing.get(),
-                        TarifficationChanges.ChangeType.REMOVED,
-                        "Удалена связь вручную"
+                // Создаем запись об изменении для МЭШ
+                TarifficationChangesMesh meshChange = createMeshChangeRecord(
+                        mesh, null,
+                        TarifficationChangesMesh.MeshChangeType.MESH_MAPPING_REMOVED
                 );
-                changesDAO.saveAll(Collections.singletonList(change));
+                meshChangesDAO.save(meshChange);
+
+                // Удаляем запись
+                namingMeshDAO.delete(mesh);
 
                 // Обновляем связи
                 updateNamingMeshRelations();
@@ -235,8 +343,8 @@ public class NamingMeshServiceImpl implements NamingMeshService {
         if (headerRow != null) {
             for (Cell cell : headerRow) {
                 String cellValue = getCellValueAsString(cell);
-                if (cellValue != null) { // Добавляем проверку на null
-                    cellValue = cellValue.trim(); // Теперь безопасно использовать trim()
+                if (cellValue != null) {
+                    cellValue = cellValue.trim();
                     switch (cellValue) {
                         case "Предмет":
                             indexes.put("subject", cell.getColumnIndex());
@@ -309,53 +417,6 @@ public class NamingMeshServiceImpl implements NamingMeshService {
     }
 
     /**
-     * Сравнение старых и новых naming mesh
-     */
-    private List<TarifficationChanges> compareNamingMeshes(List<NamingMesh> current, List<NamingMesh> newMeshes) {
-        List<TarifficationChanges> changes = new ArrayList<>();
-
-        if (newMeshes == null) {
-            return changes;
-        }
-
-        // Создаем мапы для быстрого поиска
-        Map<String, NamingMesh> currentMap = createNamingMeshMap(current);
-        Map<String, NamingMesh> newMap = createNamingMeshMap(newMeshes);
-
-        // 1. Поиск удаленных записей
-        for (NamingMesh currentMesh : current) {
-            String key = createNamingMeshKey(currentMesh);
-            if (!newMap.containsKey(key)) {
-                changes.add(createMeshChangeRecord(currentMesh,
-                        TarifficationChanges.ChangeType.REMOVED, "Удалена связь"));
-            }
-        }
-
-        // 2. Поиск добавленных записей
-        for (NamingMesh newMesh : newMeshes) {
-            String key = createNamingMeshKey(newMesh);
-            if (!currentMap.containsKey(key)) {
-                changes.add(createMeshChangeRecord(newMesh,
-                        TarifficationChanges.ChangeType.ADDED, "Добавлена новая связь"));
-            }
-        }
-
-        // 3. Поиск измененных записей
-        for (NamingMesh newMesh : newMeshes) {
-            String key = createNamingMeshKey(newMesh);
-            NamingMesh currentMesh = currentMap.get(key);
-
-            if (currentMesh != null && !isMeshEqual(currentMesh, newMesh)) {
-                String changeDescription = buildChangeDescription(currentMesh, newMesh);
-                changes.add(createMeshChangeRecord(newMesh,
-                        MESH_MAPPING_CHANGED, changeDescription));
-            }
-        }
-
-        return changes;
-    }
-
-    /**
      * Создание ключа для NamingMesh
      */
     private String createNamingMeshKey(NamingMesh mesh) {
@@ -381,54 +442,6 @@ public class NamingMeshServiceImpl implements NamingMeshService {
     private boolean isMeshEqual(NamingMesh mesh1, NamingMesh mesh2) {
         return Objects.equals(mesh1.getGroupNameMesh(), mesh2.getGroupNameMesh()) &&
                 Objects.equals(mesh1.getClassNameMesh(), mesh2.getClassNameMesh());
-    }
-
-    /**
-     * Создание записи об изменении
-     */
-    private TarifficationChanges createMeshChangeRecord(NamingMesh mesh,
-                                                        TarifficationChanges.ChangeType changeType,
-                                                        String description) {
-        TarifficationChanges change = new TarifficationChanges();
-        change.setSubjectName(mesh.getSubjectName());
-        change.setClassName(mesh.getClassName());
-        change.setGroupNameEducationalPlan(mesh.getGroupNameEducationalPlan());
-        change.setGroupNameMesh(mesh.getGroupNameMesh());
-        change.setChangeType(changeType);
-        change.setChangeDate(LocalDateTime.now());
-
-        // Добавляем описание в поле FIO (временно)
-        change.setChangeType(MESH_MAPPING_CHANGED);
-
-
-        return change;
-    }
-
-    /**
-     * Построение описания изменений
-     */
-    private String buildChangeDescription(NamingMesh oldMesh, NamingMesh newMesh) {
-        StringBuilder description = new StringBuilder("Изменение связи: ");
-
-        boolean hasChanges = false;
-
-        if (!Objects.equals(oldMesh.getClassNameMesh(), newMesh.getClassNameMesh())) {
-            description.append("Класс МЭШ '").append(oldMesh.getClassNameMesh())
-                    .append("' → '").append(newMesh.getClassNameMesh()).append("'; ");
-            hasChanges = true;
-        }
-
-        if (!Objects.equals(oldMesh.getGroupNameMesh(), newMesh.getGroupNameMesh())) {
-            description.append("Группа МЭШ '").append(oldMesh.getGroupNameMesh())
-                    .append("' → '").append(newMesh.getGroupNameMesh()).append("'");
-            hasChanges = true;
-        }
-
-        if (!hasChanges) {
-            description.append("Неизвестные изменения");
-        }
-
-        return description.toString();
     }
 
     /**
@@ -458,7 +471,6 @@ public class NamingMeshServiceImpl implements NamingMeshService {
                 if (DateUtil.isCellDateFormatted(cell)) {
                     return cell.getDateCellValue().toString();
                 } else {
-                    // Для числовых значений возвращаем целое число
                     double numericValue = cell.getNumericCellValue();
                     if (numericValue == (int) numericValue) {
                         return String.valueOf((int) numericValue);
