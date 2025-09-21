@@ -86,7 +86,7 @@ public class TarifficationController {
             // 9. Создание отчета с передачей информации о классах
             List<String> listGroup = databaseService.findAllUniqueClassAndGroupNames();
             reportService.createReport(tarifficationList, groupList, allHistory, outputPath,
-                    disabledStudentsGroups, classInfo, namingMeshChanges);
+                    disabledStudentsGroups, classInfo, namingMeshChanges,listGroup);
 
             System.out.println("✅ отчёт собран и записан в файл ");
 

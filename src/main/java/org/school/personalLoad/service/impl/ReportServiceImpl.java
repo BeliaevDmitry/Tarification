@@ -23,13 +23,14 @@ public class ReportServiceImpl implements ReportService {
                              String outputPath,
                              Map<String, List<String>> disabledStudentsGroups,
                              Map<String, GroupOrClassInfo> classInfo,
-                             List<TarifficationChangesMesh> meshChanges) throws IOException {
+                             List<TarifficationChangesMesh> meshChanges,
+                             List<String> listGroup) throws IOException {
         try (Workbook workbook = new XSSFWorkbook()) {
-            createTarifficationSheet(workbook, tarifficationList);
-            createGroupsSheet(workbook, subjectWithGroupList);
-            createChangesSheet(workbook, changes);
-            createNamingMeshChangesSheet(workbook, meshChanges); // Новый лист
-            createDisabledStudentsSheet(workbook, disabledStudentsGroups);
+            createTarifficationSheet(workbook, tarifficationList); //вывод тарификации
+            createChangesSheet(workbook, changes); // вывод изменений тарификации
+            createNamingMeshChangesSheet(workbook, meshChanges); //вывод изменений названий в МЭШ
+            createUniqueNamesSheet(workbook, listGroup, classInfo); // вывод всех названий классов из МЭШ и их численность
+            createDisabledStudentsSheet(workbook, disabledStudentsGroups); // вывод по каждому ИНВ/ОВЗ список его классов
 
             try (FileOutputStream fos = new FileOutputStream(outputPath)) {
                 workbook.write(fos);
@@ -337,7 +338,7 @@ public class ReportServiceImpl implements ReportService {
         createMESHClassesSheet(workbook, classInfo);
 
         // ЛИСТ 2: Группы из УП
-        createUPGroupsSheet(workbook, listGroup);
+        //createUPGroupsSheet(workbook, listGroup);
     }
 
     /**
