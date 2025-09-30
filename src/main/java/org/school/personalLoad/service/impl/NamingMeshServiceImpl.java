@@ -6,6 +6,7 @@ import org.school.personalLoad.dao.TarifficationChangesMeshDAO;
 import org.school.personalLoad.dao.impl.TarifficationChangesMeshDAOImpl;
 import org.school.personalLoad.dao.TarifficationPersonDAO;
 import org.school.personalLoad.model.NamingMesh;
+import org.school.personalLoad.model.TarifficationChanges;
 import org.school.personalLoad.model.TarifficationChangesMesh;
 import org.school.personalLoad.service.NamingMeshService;
 
@@ -71,7 +72,7 @@ public class NamingMeshServiceImpl implements NamingMeshService {
             throw new RuntimeException("Ошибка обработки файла naming mesh", e);
         }
 
-        return changes;
+        return meshChangesDAO.findAll();
     }
 
     /**
@@ -199,11 +200,13 @@ public class NamingMeshServiceImpl implements NamingMeshService {
                         TarifficationChangesMesh.MeshChangeType.MESH_MAPPING_MODIFIED));
             }
         }
-
+        sortTarifficationChangesMeshByDate(changes);
         return changes;
     }
 
-
+    public void sortTarifficationChangesMeshByDate(List<TarifficationChangesMesh> compareNamingMeshes) {
+        compareNamingMeshes.sort(Comparator.comparing(TarifficationChangesMesh::getChangeDate));
+    }
 
     /**
      * Создание записи об изменении для таблицы МЭШ

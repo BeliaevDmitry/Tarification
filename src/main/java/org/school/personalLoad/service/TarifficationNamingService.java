@@ -1,5 +1,6 @@
 package org.school.personalLoad.service;
 
+import org.school.personalLoad.model.TarifficationChangesMesh;
 import org.school.personalLoad.model.TarifficationPerson;
 import java.util.List;
 import java.util.Map;
@@ -20,4 +21,5 @@ public interface TarifficationNamingService {
      */
     void applyNamingMapping(List<TarifficationPerson> list,
                             Map<String, String[]> namingMapping);
+
 }

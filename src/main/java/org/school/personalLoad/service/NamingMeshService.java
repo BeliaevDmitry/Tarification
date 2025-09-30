@@ -22,4 +22,6 @@ public interface NamingMeshService {
     boolean hasChanges(List<NamingMesh> newNamingMeshes);
     List<String> getAllUniqueSubjects();
     List<String> getClassesForSubject(String subjectName);
+
+    void sortTarifficationChangesMeshByDate(List<TarifficationChangesMesh> compareNamingMeshes);
 }

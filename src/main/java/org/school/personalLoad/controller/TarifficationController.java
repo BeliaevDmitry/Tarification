@@ -49,6 +49,7 @@ public class TarifficationController {
             List<TarifficationChangesMesh> namingMeshChanges = new ArrayList<>();
             System.out.println("🔄 Начинаем обработку NamingMesh из файла...");
             namingMeshChanges = namingMeshService.processNamingMeshFile(inputPath);
+            namingMeshService.sortTarifficationChangesMeshByDate(namingMeshChanges);
             System.out.println("✅ Обработка NamingMesh завершена. Найдено изменений: " + namingMeshChanges.size());
 
             // 2. Чтение и обработка данных из Excel

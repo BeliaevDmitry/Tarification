@@ -13,7 +13,7 @@ import java.util.regex.Pattern;
 public class TarifficationNamingServiceImpl implements TarifficationNamingService {
 
     private static final Logger logger = LoggerFactory.getLogger(TarifficationNamingServiceImpl.class);
-    private static final Pattern SHEET_NAME_PATTERN = Pattern.compile("Соответствие");
+    private static final Pattern SHEET_NAME_PATTERN = Pattern.compile("Тарификация");
 
     // Индексы колонок (нумерация с 0) и ожидаемые заголовки
     private static final int COL_TEACHER = 0;     // A - ФИО педагога

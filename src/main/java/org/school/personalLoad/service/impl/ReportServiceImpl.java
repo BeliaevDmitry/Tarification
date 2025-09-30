@@ -52,10 +52,11 @@ public class ReportServiceImpl implements ReportService {
 
         Row headerRow = sheet.createRow(0);
         String[] headers = {
-                "ID изменения", "ФИО педагога", "Предмет", "Класс",
+                "Дата изменения", "Краткое описание",
+                "Предмет", "Класс",
                 "Группа УП (старая)", "Группа УП (новая)",
                 "Группа МЭШ (старая)", "Группа МЭШ (новая)",
-                "Нагрузка группы", "Тип изменения", "Дата изменения", "Краткое описание"
+                "Тип изменения"
         };
 
         createHeaderRow(headerRow, headers, workbook, IndexedColors.LIGHT_CORNFLOWER_BLUE);
@@ -81,19 +82,17 @@ public class ReportServiceImpl implements ReportService {
                 case MESH_MAPPING_MODIFIED -> mappingModifiedCount++;
             }
 
-            row.createCell(0).setCellValue(change.getId() != null ? change.getId() : 0);
-            row.createCell(1).setCellValue(change.getFioTeacher() != null ? change.getFioTeacher() : "");
+
             row.createCell(2).setCellValue(change.getSubjectName() != null ? change.getSubjectName() : "");
             row.createCell(3).setCellValue(change.getClassName() != null ? change.getClassName() : "");
             row.createCell(4).setCellValue(change.getOldGroupNameEducationalPlan() != null ? change.getOldGroupNameEducationalPlan() : "");
             row.createCell(5).setCellValue(change.getNewGroupNameEducationalPlan() != null ? change.getNewGroupNameEducationalPlan() : "");
             row.createCell(6).setCellValue(change.getOldGroupNameMesh() != null ? change.getOldGroupNameMesh() : "");
             row.createCell(7).setCellValue(change.getNewGroupNameMesh() != null ? change.getNewGroupNameMesh() : "");
-            row.createCell(8).setCellValue(change.getGroupLoad() != null ? change.getGroupLoad() : 0);
-            row.createCell(9).setCellValue(change.getMeshChangeTypeRussian());
-            row.createCell(10).setCellValue(change.getChangeDate() != null ?
+            row.createCell(8).setCellValue(change.getMeshChangeTypeRussian());
+            row.createCell(0).setCellValue(change.getChangeDate() != null ?
                     change.getChangeDate().format(dateFormatter) : "");
-            row.createCell(11).setCellValue(change.getChangeSummary());
+            row.createCell(1).setCellValue(change.getChangeSummary());
         }
 
         // Добавляем строки с итогами
@@ -262,7 +261,7 @@ public class ReportServiceImpl implements ReportService {
 
         Row headerRow = sheet.createRow(0);
         String[] headers = {"ФИО педагога", "Корпус", "Предмет", "Класс по УП", "Группа по УП",
-                 "Класс по МЭШ", "Группа по МЭШ", "Количество часов в группе", };
+                "Класс по МЭШ", "Группа по МЭШ", "Количество часов в группе",};
 
         createHeaderRow(headerRow, headers, workbook, IndexedColors.GREY_25_PERCENT);
 
