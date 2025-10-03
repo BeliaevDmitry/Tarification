@@ -1,6 +1,7 @@
 package org.school.personalLoad.service.impl;
 
 import org.apache.poi.ss.usermodel.*;
+import org.school.personalLoad.config.AppConfig;
 import org.school.personalLoad.model.SubjectWithGroup;
 import org.school.personalLoad.model.TarifficationPerson;
 import org.school.personalLoad.service.TarifficationDataReaderService;
@@ -100,8 +101,8 @@ public class TarifficationDataReaderServiceImpl implements TarifficationDataRead
             default:
                 // Если педагог в списке исключений - пропускаем
 
-                if (EXCLUDED_TEACHERS.contains(fioTeacher.trim())) {
-                    return true;
+                if (AppConfig.EXCLUDED_TEACHERS.contains(fioTeacher.trim())) {
+                    return false;
                 }
                 // Для остальных проверяем окончание на КРО
                 return subjectName.endsWith("КРО");
