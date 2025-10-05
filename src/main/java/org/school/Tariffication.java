@@ -16,7 +16,8 @@ public class Tariffication {
             // Скачиваем файл
             String inputPath = downloadService.downloadFile(
                     AppConfig.TARIFFICATION_SHEETS_URL,
-                    AppConfig.TARIFFICATION_FILE_NAME
+                    AppConfig.TARIFFICATION_FILE_NAME,
+                    AppConfig.DOWNLOAD_DIRECTORY
             );
 
             // Обрабатываем данные
