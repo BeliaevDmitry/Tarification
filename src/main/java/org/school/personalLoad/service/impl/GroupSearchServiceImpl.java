@@ -75,7 +75,8 @@ public class GroupSearchServiceImpl implements GroupSearchService {
         if (className == null || className.isEmpty()) return;
 
         // Получаем ФИО преподавателя из ячейки U43
-        String teacherName = getCellValueAsString(sheet.getRow(42) == null ? null : sheet.getRow(42).getCell(20));
+        String teacherNameDirty = getCellValueAsString(sheet.getRow(42) == null ? null : sheet.getRow(42).getCell(20));
+        String teacherName = extractTeacherName(teacherNameDirty); // очищаем ФИО от лишнего
 
         // Подсчитываем численность класса (столбец B, начиная со 2 строки, максимум 40)
         int studentCount = 0;
@@ -97,7 +98,34 @@ public class GroupSearchServiceImpl implements GroupSearchService {
             classInfo.put(className, new GroupOrClassInfo(className, studentCount, teacherName));
         }
     }
+    private String extractTeacherName(String rawTeacherInfo) {
+        if (rawTeacherInfo == null || rawTeacherInfo.isEmpty()) {
+            return "";
+        }
 
+        // Убираем "Учитель:" в начале
+        String cleaned = rawTeacherInfo.replaceFirst("^Учитель:\\s*", "").trim();
+
+        // Ищем позицию первой даты (формат DD.MM.YYYY)
+        for (int i = 0; i < cleaned.length() - 9; i++) {
+            if (Character.isDigit(cleaned.charAt(i)) &&
+                    Character.isDigit(cleaned.charAt(i + 1)) &&
+                    cleaned.charAt(i + 2) == '.' &&
+                    Character.isDigit(cleaned.charAt(i + 3)) &&
+                    Character.isDigit(cleaned.charAt(i + 4)) &&
+                    cleaned.charAt(i + 5) == '.' &&
+                    Character.isDigit(cleaned.charAt(i + 6)) &&
+                    Character.isDigit(cleaned.charAt(i + 7)) &&
+                    Character.isDigit(cleaned.charAt(i + 8)) &&
+                    Character.isDigit(cleaned.charAt(i + 9))) {
+
+                // Обрезаем до начала даты
+                return cleaned.substring(0, i).trim();
+            }
+        }
+
+        return cleaned;
+    }
 
     private List<String> readDisabledStudents(String onlineFilePath) throws Exception {
         List<String> students = new ArrayList<>();
@@ -112,7 +140,7 @@ public class GroupSearchServiceImpl implements GroupSearchService {
                 Row row = sheet.getRow(i);
                 if (row == null) continue;
 
-                Cell cell = row.getCell(11); // Столбец L
+                Cell cell = row.getCell(15); // Столбец P
                 if (cell != null) {
                     String name = getCellValueAsString(cell).trim();
                     if (!name.isEmpty()) students.add(name);

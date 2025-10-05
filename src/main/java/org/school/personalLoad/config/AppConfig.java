@@ -1,5 +1,7 @@
 package org.school.personalLoad.config;
 
+import java.util.Set;
+
 public class AppConfig {
     // Google Sheets URLs
     public static final String TARIFFICATION_SHEETS_URL =
@@ -44,4 +46,11 @@ public class AppConfig {
     public static String getOfflineFilesPath() {
         return OFFLINE_FILES_DIRECTORY;
     }
+
+    // список исключений для тарификации
+    public static Set<String> EXCLUDED_TEACHERS = Set.of(
+            "Сухомлинова Вера Борисовна"
+
+
+    );
 }

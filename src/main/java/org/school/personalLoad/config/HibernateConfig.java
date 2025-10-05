@@ -6,8 +6,10 @@ import org.hibernate.boot.MetadataSources;
 import org.hibernate.boot.registry.StandardServiceRegistry;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.cfg.Environment;
+import org.school.personalLoad.model.NamingMesh;
 import org.school.personalLoad.model.TarifficationChanges;
 
+import org.school.personalLoad.model.TarifficationChangesMesh;
 import org.school.personalLoad.model.TarifficationPerson;
 
 import java.util.HashMap;
@@ -38,7 +40,9 @@ public class HibernateConfig {
                 StandardServiceRegistry registry = registryBuilder.build();
                 MetadataSources sources = new MetadataSources(registry)
                         .addAnnotatedClass(TarifficationPerson.class)
-                        .addAnnotatedClass(TarifficationChanges.class);
+                        .addAnnotatedClass(TarifficationChanges.class)
+                        .addAnnotatedClass(NamingMesh.class) // Добавьте эту строку
+                        .addAnnotatedClass(TarifficationChangesMesh.class);
 
                 Metadata metadata = sources.getMetadataBuilder().build();
                 sessionFactory = metadata.getSessionFactoryBuilder().build();

@@ -2,8 +2,10 @@ package org.school.personalLoad.service.impl;
 
 import org.school.personalLoad.dao.TarifficationPersonDAO;
 import org.school.personalLoad.dao.TarifficationChangesDAO;
+import org.school.personalLoad.dao.NamingMeshDAO;
 import org.school.personalLoad.model.TarifficationChanges;
 import org.school.personalLoad.model.TarifficationPerson;
+import org.school.personalLoad.model.NamingMesh;
 import org.school.personalLoad.config.DatabaseConfig;
 import org.school.personalLoad.service.DatabaseService;
 
@@ -14,11 +16,13 @@ import java.util.stream.Collectors;
 public class DatabaseServiceImpl implements DatabaseService {
 
     private final TarifficationPersonDAO currentDAO;
-    private final TarifficationChangesDAO ChangesDAO;
+    private final TarifficationChangesDAO changesDAO;
+    private final NamingMeshDAO namingMeshDAO;
 
     public DatabaseServiceImpl() {
         this.currentDAO = new TarifficationPersonDAO();
-        this.ChangesDAO = new TarifficationChangesDAO();
+        this.changesDAO = new TarifficationChangesDAO();
+        this.namingMeshDAO = new NamingMeshDAO();
 
         if (DatabaseConfig.CLEAR_HISTORY_ON_START) {
             System.out.println("🗑️ История очищена по запросу (CLEAR_HISTORY_ON_START = true)");
@@ -29,23 +33,39 @@ public class DatabaseServiceImpl implements DatabaseService {
     /**
      * Основной метод: сравнивает и сохраняет данные
      */
-    public void compareAndSave(List<TarifficationPerson> newTariffication) {
+    public void compareAndSave(List<TarifficationPerson> newTariffication, List<NamingMesh> namingMeshes) {
         System.out.println("🔄 Начало сравнения и сохранения данных...");
 
-        // 1. Сначала сравниваем с предыдущей версией
+        // 1. Сохраняем naming mesh если предоставлен
+        if (namingMeshes != null && !namingMeshes.isEmpty()) {
+            namingMeshDAO.saveAll(namingMeshes);
+            System.out.println("💾 Сохранено записей в naming mesh: " + namingMeshes.size());
+        }
+
+        // 2. Сначала сравниваем с предыдущей версией
         List<TarifficationChanges> changes = compareWithHistory(newTariffication);
 
-        // 2. Сохраняем изменения в историю (если включено)
+        // 3. Сохраняем изменения в историю (если включено)
         if (!changes.isEmpty() && DatabaseConfig.KEEP_HISTORY) {
-            ChangesDAO.saveAll(changes);
-            System.out.println("💾 Изменения тарификации сохранены в историю и содержат : "
+            changesDAO.saveAll(changes);
+            System.out.println("💾 Изменения тарификации сохранены в историю и содержат: "
                     + changes.size() + " записей");
         }
 
-        // 3. Сохраняем новую версию тарификации
+        // 4. Сохраняем новую версию тарификации
         saveCurrentTariffication(newTariffication);
 
+        // 5. Обновляем связи с naming mesh
+        currentDAO.updateAllNamingMeshRelations();
+
         System.out.println("✅ Новая тарификация сохранена в базу данных");
+    }
+
+    /**
+     * Перегруженный метод для обратной совместимости
+     */
+    public void compareAndSave(List<TarifficationPerson> newTariffication) {
+        compareAndSave(newTariffication, null);
     }
 
     /**
@@ -58,17 +78,12 @@ public class DatabaseServiceImpl implements DatabaseService {
         System.out.println("📊 Начинаем сравнивать! в БД хранится " + oldTariffications.size()
                 + " записей, в новой тарификации хранится " + newTariffication.size() + " записей");
 
-
         if (oldTariffications.isEmpty()) {
-            // Первая загрузка - все записи новые
-
             System.out.println("⭐ Первая загрузка: " + newTariffication.size() +
                     " записей, изменений не найдено (история пуста)");
         } else {
-            // Сравниваем с историей
             findChangesComparedToHistory(oldTariffications, newTariffication, allChanges);
             System.out.println("📈 Найдено изменений: " + allChanges.size());
-
         }
 
         return allChanges;
@@ -76,21 +91,20 @@ public class DatabaseServiceImpl implements DatabaseService {
 
     // Дополнительные методы для работы с историей
     public List<TarifficationChanges> getAllHistory() {
-        return ChangesDAO.findAll();
+        return changesDAO.findAll();
     }
 
     public void saveCurrentTariffication(List<TarifficationPerson> tarifficationList) {
-
         currentDAO.saveAll(tarifficationList);
         System.out.println("💾 Сохранено записей в базу данных: " + tarifficationList.size());
     }
 
     public void fullReset() {
-        ChangesDAO.deleteAllHistory();
+        changesDAO.deleteAllHistory();
         currentDAO.deleteAll();
-        System.out.println("✅ Полный сброс: история и текущая тарификация очищены");
+        namingMeshDAO.deleteAll();
+        System.out.println("✅ Полный сброс: история, текущая тарификация и naming mesh очищены");
     }
-
 
     public List<TarifficationPerson> findAllByFieldsHistory(String subject, String className, String NumberSchoolBuilding) {
         List<TarifficationPerson> oldTariffications = currentDAO.findAll();
@@ -100,32 +114,55 @@ public class DatabaseServiceImpl implements DatabaseService {
                 .collect(Collectors.toList());
     }
 
-
     public List<String> findAllUniqueClassAndGroupNames() {
         List<TarifficationPerson> allPersons = currentDAO.findAll();
-
-        // Используем Set для автоматического обеспечения уникальности
         Set<String> uniqueNames = new HashSet<>();
 
         for (TarifficationPerson person : allPersons) {
-            // Добавляем className (если не null и не пустой)
             if (person.getClassName() != null && !person.getClassName().trim().isEmpty()) {
                 uniqueNames.add(person.getClassName().trim());
             }
-
-            // Добавляем groupName (если не null и не пустой)
             if (person.getGroupNameEducationalPlan() != null && !person.getGroupNameEducationalPlan().trim().isEmpty()) {
                 uniqueNames.add(person.getGroupNameEducationalPlan().trim());
             }
         }
 
-        // Преобразуем Set в отсортированный List
         List<String> result = new ArrayList<>(uniqueNames);
         Collections.sort(result);
-
         return result;
     }
 
+    /**
+     * Новые методы для работы с NamingMesh
+     */
+    public List<NamingMesh> getAllNamingMeshes() {
+        return namingMeshDAO.findAll();
+    }
+
+    public void saveNamingMeshes(List<NamingMesh> namingMeshes) {
+        namingMeshDAO.saveAll(namingMeshes);
+        System.out.println("💾 Сохранено записей в naming mesh: " + namingMeshes.size());
+
+        // Обновляем связи после сохранения новых mesh
+        currentDAO.updateAllNamingMeshRelations();
+    }
+
+    public Optional<NamingMesh> findNamingMesh(String subjectName, String className, String groupNameEducationalPlan) {
+        return namingMeshDAO.findById(subjectName, className, groupNameEducationalPlan);
+    }
+
+    public List<TarifficationPerson> findAllPersonsWithMesh() {
+        return currentDAO.findAll();
+    }
+
+    public List<TarifficationPerson> findPersonsByTeacherWithMesh(String fioTeacher) {
+        return currentDAO.findByTeacher(fioTeacher);
+    }
+
+    public void updateNamingMeshRelations() {
+        currentDAO.updateAllNamingMeshRelations();
+        System.out.println("🔗 Обновлены связи с naming mesh");
+    }
 
     private TarifficationChanges createHistoryRecord(TarifficationPerson current,
                                                      TarifficationChanges.ChangeType changeType) {
@@ -142,47 +179,38 @@ public class DatabaseServiceImpl implements DatabaseService {
         return history;
     }
 
-    /**
-     * Находим изменения по сравнению со старой тарификацией
-     */
     private void findChangesComparedToHistory(List<TarifficationPerson> oldTariffications,
                                               List<TarifficationPerson> newTariffication,
                                               List<TarifficationChanges> changes) {
 
-
-        // 1. Создаём мапы для быстрого поиска
         Map<String, TarifficationPerson> historyMap = createPersonMap(oldTariffications);
         Map<String, TarifficationPerson> newMap = createPersonMap(newTariffication);
 
-        // 2. Добавляем все удаления
+        // Добавляем удаления
         for (Map.Entry<String, TarifficationPerson> entry : historyMap.entrySet()) {
             String key = entry.getKey();
             if (!newMap.containsKey(key)) {
-                // Запись удалена
-                TarifficationPerson deletedRecord = entry.getValue();
-                changes.add(createHistoryRecord(deletedRecord,
+                changes.add(createHistoryRecord(entry.getValue(),
                         TarifficationChanges.ChangeType.REMOVED));
             }
         }
 
-        // 3. Проверяем добавленные записи - есть в новых данных, но нет в истории
+        // Проверяем добавленные записи
         for (Map.Entry<String, TarifficationPerson> entry : newMap.entrySet()) {
             String key = entry.getKey();
             if (!historyMap.containsKey(key)) {
-                // Запись добавлена - создаем историческую запись из CurrentTariffication
-                TarifficationPerson newPerson = entry.getValue();
-                changes.add(createHistoryRecord(newPerson, TarifficationChanges.ChangeType.ADDED));
+                changes.add(createHistoryRecord(entry.getValue(),
+                        TarifficationChanges.ChangeType.ADDED));
             }
         }
 
-        // 4. Проверяем измененные записи - ключи совпадают, но поля load или groupLoad изменились
+        // Проверяем измененные записи
         for (Map.Entry<String, TarifficationPerson> entry : newMap.entrySet()) {
             String key = entry.getKey();
             if (historyMap.containsKey(key)) {
                 TarifficationPerson newPerson = entry.getValue();
-                TarifficationPerson oldPerson = historyMap.get(key); // ← Исправлено!
+                TarifficationPerson oldPerson = historyMap.get(key);
 
-                // Сравниваем поля load и groupLoad
                 boolean loadChanged = !Objects.equals(newPerson.getLoad(), oldPerson.getLoad());
                 boolean groupLoadChanged = !Objects.equals(
                         newPerson.getGroupLoad() != null ? newPerson.getGroupLoad() : 0,
@@ -190,7 +218,6 @@ public class DatabaseServiceImpl implements DatabaseService {
                 );
 
                 if (loadChanged || groupLoadChanged) {
-                    // Запись изменена
                     changes.add(createHistoryRecord(newPerson,
                             TarifficationChanges.ChangeType.MODIFIED));
                 }
@@ -198,7 +225,6 @@ public class DatabaseServiceImpl implements DatabaseService {
         }
     }
 
-    // Вспомогательные методы
     private Map<String, TarifficationPerson> createPersonMap(List<TarifficationPerson> persons) {
         Map<String, TarifficationPerson> map = new HashMap<>();
         for (TarifficationPerson person : persons) {
@@ -206,7 +232,6 @@ public class DatabaseServiceImpl implements DatabaseService {
         }
         return map;
     }
-
 
     private String createKey(TarifficationPerson person) {
         return createKey(person.getFioTeacher(), person.getNumberSchoolBuilding(),
@@ -225,5 +250,4 @@ public class DatabaseServiceImpl implements DatabaseService {
         if (str == null) return "";
         return str.trim().toLowerCase();
     }
-
 }

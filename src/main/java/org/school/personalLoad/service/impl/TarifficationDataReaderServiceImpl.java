@@ -11,6 +11,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.school.personalLoad.config.AppConfig.EXCLUDED_TEACHERS;
+
 public class TarifficationDataReaderServiceImpl implements TarifficationDataReaderService { //
 
     private FormulaEvaluator formulaEvaluator;
@@ -96,6 +98,12 @@ public class TarifficationDataReaderServiceImpl implements TarifficationDataRead
             case "системный":
                 return true;
             default:
+                // Если педагог в списке исключений - пропускаем
+
+                if (EXCLUDED_TEACHERS.contains(fioTeacher.trim())) {
+                    return true;
+                }
+                // Для остальных проверяем окончание на КРО
                 return subjectName.endsWith("КРО");
         }
     }

@@ -6,7 +6,7 @@ import javax.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "\"tariffication_changes\"") //
+@Table(name = "\"tariffication_changes\"")
 @Data
 public class TarifficationChanges {
     @Id
@@ -31,7 +31,8 @@ public class TarifficationChanges {
     public enum ChangeType {
         ADDED("ДОБАВЛЕНО"),
         REMOVED("УДАЛЕНО"),
-        MODIFIED("ИЗМЕНЕНО");
+        MODIFIED("ИЗМЕНЕНО"),
+        MESH_MAPPING_CHANGED("ИЗМЕНЕНИЕ СВЯЗИ УП С МЭШ");
 
         private final String russianName;
 
@@ -49,7 +50,17 @@ public class TarifficationChanges {
         }
     }
 
+    /**
+     * Метод для получения русского названия типа изменения
+     */
     public String getChangeTypeRussian() {
-        return changeType.getRussianName();
+        return changeType != null ? changeType.getRussianName() : "";
+    }
+
+    /**
+     * Метод для получения описания изменения (используется для naming mesh)
+     */
+    public String getChangeDescription() {
+        return fioTeacher != null ? fioTeacher : "";
     }
 }
