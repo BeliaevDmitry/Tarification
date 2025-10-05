@@ -1,9 +1,6 @@
 package org.school.personalLoad.service;
 
-import org.school.personalLoad.model.GroupOrClassInfo;
-import org.school.personalLoad.model.TarifficationChanges;
-import org.school.personalLoad.model.SubjectWithGroup;
-import org.school.personalLoad.model.TarifficationPerson;
+import org.school.personalLoad.model.*;
 
 import java.io.IOException;
 import java.util.List;
@@ -21,7 +18,6 @@ public interface ReportService {
      * @param subjectWithGroupList список предметов с группами
      * @param changes история изменений тарификации
      * @param outputPath путь для сохранения файла отчета
-     * @param listGroup список уникальных названий групп/классов
      * @param disabledStudentsGroups карта групп для студентов-инвалидов
      * @param classInfo информация о классах из журналов
      * @throws IOException если произошла ошибка при создании файла
@@ -30,7 +26,8 @@ public interface ReportService {
                       List<SubjectWithGroup> subjectWithGroupList,
                       List<TarifficationChanges> changes,
                       String outputPath,
-                      List<String> listGroup,
                       Map<String, List<String>> disabledStudentsGroups,
-                      Map<String, GroupOrClassInfo> classInfo) throws IOException;
+                      Map<String, GroupOrClassInfo> classInfo,
+                      List<TarifficationChangesMesh> meshChanges,
+                      List<String> listGroup) throws IOException;
 }

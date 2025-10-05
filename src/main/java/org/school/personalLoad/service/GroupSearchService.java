@@ -1,7 +1,6 @@
 package org.school.personalLoad.service;
 
 import org.school.personalLoad.model.GroupOrClassInfo;
-import org.school.personalLoad.service.impl.GroupSearchServiceImpl;
 
 import java.util.List;
 import java.util.Map;
@@ -20,7 +19,9 @@ public interface GroupSearchService {
      * @throws Exception если произошла ошибка при обработке файлов
      */
     Map<String, List<String>> findGroupsForDisabledStudents(String onlineFilePath,
-                                                            String offlineFolderPath) throws Exception;
+                                                            String offlineFolderPath,
+                                                            String expelledFilePath) throws Exception;
+
 
     /**
      * Собирает информацию о классах, численности и преподавателях из офлайн файлов
@@ -29,5 +30,5 @@ public interface GroupSearchService {
      * @return карта с информацией о классах
      * @throws Exception если произошла ошибка при обработке файлов
      */
-    Map<String, GroupOrClassInfo> collectClassInfo(String offlineFolderPath) throws Exception;
+    Map<String, GroupOrClassInfo> collectClassInfo(String offlineFolderPath,String expelledFilePath) throws Exception;
 }
