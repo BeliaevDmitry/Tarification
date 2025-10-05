@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import static org.school.personalLoad.config.AppConfig.getExpelledFilePath;
 import static org.school.personalLoad.config.AppConfig.getOfflineFilesPath;
 
 public class TarifficationController {
@@ -77,11 +78,13 @@ public class TarifficationController {
 
             // 7. Поиск групп для инвалидов
             Map<String, List<String>> disabledStudentsGroups =
-                    groupSearchService.findGroupsForDisabledStudents(inputPath, getOfflineFilesPath());
+                    groupSearchService.findGroupsForDisabledStudents(inputPath,
+                            getOfflineFilesPath(),getExpelledFilePath());
             System.out.println("✅ Найдено групп для инвалидов: " + disabledStudentsGroups.size() + " обучающихся");
 
             // 8. Собираем информацию о классах, численности и преподавателях
-            Map<String, GroupOrClassInfo> classInfo = groupSearchService.collectClassInfo(getOfflineFilesPath());
+            Map<String, GroupOrClassInfo> classInfo =
+                    groupSearchService.collectClassInfo(getOfflineFilesPath(),getExpelledFilePath());
             System.out.println("✅ Собрана информация о " + classInfo.size() + " классах");
 
             // 9. Создание отчета с передачей информации о классах
