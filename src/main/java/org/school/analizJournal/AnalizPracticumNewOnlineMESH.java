@@ -264,7 +264,7 @@ public class AnalizPracticumNewOnlineMESH {
             if (row == null) continue;
 
             String lastName = getCellValue(row, 0, evaluator);
-            String practicumGroup = getCellValue(row, 5, evaluator);
+            String practicumGroup = getCellValue(row, 6, evaluator);
             String studentClass = getCellValue(row, 1, evaluator);
 
             if (practicumGroup == null || practicumGroup.trim().isEmpty() || "0".equals(practicumGroup.trim())) continue;
