@@ -1,6 +1,7 @@
 package org.school.analizJournal;
 
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.school.analizJournal.config.JournalConfig;
@@ -23,11 +24,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
 
+import static org.school.analizJournal.config.JournalConfig.OUTPUT_DIRECTORY_PR;
+import static org.school.analizJournal.config.JournalConfig.PRACTICUM_OUTPUT;
+
 public class AnalizPracticumNewOnlineMESH {
 
     public static void main(String[] args) {
         try {
-            String outputFilePath = AppConfig.getPracticumOutputPath();
+            String outputFilePath = OUTPUT_DIRECTORY_PR+PRACTICUM_OUTPUT;
 
             // Скачиваем файлы из МЭШ с авторизацией
             List<String> practicumFilePaths = downloadMosRuFiles();
@@ -72,7 +76,7 @@ public class AnalizPracticumNewOnlineMESH {
         String mainFile = tryDownloadFile(mainUrl, mainFilePath, cookie);
         downloadedFiles.add(mainFile);
 
-        // 2. Дополнительные файлы
+        //2. Дополнительные файлы
         for (int i = 0; i < JournalConfig.MESH_ADDITIONAL_GROUP_IDS.length; i++) {
             System.out.println("Скачиваю дополнительный файл " + (i + 1) + "...");
             try {
@@ -267,7 +271,14 @@ public class AnalizPracticumNewOnlineMESH {
             String practicumGroup = getCellValue(row, 6, evaluator);
             String studentClass = getCellValue(row, 1, evaluator);
 
-            if (practicumGroup == null || practicumGroup.trim().isEmpty() || "0".equals(practicumGroup.trim())) continue;
+            // Пропускаем строки с пустыми, нулевыми значениями
+            if (practicumGroup == null ||
+                    practicumGroup.trim().isEmpty() ||
+                    "0".equals(practicumGroup.trim()) ||
+                    "группа практикума".equals(practicumGroup.trim()) ) {
+                continue;
+            }
+
 
             String processedGroup = processGroupName(practicumGroup);
             if (lastName != null && !lastName.trim().isEmpty()) {
@@ -302,10 +313,10 @@ public class AnalizPracticumNewOnlineMESH {
                                                Map<String, String> classByLastNameMap,
                                                String outputPath) throws IOException {
         Workbook outputWorkbook = new XSSFWorkbook();
-        Sheet comparisonSheet = outputWorkbook.createSheet("Сравнение");
+        Sheet comparisonSheet = outputWorkbook.createSheet("выгрузка МЭШ");
         createComparisonSheet(comparisonSheet, practicumStudents, mainStudentsMap, classByLastNameMap);
 
-        Sheet mainDataSheet = outputWorkbook.createSheet("Основные данные");
+        Sheet mainDataSheet = outputWorkbook.createSheet("Выгрузка таблицы ЕГЭ 2026");
         createMainDataSheet(mainDataSheet, mainStudents, practicumStudents);
 
         // Добавляем лист с информацией о файлах
@@ -343,7 +354,7 @@ public class AnalizPracticumNewOnlineMESH {
         headerRow.createCell(0).setCellValue("ФИО");
         headerRow.createCell(1).setCellValue("Класс");
         headerRow.createCell(2).setCellValue("Группа практикума");
-        headerRow.createCell(3).setCellValue("Наличие в основном списке");
+        headerRow.createCell(3).setCellValue("Наличие в таблице ЕГЭ");
 
         CellStyle errorStyle = sheet.getWorkbook().createCellStyle();
         errorStyle.setFillForegroundColor(IndexedColors.RED.getIndex());
@@ -367,6 +378,12 @@ public class AnalizPracticumNewOnlineMESH {
             if (!existsInMain) statusCell.setCellStyle(errorStyle);
         }
 
+        // Включаем автофильтр - пользователь сможет легко отфильтровать вручную
+        sheet.setAutoFilter(new CellRangeAddress(0, rowNum - 1, 0, 3));
+
+        // Сортируем так, чтобы ошибки были вверху (опционально)
+        sheet.createFreezePane(0, 1); // Замораживаем заголовок
+
         for (int i = 0; i < 4; i++) sheet.autoSizeColumn(i);
     }
 
@@ -375,7 +392,7 @@ public class AnalizPracticumNewOnlineMESH {
         headerRow.createCell(0).setCellValue("Класс");
         headerRow.createCell(1).setCellValue("ФИО");
         headerRow.createCell(2).setCellValue("Группа практикума");
-        headerRow.createCell(3).setCellValue("Совпадение с практикумом");
+        headerRow.createCell(3).setCellValue("Совпадение с наличием в МЭШ");
 
         Map<String, Boolean> practicumMap = new HashMap<>();
         for (Student student : practicumStudents) {
@@ -404,6 +421,12 @@ public class AnalizPracticumNewOnlineMESH {
 
             if (!hasMatch) matchCell.setCellStyle(warningStyle);
         }
+
+        // Включаем автофильтр для всей таблицы
+        sheet.setAutoFilter(new CellRangeAddress(0, rowNum - 1, 0, 3));
+
+        // Замораживаем заголовок для удобства прокрутки
+        sheet.createFreezePane(0, 1);
 
         for (int i = 0; i < 4; i++) sheet.autoSizeColumn(i);
     }
@@ -435,7 +458,7 @@ public class AnalizPracticumNewOnlineMESH {
     }
 
     private static void processColumnB(Sheet sheet, String groupName, List<Student> students, FormulaEvaluator evaluator) {
-        for (int rowNum = 2; rowNum <= sheet.getLastRowNum(); rowNum++) {
+        for (int rowNum = 1; rowNum <= 45; rowNum++) {
             Row row = sheet.getRow(rowNum);
             if (row == null) continue;
 

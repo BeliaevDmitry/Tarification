@@ -13,13 +13,16 @@ public class JournalConfig {
             "12015950", "12015994", "12016050", "12018248", "12016533", "12016475",
             "12012769", "12012808", "12012792", "12013410", "12013560", "12013562",
             "12013338", "12013454", "12020969", "12020896", "12021067", "12021052",
-            "12014448", "12014456", "12014599", "12014626", "12014640", "12014708",
-            "12014713", "12014731", "12094222", "12015276", "12015231", "12015489", "12094228"
+            "12014448", "12014456", "12014553", "12014599", "12014626", "12014640",
+            "12014708", "12014713", "12014731", "12094222", "12015276", "12015231",
+            "12015489", "12094228"
     };
 
+
     public static final String[] MESH_ADDITIONAL_GROUP_IDS = {
-            "12017068", "12015933", "12014553", "12013377"
+            "12017068", "12015933",  "12013377"
     };
+
 
     // Имена файлов
     public static final String MESH_MAIN_FILE = "mos_ru_journal_main.xlsx";
@@ -27,7 +30,8 @@ public class JournalConfig {
 
     // Cookie файл
     public static final String COOKIE_FILE_PATH = "C:\\Users\\dimah\\Downloads\\mos_ru_cookie.txt";
-
+    public static final String OUTPUT_DIRECTORY_PR =   "C:\\Users\\dimah\\Yandex.Disk\\1811\\для программ\\";
+    public static final String PRACTICUM_OUTPUT = "контингент практикумы.xlsx";
     // Настройки подключения
     public static final int CONNECTION_TIMEOUT = 30000;
     public static final int READ_TIMEOUT = 30000;
@@ -43,8 +47,7 @@ public class JournalConfig {
     }
 
     public static String getAdditionalMeshUrl(String groupId) {
-        return MESH_JOURNAL_EXPORT_URL + "?group_ids=" + groupId +
-                "&extended=false&start_at=2025-09-01T00:00:00.000Z&stop_at=2025-10-03T00:00:00.000Z";
+        return MESH_JOURNAL_EXPORT_URL + "?group_ids=" + groupId;
     }
 
     public static String getMeshFilePath(String fileName) {
