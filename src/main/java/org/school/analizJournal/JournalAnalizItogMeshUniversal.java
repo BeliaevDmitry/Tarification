@@ -25,21 +25,22 @@ public class JournalAnalizItogMeshUniversal {
         String folderPath;
         String excludedStudentsFile;
         String outputPath;
+        String averageScoresFolder;
 
         switch (schoolChoice) {
             case 1:
-                // Пути для школы 1811
                 folderPath = "C:\\Users\\dimah\\Yandex.Disk\\1811\\для программ\\Анализ журнала\\20251206";
                 excludedStudentsFile = "C:\\Users\\dimah\\Yandex.Disk\\1811\\для программ\\Анализ журнала\\Учащиеся. Только отчисленные. (5).xlsx";
                 outputPath = "C:\\Users\\dimah\\Yandex.Disk\\1811\\для программ\\Анализ журнала\\результат_анализа_МЭШ.xlsx";
+                averageScoresFolder = "C:\\Users\\dimah\\Yandex.Disk\\1811\\для программ\\Анализ журнала\\средние баллы";
                 System.out.println("Выбрана школа 1811");
                 break;
 
             case 2:
-                // Пути для школы 7
                 folderPath = "C:\\Users\\dimah\\Yandex.Disk\\ГБОУ 7\\Анализ журнала";
                 excludedStudentsFile = "C:\\Users\\dimah\\Yandex.Disk\\ГБОУ 7\\Анализ журнала\\Учащиеся. Только отчисленные. (5).xlsx";
                 outputPath = "C:\\Users\\dimah\\Yandex.Disk\\ГБОУ 7\\Анализ журнала\\результат_анализа_МЭШ.xlsx";
+                averageScoresFolder = "C:\\Users\\dimah\\Yandex.Disk\\ГБОУ 7\\Анализ журнала\\средние баллы";
                 System.out.println("Выбрана школа 7");
                 break;
 
@@ -48,6 +49,7 @@ public class JournalAnalizItogMeshUniversal {
                 folderPath = "C:\\Users\\dimah\\Yandex.Disk\\1811\\для программ\\Анализ журнала\\20251206";
                 excludedStudentsFile = "C:\\Users\\dimah\\Yandex.Disk\\1811\\для программ\\Анализ журнала\\Учащиеся. Только отчисленные. (5).xlsx";
                 outputPath = "C:\\Users\\dimah\\Yandex.Disk\\1811\\для программ\\Анализ журнала\\результат_анализа_МЭШ.xlsx";
+                averageScoresFolder = "C:\\Users\\dimah\\Yandex.Disk\\1811\\для программ\\Анализ журнала\\средние баллы";
         }
 
         scanner.close();
@@ -55,14 +57,16 @@ public class JournalAnalizItogMeshUniversal {
         try {
             System.out.println("Запуск анализа...");
             System.out.println("Папка с журналами: " + folderPath);
+            System.out.println("Папка со средними баллами: " + averageScoresFolder);
             System.out.println("Файл отчисленных: " + excludedStudentsFile);
 
-            // Сначала загружаем список отчисленных учащихся
             Set<String> excludedStudents = loadExcludedStudents(excludedStudentsFile);
             System.out.println("Загружено отчисленных учащихся: " + excludedStudents.size());
 
-            // Анализируем журналы с учетом фильтрации
-            analyzeJournals(folderPath, excludedStudents, outputPath);
+            Map<String, Map<String, Double>> averageScoresData = loadAverageScoresData(averageScoresFolder);
+            System.out.println("Загружено данных о средних баллах для " + averageScoresData.size() + " студентов");
+
+            analyzeJournals(folderPath, excludedStudents, averageScoresData, outputPath);
             System.out.println("Анализ завершен! Результат сохранен в: " + outputPath);
         } catch (Exception e) {
             System.err.println("Ошибка при выполнении анализа:");
@@ -76,20 +80,18 @@ public class JournalAnalizItogMeshUniversal {
         try (FileInputStream fis = new FileInputStream(filePath);
              Workbook workbook = new XSSFWorkbook(fis)) {
 
-            Sheet sheet = workbook.getSheetAt(0); // Первый лист
+            Sheet sheet = workbook.getSheetAt(0);
 
-            // Читаем все строки, начиная со второй (первая может быть заголовком)
             for (int rowNum = 1; rowNum <= sheet.getLastRowNum(); rowNum++) {
                 Row row = sheet.getRow(rowNum);
                 if (row == null) continue;
 
-                Cell nameCell = row.getCell(0); // Столбец A
+                Cell nameCell = row.getCell(0);
                 if (nameCell == null) continue;
 
                 String studentName = getCellValueAsString(nameCell).trim();
                 if (!studentName.isEmpty()) {
-                    // Нормализуем имя: удаляем лишние пробелы
-                    String normalizedName = studentName.replaceAll("\\s+", " ").trim();
+                    String normalizedName = normalizeToFirstNameLastName(studentName);
                     excludedStudents.add(normalizedName);
                 }
             }
@@ -98,47 +100,265 @@ public class JournalAnalizItogMeshUniversal {
         return excludedStudents;
     }
 
-    public static void analyzeJournals(String folderPath, Set<String> excludedStudents, String outputPath) throws Exception {
-        Map<String, Map<String, StudentSubjectData>> studentData = new TreeMap<>();
+    public static Map<String, Map<String, Double>> loadAverageScoresData(String folderPath) throws Exception {
+        Map<String, Map<String, Double>> averageScoresData = new HashMap<>();
+
+        File folder = new File(folderPath);
+        if (!folder.exists() || !folder.isDirectory()) {
+            System.out.println("Внимание: Папка со средними баллами не найдена: " + folderPath);
+            return averageScoresData;
+        }
+
+        Files.walk(Paths.get(folderPath))
+                .filter(Files::isRegularFile)
+                .filter(path -> {
+                    String fileName = path.toString().toLowerCase();
+                    return fileName.endsWith(".xlsx") || fileName.endsWith(".xls");
+                })
+                .forEach(filePath -> {
+                    try {
+                        System.out.println("Обрабатываем файл средних баллов: " + filePath.getFileName());
+                        processAverageScoresFile(filePath.toString(), averageScoresData);
+                    } catch (Exception e) {
+                        System.err.println("Ошибка при обработке файла средних баллов: " + filePath);
+                        e.printStackTrace();
+                    }
+                });
+
+        return averageScoresData;
+    }
+
+    private static void processAverageScoresFile(String filePath, Map<String, Map<String, Double>> averageScoresData) throws Exception {
+        try (FileInputStream fis = new FileInputStream(filePath);
+             Workbook workbook = new XSSFWorkbook(fis)) {
+
+            Sheet sheet = workbook.getSheetAt(0);
+
+            String className = "Неизвестный класс";
+            Row classRow = sheet.getRow(2);
+            if (classRow != null) {
+                Cell classCell = classRow.getCell(0);
+                if (classCell != null) {
+                    String cellValue = getCellValueAsString(classCell).trim();
+                    if (cellValue.startsWith("Класс:")) {
+                        className = cellValue.replace("Класс:", "").trim();
+                        className = normalizeClassName(className);
+                    }
+                }
+            }
+
+            if (className.equals("Неизвестный класс")) {
+                className = extractClassNameFromFileName(new File(filePath).getName());
+                System.out.println("Используем класс из имени файла: " + className);
+            }
+
+            System.out.println("Обрабатываем средние баллы для класса: " + className);
+
+            int subjectRowIndex = 5;
+            Row subjectRow = sheet.getRow(subjectRowIndex);
+            if (subjectRow == null) {
+                System.out.println("Не найдена строка с предметами (строка 6) в файле: " + new File(filePath).getName());
+                return;
+            }
+
+            Map<Integer, String> subjectMap = new HashMap<>();
+            for (int col = 1; col <= subjectRow.getLastCellNum(); col++) {
+                Cell cell = subjectRow.getCell(col);
+                if (cell != null) {
+                    String subjectName = getCellValueAsString(cell).trim();
+                    if (!subjectName.isEmpty() && !subjectName.equals("0.00")) {
+                        subjectMap.put(col, normalizeSubjectName(subjectName));
+                    }
+                }
+            }
+
+            System.out.println("Найдено предметов: " + subjectMap.size());
+
+            for (int rowNum = 6; rowNum <= sheet.getLastRowNum(); rowNum++) {
+                Row studentRow = sheet.getRow(rowNum);
+                if (studentRow == null) continue;
+
+                Cell nameCell = studentRow.getCell(0);
+                if (nameCell == null) continue;
+
+                String studentName = getCellValueAsString(nameCell).trim();
+                if (studentName.isEmpty() || studentName.equals("0.00") || studentName.equals("Обучающийся")) {
+                    continue;
+                }
+
+                String normalizedStudentName = normalizeStudentNameFromExport(studentName);
+                String studentKeyForMatching = normalizedStudentName + " (" + className + ")";
+
+                Map<String, Double> studentAverages = new HashMap<>();
+                for (Map.Entry<Integer, String> entry : subjectMap.entrySet()) {
+                    int colNum = entry.getKey();
+                    String subject = entry.getValue();
+
+                    Cell scoreCell = studentRow.getCell(colNum);
+                    if (scoreCell != null) {
+                        String scoreStr = getCellValueAsString(scoreCell).trim();
+                        if (!scoreStr.isEmpty() && !scoreStr.equals("0.00") && !scoreStr.equals("0")) {
+                            try {
+                                String normalizedScore = scoreStr.replace(',', '.');
+                                double score = Double.parseDouble(normalizedScore);
+                                score = Math.round(score * 100.0) / 100.0;
+                                if (score > 0) {
+                                    studentAverages.put(subject, score);
+                                }
+                            } catch (NumberFormatException e) {
+                                // Игнорируем некорректные значения
+                            }
+                        }
+                    }
+                }
+
+                if (!studentAverages.isEmpty()) {
+                    averageScoresData.put(studentKeyForMatching, studentAverages);
+                    System.out.println("Загружены средние баллы для: " + normalizedStudentName);
+                }
+            }
+
+            System.out.println("Успешно обработан файл: " + new File(filePath).getName());
+        }
+    }
+
+    private static String normalizeStudentNameFromExport(String studentName) {
+        if (studentName == null || studentName.isEmpty()) {
+            return studentName;
+        }
+
+        String normalized = studentName.trim().replaceAll("\\s+", " ");
+
+        String[] parts = normalized.split(" ");
+        if (parts.length >= 2) {
+            String lastName = capitalizeWord(parts[0]);
+            String firstName = capitalizeWord(parts[1]);
+            return lastName + " " + firstName;
+        }
+
+        return normalized;
+    }
+
+    private static String normalizeToFirstNameLastName(String fullName) {
+        if (fullName == null || fullName.isEmpty()) {
+            return fullName;
+        }
+
+        String normalized = fullName.trim().replaceAll("\\s+", " ");
+        String[] parts = normalized.split(" ");
+
+        if (parts.length >= 2) {
+            String lastName = capitalizeWord(parts[0]);
+            String firstName = capitalizeWord(parts[1]);
+            return lastName + " " + firstName;
+        }
+
+        return normalized;
+    }
+
+    private static String normalizeClassName(String className) {
+        if (className == null || className.isEmpty()) {
+            return "Неизвестный класс";
+        }
+
+        String normalized = className.trim().replaceAll("\\s+", " ");
+        normalized = normalized.replaceAll("[-–—]", "-");
+
+        String[] parts = normalized.split("-");
+        if (parts.length == 2) {
+            String number = parts[0].trim();
+            String letter = parts[1].trim().toUpperCase();
+            return number + "-" + letter;
+        }
+
+        return normalized;
+    }
+
+    private static String extractClassNameFromFileName(String fileName) {
+        Pattern pattern = Pattern.compile("(\\d+[-–—][А-Яа-я])", Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pattern.matcher(fileName);
+
+        if (matcher.find()) {
+            String foundClass = matcher.group(1);
+            foundClass = foundClass.replaceAll("[-–—]", "-");
+
+            String[] parts = foundClass.split("-");
+            if (parts.length == 2) {
+                String number = parts[0];
+                String letter = parts[1].toUpperCase();
+                return number + "-" + letter;
+            }
+            return foundClass;
+        }
+
+        return "Неизвестный класс";
+    }
+
+    private static String normalizeSubjectName(String subjectName) {
+        if (subjectName == null || subjectName.isEmpty()) {
+            return subjectName;
+        }
+
+        String normalized = subjectName.trim();
+        normalized = normalized.replaceAll("\\s+", " ");
+
+        normalized = normalized.replace("Иностранный (английский) язык", "Английский язык");
+        normalized = normalized.replace("Основы безопасности и защиты Родины", "ОБЖ");
+        normalized = normalized.replace("Практикум по русскому языку", "Практикум русский язык");
+        normalized = normalized.replace("Вероятность и статистика", "Вероятность и стат.");
+        normalized = normalized.replace("Журналистика и медиа", "Журналистика");
+        normalized = normalized.replace("Технологии медиапроизводства", "Технологии медиа");
+
+        return normalized;
+    }
+
+    private static String capitalizeWord(String word) {
+        if (word == null || word.isEmpty()) {
+            return word;
+        }
+        return word.substring(0, 1).toUpperCase() + word.substring(1).toLowerCase();
+    }
+
+    public static void analyzeJournals(String folderPath,
+                                       Set<String> excludedStudents,
+                                       Map<String, Map<String, Double>> averageScoresData,
+                                       String outputPath) throws Exception {
+        Map<String, StudentFullInfo> studentFullInfoMap = new TreeMap<>();
         Set<String> allSubjects = new TreeSet<>();
         Set<String> allClasses = new TreeSet<>();
 
-        // Проходим по всем файлам в папке
         Files.walk(Paths.get(folderPath))
                 .filter(Files::isRegularFile)
                 .filter(path -> path.toString().toLowerCase().endsWith(".xlsx"))
                 .forEach(filePath -> {
                     try {
-                        processExcelFile(filePath.toString(), studentData, allSubjects, allClasses, excludedStudents);
+                        processExcelFile(filePath.toString(), studentFullInfoMap, allSubjects, allClasses, excludedStudents, averageScoresData);
                     } catch (Exception e) {
                         System.err.println("Ошибка при обработке файла: " + filePath);
                         e.printStackTrace();
                     }
                 });
 
-        // Создаем итоговый Excel файл
-        createResultExcel(studentData, allSubjects, allClasses, outputPath);
+        createResultExcel(studentFullInfoMap, allSubjects, allClasses, outputPath);
     }
 
     private static void processExcelFile(String filePath,
-                                         Map<String, Map<String, StudentSubjectData>> studentData,
+                                         Map<String, StudentFullInfo> studentFullInfoMap,
                                          Set<String> allSubjects,
                                          Set<String> allClasses,
-                                         Set<String> excludedStudents) throws Exception {
+                                         Set<String> excludedStudents,
+                                         Map<String, Map<String, Double>> averageScoresData) throws Exception {
 
         try (FileInputStream fis = new FileInputStream(filePath);
              Workbook workbook = new XSSFWorkbook(fis)) {
 
-            // Получаем название класса из ячейки U41
             String className = extractClassNameFromSheet(workbook);
             allClasses.add(className);
 
-            // Обрабатываем все вкладки (листы) в файле
             for (int sheetIndex = 0; sheetIndex < workbook.getNumberOfSheets(); sheetIndex++) {
                 Sheet sheet = workbook.getSheetAt(sheetIndex);
                 String sheetName = sheet.getSheetName();
 
-                // Пропускаем технические листы
                 if (sheetName.contains("Данные") || sheetName.contains("Лист")) {
                     continue;
                 }
@@ -149,24 +369,166 @@ public class JournalAnalizItogMeshUniversal {
                 System.out.println("Обрабатываем предмет: " + subject + " из класса: " + className +
                         " из файла: " + new File(filePath).getName());
 
-                // Обрабатываем все блоки с данными
-                processAllBlocks(sheet, studentData, subject, className, excludedStudents);
+                processAllBlocks(sheet, studentFullInfoMap, subject, className, excludedStudents, averageScoresData);
             }
         }
+    }
+
+    static class StudentFullInfo {
+        String fullName; // Полное ФИО из журнала
+        String shortName; // Сокращенное имя для сопоставления
+        String className;
+        Map<String, StudentSubjectData> subjects = new HashMap<>();
+
+        StudentFullInfo(String fullName, String className) {
+            this.fullName = fullName; // Сохраняем полное ФИО как есть
+            this.shortName = normalizeToFirstNameLastName(fullName); // Для сопоставления используем сокращенное
+            this.className = className;
+        }
+    }
+
+    private static void processAllBlocks(Sheet sheet,
+                                         Map<String, StudentFullInfo> studentFullInfoMap,
+                                         String subject,
+                                         String className,
+                                         Set<String> excludedStudents,
+                                         Map<String, Map<String, Double>> averageScoresData) {
+
+        Map<String, StudentTempData> tempDataMap = new HashMap<>();
+        Map<String, String> fullNameMap = new HashMap<>(); // Новый map для хранения полных имен
+
+        for (int blockStart = 1; blockStart < 1000; blockStart += 50) {
+            int dateRowNum = blockStart;
+            int dataStartRow = blockStart + 1;
+            int dataEndRow = blockStart + 48;
+
+            Row dateRow = sheet.getRow(dateRowNum);
+            if (dateRow == null) {
+                continue;
+            }
+
+            int trimester1Col = findTrimesterColumnInRow(dateRow);
+            boolean hasTrimesterGrade = (trimester1Col != -1);
+
+            for (int rowNum = dataStartRow; rowNum <= dataEndRow; rowNum++) {
+                Row row = sheet.getRow(rowNum);
+                if (row == null) continue;
+
+                Cell nameCell = row.getCell(1);
+                if (nameCell == null) continue;
+
+                String studentName = getCellValueAsString(nameCell);
+                if (studentName == null || studentName.trim().isEmpty() ||
+                        isHeaderRow(studentName)) {
+                    continue;
+                }
+
+                String fullName = studentName.trim().replaceAll("\\s+", " ");
+
+                String shortName = normalizeToFirstNameLastName(fullName);
+                if (isExcludedStudent(shortName, excludedStudents)) {
+                    System.out.println("Пропускаем отчисленного студента: " + fullName + " из класса: " + className);
+                    continue;
+                }
+
+                String studentKeyForMatching = shortName + " (" + className + ")";
+
+                // Сохраняем полное имя в map
+                fullNameMap.put(studentKeyForMatching, fullName);
+
+                StudentTempData tempData = tempDataMap.get(studentKeyForMatching);
+                if (tempData == null) {
+                    tempData = new StudentTempData();
+                    tempDataMap.put(studentKeyForMatching, tempData);
+                }
+
+                if (hasTrimesterGrade && trimester1Col != -1) {
+                    Cell trimesterCell = row.getCell(trimester1Col);
+                    if (trimesterCell != null) {
+                        String trimesterGrade = getTrimesterGradeValue(trimesterCell);
+                        if (tempData.trimester1Grade.isEmpty()) {
+                            tempData.trimester1Grade = trimesterGrade;
+                        }
+                    }
+                }
+
+                int endColForGrades = hasTrimesterGrade ? trimester1Col - 1 : 18;
+                int absencesInRow = processGradesInRow(row, tempData.grades, endColForGrades);
+                tempData.absences += absencesInRow;
+            }
+        }
+
+        for (Map.Entry<String, StudentTempData> entry : tempDataMap.entrySet()) {
+            String studentKeyForMatching = entry.getKey();
+            StudentTempData tempData = entry.getValue();
+
+            if (!tempData.grades.isEmpty() || !tempData.trimester1Grade.isEmpty() || tempData.absences > 0) {
+                String shortName = studentKeyForMatching.substring(0, studentKeyForMatching.indexOf('(')).trim();
+
+                // Получаем полное имя из map
+                String fullName = fullNameMap.get(studentKeyForMatching);
+                if (fullName == null) {
+                    fullName = shortName; // На случай, если что-то пошло не так
+                }
+
+                StudentFullInfo studentInfo = studentFullInfoMap.get(studentKeyForMatching);
+                if (studentInfo == null) {
+                    studentInfo = new StudentFullInfo(fullName, className);
+                    studentFullInfoMap.put(studentKeyForMatching, studentInfo);
+                }
+
+                double average = tempData.grades.isEmpty() ? 0.0 :
+                        tempData.grades.stream().mapToInt(Integer::intValue).average().orElse(0.0);
+
+                double averageFromExport = 0.0;
+                if (averageScoresData.containsKey(studentKeyForMatching)) {
+                    Map<String, Double> studentAverages = averageScoresData.get(studentKeyForMatching);
+                    String normalizedSubject = normalizeSubjectNameForMatching(subject);
+                    if (studentAverages.containsKey(normalizedSubject)) {
+                        averageFromExport = studentAverages.get(normalizedSubject);
+                        System.out.println("Найдены данные выгрузки для " + shortName + " по предмету " + subject + ": " + averageFromExport);
+                    } else {
+                        for (Map.Entry<String, Double> avgEntry : studentAverages.entrySet()) {
+                            String exportSubject = avgEntry.getKey();
+                            if (exportSubject.contains(normalizedSubject) ||
+                                    normalizedSubject.contains(exportSubject) ||
+                                    subjectsMatch(exportSubject, normalizedSubject)) {
+                                averageFromExport = avgEntry.getValue();
+                                System.out.println("Найдены данные выгрузки (частичное совпадение) для " + shortName +
+                                        ": " + exportSubject + " -> " + normalizedSubject + ": " + averageFromExport);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                String expectedGrade = calculateExpectedGrade(average);
+                String error = checkGradeError(tempData.trimester1Grade, expectedGrade, average, averageFromExport);
+
+                studentInfo.subjects.put(subject, new StudentSubjectData(
+                        className, subject, average, tempData.grades.size(),
+                        tempData.trimester1Grade, expectedGrade, error, tempData.absences,
+                        averageFromExport
+                ));
+            }
+        }
+    }
+
+    // Вспомогательный метод для поиска оригинального полного имени
+    private static String findOriginalFullName(String shortName, String className, Map<String, StudentFullInfo> studentFullInfoMap) {
+        // В реальной реализации нужно сохранять полное имя при первом чтении
+        // Пока что возвращаем короткое имя
+        return shortName;
     }
 
     private static String extractClassNameFromSheet(Workbook workbook) {
         String className = "Неизвестный класс";
 
-        // Проверяем все листы в поисках ячейки U41
         for (int sheetIndex = 0; sheetIndex < workbook.getNumberOfSheets(); sheetIndex++) {
             Sheet sheet = workbook.getSheetAt(sheetIndex);
 
-            // Получаем содержимое ячейки U41 (0-based: строка 40, столбец 20)
             String cellValue = getCellValueFromPosition(sheet, 40, 20);
             if (cellValue != null && !cellValue.trim().isEmpty()) {
-                // Пытаемся извлечь название класса из строки
-                // Формат: "Алгебра и начала математического анализа 10-А 10А группа, Алгебра и начала математического анализа"
                 className = extractClassNameFromCellValue(cellValue);
                 if (!className.equals("Неизвестный класс")) {
                     return className;
@@ -174,11 +536,9 @@ public class JournalAnalizItogMeshUniversal {
             }
         }
 
-        // Если не нашли в U41, пробуем другие возможные расположения
         for (int sheetIndex = 0; sheetIndex < workbook.getNumberOfSheets(); sheetIndex++) {
             Sheet sheet = workbook.getSheetAt(sheetIndex);
 
-            // Проверяем ячейку A1
             String cellValue = getCellValueFromPosition(sheet, 0, 0);
             if (cellValue != null && !cellValue.trim().isEmpty()) {
                 String extracted = extractClassNameFromCellValue(cellValue);
@@ -187,7 +547,6 @@ public class JournalAnalizItogMeshUniversal {
                 }
             }
 
-            // Проверяем ячейку A2
             cellValue = getCellValueFromPosition(sheet, 1, 0);
             if (cellValue != null && !cellValue.trim().isEmpty()) {
                 String extracted = extractClassNameFromCellValue(cellValue);
@@ -217,19 +576,13 @@ public class JournalAnalizItogMeshUniversal {
         }
 
         String value = cellValue.trim();
-
-        // Паттерн для поиска класса: цифры-дефис/тире-буква (например, "10-А", "11-Б", "1-В")
-        // Учитываем разные виды дефисов: обычный -, длинное тире –, длинное тире —
         Pattern pattern = Pattern.compile("([0-9]+[-–—][А-Яа-яA-Za-z])");
         Matcher matcher = pattern.matcher(value);
 
         if (matcher.find()) {
             String foundClass = matcher.group(1);
-
-            // Нормализуем дефис/тире в обычный дефис для единообразия
             foundClass = foundClass.replaceAll("[-–—]", "-");
 
-            // Приводим букву к верхнему регистру (например, "10-а" -> "10-А")
             String[] parts = foundClass.split("-");
             if (parts.length == 2) {
                 String letter = parts[1];
@@ -245,107 +598,172 @@ public class JournalAnalizItogMeshUniversal {
         return "Неизвестный класс";
     }
 
-    private static void processAllBlocks(Sheet sheet,
-                                         Map<String, Map<String, StudentSubjectData>> studentData,
-                                         String subject,
-                                         String className,
-                                         Set<String> excludedStudents) {
+    private static String extractSubject(Sheet sheet) {
+        String cellValue = getCellValueFromPosition(sheet, 40, 20);
 
-        // Карта для временного хранения данных по студентам
-        Map<String, StudentTempData> tempDataMap = new HashMap<>();
-
-        // Обрабатываем все блоки до 1000 строки
-        for (int blockStart = 1; blockStart < 1000; blockStart += 50) {
-            int dateRowNum = blockStart; // Строка с датами (0-based: строка 2)
-            int dataStartRow = blockStart + 1; // Начало данных студентов
-            int dataEndRow = blockStart + 48; // Конец данных студентов (49 строк всего)
-
-            // Проверяем строку с датами
-            Row dateRow = sheet.getRow(dateRowNum);
-            if (dateRow == null) {
-                // Если нет строки с датами, возможно блок закончился
-                continue;
-            }
-
-            // Ищем столбец с "1Т" в этом блоке
-            int trimester1Col = findTrimesterColumnInRow(dateRow);
-            boolean hasTrimesterGrade = (trimester1Col != -1);
-
-            // Обрабатываем блок данных
-            for (int rowNum = dataStartRow; rowNum <= dataEndRow; rowNum++) {
-                Row row = sheet.getRow(rowNum);
-                if (row == null) continue;
-
-                Cell nameCell = row.getCell(1); // Столбец B
-                if (nameCell == null) continue;
-
-                String studentName = getCellValueAsString(nameCell);
-                if (studentName == null || studentName.trim().isEmpty() ||
-                        isHeaderRow(studentName)) {
-                    continue;
-                }
-
-                String cleanedName = studentName.trim().replaceAll("\\s+", " ");
-
-                // Проверяем, не является ли студент отчисленным
-                if (isExcludedStudent(cleanedName, excludedStudents)) {
-                    System.out.println("Пропускаем отчисленного студента: " + cleanedName + " из класса: " + className);
-                    continue;
-                }
-
-                String studentKey = cleanedName + " (" + className + ")";
-
-                StudentTempData tempData = tempDataMap.get(studentKey);
-                if (tempData == null) {
-                    tempData = new StudentTempData();
-                    tempDataMap.put(studentKey, tempData);
-                }
-
-                // Если в этом блоке есть колонка с 1Т, получаем оценку за 1 триместр
-                if (hasTrimesterGrade && trimester1Col != -1) {
-                    Cell trimesterCell = row.getCell(trimester1Col);
-                    if (trimesterCell != null) {
-                        String trimesterGrade = getTrimesterGradeValue(trimesterCell);
-                        // Сохраняем только если еще не было оценки
-                        if (tempData.trimester1Grade.isEmpty()) {
-                            tempData.trimester1Grade = trimesterGrade;
-                        }
-                    }
-                }
-
-                // Обрабатываем оценки в строке
-                // Если есть колонка с 1Т, обрабатываем оценки только до нее
-                // Если нет - обрабатываем все оценки до столбца S
-                int endColForGrades = hasTrimesterGrade ? trimester1Col - 1 : 18;
-                int absencesInRow = processGradesInRow(row, tempData.grades, endColForGrades);
-                tempData.absences += absencesInRow;
-            }
+        if (cellValue == null || cellValue.trim().isEmpty()) {
+            return "Неизвестный предмет";
         }
 
-        // Сохраняем собранные данные
-        for (Map.Entry<String, StudentTempData> entry : tempDataMap.entrySet()) {
-            String studentKey = entry.getKey();
-            StudentTempData tempData = entry.getValue();
+        String value = cellValue.trim();
 
-            if (!tempData.grades.isEmpty() || !tempData.trimester1Grade.isEmpty() || tempData.absences > 0) {
-                studentData.putIfAbsent(studentKey, new HashMap<>());
-                Map<String, StudentSubjectData> studentSubjects = studentData.get(studentKey);
+        String[] parts = value.split(", ");
+        if (parts.length >= 2) {
+            String subject = parts[parts.length - 1].trim();
+            subject = cleanSubjectName(subject);
 
-                double average = tempData.grades.isEmpty() ? 0.0 :
-                        tempData.grades.stream().mapToInt(Integer::intValue).average().orElse(0.0);
+            return subject.isEmpty() ? "Неизвестный предмет" : subject;
+        }
 
-                // Вычисляем ожидаемую оценку по правилам округления
-                String expectedGrade = calculateExpectedGrade(average);
+        return extractSubjectAlternative(sheet, value);
+    }
 
-                // Проверяем ошибку
-                String error = checkGradeError(tempData.trimester1Grade, expectedGrade);
+    private static String extractSubjectAlternative(Sheet sheet, String cellValue) {
+        String subject = "Неизвестный предмет";
 
-                studentSubjects.put(subject, new StudentSubjectData(
-                        className, subject, average, tempData.grades.size(),
-                        tempData.trimester1Grade, expectedGrade, error, tempData.absences
-                ));
+        subject = extractSubjectFromCell(sheet, 0, 0, subject);
+        if (subject.equals("Неизвестный предмет")) {
+            subject = extractSubjectFromCell(sheet, 1, 0, subject);
+        }
+        if (subject.equals("Неизвестный предмет")) {
+            subject = extractSubjectFromCell(sheet, 0, 20, subject);
+        }
+        if (subject.equals("Неизвестный предмет")) {
+            subject = extractSubjectFromCell(sheet, 39, 0, subject);
+        }
+        if (subject.equals("Неизвестный предмет")) {
+            subject = sheet.getSheetName();
+        }
+
+        subject = cleanSubjectName(subject);
+        return subject.isEmpty() ? "Неизвестный предмет" : subject;
+    }
+
+    private static String extractSubjectFromCell(Sheet sheet, int rowNum, int colNum, String defaultSubject) {
+        Row row = sheet.getRow(rowNum);
+        if (row != null) {
+            Cell cell = row.getCell(colNum);
+            if (cell != null) {
+                String cellValue = getCellValueAsString(cell);
+                if (cellValue != null && !cellValue.trim().isEmpty()) {
+                    return cellValue.trim();
+                }
             }
         }
+        return defaultSubject;
+    }
+
+    private static String cleanSubjectName(String subject) {
+        if (subject == null || subject.isEmpty()) {
+            return subject;
+        }
+
+        subject = subject.replaceAll("[0-9]+[-–—][А-Яа-яA-Za-z]\\s*[0-9]*[А-Яа-яA-Za-z]*\\s*группа", "");
+        subject = subject.replaceAll(",\\s*[0-9]+[-–—][А-Яа-яA-Za-z]", "");
+        subject = subject.replaceAll("\\s*[0-9]+[-–—][А-Яа-яA-Za-z]\\s*", " ");
+
+        subject = subject.trim().replaceAll("\\s*,\\s*", ", ").replaceAll("\\s+", " ");
+
+        if (subject.startsWith(",")) {
+            subject = subject.substring(1).trim();
+        }
+        if (subject.endsWith(",")) {
+            subject = subject.substring(0, subject.length() - 1).trim();
+        }
+
+        return subject.isEmpty() ? "Неизвестный предмет" : subject;
+    }
+
+    private static String normalizeSubjectNameForMatching(String subject) {
+        if (subject == null || subject.isEmpty()) {
+            return subject;
+        }
+
+        String normalized = subject.trim().toLowerCase();
+
+        if (normalized.contains("алгебра") && normalized.contains("математического")) {
+            return "Алгебра и начала математического анализа";
+        }
+        if (normalized.contains("английский")) {
+            return "Английский язык";
+        }
+        if (normalized.contains("обж") || normalized.contains("безопасности")) {
+            return "ОБЖ";
+        }
+        if (normalized.contains("русский") && normalized.contains("практикум")) {
+            return "Практикум русский язык";
+        }
+        if (normalized.contains("вероятность")) {
+            return "Вероятность и стат.";
+        }
+        if (normalized.contains("геометрия")) {
+            return "Геометрия";
+        }
+        if (normalized.contains("биология")) {
+            return "Биология";
+        }
+        if (normalized.contains("история")) {
+            return "История";
+        }
+        if (normalized.contains("литература")) {
+            return "Литература";
+        }
+        if (normalized.contains("физика")) {
+            return "Физика";
+        }
+        if (normalized.contains("химия")) {
+            return "Химия";
+        }
+        if (normalized.contains("география")) {
+            return "География";
+        }
+        if (normalized.contains("обществознание")) {
+            return "Обществознание";
+        }
+        if (normalized.contains("экономика")) {
+            return "Экономика";
+        }
+        if (normalized.contains("журналистика")) {
+            return "Журналистика";
+        }
+        if (normalized.contains("физическая культура")) {
+            return "Физическая культура";
+        }
+        if (normalized.contains("технологии медиа")) {
+            return "Технологии медиа";
+        }
+
+        return subject;
+    }
+
+    private static boolean subjectsMatch(String subject1, String subject2) {
+        if (subject1 == null || subject2 == null) return false;
+
+        String s1 = subject1.toLowerCase().trim();
+        String s2 = subject2.toLowerCase().trim();
+
+        if (s1.equals(s2)) return true;
+
+        if (s1.contains(s2) || s2.contains(s1)) return true;
+
+        Map<String, String> aliases = new HashMap<>();
+        aliases.put("английский язык", "иностранный (английский) язык");
+        aliases.put("иностранный (английский) язык", "английский язык");
+        aliases.put("обж", "основы безопасности и защиты родины");
+        aliases.put("основы безопасности и защиты родины", "обж");
+        aliases.put("практикум русский язык", "практикум по русскому языку");
+        aliases.put("практикум по русскому языку", "практикум русский язык");
+        aliases.put("вероятность и стат.", "вероятность и статистика");
+        aliases.put("вероятность и статистика", "вероятность и стат.");
+        aliases.put("журналистика", "журналистика и медиа");
+        aliases.put("журналистика и медиа", "журналистика");
+        aliases.put("технологии медиа", "технологии медиапроизводства");
+        aliases.put("технологии медиапроизводства", "технологии медиа");
+
+        if (aliases.containsKey(s1) && aliases.get(s1).equals(s2)) return true;
+        if (aliases.containsKey(s2) && aliases.get(s2).equals(s1)) return true;
+
+        return false;
     }
 
     private static boolean isExcludedStudent(String studentName, Set<String> excludedStudents) {
@@ -353,15 +771,12 @@ public class JournalAnalizItogMeshUniversal {
             return false;
         }
 
-        // Нормализуем имя для сравнения
         String normalizedName = studentName.replaceAll("\\s+", " ").trim();
 
-        // Прямое сравнение
         if (excludedStudents.contains(normalizedName)) {
             return true;
         }
 
-        // Также проверяем частичное совпадение (на случай небольших расхождений в написании)
         for (String excludedName : excludedStudents) {
             if (normalizedName.contains(excludedName) || excludedName.contains(normalizedName)) {
                 return true;
@@ -374,13 +789,11 @@ public class JournalAnalizItogMeshUniversal {
     private static int findTrimesterColumnInRow(Row dateRow) {
         if (dateRow == null) return -1;
 
-        // Проверяем столбцы C-S (индексы 2-18) на наличие "1Т" или "I триместр"
         for (int colNum = 2; colNum <= 18; colNum++) {
             Cell cell = dateRow.getCell(colNum);
             if (cell != null) {
                 String cellValue = getCellValueAsString(cell).trim();
-                if (cellValue.contains("1Т") ||
-                        cellValue.contains("1П")) {
+                if (cellValue.contains("1Т") || cellValue.contains("1П")) {
                     return colNum;
                 }
             }
@@ -395,14 +808,13 @@ public class JournalAnalizItogMeshUniversal {
                 value.contains("ученик") ||
                 value.contains("фио") ||
                 value.equals("") ||
-                value.matches("^[\\d\\s]*$"); // Только цифры и пробелы
+                value.matches("^[\\d\\s]*$");
     }
 
     private static int processGradesInRow(Row row, List<Integer> grades, int endCol) {
         int absences = 0;
-        int startCol = 2; // Столбец C
+        int startCol = 2;
 
-        // Проверяем, что endCol корректный
         if (endCol < startCol) {
             endCol = startCol;
         }
@@ -414,7 +826,6 @@ public class JournalAnalizItogMeshUniversal {
             switch (gradeCell.getCellType()) {
                 case NUMERIC:
                     double gradeValue = gradeCell.getNumericCellValue();
-                    // В МЭШ могут быть оценки с десятичными дробями
                     if (gradeValue >= 1 && gradeValue <= 5) {
                         grades.add((int) Math.round(gradeValue));
                     }
@@ -428,7 +839,6 @@ public class JournalAnalizItogMeshUniversal {
                         absences++;
                     } else {
                         try {
-                            // Пробуем извлечь число из строки
                             String numericPart = cellValue.replaceAll("[^0-9.,]", "");
                             if (!numericPart.isEmpty()) {
                                 double grade = Double.parseDouble(numericPart.replace(',', '.'));
@@ -476,7 +886,6 @@ public class JournalAnalizItogMeshUniversal {
                 if (value == (int) value) {
                     return String.valueOf((int) value);
                 } else {
-                    // Округляем до целого
                     return String.valueOf(Math.round(value));
                 }
             case STRING:
@@ -488,7 +897,6 @@ public class JournalAnalizItogMeshUniversal {
                 if (strValue.isEmpty()) {
                     return "";
                 }
-                // Пробуем извлечь число
                 try {
                     String numericPart = strValue.replaceAll("[^0-9.,]", "");
                     if (!numericPart.isEmpty()) {
@@ -522,7 +930,6 @@ public class JournalAnalizItogMeshUniversal {
     private static String calculateExpectedGrade(double average) {
         if (average == 0.0) return "нет оценок";
 
-        // Универсальное правило округления
         if (average >= 4.65) {
             return "5";
         } else if (average >= 3.65) {
@@ -536,7 +943,7 @@ public class JournalAnalizItogMeshUniversal {
         }
     }
 
-    private static String checkGradeError(String actualGrade, String expectedGrade) {
+    private static String checkGradeError(String actualGrade, String expectedGrade, double calculatedAverage, double exportedAverage) {
         if (actualGrade.isEmpty()) {
             return "нет оценки";
         }
@@ -555,91 +962,39 @@ public class JournalAnalizItogMeshUniversal {
         }
 
         try {
-            // Пробуем преобразовать в число для сравнения
             int actual = Integer.parseInt(actualGrade);
             int expected = Integer.parseInt(expectedGrade);
+
+            if (exportedAverage > 0) {
+                String expectedFromExport = calculateExpectedGrade(exportedAverage);
+                try {
+                    int expectedExport = Integer.parseInt(expectedFromExport);
+                    if (actual != expectedExport) {
+                        return "ожидалось (из выгрузки): " + expectedFromExport +
+                                ", выставлено: " + actualGrade +
+                                " (расч.: " + expectedGrade + ")";
+                    } else if (actual != expected) {
+                        return "расч.: " + expectedGrade +
+                                ", выгрузка: " + expectedFromExport +
+                                ", выставлено: " + actualGrade;
+                    }
+                } catch (NumberFormatException e) {
+                    return "расч.: " + expectedGrade +
+                            ", выгрузка: " + expectedFromExport +
+                            ", выставлено: " + actualGrade;
+                }
+            }
 
             if (actual != expected) {
                 return "ожидалось: " + expectedGrade + ", выставлено: " + actualGrade;
             }
         } catch (NumberFormatException e) {
-            // Если не число, значит это текстовая отметка
             if (!actualGrade.matches("\\d+")) {
                 return "текстовая отметка: " + actualGrade;
             }
         }
 
         return "";
-    }
-
-    private static String extractSubject(Sheet sheet) {
-        String subject = "Неизвестный предмет";
-
-        // В МЭШ предмет часто в ячейке U41 (0-based: row 40, col 20)
-        subject = extractSubjectFromCell(sheet, 40, 20, subject);
-
-        // Пробуем другие возможные расположения
-        if (subject.equals("Неизвестный предмет")) {
-            subject = extractSubjectFromCell(sheet, 0, 0, subject); // A1
-        }
-        if (subject.equals("Неизвестный предмет")) {
-            subject = extractSubjectFromCell(sheet, 1, 0, subject); // A2
-        }
-        if (subject.equals("Неизвестный предмет")) {
-            subject = extractSubjectFromCell(sheet, 0, 20, subject); // U1
-        }
-        if (subject.equals("Неизвестный предмет")) {
-            subject = extractSubjectFromCell(sheet, 39, 0, subject); // A40
-        }
-
-        // Если все еще не нашли, используем имя листа
-        if (subject.equals("Неизвестный предмет")) {
-            subject = sheet.getSheetName();
-        }
-
-        // Очищаем название предмета от информации о классе и группе
-        subject = cleanSubjectName(subject);
-
-        return subject;
-    }
-
-    private static String cleanSubjectName(String subject) {
-        if (subject == null || subject.isEmpty()) {
-            return subject;
-        }
-
-        // Удаляем информацию о классе и группе
-        // Паттерны: "Предмет 1-А 1А группа" или "Предмет, 1-А"
-        subject = subject.replaceAll("[0-9]+[-–—][А-Яа-яA-Za-z]\\s*[0-9]*[А-Яа-яA-Za-z]*\\s*группа", "");
-        subject = subject.replaceAll(",\\s*[0-9]+[-–—][А-Яа-яA-Za-z]", "");
-        subject = subject.replaceAll("\\s*[0-9]+[-–—][А-Яа-яA-Za-z]\\s*", " ");
-
-        // Удаляем лишние пробелы и запятые
-        subject = subject.trim().replaceAll("\\s*,\\s*", ", ").replaceAll("\\s+", " ");
-
-        // Если осталась только запятая в начале или конце, удаляем её
-        if (subject.startsWith(",")) {
-            subject = subject.substring(1).trim();
-        }
-        if (subject.endsWith(",")) {
-            subject = subject.substring(0, subject.length() - 1).trim();
-        }
-
-        return subject.isEmpty() ? "Неизвестный предмет" : subject;
-    }
-
-    private static String extractSubjectFromCell(Sheet sheet, int rowNum, int colNum, String defaultSubject) {
-        Row row = sheet.getRow(rowNum);
-        if (row != null) {
-            Cell cell = row.getCell(colNum);
-            if (cell != null) {
-                String cellValue = getCellValueAsString(cell);
-                if (cellValue != null && !cellValue.trim().isEmpty()) {
-                    return cellValue.trim();
-                }
-            }
-        }
-        return defaultSubject;
     }
 
     private static String getCellValueAsString(Cell cell) {
@@ -676,7 +1031,7 @@ public class JournalAnalizItogMeshUniversal {
         }
     }
 
-    private static void createResultExcel(Map<String, Map<String, StudentSubjectData>> studentData,
+    private static void createResultExcel(Map<String, StudentFullInfo> studentFullInfoMap,
                                           Set<String> allSubjects,
                                           Set<String> allClasses,
                                           String outputPath) throws Exception {
@@ -684,20 +1039,19 @@ public class JournalAnalizItogMeshUniversal {
         try (Workbook workbook = new XSSFWorkbook()) {
             Sheet sheet = workbook.createSheet("Результаты анализа");
 
-            // Создаем стили для ячеек
             CellStyle headerStyle = createHeaderStyle(workbook);
             CellStyle numberStyle = createNumberStyle(workbook);
             CellStyle textStyle = createTextStyle(workbook);
             CellStyle errorStyle = createErrorStyle(workbook);
             CellStyle azStyle = createAZStyle(workbook);
             CellStyle warningStyle = createWarningStyle(workbook);
+            CellStyle exportStyle = createExportStyle(workbook);
 
-            // Создаем заголовки
             Row headerRow = sheet.createRow(0);
             headerRow.setHeightInPoints(25);
 
             String[] headers = {"Класс", "ФИО студента", "Предмет",
-                    "Средний балл", "Количество оценок",
+                    "Средний балл (расчет)", "Средний балл (выгрузка)", "Количество оценок",
                     "Оценка за 1Т", "Ожидаемая оценка", "Ошибка", "Пропуски"};
 
             for (int i = 0; i < headers.length; i++) {
@@ -706,17 +1060,15 @@ public class JournalAnalizItogMeshUniversal {
                 cell.setCellStyle(headerStyle);
             }
 
-            // Заполняем данные студентов
             int rowIndex = 1;
-            for (Map.Entry<String, Map<String, StudentSubjectData>> studentEntry : studentData.entrySet()) {
-                String studentKey = studentEntry.getKey();
-                Map<String, StudentSubjectData> subjects = studentEntry.getValue();
+            for (Map.Entry<String, StudentFullInfo> studentEntry : studentFullInfoMap.entrySet()) {
+                StudentFullInfo studentInfo = studentEntry.getValue();
+                Map<String, StudentSubjectData> subjects = studentInfo.subjects;
 
-                // Извлекаем класс и имя из ключа
-                String studentName = studentKey.substring(0, studentKey.indexOf('(')).trim();
-                String className = studentKey.substring(studentKey.indexOf('(') + 1, studentKey.indexOf(')')).trim();
+                // Используем полное ФИО из объекта
+                String studentName = studentInfo.fullName;
+                String className = studentInfo.className;
 
-                // Для каждого предмета создаем отдельную строку
                 for (Map.Entry<String, StudentSubjectData> subjectEntry : subjects.entrySet()) {
                     String subject = subjectEntry.getKey();
                     StudentSubjectData data = subjectEntry.getValue();
@@ -725,10 +1077,10 @@ public class JournalAnalizItogMeshUniversal {
 
                     // Класс
                     Cell classCell = row.createCell(0);
-                    classCell.setCellValue(data.className);
+                    classCell.setCellValue(className);
                     classCell.setCellStyle(textStyle);
 
-                    // ФИО студента
+                    // ФИО студента (полное)
                     Cell nameCell = row.createCell(1);
                     nameCell.setCellValue(studentName);
                     nameCell.setCellStyle(textStyle);
@@ -738,25 +1090,34 @@ public class JournalAnalizItogMeshUniversal {
                     subjectCell.setCellValue(subject);
                     subjectCell.setCellStyle(textStyle);
 
-                    // Средний балл
-                    Cell avgCell = row.createCell(3);
+                    // Средний балл (расчет)
+                    Cell avgCalcCell = row.createCell(3);
                     if (data.average > 0) {
-                        avgCell.setCellValue(Math.round(data.average * 100.0) / 100.0);
+                        avgCalcCell.setCellValue(Math.round(data.average * 100.0) / 100.0);
                     } else {
-                        avgCell.setCellValue(0);
+                        avgCalcCell.setCellValue(0);
                     }
-                    avgCell.setCellStyle(numberStyle);
+                    avgCalcCell.setCellStyle(numberStyle);
+
+                    // Средний балл (выгрузка)
+                    Cell avgExportCell = row.createCell(4);
+                    if (data.averageFromExport > 0) {
+                        avgExportCell.setCellValue(data.averageFromExport);
+                        avgExportCell.setCellStyle(exportStyle);
+                    } else {
+                        avgExportCell.setCellValue("");
+                        avgExportCell.setCellStyle(textStyle);
+                    }
 
                     // Количество оценок
-                    Cell countCell = row.createCell(4);
+                    Cell countCell = row.createCell(5);
                     countCell.setCellValue(data.gradeCount);
                     countCell.setCellStyle(numberStyle);
 
                     // Оценка за 1Т
-                    Cell grade1TCell = row.createCell(5);
+                    Cell grade1TCell = row.createCell(6);
                     grade1TCell.setCellValue(data.trimester1Grade);
 
-                    // Применяем стиль в зависимости от содержания
                     if (data.trimester1Grade.equals("АЗ")) {
                         grade1TCell.setCellStyle(azStyle);
                     } else if (data.error.contains("ожидалось:") || data.error.contains("текстовая отметка:")) {
@@ -768,12 +1129,12 @@ public class JournalAnalizItogMeshUniversal {
                     }
 
                     // Ожидаемая оценка
-                    Cell expectedCell = row.createCell(6);
+                    Cell expectedCell = row.createCell(7);
                     expectedCell.setCellValue(data.expectedGrade);
                     expectedCell.setCellStyle(textStyle);
 
                     // Ошибка
-                    Cell errorCell = row.createCell(7);
+                    Cell errorCell = row.createCell(8);
                     errorCell.setCellValue(data.error);
 
                     if (data.error.contains("ожидалось:") || data.error.contains("текстовая отметка:")) {
@@ -787,24 +1148,19 @@ public class JournalAnalizItogMeshUniversal {
                     }
 
                     // Пропуски
-                    Cell absencesCell = row.createCell(8);
+                    Cell absencesCell = row.createCell(9);
                     absencesCell.setCellValue(data.absences);
                     absencesCell.setCellStyle(numberStyle);
                 }
             }
 
-            // Автоподбор ширины колонок
             for (int i = 0; i < headers.length; i++) {
                 sheet.autoSizeColumn(i);
             }
 
-            // Замораживаем область с заголовками
             sheet.createFreezePane(0, 1);
-
-            // Добавляем фильтр
             sheet.setAutoFilter(new org.apache.poi.ss.util.CellRangeAddress(0, rowIndex-1, 0, headers.length-1));
 
-            // Сохраняем файл
             try (FileOutputStream fos = new FileOutputStream(outputPath)) {
                 workbook.write(fos);
             }
@@ -898,14 +1254,27 @@ public class JournalAnalizItogMeshUniversal {
         return style;
     }
 
-    // Вспомогательный класс для временного хранения данных
+    private static CellStyle createExportStyle(Workbook workbook) {
+        CellStyle style = workbook.createCellStyle();
+        Font font = workbook.createFont();
+        font.setBold(true);
+        font.setColor(IndexedColors.DARK_GREEN.getIndex());
+        style.setFont(font);
+        style.setAlignment(HorizontalAlignment.CENTER);
+        style.setDataFormat(workbook.createDataFormat().getFormat("0.00"));
+        style.setBorderBottom(BorderStyle.THIN);
+        style.setBorderTop(BorderStyle.THIN);
+        style.setBorderLeft(BorderStyle.THIN);
+        style.setBorderRight(BorderStyle.THIN);
+        return style;
+    }
+
     static class StudentTempData {
         List<Integer> grades = new ArrayList<>();
         int absences = 0;
         String trimester1Grade = "";
     }
 
-    // Вспомогательный класс для хранения всех данных по предмету
     static class StudentSubjectData {
         String className;
         String subject;
@@ -915,9 +1284,11 @@ public class JournalAnalizItogMeshUniversal {
         String expectedGrade;
         String error;
         int absences;
+        double averageFromExport;
 
         StudentSubjectData(String className, String subject, double average, int gradeCount,
-                           String trimester1Grade, String expectedGrade, String error, int absences) {
+                           String trimester1Grade, String expectedGrade, String error, int absences,
+                           double averageFromExport) {
             this.className = className;
             this.subject = subject;
             this.average = average;
@@ -926,6 +1297,7 @@ public class JournalAnalizItogMeshUniversal {
             this.expectedGrade = expectedGrade;
             this.error = error;
             this.absences = absences;
+            this.averageFromExport = averageFromExport;
         }
     }
 }
