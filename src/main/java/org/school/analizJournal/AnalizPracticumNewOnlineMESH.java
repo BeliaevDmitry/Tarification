@@ -9,10 +9,8 @@ import org.school.personalLoad.service.DownloadService;
 import org.school.personalLoad.config.AppConfig;
 import org.school.personalLoad.service.impl.DownloadServiceImpl;
 
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.awt.*;
+import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.file.Files;
@@ -24,10 +22,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
 
-import static org.school.analizJournal.config.JournalConfig.OUTPUT_DIRECTORY_PR;
 import static org.school.analizJournal.config.JournalConfig.PRACTICUM_OUTPUT;
-
 public class AnalizPracticumNewOnlineMESH {
+
+    public static final String OUTPUT_DIRECTORY_PR = "C:\\Users\\dimah\\Yandex.Disk\\" +
+            "1811\\ЕГЭ 2026\\";
 
     public static void main(String[] args) {
         try {
@@ -62,38 +61,214 @@ public class AnalizPracticumNewOnlineMESH {
     private static List<String> downloadMosRuFiles() throws IOException {
         List<String> downloadedFiles = new ArrayList<>();
         String cookie = getCookie();
-        if (cookie == null || cookie.isEmpty()) {
-            throw new IOException("Не удалось получить cookie для авторизации");
+        String manualFolder = "C:\\Users\\dimah\\Yandex.Disk\\1811\\ЕГЭ 2026\\журнал практикумов";
+
+        // Создаем папку для ручного скачивания, если ее нет
+        File folder = new File(manualFolder);
+        if (!folder.exists()) {
+            folder.mkdirs();
         }
 
         System.out.println("Получен cookie, начинаю скачивание файлов...");
 
-        // 1. Основной файл с множеством групп
-        String mainUrl = JournalConfig.getMainMeshUrl();
+        // 1. Пытаемся скачать основной файл автоматически
         String mainFilePath = JournalConfig.getMeshFilePath(JournalConfig.MESH_MAIN_FILE);
+        boolean mainDownloaded = false;
 
-        System.out.println("Скачиваю основной файл...");
-        String mainFile = tryDownloadFile(mainUrl, mainFilePath, cookie);
-        downloadedFiles.add(mainFile);
+        try {
+            if (cookie != null && !cookie.isEmpty()) {
+                String mainUrl = JournalConfig.getMainMeshUrl();
+                System.out.println("Скачиваю основной файл...");
+                String mainFile = tryDownloadFile(mainUrl, mainFilePath, cookie);
+                downloadedFiles.add(mainFile);
+                mainDownloaded = true;
+                System.out.println("✅ Основной файл скачан автоматически");
+            }
+        } catch (IOException e) {
+            System.out.println("⚠️ Не удалось скачать основной файл автоматически: " + e.getMessage());
+        }
 
-        //2. Дополнительные файлы
-        for (int i = 0; i < JournalConfig.MESH_ADDITIONAL_GROUP_IDS.length; i++) {
-            System.out.println("Скачиваю дополнительный файл " + (i + 1) + "...");
-            try {
-                String additionalUrl = JournalConfig.getAdditionalMeshUrl(JournalConfig.MESH_ADDITIONAL_GROUP_IDS[i]);
-                String additionalFilePath = JournalConfig.getExtraMeshFilePath(i + 1);
+        // 2. Пытаемся скачать дополнительные файлы автоматически
+        List<Integer> failedAdditionalDownloads = new ArrayList<>();
 
-                String additionalFile = tryDownloadFile(additionalUrl, additionalFilePath, cookie);
-                downloadedFiles.add(additionalFile);
-                System.out.println("✅ Дополнительный файл " + (i + 1) + " скачан");
-            } catch (IOException e) {
-                System.out.println("⚠️ Не удалось скачать дополнительный файл " + (i + 1) + ": " + e.getMessage());
+        if (cookie != null && !cookie.isEmpty()) {
+            for (int i = 0; i < JournalConfig.MESH_ADDITIONAL_GROUP_IDS.length; i++) {
+                try {
+                    String additionalUrl = JournalConfig.getAdditionalMeshUrl(JournalConfig.MESH_ADDITIONAL_GROUP_IDS[i]);
+                    String additionalFilePath = JournalConfig.getExtraMeshFilePath(i + 1);
+
+                    System.out.println("Скачиваю дополнительный файл " + (i + 1) + "...");
+                    String additionalFile = tryDownloadFile(additionalUrl, additionalFilePath, cookie);
+                    downloadedFiles.add(additionalFile);
+                    System.out.println("✅ Дополнительный файл " + (i + 1) + " скачан автоматически");
+                } catch (IOException e) {
+                    System.out.println("⚠️ Не удалось скачать дополнительный файл " + (i + 1) + " автоматически: " + e.getMessage());
+                    failedAdditionalDownloads.add(i + 1);
+                }
             }
         }
 
+        // 3. Если какие-то файлы не скачались автоматически, предлагаем ручное скачивание
+        if (!mainDownloaded || !failedAdditionalDownloads.isEmpty()) {
+            handleManualDownload(mainDownloaded, failedAdditionalDownloads);
+
+            // 4. Ищем все файлы в папке ручного скачивания
+            System.out.println("\n📁 Ищу файлы в папке: " + manualFolder);
+            File[] files = folder.listFiles((dir, name) ->
+                    name.toLowerCase().endsWith(".xlsx") || name.toLowerCase().endsWith(".xls"));
+
+            if (files != null && files.length > 0) {
+                System.out.println("Найдено файлов: " + files.length);
+                for (File file : files) {
+                    downloadedFiles.add(file.getAbsolutePath());
+                    System.out.println("✅ Добавлен файл: " + file.getName());
+                }
+            } else {
+                System.out.println("⚠️ В папке не найдено Excel-файлов");
+            }
+        }
+
+        // 5. Проверяем, есть ли скачанные файлы
+        if (downloadedFiles.isEmpty()) {
+            throw new IOException("Не удалось получить ни одного файла. Проверьте ручную папку: " + manualFolder);
+        }
+
+        System.out.println("\n📊 Итого получено файлов: " + downloadedFiles.size());
         return downloadedFiles;
     }
 
+    private static void handleManualDownload(boolean mainDownloaded, List<Integer> failedAdditional) {
+        String manualFolder = "C:\\Users\\dimah\\Yandex.Disk\\1811\\ЕГЭ 2026\\журнал практикумов";
+
+        System.out.println("\n" + "=".repeat(80));
+        System.out.println("ТРЕБУЕТСЯ РУЧНОЕ СКАЧИВАНИЕ ФАЙЛОВ");
+        System.out.println("=".repeat(80));
+
+        int totalFilesNeeded = (mainDownloaded ? 0 : 1) + failedAdditional.size();
+        System.out.println("\nНеобходимо скачать " + totalFilesNeeded + " файл(ов) вручную");
+
+        // Генерируем ссылки для ручного скачивания
+        List<String> urls = new ArrayList<>();
+        List<String> descriptions = new ArrayList<>();
+
+        if (!mainDownloaded) {
+            String mainUrl = JournalConfig.getMainMeshUrl();
+            urls.add(mainUrl);
+            descriptions.add("Основной файл (все группы)");
+        }
+
+        for (int num : failedAdditional) {
+            String additionalUrl = JournalConfig.getAdditionalMeshUrl(JournalConfig.MESH_ADDITIONAL_GROUP_IDS[num - 1]);
+            urls.add(additionalUrl);
+            descriptions.add("Дополнительный файл " + num);
+        }
+
+        // Выводим инструкцию
+        System.out.println("\nИнструкция по скачиванию:");
+        System.out.println("1. Откройте следующие ссылки в браузере:");
+        for (int i = 0; i < urls.size(); i++) {
+            System.out.println("   " + (i + 1) + ". " + descriptions.get(i));
+            System.out.println("      Ссылка: " + urls.get(i));
+        }
+
+        System.out.println("\n2. Для каждой ссылки:");
+        System.out.println("   - Авторизуйтесь в МЭШ (если потребуется)");
+        System.out.println("   - Скачайте файл Excel");
+        System.out.println("   - Сохраните файл в папку: " + manualFolder);
+
+        System.out.println("\n3. Требования к файлам:");
+        System.out.println("   - Формат: Excel (.xlsx или .xls)");
+        System.out.println("   - Можно сохранять с любыми именами");
+        System.out.println("   - Главное - все файлы должны быть в указанной папке");
+
+        System.out.println("\n4. После скачивания всех файлов вернитесь в программу");
+
+        waitForUserConfirmation(manualFolder);
+    }
+
+    private static void waitForUserConfirmation(String folderPath) {
+        Scanner scanner = new Scanner(System.in);
+
+        while (true) {
+            System.out.println("\n" + "-".repeat(80));
+            System.out.println("Выберите действие:");
+            System.out.println("1. Я скачал все файлы, продолжить");
+            System.out.println("2. Показать файлы в папке сейчас");
+            System.out.println("3. Открыть папку в проводнике");
+            System.out.println("4. Показать ссылки еще раз");
+            System.out.print("Ваш выбор (1-4): ");
+
+            String choice = scanner.nextLine().trim();
+
+            switch (choice) {
+                case "1":
+                    System.out.println("Продолжаем работу...");
+                    return;
+
+                case "2":
+                    showFilesInFolder(folderPath);
+                    break;
+
+                case "3":
+                    try {
+                        Desktop.getDesktop().open(new File(folderPath));
+                        System.out.println("Папка открыта в проводнике");
+                    } catch (Exception e) {
+                        System.out.println("Не удалось открыть папку: " + e.getMessage());
+                    }
+                    break;
+
+                case "4":
+                    // Можно повторно показать инструкцию
+                    System.out.println("\nОсновные требования:");
+                    System.out.println("- Скачайте все необходимые Excel-файлы");
+                    System.out.println("- Сохраните в папку: " + folderPath);
+                    System.out.println("- Имена файлов могут быть любыми");
+                    break;
+
+                default:
+                    System.out.println("Неверный выбор. Введите 1, 2, 3 или 4");
+            }
+        }
+    }
+
+    private static void showFilesInFolder(String folderPath) {
+        File folder = new File(folderPath);
+        if (!folder.exists()) {
+            System.out.println("Папка не существует: " + folderPath);
+            return;
+        }
+
+        File[] files = folder.listFiles();
+        if (files == null || files.length == 0) {
+            System.out.println("Папка пуста: " + folderPath);
+            return;
+        }
+
+        System.out.println("\nСодержимое папки '" + folderPath + "':");
+        System.out.println("-".repeat(80));
+
+        int excelCount = 0;
+        for (File file : files) {
+            String type = file.isDirectory() ? "[Папка]" : "[Файл]";
+            String excelMark = "";
+
+            if (file.isFile()) {
+                String name = file.getName().toLowerCase();
+                if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+                    excelMark = " ✓ Excel";
+                    excelCount++;
+                }
+            }
+
+            System.out.printf("%s %-40s %,.0f байт%s%n",
+                    type, file.getName(), file.length(), excelMark);
+        }
+
+        System.out.println("-".repeat(80));
+        System.out.println("Всего файлов: " + files.length);
+        System.out.println("Excel-файлов: " + excelCount);
+    }
     // УПРОЩЕННЫЙ МЕТОД ПОЛУЧЕНИЯ COOKIE
     private static String getCookie() {
         System.out.println("=== ПОЛУЧЕНИЕ COOKIE ДЛЯ МЭШ ===");

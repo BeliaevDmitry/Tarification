@@ -16,178 +16,145 @@ public class TarifficationProcessingServiceImpl implements TarifficationProcessi
         this.databaseService = databaseService;
     }
 
+    @Override
     public List<TarifficationPerson> addingGroup(List<TarifficationPerson> list,
                                                  List<SubjectWithGroup> groupList) {
         List<TarifficationPerson> result = new ArrayList<>(list);
 
-        for (SubjectWithGroup group : groupList) {
-            List<TarifficationPerson> listMatches = findAllByFields(result, group.getSubjectName(),
-                    group.getClassName(), group.getNumberSchoolBuilding());
+        // Группируем преподавателей по предметам+классам+корпусам
+        Map<String, List<TarifficationPerson>> groupedBySubjectClass = new HashMap<>();
 
-            List<TarifficationPerson> listMatchesInTariffication =
+        for (TarifficationPerson person : list) {
+            String key = createGroupKey(person.getSubjectName(),
+                    person.getClassName(),
+                    person.getNumberSchoolBuilding());
+            groupedBySubjectClass
+                    .computeIfAbsent(key, k -> new ArrayList<>())
+                    .add(person);
+        }
+
+        // Обрабатываем каждый предмет+класс
+        for (SubjectWithGroup group : groupList) {
+            String key = createGroupKey(group.getSubjectName(),
+                    group.getClassName(),
+                    group.getNumberSchoolBuilding());
+
+            List<TarifficationPerson> teachers = groupedBySubjectClass.get(key);
+            if (teachers == null || teachers.isEmpty()) {
+                continue;
+            }
+
+            // Получаем исторические данные
+            List<TarifficationPerson> historicalMatches =
                     databaseService.findAllByFieldsHistory(group.getSubjectName(),
                             group.getClassName(), group.getNumberSchoolBuilding());
 
-            if (listMatches.size() == 1) {
-                processSingleMatch(result, listMatches.get(0), listMatchesInTariffication);
-            } else if (listMatches.size() == 2) {
-                processDoubleMatch(result, listMatches, listMatchesInTariffication);
+            // Обрабатываем в зависимости от количества преподавателей
+            if (teachers.size() == 1) {
+                processSingleTeacher(result, teachers.get(0), historicalMatches, group);
+            } else if (teachers.size() == 2) {
+                processTwoTeachers(result, teachers, historicalMatches, group);
+            } else {
+                System.out.println("⚠️ Неожиданное количество преподавателей (" +
+                        teachers.size() + ") для " + key);
             }
         }
+
         return result;
     }
 
-    public void sortByFIO(List<TarifficationPerson> list) {
-        list.sort(Comparator.comparing(TarifficationPerson::getFioTeacher));
+    private void processSingleTeacher(List<TarifficationPerson> result,
+                                      TarifficationPerson teacher,
+                                      List<TarifficationPerson> historicalMatches,
+                                      SubjectWithGroup group) {
+
+        String subject = teacher.getSubjectName();
+        String className = teacher.getClassName();
+        String building = teacher.getNumberSchoolBuilding();
+        Integer totalLoad = teacher.getLoad();
+
+        System.out.println("👨‍🏫 Один преподаватель: " + teacher.getFioTeacher() +
+                " - " + subject + " " + className +
+                " (нагрузка: " + totalLoad + " ч)");
+
+        // Делим нагрузку пополам между подгруппами
+        Integer groupLoad = totalLoad / 2;
+
+        createSubgroups(result, teacher, subject, className, building, groupLoad);
     }
 
-    public void sortHistoryByDate(List<TarifficationChanges> historyList) {
-        historyList.sort(Comparator.comparing(TarifficationChanges::getChangeDate));
-    }
+    private void processTwoTeachers(List<TarifficationPerson> result,
+                                    List<TarifficationPerson> teachers,
+                                    List<TarifficationPerson> historicalMatches,
+                                    SubjectWithGroup group) {
 
-    private void processSingleMatch(List<TarifficationPerson> result,
-                                    TarifficationPerson match,
-                                    List<TarifficationPerson> historicalMatches) {
-        String nameSubject = match.getSubjectName();
-        String className = match.getClassName();
-        Integer currentLoad = match.getLoad();
-        Integer groupLoad = currentLoad / 2;
+        if (teachers.size() != 2) return;
 
-        // Проверяем, изменилась ли нагрузка по сравнению с историческими данными
-        if (hasLoadChanged(historicalMatches, currentLoad)) {
-            // Нагрузка изменилась - создаем новые записи
-            createNewGroups(result, match, nameSubject, className, groupLoad);
-            return;
-        }
+        String subject = teachers.get(0).getSubjectName();
+        String className = teachers.get(0).getClassName();
+        String building = teachers.get(0).getNumberSchoolBuilding();
 
-        if (historicalMatches == null || historicalMatches.isEmpty()) {
-            createNewGroups(result, match, nameSubject, className, groupLoad);
-            return;
-        }
+        System.out.println("👨‍🏫👩‍🏫 Два преподавателя: " +
+                teachers.get(0).getFioTeacher() + " и " +
+                teachers.get(1).getFioTeacher() +
+                " - " + subject + " " + className);
 
-        // Проверяем, совпадают ли преподаватели с историческими данными
-        boolean teacherMatchesHistory = historicalMatches.stream()
-                .anyMatch(hist -> hist.getFioTeacher().equals(match.getFioTeacher()));
+        // Каждый преподаватель ведет свою подгруппу
+        // Первый преподаватель - первая подгруппа
+        TarifficationPerson firstGroup = new TarifficationPerson(teachers.get(0));
+        firstGroup.setGroupNameEducationalPlan(formatGroupNameBase(subject, className) + " 1 гр");
+        firstGroup.setGroupLoad(teachers.get(0).getLoad());
 
-        if (teacherMatchesHistory) {
-            // Преподаватель совпадает - используем исторические данные
-            removeByFields(result, nameSubject, className);
-            result.addAll(historicalMatches);
-        } else {
-            // Преподаватель изменился - создаем новые группы
-            createNewGroups(result, match, nameSubject, className, groupLoad);
-        }
-    }
+        // Второй преподаватель - вторая подгруппа
+        TarifficationPerson secondGroup = new TarifficationPerson(teachers.get(1));
+        secondGroup.setGroupNameEducationalPlan(formatGroupNameBase(subject, className) + " 2 гр");
+        secondGroup.setGroupLoad(teachers.get(1).getLoad());
 
-    private void processDoubleMatch(List<TarifficationPerson> result,
-                                    List<TarifficationPerson> matches,
-                                    List<TarifficationPerson> historicalMatches) {
+        // Удаляем старые записи
+        removeByFields(result, subject, className, building);
 
-        if (matches.size() < 2) return;
-
-        String nameSubject = matches.get(0).getSubjectName();
-        String className = matches.get(0).getClassName();
-        Integer currentTotalLoad = matches.stream().mapToInt(TarifficationPerson::getLoad).sum();
-
-        // Проверяем, изменилась ли общая нагрузка
-        if (hasLoadChanged(historicalMatches, currentTotalLoad)) {
-            // Нагрузка изменилась - создаем новые записи
-            createNewGroupsFromMultiple(result, matches, nameSubject, className);
-            return;
-        }
-
-        if (historicalMatches == null || historicalMatches.isEmpty()) {
-            createNewGroupsFromMultiple(result, matches, nameSubject, className);
-            return;
-        }
-
-        // Проверяем совпадение преподавателей
-        boolean bothTeachersMatch = historicalMatches.stream()
-                .allMatch(hist -> matches.stream()
-                        .anyMatch(current -> current.getFioTeacher().equals(hist.getFioTeacher())));
-
-        if (bothTeachersMatch) {
-            // Оба преподавателя совпадают - используем исторические данные
-            removeByFields(result, nameSubject, className);
-            result.addAll(historicalMatches);
-        } else {
-            // Преподаватели изменились - создаем новые группы
-            createNewGroupsFromMultiple(result, matches, nameSubject, className);
-        }
-    }
-
-    /**
-     * Проверяет, изменилась ли нагрузка по сравнению с историческими данными
-     */
-    private boolean hasLoadChanged(List<TarifficationPerson> historicalMatches, Integer currentLoad) {
-        if (historicalMatches == null || historicalMatches.isEmpty()) {
-            return false; // Нет исторических данных для сравнения
-        }
-
-        Integer historicalTotalLoad = historicalMatches.stream()
-                .mapToInt(TarifficationPerson::getLoad)
-                .sum();
-
-        return !historicalTotalLoad.equals(currentLoad);
-    }
-
-    /**
-     * Создает новые группы для одного преподавателя (когда нагрузка изменилась)
-     */
-    private void createNewGroups(List<TarifficationPerson> result,
-                                 TarifficationPerson original,
-                                 String nameSubject,
-                                 String className,
-                                 Integer groupLoad) {
-        String groupNameBase = formatGroupNameBase(nameSubject, className);
-
-        TarifficationPerson firstGroup = new TarifficationPerson(original);
-        TarifficationPerson secondGroup = new TarifficationPerson(original);
-
-        firstGroup.setGroupNameEducationalPlan(groupNameBase + " 1 гр");
-        firstGroup.setGroupLoad(groupLoad);
-        secondGroup.setGroupNameEducationalPlan(groupNameBase + " 2 гр");
-        secondGroup.setGroupLoad(groupLoad);
-
-        removeByFields(result, nameSubject, className);
+        // Добавляем новые записи с подгруппами
         result.add(firstGroup);
         result.add(secondGroup);
     }
 
-    /**
-     * Создает новые группы для двух преподавателей (когда нагрузка изменилась)
-     */
-    private void createNewGroupsFromMultiple(List<TarifficationPerson> result,
-                                             List<TarifficationPerson> matches,
-                                             String nameSubject,
-                                             String className) {
-        String groupNameBase = formatGroupNameBase(nameSubject, className);
+    private void createSubgroups(List<TarifficationPerson> result,
+                                 TarifficationPerson teacher,
+                                 String subject, String className,
+                                 String building, Integer groupLoad) {
 
-        // Распределяем нагрузку поровну
-        Integer groupLoad = matches.get(0).getLoad() / 2;
+        String groupNameBase = formatGroupNameBase(subject, className);
 
-        matches.get(0).setGroupNameEducationalPlan(groupNameBase + " 1 гр");
-        matches.get(0).setGroupLoad(groupLoad);
-        matches.get(1).setGroupNameEducationalPlan(groupNameBase + " 2 гр");
-        matches.get(1).setGroupLoad(groupLoad);
+        // Первая подгруппа
+        TarifficationPerson firstGroup = new TarifficationPerson(teacher);
+        firstGroup.setGroupNameEducationalPlan(groupNameBase + " 1 гр");
+        firstGroup.setGroupLoad(groupLoad);
 
-        removeByFields(result, nameSubject, className);
-        result.add(matches.get(0));
-        result.add(matches.get(1));
+        // Вторая подгруппа
+        TarifficationPerson secondGroup = new TarifficationPerson(teacher);
+        secondGroup.setGroupNameEducationalPlan(groupNameBase + " 2 гр");
+        secondGroup.setGroupLoad(groupLoad);
+
+        // Удаляем старую запись
+        removeByFields(result, subject, className, building);
+
+        // Добавляем новые записи с подгруппами
+        result.add(firstGroup);
+        result.add(secondGroup);
     }
 
-    private Integer extractGroupNumber(String groupName) {
-        if (groupName == null) return null;
-        if (groupName.contains("1 гр") || groupName.contains("1гр")) return 1;
-        if (groupName.contains("2 гр") || groupName.contains("2гр")) return 2;
-        return null;
+    private String createGroupKey(String subject, String className, String building) {
+        return building + "|" + subject + "|" + className;
     }
 
-    private void removeByFields(List<TarifficationPerson> list, String targetSubject, String targetClass) {
+    private void removeByFields(List<TarifficationPerson> list,
+                                String subject, String className, String building) {
         Iterator<TarifficationPerson> iterator = list.iterator();
         while (iterator.hasNext()) {
             TarifficationPerson person = iterator.next();
-            if (person.getSubjectName().equals(targetSubject) && person.getClassName().equals(targetClass)) {
+            if (person.getSubjectName().equals(subject) &&
+                    person.getClassName().equals(className) &&
+                    person.getNumberSchoolBuilding().equals(building)) {
                 iterator.remove();
             }
         }
@@ -203,11 +170,13 @@ public class TarifficationProcessingServiceImpl implements TarifficationProcessi
         return cleanedSubjectName + " " + className + " " + formattedClassName;
     }
 
-    private List<TarifficationPerson> findAllByFields(List<TarifficationPerson> list, String subject, String className, String NumberSchoolBuilding) {
-        return list.stream()
-                .filter(person -> person.getSubjectName().equals(subject)
-                        && person.getClassName().equals(className)
-                        && person.getNumberSchoolBuilding().equals(NumberSchoolBuilding))
-                .collect(Collectors.toList());
+    @Override
+    public void sortByFIO(List<TarifficationPerson> list) {
+        list.sort(Comparator.comparing(TarifficationPerson::getFioTeacher));
+    }
+
+    @Override
+    public void sortHistoryByDate(List<TarifficationChanges> historyList) {
+        historyList.sort(Comparator.comparing(TarifficationChanges::getChangeDate));
     }
 }

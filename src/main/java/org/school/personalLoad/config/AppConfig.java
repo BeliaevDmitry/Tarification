@@ -5,8 +5,8 @@ import java.util.Set;
 public class AppConfig {
     // Google Sheets URLs
     public static final String TARIFFICATION_SHEETS_URL =
-            "https://docs.google.com/spreadsheets/d/1_2XDnInfHUKfj8jrzyU7EtzQz9G2oUTRZ-ALz1cePfU/export?format=xlsx";
-
+            /* "https://docs.google.com/spreadsheets/d/1_2XDnInfHUKfj8jrzyU7EtzQz9G2oUTRZ-ALz1cePfU/export?format=xlsx";*/
+           "https://docs.google.com/spreadsheets/d/1yDBzOWy7ReQ7vhFFCQN6F58wichu9FAVgrl688uNykI/export?format=xlsx";
     public static final String PRACTICUM_SHEETS_URL =
             "https://docs.google.com/spreadsheets/d/1CgxahrURqJw79TtINoEsgfyZoVMO4NKuQxhk0NwDOHg/export?format=xlsx";
 
