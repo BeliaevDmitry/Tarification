@@ -53,6 +53,10 @@ cp .env.example .env
 - `src/main/resources/static/app.js` — только логика взаимодействия с API (все ключевые шаги вынесены в отдельные функции и прокомментированы).
 - `src/main/java/org/school/personalLoad/controller/api/ApiExceptionHandler.java` — единый формат API-ошибок для фронтенда.
 
+#### Legacy-режим (только при необходимости миграции)
+По умолчанию legacy-обработка файлов выключена: `app.legacy-mode-enabled=false`.
+Если нужно временно использовать старый файловый пайплайн, включите `LEGACY_MODE_ENABLED=true` в окружении.
+
 
 ### Основные endpoint'ы
 

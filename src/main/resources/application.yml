@@ -24,6 +24,8 @@ app:
   expelled-file-path: ${EXPELLED_FILE_PATH:./data/expelled.xlsx}
   keep-history: ${KEEP_HISTORY:true}
   clear-history-on-start: ${CLEAR_HISTORY_ON_START:false}
+  # legacy file-pipeline (excel path processing) disabled by default in API+Frontend mode
+  legacy-mode-enabled: ${LEGACY_MODE_ENABLED:false}
   excluded-teachers:
     - "Сухомлинова Вера Борисовна"
 

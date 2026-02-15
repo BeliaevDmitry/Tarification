@@ -18,6 +18,7 @@ public class AppConfig {
     private String offlineFilesDirectory;
     private String expelledFilePath;
     private boolean keepHistory = true;
+    private boolean legacyModeEnabled;
     private boolean clearHistoryOnStart;
     private Set<String> excludedTeachers = Set.of();
 
@@ -89,6 +90,14 @@ public class AppConfig {
         this.clearHistoryOnStart = clearHistoryOnStart;
     }
 
+
+    public boolean isLegacyModeEnabled() {
+        return legacyModeEnabled;
+    }
+
+    public void setLegacyModeEnabled(boolean legacyModeEnabled) {
+        this.legacyModeEnabled = legacyModeEnabled;
+    }
     public Set<String> getExcludedTeachers() {
         return excludedTeachers;
     }

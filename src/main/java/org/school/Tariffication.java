@@ -25,11 +25,15 @@ public class Tariffication implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        Path downloadDir = Path.of(appConfig.getDownloadDirectory());
         Path outputDir = Path.of(appConfig.getOutputDirectory());
-        Files.createDirectories(downloadDir);
         Files.createDirectories(outputDir);
 
-        log.info("Приложение запущено в API-режиме без Google Sheets. Используйте /api/manual-load и /api/teachers.");
+        if (appConfig.isLegacyModeEnabled()) {
+            Path downloadDir = Path.of(appConfig.getDownloadDirectory());
+            Files.createDirectories(downloadDir);
+            log.warn("Запущен legacy-режим обработки файлов (LEGACY_MODE_ENABLED=true)");
+        }
+
+        log.info("Приложение запущено в API+Frontend режиме без Google Sheets. Используйте / и /api/*.");
     }
 }

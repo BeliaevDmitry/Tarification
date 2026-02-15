@@ -2,6 +2,7 @@ package org.school.personalLoad.service.impl;
 
 import lombok.extern.slf4j.Slf4j;
 import org.school.personalLoad.service.DownloadService;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -13,6 +14,8 @@ import java.nio.file.StandardCopyOption;
 
 @Slf4j
 @Service
+@Deprecated
+@ConditionalOnProperty(prefix = "app", name = "legacy-mode-enabled", havingValue = "true")
 public class DownloadServiceImpl implements DownloadService {
 
     @Override

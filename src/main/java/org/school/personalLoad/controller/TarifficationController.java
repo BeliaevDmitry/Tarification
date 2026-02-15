@@ -15,6 +15,7 @@ import org.school.personalLoad.service.ReportService;
 import org.school.personalLoad.service.TarifficationDataReaderService;
 import org.school.personalLoad.service.TarifficationNamingService;
 import org.school.personalLoad.service.TarifficationProcessingService;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -23,6 +24,8 @@ import java.util.Map;
 
 @Slf4j
 @Component
+@Deprecated
+@ConditionalOnProperty(prefix = "app", name = "legacy-mode-enabled", havingValue = "true")
 @RequiredArgsConstructor
 public class TarifficationController {
 
