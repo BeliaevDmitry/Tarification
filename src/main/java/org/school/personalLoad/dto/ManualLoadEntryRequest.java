@@ -1,6 +1,7 @@
 package org.school.personalLoad.dto;
 
 import lombok.Data;
+import org.school.personalLoad.model.EducationLevel;
 
 @Data
 public class ManualLoadEntryRequest {
@@ -11,4 +12,5 @@ public class ManualLoadEntryRequest {
     private Integer load;
     private String groupNameEducationalPlan;
     private Integer groupLoad;
+    private EducationLevel educationLevel;
 }

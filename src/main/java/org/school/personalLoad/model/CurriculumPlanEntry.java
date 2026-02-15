@@ -7,31 +7,29 @@ import java.time.LocalDateTime;
 
 @Data
 @Entity
-@Table(name = "manual_load_entry")
-public class ManualLoadEntry {
+@Table(name = "curriculum_plan_entry", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_curriculum_class_subject_level", columnNames = {"className", "subjectName", "educationLevel"})
+})
+public class CurriculumPlanEntry {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(nullable = false)
-    private String fioTeacher;
-
-    @Column(nullable = false)
-    private String numberSchoolBuilding;
+    private String className;
 
     @Column(nullable = false)
     private String subjectName;
 
     @Column(nullable = false)
-    private String className;
+    private Integer plannedHours;
 
     @Column(nullable = false)
-    private Integer load;
+    private boolean subgroupRequired;
 
-    private String groupNameEducationalPlan;
-
-    private Integer groupLoad;
+    @Column(nullable = false)
+    private Integer subgroupCount;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

@@ -3,10 +3,12 @@ package org.school.personalLoad.service.impl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
+import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.SubjectWithGroup;
 import org.school.personalLoad.model.TarifficationPerson;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.DatabaseService;
 import org.school.personalLoad.service.ManualLoadService;
 import org.school.personalLoad.service.TarifficationProcessingService;
@@ -23,6 +25,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private final ManualLoadEntryRepository manualLoadEntryRepository;
     private final TarifficationProcessingService tarifficationProcessingService;
     private final DatabaseService databaseService;
+    private final CurriculumPlanService curriculumPlanService;
 
     @Override
     public ManualLoadEntry create(ManualLoadEntryRequest request) {
@@ -63,6 +66,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             person.setGroupNameEducationalPlan(entry.getGroupNameEducationalPlan() != null
                     ? entry.getGroupNameEducationalPlan() : "");
             person.setGroupLoad(entry.getGroupLoad() != null ? entry.getGroupLoad() : entry.getLoad());
+            validateAgainstCurriculum(entry);
             tarifficationList.add(person);
         }
 
@@ -84,7 +88,27 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         entity.setLoad(request.getLoad());
         entity.setGroupNameEducationalPlan(request.getGroupNameEducationalPlan());
         entity.setGroupLoad(request.getGroupLoad());
+        entity.setEducationLevel(request.getEducationLevel());
         return entity;
+    }
+
+
+    private void validateAgainstCurriculum(ManualLoadEntry entry) {
+        CurriculumPlanEntry rule = curriculumPlanService
+                .findRule(entry.getClassName().trim(), entry.getSubjectName().trim(), entry.getEducationLevel())
+                .orElseThrow(() -> new IllegalArgumentException("Curriculum rule not found for class=" + entry.getClassName() +
+                        ", subject=" + entry.getSubjectName() + ", level=" + entry.getEducationLevel()));
+
+        int effectiveLoad = entry.getGroupLoad() != null ? entry.getGroupLoad() : entry.getLoad();
+        if (effectiveLoad > rule.getPlannedHours()) {
+            throw new IllegalArgumentException("Load exceeds planned hours for curriculum rule");
+        }
+
+        if (rule.isSubgroupRequired()) {
+            if (entry.getGroupNameEducationalPlan() == null || entry.getGroupNameEducationalPlan().isBlank()) {
+                throw new IllegalArgumentException("groupNameEducationalPlan is required because subgroupRequired=true in curriculum");
+            }
+        }
     }
 
     private void validate(ManualLoadEntryRequest request) {
@@ -102,6 +126,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         }
         if (request.getLoad() == null || request.getLoad() <= 0) {
             throw new IllegalArgumentException("load must be > 0");
+        }
+        if (request.getEducationLevel() == null) {
+            throw new IllegalArgumentException("educationLevel is required (BASIC or ADVANCED)");
         }
     }
 }

@@ -56,8 +56,9 @@ cp .env.example .env
   "subjectName": "Математика",
   "className": "9-А",
   "load": 5,
-  "groupNameEducationalPlan": "",
-  "groupLoad": 5
+  "groupNameEducationalPlan": "9-А 1 гр",
+  "groupLoad": 5,
+  "educationLevel": "BASIC"
 }
 ```
 
@@ -74,3 +75,39 @@ cp .env.example .env
 curl -X POST "http://localhost:8080/api/teachers/import" \
   -F "file=@teachers.xlsx"
 ```
+
+
+### Учебный план по классам 1-11 (часы, подгруппы, уровень)
+
+Добавлены endpoint'ы для отдельного ведения учебного плана по каждому классу:
+
+- `POST /api/curriculum` — создать/обновить правило для пары `className + subjectName + educationLevel`.
+- `POST /api/curriculum/bulk` — массовая загрузка правил.
+- `GET /api/curriculum` — получить все правила учебного плана.
+- `DELETE /api/curriculum` — очистить правила учебного плана.
+
+Поля правила:
+- `className` — класс (например, `9-А`, `11-Б`).
+- `subjectName` — предмет.
+- `plannedHours` — плановые часы.
+- `subgroupRequired` — нужно ли деление на подгруппы.
+- `subgroupCount` — количество подгрупп (если требуется деление).
+- `educationLevel` — `BASIC` или `ADVANCED`.
+
+Пример `POST /api/curriculum`:
+
+```json
+{
+  "className": "9-А",
+  "subjectName": "Математика",
+  "plannedHours": 5,
+  "subgroupRequired": true,
+  "subgroupCount": 2,
+  "educationLevel": "BASIC"
+}
+```
+
+При `POST /api/manual-load/process` теперь выполняется валидация нагрузки по учебному плану:
+- правило должно существовать,
+- часы не должны превышать `plannedHours`,
+- если `subgroupRequired=true`, то `groupNameEducationalPlan` обязателен.
