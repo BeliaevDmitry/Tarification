@@ -48,6 +48,27 @@ docker rm postgres || true
 docker compose up -d --build
 ```
 
+### Частая ошибка: `password authentication failed for user "tarif_user"` (`SQLState 28P01`)
+
+Это означает, что пароль пользователя в PostgreSQL не совпадает с `DB_PASSWORD` приложения.
+
+1. Убедитесь, что в `.env` согласованы значения:
+   - `POSTGRES_USER` = `DB_USERNAME`
+   - `POSTGRES_PASSWORD` = `DB_PASSWORD`
+2. Если БД была создана раньше с другим паролем, пересоздайте volume:
+   ```bash
+   docker compose down -v
+   docker compose up -d --build
+   ```
+3. Если данные в БД нужно сохранить, смените пароль пользователя в существующей БД:
+   ```bash
+   docker exec -it <postgres_container> psql -U tarif_user -d tariffication_db
+   ALTER USER tarif_user WITH PASSWORD '<DB_PASSWORD_из_.env>';
+   \q
+   ```
+
+> Примечание: `.env.example` содержит демонстрационные значения. Для локального запуска задайте реальные секреты в `.env`.
+
 ### Вариант B: только БД в Docker, приложение локально
 
 1. Поднимите только БД:
