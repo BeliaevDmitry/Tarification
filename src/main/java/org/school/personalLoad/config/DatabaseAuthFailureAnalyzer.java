@@ -1,16 +1,17 @@
 package org.school.personalLoad.config;
 
-import org.postgresql.util.PSQLException;
 import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.boot.diagnostics.AbstractFailureAnalyzer;
 import org.springframework.boot.diagnostics.FailureAnalysis;
+
+import java.sql.SQLException;
 
 public class DatabaseAuthFailureAnalyzer extends AbstractFailureAnalyzer<BeanCreationException> {
 
     @Override
     protected FailureAnalysis analyze(Throwable rootFailure, BeanCreationException cause) {
-        PSQLException postgresException = findPostgresException(cause);
-        if (postgresException == null || !"28P01".equals(postgresException.getSQLState())) {
+        SQLException sqlException = findSqlException(cause);
+        if (sqlException == null || !"28P01".equals(sqlException.getSQLState())) {
             return null;
         }
 
@@ -27,11 +28,11 @@ public class DatabaseAuthFailureAnalyzer extends AbstractFailureAnalyzer<BeanCre
         return new FailureAnalysis(description, action, cause);
     }
 
-    private PSQLException findPostgresException(Throwable throwable) {
+    private SQLException findSqlException(Throwable throwable) {
         Throwable current = throwable;
         while (current != null) {
-            if (current instanceof PSQLException) {
-                return (PSQLException) current;
+            if (current instanceof SQLException) {
+                return (SQLException) current;
             }
             current = current.getCause();
         }
