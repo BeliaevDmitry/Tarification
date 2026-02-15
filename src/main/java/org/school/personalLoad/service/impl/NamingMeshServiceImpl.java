@@ -1,5 +1,8 @@
 package org.school.personalLoad.service.impl;
 
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
 import org.apache.poi.ss.usermodel.*;
 import org.school.personalLoad.dao.NamingMeshDAO;
 import org.school.personalLoad.dao.TarifficationChangesMeshDAO;
@@ -15,6 +18,8 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.*;
 
+@Slf4j
+@Service
 public class NamingMeshServiceImpl implements NamingMeshService {
 
     private final NamingMeshDAO namingMeshDAO;
@@ -25,7 +30,6 @@ public class NamingMeshServiceImpl implements NamingMeshService {
         this.namingMeshDAO = new NamingMeshDAO();
         this.meshChangesDAO = new TarifficationChangesMeshDAOImpl();
         this.personDAO = new TarifficationPersonDAO();
-
     }
 
     @Override
@@ -33,26 +37,26 @@ public class NamingMeshServiceImpl implements NamingMeshService {
         List<TarifficationChangesMesh> changes = new ArrayList<>();
 
         try {
-            System.out.println("📖 Начинаем обработку файла naming mesh: " + filePath);
+            log.info("Начинаем обработку файла naming mesh: {}", filePath);
 
             // 1. Читаем данные из файла
             List<NamingMesh> newNamingMeshes = readNamingMeshFromExcel(filePath);
-            System.out.println("📊 Прочитано записей из файла: " + newNamingMeshes.size());
+            log.info("Прочитано записей из файла: {}", newNamingMeshes.size());
 
             // 2. Получаем текущие данные из БД
             List<NamingMesh> currentNamingMeshes = namingMeshDAO.findAll();
-            System.out.println("💾 Текущих записей в БД: " + currentNamingMeshes.size());
+            log.info("Текущих записей в БД: {}", currentNamingMeshes.size());
 
             // 3. Удаляем дубликаты из новых данных
             newNamingMeshes = removeDuplicates(newNamingMeshes);
-            System.out.println("🧹 После удаления дубликатов: " + newNamingMeshes.size() + " записей");
+            log.info("После удаления дубликатов: {} записей", newNamingMeshes.size());
 
             // 4. Сравниваем и находим изменения
             changes = compareNamingMeshes(currentNamingMeshes, newNamingMeshes);
 
             // 5. ОБНОВЛЯЕМ СУЩЕСТВУЮЩИЕ ЗАПИСИ И ДОБАВЛЯЕМ НОВЫЕ
             saveOrUpdateNamingMeshes(newNamingMeshes);
-            System.out.println("💾 Обновлено/добавлено записей naming mesh: " + newNamingMeshes.size());
+            log.info("Обновлено/добавлено записей naming mesh: {}", newNamingMeshes.size());
 
             // 6. УДАЛЯЕМ ТОЛЬКО ТЕ ЗАПИСИ, КОТОРЫХ НЕТ В НОВОМ ФАЙЛЕ
             deleteMissingNamingMeshes(currentNamingMeshes, newNamingMeshes);
@@ -60,15 +64,14 @@ public class NamingMeshServiceImpl implements NamingMeshService {
             // 7. Сохраняем изменения в историю МЭШ
             if (!changes.isEmpty()) {
                 meshChangesDAO.saveAll(changes);
-                System.out.println("📝 Сохранено записей изменений МЭШ: " + changes.size());
+                log.info("Сохранено записей изменений МЭШ: {}", changes.size());
             }
 
             // 8. Обновляем связи в существующих записях тарификации
             updateNamingMeshRelations();
 
         } catch (Exception e) {
-            System.err.println("❌ Ошибка при обработке файла: " + e.getMessage());
-            e.printStackTrace();
+            log.error("Ошибка при обработке файла", e);
             throw new RuntimeException("Ошибка обработки файла naming mesh", e);
         }
 
@@ -595,4 +598,116 @@ public class NamingMeshServiceImpl implements NamingMeshService {
         Collections.sort(result);
         return result;
     }
+
+    @Override
+    public List<NamingMesh> getMappingsForSubject(String subjectName) {
+        List<NamingMesh> allMeshes = getAllNamingMeshes();
+        List<NamingMesh> result = new ArrayList<>();
+
+        for (NamingMesh mesh : allMeshes) {
+            if (subjectName.equals(mesh.getSubjectName())) {
+                result.add(mesh);
+            }
+        }
+
+        result.sort(Comparator.comparing(NamingMesh::getClassName, Comparator.nullsLast(String::compareToIgnoreCase))
+                .thenComparing(NamingMesh::getGroupNameEducationalPlan, Comparator.nullsLast(String::compareToIgnoreCase)));
+        return result;
+    }
+
+    @Override
+    public List<NamingMesh> getMappingsForSubjectAndClass(String subjectName, String className) {
+        List<NamingMesh> bySubject = getMappingsForSubject(subjectName);
+        List<NamingMesh> result = new ArrayList<>();
+
+        for (NamingMesh mesh : bySubject) {
+            if (className.equals(mesh.getClassName())) {
+                result.add(mesh);
+            }
+        }
+
+        result.sort(Comparator.comparing(NamingMesh::getGroupNameEducationalPlan, Comparator.nullsLast(String::compareToIgnoreCase)));
+        return result;
+    }
+
+    @Override
+    public NamingMesh upsertManualMapping(String subjectName,
+                                          String className,
+                                          String groupNameEducationalPlan,
+                                          String classNameMesh,
+                                          String groupNameMesh) {
+        String normalizedSubjectName = normalizeRequired(subjectName, "subjectName");
+        String normalizedClassName = normalizeRequired(className, "className");
+        String normalizedGroupNameEducationalPlan = normalizeNullable(groupNameEducationalPlan);
+
+        String normalizedClassNameMesh = normalizeNullable(classNameMesh);
+        if (normalizedClassNameMesh.isBlank()) {
+            normalizedClassNameMesh = normalizedClassName;
+        }
+
+        String normalizedGroupNameMesh = normalizeNullable(groupNameMesh);
+        if (normalizedGroupNameMesh.isBlank()) {
+            normalizedGroupNameMesh = normalizedGroupNameEducationalPlan;
+        }
+
+        Optional<NamingMesh> existing = findNamingMesh(
+                normalizedSubjectName,
+                normalizedClassName,
+                normalizedGroupNameEducationalPlan
+        );
+
+        if (existing.isPresent()) {
+            NamingMesh current = existing.get();
+            NamingMesh oldSnapshot = new NamingMesh(
+                    current.getSubjectName(),
+                    current.getClassName(),
+                    current.getGroupNameEducationalPlan(),
+                    current.getGroupNameMesh(),
+                    current.getClassNameMesh()
+            );
+
+            current.setClassNameMesh(normalizedClassNameMesh);
+            current.setGroupNameMesh(normalizedGroupNameMesh);
+            namingMeshDAO.update(current);
+
+            meshChangesDAO.save(createMeshChangeRecord(
+                    oldSnapshot,
+                    current,
+                    TarifficationChangesMesh.MeshChangeType.MESH_MAPPING_MODIFIED
+            ));
+
+            updateNamingMeshRelations();
+            return current;
+        }
+
+        NamingMesh created = new NamingMesh(
+                normalizedSubjectName,
+                normalizedClassName,
+                normalizedGroupNameEducationalPlan,
+                normalizedGroupNameMesh,
+                normalizedClassNameMesh
+        );
+
+        namingMeshDAO.save(created);
+        meshChangesDAO.save(createMeshChangeRecord(
+                null,
+                created,
+                TarifficationChangesMesh.MeshChangeType.MESH_MAPPING_ADDED
+        ));
+
+        updateNamingMeshRelations();
+        return created;
+    }
+
+    private String normalizeRequired(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " is required");
+        }
+        return value.trim();
+    }
+
+    private String normalizeNullable(String value) {
+        return value == null ? "" : value.trim();
+    }
+
 }
