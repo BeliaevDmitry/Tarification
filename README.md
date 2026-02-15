@@ -47,6 +47,28 @@ cp .env.example .env
 - `DELETE /api/manual-load` — очистить ручной ввод.
 - `POST /api/manual-load/process` — обработать текущий ручной ввод и сохранить в основную тарификацию.
 
+### Ручная корректировка названий МЭШ (из списка предметов)
+
+Изначально класс/группа в МЭШ принимаются равными значениям из УП (`className`, `groupNameEducationalPlan`), но теперь можно вручную скорректировать соответствия:
+
+- `GET /api/naming-mesh/subjects` — получить список предметов (вкладка/таблица «Предметы»).
+- `GET /api/naming-mesh/subjects/{subjectName}/classes` — получить классы по выбранному предмету.
+- `GET /api/naming-mesh/mappings?subjectName=...&className=...` — получить текущие связи УП→МЭШ (класс/группа).
+- `PUT /api/naming-mesh/mappings` — создать или обновить ручную связь УП→МЭШ для конкретной комбинации `subjectName + className + groupNameEducationalPlan`.
+
+Пример `PUT /api/naming-mesh/mappings`:
+
+```json
+{
+  "subjectName": "Математика",
+  "className": "9-А",
+  "groupNameEducationalPlan": "9-А 1 гр",
+  "classNameMesh": "9А мат профиль",
+  "groupNameMesh": "9А мат 1"
+}
+```
+
+Если `classNameMesh` не передан, используется `className` (из УП). Если `groupNameMesh` не передан, используется `groupNameEducationalPlan`.
 
 Ответ `POST /api/manual-load/process`:
 

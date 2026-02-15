@@ -598,4 +598,116 @@ public class NamingMeshServiceImpl implements NamingMeshService {
         Collections.sort(result);
         return result;
     }
+
+    @Override
+    public List<NamingMesh> getMappingsForSubject(String subjectName) {
+        List<NamingMesh> allMeshes = getAllNamingMeshes();
+        List<NamingMesh> result = new ArrayList<>();
+
+        for (NamingMesh mesh : allMeshes) {
+            if (subjectName.equals(mesh.getSubjectName())) {
+                result.add(mesh);
+            }
+        }
+
+        result.sort(Comparator.comparing(NamingMesh::getClassName, Comparator.nullsLast(String::compareToIgnoreCase))
+                .thenComparing(NamingMesh::getGroupNameEducationalPlan, Comparator.nullsLast(String::compareToIgnoreCase)));
+        return result;
+    }
+
+    @Override
+    public List<NamingMesh> getMappingsForSubjectAndClass(String subjectName, String className) {
+        List<NamingMesh> bySubject = getMappingsForSubject(subjectName);
+        List<NamingMesh> result = new ArrayList<>();
+
+        for (NamingMesh mesh : bySubject) {
+            if (className.equals(mesh.getClassName())) {
+                result.add(mesh);
+            }
+        }
+
+        result.sort(Comparator.comparing(NamingMesh::getGroupNameEducationalPlan, Comparator.nullsLast(String::compareToIgnoreCase)));
+        return result;
+    }
+
+    @Override
+    public NamingMesh upsertManualMapping(String subjectName,
+                                          String className,
+                                          String groupNameEducationalPlan,
+                                          String classNameMesh,
+                                          String groupNameMesh) {
+        String normalizedSubjectName = normalizeRequired(subjectName, "subjectName");
+        String normalizedClassName = normalizeRequired(className, "className");
+        String normalizedGroupNameEducationalPlan = normalizeNullable(groupNameEducationalPlan);
+
+        String normalizedClassNameMesh = normalizeNullable(classNameMesh);
+        if (normalizedClassNameMesh.isBlank()) {
+            normalizedClassNameMesh = normalizedClassName;
+        }
+
+        String normalizedGroupNameMesh = normalizeNullable(groupNameMesh);
+        if (normalizedGroupNameMesh.isBlank()) {
+            normalizedGroupNameMesh = normalizedGroupNameEducationalPlan;
+        }
+
+        Optional<NamingMesh> existing = findNamingMesh(
+                normalizedSubjectName,
+                normalizedClassName,
+                normalizedGroupNameEducationalPlan
+        );
+
+        if (existing.isPresent()) {
+            NamingMesh current = existing.get();
+            NamingMesh oldSnapshot = new NamingMesh(
+                    current.getSubjectName(),
+                    current.getClassName(),
+                    current.getGroupNameEducationalPlan(),
+                    current.getGroupNameMesh(),
+                    current.getClassNameMesh()
+            );
+
+            current.setClassNameMesh(normalizedClassNameMesh);
+            current.setGroupNameMesh(normalizedGroupNameMesh);
+            namingMeshDAO.update(current);
+
+            meshChangesDAO.save(createMeshChangeRecord(
+                    oldSnapshot,
+                    current,
+                    TarifficationChangesMesh.MeshChangeType.MESH_MAPPING_MODIFIED
+            ));
+
+            updateNamingMeshRelations();
+            return current;
+        }
+
+        NamingMesh created = new NamingMesh(
+                normalizedSubjectName,
+                normalizedClassName,
+                normalizedGroupNameEducationalPlan,
+                normalizedGroupNameMesh,
+                normalizedClassNameMesh
+        );
+
+        namingMeshDAO.save(created);
+        meshChangesDAO.save(createMeshChangeRecord(
+                null,
+                created,
+                TarifficationChangesMesh.MeshChangeType.MESH_MAPPING_ADDED
+        ));
+
+        updateNamingMeshRelations();
+        return created;
+    }
+
+    private String normalizeRequired(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " is required");
+        }
+        return value.trim();
+    }
+
+    private String normalizeNullable(String value) {
+        return value == null ? "" : value.trim();
+    }
+
 }
