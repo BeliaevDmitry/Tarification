@@ -39,6 +39,15 @@ cp .env.example .env
    - UI: `http://localhost:8080/`
    - режим: `http://localhost:8080/api/system/mode`
 
+
+Если Docker сообщает конфликт имени контейнера (например `"/postgres" is already in use`), выполните:
+
+```bash
+docker stop postgres || true
+docker rm postgres || true
+docker compose up -d --build
+```
+
 ### Вариант B: только БД в Docker, приложение локально
 
 1. Поднимите только БД:
