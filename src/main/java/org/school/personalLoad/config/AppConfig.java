@@ -1,60 +1,121 @@
 package org.school.personalLoad.config;
 
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Set;
 
+@Component
+@ConfigurationProperties(prefix = "app")
 public class AppConfig {
-    // Google Sheets URLs
-    public static final String TARIFFICATION_SHEETS_URL =
-        /*      "https://docs.google.com/spreadsheets/d/1_2XDnInfHUKfj8jrzyU7EtzQz9G2oUTRZ-ALz1cePfU/export?format=xlsx";*/
-              "https://docs.google.com/spreadsheets/d/1yDBzOWy7ReQ7vhFFCQN6F58wichu9FAVgrl688uNykI/export?format=xlsx";
+    private static final DateTimeFormatter FILE_DATE_FORMAT = DateTimeFormatter.ofPattern("dd-MM-yyyy HH-mm");
 
-    // File names
-    public static final String TARIFFICATION_FILE_NAME = "Нагрузка 2 полугодие " +
-            java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy HH-mm"));
+    private String sheetsUrl;
+    private String tarifficationFilePrefix;
+    private String practicumFileName;
+    private String downloadDirectory;
+    private String outputDirectory;
+    private String offlineFilesDirectory;
+    private String expelledFilePath;
+    private boolean keepHistory = true;
+    private boolean clearHistoryOnStart;
+    private Set<String> excludedTeachers = Set.of();
 
-    public static final String PRACTICUM_FILE_NAME = "ЕГЭ 2026 автоскачанный";
-
-    // Directories
-    public static final String DOWNLOAD_DIRECTORY = "C:\\Users\\dimah\\Yandex.Disk\\ГБОУ №1811\\для программ\\для расчёта тарификации\\выгрузки нагрузки\\";
-    public static final String OUTPUT_DIRECTORY =   "C:\\Users\\dimah\\Yandex.Disk\\ГБОУ №1811\\для программ\\для расчёта тарификации\\отчёт\\";
-
-    public static final String OFFLINE_FILES_DIRECTORY =
-            "C:\\Users\\dimah\\Yandex.Disk\\ГБОУ №1811\\для программ\\для расчёта тарификации\\01.02.2026\\";
-    public static final String EXPELLED_FILE_PATH =
-            "C:\\Users\\dimah\\Yandex.Disk\\ГБОУ №1811\\для программ\\для расчёта тарификации\\Учащиеся. Только отчисленные.xlsx";
-
-    // Output file names
-    public static final String TARIFFICATION_OUTPUT = "Тарификация" +
-            java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy HH-mm")) + ".xlsx";
-    public static final String PRACTICUM_OUTPUT = "контингент практикумы.xlsx";
-
-
-
-    // Helper methods
-    public static String getTarifficationOutputPath() {
-        return OUTPUT_DIRECTORY + TARIFFICATION_OUTPUT;
+    public String getTarifficationFileName() {
+        return tarifficationFilePrefix + " " + LocalDateTime.now().format(FILE_DATE_FORMAT);
     }
 
-    public static String getPracticumOutputPath() {
-        return OUTPUT_DIRECTORY + PRACTICUM_OUTPUT;
+    public String getTarifficationOutputPath() {
+        return outputDirectory + "Тарификация" + LocalDateTime.now().format(FILE_DATE_FORMAT) + ".xlsx";
     }
 
-    public static String getDownloadPath(String fileName) {
-        return DOWNLOAD_DIRECTORY + fileName;
+    public String getPracticumOutputPath() {
+        return outputDirectory + "контингент практикумы.xlsx";
     }
 
-    // Helper method для получения пути к офлайн папке
-    public static String getOfflineFilesPath() {
-        return OFFLINE_FILES_DIRECTORY;
-    }
-    public static String getExpelledFilePath() {
-        return EXPELLED_FILE_PATH;
+    public String getDownloadPath(String fileName) {
+        return downloadDirectory + fileName;
     }
 
-    // список исключений для тарификации
-    public static Set<String> EXCLUDED_TEACHERS = Set.of(
-            "Сухомлинова Вера Борисовна"
+    public String getSheetsUrl() {
+        return sheetsUrl;
+    }
 
+    public void setSheetsUrl(String sheetsUrl) {
+        this.sheetsUrl = sheetsUrl;
+    }
 
-    );
+    public String getTarifficationFilePrefix() {
+        return tarifficationFilePrefix;
+    }
+
+    public void setTarifficationFilePrefix(String tarifficationFilePrefix) {
+        this.tarifficationFilePrefix = tarifficationFilePrefix;
+    }
+
+    public String getPracticumFileName() {
+        return practicumFileName;
+    }
+
+    public void setPracticumFileName(String practicumFileName) {
+        this.practicumFileName = practicumFileName;
+    }
+
+    public String getDownloadDirectory() {
+        return downloadDirectory;
+    }
+
+    public void setDownloadDirectory(String downloadDirectory) {
+        this.downloadDirectory = downloadDirectory;
+    }
+
+    public String getOutputDirectory() {
+        return outputDirectory;
+    }
+
+    public void setOutputDirectory(String outputDirectory) {
+        this.outputDirectory = outputDirectory;
+    }
+
+    public String getOfflineFilesDirectory() {
+        return offlineFilesDirectory;
+    }
+
+    public void setOfflineFilesDirectory(String offlineFilesDirectory) {
+        this.offlineFilesDirectory = offlineFilesDirectory;
+    }
+
+    public String getExpelledFilePath() {
+        return expelledFilePath;
+    }
+
+    public void setExpelledFilePath(String expelledFilePath) {
+        this.expelledFilePath = expelledFilePath;
+    }
+
+    public boolean isKeepHistory() {
+        return keepHistory;
+    }
+
+    public void setKeepHistory(boolean keepHistory) {
+        this.keepHistory = keepHistory;
+    }
+
+    public boolean isClearHistoryOnStart() {
+        return clearHistoryOnStart;
+    }
+
+    public void setClearHistoryOnStart(boolean clearHistoryOnStart) {
+        this.clearHistoryOnStart = clearHistoryOnStart;
+    }
+
+    public Set<String> getExcludedTeachers() {
+        return excludedTeachers;
+    }
+
+    public void setExcludedTeachers(Set<String> excludedTeachers) {
+        this.excludedTeachers = excludedTeachers;
+    }
 }

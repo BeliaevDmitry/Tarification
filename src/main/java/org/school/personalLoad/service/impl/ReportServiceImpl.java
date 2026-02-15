@@ -1,5 +1,7 @@
 package org.school.personalLoad.service.impl;
 
+import org.springframework.stereotype.Service;
+
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.model.*;
@@ -13,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+@Service
 public class ReportServiceImpl implements ReportService {
 
     private final DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");

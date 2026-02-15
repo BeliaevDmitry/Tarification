@@ -1,32 +1,46 @@
 package org.school;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.school.personalLoad.config.AppConfig;
-import org.school.personalLoad.config.HibernateConfig;
+import org.school.personalLoad.config.EnvFileLoader;
 import org.school.personalLoad.controller.TarifficationController;
 import org.school.personalLoad.service.DownloadService;
-import org.school.personalLoad.service.impl.DownloadServiceImpl;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 
-public class Tariffication {
+@Slf4j
+@SpringBootApplication
+@RequiredArgsConstructor
+public class Tariffication implements CommandLineRunner {
+
+    private final DownloadService downloadService;
+    private final TarifficationController controller;
+    private final AppConfig appConfig;
+
     public static void main(String[] args) {
-        try {
-            DownloadService downloadService = new DownloadServiceImpl();
-            TarifficationController controller = new TarifficationController();
+        EnvFileLoader.loadDotEnvIfExists();
+        SpringApplication.run(Tariffication.class, args);
+    }
 
-            // Скачиваем файл
-            String inputPath = downloadService.downloadFile(
-                    AppConfig.TARIFFICATION_SHEETS_URL,
-                    AppConfig.TARIFFICATION_FILE_NAME,
-                    AppConfig.DOWNLOAD_DIRECTORY
-            );
+    @Override
+    public void run(String... args) throws Exception {
+        Path downloadDir = Path.of(appConfig.getDownloadDirectory());
+        Path outputDir = Path.of(appConfig.getOutputDirectory());
+        Files.createDirectories(downloadDir);
+        Files.createDirectories(outputDir);
 
-            // Обрабатываем данные
-            controller.processTariffication(inputPath, AppConfig.getTarifficationOutputPath());
+        String inputPath = downloadService.downloadFile(
+                appConfig.getSheetsUrl(),
+                appConfig.getTarifficationFileName(),
+                appConfig.getDownloadDirectory()
+        );
 
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            HibernateConfig.shutdown();
-        }
+        controller.processTariffication(inputPath, appConfig.getTarifficationOutputPath());
+        log.info("Обработка тарификации завершена");
     }
 }
