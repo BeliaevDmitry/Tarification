@@ -66,6 +66,7 @@ cp .env.example .env
 - `GET /api/manual-load` — получить текущие записи ручного ввода.
 - `DELETE /api/manual-load` — очистить ручной ввод.
 - `POST /api/manual-load/process` — обработать текущий ручной ввод и сохранить в основную тарификацию.
+- `GET /api/system/mode` — проверить активный режим запуска (`api-frontend` или `legacy-file-pipeline`).
 
 ### Ручная корректировка названий МЭШ (из списка предметов)
 
@@ -175,3 +176,19 @@ curl -X POST "http://localhost:8080/api/teachers/import" \
 - правило должно существовать,
 - часы не должны превышать `plannedHours`,
 - если `subgroupRequired=true`, то `groupNameEducationalPlan` обязателен.
+
+
+## Чек-лист перед PR / выкладкой
+
+1. Проверить режим запуска:
+   - `GET /api/system/mode` должен возвращать `mode: api-frontend` (если не нужна legacy-обработка).
+2. Проверить базовый сценарий ручной нагрузки:
+   - добавить запись через `POST /api/manual-load`;
+   - выполнить `POST /api/manual-load/process`;
+   - убедиться, что в ответе есть `status`, `processed`, `summaries`.
+3. Проверить ручную корректировку УП→МЭШ:
+   - получить предметы `GET /api/naming-mesh/subjects`;
+   - обновить связь через `PUT /api/naming-mesh/mappings`;
+   - проверить результат через `GET /api/naming-mesh/mappings?...`.
+4. Проверить, что обязательные секреты заданы в `.env` (`DB_PASSWORD`, `SMTP_USERNAME`, `SMTP_PASSWORD`).
+
