@@ -102,3 +102,24 @@ hr {
     background: #ffe4e6;
     color: #9f1239;
 }
+
+
+.tabs {
+    margin-top: 12px;
+    display: flex;
+    gap: 8px;
+}
+
+.tab-btn {
+    background: #eef2ff;
+}
+
+.tab-btn.active {
+    background: #1d4ed8;
+    color: white;
+    border-color: #1d4ed8;
+}
+
+.tab-panel.hidden {
+    display: none;
+}

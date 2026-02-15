@@ -12,9 +12,14 @@
         <h1>Tarification — ручной режим</h1>
         <p class="muted">Единая страница для ручной загрузки нагрузки и корректировки соответствий УП → МЭШ.</p>
         <p id="mode-badge" class="mode-badge">Режим: определяем...</p>
+
+        <div class="tabs" role="tablist" aria-label="Разделы">
+            <button class="tab-btn active" data-tab="manual" role="tab" aria-selected="true">Ручная нагрузка</button>
+            <button class="tab-btn" data-tab="mesh" role="tab" aria-selected="false">Корректировка МЭШ</button>
+        </div>
     </header>
 
-    <section class="card">
+    <section class="card tab-panel" data-panel="manual">
         <h2>1) Ручная нагрузка</h2>
         <p class="muted">Заполните запись и сохраните в черновой ручной ввод.</p>
         <form id="manual-load-form" class="grid">
@@ -40,7 +45,7 @@
         <pre id="process-result"></pre>
     </section>
 
-    <section class="card">
+    <section class="card tab-panel hidden" data-panel="mesh">
         <h2>2) Корректировка названий МЭШ</h2>
         <p class="muted">Изначально класс/группа МЭШ равны УП, но здесь можно вручную переопределить соответствие.</p>
 

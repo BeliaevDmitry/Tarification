@@ -17,7 +17,9 @@ const ui = {
     subjectSelect: document.getElementById("subject-select"),
     classSelect: document.getElementById("class-select"),
     mappingsTableBody: document.getElementById("mappings-table-body"),
-    modeBadge: document.getElementById("mode-badge")
+    modeBadge: document.getElementById("mode-badge"),
+    tabButtons: document.querySelectorAll(".tab-btn"),
+    tabPanels: document.querySelectorAll(".tab-panel")
 };
 
 /**
@@ -191,6 +193,25 @@ async function loadSystemMode() {
     ui.modeBadge.classList.toggle("legacy", isLegacy);
 }
 
+
+
+/**
+ * КЛЮЧЕВОЕ: вкладки реализованы как show/hide секций по data-атрибутам.
+ * Чтобы добавить новую вкладку, достаточно добавить кнопку data-tab и секцию data-panel.
+ */
+function activateTab(tabName) {
+    ui.tabButtons.forEach((button) => {
+        const isActive = button.dataset.tab === tabName;
+        button.classList.toggle("active", isActive);
+        button.setAttribute("aria-selected", String(isActive));
+    });
+
+    ui.tabPanels.forEach((panel) => {
+        const isActive = panel.dataset.panel === tabName;
+        panel.classList.toggle("hidden", !isActive);
+    });
+}
+
 function bindEvents() {
     ui.manualLoadForm.addEventListener("submit", onManualLoadSubmit);
     ui.processBtn.addEventListener("click", onProcessClick);
@@ -199,12 +220,17 @@ function bindEvents() {
     ui.loadSubjectsBtn.addEventListener("click", () => loadSubjects().catch((e) => print(ui.mappingResult, { error: e.message })));
     ui.loadClassesBtn.addEventListener("click", () => loadClasses().catch((e) => print(ui.mappingResult, { error: e.message })));
     ui.loadMappingsBtn.addEventListener("click", () => loadMappings().catch((e) => print(ui.mappingResult, { error: e.message })));
+
+    ui.tabButtons.forEach((button) => {
+        button.addEventListener("click", () => activateTab(button.dataset.tab));
+    });
 }
 
 async function init() {
     resetSelect(ui.subjectSelect, "Загрузка предметов...");
     resetSelect(ui.classSelect, "Сначала выберите предмет");
     bindEvents();
+    activateTab("manual");
 
     try {
         await loadSystemMode();
