@@ -13,7 +13,7 @@ public interface GroupSearchService {
     /**
      * Ищет группы для студентов-инвалидов в офлайн файлах
      *
-     * @param onlineFilePath путь к онлайн файлу с данными об инвалидах
+     * @param onlineFilePath    путь к онлайн файлу с данными об инвалидах
      * @param offlineFolderPath путь к папке с офлайн файлами
      * @return карта с именами студентов и списками их групп
      * @throws Exception если произошла ошибка при обработке файлов
@@ -30,5 +30,6 @@ public interface GroupSearchService {
      * @return карта с информацией о классах
      * @throws Exception если произошла ошибка при обработке файлов
      */
-    Map<String, GroupOrClassInfo> collectClassInfo(String offlineFolderPath,String expelledFilePath) throws Exception;
+    Map<String, GroupOrClassInfo> collectClassInfo(String offlineFolderPath,
+                                                   String expelledFilePath) throws Exception;
 }

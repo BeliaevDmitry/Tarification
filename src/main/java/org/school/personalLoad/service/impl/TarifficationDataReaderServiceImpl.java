@@ -9,12 +9,9 @@ import org.school.personalLoad.service.TarifficationDataReaderService;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
-import static org.school.personalLoad.config.AppConfig.EXCLUDED_TEACHERS;
-
-public class TarifficationDataReaderServiceImpl implements TarifficationDataReaderService { //
+public class TarifficationDataReaderServiceImpl implements TarifficationDataReaderService {
 
     private FormulaEvaluator formulaEvaluator;
 
@@ -26,32 +23,43 @@ public class TarifficationDataReaderServiceImpl implements TarifficationDataRead
         this.formulaEvaluator = formulaEvaluator;
     }
 
+    @Override
     public void readExcelData(String inputPath,
-                               List<TarifficationPerson> tarifficationList,
-                               List<SubjectWithGroup> groupList) throws Exception {
+                              List<TarifficationPerson> tarifficationList,
+                              List<SubjectWithGroup> groupList) throws Exception {
         try (FileInputStream fis = new FileInputStream(new File(inputPath));
              Workbook workbook = WorkbookFactory.create(fis)) {
 
             FormulaEvaluator evaluator = workbook.getCreationHelper().createFormulaEvaluator();
             setFormulaEvaluator(evaluator);
 
+            // Сначала находим все подгруппы
+            System.out.println("🔍 Поиск предметов с подгруппами...");
             for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
                 Sheet sheet = workbook.getSheetAt(i);
                 String sheetName = sheet.getSheetName().toLowerCase();
 
                 if (sheetName.contains("корп")) {
-                    System.out.println("📊 Анализируем лист: " + sheet.getSheetName());
-                    tarifficationList.addAll(analyzeSheet(sheet));
+                    System.out.println("📊 Анализируем лист на подгруппы: " + sheet.getSheetName());
                     groupList.addAll(searchGroup(sheet));
-                } else {
-                    System.out.println("⏭️ Пропускаем лист: " + sheet.getSheetName());
+                }
+            }
+
+            // Затем читаем нагрузку преподавателей
+            System.out.println("👨‍🏫 Чтение нагрузки преподавателей...");
+            for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
+                Sheet sheet = workbook.getSheetAt(i);
+                String sheetName = sheet.getSheetName().toLowerCase();
+
+                if (sheetName.contains("корп")) {
+                    System.out.println("📊 Анализируем лист преподавателей: " + sheet.getSheetName());
+                    tarifficationList.addAll(analyzeSheet(sheet, groupList));
                 }
             }
         }
     }
 
-
-    private List<TarifficationPerson> analyzeSheet(Sheet sheet) throws IOException {
+    private List<TarifficationPerson> analyzeSheet(Sheet sheet, List<SubjectWithGroup> groupList) throws IOException {
         List<TarifficationPerson> tarifficationList = new ArrayList<>();
         String numberSchoolBuilding = sheet.getSheetName();
 
@@ -65,6 +73,9 @@ public class TarifficationDataReaderServiceImpl implements TarifficationDataRead
             Cell cell = classRow.getCell(i);
             classNames[i] = (cell != null) ? getCellValueAsStringFast(cell) : "";
         }
+
+        // Создаем мапу для группировки по предмету+классу
+        Map<String, List<TarifficationPerson>> subjectClassTeachers = new HashMap<>();
 
         for (int numberCurrentRow = 0; numberCurrentRow <= sheet.getLastRowNum(); numberCurrentRow++) {
             Row teacherRow = sheet.getRow(numberCurrentRow);
@@ -82,9 +93,71 @@ public class TarifficationDataReaderServiceImpl implements TarifficationDataRead
 
             // Обрабатываем нагрузку по колонкам
             processTeacherColumnsFast(teacherRow, subjectName, fioTeacher,
-                    numberSchoolBuilding, classNames, tarifficationList);
+                    numberSchoolBuilding, classNames, tarifficationList,
+                    subjectClassTeachers, groupList);
         }
+
+        // Отладочный вывод для проверки
+        System.out.println("📊 Статистика по листу " + numberSchoolBuilding + ":");
+        System.out.println("   Всего записей: " + tarifficationList.size());
+        System.out.println("   Группировка по предметам-классам: " + subjectClassTeachers.size());
+
+        for (Map.Entry<String, List<TarifficationPerson>> entry : subjectClassTeachers.entrySet()) {
+            if (entry.getValue().size() > 1) {
+                System.out.println("   " + entry.getKey() + ": " + entry.getValue().size() + " преподавателя");
+            }
+        }
+
         return tarifficationList;
+    }
+
+    private void processTeacherColumnsFast(Row teacherRow, String subjectName, String fioTeacher,
+                                           String numberSchoolBuilding, String[] classNames,
+                                           List<TarifficationPerson> tarifficationList,
+                                           Map<String, List<TarifficationPerson>> subjectClassTeachers,
+                                           List<SubjectWithGroup> groupList) {
+
+        int lastCellNum = Math.min(teacherRow.getLastCellNum(), classNames.length - 1);
+
+        for (int currentColumn = 12; currentColumn <= lastCellNum; currentColumn++) {
+            Cell currentCell = teacherRow.getCell(currentColumn);
+            if (currentCell == null) continue;
+
+            int currentLoad = getCellValueAsIntFast(currentCell);
+            if (currentLoad <= 0) continue;
+
+            String className = classNames[currentColumn];
+            if (className == null || shouldSkipClassFast(className)) continue;
+
+            // Проверяем, есть ли этот предмет+класс в списке подгрупп
+            boolean hasSubgroups = hasSubgroups(subjectName, className, numberSchoolBuilding, groupList);
+
+            TarifficationPerson person = new TarifficationPerson(
+                    fioTeacher, numberSchoolBuilding, subjectName, className, currentLoad
+            );
+
+            // Если есть подгруппы, сохраняем информацию для группировки
+            if (hasSubgroups) {
+                String key = createSubjectClassKey(subjectName, className, numberSchoolBuilding);
+                subjectClassTeachers
+                        .computeIfAbsent(key, k -> new ArrayList<>())
+                        .add(person);
+            }
+
+            tarifficationList.add(person);
+        }
+    }
+
+    private boolean hasSubgroups(String subjectName, String className,
+                                 String building, List<SubjectWithGroup> groupList) {
+        return groupList.stream()
+                .anyMatch(g -> g.getSubjectName().equals(subjectName) &&
+                        g.getClassName().equals(className) &&
+                        g.getNumberSchoolBuilding().equals(building));
+    }
+
+    private String createSubjectClassKey(String subject, String className, String building) {
+        return building + "|" + subject + "|" + className;
     }
 
     private boolean shouldSkipRowFast(String fioTeacher, String subjectName) {
