@@ -1,9 +1,27 @@
 const jsonHeaders = { "Content-Type": "application/json" };
 
 /**
+ * КЛЮЧЕВОЕ: централизованные ссылки на элементы интерфейса.
+ * Если поменяете id в HTML — обновляйте только этот объект.
+ */
+const ui = {
+    manualLoadForm: document.getElementById("manual-load-form"),
+    manualLoadResult: document.getElementById("manual-load-result"),
+    processBtn: document.getElementById("process-btn"),
+    processResult: document.getElementById("process-result"),
+    mappingForm: document.getElementById("mapping-form"),
+    mappingResult: document.getElementById("mapping-result"),
+    loadSubjectsBtn: document.getElementById("load-subjects-btn"),
+    loadClassesBtn: document.getElementById("load-classes-btn"),
+    loadMappingsBtn: document.getElementById("load-mappings-btn"),
+    subjectSelect: document.getElementById("subject-select"),
+    classSelect: document.getElementById("class-select"),
+    mappingsTableBody: document.getElementById("mappings-table-body")
+};
+
+/**
  * КЛЮЧЕВОЕ: единая функция запроса к API.
- * Если захотите поменять базовый URL (например, прокси/другой порт),
- * править удобнее всего здесь.
+ * Если захотите вынести API на другой хост/порт — меняйте префикс здесь.
  */
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -17,65 +35,69 @@ async function api(path, options = {}) {
     return body;
 }
 
-function print(elId, value) {
-    document.getElementById(elId).textContent = JSON.stringify(value, null, 2);
+function print(target, value) {
+    target.textContent = JSON.stringify(value, null, 2);
 }
 
+/**
+ * КЛЮЧЕВОЕ: единая нормализация данных формы.
+ * Пустые поля -> null (чтобы сервер применял дефолты), числа -> Number.
+ */
 function formToObject(form) {
     const fd = new FormData(form);
     const obj = Object.fromEntries(fd.entries());
 
-    // КЛЮЧЕВОЕ: пустые поля отправляем как null, чтобы сервер применял свои дефолты.
-    Object.keys(obj).forEach((k) => {
-        if (obj[k] === "") obj[k] = null;
+    Object.keys(obj).forEach((key) => {
+        if (obj[key] === "") obj[key] = null;
     });
 
-    // КЛЮЧЕВОЕ: числовые поля приводим к Number.
     if (obj.load != null) obj.load = Number(obj.load);
     if (obj.groupLoad != null) obj.groupLoad = Number(obj.groupLoad);
 
     return obj;
 }
 
-async function loadSubjects() {
-    const subjects = await api("/api/naming-mesh/subjects");
-    const select = document.getElementById("subject-select");
+function resetSelect(select, placeholder) {
     select.innerHTML = "";
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = placeholder;
+    select.appendChild(option);
+}
 
-    subjects.forEach((s) => {
+function appendOptions(select, values) {
+    values.forEach((value) => {
         const option = document.createElement("option");
-        option.value = s;
-        option.textContent = s;
+        option.value = value;
+        option.textContent = value;
         select.appendChild(option);
     });
+}
+
+async function loadSubjects() {
+    const subjects = await api("/api/naming-mesh/subjects");
+    resetSelect(ui.subjectSelect, "Выберите предмет");
+    appendOptions(ui.subjectSelect, subjects);
+
+    // Логично сбрасывать классы при смене предметного списка.
+    resetSelect(ui.classSelect, "Сначала выберите предмет");
 }
 
 async function loadClasses() {
-    const subject = document.getElementById("subject-select").value;
-    const classes = await api(`/api/naming-mesh/subjects/${encodeURIComponent(subject)}/classes`);
-    const select = document.getElementById("class-select");
-    select.innerHTML = "";
+    const subject = ui.subjectSelect.value;
+    if (!subject) {
+        throw new Error("Сначала выберите предмет");
+    }
 
-    classes.forEach((c) => {
-        const option = document.createElement("option");
-        option.value = c;
-        option.textContent = c;
-        select.appendChild(option);
-    });
+    const classes = await api(`/api/naming-mesh/subjects/${encodeURIComponent(subject)}/classes`);
+    resetSelect(ui.classSelect, "Все классы");
+    appendOptions(ui.classSelect, classes);
 }
 
-async function loadMappings() {
-    const subject = document.getElementById("subject-select").value;
-    const className = document.getElementById("class-select").value;
+function renderMappings(rows) {
+    ui.mappingsTableBody.innerHTML = "";
 
-    const query = new URLSearchParams({ subjectName: subject });
-    if (className) query.set("className", className);
-
-    const data = await api(`/api/naming-mesh/mappings?${query.toString()}`);
-    const body = document.getElementById("mappings-table-body");
-    body.innerHTML = "";
-
-    data.forEach((row) => {
+    rows.forEach((row) => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
             <td>${row.subjectName ?? ""}</td>
@@ -84,54 +106,85 @@ async function loadMappings() {
             <td>${row.classNameMesh ?? ""}</td>
             <td>${row.groupNameMesh ?? ""}</td>
         `;
-        body.appendChild(tr);
+        ui.mappingsTableBody.appendChild(tr);
     });
 }
 
-document.getElementById("manual-load-form").addEventListener("submit", async (e) => {
+async function loadMappings() {
+    const subject = ui.subjectSelect.value;
+    if (!subject) {
+        throw new Error("Сначала выберите предмет");
+    }
+
+    const query = new URLSearchParams({ subjectName: subject });
+    if (ui.classSelect.value) {
+        query.set("className", ui.classSelect.value);
+    }
+
+    const rows = await api(`/api/naming-mesh/mappings?${query.toString()}`);
+    renderMappings(rows);
+}
+
+async function onManualLoadSubmit(e) {
     e.preventDefault();
     try {
-        const payload = formToObject(e.target);
+        const payload = formToObject(ui.manualLoadForm);
         const result = await api("/api/manual-load", {
             method: "POST",
             headers: jsonHeaders,
             body: JSON.stringify(payload)
         });
-        print("manual-load-result", result);
+        print(ui.manualLoadResult, result);
     } catch (error) {
-        print("manual-load-result", { error: error.message });
+        print(ui.manualLoadResult, { error: error.message });
     }
-});
+}
 
-document.getElementById("process-btn").addEventListener("click", async () => {
+async function onProcessClick() {
     try {
         const result = await api("/api/manual-load/process", { method: "POST" });
-        print("process-result", result);
+        print(ui.processResult, result);
     } catch (error) {
-        print("process-result", { error: error.message });
+        print(ui.processResult, { error: error.message });
     }
-});
+}
 
-document.getElementById("mapping-form").addEventListener("submit", async (e) => {
+async function onMappingSubmit(e) {
     e.preventDefault();
     try {
-        const payload = formToObject(e.target);
+        const payload = formToObject(ui.mappingForm);
 
-        // КЛЮЧЕВОЕ: здесь сохраняется ручная привязка УП -> МЭШ.
-        // Если classNameMesh/groupNameMesh не заданы, сервер подставит значения из УП.
+        // КЛЮЧЕВОЕ: эта операция вручную фиксирует связь УП -> МЭШ.
+        // Если classNameMesh/groupNameMesh пустые, сервер подставит значения из УП.
         const result = await api("/api/naming-mesh/mappings", {
             method: "PUT",
             headers: jsonHeaders,
             body: JSON.stringify(payload)
         });
 
-        print("mapping-result", result);
+        print(ui.mappingResult, result);
+
+        // После сохранения сразу обновляем таблицу, чтобы видеть итоговое состояние.
         await loadMappings();
     } catch (error) {
-        print("mapping-result", { error: error.message });
+        print(ui.mappingResult, { error: error.message });
     }
-});
+}
 
-document.getElementById("load-subjects-btn").addEventListener("click", () => loadSubjects().catch((e) => print("mapping-result", { error: e.message })));
-document.getElementById("load-classes-btn").addEventListener("click", () => loadClasses().catch((e) => print("mapping-result", { error: e.message })));
-document.getElementById("load-mappings-btn").addEventListener("click", () => loadMappings().catch((e) => print("mapping-result", { error: e.message })));
+function bindEvents() {
+    ui.manualLoadForm.addEventListener("submit", onManualLoadSubmit);
+    ui.processBtn.addEventListener("click", onProcessClick);
+    ui.mappingForm.addEventListener("submit", onMappingSubmit);
+
+    ui.loadSubjectsBtn.addEventListener("click", () => loadSubjects().catch((e) => print(ui.mappingResult, { error: e.message })));
+    ui.loadClassesBtn.addEventListener("click", () => loadClasses().catch((e) => print(ui.mappingResult, { error: e.message })));
+    ui.loadMappingsBtn.addEventListener("click", () => loadMappings().catch((e) => print(ui.mappingResult, { error: e.message })));
+}
+
+function init() {
+    resetSelect(ui.subjectSelect, "Нажмите «Загрузить предметы»");
+    resetSelect(ui.classSelect, "Сначала выберите предмет");
+    bindEvents();
+}
+
+init();
