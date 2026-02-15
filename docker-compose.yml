@@ -1,8 +1,6 @@
-version: '3.8'
 services:
   postgres:
     image: postgres:13
-    container_name: postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
@@ -15,7 +13,31 @@ services:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?POSTGRES_USER is required} -d ${POSTGRES_DB:?POSTGRES_DB is required}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:?POSTGRES_DB is required}
+      DB_USERNAME: ${POSTGRES_USER:?POSTGRES_USER is required}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      SMTP_USERNAME: ${SMTP_USERNAME:?SMTP_USERNAME is required}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:?SMTP_PASSWORD is required}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      SMTP_DEFAULT_RECIPIENTS: ${SMTP_DEFAULT_RECIPIENTS:-recipient1@example.com,recipient2@example.com}
+      SMTP_DEFAULT_SUBJECT: ${SMTP_DEFAULT_SUBJECT:-Тарификация - автоматическая отправка}
+      LEGACY_MODE_ENABLED: ${LEGACY_MODE_ENABLED:-false}
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
 
 volumes:
   postgres_data:

@@ -18,7 +18,8 @@ cp .env.example .env
 ## Где используются переменные
 
 - `docker-compose.yml`:
-  - `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` (все обязательны).
+  - для БД: `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`;
+  - для приложения в контейнере: `DB_PASSWORD`, `SMTP_USERNAME`, `SMTP_PASSWORD` (обязательны).
 - `src/main/resources/application.yml`:
   - `DB_PASSWORD`, `SMTP_USERNAME`, `SMTP_PASSWORD` (обязательны),
   - остальные параметры имеют безопасные дефолты для локального запуска.
@@ -27,13 +28,26 @@ cp .env.example .env
 
 ## Запуск
 
-1. Поднимите БД:
-   ```bash
-   docker compose up -d
-   ```
-2. Запустите приложение Maven/Spring Boot.
+### Вариант A (рекомендуется): всё в Docker Compose
 
-Приложение теперь автоматически читает `.env` при старте и подставляет значения в системные свойства (если одноимённая переменная окружения не задана).
+1. Создайте `.env` из шаблона и заполните обязательные поля.
+2. Запустите сервисы:
+   ```bash
+   docker compose up -d --build
+   ```
+3. Откройте:
+   - UI: `http://localhost:8080/`
+   - режим: `http://localhost:8080/api/system/mode`
+
+### Вариант B: только БД в Docker, приложение локально
+
+1. Поднимите только БД:
+   ```bash
+   docker compose up -d postgres
+   ```
+2. Запустите приложение Maven/Spring Boot локально.
+
+Приложение читает `.env` при старте и подставляет значения в системные свойства (если одноимённая переменная окружения не задана).
 
 ## Режим собственного сервиса ввода нагрузки
 
