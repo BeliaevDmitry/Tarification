@@ -26,7 +26,14 @@ const ui = {
 async function api(path, options = {}) {
     const response = await fetch(path, options);
     const text = await response.text();
-    const body = text ? JSON.parse(text) : null;
+    let body = null;
+
+    try {
+        body = text ? JSON.parse(text) : null;
+    } catch (e) {
+        // КЛЮЧЕВОЕ: если сервер вернул не-JSON, сохраняем текст как есть.
+        body = text ? { message: text } : null;
+    }
 
     if (!response.ok) {
         throw new Error(body?.message || body?.error || `HTTP ${response.status}`);
@@ -181,10 +188,18 @@ function bindEvents() {
     ui.loadMappingsBtn.addEventListener("click", () => loadMappings().catch((e) => print(ui.mappingResult, { error: e.message })));
 }
 
-function init() {
-    resetSelect(ui.subjectSelect, "Нажмите «Загрузить предметы»");
+async function init() {
+    resetSelect(ui.subjectSelect, "Загрузка предметов...");
     resetSelect(ui.classSelect, "Сначала выберите предмет");
     bindEvents();
+
+    // КЛЮЧЕВОЕ: подгружаем предметы сразу при открытии страницы.
+    try {
+        await loadSubjects();
+    } catch (error) {
+        print(ui.mappingResult, { error: error.message });
+        resetSelect(ui.subjectSelect, "Не удалось загрузить предметы");
+    }
 }
 
 init();

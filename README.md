@@ -37,7 +37,8 @@ cp .env.example .env
 
 ## Режим собственного сервиса ввода нагрузки
 
-Приложение работает как API-сервис и не зависит от Google Sheets.
+Приложение переведено в API+Frontend режим и **не зависит от Google Sheets**.
+Сценарий работы: пользователь работает в веб-странице (`/`) или через REST API, данные сохраняются в БД.
 
 ### Встроенный фронтенд для ручной работы
 
@@ -50,6 +51,7 @@ cp .env.example .env
 - `src/main/resources/static/index.html` — только разметка блоков и форм.
 - `src/main/resources/static/styles.css` — только стили (без логики).
 - `src/main/resources/static/app.js` — только логика взаимодействия с API (все ключевые шаги вынесены в отдельные функции и прокомментированы).
+- `src/main/java/org/school/personalLoad/controller/api/ApiExceptionHandler.java` — единый формат API-ошибок для фронтенда.
 
 
 ### Основные endpoint'ы
