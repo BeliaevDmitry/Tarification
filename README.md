@@ -64,3 +64,17 @@ RUN_BATCH_ON_STARTUP=false
   "groupLoad": 5
 }
 ```
+
+
+### Импорт списка педагогов из Excel
+
+- `POST /api/teachers/import` (multipart, параметр `file`) — импортирует педагогов с листа `Педагоги` (или первого листа, если `Педагоги` не найден).
+- `GET /api/teachers` — получить справочник педагогов.
+- `DELETE /api/teachers` — очистить справочник педагогов.
+
+Пример импорта:
+
+```bash
+curl -X POST "http://localhost:8080/api/teachers/import" \
+  -F "file=@teachers.xlsx"
+```
