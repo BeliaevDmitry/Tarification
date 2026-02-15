@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarification — ручной ввод</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container">
+    <h1>Tarification — ручной режим</h1>
+    <p class="muted">Простой интерфейс для ручной загрузки нагрузки и корректировки соответствий УП → МЭШ.</p>
+
+    <section class="card">
+        <h2>1) Добавить запись ручной нагрузки</h2>
+        <form id="manual-load-form" class="grid">
+            <input name="fioTeacher" placeholder="ФИО педагога" required>
+            <input name="numberSchoolBuilding" placeholder="Корпус" required>
+            <input name="subjectName" placeholder="Предмет" required>
+            <input name="className" placeholder="Класс (УП)" required>
+            <input name="load" type="number" min="1" placeholder="Нагрузка" required>
+            <input name="groupNameEducationalPlan" placeholder="Группа (УП), можно пусто">
+            <input name="groupLoad" type="number" min="1" placeholder="Нагрузка группы, можно пусто">
+            <select name="educationLevel" required>
+                <option value="BASIC">BASIC</option>
+                <option value="ADVANCED">ADVANCED</option>
+            </select>
+            <button type="submit">Сохранить запись</button>
+        </form>
+        <pre id="manual-load-result"></pre>
+    </section>
+
+    <section class="card">
+        <h2>2) Обработать ручной ввод</h2>
+        <button id="process-btn">Запустить обработку</button>
+        <pre id="process-result"></pre>
+    </section>
+
+    <section class="card">
+        <h2>3) Корректировка названий МЭШ</h2>
+        <div class="row">
+            <button id="load-subjects-btn">Загрузить предметы</button>
+            <select id="subject-select"></select>
+            <button id="load-classes-btn">Загрузить классы</button>
+            <select id="class-select"></select>
+            <button id="load-mappings-btn">Показать связи</button>
+        </div>
+
+        <table>
+            <thead>
+            <tr>
+                <th>Предмет</th>
+                <th>Класс УП</th>
+                <th>Группа УП</th>
+                <th>Класс МЭШ</th>
+                <th>Группа МЭШ</th>
+            </tr>
+            </thead>
+            <tbody id="mappings-table-body"></tbody>
+        </table>
+
+        <h3>Ручное изменение/добавление связи</h3>
+        <form id="mapping-form" class="grid">
+            <input name="subjectName" placeholder="Предмет" required>
+            <input name="className" placeholder="Класс УП" required>
+            <input name="groupNameEducationalPlan" placeholder="Группа УП (можно пусто)">
+            <input name="classNameMesh" placeholder="Класс МЭШ (если пусто = класс УП)">
+            <input name="groupNameMesh" placeholder="Группа МЭШ (если пусто = группа УП)">
+            <button type="submit">Сохранить связь</button>
+        </form>
+        <pre id="mapping-result"></pre>
+    </section>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>
