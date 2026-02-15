@@ -34,3 +34,33 @@ cp .env.example .env
 2. Запустите приложение Maven/Spring Boot.
 
 Приложение теперь автоматически читает `.env` при старте и подставляет значения в системные свойства (если одноимённая переменная окружения не задана).
+
+## Режим собственного сервиса ввода нагрузки
+
+Чтобы приложение работало как API (без автоскачивания Google Sheets), выставите:
+
+```bash
+RUN_BATCH_ON_STARTUP=false
+```
+
+### Основные endpoint'ы
+
+- `POST /api/manual-load` — добавить 1 запись нагрузки.
+- `POST /api/manual-load/bulk` — массово добавить записи.
+- `GET /api/manual-load` — получить текущие записи ручного ввода.
+- `DELETE /api/manual-load` — очистить ручной ввод.
+- `POST /api/manual-load/process` — обработать текущий ручной ввод и сохранить в основную тарификацию.
+
+### Пример JSON для `POST /api/manual-load`
+
+```json
+{
+  "fioTeacher": "Иванов Иван Иванович",
+  "numberSchoolBuilding": "1 корп",
+  "subjectName": "Математика",
+  "className": "9-А",
+  "load": 5,
+  "groupNameEducationalPlan": "",
+  "groupLoad": 5
+}
+```

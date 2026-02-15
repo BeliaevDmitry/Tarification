@@ -26,6 +26,7 @@ app:
   expelled-file-path: ${EXPELLED_FILE_PATH:./data/expelled.xlsx}
   keep-history: ${KEEP_HISTORY:true}
   clear-history-on-start: ${CLEAR_HISTORY_ON_START:false}
+  run-batch-on-startup: ${RUN_BATCH_ON_STARTUP:false}
   excluded-teachers:
     - "Сухомлинова Вера Борисовна"
 

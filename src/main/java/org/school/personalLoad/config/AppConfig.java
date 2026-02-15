@@ -21,6 +21,7 @@ public class AppConfig {
     private String expelledFilePath;
     private boolean keepHistory = true;
     private boolean clearHistoryOnStart;
+    private boolean runBatchOnStartup;
     private Set<String> excludedTeachers = Set.of();
 
     public String getTarifficationFileName() {
@@ -109,6 +110,14 @@ public class AppConfig {
 
     public void setClearHistoryOnStart(boolean clearHistoryOnStart) {
         this.clearHistoryOnStart = clearHistoryOnStart;
+    }
+
+    public boolean isRunBatchOnStartup() {
+        return runBatchOnStartup;
+    }
+
+    public void setRunBatchOnStartup(boolean runBatchOnStartup) {
+        this.runBatchOnStartup = runBatchOnStartup;
     }
 
     public Set<String> getExcludedTeachers() {

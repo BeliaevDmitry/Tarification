@@ -29,6 +29,11 @@ public class Tariffication implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
+        if (!appConfig.isRunBatchOnStartup()) {
+            log.info("Batch-режим отключен (app.run-batch-on-startup=false). Приложение запущено как API-сервис.");
+            return;
+        }
+
         Path downloadDir = Path.of(appConfig.getDownloadDirectory());
         Path outputDir = Path.of(appConfig.getOutputDirectory());
         Files.createDirectories(downloadDir);
