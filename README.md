@@ -52,6 +52,7 @@ cp .env.example .env
 - `src/main/resources/static/styles.css` — только стили (без логики).
 - `src/main/resources/static/app.js` — только логика взаимодействия с API (все ключевые шаги вынесены в отдельные функции и прокомментированы).
 - `src/main/java/org/school/personalLoad/controller/api/ApiExceptionHandler.java` — единый формат API-ошибок для фронтенда.
+- `GET /api/system/mode` — быстрый контроль, в каком режиме запущено приложение (основной API+Frontend или legacy).
 
 #### Legacy-режим (только при необходимости миграции)
 По умолчанию legacy-обработка файлов выключена: `app.legacy-mode-enabled=false`.

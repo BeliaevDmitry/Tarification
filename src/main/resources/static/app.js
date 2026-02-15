@@ -16,7 +16,8 @@ const ui = {
     loadMappingsBtn: document.getElementById("load-mappings-btn"),
     subjectSelect: document.getElementById("subject-select"),
     classSelect: document.getElementById("class-select"),
-    mappingsTableBody: document.getElementById("mappings-table-body")
+    mappingsTableBody: document.getElementById("mappings-table-body"),
+    modeBadge: document.getElementById("mode-badge")
 };
 
 /**
@@ -178,6 +179,18 @@ async function onMappingSubmit(e) {
     }
 }
 
+
+async function loadSystemMode() {
+    const info = await api("/api/system/mode");
+    const isLegacy = Boolean(info.legacyModeEnabled);
+
+    ui.modeBadge.textContent = isLegacy
+        ? "Режим: LEGACY FILE PIPELINE (временно включён)"
+        : "Режим: API + FRONTEND (основной)";
+
+    ui.modeBadge.classList.toggle("legacy", isLegacy);
+}
+
 function bindEvents() {
     ui.manualLoadForm.addEventListener("submit", onManualLoadSubmit);
     ui.processBtn.addEventListener("click", onProcessClick);
@@ -192,6 +205,13 @@ async function init() {
     resetSelect(ui.subjectSelect, "Загрузка предметов...");
     resetSelect(ui.classSelect, "Сначала выберите предмет");
     bindEvents();
+
+    try {
+        await loadSystemMode();
+    } catch (error) {
+        ui.modeBadge.textContent = "Режим: не удалось определить";
+        print(ui.mappingResult, { error: error.message });
+    }
 
     // КЛЮЧЕВОЕ: подгружаем предметы сразу при открытии страницы.
     try {

@@ -86,3 +86,19 @@ hr {
         grid-template-columns: 1fr;
     }
 }
+
+
+.mode-badge {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 13px;
+    background: #e0e7ff;
+    color: #1e3a8a;
+}
+
+.mode-badge.legacy {
+    background: #ffe4e6;
+    color: #9f1239;
+}
