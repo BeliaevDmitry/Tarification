@@ -12,8 +12,6 @@ import java.util.Set;
 public class AppConfig {
     private static final DateTimeFormatter FILE_DATE_FORMAT = DateTimeFormatter.ofPattern("dd-MM-yyyy HH-mm");
 
-    private String sheetsUrl;
-    private String tarifficationFilePrefix;
     private String practicumFileName;
     private String downloadDirectory;
     private String outputDirectory;
@@ -21,12 +19,7 @@ public class AppConfig {
     private String expelledFilePath;
     private boolean keepHistory = true;
     private boolean clearHistoryOnStart;
-    private boolean runBatchOnStartup;
     private Set<String> excludedTeachers = Set.of();
-
-    public String getTarifficationFileName() {
-        return tarifficationFilePrefix + " " + LocalDateTime.now().format(FILE_DATE_FORMAT);
-    }
 
     public String getTarifficationOutputPath() {
         return outputDirectory + "Тарификация" + LocalDateTime.now().format(FILE_DATE_FORMAT) + ".xlsx";
@@ -38,22 +31,6 @@ public class AppConfig {
 
     public String getDownloadPath(String fileName) {
         return downloadDirectory + fileName;
-    }
-
-    public String getSheetsUrl() {
-        return sheetsUrl;
-    }
-
-    public void setSheetsUrl(String sheetsUrl) {
-        this.sheetsUrl = sheetsUrl;
-    }
-
-    public String getTarifficationFilePrefix() {
-        return tarifficationFilePrefix;
-    }
-
-    public void setTarifficationFilePrefix(String tarifficationFilePrefix) {
-        this.tarifficationFilePrefix = tarifficationFilePrefix;
     }
 
     public String getPracticumFileName() {
@@ -110,14 +87,6 @@ public class AppConfig {
 
     public void setClearHistoryOnStart(boolean clearHistoryOnStart) {
         this.clearHistoryOnStart = clearHistoryOnStart;
-    }
-
-    public boolean isRunBatchOnStartup() {
-        return runBatchOnStartup;
-    }
-
-    public void setRunBatchOnStartup(boolean runBatchOnStartup) {
-        this.runBatchOnStartup = runBatchOnStartup;
     }
 
     public Set<String> getExcludedTeachers() {

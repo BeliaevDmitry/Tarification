@@ -17,8 +17,6 @@ logging:
     root: INFO
 
 app:
-  sheets-url: ${TARIFFICATION_SHEETS_URL:https://docs.google.com/spreadsheets/d/1yDBzOWy7ReQ7vhFFCQN6F58wichu9FAVgrl688uNykI/export?format=xlsx}
-  tariffication-file-prefix: ${TARIFFICATION_FILE_PREFIX:Нагрузка 2 полугодие}
   practicum-file-name: ${PRACTICUM_FILE_NAME:ЕГЭ 2026 автоскачанный}
   download-directory: ${DOWNLOAD_DIRECTORY:./data/downloads/}
   output-directory: ${OUTPUT_DIRECTORY:./data/output/}
@@ -26,7 +24,6 @@ app:
   expelled-file-path: ${EXPELLED_FILE_PATH:./data/expelled.xlsx}
   keep-history: ${KEEP_HISTORY:true}
   clear-history-on-start: ${CLEAR_HISTORY_ON_START:false}
-  run-batch-on-startup: ${RUN_BATCH_ON_STARTUP:false}
   excluded-teachers:
     - "Сухомлинова Вера Борисовна"
 

@@ -37,11 +37,7 @@ cp .env.example .env
 
 ## Режим собственного сервиса ввода нагрузки
 
-Чтобы приложение работало как API (без автоскачивания Google Sheets), выставите:
-
-```bash
-RUN_BATCH_ON_STARTUP=false
-```
+Приложение работает как API-сервис и не зависит от Google Sheets.
 
 ### Основные endpoint'ы
 
