@@ -2,13 +2,13 @@ package org.school.personalLoad.controller.api;
 
 import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
+import org.school.personalLoad.dto.ManualLoadProcessResult;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.service.ManualLoadService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/manual-load")
@@ -39,11 +39,7 @@ public class ManualLoadController {
     }
 
     @PostMapping("/process")
-    public ResponseEntity<Map<String, Object>> process() {
-        int processed = manualLoadService.processCurrentManualLoad();
-        return ResponseEntity.ok(Map.of(
-                "status", "ok",
-                "processed", processed
-        ));
+    public ResponseEntity<ManualLoadProcessResult> process() {
+        return ResponseEntity.ok(manualLoadService.processCurrentManualLoad());
     }
 }

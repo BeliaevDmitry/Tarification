@@ -1,6 +1,7 @@
 package org.school.personalLoad.service;
 
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
+import org.school.personalLoad.dto.ManualLoadProcessResult;
 import org.school.personalLoad.model.ManualLoadEntry;
 
 import java.util.List;
@@ -14,5 +15,5 @@ public interface ManualLoadService {
 
     void clearAll();
 
-    int processCurrentManualLoad();
+    ManualLoadProcessResult processCurrentManualLoad();
 }

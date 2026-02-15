@@ -47,6 +47,28 @@ cp .env.example .env
 - `DELETE /api/manual-load` — очистить ручной ввод.
 - `POST /api/manual-load/process` — обработать текущий ручной ввод и сохранить в основную тарификацию.
 
+
+Ответ `POST /api/manual-load/process`:
+
+```json
+{
+  "status": "ok",
+  "processed": 3,
+  "summaries": [
+    {
+      "className": "9-А",
+      "subjectName": "Математика",
+      "educationLevel": "BASIC",
+      "plannedHours": 5,
+      "actualHours": 4,
+      "remainingHours": 1
+    }
+  ]
+}
+```
+
+`actualHours` — суммарная фактическая нагрузка по всем записям ручного ввода для комбинации `className + subjectName + educationLevel`, `remainingHours = plannedHours - actualHours`.
+
 ### Пример JSON для `POST /api/manual-load`
 
 ```json

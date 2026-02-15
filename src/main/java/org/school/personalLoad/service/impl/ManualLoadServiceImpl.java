@@ -3,6 +3,8 @@ package org.school.personalLoad.service.impl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
+import org.school.personalLoad.dto.ManualLoadPlanFactSummary;
+import org.school.personalLoad.dto.ManualLoadProcessResult;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.SubjectWithGroup;
@@ -15,7 +17,9 @@ import org.school.personalLoad.service.TarifficationProcessingService;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -50,12 +54,20 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
     @Override
-    public int processCurrentManualLoad() {
+    public ManualLoadProcessResult processCurrentManualLoad() {
         List<ManualLoadEntry> entries = manualLoadEntryRepository.findAll();
         List<TarifficationPerson> tarifficationList = new ArrayList<>();
         List<SubjectWithGroup> groupList = new ArrayList<>();
+        Map<RuleKey, SummaryAccumulator> summaryByRule = new HashMap<>();
 
         for (ManualLoadEntry entry : entries) {
+            CurriculumPlanEntry rule = validateAgainstCurriculum(entry);
+            int effectiveLoad = entry.getGroupLoad() != null ? entry.getGroupLoad() : entry.getLoad();
+
+            RuleKey key = new RuleKey(rule.getClassName(), rule.getSubjectName(), rule.getEducationLevel());
+            summaryByRule.computeIfAbsent(key, k -> new SummaryAccumulator(rule.getPlannedHours()))
+                    .addActualHours(effectiveLoad);
+
             TarifficationPerson person = new TarifficationPerson(
                     entry.getFioTeacher(),
                     entry.getNumberSchoolBuilding(),
@@ -65,8 +77,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             );
             person.setGroupNameEducationalPlan(entry.getGroupNameEducationalPlan() != null
                     ? entry.getGroupNameEducationalPlan() : "");
-            person.setGroupLoad(entry.getGroupLoad() != null ? entry.getGroupLoad() : entry.getLoad());
-            validateAgainstCurriculum(entry);
+            person.setGroupLoad(effectiveLoad);
             tarifficationList.add(person);
         }
 
@@ -74,8 +85,34 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         tarifficationProcessingService.sortByFIO(tarifficationList);
         databaseService.compareAndSave(tarifficationList);
 
-        log.info("Ручная нагрузка обработана. Записей: {}", tarifficationList.size());
-        return tarifficationList.size();
+        List<ManualLoadPlanFactSummary> summaries = summaryByRule.entrySet().stream()
+                .map(entry -> {
+                    RuleKey key = entry.getKey();
+                    SummaryAccumulator summary = entry.getValue();
+                    return new ManualLoadPlanFactSummary(
+                            key.className,
+                            key.subjectName,
+                            key.educationLevel,
+                            summary.plannedHours,
+                            summary.actualHours,
+                            summary.plannedHours - summary.actualHours
+                    );
+                })
+                .sorted((a, b) -> {
+                    int classCompare = a.getClassName().compareToIgnoreCase(b.getClassName());
+                    if (classCompare != 0) {
+                        return classCompare;
+                    }
+                    int subjectCompare = a.getSubjectName().compareToIgnoreCase(b.getSubjectName());
+                    if (subjectCompare != 0) {
+                        return subjectCompare;
+                    }
+                    return a.getEducationLevel().name().compareToIgnoreCase(b.getEducationLevel().name());
+                })
+                .toList();
+
+        log.info("Ручная нагрузка обработана. Записей: {}, сводок: {}", tarifficationList.size(), summaries.size());
+        return new ManualLoadProcessResult("ok", tarifficationList.size(), summaries);
     }
 
     private ManualLoadEntry toEntity(ManualLoadEntryRequest request) {
@@ -93,7 +130,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
 
-    private void validateAgainstCurriculum(ManualLoadEntry entry) {
+    private CurriculumPlanEntry validateAgainstCurriculum(ManualLoadEntry entry) {
         CurriculumPlanEntry rule = curriculumPlanService
                 .findRule(entry.getClassName().trim(), entry.getSubjectName().trim(), entry.getEducationLevel())
                 .orElseThrow(() -> new IllegalArgumentException("Curriculum rule not found for class=" + entry.getClassName() +
@@ -108,6 +145,54 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             if (entry.getGroupNameEducationalPlan() == null || entry.getGroupNameEducationalPlan().isBlank()) {
                 throw new IllegalArgumentException("groupNameEducationalPlan is required because subgroupRequired=true in curriculum");
             }
+        }
+
+        return rule;
+    }
+
+
+    private static class SummaryAccumulator {
+        private final int plannedHours;
+        private int actualHours;
+
+        private SummaryAccumulator(int plannedHours) {
+            this.plannedHours = plannedHours;
+            this.actualHours = 0;
+        }
+
+        private void addActualHours(int hours) {
+            this.actualHours += hours;
+        }
+    }
+
+    private static class RuleKey {
+        private final String className;
+        private final String subjectName;
+        private final org.school.personalLoad.model.EducationLevel educationLevel;
+
+        private RuleKey(String className, String subjectName, org.school.personalLoad.model.EducationLevel educationLevel) {
+            this.className = className;
+            this.subjectName = subjectName;
+            this.educationLevel = educationLevel;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            RuleKey ruleKey = (RuleKey) o;
+            return className.equals(ruleKey.className)
+                    && subjectName.equals(ruleKey.subjectName)
+                    && educationLevel == ruleKey.educationLevel;
+        }
+
+        @Override
+        public int hashCode() {
+            return java.util.Objects.hash(className, subjectName, educationLevel);
         }
     }
 
