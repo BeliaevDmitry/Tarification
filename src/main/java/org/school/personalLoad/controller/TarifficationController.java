@@ -1,24 +1,32 @@
 package org.school.personalLoad.controller;
 
-import org.school.personalLoad.config.HibernateConfig;
-import org.school.personalLoad.model.SubjectWithGroup;
-import org.school.personalLoad.model.TarifficationPerson;
-import org.school.personalLoad.service.*;
-import org.school.personalLoad.model.TarifficationChanges;
-import org.school.personalLoad.service.impl.*;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.school.personalLoad.config.AppConfig;
 import org.school.personalLoad.model.GroupOrClassInfo;
-import org.school.personalLoad.model.TarifficationChangesMesh; // Добавляем импорт
-import org.school.personalLoad.dao.TarifficationChangesMeshDAO; // Добавляем импорт
-
-
+import org.school.personalLoad.model.SubjectWithGroup;
+import org.school.personalLoad.model.TarifficationChanges;
+import org.school.personalLoad.model.TarifficationChangesMesh;
+import org.school.personalLoad.model.TarifficationPerson;
+import org.school.personalLoad.service.DatabaseService;
+import org.school.personalLoad.service.GroupSearchService;
+import org.school.personalLoad.service.NamingMeshService;
+import org.school.personalLoad.service.ReportService;
+import org.school.personalLoad.service.TarifficationDataReaderService;
+import org.school.personalLoad.service.TarifficationNamingService;
+import org.school.personalLoad.service.TarifficationProcessingService;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import static org.school.personalLoad.config.AppConfig.getExpelledFilePath;
-import static org.school.personalLoad.config.AppConfig.getOfflineFilesPath;
-
+@Slf4j
+@Component
+@Deprecated
+@ConditionalOnProperty(prefix = "app", name = "legacy-mode-enabled", havingValue = "true")
+@RequiredArgsConstructor
 public class TarifficationController {
 
     private final TarifficationDataReaderService tarifficationDataReaderService;
@@ -28,75 +36,49 @@ public class TarifficationController {
     private final GroupSearchService groupSearchService;
     private final TarifficationNamingService tarifficationNamingService;
     private final NamingMeshService namingMeshService;
+    private final AppConfig appConfig;
 
-
-    public TarifficationController() {
-        HibernateConfig.getSessionFactory();
-        this.databaseService = new DatabaseServiceImpl();
-        this.tarifficationDataReaderService = new TarifficationDataReaderServiceImpl();
-        this.tarifficationProcessingService = new TarifficationProcessingServiceImpl(databaseService);
-        this.reportService = new ReportServiceImpl();
-        this.groupSearchService = new GroupSearchServiceImpl(); // Новый сервис
-        this.tarifficationNamingService = new TarifficationNamingServiceImpl();
-        this.namingMeshService = new NamingMeshServiceImpl();
-    }
-
-    /**
-     * Основной метод обработки тарификации
-     */
     public void processTariffication(String inputPath, String outputPath) {
         try {
-            // 1. Обработка NamingMesh из того же файла
-            List<TarifficationChangesMesh> namingMeshChanges = new ArrayList<>();
-            System.out.println("🔄 Начинаем обработку NamingMesh из файла...");
-            namingMeshChanges = namingMeshService.processNamingMeshFile(inputPath);
+            log.info("Начинаем обработку NamingMesh из файла");
+            List<TarifficationChangesMesh> namingMeshChanges = namingMeshService.processNamingMeshFile(inputPath);
             namingMeshService.sortTarifficationChangesMeshByDate(namingMeshChanges);
-            System.out.println("✅ Обработка NamingMesh завершена. Найдено изменений: " + namingMeshChanges.size());
+            log.info("Обработка NamingMesh завершена. Найдено изменений: {}", namingMeshChanges.size());
 
-            // 2. Чтение и обработка данных из Excel
             List<TarifficationPerson> tarifficationList = new ArrayList<>();
             List<SubjectWithGroup> groupList = new ArrayList<>();
             tarifficationDataReaderService.readExcelData(inputPath, tarifficationList, groupList);
 
-            // 3. Обработка данных
             tarifficationList = tarifficationProcessingService.addingGroup(tarifficationList, groupList);
             tarifficationProcessingService.sortByFIO(tarifficationList);
-            System.out.println("✅ Успешно обработано: " + tarifficationList.size() + " записей");
+            log.info("Успешно обработано: {} записей", tarifficationList.size());
 
-            // 4. Применение naming mapping
             Map<String, String[]> loadNamingMapping = tarifficationNamingService.loadNamingMapping(inputPath);
-            System.out.println("✅ найдено " + loadNamingMapping.size() + " записей отличия от записи в МЭШ и тарификации");
+            log.info("Найдено {} записей отличия МЭШ/тарификации", loadNamingMapping.size());
             tarifficationNamingService.applyNamingMapping(tarifficationList, loadNamingMapping);
-            System.out.println("✅ отличия от записи в МЭШ и тарификации добавлены");
 
-            // 5. Сравнение с ИСТОРИЕЙ и сохранение
             databaseService.compareAndSave(tarifficationList);
             List<TarifficationChanges> allHistory = databaseService.getAllHistory();
-
-            // 6. Сортируем историю
             tarifficationProcessingService.sortHistoryByDate(allHistory);
 
-            // 7. Поиск групп для инвалидов
             Map<String, List<String>> disabledStudentsGroups =
                     groupSearchService.findGroupsForDisabledStudents(inputPath,
-                            getOfflineFilesPath(),getExpelledFilePath());
-            System.out.println("✅ Найдено групп для инвалидов: " + disabledStudentsGroups.size() + " обучающихся");
+                            appConfig.getOfflineFilesDirectory(), appConfig.getExpelledFilePath());
+            log.info("Найдено групп для инвалидов: {} обучающихся", disabledStudentsGroups.size());
 
-            // 8. Собираем информацию о классах, численности и преподавателях
             Map<String, GroupOrClassInfo> classInfo =
-                    groupSearchService.collectClassInfo(getOfflineFilesPath(),getExpelledFilePath());
-            System.out.println("✅ Собрана информация о " + classInfo.size() + " классах");
+                    groupSearchService.collectClassInfo(appConfig.getOfflineFilesDirectory(), appConfig.getExpelledFilePath());
+            log.info("Собрана информация о {} классах", classInfo.size());
 
-            // 9. Создание отчета с передачей информации о классах
             List<String> listGroup = databaseService.findAllUniqueClassAndGroupNames();
             reportService.createReport(tarifficationList, groupList, allHistory, outputPath,
-                    disabledStudentsGroups, classInfo, namingMeshChanges,listGroup);
+                    disabledStudentsGroups, classInfo, namingMeshChanges, listGroup);
 
-            System.out.println("✅ отчёт собран и записан в файл ");
+            log.info("Отчет собран и записан в файл: {}", outputPath);
 
-            } catch (Exception e) {
-            System.err.println("❌ Ошибка при обработке файла: " + e.getMessage());
-            e.printStackTrace();
+        } catch (Exception e) {
+            log.error("Ошибка при обработке файла", e);
+            throw new RuntimeException(e);
         }
     }
 }

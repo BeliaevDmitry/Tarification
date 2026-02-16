@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarification — Нагрузка по корпусам</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container">
+    <header class="card">
+        <h1>Нагрузка по корпусам</h1>
+        <p class="muted">Логика: сначала добавьте корпуса, затем классы в учебном плане с привязкой к корпусу, после этого распределяйте нагрузку.</p>
+        <nav class="page-nav">
+            <a class="nav-link" href="/">Ручной ввод</a>
+            <a class="nav-link" href="/buildings.html">Корпуса</a>
+            <a class="nav-link" href="/curriculum.html">Учебные планы</a>
+            <a class="nav-link active" href="/load.html">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/classes.html">Классы</a>
+            <a class="nav-link" href="/teachers.html">Педагоги</a>
+        </nav>
+    </header>
+
+    <section class="card">
+        <div class="row"><strong>Корпуса:</strong><div id="building-tabs" class="parallel-tabs"></div></div>
+        <div class="row"><button id="refresh-load-btn" type="button">Обновить из учебного плана</button><button id="save-building-btn" type="button">Сохранить нагрузку корпуса</button></div>
+        <pre id="load-result"></pre>
+    </section>
+
+    <section class="card">
+        <h2>Распределение педагогов</h2>
+        <div class="sheet-wrap"><table class="sheet-table" id="building-load-table"><thead id="building-load-head"></thead><tbody id="building-load-body"></tbody></table></div>
+    </section>
+</main>
+<script src="/load.js"></script>
+</body>
+</html>
