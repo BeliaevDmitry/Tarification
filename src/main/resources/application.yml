@@ -1,4 +1,11 @@
 spring:
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          no-cache: true
+          no-store: true
+          must-revalidate: true
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/tariffication_db}
     username: ${DB_USERNAME:tarif_user}
