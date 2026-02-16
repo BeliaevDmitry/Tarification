@@ -16,5 +16,5 @@ public interface CurriculumPlanService {
 
     void clearAll();
 
-    Optional<CurriculumPlanEntry> findRule(String className, String subjectName, EducationLevel educationLevel);
+    Optional<CurriculumPlanEntry> findRule(String numberSchoolBuilding, String className, String subjectName, EducationLevel educationLevel);
 }

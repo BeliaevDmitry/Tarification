@@ -10,8 +10,17 @@
 <main class="container">
     <header class="card">
         <h1>Tarification — ручной режим</h1>
-        <p class="muted">Единая страница для ручной загрузки нагрузки и корректировки соответствий УП → МЭШ.</p>
+        <p class="muted">Ручная загрузка нагрузки и корректировка соответствий УП → МЭШ.</p>
         <p id="mode-badge" class="mode-badge">Режим: определяем...</p>
+
+        <nav class="page-nav">
+            <a class="nav-link active" href="/">Ручной ввод</a>
+            <a class="nav-link" href="/classes.html">Классы</a>
+            <a class="nav-link" href="/buildings.html">Корпуса</a>
+            <a class="nav-link" href="/curriculum.html">Учебные планы (как таблица)</a>
+            <a class="nav-link" href="/load.html">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/teachers.html">Педагоги</a>
+        </nav>
 
         <div class="tabs" role="tablist" aria-label="Разделы">
             <button class="tab-btn active" data-tab="manual" role="tab" aria-selected="true">Ручная нагрузка</button>
@@ -21,7 +30,6 @@
 
     <section class="card tab-panel" data-panel="manual">
         <h2>1) Ручная нагрузка</h2>
-        <p class="muted">Заполните запись и сохраните в черновой ручной ввод.</p>
         <form id="manual-load-form" class="grid">
             <input name="fioTeacher" placeholder="ФИО педагога" required>
             <input name="numberSchoolBuilding" placeholder="Корпус" required>
@@ -31,8 +39,8 @@
             <input name="groupNameEducationalPlan" placeholder="Группа (УП), можно пусто">
             <input name="groupLoad" type="number" min="1" placeholder="Нагрузка группы, можно пусто">
             <select name="educationLevel" required>
-                <option value="BASIC">BASIC</option>
-                <option value="ADVANCED">ADVANCED</option>
+                <option value="BASIC">Базовый</option>
+                <option value="ADVANCED">Углублённый</option>
             </select>
             <button type="submit">Сохранить запись</button>
         </form>
@@ -40,15 +48,12 @@
 
         <hr>
 
-        <p class="muted">После заполнения всех записей запустите обработку:</p>
         <button id="process-btn">Запустить обработку</button>
         <pre id="process-result"></pre>
     </section>
 
     <section class="card tab-panel hidden" data-panel="mesh">
         <h2>2) Корректировка названий МЭШ</h2>
-        <p class="muted">Изначально класс/группа МЭШ равны УП, но здесь можно вручную переопределить соответствие.</p>
-
         <div class="row">
             <button id="load-subjects-btn">Загрузить предметы</button>
             <select id="subject-select"></select>

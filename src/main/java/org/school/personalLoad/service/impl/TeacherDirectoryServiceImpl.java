@@ -3,6 +3,7 @@ package org.school.personalLoad.service.impl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
+import org.school.personalLoad.dto.TeacherCreateRequest;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.TeacherDirectoryService;
@@ -83,6 +84,22 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
             log.error("Ошибка импорта педагогов", e);
             throw new RuntimeException("Не удалось импортировать педагогов из Excel", e);
         }
+    }
+
+
+    @Override
+    public TeacherDirectoryEntry create(TeacherCreateRequest request) {
+        if (request == null || request.getFioTeacher() == null || request.getFioTeacher().isBlank()) {
+            throw new IllegalArgumentException("fioTeacher is required");
+        }
+
+        String normalized = request.getFioTeacher().trim();
+        return teacherDirectoryRepository.findByFioTeacher(normalized)
+                .orElseGet(() -> {
+                    TeacherDirectoryEntry entry = new TeacherDirectoryEntry();
+                    entry.setFioTeacher(normalized);
+                    return teacherDirectoryRepository.save(entry);
+                });
     }
 
     @Override

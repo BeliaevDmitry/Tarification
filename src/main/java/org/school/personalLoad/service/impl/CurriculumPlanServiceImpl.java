@@ -2,6 +2,7 @@ package org.school.personalLoad.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.dto.CurriculumPlanEntryRequest;
+import org.school.personalLoad.model.CurriculumPart;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
@@ -21,16 +22,27 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
     @Override
     public CurriculumPlanEntry upsert(CurriculumPlanEntryRequest request) {
         validate(request);
+        CurriculumPart curriculumPart = request.getCurriculumPart() == null ? CurriculumPart.CORE : request.getCurriculumPart();
+        String normalizedClassName = ClassNameNormalizer.normalize(request.getClassName());
+
         CurriculumPlanEntry entity = repository
-                .findByClassNameAndSubjectNameAndEducationLevel(request.getClassName().trim(), request.getSubjectName().trim(), request.getEducationLevel())
+                .findByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPart(
+                        request.getNumberSchoolBuilding().trim(),
+                        normalizedClassName,
+                        request.getSubjectName().trim(),
+                        request.getEducationLevel(),
+                        curriculumPart
+                )
                 .orElseGet(CurriculumPlanEntry::new);
 
-        entity.setClassName(request.getClassName().trim());
+        entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
+        entity.setClassName(normalizedClassName);
         entity.setSubjectName(request.getSubjectName().trim());
         entity.setPlannedHours(request.getPlannedHours());
         entity.setSubgroupRequired(request.isSubgroupRequired());
         entity.setSubgroupCount(request.isSubgroupRequired() ? request.getSubgroupCount() : 0);
         entity.setEducationLevel(request.getEducationLevel());
+        entity.setCurriculumPart(curriculumPart);
         return repository.save(entity);
     }
 
@@ -54,11 +66,19 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
     }
 
     @Override
-    public Optional<CurriculumPlanEntry> findRule(String className, String subjectName, EducationLevel educationLevel) {
-        return repository.findByClassNameAndSubjectNameAndEducationLevel(className, subjectName, educationLevel);
+    public Optional<CurriculumPlanEntry> findRule(String numberSchoolBuilding, String className, String subjectName, EducationLevel educationLevel) {
+        return repository.findFirstByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevel(
+                numberSchoolBuilding,
+                ClassNameNormalizer.normalize(className),
+                subjectName,
+                educationLevel
+        );
     }
 
     private void validate(CurriculumPlanEntryRequest request) {
+        if (request.getNumberSchoolBuilding() == null || request.getNumberSchoolBuilding().isBlank()) {
+            throw new IllegalArgumentException("numberSchoolBuilding is required");
+        }
         if (request.getClassName() == null || request.getClassName().isBlank()) {
             throw new IllegalArgumentException("className is required");
         }

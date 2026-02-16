@@ -123,3 +123,165 @@ hr {
 .tab-panel.hidden {
     display: none;
 }
+
+.page-nav {
+    display: flex;
+    gap: 10px;
+    margin: 12px 0;
+}
+
+.nav-link {
+    display: inline-block;
+    padding: 7px 12px;
+    border-radius: 8px;
+    border: 1px solid #c7d2fe;
+    background: #eef2ff;
+    text-decoration: none;
+    color: #1f2937;
+}
+
+.nav-link.active {
+    background: #1d4ed8;
+    color: #fff;
+    border-color: #1d4ed8;
+}
+
+.sheet-wrap {
+    overflow: auto;
+    border: 1px solid #d6dae3;
+    border-radius: 8px;
+}
+
+.sheet-table {
+    width: 100%;
+    min-width: 900px;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+.sheet-table thead th {
+    position: sticky;
+    top: 0;
+    background: #f8fafc;
+    z-index: 1;
+}
+
+.sheet-table th,
+.sheet-table td {
+    border: 1px solid #e5e7eb;
+    padding: 7px 10px;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.class-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.class-chip {
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 13px;
+}
+
+.parallel-tabs {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(120px, 1fr));
+    gap: 8px;
+}
+
+.parallel-tab {
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid #bfdbfe;
+    background: #eff6ff;
+    cursor: pointer;
+}
+
+.parallel-tab.active {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+    color: #fff;
+}
+
+.plan-block h2 {
+    margin-top: 0;
+}
+
+#building-load-table input {
+    width: 100%;
+    min-width: 160px;
+}
+
+#building-load-table select {
+    width: 100%;
+    min-width: 180px;
+}
+
+
+#building-load-table input[list] {
+    width: 100%;
+    min-width: 220px;
+}
+
+.teacher-hours {
+    margin-top: 4px;
+    font-size: 12px;
+    color: #475569;
+    white-space: nowrap;
+}
+
+.summary-part-row td {
+    background: #f8fafc;
+    font-weight: 600;
+}
+
+.summary-sum-row td {
+    background: #f1f5f9;
+    font-weight: 600;
+}
+
+.hours-cell-wrap {
+    padding: 0;
+}
+
+.hours-cell {
+    width: 100%;
+    min-height: 34px;
+    background: #ffffff;
+    border: 0;
+    border-radius: 0;
+    position: relative;
+}
+
+.hours-cell:hover {
+    background: #eef2ff;
+}
+
+.hours-cell.advanced-cell {
+    background: #ffd8b5;
+}
+
+.subgroup-mark {
+    position: absolute;
+    right: 4px;
+    bottom: 2px;
+    font-size: 11px;
+    text-transform: lowercase;
+    color: #7c2d12;
+}
+
+#summary-table th,
+#summary-table td {
+    text-align: center;
+}
+
+#summary-table td:first-child,
+#summary-table th:first-child {
+    text-align: left;
+}

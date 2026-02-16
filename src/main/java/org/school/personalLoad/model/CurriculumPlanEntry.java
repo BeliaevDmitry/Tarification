@@ -8,13 +8,16 @@ import java.time.LocalDateTime;
 @Data
 @Entity
 @Table(name = "curriculum_plan_entry", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_curriculum_class_subject_level", columnNames = {"className", "subjectName", "educationLevel"})
+        @UniqueConstraint(name = "uk_curriculum_class_subject_level", columnNames = {"numberSchoolBuilding", "className", "subjectName", "educationLevel", "curriculumPart"})
 })
 public class CurriculumPlanEntry {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(nullable = false)
+    private String numberSchoolBuilding;
 
     @Column(nullable = false)
     private String className;
@@ -34,6 +37,10 @@ public class CurriculumPlanEntry {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EducationLevel educationLevel;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private CurriculumPart curriculumPart = CurriculumPart.CORE;
 
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();

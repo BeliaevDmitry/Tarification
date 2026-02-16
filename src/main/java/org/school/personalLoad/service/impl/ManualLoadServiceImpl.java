@@ -121,7 +121,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         entity.setFioTeacher(request.getFioTeacher().trim());
         entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
         entity.setSubjectName(request.getSubjectName().trim());
-        entity.setClassName(request.getClassName().trim());
+        entity.setClassName(ClassNameNormalizer.normalize(request.getClassName()));
         entity.setLoad(request.getLoad());
         entity.setGroupNameEducationalPlan(request.getGroupNameEducationalPlan());
         entity.setGroupLoad(request.getGroupLoad());
@@ -132,7 +132,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
     private CurriculumPlanEntry validateAgainstCurriculum(ManualLoadEntry entry) {
         CurriculumPlanEntry rule = curriculumPlanService
-                .findRule(entry.getClassName().trim(), entry.getSubjectName().trim(), entry.getEducationLevel())
+                .findRule(entry.getNumberSchoolBuilding().trim(), ClassNameNormalizer.normalize(entry.getClassName()), entry.getSubjectName().trim(), entry.getEducationLevel())
                 .orElseThrow(() -> new IllegalArgumentException("Curriculum rule not found for class=" + entry.getClassName() +
                         ", subject=" + entry.getSubjectName() + ", level=" + entry.getEducationLevel()));
 

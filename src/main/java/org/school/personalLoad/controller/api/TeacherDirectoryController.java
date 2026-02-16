@@ -1,6 +1,7 @@
 package org.school.personalLoad.controller.api;
 
 import lombok.RequiredArgsConstructor;
+import org.school.personalLoad.dto.TeacherCreateRequest;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.service.TeacherDirectoryService;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +21,12 @@ public class TeacherDirectoryController {
     @PostMapping("/import")
     public ResponseEntity<Map<String, Object>> importFromExcel(@RequestParam("file") MultipartFile file) {
         return ResponseEntity.ok(teacherDirectoryService.importFromExcel(file));
+    }
+
+
+    @PostMapping
+    public ResponseEntity<TeacherDirectoryEntry> create(@RequestBody TeacherCreateRequest request) {
+        return ResponseEntity.ok(teacherDirectoryService.create(request));
     }
 
     @GetMapping
