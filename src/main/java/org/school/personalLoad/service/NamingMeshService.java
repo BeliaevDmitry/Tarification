@@ -22,6 +22,13 @@ public interface NamingMeshService {
     boolean hasChanges(List<NamingMesh> newNamingMeshes);
     List<String> getAllUniqueSubjects();
     List<String> getClassesForSubject(String subjectName);
+    List<NamingMesh> getMappingsForSubject(String subjectName);
+    List<NamingMesh> getMappingsForSubjectAndClass(String subjectName, String className);
+    NamingMesh upsertManualMapping(String subjectName,
+                                   String className,
+                                   String groupNameEducationalPlan,
+                                   String classNameMesh,
+                                   String groupNameMesh);
 
     void sortTarifficationChangesMeshByDate(List<TarifficationChangesMesh> compareNamingMeshes);
 }

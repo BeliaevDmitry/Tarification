@@ -1,5 +1,7 @@
 package org.school.personalLoad.service.impl;
 
+import org.springframework.stereotype.Service;
+
 import org.apache.poi.ss.usermodel.*;
 import org.school.personalLoad.model.GroupOrClassInfo;
 import org.school.personalLoad.service.GroupSearchService;
@@ -12,6 +14,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+@Service
 public class GroupSearchServiceImpl implements GroupSearchService {
 
     private final int THREAD_POOL_SIZE = Runtime.getRuntime().availableProcessors();
