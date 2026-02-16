@@ -285,3 +285,11 @@ hr {
 #summary-table th:first-child {
     text-align: left;
 }
+
+.workspace-panel iframe {
+    width: 100%;
+    min-height: 760px;
+    border: 1px solid #dbe1ea;
+    border-radius: 8px;
+    background: #fff;
+}
