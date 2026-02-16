@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarification — Классы</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container">
+    <header class="card">
+        <h1>Классы</h1>
+        <p class="muted">Заведите классы с привязкой к корпусу, направлению и классному руководителю.</p>
+        <nav class="page-nav">
+            <a class="nav-link" href="/">Ручной ввод</a>
+            <a class="nav-link active" href="/classes.html">Классы</a>
+            <a class="nav-link" href="/buildings.html">Корпуса</a>
+            <a class="nav-link" href="/curriculum.html">Учебные планы</a>
+            <a class="nav-link" href="/load.html">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/teachers.html">Педагоги</a>
+        </nav>
+    </header>
+
+    <section class="card">
+        <form id="class-form" class="grid">
+            <select name="numberSchoolBuilding" id="class-building" required></select>
+            <input name="className" placeholder="Класс (например 7А)" required>
+            <input name="classDirection" placeholder="Направление класса" required>
+            <input name="fioTeacher" id="class-teacher" list="teacher-list" placeholder="Классный руководитель" required>
+            <datalist id="teacher-list"></datalist>
+            <button type="submit">Добавить / обновить класс</button>
+        </form>
+        <div class="row">
+            <button id="refresh-classes-btn" type="button">Обновить</button>
+            <button id="clear-classes-btn" type="button">Очистить классы</button>
+        </div>
+        <pre id="classes-result"></pre>
+    </section>
+
+    <section class="card">
+        <h2>Список классов</h2>
+        <div class="sheet-wrap">
+            <table class="sheet-table">
+                <thead>
+                <tr><th>Корпус</th><th>Класс</th><th>Направление</th><th>Классный руководитель</th></tr>
+                </thead>
+                <tbody id="classes-body"></tbody>
+            </table>
+        </div>
+    </section>
+</main>
+<script src="/classes.js"></script>
+</body>
+</html>
