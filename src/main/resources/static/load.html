@@ -10,7 +10,7 @@
 <main class="container">
     <header class="card">
         <h1>Нагрузка по корпусам</h1>
-        <p class="muted">Логика: сначала добавьте корпуса, затем классы в учебном плане с привязкой к корпусу, после этого распределяйте нагрузку.</p>
+        <p class="muted">Нагрузка отображается в формате, близком к таблице: предмет, педагог и колонки по классам корпуса.</p>
         <nav class="page-nav">
             <a class="nav-link" href="/">Ручной ввод</a>
             <a class="nav-link" href="/buildings.html">Корпуса</a>
@@ -23,7 +23,26 @@
 
     <section class="card">
         <div class="row"><strong>Корпуса:</strong><div id="building-tabs" class="parallel-tabs"></div></div>
-        <div class="row"><button id="refresh-load-btn" type="button">Обновить из учебного плана</button><button id="save-building-btn" type="button">Сохранить нагрузку корпуса</button></div>
+        <div class="row controls-row">
+            <label>Сортировка:
+                <select id="sort-field-select">
+                    <option value="subject">по предмету</option>
+                    <option value="teacher">по педагогу</option>
+                    <option value="block">по блоку</option>
+                    <option value="level">по уровню</option>
+                    <option value="totalHours">по сумме часов</option>
+                    <option value="classCount">по числу классов</option>
+                </select>
+            </label>
+            <label>Порядок:
+                <select id="sort-direction-select">
+                    <option value="asc">по возрастанию</option>
+                    <option value="desc">по убыванию</option>
+                </select>
+            </label>
+            <button id="refresh-load-btn" type="button">Обновить из учебного плана</button>
+            <button id="save-building-btn" type="button">Сохранить нагрузку корпуса</button>
+        </div>
         <pre id="load-result"></pre>
     </section>
 

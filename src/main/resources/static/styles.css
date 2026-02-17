@@ -15,7 +15,7 @@ body {
 .container {
     max-width: 1100px;
     margin: 0 auto;
-    padding: 24px;
+    padding: 96px 24px 24px;
 }
 
 .card {
@@ -85,6 +85,17 @@ hr {
     .grid {
         grid-template-columns: 1fr;
     }
+
+    .container {
+        padding: 88px 12px 16px;
+    }
+
+    .page-nav {
+        width: calc(100% - 12px);
+        top: 6px;
+        padding: 8px;
+        gap: 8px;
+    }
 }
 
 
@@ -125,19 +136,49 @@ hr {
 }
 
 .page-nav {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(1100px, calc(100% - 24px));
+    z-index: 1000;
     display: flex;
     gap: 10px;
-    margin: 12px 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 10px;
+    margin: 0;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+    backdrop-filter: blur(8px);
+}
+
+.page-nav::-webkit-scrollbar {
+    height: 6px;
+}
+
+.page-nav::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 999px;
 }
 
 .nav-link {
     display: inline-block;
+    white-space: nowrap;
     padding: 7px 12px;
     border-radius: 8px;
     border: 1px solid #c7d2fe;
     background: #eef2ff;
     text-decoration: none;
     color: #1f2937;
+    transition: transform .12s ease, background .12s ease, border-color .12s ease;
+}
+
+.nav-link:hover {
+    transform: translateY(-1px);
+    border-color: #93c5fd;
+    background: #dbeafe;
 }
 
 .nav-link.active {
@@ -292,4 +333,45 @@ hr {
     border: 1px solid #dbe1ea;
     border-radius: 8px;
     background: #fff;
+}
+
+.controls-row label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+}
+
+.subject-cell {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.inline-plus {
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    padding: 0;
+    line-height: 1;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.hour-pill {
+    min-width: 70px;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+}
+
+.hour-pill.active {
+    background: #dbeafe;
+    border-color: #60a5fa;
+    color: #1d4ed8;
+    font-weight: 600;
+}
+
+.teacher-input {
+    min-width: 220px;
 }

@@ -15,9 +15,7 @@ const ui = {
     mappingsTableBody: document.getElementById("mappings-table-body"),
     modeBadge: document.getElementById("mode-badge"),
     tabButtons: document.querySelectorAll("[data-tab]"),
-    tabPanels: document.querySelectorAll(".tab-panel"),
-    workspaceTabButtons: document.querySelectorAll("[data-workspace-tab]"),
-    workspacePanels: document.querySelectorAll(".workspace-panel")
+    tabPanels: document.querySelectorAll(".tab-panel")
 };
 
 async function api(path, options = {}) {
@@ -158,15 +156,6 @@ function activateTab(tabName) {
 
 
 
-function activateWorkspaceTab(tabName) {
-    ui.workspaceTabButtons.forEach((button) => {
-        const isActive = button.dataset.workspaceTab === tabName;
-        button.classList.toggle("active", isActive);
-        button.setAttribute("aria-selected", String(isActive));
-    });
-    ui.workspacePanels.forEach((panel) => panel.classList.toggle("hidden", panel.dataset.workspacePanel !== tabName));
-}
-
 function bindEvents() {
     ui.manualLoadForm?.addEventListener("submit", onManualLoadSubmit);
     ui.processBtn?.addEventListener("click", onProcessClick);
@@ -175,13 +164,11 @@ function bindEvents() {
     ui.loadClassesBtn?.addEventListener("click", () => loadClasses().catch((e) => print(ui.mappingResult, { error: e.message })));
     ui.loadMappingsBtn?.addEventListener("click", () => loadMappings().catch((e) => print(ui.mappingResult, { error: e.message })));
     ui.tabButtons.forEach((button) => button.addEventListener("click", () => activateTab(button.dataset.tab)));
-    ui.workspaceTabButtons.forEach((button) => button.addEventListener("click", () => activateWorkspaceTab(button.dataset.workspaceTab)));
 }
 
 async function init() {
     bindEvents();
     activateTab("manual");
-    activateWorkspaceTab("classes");
     resetSelect(ui.subjectSelect, "Загрузка предметов...");
     resetSelect(ui.classSelect, "Сначала выберите предмет");
 
