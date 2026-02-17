@@ -1,5 +1,7 @@
 package org.school.personalLoad.service.impl;
 
+import org.springframework.stereotype.Service;
+
 import org.apache.poi.ss.usermodel.*;
 import org.school.personalLoad.model.TarifficationPerson;
 import org.school.personalLoad.service.TarifficationNamingService;
@@ -10,6 +12,7 @@ import java.io.FileInputStream;
 import java.util.*;
 import java.util.regex.Pattern;
 
+@Service
 public class TarifficationNamingServiceImpl implements TarifficationNamingService {
 
     private static final Logger logger = LoggerFactory.getLogger(TarifficationNamingServiceImpl.class);

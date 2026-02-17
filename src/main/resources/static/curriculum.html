@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarification — учебные планы</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container">
+    <header class="card">
+        <h1>Учебные планы 1–11</h1>
+        <p class="muted">Класс выбирается только из справочника «Классы». Клик по ячейке часов в сводной таблице — редактирование.</p>
+        <nav class="page-nav">
+            <a class="nav-link" href="/">Ручной ввод</a>
+            <a class="nav-link" href="/classes.html">Классы</a>
+            <a class="nav-link" href="/buildings.html">Корпуса</a>
+            <a class="nav-link active" href="/curriculum.html">Учебные планы</a>
+            <a class="nav-link" href="/load.html">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/teachers.html">Педагоги</a>
+        </nav>
+    </header>
+
+    <section class="card">
+        <div class="parallel-tabs" id="parallel-tabs"></div>
+        <div class="row">
+            <select id="parallel-building-filter"></select>
+            <button id="refresh-btn" type="button">Обновить таблицу</button>
+            <button id="clear-curriculum-btn" type="button">Очистить весь учебный план</button>
+        </div>
+        <pre id="curriculum-result"></pre>
+    </section>
+
+    <section class="card plan-block">
+        <h2>Добавить/обновить предмет</h2>
+        <form id="subject-form" class="grid curriculum-form">
+            <select name="numberSchoolBuilding" id="subject-building" required></select>
+            <select name="className" id="subject-class" required></select>
+            <select name="curriculumPart" required>
+                <option value="CORE">1) Основная часть</option>
+                <option value="FORMABLE">2) Формируемая часть</option>
+                <option value="EXTRACURRICULAR">3) Внеурочная деятельность</option>
+            </select>
+            <input name="subjectName" placeholder="Предмет" required>
+            <input name="plannedHours" type="number" min="1" placeholder="Часы" required>
+            <select name="educationLevel" required>
+                <option value="BASIC">Базовый</option>
+                <option value="ADVANCED">Углублённый</option>
+            </select>
+            <select name="subgroupRequired" required>
+                <option value="false">Без деления</option>
+                <option value="true">С делением</option>
+            </select>
+            <input name="subgroupCount" type="number" min="2" placeholder="Кол-во подгрупп">
+            <button type="submit">Сохранить предмет</button>
+        </form>
+    </section>
+
+    <section class="card">
+        <h2>Сводная таблица УП (по аналогии с УП-системный)</h2>
+        <div class="sheet-wrap">
+            <table class="sheet-table" id="summary-table">
+                <thead id="summary-head"></thead>
+                <tbody id="summary-body"></tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<script src="/curriculum.js"></script>
+</body>
+</html>
