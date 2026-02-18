@@ -1,7 +1,5 @@
 package org.school.personalLoad.dao;
 
-import org.springframework.stereotype.Repository;
-
 import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.school.personalLoad.config.HibernateConfig;
@@ -10,7 +8,6 @@ import org.school.personalLoad.model.NamingMesh;
 import java.util.List;
 import java.util.Optional;
 
-@Repository
 public class NamingMeshDAO {
 
     public void save(NamingMesh namingMesh) {

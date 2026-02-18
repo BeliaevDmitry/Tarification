@@ -1,8 +1,5 @@
 package org.school.personalLoad.service.impl;
 
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-
 import org.school.personalLoad.model.SubjectWithGroup;
 import org.school.personalLoad.model.TarifficationChanges;
 import org.school.personalLoad.model.TarifficationPerson;
@@ -12,8 +9,6 @@ import org.school.personalLoad.service.DatabaseService;
 import java.util.*;
 import java.util.stream.Collectors;
 
-@Slf4j
-@Service
 public class TarifficationProcessingServiceImpl implements TarifficationProcessingService {
     private final DatabaseService databaseService;
 
@@ -60,7 +55,8 @@ public class TarifficationProcessingServiceImpl implements TarifficationProcessi
             } else if (teachers.size() == 2) {
                 processTwoTeachers(result, teachers, historicalMatches, group);
             } else {
-                log.warn("Неожиданное количество преподавателей ({}) для {}", teachers.size(), key);
+                System.out.println("⚠️ Неожиданное количество преподавателей (" +
+                        teachers.size() + ") для " + key);
             }
         }
 

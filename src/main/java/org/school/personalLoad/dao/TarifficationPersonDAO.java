@@ -1,21 +1,17 @@
 package org.school.personalLoad.dao;
 
-import lombok.extern.slf4j.Slf4j;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.school.personalLoad.config.HibernateConfig;
 import org.school.personalLoad.model.NamingMesh;
 import org.school.personalLoad.model.TarifficationPerson;
-import org.springframework.stereotype.Repository;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
-@Slf4j
-@Repository
 public class TarifficationPersonDAO {
+
+    private final NamingMeshDAO namingMeshDAO = new NamingMeshDAO();
 
     public void saveAll(List<TarifficationPerson> entities) {
         Transaction transaction = null;
@@ -23,15 +19,16 @@ public class TarifficationPersonDAO {
         try {
             session = HibernateConfig.getSessionFactory().openSession();
             transaction = session.beginTransaction();
-            log.info("Начинаем обработку {} записей тарификации", entities.size());
 
-            Map<String, NamingMesh> namingMeshCache = loadNamingMeshCache(session);
+            System.out.println("🔄 Начинаем обработку " + entities.size() + " записей тарификации...");
+
+            // Устанавливаем связи для всех записей (автоматически создаем недостающие naming_mesh)
             int createdMeshCount = 0;
             int existingMeshCount = 0;
 
             for (int i = 0; i < entities.size(); i++) {
                 TarifficationPerson person = entities.get(i);
-                boolean created = establishNamingMeshRelation(person, session, namingMeshCache);
+                boolean created = establishNamingMeshRelation(person, session);
 
                 if (created) {
                     createdMeshCount++;
@@ -39,40 +36,52 @@ public class TarifficationPersonDAO {
                     existingMeshCount++;
                 }
 
-                if (i % 100 == 0) {
+                if (i % 50 == 0) {
                     session.flush();
                     session.clear();
-                    log.debug("Обработано {} записей...", i);
+                    System.out.println("⏳ Обработано " + i + " записей...");
                 }
             }
 
+            // Очищаем таблицу перед сохранением новых данных
+            System.out.println("🧹 Очищаем старые записи...");
             session.createQuery("DELETE FROM TarifficationPerson").executeUpdate();
 
+            // Сохраняем ВСЕ записи
+            System.out.println("💾 Сохраняем все записи...");
             for (int i = 0; i < entities.size(); i++) {
-                session.save(entities.get(i));
-                if (i % 100 == 0) {
+                TarifficationPerson person = entities.get(i);
+                session.save(person);
+
+                if (i % 50 == 0) {
                     session.flush();
                     session.clear();
                 }
             }
 
             transaction.commit();
-            log.info("Успешно сохранено {} записей тарификации", entities.size());
-            log.info("Статистика naming_mesh: {} существующих, {} созданных новых", existingMeshCount, createdMeshCount);
+            System.out.println("✅ Успешно сохранено " + entities.size() + " записей тарификации");
+            System.out.println("📊 Статистика naming_mesh: " + existingMeshCount + " существующих, " +
+                    createdMeshCount + " созданных новых");
 
         } catch (Exception e) {
-            log.error("Ошибка при сохранении записей тарификации", e);
+            System.err.println("❌ Ошибка при сохранении записей тарификации: " + e.getMessage());
             if (transaction != null && transaction.isActive()) {
                 try {
                     transaction.rollback();
+                    System.out.println("🔙 Транзакция откачена");
                 } catch (Exception rollbackEx) {
-                    log.error("Ошибка при откате транзакции", rollbackEx);
+                    System.err.println("❌ Ошибка при откате транзакции: " + rollbackEx.getMessage());
                 }
             }
             throw new RuntimeException("Failed to save tariffication data", e);
         } finally {
             if (session != null && session.isOpen()) {
-                session.close();
+                try {
+                    session.close();
+                } catch (Exception closeEx) {
+                    System.err.println("❌ Ошибка при закрытии сессии: " + closeEx.getMessage());
+                }
             }
         }
     }
@@ -80,7 +89,8 @@ public class TarifficationPersonDAO {
     public List<TarifficationPerson> findAll() {
         try (Session session = HibernateConfig.getSessionFactory().openSession()) {
             return session.createQuery(
-                    "SELECT DISTINCT tp FROM TarifficationPerson tp LEFT JOIN FETCH tp.namingMesh",
+                    "SELECT DISTINCT tp FROM TarifficationPerson tp " +
+                            "LEFT JOIN FETCH tp.namingMesh",
                     TarifficationPerson.class
             ).list();
         }
@@ -89,7 +99,9 @@ public class TarifficationPersonDAO {
     public List<TarifficationPerson> findByTeacher(String fioTeacher) {
         try (Session session = HibernateConfig.getSessionFactory().openSession()) {
             return session.createQuery(
-                    "SELECT DISTINCT tp FROM TarifficationPerson tp LEFT JOIN FETCH tp.namingMesh WHERE tp.fioTeacher = :fioTeacher",
+                    "SELECT DISTINCT tp FROM TarifficationPerson tp " +
+                            "LEFT JOIN FETCH tp.namingMesh " +
+                            "WHERE tp.fioTeacher = :fioTeacher",
                     TarifficationPerson.class
             ).setParameter("fioTeacher", fioTeacher).list();
         }
@@ -102,50 +114,79 @@ public class TarifficationPersonDAO {
             session.createQuery("DELETE FROM TarifficationPerson").executeUpdate();
             transaction.commit();
         } catch (Exception e) {
-            if (transaction != null) {
-                transaction.rollback();
-            }
+            if (transaction != null) transaction.rollback();
             throw e;
         }
     }
 
-    private boolean establishNamingMeshRelation(TarifficationPerson person, Session session, Map<String, NamingMesh> cache) {
+    /**
+     * Устанавливает связь с NamingMesh если найдено соответствие
+     * Если соответствие не найдено - автоматически создает новую запись в naming_mesh
+     * @return true если была создана новая запись, false если использована существующая
+     */
+    private boolean establishNamingMeshRelation(TarifficationPerson person, Session session) {
         try {
-            if (person.getSubjectName() == null || person.getClassName() == null || person.getClassName().isEmpty()) {
+            if (person.getSubjectName() != null &&
+                    person.getClassName() != null &&
+                    !person.getClassName().isEmpty()) {
+
+                String groupName = person.getGroupNameEducationalPlan() != null ?
+                        person.getGroupNameEducationalPlan() : "";
+
+                // Ищем точное соответствие
+                String hql = "FROM NamingMesh WHERE subjectName = :subjectName " +
+                        "AND className = :className " +
+                        "AND (groupNameEducationalPlan = :groupName OR " +
+                        "(groupNameEducationalPlan IS NULL AND :groupName = '') OR " +
+                        "(groupNameEducationalPlan = '' AND :groupName = ''))";
+
+                Optional<NamingMesh> namingMesh = session.createQuery(hql, NamingMesh.class)
+                        .setParameter("subjectName", person.getSubjectName().trim())
+                        .setParameter("className", person.getClassName().trim())
+                        .setParameter("groupName", groupName.trim())
+                        .uniqueResultOptional();
+
+                if (namingMesh.isPresent()) {
+                    // Нашли существующую запись - устанавливаем связь
+                    person.setNamingMesh(namingMesh.get());
+                    return false; // не создавали новую запись
+                } else {
+                    // Соответствие не найдено - создаем новую запись в naming_mesh
+                    NamingMesh newMesh = new NamingMesh();
+                    newMesh.setClassName(person.getClassName().trim());
+                    newMesh.setGroupNameEducationalPlan(groupName.trim());
+                    newMesh.setSubjectName(person.getSubjectName().trim());
+
+                    session.save(newMesh);
+                    session.flush(); // Принудительно сохраняем чтобы получить ID
+
+                    person.setNamingMesh(newMesh);
+                    System.out.println("➕ Создана новая запись naming_mesh для: " +
+                            person.getClassName() + " - " + person.getSubjectName() +
+                            (groupName.isEmpty() ? "" : " (группа: " + groupName + ")"));
+                    return true; // создали новую запись
+                }
+            } else {
+                // Если нет необходимых данных для поиска - не устанавливаем связь
                 person.setNamingMesh(null);
+                System.out.println("⚠️ Не удалось установить связь (недостаточно данных): " +
+                        "className=" + person.getClassName() + ", subjectName=" + person.getSubjectName());
                 return false;
             }
-
-            String subjectName = person.getSubjectName().trim();
-            String className = person.getClassName().trim();
-            String groupName = person.getGroupNameEducationalPlan() == null ? "" : person.getGroupNameEducationalPlan().trim();
-            String key = cacheKey(subjectName, className, groupName);
-
-            NamingMesh existing = cache.get(key);
-            if (existing != null) {
-                person.setNamingMesh(existing);
-                return false;
-            }
-
-            NamingMesh newMesh = new NamingMesh();
-            newMesh.setClassName(className);
-            newMesh.setGroupNameEducationalPlan(groupName);
-            newMesh.setSubjectName(subjectName);
-
-            session.save(newMesh);
-            session.flush();
-
-            cache.put(key, newMesh);
-            person.setNamingMesh(newMesh);
-            return true;
-
         } catch (Exception e) {
-            log.error("Ошибка при установке связи NamingMesh для {} - {}", person.getClassName(), person.getSubjectName(), e);
+            System.err.println("❌ Ошибка при установке связи NamingMesh для: " +
+                    person.getClassName() + " - " + person.getSubjectName());
+            e.printStackTrace();
+            // В случае ошибки не устанавливаем связь
             person.setNamingMesh(null);
             return false;
         }
     }
 
+    /**
+     * Обновляет связи всех записей с NamingMesh
+     * Автоматически создает недостающие записи в naming_mesh
+     */
     public void updateAllNamingMeshRelations() {
         Transaction transaction = null;
         Session session = null;
@@ -155,14 +196,13 @@ public class TarifficationPersonDAO {
 
             List<TarifficationPerson> allPersons = session.createQuery(
                     "FROM TarifficationPerson", TarifficationPerson.class).list();
-            Map<String, NamingMesh> namingMeshCache = loadNamingMeshCache(session);
 
             int withMesh = 0;
             int withoutMesh = 0;
             int createdMesh = 0;
 
             for (TarifficationPerson person : allPersons) {
-                boolean created = establishNamingMeshRelation(person, session, namingMeshCache);
+                boolean created = establishNamingMeshRelation(person, session);
                 session.update(person);
 
                 if (person.getNamingMesh() != null) {
@@ -176,13 +216,14 @@ public class TarifficationPersonDAO {
             }
 
             transaction.commit();
-            log.info("Обновлены связи: {} с naming_mesh ({} новых создано), {} без naming_mesh", withMesh, createdMesh, withoutMesh);
+            System.out.println("🔗 Обновлены связи: " + withMesh + " с naming_mesh (" +
+                    createdMesh + " новых создано), " + withoutMesh + " без naming_mesh");
 
         } catch (Exception e) {
             if (transaction != null && transaction.isActive()) {
                 transaction.rollback();
             }
-            log.error("Ошибка при обновлении связей", e);
+            System.err.println("❌ Ошибка при обновлении связей: " + e.getMessage());
             throw e;
         } finally {
             if (session != null && session.isOpen()) {
@@ -191,6 +232,9 @@ public class TarifficationPersonDAO {
         }
     }
 
+    /**
+     * Вспомогательный метод для проверки существования записи в naming_mesh
+     */
     public boolean checkNamingMeshExists(String className, String groupName, String subjectName) {
         try (Session session = HibernateConfig.getSessionFactory().openSession()) {
             String hql = "SELECT COUNT(*) FROM NamingMesh WHERE subjectName = :subjectName " +
@@ -207,22 +251,5 @@ public class TarifficationPersonDAO {
 
             return count != null && count > 0;
         }
-    }
-
-    private Map<String, NamingMesh> loadNamingMeshCache(Session session) {
-        List<NamingMesh> meshList = session.createQuery("FROM NamingMesh", NamingMesh.class).list();
-        Map<String, NamingMesh> cache = new HashMap<>(Math.max(16, meshList.size() * 2));
-        for (NamingMesh mesh : meshList) {
-            cache.put(cacheKey(mesh.getSubjectName(), mesh.getClassName(), mesh.getGroupNameEducationalPlan()), mesh);
-        }
-        return cache;
-    }
-
-    private String cacheKey(String subjectName, String className, String groupName) {
-        return normalize(subjectName) + "|" + normalize(className) + "|" + normalize(groupName);
-    }
-
-    private String normalize(String value) {
-        return value == null ? "" : value.trim().toLowerCase();
     }
 }

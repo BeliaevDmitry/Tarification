@@ -1,7 +1,5 @@
 package org.school.personalLoad.dao.impl;
 
-import org.springframework.stereotype.Repository;
-
 import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.school.personalLoad.config.HibernateConfig;
@@ -10,7 +8,6 @@ import org.school.personalLoad.model.TarifficationChangesMesh;
 
 import java.util.List;
 
-@Repository
 public class TarifficationChangesMeshDAOImpl implements TarifficationChangesMeshDAO {
 
     @Override

@@ -1,8 +1,5 @@
 package org.school.personalLoad.service.impl;
 
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-
 import org.apache.poi.ss.usermodel.*;
 import org.school.personalLoad.config.AppConfig;
 import org.school.personalLoad.model.SubjectWithGroup;
@@ -14,15 +11,12 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.*;
 
-@Slf4j
-@Service
 public class TarifficationDataReaderServiceImpl implements TarifficationDataReaderService {
 
-    private final AppConfig appConfig;
     private FormulaEvaluator formulaEvaluator;
 
-    public TarifficationDataReaderServiceImpl(AppConfig appConfig) {
-        this.appConfig = appConfig;
+    public TarifficationDataReaderServiceImpl() {
+        // Простой конструктор
     }
 
     public void setFormulaEvaluator(FormulaEvaluator formulaEvaluator) {
@@ -40,25 +34,25 @@ public class TarifficationDataReaderServiceImpl implements TarifficationDataRead
             setFormulaEvaluator(evaluator);
 
             // Сначала находим все подгруппы
-            log.info("Поиск предметов с подгруппами...");
+            System.out.println("🔍 Поиск предметов с подгруппами...");
             for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
                 Sheet sheet = workbook.getSheetAt(i);
                 String sheetName = sheet.getSheetName().toLowerCase();
 
                 if (sheetName.contains("корп")) {
-                    log.debug("Анализируем лист на подгруппы: {}", sheet.getSheetName());
+                    System.out.println("📊 Анализируем лист на подгруппы: " + sheet.getSheetName());
                     groupList.addAll(searchGroup(sheet));
                 }
             }
 
             // Затем читаем нагрузку преподавателей
-            log.info("Чтение нагрузки преподавателей...");
+            System.out.println("👨‍🏫 Чтение нагрузки преподавателей...");
             for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
                 Sheet sheet = workbook.getSheetAt(i);
                 String sheetName = sheet.getSheetName().toLowerCase();
 
                 if (sheetName.contains("корп")) {
-                    log.debug("Анализируем лист преподавателей: {}", sheet.getSheetName());
+                    System.out.println("📊 Анализируем лист преподавателей: " + sheet.getSheetName());
                     tarifficationList.addAll(analyzeSheet(sheet, groupList));
                 }
             }
@@ -180,8 +174,8 @@ public class TarifficationDataReaderServiceImpl implements TarifficationDataRead
             default:
                 // Если педагог в списке исключений - пропускаем
 
-                if (appConfig.getExcludedTeachers().contains(fioTeacher.trim())) {
-                    return true;
+                if (AppConfig.EXCLUDED_TEACHERS.contains(fioTeacher.trim())) {
+                    return false;
                 }
                 // Для остальных проверяем окончание на КРО
                 return subjectName.endsWith("КРО");
