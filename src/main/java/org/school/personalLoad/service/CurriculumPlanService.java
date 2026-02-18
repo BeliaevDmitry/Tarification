@@ -16,5 +16,9 @@ public interface CurriculumPlanService {
 
     void clearAll();
 
+    CurriculumPlanEntry updateById(Long id, CurriculumPlanEntryRequest request);
+
+    void deleteById(Long id);
+
     Optional<CurriculumPlanEntry> findRule(String numberSchoolBuilding, String className, String subjectName, EducationLevel educationLevel);
 }
