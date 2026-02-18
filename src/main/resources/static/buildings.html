@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarification — Корпуса</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container">
+    <header class="card">
+        <h1>Корпуса</h1>
+        <p class="muted">Сначала добавьте корпуса и названия, затем используйте их в учебном плане, нагрузке и классном руководстве.</p>
+        <nav class="page-nav">
+            <a class="nav-link" href="/">Ручной ввод</a>
+            <a class="nav-link" href="/mesh.html">Корректировка МЭШ</a>
+            <a class="nav-link" href="/classes.html">Классы</a>
+            <a class="nav-link active" href="/buildings.html">Корпуса</a>
+            <a class="nav-link" href="/curriculum.html">Учебные планы (как таблица)</a>
+            <a class="nav-link" href="/load.html">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/teachers.html">Педагоги</a>
+        </nav>
+    </header>
+
+    <section class="card">
+        <form id="building-form" class="grid">
+            <input name="code" placeholder="Код корпуса (например 1)" required>
+            <input name="name" placeholder="Название корпуса" required>
+            <button type="submit">Добавить / обновить корпус</button>
+        </form>
+        <div class="row">
+            <button id="refresh-buildings-btn" type="button">Обновить</button>
+            <button id="clear-buildings-btn" type="button">Очистить список корпусов</button>
+        </div>
+        <pre id="buildings-result"></pre>
+    </section>
+
+    <section class="card">
+        <h2>Список корпусов</h2>
+        <div class="sheet-wrap">
+            <table class="sheet-table">
+                <thead><tr><th>Код</th><th>Название</th><th>Создано</th></tr></thead>
+                <tbody id="buildings-body"></tbody>
+            </table>
+        </div>
+    </section>
+</main>
+<script src="/buildings.js"></script>
+</body>
+</html>
