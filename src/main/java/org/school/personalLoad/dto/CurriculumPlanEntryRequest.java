@@ -1,0 +1,17 @@
+package org.school.personalLoad.dto;
+
+import lombok.Data;
+import org.school.personalLoad.model.CurriculumPart;
+import org.school.personalLoad.model.EducationLevel;
+
+@Data
+public class CurriculumPlanEntryRequest {
+    private String numberSchoolBuilding;
+    private String className;
+    private String subjectName;
+    private Integer plannedHours;
+    private boolean subgroupRequired;
+    private Integer subgroupCount;
+    private EducationLevel educationLevel;
+    private CurriculumPart curriculumPart;
+}
