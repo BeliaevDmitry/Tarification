@@ -296,26 +296,15 @@ function setTeacherForRow(subjectKey, teacherRowId, value) {
     const row = (rowsMap[subjectKey] || []).find((entry) => entry.id === teacherRowId);
     if (!row) return;
 
-    const previousTeacher = String(row.teacherName || "").trim();
-    const nextTeacher = String(value || "").trim();
-    row.teacherName = nextTeacher;
+    row.teacherName = String(value || "").trim();
 
     const assignments = assignmentsForBuilding(selectedBuilding);
     rowsForSelectedBuilding()
         .filter((curriculumRow) => subjectKeyOfRow(curriculumRow) === subjectKey)
         .forEach((curriculumRow) => {
             const apiKey = apiKeyOfRow(curriculumRow);
-            const currentTeacher = String(assignments[apiKey] || "").trim();
-
-            if (!nextTeacher) {
-                if (currentTeacher && (!previousTeacher || currentTeacher === previousTeacher)) {
-                    assignments[apiKey] = "";
-                }
-                return;
-            }
-
-            if (!currentTeacher || currentTeacher === previousTeacher) {
-                assignments[apiKey] = nextTeacher;
+            if (assignments[apiKey] && assignments[apiKey] !== row.teacherName && row.teacherName === "") {
+                assignments[apiKey] = "";
             }
         });
 }
@@ -397,6 +386,7 @@ function renderTable() {
         updateDatalistOptions(listEl, teacherInput.value || "");
 
         teacherInput.addEventListener("input", () => {
+            setTeacherForRow(row.subjectKey, row.teacherRowId, teacherInput.value);
             updateDatalistOptions(listEl, teacherInput.value || "");
         });
 

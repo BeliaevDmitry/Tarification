@@ -375,15 +375,3 @@ hr {
 .teacher-input {
     min-width: 220px;
 }
-
-.level-cell {
-    width: 100%;
-    background: #eef2ff;
-    border: 1px solid #c7d2fe;
-    border-radius: 6px;
-    padding: 4px 6px;
-}
-
-.level-cell:hover {
-    background: #dbeafe;
-}
