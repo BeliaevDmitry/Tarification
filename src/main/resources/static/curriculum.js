@@ -149,7 +149,7 @@ function buildSummaryRows(selectedClasses) {
                         id: v.id
                     };
                 });
-                return { part, subjectName, educationLevel, perClass };
+                return { part, subjectName, educationLevel, perClass, ids: values.map((v) => v.id) };
             });
 
         rows.push({ type: "part", part, title: PART_META[part].label });
@@ -168,6 +168,27 @@ function cellHoursMarkup(info, rowMeta) {
     const mark = info.subgroupRequired ? `<span class="subgroup-mark" title="Деление на подгруппы">д</span>` : "";
     const advancedClass = rowMeta.educationLevel === "ADVANCED" ? "advanced-cell" : "";
     return `<button class="hours-cell ${advancedClass}" data-id="${esc(info.id)}" data-hours="${esc(info.hours)}">${esc(info.hours)}${mark}</button>`;
+}
+
+
+
+async function updateCurriculumEntry(entry, overrides = {}) {
+    const payload = {
+        numberSchoolBuilding: entry.numberSchoolBuilding,
+        className: entry.className,
+        subjectName: entry.subjectName,
+        plannedHours: Number(overrides.plannedHours ?? entry.plannedHours ?? 0),
+        subgroupRequired: Boolean(overrides.subgroupRequired ?? entry.subgroupRequired),
+        subgroupCount: Number(overrides.subgroupCount ?? entry.subgroupCount ?? 0),
+        educationLevel: overrides.educationLevel ?? entry.educationLevel,
+        curriculumPart: overrides.curriculumPart ?? entry.curriculumPart
+    };
+
+    return api(`/api/curriculum/${entry.id}`, {
+        method: "PATCH",
+        headers: jsonHeaders,
+        body: JSON.stringify(payload)
+    });
 }
 
 function renderSummaryTable() {
@@ -191,7 +212,7 @@ function renderSummaryTable() {
             tr.className = "summary-part-row";
             tr.innerHTML = `<td>${esc(row.title)}</td><td></td>${classKeys.map(() => "<td></td>").join("")}`;
         } else if (row.type === "subject") {
-            tr.innerHTML = `<td>${esc(row.subjectName)}</td><td>${esc(levelLabel(row.educationLevel))}</td>` + classKeys.map((k) => `<td class="hours-cell-wrap">${cellHoursMarkup(row.perClass[k], row)}</td>`).join("");
+            tr.innerHTML = `<td>${esc(row.subjectName)}</td><td><button class="level-cell" data-ids="${esc((row.ids || []).join(","))}" data-level="${esc(row.educationLevel)}">${esc(levelLabel(row.educationLevel))}</button></td>` + classKeys.map((k) => `<td class="hours-cell-wrap">${cellHoursMarkup(row.perClass[k], row)}</td>`).join("");
         } else {
             const calc = classKeys.map((k) => {
                 let value = 0;
@@ -213,29 +234,61 @@ function renderSummaryTable() {
             const id = Number(btn.dataset.id);
             const existing = curriculumRows.find((r) => r.id === id);
             if (!existing) return;
-            const next = prompt("Новое количество часов", String(existing.plannedHours || 0));
+
+            const next = prompt("Новое количество часов (0 = удалить предмет из этого класса)", String(existing.plannedHours || 0));
             if (next == null) return;
+
             const hours = Number(next);
-            if (!Number.isFinite(hours) || hours <= 0) { print({ error: "Введите корректное число часов" }); return; }
+            if (!Number.isFinite(hours) || hours < 0) {
+                print({ error: "Введите корректное число часов" });
+                return;
+            }
 
             try {
-                await api("/api/curriculum", {
-                    method: "POST",
-                    headers: jsonHeaders,
-                    body: JSON.stringify({
-                        numberSchoolBuilding: existing.numberSchoolBuilding,
-                        className: existing.className,
-                        subjectName: existing.subjectName,
-                        plannedHours: hours,
-                        subgroupRequired: existing.subgroupRequired,
-                        subgroupCount: existing.subgroupCount,
-                        educationLevel: existing.educationLevel,
-                        curriculumPart: existing.curriculumPart
-                    })
-                });
-                print({ status: "updated", id, plannedHours: hours });
+                if (hours === 0) {
+                    await api(`/api/curriculum/${id}`, { method: "DELETE" });
+                    print({ status: "deleted", id });
+                } else {
+                    await updateCurriculumEntry(existing, { plannedHours: hours });
+                    print({ status: "updated", id, plannedHours: hours });
+                }
                 await reload();
-            } catch (error) { print({ error: error.message }); }
+            } catch (error) {
+                print({ error: error.message });
+            }
+        });
+    });
+
+    ui.summaryBody.querySelectorAll(".level-cell").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+            const current = String(btn.dataset.level || "BASIC");
+            const next = prompt("Уровень: BASIC или ADVANCED", current);
+            if (next == null) return;
+
+            const normalized = String(next).trim().toUpperCase();
+            if (!["BASIC", "ADVANCED"].includes(normalized)) {
+                print({ error: "Уровень должен быть BASIC или ADVANCED" });
+                return;
+            }
+
+            const ids = String(btn.dataset.ids || "")
+                .split(",")
+                .map((v) => Number(v))
+                .filter((v) => Number.isFinite(v));
+
+            if (!ids.length) return;
+
+            try {
+                for (const id of ids) {
+                    const existing = curriculumRows.find((r) => r.id === id);
+                    if (!existing) continue;
+                    await updateCurriculumEntry(existing, { educationLevel: normalized });
+                }
+                print({ status: "level-updated", ids, educationLevel: normalized });
+                await reload();
+            } catch (error) {
+                print({ error: error.message });
+            }
         });
     });
 }

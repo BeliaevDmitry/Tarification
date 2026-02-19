@@ -66,6 +66,31 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
     }
 
     @Override
+    public CurriculumPlanEntry updateById(Long id, CurriculumPlanEntryRequest request) {
+        validate(request);
+        CurriculumPlanEntry entity = repository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Curriculum entry not found: " + id));
+
+        entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
+        entity.setClassName(ClassNameNormalizer.normalize(request.getClassName()));
+        entity.setSubjectName(request.getSubjectName().trim());
+        entity.setPlannedHours(request.getPlannedHours());
+        entity.setSubgroupRequired(request.isSubgroupRequired());
+        entity.setSubgroupCount(request.isSubgroupRequired() ? request.getSubgroupCount() : 0);
+        entity.setEducationLevel(request.getEducationLevel());
+        entity.setCurriculumPart(request.getCurriculumPart() == null ? CurriculumPart.CORE : request.getCurriculumPart());
+        return repository.save(entity);
+    }
+
+    @Override
+    public void deleteById(Long id) {
+        if (!repository.existsById(id)) {
+            throw new IllegalArgumentException("Curriculum entry not found: " + id);
+        }
+        repository.deleteById(id);
+    }
+
+    @Override
     public Optional<CurriculumPlanEntry> findRule(String numberSchoolBuilding, String className, String subjectName, EducationLevel educationLevel) {
         return repository.findFirstByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevel(
                 numberSchoolBuilding,

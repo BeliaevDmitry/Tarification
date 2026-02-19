@@ -31,6 +31,17 @@ public class CurriculumPlanController {
         return ResponseEntity.ok(curriculumPlanService.findAll());
     }
 
+    @PatchMapping("/{id}")
+    public ResponseEntity<CurriculumPlanEntry> updateById(@PathVariable Long id, @RequestBody CurriculumPlanEntryRequest request) {
+        return ResponseEntity.ok(curriculumPlanService.updateById(id, request));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteById(@PathVariable Long id) {
+        curriculumPlanService.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @DeleteMapping
     public ResponseEntity<Void> clearAll() {
         curriculumPlanService.clearAll();
