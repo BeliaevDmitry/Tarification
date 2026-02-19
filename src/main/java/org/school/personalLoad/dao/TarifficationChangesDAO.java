@@ -1,5 +1,7 @@
 package org.school.personalLoad.dao;
 
+import org.springframework.stereotype.Repository;
+
 import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.school.personalLoad.config.HibernateConfig;
@@ -7,6 +9,7 @@ import org.school.personalLoad.model.TarifficationChanges;
 
 import java.util.List;
 
+@Repository
 public class TarifficationChangesDAO {
 
     public void saveAll(List<TarifficationChanges> entities) {
