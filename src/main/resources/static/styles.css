@@ -387,3 +387,10 @@ hr {
 .level-cell:hover {
     background: #dbeafe;
 }
+
+
+.hour-pill.muted {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #64748b;
+}
