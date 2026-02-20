@@ -20,8 +20,10 @@ let selectedBuilding = "";
 const state = {
     assignmentsByBuilding: {},
     subjectTeacherRowsByBuilding: {},
+    rowOrderByBuilding: {},
     sortField: "subject",
-    sortDirection: "asc"
+    sortDirection: "asc",
+    forceResort: true
 };
 
 
@@ -205,6 +207,33 @@ function ensureTeacherRowsForBuilding() {
     });
 }
 
+
+function rowStableKey(row) {
+    return `${row.subjectKey}::${row.teacherRowId}`;
+}
+
+function teacherHoursInBuilding(buildingCode, teacherName) {
+    const normalizedTeacher = String(teacherName || "").trim();
+    if (!normalizedTeacher) return 0;
+
+    const assignments = assignmentsForBuilding(buildingCode);
+    const buildingRows = expandCurriculumRows(curriculumRows.filter((row) => String(row.numberSchoolBuilding || "").trim() === buildingCode));
+
+    return buildingRows.reduce((acc, row) => {
+        const assigned = String(assignments[apiKeyOfRow(row)] || "").trim();
+        if (assigned && assigned === normalizedTeacher) {
+            return acc + Number(row.plannedHours || 0);
+        }
+        return acc;
+    }, 0);
+}
+
+function teacherHoursInComplex(teacherName) {
+    const normalizedTeacher = String(teacherName || "").trim();
+    if (!normalizedTeacher) return 0;
+    return buildings.reduce((acc, building) => acc + teacherHoursInBuilding(building.code, normalizedTeacher), 0);
+}
+
 function buildPresentationRows() {
     const rows = expandCurriculumRows(rowsForSelectedBuilding());
     const assignments = assignmentsForBuilding(selectedBuilding);
@@ -253,41 +282,16 @@ function buildPresentationRows() {
                 teacherName: teacherRow.teacherName || "",
                 rowsByClass: info.rowsByClass,
                 classCount,
-                subjectHours: Object.values(info.rowsByClass).reduce((acc, row) => acc + Number(row.plannedHours || 0), 0),
-                buildingHours: totalHours
+                subjectHours: totalHours,
+                buildingHours: teacherHoursInBuilding(selectedBuilding, teacherRow.teacherName || ""),
+                complexHours: teacherHoursInComplex(teacherRow.teacherName || "")
             });
         });
     });
 
-    result.forEach((row) => {
-        row.complexHours = calculateComplexHours(row);
-    });
-
-    return applySorting(result);
+    return getOrderedRows(result);
 }
 
-
-function calculateComplexHours(presentationRow) {
-    const targetTeacher = String(presentationRow.teacherName || "").trim();
-    if (!targetTeacher) return 0;
-
-    let total = 0;
-    buildings.forEach((building) => {
-        const code = building.code;
-        const assignments = assignmentsForBuilding(code);
-        const buildingRows = expandCurriculumRows(curriculumRows.filter((row) => String(row.numberSchoolBuilding || "").trim() === code));
-        buildingRows
-            .filter((row) => subjectKeyOfRow(row) === presentationRow.subjectKey)
-            .forEach((row) => {
-                const assigned = String(assignments[apiKeyOfRow(row)] || "").trim();
-                if (assigned && assigned === targetTeacher) {
-                    total += Number(row.plannedHours || 0);
-                }
-            });
-    });
-
-    return total;
-}
 
 function applySorting(presentationRows) {
     const dir = state.sortDirection === "desc" ? -1 : 1;
@@ -328,6 +332,26 @@ function applySorting(presentationRows) {
     });
 }
 
+
+function getOrderedRows(presentationRows) {
+    if (state.forceResort || !state.rowOrderByBuilding[selectedBuilding]) {
+        const sorted = applySorting(presentationRows);
+        state.rowOrderByBuilding[selectedBuilding] = sorted.map((row, index) => [rowStableKey(row), index]);
+        state.rowOrderByBuilding[selectedBuilding] = Object.fromEntries(state.rowOrderByBuilding[selectedBuilding]);
+        state.forceResort = false;
+        return sorted;
+    }
+
+    const orderMap = state.rowOrderByBuilding[selectedBuilding] || {};
+    const fallbackStart = Object.keys(orderMap).length + 1;
+    return [...presentationRows].sort((a, b) => {
+        const aOrder = orderMap[rowStableKey(a)] ?? (fallbackStart + 1);
+        const bOrder = orderMap[rowStableKey(b)] ?? (fallbackStart + 1);
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return String(a.subjectName).localeCompare(String(b.subjectName), 'ru');
+    });
+}
+
 function renderBuildingTabs() {
     ui.buildingTabs.innerHTML = "";
 
@@ -338,6 +362,7 @@ function renderBuildingTabs() {
         button.textContent = `${building.code} — ${building.name}`;
         button.addEventListener("click", () => {
             selectedBuilding = building.code;
+            state.forceResort = true;
             renderBuildingTabs();
             renderTable();
         });
@@ -551,6 +576,7 @@ async function refreshSourceData() {
     buildings = [...(buildingRows || [])].sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"));
 
     prefillFromManualLoad();
+    state.forceResort = true;
 
     if (!buildings.some((row) => row.code === selectedBuilding)) {
         selectedBuilding = buildings[0]?.code || "";
@@ -571,11 +597,13 @@ function bindEvents() {
 
     ui.sortField.addEventListener("change", () => {
         state.sortField = ui.sortField.value;
+        state.forceResort = true;
         renderTable();
     });
 
     ui.sortDirection.addEventListener("change", () => {
         state.sortDirection = ui.sortDirection.value;
+        state.forceResort = true;
         renderTable();
     });
 }
