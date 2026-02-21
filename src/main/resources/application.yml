@@ -24,15 +24,9 @@ logging:
     root: INFO
 
 app:
-  practicum-file-name: ${PRACTICUM_FILE_NAME:ЕГЭ 2026 автоскачанный}
-  download-directory: ${DOWNLOAD_DIRECTORY:./data/downloads/}
   output-directory: ${OUTPUT_DIRECTORY:./data/output/}
-  offline-files-directory: ${OFFLINE_FILES_DIRECTORY:./data/offline/}
-  expelled-file-path: ${EXPELLED_FILE_PATH:./data/expelled.xlsx}
   keep-history: ${KEEP_HISTORY:true}
   clear-history-on-start: ${CLEAR_HISTORY_ON_START:false}
-  # legacy file-pipeline (excel path processing) disabled by default in API+Frontend mode
-  legacy-mode-enabled: ${LEGACY_MODE_ENABLED:false}
   excluded-teachers:
     - "Сухомлинова Вера Борисовна"
 
