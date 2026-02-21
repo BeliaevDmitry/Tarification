@@ -20,8 +20,10 @@ let selectedBuilding = "";
 const state = {
     assignmentsByBuilding: {},
     subjectTeacherRowsByBuilding: {},
+    rowOrderByBuilding: {},
     sortField: "subject",
-    sortDirection: "asc"
+    sortDirection: "asc",
+    forceResort: true
 };
 
 
@@ -67,12 +69,20 @@ function educationLevelLabel(value) {
     return String(value || "");
 }
 
+function groupSuffix(row) {
+    return row.__groupIndex ? `|g${row.__groupIndex}` : "";
+}
+
+function displaySubjectName(row) {
+    return row.__groupIndex ? `${row.subjectName} ${row.__groupIndex}` : row.subjectName;
+}
+
 function apiKeyOfRow(row) {
-    return `${row.className}|${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}`;
+    return `${row.className}|${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}${groupSuffix(row)}`;
 }
 
 function subjectKeyOfRow(row) {
-    return `${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}`;
+    return `${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}${groupSuffix(row)}`;
 }
 
 function rowId() {
@@ -97,8 +107,26 @@ function rowsForSelectedBuilding() {
     return curriculumRows.filter((row) => String(row.numberSchoolBuilding || "").trim() === selectedBuilding);
 }
 
+function expandCurriculumRows(rows) {
+    const expanded = [];
+    rows.forEach((row) => {
+        const subgroupRequired = Boolean(row.subgroupRequired);
+        const subgroupCount = subgroupRequired ? Math.max(Number(row.subgroupCount || 2), 2) : 0;
+
+        if (!subgroupRequired) {
+            expanded.push({ ...row, __groupIndex: null, __groupCount: 0 });
+            return;
+        }
+
+        for (let i = 1; i <= subgroupCount; i += 1) {
+            expanded.push({ ...row, __groupIndex: i, __groupCount: subgroupCount });
+        }
+    });
+    return expanded;
+}
+
 function classesForSelectedBuilding() {
-    return sortRu(Array.from(new Set(rowsForSelectedBuilding().map((row) => row.className).filter(Boolean))));
+    return sortRu(Array.from(new Set(expandCurriculumRows(rowsForSelectedBuilding()).map((row) => row.className).filter(Boolean))));
 }
 
 function updateDatalistOptions(listEl, query = "") {
@@ -111,7 +139,7 @@ function updateDatalistOptions(listEl, query = "") {
 }
 
 function prefillFromManualLoad() {
-    const allApiRows = curriculumRows;
+    const allApiRows = expandCurriculumRows(curriculumRows);
     manualRows.forEach((entry) => {
         const buildingCode = String(entry.numberSchoolBuilding || "").trim();
         if (!buildingCode) return;
@@ -146,7 +174,7 @@ function prefillFromManualLoad() {
 }
 
 function ensureTeacherRowsForBuilding() {
-    const buildingRows = rowsForSelectedBuilding();
+    const buildingRows = expandCurriculumRows(rowsForSelectedBuilding());
     const assignments = assignmentsForBuilding(selectedBuilding);
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
 
@@ -179,8 +207,35 @@ function ensureTeacherRowsForBuilding() {
     });
 }
 
+
+function rowStableKey(row) {
+    return `${row.subjectKey}::${row.teacherRowId}`;
+}
+
+function teacherHoursInBuilding(buildingCode, teacherName) {
+    const normalizedTeacher = String(teacherName || "").trim();
+    if (!normalizedTeacher) return 0;
+
+    const assignments = assignmentsForBuilding(buildingCode);
+    const buildingRows = expandCurriculumRows(curriculumRows.filter((row) => String(row.numberSchoolBuilding || "").trim() === buildingCode));
+
+    return buildingRows.reduce((acc, row) => {
+        const assigned = String(assignments[apiKeyOfRow(row)] || "").trim();
+        if (assigned && assigned === normalizedTeacher) {
+            return acc + Number(row.plannedHours || 0);
+        }
+        return acc;
+    }, 0);
+}
+
+function teacherHoursInComplex(teacherName) {
+    const normalizedTeacher = String(teacherName || "").trim();
+    if (!normalizedTeacher) return 0;
+    return buildings.reduce((acc, building) => acc + teacherHoursInBuilding(building.code, normalizedTeacher), 0);
+}
+
 function buildPresentationRows() {
-    const rows = rowsForSelectedBuilding();
+    const rows = expandCurriculumRows(rowsForSelectedBuilding());
     const assignments = assignmentsForBuilding(selectedBuilding);
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
 
@@ -191,8 +246,10 @@ function buildPresentationRows() {
             subjectInfo.set(subjectKey, {
                 subjectKey,
                 subjectName: row.subjectName,
+                displaySubjectName: displaySubjectName(row),
                 curriculumPart: row.curriculumPart,
                 educationLevel: row.educationLevel,
+                groupIndex: row.__groupIndex,
                 rowsByClass: {}
             });
         }
@@ -218,18 +275,23 @@ function buildPresentationRows() {
                 subjectKey: info.subjectKey,
                 teacherRowId: teacherRow.id,
                 subjectName: info.subjectName,
+                displaySubjectName: info.displaySubjectName,
                 curriculumPart: info.curriculumPart,
                 educationLevel: info.educationLevel,
+                groupIndex: info.groupIndex,
                 teacherName: teacherRow.teacherName || "",
                 rowsByClass: info.rowsByClass,
-                totalHours,
-                classCount
+                classCount,
+                subjectHours: totalHours,
+                buildingHours: teacherHoursInBuilding(selectedBuilding, teacherRow.teacherName || ""),
+                complexHours: teacherHoursInComplex(teacherRow.teacherName || "")
             });
         });
     });
 
-    return applySorting(result);
+    return getOrderedRows(result);
 }
+
 
 function applySorting(presentationRows) {
     const dir = state.sortDirection === "desc" ? -1 : 1;
@@ -241,14 +303,17 @@ function applySorting(presentationRows) {
             case "teacher":
                 result = cmp(a.teacherName || "", b.teacherName || "");
                 break;
-            case "block":
-                result = cmp(partLabel(a.curriculumPart), partLabel(b.curriculumPart));
-                break;
             case "level":
                 result = cmp(educationLevelLabel(a.educationLevel), educationLevelLabel(b.educationLevel));
                 break;
-            case "totalHours":
-                result = (a.totalHours - b.totalHours);
+            case "subjectHours":
+                result = (a.subjectHours - b.subjectHours);
+                break;
+            case "buildingHours":
+                result = (a.buildingHours - b.buildingHours);
+                break;
+            case "complexHours":
+                result = (a.complexHours - b.complexHours);
                 break;
             case "classCount":
                 result = (a.classCount - b.classCount);
@@ -267,6 +332,26 @@ function applySorting(presentationRows) {
     });
 }
 
+
+function getOrderedRows(presentationRows) {
+    if (state.forceResort || !state.rowOrderByBuilding[selectedBuilding]) {
+        const sorted = applySorting(presentationRows);
+        state.rowOrderByBuilding[selectedBuilding] = sorted.map((row, index) => [rowStableKey(row), index]);
+        state.rowOrderByBuilding[selectedBuilding] = Object.fromEntries(state.rowOrderByBuilding[selectedBuilding]);
+        state.forceResort = false;
+        return sorted;
+    }
+
+    const orderMap = state.rowOrderByBuilding[selectedBuilding] || {};
+    const fallbackStart = Object.keys(orderMap).length + 1;
+    return [...presentationRows].sort((a, b) => {
+        const aOrder = orderMap[rowStableKey(a)] ?? (fallbackStart + 1);
+        const bOrder = orderMap[rowStableKey(b)] ?? (fallbackStart + 1);
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return String(a.subjectName).localeCompare(String(b.subjectName), 'ru');
+    });
+}
+
 function renderBuildingTabs() {
     ui.buildingTabs.innerHTML = "";
 
@@ -277,6 +362,7 @@ function renderBuildingTabs() {
         button.textContent = `${building.code} — ${building.name}`;
         button.addEventListener("click", () => {
             selectedBuilding = building.code;
+            state.forceResort = true;
             renderBuildingTabs();
             renderTable();
         });
@@ -301,7 +387,7 @@ function setTeacherForRow(subjectKey, teacherRowId, value) {
     row.teacherName = nextTeacher;
 
     const assignments = assignmentsForBuilding(selectedBuilding);
-    rowsForSelectedBuilding()
+    expandCurriculumRows(rowsForSelectedBuilding())
         .filter((curriculumRow) => subjectKeyOfRow(curriculumRow) === subjectKey)
         .forEach((curriculumRow) => {
             const apiKey = apiKeyOfRow(curriculumRow);
@@ -358,11 +444,12 @@ function renderTable() {
     const head = document.createElement("tr");
     head.innerHTML = `
         <th>Предмет</th>
-        <th>Блок</th>
         <th>Уровень</th>
         <th>Педагог</th>
+        <th>Часов по предмету</th>
+        <th>Часов в корпусе</th>
+        <th>Всего часов в комплексе</th>
         ${classes.map((className) => `<th>${esc(className)}</th>`).join("")}
-        <th>Итого</th>
     `;
     ui.tableHead.appendChild(head);
 
@@ -372,22 +459,25 @@ function renderTable() {
 
         tr.innerHTML = `
             <td>
-                <div class="subject-cell">${esc(row.subjectName)} ${index === 0 || presentationRows[index - 1].subjectKey !== row.subjectKey ? `<button class="inline-plus" type="button" data-plus-subject="${esc(row.subjectKey)}" title="Добавить строку педагога">+</button>` : ""}</div>
+                <div class="subject-cell">${esc(row.displaySubjectName || row.subjectName)} ${index === 0 || presentationRows[index - 1].subjectKey !== row.subjectKey ? `<button class="inline-plus" type="button" data-plus-subject="${esc(row.subjectKey)}" title="Добавить строку педагога">+</button>` : ""}</div>
             </td>
-            <td>${esc(partLabel(row.curriculumPart))}</td>
             <td>${esc(educationLevelLabel(row.educationLevel))}</td>
             <td>
                 <input type="text" class="teacher-input" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" list="${listId}" value="${esc(row.teacherName)}" placeholder="ФИО педагога">
                 <datalist id="${listId}"></datalist>
             </td>
+            <td><strong>${esc(row.subjectHours)} ч</strong></td>
+            <td><strong>${esc(row.buildingHours)} ч</strong></td>
+            <td><strong>${esc(row.complexHours || 0)} ч</strong></td>
             ${classes.map((className) => {
                 const curriculumRow = row.rowsByClass[className];
                 if (!curriculumRow) return "<td></td>";
                 const assignedTeacher = assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)] || "";
-                const isActive = assignedTeacher === String(row.teacherName || "").trim() && assignedTeacher !== "";
-                return `<td><button type="button" class="hour-pill ${isActive ? "active" : ""}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(curriculumRow.plannedHours)} ч</button></td>`;
+                const rowTeacher = String(row.teacherName || "").trim();
+                const isActive = assignedTeacher === rowTeacher && assignedTeacher !== "";
+                const isMuted = rowTeacher !== "" && !isActive;
+                return `<td><button type="button" class="hour-pill ${isActive ? "active" : ""} ${isMuted ? "muted" : ""}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(curriculumRow.plannedHours)} ч</button></td>`;
             }).join("")}
-            <td><strong>${esc(row.totalHours)} ч</strong></td>
         `;
 
         ui.tableBody.appendChild(tr);
@@ -439,7 +529,7 @@ function renderTable() {
 
 async function saveBuildingLoad() {
     const assignments = assignmentsForBuilding(selectedBuilding);
-    const payload = rowsForSelectedBuilding().map((row) => {
+    const payload = expandCurriculumRows(rowsForSelectedBuilding()).map((row) => {
         const fioTeacher = String(assignments[apiKeyOfRow(row)] || "").trim();
         if (!fioTeacher) return null;
 
@@ -449,8 +539,8 @@ async function saveBuildingLoad() {
             subjectName: row.subjectName,
             className: row.className,
             load: Number(row.plannedHours || 0),
-            groupNameEducationalPlan: null,
-            groupLoad: null,
+            groupNameEducationalPlan: row.__groupIndex ? `Группа ${row.__groupIndex}` : null,
+            groupLoad: row.__groupIndex ? Number(row.plannedHours || 0) : null,
             educationLevel: row.educationLevel
         };
     }).filter(Boolean);
@@ -486,6 +576,7 @@ async function refreshSourceData() {
     buildings = [...(buildingRows || [])].sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"));
 
     prefillFromManualLoad();
+    state.forceResort = true;
 
     if (!buildings.some((row) => row.code === selectedBuilding)) {
         selectedBuilding = buildings[0]?.code || "";
@@ -506,11 +597,13 @@ function bindEvents() {
 
     ui.sortField.addEventListener("change", () => {
         state.sortField = ui.sortField.value;
+        state.forceResort = true;
         renderTable();
     });
 
     ui.sortDirection.addEventListener("change", () => {
         state.sortDirection = ui.sortDirection.value;
+        state.forceResort = true;
         renderTable();
     });
 }
