@@ -3,6 +3,7 @@ package org.school.personalLoad.model;
 import lombok.Data;
 
 import javax.persistence.*;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data
@@ -36,6 +37,10 @@ public class ManualLoadEntry {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EducationLevel educationLevel;
+
+    private LocalDate loadFromDate;
+
+    private LocalDate loadToDate;
 
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();

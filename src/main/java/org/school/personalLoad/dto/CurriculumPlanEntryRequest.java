@@ -13,5 +13,9 @@ public class CurriculumPlanEntryRequest {
     private boolean subgroupRequired;
     private Integer subgroupCount;
     private EducationLevel educationLevel;
+    private Integer subgroup1Hours;
+    private EducationLevel subgroup1EducationLevel;
+    private Integer subgroup2Hours;
+    private EducationLevel subgroup2EducationLevel;
     private CurriculumPart curriculumPart;
 }

@@ -38,6 +38,16 @@ public class CurriculumPlanEntry {
     @Column(nullable = false)
     private EducationLevel educationLevel;
 
+    private Integer subgroup1Hours;
+
+    @Enumerated(EnumType.STRING)
+    private EducationLevel subgroup1EducationLevel;
+
+    private Integer subgroup2Hours;
+
+    @Enumerated(EnumType.STRING)
+    private EducationLevel subgroup2EducationLevel;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private CurriculumPart curriculumPart = CurriculumPart.CORE;

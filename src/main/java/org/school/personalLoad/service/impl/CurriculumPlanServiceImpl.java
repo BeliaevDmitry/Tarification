@@ -42,6 +42,10 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         entity.setSubgroupRequired(request.isSubgroupRequired());
         entity.setSubgroupCount(request.isSubgroupRequired() ? request.getSubgroupCount() : 0);
         entity.setEducationLevel(request.getEducationLevel());
+        entity.setSubgroup1Hours(request.isSubgroupRequired() ? request.getSubgroup1Hours() : null);
+        entity.setSubgroup1EducationLevel(request.isSubgroupRequired() ? request.getSubgroup1EducationLevel() : null);
+        entity.setSubgroup2Hours(request.isSubgroupRequired() ? request.getSubgroup2Hours() : null);
+        entity.setSubgroup2EducationLevel(request.isSubgroupRequired() ? request.getSubgroup2EducationLevel() : null);
         entity.setCurriculumPart(curriculumPart);
         return repository.save(entity);
     }
@@ -78,6 +82,10 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         entity.setSubgroupRequired(request.isSubgroupRequired());
         entity.setSubgroupCount(request.isSubgroupRequired() ? request.getSubgroupCount() : 0);
         entity.setEducationLevel(request.getEducationLevel());
+        entity.setSubgroup1Hours(request.isSubgroupRequired() ? request.getSubgroup1Hours() : null);
+        entity.setSubgroup1EducationLevel(request.isSubgroupRequired() ? request.getSubgroup1EducationLevel() : null);
+        entity.setSubgroup2Hours(request.isSubgroupRequired() ? request.getSubgroup2Hours() : null);
+        entity.setSubgroup2EducationLevel(request.isSubgroupRequired() ? request.getSubgroup2EducationLevel() : null);
         entity.setCurriculumPart(request.getCurriculumPart() == null ? CurriculumPart.CORE : request.getCurriculumPart());
         return repository.save(entity);
     }
@@ -118,6 +126,17 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         }
         if (request.isSubgroupRequired() && (request.getSubgroupCount() == null || request.getSubgroupCount() < 2)) {
             throw new IllegalArgumentException("subgroupCount must be >= 2 when subgroupRequired=true");
+        }
+        if (request.isSubgroupRequired()) {
+            if (request.getSubgroup1Hours() == null || request.getSubgroup1Hours() <= 0) {
+                throw new IllegalArgumentException("subgroup1Hours must be > 0 when subgroupRequired=true");
+            }
+            if (request.getSubgroup2Hours() == null || request.getSubgroup2Hours() <= 0) {
+                throw new IllegalArgumentException("subgroup2Hours must be > 0 when subgroupRequired=true");
+            }
+            if (request.getSubgroup1EducationLevel() == null || request.getSubgroup2EducationLevel() == null) {
+                throw new IllegalArgumentException("subgroup levels are required when subgroupRequired=true");
+            }
         }
     }
 }

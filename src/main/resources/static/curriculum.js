@@ -15,8 +15,14 @@ const ui = {
     form: document.getElementById("subject-form"),
     formBuilding: document.getElementById("subject-building"),
     formClass: document.getElementById("subject-class"),
+    subgroupRequired: document.getElementById("subgroup-required"),
+    subgroupConfig: document.getElementById("subgroup-config"),
     summaryHead: document.getElementById("summary-head"),
-    summaryBody: document.getElementById("summary-body")
+    summaryBody: document.getElementById("summary-body"),
+    editDialog: document.getElementById("curriculum-edit-dialog"),
+    editForm: document.getElementById("curriculum-edit-form"),
+    deleteItemBtn: document.getElementById("delete-curriculum-item"),
+    closeDialogBtn: document.getElementById("close-curriculum-dialog")
 };
 
 let selectedParallel = 1;
@@ -48,6 +54,12 @@ function norm(v) { return String(v || "").trim(); }
 function sortRu(arr) { return [...arr].sort((a, b) => String(a).localeCompare(String(b), "ru")); }
 function classToParallel(className) { const m = norm(className).match(/^(\d{1,2})/); return m ? Number(m[1]) : null; }
 function levelLabel(v) { return v === "ADVANCED" ? "Углублённый" : "Базовый"; }
+
+function toggleSubgroupConfig(container, requiredValue) {
+    const required = String(requiredValue) === "true";
+    if (!container) return;
+    container.classList.toggle("hidden", !required);
+}
 
 function classesForSelectedContext() {
     return classes
@@ -232,30 +244,22 @@ function renderSummaryTable() {
     ui.summaryBody.querySelectorAll(".hours-cell").forEach((btn) => {
         btn.addEventListener("click", async () => {
             const id = Number(btn.dataset.id);
+            if (!Number.isFinite(id)) return;
             const existing = curriculumRows.find((r) => r.id === id);
             if (!existing) return;
 
-            const next = prompt("Новое количество часов (0 = удалить предмет из этого класса)", String(existing.plannedHours || 0));
-            if (next == null) return;
+            ui.editForm.elements.id.value = String(existing.id);
+            ui.editForm.elements.plannedHours.value = String(existing.plannedHours || 1);
+            ui.editForm.elements.educationLevel.value = existing.educationLevel || "BASIC";
+            ui.editForm.elements.subgroupRequired.value = String(Boolean(existing.subgroupRequired));
+            ui.editForm.elements.subgroupCount.value = String(existing.subgroupCount || 2);
+            ui.editForm.elements.subgroup1Hours.value = existing.subgroup1Hours || existing.plannedHours || "";
+            ui.editForm.elements.subgroup2Hours.value = existing.subgroup2Hours || existing.plannedHours || "";
+            ui.editForm.elements.subgroup1EducationLevel.value = existing.subgroup1EducationLevel || existing.educationLevel || "BASIC";
+            ui.editForm.elements.subgroup2EducationLevel.value = existing.subgroup2EducationLevel || existing.educationLevel || "BASIC";
+            toggleSubgroupConfig(ui.editForm, ui.editForm.elements.subgroupRequired.value);
 
-            const hours = Number(next);
-            if (!Number.isFinite(hours) || hours < 0) {
-                print({ error: "Введите корректное число часов" });
-                return;
-            }
-
-            try {
-                if (hours === 0) {
-                    await api(`/api/curriculum/${id}`, { method: "DELETE" });
-                    print({ status: "deleted", id });
-                } else {
-                    await updateCurriculumEntry(existing, { plannedHours: hours });
-                    print({ status: "updated", id, plannedHours: hours });
-                }
-                await reload();
-            } catch (error) {
-                print({ error: error.message });
-            }
+            ui.editDialog.showModal();
         });
     });
 
@@ -303,6 +307,10 @@ function normalizeForm() {
         educationLevel: f.get("educationLevel"),
         subgroupRequired: String(f.get("subgroupRequired")) === "true",
         subgroupCount: Number(f.get("subgroupCount") || 0),
+        subgroup1Hours: Number(f.get("subgroup1Hours") || 0) || null,
+        subgroup1EducationLevel: f.get("subgroup1EducationLevel") || null,
+        subgroup2Hours: Number(f.get("subgroup2Hours") || 0) || null,
+        subgroup2EducationLevel: f.get("subgroup2EducationLevel") || null,
         curriculumPart: f.get("curriculumPart")
     };
 }
@@ -355,6 +363,64 @@ function bindEvents() {
     });
 
     ui.refreshBtn.addEventListener("click", () => reload().catch((error) => print({ error: error.message })));
+    ui.subgroupRequired.addEventListener("change", () => {
+        toggleSubgroupConfig(ui.subgroupConfig, ui.subgroupRequired.value);
+        if (ui.subgroupRequired.value === "true") {
+            const h = ui.form.elements.plannedHours.value || "1";
+            ui.form.elements.subgroup1Hours.value = ui.form.elements.subgroup1Hours.value || h;
+            ui.form.elements.subgroup2Hours.value = ui.form.elements.subgroup2Hours.value || h;
+        }
+    });
+
+    ui.editForm.elements.subgroupRequired.addEventListener("change", () => {
+        toggleSubgroupConfig(ui.editForm, ui.editForm.elements.subgroupRequired.value);
+    });
+
+    ui.closeDialogBtn.addEventListener("click", () => ui.editDialog.close());
+
+    ui.deleteItemBtn.addEventListener("click", async () => {
+        const id = Number(ui.editForm.elements.id.value);
+        if (!Number.isFinite(id)) return;
+        try {
+            await api(`/api/curriculum/${id}`, { method: "DELETE" });
+            ui.editDialog.close();
+            await reload();
+        } catch (error) {
+            print({ error: error.message });
+        }
+    });
+
+    ui.editForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const id = Number(ui.editForm.elements.id.value);
+        const existing = curriculumRows.find((r) => r.id === id);
+        if (!existing) return;
+
+        const subgroupRequired = ui.editForm.elements.subgroupRequired.value === "true";
+        const payload = {
+            numberSchoolBuilding: existing.numberSchoolBuilding,
+            className: existing.className,
+            subjectName: existing.subjectName,
+            curriculumPart: existing.curriculumPart,
+            plannedHours: Number(ui.editForm.elements.plannedHours.value || 0),
+            educationLevel: ui.editForm.elements.educationLevel.value,
+            subgroupRequired,
+            subgroupCount: Number(ui.editForm.elements.subgroupCount.value || 0),
+            subgroup1Hours: subgroupRequired ? Number(ui.editForm.elements.subgroup1Hours.value || 0) : null,
+            subgroup2Hours: subgroupRequired ? Number(ui.editForm.elements.subgroup2Hours.value || 0) : null,
+            subgroup1EducationLevel: subgroupRequired ? ui.editForm.elements.subgroup1EducationLevel.value : null,
+            subgroup2EducationLevel: subgroupRequired ? ui.editForm.elements.subgroup2EducationLevel.value : null
+        };
+
+        try {
+            await api(`/api/curriculum/${id}`, { method: "PATCH", headers: jsonHeaders, body: JSON.stringify(payload) });
+            ui.editDialog.close();
+            await reload();
+        } catch (error) {
+            print({ error: error.message });
+        }
+    });
+
     ui.clearBtn.addEventListener("click", async () => {
         try {
             await api("/api/curriculum", { method: "DELETE" });
@@ -367,4 +433,5 @@ function bindEvents() {
 }
 
 bindEvents();
+toggleSubgroupConfig(ui.subgroupConfig, ui.subgroupRequired.value);
 reload().catch((error) => print({ error: error.message }));

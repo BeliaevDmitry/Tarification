@@ -126,6 +126,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         entity.setGroupNameEducationalPlan(request.getGroupNameEducationalPlan());
         entity.setGroupLoad(request.getGroupLoad());
         entity.setEducationLevel(request.getEducationLevel());
+        entity.setLoadFromDate(request.getLoadFromDate());
+        entity.setLoadToDate(request.getLoadToDate());
         return entity;
     }
 
@@ -214,6 +216,12 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         }
         if (request.getEducationLevel() == null) {
             throw new IllegalArgumentException("educationLevel is required (BASIC or ADVANCED)");
+        }
+        if (request.getLoadFromDate() == null || request.getLoadToDate() == null) {
+            throw new IllegalArgumentException("load period is required: loadFromDate and loadToDate");
+        }
+        if (request.getLoadFromDate().isAfter(request.getLoadToDate())) {
+            throw new IllegalArgumentException("loadFromDate must be before or equal to loadToDate");
         }
     }
 }

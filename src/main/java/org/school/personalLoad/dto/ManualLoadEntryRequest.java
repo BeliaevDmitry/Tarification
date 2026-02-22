@@ -3,6 +3,8 @@ package org.school.personalLoad.dto;
 import lombok.Data;
 import org.school.personalLoad.model.EducationLevel;
 
+import java.time.LocalDate;
+
 @Data
 public class ManualLoadEntryRequest {
     private String fioTeacher;
@@ -13,4 +15,6 @@ public class ManualLoadEntryRequest {
     private String groupNameEducationalPlan;
     private Integer groupLoad;
     private EducationLevel educationLevel;
+    private LocalDate loadFromDate;
+    private LocalDate loadToDate;
 }

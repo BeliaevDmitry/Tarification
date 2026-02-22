@@ -3,6 +3,7 @@ package org.school.personalLoad.model;
 import lombok.Data;
 
 import javax.persistence.*;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data
@@ -18,6 +19,8 @@ public class TeacherDirectoryEntry {
 
     @Column(nullable = false)
     private String fioTeacher;
+
+    private LocalDate dismissalDate;
 
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
