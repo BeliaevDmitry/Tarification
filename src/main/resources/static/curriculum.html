@@ -10,7 +10,7 @@
 <main class="container">
     <header class="card">
         <h1>Учебные планы 1–11</h1>
-        <p class="muted">Класс выбирается только из справочника «Классы». Клик по ячейке часов в сводной таблице — редактирование.</p>
+        <p class="muted">Класс выбирается только из справочника «Классы». Клик по ячейке часов в сводной таблице — полное редактирование.</p>
         <nav class="page-nav">
             <a class="nav-link" href="/buildings.html">Корпуса</a>
             <a class="nav-link" href="/classes.html">Классы</a>
@@ -46,11 +46,23 @@
                 <option value="BASIC">Базовый</option>
                 <option value="ADVANCED">Углублённый</option>
             </select>
-            <select name="subgroupRequired" required>
+            <select name="subgroupRequired" id="subgroup-required" required>
                 <option value="false">Без деления</option>
                 <option value="true">С делением</option>
             </select>
-            <input name="subgroupCount" type="number" min="2" placeholder="Кол-во подгрупп">
+            <input name="subgroupCount" type="number" min="2" placeholder="Кол-во подгрупп" value="2">
+            <div id="subgroup-config" class="grid subgroup-config hidden">
+                <input name="subgroup1Hours" type="number" min="1" placeholder="Часы 1 подгруппы">
+                <select name="subgroup1EducationLevel">
+                    <option value="BASIC">1 подгруппа: Базовый</option>
+                    <option value="ADVANCED">1 подгруппа: Углублённый</option>
+                </select>
+                <input name="subgroup2Hours" type="number" min="1" placeholder="Часы 2 подгруппы">
+                <select name="subgroup2EducationLevel">
+                    <option value="BASIC">2 подгруппа: Базовый</option>
+                    <option value="ADVANCED">2 подгруппа: Углублённый</option>
+                </select>
+            </div>
             <button type="submit">Сохранить предмет</button>
         </form>
     </section>
@@ -65,6 +77,38 @@
         </div>
     </section>
 </main>
+
+<dialog id="curriculum-edit-dialog">
+    <form method="dialog" id="curriculum-edit-form" class="grid">
+        <h3>Редактирование позиции</h3>
+        <input type="hidden" name="id">
+        <input name="plannedHours" type="number" min="1" placeholder="Часы" required>
+        <select name="educationLevel" required>
+            <option value="BASIC">Базовый</option>
+            <option value="ADVANCED">Углублённый</option>
+        </select>
+        <select name="subgroupRequired" required>
+            <option value="false">Без деления</option>
+            <option value="true">С делением</option>
+        </select>
+        <input name="subgroupCount" type="number" min="2" placeholder="Кол-во подгрупп" value="2">
+        <input name="subgroup1Hours" type="number" min="1" placeholder="Часы 1 подгруппы">
+        <select name="subgroup1EducationLevel">
+            <option value="BASIC">1 подгруппа: Базовый</option>
+            <option value="ADVANCED">1 подгруппа: Углублённый</option>
+        </select>
+        <input name="subgroup2Hours" type="number" min="1" placeholder="Часы 2 подгруппы">
+        <select name="subgroup2EducationLevel">
+            <option value="BASIC">2 подгруппа: Базовый</option>
+            <option value="ADVANCED">2 подгруппа: Углублённый</option>
+        </select>
+        <div class="row">
+            <button id="save-curriculum-item" type="submit">Сохранить</button>
+            <button id="delete-curriculum-item" type="button" class="danger-btn">Удалить</button>
+            <button type="button" id="close-curriculum-dialog">Отмена</button>
+        </div>
+    </form>
+</dialog>
 
 <script src="/curriculum.js"></script>
 </body>

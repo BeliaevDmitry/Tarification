@@ -5,12 +5,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
 import org.school.personalLoad.dto.TeacherCreateRequest;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
+import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.TeacherDirectoryService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
+import java.time.LocalDate;
 import java.util.*;
 
 @Slf4j
@@ -19,6 +21,7 @@ import java.util.*;
 public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
 
     private final TeacherDirectoryRepository teacherDirectoryRepository;
+    private final ManualLoadEntryRepository manualLoadEntryRepository;
 
     @Override
     public Map<String, Object> importFromExcel(MultipartFile file) {
@@ -50,7 +53,6 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                     continue;
                 }
 
-                // пропускаем заголовки
                 String normalized = fio.trim();
                 if (normalized.equalsIgnoreCase("фио") || normalized.equalsIgnoreCase("педагог")) {
                     skipped++;
@@ -86,7 +88,6 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         }
     }
 
-
     @Override
     public TeacherDirectoryEntry create(TeacherCreateRequest request) {
         if (request == null || request.getFioTeacher() == null || request.getFioTeacher().isBlank()) {
@@ -100,6 +101,31 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                     entry.setFioTeacher(normalized);
                     return teacherDirectoryRepository.save(entry);
                 });
+    }
+
+    @Override
+    public TeacherDirectoryEntry markForDismissal(Long teacherId, LocalDate dismissalDate) {
+        if (dismissalDate == null) {
+            throw new IllegalArgumentException("dismissalDate is required");
+        }
+
+        TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
+                .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
+
+        entry.setDismissalDate(dismissalDate);
+        return teacherDirectoryRepository.save(entry);
+    }
+
+    @Override
+    public void deleteById(Long teacherId) {
+        TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
+                .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
+
+        if (manualLoadEntryRepository.existsByFioTeacherIgnoreCase(entry.getFioTeacher())) {
+            throw new IllegalStateException("Педагог назначен на нагрузку. Сначала снимите нагрузку, затем удаляйте из справочника.");
+        }
+
+        teacherDirectoryRepository.delete(entry);
     }
 
     @Override

@@ -31,14 +31,72 @@ function escapeHtml(value) {
         .replaceAll("'", "&#39;");
 }
 
+function statusLabel(row) {
+    if (!row.dismissalDate) return "Активен";
+    return `На увольнение с ${row.dismissalDate}`;
+}
+
 function renderTeachers(rows) {
     ui.tbody.innerHTML = "";
-    rows.sort((a, b) => (a.fioTeacher || "").localeCompare(b.fioTeacher || "", "ru"))
+    rows
+        .sort((a, b) => {
+            const aDismiss = a.dismissalDate ? 0 : 1;
+            const bDismiss = b.dismissalDate ? 0 : 1;
+            if (aDismiss !== bDismiss) return aDismiss - bDismiss;
+            return (a.fioTeacher || "").localeCompare(b.fioTeacher || "", "ru");
+        })
         .forEach((row) => {
             const tr = document.createElement("tr");
-            tr.innerHTML = `<td>${escapeHtml(row.fioTeacher)}</td><td>${escapeHtml(row.createdAt)}</td>`;
+            if (row.dismissalDate) tr.classList.add("dismissal-row");
+            tr.innerHTML = `
+                <td>${escapeHtml(row.fioTeacher)}</td>
+                <td>${escapeHtml(statusLabel(row))}</td>
+                <td>${escapeHtml(row.createdAt)}</td>
+                <td>
+                    <div class="row">
+                        <input type="date" class="dismiss-date-input" value="${escapeHtml(row.dismissalDate || "")}" data-id="${row.id}">
+                        <button type="button" class="mark-dismiss-btn" data-id="${row.id}">На увольнение</button>
+                        <button type="button" class="danger-btn delete-teacher-btn" data-id="${row.id}">Удалить</button>
+                    </div>
+                </td>`;
             ui.tbody.appendChild(tr);
         });
+
+    ui.tbody.querySelectorAll(".mark-dismiss-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+            const id = btn.dataset.id;
+            const input = ui.tbody.querySelector(`.dismiss-date-input[data-id="${id}"]`);
+            const dismissalDate = input?.value;
+            if (!dismissalDate) {
+                print({ error: "Укажите дату увольнения" });
+                return;
+            }
+            try {
+                const result = await api(`/api/teachers/${id}/dismiss`, {
+                    method: "PATCH",
+                    headers: jsonHeaders,
+                    body: JSON.stringify({ dismissalDate })
+                });
+                print(result);
+                await loadTeachers();
+            } catch (error) {
+                print({ error: error.message });
+            }
+        });
+    });
+
+    ui.tbody.querySelectorAll(".delete-teacher-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+            const id = btn.dataset.id;
+            try {
+                await api(`/api/teachers/${id}`, { method: "DELETE" });
+                print({ status: "teacher deleted", id });
+                await loadTeachers();
+            } catch (error) {
+                print({ error: error.message, hint: "Если педагог назначен на нагрузку, сначала снимите нагрузку на странице /load.html" });
+            }
+        });
+    });
 }
 
 async function loadTeachers() {

@@ -14,6 +14,7 @@ const ui = {
 let curriculumRows = [];
 let manualRows = [];
 let teacherNames = [];
+let teacherDirectory = [];
 let buildings = [];
 let selectedBuilding = "";
 
@@ -119,7 +120,20 @@ function expandCurriculumRows(rows) {
         }
 
         for (let i = 1; i <= subgroupCount; i += 1) {
-            expanded.push({ ...row, __groupIndex: i, __groupCount: subgroupCount });
+            const subgroupHours = i === 1
+                ? Number(row.subgroup1Hours || row.plannedHours || 0)
+                : Number(row.subgroup2Hours || row.plannedHours || 0);
+            const subgroupLevel = i === 1
+                ? (row.subgroup1EducationLevel || row.educationLevel)
+                : (row.subgroup2EducationLevel || row.educationLevel);
+
+            expanded.push({
+                ...row,
+                plannedHours: subgroupHours,
+                educationLevel: subgroupLevel,
+                __groupIndex: i,
+                __groupCount: subgroupCount
+            });
         }
     });
     return expanded;
@@ -136,6 +150,27 @@ function updateDatalistOptions(listEl, query = "") {
         ? teacherNames.slice(0, 200)
         : teacherNames.filter((name) => name.toLowerCase().includes(q)).slice(0, 60);
     listEl.innerHTML = options.map((name) => `<option value="${esc(name)}"></option>`).join("");
+}
+
+
+function isDismissedTeacher(teacherName) {
+    const normalized = String(teacherName || "").trim().toLowerCase();
+    if (!normalized) return false;
+    return teacherDirectory.some((t) => String(t.fioTeacher || "").trim().toLowerCase() === normalized && t.dismissalDate);
+}
+
+function dismissalDateOfTeacher(teacherName) {
+    const normalized = String(teacherName || "").trim().toLowerCase();
+    const teacher = teacherDirectory.find((t) => String(t.fioTeacher || "").trim().toLowerCase() === normalized);
+    return teacher?.dismissalDate || null;
+}
+
+function defaultLoadPeriod() {
+    const now = new Date();
+    const from = now.toISOString().slice(0, 10);
+    const year = now.getFullYear() + 1;
+    const to = `${year}-05-31`;
+    return { from, to };
 }
 
 function prefillFromManualLoad() {
@@ -168,7 +203,13 @@ function prefillFromManualLoad() {
 
         const exists = teacherRowsMap[subjectKey].some((row) => row.teacherName.toLowerCase() === teacherName.toLowerCase());
         if (!exists) {
-            teacherRowsMap[subjectKey].push({ id: rowId(), teacherName });
+            const period = defaultLoadPeriod();
+            teacherRowsMap[subjectKey].push({
+                id: rowId(),
+                teacherName,
+                loadFromDate: entry.loadFromDate || period.from,
+                loadToDate: entry.loadToDate || period.to
+            });
         }
     });
 }
@@ -198,11 +239,15 @@ function ensureTeacherRowsForBuilding() {
 
         teachersFromAssignments.forEach((teacherName) => {
             const exists = rowsMap[subjectKey].some((row) => row.teacherName.toLowerCase() === teacherName.toLowerCase());
-            if (!exists) rowsMap[subjectKey].push({ id: rowId(), teacherName });
+            if (!exists) {
+                const period = defaultLoadPeriod();
+                rowsMap[subjectKey].push({ id: rowId(), teacherName, loadFromDate: period.from, loadToDate: period.to });
+            }
         });
 
         if (!rowsMap[subjectKey].length) {
-            rowsMap[subjectKey].push({ id: rowId(), teacherName: "" });
+            const period = defaultLoadPeriod();
+            rowsMap[subjectKey].push({ id: rowId(), teacherName: "", loadFromDate: period.from, loadToDate: period.to });
         }
     });
 }
@@ -258,7 +303,7 @@ function buildPresentationRows() {
 
     const result = [];
     subjectInfo.forEach((info) => {
-        const teacherRows = rowsMap[info.subjectKey] || [{ id: rowId(), teacherName: "" }];
+        const teacherRows = rowsMap[info.subjectKey] || [{ ...defaultLoadPeriod(), id: rowId(), teacherName: "" }];
         teacherRows.forEach((teacherRow) => {
             let totalHours = 0;
             let classCount = 0;
@@ -280,6 +325,8 @@ function buildPresentationRows() {
                 educationLevel: info.educationLevel,
                 groupIndex: info.groupIndex,
                 teacherName: teacherRow.teacherName || "",
+                loadFromDate: teacherRow.loadFromDate || defaultLoadPeriod().from,
+                loadToDate: teacherRow.loadToDate || defaultLoadPeriod().to,
                 rowsByClass: info.rowsByClass,
                 classCount,
                 subjectHours: totalHours,
@@ -289,7 +336,15 @@ function buildPresentationRows() {
         });
     });
 
-    return getOrderedRows(result);
+    const filtered = result.filter((row) => {
+        const hasAssigned = Object.values(row.rowsByClass).some((curriculumRow) => {
+            const assigned = String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)] || "").trim();
+            return assigned === String(row.teacherName || "").trim() && assigned !== "";
+        });
+        return hasAssigned || !String(row.teacherName || "").trim();
+    });
+
+    return getOrderedRows(filtered);
 }
 
 
@@ -373,7 +428,8 @@ function renderBuildingTabs() {
 function addTeacherRow(subjectKey) {
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
     if (!rowsMap[subjectKey]) rowsMap[subjectKey] = [];
-    rowsMap[subjectKey].push({ id: rowId(), teacherName: "" });
+    const period = defaultLoadPeriod();
+    rowsMap[subjectKey].push({ id: rowId(), teacherName: "", loadFromDate: period.from, loadToDate: period.to });
     renderTable();
 }
 
@@ -406,6 +462,15 @@ function setTeacherForRow(subjectKey, teacherRowId, value) {
         });
 }
 
+
+function setPeriodForRow(subjectKey, teacherRowId, fromDate, toDate) {
+    const rowsMap = teacherRowsForBuilding(selectedBuilding);
+    const row = (rowsMap[subjectKey] || []).find((entry) => entry.id === teacherRowId);
+    if (!row) return;
+    row.loadFromDate = fromDate;
+    row.loadToDate = toDate;
+}
+
 function onClassCellClick(presentationRow, className) {
     const curriculumRow = presentationRow.rowsByClass[className];
     if (!curriculumRow) return;
@@ -432,7 +497,7 @@ function renderTable() {
     ui.tableBody.innerHTML = "";
 
     if (!selectedBuilding) {
-        ui.tableBody.innerHTML = '<tr><td colspan="6">Добавьте корпуса, чтобы распределять нагрузку.</td></tr>';
+        ui.tableBody.innerHTML = '<tr><td colspan="7">Добавьте корпуса, чтобы распределять нагрузку.</td></tr>';
         return;
     }
 
@@ -446,7 +511,7 @@ function renderTable() {
         <th>Предмет</th>
         <th>Уровень</th>
         <th>Педагог</th>
-        <th>Часов по предмету</th>
+        <th>Период нагрузки</th>
         <th>Часов в корпусе</th>
         <th>Всего часов в комплексе</th>
         ${classes.map((className) => `<th>${esc(className)}</th>`).join("")}
@@ -462,11 +527,17 @@ function renderTable() {
                 <div class="subject-cell">${esc(row.displaySubjectName || row.subjectName)} ${index === 0 || presentationRows[index - 1].subjectKey !== row.subjectKey ? `<button class="inline-plus" type="button" data-plus-subject="${esc(row.subjectKey)}" title="Добавить строку педагога">+</button>` : ""}</div>
             </td>
             <td>${esc(educationLevelLabel(row.educationLevel))}</td>
-            <td>
+            <td class="${isDismissedTeacher(row.teacherName) ? "dismissal-row" : ""}">
                 <input type="text" class="teacher-input" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" list="${listId}" value="${esc(row.teacherName)}" placeholder="ФИО педагога">
                 <datalist id="${listId}"></datalist>
+                ${isDismissedTeacher(row.teacherName) ? `<div class="dismissal-note">Увольнение с ${esc(dismissalDateOfTeacher(row.teacherName))}</div>` : ""}
             </td>
-            <td><strong>${esc(row.subjectHours)} ч</strong></td>
+            <td>
+                <div class="period-grid">
+                    <input type="date" class="period-input period-from" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" value="${esc(row.loadFromDate)}">
+                    <input type="date" class="period-input period-to" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" value="${esc(row.loadToDate)}">
+                </div>
+            </td>
             <td><strong>${esc(row.buildingHours)} ч</strong></td>
             <td><strong>${esc(row.complexHours || 0)} ч</strong></td>
             ${classes.map((className) => {
@@ -476,7 +547,8 @@ function renderTable() {
                 const rowTeacher = String(row.teacherName || "").trim();
                 const isActive = assignedTeacher === rowTeacher && assignedTeacher !== "";
                 const isMuted = rowTeacher !== "" && !isActive;
-                return `<td><button type="button" class="hour-pill ${isActive ? "active" : ""} ${isMuted ? "muted" : ""}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(curriculumRow.plannedHours)} ч</button></td>`;
+                const isUnassigned = !assignedTeacher;
+                return `<td><button type="button" class="hour-pill ${isActive ? "active" : ""} ${isMuted ? "muted" : ""} ${isUnassigned ? "unassigned" : ""}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(curriculumRow.plannedHours)} ч</button></td>`;
             }).join("")}
         `;
 
@@ -511,6 +583,18 @@ function renderTable() {
         });
     });
 
+    ui.tableBody.querySelectorAll(".period-input").forEach((input) => {
+        input.addEventListener("change", () => {
+            const subjectKey = input.dataset.subjectKey;
+            const rowIdValue = input.dataset.rowId;
+            const rowElFrom = ui.tableBody.querySelector(`.period-from[data-subject-key="${subjectKey}"][data-row-id="${rowIdValue}"]`);
+            const rowElTo = ui.tableBody.querySelector(`.period-to[data-subject-key="${subjectKey}"][data-row-id="${rowIdValue}"]`);
+            const fromDate = rowElFrom?.value || "";
+            const toDate = rowElTo?.value || "";
+            setPeriodForRow(subjectKey, rowIdValue, fromDate, toDate);
+        });
+    });
+
     ui.tableBody.querySelectorAll("button[data-plus-subject]").forEach((button) => {
         button.addEventListener("click", () => addTeacherRow(button.dataset.plusSubject));
     });
@@ -529,9 +613,13 @@ function renderTable() {
 
 async function saveBuildingLoad() {
     const assignments = assignmentsForBuilding(selectedBuilding);
+    const rowsMap = teacherRowsForBuilding(selectedBuilding);
     const payload = expandCurriculumRows(rowsForSelectedBuilding()).map((row) => {
         const fioTeacher = String(assignments[apiKeyOfRow(row)] || "").trim();
         if (!fioTeacher) return null;
+
+        const teacherRow = (rowsMap[subjectKeyOfRow(row)] || []).find((r) => String(r.teacherName || "").trim() === fioTeacher);
+        const period = defaultLoadPeriod();
 
         return {
             fioTeacher,
@@ -541,7 +629,9 @@ async function saveBuildingLoad() {
             load: Number(row.plannedHours || 0),
             groupNameEducationalPlan: row.__groupIndex ? `Группа ${row.__groupIndex}` : null,
             groupLoad: row.__groupIndex ? Number(row.plannedHours || 0) : null,
-            educationLevel: row.educationLevel
+            educationLevel: row.educationLevel,
+            loadFromDate: teacherRow?.loadFromDate || period.from,
+            loadToDate: teacherRow?.loadToDate || period.to
         };
     }).filter(Boolean);
 
@@ -572,7 +662,8 @@ async function refreshSourceData() {
 
     curriculumRows = curriculum || [];
     manualRows = manual || [];
-    teacherNames = sortRu(Array.from(new Set((teachers || []).map((t) => String(t.fioTeacher || "").trim()).filter(Boolean))));
+    teacherDirectory = teachers || [];
+    teacherNames = sortRu(Array.from(new Set(teacherDirectory.map((t) => String(t.fioTeacher || "").trim()).filter(Boolean))));
     buildings = [...(buildingRows || [])].sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"));
 
     prefillFromManualLoad();

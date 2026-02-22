@@ -2,6 +2,7 @@ package org.school.personalLoad.controller.api;
 
 import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.dto.TeacherCreateRequest;
+import org.school.personalLoad.dto.TeacherDismissRequest;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.service.TeacherDirectoryService;
 import org.springframework.http.ResponseEntity;
@@ -23,10 +24,21 @@ public class TeacherDirectoryController {
         return ResponseEntity.ok(teacherDirectoryService.importFromExcel(file));
     }
 
-
     @PostMapping
     public ResponseEntity<TeacherDirectoryEntry> create(@RequestBody TeacherCreateRequest request) {
         return ResponseEntity.ok(teacherDirectoryService.create(request));
+    }
+
+    @PatchMapping("/{teacherId}/dismiss")
+    public ResponseEntity<TeacherDirectoryEntry> markForDismissal(@PathVariable Long teacherId,
+                                                                  @RequestBody TeacherDismissRequest request) {
+        return ResponseEntity.ok(teacherDirectoryService.markForDismissal(teacherId, request.getDismissalDate()));
+    }
+
+    @DeleteMapping("/{teacherId}")
+    public ResponseEntity<Void> deleteById(@PathVariable Long teacherId) {
+        teacherDirectoryService.deleteById(teacherId);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping
