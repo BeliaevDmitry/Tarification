@@ -24,7 +24,8 @@ const state = {
     rowOrderByBuilding: {},
     sortField: "subject",
     sortDirection: "asc",
-    forceResort: true
+    forceResort: true,
+    hasUnsavedChanges: false
 };
 
 
@@ -47,6 +48,12 @@ function sortRu(values) {
 
 function print(value) {
     ui.loadResult.textContent = JSON.stringify(value, null, 2);
+}
+
+function markDirty(flag=true) {
+    state.hasUnsavedChanges = flag;
+    ui.saveBuildingBtn.classList.toggle("dirty-save", flag);
+    ui.saveBuildingBtn.classList.toggle("clean-save", !flag);
 }
 
 function esc(value) {
@@ -159,6 +166,12 @@ function isDismissedTeacher(teacherName) {
     return teacherDirectory.some((t) => String(t.fioTeacher || "").trim().toLowerCase() === normalized && t.dismissalDate);
 }
 
+function teacherExists(teacherName) {
+    const normalized = String(teacherName || "").trim().toLowerCase();
+    if (!normalized) return true;
+    return teacherDirectory.some((t) => String(t.fioTeacher || "").trim().toLowerCase() === normalized);
+}
+
 function dismissalDateOfTeacher(teacherName) {
     const normalized = String(teacherName || "").trim().toLowerCase();
     const teacher = teacherDirectory.find((t) => String(t.fioTeacher || "").trim().toLowerCase() === normalized);
@@ -167,9 +180,8 @@ function dismissalDateOfTeacher(teacherName) {
 
 function defaultLoadPeriod() {
     const now = new Date();
-    const from = now.toISOString().slice(0, 10);
-    const year = now.getFullYear() + 1;
-    const to = `${year}-05-31`;
+    const from = "2026-09-01";
+    const to = "2027-05-31";
     return { from, to };
 }
 
@@ -425,11 +437,19 @@ function renderBuildingTabs() {
     });
 }
 
-function addTeacherRow(subjectKey) {
+function addTeacherRow(subjectKey, afterRowId = null) {
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
     if (!rowsMap[subjectKey]) rowsMap[subjectKey] = [];
     const period = defaultLoadPeriod();
-    rowsMap[subjectKey].push({ id: rowId(), teacherName: "", loadFromDate: period.from, loadToDate: period.to });
+    const newRow = { id: rowId(), teacherName: "", loadFromDate: period.from, loadToDate: period.to };
+    if (!afterRowId) {
+        rowsMap[subjectKey].push(newRow);
+    } else {
+        const idx = rowsMap[subjectKey].findIndex((r) => r.id === afterRowId);
+        if (idx === -1) rowsMap[subjectKey].push(newRow);
+        else rowsMap[subjectKey].splice(idx + 1, 0, newRow);
+    }
+    markDirty();
     renderTable();
 }
 
@@ -441,6 +461,7 @@ function setTeacherForRow(subjectKey, teacherRowId, value) {
     const previousTeacher = String(row.teacherName || "").trim();
     const nextTeacher = String(value || "").trim();
     row.teacherName = nextTeacher;
+    markDirty();
 
     const assignments = assignmentsForBuilding(selectedBuilding);
     expandCurriculumRows(rowsForSelectedBuilding())
@@ -469,6 +490,7 @@ function setPeriodForRow(subjectKey, teacherRowId, fromDate, toDate) {
     if (!row) return;
     row.loadFromDate = fromDate;
     row.loadToDate = toDate;
+    markDirty();
 }
 
 function onClassCellClick(presentationRow, className) {
@@ -485,8 +507,18 @@ function onClassCellClick(presentationRow, className) {
     const apiKey = apiKeyOfRow(curriculumRow);
     if (assignments[apiKey] === targetTeacher) {
         assignments[apiKey] = "";
+        markDirty();
     } else {
         assignments[apiKey] = targetTeacher;
+        const rowsMap = teacherRowsForBuilding(selectedBuilding);
+        const rowMeta = (rowsMap[presentationRow.subjectKey] || []).find((r) => r.id === presentationRow.teacherRowId);
+        if (rowMeta) {
+            const from = prompt("Период нагрузки с (YYYY-MM-DD)", rowMeta.loadFromDate || defaultLoadPeriod().from);
+            if (from) rowMeta.loadFromDate = from;
+            const to = prompt("Период нагрузки по (YYYY-MM-DD)", rowMeta.loadToDate || defaultLoadPeriod().to);
+            if (to) rowMeta.loadToDate = to;
+        }
+        markDirty();
     }
 
     renderTable();
@@ -509,9 +541,7 @@ function renderTable() {
     const head = document.createElement("tr");
     head.innerHTML = `
         <th>Предмет</th>
-        <th>Уровень</th>
         <th>Педагог</th>
-        <th>Период нагрузки</th>
         <th>Часов в корпусе</th>
         <th>Всего часов в комплексе</th>
         ${classes.map((className) => `<th>${esc(className)}</th>`).join("")}
@@ -524,19 +554,11 @@ function renderTable() {
 
         tr.innerHTML = `
             <td>
-                <div class="subject-cell">${esc(row.displaySubjectName || row.subjectName)} ${index === 0 || presentationRows[index - 1].subjectKey !== row.subjectKey ? `<button class="inline-plus" type="button" data-plus-subject="${esc(row.subjectKey)}" title="Добавить строку педагога">+</button>` : ""}</div>
-            </td>
-            <td>${esc(educationLevelLabel(row.educationLevel))}</td>
-            <td class="${isDismissedTeacher(row.teacherName) ? "dismissal-row" : ""}">
+                <div class="subject-cell">${esc(row.displaySubjectName || row.subjectName)} ${index === 0 || presentationRows[index - 1].subjectKey !== row.subjectKey ? `<button class="inline-plus" type="button" data-plus-subject="${esc(row.subjectKey)}" data-plus-after="${esc(row.teacherRowId)}" title="Добавить строку педагога">+</button>` : ""}</div>
+            </td>            <td class="${isDismissedTeacher(row.teacherName) ? "dismissal-row" : ""}">
                 <input type="text" class="teacher-input" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" list="${listId}" value="${esc(row.teacherName)}" placeholder="ФИО педагога">
                 <datalist id="${listId}"></datalist>
-                ${isDismissedTeacher(row.teacherName) ? `<div class="dismissal-note">Увольнение с ${esc(dismissalDateOfTeacher(row.teacherName))}</div>` : ""}
-            </td>
-            <td>
-                <div class="period-grid">
-                    <input type="date" class="period-input period-from" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" value="${esc(row.loadFromDate)}">
-                    <input type="date" class="period-input period-to" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" value="${esc(row.loadToDate)}">
-                </div>
+                ${isDismissedTeacher(row.teacherName) ? `<div class="dismissal-note">Увольнение с ${esc(dismissalDateOfTeacher(row.teacherName))}</div>` : ""}${(!teacherExists(row.teacherName) && row.teacherName) ? `<div class="dismissal-note">Ошибка: педагог отсутствует в справочнике</div>` : ""}
             </td>
             <td><strong>${esc(row.buildingHours)} ч</strong></td>
             <td><strong>${esc(row.complexHours || 0)} ч</strong></td>
@@ -596,7 +618,7 @@ function renderTable() {
     });
 
     ui.tableBody.querySelectorAll("button[data-plus-subject]").forEach((button) => {
-        button.addEventListener("click", () => addTeacherRow(button.dataset.plusSubject));
+        button.addEventListener("click", () => addTeacherRow(button.dataset.plusSubject, button.dataset.plusAfter));
     });
 
     ui.tableBody.querySelectorAll("button[data-class-cell]").forEach((button) => {
@@ -647,6 +669,7 @@ async function saveBuildingLoad() {
             body: JSON.stringify(payload)
         });
         print({ saved: result.length, building: selectedBuilding });
+        markDirty(false);
     } catch (error) {
         print({ error: error.message });
     }
@@ -668,6 +691,7 @@ async function refreshSourceData() {
 
     prefillFromManualLoad();
     state.forceResort = true;
+    markDirty(false);
 
     if (!buildings.some((row) => row.code === selectedBuilding)) {
         selectedBuilding = buildings[0]?.code || "";

@@ -18,14 +18,23 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
     @Override
     public SchoolBuilding upsert(SchoolBuildingRequest request) {
         if (request == null) throw new IllegalArgumentException("request is required");
-        String code = normalize(request.getCode());
         String name = normalize(request.getName());
-        if (code.isBlank()) throw new IllegalArgumentException("code is required");
+        String managerFio = normalize(request.getManagerFio());
+        String address = normalize(request.getAddress());
         if (name.isBlank()) throw new IllegalArgumentException("name is required");
+        if (managerFio.isBlank()) throw new IllegalArgumentException("managerFio is required");
+        if (address.isBlank()) throw new IllegalArgumentException("address is required");
+
+        String code = normalize(request.getCode());
+        if (code.isBlank()) {
+            code = (name + "|" + address).toLowerCase();
+        }
 
         SchoolBuilding entity = repository.findByCode(code).orElseGet(SchoolBuilding::new);
         entity.setCode(code);
         entity.setName(name);
+        entity.setManagerFio(managerFio);
+        entity.setAddress(address);
         return repository.save(entity);
     }
 

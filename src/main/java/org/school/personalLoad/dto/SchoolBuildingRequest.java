@@ -6,4 +6,6 @@ import lombok.Data;
 public class SchoolBuildingRequest {
     private String code;
     private String name;
+    private String managerFio;
+    private String address;
 }

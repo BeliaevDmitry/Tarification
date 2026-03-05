@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarification — Предметы</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container">
+    <header class="card">
+        <h1>Предметы</h1>
+        <p class="muted">Список предметов для вкладки учебного плана.</p>
+        <nav class="page-nav">
+            <a class="nav-link" href="/buildings.html">Корпуса</a>
+            <a class="nav-link" href="/classes.html">Классы</a>
+            <a class="nav-link active" href="/subjects.html">Предметы</a>
+            <a class="nav-link" href="/curriculum.html">Учебный план</a>
+            <a class="nav-link" href="/load.html">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/teachers.html">Педагоги</a>
+        </nav>
+    </header>
+
+    <section class="card">
+        <h2>Импорт из Excel</h2>
+        <div class="row">
+            <input id="subject-file" type="file" accept=".xls,.xlsx">
+            <button id="import-subjects-btn" type="button">Импортировать</button>
+        </div>
+        <h2>Ручное добавление</h2>
+        <form id="subject-form" class="row">
+            <input id="subject-name" placeholder="Название предмета" required>
+            <select id="subject-type" required>
+                <option value="CORE_FORMABLE">1 тип: основная/формируемая часть</option>
+                <option value="EXTRACURRICULAR">2 тип: внеурочная деятельность</option>
+            </select>
+            <button type="submit">Добавить предмет</button>
+            <button id="refresh-subjects-btn" type="button">Обновить</button>
+            <button id="clear-subjects-btn" type="button">Очистить</button>
+        </form>
+        <pre id="subjects-result"></pre>
+    </section>
+
+    <section class="card">
+        <h2>Список предметов</h2>
+        <div class="sheet-wrap">
+            <table class="sheet-table">
+                <thead><tr><th>Предмет</th><th>Тип</th><th>Создано</th></tr></thead>
+                <tbody id="subjects-body"></tbody>
+            </table>
+        </div>
+    </section>
+</main>
+<script src="/subjects.js"></script>
+</body>
+</html>

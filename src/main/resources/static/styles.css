@@ -444,3 +444,44 @@ dialog::backdrop {
 .subgroup-config.hidden {
     display: none;
 }
+
+#save-building-btn {
+    position: sticky;
+    top: 56px;
+    z-index: 20;
+}
+
+#save-building-btn.clean-save {
+    background: #e5e7eb;
+    border-color: #d1d5db;
+    color: #374151;
+}
+
+#save-building-btn.dirty-save {
+    background: #fef3c7;
+    border-color: #f59e0b;
+    color: #78350f;
+}
+
+#building-load-table th:first-child,
+#building-load-table td:first-child {
+    position: sticky;
+    left: 0;
+    background: #fff;
+    z-index: 2;
+}
+
+#building-load-table th:nth-child(2),
+#building-load-table td:nth-child(2) {
+    position: sticky;
+    left: 180px;
+    background: #fff;
+    z-index: 2;
+}
+
+.mini-level {
+    margin-left: 4px;
+    font-size: 10px;
+    vertical-align: super;
+    color: #1f2937;
+}

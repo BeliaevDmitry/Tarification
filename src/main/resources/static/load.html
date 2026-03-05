@@ -15,6 +15,7 @@
             <a class="nav-link" href="/buildings.html">Корпуса</a>
             <a class="nav-link" href="/classes.html">Классы</a>
             <a class="nav-link" href="/curriculum.html">Учебный план</a>
+            <a class="nav-link" href="/subjects.html">Предметы</a>
             <a class="nav-link active" href="/load.html">Нагрузка по корпусам</a>
             <a class="nav-link" href="/teachers.html">Педагоги</a>
         </nav>
@@ -27,8 +28,7 @@
                 <select id="sort-field-select">
                     <option value="subject">по предмету</option>
                     <option value="teacher">по педагогу</option>
-                    <option value="level">по уровню</option>
-                                        <option value="buildingHours">по часам в корпусе</option>
+                                                            <option value="buildingHours">по часам в корпусе</option>
                     <option value="complexHours">по часам в комплексе</option>
                     <option value="classCount">по числу классов</option>
                 </select>
@@ -40,7 +40,7 @@
                 </select>
             </label>
             <button id="refresh-load-btn" type="button">Обновить из учебного плана</button>
-            <button id="save-building-btn" type="button">Сохранить нагрузку корпуса</button>
+            <button id="save-building-btn" type="button" class="clean-save">Сохранить нагрузку корпуса</button>
         </div>
         <pre id="load-result"></pre>
     </section>

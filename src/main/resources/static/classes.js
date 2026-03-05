@@ -3,7 +3,6 @@ const jsonHeaders = { "Content-Type": "application/json" };
 const ui = {
     form: document.getElementById("class-form"),
     building: document.getElementById("class-building"),
-    teacher: document.getElementById("class-teacher"),
     teacherList: document.getElementById("teacher-list"),
     refreshBtn: document.getElementById("refresh-classes-btn"),
     clearBtn: document.getElementById("clear-classes-btn"),
@@ -12,6 +11,7 @@ const ui = {
 };
 
 let teachers = [];
+let buildings = [];
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -22,13 +22,9 @@ async function api(path, options = {}) {
     return body;
 }
 
-function esc(v) {
-    return String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
-}
-
-function sortRu(arr) { return [...arr].sort((a, b) => String(a).localeCompare(String(b), "ru")); }
-function norm(v) { return String(v || "").trim(); }
-function print(v) { ui.result.textContent = JSON.stringify(v, null, 2); }
+const esc = (v) => String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+const norm = (v) => String(v || "").trim();
+const print = (v) => { ui.result.textContent = JSON.stringify(v, null, 2); };
 
 function normalizeClassName(value) {
     const v = norm(value).toUpperCase().replace(/[–—]/g, "-");
@@ -36,27 +32,31 @@ function normalizeClassName(value) {
     return m ? `${m[1]}-${m[2]}` : v;
 }
 
-function renderTeachers() {
-    ui.teacherList.innerHTML = sortRu(teachers).map((fio) => `<option value="${esc(fio)}"></option>`).join("");
+function buildingLabel(code) {
+    const b = buildings.find((x) => x.code === code);
+    return b ? `${b.name} (${b.address})` : code;
 }
 
-function renderBuildings(rows) {
+function renderTeachers() {
+    ui.teacherList.innerHTML = teachers.map((fio) => `<option value="${esc(fio)}"></option>`).join("");
+}
+
+function renderBuildings() {
     const selected = ui.building.value;
     ui.building.innerHTML = `<option value="">Выберите корпус</option>`;
-    (rows || []).sort((a, b) => String(a.code).localeCompare(String(b.code), "ru")).forEach((b) => {
-        ui.building.innerHTML += `<option value="${esc(b.code)}">${esc(b.code)} — ${esc(b.name)}</option>`;
+    buildings.sort((a, b) => String(a.name).localeCompare(String(b.name), "ru")).forEach((b) => {
+        ui.building.innerHTML += `<option value="${esc(b.code)}">${esc(b.name)} — ${esc(b.address)}</option>`;
     });
     if (selected) ui.building.value = selected;
 }
 
 function renderClasses(rows) {
     ui.body.innerHTML = "";
-    (rows || []).sort((a, b) => `${a.numberSchoolBuilding}${a.className}`.localeCompare(`${b.numberSchoolBuilding}${b.className}`, "ru"))
-        .forEach((r) => {
-            const tr = document.createElement("tr");
-            tr.innerHTML = `<td>${esc(r.numberSchoolBuilding)}</td><td>${esc(r.className)}</td><td>${esc(r.classDirection)}</td><td>${esc(r.fioTeacher)}</td>`;
-            ui.body.appendChild(tr);
-        });
+    (rows || []).forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${esc(buildingLabel(r.numberSchoolBuilding))}</td><td>${esc(r.className)}</td><td>${esc(r.classDirection)}</td><td>${esc(r.fioTeacher)}</td>`;
+        ui.body.appendChild(tr);
+    });
 }
 
 async function reload() {
@@ -65,17 +65,16 @@ async function reload() {
         api("/api/buildings"),
         api("/api/teachers")
     ]);
+    buildings = buildingRows || [];
     teachers = (teacherRows || []).map((r) => norm(r.fioTeacher)).filter(Boolean);
     renderTeachers();
-    renderBuildings(buildingRows || []);
+    renderBuildings();
     renderClasses(classRows || []);
-    return classRows || [];
 }
 
-async function saveClass(e) {
+ui.form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const current = await api("/api/classroom-leadership");
-
     const form = new FormData(ui.form);
     const entry = {
         numberSchoolBuilding: norm(form.get("numberSchoolBuilding")),
@@ -85,13 +84,13 @@ async function saveClass(e) {
     };
 
     if (!entry.numberSchoolBuilding || !entry.className || !entry.classDirection || !entry.fioTeacher) {
-        print({ error: "Заполните корпус, класс, направление и классного руководителя" });
+        print({ error: "Заполните все поля" });
         return;
     }
 
     const exact = teachers.find((fio) => fio.toLowerCase() === entry.fioTeacher.toLowerCase());
     if (!exact) {
-        print({ error: `Педагог «${entry.fioTeacher}» не найден в справочнике` });
+        print({ error: `Педагог «${entry.fioTeacher}» не найден` });
         return;
     }
     entry.fioTeacher = exact;
@@ -103,16 +102,17 @@ async function saveClass(e) {
     print({ status: "saved", total: saved.length });
     ui.form.reset();
     await reload();
-}
+});
 
-async function clearAll() {
-    await api("/api/classroom-leadership", { method: "DELETE" });
-    print({ status: "cleared" });
-    await reload();
-}
-
-ui.form.addEventListener("submit", (e) => saveClass(e).catch((error) => print({ error: error.message })));
 ui.refreshBtn.addEventListener("click", () => reload().catch((error) => print({ error: error.message })));
-ui.clearBtn.addEventListener("click", () => clearAll().catch((error) => print({ error: error.message })));
+ui.clearBtn.addEventListener("click", async () => {
+    try {
+        await api("/api/classroom-leadership", { method: "DELETE" });
+        print({ status: "cleared" });
+        await reload();
+    } catch (error) {
+        print({ error: error.message });
+    }
+});
 
 reload().catch((error) => print({ error: error.message }));

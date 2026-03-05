@@ -25,9 +25,9 @@ function print(value) { ui.result.textContent = JSON.stringify(value, null, 2); 
 
 function render(rows) {
     ui.body.innerHTML = "";
-    (rows || []).sort((a, b) => (a.code || "").localeCompare(b.code || "", "ru")).forEach((r) => {
+    (rows || []).sort((a, b) => (a.name || "").localeCompare(b.name || "", "ru")).forEach((r) => {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${escapeHtml(r.code)}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.createdAt)}</td>`;
+        tr.innerHTML = `<td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.managerFio)}</td><td>${escapeHtml(r.address)}</td><td>${escapeHtml(r.createdAt)}</td>`;
         ui.body.appendChild(tr);
     });
 }
@@ -40,7 +40,13 @@ async function reload() {
 ui.form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const form = new FormData(ui.form);
-    const payload = { code: String(form.get("code") || "").trim(), name: String(form.get("name") || "").trim() };
+    const payload = {
+        name: String(form.get("name") || "").trim(),
+        managerFio: String(form.get("managerFio") || "").trim(),
+        address: String(form.get("address") || "").trim()
+    };
+    payload.code = `${payload.name}|${payload.address}`.toLowerCase();
+
     try {
         const saved = await api("/api/buildings", { method: "POST", headers: jsonHeaders, body: JSON.stringify(payload) });
         print(saved);

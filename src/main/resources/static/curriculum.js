@@ -15,6 +15,7 @@ const ui = {
     form: document.getElementById("subject-form"),
     formBuilding: document.getElementById("subject-building"),
     formClass: document.getElementById("subject-class"),
+    formSubject: document.getElementById("subject-name"),
     subgroupRequired: document.getElementById("subgroup-required"),
     subgroupConfig: document.getElementById("subgroup-config"),
     summaryHead: document.getElementById("summary-head"),
@@ -30,6 +31,7 @@ let selectedBuilding = "";
 let buildings = [];
 let classes = [];
 let curriculumRows = [];
+let subjects = [];
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -54,6 +56,8 @@ function norm(v) { return String(v || "").trim(); }
 function sortRu(arr) { return [...arr].sort((a, b) => String(a).localeCompare(String(b), "ru")); }
 function classToParallel(className) { const m = norm(className).match(/^(\d{1,2})/); return m ? Number(m[1]) : null; }
 function levelLabel(v) { return v === "ADVANCED" ? "Углублённый" : "Базовый"; }
+function levelShort(v) { return v === "ADVANCED" ? "У" : "Б"; }
+function subjectTypeByPart(part) { return part === "EXTRACURRICULAR" ? "EXTRACURRICULAR" : "CORE_FORMABLE"; }
 
 function toggleSubgroupConfig(container, requiredValue) {
     const required = String(requiredValue) === "true";
@@ -179,7 +183,8 @@ function cellHoursMarkup(info, rowMeta) {
     if (!info) return "";
     const mark = info.subgroupRequired ? `<span class="subgroup-mark" title="Деление на подгруппы">д</span>` : "";
     const advancedClass = rowMeta.educationLevel === "ADVANCED" ? "advanced-cell" : "";
-    return `<button class="hours-cell ${advancedClass}" data-id="${esc(info.id)}" data-hours="${esc(info.hours)}">${esc(info.hours)}${mark}</button>`;
+    const lvl = `<span class="mini-level">${esc(levelShort(rowMeta.educationLevel))}</span>`;
+    return `<button class="hours-cell ${advancedClass}" data-id="${esc(info.id)}" data-hours="${esc(info.hours)}">${esc(info.hours)}${mark}${lvl}</button>`;
 }
 
 
@@ -212,7 +217,7 @@ function renderSummaryTable() {
     ui.summaryBody.innerHTML = "";
 
     const directionRow = document.createElement("tr");
-    directionRow.innerHTML = `<th rowspan="2">Блок / предмет / часы</th><th rowspan="2">Уровень</th>${selectedClasses.map((c) => `<th>${esc(c.classDirection)}</th>`).join("")}`;
+    directionRow.innerHTML = `<th rowspan="2">Блок / предмет / часы</th>${selectedClasses.map((c) => `<th>${esc(c.classDirection)}</th>`).join("")}`;
     const classRow = document.createElement("tr");
     classRow.innerHTML = selectedClasses.map((c) => `<th>${esc(c.className)}</th>`).join("");
     ui.summaryHead.appendChild(directionRow);
@@ -222,9 +227,9 @@ function renderSummaryTable() {
         const tr = document.createElement("tr");
         if (row.type === "part") {
             tr.className = "summary-part-row";
-            tr.innerHTML = `<td>${esc(row.title)}</td><td></td>${classKeys.map(() => "<td></td>").join("")}`;
+            tr.innerHTML = `<td>${esc(row.title)}</td>${classKeys.map(() => "<td></td>").join("")}`;
         } else if (row.type === "subject") {
-            tr.innerHTML = `<td>${esc(row.subjectName)}</td><td><button class="level-cell" data-ids="${esc((row.ids || []).join(","))}" data-level="${esc(row.educationLevel)}">${esc(levelLabel(row.educationLevel))}</button></td>` + classKeys.map((k) => `<td class="hours-cell-wrap">${cellHoursMarkup(row.perClass[k], row)}</td>`).join("");
+            tr.innerHTML = `<td>${esc(row.subjectName)}</td>` + classKeys.map((k) => `<td class="hours-cell-wrap">${cellHoursMarkup(row.perClass[k], row)}</td>`).join("");
         } else {
             const calc = classKeys.map((k) => {
                 let value = 0;
@@ -236,7 +241,7 @@ function renderSummaryTable() {
                 return `<td class="summary-value">${value || ""}</td>`;
             }).join("");
             tr.className = "summary-sum-row";
-            tr.innerHTML = `<td>${esc(row.title)}</td><td></td>${calc}`;
+            tr.innerHTML = `<td>${esc(row.title)}</td>${calc}`;
         }
         ui.summaryBody.appendChild(tr);
     });
@@ -263,38 +268,19 @@ function renderSummaryTable() {
         });
     });
 
-    ui.summaryBody.querySelectorAll(".level-cell").forEach((btn) => {
-        btn.addEventListener("click", async () => {
-            const current = String(btn.dataset.level || "BASIC");
-            const next = prompt("Уровень: BASIC или ADVANCED", current);
-            if (next == null) return;
 
-            const normalized = String(next).trim().toUpperCase();
-            if (!["BASIC", "ADVANCED"].includes(normalized)) {
-                print({ error: "Уровень должен быть BASIC или ADVANCED" });
-                return;
-            }
+}
 
-            const ids = String(btn.dataset.ids || "")
-                .split(",")
-                .map((v) => Number(v))
-                .filter((v) => Number.isFinite(v));
 
-            if (!ids.length) return;
-
-            try {
-                for (const id of ids) {
-                    const existing = curriculumRows.find((r) => r.id === id);
-                    if (!existing) continue;
-                    await updateCurriculumEntry(existing, { educationLevel: normalized });
-                }
-                print({ status: "level-updated", ids, educationLevel: normalized });
-                await reload();
-            } catch (error) {
-                print({ error: error.message });
-            }
-        });
-    });
+function renderSubjectOptions() {
+    const part = ui.form.elements.curriculumPart.value || "CORE";
+    const expectedType = subjectTypeByPart(part);
+    const selected = ui.formSubject.value;
+    ui.formSubject.innerHTML = '<option value="">Выберите предмет</option>';
+    subjects.filter((s) => s.subjectType === expectedType)
+        .sort((a,b)=>String(a.subjectName).localeCompare(String(b.subjectName),"ru"))
+        .forEach((s) => { ui.formSubject.innerHTML += `<option value="${esc(s.subjectName)}">${esc(s.subjectName)}</option>`; });
+    if (selected) ui.formSubject.value = selected;
 }
 
 function normalizeForm() {
@@ -316,12 +302,14 @@ function normalizeForm() {
 }
 
 async function reload() {
-    const [curriculum, classRows, buildingRows] = await Promise.all([
+    const [curriculum, classRows, buildingRows, subjectRows] = await Promise.all([
         api("/api/curriculum"),
         api("/api/classroom-leadership"),
-        api("/api/buildings")
+        api("/api/buildings"),
+        api("/api/subjects")
     ]);
     curriculumRows = curriculum || [];
+    subjects = subjectRows || [];
     classes = (classRows || []).map((r) => ({
         numberSchoolBuilding: norm(r.numberSchoolBuilding),
         className: norm(r.className),
@@ -334,6 +322,7 @@ async function reload() {
     renderParallelTabs();
     renderBuildingFilter();
     renderClassOptions();
+    renderSubjectOptions();
     renderSummaryTable();
 }
 
@@ -356,6 +345,7 @@ function bindEvents() {
     });
 
     ui.formBuilding.addEventListener("change", renderClassOptions);
+    ui.form.elements.curriculumPart.addEventListener("change", renderSubjectOptions);
     ui.buildingFilter.addEventListener("change", () => {
         selectedBuilding = norm(ui.buildingFilter.value);
         renderClassOptions();
