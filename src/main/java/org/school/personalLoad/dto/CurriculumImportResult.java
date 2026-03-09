@@ -11,4 +11,5 @@ public class CurriculumImportResult {
     private int deprecated;
     private int classesCreated;
     private int orphanedLoads;
+    private int subjectsImported;
 }

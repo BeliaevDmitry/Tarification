@@ -16,6 +16,8 @@ const ui = {
     formBuilding: document.getElementById("subject-building"),
     formClass: document.getElementById("subject-class"),
     formSubject: document.getElementById("subject-name"),
+    importFile: document.getElementById("curriculum-import-file"),
+    importBtn: document.getElementById("import-curriculum-btn"),
     subgroupRequired: document.getElementById("subgroup-required"),
     subgroupConfig: document.getElementById("subgroup-config"),
     summaryHead: document.getElementById("summary-head"),
@@ -300,6 +302,26 @@ function normalizeForm() {
     };
 }
 
+async function importCurriculumFile() {
+    const file = ui.importFile?.files?.[0];
+    if (!file) {
+        print({ error: "Выберите Excel-файл для импорта" });
+        return;
+    }
+
+    const form = new FormData();
+    form.append("file", file);
+
+    try {
+        const result = await api("/api/curriculum/import", { method: "POST", body: form });
+        print({ status: "imported", ...result });
+        ui.importFile.value = "";
+        await reload();
+    } catch (error) {
+        print({ error: error.message });
+    }
+}
+
 async function reload() {
     const [curriculum, classRows, buildingRows, subjectRows] = await Promise.all([
         api("/api/curriculum"),
@@ -352,6 +374,7 @@ function bindEvents() {
     });
 
     ui.refreshBtn.addEventListener("click", () => reload().catch((error) => print({ error: error.message })));
+    ui.importBtn?.addEventListener("click", importCurriculumFile);
     ui.subgroupRequired.addEventListener("change", () => {
         toggleSubgroupConfig(ui.subgroupConfig, ui.subgroupRequired.value);
         if (ui.subgroupRequired.value === "true") {

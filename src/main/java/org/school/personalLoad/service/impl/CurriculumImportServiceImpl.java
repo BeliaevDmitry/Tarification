@@ -8,6 +8,7 @@ import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
+import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.service.CurriculumImportService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -23,6 +24,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     private final ClassroomLeadershipRepository classroomRepository;
     private final ManualLoadEntryRepository manualLoadRepository;
     private final TeacherDirectoryRepository teacherRepository;
+    private final SubjectCatalogRepository subjectCatalogRepository;
 
     @Override
     public CurriculumImportResult importFile(MultipartFile file) {
@@ -30,7 +32,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
         try {
             List<CurriculumImportRow> parsed = parser.parse(file.getInputStream());
-            int created = 0, updated = 0, classesCreated = 0;
+            int created = 0, updated = 0, classesCreated = 0, subjectsImported = 0;
             Set<Long> importedIds = new HashSet<>();
 
             for (CurriculumImportRow row : parsed) {
@@ -75,6 +77,16 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     classroomRepository.save(cls);
                     classesCreated++;
                 }
+
+                SubjectType subjectType = resolveSubjectType(row.getSubjectName());
+                String normalizedSubject = row.getSubjectName() == null ? "" : row.getSubjectName().trim();
+                if (!normalizedSubject.isBlank() && subjectCatalogRepository.findBySubjectNameAndSubjectType(normalizedSubject, subjectType).isEmpty()) {
+                    SubjectCatalogEntry subjectCatalogEntry = new SubjectCatalogEntry();
+                    subjectCatalogEntry.setSubjectName(normalizedSubject);
+                    subjectCatalogEntry.setSubjectType(subjectType);
+                    subjectCatalogRepository.save(subjectCatalogEntry);
+                    subjectsImported++;
+                }
             }
 
             int deprecated = 0;
@@ -101,10 +113,18 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             }
             manualLoadRepository.saveAll(loads);
 
-            return new CurriculumImportResult(created, updated, deprecated, classesCreated, orphaned);
+            return new CurriculumImportResult(created, updated, deprecated, classesCreated, orphaned, subjectsImported);
         } catch (Exception e) {
             throw new RuntimeException("Не удалось импортировать учебный план", e);
         }
+    }
+
+    private SubjectType resolveSubjectType(String subjectName) {
+        String value = String.valueOf(subjectName == null ? "" : subjectName).trim().toLowerCase(Locale.ROOT);
+        if (value.contains("внеур") || value.contains("разговоры о важном")) {
+            return SubjectType.EXTRACURRICULAR;
+        }
+        return SubjectType.CORE_FORMABLE;
     }
 
     private String keyWithoutBuilding(String c, String s, EducationLevel l) {
