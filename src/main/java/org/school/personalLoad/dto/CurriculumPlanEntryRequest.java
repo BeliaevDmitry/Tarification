@@ -9,7 +9,7 @@ public class CurriculumPlanEntryRequest {
     private String numberSchoolBuilding;
     private String className;
     private String subjectName;
-    private Integer plannedHours;
+    private java.math.BigDecimal plannedHours;
     private boolean subgroupRequired;
     private Integer subgroupCount;
     private EducationLevel educationLevel;

@@ -52,7 +52,7 @@
                 <option value="EXTRACURRICULAR">3) Внеурочная деятельность</option>
             </select>
             <select name="subjectName" id="subject-name" required><option value="">Выберите предмет</option></select>
-            <input name="plannedHours" type="number" min="1" placeholder="Всего часов" required>
+            <input name="plannedHours" type="number" min="0.1" step="0.1" placeholder="Всего часов" required>
             <label>Уровень<select name="educationLevel" required>
                 <option value="BASIC">Базовый</option>
                 <option value="ADVANCED">Углублённый</option>
@@ -92,7 +92,7 @@
     <form method="dialog" id="curriculum-edit-form" class="grid">
         <h3>Редактирование позиции</h3>
         <input type="hidden" name="id">
-        <input name="plannedHours" type="number" min="1" placeholder="Всего часов" required>
+        <input name="plannedHours" type="number" min="0.1" step="0.1" placeholder="Всего часов" required>
         <label>Уровень<select name="educationLevel" required>
             <option value="BASIC">Базовый</option>
             <option value="ADVANCED">Углублённый</option>

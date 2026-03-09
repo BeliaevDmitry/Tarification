@@ -1,6 +1,7 @@
 package org.school.personalLoad.service.impl;
 
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.util.CellAddress;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.school.personalLoad.dto.CurriculumImportRow;
 import org.school.personalLoad.model.CurriculumStage;
@@ -8,10 +9,13 @@ import org.school.personalLoad.model.StudyPeriod;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.util.*;
 
 @Component
 public class CurriculumExcelParser {
+
+    private static final int CLASS_COLUMNS_START = 2; // C
 
     public List<CurriculumImportRow> parse(InputStream inputStream) throws Exception {
         try (Workbook workbook = WorkbookFactory.create(inputStream)) {
@@ -24,93 +28,251 @@ public class CurriculumExcelParser {
     }
 
     private void parseSheet(Sheet sheet, CurriculumStage stage, List<CurriculumImportRow> out) {
-        if (sheet == null) return;
-        String academicYear = "";
-        String className = null;
-        String classDirection = "";
-        StudyPeriod period = StudyPeriod.YEAR;
+        if (sheet == null) {
+            return;
+        }
 
-        for (int i = 0; i <= sheet.getLastRowNum(); i++) {
-            Row row = sheet.getRow(i);
-            if (row == null) continue;
+        String academicYear = extractAcademicYear(sheet);
 
-            String c0 = readMergedCell(sheet, row, 0);
-            String c1 = readMergedCell(sheet, row, 1);
-            String c2 = readMergedCell(sheet, row, 2);
-            String c3 = readMergedCell(sheet, row, 3);
+        int periodRow = findRowIndex(sheet, "период обучения");
+        int directionRow = findRowIndex(sheet, "направленность класса");
+        int teacherRow = findRowIndex(sheet, "фио классного руководителя");
+        int classRow = findRowIndex(sheet, "класс");
+        int requiredPartRow = findRowIndex(sheet, "обязательная часть");
 
-            String line = String.join(" ", List.of(c0, c1, c2, c3)).trim();
-            if (line.contains("учеб") && line.contains("год")) {
-                academicYear = line;
+        if (requiredPartRow < 0 || classRow < 0 || directionRow < 0 || periodRow < 0) {
+            return;
+        }
+
+        int maxCol = findMaxCol(sheet, requiredPartRow);
+        List<ColumnMeta> columns = extractColumnsMeta(sheet, stage, periodRow, directionRow, teacherRow, classRow, maxCol);
+        if (columns.isEmpty()) {
+            return;
+        }
+
+        for (int rowIndex = requiredPartRow + 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+            String subject = extractSubject(sheet, rowIndex);
+            if (subject.isBlank() || isServiceRow(subject)) {
+                continue;
             }
-            if (c0.toLowerCase().contains("класс")) {
-                className = ClassNameNormalizer.normalize(c1);
-            }
-            if (c0.toLowerCase().contains("направлен")) {
-                classDirection = c1;
-            }
-            if (c0.toLowerCase().contains("период")) {
-                period = mapPeriod(c1);
-            }
 
-            String subject = c1.isBlank() ? c2 : c1;
-            if (subject == null || subject.isBlank()) continue;
-            String lower = subject.toLowerCase();
-            if (lower.contains("обязательная часть") || lower.contains("часть, формируемая")) continue;
+            for (ColumnMeta column : columns) {
+                BigDecimal hours = parseHours(readMergedCell(sheet, rowIndex, column.colIndex));
+                if (hours == null || hours.compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
+                }
 
-            Integer hours = parseInt(c3);
-            if (hours == null || hours <= 0 || className == null || className.isBlank()) continue;
-
-            out.add(new CurriculumImportRow(academicYear, stage, className, classDirection, subject.trim(), hours, period));
+                out.add(new CurriculumImportRow(
+                        academicYear,
+                        stage,
+                        column.className,
+                        column.classDirection,
+                        normalizeSubject(subject),
+                        hours,
+                        column.studyPeriod
+                ));
+            }
         }
     }
 
+    private List<ColumnMeta> extractColumnsMeta(Sheet sheet,
+                                                CurriculumStage stage,
+                                                int periodRow,
+                                                int directionRow,
+                                                int teacherRow,
+                                                int classRow,
+                                                int maxCol) {
+        List<ColumnMeta> result = new ArrayList<>();
+        ColumnMeta prev = null;
+
+        for (int col = CLASS_COLUMNS_START; col <= maxCol; col++) {
+            String className = ClassNameNormalizer.normalize(readMergedCell(sheet, classRow, col));
+            String classDirection = normalizeText(readMergedCell(sheet, directionRow, col));
+            String teacherName = teacherRow >= 0 ? normalizeText(readMergedCell(sheet, teacherRow, col)) : "";
+            StudyPeriod period = mapPeriod(readMergedCell(sheet, periodRow, col));
+
+            if (stage == CurriculumStage.SOO && prev != null) {
+                if (className.isBlank()) className = prev.className;
+                if (classDirection.isBlank()) classDirection = prev.classDirection;
+                if (teacherName.isBlank()) teacherName = prev.teacherName;
+            }
+
+            if (className.isBlank()) {
+                continue;
+            }
+
+            if (period == null) {
+                period = StudyPeriod.YEAR;
+            }
+
+            ColumnMeta meta = new ColumnMeta(col, className, classDirection, teacherName, period);
+            result.add(meta);
+            prev = meta;
+        }
+
+        return result;
+    }
+
+    private String extractAcademicYear(Sheet sheet) {
+        for (int row = 0; row <= Math.min(sheet.getLastRowNum(), 20); row++) {
+            for (int col = 0; col <= 8; col++) {
+                String value = normalizeText(readMergedCell(sheet, row, col)).toLowerCase(Locale.ROOT);
+                if (value.contains("учеб") && value.contains("год")) {
+                    return normalizeText(readMergedCell(sheet, row, col));
+                }
+            }
+        }
+        return "";
+    }
+
+    private int findRowIndex(Sheet sheet, String marker) {
+        String m = marker.toLowerCase(Locale.ROOT);
+        for (int row = 0; row <= sheet.getLastRowNum(); row++) {
+            for (int col = 0; col <= Math.max(10, findMaxCol(sheet, row)); col++) {
+                String value = normalizeText(readMergedCell(sheet, row, col)).toLowerCase(Locale.ROOT);
+                if (value.contains(m)) {
+                    return row;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private int findMaxCol(Sheet sheet, int rowIndex) {
+        int max = CLASS_COLUMNS_START;
+        for (int row = 0; row <= Math.min(sheet.getLastRowNum(), Math.max(rowIndex + 10, 40)); row++) {
+            Row r = sheet.getRow(row);
+            if (r != null && r.getLastCellNum() > max) {
+                max = Math.max(max, r.getLastCellNum() - 1);
+            }
+        }
+        return max;
+    }
+
+    private String extractSubject(Sheet sheet, int rowIndex) {
+        String a = normalizeText(readMergedCell(sheet, rowIndex, 0));
+        String b = normalizeText(readMergedCell(sheet, rowIndex, 1));
+
+        if (isMergedCell(sheet, rowIndex, 0)) {
+            return a;
+        }
+        return b.isBlank() ? a : b;
+    }
+
+    private boolean isServiceRow(String subject) {
+        String value = normalizeText(subject).toLowerCase(Locale.ROOT);
+        if (value.isBlank()) return true;
+
+        List<String> markers = List.of(
+                "обязательная часть",
+                "часть, формируемая участниками образовательных отношений",
+                "внеурочная деятельность",
+                "итого",
+                "всего",
+                "максимально допустим",
+                "недельная нагрузка",
+                "учебный план",
+                "аудиторная нагрузка"
+        );
+
+        return markers.stream().anyMatch(value::contains);
+    }
+
     private StudyPeriod mapPeriod(String raw) {
-        String v = String.valueOf(raw == null ? "" : raw).trim().toUpperCase(Locale.ROOT);
-        if (v.contains("1П") || v.contains("1 П")) return StudyPeriod.H1;
-        if (v.contains("2П") || v.contains("2 П")) return StudyPeriod.H2;
+        String value = normalizeText(raw).toUpperCase(Locale.ROOT).replace(" ", "");
+        if (value.isBlank()) return StudyPeriod.YEAR;
+        if (value.contains("1П")) return StudyPeriod.H1;
+        if (value.contains("2П")) return StudyPeriod.H2;
         return StudyPeriod.YEAR;
     }
 
-    private Integer parseInt(String value) {
+    private BigDecimal parseHours(String raw) {
+        String value = normalizeText(raw)
+                .replace("\u00A0", "")
+                .replace(" ", "")
+                .replace(',', '.');
+        if (value.isBlank()) {
+            return null;
+        }
         try {
-            String v = String.valueOf(value == null ? "" : value).trim().replace(',', '.');
-            if (v.isBlank()) return null;
-            return (int) Math.round(Double.parseDouble(v));
+            return new BigDecimal(value);
         } catch (Exception ignored) {
             return null;
         }
     }
 
-    private String readMergedCell(Sheet sheet, Row row, int col) {
-        Cell cell = row.getCell(col);
-        if (cell == null) {
-            for (CellRangeAddress range : sheet.getMergedRegions()) {
-                if (range.isInRange(row.getRowNum(), col)) {
-                    Row firstRow = sheet.getRow(range.getFirstRow());
-                    if (firstRow == null) return "";
-                    Cell first = firstRow.getCell(range.getFirstColumn());
-                    return readCell(first);
-                }
-            }
-            return "";
+    private String readMergedCell(Sheet sheet, int rowIndex, int colIndex) {
+        Row row = sheet.getRow(rowIndex);
+        Cell cell = row == null ? null : row.getCell(colIndex);
+        String direct = readCell(cell);
+        if (!direct.isBlank()) {
+            return direct;
         }
-        return readCell(cell);
+
+        for (CellRangeAddress range : sheet.getMergedRegions()) {
+            if (range.isInRange(new CellAddress(rowIndex, colIndex))) {
+                Row firstRow = sheet.getRow(range.getFirstRow());
+                Cell firstCell = firstRow == null ? null : firstRow.getCell(range.getFirstColumn());
+                return readCell(firstCell);
+            }
+        }
+        return "";
+    }
+
+    private boolean isMergedCell(Sheet sheet, int rowIndex, int colIndex) {
+        for (CellRangeAddress range : sheet.getMergedRegions()) {
+            if (range.isInRange(new CellAddress(rowIndex, colIndex))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String readCell(Cell cell) {
         if (cell == null) return "";
         return switch (cell.getCellType()) {
-            case STRING -> cell.getStringCellValue().trim();
-            case NUMERIC -> String.valueOf(cell.getNumericCellValue());
-            case FORMULA -> {
-                try {
-                    yield cell.getStringCellValue().trim();
-                } catch (Exception e) {
-                    try { yield String.valueOf(cell.getNumericCellValue()); } catch (Exception ignored) { yield ""; }
-                }
-            }
+            case STRING -> normalizeText(cell.getStringCellValue());
+            case NUMERIC -> normalizeText(BigDecimal.valueOf(cell.getNumericCellValue()).stripTrailingZeros().toPlainString());
+            case BOOLEAN -> String.valueOf(cell.getBooleanCellValue());
+            case FORMULA -> readFormulaCell(cell);
             default -> "";
         };
+    }
+
+    private String readFormulaCell(Cell cell) {
+        try {
+            return normalizeText(cell.getStringCellValue());
+        } catch (Exception ignored) {
+            try {
+                return normalizeText(BigDecimal.valueOf(cell.getNumericCellValue()).stripTrailingZeros().toPlainString());
+            } catch (Exception ignored2) {
+                return "";
+            }
+        }
+    }
+
+    private String normalizeText(String value) {
+        if (value == null) return "";
+        return value.replace('\u00A0', ' ').replaceAll("\\s+", " ").trim();
+    }
+
+    private String normalizeSubject(String subject) {
+        return normalizeText(subject);
+    }
+
+    private static class ColumnMeta {
+        private final int colIndex;
+        private final String className;
+        private final String classDirection;
+        private final String teacherName;
+        private final StudyPeriod studyPeriod;
+
+        private ColumnMeta(int colIndex, String className, String classDirection, String teacherName, StudyPeriod studyPeriod) {
+            this.colIndex = colIndex;
+            this.className = className;
+            this.classDirection = classDirection;
+            this.teacherName = teacherName;
+            this.studyPeriod = studyPeriod;
+        }
     }
 }

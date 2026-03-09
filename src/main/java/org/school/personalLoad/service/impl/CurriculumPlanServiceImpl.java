@@ -131,7 +131,7 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         if (request.getSubjectName() == null || request.getSubjectName().isBlank()) {
             throw new IllegalArgumentException("subjectName is required");
         }
-        if (request.getPlannedHours() == null || request.getPlannedHours() <= 0) {
+        if (request.getPlannedHours() == null || request.getPlannedHours().compareTo(java.math.BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("plannedHours must be > 0");
         }
         if (request.getEducationLevel() == null) {

@@ -40,7 +40,7 @@ public class CurriculumPlanEntry {
     private String subjectName;
 
     @Column(nullable = false)
-    private Integer plannedHours;
+    private java.math.BigDecimal plannedHours;
 
     @Column(nullable = false)
     private boolean subgroupRequired;

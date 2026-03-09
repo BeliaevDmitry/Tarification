@@ -16,6 +16,7 @@ import org.school.personalLoad.service.ManualLoadService;
 import org.school.personalLoad.service.TarifficationProcessingService;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -95,7 +96,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                             key.educationLevel,
                             summary.plannedHours,
                             summary.actualHours,
-                            summary.plannedHours - summary.actualHours
+                            summary.plannedHours.subtract(summary.actualHours)
                     );
                 })
                 .sorted((a, b) -> {
@@ -139,7 +140,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                         ", subject=" + entry.getSubjectName() + ", level=" + entry.getEducationLevel()));
 
         int effectiveLoad = entry.getGroupLoad() != null ? entry.getGroupLoad() : entry.getLoad();
-        if (effectiveLoad > rule.getPlannedHours()) {
+        if (BigDecimal.valueOf(effectiveLoad).compareTo(rule.getPlannedHours()) > 0) {
             throw new IllegalArgumentException("Load exceeds planned hours for curriculum rule");
         }
 
@@ -154,16 +155,16 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
 
     private static class SummaryAccumulator {
-        private final int plannedHours;
-        private int actualHours;
+        private final BigDecimal plannedHours;
+        private BigDecimal actualHours;
 
-        private SummaryAccumulator(int plannedHours) {
-            this.plannedHours = plannedHours;
-            this.actualHours = 0;
+        private SummaryAccumulator(BigDecimal plannedHours) {
+            this.plannedHours = plannedHours == null ? BigDecimal.ZERO : plannedHours;
+            this.actualHours = BigDecimal.ZERO;
         }
 
         private void addActualHours(int hours) {
-            this.actualHours += hours;
+            this.actualHours = this.actualHours.add(BigDecimal.valueOf(hours));
         }
     }
 

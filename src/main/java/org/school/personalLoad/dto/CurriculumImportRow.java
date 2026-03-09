@@ -13,6 +13,6 @@ public class CurriculumImportRow {
     private String className;
     private String classDirection;
     private String subjectName;
-    private Integer plannedHours;
+    private java.math.BigDecimal plannedHours;
     private StudyPeriod studyPeriod;
 }

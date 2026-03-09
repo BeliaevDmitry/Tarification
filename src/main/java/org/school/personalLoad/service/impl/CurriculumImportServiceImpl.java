@@ -34,6 +34,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             List<CurriculumImportRow> parsed = parser.parse(file.getInputStream());
             int created = 0, updated = 0, classesCreated = 0, subjectsImported = 0;
             Set<Long> importedIds = new HashSet<>();
+            Map<String, SubjectCatalogEntry> existingSubjects = new HashMap<>();
+            subjectCatalogRepository.findAll().forEach(s -> existingSubjects.put(subjectKey(s.getSubjectName(), s.getSubjectType()), s));
 
             for (CurriculumImportRow row : parsed) {
                 CurriculumPlanEntry entry = curriculumRepository
@@ -79,12 +81,13 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 }
 
                 SubjectType subjectType = resolveSubjectType(row.getSubjectName());
-                String normalizedSubject = row.getSubjectName() == null ? "" : row.getSubjectName().trim();
-                if (!normalizedSubject.isBlank() && subjectCatalogRepository.findBySubjectNameAndSubjectType(normalizedSubject, subjectType).isEmpty()) {
+                String normalizedSubject = normalizeSubject(row.getSubjectName());
+                String subjectKey = subjectKey(normalizedSubject, subjectType);
+                if (!normalizedSubject.isBlank() && !existingSubjects.containsKey(subjectKey)) {
                     SubjectCatalogEntry subjectCatalogEntry = new SubjectCatalogEntry();
                     subjectCatalogEntry.setSubjectName(normalizedSubject);
                     subjectCatalogEntry.setSubjectType(subjectType);
-                    subjectCatalogRepository.save(subjectCatalogEntry);
+                    existingSubjects.put(subjectKey, subjectCatalogRepository.save(subjectCatalogEntry));
                     subjectsImported++;
                 }
             }
@@ -125,6 +128,14 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             return SubjectType.EXTRACURRICULAR;
         }
         return SubjectType.CORE_FORMABLE;
+    }
+
+    private String normalizeSubject(String value) {
+        return String.valueOf(value == null ? "" : value).replace('\u00A0', ' ').replaceAll("\\s+", " ").trim();
+    }
+
+    private String subjectKey(String name, SubjectType type) {
+        return normalizeSubject(name).toLowerCase(Locale.ROOT) + "|" + type.name();
     }
 
     private String keyWithoutBuilding(String c, String s, EducationLevel l) {
