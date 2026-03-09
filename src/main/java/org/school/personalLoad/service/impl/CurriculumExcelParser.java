@@ -34,11 +34,11 @@ public class CurriculumExcelParser {
 
         String academicYear = extractAcademicYear(sheet);
 
-        int periodRow = findRowIndex(sheet, "период обучения");
-        int directionRow = findRowIndex(sheet, "направленность класса");
-        int teacherRow = findRowIndex(sheet, "фио классного руководителя");
-        int classRow = findRowIndex(sheet, "класс");
-        int requiredPartRow = findRowIndex(sheet, "обязательная часть");
+        int periodRow = findHeaderRowIndex(sheet, "период обучения");
+        int directionRow = findHeaderRowIndex(sheet, "направленность класса");
+        int teacherRow = findHeaderRowIndex(sheet, "фио классного руководителя");
+        int classRow = findHeaderRowIndex(sheet, "класс");
+        int requiredPartRow = findHeaderRowIndex(sheet, "обязательная часть");
 
         if (requiredPartRow < 0 || classRow < 0 || directionRow < 0 || periodRow < 0) {
             return;
@@ -125,12 +125,22 @@ public class CurriculumExcelParser {
         return "";
     }
 
-    private int findRowIndex(Sheet sheet, String marker) {
-        String m = marker.toLowerCase(Locale.ROOT);
+    private int findHeaderRowIndex(Sheet sheet, String marker) {
+        String m = normalizeText(marker).toLowerCase(Locale.ROOT);
+
+        // Основной источник: колонка A, т.к. в вашем шаблоне маркеры именно там.
         for (int row = 0; row <= sheet.getLastRowNum(); row++) {
-            for (int col = 0; col <= Math.max(10, findMaxCol(sheet, row)); col++) {
+            String a = normalizeText(readMergedCell(sheet, row, 0)).toLowerCase(Locale.ROOT);
+            if (a.equals(m) || a.startsWith(m)) {
+                return row;
+            }
+        }
+
+        // Fallback: поиск в первых двух колонках для нестандартных файлов.
+        for (int row = 0; row <= sheet.getLastRowNum(); row++) {
+            for (int col = 0; col <= 1; col++) {
                 String value = normalizeText(readMergedCell(sheet, row, col)).toLowerCase(Locale.ROOT);
-                if (value.contains(m)) {
+                if (value.equals(m) || value.startsWith(m)) {
                     return row;
                 }
             }
