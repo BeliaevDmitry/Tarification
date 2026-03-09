@@ -1,0 +1,113 @@
+package org.school.personalLoad.service.impl;
+
+import lombok.RequiredArgsConstructor;
+import org.school.personalLoad.dto.CurriculumImportResult;
+import org.school.personalLoad.dto.CurriculumImportRow;
+import org.school.personalLoad.model.*;
+import org.school.personalLoad.repository.ClassroomLeadershipRepository;
+import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
+import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.TeacherDirectoryRepository;
+import org.school.personalLoad.service.CurriculumImportService;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.*;
+
+@Service
+@RequiredArgsConstructor
+public class CurriculumImportServiceImpl implements CurriculumImportService {
+
+    private final CurriculumExcelParser parser;
+    private final CurriculumPlanEntryRepository curriculumRepository;
+    private final ClassroomLeadershipRepository classroomRepository;
+    private final ManualLoadEntryRepository manualLoadRepository;
+    private final TeacherDirectoryRepository teacherRepository;
+
+    @Override
+    public CurriculumImportResult importFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) throw new IllegalArgumentException("Файл обязателен");
+
+        try {
+            List<CurriculumImportRow> parsed = parser.parse(file.getInputStream());
+            int created = 0, updated = 0, classesCreated = 0;
+            Set<Long> importedIds = new HashSet<>();
+
+            for (CurriculumImportRow row : parsed) {
+                CurriculumPlanEntry entry = curriculumRepository
+                        .findFirstByAcademicYearAndStageAndClassNameAndSubjectNameAndStudyPeriod(
+                                row.getAcademicYear(), row.getStage(), row.getClassName(), row.getSubjectName(), row.getStudyPeriod())
+                        .orElseGet(CurriculumPlanEntry::new);
+
+                boolean isNew = entry.getId() == null;
+                entry.setAcademicYear(row.getAcademicYear());
+                entry.setStage(row.getStage());
+                entry.setClassName(row.getClassName());
+                entry.setSubjectName(row.getSubjectName());
+                entry.setStudyPeriod(row.getStudyPeriod());
+                entry.setPlannedHours(row.getPlannedHours());
+                entry.setDeprecated(false);
+                if (isNew) {
+                    entry.setNumberSchoolBuilding("СП0");
+                    entry.setEducationLevel(EducationLevel.BASIC);
+                    entry.setCurriculumPart(CurriculumPart.CORE);
+                    entry.setSubgroupRequired(false);
+                    entry.setSubgroupCount(0);
+                }
+
+                if (entry.getEducationLevel() != EducationLevel.ADVANCED) {
+                    entry.setEducationLevel(EducationLevel.BASIC);
+                }
+                if ("СП0".equalsIgnoreCase(entry.getNumberSchoolBuilding()) || entry.getNumberSchoolBuilding() == null || entry.getNumberSchoolBuilding().isBlank()) {
+                    entry.setNumberSchoolBuilding("СП0");
+                }
+
+                CurriculumPlanEntry saved = curriculumRepository.save(entry);
+                importedIds.add(saved.getId());
+                if (isNew) created++; else updated++;
+
+                if (!classroomRepository.existsByNumberSchoolBuildingAndClassName("СП0", row.getClassName())) {
+                    ClassroomLeadershipEntry cls = new ClassroomLeadershipEntry();
+                    cls.setNumberSchoolBuilding("СП0");
+                    cls.setClassName(row.getClassName());
+                    cls.setClassDirection(row.getClassDirection() == null || row.getClassDirection().isBlank() ? "Не указана" : row.getClassDirection());
+                    cls.setFioTeacher(teacherRepository.findAll().stream().findFirst().map(TeacherDirectoryEntry::getFioTeacher).orElse("Не назначен"));
+                    classroomRepository.save(cls);
+                    classesCreated++;
+                }
+            }
+
+            int deprecated = 0;
+            List<CurriculumPlanEntry> all = curriculumRepository.findAll();
+            for (CurriculumPlanEntry e : all) {
+                boolean shouldDeprecate = !importedIds.contains(e.getId());
+                if (shouldDeprecate && !e.isDeprecated()) {
+                    e.setDeprecated(true);
+                    curriculumRepository.save(e);
+                    deprecated++;
+                }
+            }
+
+            Set<String> activeKeys = new HashSet<>();
+            curriculumRepository.findAll().stream().filter(e -> !e.isDeprecated()).forEach(e ->
+                    activeKeys.add(keyWithoutBuilding(e.getClassName(), e.getSubjectName(), e.getEducationLevel())));
+
+            int orphaned = 0;
+            List<ManualLoadEntry> loads = manualLoadRepository.findAll();
+            for (ManualLoadEntry l : loads) {
+                boolean isOrphan = !activeKeys.contains(keyWithoutBuilding(ClassNameNormalizer.normalize(l.getClassName()), l.getSubjectName(), l.getEducationLevel()));
+                l.setOrphaned(isOrphan);
+                if (isOrphan) orphaned++;
+            }
+            manualLoadRepository.saveAll(loads);
+
+            return new CurriculumImportResult(created, updated, deprecated, classesCreated, orphaned);
+        } catch (Exception e) {
+            throw new RuntimeException("Не удалось импортировать учебный план", e);
+        }
+    }
+
+    private String keyWithoutBuilding(String c, String s, EducationLevel l) {
+        return String.join("|", String.valueOf(c).trim(), String.valueOf(s).trim(), String.valueOf(l));
+    }
+}

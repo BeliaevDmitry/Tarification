@@ -8,8 +8,14 @@ const ui = {
     refreshBtn: document.getElementById("refresh-subjects-btn"),
     clearBtn: document.getElementById("clear-subjects-btn"),
     result: document.getElementById("subjects-result"),
-    body: document.getElementById("subjects-body")
+    body: document.getElementById("subjects-body"),
+    editDialog: document.getElementById("subject-edit-dialog"),
+    editForm: document.getElementById("subject-edit-form"),
+    deleteBtn: document.getElementById("subject-delete-btn"),
+    closeBtn: document.getElementById("subject-close-btn")
 };
+
+let subjects = [];
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -28,14 +34,22 @@ function render(rows) {
     ui.body.innerHTML = "";
     (rows || []).sort((a,b)=>String(a.subjectName).localeCompare(String(b.subjectName),"ru")).forEach((r) => {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${esc(r.subjectName)}</td><td>${esc(typeLabel(r.subjectType))}</td><td>${esc(r.createdAt)}</td>`;
+        tr.innerHTML = `<td>${esc(r.subjectName)}</td><td>${esc(typeLabel(r.subjectType))}</td>`;
+        tr.addEventListener('click', () => openEdit(r));
         ui.body.appendChild(tr);
     });
 }
 
+function openEdit(subject) {
+    ui.editForm.elements.id.value = String(subject.id);
+    ui.editForm.elements.subjectName.value = subject.subjectName;
+    ui.editForm.elements.subjectType.value = subject.subjectType;
+    ui.editDialog.showModal();
+}
+
 async function reload() {
-    const rows = await api('/api/subjects');
-    render(rows || []);
+    subjects = await api('/api/subjects');
+    render(subjects || []);
 }
 
 ui.importBtn.addEventListener('click', async () => {
@@ -63,6 +77,35 @@ ui.form.addEventListener('submit', async (e) => {
     } catch (e) { print({ error: e.message }); }
 });
 
+ui.editForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = Number(ui.editForm.elements.id.value);
+    try {
+        const result = await api(`/api/subjects/${id}`, {
+            method: 'PATCH', headers: jsonHeaders,
+            body: JSON.stringify({
+                subjectName: ui.editForm.elements.subjectName.value.trim(),
+                subjectType: ui.editForm.elements.subjectType.value
+            })
+        });
+        ui.editDialog.close();
+        print(result);
+        await reload();
+    } catch (e) { print({ error: e.message }); }
+});
+
+ui.deleteBtn.addEventListener('click', async () => {
+    const id = Number(ui.editForm.elements.id.value);
+    if (!confirm('Удалить предмет?')) return;
+    try {
+        await api(`/api/subjects/${id}`, { method: 'DELETE' });
+        ui.editDialog.close();
+        print({ status: 'deleted', id });
+        await reload();
+    } catch (e) { print({ error: e.message }); }
+});
+
+ui.closeBtn.addEventListener('click', () => ui.editDialog.close());
 ui.refreshBtn.addEventListener('click', () => reload().catch((e) => print({ error: e.message })));
 ui.clearBtn.addEventListener('click', async () => {
     try { await api('/api/subjects', { method: 'DELETE' }); print({ status: 'cleared' }); await reload(); }

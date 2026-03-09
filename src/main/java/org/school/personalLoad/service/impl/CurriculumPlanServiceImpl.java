@@ -40,7 +40,7 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         entity.setSubjectName(request.getSubjectName().trim());
         entity.setPlannedHours(request.getPlannedHours());
         entity.setSubgroupRequired(request.isSubgroupRequired());
-        entity.setSubgroupCount(request.isSubgroupRequired() ? request.getSubgroupCount() : 0);
+        entity.setSubgroupCount(request.isSubgroupRequired() ? 2 : 0);
         entity.setEducationLevel(request.getEducationLevel());
         entity.setSubgroup1Hours(request.isSubgroupRequired() ? request.getSubgroup1Hours() : null);
         entity.setSubgroup1EducationLevel(request.isSubgroupRequired() ? request.getSubgroup1EducationLevel() : null);
@@ -80,7 +80,7 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         entity.setSubjectName(request.getSubjectName().trim());
         entity.setPlannedHours(request.getPlannedHours());
         entity.setSubgroupRequired(request.isSubgroupRequired());
-        entity.setSubgroupCount(request.isSubgroupRequired() ? request.getSubgroupCount() : 0);
+        entity.setSubgroupCount(request.isSubgroupRequired() ? 2 : 0);
         entity.setEducationLevel(request.getEducationLevel());
         entity.setSubgroup1Hours(request.isSubgroupRequired() ? request.getSubgroup1Hours() : null);
         entity.setSubgroup1EducationLevel(request.isSubgroupRequired() ? request.getSubgroup1EducationLevel() : null);
@@ -100,10 +100,23 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
 
     @Override
     public Optional<CurriculumPlanEntry> findRule(String numberSchoolBuilding, String className, String subjectName, EducationLevel educationLevel) {
-        return repository.findFirstByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevel(
+        String normalizedClass = ClassNameNormalizer.normalize(className);
+        String normalizedSubject = subjectName == null ? "" : subjectName.trim();
+
+        Optional<CurriculumPlanEntry> exactRule = repository.findFirstByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndDeprecatedFalse(
                 numberSchoolBuilding,
-                ClassNameNormalizer.normalize(className),
-                subjectName,
+                normalizedClass,
+                normalizedSubject,
+                educationLevel
+        );
+
+        if (exactRule.isPresent()) {
+            return exactRule;
+        }
+
+        return repository.findFirstByClassNameAndSubjectNameAndEducationLevelAndDeprecatedFalse(
+                normalizedClass,
+                normalizedSubject,
                 educationLevel
         );
     }
@@ -123,9 +136,6 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         }
         if (request.getEducationLevel() == null) {
             throw new IllegalArgumentException("educationLevel is required");
-        }
-        if (request.isSubgroupRequired() && (request.getSubgroupCount() == null || request.getSubgroupCount() < 2)) {
-            throw new IllegalArgumentException("subgroupCount must be >= 2 when subgroupRequired=true");
         }
         if (request.isSubgroupRequired()) {
             if (request.getSubgroup1Hours() == null || request.getSubgroup1Hours() <= 0) {

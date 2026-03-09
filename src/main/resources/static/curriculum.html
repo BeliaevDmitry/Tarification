@@ -46,13 +46,12 @@
             <label>Уровень<select name="educationLevel" required>
                 <option value="BASIC">Базовый</option>
                 <option value="ADVANCED">Углублённый</option>
-            </select>
+            </select></label>
             <select name="subgroupRequired" id="subgroup-required" required>
                 <option value="false">Без деления</option>
                 <option value="true">С делением</option>
             </select>
-            <input name="subgroupCount" type="number" min="2" placeholder="Кол-во подгрупп" value="2">
-            <div id="subgroup-config" class="grid subgroup-config hidden">
+                        <div id="subgroup-config" class="grid subgroup-config hidden">
                 <input name="subgroup1Hours" type="number" min="1" placeholder="1 подгруппа, часы">
                 <select name="subgroup1EducationLevel">
                     <option value="BASIC">1 подгруппа: Базовый</option>
@@ -92,8 +91,7 @@
             <option value="false">Без деления</option>
             <option value="true">С делением</option>
         </select></label>
-        <input name="subgroupCount" type="number" min="2" placeholder="Деление на группы" value="2">
-        <input name="subgroup1Hours" type="number" min="1" placeholder="1 подгруппа, часы">
+                <input name="subgroup1Hours" type="number" min="1" placeholder="1 подгруппа, часы">
         <select name="subgroup1EducationLevel">
             <option value="BASIC">1 подгруппа: Базовый</option>
             <option value="ADVANCED">1 подгруппа: Углублённый</option>

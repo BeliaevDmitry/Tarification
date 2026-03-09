@@ -8,7 +8,14 @@ const ui = {
     tableHead: document.getElementById("building-load-head"),
     tableBody: document.getElementById("building-load-body"),
     sortField: document.getElementById("sort-field-select"),
-    sortDirection: document.getElementById("sort-direction-select")
+    sortDirection: document.getElementById("sort-direction-select"),
+    periodDialog: document.getElementById("load-period-dialog"),
+    periodForm: document.getElementById("load-period-form"),
+    removeLoadBtn: document.getElementById("load-remove-btn"),
+    cancelLoadBtn: document.getElementById("load-cancel-btn"),
+    unassignedHours: document.getElementById("unassigned-hours"),
+    errorCount: document.getElementById("error-count"),
+    nextErrorBtn: document.getElementById("next-error-btn")
 };
 
 let curriculumRows = [];
@@ -484,6 +491,12 @@ function setTeacherForRow(subjectKey, teacherRowId, value) {
 }
 
 
+
+function findTeacherRowMeta(subjectKey, teacherRowId) {
+    const rowsMap = teacherRowsForBuilding(selectedBuilding);
+    return (rowsMap[subjectKey] || []).find((entry) => entry.id === teacherRowId) || null;
+}
+
 function setPeriodForRow(subjectKey, teacherRowId, fromDate, toDate) {
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
     const row = (rowsMap[subjectKey] || []).find((entry) => entry.id === teacherRowId);
@@ -505,23 +518,70 @@ function onClassCellClick(presentationRow, className) {
     }
 
     const apiKey = apiKeyOfRow(curriculumRow);
-    if (assignments[apiKey] === targetTeacher) {
-        assignments[apiKey] = "";
-        markDirty();
-    } else {
+    const currentTeacher = String(assignments[apiKey] || "").trim();
+
+    if (!currentTeacher) {
         assignments[apiKey] = targetTeacher;
-        const rowsMap = teacherRowsForBuilding(selectedBuilding);
-        const rowMeta = (rowsMap[presentationRow.subjectKey] || []).find((r) => r.id === presentationRow.teacherRowId);
-        if (rowMeta) {
-            const from = prompt("Период нагрузки с (YYYY-MM-DD)", rowMeta.loadFromDate || defaultLoadPeriod().from);
-            if (from) rowMeta.loadFromDate = from;
-            const to = prompt("Период нагрузки по (YYYY-MM-DD)", rowMeta.loadToDate || defaultLoadPeriod().to);
-            if (to) rowMeta.loadToDate = to;
-        }
         markDirty();
+        renderTable();
+        return;
     }
 
-    renderTable();
+    if (currentTeacher !== targetTeacher) {
+        print({ warning: `Часы уже назначены педагогу «${currentTeacher}». Сначала снимите назначение у текущего педагога.` });
+        return;
+    }
+
+    const rowMeta = findTeacherRowMeta(presentationRow.subjectKey, presentationRow.teacherRowId);
+    const period = defaultLoadPeriod();
+    ui.periodForm.elements.subjectKey.value = presentationRow.subjectKey;
+    ui.periodForm.elements.rowId.value = presentationRow.teacherRowId;
+    ui.periodForm.elements.className.value = className;
+    ui.periodForm.elements.loadFromDate.value = rowMeta?.loadFromDate || period.from;
+    ui.periodForm.elements.loadToDate.value = rowMeta?.loadToDate || period.to;
+    ui.periodDialog.showModal();
+}
+
+function collectLoadIssues(presentationRows, classes) {
+    let unassignedHours = 0;
+    let errorCount = 0;
+    const errors = [];
+
+    presentationRows.forEach((row) => {
+        if (row.teacherName && !teacherExists(row.teacherName)) {
+            errorCount += 1;
+        }
+        classes.forEach((className) => {
+            const curriculumRow = row.rowsByClass[className];
+            if (!curriculumRow) return;
+            const assignedTeacher = String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)] || "").trim();
+            if (!assignedTeacher) {
+                unassignedHours += Number(curriculumRow.plannedHours || 0);
+                errorCount += 1;
+            }
+        });
+    });
+
+    (manualRows || []).filter((r) => String(r.numberSchoolBuilding||"").trim()===selectedBuilding).forEach((r)=>{
+        if (r.orphaned) {
+            errorCount += 1;
+            errors.push(`orphan-${r.id}`);
+        }
+    });
+
+    ui.unassignedHours.textContent = String(unassignedHours);
+    ui.errorCount.textContent = String(errorCount);
+    return { errors };
+}
+
+function jumpToFirstError() {
+    const missingTeacher = ui.tableBody.querySelector('.dismissal-note');
+    const unassigned = ui.tableBody.querySelector('.hour-pill.unassigned');
+    const target = missingTeacher ? missingTeacher.closest('tr') : (unassigned ? unassigned.closest('tr') : null);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.add('error-row-highlight');
+    setTimeout(() => target.classList.remove('error-row-highlight'), 1400);
 }
 
 function renderTable() {
@@ -537,6 +597,7 @@ function renderTable() {
 
     const classes = classesForSelectedBuilding();
     const presentationRows = buildPresentationRows();
+    collectLoadIssues(presentationRows, classes);
 
     const head = document.createElement("tr");
     head.innerHTML = `
@@ -703,6 +764,40 @@ async function refreshSourceData() {
 
 function bindEvents() {
     ui.saveBuildingBtn.addEventListener("click", saveBuildingLoad);
+    ui.periodForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const subjectKey = ui.periodForm.elements.subjectKey.value;
+        const rowId = ui.periodForm.elements.rowId.value;
+        const fromDate = ui.periodForm.elements.loadFromDate.value;
+        const toDate = ui.periodForm.elements.loadToDate.value;
+        if (fromDate > toDate) {
+            print({ error: "Период задан некорректно" });
+            return;
+        }
+        setPeriodForRow(subjectKey, rowId, fromDate, toDate);
+        ui.periodDialog.close();
+        renderTable();
+    });
+
+    ui.removeLoadBtn.addEventListener("click", () => {
+        const subjectKey = ui.periodForm.elements.subjectKey.value;
+        const rowId = ui.periodForm.elements.rowId.value;
+        const className = ui.periodForm.elements.className.value;
+        const rowsMap = teacherRowsForBuilding(selectedBuilding);
+        const rowMeta = (rowsMap[subjectKey] || []).find((r) => r.id === rowId);
+        const row = buildPresentationRows().find((r) => r.subjectKey === subjectKey && r.teacherRowId === rowId);
+        const curriculumRow = row?.rowsByClass?.[className];
+        if (rowMeta && curriculumRow) {
+            const assignments = assignmentsForBuilding(selectedBuilding);
+            assignments[apiKeyOfRow(curriculumRow)] = "";
+            markDirty();
+        }
+        ui.periodDialog.close();
+        renderTable();
+    });
+
+    ui.cancelLoadBtn.addEventListener("click", () => ui.periodDialog.close());
+
 
     ui.refreshLoadBtn.addEventListener("click", () => {
         refreshSourceData()
@@ -721,6 +816,8 @@ function bindEvents() {
         state.forceResort = true;
         renderTable();
     });
+
+    ui.nextErrorBtn.addEventListener("click", jumpToFirstError);
 }
 
 async function init() {

@@ -35,6 +35,12 @@ public class TeacherDirectoryController {
         return ResponseEntity.ok(teacherDirectoryService.markForDismissal(teacherId, request.getDismissalDate()));
     }
 
+
+    @PatchMapping("/{teacherId}/restore")
+    public ResponseEntity<TeacherDirectoryEntry> restore(@PathVariable Long teacherId) {
+        return ResponseEntity.ok(teacherDirectoryService.restore(teacherId));
+    }
+
     @DeleteMapping("/{teacherId}")
     public ResponseEntity<Void> deleteById(@PathVariable Long teacherId) {
         teacherDirectoryService.deleteById(teacherId);

@@ -26,6 +26,7 @@
         <div class="row">
             <input id="subject-file" type="file" accept=".xls,.xlsx">
             <button id="import-subjects-btn" type="button">Импортировать</button>
+            <a id="download-subject-template" href="/api/subjects/template" class="nav-link">Скачать шаблон</a>
         </div>
         <h2>Ручное добавление</h2>
         <form id="subject-form" class="row">
@@ -45,12 +46,30 @@
         <h2>Список предметов</h2>
         <div class="sheet-wrap">
             <table class="sheet-table">
-                <thead><tr><th>Предмет</th><th>Тип</th><th>Создано</th></tr></thead>
+                <thead><tr><th>Предмет</th><th>Тип</th></tr></thead>
                 <tbody id="subjects-body"></tbody>
             </table>
         </div>
     </section>
 </main>
+
+<dialog id="subject-edit-dialog">
+    <form method="dialog" id="subject-edit-form" class="grid">
+        <h3>Редактирование предмета</h3>
+        <input type="hidden" name="id">
+        <input name="subjectName" placeholder="Название предмета" required>
+        <select name="subjectType" required>
+            <option value="CORE_FORMABLE">1 тип: основная/формируемая часть</option>
+            <option value="EXTRACURRICULAR">2 тип: внеурочная деятельность</option>
+        </select>
+        <div class="row">
+            <button type="submit">Сохранить</button>
+            <button type="button" id="subject-delete-btn" class="danger-btn">Удалить</button>
+            <button type="button" id="subject-close-btn">Отмена</button>
+        </div>
+    </form>
+</dialog>
+
 <script src="/subjects.js"></script>
 </body>
 </html>

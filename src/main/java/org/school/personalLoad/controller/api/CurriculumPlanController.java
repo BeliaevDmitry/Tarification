@@ -2,10 +2,13 @@ package org.school.personalLoad.controller.api;
 
 import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.dto.CurriculumPlanEntryRequest;
+import org.school.personalLoad.dto.CurriculumImportResult;
 import org.school.personalLoad.model.CurriculumPlanEntry;
+import org.school.personalLoad.service.CurriculumImportService;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -15,6 +18,7 @@ import java.util.List;
 public class CurriculumPlanController {
 
     private final CurriculumPlanService curriculumPlanService;
+    private final CurriculumImportService curriculumImportService;
 
     @PostMapping
     public ResponseEntity<CurriculumPlanEntry> upsert(@RequestBody CurriculumPlanEntryRequest request) {
@@ -24,6 +28,12 @@ public class CurriculumPlanController {
     @PostMapping("/bulk")
     public ResponseEntity<List<CurriculumPlanEntry>> upsertBulk(@RequestBody List<CurriculumPlanEntryRequest> requests) {
         return ResponseEntity.ok(curriculumPlanService.upsertBulk(requests));
+    }
+
+
+    @PostMapping("/import")
+    public ResponseEntity<CurriculumImportResult> importCurriculum(@RequestParam("file") MultipartFile file) {
+        return ResponseEntity.ok(curriculumImportService.importFile(file));
     }
 
     @GetMapping

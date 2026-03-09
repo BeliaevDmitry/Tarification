@@ -116,6 +116,15 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         return teacherDirectoryRepository.save(entry);
     }
 
+
+    @Override
+    public TeacherDirectoryEntry restore(Long teacherId) {
+        TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
+                .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
+        entry.setDismissalDate(null);
+        return teacherDirectoryRepository.save(entry);
+    }
+
     @Override
     public void deleteById(Long teacherId) {
         TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)

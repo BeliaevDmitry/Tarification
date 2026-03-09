@@ -485,3 +485,6 @@ dialog::backdrop {
     vertical-align: super;
     color: #1f2937;
 }
+
+.load-status-card { position: sticky; top: 8px; z-index: 20; display:flex; gap:20px; align-items:center; }
+.error-row-highlight { outline: 2px solid #d32f2f; background: #fff2f2; }

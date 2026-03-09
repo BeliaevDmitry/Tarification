@@ -45,11 +45,35 @@
         <pre id="load-result"></pre>
     </section>
 
+
+    <section class="card load-status-card" id="load-status-card">
+        <strong>Нераспределённые часы: <span id="unassigned-hours">0</span></strong>
+        <strong>Ошибки: <span id="error-count">0</span></strong>
+        <button id="next-error-btn" type="button">Перейти к ошибке</button>
+    </section>
+
     <section class="card">
         <h2>Распределение педагогов</h2>
         <div class="sheet-wrap"><table class="sheet-table" id="building-load-table"><thead id="building-load-head"></thead><tbody id="building-load-body"></tbody></table></div>
     </section>
 </main>
+
+<dialog id="load-period-dialog">
+  <form method="dialog" id="load-period-form" class="grid">
+    <h3>Редактирование нагрузки</h3>
+    <input type="hidden" name="subjectKey">
+    <input type="hidden" name="rowId">
+    <input type="hidden" name="className">
+    <label>Период с<input type="date" name="loadFromDate" required></label>
+    <label>Период по<input type="date" name="loadToDate" required></label>
+    <div class="row">
+      <button type="submit">Сохранить период</button>
+      <button type="button" id="load-remove-btn" class="danger-btn">Снять</button>
+      <button type="button" id="load-cancel-btn">Отмена</button>
+    </div>
+  </form>
+</dialog>
+
 <script src="/load.js"></script>
 </body>
 </html>

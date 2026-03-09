@@ -257,7 +257,6 @@ function renderSummaryTable() {
             ui.editForm.elements.plannedHours.value = String(existing.plannedHours || 1);
             ui.editForm.elements.educationLevel.value = existing.educationLevel || "BASIC";
             ui.editForm.elements.subgroupRequired.value = String(Boolean(existing.subgroupRequired));
-            ui.editForm.elements.subgroupCount.value = String(existing.subgroupCount || 2);
             ui.editForm.elements.subgroup1Hours.value = existing.subgroup1Hours || existing.plannedHours || "";
             ui.editForm.elements.subgroup2Hours.value = existing.subgroup2Hours || existing.plannedHours || "";
             ui.editForm.elements.subgroup1EducationLevel.value = existing.subgroup1EducationLevel || existing.educationLevel || "BASIC";
@@ -292,7 +291,7 @@ function normalizeForm() {
         plannedHours: Number(f.get("plannedHours") || 0),
         educationLevel: f.get("educationLevel"),
         subgroupRequired: String(f.get("subgroupRequired")) === "true",
-        subgroupCount: Number(f.get("subgroupCount") || 0),
+        subgroupCount: 2,
         subgroup1Hours: Number(f.get("subgroup1Hours") || 0) || null,
         subgroup1EducationLevel: f.get("subgroup1EducationLevel") || null,
         subgroup2Hours: Number(f.get("subgroup2Hours") || 0) || null,
@@ -395,7 +394,7 @@ function bindEvents() {
             plannedHours: Number(ui.editForm.elements.plannedHours.value || 0),
             educationLevel: ui.editForm.elements.educationLevel.value,
             subgroupRequired,
-            subgroupCount: Number(ui.editForm.elements.subgroupCount.value || 0),
+            subgroupCount: 2,
             subgroup1Hours: subgroupRequired ? Number(ui.editForm.elements.subgroup1Hours.value || 0) : null,
             subgroup2Hours: subgroupRequired ? Number(ui.editForm.elements.subgroup2Hours.value || 0) : null,
             subgroup1EducationLevel: subgroupRequired ? ui.editForm.elements.subgroup1EducationLevel.value : null,

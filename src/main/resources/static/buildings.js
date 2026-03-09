@@ -27,7 +27,7 @@ function render(rows) {
     ui.body.innerHTML = "";
     (rows || []).sort((a, b) => (a.name || "").localeCompare(b.name || "", "ru")).forEach((r) => {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.managerFio)}</td><td>${escapeHtml(r.address)}</td><td>${escapeHtml(r.createdAt)}</td>`;
+        tr.innerHTML = `<td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.managerFio)}</td><td>${escapeHtml(r.address)}</td>`;
         ui.body.appendChild(tr);
     });
 }
