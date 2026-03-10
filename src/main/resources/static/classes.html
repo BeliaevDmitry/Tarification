@@ -22,6 +22,14 @@
     </header>
 
     <section class="card">
+        <h2>Импорт из Excel</h2>
+        <div class="row">
+            <input id="classes-file" type="file" accept=".xls,.xlsx">
+            <button id="import-classes-btn" type="button">Импортировать</button>
+            <a id="download-classes-template" href="/api/classroom-leadership/template" class="nav-link">Скачать шаблон</a>
+        </div>
+
+        <h2>Добавить / редактировать класс</h2>
         <form id="class-form" class="grid">
             <select name="numberSchoolBuilding" id="class-building" required></select>
             <input name="className" placeholder="Класс (например 7А)" required>
@@ -39,6 +47,7 @@
 
     <section class="card">
         <h2>Список классов</h2>
+        <p class="muted">Нажмите на строку, чтобы отредактировать все поля.</p>
         <div class="sheet-wrap">
             <table class="sheet-table">
                 <thead>

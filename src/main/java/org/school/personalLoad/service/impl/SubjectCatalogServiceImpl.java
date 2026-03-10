@@ -139,13 +139,24 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
             header.createCell(0).setCellValue("Предмет");
             header.createCell(1).setCellValue("Тип");
 
-            Row ex1 = sheet.createRow(1);
-            ex1.createCell(0).setCellValue("Математика");
-            ex1.createCell(1).setCellValue("1");
+            List<SubjectCatalogEntry> rows = repository.findAll();
+            if (rows.isEmpty()) {
+                Row ex1 = sheet.createRow(1);
+                ex1.createCell(0).setCellValue("Математика");
+                ex1.createCell(1).setCellValue("1");
 
-            Row ex2 = sheet.createRow(2);
-            ex2.createCell(0).setCellValue("Разговоры о важном");
-            ex2.createCell(1).setCellValue("2");
+                Row ex2 = sheet.createRow(2);
+                ex2.createCell(0).setCellValue("Разговоры о важном");
+                ex2.createCell(1).setCellValue("2");
+            } else {
+                rows.sort(Comparator.comparing(SubjectCatalogEntry::getSubjectName, String.CASE_INSENSITIVE_ORDER));
+                int idx = 1;
+                for (SubjectCatalogEntry entry : rows) {
+                    Row row = sheet.createRow(idx++);
+                    row.createCell(0).setCellValue(entry.getSubjectName());
+                    row.createCell(1).setCellValue(entry.getSubjectType() == SubjectType.EXTRACURRICULAR ? "2" : "1");
+                }
+            }
 
             sheet.autoSizeColumn(0);
             sheet.autoSizeColumn(1);

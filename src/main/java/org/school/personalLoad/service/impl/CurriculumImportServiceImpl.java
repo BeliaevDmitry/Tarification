@@ -37,6 +37,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             Map<String, SubjectCatalogEntry> existingSubjects = new HashMap<>();
             subjectCatalogRepository.findAll().forEach(s -> existingSubjects.put(subjectKey(s.getSubjectName(), s.getSubjectType()), s));
 
+            String fallbackTeacher = teacherRepository.findAll().stream().findFirst().map(TeacherDirectoryEntry::getFioTeacher).orElse("Не назначен");
+
             for (CurriculumImportRow row : parsed) {
                 CurriculumPlanEntry entry = curriculumRepository
                         .findFirstByAcademicYearAndStageAndClassNameAndSubjectNameAndStudyPeriod(
@@ -75,7 +77,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     cls.setNumberSchoolBuilding("СП0");
                     cls.setClassName(row.getClassName());
                     cls.setClassDirection(row.getClassDirection() == null || row.getClassDirection().isBlank() ? "Не указана" : row.getClassDirection());
-                    cls.setFioTeacher(teacherRepository.findAll().stream().findFirst().map(TeacherDirectoryEntry::getFioTeacher).orElse("Не назначен"));
+                    cls.setFioTeacher(fallbackTeacher);
                     classroomRepository.save(cls);
                     classesCreated++;
                 }

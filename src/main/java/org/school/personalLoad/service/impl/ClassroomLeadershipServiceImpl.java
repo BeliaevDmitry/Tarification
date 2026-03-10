@@ -1,17 +1,22 @@
 package org.school.personalLoad.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.ClassroomLeadershipEntryRequest;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
+import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.ClassroomLeadershipService;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -56,6 +61,103 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     }
 
     @Override
+    public Map<String, Object> importFromExcel(MultipartFile file) {
+        if (file == null || file.isEmpty()) throw new IllegalArgumentException("Файл обязателен");
+
+        int imported = 0;
+        int skipped = 0;
+        Map<String, ClassroomLeadershipEntryRequest> merged = new LinkedHashMap<>();
+        findAll().forEach(existing -> {
+            ClassroomLeadershipEntryRequest req = new ClassroomLeadershipEntryRequest();
+            req.setNumberSchoolBuilding(existing.getNumberSchoolBuilding());
+            req.setClassName(existing.getClassName());
+            req.setClassDirection(existing.getClassDirection());
+            req.setFioTeacher(existing.getFioTeacher());
+            merged.put(existing.getNumberSchoolBuilding() + "|" + existing.getClassName(), req);
+        });
+
+        try (InputStream inputStream = file.getInputStream(); Workbook workbook = WorkbookFactory.create(inputStream)) {
+            Sheet sheet = workbook.getNumberOfSheets() > 0 ? workbook.getSheetAt(0) : null;
+            if (sheet == null) throw new IllegalArgumentException("Лист с классами не найден");
+
+            for (int i = 0; i <= sheet.getLastRowNum(); i++) {
+                Row row = sheet.getRow(i);
+                if (row == null) continue;
+
+                String building = normalize(cellValue(row.getCell(0)));
+                String className = ClassNameNormalizer.normalize(cellValue(row.getCell(1)));
+                String direction = normalize(cellValue(row.getCell(2)));
+                String teacher = normalize(cellValue(row.getCell(3)));
+
+                if (building.equalsIgnoreCase("корпус") || className.equalsIgnoreCase("класс")) {
+                    skipped++;
+                    continue;
+                }
+
+                if (building.isBlank() || className.isBlank() || direction.isBlank() || teacher.isBlank()) {
+                    skipped++;
+                    continue;
+                }
+
+                Optional<TeacherDirectoryEntry> exists = teacherDirectoryRepository.findByFioTeacher(teacher);
+                if (exists.isEmpty()) {
+                    skipped++;
+                    continue;
+                }
+
+                ClassroomLeadershipEntryRequest req = new ClassroomLeadershipEntryRequest();
+                req.setNumberSchoolBuilding(building);
+                req.setClassName(className);
+                req.setClassDirection(direction);
+                req.setFioTeacher(teacher);
+                merged.put(building + "|" + className, req);
+                imported++;
+            }
+
+            List<ClassroomLeadershipEntry> saved = replaceAll(new ArrayList<>(merged.values()));
+            return Map.of("status", "ok", "imported", imported, "skipped", skipped, "total", saved.size());
+        } catch (Exception e) {
+            throw new RuntimeException("Не удалось импортировать классы", e);
+        }
+    }
+
+    @Override
+    public Resource buildImportTemplate() {
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("Классы");
+            Row header = sheet.createRow(0);
+            header.createCell(0).setCellValue("Корпус");
+            header.createCell(1).setCellValue("Класс");
+            header.createCell(2).setCellValue("Направление класса");
+            header.createCell(3).setCellValue("Классный руководитель");
+
+            List<ClassroomLeadershipEntry> rows = classroomLeadershipRepository.findAll();
+            if (rows.isEmpty()) {
+                Row ex = sheet.createRow(1);
+                ex.createCell(0).setCellValue("СП1");
+                ex.createCell(1).setCellValue("7-А");
+                ex.createCell(2).setCellValue("Универсальный");
+                ex.createCell(3).setCellValue("Иванов И.И.");
+            } else {
+                int index = 1;
+                for (ClassroomLeadershipEntry entry : rows) {
+                    Row row = sheet.createRow(index++);
+                    row.createCell(0).setCellValue(entry.getNumberSchoolBuilding());
+                    row.createCell(1).setCellValue(entry.getClassName());
+                    row.createCell(2).setCellValue(entry.getClassDirection());
+                    row.createCell(3).setCellValue(entry.getFioTeacher());
+                }
+            }
+
+            for (int i = 0; i < 4; i++) sheet.autoSizeColumn(i);
+            workbook.write(out);
+            return new ByteArrayResource(out.toByteArray());
+        } catch (Exception e) {
+            throw new RuntimeException("Не удалось сформировать шаблон классов", e);
+        }
+    }
+
+    @Override
     public List<ClassroomLeadershipEntry> findAll() {
         return classroomLeadershipRepository.findAll();
     }
@@ -67,5 +169,18 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
 
     private String normalize(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private String cellValue(Cell cell) {
+        if (cell == null) return "";
+        return switch (cell.getCellType()) {
+            case STRING -> cell.getStringCellValue().trim();
+            case NUMERIC -> String.valueOf((int) cell.getNumericCellValue()).trim();
+            case FORMULA -> {
+                try { yield cell.getStringCellValue().trim(); }
+                catch (Exception ignored) { yield ""; }
+            }
+            default -> "";
+        };
     }
 }

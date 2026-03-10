@@ -15,6 +15,7 @@ import java.util.*;
 @Component
 public class CurriculumExcelParser {
 
+    // В текущем шаблоне классы всегда начинаются с колонки C.
     private static final int CLASS_COLUMNS_START = 2; // C
 
     public List<CurriculumImportRow> parse(InputStream inputStream) throws Exception {
@@ -32,8 +33,10 @@ public class CurriculumExcelParser {
             return;
         }
 
+        // 1) Год читаем из верхней части листа (обычно первые строки).
         String academicYear = extractAcademicYear(sheet);
 
+        // 2) Ключевые строки шапки. Если шаблон изменится — правятся эти маркеры/поиск.
         int periodRow = findHeaderRowIndex(sheet, "период обучения");
         int directionRow = findHeaderRowIndex(sheet, "направленность класса");
         int teacherRow = findHeaderRowIndex(sheet, "фио классного руководителя");
@@ -50,12 +53,14 @@ public class CurriculumExcelParser {
             return;
         }
 
+        // 3) После "Обязательная часть" идут строки предметов и часы по классам.
         for (int rowIndex = requiredPartRow + 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
             String subject = extractSubject(sheet, rowIndex);
             if (subject.isBlank() || isServiceRow(subject)) {
                 continue;
             }
 
+            // 4) Идём по всем классам (колонкам) и берём часы на пересечении строка/колонка.
             for (ColumnMeta column : columns) {
                 BigDecimal hours = parseHours(readMergedCell(sheet, rowIndex, column.colIndex));
                 if (hours == null || hours.compareTo(BigDecimal.ZERO) <= 0) {
@@ -91,6 +96,7 @@ public class CurriculumExcelParser {
             String teacherName = teacherRow >= 0 ? normalizeText(readMergedCell(sheet, teacherRow, col)) : "";
             StudyPeriod period = mapPeriod(readMergedCell(sheet, periodRow, col));
 
+            // Для СОО в паре колонок (1П/2П) во второй колонке значения могут быть пустыми — наследуем слева.
             if (stage == CurriculumStage.SOO && prev != null) {
                 if (className.isBlank()) className = prev.className;
                 if (classDirection.isBlank()) classDirection = prev.classDirection;
@@ -163,6 +169,7 @@ public class CurriculumExcelParser {
         String a = normalizeText(readMergedCell(sheet, rowIndex, 0));
         String b = normalizeText(readMergedCell(sheet, rowIndex, 1));
 
+        // Важное правило шаблона: merged-строка предмета => название в колонке A, иначе в B.
         if (isMergedCell(sheet, rowIndex, 0)) {
             return a;
         }
@@ -211,6 +218,7 @@ public class CurriculumExcelParser {
         }
     }
 
+    // Универсальное чтение merged cells: если ячейка пуста, берём верхнюю-левую ячейку merge-диапазона.
     private String readMergedCell(Sheet sheet, int rowIndex, int colIndex) {
         Row row = sheet.getRow(rowIndex);
         Cell cell = row == null ? null : row.getCell(colIndex);

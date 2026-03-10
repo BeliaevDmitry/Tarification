@@ -7,11 +7,14 @@ const ui = {
     refreshBtn: document.getElementById("refresh-classes-btn"),
     clearBtn: document.getElementById("clear-classes-btn"),
     result: document.getElementById("classes-result"),
-    body: document.getElementById("classes-body")
+    body: document.getElementById("classes-body"),
+    fileInput: document.getElementById("classes-file"),
+    importBtn: document.getElementById("import-classes-btn")
 };
 
 let teachers = [];
 let buildings = [];
+let classRows = [];
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -50,26 +53,37 @@ function renderBuildings() {
     if (selected) ui.building.value = selected;
 }
 
+function fillForm(entry) {
+    ui.form.elements.numberSchoolBuilding.value = entry.numberSchoolBuilding || "";
+    ui.form.elements.className.value = entry.className || "";
+    ui.form.elements.classDirection.value = entry.classDirection || "";
+    ui.form.elements.fioTeacher.value = entry.fioTeacher || "";
+    ui.form.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
 function renderClasses(rows) {
     ui.body.innerHTML = "";
-    (rows || []).forEach((r) => {
+    classRows = (rows || []).slice();
+    classRows.forEach((r) => {
         const tr = document.createElement("tr");
         tr.innerHTML = `<td>${esc(buildingLabel(r.numberSchoolBuilding))}</td><td>${esc(r.className)}</td><td>${esc(r.classDirection)}</td><td>${esc(r.fioTeacher)}</td>`;
+        tr.addEventListener("click", () => fillForm(r));
         ui.body.appendChild(tr);
     });
 }
 
 async function reload() {
-    const [classRows, buildingRows, teacherRows] = await Promise.all([
+    const [rows, buildingRows, teacherRows] = await Promise.all([
         api("/api/classroom-leadership"),
         api("/api/buildings"),
         api("/api/teachers")
     ]);
+    classRows = rows || [];
     buildings = buildingRows || [];
     teachers = (teacherRows || []).map((r) => norm(r.fioTeacher)).filter(Boolean);
     renderTeachers();
     renderBuildings();
-    renderClasses(classRows || []);
+    renderClasses(classRows);
 }
 
 ui.form.addEventListener("submit", async (e) => {
@@ -102,6 +116,21 @@ ui.form.addEventListener("submit", async (e) => {
     print({ status: "saved", total: saved.length });
     ui.form.reset();
     await reload();
+});
+
+ui.importBtn.addEventListener("click", async () => {
+    const file = ui.fileInput.files?.[0];
+    if (!file) return print({ error: "Выберите файл" });
+    const form = new FormData();
+    form.append("file", file);
+    try {
+        const result = await api("/api/classroom-leadership/import", { method: "POST", body: form });
+        print(result);
+        ui.fileInput.value = "";
+        await reload();
+    } catch (error) {
+        print({ error: error.message });
+    }
 });
 
 ui.refreshBtn.addEventListener("click", () => reload().catch((error) => print({ error: error.message })));
