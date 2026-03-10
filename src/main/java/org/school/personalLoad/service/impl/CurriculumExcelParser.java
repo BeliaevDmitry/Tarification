@@ -169,10 +169,7 @@ public class CurriculumExcelParser {
         String a = normalizeText(readMergedCell(sheet, rowIndex, 0));
         String b = normalizeText(readMergedCell(sheet, rowIndex, 1));
 
-        // Важное правило шаблона: merged-строка предмета => название в колонке A, иначе в B.
-        if (isMergedCell(sheet, rowIndex, 0)) {
-            return a;
-        }
+        // Приоритет: колонка B (название предмета), если не пусто, иначе колонка A (область или предмет)
         return b.isBlank() ? a : b;
     }
 
@@ -189,7 +186,9 @@ public class CurriculumExcelParser {
                 "максимально допустим",
                 "недельная нагрузка",
                 "учебный план",
-                "аудиторная нагрузка"
+                "аудиторная нагрузка",
+                "Итого (количество часов обязательной части)",
+                "Количество учебных недель"
         );
 
         return markers.stream().anyMatch(value::contains);
