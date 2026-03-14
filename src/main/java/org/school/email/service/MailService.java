@@ -1,81 +1,58 @@
 package org.school.email.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.school.email.config.EmailConfig;
+import org.springframework.stereotype.Service;
 
 import javax.mail.*;
-import javax.mail.internet.*;
-import java.util.Arrays;
+import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeBodyPart;
+import javax.mail.internet.MimeMessage;
+import javax.mail.internet.MimeMultipart;
 import java.util.List;
 import java.util.Properties;
 
+@Slf4j
+@Service
 public class MailService {
 
-    private final String host;
-    private final int port;
-    private final String username;
-    private final String password;
-    private final boolean useSSL;
-    private final boolean useTLS;
+    private final EmailConfig emailConfig;
 
-    // Конструктор с настройками из конфига
-    public MailService() {
-        this.host = EmailConfig.SMTP_HOST;
-        this.port = EmailConfig.SMTP_PORT;
-        this.username = EmailConfig.EMAIL_USERNAME;
-        this.password = EmailConfig.EMAIL_PASSWORD;
-        this.useSSL = EmailConfig.USE_SSL;
-        this.useTLS = EmailConfig.USE_TLS;
+    public MailService(EmailConfig emailConfig) {
+        this.emailConfig = emailConfig;
     }
 
-    // Конструктор с кастомными настройками
-    public MailService(String host, int port, String username, String password, boolean useSSL, boolean useTLS) {
-        this.host = host;
-        this.port = port;
-        this.username = username;
-        this.password = password;
-        this.useSSL = useSSL;
-        this.useTLS = useTLS;
-    }
-
-    /**
-     * Простая отправка письма с вложением
-     */
     public void sendEmailWithAttachment(String filePath, String subject, String messageText) throws MessagingException {
-        List<String> recipients = Arrays.asList(EmailConfig.DEFAULT_RECIPIENTS);
-        sendEmailWithAttachment(recipients, subject, messageText, filePath);
+        sendEmailWithAttachment(emailConfig.getDefaultRecipients(), subject, messageText, filePath);
     }
 
-    /**
-     * Отправка письма с вложением нескольким получателям
-     */
     public void sendEmailWithAttachment(List<String> recipients, String subject,
                                         String messageText, String attachmentPath) throws MessagingException {
 
         Properties props = new Properties();
-        props.put("mail.smtp.host", host);
-        props.put("mail.smtp.port", port);
+        props.put("mail.smtp.host", emailConfig.getSmtpHost());
+        props.put("mail.smtp.port", emailConfig.getSmtpPort());
         props.put("mail.smtp.auth", "true");
 
-        if (useSSL) {
+        if (emailConfig.isUseSsl()) {
             props.put("mail.smtp.ssl.enable", "true");
         }
 
-        if (useTLS) {
+        if (emailConfig.isUseTls()) {
             props.put("mail.smtp.starttls.enable", "true");
         }
 
         Session session = Session.getInstance(props, new Authenticator() {
             @Override
             protected PasswordAuthentication getPasswordAuthentication() {
-                return new PasswordAuthentication(username, password);
+                return new PasswordAuthentication(emailConfig.getUsername(), emailConfig.getPassword());
             }
         });
 
         try {
             Message message = new MimeMessage(session);
-            message.setFrom(new InternetAddress(username));
+            message.setFrom(new InternetAddress(emailConfig.getUsername()));
 
-            // Добавляем получателей
             InternetAddress[] addresses = new InternetAddress[recipients.size()];
             for (int i = 0; i < recipients.size(); i++) {
                 addresses[i] = new InternetAddress(recipients.get(i));
@@ -85,15 +62,12 @@ public class MailService {
             message.setSubject(subject);
             message.setSentDate(new java.util.Date());
 
-            // Создаем multipart сообщение
             Multipart multipart = new MimeMultipart();
 
-            // Текстовая часть
             MimeBodyPart textPart = new MimeBodyPart();
             textPart.setText(messageText, "utf-8");
             multipart.addBodyPart(textPart);
 
-            // Добавляем вложение
             if (attachmentPath != null) {
                 MimeBodyPart attachmentPart = new MimeBodyPart();
                 attachmentPart.attachFile(attachmentPath);
@@ -101,44 +75,39 @@ public class MailService {
             }
 
             message.setContent(multipart);
-
-            // Отправляем письмо
             Transport.send(message);
 
-            System.out.println("✅ Письмо успешно отправлено " + recipients.size() + " получателям");
+            log.info("Письмо успешно отправлено {} получателям", recipients.size());
 
         } catch (Exception e) {
-            System.err.println("❌ Ошибка при отправке письма: " + e.getMessage());
+            log.error("Ошибка при отправке письма", e);
             throw new MessagingException("Не удалось отправить письмо", e);
         }
     }
 
-    /**
-     * Проверка соединения с почтовым сервером
-     */
     public boolean testConnection() {
         try {
             Properties props = new Properties();
-            props.put("mail.smtp.host", host);
-            props.put("mail.smtp.port", port);
+            props.put("mail.smtp.host", emailConfig.getSmtpHost());
+            props.put("mail.smtp.port", emailConfig.getSmtpPort());
             props.put("mail.smtp.auth", "true");
 
             Session session = Session.getInstance(props, new Authenticator() {
                 @Override
                 protected PasswordAuthentication getPasswordAuthentication() {
-                    return new PasswordAuthentication(username, password);
+                    return new PasswordAuthentication(emailConfig.getUsername(), emailConfig.getPassword());
                 }
             });
 
             Transport transport = session.getTransport("smtp");
-            transport.connect(host, port, username, password);
+            transport.connect(emailConfig.getSmtpHost(), emailConfig.getSmtpPort(), emailConfig.getUsername(), emailConfig.getPassword());
             transport.close();
 
-            System.out.println("✅ Соединение с почтовым сервером установлено успешно");
+            log.info("Соединение с почтовым сервером установлено успешно");
             return true;
 
         } catch (Exception e) {
-            System.err.println("❌ Ошибка соединения с почтовым сервером: " + e.getMessage());
+            log.error("Ошибка соединения с почтовым сервером", e);
             return false;
         }
     }
