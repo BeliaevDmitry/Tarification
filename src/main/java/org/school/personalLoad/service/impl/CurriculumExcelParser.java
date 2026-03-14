@@ -4,6 +4,7 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellAddress;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.school.personalLoad.dto.CurriculumImportRow;
+import org.school.personalLoad.model.CurriculumPart;
 import org.school.personalLoad.model.CurriculumStage;
 import org.school.personalLoad.model.StudyPeriod;
 import org.springframework.stereotype.Component;
@@ -54,9 +55,19 @@ public class CurriculumExcelParser {
         }
 
         // 3) После "Обязательная часть" идут строки предметов и часы по классам.
+        CurriculumPart currentPart = CurriculumPart.CORE;
         for (int rowIndex = requiredPartRow + 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
             String subject = extractSubject(sheet, rowIndex);
-            if (subject.isBlank() || isServiceRow(subject)) {
+            if (subject.isBlank()) {
+                continue;
+            }
+
+            String normalizedSubject = normalizeSubject(subject);
+            if (isPartMarker(normalizedSubject)) {
+                currentPart = mapPart(normalizedSubject, currentPart);
+                continue;
+            }
+            if (isServiceRow(normalizedSubject)) {
                 continue;
             }
 
@@ -72,9 +83,10 @@ public class CurriculumExcelParser {
                         stage,
                         column.className,
                         column.classDirection,
-                        normalizeSubject(subject),
+                        normalizedSubject,
                         hours,
-                        column.studyPeriod
+                        column.studyPeriod,
+                        currentPart
                 ));
             }
         }
@@ -174,6 +186,21 @@ public class CurriculumExcelParser {
             return a;
         }
         return b.isBlank() ? a : b;
+    }
+
+    private boolean isPartMarker(String subject) {
+        String value = normalizeText(subject).toLowerCase(Locale.ROOT);
+        return value.contains("обязательная часть")
+                || value.contains("часть, формируемая участниками образовательных отношений")
+                || value.contains("внеурочная деятельность");
+    }
+
+    private CurriculumPart mapPart(String marker, CurriculumPart fallback) {
+        String value = normalizeText(marker).toLowerCase(Locale.ROOT);
+        if (value.contains("обязательная часть")) return CurriculumPart.CORE;
+        if (value.contains("формируемая")) return CurriculumPart.FORMABLE;
+        if (value.contains("внеурочная")) return CurriculumPart.EXTRACURRICULAR;
+        return fallback;
     }
 
     private boolean isServiceRow(String subject) {

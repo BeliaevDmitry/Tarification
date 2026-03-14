@@ -47,12 +47,12 @@
 </main>
 
 <dialog id="building-edit-dialog">
-    <form method="dialog" id="building-edit-form" class="grid">
+    <form method="dialog" id="building-edit-form" class="grid labeled-grid">
         <h3>Редактирование корпуса</h3>
         <input type="hidden" name="code">
-        <input name="name" placeholder="Название корпуса" required>
-        <input name="managerFio" placeholder="Руководитель корпуса (ФИО)" required>
-        <input name="address" placeholder="Адрес корпуса" required>
+        <label class="field-row"><span>Название</span><input name="name" placeholder="Название корпуса" required></label>
+        <label class="field-row"><span>Руководитель</span><input name="managerFio" placeholder="Руководитель корпуса (ФИО)" required></label>
+        <label class="field-row"><span>Адрес</span><input name="address" placeholder="Адрес корпуса" required></label>
         <div class="row">
             <button type="submit">Сохранить</button>
             <button type="button" id="building-close-btn">Отмена</button>

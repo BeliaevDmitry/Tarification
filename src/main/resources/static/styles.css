@@ -488,3 +488,27 @@ dialog::backdrop {
 
 .load-status-card { position: sticky; top: 8px; z-index: 20; display:flex; gap:20px; align-items:center; }
 .error-row-highlight { outline: 2px solid #d32f2f; background: #fff2f2; }
+
+.labeled-grid .field-row {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    align-items: center;
+    gap: 10px;
+}
+
+.labeled-grid .field-row > span {
+    color: #334155;
+    font-weight: 600;
+}
+
+.labeled-grid .field-row input,
+.labeled-grid .field-row select {
+    width: 100%;
+}
+
+@media (max-width: 860px) {
+    .labeled-grid .field-row {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+}

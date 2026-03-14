@@ -41,9 +41,8 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             String fioTeacher = normalize(request.getFioTeacher());
             if (building.isBlank() || className.isBlank() || classDirection.isBlank() || fioTeacher.isBlank()) continue;
 
-            if (teacherDirectoryRepository.findByFioTeacher(fioTeacher).isEmpty()) {
-                throw new IllegalArgumentException("Teacher not found in directory: " + fioTeacher);
-            }
+            // Не блокируем сохранение: при отсутствии педагога создаём его автоматически.
+            ensureTeacherExists(fioTeacher);
 
             request.setClassName(className);
             normalized.put(building + "|" + className, request);

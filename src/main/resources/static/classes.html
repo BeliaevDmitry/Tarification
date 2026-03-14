@@ -33,7 +33,7 @@
         <form id="class-form" class="grid">
             <select name="numberSchoolBuilding" id="class-building" required></select>
             <input name="className" placeholder="Класс (например 7А)" required>
-            <input name="classDirection" placeholder="Направление класса" required>
+            <label class="field-row"><span>Направление</span><input name="classDirection" placeholder="Направление класса" required></label>
             <input name="fioTeacher" id="class-teacher" list="teacher-list" placeholder="Классный руководитель" required>
             <datalist id="teacher-list"></datalist>
             <button type="submit">Добавить / обновить класс</button>
@@ -59,12 +59,12 @@
 </main>
 
 <dialog id="class-edit-dialog">
-    <form method="dialog" id="class-edit-form" class="grid">
+    <form method="dialog" id="class-edit-form" class="grid labeled-grid">
         <h3>Редактирование класса</h3>
-        <select name="numberSchoolBuilding" id="class-edit-building" required></select>
-        <input name="className" placeholder="Класс" required>
-        <input name="classDirection" placeholder="Направление класса" required>
-        <input name="fioTeacher" id="class-edit-teacher" list="teacher-list" placeholder="Классный руководитель" required>
+        <label class="field-row"><span>Корпус</span><select name="numberSchoolBuilding" id="class-edit-building" required></select></label>
+        <label class="field-row"><span>Класс</span><input name="className" placeholder="Класс" required></label>
+        <label class="field-row"><span>Направление</span><input name="classDirection" placeholder="Направление класса" required></label>
+        <label class="field-row"><span>Классный руководитель</span><input name="fioTeacher" id="class-edit-teacher" list="teacher-list" placeholder="Классный руководитель" required></label>
         <div class="row">
             <button type="submit">Сохранить</button>
             <button type="button" id="class-edit-close-btn">Отмена</button>

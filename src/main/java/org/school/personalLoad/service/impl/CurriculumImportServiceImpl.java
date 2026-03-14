@@ -52,11 +52,11 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 entry.setSubjectName(row.getSubjectName());
                 entry.setStudyPeriod(row.getStudyPeriod());
                 entry.setPlannedHours(row.getPlannedHours());
+                entry.setCurriculumPart(row.getCurriculumPart() == null ? CurriculumPart.CORE : row.getCurriculumPart());
                 entry.setDeprecated(false);
                 if (isNew) {
                     entry.setNumberSchoolBuilding("СП0");
                     entry.setEducationLevel(EducationLevel.BASIC);
-                    entry.setCurriculumPart(CurriculumPart.CORE);
                     entry.setSubgroupRequired(false);
                     entry.setSubgroupCount(0);
                 }
@@ -82,7 +82,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     classesCreated++;
                 }
 
-                SubjectType subjectType = resolveSubjectType(row.getSubjectName());
+                SubjectType subjectType = resolveSubjectType(row);
                 String normalizedSubject = normalizeSubject(row.getSubjectName());
                 String subjectKey = subjectKey(normalizedSubject, subjectType);
                 if (!normalizedSubject.isBlank() && !existingSubjects.containsKey(subjectKey)) {
@@ -124,8 +124,11 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         }
     }
 
-    private SubjectType resolveSubjectType(String subjectName) {
-        String value = String.valueOf(subjectName == null ? "" : subjectName).trim().toLowerCase(Locale.ROOT);
+    private SubjectType resolveSubjectType(CurriculumImportRow row) {
+        if (row.getCurriculumPart() == CurriculumPart.EXTRACURRICULAR) {
+            return SubjectType.EXTRACURRICULAR;
+        }
+        String value = String.valueOf(row.getSubjectName() == null ? "" : row.getSubjectName()).trim().toLowerCase(Locale.ROOT);
         if (value.contains("внеур") || value.contains("разговоры о важном")) {
             return SubjectType.EXTRACURRICULAR;
         }
