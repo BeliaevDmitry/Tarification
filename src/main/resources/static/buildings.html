@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarification — Корпуса</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container">
+    <header class="card">
+        <h1>Корпуса</h1>
+        <p class="muted">Заполните название, руководителя и адрес корпуса.</p>
+        <nav class="page-nav">
+            <a class="nav-link active" href="/buildings.html">Корпуса</a>
+            <a class="nav-link" href="/classes.html">Классы</a>
+            <a class="nav-link" href="/subjects.html">Предметы</a>
+            <a class="nav-link" href="/curriculum.html">Учебный план</a>
+            <a class="nav-link" href="/load.html">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/teachers.html">Педагоги</a>
+        </nav>
+    </header>
+
+    <section class="card">
+        <form id="building-form" class="grid">
+            <input name="name" placeholder="Название корпуса" required>
+            <input name="managerFio" placeholder="Руководитель корпуса (ФИО)" required>
+            <input name="address" placeholder="Адрес корпуса" required>
+            <button type="submit">Добавить / обновить корпус</button>
+        </form>
+        <div class="row">
+            <button id="refresh-buildings-btn" type="button">Обновить</button>
+            <button id="clear-buildings-btn" type="button">Очистить список корпусов</button>
+        </div>
+        <pre id="buildings-result"></pre>
+    </section>
+
+    <section class="card">
+        <h2>Список корпусов</h2>
+        <div class="sheet-wrap">
+            <table class="sheet-table">
+                <thead><tr><th>Название</th><th>Руководитель</th><th>Адрес</th><th></th></tr></thead>
+                <tbody id="buildings-body"></tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<dialog id="building-edit-dialog">
+    <form method="dialog" id="building-edit-form" class="grid">
+        <h3>Редактирование корпуса</h3>
+        <input type="hidden" name="code">
+        <input name="name" placeholder="Название корпуса" required>
+        <input name="managerFio" placeholder="Руководитель корпуса (ФИО)" required>
+        <input name="address" placeholder="Адрес корпуса" required>
+        <div class="row">
+            <button type="submit">Сохранить</button>
+            <button type="button" id="building-close-btn">Отмена</button>
+        </div>
+    </form>
+</dialog>
+
+<script src="/buildings.js"></script>
+</body>
+</html>
