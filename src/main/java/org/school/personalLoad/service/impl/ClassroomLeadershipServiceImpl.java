@@ -8,6 +8,7 @@ import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
+import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.service.ClassroomLeadershipService;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
@@ -17,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.util.*;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -24,6 +26,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
 
     private final ClassroomLeadershipRepository classroomLeadershipRepository;
     private final TeacherDirectoryRepository teacherDirectoryRepository;
+    private final SchoolBuildingRepository schoolBuildingRepository;
 
     @Override
     public List<ClassroomLeadershipEntry> replaceAll(List<ClassroomLeadershipEntryRequest> requests) {
@@ -32,7 +35,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         Map<String, ClassroomLeadershipEntryRequest> normalized = new LinkedHashMap<>();
         for (ClassroomLeadershipEntryRequest request : safeRequests) {
             if (request == null) continue;
-            String building = normalize(request.getNumberSchoolBuilding());
+            String building = normalizeBuildingCode(request.getNumberSchoolBuilding());
             String className = ClassNameNormalizer.normalize(request.getClassName());
             String classDirection = normalize(request.getClassDirection());
             String fioTeacher = normalize(request.getFioTeacher());
@@ -50,7 +53,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         List<ClassroomLeadershipEntry> toSave = new ArrayList<>();
         normalized.values().forEach((request) -> {
             ClassroomLeadershipEntry entry = new ClassroomLeadershipEntry();
-            entry.setNumberSchoolBuilding(normalize(request.getNumberSchoolBuilding()));
+            entry.setNumberSchoolBuilding(normalizeBuildingCode(request.getNumberSchoolBuilding()));
             entry.setClassName(ClassNameNormalizer.normalize(request.getClassName()));
             entry.setClassDirection(normalize(request.getClassDirection()));
             entry.setFioTeacher(normalize(request.getFioTeacher()));
@@ -84,12 +87,12 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
                 Row row = sheet.getRow(i);
                 if (row == null) continue;
 
-                String building = normalize(cellValue(row.getCell(0)));
+                String building = normalizeBuildingCode(cellValue(row.getCell(0)));
                 String className = ClassNameNormalizer.normalize(cellValue(row.getCell(1)));
                 String direction = normalize(cellValue(row.getCell(2)));
                 String teacher = normalize(cellValue(row.getCell(3)));
 
-                if (building.equalsIgnoreCase("корпус") || className.equalsIgnoreCase("класс")) {
+                if (building.equalsIgnoreCase("КОРПУС") || className.equalsIgnoreCase("КЛАСС")) {
                     skipped++;
                     continue;
                 }
@@ -99,11 +102,9 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
                     continue;
                 }
 
-                Optional<TeacherDirectoryEntry> exists = teacherDirectoryRepository.findByFioTeacher(teacher);
-                if (exists.isEmpty()) {
-                    skipped++;
-                    continue;
-                }
+                // Архитектурное правило: при импорте классов автоматически создаём отсутствующие сущности справочников.
+                ensureBuildingExists(building);
+                ensureTeacherExists(teacher);
 
                 ClassroomLeadershipEntryRequest req = new ClassroomLeadershipEntryRequest();
                 req.setNumberSchoolBuilding(building);
@@ -165,6 +166,30 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     @Override
     public void clearAll() {
         classroomLeadershipRepository.deleteAll();
+    }
+
+
+    private void ensureBuildingExists(String code) {
+        schoolBuildingRepository.findByCode(code).orElseGet(() -> {
+            org.school.personalLoad.model.SchoolBuilding b = new org.school.personalLoad.model.SchoolBuilding();
+            b.setCode(code);
+            b.setName(code);
+            b.setAddress("Не указан");
+            b.setManagerFio("Не назначен");
+            return schoolBuildingRepository.save(b);
+        });
+    }
+
+    private void ensureTeacherExists(String fio) {
+        teacherDirectoryRepository.findByFioTeacher(fio).orElseGet(() -> {
+            TeacherDirectoryEntry t = new TeacherDirectoryEntry();
+            t.setFioTeacher(fio);
+            return teacherDirectoryRepository.save(t);
+        });
+    }
+
+    private String normalizeBuildingCode(String value) {
+        return normalize(value).replace(" ", "").toUpperCase(Locale.ROOT);
     }
 
     private String normalize(String value) {

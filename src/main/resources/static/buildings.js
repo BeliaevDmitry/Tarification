@@ -5,8 +5,13 @@ const ui = {
     refreshBtn: document.getElementById("refresh-buildings-btn"),
     clearBtn: document.getElementById("clear-buildings-btn"),
     result: document.getElementById("buildings-result"),
-    body: document.getElementById("buildings-body")
+    body: document.getElementById("buildings-body"),
+    editDialog: document.getElementById("building-edit-dialog"),
+    editForm: document.getElementById("building-edit-form"),
+    closeBtn: document.getElementById("building-close-btn")
 };
+
+let buildings = [];
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -23,12 +28,28 @@ function escapeHtml(v) {
 
 function print(value) { ui.result.textContent = JSON.stringify(value, null, 2); }
 
+function openEdit(item) {
+    ui.editForm.elements.code.value = item.code;
+    ui.editForm.elements.name.value = item.name;
+    ui.editForm.elements.managerFio.value = item.managerFio;
+    ui.editForm.elements.address.value = item.address;
+    ui.editDialog.showModal();
+}
+
 function render(rows) {
     ui.body.innerHTML = "";
-    (rows || []).sort((a, b) => (a.name || "").localeCompare(b.name || "", "ru")).forEach((r) => {
+    buildings = rows || [];
+    buildings.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ru")).forEach((r) => {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.managerFio)}</td><td>${escapeHtml(r.address)}</td>`;
+        tr.innerHTML = `<td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.managerFio)}</td><td>${escapeHtml(r.address)}</td><td><button type="button" class="inline-plus" data-edit-code="${escapeHtml(r.code)}" title="Редактировать">✏️</button></td>`;
         ui.body.appendChild(tr);
+    });
+
+    ui.body.querySelectorAll('button[data-edit-code]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const found = buildings.find((b) => b.code === btn.dataset.editCode);
+            if (found) openEdit(found);
+        });
     });
 }
 
@@ -55,6 +76,26 @@ ui.form.addEventListener("submit", async (e) => {
     } catch (error) { print({ error: error.message }); }
 });
 
+ui.editForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = {
+        code: String(ui.editForm.elements.code.value || '').trim(),
+        name: String(ui.editForm.elements.name.value || '').trim(),
+        managerFio: String(ui.editForm.elements.managerFio.value || '').trim(),
+        address: String(ui.editForm.elements.address.value || '').trim()
+    };
+
+    try {
+        const saved = await api('/api/buildings', { method: 'POST', headers: jsonHeaders, body: JSON.stringify(payload) });
+        ui.editDialog.close();
+        print(saved);
+        await reload();
+    } catch (error) {
+        print({ error: error.message });
+    }
+});
+
+ui.closeBtn.addEventListener('click', () => ui.editDialog.close());
 ui.refreshBtn.addEventListener("click", () => reload().catch((e) => print({ error: e.message })));
 ui.clearBtn.addEventListener("click", async () => {
     try { await api("/api/buildings", { method: "DELETE" }); print({ status: "cleared" }); await reload(); }

@@ -29,7 +29,7 @@
             <a id="download-classes-template" href="/api/classroom-leadership/template" class="nav-link">Скачать шаблон</a>
         </div>
 
-        <h2>Добавить / редактировать класс</h2>
+        <h2>Добавить класс</h2>
         <form id="class-form" class="grid">
             <select name="numberSchoolBuilding" id="class-building" required></select>
             <input name="className" placeholder="Класс (например 7А)" required>
@@ -47,17 +47,31 @@
 
     <section class="card">
         <h2>Список классов</h2>
-        <p class="muted">Нажмите на строку, чтобы отредактировать все поля.</p>
         <div class="sheet-wrap">
             <table class="sheet-table">
                 <thead>
-                <tr><th>Корпус</th><th>Класс</th><th>Направление</th><th>Классный руководитель</th></tr>
+                <tr><th>Корпус</th><th>Класс</th><th>Направление</th><th>Классный руководитель</th><th></th></tr>
                 </thead>
                 <tbody id="classes-body"></tbody>
             </table>
         </div>
     </section>
 </main>
+
+<dialog id="class-edit-dialog">
+    <form method="dialog" id="class-edit-form" class="grid">
+        <h3>Редактирование класса</h3>
+        <select name="numberSchoolBuilding" id="class-edit-building" required></select>
+        <input name="className" placeholder="Класс" required>
+        <input name="classDirection" placeholder="Направление класса" required>
+        <input name="fioTeacher" id="class-edit-teacher" list="teacher-list" placeholder="Классный руководитель" required>
+        <div class="row">
+            <button type="submit">Сохранить</button>
+            <button type="button" id="class-edit-close-btn">Отмена</button>
+        </div>
+    </form>
+</dialog>
+
 <script src="/classes.js"></script>
 </body>
 </html>

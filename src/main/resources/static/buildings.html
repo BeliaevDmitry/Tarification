@@ -39,12 +39,27 @@
         <h2>Список корпусов</h2>
         <div class="sheet-wrap">
             <table class="sheet-table">
-                <thead><tr><th>Название</th><th>Руководитель</th><th>Адрес</th></tr></thead>
+                <thead><tr><th>Название</th><th>Руководитель</th><th>Адрес</th><th></th></tr></thead>
                 <tbody id="buildings-body"></tbody>
             </table>
         </div>
     </section>
 </main>
+
+<dialog id="building-edit-dialog">
+    <form method="dialog" id="building-edit-form" class="grid">
+        <h3>Редактирование корпуса</h3>
+        <input type="hidden" name="code">
+        <input name="name" placeholder="Название корпуса" required>
+        <input name="managerFio" placeholder="Руководитель корпуса (ФИО)" required>
+        <input name="address" placeholder="Адрес корпуса" required>
+        <div class="row">
+            <button type="submit">Сохранить</button>
+            <button type="button" id="building-close-btn">Отмена</button>
+        </div>
+    </form>
+</dialog>
+
 <script src="/buildings.js"></script>
 </body>
 </html>

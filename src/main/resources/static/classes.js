@@ -9,12 +9,17 @@ const ui = {
     result: document.getElementById("classes-result"),
     body: document.getElementById("classes-body"),
     fileInput: document.getElementById("classes-file"),
-    importBtn: document.getElementById("import-classes-btn")
+    importBtn: document.getElementById("import-classes-btn"),
+    editDialog: document.getElementById("class-edit-dialog"),
+    editForm: document.getElementById("class-edit-form"),
+    editBuilding: document.getElementById("class-edit-building"),
+    editCloseBtn: document.getElementById("class-edit-close-btn")
 };
 
 let teachers = [];
 let buildings = [];
 let classRows = [];
+let editingOriginalKey = null;
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -35,6 +40,14 @@ function normalizeClassName(value) {
     return m ? `${m[1]}-${m[2]}` : v;
 }
 
+function normalizeBuildingCode(value) {
+    return norm(value).replaceAll(" ", "").toUpperCase();
+}
+
+function entryKey(entry) {
+    return `${normalizeBuildingCode(entry.numberSchoolBuilding)}|${normalizeClassName(entry.className)}`;
+}
+
 function buildingLabel(code) {
     const b = buildings.find((x) => x.code === code);
     return b ? `${b.name} (${b.address})` : code;
@@ -44,21 +57,26 @@ function renderTeachers() {
     ui.teacherList.innerHTML = teachers.map((fio) => `<option value="${esc(fio)}"></option>`).join("");
 }
 
-function renderBuildings() {
-    const selected = ui.building.value;
-    ui.building.innerHTML = `<option value="">Выберите корпус</option>`;
+function fillBuildingOptions(selectEl, selectedValue = "") {
+    selectEl.innerHTML = `<option value="">Выберите корпус</option>`;
     buildings.sort((a, b) => String(a.name).localeCompare(String(b.name), "ru")).forEach((b) => {
-        ui.building.innerHTML += `<option value="${esc(b.code)}">${esc(b.name)} — ${esc(b.address)}</option>`;
+        selectEl.innerHTML += `<option value="${esc(b.code)}">${esc(b.name)} — ${esc(b.address)}</option>`;
     });
-    if (selected) ui.building.value = selected;
+    if (selectedValue) selectEl.value = selectedValue;
 }
 
-function fillForm(entry) {
-    ui.form.elements.numberSchoolBuilding.value = entry.numberSchoolBuilding || "";
-    ui.form.elements.className.value = entry.className || "";
-    ui.form.elements.classDirection.value = entry.classDirection || "";
-    ui.form.elements.fioTeacher.value = entry.fioTeacher || "";
-    ui.form.scrollIntoView({ behavior: "smooth", block: "center" });
+function renderBuildings() {
+    fillBuildingOptions(ui.building, ui.building.value);
+    fillBuildingOptions(ui.editBuilding, ui.editBuilding.value);
+}
+
+function openEditDialog(entry) {
+    editingOriginalKey = entryKey(entry);
+    ui.editForm.elements.numberSchoolBuilding.value = normalizeBuildingCode(entry.numberSchoolBuilding);
+    ui.editForm.elements.className.value = entry.className || "";
+    ui.editForm.elements.classDirection.value = entry.classDirection || "";
+    ui.editForm.elements.fioTeacher.value = entry.fioTeacher || "";
+    ui.editDialog.showModal();
 }
 
 function renderClasses(rows) {
@@ -66,9 +84,21 @@ function renderClasses(rows) {
     classRows = (rows || []).slice();
     classRows.forEach((r) => {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${esc(buildingLabel(r.numberSchoolBuilding))}</td><td>${esc(r.className)}</td><td>${esc(r.classDirection)}</td><td>${esc(r.fioTeacher)}</td>`;
-        tr.addEventListener("click", () => fillForm(r));
+        tr.innerHTML = `
+            <td>${esc(buildingLabel(r.numberSchoolBuilding))}</td>
+            <td>${esc(r.className)}</td>
+            <td>${esc(r.classDirection)}</td>
+            <td>${esc(r.fioTeacher)}</td>
+            <td><button type="button" class="inline-plus" title="Редактировать" data-edit-class="${esc(entryKey(r))}">✏️</button></td>
+        `;
         ui.body.appendChild(tr);
+    });
+
+    ui.body.querySelectorAll('button[data-edit-class]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const item = classRows.find((x) => entryKey(x) === btn.dataset.editClass);
+            if (item) openEditDialog(item);
+        });
     });
 }
 
@@ -86,12 +116,22 @@ async function reload() {
     renderClasses(classRows);
 }
 
+async function upsertEntry(entry, originalKey = null) {
+    const current = await api("/api/classroom-leadership");
+    const filtered = (current || []).filter((r) => {
+        const key = entryKey(r);
+        if (originalKey) return key !== originalKey;
+        return key !== entryKey(entry);
+    });
+    filtered.push(entry);
+    return api("/api/classroom-leadership", { method: "PUT", headers: jsonHeaders, body: JSON.stringify(filtered) });
+}
+
 ui.form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const current = await api("/api/classroom-leadership");
     const form = new FormData(ui.form);
     const entry = {
-        numberSchoolBuilding: norm(form.get("numberSchoolBuilding")),
+        numberSchoolBuilding: normalizeBuildingCode(form.get("numberSchoolBuilding")),
         className: normalizeClassName(form.get("className")),
         classDirection: norm(form.get("classDirection")),
         fioTeacher: norm(form.get("fioTeacher"))
@@ -102,21 +142,42 @@ ui.form.addEventListener("submit", async (e) => {
         return;
     }
 
-    const exact = teachers.find((fio) => fio.toLowerCase() === entry.fioTeacher.toLowerCase());
-    if (!exact) {
-        print({ error: `Педагог «${entry.fioTeacher}» не найден` });
+    try {
+        const saved = await upsertEntry(entry);
+        print({ status: "saved", total: saved.length });
+        ui.form.reset();
+        await reload();
+    } catch (error) {
+        print({ error: error.message });
+    }
+});
+
+ui.editForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = new FormData(ui.editForm);
+    const entry = {
+        numberSchoolBuilding: normalizeBuildingCode(form.get("numberSchoolBuilding")),
+        className: normalizeClassName(form.get("className")),
+        classDirection: norm(form.get("classDirection")),
+        fioTeacher: norm(form.get("fioTeacher"))
+    };
+
+    if (!entry.numberSchoolBuilding || !entry.className || !entry.classDirection || !entry.fioTeacher) {
+        print({ error: "Заполните все поля" });
         return;
     }
-    entry.fioTeacher = exact;
 
-    const filtered = (current || []).filter((r) => !(norm(r.numberSchoolBuilding) === entry.numberSchoolBuilding && norm(r.className) === entry.className));
-    filtered.push(entry);
-
-    const saved = await api("/api/classroom-leadership", { method: "PUT", headers: jsonHeaders, body: JSON.stringify(filtered) });
-    print({ status: "saved", total: saved.length });
-    ui.form.reset();
-    await reload();
+    try {
+        const saved = await upsertEntry(entry, editingOriginalKey);
+        ui.editDialog.close();
+        print({ status: "updated", total: saved.length });
+        await reload();
+    } catch (error) {
+        print({ error: error.message });
+    }
 });
+
+ui.editCloseBtn.addEventListener('click', () => ui.editDialog.close());
 
 ui.importBtn.addEventListener("click", async () => {
     const file = ui.fileInput.files?.[0];
