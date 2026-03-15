@@ -5,8 +5,10 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.ClassroomLeadershipEntryRequest;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
+import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
+import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.service.ClassroomLeadershipService;
@@ -27,6 +29,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     private final ClassroomLeadershipRepository classroomLeadershipRepository;
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final SchoolBuildingRepository schoolBuildingRepository;
+    private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
 
     @Override
     public List<ClassroomLeadershipEntry> replaceAll(List<ClassroomLeadershipEntryRequest> requests) {
@@ -59,7 +62,9 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             toSave.add(entry);
         });
 
-        return classroomLeadershipRepository.saveAll(toSave);
+        List<ClassroomLeadershipEntry> saved = classroomLeadershipRepository.saveAll(toSave);
+        syncCurriculumBuildingByClass(saved);
+        return saved;
     }
 
     @Override
@@ -167,6 +172,49 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         classroomLeadershipRepository.deleteAll();
     }
 
+
+
+    /**
+     * Ключевая синхронизация: если класс перенесли из СП0 в реальный корпус,
+     * обновляем numberSchoolBuilding в учебном плане для этого className.
+     * Это предотвращает "пропадание" предметов во вкладке "Нагрузка по корпусам".
+     */
+    private void syncCurriculumBuildingByClass(List<ClassroomLeadershipEntry> classes) {
+        if (classes == null || classes.isEmpty()) {
+            return;
+        }
+
+        Map<String, String> buildingByClass = new LinkedHashMap<>();
+        classes.forEach(c -> {
+            String className = ClassNameNormalizer.normalize(c.getClassName());
+            String building = normalizeBuildingCode(c.getNumberSchoolBuilding());
+            if (!className.isBlank() && !building.isBlank()) {
+                buildingByClass.put(className, building);
+            }
+        });
+
+        if (buildingByClass.isEmpty()) {
+            return;
+        }
+
+        List<CurriculumPlanEntry> entries = curriculumPlanEntryRepository.findAll();
+        boolean changed = false;
+        for (CurriculumPlanEntry entry : entries) {
+            String className = ClassNameNormalizer.normalize(entry.getClassName());
+            String targetBuilding = buildingByClass.get(className);
+            if (targetBuilding == null || targetBuilding.isBlank()) {
+                continue;
+            }
+            if (!targetBuilding.equalsIgnoreCase(String.valueOf(entry.getNumberSchoolBuilding()))) {
+                entry.setNumberSchoolBuilding(targetBuilding);
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            curriculumPlanEntryRepository.saveAll(entries);
+        }
+    }
 
     private void ensureBuildingExists(String code) {
         schoolBuildingRepository.findByCode(code).orElseGet(() -> {

@@ -10,6 +10,7 @@ body {
     margin: 0;
     background: #f5f7fb;
     color: #111;
+    overflow-y: scroll;
 }
 
 .container {
@@ -136,11 +137,12 @@ hr {
 }
 
 .page-nav {
-    position: fixed;
+    position: sticky;
     top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 0;
+    transform: none;
     width: min(1100px, calc(100% - 24px));
+    margin: 0 auto;
     z-index: 1000;
     display: flex;
     gap: 10px;

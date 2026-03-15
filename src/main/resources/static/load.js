@@ -825,7 +825,7 @@ async function init() {
 
     try {
         await refreshSourceData();
-        setInterval(() => { refreshSourceData().catch(() => {}); }, 30000);
+        // Автообновление отключено: исключаем скачки интерфейса во время ручного распределения нагрузки.
     } catch (error) {
         print({ error: error.message });
     }
