@@ -341,7 +341,12 @@ hr {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 14px;
+    font-size: 13px;
+}
+
+.controls-row button,
+.controls-row select {
+    padding: 6px 8px;
 }
 
 .subject-cell {
@@ -560,4 +565,24 @@ dialog::backdrop {
 
 .conflict-row td {
     background: #fee2e2;
+}
+
+
+.load-page .load-toolbar {
+    position: sticky;
+    top: 8px;
+    z-index: 40;
+}
+
+.load-page .load-status-card {
+    top: 150px;
+}
+
+.load-page .sheet-wrap {
+    max-height: calc(100vh - 280px);
+}
+
+.load-page .sheet-table thead th {
+    top: 0;
+    z-index: 5;
 }

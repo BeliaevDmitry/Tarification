@@ -15,8 +15,7 @@ const ui = {
     cancelLoadBtn: document.getElementById("load-cancel-btn"),
     unassignedHours: document.getElementById("unassigned-hours"),
     errorCount: document.getElementById("error-count"),
-    nextErrorBtn: document.getElementById("next-error-btn"),
-    archiveBody: document.getElementById("archive-load-body")
+    nextErrorBtn: document.getElementById("next-error-btn")
 };
 
 let curriculumRows = [];
@@ -26,6 +25,9 @@ let teacherDirectory = [];
 let buildings = [];
 let classroomRows = [];
 let selectedBuilding = "";
+
+const ARCHIVE_BUILDING_CODE = "__ARCHIVE__";
+const ARCHIVE_BUILDING_LABEL = "Архив нагрузки";
 
 const state = {
     assignmentsByBuilding: {},
@@ -148,6 +150,7 @@ function teacherRowsForBuilding(buildingCode) {
 }
 
 function rowsForSelectedBuilding() {
+    if (selectedBuilding === ARCHIVE_BUILDING_CODE) return [];
     const map = classBuildingMap();
     return curriculumRows.filter((row) => {
         const rowBuilding = normalizeBuildingCode(row.numberSchoolBuilding);
@@ -530,11 +533,14 @@ function getOrderedRows(presentationRows) {
 function renderBuildingTabs() {
     ui.buildingTabs.innerHTML = "";
 
-    buildings.forEach((building) => {
+    const tabs = [...buildings, { code: ARCHIVE_BUILDING_CODE, name: ARCHIVE_BUILDING_LABEL }];
+    tabs.forEach((building) => {
         const button = document.createElement("button");
         button.type = "button";
         button.className = `parallel-tab ${building.code === selectedBuilding ? "active" : ""}`;
-        button.textContent = `${building.code} — ${building.name}`;
+        button.textContent = building.code === ARCHIVE_BUILDING_CODE
+            ? `🗂 ${building.name}`
+            : `${building.code} — ${building.name}`;
         button.addEventListener("click", () => {
             selectedBuilding = building.code;
             state.forceResort = true;
@@ -546,6 +552,7 @@ function renderBuildingTabs() {
 }
 
 function addTeacherRow(subjectKey, afterRowId = null) {
+    if (selectedBuilding === ARCHIVE_BUILDING_CODE) return;
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
     if (!rowsMap[subjectKey]) rowsMap[subjectKey] = [];
     const period = defaultLoadPeriod();
@@ -562,6 +569,7 @@ function addTeacherRow(subjectKey, afterRowId = null) {
 }
 
 function setTeacherForRow(subjectKey, teacherRowId, value) {
+    if (selectedBuilding === ARCHIVE_BUILDING_CODE) return;
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
     const row = (rowsMap[subjectKey] || []).find((entry) => entry.id === teacherRowId);
     if (!row) return;
@@ -571,24 +579,18 @@ function setTeacherForRow(subjectKey, teacherRowId, value) {
     row.teacherName = nextTeacher;
     markDirty();
 
-    const assignments = assignmentsForBuilding(selectedBuilding);
-    expandCurriculumRows(rowsForSelectedBuilding())
-        .filter((curriculumRow) => subjectKeyOfRow(curriculumRow) === subjectKey)
-        .forEach((curriculumRow) => {
-            const apiKey = apiKeyOfRow(curriculumRow);
-            const currentTeacher = String(assignments[apiKey] || "").trim();
-
-            if (!nextTeacher) {
-                if (currentTeacher && (!previousTeacher || currentTeacher === previousTeacher)) {
+    if (!nextTeacher) {
+        const assignments = assignmentsForBuilding(selectedBuilding);
+        expandCurriculumRows(rowsForSelectedBuilding())
+            .filter((curriculumRow) => subjectKeyOfRow(curriculumRow) === subjectKey)
+            .forEach((curriculumRow) => {
+                const apiKey = apiKeyOfRow(curriculumRow);
+                const currentTeacher = String(assignments[apiKey] || "").trim();
+                if (currentTeacher && currentTeacher === previousTeacher) {
                     assignments[apiKey] = "";
                 }
-                return;
-            }
-
-            if (!currentTeacher || currentTeacher === previousTeacher) {
-                assignments[apiKey] = nextTeacher;
-            }
-        });
+            });
+    }
 }
 
 
@@ -656,9 +658,7 @@ function collectLoadIssues(presentationRows, classes) {
             const curriculumRow = row.rowsByClass[className];
             if (!curriculumRow) return;
             const assignedTeacher = String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)] || "").trim();
-            const ownerRow = presentationRows.find((candidate) => String(candidate.teacherName||"").trim() === assignedTeacher && candidate.rowsByClass[className] && candidate.subjectKey === row.subjectKey);
-            const activeByPeriod = ownerRow ? dateInRange(new Date().toISOString().slice(0, 10), ownerRow.loadFromDate, ownerRow.loadToDate) : false;
-            if (!assignedTeacher || !activeByPeriod) {
+            if (!assignedTeacher) {
                 unassignedHours += Number(curriculumRow.plannedHours || 0);
                 errorCount += 1;
             }
@@ -699,6 +699,11 @@ function renderTable() {
         return;
     }
 
+    if (selectedBuilding === ARCHIVE_BUILDING_CODE) {
+        renderArchiveAsMainTable();
+        return;
+    }
+
     ensureTeacherRowsForBuilding();
 
     const classes = classesForSelectedBuilding();
@@ -734,11 +739,9 @@ function renderTable() {
                 if (!curriculumRow) return "<td></td>";
                 const assignedTeacher = assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)] || "";
                 const rowTeacher = String(row.teacherName || "").trim();
-                const today = new Date().toISOString().slice(0, 10);
-                const teacherPeriodActive = dateInRange(today, row.loadFromDate, row.loadToDate);
-                const isActive = assignedTeacher === rowTeacher && assignedTeacher !== "" && teacherPeriodActive;
+                const isActive = assignedTeacher === rowTeacher && assignedTeacher !== "";
                 const isMuted = rowTeacher !== "" && !isActive;
-                const isUnassigned = !assignedTeacher || (assignedTeacher === rowTeacher && !teacherPeriodActive);
+                const isUnassigned = !assignedTeacher;
                 return `<td><button type="button" class="hour-pill ${isActive ? "active" : ""} ${isMuted ? "muted" : ""} ${isUnassigned ? "unassigned" : ""}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(curriculumRow.plannedHours)} ч</button></td>`;
             }).join("")}
         `;
@@ -784,6 +787,8 @@ function renderTable() {
                 ui.sortDirection.value = state.sortDirection;
             } else {
                 state.sortField = next;
+                state.sortDirection = "desc";
+                ui.sortDirection.value = "desc";
                 ui.sortField.value = "subject";
             }
             state.forceResort = true;
@@ -791,7 +796,6 @@ function renderTable() {
         });
     });
 
-    renderArchiveTable();
 
     ui.tableBody.querySelectorAll(".period-input").forEach((input) => {
         input.addEventListener("change", () => {
@@ -822,22 +826,37 @@ function renderTable() {
 }
 
 
-function renderArchiveTable() {
-    if (!ui.archiveBody) return;
+function renderArchiveAsMainTable() {
     const today = new Date().toISOString().slice(0, 10);
     const conflicts = detectManualLoadConflicts();
     const archiveRows = (manualRows || [])
-        .filter((r) => normalizeBuildingCode(r.numberSchoolBuilding) === selectedBuilding)
         .filter((r) => r.loadToDate && r.loadToDate < today)
         .sort((a, b) => String(b.loadToDate).localeCompare(String(a.loadToDate)));
 
+    const head = document.createElement("tr");
+    head.innerHTML = `
+        <th>Корпус</th>
+        <th>Педагог</th>
+        <th>Предмет</th>
+        <th>Класс</th>
+        <th>Часы</th>
+        <th>Уровень</th>
+        <th>С</th>
+        <th>По</th>
+        <th>Статус</th>
+    `;
+    ui.tableHead.appendChild(head);
+
     if (!archiveRows.length) {
-        ui.archiveBody.innerHTML = '<tr><td colspan="8">Архивных записей пока нет.</td></tr>';
+        ui.tableBody.innerHTML = '<tr><td colspan="9">Архивных записей пока нет.</td></tr>';
+        ui.unassignedHours.textContent = "0";
+        ui.errorCount.textContent = "0";
         return;
     }
 
-    ui.archiveBody.innerHTML = archiveRows.map((r) => `
+    ui.tableBody.innerHTML = archiveRows.map((r) => `
         <tr class="${conflicts.has(r.id) ? "conflict-row" : ""}">
+            <td>${esc(normalizeBuildingCode(r.numberSchoolBuilding))}</td>
             <td>${esc(r.fioTeacher)}</td>
             <td>${esc(r.subjectName)}</td>
             <td>${esc(r.className)}</td>
@@ -848,9 +867,17 @@ function renderArchiveTable() {
             <td>${conflicts.has(r.id) ? "Конфликт периода" : ""}</td>
         </tr>
     `).join("");
+
+    ui.unassignedHours.textContent = "0";
+    ui.errorCount.textContent = String(conflicts.size);
 }
 
 async function saveBuildingLoad() {
+    if (selectedBuilding === ARCHIVE_BUILDING_CODE) {
+        print({ warning: "Архив не редактируется" });
+        return;
+    }
+
     const assignments = assignmentsForBuilding(selectedBuilding);
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
     const payload = expandCurriculumRows(rowsForSelectedBuilding()).map((row) => {
@@ -934,7 +961,7 @@ async function refreshSourceData() {
     state.forceResort = true;
     markDirty(false);
 
-    if (!buildings.some((row) => row.code === selectedBuilding)) {
+    if (selectedBuilding !== ARCHIVE_BUILDING_CODE && !buildings.some((row) => row.code === selectedBuilding)) {
         selectedBuilding = buildings[0]?.code || "";
     }
 
