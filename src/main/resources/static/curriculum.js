@@ -219,8 +219,10 @@ function renderSummaryTable() {
     ui.summaryBody.innerHTML = "";
 
     const directionRow = document.createElement("tr");
+    directionRow.className = "summary-direction-row";
     directionRow.innerHTML = `<th rowspan="2">Блок / предмет / часы</th>${selectedClasses.map((c) => `<th>${esc(c.classDirection)}</th>`).join("")}`;
     const classRow = document.createElement("tr");
+    classRow.className = "summary-class-row";
     classRow.innerHTML = selectedClasses.map((c) => `<th>${esc(c.className)}</th>`).join("");
     ui.summaryHead.appendChild(directionRow);
     ui.summaryHead.appendChild(classRow);

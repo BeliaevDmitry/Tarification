@@ -451,15 +451,7 @@ function buildPresentationRows() {
         });
     });
 
-    const filtered = result.filter((row) => {
-        const hasAssigned = Object.values(row.rowsByClass).some((curriculumRow) => {
-            const assigned = String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)] || "").trim();
-            return assigned === String(row.teacherName || "").trim() && assigned !== "";
-        });
-        return hasAssigned || !String(row.teacherName || "").trim();
-    });
-
-    return getOrderedRows(filtered);
+    return getOrderedRows(result);
 }
 
 

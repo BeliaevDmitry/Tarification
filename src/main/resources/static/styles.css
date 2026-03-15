@@ -586,3 +586,50 @@ dialog::backdrop {
     top: 0;
     z-index: 5;
 }
+
+
+.curriculum-page .container {
+    max-width: 1600px;
+}
+
+.curriculum-page .curriculum-toolbar {
+    position: sticky;
+    top: 8px;
+    z-index: 35;
+}
+
+.curriculum-page .sheet-wrap {
+    max-height: calc(100vh - 240px);
+}
+
+#summary-table {
+    min-width: 1500px;
+}
+
+#summary-table th,
+#summary-table td {
+    min-width: 120px;
+}
+
+#summary-table th:first-child,
+#summary-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 6;
+    background: #fff;
+    min-width: 280px;
+}
+
+#summary-table .summary-direction-row th {
+    position: sticky;
+    top: 0;
+    z-index: 7;
+    background: #f8fafc;
+}
+
+#summary-table .summary-class-row th {
+    position: sticky;
+    top: 38px;
+    z-index: 7;
+    background: #f1f5f9;
+}
