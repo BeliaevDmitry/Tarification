@@ -54,6 +54,15 @@ function sortRu(values) {
     return [...values].sort((a, b) => String(a).localeCompare(String(b), "ru"));
 }
 
+function normalizeBuildingCode(value) {
+    return String(value || "")
+        .trim()
+        .toUpperCase()
+        .replace(/[–—]/g, "-")
+        .replace(/\s*\|\s*/g, "|")
+        .replace(/\s+/g, "");
+}
+
 
 function normalizeClassName(value) {
     const v = String(value || "").trim().toUpperCase().replace(/[–—]/g, "-");
@@ -65,7 +74,7 @@ function classBuildingMap() {
     const map = new Map();
     (classroomRows || []).forEach((r) => {
         const cls = normalizeClassName(r.className);
-        const b = String(r.numberSchoolBuilding || "").trim();
+        const b = normalizeBuildingCode(r.numberSchoolBuilding);
         if (cls && b) map.set(cls, b);
     });
     return map;
@@ -139,7 +148,7 @@ function teacherRowsForBuilding(buildingCode) {
 function rowsForSelectedBuilding() {
     const map = classBuildingMap();
     return curriculumRows.filter((row) => {
-        const rowBuilding = String(row.numberSchoolBuilding || "").trim();
+        const rowBuilding = normalizeBuildingCode(row.numberSchoolBuilding);
         const byClass = map.get(normalizeClassName(row.className));
         return rowBuilding === selectedBuilding || byClass === selectedBuilding;
     });
@@ -218,11 +227,11 @@ function defaultLoadPeriod() {
 function prefillFromManualLoad() {
     const allApiRows = expandCurriculumRows(curriculumRows);
     manualRows.forEach((entry) => {
-        const buildingCode = String(entry.numberSchoolBuilding || "").trim();
+        const buildingCode = normalizeBuildingCode(entry.numberSchoolBuilding);
         if (!buildingCode) return;
 
         const matched = allApiRows.find((row) =>
-            String(row.numberSchoolBuilding || "").trim() === buildingCode
+            normalizeBuildingCode(row.numberSchoolBuilding) === buildingCode
             && row.className === entry.className
             && row.subjectName === entry.subjectName
             && row.educationLevel === entry.educationLevel
@@ -303,8 +312,14 @@ function teacherHoursInBuilding(buildingCode, teacherName) {
     const normalizedTeacher = String(teacherName || "").trim();
     if (!normalizedTeacher) return 0;
 
-    const assignments = assignmentsForBuilding(buildingCode);
-    const buildingRows = expandCurriculumRows(curriculumRows.filter((row) => String(row.numberSchoolBuilding || "").trim() === buildingCode));
+    const normalizedBuilding = normalizeBuildingCode(buildingCode);
+    const assignments = assignmentsForBuilding(normalizedBuilding);
+    const classMap = classBuildingMap();
+    const buildingRows = expandCurriculumRows(curriculumRows.filter((row) => {
+        const rowBuilding = normalizeBuildingCode(row.numberSchoolBuilding);
+        const byClass = classMap.get(normalizeClassName(row.className));
+        return rowBuilding === normalizedBuilding || byClass === normalizedBuilding;
+    }));
 
     return buildingRows.reduce((acc, row) => {
         const assigned = String(assignments[apiKeyOfRow(row)] || "").trim();
@@ -585,7 +600,7 @@ function collectLoadIssues(presentationRows, classes) {
         });
     });
 
-    (manualRows || []).filter((r) => String(r.numberSchoolBuilding||"").trim()===selectedBuilding).forEach((r)=>{
+    (manualRows || []).filter((r) => normalizeBuildingCode(r.numberSchoolBuilding) === selectedBuilding).forEach((r)=>{
         if (r.orphaned) {
             errorCount += 1;
             errors.push(`orphan-${r.id}`);
@@ -774,14 +789,23 @@ async function refreshSourceData() {
     teacherNames = sortRu(Array.from(new Set(teacherDirectory.map((t) => String(t.fioTeacher || "").trim()).filter(Boolean))));
     classroomRows = classRows || [];
 
-    const buildingByCode = new Map((buildingRows || []).map((b) => [String(b.code || "").trim(), b]));
+    const buildingByCode = new Map();
+    (buildingRows || []).forEach((b) => {
+        const code = normalizeBuildingCode(b.code);
+        if (!code) return;
+        buildingByCode.set(code, {
+            ...b,
+            code,
+            name: String(b.name || "").trim() || code
+        });
+    });
     (classroomRows || []).forEach((r) => {
-        const code = String(r.numberSchoolBuilding || "").trim();
+        const code = normalizeBuildingCode(r.numberSchoolBuilding);
         if (!code || buildingByCode.has(code)) return;
         buildingByCode.set(code, { code, name: code, address: "(из классов)" });
     });
     (curriculumRows || []).forEach((r) => {
-        const code = String(r.numberSchoolBuilding || "").trim();
+        const code = normalizeBuildingCode(r.numberSchoolBuilding);
         if (!code || buildingByCode.has(code)) return;
         buildingByCode.set(code, { code, name: code, address: "(из УП)" });
     });
