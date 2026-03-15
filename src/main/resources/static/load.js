@@ -23,6 +23,7 @@ let manualRows = [];
 let teacherNames = [];
 let teacherDirectory = [];
 let buildings = [];
+let classroomRows = [];
 let selectedBuilding = "";
 
 const state = {
@@ -51,6 +52,23 @@ async function api(path, options = {}) {
 
 function sortRu(values) {
     return [...values].sort((a, b) => String(a).localeCompare(String(b), "ru"));
+}
+
+
+function normalizeClassName(value) {
+    const v = String(value || "").trim().toUpperCase().replace(/[–—]/g, "-");
+    const m = v.match(/^(\d{1,2})\s*[- ]?\s*([А-ЯA-Z])$/);
+    return m ? `${m[1]}-${m[2]}` : v;
+}
+
+function classBuildingMap() {
+    const map = new Map();
+    (classroomRows || []).forEach((r) => {
+        const cls = normalizeClassName(r.className);
+        const b = String(r.numberSchoolBuilding || "").trim();
+        if (cls && b) map.set(cls, b);
+    });
+    return map;
 }
 
 function print(value) {
@@ -119,7 +137,12 @@ function teacherRowsForBuilding(buildingCode) {
 }
 
 function rowsForSelectedBuilding() {
-    return curriculumRows.filter((row) => String(row.numberSchoolBuilding || "").trim() === selectedBuilding);
+    const map = classBuildingMap();
+    return curriculumRows.filter((row) => {
+        const rowBuilding = String(row.numberSchoolBuilding || "").trim();
+        const byClass = map.get(normalizeClassName(row.className));
+        return rowBuilding === selectedBuilding || byClass === selectedBuilding;
+    });
 }
 
 function expandCurriculumRows(rows) {
@@ -737,18 +760,33 @@ async function saveBuildingLoad() {
 }
 
 async function refreshSourceData() {
-    const [curriculum, manual, teachers, buildingRows] = await Promise.all([
+    const [curriculum, manual, teachers, buildingRows, classRows] = await Promise.all([
         api("/api/curriculum"),
         api("/api/manual-load"),
         api("/api/teachers"),
-        api("/api/buildings")
+        api("/api/buildings"),
+        api("/api/classroom-leadership")
     ]);
 
     curriculumRows = curriculum || [];
     manualRows = manual || [];
     teacherDirectory = teachers || [];
     teacherNames = sortRu(Array.from(new Set(teacherDirectory.map((t) => String(t.fioTeacher || "").trim()).filter(Boolean))));
-    buildings = [...(buildingRows || [])].sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"));
+    classroomRows = classRows || [];
+
+    const buildingByCode = new Map((buildingRows || []).map((b) => [String(b.code || "").trim(), b]));
+    (classroomRows || []).forEach((r) => {
+        const code = String(r.numberSchoolBuilding || "").trim();
+        if (!code || buildingByCode.has(code)) return;
+        buildingByCode.set(code, { code, name: code, address: "(из классов)" });
+    });
+    (curriculumRows || []).forEach((r) => {
+        const code = String(r.numberSchoolBuilding || "").trim();
+        if (!code || buildingByCode.has(code)) return;
+        buildingByCode.set(code, { code, name: code, address: "(из УП)" });
+    });
+
+    buildings = [...buildingByCode.values()].sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"));
 
     prefillFromManualLoad();
     state.forceResort = true;
