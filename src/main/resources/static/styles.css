@@ -514,3 +514,50 @@ dialog::backdrop {
         gap: 6px;
     }
 }
+
+
+.table-scroll-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0;
+}
+
+.table-scroll-controls input[type="range"] {
+    flex: 1;
+}
+
+.table-scroll-controls.disabled {
+    opacity: 0.5;
+}
+
+.table-scroll-controls.disabled button,
+.table-scroll-controls.disabled input {
+    pointer-events: none;
+}
+
+#building-load-table {
+    min-width: 1500px;
+}
+
+.load-page .container {
+    max-width: 1600px;
+}
+
+.class-sort-btn {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    font-weight: 600;
+}
+
+.class-sort-btn.active {
+    color: #1d4ed8;
+    text-decoration: underline;
+}
+
+.conflict-row td {
+    background: #fee2e2;
+}

@@ -42,6 +42,11 @@ public class ManualLoadEntry {
 
     private LocalDate loadToDate;
 
+    private LocalDate backupLoadToDate;
+
+    @Column(nullable = false)
+    private boolean dismissalAdjusted = false;
+
     @Column(nullable = false)
     private boolean orphaned = false;
 

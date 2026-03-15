@@ -9,6 +9,7 @@ import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.TeacherDirectoryService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
@@ -104,6 +105,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
     }
 
     @Override
+    @Transactional
     public TeacherDirectoryEntry markForDismissal(Long teacherId, LocalDate dismissalDate) {
         if (dismissalDate == null) {
             throw new IllegalArgumentException("dismissalDate is required");
@@ -113,14 +115,39 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
 
         entry.setDismissalDate(dismissalDate);
+
+        manualLoadEntryRepository.findByFioTeacherIgnoreCase(entry.getFioTeacher()).forEach(loadEntry -> {
+            if (loadEntry.getLoadToDate() == null) {
+                return;
+            }
+            if (loadEntry.getLoadToDate().isAfter(dismissalDate)) {
+                loadEntry.setBackupLoadToDate(loadEntry.getLoadToDate());
+                loadEntry.setLoadToDate(dismissalDate);
+                loadEntry.setDismissalAdjusted(true);
+                manualLoadEntryRepository.save(loadEntry);
+            }
+        });
+
         return teacherDirectoryRepository.save(entry);
     }
 
 
     @Override
+    @Transactional
     public TeacherDirectoryEntry restore(Long teacherId) {
         TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
                 .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
+
+        manualLoadEntryRepository.findByFioTeacherIgnoreCase(entry.getFioTeacher()).forEach(loadEntry -> {
+            if (!loadEntry.isDismissalAdjusted() || loadEntry.getBackupLoadToDate() == null) {
+                return;
+            }
+            loadEntry.setLoadToDate(loadEntry.getBackupLoadToDate());
+            loadEntry.setBackupLoadToDate(null);
+            loadEntry.setDismissalAdjusted(false);
+            manualLoadEntryRepository.save(loadEntry);
+        });
+
         entry.setDismissalDate(null);
         return teacherDirectoryRepository.save(entry);
     }

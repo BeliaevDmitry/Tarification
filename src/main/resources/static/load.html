@@ -6,7 +6,7 @@
     <title>Tarification — Нагрузка по корпусам</title>
     <link rel="stylesheet" href="/styles.css">
 </head>
-<body>
+<body class="load-page">
 <main class="container">
     <header class="card">
         <h1>Нагрузка по корпусам</h1>
@@ -56,6 +56,16 @@
         <h2>Распределение педагогов</h2>
         <div class="sheet-wrap"><table class="sheet-table" id="building-load-table"><thead id="building-load-head"></thead><tbody id="building-load-body"></tbody></table></div>
     </section>
+
+    <section class="card">
+        <h2>Архив нагрузки</h2>
+        <div class="sheet-wrap"><table class="sheet-table" id="archive-load-table">
+            <thead>
+                <tr><th>Педагог</th><th>Предмет</th><th>Класс</th><th>Часы</th><th>Уровень</th><th>С</th><th>По</th><th>Статус</th></tr>
+            </thead>
+            <tbody id="archive-load-body"></tbody>
+        </table></div>
+    </section>
 </main>
 
 <dialog id="load-period-dialog">
@@ -74,6 +84,7 @@
   </form>
 </dialog>
 
+<script src="/table-scroll.js"></script>
 <script src="/load.js"></script>
 </body>
 </html>

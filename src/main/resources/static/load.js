@@ -15,7 +15,8 @@ const ui = {
     cancelLoadBtn: document.getElementById("load-cancel-btn"),
     unassignedHours: document.getElementById("unassigned-hours"),
     errorCount: document.getElementById("error-count"),
-    nextErrorBtn: document.getElementById("next-error-btn")
+    nextErrorBtn: document.getElementById("next-error-btn"),
+    archiveBody: document.getElementById("archive-load-body")
 };
 
 let curriculumRows = [];
@@ -33,7 +34,8 @@ const state = {
     sortField: "subject",
     sortDirection: "asc",
     forceResort: true,
-    hasUnsavedChanges: false
+    hasUnsavedChanges: false,
+    classSort: ""
 };
 
 
@@ -224,6 +226,59 @@ function defaultLoadPeriod() {
     return { from, to };
 }
 
+
+function dateInRange(isoDate, fromDate, toDate) {
+    if (!isoDate || !fromDate || !toDate) return true;
+    return fromDate <= isoDate && isoDate <= toDate;
+}
+
+function periodOverlaps(aFrom, aTo, bFrom, bTo) {
+    if (!aFrom || !aTo || !bFrom || !bTo) return false;
+    return aFrom <= bTo && bFrom <= aTo;
+}
+
+function subjectConflictKey(row) {
+    return [
+        normalizeBuildingCode(row.numberSchoolBuilding),
+        normalizeClassName(row.className),
+        String(row.subjectName || "").trim().toUpperCase(),
+        String(row.educationLevel || ""),
+        String(row.groupNameEducationalPlan || "").trim().toUpperCase()
+    ].join("|");
+}
+
+function detectManualLoadConflicts() {
+    const rows = (manualRows || [])
+        .filter((r) => normalizeBuildingCode(r.numberSchoolBuilding) === selectedBuilding)
+        .filter((r) => !r.orphaned);
+
+    const byKey = new Map();
+    rows.forEach((r) => {
+        const key = subjectConflictKey(r);
+        if (!byKey.has(key)) byKey.set(key, []);
+        byKey.get(key).push(r);
+    });
+
+    const conflicts = new Set();
+    byKey.forEach((items) => {
+        for (let i = 0; i < items.length; i += 1) {
+            for (let j = i + 1; j < items.length; j += 1) {
+                const a = items[i];
+                const b = items[j];
+                const aTeacher = String(a.fioTeacher || "").trim().toLowerCase();
+                const bTeacher = String(b.fioTeacher || "").trim().toLowerCase();
+                if (!aTeacher || !bTeacher || aTeacher === bTeacher) continue;
+                if (periodOverlaps(a.loadFromDate, a.loadToDate, b.loadFromDate, b.loadToDate)) {
+                    conflicts.add(a.id);
+                    conflicts.add(b.id);
+                }
+            }
+        }
+    });
+
+    return conflicts;
+}
+
 function prefillFromManualLoad() {
     const allApiRows = expandCurriculumRows(curriculumRows);
     manualRows.forEach((entry) => {
@@ -411,7 +466,15 @@ function applySorting(presentationRows) {
 
     return [...presentationRows].sort((a, b) => {
         let result = 0;
-        switch (state.sortField) {
+        const classSortMatch = /^classHours:(.+)$/.exec(state.sortField || "");
+        if (classSortMatch) {
+            const className = classSortMatch[1];
+            const aRow = a.rowsByClass[className];
+            const bRow = b.rowsByClass[className];
+            const aVal = aRow ? Number(aRow.plannedHours || 0) : -1;
+            const bVal = bRow ? Number(bRow.plannedHours || 0) : -1;
+            result = aVal - bVal;
+        } else switch (state.sortField) {
             case "teacher":
                 result = cmp(a.teacherName || "", b.teacherName || "");
                 break;
@@ -593,12 +656,17 @@ function collectLoadIssues(presentationRows, classes) {
             const curriculumRow = row.rowsByClass[className];
             if (!curriculumRow) return;
             const assignedTeacher = String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)] || "").trim();
-            if (!assignedTeacher) {
+            const ownerRow = presentationRows.find((candidate) => String(candidate.teacherName||"").trim() === assignedTeacher && candidate.rowsByClass[className] && candidate.subjectKey === row.subjectKey);
+            const activeByPeriod = ownerRow ? dateInRange(new Date().toISOString().slice(0, 10), ownerRow.loadFromDate, ownerRow.loadToDate) : false;
+            if (!assignedTeacher || !activeByPeriod) {
                 unassignedHours += Number(curriculumRow.plannedHours || 0);
                 errorCount += 1;
             }
         });
     });
+
+    const conflicts = detectManualLoadConflicts();
+    errorCount += conflicts.size;
 
     (manualRows || []).filter((r) => normalizeBuildingCode(r.numberSchoolBuilding) === selectedBuilding).forEach((r)=>{
         if (r.orphaned) {
@@ -643,7 +711,7 @@ function renderTable() {
         <th>Педагог</th>
         <th>Часов в корпусе</th>
         <th>Всего часов в комплексе</th>
-        ${classes.map((className) => `<th>${esc(className)}</th>`).join("")}
+        ${classes.map((className) => `<th><button type="button" class="class-sort-btn ${state.sortField === `classHours:${className}` ? "active" : ""}" data-class-sort="${esc(className)}">${esc(className)}</button></th>`).join("")}
     `;
     ui.tableHead.appendChild(head);
 
@@ -666,9 +734,11 @@ function renderTable() {
                 if (!curriculumRow) return "<td></td>";
                 const assignedTeacher = assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)] || "";
                 const rowTeacher = String(row.teacherName || "").trim();
-                const isActive = assignedTeacher === rowTeacher && assignedTeacher !== "";
+                const today = new Date().toISOString().slice(0, 10);
+                const teacherPeriodActive = dateInRange(today, row.loadFromDate, row.loadToDate);
+                const isActive = assignedTeacher === rowTeacher && assignedTeacher !== "" && teacherPeriodActive;
                 const isMuted = rowTeacher !== "" && !isActive;
-                const isUnassigned = !assignedTeacher;
+                const isUnassigned = !assignedTeacher || (assignedTeacher === rowTeacher && !teacherPeriodActive);
                 return `<td><button type="button" class="hour-pill ${isActive ? "active" : ""} ${isMuted ? "muted" : ""} ${isUnassigned ? "unassigned" : ""}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(curriculumRow.plannedHours)} ч</button></td>`;
             }).join("")}
         `;
@@ -704,6 +774,25 @@ function renderTable() {
         });
     });
 
+
+    ui.tableHead.querySelectorAll("button[data-class-sort]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const className = button.dataset.classSort;
+            const next = `classHours:${className}`;
+            if (state.sortField === next) {
+                state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc";
+                ui.sortDirection.value = state.sortDirection;
+            } else {
+                state.sortField = next;
+                ui.sortField.value = "subject";
+            }
+            state.forceResort = true;
+            renderTable();
+        });
+    });
+
+    renderArchiveTable();
+
     ui.tableBody.querySelectorAll(".period-input").forEach((input) => {
         input.addEventListener("change", () => {
             const subjectKey = input.dataset.subjectKey;
@@ -730,6 +819,35 @@ function renderTable() {
             onClassCellClick(row, className);
         });
     });
+}
+
+
+function renderArchiveTable() {
+    if (!ui.archiveBody) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const conflicts = detectManualLoadConflicts();
+    const archiveRows = (manualRows || [])
+        .filter((r) => normalizeBuildingCode(r.numberSchoolBuilding) === selectedBuilding)
+        .filter((r) => r.loadToDate && r.loadToDate < today)
+        .sort((a, b) => String(b.loadToDate).localeCompare(String(a.loadToDate)));
+
+    if (!archiveRows.length) {
+        ui.archiveBody.innerHTML = '<tr><td colspan="8">Архивных записей пока нет.</td></tr>';
+        return;
+    }
+
+    ui.archiveBody.innerHTML = archiveRows.map((r) => `
+        <tr class="${conflicts.has(r.id) ? "conflict-row" : ""}">
+            <td>${esc(r.fioTeacher)}</td>
+            <td>${esc(r.subjectName)}</td>
+            <td>${esc(r.className)}</td>
+            <td>${esc(r.load)} ч</td>
+            <td>${esc(r.educationLevel || "")}</td>
+            <td>${esc(r.loadFromDate || "")}</td>
+            <td>${esc(r.loadToDate || "")}</td>
+            <td>${conflicts.has(r.id) ? "Конфликт периода" : ""}</td>
+        </tr>
+    `).join("");
 }
 
 async function saveBuildingLoad() {
