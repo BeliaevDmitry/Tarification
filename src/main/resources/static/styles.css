@@ -436,6 +436,13 @@ hr {
     color: #991b1b;
 }
 
+.hour-pill.planned {
+    background: #ede9fe;
+    border-color: #a78bfa;
+    color: #5b21b6;
+    font-weight: 600;
+}
+
 dialog {
     border: 1px solid #e5e7eb;
     border-radius: 10px;

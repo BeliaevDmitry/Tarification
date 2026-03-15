@@ -37,7 +37,9 @@ const state = {
     sortDirection: "asc",
     forceResort: true,
     hasUnsavedChanges: false,
-    classSort: ""
+    classSort: "",
+    futurePlansByBuilding: {},
+    takeoverContext: null
 };
 
 
@@ -147,6 +149,21 @@ function teacherRowsForBuilding(buildingCode) {
         state.subjectTeacherRowsByBuilding[buildingCode] = {};
     }
     return state.subjectTeacherRowsByBuilding[buildingCode];
+}
+
+
+function futurePlansForBuilding(buildingCode) {
+    if (!state.futurePlansByBuilding[buildingCode]) {
+        state.futurePlansByBuilding[buildingCode] = {};
+    }
+    return state.futurePlansByBuilding[buildingCode];
+}
+
+function dayBefore(isoDate) {
+    if (!isoDate) return isoDate;
+    const d = new Date(`${isoDate}T00:00:00`);
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0, 10);
 }
 
 function rowsForSelectedBuilding() {
@@ -556,6 +573,14 @@ function addTeacherRow(subjectKey, afterRowId = null) {
         if (idx === -1) rowsMap[subjectKey].push(newRow);
         else rowsMap[subjectKey].splice(idx + 1, 0, newRow);
     }
+
+    const stable = state.rowOrderByBuilding[selectedBuilding] || {};
+    const entries = Object.entries(stable).sort((a,b) => (a[1]||0)-(b[1]||0));
+    const afterKey = `${subjectKey}::${afterRowId}`;
+    const insertAt = Math.max(entries.findIndex(([k]) => k === afterKey) + 1, 0);
+    entries.splice(insertAt, 0, [`${subjectKey}::${newRow.id}`, insertAt]);
+    state.rowOrderByBuilding[selectedBuilding] = Object.fromEntries(entries.map(([k], i) => [k, i]));
+
     markDirty();
     renderTable();
 }
@@ -622,11 +647,6 @@ function onClassCellClick(presentationRow, className) {
         return;
     }
 
-    if (currentTeacher !== targetTeacher) {
-        print({ warning: `Часы уже назначены педагогу «${currentTeacher}». Сначала снимите назначение у текущего педагога.` });
-        return;
-    }
-
     const rowMeta = findTeacherRowMeta(presentationRow.subjectKey, presentationRow.teacherRowId);
     const period = defaultLoadPeriod();
     ui.periodForm.elements.subjectKey.value = presentationRow.subjectKey;
@@ -634,6 +654,24 @@ function onClassCellClick(presentationRow, className) {
     ui.periodForm.elements.className.value = className;
     ui.periodForm.elements.loadFromDate.value = rowMeta?.loadFromDate || period.from;
     ui.periodForm.elements.loadToDate.value = rowMeta?.loadToDate || period.to;
+
+    if (currentTeacher !== targetTeacher) {
+        state.takeoverContext = {
+            apiKey,
+            previousTeacher: currentTeacher,
+            targetTeacher,
+            subjectKey: presentationRow.subjectKey,
+            rowId: presentationRow.teacherRowId,
+            className,
+            plannedHours: Number(curriculumRow.plannedHours || 0),
+            educationLevel: curriculumRow.educationLevel,
+            curriculumRow
+        };
+        print({ warning: `Часы уже назначены педагогу «${currentTeacher}». Укажите период, с которого часы перейдут педагогу «${targetTeacher}».` });
+    } else {
+        state.takeoverContext = null;
+    }
+
     ui.periodDialog.showModal();
 }
 
@@ -731,10 +769,13 @@ function renderTable() {
                 if (!curriculumRow) return "<td></td>";
                 const assignedTeacher = assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)] || "";
                 const rowTeacher = String(row.teacherName || "").trim();
+                const futurePlan = futurePlansForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)];
+                const today = new Date().toISOString().slice(0, 10);
+                const isPlanned = Boolean(futurePlan && futurePlan.targetTeacher === rowTeacher && futurePlan.fromDate > today);
                 const isActive = assignedTeacher === rowTeacher && assignedTeacher !== "";
-                const isMuted = rowTeacher !== "" && !isActive;
-                const isUnassigned = !assignedTeacher;
-                return `<td><button type="button" class="hour-pill ${isActive ? "active" : ""} ${isMuted ? "muted" : ""} ${isUnassigned ? "unassigned" : ""}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(curriculumRow.plannedHours)} ч</button></td>`;
+                const isMuted = rowTeacher !== "" && !isActive && !isPlanned;
+                const isUnassigned = !assignedTeacher && !isPlanned;
+                return `<td><button type="button" class="hour-pill ${isActive ? "active" : ""} ${isMuted ? "muted" : ""} ${isUnassigned ? "unassigned" : ""} ${isPlanned ? "planned" : ""}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(curriculumRow.plannedHours)} ч</button></td>`;
             }).join("")}
         `;
 
@@ -872,12 +913,20 @@ async function saveBuildingLoad() {
 
     const assignments = assignmentsForBuilding(selectedBuilding);
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
+    const plans = futurePlansForBuilding(selectedBuilding);
     const payload = expandCurriculumRows(rowsForSelectedBuilding()).map((row) => {
-        const fioTeacher = String(assignments[apiKeyOfRow(row)] || "").trim();
+        const apiKey = apiKeyOfRow(row);
+        const fioTeacher = String(assignments[apiKey] || "").trim();
         if (!fioTeacher) return null;
 
         const teacherRow = (rowsMap[subjectKeyOfRow(row)] || []).find((r) => String(r.teacherName || "").trim() === fioTeacher);
         const period = defaultLoadPeriod();
+        const plan = plans[apiKey];
+        let loadToDate = teacherRow?.loadToDate || period.to;
+        if (plan && plan.previousTeacher === fioTeacher) {
+            const cut = dayBefore(plan.fromDate);
+            loadToDate = cut < (teacherRow?.loadFromDate || period.from) ? (teacherRow?.loadFromDate || period.from) : cut;
+        }
 
         return {
             fioTeacher,
@@ -889,9 +938,26 @@ async function saveBuildingLoad() {
             groupLoad: row.__groupIndex ? Number(row.plannedHours || 0) : null,
             educationLevel: row.educationLevel,
             loadFromDate: teacherRow?.loadFromDate || period.from,
-            loadToDate: teacherRow?.loadToDate || period.to
+            loadToDate
         };
     }).filter(Boolean);
+
+    Object.entries(plans).forEach(([apiKey, plan]) => {
+        const row = expandCurriculumRows(rowsForSelectedBuilding()).find((r) => apiKeyOfRow(r) === apiKey);
+        if (!row) return;
+        payload.push({
+            fioTeacher: plan.targetTeacher,
+            numberSchoolBuilding: selectedBuilding,
+            subjectName: row.subjectName,
+            className: row.className,
+            load: Number(row.plannedHours || 0),
+            groupNameEducationalPlan: row.__groupIndex ? `Группа ${row.__groupIndex}` : null,
+            groupLoad: row.__groupIndex ? Number(row.plannedHours || 0) : null,
+            educationLevel: row.educationLevel,
+            loadFromDate: plan.fromDate,
+            loadToDate: plan.toDate
+        });
+    });
 
     if (!payload.length) {
         print({ warning: "Нет назначений для сохранения" });
@@ -905,6 +971,7 @@ async function saveBuildingLoad() {
             body: JSON.stringify(payload)
         });
         print({ saved: result.length, building: selectedBuilding });
+        state.futurePlansByBuilding[selectedBuilding] = {};
         markDirty(false);
     } catch (error) {
         print({ error: error.message });
@@ -957,6 +1024,7 @@ async function refreshSourceData() {
         selectedBuilding = buildings[0]?.code || "";
     }
 
+    state.takeoverContext = null;
     renderBuildingTabs();
     renderTable();
 }
@@ -973,6 +1041,48 @@ function bindEvents() {
             print({ error: "Период задан некорректно" });
             return;
         }
+
+        const takeover = state.takeoverContext;
+        if (takeover) {
+            const assignments = assignmentsForBuilding(selectedBuilding);
+            const plans = futurePlansForBuilding(selectedBuilding);
+            const today = new Date().toISOString().slice(0, 10);
+
+            setPeriodForRow(subjectKey, rowId, fromDate, toDate);
+
+            const rowsMap = teacherRowsForBuilding(selectedBuilding);
+            const oldRow = (rowsMap[takeover.subjectKey] || []).find((r) => String(r.teacherName || "").trim() === takeover.previousTeacher);
+            if (oldRow) {
+                const cut = dayBefore(fromDate);
+                if (!oldRow.loadToDate || oldRow.loadToDate > cut) {
+                    oldRow.loadToDate = cut < oldRow.loadFromDate ? oldRow.loadFromDate : cut;
+                }
+            }
+
+            if (fromDate > today) {
+                plans[takeover.apiKey] = {
+                    targetTeacher: takeover.targetTeacher,
+                    previousTeacher: takeover.previousTeacher,
+                    fromDate,
+                    toDate,
+                    subjectKey: takeover.subjectKey,
+                    plannedHours: takeover.plannedHours,
+                    className: takeover.className,
+                    educationLevel: takeover.educationLevel,
+                    subjectName: takeover.curriculumRow.subjectName
+                };
+            } else {
+                assignments[takeover.apiKey] = takeover.targetTeacher;
+                delete plans[takeover.apiKey];
+            }
+
+            state.takeoverContext = null;
+            markDirty();
+            ui.periodDialog.close();
+            renderTable();
+            return;
+        }
+
         setPeriodForRow(subjectKey, rowId, fromDate, toDate);
         ui.periodDialog.close();
         renderTable();
@@ -995,7 +1105,7 @@ function bindEvents() {
         renderTable();
     });
 
-    ui.cancelLoadBtn.addEventListener("click", () => ui.periodDialog.close());
+    ui.cancelLoadBtn.addEventListener("click", () => { state.takeoverContext = null; ui.periodDialog.close(); });
 
 
     ui.refreshLoadBtn.addEventListener("click", () => {
