@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarification — Классы</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container">
+    <header class="card">
+        <h1>Классы</h1>
+        <p class="muted">Выбор корпуса по названию и адресу.</p>
+        <nav class="page-nav">
+            <a class="nav-link" href="/buildings.html">Корпуса</a>
+            <a class="nav-link active" href="/classes.html">Классы</a>
+            <a class="nav-link" href="/subjects.html">Предметы</a>
+            <a class="nav-link" href="/curriculum.html">Учебный план</a>
+            <a class="nav-link" href="/load.html">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/teachers.html">Педагоги</a>
+        </nav>
+    </header>
+
+    <section class="card">
+        <h2>Импорт из Excel</h2>
+        <div class="row">
+            <input id="classes-file" type="file" accept=".xls,.xlsx">
+            <button id="import-classes-btn" type="button">Импортировать</button>
+            <a id="download-classes-template" href="/api/classroom-leadership/template" class="nav-link">Скачать шаблон</a>
+        </div>
+
+        <h2>Добавить класс</h2>
+        <form id="class-form" class="grid">
+            <select name="numberSchoolBuilding" id="class-building" required></select>
+            <input name="className" placeholder="Класс (например 7А)" required>
+            <label class="field-row"><span>Направление</span><input name="classDirection" placeholder="Направление класса" required></label>
+            <input name="fioTeacher" id="class-teacher" list="teacher-list" placeholder="Классный руководитель" required>
+            <datalist id="teacher-list"></datalist>
+            <button type="submit">Добавить / обновить класс</button>
+        </form>
+        <div class="row">
+            <button id="refresh-classes-btn" type="button">Обновить</button>
+            <button id="clear-classes-btn" type="button">Очистить классы</button>
+        </div>
+        <pre id="classes-result"></pre>
+    </section>
+
+    <section class="card">
+        <h2>Список классов</h2>
+        <div class="sheet-wrap">
+            <table class="sheet-table">
+                <thead>
+                <tr><th>Корпус</th><th>Класс</th><th>Направление</th><th>Классный руководитель</th><th></th></tr>
+                </thead>
+                <tbody id="classes-body"></tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<dialog id="class-edit-dialog">
+    <form method="dialog" id="class-edit-form" class="grid labeled-grid">
+        <h3>Редактирование класса</h3>
+        <label class="field-row"><span>Корпус</span><select name="numberSchoolBuilding" id="class-edit-building" required></select></label>
+        <label class="field-row"><span>Класс</span><input name="className" placeholder="Класс" required></label>
+        <label class="field-row"><span>Направление</span><input name="classDirection" placeholder="Направление класса" required></label>
+        <label class="field-row"><span>Классный руководитель</span><input name="fioTeacher" id="class-edit-teacher" list="teacher-list" placeholder="Классный руководитель" required></label>
+        <div class="row">
+            <button type="submit">Сохранить</button>
+            <button type="button" id="class-edit-close-btn">Отмена</button>
+        </div>
+    </form>
+</dialog>
+
+<script src="/table-scroll.js"></script>
+<script src="/classes.js"></script>
+</body>
+</html>
