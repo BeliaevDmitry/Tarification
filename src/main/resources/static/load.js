@@ -300,43 +300,110 @@ function detectManualLoadConflicts() {
 }
 
 function prefillFromManualLoad() {
+    state.assignmentsByBuilding = {};
+    state.subjectTeacherRowsByBuilding = {};
+    state.futurePlansByBuilding = {};
+
+    const today = new Date().toISOString().slice(0, 10);
     const allApiRows = expandCurriculumRows(curriculumRows);
-    manualRows.forEach((entry) => {
-        const buildingCode = normalizeBuildingCode(entry.numberSchoolBuilding);
-        if (!buildingCode) return;
 
-        const matched = allApiRows.find((row) =>
-            normalizeBuildingCode(row.numberSchoolBuilding) === buildingCode
-            && row.className === entry.className
-            && row.subjectName === entry.subjectName
-            && row.educationLevel === entry.educationLevel
-        );
+    const matchByManual = (entry) => allApiRows.find((row) =>
+        normalizeBuildingCode(row.numberSchoolBuilding) === normalizeBuildingCode(entry.numberSchoolBuilding)
+        && row.className === entry.className
+        && row.subjectName === entry.subjectName
+        && row.educationLevel === entry.educationLevel
+    );
 
+    const grouped = new Map();
+    (manualRows || []).forEach((entry) => {
+        const matched = matchByManual(entry);
         if (!matched) return;
+        const apiKey = apiKeyOfRow(matched);
+        if (!grouped.has(apiKey)) grouped.set(apiKey, { matched, entries: [] });
+        grouped.get(apiKey).entries.push(entry);
+    });
 
+    grouped.forEach(({ matched, entries }, apiKey) => {
+        const buildingCode = normalizeBuildingCode(matched.numberSchoolBuilding);
+        const subjectKey = subjectKeyOfRow(matched);
         const assignments = assignmentsForBuilding(buildingCode);
         const teacherRowsMap = teacherRowsForBuilding(buildingCode);
-        const apiKey = apiKeyOfRow(matched);
-        const subjectKey = subjectKeyOfRow(matched);
-        const teacherName = String(entry.fioTeacher || "").trim();
+        const plans = futurePlansForBuilding(buildingCode);
 
-        assignments[apiKey] = teacherName;
-        if (!teacherName) return;
+        const sorted = [...entries]
+            .filter((e) => String(e.fioTeacher || "").trim())
+            .sort((a, b) => {
+                const aFrom = String(a.loadFromDate || "");
+                const bFrom = String(b.loadFromDate || "");
+                if (aFrom !== bFrom) return aFrom.localeCompare(bFrom);
+                return Number(a.id || 0) - Number(b.id || 0);
+            });
+
+        const currentCandidates = sorted.filter((e) => {
+            const from = String(e.loadFromDate || "");
+            const to = String(e.loadToDate || "");
+            return from && to && from <= today && today <= to;
+        });
+        const currentEntry = currentCandidates[currentCandidates.length - 1] || null;
+
+        const futureCandidates = sorted
+            .filter((e) => String(e.loadFromDate || "") > today)
+            .sort((a, b) => String(a.loadFromDate || "").localeCompare(String(b.loadFromDate || "")));
+        const futureEntry = futureCandidates[0] || null;
+
+        if (currentEntry) {
+            assignments[apiKey] = String(currentEntry.fioTeacher || "").trim();
+        }
+
+        if (futureEntry && currentEntry && String(futureEntry.fioTeacher || "").trim().toLowerCase() !== String(currentEntry.fioTeacher || "").trim().toLowerCase()) {
+            plans[apiKey] = {
+                targetTeacher: String(futureEntry.fioTeacher || "").trim(),
+                previousTeacher: String(currentEntry.fioTeacher || "").trim(),
+                fromDate: String(futureEntry.loadFromDate || ""),
+                toDate: String(futureEntry.loadToDate || ""),
+                subjectKey,
+                plannedHours: Number(matched.plannedHours || 0),
+                className: matched.className,
+                educationLevel: matched.educationLevel,
+                subjectName: matched.subjectName
+            };
+        }
 
         if (!teacherRowsMap[subjectKey]) {
             teacherRowsMap[subjectKey] = [];
         }
 
-        const exists = teacherRowsMap[subjectKey].some((row) => row.teacherName.toLowerCase() === teacherName.toLowerCase());
-        if (!exists) {
-            const period = defaultLoadPeriod();
-            teacherRowsMap[subjectKey].push({
-                id: rowId(),
-                teacherName,
-                loadFromDate: entry.loadFromDate || period.from,
-                loadToDate: entry.loadToDate || period.to
+        const byTeacher = new Map();
+        sorted.forEach((e) => {
+            const teacher = String(e.fioTeacher || "").trim();
+            if (!teacher) return;
+            const key = teacher.toLowerCase();
+            if (!byTeacher.has(key)) byTeacher.set(key, []);
+            byTeacher.get(key).push(e);
+        });
+
+        byTeacher.forEach((teacherEntries, key) => {
+            teacherEntries.sort((a, b) => String(a.loadFromDate || "").localeCompare(String(b.loadFromDate || "")));
+            let chosen = teacherEntries.find((e) => {
+                const from = String(e.loadFromDate || "");
+                const to = String(e.loadToDate || "");
+                return from && to && from <= today && today <= to;
             });
-        }
+            if (!chosen) {
+                chosen = teacherEntries.find((e) => String(e.loadFromDate || "") > today) || teacherEntries[teacherEntries.length - 1];
+            }
+            const teacherName = String(chosen.fioTeacher || "").trim();
+            const exists = teacherRowsMap[subjectKey].some((row) => String(row.teacherName || "").trim().toLowerCase() === key);
+            if (!exists) {
+                const period = defaultLoadPeriod();
+                teacherRowsMap[subjectKey].push({
+                    id: rowId(),
+                    teacherName,
+                    loadFromDate: chosen.loadFromDate || period.from,
+                    loadToDate: chosen.loadToDate || period.to
+                });
+            }
+        });
     });
 }
 
@@ -772,10 +839,11 @@ function renderTable() {
                 const futurePlan = futurePlansForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)];
                 const today = new Date().toISOString().slice(0, 10);
                 const isPlanned = Boolean(futurePlan && futurePlan.targetTeacher === rowTeacher && futurePlan.fromDate > today);
+                const isTransferOut = Boolean(futurePlan && futurePlan.previousTeacher === rowTeacher && futurePlan.fromDate > today);
                 const isActive = assignedTeacher === rowTeacher && assignedTeacher !== "";
-                const isMuted = rowTeacher !== "" && !isActive && !isPlanned;
+                const isMuted = rowTeacher !== "" && !isActive && !isPlanned && !isTransferOut;
                 const isUnassigned = !assignedTeacher && !isPlanned;
-                return `<td><button type="button" class="hour-pill ${isActive ? "active" : ""} ${isMuted ? "muted" : ""} ${isUnassigned ? "unassigned" : ""} ${isPlanned ? "planned" : ""}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(curriculumRow.plannedHours)} ч</button></td>`;
+                return `<td><button type="button" class="hour-pill ${isActive ? "active" : ""} ${isMuted ? "muted" : ""} ${isUnassigned ? "unassigned" : ""} ${isPlanned ? "planned" : ""} ${isTransferOut ? "transfer-out" : ""}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(curriculumRow.plannedHours)} ч</button></td>`;
             }).join("")}
         `;
 
