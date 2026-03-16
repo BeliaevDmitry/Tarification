@@ -246,6 +246,12 @@ function defaultLoadPeriod() {
     return { from, to };
 }
 
+function referencePlanningDate() {
+    const today = new Date().toISOString().slice(0, 10);
+    const period = defaultLoadPeriod();
+    return today < period.from ? period.from : today;
+}
+
 
 function dateInRange(isoDate, fromDate, toDate) {
     if (!isoDate || !fromDate || !toDate) return true;
@@ -304,7 +310,7 @@ function prefillFromManualLoad() {
     state.subjectTeacherRowsByBuilding = {};
     state.futurePlansByBuilding = {};
 
-    const today = new Date().toISOString().slice(0, 10);
+    const referenceDate = referencePlanningDate();
     const allApiRows = expandCurriculumRows(curriculumRows);
 
     const matchByManual = (entry) => allApiRows.find((row) =>
@@ -342,12 +348,15 @@ function prefillFromManualLoad() {
         const currentCandidates = sorted.filter((e) => {
             const from = String(e.loadFromDate || "");
             const to = String(e.loadToDate || "");
-            return from && to && from <= today && today <= to;
+            return from && to && from <= referenceDate && referenceDate <= to;
         });
-        const currentEntry = currentCandidates[currentCandidates.length - 1] || null;
+        let currentEntry = currentCandidates[currentCandidates.length - 1] || null;
+        if (!currentEntry && sorted.length) {
+            currentEntry = sorted[0];
+        }
 
         const futureCandidates = sorted
-            .filter((e) => String(e.loadFromDate || "") > today)
+            .filter((e) => String(e.loadFromDate || "") > referenceDate)
             .sort((a, b) => String(a.loadFromDate || "").localeCompare(String(b.loadFromDate || "")));
         const futureEntry = futureCandidates[0] || null;
 
@@ -387,10 +396,10 @@ function prefillFromManualLoad() {
             let chosen = teacherEntries.find((e) => {
                 const from = String(e.loadFromDate || "");
                 const to = String(e.loadToDate || "");
-                return from && to && from <= today && today <= to;
+                return from && to && from <= referenceDate && referenceDate <= to;
             });
             if (!chosen) {
-                chosen = teacherEntries.find((e) => String(e.loadFromDate || "") > today) || teacherEntries[teacherEntries.length - 1];
+                chosen = teacherEntries.find((e) => String(e.loadFromDate || "") > referenceDate) || teacherEntries[teacherEntries.length - 1];
             }
             const teacherName = String(chosen.fioTeacher || "").trim();
             const exists = teacherRowsMap[subjectKey].some((row) => String(row.teacherName || "").trim().toLowerCase() === key);
@@ -837,9 +846,9 @@ function renderTable() {
                 const assignedTeacher = assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)] || "";
                 const rowTeacher = String(row.teacherName || "").trim();
                 const futurePlan = futurePlansForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)];
-                const today = new Date().toISOString().slice(0, 10);
-                const isPlanned = Boolean(futurePlan && futurePlan.targetTeacher === rowTeacher && futurePlan.fromDate > today);
-                const isTransferOut = Boolean(futurePlan && futurePlan.previousTeacher === rowTeacher && futurePlan.fromDate > today);
+                const referenceDate = referencePlanningDate();
+                const isPlanned = Boolean(futurePlan && futurePlan.targetTeacher === rowTeacher && futurePlan.fromDate > referenceDate);
+                const isTransferOut = Boolean(futurePlan && futurePlan.previousTeacher === rowTeacher && futurePlan.fromDate > referenceDate);
                 const isActive = assignedTeacher === rowTeacher && assignedTeacher !== "";
                 const isMuted = rowTeacher !== "" && !isActive && !isPlanned && !isTransferOut;
                 const isUnassigned = !assignedTeacher && !isPlanned;
@@ -1027,7 +1036,23 @@ async function saveBuildingLoad() {
         });
     });
 
-    if (!payload.length) {
+    const dedupedPayload = new Map();
+    payload.forEach((item) => {
+        const key = [
+            normalizeBuildingCode(item.numberSchoolBuilding),
+            normalizeClassName(item.className),
+            String(item.subjectName || "").trim().toUpperCase(),
+            String(item.educationLevel || ""),
+            String(item.groupNameEducationalPlan || "").trim().toUpperCase(),
+            String(item.fioTeacher || "").trim().toUpperCase(),
+            String(item.loadFromDate || ""),
+            String(item.loadToDate || "")
+        ].join("|");
+        dedupedPayload.set(key, item);
+    });
+    const finalPayload = [...dedupedPayload.values()];
+
+    if (!finalPayload.length) {
         print({ warning: "Нет назначений для сохранения" });
         return;
     }
@@ -1036,9 +1061,9 @@ async function saveBuildingLoad() {
         const result = await api("/api/manual-load/bulk", {
             method: "POST",
             headers: jsonHeaders,
-            body: JSON.stringify(payload)
+            body: JSON.stringify(finalPayload)
         });
-        print({ saved: result.length, building: selectedBuilding });
+        print({ saved: result.length, uniqueRequested: finalPayload.length, building: selectedBuilding });
         state.futurePlansByBuilding[selectedBuilding] = {};
         markDirty(false);
     } catch (error) {
@@ -1114,7 +1139,7 @@ function bindEvents() {
         if (takeover) {
             const assignments = assignmentsForBuilding(selectedBuilding);
             const plans = futurePlansForBuilding(selectedBuilding);
-            const today = new Date().toISOString().slice(0, 10);
+            const referenceDate = referencePlanningDate();
 
             setPeriodForRow(subjectKey, rowId, fromDate, toDate);
 
@@ -1127,7 +1152,7 @@ function bindEvents() {
                 }
             }
 
-            if (fromDate > today) {
+            if (fromDate > referenceDate) {
                 plans[takeover.apiKey] = {
                     targetTeacher: takeover.targetTeacher,
                     previousTeacher: takeover.previousTeacher,
