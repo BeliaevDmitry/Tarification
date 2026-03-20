@@ -1,12 +1,18 @@
 package org.school.personalLoad.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.school.personalLoad.audit.ActionType;
+import org.school.personalLoad.audit.AuditService;
 import org.school.personalLoad.dto.ClassroomLeadershipEntryRequest;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
+import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
+import org.school.personalLoad.security.CurrentUserService;
 import org.school.personalLoad.service.ClassroomLeadershipService;
+import org.school.personalLoad.user.RoleName;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -15,10 +21,14 @@ import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
+@Transactional
 public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipService {
 
     private final ClassroomLeadershipRepository classroomLeadershipRepository;
     private final TeacherDirectoryRepository teacherDirectoryRepository;
+    private final SchoolBuildingRepository buildingRepository;
+    private final CurrentUserService currentUserService;
+    private final AuditService auditService;
 
     @Override
     public List<ClassroomLeadershipEntry> replaceAll(List<ClassroomLeadershipEntryRequest> requests) {
@@ -41,6 +51,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             normalized.put(building + "|" + className, request);
         }
 
+        List<ClassroomLeadershipEntry> oldValue = classroomLeadershipRepository.findAll();
         classroomLeadershipRepository.deleteAll();
         List<ClassroomLeadershipEntry> toSave = new ArrayList<>();
         normalized.values().forEach((request) -> {
@@ -52,17 +63,28 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             toSave.add(entry);
         });
 
-        return classroomLeadershipRepository.saveAll(toSave);
+        List<ClassroomLeadershipEntry> saved = classroomLeadershipRepository.saveAll(toSave);
+        auditService.log(ActionType.UPDATE, "ClassroomLeadership", null, oldValue, saved, "Classroom leadership replaced");
+        return saved;
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<ClassroomLeadershipEntry> findAll() {
+        if (currentUserService.hasRole(RoleName.BUILDING_HEAD)) {
+            Long userId = currentUserService.requireCurrentUser().getId();
+            return buildingRepository.findByHeadUserId(userId)
+                    .map(building -> classroomLeadershipRepository.findAllByNumberSchoolBuilding(building.getCode()))
+                    .orElse(List.of());
+        }
         return classroomLeadershipRepository.findAll();
     }
 
     @Override
     public void clearAll() {
+        List<ClassroomLeadershipEntry> oldValue = classroomLeadershipRepository.findAll();
         classroomLeadershipRepository.deleteAll();
+        auditService.log(ActionType.DELETE, "ClassroomLeadership", null, oldValue, null, "Classroom leadership cleared");
     }
 
     private String normalize(String value) {

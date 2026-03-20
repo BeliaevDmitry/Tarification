@@ -7,6 +7,9 @@ const ui = {
     teacherList: document.getElementById("teacher-list"),
     refreshBtn: document.getElementById("refresh-classes-btn"),
     clearBtn: document.getElementById("clear-classes-btn"),
+    bulkFile: document.getElementById("class-bulk-file"),
+    bulkText: document.getElementById("class-bulk-json"),
+    bulkBtn: document.getElementById("class-bulk-upload-btn"),
     result: document.getElementById("classes-result"),
     body: document.getElementById("classes-body")
 };
@@ -111,8 +114,50 @@ async function clearAll() {
     await reload();
 }
 
+async function readTextInput(fileInput, textInput) {
+    const file = fileInput?.files?.[0];
+    if (file) return await file.text();
+    return norm(textInput?.value);
+}
+
+async function bulkUploadClasses() {
+    const raw = await readTextInput(ui.bulkFile, ui.bulkText);
+    if (!raw) {
+        print({ error: "Выберите JSON-файл или вставьте JSON-массив" });
+        return;
+    }
+
+    let payload;
+    try {
+        payload = JSON.parse(raw);
+    } catch (error) {
+        print({ error: `Некорректный JSON: ${error.message}` });
+        return;
+    }
+
+    if (!Array.isArray(payload)) {
+        print({ error: "Ожидается JSON-массив классов" });
+        return;
+    }
+
+    const saved = await api("/api/classroom-leadership", { method: "PUT", headers: jsonHeaders, body: JSON.stringify(payload) });
+    print({ status: "bulk-loaded", total: saved.length });
+    if (ui.bulkText) ui.bulkText.value = "";
+    if (ui.bulkFile) ui.bulkFile.value = "";
+    await reload();
+}
+
 ui.form.addEventListener("submit", (e) => saveClass(e).catch((error) => print({ error: error.message })));
 ui.refreshBtn.addEventListener("click", () => reload().catch((error) => print({ error: error.message })));
 ui.clearBtn.addEventListener("click", () => clearAll().catch((error) => print({ error: error.message })));
+ui.bulkBtn?.addEventListener("click", () => bulkUploadClasses().catch((error) => print({ error: error.message })));
 
-reload().catch((error) => print({ error: error.message }));
+function startAfterAuth() {
+    reload().catch((error) => print({ error: error.message }));
+}
+
+if (window.initAuth) {
+    window.initAuth().then(startAfterAuth).catch(() => {});
+} else {
+    document.addEventListener("auth-ready", startAfterAuth, { once: true });
+}

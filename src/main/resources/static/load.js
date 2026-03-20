@@ -471,7 +471,14 @@ function setPeriodForRow(subjectKey, teacherRowId, fromDate, toDate) {
     row.loadToDate = toDate;
 }
 
-function onClassCellClick(presentationRow, className) {
+function findPresentationRow(subjectKey, teacherRowId) {
+    return buildPresentationRows().find((row) => row.subjectKey === subjectKey && row.teacherRowId === teacherRowId) || null;
+}
+
+function onClassCellClick(subjectKey, teacherRowId, className) {
+    const presentationRow = findPresentationRow(subjectKey, teacherRowId);
+    if (!presentationRow) return;
+
     const curriculumRow = presentationRow.rowsByClass[className];
     if (!curriculumRow) return;
 
@@ -579,7 +586,7 @@ function renderTable() {
                 teacherInput.value = exact;
                 setTeacherForRow(row.subjectKey, row.teacherRowId, exact);
             }
-            renderTable();
+            setTimeout(() => renderTable(), 0);
         });
     });
 
@@ -604,9 +611,7 @@ function renderTable() {
             const subjectKey = button.dataset.subjectKey;
             const rowIdValue = button.dataset.rowId;
             const className = button.dataset.className;
-            const row = presentationRows.find((entry) => entry.subjectKey === subjectKey && entry.teacherRowId === rowIdValue);
-            if (!row) return;
-            onClassCellClick(row, className);
+            onClassCellClick(subjectKey, rowIdValue, className);
         });
     });
 }
@@ -710,4 +715,12 @@ async function init() {
     }
 }
 
-init();
+function startAfterAuth() {
+    init().catch((error) => print({ error: error.message }));
+}
+
+if (window.initAuth) {
+    window.initAuth().then(startAfterAuth).catch(() => {});
+} else {
+    document.addEventListener("auth-ready", startAfterAuth, { once: true });
+}

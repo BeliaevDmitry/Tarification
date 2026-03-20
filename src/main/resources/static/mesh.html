@@ -3,25 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tarification — корректировка МЭШ</title>
+    <title>Tarification — Предметы</title>
     <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
 <main class="container">
     <header class="card">
-        <h1>Корректировка названий МЭШ</h1>
-        <p class="muted">Отдельный раздел для управления соответствиями УП → МЭШ.</p>
+        <h1>Предметы</h1>
+        <p class="muted">Библиотека и корректировка соответствий названий предметов для учебного плана и МЭШ.</p>
         <nav class="page-nav">
             <a class="nav-link" href="/buildings.html">Корпуса</a>
             <a class="nav-link" href="/classes.html">Классы</a>
             <a class="nav-link" href="/curriculum.html">Учебный план</a>
             <a class="nav-link" href="/load.html">Нагрузка по корпусам</a>
+            <a class="nav-link active" href="/mesh.html">Предметы</a>
             <a class="nav-link" href="/teachers.html">Педагоги</a>
         </nav>
+        <div id="auth-slot"></div>
     </header>
 
     <section class="card">
-        <h2>Корректировка названий МЭШ</h2>
+        <h2>Корректировка названий предметов</h2>
         <div class="row">
             <button id="load-subjects-btn">Загрузить предметы</button>
             <select id="subject-select"></select>
@@ -57,5 +59,7 @@
 </main>
 
 <script src="/mesh.js"></script>
+<script src="/auth.js"></script>
+<script>window.initAuth && initAuth().catch(() => {});</script>
 </body>
 </html>
