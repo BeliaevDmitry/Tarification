@@ -444,3 +444,20 @@ dialog::backdrop {
 .subgroup-config.hidden {
     display: none;
 }
+
+.auth-panel {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+}
+
+.hidden-by-role {
+    display: none !important;
+}
+
+.narrow-container {
+    max-width: 720px;
+}

@@ -2,6 +2,8 @@ package org.school.personalLoad.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.school.personalLoad.audit.ActionType;
+import org.school.personalLoad.audit.AuditService;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadPlanFactSummary;
 import org.school.personalLoad.dto.ManualLoadProcessResult;
@@ -10,11 +12,15 @@ import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.SubjectWithGroup;
 import org.school.personalLoad.model.TarifficationPerson;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.SchoolBuildingRepository;
+import org.school.personalLoad.security.CurrentUserService;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.DatabaseService;
 import org.school.personalLoad.service.ManualLoadService;
 import org.school.personalLoad.service.TarifficationProcessingService;
+import org.school.personalLoad.user.RoleName;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -24,38 +30,56 @@ import java.util.Map;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@Transactional
 public class ManualLoadServiceImpl implements ManualLoadService {
 
     private final ManualLoadEntryRepository manualLoadEntryRepository;
     private final TarifficationProcessingService tarifficationProcessingService;
     private final DatabaseService databaseService;
     private final CurriculumPlanService curriculumPlanService;
+    private final CurrentUserService currentUserService;
+    private final SchoolBuildingRepository buildingRepository;
+    private final AuditService auditService;
 
     @Override
     public ManualLoadEntry create(ManualLoadEntryRequest request) {
         ManualLoadEntry entity = toEntity(request);
-        return manualLoadEntryRepository.save(entity);
+        ensureBuildingAccess(entity.getNumberSchoolBuilding());
+        ManualLoadEntry saved = manualLoadEntryRepository.save(entity);
+        auditService.log(ActionType.CREATE, "ManualLoad", saved.getId(), null, saved, "Manual load entry created");
+        return saved;
     }
 
     @Override
     public List<ManualLoadEntry> createBulk(List<ManualLoadEntryRequest> requests) {
-        List<ManualLoadEntry> entries = requests.stream().map(this::toEntity).toList();
-        return manualLoadEntryRepository.saveAll(entries);
+        List<ManualLoadEntry> entries = requests.stream().map(this::toEntity).peek(entry -> ensureBuildingAccess(entry.getNumberSchoolBuilding())).toList();
+        List<ManualLoadEntry> saved = manualLoadEntryRepository.saveAll(entries);
+        auditService.log(ActionType.CREATE, "ManualLoad", null, null, saved, "Manual load bulk import");
+        return saved;
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<ManualLoadEntry> findAll() {
+        if (currentUserService.hasRole(RoleName.BUILDING_HEAD)) {
+            Long userId = currentUserService.requireCurrentUser().getId();
+            return buildingRepository.findByHeadUserId(userId)
+                    .map(building -> manualLoadEntryRepository.findAllByNumberSchoolBuilding(building.getCode()))
+                    .orElse(List.of());
+        }
         return manualLoadEntryRepository.findAll();
     }
 
     @Override
     public void clearAll() {
+        List<ManualLoadEntry> oldValue = manualLoadEntryRepository.findAll();
         manualLoadEntryRepository.deleteAll();
+        auditService.log(ActionType.DELETE, "ManualLoad", null, oldValue, null, "All manual load entries removed");
     }
 
     @Override
     public ManualLoadProcessResult processCurrentManualLoad() {
-        List<ManualLoadEntry> entries = manualLoadEntryRepository.findAll();
+        List<ManualLoadEntry> entries = findAll();
         List<TarifficationPerson> tarifficationList = new ArrayList<>();
         List<SubjectWithGroup> groupList = new ArrayList<>();
         Map<RuleKey, SummaryAccumulator> summaryByRule = new HashMap<>();
@@ -112,7 +136,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 .toList();
 
         log.info("Ручная нагрузка обработана. Записей: {}, сводок: {}", tarifficationList.size(), summaries.size());
-        return new ManualLoadProcessResult("ok", tarifficationList.size(), summaries);
+        ManualLoadProcessResult result = new ManualLoadProcessResult("ok", tarifficationList.size(), summaries);
+        auditService.log(ActionType.UPDATE, "ManualLoad", null, null, result, "Manual load processed");
+        return result;
     }
 
     private ManualLoadEntry toEntity(ManualLoadEntryRequest request) {
@@ -130,7 +156,6 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         entity.setLoadToDate(request.getLoadToDate());
         return entity;
     }
-
 
     private CurriculumPlanEntry validateAgainstCurriculum(ManualLoadEntry entry) {
         CurriculumPlanEntry rule = curriculumPlanService
@@ -152,6 +177,17 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         return rule;
     }
 
+    private void ensureBuildingAccess(String buildingCode) {
+        if (currentUserService.hasRole(RoleName.BUILDING_HEAD)) {
+            Long userId = currentUserService.requireCurrentUser().getId();
+            boolean allowed = buildingRepository.findByHeadUserId(userId)
+                    .map(building -> building.getCode().equalsIgnoreCase(buildingCode))
+                    .orElse(false);
+            if (!allowed) {
+                throw new IllegalArgumentException("You can modify only your building load");
+            }
+        }
+    }
 
     private static class SummaryAccumulator {
         private final int plannedHours;
