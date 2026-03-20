@@ -7,4 +7,6 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry, Long> {
     boolean existsByFioTeacherIgnoreCase(String fioTeacher);
+
+    java.util.List<ManualLoadEntry> findAllByNumberSchoolBuilding(String numberSchoolBuilding);
 }
