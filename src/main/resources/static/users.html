@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarification — Пользователи</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container">
+    <header class="card">
+        <h1>Пользователи</h1>
+        <div id="auth-slot"></div>
+    </header>
+    <section class="card">
+        <form id="user-form" class="grid">
+            <input name="username" placeholder="Логин" required>
+            <input name="password" type="password" placeholder="Пароль">
+            <input name="email" placeholder="Email">
+            <input name="fullName" placeholder="ФИО">
+            <select name="role" id="user-role" required>
+                <option value="ADMIN">Администратор</option>
+                <option value="DIRECTOR">Директор</option>
+                <option value="DEPUTY_DIRECTOR">Заместитель директора</option>
+                <option value="BUILDING_HEAD">Руководитель корпуса</option>
+                <option value="HR">Кадры</option>
+                <option value="METHODIST">Методист</option>
+                <option value="OPERATOR">Оператор</option>
+            </select>
+            <select name="buildingId" id="user-building-id">
+                <option value="">Корпус для BUILDING_HEAD</option>
+            </select>
+            <label><input type="checkbox" name="enabled" checked> Активен</label>
+            <button type="submit">Сохранить пользователя</button>
+        </form>
+        <div class="row">
+            <button id="reload-users-btn" type="button">Обновить</button>
+        </div>
+        <pre id="users-result"></pre>
+    </section>
+    <section class="card">
+        <table class="sheet-table">
+            <thead><tr><th>ID</th><th>Логин</th><th>ФИО</th><th>Роль</th><th>Корпус</th><th>Статус</th><th>Действия</th></tr></thead>
+            <tbody id="users-body"></tbody>
+        </table>
+    </section>
+</main>
+<script src="/auth.js"></script>
+<script>
+const jsonHeaders = { 'Content-Type': 'application/json' };
+const ui = {
+  form: document.getElementById('user-form'), body: document.getElementById('users-body'), result: document.getElementById('users-result'),
+  reloadBtn: document.getElementById('reload-users-btn'), role: document.getElementById('user-role'), building: document.getElementById('user-building-id')
+};
+let editingId = null;
+function print(v){ ui.result.textContent = JSON.stringify(v, null, 2); }
+async function api(path, options={}){ const r=await fetch(path, options); const t=await r.text(); let b=null; try{b=t?JSON.parse(t):null;}catch{b={message:t}} if(!r.ok) throw new Error(b?.message||`HTTP ${r.status}`); return b; }
+async function loadBuildings(){ const rows=await api('/api/buildings'); ui.building.innerHTML='<option value="">Корпус для BUILDING_HEAD</option>'+rows.map(b=>`<option value="${b.id}">${b.code} — ${b.name}</option>`).join(''); }
+function rowActions(user){ return `<button type="button" data-edit="${user.id}">Редактировать</button><button type="button" data-reset="${user.id}">Сбросить пароль</button><button type="button" data-delete="${user.id}">Удалить</button>`; }
+function render(page){ ui.body.innerHTML=''; (page.content||[]).forEach(u=>{ const tr=document.createElement('tr'); const roleLabel=(window.roleLabels&&window.roleLabels[u.role])||u.role; tr.innerHTML=`<td>${u.id}</td><td>${u.username}</td><td>${u.fullName||''}</td><td>${roleLabel}</td><td>${u.buildingCode||''}</td><td>${u.enabled?'Активен':'Отключён'}</td><td>${rowActions(u)}</td>`; ui.body.appendChild(tr); }); }
+async function reload(){ render(await api('/api/users?size=100')); }
+ui.form.addEventListener('submit', async (e)=>{ e.preventDefault(); const fd=new FormData(ui.form); const payload=Object.fromEntries(fd.entries()); payload.enabled = fd.get('enabled') === 'on'; if(!payload.buildingId) delete payload.buildingId; else payload.buildingId = Number(payload.buildingId); if(!payload.password) delete payload.password; const method = editingId ? 'PUT' : 'POST'; const path = editingId ? `/api/users/${editingId}` : '/api/users'; try { const result = await api(path, {method, headers: jsonHeaders, body: JSON.stringify(payload)}); print(result); ui.form.reset(); editingId = null; await reload(); } catch (e) { print({error:e.message}); } });
+ui.reloadBtn.addEventListener('click', ()=>reload().catch(e=>print({error:e.message})));
+ui.body.addEventListener('click', async (e)=>{ const editId=e.target.dataset.edit, resetId=e.target.dataset.reset, deleteId=e.target.dataset.delete; try { if(editId){ const u=await api(`/api/users/${editId}`); editingId=u.id; for(const [k,v] of Object.entries(u)){ const el=ui.form.elements.namedItem(k); if(el && v != null) el.value=v; } ui.form.elements.namedItem('enabled').checked = Boolean(u.enabled); ui.form.elements.namedItem('password').value=''; } if(resetId){ const res=await api(`/api/users/${resetId}/reset-password`, {method:'POST', headers:jsonHeaders, body: JSON.stringify({})}); print(res); } if(deleteId){ await api(`/api/users/${deleteId}`, {method:'DELETE'}); print({status:'deleted'}); await reload(); } } catch(err){ print({error:err.message}); } });
+(async()=>{ await initAuth(); await loadBuildings(); await reload(); })();
+</script>
+</body>
+</html>

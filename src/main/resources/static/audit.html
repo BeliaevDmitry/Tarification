@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarification — Аудит</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container">
+    <header class="card">
+        <h1>Аудит действий</h1>
+        <div id="auth-slot"></div>
+    </header>
+    <section class="card">
+        <form id="audit-filter-form" class="grid">
+            <input name="username" placeholder="username">
+            <select name="action"><option value="">Все действия</option><option value="CREATE">CREATE</option><option value="UPDATE">UPDATE</option><option value="DELETE">DELETE</option><option value="LOGIN">LOGIN</option><option value="LOGOUT">LOGOUT</option><option value="PASSWORD_CHANGE">PASSWORD_CHANGE</option><option value="PASSWORD_RESET">PASSWORD_RESET</option><option value="ROLE_CHANGE">ROLE_CHANGE</option></select>
+            <input name="entityType" placeholder="entityType">
+            <button type="submit">Фильтровать</button>
+        </form>
+        <pre id="audit-result"></pre>
+    </section>
+    <section class="card">
+        <table class="sheet-table">
+            <thead><tr><th>Время</th><th>Пользователь</th><th>Действие</th><th>Сущность</th><th>ID</th><th>Детали</th></tr></thead>
+            <tbody id="audit-body"></tbody>
+        </table>
+    </section>
+</main>
+<script src="/auth.js"></script>
+<script>
+const body = document.getElementById('audit-body');
+const result = document.getElementById('audit-result');
+const form = document.getElementById('audit-filter-form');
+async function api(path){ const r=await fetch(path); const t=await r.text(); let b=null; try{b=t?JSON.parse(t):null;}catch{b={message:t}} if(!r.ok) throw new Error(b?.message||`HTTP ${r.status}`); return b; }
+function print(v){ result.textContent = JSON.stringify(v, null, 2); }
+function render(page){ body.innerHTML=''; (page.content||[]).forEach(log=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${log.timestamp||''}</td><td>${log.username||''}</td><td>${log.action}</td><td>${log.entityType||''}</td><td>${log.entityId||''}</td><td>${log.details||''}</td>`; body.appendChild(tr); }); }
+async function reload(){ const q = new URLSearchParams(Object.fromEntries(new FormData(form).entries())); q.set('size','100'); render(await api(`/api/audit-logs?${q}`)); }
+form.addEventListener('submit', e=>{ e.preventDefault(); reload().catch(err=>print({error:err.message})); });
+(async()=>{ await initAuth(); await reload(); })();
+</script>
+</body>
+</html>

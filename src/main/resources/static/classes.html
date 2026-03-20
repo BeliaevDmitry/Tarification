@@ -16,8 +16,10 @@
             <a class="nav-link active" href="/classes.html">Классы</a>
             <a class="nav-link" href="/curriculum.html">Учебный план</a>
             <a class="nav-link" href="/load.html">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/mesh.html">Предметы</a>
             <a class="nav-link" href="/teachers.html">Педагоги</a>
         </nav>
+        <div id="auth-slot"></div>
     </header>
 
     <section class="card">
@@ -49,5 +51,7 @@
     </section>
 </main>
 <script src="/classes.js"></script>
+<script src="/auth.js"></script>
+<script>window.initAuth && initAuth().catch(() => {});</script>
 </body>
 </html>
