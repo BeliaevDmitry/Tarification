@@ -159,12 +159,14 @@ function futurePlansForBuilding(buildingCode) {
     return state.futurePlansByBuilding[buildingCode];
 }
 
+
 function dayBefore(isoDate) {
     if (!isoDate) return isoDate;
     const d = new Date(`${isoDate}T00:00:00`);
     d.setDate(d.getDate() - 1);
     return d.toISOString().slice(0, 10);
 }
+
 
 function rowsForSelectedBuilding() {
     if (selectedBuilding === ARCHIVE_BUILDING_CODE) return [];
