@@ -12,17 +12,17 @@
         <h1>Корректировка названий МЭШ</h1>
         <p class="muted">Отдельный раздел для управления соответствиями УП → МЭШ.</p>
         <nav class="page-nav">
-            <a class="nav-link" href="/buildings.html">Корпуса</a>
-            <a class="nav-link" href="/classes.html">Классы</a>
-            <a class="nav-link" href="/curriculum.html">Учебный план</a>
-            <a class="nav-link" href="/load.html">Нагрузка по корпусам</a>
-            <a class="nav-link" href="/teachers.html">Педагоги</a>
+            <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
+            <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
+            <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
+            <a class="nav-link" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/teachers.html" data-tab="TEACHERS">Педагоги</a>
         </nav>
     </header>
 
     <section class="card">
         <h2>Корректировка названий МЭШ</h2>
-        <div class="row">
+        <div class="row" data-requires-edit>
             <button id="load-subjects-btn">Загрузить предметы</button>
             <select id="subject-select"></select>
             <button id="load-classes-btn">Загрузить классы</button>
@@ -44,7 +44,7 @@
         </table>
 
         <h3>Изменить/добавить связь</h3>
-        <form id="mapping-form" class="grid">
+        <form id="mapping-form" class="grid" data-requires-edit>
             <input name="subjectName" placeholder="Предмет" required>
             <input name="className" placeholder="Класс УП" required>
             <input name="groupNameEducationalPlan" placeholder="Группа УП (можно пусто)">
@@ -56,6 +56,7 @@
     </section>
 </main>
 
+<script src="/auth.js"></script>
 <script src="/mesh.js"></script>
 </body>
 </html>

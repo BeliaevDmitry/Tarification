@@ -12,37 +12,37 @@
         <h1>Предметы</h1>
         <p class="muted">Список предметов для вкладки учебного плана.</p>
         <nav class="page-nav">
-            <a class="nav-link" href="/buildings.html">Корпуса</a>
-            <a class="nav-link" href="/classes.html">Классы</a>
-            <a class="nav-link active" href="/subjects.html">Предметы</a>
-            <a class="nav-link" href="/curriculum.html">Учебный план</a>
-            <a class="nav-link" href="/load.html">Нагрузка по корпусам</a>
-            <a class="nav-link" href="/teachers.html">Педагоги</a>
+            <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
+            <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
+            <a class="nav-link active" href="/subjects.html" data-tab="SUBJECTS">Предметы</a>
+            <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
+            <a class="nav-link" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/teachers.html" data-tab="TEACHERS">Педагоги</a>
         </nav>
     </header>
 
     <section class="card">
         <h2>Импорт из Excel</h2>
-        <div class="row">
+        <div class="row" data-requires-edit>
             <input id="subject-file" type="file" accept=".xls,.xlsx">
             <button id="import-subjects-btn" type="button">Импортировать</button>
             <a id="download-subject-template" href="/api/subjects/template" class="nav-link">Скачать шаблон</a>
         </div>
         <h2>Ручное добавление</h2>
-        <form id="subject-form" class="row">
+        <form id="subject-form" class="row" data-requires-edit>
             <input id="subject-name" placeholder="Название предмета" required>
             <select id="subject-type" required>
                 <option value="CORE_FORMABLE">1 тип: основная/формируемая часть</option>
                 <option value="EXTRACURRICULAR">2 тип: внеурочная деятельность</option>
             </select>
             <button type="submit">Добавить предмет</button>
-            <button id="refresh-subjects-btn" type="button">Обновить</button>
+            <button id="refresh-subjects-btn" type="button" data-allow-readonly="true">Обновить</button>
             <button id="clear-subjects-btn" type="button">Очистить</button>
         </form>
         <pre id="subjects-result"></pre>
     </section>
 
-    <section class="card">
+    <section class="card" data-requires-edit>
         <h2>Список предметов</h2>
         <div class="sheet-wrap">
             <table class="sheet-table">
@@ -54,7 +54,7 @@
 </main>
 
 <dialog id="subject-edit-dialog">
-    <form method="dialog" id="subject-edit-form" class="grid">
+    <form method="dialog" id="subject-edit-form" class="grid" data-requires-edit>
         <h3>Редактирование предмета</h3>
         <input type="hidden" name="id">
         <input name="subjectName" placeholder="Название предмета" required>
@@ -70,6 +70,7 @@
     </form>
 </dialog>
 
+<script src="/auth.js"></script>
 <script src="/table-scroll.js"></script>
 <script src="/subjects.js"></script>
 </body>
