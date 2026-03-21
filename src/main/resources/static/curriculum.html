@@ -30,7 +30,16 @@
             <button id="clear-curriculum-btn" type="button">Очистить весь учебный план</button>
         </div>
 
-        <div class="card" data-role-required="ADMIN">
+        <div class="card" data-role-required="ADMIN,DIRECTOR,DEPUTY_DIRECTOR">
+            <h2>Импорт учебного плана из Excel</h2>
+            <p class="muted">Загружает учебный план из Excel-файла, не убирая возможности ручного редактирования.</p>
+            <input id="curriculum-import-file" type="file" accept=".xls,.xlsx">
+            <div class="row">
+                <button id="curriculum-import-btn" type="button">Импортировать Excel</button>
+            </div>
+        </div>
+
+        <div class="card" data-role-required="ADMIN,DIRECTOR,DEPUTY_DIRECTOR">
             <h2>Массовая загрузка JSON</h2>
             <p class="muted">Массово сохраняет учебный план через существующий API `POST /api/curriculum/bulk`.</p>
             <input id="curriculum-bulk-file" type="file" accept="application/json,.json">

@@ -110,6 +110,7 @@ function escapeHtml(v) {
 }
 
 window.roleLabels = roleLabels;
+window.getCurrentUser = () => authState.me;
 window.initAuth = async function initAuth() {
     if (document.querySelector('.page-nav')) {
         document.body.classList.add('with-top-nav');

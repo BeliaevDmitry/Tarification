@@ -3,14 +3,18 @@ package org.school.personalLoad.service;
 import org.school.personalLoad.dto.CurriculumPlanEntryRequest;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.EducationLevel;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public interface CurriculumPlanService {
     CurriculumPlanEntry upsert(CurriculumPlanEntryRequest request);
 
     List<CurriculumPlanEntry> upsertBulk(List<CurriculumPlanEntryRequest> requests);
+
+    Map<String, Object> importFromExcel(MultipartFile file);
 
     List<CurriculumPlanEntry> findAll();
 
