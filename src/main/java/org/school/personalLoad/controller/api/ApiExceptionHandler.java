@@ -1,5 +1,7 @@
 package org.school.personalLoad.controller.api;
 
+import org.school.personalLoad.auth.AuthExceptions.ForbiddenException;
+import org.school.personalLoad.auth.AuthExceptions.UnauthorizedException;
 import org.school.personalLoad.dto.ApiErrorResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -23,6 +25,19 @@ public class ApiExceptionHandler {
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ApiErrorResponse> handleConflict(IllegalStateException e, HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(
+                new ApiErrorResponse("error", e.getMessage(), request.getRequestURI(), LocalDateTime.now())
+        );
+    }
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ApiErrorResponse> handleUnauthorized(UnauthorizedException e, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
+                new ApiErrorResponse("error", e.getMessage(), request.getRequestURI(), LocalDateTime.now())
+        );
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ApiErrorResponse> handleForbidden(ForbiddenException e, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
                 new ApiErrorResponse("error", e.getMessage(), request.getRequestURI(), LocalDateTime.now())
         );
     }

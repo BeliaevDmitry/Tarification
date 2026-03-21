@@ -29,6 +29,11 @@ app:
   clear-history-on-start: ${CLEAR_HISTORY_ON_START:false}
   excluded-teachers:
     - "Сухомлинова Вера Борисовна"
+  security:
+    default-admin:
+      username: ${APP_ADMIN_USERNAME:admin}
+      password: ${APP_ADMIN_PASSWORD:admin12345}
+      full-name: ${APP_ADMIN_FULL_NAME:Главный администратор}
 
 mail:
   smtp-host: ${SMTP_HOST:smtp.gmail.com}
