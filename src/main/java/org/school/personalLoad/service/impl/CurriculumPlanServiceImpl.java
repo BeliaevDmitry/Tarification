@@ -371,6 +371,40 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         );
     }
 
+    private void applyEditableFields(CurriculumPlanEntry entity, CurriculumPlanEntryRequest request, String normalizedClassName, CurriculumPart curriculumPart) {
+        entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
+        entity.setClassName(normalizedClassName);
+        entity.setSubjectName(request.getSubjectName().trim());
+        entity.setPlannedHours(request.getPlannedHours());
+        entity.setSubgroupRequired(request.isSubgroupRequired());
+        entity.setSubgroupCount(request.isSubgroupRequired() ? request.getSubgroupCount() : 0);
+        entity.setEducationLevel(request.getEducationLevel());
+        entity.setSubgroup1Hours(request.isSubgroupRequired() ? request.getSubgroup1Hours() : null);
+        entity.setSubgroup1EducationLevel(request.isSubgroupRequired() ? request.getSubgroup1EducationLevel() : null);
+        entity.setSubgroup2Hours(request.isSubgroupRequired() ? request.getSubgroup2Hours() : null);
+        entity.setSubgroup2EducationLevel(request.isSubgroupRequired() ? request.getSubgroup2EducationLevel() : null);
+        entity.setCurriculumPart(curriculumPart);
+    }
+
+    private CurriculumPlanEntry entitySnapshot(CurriculumPlanEntry entity) {
+        CurriculumPlanEntry snapshot = new CurriculumPlanEntry();
+        snapshot.setId(entity.getId());
+        snapshot.setNumberSchoolBuilding(entity.getNumberSchoolBuilding());
+        snapshot.setClassName(entity.getClassName());
+        snapshot.setSubjectName(entity.getSubjectName());
+        snapshot.setPlannedHours(entity.getPlannedHours());
+        snapshot.setSubgroupRequired(entity.isSubgroupRequired());
+        snapshot.setSubgroupCount(entity.getSubgroupCount());
+        snapshot.setEducationLevel(entity.getEducationLevel());
+        snapshot.setSubgroup1Hours(entity.getSubgroup1Hours());
+        snapshot.setSubgroup1EducationLevel(entity.getSubgroup1EducationLevel());
+        snapshot.setSubgroup2Hours(entity.getSubgroup2Hours());
+        snapshot.setSubgroup2EducationLevel(entity.getSubgroup2EducationLevel());
+        snapshot.setCurriculumPart(entity.getCurriculumPart());
+        snapshot.setCreatedAt(entity.getCreatedAt());
+        return snapshot;
+    }
+
     private void validate(CurriculumPlanEntryRequest request) {
         if (request.getNumberSchoolBuilding() == null || request.getNumberSchoolBuilding().isBlank()) {
             throw new IllegalArgumentException("numberSchoolBuilding is required");
