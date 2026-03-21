@@ -6,6 +6,16 @@ const authState = {
     })()
 };
 
+const roleLabels = {
+    ADMIN: 'Администратор',
+    DIRECTOR: 'Директор',
+    DEPUTY_DIRECTOR: 'Заместитель директора',
+    BUILDING_HEAD: 'Руководитель корпуса',
+    HR: 'Кадры',
+    METHODIST: 'Методист',
+    OPERATOR: 'Оператор'
+};
+
 const pagePermissions = {
     'index.html': { edit: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR', 'BUILDING_HEAD'] },
     'buildings.html': { edit: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR', 'BUILDING_HEAD'], clear: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR'] },
@@ -13,6 +23,7 @@ const pagePermissions = {
     'curriculum.html': { edit: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR'], clear: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR'] },
     'load.html': { edit: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR', 'BUILDING_HEAD'], process: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR'] },
     'teachers.html': { edit: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR', 'HR'], clear: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR', 'HR'] },
+    'mesh.html': { edit: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR'] },
     'users.html': { edit: ['ADMIN'] },
     'audit.html': { edit: ['ADMIN'] },
     'profile.html': { edit: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR', 'BUILDING_HEAD', 'HR', 'METHODIST', 'OPERATOR'] }
@@ -44,19 +55,22 @@ async function fetchCurrentUser() {
         throw new Error('Не удалось получить текущего пользователя');
     }
     authState.me = await response.json();
+    document.body.classList.add('with-fixed-auth');
     return authState.me;
 }
 
 function renderAuthHeader() {
     const slot = document.getElementById('auth-slot');
     if (!slot || !authState.me) return;
+    const roleLabel = roleLabels[authState.me.role] || authState.me.role;
     slot.innerHTML = `
-        <div class="auth-panel">
-            <div>
+        <div class="auth-panel compact-fixed-panel">
+            <div class="auth-panel-main">
                 <strong>${escapeHtml(authState.me.fullName || authState.me.username)}</strong>
-                <div class="muted">${escapeHtml(authState.me.role)} · ${escapeHtml(authState.me.email || '')}</div>
+                <span class="muted">${escapeHtml(roleLabel)}</span>
             </div>
-            <div class="row">
+            <div class="row auth-panel-actions">
+                <a class="nav-link" href="/">В систему</a>
                 <a class="nav-link" href="/ui/profile">Профиль</a>
                 ${authState.me.role === 'ADMIN' ? '<a class="nav-link" href="/ui/users">Пользователи</a><a class="nav-link" href="/ui/audit">Аудит</a>' : ''}
                 <button id="logout-btn" type="button">Выйти</button>
@@ -92,6 +106,7 @@ function escapeHtml(v) {
     return String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 }
 
+window.roleLabels = roleLabels;
 window.initAuth = async function initAuth() {
     await fetchCurrentUser();
     renderAuthHeader();

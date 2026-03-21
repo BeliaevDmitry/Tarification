@@ -19,13 +19,13 @@
             <input name="email" placeholder="Email">
             <input name="fullName" placeholder="ФИО">
             <select name="role" id="user-role" required>
-                <option value="ADMIN">ADMIN</option>
-                <option value="DIRECTOR">DIRECTOR</option>
-                <option value="DEPUTY_DIRECTOR">DEPUTY_DIRECTOR</option>
-                <option value="BUILDING_HEAD">BUILDING_HEAD</option>
-                <option value="HR">HR</option>
-                <option value="METHODIST">METHODIST</option>
-                <option value="OPERATOR">OPERATOR</option>
+                <option value="ADMIN">Администратор</option>
+                <option value="DIRECTOR">Директор</option>
+                <option value="DEPUTY_DIRECTOR">Заместитель директора</option>
+                <option value="BUILDING_HEAD">Руководитель корпуса</option>
+                <option value="HR">Кадры</option>
+                <option value="METHODIST">Методист</option>
+                <option value="OPERATOR">Оператор</option>
             </select>
             <select name="buildingId" id="user-building-id">
                 <option value="">Корпус для BUILDING_HEAD</option>
@@ -57,7 +57,7 @@ function print(v){ ui.result.textContent = JSON.stringify(v, null, 2); }
 async function api(path, options={}){ const r=await fetch(path, options); const t=await r.text(); let b=null; try{b=t?JSON.parse(t):null;}catch{b={message:t}} if(!r.ok) throw new Error(b?.message||`HTTP ${r.status}`); return b; }
 async function loadBuildings(){ const rows=await api('/api/buildings'); ui.building.innerHTML='<option value="">Корпус для BUILDING_HEAD</option>'+rows.map(b=>`<option value="${b.id}">${b.code} — ${b.name}</option>`).join(''); }
 function rowActions(user){ return `<button type="button" data-edit="${user.id}">Редактировать</button><button type="button" data-reset="${user.id}">Сбросить пароль</button><button type="button" data-delete="${user.id}">Удалить</button>`; }
-function render(page){ ui.body.innerHTML=''; (page.content||[]).forEach(u=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${u.id}</td><td>${u.username}</td><td>${u.fullName||''}</td><td>${u.role}</td><td>${u.buildingCode||''}</td><td>${u.enabled?'Активен':'Отключён'}</td><td>${rowActions(u)}</td>`; ui.body.appendChild(tr); }); }
+function render(page){ ui.body.innerHTML=''; (page.content||[]).forEach(u=>{ const tr=document.createElement('tr'); const roleLabel=(window.roleLabels&&window.roleLabels[u.role])||u.role; tr.innerHTML=`<td>${u.id}</td><td>${u.username}</td><td>${u.fullName||''}</td><td>${roleLabel}</td><td>${u.buildingCode||''}</td><td>${u.enabled?'Активен':'Отключён'}</td><td>${rowActions(u)}</td>`; ui.body.appendChild(tr); }); }
 async function reload(){ render(await api('/api/users?size=100')); }
 ui.form.addEventListener('submit', async (e)=>{ e.preventDefault(); const fd=new FormData(ui.form); const payload=Object.fromEntries(fd.entries()); payload.enabled = fd.get('enabled') === 'on'; if(!payload.buildingId) delete payload.buildingId; else payload.buildingId = Number(payload.buildingId); if(!payload.password) delete payload.password; const method = editingId ? 'PUT' : 'POST'; const path = editingId ? `/api/users/${editingId}` : '/api/users'; try { const result = await api(path, {method, headers: jsonHeaders, body: JSON.stringify(payload)}); print(result); ui.form.reset(); editingId = null; await reload(); } catch (e) { print({error:e.message}); } });
 ui.reloadBtn.addEventListener('click', ()=>reload().catch(e=>print({error:e.message})));

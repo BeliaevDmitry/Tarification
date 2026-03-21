@@ -29,9 +29,14 @@ public class UiController {
     @PreAuthorize("isAuthenticated()")
     public String load() { return "forward:/load.html"; }
 
+    @GetMapping("/ui/subjects")
+    @PreAuthorize("isAuthenticated()")
+    public String subjects() { return "forward:/subjects.html"; }
+
     @GetMapping("/ui/teachers")
     @PreAuthorize("isAuthenticated()")
     public String teachers() { return "forward:/teachers.html"; }
+
 
     @GetMapping("/ui/users")
     @PreAuthorize("hasRole('ADMIN')")
