@@ -2,7 +2,8 @@ package org.school.personalLoad.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.school.personalLoad.audit.ActionType;
 import org.school.personalLoad.audit.AuditService;
 import org.school.personalLoad.dto.CurriculumPlanEntryRequest;
@@ -31,12 +32,9 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.Map;
 import java.util.Set;
 
 @Slf4j
@@ -353,6 +351,62 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
                 .orElse("Не назначен");
     }
 
+    private Integer toPlannedHours(Double hours) {
+        return (int) Math.round(hours == null ? 0D : hours);
+    }
+
+    private String importKey(String academicYear, String stage, String className, String subjectName, StudyPeriod studyPeriod) {
+        return String.join("|",
+                academicYear == null ? "" : academicYear,
+                stage == null ? "" : stage,
+                className == null ? "" : className,
+                subjectName == null ? "" : subjectName,
+                studyPeriod == null ? StudyPeriod.YEAR.name() : studyPeriod.name()
+        );
+        for (CurriculumPlanEntry entry : existingEntries) {
+            String key = importKey(entry.getAcademicYear(), entry.getStage(), entry.getClassName(), entry.getSubjectName(), entry.getStudyPeriod());
+            if (!importedKeys.contains(key)) {
+                CurriculumPlanEntry oldValue = entitySnapshot(entry);
+                entry.setDeprecated(true);
+                repository.save(entry);
+                auditService.log(ActionType.UPDATE, "Curriculum", entry.getId(), oldValue, entry, "Curriculum deprecated after import");
+                deprecatedCount++;
+            }
+        }
+        return deprecatedCount;
+    }
+
+    private int recalculateOrphanedLoads() {
+        int orphanedCount = 0;
+        List<ManualLoadEntry> entries = manualLoadEntryRepository.findAll();
+        for (ManualLoadEntry entry : entries) {
+            boolean activeRuleExists = repository.findFirstByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevel(
+                    entry.getNumberSchoolBuilding(),
+                    ClassNameNormalizer.normalize(entry.getClassName()),
+                    entry.getSubjectName(),
+                    entry.getEducationLevel()
+            ).filter(rule -> !rule.isDeprecated()).isPresent();
+            entry.setOrphaned(!activeRuleExists);
+            manualLoadEntryRepository.save(entry);
+            if (entry.isOrphaned()) {
+                orphanedCount++;
+            }
+        }
+        return orphanedCount;
+    }
+
+    private String resolveTeacher(String importedTeacher) {
+        String normalized = importedTeacher == null ? "" : importedTeacher.trim();
+        if (!normalized.isBlank() && teacherDirectoryRepository.findByFioTeacher(normalized).isPresent()) {
+            return normalized;
+        }
+        return teacherDirectoryRepository.findAll().stream()
+                .map(entry -> entry.getFioTeacher())
+                .filter(value -> value != null && !value.isBlank())
+                .findFirst()
+                .orElse("Не назначен");
+    }
+
     private String normalizeBuildingCode(String currentValue) {
         return currentValue == null || currentValue.isBlank() ? "СП0" : currentValue.trim();
     }
@@ -437,304 +491,6 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         }
     }
 
-    private Sheet findSheet(Workbook workbook, List<String> tokens) {
-        for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
-            Sheet sheet = workbook.getSheetAt(i);
-            String name = sheet.getSheetName().toLowerCase(Locale.ROOT);
-            if (tokens.stream().anyMatch(name::contains)) {
-                return sheet;
-            }
-        }
-        return workbook.getNumberOfSheets() > 0 ? workbook.getSheetAt(0) : null;
-    }
-
-    private ImportParseResult parseCurriculumWorkbook(Sheet sheet) {
-        List<KnownClassRef> knownClasses = loadKnownClasses();
-        try {
-            return parseRowBasedSheet(sheet, knownClasses);
-        } catch (IllegalArgumentException rowBasedError) {
-            log.warn("Не удалось распознать построчный импорт УП, пробую матричный формат: {}", rowBasedError.getMessage());
-            return parseMatrixSheet(sheet, knownClasses);
-        }
-    }
-
-    private ImportParseResult parseRowBasedSheet(Sheet sheet, List<KnownClassRef> knownClasses) {
-        HeaderLookup headers = detectHeaders(sheet, Map.of(
-                "numberSchoolBuilding", List.of("корпус", "корп.", "здание", "building", "numberschoolbuilding"),
-                "className", List.of("класс", "класс/группа", "class", "classname"),
-                "subjectName", List.of("предмет", "наименование предмета", "subject", "subjectname"),
-                "plannedHours", List.of("часы", "часов", "кол-во часов", "количество часов", "всего часов", "недельная нагрузка", "hours", "plannedhours")
-        ));
-
-        List<CurriculumPlanEntryRequest> requests = new ArrayList<>();
-        int skipped = 0;
-        int headerRowIndex = headers.rowIndex();
-        for (int i = headerRowIndex + 1; i <= sheet.getLastRowNum(); i++) {
-            Row row = sheet.getRow(i);
-            if (row == null) {
-                continue;
-            }
-
-            String building = normalize(readCell(row, headers.index("numberSchoolBuilding")));
-            String className = normalize(readCell(row, headers.index("className")));
-            String subjectName = normalize(readCell(row, headers.index("subjectName")));
-            String hoursRaw = normalize(readCell(row, headers.index("plannedHours")));
-            ClassRef classRef = resolveClassRef(building, className, knownClasses);
-
-            if (classRef.buildingCode().isBlank() && classRef.className().isBlank() && subjectName.isBlank() && hoursRaw.isBlank()) {
-                continue;
-            }
-
-            CurriculumPlanEntryRequest request = buildCurriculumRequest(
-                    classRef.buildingCode(),
-                    classRef.className(),
-                    subjectName,
-                    hoursRaw,
-                    readCell(row, headers.findAny("educationLevel", "level", "уровень", "уровень обучения", "индекс")),
-                    readCell(row, headers.findAny("curriculumPart", "part", "часть", "блок")),
-                    readCell(row, headers.findAny("subgroupRequired", "деление", "подгруппа", "с делением")),
-                    readCell(row, headers.findAny("subgroupCount", "кол-во подгрупп", "подгрупп", "subgroupcount")),
-                    readCell(row, headers.findAny("subgroup1Hours", "часы 1 подгруппы", "1 подгруппа часы", "subgroup1hours")),
-                    readCell(row, headers.findAny("subgroup2Hours", "часы 2 подгруппы", "2 подгруппа часы", "subgroup2hours")),
-                    readCell(row, headers.findAny("subgroup1EducationLevel", "уровень 1 подгруппы", "1 подгруппа уровень", "subgroup1educationlevel")),
-                    readCell(row, headers.findAny("subgroup2EducationLevel", "уровень 2 подгруппы", "2 подгруппа уровень", "subgroup2educationlevel"))
-            );
-
-            if (request == null) {
-                skipped++;
-                continue;
-            }
-            requests.add(request);
-        }
-        return new ImportParseResult(requests, skipped);
-    }
-
-    private ImportParseResult parseMatrixSheet(Sheet sheet, List<KnownClassRef> knownClasses) {
-        MatrixHeader matrixHeader = findMatrixHeader(sheet);
-        List<CurriculumPlanEntryRequest> requests = new ArrayList<>();
-        int skipped = 0;
-
-        for (int rowIndex = matrixHeader.headerRowIndex() + 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
-            Row row = sheet.getRow(rowIndex);
-            if (row == null) {
-                continue;
-            }
-
-            String subjectName = normalize(readCell(row, matrixHeader.subjectColumnIndex()));
-            if (subjectName.isBlank()) {
-                continue;
-            }
-            if (isSummaryRow(subjectName)) {
-                continue;
-            }
-
-            String partRaw = readCell(row, matrixHeader.partColumnIndex());
-            String levelRaw = readCell(row, matrixHeader.levelColumnIndex());
-
-            for (MatrixClassColumn classColumn : matrixHeader.classColumns()) {
-                ClassRef classRef = resolveClassRef(classColumn.buildingCode(), classColumn.className(), knownClasses);
-                CurriculumPlanEntryRequest request = buildCurriculumRequest(
-                        classRef.buildingCode(),
-                        classRef.className(),
-                        subjectName,
-                        readCell(row, classColumn.columnIndex()),
-                        levelRaw,
-                        partRaw,
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        ""
-                );
-                if (request == null) {
-                    skipped++;
-                    continue;
-                }
-                requests.add(request);
-            }
-        }
-
-        if (requests.isEmpty()) {
-            throw new IllegalArgumentException("Не удалось извлечь записи учебного плана из матричного Excel-файла");
-        }
-        return new ImportParseResult(requests, skipped);
-    }
-
-    private List<KnownClassRef> loadKnownClasses() {
-        return classroomLeadershipRepository.findAll().stream()
-                .map(entry -> new KnownClassRef(
-                        normalize(entry.getNumberSchoolBuilding()),
-                        ClassNameNormalizer.normalize(entry.getClassName())
-                ))
-                .toList();
-    }
-
-    private ClassRef resolveClassRef(String buildingCode, String className, List<KnownClassRef> knownClasses) {
-        String normalizedBuilding = normalize(buildingCode);
-        String normalizedClassName = normalize(className);
-        if (normalizedClassName.isBlank()) {
-            return new ClassRef(normalizedBuilding, normalizedClassName);
-        }
-
-        normalizedClassName = ClassNameNormalizer.normalize(normalizedClassName);
-        if (!normalizedBuilding.isBlank()) {
-            return new ClassRef(normalizedBuilding, normalizedClassName);
-        }
-
-        List<KnownClassRef> matches = knownClasses.stream()
-                .filter(entry -> entry.className().equalsIgnoreCase(normalizedClassName))
-                .toList();
-        if (matches.isEmpty()) {
-            return new ClassRef("", normalizedClassName);
-        }
-        if (matches.size() == 1) {
-            KnownClassRef match = matches.get(0);
-            return new ClassRef(match.buildingCode(), match.className());
-        }
-        throw new IllegalArgumentException("Класс " + normalizedClassName + " найден в нескольких корпусах. Укажите корпус в Excel-файле учебного плана.");
-    }
-
-    private CurriculumPlanEntryRequest buildCurriculumRequest(String building,
-                                                              String className,
-                                                              String subjectName,
-                                                              String hoursRaw,
-                                                              String educationLevelRaw,
-                                                              String curriculumPartRaw,
-                                                              String subgroupRequiredRaw,
-                                                              String subgroupCountRaw,
-                                                              String subgroup1HoursRaw,
-                                                              String subgroup2HoursRaw,
-                                                              String subgroup1LevelRaw,
-                                                              String subgroup2LevelRaw) {
-        if (normalize(building).isBlank() && normalize(className).isBlank() && normalize(subjectName).isBlank() && normalize(hoursRaw).isBlank()) {
-            return null;
-        }
-        if (normalize(building).isBlank() || normalize(className).isBlank() || normalize(subjectName).isBlank() || normalize(hoursRaw).isBlank()) {
-            return null;
-        }
-
-        Integer plannedHours = parseInteger(hoursRaw);
-        if (plannedHours == null || plannedHours <= 0) {
-            return null;
-        }
-
-        CurriculumPlanEntryRequest request = new CurriculumPlanEntryRequest();
-        request.setNumberSchoolBuilding(normalize(building));
-        request.setClassName(normalize(className));
-        request.setSubjectName(normalize(subjectName));
-        request.setPlannedHours(plannedHours);
-        request.setEducationLevel(parseEducationLevel(educationLevelRaw));
-        request.setCurriculumPart(parseCurriculumPart(curriculumPartRaw));
-
-        boolean subgroupRequired = parseBoolean(subgroupRequiredRaw);
-        request.setSubgroupRequired(subgroupRequired);
-        request.setSubgroupCount(subgroupRequired ? Math.max(parseIntegerOrDefault(subgroupCountRaw, 2), 2) : 0);
-        request.setSubgroup1Hours(subgroupRequired ? parseIntegerOrDefault(subgroup1HoursRaw, plannedHours) : null);
-        request.setSubgroup2Hours(subgroupRequired ? parseIntegerOrDefault(subgroup2HoursRaw, plannedHours) : null);
-        request.setSubgroup1EducationLevel(subgroupRequired ? parseEducationLevel(subgroup1LevelRaw) : null);
-        request.setSubgroup2EducationLevel(subgroupRequired ? parseEducationLevel(subgroup2LevelRaw) : null);
-
-        if (subgroupRequired) {
-            if (request.getSubgroup1EducationLevel() == null) {
-                request.setSubgroup1EducationLevel(request.getEducationLevel());
-            }
-            if (request.getSubgroup2EducationLevel() == null) {
-                request.setSubgroup2EducationLevel(request.getEducationLevel());
-            }
-        }
-
-        return request;
-    }
-
-    private MatrixHeader findMatrixHeader(Sheet sheet) {
-        for (int rowIndex = 0; rowIndex <= Math.min(sheet.getLastRowNum(), 20); rowIndex++) {
-            Row row = sheet.getRow(rowIndex);
-            if (row == null) {
-                continue;
-            }
-
-            Integer subjectColumnIndex = null;
-            Integer partColumnIndex = null;
-            Integer levelColumnIndex = null;
-            List<MatrixClassColumn> classColumns = new ArrayList<>();
-
-            for (Cell cell : row) {
-                String value = normalize(readCell(cell)).replace("ё", "е");
-                String lower = value.toLowerCase(Locale.ROOT);
-                if (lower.contains("предмет")) {
-                    subjectColumnIndex = cell.getColumnIndex();
-                    continue;
-                }
-                if (lower.contains("часть") || lower.contains("блок")) {
-                    partColumnIndex = cell.getColumnIndex();
-                    continue;
-                }
-                if (lower.contains("уров") || lower.equals("б/у") || lower.contains("индекс")) {
-                    levelColumnIndex = cell.getColumnIndex();
-                    continue;
-                }
-
-                String className = extractClassName(value);
-                if (className != null) {
-                    String buildingCode = resolveBuildingCode(sheet, rowIndex, cell.getColumnIndex());
-                    classColumns.add(new MatrixClassColumn(cell.getColumnIndex(), buildingCode, className));
-                }
-            }
-
-            if (subjectColumnIndex != null && !classColumns.isEmpty()) {
-                return new MatrixHeader(rowIndex, subjectColumnIndex, partColumnIndex, levelColumnIndex, classColumns);
-            }
-        }
-        throw new IllegalArgumentException("Не удалось определить матричную шапку Excel-файла учебного плана");
-    }
-
-    private String resolveBuildingCode(Sheet sheet, int headerRowIndex, int columnIndex) {
-        for (int rowIndex = headerRowIndex - 1; rowIndex >= 0 && rowIndex >= headerRowIndex - 3; rowIndex--) {
-            Row row = sheet.getRow(rowIndex);
-            if (row == null) {
-                continue;
-            }
-
-            for (int candidate = columnIndex; candidate >= Math.max(0, columnIndex - 2); candidate--) {
-                String value = normalize(readCell(row, candidate));
-                String buildingCode = extractBuildingCode(value);
-                if (!buildingCode.isBlank()) {
-                    return buildingCode;
-                }
-            }
-        }
-        return "";
-    }
-
-    private String extractClassName(String value) {
-        String normalized = normalize(value).toUpperCase(Locale.ROOT).replace('–', '-').replace('—', '-');
-        if (normalized.matches("^\\d{1,2}\\s*[- ]?\\s*[А-ЯA-Z]$")) {
-            return ClassNameNormalizer.normalize(normalized);
-        }
-        return null;
-    }
-
-    private String extractBuildingCode(String value) {
-        String normalized = normalize(value).toLowerCase(Locale.ROOT).replace("ё", "е");
-        if (normalized.isBlank()) {
-            return "";
-        }
-        if (normalized.matches("^\\d+$")) {
-            return normalized;
-        }
-        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(?:корпус|корп\\.?|здание)?\\s*(\\d{1,3})").matcher(normalized);
-        if (matcher.find()) {
-            return matcher.group(1);
-        }
-        return "";
-    }
-
-    private boolean isSummaryRow(String subjectName) {
-        String normalized = normalize(subjectName).toLowerCase(Locale.ROOT).replace("ё", "е");
-        return normalized.startsWith("сумма") || normalized.contains("итого") || normalized.contains("блок");
-    }
-
     private String rootCauseMessage(Throwable throwable) {
         Throwable current = throwable;
         while (current.getCause() != null) {
@@ -745,135 +501,4 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
                 : current.getMessage();
     }
 
-    private HeaderLookup detectHeaders(Sheet sheet, Map<String, List<String>> requiredAliases) {
-        for (int rowIndex = 0; rowIndex <= Math.min(sheet.getLastRowNum(), 12); rowIndex++) {
-            Row row = sheet.getRow(rowIndex);
-            if (row == null) {
-                continue;
-            }
-
-            Map<String, Integer> indexes = new HashMap<>();
-            for (Cell cell : row) {
-                String normalizedValue = normalize(readCell(cell)).toLowerCase(Locale.ROOT).replace("ё", "е");
-                if (normalizedValue.isBlank()) {
-                    continue;
-                }
-                requiredAliases.forEach((key, aliases) -> {
-                    if (indexes.containsKey(key)) {
-                        return;
-                    }
-                    if (aliases.stream().anyMatch(normalizedValue::contains)) {
-                        indexes.put(key, cell.getColumnIndex());
-                    }
-                });
-            }
-
-            if (indexes.keySet().containsAll(requiredAliases.keySet())) {
-                return new HeaderLookup(rowIndex, indexes, row);
-            }
-        }
-        throw new IllegalArgumentException("Не удалось определить обязательные колонки Excel-файла учебного плана");
-    }
-
-    private String readCell(Row row, Integer columnIndex) {
-        if (columnIndex == null) {
-            return "";
-        }
-        return readCell(row.getCell(columnIndex));
-    }
-
-    private String readCell(Cell cell) {
-        if (cell == null) {
-            return "";
-        }
-        return new DataFormatter().formatCellValue(cell).trim();
-    }
-
-    private Integer parseInteger(String value) {
-        String normalized = normalize(value).replace(',', '.');
-        if (normalized.isBlank()) {
-            return null;
-        }
-        try {
-            return (int) Math.round(Double.parseDouble(normalized));
-        } catch (NumberFormatException ex) {
-            return null;
-        }
-    }
-
-    private int parseIntegerOrDefault(String value, int fallback) {
-        Integer parsed = parseInteger(value);
-        return parsed == null ? fallback : parsed;
-    }
-
-    private String normalize(String value) {
-        return value == null ? "" : value.trim();
-    }
-
-    private boolean parseBoolean(String value) {
-        String normalized = normalize(value).toLowerCase(Locale.ROOT);
-        return List.of("да", "yes", "true", "1", "+", "есть").contains(normalized) || normalized.contains("делени");
-    }
-
-    private EducationLevel parseEducationLevel(String value) {
-        String normalized = normalize(value).toLowerCase(Locale.ROOT).replace("ё", "е");
-        if (normalized.isBlank()) {
-            return EducationLevel.BASIC;
-        }
-        if (normalized.equals("у") || normalized.contains("углуб") || normalized.contains("advanced")) {
-            return EducationLevel.ADVANCED;
-        }
-        return EducationLevel.BASIC;
-    }
-
-    private CurriculumPart parseCurriculumPart(String value) {
-        String normalized = normalize(value).toLowerCase(Locale.ROOT).replace("ё", "е");
-        if (normalized.isBlank()) {
-            return CurriculumPart.CORE;
-        }
-        if (normalized.startsWith("2") || normalized.contains("формир") || normalized.contains("formable")) {
-            return CurriculumPart.FORMABLE;
-        }
-        if (normalized.startsWith("3") || normalized.contains("внеур") || normalized.contains("extra")) {
-            return CurriculumPart.EXTRACURRICULAR;
-        }
-        return CurriculumPart.CORE;
-    }
-
-    private record HeaderLookup(int rowIndex, Map<String, Integer> requiredIndexes, Row headerRow) {
-        Integer index(String key) {
-            return requiredIndexes.get(key);
-        }
-
-        Integer findAny(String... aliases) {
-            for (Cell cell : headerRow) {
-                String normalized = new DataFormatter().formatCellValue(cell).trim().toLowerCase(Locale.ROOT).replace("ё", "е");
-                for (String alias : aliases) {
-                    if (normalized.contains(alias.toLowerCase(Locale.ROOT).replace("ё", "е"))) {
-                        return cell.getColumnIndex();
-                    }
-                }
-            }
-            return null;
-        }
-    }
-
-    private record ImportParseResult(List<CurriculumPlanEntryRequest> requests, int skipped) {
-    }
-
-    private record MatrixHeader(int headerRowIndex,
-                                int subjectColumnIndex,
-                                Integer partColumnIndex,
-                                Integer levelColumnIndex,
-                                List<MatrixClassColumn> classColumns) {
-    }
-
-    private record MatrixClassColumn(int columnIndex, String buildingCode, String className) {
-    }
-
-    private record KnownClassRef(String buildingCode, String className) {
-    }
-
-    private record ClassRef(String buildingCode, String className) {
-    }
 }
