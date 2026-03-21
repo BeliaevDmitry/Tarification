@@ -11,6 +11,8 @@ public class CreateUserRequest {
     private String fullName;
     private String email;
     private String managedBuildingCode;
+    private Boolean loadEditAllBuildings;
+    private List<String> loadEditableBuildingCodes;
     private UserRole role;
     private Boolean canView;
     private Boolean canEdit;

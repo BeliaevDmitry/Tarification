@@ -266,7 +266,12 @@ function canEditSelectedBuildingLoad() {
     if (user.admin) return true;
     const loadPermission = window.tarificationTabPermissions?.LOAD;
     if (!loadPermission?.canEdit) return false;
-    if (user.role !== "BUILDING_HEAD") return true;
+    if (user.loadEditAllBuildings) return true;
+    const allowedBuildings = (user.loadEditableBuildingCodes || []).map((code) => normalizeBuildingCode(code));
+    if (allowedBuildings.length) {
+        return allowedBuildings.includes(normalizeBuildingCode(selectedBuilding));
+    }
+    if (user.role !== "BUILDING_HEAD") return false;
     return normalizeBuildingCode(user.managedBuildingCode) === normalizeBuildingCode(selectedBuilding);
 }
 
@@ -277,10 +282,17 @@ function loadReadOnlyReason() {
     if (!loadPermission?.canEdit) {
         return "У вас нет права редактировать вкладку «Нагрузка по корпусам».";
     }
+    if (user.loadEditAllBuildings) {
+        return "";
+    }
+    const allowedBuildings = (user.loadEditableBuildingCodes || []).filter(Boolean);
+    if (allowedBuildings.length && !allowedBuildings.map((code) => normalizeBuildingCode(code)).includes(normalizeBuildingCode(selectedBuilding))) {
+        return `Редактирование разрешено только для корпусов: ${allowedBuildings.join(", ")}.`;
+    }
     if (user.role === "BUILDING_HEAD" && normalizeBuildingCode(user.managedBuildingCode) !== normalizeBuildingCode(selectedBuilding)) {
         return `Руководитель корпуса может редактировать только корпус ${user.managedBuildingCode || "—"}.`;
     }
-    return "";
+    return "Администратор ещё не назначил вам корпуса для редактирования нагрузки.";
 }
 
 function updateLoadEditMode() {

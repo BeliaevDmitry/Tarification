@@ -6,7 +6,9 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Data
 @NoArgsConstructor
@@ -23,6 +25,8 @@ public class SessionUser implements Serializable {
     private boolean canView;
     private boolean canEdit;
     private String managedBuildingCode;
+    private boolean loadEditAllBuildings;
+    private Set<String> loadEditableBuildingCodes = new LinkedHashSet<>();
     private List<TabPermissionSnapshot> tabPermissions = new ArrayList<>();
 
     public boolean isAdmin() {
@@ -45,10 +49,17 @@ public class SessionUser implements Serializable {
         if (!canEditTab(AppTab.LOAD)) {
             return false;
         }
-        if (role != UserRole.BUILDING_HEAD) {
+        if (isAdmin() || loadEditAllBuildings) {
             return true;
         }
-        return normalizeBuildingCode(managedBuildingCode).equals(normalizeBuildingCode(buildingCode));
+        String normalizedRequested = normalizeBuildingCode(buildingCode);
+        if (!loadEditableBuildingCodes.isEmpty()) {
+            return loadEditableBuildingCodes.stream().map(this::normalizeBuildingCode).anyMatch(normalizedRequested::equals);
+        }
+        if (role == UserRole.BUILDING_HEAD) {
+            return normalizeBuildingCode(managedBuildingCode).equals(normalizedRequested);
+        }
+        return false;
     }
 
     private String normalizeBuildingCode(String value) {

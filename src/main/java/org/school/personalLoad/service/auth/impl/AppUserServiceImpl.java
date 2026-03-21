@@ -7,6 +7,7 @@ import org.school.personalLoad.auth.AuthExceptions.UnauthorizedException;
 import org.school.personalLoad.dto.auth.CreateUserRequest;
 import org.school.personalLoad.dto.auth.UpdateUserRequest;
 import org.school.personalLoad.dto.auth.UserTabPermissionRequest;
+import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.auth.AppUserRepository;
 import org.school.personalLoad.repository.auth.AppUserTabPermissionRepository;
 import org.school.personalLoad.service.auth.AppUserService;
@@ -29,6 +30,7 @@ public class AppUserServiceImpl implements AppUserService {
     private static final String PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
 
     private final AppUserRepository appUserRepository;
+    private final SchoolBuildingRepository schoolBuildingRepository;
     private final AppUserTabPermissionRepository tabPermissionRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -92,11 +94,15 @@ public class AppUserServiceImpl implements AppUserService {
             throw new IllegalStateException("Пользователь с таким логином уже существует");
         }
 
+        Set<String> knownBuildingCodes = loadKnownBuildingCodes();
+
         AppUser user = new AppUser();
         user.setUsername(username);
         user.setFullName(normalizeText(request.getFullName(), "ФИО пользователя обязательно"));
         user.setEmail(normalizeOptional(request.getEmail()));
-        user.setManagedBuildingCode(normalizeOptionalBuildingCode(request.getManagedBuildingCode()));
+        user.setManagedBuildingCode(normalizeExistingBuildingCode(request.getManagedBuildingCode(), knownBuildingCodes, "Основной корпус"));
+        user.setLoadEditAllBuildings(Boolean.TRUE.equals(request.getLoadEditAllBuildings()));
+        user.setLoadEditableBuildingCodes(normalizeBuildingCodes(request.getLoadEditableBuildingCodes(), knownBuildingCodes));
         user.setRole(Objects.requireNonNull(request.getRole(), "Роль обязательна"));
         user.setActive(true);
         user.setCanView(request.getCanView() == null || request.getCanView());
@@ -114,6 +120,8 @@ public class AppUserServiceImpl implements AppUserService {
         AppUser user = appUserRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Пользователь не найден"));
 
+        Set<String> knownBuildingCodes = loadKnownBuildingCodes();
+
         if (request.getFullName() != null) {
             user.setFullName(normalizeText(request.getFullName(), "ФИО пользователя обязательно"));
         }
@@ -121,7 +129,13 @@ public class AppUserServiceImpl implements AppUserService {
             user.setEmail(normalizeOptional(request.getEmail()));
         }
         if (request.getManagedBuildingCode() != null) {
-            user.setManagedBuildingCode(normalizeOptionalBuildingCode(request.getManagedBuildingCode()));
+            user.setManagedBuildingCode(normalizeExistingBuildingCode(request.getManagedBuildingCode(), knownBuildingCodes, "Основной корпус"));
+        }
+        if (request.getLoadEditAllBuildings() != null) {
+            user.setLoadEditAllBuildings(request.getLoadEditAllBuildings());
+        }
+        if (request.getLoadEditableBuildingCodes() != null) {
+            user.setLoadEditableBuildingCodes(normalizeBuildingCodes(request.getLoadEditableBuildingCodes(), knownBuildingCodes));
         }
         if (request.getRole() != null) {
             user.setRole(request.getRole());
@@ -170,6 +184,8 @@ public class AppUserServiceImpl implements AppUserService {
         admin.setActive(true);
         admin.setCanView(true);
         admin.setCanEdit(true);
+        admin.setLoadEditAllBuildings(true);
+        admin.setLoadEditableBuildingCodes(new LinkedHashSet<>());
         admin.setPasswordHash(passwordEncoder.encode(defaultAdminPassword));
         AppUser savedAdmin = appUserRepository.save(admin);
         saveDefaultPermissions(savedAdmin, true, true);
@@ -273,6 +289,15 @@ public class AppUserServiceImpl implements AppUserService {
             user.setCanEdit(true);
             user.setActive(true);
             user.setManagedBuildingCode(null);
+            user.setLoadEditAllBuildings(true);
+            user.setLoadEditableBuildingCodes(new LinkedHashSet<>());
+            return;
+        }
+        if (user.getRole() != UserRole.BUILDING_HEAD) {
+            user.setManagedBuildingCode(null);
+        }
+        if (user.isLoadEditAllBuildings()) {
+            user.setLoadEditableBuildingCodes(new LinkedHashSet<>());
         }
     }
 
@@ -305,6 +330,39 @@ public class AppUserServiceImpl implements AppUserService {
         return normalized.isBlank() ? null : normalized;
     }
 
+
+    private LinkedHashSet<String> normalizeBuildingCodes(Collection<String> values, Set<String> knownBuildingCodes) {
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        if (values == null) {
+            return normalized;
+        }
+        for (String value : values) {
+            String normalizedCode = normalizeExistingBuildingCode(value, knownBuildingCodes, "Корпус для редактирования нагрузки");
+            if (normalizedCode != null) {
+                normalized.add(normalizedCode);
+            }
+        }
+        return normalized;
+    }
+
+    private Set<String> loadKnownBuildingCodes() {
+        return schoolBuildingRepository.findAll().stream()
+                .map(building -> normalizeOptionalBuildingCode(building.getCode()))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private String normalizeExistingBuildingCode(String value, Set<String> knownBuildingCodes, String fieldName) {
+        String normalized = normalizeOptionalBuildingCode(value);
+        if (normalized == null) {
+            return null;
+        }
+        if (!knownBuildingCodes.contains(normalized)) {
+            throw new IllegalArgumentException(fieldName + " не найден: " + normalized);
+        }
+        return normalized;
+    }
+
     private String normalizeOptionalBuildingCode(String value) {
         String normalized = normalizeOptional(value);
         return normalized == null ? null : normalized.replace(" ", "").toUpperCase(Locale.ROOT);
@@ -321,6 +379,8 @@ public class AppUserServiceImpl implements AppUserService {
                 user.isCanView(),
                 user.isCanEdit() || user.getRole() == UserRole.ADMIN,
                 user.getManagedBuildingCode(),
+                user.isLoadEditAllBuildings() || user.getRole() == UserRole.ADMIN,
+                new LinkedHashSet<>(user.getLoadEditableBuildingCodes()),
                 loadPermissionSnapshots(user)
         );
     }

@@ -29,6 +29,17 @@ function currentTab() {
     return TAB_PATHS[window.location.pathname] || null;
 }
 
+
+function loadScopeLabel(currentUser) {
+    if (currentUser.loadEditAllBuildings) return 'все корпуса';
+    const codes = (currentUser.loadEditableBuildingCodes || []).filter(Boolean);
+    if (codes.length) return codes.join(', ');
+    if (currentUser.role === 'BUILDING_HEAD' && currentUser.managedBuildingCode) {
+        return `основной корпус ${currentUser.managedBuildingCode}`;
+    }
+    return 'только просмотр';
+}
+
 function canEditCurrentPage(currentUser) {
     if (currentUser.admin) return true;
     const tab = currentTab();
@@ -78,7 +89,8 @@ function mountUserBar(currentUser) {
             <div>
                 <strong>${currentUser.fullName}</strong>
                 <div class="muted">${currentUser.roleDisplayName} · логин: ${currentUser.username}</div>
-                ${currentUser.managedBuildingCode ? `<div class="muted">Закреплённый корпус: ${currentUser.managedBuildingCode}</div>` : ''}
+                ${currentUser.managedBuildingCode ? `<div class="muted">Основной корпус: ${currentUser.managedBuildingCode}</div>` : ''}
+                <div class="muted">Нагрузка: ${loadScopeLabel(currentUser)}</div>
             </div>
             <div class="row auth-actions">
                 ${canEditCurrentPage(currentUser) ? '<span class="permission-badge edit-badge">Редактирование вкладки</span>' : '<span class="permission-badge view-badge">Только просмотр вкладки</span>'}
