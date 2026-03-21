@@ -12,17 +12,17 @@
         <h1>Корпуса</h1>
         <p class="muted">Заполните название, руководителя и адрес корпуса.</p>
         <nav class="page-nav">
-            <a class="nav-link active" href="/buildings.html">Корпуса</a>
-            <a class="nav-link" href="/classes.html">Классы</a>
-            <a class="nav-link" href="/subjects.html">Предметы</a>
-            <a class="nav-link" href="/curriculum.html">Учебный план</a>
-            <a class="nav-link" href="/load.html">Нагрузка по корпусам</a>
-            <a class="nav-link" href="/teachers.html">Педагоги</a>
+            <a class="nav-link active" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
+            <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
+            <a class="nav-link" href="/subjects.html" data-tab="SUBJECTS">Предметы</a>
+            <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
+            <a class="nav-link" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/teachers.html" data-tab="TEACHERS">Педагоги</a>
         </nav>
     </header>
 
     <section class="card">
-        <form id="building-form" class="grid">
+        <form id="building-form" class="grid" data-requires-edit>
             <input name="name" placeholder="Название корпуса" required>
             <input name="managerFio" placeholder="Руководитель корпуса (ФИО)" required>
             <input name="address" placeholder="Адрес корпуса" required>
@@ -30,12 +30,12 @@
         </form>
         <div class="row">
             <button id="refresh-buildings-btn" type="button">Обновить</button>
-            <button id="clear-buildings-btn" type="button">Очистить список корпусов</button>
+            <button id="clear-buildings-btn" type="button" data-requires-edit>Очистить список корпусов</button>
         </div>
         <pre id="buildings-result"></pre>
     </section>
 
-    <section class="card">
+    <section class="card" data-requires-edit>
         <h2>Список корпусов</h2>
         <div class="sheet-wrap">
             <table class="sheet-table">
@@ -47,7 +47,7 @@
 </main>
 
 <dialog id="building-edit-dialog">
-    <form method="dialog" id="building-edit-form" class="grid labeled-grid">
+    <form method="dialog" id="building-edit-form" class="grid labeled-grid" data-requires-edit>
         <h3>Редактирование корпуса</h3>
         <input type="hidden" name="code">
         <label class="field-row"><span>Название</span><input name="name" placeholder="Название корпуса" required></label>
@@ -60,6 +60,7 @@
     </form>
 </dialog>
 
+<script src="/auth.js"></script>
 <script src="/table-scroll.js"></script>
 <script src="/buildings.js"></script>
 </body>
