@@ -5,6 +5,7 @@ import lombok.Value;
 import org.school.personalLoad.auth.UserRole;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Value
 @Builder
@@ -13,12 +14,14 @@ public class UserResponse {
     String username;
     String fullName;
     String email;
+    String managedBuildingCode;
     UserRole role;
     String roleDisplayName;
     boolean active;
     boolean canView;
     boolean canEdit;
     boolean admin;
+    List<UserTabPermissionResponse> tabPermissions;
     LocalDateTime createdAt;
     LocalDateTime updatedAt;
 }

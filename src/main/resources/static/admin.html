@@ -10,15 +10,15 @@
 <main class="container">
     <header class="card">
         <h1>Пользователи системы</h1>
-        <p class="muted">Только администратор может создавать пользователей, сбрасывать им пароль и задавать права просмотра/редактирования.</p>
+        <p class="muted">Только администратор может создавать пользователей, сбрасывать им пароль, задавать видимость вкладок и права на редактирование.</p>
         <nav class="page-nav">
-            <a class="nav-link" href="/buildings.html">Корпуса</a>
-            <a class="nav-link" href="/classes.html">Классы</a>
-            <a class="nav-link" href="/subjects.html">Предметы</a>
-            <a class="nav-link" href="/curriculum.html">Учебный план</a>
-            <a class="nav-link" href="/load.html">Нагрузка по корпусам</a>
-            <a class="nav-link" href="/teachers.html">Педагоги</a>
-            <a class="nav-link active" href="/admin.html">Пользователи</a>
+            <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
+            <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
+            <a class="nav-link" href="/subjects.html" data-tab="SUBJECTS">Предметы</a>
+            <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
+            <a class="nav-link" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/teachers.html" data-tab="TEACHERS">Педагоги</a>
+            <a class="nav-link active" href="/admin.html" data-tab="USERS">Пользователи</a>
         </nav>
     </header>
 
@@ -28,7 +28,7 @@
             <input name="username" placeholder="Логин" required>
             <input name="fullName" placeholder="ФИО" required>
             <input name="email" placeholder="Email (необязательно)">
-            <select name="role" required>
+            <select name="role" id="create-role" required>
                 <option value="DIRECTOR">Директор</option>
                 <option value="DEPUTY_DIRECTOR">Зам директора</option>
                 <option value="BUILDING_HEAD">Руководитель корпуса</option>
@@ -36,8 +36,18 @@
                 <option value="HR">Кадры</option>
                 <option value="ADMIN">Администратор</option>
             </select>
-            <label><input type="checkbox" name="canView" checked> Может входить и просматривать данные</label>
-            <label><input type="checkbox" name="canEdit"> Может редактировать данные и нагрузку</label>
+            <select name="managedBuildingCode" id="create-managed-building">
+                <option value="">Корпус не закреплён</option>
+            </select>
+            <label><input type="checkbox" name="canView" checked> Активный доступ в систему</label>
+            <label><input type="checkbox" name="canEdit"> Разрешить редактирование там, где вкладка это позволяет</label>
+            <div class="permission-matrix-block">
+                <h3>Права по вкладкам</h3>
+                <table class="sheet-table permission-matrix-table">
+                    <thead><tr><th>Вкладка</th><th>Видеть</th><th>Редактировать</th></tr></thead>
+                    <tbody id="create-permissions-body"></tbody>
+                </table>
+            </div>
             <button type="submit">Создать пользователя</button>
         </form>
         <pre id="admin-result"></pre>
@@ -45,7 +55,7 @@
 
     <section class="card">
         <h2>Список пользователей</h2>
-        <p class="muted">Просмотр нагрузки по корпусам доступен всем активным пользователям, а редактирование разрешено только при включенном праве «Может редактировать».</p>
+        <p class="muted">Для роли «Руководитель корпуса» можно закрепить корпус: тогда при наличии права на редактирование вкладки «Нагрузка» пользователь сможет менять нагрузку только внутри этого корпуса.</p>
         <div class="sheet-wrap">
             <table class="sheet-table">
                 <thead>
@@ -53,11 +63,10 @@
                     <th>Логин</th>
                     <th>ФИО</th>
                     <th>Роль</th>
+                    <th>Корпус</th>
                     <th>Email</th>
                     <th>Доступ</th>
-                    <th>Редактирование</th>
-                    <th>Активность</th>
-                    <th>Пароль</th>
+                    <th>Действия</th>
                 </tr>
                 </thead>
                 <tbody id="users-table-body"></tbody>
@@ -65,6 +74,48 @@
         </div>
     </section>
 </main>
+
+<dialog id="user-edit-dialog">
+    <form method="dialog" id="user-edit-form" class="grid labeled-grid" data-requires-edit>
+        <h3>Настройки пользователя</h3>
+        <input type="hidden" name="id">
+        <label class="field-row"><span>ФИО</span><input name="fullName" required></label>
+        <label class="field-row"><span>Email</span><input name="email"></label>
+        <label class="field-row"><span>Роль</span>
+            <select name="role" id="edit-role" required>
+                <option value="DIRECTOR">Директор</option>
+                <option value="DEPUTY_DIRECTOR">Зам директора</option>
+                <option value="BUILDING_HEAD">Руководитель корпуса</option>
+                <option value="METHODIST">Методист</option>
+                <option value="HR">Кадры</option>
+                <option value="ADMIN">Администратор</option>
+            </select>
+        </label>
+        <label class="field-row"><span>Закреплённый корпус</span>
+            <select name="managedBuildingCode" id="edit-managed-building">
+                <option value="">Корпус не закреплён</option>
+            </select>
+        </label>
+        <label><input type="checkbox" name="active"> Активен</label>
+        <label><input type="checkbox" name="canView"> Может входить в систему</label>
+        <label><input type="checkbox" name="canEdit"> Может редактировать разрешённые вкладки</label>
+
+        <div class="permission-matrix-block">
+            <h3>Права по вкладкам</h3>
+            <table class="sheet-table permission-matrix-table">
+                <thead><tr><th>Вкладка</th><th>Видеть</th><th>Редактировать</th></tr></thead>
+                <tbody id="edit-permissions-body"></tbody>
+            </table>
+        </div>
+
+        <div class="row">
+            <button type="submit">Сохранить</button>
+            <button type="button" id="reset-password-btn">Сбросить пароль</button>
+            <button type="button" id="user-edit-close-btn">Отмена</button>
+        </div>
+    </form>
+</dialog>
+
 <script src="/auth.js"></script>
 <script src="/table-scroll.js"></script>
 <script src="/admin.js"></script>

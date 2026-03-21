@@ -27,6 +27,9 @@ public class AppUser {
     @Column(length = 255)
     private String email;
 
+    @Column(length = 50)
+    private String managedBuildingCode;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private UserRole role;

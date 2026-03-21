@@ -701,3 +701,21 @@ dialog::backdrop {
 .admin-user-form {
     align-items: start;
 }
+
+.permission-matrix-block {
+    margin-top: 8px;
+}
+
+.permission-matrix-table {
+    width: 100%;
+}
+
+.permission-matrix-table th,
+.permission-matrix-table td {
+    text-align: center;
+}
+
+.permission-matrix-table th:first-child,
+.permission-matrix-table td:first-child {
+    text-align: left;
+}
