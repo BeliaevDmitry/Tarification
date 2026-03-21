@@ -3,49 +3,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tarification — корректировка МЭШ</title>
+    <title>Tarification — Предметы</title>
     <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
 <main class="container">
     <header class="card">
-        <h1>Корректировка названий МЭШ</h1>
-        <p class="muted">Отдельный раздел для управления соответствиями УП → МЭШ.</p>
+        <h1>Предметы</h1>
+        <p class="muted">Библиотека и корректировка соответствий названий предметов для учебного плана и МЭШ.</p>
         <nav class="page-nav">
             <a class="nav-link" href="/buildings.html">Корпуса</a>
             <a class="nav-link" href="/classes.html">Классы</a>
             <a class="nav-link" href="/curriculum.html">Учебный план</a>
             <a class="nav-link" href="/load.html">Нагрузка по корпусам</a>
+            <a class="nav-link active" href="/mesh.html">Предметы</a>
             <a class="nav-link" href="/teachers.html">Педагоги</a>
         </nav>
+        <div id="auth-slot"></div>
     </header>
 
     <section class="card">
-        <h2>Корректировка названий МЭШ</h2>
+        <h2>Список предметов</h2>
         <div class="row">
-            <button id="load-subjects-btn">Загрузить предметы</button>
-            <select id="subject-select"></select>
-            <button id="load-classes-btn">Загрузить классы</button>
-            <select id="class-select"></select>
-            <button id="load-mappings-btn">Показать связи</button>
+            <button id="refresh-subjects-btn" type="button">Обновить список</button>
         </div>
 
-        <table>
+        <table class="sheet-table">
             <thead>
             <tr>
                 <th>Предмет</th>
-                <th>Класс УП</th>
-                <th>Группа УП</th>
-                <th>Класс МЭШ</th>
-                <th>Группа МЭШ</th>
+                <th>Действия</th>
             </tr>
             </thead>
-            <tbody id="mappings-table-body"></tbody>
+            <tbody id="subjects-table-body"></tbody>
         </table>
+    </section>
+
+    <section class="card" id="subject-editor-panel" hidden>
+        <h2 id="subject-editor-title">Редактирование предмета</h2>
+        <div class="sheet-wrap">
+            <table class="sheet-table">
+                <thead>
+                <tr>
+                    <th>Класс УП</th>
+                    <th>Группа УП</th>
+                    <th>Класс МЭШ</th>
+                    <th>Группа МЭШ</th>
+                    <th>Редактировать</th>
+                </tr>
+                </thead>
+                <tbody id="mappings-table-body"></tbody>
+            </table>
+        </div>
 
         <h3>Изменить/добавить связь</h3>
         <form id="mapping-form" class="grid">
-            <input name="subjectName" placeholder="Предмет" required>
+            <input name="subjectName" placeholder="Предмет" required readonly>
             <input name="className" placeholder="Класс УП" required>
             <input name="groupNameEducationalPlan" placeholder="Группа УП (можно пусто)">
             <input name="classNameMesh" placeholder="Класс МЭШ (если пусто = класс УП)">
@@ -57,5 +70,7 @@
 </main>
 
 <script src="/mesh.js"></script>
+<script src="/auth.js"></script>
+<script>window.initAuth && initAuth().catch(() => {});</script>
 </body>
 </html>

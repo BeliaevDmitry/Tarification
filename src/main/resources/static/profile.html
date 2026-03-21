@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarification — Профиль</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container narrow-container">
+    <header class="card">
+        <h1>Профиль</h1>
+        <nav class="page-nav">
+            <a class="nav-link" href="/buildings.html">Корпуса</a>
+            <a class="nav-link" href="/classes.html">Классы</a>
+            <a class="nav-link" href="/curriculum.html">Учебный план</a>
+            <a class="nav-link" href="/load.html">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/mesh.html">Предметы</a>
+            <a class="nav-link" href="/teachers.html">Педагоги</a>
+            <a class="nav-link active" href="/ui/profile">Профиль</a>
+            <a class="nav-link" data-role-required="ADMIN" href="/ui/users">Пользователи</a>
+            <a class="nav-link" data-role-required="ADMIN" href="/ui/audit">Аудит</a>
+        </nav>
+        <div id="auth-slot"></div>
+    </header>
+    <section class="card">
+        <h2>Личные данные</h2>
+        <form id="profile-form" class="grid">
+            <input name="fullName" placeholder="ФИО">
+            <input name="email" placeholder="Email">
+            <button type="submit">Сохранить профиль</button>
+        </form>
+        <h2>Смена пароля</h2>
+        <form id="password-form" class="grid">
+            <input name="currentPassword" type="password" placeholder="Текущий пароль" required>
+            <input name="newPassword" type="password" placeholder="Новый пароль" required>
+            <input name="confirmPassword" type="password" placeholder="Подтверждение" required>
+            <button type="submit">Сменить пароль</button>
+        </form>
+        <pre id="profile-result"></pre>
+    </section>
+</main>
+<script src="/auth.js"></script>
+<script>
+const result = document.getElementById('profile-result');
+const profileForm = document.getElementById('profile-form');
+const passwordForm = document.getElementById('password-form');
+async function api(path, options={}){ const r=await fetch(path, options); const t=await r.text(); let b=null; try{b=t?JSON.parse(t):null;}catch{b={message:t}} if(!r.ok) throw new Error(b?.message||`HTTP ${r.status}`); return b; }
+function print(v){ result.textContent = JSON.stringify(v, null, 2); }
+profileForm.addEventListener('submit', async (e)=>{ e.preventDefault(); try{ print(await api('/api/profile',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(profileForm).entries()))})); }catch(err){ print({error:err.message}); } });
+passwordForm.addEventListener('submit', async (e)=>{ e.preventDefault(); try{ print(await api('/api/profile/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(passwordForm).entries()))})); passwordForm.reset(); }catch(err){ print({error:err.message}); } });
+(async()=>{ const me = await initAuth(); if(me){ profileForm.elements.namedItem('fullName').value = me.fullName || ''; profileForm.elements.namedItem('email').value = me.email || ''; } })();
+</script>
+</body>
+</html>

@@ -16,8 +16,10 @@
             <a class="nav-link active" href="/classes.html">Классы</a>
             <a class="nav-link" href="/curriculum.html">Учебный план</a>
             <a class="nav-link" href="/load.html">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/mesh.html">Предметы</a>
             <a class="nav-link" href="/teachers.html">Педагоги</a>
         </nav>
+        <div id="auth-slot"></div>
     </header>
 
     <section class="card">
@@ -27,12 +29,23 @@
             <input name="classDirection" placeholder="Направление класса" required>
             <input name="fioTeacher" id="class-teacher" list="teacher-list" placeholder="Классный руководитель" required>
             <datalist id="teacher-list"></datalist>
-            <button type="submit">Добавить / обновить класс</button>
+            <button id="save-class-btn" type="submit">Добавить / обновить класс</button>
         </form>
         <div class="row">
             <button id="refresh-classes-btn" type="button">Обновить</button>
             <button id="clear-classes-btn" type="button">Очистить классы</button>
+            <button id="cancel-class-edit-btn" type="button" hidden>Отменить редактирование</button>
         </div>
+
+        <div class="card" data-role-required="ADMIN,DIRECTOR,DEPUTY_DIRECTOR">
+            <h2>Импорт классов из Excel</h2>
+            <p class="muted">Загружает классы, направления и классных руководителей из Excel-файла.</p>
+            <input id="class-import-file" type="file" accept=".xls,.xlsx">
+            <div class="row">
+                <button id="class-import-btn" type="button">Импортировать Excel</button>
+            </div>
+        </div>
+
         <pre id="classes-result"></pre>
     </section>
 
@@ -41,7 +54,7 @@
         <div class="sheet-wrap">
             <table class="sheet-table">
                 <thead>
-                <tr><th>Корпус</th><th>Класс</th><th>Направление</th><th>Классный руководитель</th></tr>
+                <tr><th>Корпус</th><th>Класс</th><th>Направление</th><th>Классный руководитель</th><th>Действия</th></tr>
                 </thead>
                 <tbody id="classes-body"></tbody>
             </table>
@@ -49,5 +62,7 @@
     </section>
 </main>
 <script src="/classes.js"></script>
+<script src="/auth.js"></script>
+<script>window.initAuth && initAuth().catch(() => {});</script>
 </body>
 </html>
