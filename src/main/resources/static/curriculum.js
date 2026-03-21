@@ -11,6 +11,11 @@ const ui = {
     buildingFilter: document.getElementById("parallel-building-filter"),
     refreshBtn: document.getElementById("refresh-btn"),
     clearBtn: document.getElementById("clear-curriculum-btn"),
+    importFile: document.getElementById("curriculum-import-file"),
+    importBtn: document.getElementById("curriculum-import-btn"),
+    bulkFile: document.getElementById("curriculum-bulk-file"),
+    bulkText: document.getElementById("curriculum-bulk-json"),
+    bulkBtn: document.getElementById("curriculum-bulk-upload-btn"),
     result: document.getElementById("curriculum-result"),
     form: document.getElementById("subject-form"),
     formBuilding: document.getElementById("subject-building"),
@@ -54,6 +59,7 @@ function norm(v) { return String(v || "").trim(); }
 function sortRu(arr) { return [...arr].sort((a, b) => String(a).localeCompare(String(b), "ru")); }
 function classToParallel(className) { const m = norm(className).match(/^(\d{1,2})/); return m ? Number(m[1]) : null; }
 function levelLabel(v) { return v === "ADVANCED" ? "Углублённый" : "Базовый"; }
+function levelBadge(v) { return v === "ADVANCED" ? "У" : "Б"; }
 
 function toggleSubgroupConfig(container, requiredValue) {
     const required = String(requiredValue) === "true";
@@ -212,7 +218,7 @@ function renderSummaryTable() {
     ui.summaryBody.innerHTML = "";
 
     const directionRow = document.createElement("tr");
-    directionRow.innerHTML = `<th rowspan="2">Блок / предмет / часы</th><th rowspan="2">Уровень</th>${selectedClasses.map((c) => `<th>${esc(c.classDirection)}</th>`).join("")}`;
+    directionRow.innerHTML = `<th rowspan="2">Блок / предмет</th>${selectedClasses.map((c) => `<th>${esc(c.classDirection)}</th>`).join("")}`;
     const classRow = document.createElement("tr");
     classRow.innerHTML = selectedClasses.map((c) => `<th>${esc(c.className)}</th>`).join("");
     ui.summaryHead.appendChild(directionRow);
@@ -222,9 +228,10 @@ function renderSummaryTable() {
         const tr = document.createElement("tr");
         if (row.type === "part") {
             tr.className = "summary-part-row";
-            tr.innerHTML = `<td>${esc(row.title)}</td><td></td>${classKeys.map(() => "<td></td>").join("")}`;
+            tr.innerHTML = `<td>${esc(row.title)}</td>${classKeys.map(() => "<td></td>").join("")}`;
         } else if (row.type === "subject") {
-            tr.innerHTML = `<td>${esc(row.subjectName)}</td><td><button class="level-cell" data-ids="${esc((row.ids || []).join(","))}" data-level="${esc(row.educationLevel)}">${esc(levelLabel(row.educationLevel))}</button></td>` + classKeys.map((k) => `<td class="hours-cell-wrap">${cellHoursMarkup(row.perClass[k], row)}</td>`).join("");
+            tr.innerHTML = `<td><button class="subject-level-cell" data-ids="${esc((row.ids || []).join(","))}" data-level="${esc(row.educationLevel)}"><span>${esc(row.subjectName)}</span><span class="level-corner-badge">${esc(levelBadge(row.educationLevel))}</span></button></td>`
+                + classKeys.map((k) => `<td class="hours-cell-wrap">${cellHoursMarkup(row.perClass[k], row)}</td>`).join("");
         } else {
             const calc = classKeys.map((k) => {
                 let value = 0;
@@ -236,7 +243,7 @@ function renderSummaryTable() {
                 return `<td class="summary-value">${value || ""}</td>`;
             }).join("");
             tr.className = "summary-sum-row";
-            tr.innerHTML = `<td>${esc(row.title)}</td><td></td>${calc}`;
+            tr.innerHTML = `<td>${esc(row.title)}</td>${calc}`;
         }
         ui.summaryBody.appendChild(tr);
     });
@@ -263,7 +270,7 @@ function renderSummaryTable() {
         });
     });
 
-    ui.summaryBody.querySelectorAll(".level-cell").forEach((btn) => {
+    ui.summaryBody.querySelectorAll(".subject-level-cell").forEach((btn) => {
         btn.addEventListener("click", async () => {
             const current = String(btn.dataset.level || "BASIC");
             const next = prompt("Уровень: BASIC или ADVANCED", current);
@@ -295,6 +302,54 @@ function renderSummaryTable() {
             }
         });
     });
+}
+
+async function readTextInput(fileInput, textInput) {
+    const file = fileInput?.files?.[0];
+    if (file) return await file.text();
+    return norm(textInput?.value);
+}
+
+async function bulkUploadCurriculum() {
+    const raw = await readTextInput(ui.bulkFile, ui.bulkText);
+    if (!raw) {
+        print({ error: "Выберите JSON-файл или вставьте JSON-массив" });
+        return;
+    }
+
+    let payload;
+    try {
+        payload = JSON.parse(raw);
+    } catch (error) {
+        print({ error: `Некорректный JSON: ${error.message}` });
+        return;
+    }
+
+    if (!Array.isArray(payload)) {
+        print({ error: "Ожидается JSON-массив записей учебного плана" });
+        return;
+    }
+
+    const saved = await api("/api/curriculum/bulk", { method: "POST", headers: jsonHeaders, body: JSON.stringify(payload) });
+    print({ status: "bulk-loaded", total: saved.length });
+    if (ui.bulkText) ui.bulkText.value = "";
+    if (ui.bulkFile) ui.bulkFile.value = "";
+    await reload();
+}
+
+async function importCurriculumFromExcel() {
+    const file = ui.importFile?.files?.[0];
+    if (!file) {
+        print({ error: "Выберите Excel-файл учебного плана" });
+        return;
+    }
+
+    const form = new FormData();
+    form.append("file", file);
+    const result = await api("/api/curriculum/import", { method: "POST", body: form });
+    print(result);
+    ui.importFile.value = "";
+    await reload();
 }
 
 function normalizeForm() {
@@ -363,6 +418,8 @@ function bindEvents() {
     });
 
     ui.refreshBtn.addEventListener("click", () => reload().catch((error) => print({ error: error.message })));
+    ui.importBtn?.addEventListener("click", () => importCurriculumFromExcel().catch((error) => print({ error: error.message })));
+    ui.bulkBtn?.addEventListener("click", () => bulkUploadCurriculum().catch((error) => print({ error: error.message })));
     ui.subgroupRequired.addEventListener("change", () => {
         toggleSubgroupConfig(ui.subgroupConfig, ui.subgroupRequired.value);
         if (ui.subgroupRequired.value === "true") {
@@ -432,6 +489,14 @@ function bindEvents() {
     });
 }
 
-bindEvents();
-toggleSubgroupConfig(ui.subgroupConfig, ui.subgroupRequired.value);
-reload().catch((error) => print({ error: error.message }));
+function startAfterAuth() {
+    bindEvents();
+    toggleSubgroupConfig(ui.subgroupConfig, ui.subgroupRequired.value);
+    reload().catch((error) => print({ error: error.message }));
+}
+
+if (window.initAuth) {
+    window.initAuth().then(startAfterAuth).catch(() => {});
+} else {
+    document.addEventListener("auth-ready", startAfterAuth, { once: true });
+}
