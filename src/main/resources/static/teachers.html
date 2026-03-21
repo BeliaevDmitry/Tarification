@@ -23,21 +23,21 @@
 
     <section class="card">
         <h2>Импорт из Excel</h2>
-        <div class="row">
+        <div class="row" data-requires-edit>
             <input id="teacher-file" type="file" accept=".xls,.xlsx">
             <button id="import-teachers-btn" type="button">Импортировать</button>
         </div>
         <h2>Ручное добавление</h2>
-        <form id="teacher-create-form" class="row">
+        <form id="teacher-create-form" class="row" data-requires-edit>
             <input id="teacher-fio" name="fioTeacher" placeholder="ФИО педагога" required>
             <button type="submit">Добавить педагога</button>
-            <button id="refresh-teachers-btn" type="button">Обновить список</button>
+            <button id="refresh-teachers-btn" type="button" data-allow-readonly="true">Обновить список</button>
             <button id="clear-teachers-btn" type="button">Очистить справочник</button>
         </form>
         <pre id="teachers-result"></pre>
     </section>
 
-    <section class="card">
+    <section class="card" data-requires-edit>
         <h2>Список педагогов</h2>
         <p class="muted">Если педагог назначен на нагрузку, удаление будет запрещено — сначала снимите назначение в разделе «Нагрузка по корпусам».</p>
         <div class="sheet-wrap">
@@ -55,6 +55,7 @@
         </div>
     </section>
 </main>
+<script src="/auth.js"></script>
 <script src="/table-scroll.js"></script>
 <script src="/teachers.js"></script>
 </body>

@@ -22,7 +22,7 @@
     </header>
 
     <section class="card">
-        <form id="building-form" class="grid">
+        <form id="building-form" class="grid" data-requires-edit>
             <input name="name" placeholder="Название корпуса" required>
             <input name="managerFio" placeholder="Руководитель корпуса (ФИО)" required>
             <input name="address" placeholder="Адрес корпуса" required>
@@ -30,12 +30,12 @@
         </form>
         <div class="row">
             <button id="refresh-buildings-btn" type="button">Обновить</button>
-            <button id="clear-buildings-btn" type="button">Очистить список корпусов</button>
+            <button id="clear-buildings-btn" type="button" data-requires-edit>Очистить список корпусов</button>
         </div>
         <pre id="buildings-result"></pre>
     </section>
 
-    <section class="card">
+    <section class="card" data-requires-edit>
         <h2>Список корпусов</h2>
         <div class="sheet-wrap">
             <table class="sheet-table">
@@ -47,7 +47,7 @@
 </main>
 
 <dialog id="building-edit-dialog">
-    <form method="dialog" id="building-edit-form" class="grid labeled-grid">
+    <form method="dialog" id="building-edit-form" class="grid labeled-grid" data-requires-edit>
         <h3>Редактирование корпуса</h3>
         <input type="hidden" name="code">
         <label class="field-row"><span>Название</span><input name="name" placeholder="Название корпуса" required></label>
@@ -60,6 +60,7 @@
     </form>
 </dialog>
 
+<script src="/auth.js"></script>
 <script src="/table-scroll.js"></script>
 <script src="/buildings.js"></script>
 </body>
