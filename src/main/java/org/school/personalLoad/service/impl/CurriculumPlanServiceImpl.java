@@ -33,6 +33,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
@@ -362,6 +363,156 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
                 subjectName == null ? "" : subjectName,
                 studyPeriod == null ? StudyPeriod.YEAR.name() : studyPeriod.name()
         );
+        for (CurriculumPlanEntry entry : existingEntries) {
+            String key = importKey(entry.getAcademicYear(), entry.getStage(), entry.getClassName(), entry.getSubjectName(), entry.getStudyPeriod());
+            if (!importedKeys.contains(key)) {
+                CurriculumPlanEntry oldValue = entitySnapshot(entry);
+                entry.setDeprecated(true);
+                repository.save(entry);
+                auditService.log(ActionType.UPDATE, "Curriculum", entry.getId(), oldValue, entry, "Curriculum deprecated after import");
+                deprecatedCount++;
+            }
+        }
+        return deprecatedCount;
+    }
+
+    private int recalculateOrphanedLoads() {
+        int orphanedCount = 0;
+        List<ManualLoadEntry> entries = manualLoadEntryRepository.findAll();
+        for (ManualLoadEntry entry : entries) {
+            boolean activeRuleExists = repository.findFirstByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevel(
+                    entry.getNumberSchoolBuilding(),
+                    ClassNameNormalizer.normalize(entry.getClassName()),
+                    entry.getSubjectName(),
+                    entry.getEducationLevel()
+            ).filter(rule -> !rule.isDeprecated()).isPresent();
+            entry.setOrphaned(!activeRuleExists);
+            manualLoadEntryRepository.save(entry);
+            if (entry.isOrphaned()) {
+                orphanedCount++;
+            }
+        }
+        return orphanedCount;
+    }
+
+    private String resolveTeacher(String importedTeacher) {
+        String normalized = importedTeacher == null ? "" : importedTeacher.trim();
+        if (!normalized.isBlank() && teacherDirectoryRepository.findByFioTeacher(normalized).isPresent()) {
+            return normalized;
+        }
+        return teacherDirectoryRepository.findAll().stream()
+                .map(entry -> entry.getFioTeacher())
+                .filter(value -> value != null && !value.isBlank())
+                .findFirst()
+                .orElse("Не назначен");
+    }
+
+    private Integer toPlannedHours(Double hours) {
+        return (int) Math.round(hours == null ? 0D : hours);
+    }
+
+    private String importKey(String academicYear, String stage, String className, String subjectName, StudyPeriod studyPeriod) {
+        return String.join("|",
+                academicYear == null ? "" : academicYear,
+                stage == null ? "" : stage,
+                className == null ? "" : className,
+                subjectName == null ? "" : subjectName,
+                studyPeriod == null ? StudyPeriod.YEAR.name() : studyPeriod.name()
+        );
+        for (CurriculumPlanEntry entry : existingEntries) {
+            String key = importKey(entry.getAcademicYear(), entry.getStage(), entry.getClassName(), entry.getSubjectName(), entry.getStudyPeriod());
+            if (!importedKeys.contains(key)) {
+                CurriculumPlanEntry oldValue = entitySnapshot(entry);
+                entry.setDeprecated(true);
+                repository.save(entry);
+                auditService.log(ActionType.UPDATE, "Curriculum", entry.getId(), oldValue, entry, "Curriculum deprecated after import");
+                deprecatedCount++;
+            }
+        }
+        return deprecatedCount;
+    }
+
+    private int recalculateOrphanedLoads() {
+        int orphanedCount = 0;
+        List<ManualLoadEntry> entries = manualLoadEntryRepository.findAll();
+        for (ManualLoadEntry entry : entries) {
+            boolean activeRuleExists = repository.findFirstByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevel(
+                    entry.getNumberSchoolBuilding(),
+                    ClassNameNormalizer.normalize(entry.getClassName()),
+                    entry.getSubjectName(),
+                    entry.getEducationLevel()
+            ).filter(rule -> !rule.isDeprecated()).isPresent();
+            entry.setOrphaned(!activeRuleExists);
+            manualLoadEntryRepository.save(entry);
+            if (entry.isOrphaned()) {
+                orphanedCount++;
+            }
+        }
+        return orphanedCount;
+    }
+
+    private String resolveTeacher(String importedTeacher) {
+        String normalized = importedTeacher == null ? "" : importedTeacher.trim();
+        if (!normalized.isBlank() && teacherDirectoryRepository.findByFioTeacher(normalized).isPresent()) {
+            return normalized;
+        }
+        return teacherDirectoryRepository.findAll().stream()
+                .map(entry -> entry.getFioTeacher())
+                .filter(value -> value != null && !value.isBlank())
+                .findFirst()
+                .orElse("Не назначен");
+    }
+
+    private String normalizeBuildingCode(String currentValue) {
+        return currentValue == null || currentValue.isBlank() ? "СП0" : currentValue.trim();
+    }
+
+    private Integer toPlannedHours(Double hours) {
+        return (int) Math.round(hours == null ? 0D : hours);
+    }
+
+    private String importKey(String academicYear, String stage, String className, String subjectName, StudyPeriod studyPeriod) {
+        return String.join("|",
+                academicYear == null ? "" : academicYear,
+                stage == null ? "" : stage,
+                className == null ? "" : className,
+                subjectName == null ? "" : subjectName,
+                studyPeriod == null ? StudyPeriod.YEAR.name() : studyPeriod.name()
+        );
+    }
+
+    private void applyEditableFields(CurriculumPlanEntry entity, CurriculumPlanEntryRequest request, String normalizedClassName, CurriculumPart curriculumPart) {
+        entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
+        entity.setClassName(normalizedClassName);
+        entity.setSubjectName(request.getSubjectName().trim());
+        entity.setPlannedHours(request.getPlannedHours());
+        entity.setSubgroupRequired(request.isSubgroupRequired());
+        entity.setSubgroupCount(request.isSubgroupRequired() ? request.getSubgroupCount() : 0);
+        entity.setEducationLevel(request.getEducationLevel());
+        entity.setSubgroup1Hours(request.isSubgroupRequired() ? request.getSubgroup1Hours() : null);
+        entity.setSubgroup1EducationLevel(request.isSubgroupRequired() ? request.getSubgroup1EducationLevel() : null);
+        entity.setSubgroup2Hours(request.isSubgroupRequired() ? request.getSubgroup2Hours() : null);
+        entity.setSubgroup2EducationLevel(request.isSubgroupRequired() ? request.getSubgroup2EducationLevel() : null);
+        entity.setCurriculumPart(curriculumPart);
+    }
+
+    private CurriculumPlanEntry entitySnapshot(CurriculumPlanEntry entity) {
+        CurriculumPlanEntry snapshot = new CurriculumPlanEntry();
+        snapshot.setId(entity.getId());
+        snapshot.setNumberSchoolBuilding(entity.getNumberSchoolBuilding());
+        snapshot.setClassName(entity.getClassName());
+        snapshot.setSubjectName(entity.getSubjectName());
+        snapshot.setPlannedHours(entity.getPlannedHours());
+        snapshot.setSubgroupRequired(entity.isSubgroupRequired());
+        snapshot.setSubgroupCount(entity.getSubgroupCount());
+        snapshot.setEducationLevel(entity.getEducationLevel());
+        snapshot.setSubgroup1Hours(entity.getSubgroup1Hours());
+        snapshot.setSubgroup1EducationLevel(entity.getSubgroup1EducationLevel());
+        snapshot.setSubgroup2Hours(entity.getSubgroup2Hours());
+        snapshot.setSubgroup2EducationLevel(entity.getSubgroup2EducationLevel());
+        snapshot.setCurriculumPart(entity.getCurriculumPart());
+        snapshot.setCreatedAt(entity.getCreatedAt());
+        return snapshot;
     }
 
     private void validate(CurriculumPlanEntryRequest request) {
