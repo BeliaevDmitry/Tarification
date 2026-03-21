@@ -12,4 +12,6 @@ public interface ClassroomLeadershipRepository extends JpaRepository<ClassroomLe
     Optional<ClassroomLeadershipEntry> findByClassName(String className);
 
     List<ClassroomLeadershipEntry> findAllByNumberSchoolBuilding(String numberSchoolBuilding);
+
+    Optional<ClassroomLeadershipEntry> findByNumberSchoolBuildingAndClassName(String numberSchoolBuilding, String className);
 }

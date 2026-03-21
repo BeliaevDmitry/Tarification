@@ -57,6 +57,7 @@ function sortRu(arr) { return [...arr].sort((a, b) => String(a).localeCompare(St
 function classToParallel(className) { const m = norm(className).match(/^(\d{1,2})/); return m ? Number(m[1]) : null; }
 function levelLabel(v) { return v === "ADVANCED" ? "Углублённый" : "Базовый"; }
 function levelBadge(v) { return v === "ADVANCED" ? "У" : "Б"; }
+function periodLabel(v) { return v === "H1" ? "1П" : (v === "H2" ? "2П" : ""); }
 
 function toggleSubgroupConfig(container, requiredValue) {
     const required = String(requiredValue) === "true";
@@ -146,7 +147,7 @@ function buildSummaryRows(selectedClasses) {
     ["CORE", "FORMABLE", "EXTRACURRICULAR"].forEach((part) => {
         const grouped = new Map();
         byPart[part].forEach((r) => {
-            const gk = `${r.subjectName}|${r.educationLevel}`;
+            const gk = `${r.subjectName}|${r.educationLevel}|${r.studyPeriod || "YEAR"}`;
             if (!grouped.has(gk)) grouped.set(gk, []);
             grouped.get(gk).push(r);
         });
@@ -154,7 +155,7 @@ function buildSummaryRows(selectedClasses) {
         const items = Array.from(grouped.entries())
             .sort((a, b) => a[0].localeCompare(b[0], "ru"))
             .map(([key, values]) => {
-                const [subjectName, educationLevel] = key.split("|");
+                const [subjectName, educationLevel, studyPeriod] = key.split("|");
                 const perClass = {};
                 values.forEach((v) => {
                     perClass[`${v.numberSchoolBuilding}|${v.className}`] = {
@@ -164,7 +165,7 @@ function buildSummaryRows(selectedClasses) {
                         id: v.id
                     };
                 });
-                return { part, subjectName, educationLevel, perClass, ids: values.map((v) => v.id) };
+                return { part, subjectName, educationLevel, studyPeriod, perClass, ids: values.map((v) => v.id) };
             });
 
         rows.push({ type: "part", part, title: PART_META[part].label });
@@ -227,7 +228,8 @@ function renderSummaryTable() {
             tr.className = "summary-part-row";
             tr.innerHTML = `<td>${esc(row.title)}</td>${classKeys.map(() => "<td></td>").join("")}`;
         } else if (row.type === "subject") {
-            tr.innerHTML = `<td><button class="subject-level-cell" data-ids="${esc((row.ids || []).join(","))}" data-level="${esc(row.educationLevel)}"><span>${esc(row.subjectName)}</span><span class="level-corner-badge">${esc(levelBadge(row.educationLevel))}</span></button></td>`
+            const subjectLabel = periodLabel(row.studyPeriod) ? `${row.subjectName} (${periodLabel(row.studyPeriod)})` : row.subjectName;
+            tr.innerHTML = `<td><button class="subject-level-cell" data-ids="${esc((row.ids || []).join(","))}" data-level="${esc(row.educationLevel)}"><span>${esc(subjectLabel)}</span><span class="level-corner-badge">${esc(levelBadge(row.educationLevel))}</span></button></td>`
                 + classKeys.map((k) => `<td class="hours-cell-wrap">${cellHoursMarkup(row.perClass[k], row)}</td>`).join("");
         } else {
             const calc = classKeys.map((k) => {

@@ -2,6 +2,7 @@ package org.school.personalLoad.controller.api;
 
 import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.dto.CurriculumPlanEntryRequest;
+import org.school.personalLoad.dto.CurriculumImportResult;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.springframework.http.ResponseEntity;
@@ -10,8 +11,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
-import java.util.Map;
-
 @RestController
 @RequestMapping("/api/curriculum")
 @RequiredArgsConstructor
@@ -33,7 +32,7 @@ public class CurriculumPlanController {
 
     @PostMapping("/import")
     @PreAuthorize("hasAnyRole('ADMIN','DIRECTOR','DEPUTY_DIRECTOR')")
-    public ResponseEntity<Map<String, Object>> importFromExcel(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<CurriculumImportResult> importFromExcel(@RequestParam("file") MultipartFile file) {
         return ResponseEntity.ok(curriculumPlanService.importFromExcel(file));
     }
 

@@ -75,15 +75,17 @@ function groupSuffix(row) {
 }
 
 function displaySubjectName(row) {
-    return row.__groupIndex ? `${row.subjectName} ${row.__groupIndex}` : row.subjectName;
+    const studyPeriod = row.studyPeriod === "H1" ? "1П" : (row.studyPeriod === "H2" ? "2П" : "");
+    const base = studyPeriod ? `${row.subjectName} (${studyPeriod})` : row.subjectName;
+    return row.__groupIndex ? `${base} ${row.__groupIndex}` : base;
 }
 
 function apiKeyOfRow(row) {
-    return `${row.className}|${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}${groupSuffix(row)}`;
+    return `${row.className}|${row.subjectName}|${row.studyPeriod || "YEAR"}|${row.curriculumPart || "CORE"}|${row.educationLevel}${groupSuffix(row)}`;
 }
 
 function subjectKeyOfRow(row) {
-    return `${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}${groupSuffix(row)}`;
+    return `${row.subjectName}|${row.studyPeriod || "YEAR"}|${row.curriculumPart || "CORE"}|${row.educationLevel}${groupSuffix(row)}`;
 }
 
 function rowId() {

@@ -7,6 +7,7 @@ import org.school.personalLoad.dao.NamingMeshDAO;
 import org.school.personalLoad.dto.NamingMeshManualUpdateRequest;
 import org.school.personalLoad.dto.NamingMeshMappingResponse;
 import org.school.personalLoad.model.NamingMesh;
+import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.service.DatabaseService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,6 +25,7 @@ public class NamingMeshController {
 
     private final DatabaseService databaseService;
     private final AuditService auditService;
+    private final SubjectCatalogRepository subjectCatalogRepository;
     private final NamingMeshDAO namingMeshDAO = new NamingMeshDAO();
 
     @GetMapping("/subjects")
@@ -31,6 +33,13 @@ public class NamingMeshController {
     public ResponseEntity<List<String>> getSubjects() {
         List<String> subjects = databaseService.getAllNamingMeshes().stream()
                 .map(NamingMesh::getSubjectName)
+                .collect(Collectors.toList());
+        subjects.addAll(subjectCatalogRepository.findAll().stream()
+                .map(entry -> entry.getSubjectName())
+                .filter(value -> value != null && !value.isBlank())
+                .map(String::trim)
+                .collect(Collectors.toList()));
+        subjects = subjects.stream()
                 .filter(value -> value != null && !value.isBlank())
                 .map(String::trim)
                 .distinct()
