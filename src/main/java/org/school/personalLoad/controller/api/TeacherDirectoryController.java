@@ -39,6 +39,12 @@ public class TeacherDirectoryController {
         return ResponseEntity.ok(teacherDirectoryService.markForDismissal(teacherId, request.getDismissalDate()));
     }
 
+    @DeleteMapping("/{teacherId}/dismiss")
+    @PreAuthorize("hasAnyRole('ADMIN','DIRECTOR','DEPUTY_DIRECTOR','HR')")
+    public ResponseEntity<TeacherDirectoryEntry> cancelDismissal(@PathVariable Long teacherId) {
+        return ResponseEntity.ok(teacherDirectoryService.cancelDismissal(teacherId));
+    }
+
     @DeleteMapping("/{teacherId}")
     @PreAuthorize("hasAnyRole('ADMIN','DIRECTOR','DEPUTY_DIRECTOR','HR')")
     public ResponseEntity<Void> deleteById(@PathVariable Long teacherId) {

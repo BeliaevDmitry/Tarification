@@ -56,6 +56,7 @@ function renderTeachers(rows) {
                     <div class="row">
                         <input type="date" class="dismiss-date-input" value="${escapeHtml(row.dismissalDate || "")}" data-id="${row.id}">
                         <button type="button" class="mark-dismiss-btn" data-id="${row.id}">На увольнение</button>
+                        ${row.dismissalDate ? `<button type="button" class="restore-dismiss-btn" data-id="${row.id}">Отменить увольнение</button>` : ""}
                         <button type="button" class="danger-btn delete-teacher-btn" data-id="${row.id}">Удалить</button>
                     </div>
                 </td>`;
@@ -76,6 +77,21 @@ function renderTeachers(rows) {
                     method: "PATCH",
                     headers: jsonHeaders,
                     body: JSON.stringify({ dismissalDate })
+                });
+                print(result);
+                await loadTeachers();
+            } catch (error) {
+                print({ error: error.message });
+            }
+        });
+    });
+
+    ui.tbody.querySelectorAll(".restore-dismiss-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+            const id = btn.dataset.id;
+            try {
+                const result = await api(`/api/teachers/${id}/dismiss`, {
+                    method: "DELETE"
                 });
                 print(result);
                 await loadTeachers();

@@ -120,15 +120,22 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
 
         TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
                 .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
-        TeacherDirectoryEntry oldValue = new TeacherDirectoryEntry();
-        oldValue.setId(entry.getId());
-        oldValue.setFioTeacher(entry.getFioTeacher());
-        oldValue.setDismissalDate(entry.getDismissalDate());
-        oldValue.setCreatedAt(entry.getCreatedAt());
+        TeacherDirectoryEntry oldValue = copyEntry(entry);
 
         entry.setDismissalDate(dismissalDate);
         TeacherDirectoryEntry saved = teacherDirectoryRepository.save(entry);
         auditService.log(ActionType.UPDATE, "Teacher", saved.getId(), oldValue, saved, "Teacher marked for dismissal");
+        return saved;
+    }
+
+    @Override
+    public TeacherDirectoryEntry cancelDismissal(Long teacherId) {
+        TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
+                .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
+        TeacherDirectoryEntry oldValue = copyEntry(entry);
+        entry.setDismissalDate(null);
+        TeacherDirectoryEntry saved = teacherDirectoryRepository.save(entry);
+        auditService.log(ActionType.UPDATE, "Teacher", saved.getId(), oldValue, saved, "Teacher dismissal cancelled");
         return saved;
     }
 
@@ -189,5 +196,14 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
             }
             default -> "";
         };
+    }
+
+    private TeacherDirectoryEntry copyEntry(TeacherDirectoryEntry entry) {
+        TeacherDirectoryEntry oldValue = new TeacherDirectoryEntry();
+        oldValue.setId(entry.getId());
+        oldValue.setFioTeacher(entry.getFioTeacher());
+        oldValue.setDismissalDate(entry.getDismissalDate());
+        oldValue.setCreatedAt(entry.getCreatedAt());
+        return oldValue;
     }
 }

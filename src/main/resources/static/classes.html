@@ -46,16 +46,6 @@
             </div>
         </div>
 
-        <div class="card" data-role-required="ADMIN,DIRECTOR,DEPUTY_DIRECTOR">
-            <h2>Массовая загрузка JSON</h2>
-            <p class="muted">Заменяет весь список классов и классных руководителей через существующий API `PUT /api/classroom-leadership`.</p>
-            <input id="class-bulk-file" type="file" accept="application/json,.json">
-            <textarea id="class-bulk-json" rows="8" placeholder='[{"numberSchoolBuilding":"1","className":"7-А","classDirection":"Математический","fioTeacher":"Иванова И.И."}]'></textarea>
-            <div class="row">
-                <button id="class-bulk-upload-btn" type="button">Загрузить JSON</button>
-            </div>
-        </div>
-
         <pre id="classes-result"></pre>
     </section>
 

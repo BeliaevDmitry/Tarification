@@ -83,95 +83,14 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
                 throw new IllegalArgumentException("Не найден лист учебного плана");
             }
 
-            HeaderLookup headers = detectHeaders(sheet, Map.of(
-                    "numberSchoolBuilding", List.of("корпус", "здание", "building", "numberschoolbuilding"),
-                    "className", List.of("класс", "class", "classname"),
-                    "subjectName", List.of("предмет", "subject", "subjectname"),
-                    "plannedHours", List.of("часы", "часов", "hours", "plannedhours")
-            ));
+            ImportParseResult parsed = parseCurriculumWorkbook(sheet);
 
-            List<CurriculumPlanEntryRequest> requests = new ArrayList<>();
-            int skipped = 0;
-            int headerRowIndex = headers.rowIndex();
-            for (int i = headerRowIndex + 1; i <= sheet.getLastRowNum(); i++) {
-                Row row = sheet.getRow(i);
-                if (row == null) {
-                    continue;
-                }
-
-                String building = normalize(readCell(row, headers.index("numberSchoolBuilding")));
-                String className = normalize(readCell(row, headers.index("className")));
-                String subjectName = normalize(readCell(row, headers.index("subjectName")));
-                String hoursRaw = normalize(readCell(row, headers.index("plannedHours")));
-
-                if (building.isBlank() && className.isBlank() && subjectName.isBlank() && hoursRaw.isBlank()) {
-                    continue;
-                }
-                if (building.isBlank() || className.isBlank() || subjectName.isBlank() || hoursRaw.isBlank()) {
-                    skipped++;
-                    continue;
-                }
-
-                Integer plannedHours = parseInteger(hoursRaw);
-                if (plannedHours == null || plannedHours <= 0) {
-                    skipped++;
-                    continue;
-                }
-
-                CurriculumPlanEntryRequest request = new CurriculumPlanEntryRequest();
-                request.setNumberSchoolBuilding(building);
-                request.setClassName(className);
-                request.setSubjectName(subjectName);
-                request.setPlannedHours(plannedHours);
-                request.setEducationLevel(parseEducationLevel(readCell(row, headers.findAny(
-                        "educationLevel", "level", "уровень", "уровень обучения", "индекс"
-                ))));
-                request.setCurriculumPart(parseCurriculumPart(readCell(row, headers.findAny(
-                        "curriculumPart", "part", "часть", "блок"
-                ))));
-
-                boolean subgroupRequired = parseBoolean(readCell(row, headers.findAny(
-                        "subgroupRequired", "деление", "подгруппа", "с делением"
-                )));
-                request.setSubgroupRequired(subgroupRequired);
-                request.setSubgroupCount(subgroupRequired ? Math.max(parseIntegerOrDefault(readCell(row, headers.findAny(
-                        "subgroupCount", "кол-во подгрупп", "подгрупп", "subgroupcount"
-                )), 2), 2) : 0);
-                request.setSubgroup1Hours(subgroupRequired ? parseIntegerOrDefault(readCell(row, headers.findAny(
-                        "subgroup1Hours", "часы 1 подгруппы", "1 подгруппа часы", "subgroup1hours"
-                )), plannedHours) : null);
-                request.setSubgroup2Hours(subgroupRequired ? parseIntegerOrDefault(readCell(row, headers.findAny(
-                        "subgroup2Hours", "часы 2 подгруппы", "2 подгруппа часы", "subgroup2hours"
-                )), plannedHours) : null);
-                request.setSubgroup1EducationLevel(subgroupRequired
-                        ? parseEducationLevel(readCell(row, headers.findAny(
-                        "subgroup1EducationLevel", "уровень 1 подгруппы", "1 подгруппа уровень", "subgroup1educationlevel"
-                )))
-                        : null);
-                request.setSubgroup2EducationLevel(subgroupRequired
-                        ? parseEducationLevel(readCell(row, headers.findAny(
-                        "subgroup2EducationLevel", "уровень 2 подгруппы", "2 подгруппа уровень", "subgroup2educationlevel"
-                )))
-                        : null);
-
-                if (subgroupRequired) {
-                    if (request.getSubgroup1EducationLevel() == null) {
-                        request.setSubgroup1EducationLevel(request.getEducationLevel());
-                    }
-                    if (request.getSubgroup2EducationLevel() == null) {
-                        request.setSubgroup2EducationLevel(request.getEducationLevel());
-                    }
-                }
-
-                requests.add(request);
-            }
-
-            List<CurriculumPlanEntry> saved = upsertBulk(requests);
+            List<CurriculumPlanEntry> saved = upsertBulk(parsed.requests());
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("status", "ok");
             result.put("sheet", sheet.getSheetName());
             result.put("imported", saved.size());
-            result.put("skipped", skipped);
+            result.put("skipped", parsed.skipped());
             return result;
         } catch (Exception e) {
             log.error("Ошибка импорта учебного плана из Excel", e);
@@ -306,6 +225,256 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         return workbook.getNumberOfSheets() > 0 ? workbook.getSheetAt(0) : null;
     }
 
+    private ImportParseResult parseCurriculumWorkbook(Sheet sheet) {
+        try {
+            return parseRowBasedSheet(sheet);
+        } catch (IllegalArgumentException rowBasedError) {
+            log.warn("Не удалось распознать построчный импорт УП, пробую матричный формат: {}", rowBasedError.getMessage());
+            return parseMatrixSheet(sheet);
+        }
+    }
+
+    private ImportParseResult parseRowBasedSheet(Sheet sheet) {
+        HeaderLookup headers = detectHeaders(sheet, Map.of(
+                "numberSchoolBuilding", List.of("корпус", "корп.", "здание", "building", "numberschoolbuilding"),
+                "className", List.of("класс", "класс/группа", "class", "classname"),
+                "subjectName", List.of("предмет", "наименование предмета", "subject", "subjectname"),
+                "plannedHours", List.of("часы", "часов", "кол-во часов", "количество часов", "всего часов", "недельная нагрузка", "hours", "plannedhours")
+        ));
+
+        List<CurriculumPlanEntryRequest> requests = new ArrayList<>();
+        int skipped = 0;
+        int headerRowIndex = headers.rowIndex();
+        for (int i = headerRowIndex + 1; i <= sheet.getLastRowNum(); i++) {
+            Row row = sheet.getRow(i);
+            if (row == null) {
+                continue;
+            }
+
+            String building = normalize(readCell(row, headers.index("numberSchoolBuilding")));
+            String className = normalize(readCell(row, headers.index("className")));
+            String subjectName = normalize(readCell(row, headers.index("subjectName")));
+            String hoursRaw = normalize(readCell(row, headers.index("plannedHours")));
+
+            if (building.isBlank() && className.isBlank() && subjectName.isBlank() && hoursRaw.isBlank()) {
+                continue;
+            }
+
+            CurriculumPlanEntryRequest request = buildCurriculumRequest(
+                    building,
+                    className,
+                    subjectName,
+                    hoursRaw,
+                    readCell(row, headers.findAny("educationLevel", "level", "уровень", "уровень обучения", "индекс")),
+                    readCell(row, headers.findAny("curriculumPart", "part", "часть", "блок")),
+                    readCell(row, headers.findAny("subgroupRequired", "деление", "подгруппа", "с делением")),
+                    readCell(row, headers.findAny("subgroupCount", "кол-во подгрупп", "подгрупп", "subgroupcount")),
+                    readCell(row, headers.findAny("subgroup1Hours", "часы 1 подгруппы", "1 подгруппа часы", "subgroup1hours")),
+                    readCell(row, headers.findAny("subgroup2Hours", "часы 2 подгруппы", "2 подгруппа часы", "subgroup2hours")),
+                    readCell(row, headers.findAny("subgroup1EducationLevel", "уровень 1 подгруппы", "1 подгруппа уровень", "subgroup1educationlevel")),
+                    readCell(row, headers.findAny("subgroup2EducationLevel", "уровень 2 подгруппы", "2 подгруппа уровень", "subgroup2educationlevel"))
+            );
+
+            if (request == null) {
+                skipped++;
+                continue;
+            }
+            requests.add(request);
+        }
+        return new ImportParseResult(requests, skipped);
+    }
+
+    private ImportParseResult parseMatrixSheet(Sheet sheet) {
+        MatrixHeader matrixHeader = findMatrixHeader(sheet);
+        List<CurriculumPlanEntryRequest> requests = new ArrayList<>();
+        int skipped = 0;
+
+        for (int rowIndex = matrixHeader.headerRowIndex() + 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+            Row row = sheet.getRow(rowIndex);
+            if (row == null) {
+                continue;
+            }
+
+            String subjectName = normalize(readCell(row, matrixHeader.subjectColumnIndex()));
+            if (subjectName.isBlank()) {
+                continue;
+            }
+            if (isSummaryRow(subjectName)) {
+                continue;
+            }
+
+            String partRaw = readCell(row, matrixHeader.partColumnIndex());
+            String levelRaw = readCell(row, matrixHeader.levelColumnIndex());
+
+            for (MatrixClassColumn classColumn : matrixHeader.classColumns()) {
+                CurriculumPlanEntryRequest request = buildCurriculumRequest(
+                        classColumn.buildingCode(),
+                        classColumn.className(),
+                        subjectName,
+                        readCell(row, classColumn.columnIndex()),
+                        levelRaw,
+                        partRaw,
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        ""
+                );
+                if (request == null) {
+                    skipped++;
+                    continue;
+                }
+                requests.add(request);
+            }
+        }
+
+        if (requests.isEmpty()) {
+            throw new IllegalArgumentException("Не удалось извлечь записи учебного плана из матричного Excel-файла");
+        }
+        return new ImportParseResult(requests, skipped);
+    }
+
+    private CurriculumPlanEntryRequest buildCurriculumRequest(String building,
+                                                              String className,
+                                                              String subjectName,
+                                                              String hoursRaw,
+                                                              String educationLevelRaw,
+                                                              String curriculumPartRaw,
+                                                              String subgroupRequiredRaw,
+                                                              String subgroupCountRaw,
+                                                              String subgroup1HoursRaw,
+                                                              String subgroup2HoursRaw,
+                                                              String subgroup1LevelRaw,
+                                                              String subgroup2LevelRaw) {
+        if (normalize(building).isBlank() && normalize(className).isBlank() && normalize(subjectName).isBlank() && normalize(hoursRaw).isBlank()) {
+            return null;
+        }
+        if (normalize(building).isBlank() || normalize(className).isBlank() || normalize(subjectName).isBlank() || normalize(hoursRaw).isBlank()) {
+            return null;
+        }
+
+        Integer plannedHours = parseInteger(hoursRaw);
+        if (plannedHours == null || plannedHours <= 0) {
+            return null;
+        }
+
+        CurriculumPlanEntryRequest request = new CurriculumPlanEntryRequest();
+        request.setNumberSchoolBuilding(normalize(building));
+        request.setClassName(normalize(className));
+        request.setSubjectName(normalize(subjectName));
+        request.setPlannedHours(plannedHours);
+        request.setEducationLevel(parseEducationLevel(educationLevelRaw));
+        request.setCurriculumPart(parseCurriculumPart(curriculumPartRaw));
+
+        boolean subgroupRequired = parseBoolean(subgroupRequiredRaw);
+        request.setSubgroupRequired(subgroupRequired);
+        request.setSubgroupCount(subgroupRequired ? Math.max(parseIntegerOrDefault(subgroupCountRaw, 2), 2) : 0);
+        request.setSubgroup1Hours(subgroupRequired ? parseIntegerOrDefault(subgroup1HoursRaw, plannedHours) : null);
+        request.setSubgroup2Hours(subgroupRequired ? parseIntegerOrDefault(subgroup2HoursRaw, plannedHours) : null);
+        request.setSubgroup1EducationLevel(subgroupRequired ? parseEducationLevel(subgroup1LevelRaw) : null);
+        request.setSubgroup2EducationLevel(subgroupRequired ? parseEducationLevel(subgroup2LevelRaw) : null);
+
+        if (subgroupRequired) {
+            if (request.getSubgroup1EducationLevel() == null) {
+                request.setSubgroup1EducationLevel(request.getEducationLevel());
+            }
+            if (request.getSubgroup2EducationLevel() == null) {
+                request.setSubgroup2EducationLevel(request.getEducationLevel());
+            }
+        }
+
+        return request;
+    }
+
+    private MatrixHeader findMatrixHeader(Sheet sheet) {
+        for (int rowIndex = 0; rowIndex <= Math.min(sheet.getLastRowNum(), 20); rowIndex++) {
+            Row row = sheet.getRow(rowIndex);
+            if (row == null) {
+                continue;
+            }
+
+            Integer subjectColumnIndex = null;
+            Integer partColumnIndex = null;
+            Integer levelColumnIndex = null;
+            List<MatrixClassColumn> classColumns = new ArrayList<>();
+
+            for (Cell cell : row) {
+                String value = normalize(readCell(cell)).replace("ё", "е");
+                String lower = value.toLowerCase(Locale.ROOT);
+                if (lower.contains("предмет")) {
+                    subjectColumnIndex = cell.getColumnIndex();
+                    continue;
+                }
+                if (lower.contains("часть") || lower.contains("блок")) {
+                    partColumnIndex = cell.getColumnIndex();
+                    continue;
+                }
+                if (lower.contains("уров") || lower.equals("б/у") || lower.contains("индекс")) {
+                    levelColumnIndex = cell.getColumnIndex();
+                    continue;
+                }
+
+                String className = extractClassName(value);
+                if (className != null) {
+                    String buildingCode = resolveBuildingCode(sheet, rowIndex, cell.getColumnIndex());
+                    classColumns.add(new MatrixClassColumn(cell.getColumnIndex(), buildingCode, className));
+                }
+            }
+
+            if (subjectColumnIndex != null && !classColumns.isEmpty()) {
+                return new MatrixHeader(rowIndex, subjectColumnIndex, partColumnIndex, levelColumnIndex, classColumns);
+            }
+        }
+        throw new IllegalArgumentException("Не удалось определить матричную шапку Excel-файла учебного плана");
+    }
+
+    private String resolveBuildingCode(Sheet sheet, int headerRowIndex, int columnIndex) {
+        for (int rowIndex = headerRowIndex - 1; rowIndex >= 0 && rowIndex >= headerRowIndex - 3; rowIndex--) {
+            Row row = sheet.getRow(rowIndex);
+            if (row == null) {
+                continue;
+            }
+
+            for (int candidate = columnIndex; candidate >= Math.max(0, columnIndex - 2); candidate--) {
+                String value = normalize(readCell(row, candidate));
+                String buildingCode = extractBuildingCode(value);
+                if (!buildingCode.isBlank()) {
+                    return buildingCode;
+                }
+            }
+        }
+        return "";
+    }
+
+    private String extractClassName(String value) {
+        String normalized = normalize(value).toUpperCase(Locale.ROOT).replace('–', '-').replace('—', '-');
+        if (normalized.matches("^\\d{1,2}\\s*[- ]?\\s*[А-ЯA-Z]$")) {
+            return ClassNameNormalizer.normalize(normalized);
+        }
+        return null;
+    }
+
+    private String extractBuildingCode(String value) {
+        String normalized = normalize(value).toLowerCase(Locale.ROOT).replace("ё", "е");
+        if (normalized.isBlank()) {
+            return "";
+        }
+        if (normalized.matches("^\\d+$")) {
+            return normalized;
+        }
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(?:корпус|корп\\.?|здание)?\\s*(\\d{1,3})").matcher(normalized);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return "";
+    }
+
+    private boolean isSummaryRow(String subjectName) {
+        String normalized = normalize(subjectName).toLowerCase(Locale.ROOT).replace("ё", "е");
+        return normalized.startsWith("сумма") || normalized.contains("итого") || normalized.contains("блок");
+    }
+
     private HeaderLookup detectHeaders(Sheet sheet, Map<String, List<String>> requiredAliases) {
         for (int rowIndex = 0; rowIndex <= Math.min(sheet.getLastRowNum(), 12); rowIndex++) {
             Row row = sheet.getRow(rowIndex);
@@ -417,5 +586,18 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
             }
             return null;
         }
+    }
+
+    private record ImportParseResult(List<CurriculumPlanEntryRequest> requests, int skipped) {
+    }
+
+    private record MatrixHeader(int headerRowIndex,
+                                int subjectColumnIndex,
+                                Integer partColumnIndex,
+                                Integer levelColumnIndex,
+                                List<MatrixClassColumn> classColumns) {
+    }
+
+    private record MatrixClassColumn(int columnIndex, String buildingCode, String className) {
     }
 }

@@ -11,9 +11,6 @@ const ui = {
     cancelEditBtn: document.getElementById("cancel-class-edit-btn"),
     importFile: document.getElementById("class-import-file"),
     importBtn: document.getElementById("class-import-btn"),
-    bulkFile: document.getElementById("class-bulk-file"),
-    bulkText: document.getElementById("class-bulk-json"),
-    bulkBtn: document.getElementById("class-bulk-upload-btn"),
     result: document.getElementById("classes-result"),
     body: document.getElementById("classes-body")
 };
@@ -146,39 +143,6 @@ async function clearAll() {
     await reload();
 }
 
-async function readTextInput(fileInput, textInput) {
-    const file = fileInput?.files?.[0];
-    if (file) return await file.text();
-    return norm(textInput?.value);
-}
-
-async function bulkUploadClasses() {
-    const raw = await readTextInput(ui.bulkFile, ui.bulkText);
-    if (!raw) {
-        print({ error: "Выберите JSON-файл или вставьте JSON-массив" });
-        return;
-    }
-
-    let payload;
-    try {
-        payload = JSON.parse(raw);
-    } catch (error) {
-        print({ error: `Некорректный JSON: ${error.message}` });
-        return;
-    }
-
-    if (!Array.isArray(payload)) {
-        print({ error: "Ожидается JSON-массив классов" });
-        return;
-    }
-
-    const saved = await api("/api/classroom-leadership", { method: "PUT", headers: jsonHeaders, body: JSON.stringify(payload) });
-    print({ status: "bulk-loaded", total: saved.length });
-    if (ui.bulkText) ui.bulkText.value = "";
-    if (ui.bulkFile) ui.bulkFile.value = "";
-    await reload();
-}
-
 async function importClassesFromExcel() {
     const file = ui.importFile?.files?.[0];
     if (!file) {
@@ -227,7 +191,6 @@ ui.refreshBtn.addEventListener("click", () => reload().catch((error) => print({ 
 ui.clearBtn.addEventListener("click", () => clearAll().catch((error) => print({ error: error.message })));
 ui.cancelEditBtn?.addEventListener("click", resetFormState);
 ui.importBtn?.addEventListener("click", () => importClassesFromExcel().catch((error) => print({ error: error.message })));
-ui.bulkBtn?.addEventListener("click", () => bulkUploadClasses().catch((error) => print({ error: error.message })));
 ui.body.addEventListener("click", (event) => {
     const editKey = event.target.dataset.editClass;
     const deleteKey = event.target.dataset.deleteClass;

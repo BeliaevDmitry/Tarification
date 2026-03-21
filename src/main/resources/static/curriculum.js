@@ -13,9 +13,6 @@ const ui = {
     clearBtn: document.getElementById("clear-curriculum-btn"),
     importFile: document.getElementById("curriculum-import-file"),
     importBtn: document.getElementById("curriculum-import-btn"),
-    bulkFile: document.getElementById("curriculum-bulk-file"),
-    bulkText: document.getElementById("curriculum-bulk-json"),
-    bulkBtn: document.getElementById("curriculum-bulk-upload-btn"),
     result: document.getElementById("curriculum-result"),
     form: document.getElementById("subject-form"),
     formBuilding: document.getElementById("subject-building"),
@@ -304,39 +301,6 @@ function renderSummaryTable() {
     });
 }
 
-async function readTextInput(fileInput, textInput) {
-    const file = fileInput?.files?.[0];
-    if (file) return await file.text();
-    return norm(textInput?.value);
-}
-
-async function bulkUploadCurriculum() {
-    const raw = await readTextInput(ui.bulkFile, ui.bulkText);
-    if (!raw) {
-        print({ error: "Выберите JSON-файл или вставьте JSON-массив" });
-        return;
-    }
-
-    let payload;
-    try {
-        payload = JSON.parse(raw);
-    } catch (error) {
-        print({ error: `Некорректный JSON: ${error.message}` });
-        return;
-    }
-
-    if (!Array.isArray(payload)) {
-        print({ error: "Ожидается JSON-массив записей учебного плана" });
-        return;
-    }
-
-    const saved = await api("/api/curriculum/bulk", { method: "POST", headers: jsonHeaders, body: JSON.stringify(payload) });
-    print({ status: "bulk-loaded", total: saved.length });
-    if (ui.bulkText) ui.bulkText.value = "";
-    if (ui.bulkFile) ui.bulkFile.value = "";
-    await reload();
-}
-
 async function importCurriculumFromExcel() {
     const file = ui.importFile?.files?.[0];
     if (!file) {
@@ -346,10 +310,18 @@ async function importCurriculumFromExcel() {
 
     const form = new FormData();
     form.append("file", file);
-    const result = await api("/api/curriculum/import", { method: "POST", body: form });
-    print(result);
-    ui.importFile.value = "";
-    await reload();
+    ui.importBtn.disabled = true;
+    const originalLabel = ui.importBtn.textContent;
+    ui.importBtn.textContent = "Импорт...";
+    try {
+        const result = await api("/api/curriculum/import", { method: "POST", body: form });
+        print(result);
+        ui.importFile.value = "";
+        await reload();
+    } finally {
+        ui.importBtn.disabled = false;
+        ui.importBtn.textContent = originalLabel;
+    }
 }
 
 function normalizeForm() {
@@ -419,7 +391,6 @@ function bindEvents() {
 
     ui.refreshBtn.addEventListener("click", () => reload().catch((error) => print({ error: error.message })));
     ui.importBtn?.addEventListener("click", () => importCurriculumFromExcel().catch((error) => print({ error: error.message })));
-    ui.bulkBtn?.addEventListener("click", () => bulkUploadCurriculum().catch((error) => print({ error: error.message })));
     ui.subgroupRequired.addEventListener("change", () => {
         toggleSubgroupConfig(ui.subgroupConfig, ui.subgroupRequired.value);
         if (ui.subgroupRequired.value === "true") {

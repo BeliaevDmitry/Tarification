@@ -39,16 +39,6 @@
             </div>
         </div>
 
-        <div class="card" data-role-required="ADMIN,DIRECTOR,DEPUTY_DIRECTOR">
-            <h2>Массовая загрузка JSON</h2>
-            <p class="muted">Массово сохраняет учебный план через существующий API `POST /api/curriculum/bulk`.</p>
-            <input id="curriculum-bulk-file" type="file" accept="application/json,.json">
-            <textarea id="curriculum-bulk-json" rows="10" placeholder='[{"numberSchoolBuilding":"1","className":"7-А","subjectName":"Алгебра","plannedHours":3,"educationLevel":"BASIC","subgroupRequired":false,"subgroupCount":0,"curriculumPart":"CORE"}]'></textarea>
-            <div class="row">
-                <button id="curriculum-bulk-upload-btn" type="button">Загрузить JSON</button>
-            </div>
-        </div>
-
         <pre id="curriculum-result"></pre>
     </section>
 

@@ -10,7 +10,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -62,7 +61,7 @@ class AuthControllerIntegrationTest {
                 .andExpect(jsonPath("$.username").value("tester"))
                 .andReturn();
 
-        mockMvc.perform(get("/api/auth/me").session((MockHttpSession) loginResult.getRequest().getSession(false)))
+        mockMvc.perform(get("/api/auth/me").session(loginResult.getRequest().getSession(false)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role").value("ADMIN"));
     }
@@ -100,10 +99,10 @@ class AuthControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        mockMvc.perform(get("/users.html").session((MockHttpSession) loginResult.getRequest().getSession(false)))
+        mockMvc.perform(get("/users.html").session(loginResult.getRequest().getSession(false)))
                 .andExpect(status().isForbidden());
 
-        mockMvc.perform(get("/audit.html").session((MockHttpSession) loginResult.getRequest().getSession(false)))
+        mockMvc.perform(get("/audit.html").session(loginResult.getRequest().getSession(false)))
                 .andExpect(status().isForbidden());
     }
 }
