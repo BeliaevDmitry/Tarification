@@ -7,6 +7,7 @@ import org.school.personalLoad.model.EducationLevel;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public interface CurriculumPlanService {
