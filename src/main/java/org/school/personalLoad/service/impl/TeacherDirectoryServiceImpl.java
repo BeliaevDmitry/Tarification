@@ -3,12 +3,15 @@ package org.school.personalLoad.service.impl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
+import org.school.personalLoad.audit.ActionType;
+import org.school.personalLoad.audit.AuditService;
 import org.school.personalLoad.dto.TeacherCreateRequest;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.TeacherDirectoryService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
@@ -18,10 +21,12 @@ import java.util.*;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@Transactional
 public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
 
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final ManualLoadEntryRepository manualLoadEntryRepository;
+    private final AuditService auditService;
 
     @Override
     public Map<String, Object> importFromExcel(MultipartFile file) {
@@ -75,13 +80,15 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 imported++;
             }
 
-            log.info("Импорт педагогов завершен: imported={}, skipped={}", imported, skipped);
-            return Map.of(
+            Map<String, Object> result = Map.of(
                     "status", "ok",
                     "imported", imported,
                     "skipped", skipped,
                     "sheet", sheet.getSheetName()
             );
+            auditService.log(ActionType.CREATE, "Teacher", null, null, result, "Teachers imported from Excel");
+            log.info("Импорт педагогов завершен: imported={}, skipped={}", imported, skipped);
+            return result;
         } catch (Exception e) {
             log.error("Ошибка импорта педагогов", e);
             throw new RuntimeException("Не удалось импортировать педагогов из Excel", e);
@@ -95,12 +102,14 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         }
 
         String normalized = request.getFioTeacher().trim();
-        return teacherDirectoryRepository.findByFioTeacher(normalized)
+        TeacherDirectoryEntry created = teacherDirectoryRepository.findByFioTeacher(normalized)
                 .orElseGet(() -> {
                     TeacherDirectoryEntry entry = new TeacherDirectoryEntry();
                     entry.setFioTeacher(normalized);
                     return teacherDirectoryRepository.save(entry);
                 });
+        auditService.log(ActionType.CREATE, "Teacher", created.getId(), null, created, "Teacher created");
+        return created;
     }
 
     @Override
@@ -111,9 +120,23 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
 
         TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
                 .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
+        TeacherDirectoryEntry oldValue = copyEntry(entry);
 
         entry.setDismissalDate(dismissalDate);
-        return teacherDirectoryRepository.save(entry);
+        TeacherDirectoryEntry saved = teacherDirectoryRepository.save(entry);
+        auditService.log(ActionType.UPDATE, "Teacher", saved.getId(), oldValue, saved, "Teacher marked for dismissal");
+        return saved;
+    }
+
+    @Override
+    public TeacherDirectoryEntry cancelDismissal(Long teacherId) {
+        TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
+                .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
+        TeacherDirectoryEntry oldValue = copyEntry(entry);
+        entry.setDismissalDate(null);
+        TeacherDirectoryEntry saved = teacherDirectoryRepository.save(entry);
+        auditService.log(ActionType.UPDATE, "Teacher", saved.getId(), oldValue, saved, "Teacher dismissal cancelled");
+        return saved;
     }
 
     @Override
@@ -126,16 +149,20 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         }
 
         teacherDirectoryRepository.delete(entry);
+        auditService.log(ActionType.DELETE, "Teacher", teacherId, entry, null, "Teacher deleted");
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<TeacherDirectoryEntry> findAll() {
         return teacherDirectoryRepository.findAll();
     }
 
     @Override
     public void clearAll() {
+        List<TeacherDirectoryEntry> oldValue = teacherDirectoryRepository.findAll();
         teacherDirectoryRepository.deleteAll();
+        auditService.log(ActionType.DELETE, "Teacher", null, oldValue, null, "All teachers removed");
     }
 
     private Sheet findTeachersSheet(Workbook workbook) {
@@ -169,5 +196,14 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
             }
             default -> "";
         };
+    }
+
+    private TeacherDirectoryEntry copyEntry(TeacherDirectoryEntry entry) {
+        TeacherDirectoryEntry oldValue = new TeacherDirectoryEntry();
+        oldValue.setId(entry.getId());
+        oldValue.setFioTeacher(entry.getFioTeacher());
+        oldValue.setDismissalDate(entry.getDismissalDate());
+        oldValue.setCreatedAt(entry.getCreatedAt());
+        return oldValue;
     }
 }

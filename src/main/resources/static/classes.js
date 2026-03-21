@@ -5,13 +5,19 @@ const ui = {
     building: document.getElementById("class-building"),
     teacher: document.getElementById("class-teacher"),
     teacherList: document.getElementById("teacher-list"),
+    saveBtn: document.getElementById("save-class-btn"),
     refreshBtn: document.getElementById("refresh-classes-btn"),
     clearBtn: document.getElementById("clear-classes-btn"),
+    cancelEditBtn: document.getElementById("cancel-class-edit-btn"),
+    importFile: document.getElementById("class-import-file"),
+    importBtn: document.getElementById("class-import-btn"),
     result: document.getElementById("classes-result"),
     body: document.getElementById("classes-body")
 };
 
 let teachers = [];
+let currentRows = [];
+let editingKey = null;
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -36,6 +42,24 @@ function normalizeClassName(value) {
     return m ? `${m[1]}-${m[2]}` : v;
 }
 
+function classKey(row) {
+    return `${norm(row.numberSchoolBuilding)}|${normalizeClassName(row.className)}`;
+}
+
+function canEditClasses() {
+    const role = window.getCurrentUser?.()?.role;
+    return ["ADMIN", "DIRECTOR", "DEPUTY_DIRECTOR"].includes(role);
+}
+
+function resetFormState() {
+    editingKey = null;
+    ui.form.reset();
+    ui.cancelEditBtn.hidden = true;
+    if (ui.saveBtn) {
+        ui.saveBtn.textContent = "Добавить / обновить класс";
+    }
+}
+
 function renderTeachers() {
     ui.teacherList.innerHTML = sortRu(teachers).map((fio) => `<option value="${esc(fio)}"></option>`).join("");
 }
@@ -51,10 +75,17 @@ function renderBuildings(rows) {
 
 function renderClasses(rows) {
     ui.body.innerHTML = "";
+    currentRows = [...(rows || [])];
     (rows || []).sort((a, b) => `${a.numberSchoolBuilding}${a.className}`.localeCompare(`${b.numberSchoolBuilding}${b.className}`, "ru"))
         .forEach((r) => {
             const tr = document.createElement("tr");
-            tr.innerHTML = `<td>${esc(r.numberSchoolBuilding)}</td><td>${esc(r.className)}</td><td>${esc(r.classDirection)}</td><td>${esc(r.fioTeacher)}</td>`;
+            const actions = canEditClasses()
+                ? `<div class="row compact-row">
+                        <button type="button" class="table-action-btn" data-edit-class="${esc(classKey(r))}">Редактировать</button>
+                        <button type="button" class="danger-btn table-action-btn" data-delete-class="${esc(classKey(r))}">Удалить</button>
+                   </div>`
+                : "";
+            tr.innerHTML = `<td>${esc(r.numberSchoolBuilding)}</td><td>${esc(r.className)}</td><td>${esc(r.classDirection)}</td><td>${esc(r.fioTeacher)}</td><td>${actions}</td>`;
             ui.body.appendChild(tr);
         });
 }
@@ -96,12 +127,13 @@ async function saveClass(e) {
     }
     entry.fioTeacher = exact;
 
-    const filtered = (current || []).filter((r) => !(norm(r.numberSchoolBuilding) === entry.numberSchoolBuilding && norm(r.className) === entry.className));
+    const targetKey = editingKey || classKey(entry);
+    const filtered = (current || []).filter((r) => classKey(r) !== targetKey);
     filtered.push(entry);
 
     const saved = await api("/api/classroom-leadership", { method: "PUT", headers: jsonHeaders, body: JSON.stringify(filtered) });
     print({ status: "saved", total: saved.length });
-    ui.form.reset();
+    resetFormState();
     await reload();
 }
 
@@ -111,8 +143,72 @@ async function clearAll() {
     await reload();
 }
 
+async function importClassesFromExcel() {
+    const file = ui.importFile?.files?.[0];
+    if (!file) {
+        print({ error: "Выберите Excel-файл классов" });
+        return;
+    }
+
+    const form = new FormData();
+    form.append("file", file);
+    const result = await api("/api/classroom-leadership/import", { method: "POST", body: form });
+    print(result);
+    ui.importFile.value = "";
+    await reload();
+}
+
+function startEditClass(key) {
+    const row = currentRows.find((item) => classKey(item) === key);
+    if (!row) {
+        print({ error: "Класс для редактирования не найден" });
+        return;
+    }
+
+    editingKey = key;
+    ui.building.value = norm(row.numberSchoolBuilding);
+    ui.form.elements.namedItem("className").value = norm(row.className);
+    ui.form.elements.namedItem("classDirection").value = norm(row.classDirection);
+    ui.form.elements.namedItem("fioTeacher").value = norm(row.fioTeacher);
+    ui.cancelEditBtn.hidden = false;
+    if (ui.saveBtn) {
+        ui.saveBtn.textContent = "Сохранить изменения класса";
+    }
+}
+
+async function deleteClass(key) {
+    const filtered = currentRows.filter((row) => classKey(row) !== key);
+    const saved = await api("/api/classroom-leadership", { method: "PUT", headers: jsonHeaders, body: JSON.stringify(filtered) });
+    print({ status: "deleted", total: saved.length });
+    if (editingKey === key) {
+        resetFormState();
+    }
+    await reload();
+}
+
 ui.form.addEventListener("submit", (e) => saveClass(e).catch((error) => print({ error: error.message })));
 ui.refreshBtn.addEventListener("click", () => reload().catch((error) => print({ error: error.message })));
 ui.clearBtn.addEventListener("click", () => clearAll().catch((error) => print({ error: error.message })));
+ui.cancelEditBtn?.addEventListener("click", resetFormState);
+ui.importBtn?.addEventListener("click", () => importClassesFromExcel().catch((error) => print({ error: error.message })));
+ui.body.addEventListener("click", (event) => {
+    const editKey = event.target.dataset.editClass;
+    const deleteKey = event.target.dataset.deleteClass;
+    if (editKey) {
+        startEditClass(editKey);
+    }
+    if (deleteKey) {
+        deleteClass(deleteKey).catch((error) => print({ error: error.message }));
+    }
+});
 
-reload().catch((error) => print({ error: error.message }));
+function startAfterAuth() {
+    resetFormState();
+    reload().catch((error) => print({ error: error.message }));
+}
+
+if (window.initAuth) {
+    window.initAuth().then(startAfterAuth).catch(() => {});
+} else {
+    document.addEventListener("auth-ready", startAfterAuth, { once: true });
+}

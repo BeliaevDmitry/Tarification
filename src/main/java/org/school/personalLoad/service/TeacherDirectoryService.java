@@ -15,6 +15,8 @@ public interface TeacherDirectoryService {
 
     TeacherDirectoryEntry markForDismissal(Long teacherId, LocalDate dismissalDate);
 
+    TeacherDirectoryEntry cancelDismissal(Long teacherId);
+
     void deleteById(Long teacherId);
 
     List<TeacherDirectoryEntry> findAll();
