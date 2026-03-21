@@ -40,7 +40,7 @@
                 </select>
             </label>
             <button id="refresh-load-btn" type="button">Обновить из учебного плана</button>
-            <button id="save-building-btn" type="button" class="clean-save">Сохранить нагрузку корпуса</button>
+            <button id="save-building-btn" type="button" class="clean-save" data-requires-edit>Сохранить нагрузку корпуса</button>
         </div>
         <pre id="load-result"></pre>
     </section>
@@ -52,7 +52,7 @@
         <button id="next-error-btn" type="button">Перейти к ошибке</button>
     </section>
 
-    <section class="card">
+    <section class="card" data-requires-edit>
         <h2>Распределение педагогов</h2>
         <div class="sheet-wrap"><table class="sheet-table" id="building-load-table"><thead id="building-load-head"></thead><tbody id="building-load-body"></tbody></table></div>
     </section>
@@ -60,7 +60,7 @@
 </main>
 
 <dialog id="load-period-dialog">
-  <form method="dialog" id="load-period-form" class="grid">
+  <form method="dialog" id="load-period-form" class="grid" data-requires-edit>
     <h3>Редактирование нагрузки</h3>
     <input type="hidden" name="subjectKey">
     <input type="hidden" name="rowId">
@@ -75,6 +75,7 @@
   </form>
 </dialog>
 
+<script src="/auth.js"></script>
 <script src="/table-scroll.js"></script>
 <script src="/load.js"></script>
 </body>
