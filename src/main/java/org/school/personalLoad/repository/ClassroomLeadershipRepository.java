@@ -4,9 +4,14 @@ import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface ClassroomLeadershipRepository extends JpaRepository<ClassroomLeadershipEntry, Long> {
     Optional<ClassroomLeadershipEntry> findByClassName(String className);
+
+    List<ClassroomLeadershipEntry> findAllByNumberSchoolBuilding(String numberSchoolBuilding);
+
+    Optional<ClassroomLeadershipEntry> findByNumberSchoolBuildingAndClassName(String numberSchoolBuilding, String className);
 }

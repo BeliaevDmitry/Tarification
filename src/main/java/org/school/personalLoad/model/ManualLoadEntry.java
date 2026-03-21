@@ -43,5 +43,8 @@ public class ManualLoadEntry {
     private LocalDate loadToDate;
 
     @Column(nullable = false)
+    private boolean orphaned = false;
+
+    @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 }

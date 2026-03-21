@@ -16,8 +16,10 @@
             <a class="nav-link" href="/classes.html">Классы</a>
             <a class="nav-link active" href="/curriculum.html">Учебный план</a>
             <a class="nav-link" href="/load.html">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/mesh.html">Предметы</a>
             <a class="nav-link" href="/teachers.html">Педагоги</a>
         </nav>
+        <div id="auth-slot"></div>
     </header>
 
     <section class="card">
@@ -27,6 +29,16 @@
             <button id="refresh-btn" type="button">Обновить таблицу</button>
             <button id="clear-curriculum-btn" type="button">Очистить весь учебный план</button>
         </div>
+
+        <div class="card" data-role-required="ADMIN,DIRECTOR,DEPUTY_DIRECTOR">
+            <h2>Импорт учебного плана из Excel</h2>
+            <p class="muted">Загружает учебный план из Excel-файла, не убирая возможности ручного редактирования.</p>
+            <input id="curriculum-import-file" type="file" accept=".xls,.xlsx">
+            <div class="row">
+                <button id="curriculum-import-btn" type="button">Импортировать Excel</button>
+            </div>
+        </div>
+
         <pre id="curriculum-result"></pre>
     </section>
 
@@ -111,5 +123,7 @@
 </dialog>
 
 <script src="/curriculum.js"></script>
+<script src="/auth.js"></script>
+<script>window.initAuth && initAuth().catch(() => {});</script>
 </body>
 </html>

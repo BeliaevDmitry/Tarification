@@ -3,6 +3,8 @@ package org.school.personalLoad.controller.api;
 import org.school.personalLoad.dto.ApiErrorResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -24,6 +26,21 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleConflict(IllegalStateException e, HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(
                 new ApiErrorResponse("error", e.getMessage(), request.getRequestURI(), LocalDateTime.now())
+        );
+    }
+
+
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ApiErrorResponse> handleUnauthorized(BadCredentialsException e, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
+                new ApiErrorResponse("error", "Invalid username or password", request.getRequestURI(), LocalDateTime.now())
+        );
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiErrorResponse> handleForbidden(AccessDeniedException e, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+                new ApiErrorResponse("error", "Access denied", request.getRequestURI(), LocalDateTime.now())
         );
     }
 

@@ -55,4 +55,12 @@ ui.clearBtn.addEventListener("click", async () => {
     catch (error) { print({ error: error.message }); }
 });
 
-reload().catch((e) => print({ error: e.message }));
+function startAfterAuth() {
+    reload().catch((e) => print({ error: e.message }));
+}
+
+if (window.initAuth) {
+    window.initAuth().then(startAfterAuth).catch(() => {});
+} else {
+    document.addEventListener("auth-ready", startAfterAuth, { once: true });
+}
