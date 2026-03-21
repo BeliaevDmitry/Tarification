@@ -53,6 +53,7 @@ public class SecurityConfig {
                         .antMatchers("/api/auth/**").permitAll()
                         .antMatchers("/favicon.ico", "/error").permitAll()
                         .antMatchers("/*.js", "/*.css").permitAll()
+                        .antMatchers("/users.html", "/audit.html").hasRole("ADMIN")
                         .antMatchers("/ui/**", "/api/**", "/*.html", "/").authenticated()
                         .anyRequest().permitAll())
                 .exceptionHandling(exception -> exception

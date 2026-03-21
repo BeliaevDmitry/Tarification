@@ -128,4 +128,12 @@ async function init() {
     }
 }
 
-init();
+function startAfterAuth() {
+    init().catch((error) => print(ui.mappingResult, { error: error.message }));
+}
+
+if (window.initAuth) {
+    window.initAuth().then(startAfterAuth).catch(() => {});
+} else {
+    document.addEventListener("auth-ready", startAfterAuth, { once: true });
+}

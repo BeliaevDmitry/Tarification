@@ -2,6 +2,10 @@
     font-family: Inter, Arial, sans-serif;
 }
 
+html {
+    scrollbar-gutter: stable;
+}
+
 * {
     box-sizing: border-box;
 }
@@ -47,10 +51,16 @@ button {
     border-radius: 8px;
 }
 
-input, select {
+input, select, textarea {
     padding: 8px;
     border: 1px solid #ddd;
     border-radius: 8px;
+}
+
+textarea {
+    width: 100%;
+    min-height: 140px;
+    resize: vertical;
 }
 
 table {
@@ -95,6 +105,15 @@ hr {
         top: 6px;
         padding: 8px;
         gap: 8px;
+    }
+
+    body.with-top-nav.with-fixed-auth {
+        padding-top: 152px;
+    }
+
+    body.with-top-nav .compact-fixed-panel {
+        top: 64px;
+        width: calc(100% - 12px);
     }
 }
 
@@ -141,7 +160,7 @@ hr {
     left: 50%;
     transform: translateX(-50%);
     width: min(1100px, calc(100% - 24px));
-    z-index: 1000;
+    z-index: 1100;
     display: flex;
     gap: 10px;
     flex-wrap: nowrap;
@@ -176,7 +195,6 @@ hr {
 }
 
 .nav-link:hover {
-    transform: translateY(-1px);
     border-color: #93c5fd;
     background: #dbeafe;
 }
@@ -466,6 +484,10 @@ body.with-fixed-auth {
     padding-top: 76px;
 }
 
+body.with-top-nav.with-fixed-auth {
+    padding-top: 144px;
+}
+
 .compact-fixed-panel {
     position: fixed;
     top: 10px;
@@ -478,6 +500,10 @@ body.with-fixed-auth {
     background: rgba(255, 255, 255, 0.96);
     border: 1px solid #d9e0ea;
     box-shadow: 0 6px 20px rgba(15, 23, 42, 0.12);
+}
+
+body.with-top-nav .compact-fixed-panel {
+    top: 74px;
 }
 
 .auth-panel-main {

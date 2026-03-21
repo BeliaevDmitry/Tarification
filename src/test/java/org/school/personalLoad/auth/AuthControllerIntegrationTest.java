@@ -74,8 +74,35 @@ class AuthControllerIntegrationTest {
         }});
 
         mockMvc.perform(post("/api/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
+                .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void adminPagesAreNotAvailableByDirectHtmlPathForNonAdmin() throws Exception {
+        AppUser hrUser = new AppUser();
+        hrUser.setUsername("hr-user");
+        hrUser.setPassword(passwordEncoder.encode("secret"));
+        hrUser.setRole(RoleName.HR);
+        hrUser.setEnabled(true);
+        appUserRepository.save(hrUser);
+
+        String body = objectMapper.writeValueAsString(new java.util.HashMap<>() {{
+            put("username", "hr-user");
+            put("password", "secret");
+        }});
+
+        var loginResult = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        mockMvc.perform(get("/users.html").session(loginResult.getRequest().getSession(false)))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/audit.html").session(loginResult.getRequest().getSession(false)))
+                .andExpect(status().isForbidden());
     }
 }

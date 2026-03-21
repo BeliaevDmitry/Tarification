@@ -22,7 +22,7 @@ const pagePermissions = {
     'classes.html': { edit: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR'], clear: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR'] },
     'curriculum.html': { edit: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR'], clear: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR'] },
     'load.html': { edit: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR', 'BUILDING_HEAD'], process: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR'] },
-    'teachers.html': { edit: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR', 'HR'], clear: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR', 'HR'] },
+    'teachers.html': { edit: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR', 'HR'], clear: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR', 'HR'], import: ['ADMIN', 'HR'] },
     'mesh.html': { edit: ['ADMIN', 'DIRECTOR', 'DEPUTY_DIRECTOR'] },
     'users.html': { edit: ['ADMIN'] },
     'audit.html': { edit: ['ADMIN'] },
@@ -91,6 +91,9 @@ function applyRoleVisibility() {
     if (!canDo('clear')) {
         hide('#clear-buildings-btn, #clear-classes-btn, #clear-curriculum-btn, #clear-teachers-btn');
     }
+    if (!canDo('import')) {
+        hide('#teacher-import-panel');
+    }
     if (!canDo('process')) {
         hide('#process-btn');
     }
@@ -108,8 +111,12 @@ function escapeHtml(v) {
 
 window.roleLabels = roleLabels;
 window.initAuth = async function initAuth() {
+    if (document.querySelector('.page-nav')) {
+        document.body.classList.add('with-top-nav');
+    }
     await fetchCurrentUser();
     renderAuthHeader();
     applyRoleVisibility();
+    document.dispatchEvent(new CustomEvent('auth-ready', { detail: { user: authState.me } }));
     return authState.me;
 };

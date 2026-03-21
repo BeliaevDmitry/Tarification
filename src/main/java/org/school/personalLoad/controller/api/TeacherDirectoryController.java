@@ -21,7 +21,7 @@ public class TeacherDirectoryController {
     private final TeacherDirectoryService teacherDirectoryService;
 
     @PostMapping("/import")
-    @PreAuthorize("hasAnyRole('ADMIN','DIRECTOR','DEPUTY_DIRECTOR','HR')")
+    @PreAuthorize("hasAnyRole('ADMIN','HR')")
     public ResponseEntity<Map<String, Object>> importFromExcel(@RequestParam("file") MultipartFile file) {
         return ResponseEntity.ok(teacherDirectoryService.importFromExcel(file));
     }
