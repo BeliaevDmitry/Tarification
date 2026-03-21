@@ -23,14 +23,14 @@
 
     <section class="card">
         <h2>Импорт из Excel</h2>
-        <div class="row">
+        <div class="row" data-requires-edit>
             <input id="classes-file" type="file" accept=".xls,.xlsx">
             <button id="import-classes-btn" type="button">Импортировать</button>
             <a id="download-classes-template" href="/api/classroom-leadership/template" class="nav-link">Скачать шаблон</a>
         </div>
 
         <h2>Добавить класс</h2>
-        <form id="class-form" class="grid">
+        <form id="class-form" class="grid" data-requires-edit>
             <select name="numberSchoolBuilding" id="class-building" required></select>
             <input name="className" placeholder="Класс (например 7А)" required>
             <label class="field-row"><span>Направление</span><input name="classDirection" placeholder="Направление класса" required></label>
@@ -40,12 +40,12 @@
         </form>
         <div class="row">
             <button id="refresh-classes-btn" type="button">Обновить</button>
-            <button id="clear-classes-btn" type="button">Очистить классы</button>
+            <button id="clear-classes-btn" type="button" data-requires-edit>Очистить классы</button>
         </div>
         <pre id="classes-result"></pre>
     </section>
 
-    <section class="card">
+    <section class="card" data-requires-edit>
         <h2>Список классов</h2>
         <div class="sheet-wrap">
             <table class="sheet-table">
@@ -59,7 +59,7 @@
 </main>
 
 <dialog id="class-edit-dialog">
-    <form method="dialog" id="class-edit-form" class="grid labeled-grid">
+    <form method="dialog" id="class-edit-form" class="grid labeled-grid" data-requires-edit>
         <h3>Редактирование класса</h3>
         <label class="field-row"><span>Корпус</span><select name="numberSchoolBuilding" id="class-edit-building" required></select></label>
         <label class="field-row"><span>Класс</span><input name="className" placeholder="Класс" required></label>
@@ -72,6 +72,7 @@
     </form>
 </dialog>
 
+<script src="/auth.js"></script>
 <script src="/table-scroll.js"></script>
 <script src="/classes.js"></script>
 </body>
