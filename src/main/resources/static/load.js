@@ -255,6 +255,66 @@ function referencePlanningDate() {
 }
 
 
+
+function currentAuthUser() {
+    return window.tarificationAuth || null;
+}
+
+function canEditSelectedBuildingLoad() {
+    const user = currentAuthUser();
+    if (!user) return false;
+    if (user.admin) return true;
+    const loadPermission = window.tarificationTabPermissions?.LOAD;
+    if (!loadPermission?.canEdit) return false;
+    if (user.loadEditAllBuildings) return true;
+    const allowedBuildings = (user.loadEditableBuildingCodes || []).map((code) => normalizeBuildingCode(code));
+    if (allowedBuildings.length) {
+        return allowedBuildings.includes(normalizeBuildingCode(selectedBuilding));
+    }
+    if (user.role !== "BUILDING_HEAD") return false;
+    return normalizeBuildingCode(user.managedBuildingCode) === normalizeBuildingCode(selectedBuilding);
+}
+
+function loadReadOnlyReason() {
+    const user = currentAuthUser();
+    if (!user || user.admin) return "";
+    const loadPermission = window.tarificationTabPermissions?.LOAD;
+    if (!loadPermission?.canEdit) {
+        return "У вас нет права редактировать вкладку «Нагрузка по корпусам».";
+    }
+    if (user.loadEditAllBuildings) {
+        return "";
+    }
+    const allowedBuildings = (user.loadEditableBuildingCodes || []).filter(Boolean);
+    if (allowedBuildings.length && !allowedBuildings.map((code) => normalizeBuildingCode(code)).includes(normalizeBuildingCode(selectedBuilding))) {
+        return `Редактирование разрешено только для корпусов: ${allowedBuildings.join(", ")}.`;
+    }
+    if (user.role === "BUILDING_HEAD" && normalizeBuildingCode(user.managedBuildingCode) !== normalizeBuildingCode(selectedBuilding)) {
+        return `Руководитель корпуса может редактировать только корпус ${user.managedBuildingCode || "—"}.`;
+    }
+    return "Администратор ещё не назначил вам корпуса для редактирования нагрузки.";
+}
+
+function updateLoadEditMode() {
+    const pagePermission = window.tarificationTabPermissions?.LOAD;
+    if (!pagePermission?.canEdit && !currentAuthUser()?.admin) return;
+
+    const allowed = canEditSelectedBuildingLoad();
+    const reason = loadReadOnlyReason();
+    document.querySelectorAll('[data-load-edit-area], [data-load-edit-control="true"]').forEach((container) => {
+        container.querySelectorAll?.('button, input, select, textarea').forEach((el) => {
+            if (el.dataset.allowReadonly === 'true') return;
+            el.disabled = !allowed;
+        });
+        if (container.matches('[data-load-edit-control="true"]')) {
+            container.disabled = !allowed;
+        }
+    });
+    if (ui.saveBuildingBtn) {
+        ui.saveBuildingBtn.title = allowed ? '' : reason;
+    }
+}
+
 function dateInRange(isoDate, fromDate, toDate) {
     if (!isoDate || !fromDate || !toDate) return true;
     return fromDate <= isoDate && isoDate <= toDate;
@@ -633,13 +693,14 @@ function renderBuildingTabs() {
             state.forceResort = true;
             renderBuildingTabs();
             renderTable();
+            updateLoadEditMode();
         });
         ui.buildingTabs.appendChild(button);
     });
 }
 
 function addTeacherRow(subjectKey, afterRowId = null) {
-    if (selectedBuilding === ARCHIVE_BUILDING_CODE) return;
+    if (selectedBuilding === ARCHIVE_BUILDING_CODE || !canEditSelectedBuildingLoad()) return;
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
     if (!rowsMap[subjectKey]) rowsMap[subjectKey] = [];
     const period = defaultLoadPeriod();
@@ -664,7 +725,7 @@ function addTeacherRow(subjectKey, afterRowId = null) {
 }
 
 function setTeacherForRow(subjectKey, teacherRowId, value) {
-    if (selectedBuilding === ARCHIVE_BUILDING_CODE) return;
+    if (selectedBuilding === ARCHIVE_BUILDING_CODE || !canEditSelectedBuildingLoad()) return;
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
     const row = (rowsMap[subjectKey] || []).find((entry) => entry.id === teacherRowId);
     if (!row) return;
@@ -696,6 +757,7 @@ function findTeacherRowMeta(subjectKey, teacherRowId) {
 }
 
 function setPeriodForRow(subjectKey, teacherRowId, fromDate, toDate) {
+    if (!canEditSelectedBuildingLoad()) return;
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
     const row = (rowsMap[subjectKey] || []).find((entry) => entry.id === teacherRowId);
     if (!row) return;
@@ -705,6 +767,10 @@ function setPeriodForRow(subjectKey, teacherRowId, fromDate, toDate) {
 }
 
 function onClassCellClick(presentationRow, className) {
+    if (!canEditSelectedBuildingLoad()) {
+        print({ warning: loadReadOnlyReason() || "Редактирование этой нагрузки недоступно" });
+        return;
+    }
     const curriculumRow = presentationRow.rowsByClass[className];
     if (!curriculumRow) return;
 
@@ -935,6 +1001,8 @@ function renderTable() {
             onClassCellClick(row, className);
         });
     });
+
+    updateLoadEditMode();
 }
 
 
@@ -963,6 +1031,7 @@ function renderArchiveAsMainTable() {
         ui.tableBody.innerHTML = '<tr><td colspan="9">Архивных записей пока нет.</td></tr>';
         ui.unassignedHours.textContent = "0";
         ui.errorCount.textContent = "0";
+        updateLoadEditMode();
         return;
     }
 
@@ -982,9 +1051,14 @@ function renderArchiveAsMainTable() {
 
     ui.unassignedHours.textContent = "0";
     ui.errorCount.textContent = String(conflicts.size);
+    updateLoadEditMode();
 }
 
 async function saveBuildingLoad() {
+    if (!canEditSelectedBuildingLoad()) {
+        print({ warning: loadReadOnlyReason() || "Редактирование этой нагрузки недоступно" });
+        return;
+    }
     if (selectedBuilding === ARCHIVE_BUILDING_CODE) {
         print({ warning: "Архив не редактируется" });
         return;
