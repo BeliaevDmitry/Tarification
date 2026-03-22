@@ -180,11 +180,6 @@ public class CurriculumExcelParser {
     private String extractSubject(Sheet sheet, int rowIndex) {
         String a = normalizeText(readMergedCell(sheet, rowIndex, 0));
         String b = normalizeText(readMergedCell(sheet, rowIndex, 1));
-
-        // Важное правило шаблона: merged-строка предмета => название в колонке A, иначе в B.
-        if (isMergedCell(sheet, rowIndex, 0)) {
-            return a;
-        }
         return b.isBlank() ? a : b;
     }
 
