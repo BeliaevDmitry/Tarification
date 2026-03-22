@@ -24,6 +24,7 @@ let teacherNames = [];
 let teacherDirectory = [];
 let buildings = [];
 let classroomRows = [];
+let studyPeriodSettings = [];
 let selectedBuilding = "";
 
 const ARCHIVE_BUILDING_CODE = "__ARCHIVE__";
@@ -121,16 +122,34 @@ function groupSuffix(row) {
     return row.__groupIndex ? `|g${row.__groupIndex}` : "";
 }
 
+function classParallel(className) {
+    const match = String(className || "").trim().match(/^(\d{1,2})/);
+    return match ? Number(match[1]) : null;
+}
+
+function rowStudyPeriod(row) {
+    const parallel = classParallel(row?.className);
+    if (parallel != null && parallel >= 10) {
+        return row?.studyPeriod || "H1";
+    }
+    return "YEAR";
+}
+
+function periodLabel(studyPeriod) {
+    return ({ YEAR: "год", H1: "1П", H2: "2П" })[studyPeriod] || studyPeriod || "";
+}
+
 function displaySubjectName(row) {
-    return row.__groupIndex ? `${row.subjectName} ${row.__groupIndex}` : row.subjectName;
+    const suffix = rowStudyPeriod(row) !== "YEAR" ? ` · ${periodLabel(rowStudyPeriod(row))}` : "";
+    return row.__groupIndex ? `${row.subjectName} ${row.__groupIndex}${suffix}` : `${row.subjectName}${suffix}`;
 }
 
 function apiKeyOfRow(row) {
-    return `${row.className}|${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}${groupSuffix(row)}`;
+    return `${row.className}|${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}|${rowStudyPeriod(row)}${groupSuffix(row)}`;
 }
 
 function subjectKeyOfRow(row) {
-    return `${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}${groupSuffix(row)}`;
+    return `${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}|${rowStudyPeriod(row)}${groupSuffix(row)}`;
 }
 
 function rowId() {
@@ -241,16 +260,38 @@ function dismissalDateOfTeacher(teacherName) {
     return teacher?.dismissalDate || null;
 }
 
-function defaultLoadPeriod() {
+function periodSettingsMap() {
+    return Object.fromEntries((studyPeriodSettings || []).map((item) => [item.studyPeriod, item]));
+}
+
+function fallbackYearRange() {
     const now = new Date();
-    const from = "2026-09-01";
-    const to = "2027-05-31";
-    return { from, to };
+    const month = now.getUTCMonth() + 1;
+    const year = now.getUTCFullYear();
+    const startYear = month < 9 ? year : year + 1;
+    return {
+        yearFrom: `${startYear}-09-01`,
+        h1To: `${startYear}-12-31`,
+        h2From: `${startYear + 1}-01-01`,
+        yearTo: `${startYear + 1}-05-31`
+    };
+}
+
+function defaultLoadPeriod(studyPeriod = "YEAR") {
+    const settings = periodSettingsMap();
+    const range = settings[studyPeriod];
+    if (range?.startDate && range?.endDate) {
+        return { from: range.startDate, to: range.endDate };
+    }
+    const fallback = fallbackYearRange();
+    if (studyPeriod === "H1") return { from: fallback.yearFrom, to: fallback.h1To };
+    if (studyPeriod === "H2") return { from: fallback.h2From, to: fallback.yearTo };
+    return { from: fallback.yearFrom, to: fallback.yearTo };
 }
 
 function referencePlanningDate() {
     const today = new Date().toISOString().slice(0, 10);
-    const period = defaultLoadPeriod();
+    const period = defaultLoadPeriod("YEAR");
     return today < period.from ? period.from : today;
 }
 
@@ -331,6 +372,7 @@ function subjectConflictKey(row) {
         normalizeClassName(row.className),
         String(row.subjectName || "").trim().toUpperCase(),
         String(row.educationLevel || ""),
+        String(row.studyPeriod || "YEAR"),
         String(row.groupNameEducationalPlan || "").trim().toUpperCase()
     ].join("|");
 }
@@ -380,6 +422,7 @@ function prefillFromManualLoad() {
         && row.className === entry.className
         && row.subjectName === entry.subjectName
         && row.educationLevel === entry.educationLevel
+        && rowStudyPeriod(row) === (entry.studyPeriod || rowStudyPeriod(row))
     );
 
     const grouped = new Map();
@@ -466,10 +509,11 @@ function prefillFromManualLoad() {
             const teacherName = String(chosen.fioTeacher || "").trim();
             const exists = teacherRowsMap[subjectKey].some((row) => String(row.teacherName || "").trim().toLowerCase() === key);
             if (!exists) {
-                const period = defaultLoadPeriod();
+                const period = defaultLoadPeriod(rowStudyPeriod(matched));
                 teacherRowsMap[subjectKey].push({
                     id: rowId(),
                     teacherName,
+                    studyPeriod: rowStudyPeriod(matched),
                     loadFromDate: chosen.loadFromDate || period.from,
                     loadToDate: chosen.loadToDate || period.to
                 });
@@ -504,14 +548,16 @@ function ensureTeacherRowsForBuilding() {
         teachersFromAssignments.forEach((teacherName) => {
             const exists = rowsMap[subjectKey].some((row) => row.teacherName.toLowerCase() === teacherName.toLowerCase());
             if (!exists) {
-                const period = defaultLoadPeriod();
-                rowsMap[subjectKey].push({ id: rowId(), teacherName, loadFromDate: period.from, loadToDate: period.to });
+                const periodValue = rowStudyPeriod(rows[0]);
+                const period = defaultLoadPeriod(periodValue);
+                rowsMap[subjectKey].push({ id: rowId(), teacherName, studyPeriod: periodValue, loadFromDate: period.from, loadToDate: period.to });
             }
         });
 
         if (!rowsMap[subjectKey].length) {
-            const period = defaultLoadPeriod();
-            rowsMap[subjectKey].push({ id: rowId(), teacherName: "", loadFromDate: period.from, loadToDate: period.to });
+            const periodValue = rowStudyPeriod(rows[0]);
+            const period = defaultLoadPeriod(periodValue);
+            rowsMap[subjectKey].push({ id: rowId(), teacherName: "", studyPeriod: periodValue, loadFromDate: period.from, loadToDate: period.to });
         }
     });
 }
@@ -573,7 +619,7 @@ function buildPresentationRows() {
 
     const result = [];
     subjectInfo.forEach((info) => {
-        const teacherRows = rowsMap[info.subjectKey] || [{ ...defaultLoadPeriod(), id: rowId(), teacherName: "" }];
+        const teacherRows = rowsMap[info.subjectKey] || [{ ...defaultLoadPeriod(rowStudyPeriod(Object.values(info.rowsByClass)[0])), id: rowId(), teacherName: "", studyPeriod: rowStudyPeriod(Object.values(info.rowsByClass)[0]) }];
         teacherRows.forEach((teacherRow) => {
             let totalHours = 0;
             let classCount = 0;
@@ -595,8 +641,9 @@ function buildPresentationRows() {
                 educationLevel: info.educationLevel,
                 groupIndex: info.groupIndex,
                 teacherName: teacherRow.teacherName || "",
-                loadFromDate: teacherRow.loadFromDate || defaultLoadPeriod().from,
-                loadToDate: teacherRow.loadToDate || defaultLoadPeriod().to,
+                studyPeriod: teacherRow.studyPeriod || rowStudyPeriod(Object.values(info.rowsByClass)[0]),
+                loadFromDate: teacherRow.loadFromDate || defaultLoadPeriod(teacherRow.studyPeriod || rowStudyPeriod(Object.values(info.rowsByClass)[0])).from,
+                loadToDate: teacherRow.loadToDate || defaultLoadPeriod(teacherRow.studyPeriod || rowStudyPeriod(Object.values(info.rowsByClass)[0])).to,
                 rowsByClass: info.rowsByClass,
                 classCount,
                 subjectHours: totalHours,
@@ -703,8 +750,10 @@ function addTeacherRow(subjectKey, afterRowId = null) {
     if (selectedBuilding === ARCHIVE_BUILDING_CODE || !canEditSelectedBuildingLoad()) return;
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
     if (!rowsMap[subjectKey]) rowsMap[subjectKey] = [];
-    const period = defaultLoadPeriod();
-    const newRow = { id: rowId(), teacherName: "", loadFromDate: period.from, loadToDate: period.to };
+    const rows = expandCurriculumRows(rowsForSelectedBuilding()).filter((row) => subjectKeyOfRow(row) === subjectKey);
+    const periodValue = rowStudyPeriod(rows[0] || {});
+    const period = defaultLoadPeriod(periodValue);
+    const newRow = { id: rowId(), teacherName: "", studyPeriod: periodValue, loadFromDate: period.from, loadToDate: period.to };
     if (!afterRowId) {
         rowsMap[subjectKey].push(newRow);
     } else {
@@ -792,7 +841,7 @@ function onClassCellClick(presentationRow, className) {
     }
 
     const rowMeta = findTeacherRowMeta(presentationRow.subjectKey, presentationRow.teacherRowId);
-    const period = defaultLoadPeriod();
+    const period = defaultLoadPeriod(presentationRow.studyPeriod || rowStudyPeriod(curriculumRow));
     ui.periodForm.elements.subjectKey.value = presentationRow.subjectKey;
     ui.periodForm.elements.rowId.value = presentationRow.teacherRowId;
     ui.periodForm.elements.className.value = className;
@@ -1073,7 +1122,7 @@ async function saveBuildingLoad() {
         if (!fioTeacher) return null;
 
         const teacherRow = (rowsMap[subjectKeyOfRow(row)] || []).find((r) => String(r.teacherName || "").trim() === fioTeacher);
-        const period = defaultLoadPeriod();
+        const period = defaultLoadPeriod(rowStudyPeriod(row));
         const plan = plans[apiKey];
         let loadToDate = teacherRow?.loadToDate || period.to;
         if (plan && plan.previousTeacher === fioTeacher) {
@@ -1090,6 +1139,7 @@ async function saveBuildingLoad() {
             groupNameEducationalPlan: row.__groupIndex ? `Группа ${row.__groupIndex}` : null,
             groupLoad: row.__groupIndex ? Number(row.plannedHours || 0) : null,
             educationLevel: row.educationLevel,
+            studyPeriod: rowStudyPeriod(row),
             loadFromDate: teacherRow?.loadFromDate || period.from,
             loadToDate
         };
@@ -1107,6 +1157,7 @@ async function saveBuildingLoad() {
             groupNameEducationalPlan: row.__groupIndex ? `Группа ${row.__groupIndex}` : null,
             groupLoad: row.__groupIndex ? Number(row.plannedHours || 0) : null,
             educationLevel: row.educationLevel,
+            studyPeriod: rowStudyPeriod(row),
             loadFromDate: plan.fromDate,
             loadToDate: plan.toDate
         });
@@ -1119,6 +1170,7 @@ async function saveBuildingLoad() {
             normalizeClassName(item.className),
             String(item.subjectName || "").trim().toUpperCase(),
             String(item.educationLevel || ""),
+            String(item.studyPeriod || "YEAR"),
             String(item.groupNameEducationalPlan || "").trim().toUpperCase(),
             String(item.fioTeacher || "").trim().toUpperCase(),
             String(item.loadFromDate || ""),
@@ -1148,12 +1200,13 @@ async function saveBuildingLoad() {
 }
 
 async function refreshSourceData() {
-    const [curriculum, manual, teachers, buildingRows, classRows] = await Promise.all([
+    const [curriculum, manual, teachers, buildingRows, classRows, periodSettings] = await Promise.all([
         api("/api/curriculum"),
         api("/api/manual-load"),
         api("/api/teachers"),
         api("/api/buildings"),
-        api("/api/classroom-leadership")
+        api("/api/classroom-leadership"),
+        api("/api/settings/study-periods")
     ]);
 
     curriculumRows = curriculum || [];
@@ -1161,6 +1214,7 @@ async function refreshSourceData() {
     teacherDirectory = teachers || [];
     teacherNames = sortRu(Array.from(new Set(teacherDirectory.map((t) => String(t.fioTeacher || "").trim()).filter(Boolean))));
     classroomRows = classRows || [];
+    studyPeriodSettings = periodSettings || [];
 
     const buildingByCode = new Map();
     (buildingRows || []).forEach((b) => {

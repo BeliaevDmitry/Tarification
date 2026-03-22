@@ -3,6 +3,7 @@ package org.school.personalLoad.dto;
 import lombok.Data;
 import org.school.personalLoad.model.CurriculumPart;
 import org.school.personalLoad.model.EducationLevel;
+import org.school.personalLoad.model.StudyPeriod;
 
 @Data
 public class CurriculumPlanEntryRequest {
@@ -18,4 +19,5 @@ public class CurriculumPlanEntryRequest {
     private Integer subgroup2Hours;
     private EducationLevel subgroup2EducationLevel;
     private CurriculumPart curriculumPart;
+    private StudyPeriod studyPeriod;
 }

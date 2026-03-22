@@ -5,6 +5,7 @@ import org.school.personalLoad.dto.CurriculumPlanEntryRequest;
 import org.school.personalLoad.model.CurriculumPart;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.EducationLevel;
+import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.springframework.stereotype.Service;
@@ -23,30 +24,21 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
     public CurriculumPlanEntry upsert(CurriculumPlanEntryRequest request) {
         validate(request);
         CurriculumPart curriculumPart = request.getCurriculumPart() == null ? CurriculumPart.CORE : request.getCurriculumPart();
+        StudyPeriod studyPeriod = normalizedStudyPeriod(request);
         String normalizedClassName = ClassNameNormalizer.normalize(request.getClassName());
 
         CurriculumPlanEntry entity = repository
-                .findByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPart(
+                .findByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriod(
                         request.getNumberSchoolBuilding().trim(),
                         normalizedClassName,
                         request.getSubjectName().trim(),
                         request.getEducationLevel(),
-                        curriculumPart
+                        curriculumPart,
+                        studyPeriod
                 )
                 .orElseGet(CurriculumPlanEntry::new);
 
-        entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
-        entity.setClassName(normalizedClassName);
-        entity.setSubjectName(request.getSubjectName().trim());
-        entity.setPlannedHours(request.getPlannedHours());
-        entity.setSubgroupRequired(request.isSubgroupRequired());
-        entity.setSubgroupCount(request.isSubgroupRequired() ? 2 : 0);
-        entity.setEducationLevel(request.getEducationLevel());
-        entity.setSubgroup1Hours(request.isSubgroupRequired() ? request.getSubgroup1Hours() : null);
-        entity.setSubgroup1EducationLevel(request.isSubgroupRequired() ? request.getSubgroup1EducationLevel() : null);
-        entity.setSubgroup2Hours(request.isSubgroupRequired() ? request.getSubgroup2Hours() : null);
-        entity.setSubgroup2EducationLevel(request.isSubgroupRequired() ? request.getSubgroup2EducationLevel() : null);
-        entity.setCurriculumPart(curriculumPart);
+        applyValues(entity, request, curriculumPart, studyPeriod);
         return repository.save(entity);
     }
 
@@ -75,18 +67,7 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         CurriculumPlanEntry entity = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Curriculum entry not found: " + id));
 
-        entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
-        entity.setClassName(ClassNameNormalizer.normalize(request.getClassName()));
-        entity.setSubjectName(request.getSubjectName().trim());
-        entity.setPlannedHours(request.getPlannedHours());
-        entity.setSubgroupRequired(request.isSubgroupRequired());
-        entity.setSubgroupCount(request.isSubgroupRequired() ? 2 : 0);
-        entity.setEducationLevel(request.getEducationLevel());
-        entity.setSubgroup1Hours(request.isSubgroupRequired() ? request.getSubgroup1Hours() : null);
-        entity.setSubgroup1EducationLevel(request.isSubgroupRequired() ? request.getSubgroup1EducationLevel() : null);
-        entity.setSubgroup2Hours(request.isSubgroupRequired() ? request.getSubgroup2Hours() : null);
-        entity.setSubgroup2EducationLevel(request.isSubgroupRequired() ? request.getSubgroup2EducationLevel() : null);
-        entity.setCurriculumPart(request.getCurriculumPart() == null ? CurriculumPart.CORE : request.getCurriculumPart());
+        applyValues(entity, request, request.getCurriculumPart() == null ? CurriculumPart.CORE : request.getCurriculumPart(), normalizedStudyPeriod(request));
         return repository.save(entity);
     }
 
@@ -99,26 +80,60 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
     }
 
     @Override
-    public Optional<CurriculumPlanEntry> findRule(String numberSchoolBuilding, String className, String subjectName, EducationLevel educationLevel) {
+    public Optional<CurriculumPlanEntry> findRule(String numberSchoolBuilding,
+                                                  String className,
+                                                  String subjectName,
+                                                  EducationLevel educationLevel,
+                                                  StudyPeriod studyPeriod) {
         String normalizedClass = ClassNameNormalizer.normalize(className);
         String normalizedSubject = subjectName == null ? "" : subjectName.trim();
+        StudyPeriod effectiveStudyPeriod = studyPeriod == null ? StudyPeriod.YEAR : studyPeriod;
 
-        Optional<CurriculumPlanEntry> exactRule = repository.findFirstByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndDeprecatedFalse(
+        Optional<CurriculumPlanEntry> exactRule = repository.findFirstByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
                 numberSchoolBuilding,
                 normalizedClass,
                 normalizedSubject,
-                educationLevel
+                educationLevel,
+                effectiveStudyPeriod
         );
 
         if (exactRule.isPresent()) {
             return exactRule;
         }
 
-        return repository.findFirstByClassNameAndSubjectNameAndEducationLevelAndDeprecatedFalse(
+        return repository.findFirstByClassNameAndSubjectNameAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
                 normalizedClass,
                 normalizedSubject,
-                educationLevel
+                educationLevel,
+                effectiveStudyPeriod
         );
+    }
+
+    private void applyValues(CurriculumPlanEntry entity,
+                             CurriculumPlanEntryRequest request,
+                             CurriculumPart curriculumPart,
+                             StudyPeriod studyPeriod) {
+        entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
+        entity.setClassName(ClassNameNormalizer.normalize(request.getClassName()));
+        entity.setSubjectName(request.getSubjectName().trim());
+        entity.setPlannedHours(request.getPlannedHours());
+        entity.setSubgroupRequired(request.isSubgroupRequired());
+        entity.setSubgroupCount(request.isSubgroupRequired() ? 2 : 0);
+        entity.setEducationLevel(request.getEducationLevel());
+        entity.setSubgroup1Hours(request.isSubgroupRequired() ? request.getSubgroup1Hours() : null);
+        entity.setSubgroup1EducationLevel(request.isSubgroupRequired() ? request.getSubgroup1EducationLevel() : null);
+        entity.setSubgroup2Hours(request.isSubgroupRequired() ? request.getSubgroup2Hours() : null);
+        entity.setSubgroup2EducationLevel(request.isSubgroupRequired() ? request.getSubgroup2EducationLevel() : null);
+        entity.setCurriculumPart(curriculumPart);
+        entity.setStudyPeriod(studyPeriod);
+    }
+
+    private StudyPeriod normalizedStudyPeriod(CurriculumPlanEntryRequest request) {
+        Integer parallel = ClassNameNormalizer.extractParallel(request.getClassName());
+        if (parallel != null && parallel >= 10) {
+            return request.getStudyPeriod() == null ? StudyPeriod.H1 : request.getStudyPeriod();
+        }
+        return StudyPeriod.YEAR;
     }
 
     private void validate(CurriculumPlanEntryRequest request) {

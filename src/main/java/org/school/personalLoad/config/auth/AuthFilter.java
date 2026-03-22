@@ -41,6 +41,7 @@ public class AuthFilter extends OncePerRequestFilter {
             "/subjects.html", AppTab.SUBJECTS,
             "/curriculum.html", AppTab.CURRICULUM,
             "/load.html", AppTab.LOAD,
+            "/settings.html", AppTab.SETTINGS,
             "/teachers.html", AppTab.TEACHERS,
             "/admin.html", AppTab.USERS
     );
@@ -119,6 +120,7 @@ public class AuthFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/subjects")) return AppTab.SUBJECTS;
         if (path.startsWith("/api/curriculum")) return AppTab.CURRICULUM;
         if (path.startsWith("/api/manual-load")) return AppTab.LOAD;
+        if (path.startsWith("/api/settings/")) return AppTab.SETTINGS;
         if (path.startsWith("/api/teachers")) return AppTab.TEACHERS;
         if (path.startsWith("/api/admin/users")) return AppTab.USERS;
         return null;

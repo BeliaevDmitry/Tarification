@@ -5,6 +5,7 @@ const TABS = [
     { key: 'SUBJECTS', label: 'Предметы' },
     { key: 'CURRICULUM', label: 'Учебный план' },
     { key: 'LOAD', label: 'Нагрузка по корпусам' },
+    { key: 'SETTINGS', label: 'Настройки' },
     { key: 'TEACHERS', label: 'Педагоги' },
     { key: 'USERS', label: 'Пользователи' }
 ];

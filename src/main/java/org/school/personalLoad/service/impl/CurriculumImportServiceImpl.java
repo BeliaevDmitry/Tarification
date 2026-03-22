@@ -107,12 +107,16 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
             Set<String> activeKeys = new HashSet<>();
             curriculumRepository.findAll().stream().filter(e -> !e.isDeprecated()).forEach(e ->
-                    activeKeys.add(keyWithoutBuilding(e.getClassName(), e.getSubjectName(), e.getEducationLevel())));
+                    activeKeys.add(keyWithoutBuilding(e.getClassName(), e.getSubjectName(), e.getEducationLevel(), e.getStudyPeriod())));
 
             int orphaned = 0;
             List<ManualLoadEntry> loads = manualLoadRepository.findAll();
             for (ManualLoadEntry l : loads) {
-                boolean isOrphan = !activeKeys.contains(keyWithoutBuilding(ClassNameNormalizer.normalize(l.getClassName()), l.getSubjectName(), l.getEducationLevel()));
+                boolean isOrphan = !activeKeys.contains(keyWithoutBuilding(
+                        ClassNameNormalizer.normalize(l.getClassName()),
+                        l.getSubjectName(),
+                        l.getEducationLevel(),
+                        l.getStudyPeriod() == null ? StudyPeriod.YEAR : l.getStudyPeriod()));
                 l.setOrphaned(isOrphan);
                 if (isOrphan) orphaned++;
             }
@@ -143,7 +147,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         return normalizeSubject(name).toLowerCase(Locale.ROOT) + "|" + type.name();
     }
 
-    private String keyWithoutBuilding(String c, String s, EducationLevel l) {
-        return String.join("|", String.valueOf(c).trim(), String.valueOf(s).trim(), String.valueOf(l));
+    private String keyWithoutBuilding(String c, String s, EducationLevel l, StudyPeriod studyPeriod) {
+        return String.join("|", String.valueOf(c).trim(), String.valueOf(s).trim(), String.valueOf(l), String.valueOf(studyPeriod == null ? StudyPeriod.YEAR : studyPeriod));
     }
 }

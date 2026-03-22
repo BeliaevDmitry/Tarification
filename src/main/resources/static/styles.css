@@ -1027,3 +1027,26 @@ dialog::backdrop {
         padding: 14px 18px 18px;
     }
 }
+
+.settings-period-grid {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+}
+
+.settings-period-card {
+    border: 1px solid #d7deea;
+    border-radius: 14px;
+    padding: 16px;
+    background: #f8fbff;
+    display: grid;
+    gap: 10px;
+}
+
+.settings-period-card h3 {
+    margin: 0 0 4px;
+}
+
+.summary-class-row .muted {
+    font-size: 12px;
+    margin-top: 4px;
+}

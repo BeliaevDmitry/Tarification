@@ -4,6 +4,7 @@ const TAB_PATHS = {
     '/subjects.html': 'SUBJECTS',
     '/curriculum.html': 'CURRICULUM',
     '/load.html': 'LOAD',
+    '/settings.html': 'SETTINGS',
     '/teachers.html': 'TEACHERS',
     '/admin.html': 'USERS'
 };
