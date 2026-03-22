@@ -29,22 +29,22 @@ function currentTab() {
     return TAB_PATHS[window.location.pathname] || null;
 }
 
-
-function loadScopeLabel(currentUser) {
-    if (currentUser.loadEditAllBuildings) return 'все корпуса';
-    const codes = (currentUser.loadEditableBuildingCodes || []).filter(Boolean);
-    if (codes.length) return codes.join(', ');
-    if (currentUser.role === 'BUILDING_HEAD' && currentUser.managedBuildingCode) {
-        return `основной корпус ${currentUser.managedBuildingCode}`;
-    }
-    return 'только просмотр';
-}
-
 function canEditCurrentPage(currentUser) {
     if (currentUser.admin) return true;
     const tab = currentTab();
     if (!tab) return currentUser.canEdit;
     return Boolean(tabPermissionMap(currentUser)[tab]?.canEdit);
+}
+
+function stickyHeader() {
+    return document.querySelector('header.card');
+}
+
+function updateStickyHeaderMetrics() {
+    const header = stickyHeader();
+    if (!header) return;
+    const height = Math.ceil(header.getBoundingClientRect().height);
+    document.documentElement.style.setProperty('--sticky-header-height', `${height}px`);
 }
 
 function disableEditAreas(currentUser) {
@@ -70,7 +70,7 @@ function disableEditAreas(currentUser) {
 
 function insertReadonlyNotice(currentUser) {
     if (canEditCurrentPage(currentUser)) return;
-    const header = document.querySelector('header.card');
+    const header = stickyHeader();
     if (!header || header.querySelector('.readonly-note')) return;
     const note = document.createElement('p');
     note.className = 'muted readonly-note';
@@ -78,26 +78,26 @@ function insertReadonlyNotice(currentUser) {
     header.appendChild(note);
 }
 
-function mountUserBar(currentUser) {
-    const container = document.querySelector('.container');
-    if (!container) return;
+function mountHeaderUser(currentUser) {
+    const header = stickyHeader();
+    if (!header) return;
 
-    const bar = document.createElement('section');
-    bar.className = 'card auth-bar';
-    bar.innerHTML = `
-        <div class="row auth-row">
-            <div>
-                <strong>${currentUser.fullName}</strong>
-                <div class="muted">${currentUser.roleDisplayName} · логин: ${currentUser.username}</div>
-                ${currentUser.managedBuildingCode ? `<div class="muted">Основной корпус: ${currentUser.managedBuildingCode}</div>` : ''}
-                <div class="muted">Нагрузка: ${loadScopeLabel(currentUser)}</div>
-            </div>
-            <div class="row auth-actions">
-                ${canEditCurrentPage(currentUser) ? '<span class="permission-badge edit-badge">Редактирование вкладки</span>' : '<span class="permission-badge view-badge">Только просмотр вкладки</span>'}
-                <button type="button" id="logout-btn">Выйти</button>
-            </div>
-        </div>`;
-    container.insertBefore(bar, container.firstChild);
+    header.classList.add('app-shell-header');
+
+    let row = header.querySelector('.header-user-row');
+    if (!row) {
+        row = document.createElement('div');
+        row.className = 'header-user-row';
+        row.innerHTML = `
+            <span class="header-user-badge"></span>
+            <button type="button" id="logout-btn">Выйти</button>`;
+        header.prepend(row);
+    }
+
+    const badge = row.querySelector('.header-user-badge');
+    if (badge) {
+        badge.textContent = currentUser.fullName;
+    }
 
     document.getElementById('logout-btn')?.addEventListener('click', async () => {
         try {
@@ -107,6 +107,9 @@ function mountUserBar(currentUser) {
         }
         window.location.href = '/login.html';
     });
+
+    updateStickyHeaderMetrics();
+    window.addEventListener('resize', updateStickyHeaderMetrics, { passive: true });
 }
 
 function enrichNavigation(currentUser) {
@@ -136,10 +139,11 @@ function enrichNavigation(currentUser) {
         const currentUser = await tarificationApi('/api/auth/me');
         window.tarificationAuth = currentUser;
         window.tarificationTabPermissions = tabPermissionMap(currentUser);
-        mountUserBar(currentUser);
         enrichNavigation(currentUser);
+        mountHeaderUser(currentUser);
         insertReadonlyNotice(currentUser);
         disableEditAreas(currentUser);
+        updateStickyHeaderMetrics();
     } catch {
         window.location.href = '/login.html';
     }

@@ -10,7 +10,7 @@
 <main class="container">
     <header class="card">
         <h1>Корпуса</h1>
-        <p class="muted">Заполните название, руководителя и адрес корпуса.</p>
+        <p class="muted">Во вкладке корпуса заполняются только название и адрес. ФИО руководителя здесь отображается автоматически, а назначается во вкладке «Пользователи» у роли «Руководитель корпуса».</p>
         <nav class="page-nav">
             <a class="nav-link active" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
             <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
@@ -24,8 +24,8 @@
     <section class="card">
         <form id="building-form" class="grid" data-requires-edit>
             <input name="name" placeholder="Название корпуса" required>
-            <input name="managerFio" placeholder="Руководитель корпуса (ФИО)" required>
             <input name="address" placeholder="Адрес корпуса" required>
+            <div class="full-span muted">Руководитель корпуса назначается во вкладке «Пользователи системы».</div>
             <button type="submit">Добавить / обновить корпус</button>
         </form>
         <div class="row">
@@ -51,8 +51,8 @@
         <h3>Редактирование корпуса</h3>
         <input type="hidden" name="code">
         <label class="field-row"><span>Название</span><input name="name" placeholder="Название корпуса" required></label>
-        <label class="field-row"><span>Руководитель</span><input name="managerFio" placeholder="Руководитель корпуса (ФИО)" required></label>
         <label class="field-row"><span>Адрес</span><input name="address" placeholder="Адрес корпуса" required></label>
+        <div class="full-span muted">Текущий руководитель: <strong id="building-manager-display">Не назначен</strong>. Назначение меняется во вкладке «Пользователи системы».</div>
         <div class="row">
             <button type="submit">Сохранить</button>
             <button type="button" id="building-close-btn">Отмена</button>

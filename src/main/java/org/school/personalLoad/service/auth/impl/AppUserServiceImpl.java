@@ -108,6 +108,7 @@ public class AppUserServiceImpl implements AppUserService {
         user.setCanView(request.getCanView() == null || request.getCanView());
         user.setCanEdit(Boolean.TRUE.equals(request.getCanEdit()));
         enforceAdminFlags(user);
+        validateBuildingHeadAssignment(user);
         user.setPasswordHash(passwordEncoder.encode(generateTemporaryPassword()));
         AppUser savedUser = appUserRepository.save(user);
         saveTabPermissions(savedUser, request.getTabPermissions());
@@ -150,6 +151,7 @@ public class AppUserServiceImpl implements AppUserService {
             user.setCanEdit(request.getCanEdit());
         }
         enforceAdminFlags(user);
+        validateBuildingHeadAssignment(user);
         AppUser savedUser = appUserRepository.save(user);
         if (request.getTabPermissions() != null) {
             saveTabPermissions(savedUser, request.getTabPermissions());
@@ -281,6 +283,26 @@ public class AppUserServiceImpl implements AppUserService {
         user.setCanView(user.isCanView() && hasVisibleTab);
         user.setCanEdit(user.isCanView() && hasEditableTab);
         appUserRepository.save(user);
+    }
+
+    private void validateBuildingHeadAssignment(AppUser user) {
+        if (user.getRole() != UserRole.BUILDING_HEAD || user.getManagedBuildingCode() == null) {
+            return;
+        }
+        String normalizedManagedBuildingCode = normalizeOptionalBuildingCode(user.getManagedBuildingCode());
+        if (normalizedManagedBuildingCode == null) {
+            return;
+        }
+        appUserRepository.findAll().stream()
+                .filter(existing -> existing.getRole() == UserRole.BUILDING_HEAD)
+                .filter(existing -> !Objects.equals(existing.getId(), user.getId()))
+                .filter(existing -> Objects.equals(normalizeOptionalBuildingCode(existing.getManagedBuildingCode()), normalizedManagedBuildingCode))
+                .findFirst()
+                .ifPresent(existing -> {
+                    throw new IllegalStateException(
+                            "Для корпуса " + user.getManagedBuildingCode() + " уже назначен руководитель: " + existing.getFullName()
+                    );
+                });
     }
 
     private void enforceAdminFlags(AppUser user) {

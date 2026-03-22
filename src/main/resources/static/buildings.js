@@ -8,7 +8,8 @@ const ui = {
     body: document.getElementById("buildings-body"),
     editDialog: document.getElementById("building-edit-dialog"),
     editForm: document.getElementById("building-edit-form"),
-    closeBtn: document.getElementById("building-close-btn")
+    closeBtn: document.getElementById("building-close-btn"),
+    managerDisplay: document.getElementById("building-manager-display")
 };
 
 let buildings = [];
@@ -28,11 +29,16 @@ function escapeHtml(v) {
 
 function print(value) { ui.result.textContent = JSON.stringify(value, null, 2); }
 
+function displayManagerFio(item) {
+    const value = String(item?.managerFio || "").trim();
+    return value || "Не назначен";
+}
+
 function openEdit(item) {
     ui.editForm.elements.code.value = item.code;
     ui.editForm.elements.name.value = item.name;
-    ui.editForm.elements.managerFio.value = item.managerFio;
     ui.editForm.elements.address.value = item.address;
+    if (ui.managerDisplay) ui.managerDisplay.textContent = displayManagerFio(item);
     ui.editDialog.showModal();
 }
 
@@ -41,7 +47,7 @@ function render(rows) {
     buildings = rows || [];
     buildings.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ru")).forEach((r) => {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.managerFio)}</td><td>${escapeHtml(r.address)}</td><td><button type="button" class="inline-plus" data-edit-code="${escapeHtml(r.code)}" title="Редактировать">✏️</button></td>`;
+        tr.innerHTML = `<td>${escapeHtml(r.name)}</td><td>${escapeHtml(displayManagerFio(r))}</td><td>${escapeHtml(r.address)}</td><td><button type="button" class="inline-plus" data-edit-code="${escapeHtml(r.code)}" title="Редактировать">✏️</button></td>`;
         ui.body.appendChild(tr);
     });
 
@@ -63,7 +69,6 @@ ui.form.addEventListener("submit", async (e) => {
     const form = new FormData(ui.form);
     const payload = {
         name: String(form.get("name") || "").trim(),
-        managerFio: String(form.get("managerFio") || "").trim(),
         address: String(form.get("address") || "").trim()
     };
     payload.code = `${payload.name}|${payload.address}`.toLowerCase();
@@ -81,7 +86,6 @@ ui.editForm.addEventListener('submit', async (e) => {
     const payload = {
         code: String(ui.editForm.elements.code.value || '').trim(),
         name: String(ui.editForm.elements.name.value || '').trim(),
-        managerFio: String(ui.editForm.elements.managerFio.value || '').trim(),
         address: String(ui.editForm.elements.address.value || '').trim()
     };
 
