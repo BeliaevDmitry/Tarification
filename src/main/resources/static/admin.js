@@ -37,7 +37,8 @@ const ui = {
     editLoadSelectAll: document.getElementById('edit-load-select-all'),
     editLoadClear: document.getElementById('edit-load-clear'),
     editCloseBtn: document.getElementById('user-edit-close-btn'),
-    resetPasswordBtn: document.getElementById('reset-password-btn')
+    resetPasswordBtn: document.getElementById('reset-password-btn'),
+    editSaveBtn: document.getElementById('save-user-btn')
 };
 
 let buildings = [];
@@ -440,6 +441,7 @@ ui.editRole.addEventListener('change', () => syncRoleSpecificFields('edit'));
 ui.createManagedBuilding.addEventListener('change', () => syncRoleSpecificFields('create'));
 ui.editManagedBuilding.addEventListener('change', () => syncRoleSpecificFields('edit'));
 ui.editCloseBtn.addEventListener('click', () => ui.editDialog.close());
+ui.editSaveBtn.addEventListener('click', () => ui.editForm.requestSubmit());
 ui.createLoadSelectAll.addEventListener('click', () => setAllLoadBuildings('create', true));
 ui.createLoadClear.addEventListener('click', () => setAllLoadBuildings('create', false));
 ui.editLoadSelectAll.addEventListener('click', () => setAllLoadBuildings('edit', true));

@@ -84,17 +84,28 @@ function mountHeaderUser(currentUser) {
 
     header.classList.add('app-shell-header');
 
-    let row = header.querySelector('.header-user-row');
-    if (!row) {
-        row = document.createElement('div');
-        row.className = 'header-user-row';
-        row.innerHTML = `
-            <span class="header-user-badge"></span>
-            <button type="button" id="logout-btn">Выйти</button>`;
-        header.prepend(row);
+    const title = header.querySelector('h1');
+    if (!title) return;
+
+    let titleRow = header.querySelector('.header-title-row');
+    if (!titleRow) {
+        titleRow = document.createElement('div');
+        titleRow.className = 'header-title-row';
+        title.before(titleRow);
+        titleRow.appendChild(title);
     }
 
-    const badge = row.querySelector('.header-user-badge');
+    let controls = titleRow.querySelector('.header-user-inline');
+    if (!controls) {
+        controls = document.createElement('div');
+        controls.className = 'header-user-inline';
+        controls.innerHTML = `
+            <span class="header-user-badge"></span>
+            <button type="button" id="logout-btn">Выйти</button>`;
+        titleRow.appendChild(controls);
+    }
+
+    const badge = controls.querySelector('.header-user-badge');
     if (badge) {
         badge.textContent = currentUser.fullName;
     }
