@@ -38,6 +38,9 @@ public class ManualLoadEntry {
     @Column(nullable = false)
     private EducationLevel educationLevel;
 
+    @Enumerated(EnumType.STRING)
+    private StudyPeriod studyPeriod;
+
     private LocalDate loadFromDate;
 
     private LocalDate loadToDate;

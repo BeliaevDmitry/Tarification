@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarification — Пользователи</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="admin-page">
+<main class="container">
+    <header class="card">
+        <h1>Пользователи системы</h1>
+        <p class="muted">Только администратор может создавать пользователей, сбрасывать им пароль, задавать видимость вкладок, права на редактирование и гибко ограничивать редактирование нагрузки по корпусам.</p>
+        <nav class="page-nav">
+            <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
+            <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
+            <a class="nav-link" href="/subjects.html" data-tab="SUBJECTS">Предметы</a>
+            <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
+            <a class="nav-link" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/settings.html" data-tab="SETTINGS">Настройки</a>
+            <a class="nav-link" href="/teachers.html" data-tab="TEACHERS">Педагоги</a>
+            <a class="nav-link active" href="/admin.html" data-tab="USERS">Пользователи</a>
+        </nav>
+    </header>
+
+    <section class="card admin-card" data-requires-edit>
+        <div class="section-heading">
+            <div>
+                <h2>Создать пользователя</h2>
+                <p class="muted">Сначала задайте роль и базовые права, затем настройте доступ к вкладкам и отдельный scope для редактирования нагрузки.</p>
+            </div>
+            <span class="admin-section-badge">Новый пользователь</span>
+        </div>
+
+        <form id="user-create-form" class="grid admin-user-form">
+            <label class="field-stack">
+                <span>Логин</span>
+                <input name="username" placeholder="Логин" required>
+            </label>
+            <label class="field-stack">
+                <span>ФИО</span>
+                <input name="fullName" placeholder="ФИО" required>
+            </label>
+            <label class="field-stack">
+                <span>Email</span>
+                <input name="email" placeholder="Email (необязательно)">
+            </label>
+            <label class="field-stack">
+                <span>Роль</span>
+                <select name="role" id="create-role" required>
+                    <option value="DIRECTOR">Директор</option>
+                    <option value="DEPUTY_DIRECTOR">Зам директора</option>
+                    <option value="BUILDING_HEAD">Руководитель корпуса</option>
+                    <option value="METHODIST">Методист</option>
+                    <option value="HR">Кадры</option>
+                    <option value="ADMIN">Администратор</option>
+                </select>
+            </label>
+            <label class="field-stack">
+                <span>Основной корпус</span>
+                <select name="managedBuildingCode" id="create-managed-building">
+                    <option value="">Основной корпус не указан</option>
+                </select>
+            </label>
+            <div class="admin-switches">
+                <label class="toggle-pill"><input type="checkbox" name="canView" checked> Активный доступ в систему</label>
+                <label class="toggle-pill"><input type="checkbox" name="canEdit"> Разрешить редактирование там, где вкладка это позволяет</label>
+            </div>
+
+            <section class="admin-panel full-span">
+                <div class="section-heading compact">
+                    <div>
+                        <h3>Права по вкладкам</h3>
+                        <p class="muted">Таблица выровнена и фиксирована по ширине, чтобы настройки не «уезжали» вправо даже на больших экранах.</p>
+                    </div>
+                </div>
+                <div class="sheet-wrap permission-matrix-wrap">
+                    <table class="sheet-table permission-matrix-table">
+                        <thead><tr><th>Вкладка</th><th>Видеть</th><th>Редактировать</th></tr></thead>
+                        <tbody id="create-permissions-body"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="admin-panel full-span">
+                <div class="section-heading compact">
+                    <div>
+                        <h3>Редактирование нагрузки по корпусам</h3>
+                        <p class="muted">Администратор может назначить пользователю только основной корпус, произвольный набор корпусов или доступ ко всем корпусам.</p>
+                    </div>
+                </div>
+
+                <div class="scope-mode-grid" data-scope-group="create">
+                    <label class="scope-mode-card">
+                        <input type="radio" name="createLoadScopeMode" value="NONE" checked>
+                        <span class="scope-mode-title">Только просмотр</span>
+                        <span class="scope-mode-text">Пользователь увидит вкладку «Нагрузка», но без права редактирования корпусов.</span>
+                    </label>
+                    <label class="scope-mode-card">
+                        <input type="radio" name="createLoadScopeMode" value="PRIMARY">
+                        <span class="scope-mode-title">Основной корпус</span>
+                        <span class="scope-mode-text">Подходит руководителю корпуса: редактирование берётся из поля «Основной корпус».</span>
+                    </label>
+                    <label class="scope-mode-card">
+                        <input type="radio" name="createLoadScopeMode" value="SELECTED">
+                        <span class="scope-mode-title">Выбранные корпуса</span>
+                        <span class="scope-mode-text">Можно закрепить 1, 2, 3 или любое нужное количество корпусов вручную.</span>
+                    </label>
+                    <label class="scope-mode-card">
+                        <input type="radio" name="createLoadScopeMode" value="ALL">
+                        <span class="scope-mode-title">Все корпуса</span>
+                        <span class="scope-mode-text">Полный доступ к редактированию нагрузки по всем корпусам.</span>
+                    </label>
+                </div>
+
+                <div class="building-checkbox-toolbar">
+                    <strong id="create-load-summary" class="load-scope-summary">Только просмотр</strong>
+                    <div class="row compact-row compact-actions">
+                        <button type="button" id="create-load-select-all">Выбрать все</button>
+                        <button type="button" id="create-load-clear">Очистить выбор</button>
+                    </div>
+                </div>
+                <div id="create-load-buildings" class="building-checkbox-grid"></div>
+            </section>
+
+            <div class="row full-span dialog-actions inline-actions">
+                <button type="submit">Создать пользователя</button>
+            </div>
+        </form>
+        <pre id="admin-result"></pre>
+    </section>
+
+    <section class="card admin-card">
+        <div class="section-heading">
+            <div>
+                <h2>Список пользователей</h2>
+                <p class="muted">В колонке «Нагрузка» показан фактический scope редактирования: основной корпус, выбранные корпуса или все корпуса.</p>
+            </div>
+            <span class="admin-section-badge soft">Управление доступом</span>
+        </div>
+        <div class="sheet-wrap">
+            <table class="sheet-table users-table">
+                <thead>
+                <tr>
+                    <th>Логин</th>
+                    <th>ФИО</th>
+                    <th>Роль</th>
+                    <th>Основной корпус</th>
+                    <th>Нагрузка</th>
+                    <th>Email</th>
+                    <th>Доступ</th>
+                    <th>Действия</th>
+                </tr>
+                </thead>
+                <tbody id="users-table-body"></tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<dialog id="user-edit-dialog" class="admin-edit-dialog">
+    <form id="user-edit-form" class="grid labeled-grid admin-edit-form" data-requires-edit>
+        <div class="dialog-hero full-span">
+            <div>
+                <h3>Настройки пользователя</h3>
+                <p class="muted">Редактируйте роль, доступ к вкладкам и точный scope корпусов для нагрузки в одном широком окне без лишней прокрутки.</p>
+            </div>
+        </div>
+
+        <label class="field-row"><span>ФИО</span><input name="fullName" required></label>
+        <label class="field-row"><span>Email</span><input name="email"></label>
+        <label class="field-row"><span>Роль</span>
+            <select name="role" id="edit-role" required>
+                <option value="DIRECTOR">Директор</option>
+                <option value="DEPUTY_DIRECTOR">Зам директора</option>
+                <option value="BUILDING_HEAD">Руководитель корпуса</option>
+                <option value="METHODIST">Методист</option>
+                <option value="HR">Кадры</option>
+                <option value="ADMIN">Администратор</option>
+            </select>
+        </label>
+        <label class="field-row"><span>Основной корпус</span>
+            <select name="managedBuildingCode" id="edit-managed-building">
+                <option value="">Основной корпус не указан</option>
+            </select>
+        </label>
+
+        <div class="admin-switches full-span">
+            <label class="toggle-pill"><input type="checkbox" name="active"> Активен</label>
+            <label class="toggle-pill"><input type="checkbox" name="canView"> Может входить в систему</label>
+            <label class="toggle-pill"><input type="checkbox" name="canEdit"> Может редактировать разрешённые вкладки</label>
+        </div>
+
+        <section class="admin-panel full-span">
+            <div class="section-heading compact">
+                <div>
+                    <h3>Права по вкладкам</h3>
+                    <p class="muted">Таблица внутри диалога теперь скроллится аккуратно и не смещает колонки.</p>
+                </div>
+            </div>
+            <div class="sheet-wrap permission-matrix-wrap">
+                <table class="sheet-table permission-matrix-table">
+                    <thead><tr><th>Вкладка</th><th>Видеть</th><th>Редактировать</th></tr></thead>
+                    <tbody id="edit-permissions-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="admin-panel full-span">
+            <div class="section-heading compact">
+                <div>
+                    <h3>Редактирование нагрузки по корпусам</h3>
+                    <p class="muted">Режим можно менять без потери выбора: «основной корпус», «выбранные корпуса» или «все корпуса».</p>
+                </div>
+            </div>
+
+            <div class="scope-mode-grid" data-scope-group="edit">
+                <label class="scope-mode-card">
+                    <input type="radio" name="editLoadScopeMode" value="NONE" checked>
+                    <span class="scope-mode-title">Только просмотр</span>
+                    <span class="scope-mode-text">Редактирование нагрузки будет отключено, даже если вкладка видна.</span>
+                </label>
+                <label class="scope-mode-card">
+                    <input type="radio" name="editLoadScopeMode" value="PRIMARY">
+                    <span class="scope-mode-title">Основной корпус</span>
+                    <span class="scope-mode-text">Используется выбранный основной корпус пользователя.</span>
+                </label>
+                <label class="scope-mode-card">
+                    <input type="radio" name="editLoadScopeMode" value="SELECTED">
+                    <span class="scope-mode-title">Выбранные корпуса</span>
+                    <span class="scope-mode-text">Оставьте пользователю точечный набор корпусов для редактирования.</span>
+                </label>
+                <label class="scope-mode-card">
+                    <input type="radio" name="editLoadScopeMode" value="ALL">
+                    <span class="scope-mode-title">Все корпуса</span>
+                    <span class="scope-mode-text">Полный доступ ко всей вкладке «Нагрузка по корпусам».</span>
+                </label>
+            </div>
+
+            <div class="building-checkbox-toolbar">
+                <strong id="edit-load-summary" class="load-scope-summary">Только просмотр</strong>
+                <div class="row compact-row compact-actions">
+                    <button type="button" id="edit-load-select-all">Выбрать все</button>
+                    <button type="button" id="edit-load-clear">Очистить выбор</button>
+                </div>
+            </div>
+            <div id="edit-load-buildings" class="building-checkbox-grid"></div>
+        </section>
+
+        <div class="row full-span dialog-actions sticky-dialog-actions">
+            <button type="button" id="save-user-btn">Сохранить</button>
+            <button type="button" id="reset-password-btn">Сбросить пароль</button>
+            <button type="button" id="user-edit-close-btn">Отмена</button>
+        </div>
+    </form>
+</dialog>
+
+<script src="/auth.js"></script>
+<script src="/table-scroll.js"></script>
+<script src="/admin.js"></script>
+</body>
+</html>
