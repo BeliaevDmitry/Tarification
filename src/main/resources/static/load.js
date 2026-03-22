@@ -128,11 +128,20 @@ function classParallel(className) {
 }
 
 function rowStudyPeriod(row) {
-    const parallel = classParallel(row?.className);
-    if (parallel != null && parallel >= 10) {
-        return row?.studyPeriod || "H1";
+    return row?.studyPeriod || "YEAR";
+}
+
+function periodSettingKeyForClass(className, studyPeriod = "YEAR") {
+    const parallel = classParallel(className);
+    if (parallel == null || parallel <= 9) {
+        if (studyPeriod === "H1") return "H1_1_9";
+        if (studyPeriod === "H2") return "H2_1_9";
+        return "YEAR_1_9";
     }
-    return "YEAR";
+    if (parallel === 10) {
+        return studyPeriod === "H2" ? "H2_10" : "H1_10";
+    }
+    return studyPeriod === "H2" ? "H2_11" : "H1_11";
 }
 
 function periodLabel(studyPeriod) {
@@ -261,37 +270,53 @@ function dismissalDateOfTeacher(teacherName) {
 }
 
 function periodSettingsMap() {
-    return Object.fromEntries((studyPeriodSettings || []).map((item) => [item.studyPeriod, item]));
+    return Object.fromEntries((studyPeriodSettings || []).map((item) => [item.settingKey, item]));
 }
 
 function fallbackYearRange() {
-    const now = new Date();
-    const month = now.getUTCMonth() + 1;
-    const year = now.getUTCFullYear();
-    const startYear = month < 9 ? year : year + 1;
     return {
-        yearFrom: `${startYear}-09-01`,
-        h1To: `${startYear}-12-31`,
-        h2From: `${startYear + 1}-01-01`,
-        yearTo: `${startYear + 1}-05-31`
+        yearFrom: "2026-09-01",
+        h1To: "2026-12-31",
+        h2From: "2027-01-01",
+        yearTo: "2027-05-31",
+        h1_11_to: "2027-01-31",
+        h2_11_from: "2027-02-01"
     };
 }
 
-function defaultLoadPeriod(studyPeriod = "YEAR") {
+function defaultLoadPeriod(classNameOrStudyPeriod = "YEAR", maybeStudyPeriod = null) {
+    let className = null;
+    let studyPeriod = "YEAR";
+    if (maybeStudyPeriod != null) {
+        className = classNameOrStudyPeriod;
+        studyPeriod = maybeStudyPeriod || "YEAR";
+    } else if (["YEAR", "H1", "H2"].includes(classNameOrStudyPeriod)) {
+        studyPeriod = classNameOrStudyPeriod;
+    } else {
+        className = classNameOrStudyPeriod;
+    }
+
     const settings = periodSettingsMap();
-    const range = settings[studyPeriod];
+    const key = periodSettingKeyForClass(className, studyPeriod);
+    const range = settings[key];
     if (range?.startDate && range?.endDate) {
         return { from: range.startDate, to: range.endDate };
     }
     const fallback = fallbackYearRange();
-    if (studyPeriod === "H1") return { from: fallback.yearFrom, to: fallback.h1To };
-    if (studyPeriod === "H2") return { from: fallback.h2From, to: fallback.yearTo };
+    if (studyPeriod === "H1") {
+        if (classParallel(className) >= 11) return { from: fallback.yearFrom, to: fallback.h1_11_to };
+        return { from: fallback.yearFrom, to: fallback.h1To };
+    }
+    if (studyPeriod === "H2") {
+        if (classParallel(className) >= 11) return { from: fallback.h2_11_from, to: fallback.yearTo };
+        return { from: fallback.h2From, to: fallback.yearTo };
+    }
     return { from: fallback.yearFrom, to: fallback.yearTo };
 }
 
 function referencePlanningDate() {
     const today = new Date().toISOString().slice(0, 10);
-    const period = defaultLoadPeriod("YEAR");
+    const period = defaultLoadPeriod("1-А", "YEAR");
     return today < period.from ? period.from : today;
 }
 
@@ -366,13 +391,34 @@ function periodOverlaps(aFrom, aTo, bFrom, bTo) {
     return aFrom <= bTo && bFrom <= aTo;
 }
 
+function manualEntryStudyPeriod(entry) {
+    if (entry?.studyPeriod) return entry.studyPeriod;
+    const fromDate = String(entry?.loadFromDate || "");
+    const toDate = String(entry?.loadToDate || "");
+    const parallel = classParallel(entry?.className);
+    const ranges = periodSettingsMap();
+    if (parallel == null || parallel <= 9) {
+        const h1 = ranges.H1_1_9;
+        const h2 = ranges.H2_1_9;
+        if (h1 && fromDate >= h1.startDate && toDate <= h1.endDate) return "H1";
+        if (h2 && fromDate >= h2.startDate && toDate <= h2.endDate) return "H2";
+        return "YEAR";
+    }
+    const prefix = parallel === 10 ? '10' : '11';
+    const h1 = ranges[`H1_${prefix}`];
+    const h2 = ranges[`H2_${prefix}`];
+    if (h2 && fromDate >= h2.startDate) return "H2";
+    if (h1 && toDate <= h1.endDate) return "H1";
+    return "H1";
+}
+
 function subjectConflictKey(row) {
     return [
         normalizeBuildingCode(row.numberSchoolBuilding),
         normalizeClassName(row.className),
         String(row.subjectName || "").trim().toUpperCase(),
         String(row.educationLevel || ""),
-        String(row.studyPeriod || "YEAR"),
+        String(manualEntryStudyPeriod(row) || "YEAR"),
         String(row.groupNameEducationalPlan || "").trim().toUpperCase()
     ].join("|");
 }
@@ -417,13 +463,19 @@ function prefillFromManualLoad() {
     const referenceDate = referencePlanningDate();
     const allApiRows = expandCurriculumRows(curriculumRows);
 
-    const matchByManual = (entry) => allApiRows.find((row) =>
-        normalizeBuildingCode(row.numberSchoolBuilding) === normalizeBuildingCode(entry.numberSchoolBuilding)
-        && row.className === entry.className
-        && row.subjectName === entry.subjectName
-        && row.educationLevel === entry.educationLevel
-        && rowStudyPeriod(row) === (entry.studyPeriod || rowStudyPeriod(row))
-    );
+    const matchByManual = (entry) => {
+        const candidates = allApiRows.filter((row) =>
+            normalizeBuildingCode(row.numberSchoolBuilding) === normalizeBuildingCode(entry.numberSchoolBuilding)
+            && row.className === entry.className
+            && row.subjectName === entry.subjectName
+            && row.educationLevel === entry.educationLevel
+        );
+        if (!candidates.length) return null;
+        const effectivePeriod = manualEntryStudyPeriod(entry);
+        return candidates.find((row) => rowStudyPeriod(row) === effectivePeriod)
+            || candidates.find((row) => rowStudyPeriod(row) === "YEAR")
+            || candidates[0];
+    };
 
     const grouped = new Map();
     (manualRows || []).forEach((entry) => {
@@ -509,7 +561,7 @@ function prefillFromManualLoad() {
             const teacherName = String(chosen.fioTeacher || "").trim();
             const exists = teacherRowsMap[subjectKey].some((row) => String(row.teacherName || "").trim().toLowerCase() === key);
             if (!exists) {
-                const period = defaultLoadPeriod(rowStudyPeriod(matched));
+                const period = defaultLoadPeriod(matched.className, rowStudyPeriod(matched));
                 teacherRowsMap[subjectKey].push({
                     id: rowId(),
                     teacherName,
@@ -549,14 +601,14 @@ function ensureTeacherRowsForBuilding() {
             const exists = rowsMap[subjectKey].some((row) => row.teacherName.toLowerCase() === teacherName.toLowerCase());
             if (!exists) {
                 const periodValue = rowStudyPeriod(rows[0]);
-                const period = defaultLoadPeriod(periodValue);
+                const period = defaultLoadPeriod(rows[0]?.className, periodValue);
                 rowsMap[subjectKey].push({ id: rowId(), teacherName, studyPeriod: periodValue, loadFromDate: period.from, loadToDate: period.to });
             }
         });
 
         if (!rowsMap[subjectKey].length) {
             const periodValue = rowStudyPeriod(rows[0]);
-            const period = defaultLoadPeriod(periodValue);
+            const period = defaultLoadPeriod(rows[0]?.className, periodValue);
             rowsMap[subjectKey].push({ id: rowId(), teacherName: "", studyPeriod: periodValue, loadFromDate: period.from, loadToDate: period.to });
         }
     });
@@ -619,7 +671,7 @@ function buildPresentationRows() {
 
     const result = [];
     subjectInfo.forEach((info) => {
-        const teacherRows = rowsMap[info.subjectKey] || [{ ...defaultLoadPeriod(rowStudyPeriod(Object.values(info.rowsByClass)[0])), id: rowId(), teacherName: "", studyPeriod: rowStudyPeriod(Object.values(info.rowsByClass)[0]) }];
+        const teacherRows = rowsMap[info.subjectKey] || [{ ...defaultLoadPeriod(Object.values(info.rowsByClass)[0]?.className, rowStudyPeriod(Object.values(info.rowsByClass)[0])), id: rowId(), teacherName: "", studyPeriod: rowStudyPeriod(Object.values(info.rowsByClass)[0]) }];
         teacherRows.forEach((teacherRow) => {
             let totalHours = 0;
             let classCount = 0;
@@ -642,8 +694,8 @@ function buildPresentationRows() {
                 groupIndex: info.groupIndex,
                 teacherName: teacherRow.teacherName || "",
                 studyPeriod: teacherRow.studyPeriod || rowStudyPeriod(Object.values(info.rowsByClass)[0]),
-                loadFromDate: teacherRow.loadFromDate || defaultLoadPeriod(teacherRow.studyPeriod || rowStudyPeriod(Object.values(info.rowsByClass)[0])).from,
-                loadToDate: teacherRow.loadToDate || defaultLoadPeriod(teacherRow.studyPeriod || rowStudyPeriod(Object.values(info.rowsByClass)[0])).to,
+                loadFromDate: teacherRow.loadFromDate || defaultLoadPeriod(Object.values(info.rowsByClass)[0]?.className, teacherRow.studyPeriod || rowStudyPeriod(Object.values(info.rowsByClass)[0])).from,
+                loadToDate: teacherRow.loadToDate || defaultLoadPeriod(Object.values(info.rowsByClass)[0]?.className, teacherRow.studyPeriod || rowStudyPeriod(Object.values(info.rowsByClass)[0])).to,
                 rowsByClass: info.rowsByClass,
                 classCount,
                 subjectHours: totalHours,
@@ -752,7 +804,7 @@ function addTeacherRow(subjectKey, afterRowId = null) {
     if (!rowsMap[subjectKey]) rowsMap[subjectKey] = [];
     const rows = expandCurriculumRows(rowsForSelectedBuilding()).filter((row) => subjectKeyOfRow(row) === subjectKey);
     const periodValue = rowStudyPeriod(rows[0] || {});
-    const period = defaultLoadPeriod(periodValue);
+    const period = defaultLoadPeriod(rows[0]?.className, periodValue);
     const newRow = { id: rowId(), teacherName: "", studyPeriod: periodValue, loadFromDate: period.from, loadToDate: period.to };
     if (!afterRowId) {
         rowsMap[subjectKey].push(newRow);
@@ -841,7 +893,7 @@ function onClassCellClick(presentationRow, className) {
     }
 
     const rowMeta = findTeacherRowMeta(presentationRow.subjectKey, presentationRow.teacherRowId);
-    const period = defaultLoadPeriod(presentationRow.studyPeriod || rowStudyPeriod(curriculumRow));
+    const period = defaultLoadPeriod(curriculumRow.className, presentationRow.studyPeriod || rowStudyPeriod(curriculumRow));
     ui.periodForm.elements.subjectKey.value = presentationRow.subjectKey;
     ui.periodForm.elements.rowId.value = presentationRow.teacherRowId;
     ui.periodForm.elements.className.value = className;
@@ -1122,7 +1174,7 @@ async function saveBuildingLoad() {
         if (!fioTeacher) return null;
 
         const teacherRow = (rowsMap[subjectKeyOfRow(row)] || []).find((r) => String(r.teacherName || "").trim() === fioTeacher);
-        const period = defaultLoadPeriod(rowStudyPeriod(row));
+        const period = defaultLoadPeriod(row.className, rowStudyPeriod(row));
         const plan = plans[apiKey];
         let loadToDate = teacherRow?.loadToDate || period.to;
         if (plan && plan.previousTeacher === fioTeacher) {

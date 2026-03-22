@@ -66,7 +66,11 @@ function classToParallel(className) { const m = norm(className).match(/^(\d{1,2}
 function levelShort(v) { return v === "ADVANCED" ? "У" : "Б"; }
 function subjectTypeByPart(part) { return part === "EXTRACURRICULAR" ? "EXTRACURRICULAR" : "CORE_FORMABLE"; }
 function isHighSchoolParallel(parallel = selectedParallel) { return Number(parallel) >= 10; }
-function normalizeStudyPeriod(className, studyPeriod) { return isHighSchoolParallel(classToParallel(className)) ? (studyPeriod || "H1") : "YEAR"; }
+function normalizeStudyPeriod(className, studyPeriod) {
+    return isHighSchoolParallel(classToParallel(className))
+        ? (studyPeriod === "H2" ? "H2" : "H1")
+        : (studyPeriod || "YEAR");
+}
 
 function periodColumnsForParallel(parallel = selectedParallel) {
     return isHighSchoolParallel(parallel)
@@ -153,17 +157,23 @@ function syncStudyPeriodControls() {
     const parallel = classToParallel(ui.formClass.value) || selectedParallel;
     const highSchool = isHighSchoolParallel(parallel);
     if (ui.formStudyPeriod) {
-        ui.formStudyPeriod.disabled = !highSchool;
-        if (!highSchool) {
-            ui.formStudyPeriod.value = "YEAR";
-        } else if (!["H1", "H2"].includes(ui.formStudyPeriod.value)) {
+        const yearOption = ui.formStudyPeriod.querySelector('option[value="YEAR"]');
+        if (yearOption) yearOption.disabled = highSchool;
+        if (highSchool && !["H1", "H2"].includes(ui.formStudyPeriod.value)) {
             ui.formStudyPeriod.value = "H1";
+        }
+        if (!highSchool && !["YEAR", "H1", "H2"].includes(ui.formStudyPeriod.value)) {
+            ui.formStudyPeriod.value = "YEAR";
         }
     }
     if (ui.editForm?.elements.studyPeriod) {
         const dialogHighSchool = isHighSchoolParallel(classToParallel(ui.editForm.elements.className?.value || selectedParallel));
-        ui.editForm.elements.studyPeriod.disabled = !dialogHighSchool;
-        if (!dialogHighSchool) {
+        const yearOption = ui.editForm.elements.studyPeriod.querySelector('option[value="YEAR"]');
+        if (yearOption) yearOption.disabled = dialogHighSchool;
+        if (dialogHighSchool && !["H1", "H2"].includes(ui.editForm.elements.studyPeriod.value)) {
+            ui.editForm.elements.studyPeriod.value = "H1";
+        }
+        if (!dialogHighSchool && !["YEAR", "H1", "H2"].includes(ui.editForm.elements.studyPeriod.value)) {
             ui.editForm.elements.studyPeriod.value = "YEAR";
         }
     }
@@ -195,7 +205,8 @@ function buildSummaryRows(selectedClasses) {
                 const perClassPeriod = {};
                 values.forEach((v) => {
                     const period = normalizeStudyPeriod(v.className, v.studyPeriod);
-                    perClassPeriod[`${v.numberSchoolBuilding}|${v.className}|${period}`] = {
+                    const columnPeriod = isHighSchoolParallel(classToParallel(v.className)) ? period : "YEAR";
+                    perClassPeriod[`${v.numberSchoolBuilding}|${v.className}|${columnPeriod}`] = {
                         hours: Number(v.plannedHours || 0),
                         subgroupRequired: Boolean(v.subgroupRequired),
                         subgroupCount: Number(v.subgroupCount || 0),
@@ -221,9 +232,10 @@ function cellHoursMarkup(info, rowMeta) {
     if (!info) return "";
     const mark = info.subgroupRequired ? `<span class="subgroup-mark" title="Деление на подгруппы">д</span>` : "";
     const advancedClass = rowMeta.educationLevel === "ADVANCED" ? "advanced-cell" : "";
+    const periodClass = info.studyPeriod && info.studyPeriod !== "YEAR" ? "period-accent-cell" : "";
     const lvl = `<span class="mini-level">${esc(levelShort(rowMeta.educationLevel))}</span>`;
     const period = info.studyPeriod && info.studyPeriod !== "YEAR" ? `<span class="mini-level">${esc(PERIOD_META[info.studyPeriod]?.short || info.studyPeriod)}</span>` : "";
-    return `<button class="hours-cell ${advancedClass}" data-id="${esc(info.id)}" data-hours="${esc(info.hours)}">${esc(info.hours)}${mark}${lvl}${period}</button>`;
+    return `<button class="hours-cell ${advancedClass} ${periodClass}" data-id="${esc(info.id)}" data-hours="${esc(info.hours)}">${esc(info.hours)}${mark}${lvl}${period}</button>`;
 }
 
 function renderSummaryTable() {

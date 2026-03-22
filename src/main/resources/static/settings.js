@@ -1,4 +1,5 @@
 const jsonHeaders = { 'Content-Type': 'application/json' };
+const SETTING_KEYS = ['YEAR_1_9', 'H1_1_9', 'H2_1_9', 'H1_10', 'H2_10', 'H1_11', 'H2_11'];
 
 const ui = {
     form: document.getElementById('study-periods-form'),
@@ -24,13 +25,11 @@ function print(value) {
 }
 
 function fillForm(settings = []) {
-    const byPeriod = Object.fromEntries((settings || []).map((item) => [item.studyPeriod, item]));
-    ui.form.elements.yearStartDate.value = byPeriod.YEAR?.startDate || '';
-    ui.form.elements.yearEndDate.value = byPeriod.YEAR?.endDate || '';
-    ui.form.elements.h1StartDate.value = byPeriod.H1?.startDate || '';
-    ui.form.elements.h1EndDate.value = byPeriod.H1?.endDate || '';
-    ui.form.elements.h2StartDate.value = byPeriod.H2?.startDate || '';
-    ui.form.elements.h2EndDate.value = byPeriod.H2?.endDate || '';
+    const byKey = Object.fromEntries((settings || []).map((item) => [item.settingKey, item]));
+    SETTING_KEYS.forEach((key) => {
+        ui.form.elements[`${key}_startDate`].value = byKey[key]?.startDate || '';
+        ui.form.elements[`${key}_endDate`].value = byKey[key]?.endDate || '';
+    });
 }
 
 async function reload() {
@@ -39,21 +38,25 @@ async function reload() {
     return settings;
 }
 
+function buildPayload() {
+    return SETTING_KEYS.map((key) => ({
+        settingKey: key,
+        startDate: ui.form.elements[`${key}_startDate`].value,
+        endDate: ui.form.elements[`${key}_endDate`].value
+    }));
+}
+
 async function saveSettings(event) {
     event.preventDefault();
-    const payload = [
-        { studyPeriod: 'YEAR', startDate: ui.form.elements.yearStartDate.value, endDate: ui.form.elements.yearEndDate.value },
-        { studyPeriod: 'H1', startDate: ui.form.elements.h1StartDate.value, endDate: ui.form.elements.h1EndDate.value },
-        { studyPeriod: 'H2', startDate: ui.form.elements.h2StartDate.value, endDate: ui.form.elements.h2EndDate.value }
-    ];
+    const payload = buildPayload();
 
     for (const row of payload) {
         if (!row.startDate || !row.endDate) {
-            print({ error: `Заполните даты для периода ${row.studyPeriod}` });
+            print({ error: `Заполните даты для периода ${row.settingKey}` });
             return;
         }
         if (row.startDate > row.endDate) {
-            print({ error: `Период ${row.studyPeriod} задан некорректно` });
+            print({ error: `Период ${row.settingKey} задан некорректно` });
             return;
         }
     }

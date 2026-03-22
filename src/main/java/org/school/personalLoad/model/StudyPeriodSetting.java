@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 
 @Data
 @Entity
-@Table(name = "study_period_setting")
+@Table(name = "study_period_rule")
 public class StudyPeriodSetting {
 
     @Id
@@ -17,7 +17,17 @@ public class StudyPeriodSetting {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, unique = true)
+    private StudyPeriodSettingKey settingKey;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
     private StudyPeriod studyPeriod;
+
+    @Column(nullable = false)
+    private Integer parallelFrom;
+
+    @Column(nullable = false)
+    private Integer parallelTo;
 
     @Column(nullable = false)
     private String displayName;

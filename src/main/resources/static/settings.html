@@ -10,7 +10,7 @@
 <main class="container">
     <header class="card">
         <h1>Настройки</h1>
-        <p class="muted">Глобальные периоды используются в учебном плане 10–11 классов и как даты по умолчанию при сохранении нагрузки по корпусам.</p>
+        <p class="muted">Периоды используются в учебном плане и как даты по умолчанию при распределении педагогов по нагрузке.</p>
         <nav class="page-nav">
             <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
             <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
@@ -25,28 +25,52 @@
     <section class="card" data-requires-edit>
         <div class="section-heading">
             <div>
-                <h2>Периоды</h2>
-                <p class="muted">1–9 классы используют годовой период, а 10–11 классы — два отдельных полугодия.</p>
+                <h2>Периоды обучения</h2>
+                <p class="muted">Для 1–9 классов доступны учебный год, 1 и 2 полугодие. Для 10 и 11 классов сроки полугодий настраиваются отдельно.</p>
             </div>
         </div>
         <form id="study-periods-form" class="grid settings-period-grid">
             <div class="settings-period-card">
                 <h3>1–9 классы · учебный год</h3>
-                <input type="hidden" name="yearStudyPeriod" value="YEAR">
-                <label>Дата начала<input type="date" name="yearStartDate" required></label>
-                <label>Дата окончания<input type="date" name="yearEndDate" required></label>
+                <input type="hidden" name="YEAR_1_9_settingKey" value="YEAR_1_9">
+                <label>Дата начала<input type="date" name="YEAR_1_9_startDate" required></label>
+                <label>Дата окончания<input type="date" name="YEAR_1_9_endDate" required></label>
             </div>
             <div class="settings-period-card">
-                <h3>10–11 классы · 1 полугодие</h3>
-                <input type="hidden" name="h1StudyPeriod" value="H1">
-                <label>Дата начала<input type="date" name="h1StartDate" required></label>
-                <label>Дата окончания<input type="date" name="h1EndDate" required></label>
+                <h3>1–9 классы · 1 полугодие</h3>
+                <input type="hidden" name="H1_1_9_settingKey" value="H1_1_9">
+                <label>Дата начала<input type="date" name="H1_1_9_startDate" required></label>
+                <label>Дата окончания<input type="date" name="H1_1_9_endDate" required></label>
             </div>
             <div class="settings-period-card">
-                <h3>10–11 классы · 2 полугодие</h3>
-                <input type="hidden" name="h2StudyPeriod" value="H2">
-                <label>Дата начала<input type="date" name="h2StartDate" required></label>
-                <label>Дата окончания<input type="date" name="h2EndDate" required></label>
+                <h3>1–9 классы · 2 полугодие</h3>
+                <input type="hidden" name="H2_1_9_settingKey" value="H2_1_9">
+                <label>Дата начала<input type="date" name="H2_1_9_startDate" required></label>
+                <label>Дата окончания<input type="date" name="H2_1_9_endDate" required></label>
+            </div>
+            <div class="settings-period-card">
+                <h3>10 класс · 1 полугодие</h3>
+                <input type="hidden" name="H1_10_settingKey" value="H1_10">
+                <label>Дата начала<input type="date" name="H1_10_startDate" required></label>
+                <label>Дата окончания<input type="date" name="H1_10_endDate" required></label>
+            </div>
+            <div class="settings-period-card">
+                <h3>10 класс · 2 полугодие</h3>
+                <input type="hidden" name="H2_10_settingKey" value="H2_10">
+                <label>Дата начала<input type="date" name="H2_10_startDate" required></label>
+                <label>Дата окончания<input type="date" name="H2_10_endDate" required></label>
+            </div>
+            <div class="settings-period-card">
+                <h3>11 класс · 1 полугодие</h3>
+                <input type="hidden" name="H1_11_settingKey" value="H1_11">
+                <label>Дата начала<input type="date" name="H1_11_startDate" required></label>
+                <label>Дата окончания<input type="date" name="H1_11_endDate" required></label>
+            </div>
+            <div class="settings-period-card">
+                <h3>11 класс · 2 полугодие</h3>
+                <input type="hidden" name="H2_11_settingKey" value="H2_11">
+                <label>Дата начала<input type="date" name="H2_11_startDate" required></label>
+                <label>Дата окончания<input type="date" name="H2_11_endDate" required></label>
             </div>
             <div class="row full-span">
                 <button type="submit">Сохранить периоды</button>

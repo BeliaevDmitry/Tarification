@@ -15,6 +15,7 @@ import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.DatabaseService;
 import org.school.personalLoad.service.ManualLoadService;
 import org.school.personalLoad.service.TarifficationProcessingService;
+import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -32,6 +33,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private final TarifficationProcessingService tarifficationProcessingService;
     private final DatabaseService databaseService;
     private final CurriculumPlanService curriculumPlanService;
+    private final StudyPeriodSettingService studyPeriodSettingService;
 
     @Override
     public ManualLoadEntry create(ManualLoadEntryRequest request) {
@@ -128,21 +130,22 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         entity.setGroupNameEducationalPlan(request.getGroupNameEducationalPlan());
         entity.setGroupLoad(request.getGroupLoad());
         entity.setEducationLevel(request.getEducationLevel());
-        entity.setStudyPeriod(request.getStudyPeriod() == null ? StudyPeriod.YEAR : request.getStudyPeriod());
+        entity.setStudyPeriod(resolveStudyPeriod(request.getClassName(), request.getStudyPeriod(), request.getLoadFromDate(), request.getLoadToDate()));
         entity.setLoadFromDate(request.getLoadFromDate());
         entity.setLoadToDate(request.getLoadToDate());
         return entity;
     }
 
     private CurriculumPlanEntry validateAgainstCurriculum(ManualLoadEntry entry) {
-        CurriculumPlanEntry rule = curriculumPlanService
-                .findRule(entry.getNumberSchoolBuilding().trim(),
-                        ClassNameNormalizer.normalize(entry.getClassName()),
-                        entry.getSubjectName().trim(),
-                        entry.getEducationLevel(),
-                        entry.getStudyPeriod() == null ? StudyPeriod.YEAR : entry.getStudyPeriod())
-                .orElseThrow(() -> new IllegalArgumentException("Curriculum rule not found for class=" + entry.getClassName() +
-                        ", subject=" + entry.getSubjectName() + ", level=" + entry.getEducationLevel() + ", period=" + entry.getStudyPeriod()));
+        StudyPeriod effectiveStudyPeriod = resolveStudyPeriod(entry.getClassName(), entry.getStudyPeriod(), entry.getLoadFromDate(), entry.getLoadToDate());
+        CurriculumPlanEntry rule = findRuleWithFallback(
+                entry.getNumberSchoolBuilding().trim(),
+                entry.getClassName(),
+                entry.getSubjectName(),
+                entry.getEducationLevel(),
+                effectiveStudyPeriod
+        ).orElseThrow(() -> new IllegalArgumentException("Curriculum rule not found for class=" + entry.getClassName() +
+                ", subject=" + entry.getSubjectName() + ", level=" + entry.getEducationLevel() + ", period=" + effectiveStudyPeriod));
 
         int effectiveLoad = entry.getGroupLoad() != null ? entry.getGroupLoad() : entry.getLoad();
         if (BigDecimal.valueOf(effectiveLoad).compareTo(rule.getPlannedHours()) > 0) {
@@ -156,6 +159,39 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         }
 
         return rule;
+    }
+
+
+    private java.util.Optional<CurriculumPlanEntry> findRuleWithFallback(String numberSchoolBuilding,
+                                                                         String className,
+                                                                         String subjectName,
+                                                                         org.school.personalLoad.model.EducationLevel educationLevel,
+                                                                         StudyPeriod effectiveStudyPeriod) {
+        java.util.List<StudyPeriod> candidates = new java.util.ArrayList<>();
+        candidates.add(effectiveStudyPeriod == null ? StudyPeriod.YEAR : effectiveStudyPeriod);
+        candidates.add(StudyPeriod.YEAR);
+        candidates.add(StudyPeriod.H1);
+        candidates.add(StudyPeriod.H2);
+        return candidates.stream()
+                .distinct()
+                .map(period -> curriculumPlanService.findRule(numberSchoolBuilding,
+                        ClassNameNormalizer.normalize(className),
+                        subjectName.trim(),
+                        educationLevel,
+                        period))
+                .filter(java.util.Optional::isPresent)
+                .map(java.util.Optional::get)
+                .findFirst();
+    }
+
+    private StudyPeriod resolveStudyPeriod(String className,
+                                           StudyPeriod explicitStudyPeriod,
+                                           java.time.LocalDate loadFromDate,
+                                           java.time.LocalDate loadToDate) {
+        if (explicitStudyPeriod != null) {
+            return explicitStudyPeriod;
+        }
+        return studyPeriodSettingService.inferStudyPeriod(className, loadFromDate, loadToDate);
     }
 
     private static class SummaryAccumulator {

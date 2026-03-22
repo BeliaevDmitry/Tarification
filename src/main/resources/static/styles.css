@@ -1050,3 +1050,14 @@ dialog::backdrop {
     font-size: 12px;
     margin-top: 4px;
 }
+
+
+.period-accent-cell {
+    background: #8b5cf6 !important;
+    color: #fff !important;
+    border-color: #7c3aed !important;
+}
+
+.period-accent-cell .mini-level {
+    color: rgba(255,255,255,0.9) !important;
+}

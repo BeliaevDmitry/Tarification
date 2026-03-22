@@ -131,9 +131,12 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
     private StudyPeriod normalizedStudyPeriod(CurriculumPlanEntryRequest request) {
         Integer parallel = ClassNameNormalizer.extractParallel(request.getClassName());
         if (parallel != null && parallel >= 10) {
-            return request.getStudyPeriod() == null ? StudyPeriod.H1 : request.getStudyPeriod();
+            if (request.getStudyPeriod() == StudyPeriod.H2) {
+                return StudyPeriod.H2;
+            }
+            return StudyPeriod.H1;
         }
-        return StudyPeriod.YEAR;
+        return request.getStudyPeriod() == null ? StudyPeriod.YEAR : request.getStudyPeriod();
     }
 
     private void validate(CurriculumPlanEntryRequest request) {
