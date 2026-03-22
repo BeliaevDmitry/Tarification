@@ -7,6 +7,7 @@ import org.school.personalLoad.dto.ManualLoadPlanFactSummary;
 import org.school.personalLoad.dto.ManualLoadProcessResult;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.ManualLoadEntry;
+import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.SubjectWithGroup;
 import org.school.personalLoad.model.TarifficationPerson;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
@@ -65,7 +66,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             CurriculumPlanEntry rule = validateAgainstCurriculum(entry);
             int effectiveLoad = entry.getGroupLoad() != null ? entry.getGroupLoad() : entry.getLoad();
 
-            RuleKey key = new RuleKey(rule.getClassName(), rule.getSubjectName(), rule.getEducationLevel());
+            RuleKey key = new RuleKey(rule.getClassName(), rule.getSubjectName(), rule.getEducationLevel(), rule.getStudyPeriod());
             summaryByRule.computeIfAbsent(key, k -> new SummaryAccumulator(rule.getPlannedHours()))
                     .addActualHours(effectiveLoad);
 
@@ -127,17 +128,21 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         entity.setGroupNameEducationalPlan(request.getGroupNameEducationalPlan());
         entity.setGroupLoad(request.getGroupLoad());
         entity.setEducationLevel(request.getEducationLevel());
+        entity.setStudyPeriod(request.getStudyPeriod() == null ? StudyPeriod.YEAR : request.getStudyPeriod());
         entity.setLoadFromDate(request.getLoadFromDate());
         entity.setLoadToDate(request.getLoadToDate());
         return entity;
     }
 
-
     private CurriculumPlanEntry validateAgainstCurriculum(ManualLoadEntry entry) {
         CurriculumPlanEntry rule = curriculumPlanService
-                .findRule(entry.getNumberSchoolBuilding().trim(), ClassNameNormalizer.normalize(entry.getClassName()), entry.getSubjectName().trim(), entry.getEducationLevel())
+                .findRule(entry.getNumberSchoolBuilding().trim(),
+                        ClassNameNormalizer.normalize(entry.getClassName()),
+                        entry.getSubjectName().trim(),
+                        entry.getEducationLevel(),
+                        entry.getStudyPeriod() == null ? StudyPeriod.YEAR : entry.getStudyPeriod())
                 .orElseThrow(() -> new IllegalArgumentException("Curriculum rule not found for class=" + entry.getClassName() +
-                        ", subject=" + entry.getSubjectName() + ", level=" + entry.getEducationLevel()));
+                        ", subject=" + entry.getSubjectName() + ", level=" + entry.getEducationLevel() + ", period=" + entry.getStudyPeriod()));
 
         int effectiveLoad = entry.getGroupLoad() != null ? entry.getGroupLoad() : entry.getLoad();
         if (BigDecimal.valueOf(effectiveLoad).compareTo(rule.getPlannedHours()) > 0) {
@@ -152,7 +157,6 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
         return rule;
     }
-
 
     private static class SummaryAccumulator {
         private final BigDecimal plannedHours;
@@ -172,11 +176,13 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         private final String className;
         private final String subjectName;
         private final org.school.personalLoad.model.EducationLevel educationLevel;
+        private final StudyPeriod studyPeriod;
 
-        private RuleKey(String className, String subjectName, org.school.personalLoad.model.EducationLevel educationLevel) {
+        private RuleKey(String className, String subjectName, org.school.personalLoad.model.EducationLevel educationLevel, StudyPeriod studyPeriod) {
             this.className = className;
             this.subjectName = subjectName;
             this.educationLevel = educationLevel;
+            this.studyPeriod = studyPeriod;
         }
 
         @Override
@@ -190,12 +196,13 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             RuleKey ruleKey = (RuleKey) o;
             return className.equals(ruleKey.className)
                     && subjectName.equals(ruleKey.subjectName)
-                    && educationLevel == ruleKey.educationLevel;
+                    && educationLevel == ruleKey.educationLevel
+                    && studyPeriod == ruleKey.studyPeriod;
         }
 
         @Override
         public int hashCode() {
-            return java.util.Objects.hash(className, subjectName, educationLevel);
+            return java.util.Objects.hash(className, subjectName, educationLevel, studyPeriod);
         }
     }
 

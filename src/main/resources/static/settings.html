@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarification — Настройки</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="settings-page">
+<main class="container">
+    <header class="card">
+        <h1>Настройки</h1>
+        <p class="muted">Глобальные периоды используются в учебном плане 10–11 классов и как даты по умолчанию при сохранении нагрузки по корпусам.</p>
+        <nav class="page-nav">
+            <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
+            <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
+            <a class="nav-link" href="/subjects.html" data-tab="SUBJECTS">Предметы</a>
+            <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
+            <a class="nav-link" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
+            <a class="nav-link active" href="/settings.html" data-tab="SETTINGS">Настройки</a>
+            <a class="nav-link" href="/teachers.html" data-tab="TEACHERS">Педагоги</a>
+        </nav>
+    </header>
+
+    <section class="card" data-requires-edit>
+        <div class="section-heading">
+            <div>
+                <h2>Периоды</h2>
+                <p class="muted">1–9 классы используют годовой период, а 10–11 классы — два отдельных полугодия.</p>
+            </div>
+        </div>
+        <form id="study-periods-form" class="grid settings-period-grid">
+            <div class="settings-period-card">
+                <h3>1–9 классы · учебный год</h3>
+                <input type="hidden" name="yearStudyPeriod" value="YEAR">
+                <label>Дата начала<input type="date" name="yearStartDate" required></label>
+                <label>Дата окончания<input type="date" name="yearEndDate" required></label>
+            </div>
+            <div class="settings-period-card">
+                <h3>10–11 классы · 1 полугодие</h3>
+                <input type="hidden" name="h1StudyPeriod" value="H1">
+                <label>Дата начала<input type="date" name="h1StartDate" required></label>
+                <label>Дата окончания<input type="date" name="h1EndDate" required></label>
+            </div>
+            <div class="settings-period-card">
+                <h3>10–11 классы · 2 полугодие</h3>
+                <input type="hidden" name="h2StudyPeriod" value="H2">
+                <label>Дата начала<input type="date" name="h2StartDate" required></label>
+                <label>Дата окончания<input type="date" name="h2EndDate" required></label>
+            </div>
+            <div class="row full-span">
+                <button type="submit">Сохранить периоды</button>
+                <button type="button" id="study-periods-refresh-btn">Обновить</button>
+            </div>
+        </form>
+        <pre id="settings-result"></pre>
+    </section>
+</main>
+<script src="/auth.js"></script>
+<script src="/settings.js"></script>
+</body>
+</html>
