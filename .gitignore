@@ -40,3 +40,4 @@ build/
 .env
 .env.*
 !.env.example
+!deploy/vps/.env.production.example

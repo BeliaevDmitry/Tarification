@@ -2,6 +2,7 @@ package org.school.personalLoad.config.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.school.personalLoad.auth.AppTab;
 import org.school.personalLoad.auth.SessionUser;
 import org.school.personalLoad.dto.ApiErrorResponse;
 import org.school.personalLoad.service.auth.AppUserService;
@@ -18,6 +19,7 @@ import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.Set;
 
 @Component
@@ -31,6 +33,17 @@ public class AuthFilter extends OncePerRequestFilter {
             "/table-scroll.js",
             "/favicon.ico",
             "/error"
+    );
+
+    private static final Map<String, AppTab> PAGE_TABS = Map.of(
+            "/buildings.html", AppTab.BUILDINGS,
+            "/classes.html", AppTab.CLASSES,
+            "/subjects.html", AppTab.SUBJECTS,
+            "/curriculum.html", AppTab.CURRICULUM,
+            "/load.html", AppTab.LOAD,
+            "/settings.html", AppTab.SETTINGS,
+            "/teachers.html", AppTab.TEACHERS,
+            "/admin.html", AppTab.USERS
     );
 
     private final ObjectMapper objectMapper;
@@ -68,12 +81,21 @@ public class AuthFilter extends OncePerRequestFilter {
             rejectUnauthenticated(request, response);
             return;
         }
+
         if (isAdminPath(path) && !currentUser.isAdmin()) {
             rejectForbidden(request, response, "Только администратор может работать с пользователями");
             return;
         }
-        if (isWriteApiRequest(request, path) && !currentUser.isAdmin() && !currentUser.isCanEdit()) {
-            rejectForbidden(request, response, "У пользователя нет прав на редактирование");
+
+        AppTab pageTab = PAGE_TABS.get(path);
+        if (pageTab != null && !currentUser.canViewTab(pageTab)) {
+            rejectForbidden(request, response, "У пользователя нет прав на просмотр этой вкладки");
+            return;
+        }
+
+        AppTab apiTab = apiTabForPath(path);
+        if (isWriteApiRequest(request, path) && apiTab != null && !currentUser.canEditTab(apiTab)) {
+            rejectForbidden(request, response, "У пользователя нет прав на редактирование этой вкладки");
             return;
         }
 
@@ -90,6 +112,18 @@ public class AuthFilter extends OncePerRequestFilter {
 
     private boolean isAdminPath(String path) {
         return "/admin.html".equals(path) || path.startsWith("/api/admin/");
+    }
+
+    private AppTab apiTabForPath(String path) {
+        if (path.startsWith("/api/buildings")) return AppTab.BUILDINGS;
+        if (path.startsWith("/api/classroom-leadership")) return AppTab.CLASSES;
+        if (path.startsWith("/api/subjects")) return AppTab.SUBJECTS;
+        if (path.startsWith("/api/curriculum")) return AppTab.CURRICULUM;
+        if (path.startsWith("/api/manual-load")) return AppTab.LOAD;
+        if (path.startsWith("/api/settings/")) return AppTab.SETTINGS;
+        if (path.startsWith("/api/teachers")) return AppTab.TEACHERS;
+        if (path.startsWith("/api/admin/users")) return AppTab.USERS;
+        return null;
     }
 
     private boolean isWriteApiRequest(HttpServletRequest request, String path) {

@@ -11,6 +11,16 @@ public final class ClassNameNormalizer {
     private ClassNameNormalizer() {
     }
 
+    public static Integer extractParallel(String rawClassName) {
+        String normalized = normalize(rawClassName);
+        Matcher matcher = CLASS_WITH_LETTER.matcher(normalized);
+        if (matcher.matches()) {
+            return Integer.parseInt(matcher.group(1));
+        }
+        Matcher digits = Pattern.compile("^(\\d{1,2})").matcher(normalized);
+        return digits.find() ? Integer.parseInt(digits.group(1)) : null;
+    }
+
     public static String normalize(String rawClassName) {
         String value = rawClassName == null ? "" : rawClassName.trim();
         if (value.isBlank()) {

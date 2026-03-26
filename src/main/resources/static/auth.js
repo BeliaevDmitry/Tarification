@@ -1,3 +1,14 @@
+const TAB_PATHS = {
+    '/buildings.html': 'BUILDINGS',
+    '/classes.html': 'CLASSES',
+    '/subjects.html': 'SUBJECTS',
+    '/curriculum.html': 'CURRICULUM',
+    '/load.html': 'LOAD',
+    '/settings.html': 'SETTINGS',
+    '/teachers.html': 'TEACHERS',
+    '/admin.html': 'USERS'
+};
+
 async function tarificationApi(path, options = {}) {
     const response = await fetch(path, options);
     const text = await response.text();
@@ -11,8 +22,34 @@ async function tarificationApi(path, options = {}) {
     return body;
 }
 
-function disableEditAreas(canEdit) {
-    if (canEdit) return;
+function tabPermissionMap(currentUser) {
+    return Object.fromEntries((currentUser.tabPermissions || []).map((permission) => [permission.tab, permission]));
+}
+
+function currentTab() {
+    return TAB_PATHS[window.location.pathname] || null;
+}
+
+function canEditCurrentPage(currentUser) {
+    if (currentUser.admin) return true;
+    const tab = currentTab();
+    if (!tab) return currentUser.canEdit;
+    return Boolean(tabPermissionMap(currentUser)[tab]?.canEdit);
+}
+
+function stickyHeader() {
+    return document.querySelector('header.card');
+}
+
+function updateStickyHeaderMetrics() {
+    const header = stickyHeader();
+    if (!header) return;
+    const height = Math.ceil(header.getBoundingClientRect().height);
+    document.documentElement.style.setProperty('--sticky-header-height', `${height}px`);
+}
+
+function disableEditAreas(currentUser) {
+    if (canEditCurrentPage(currentUser)) return;
 
     const disableControls = () => {
         document.querySelectorAll('[data-requires-edit]').forEach((container) => {
@@ -32,34 +69,47 @@ function disableEditAreas(canEdit) {
     observer.observe(document.body, { childList: true, subtree: true });
 }
 
-function insertReadonlyNotice(canEdit) {
-    if (canEdit) return;
-    const header = document.querySelector('header.card');
+function insertReadonlyNotice(currentUser) {
+    if (canEditCurrentPage(currentUser)) return;
+    const header = stickyHeader();
     if (!header || header.querySelector('.readonly-note')) return;
     const note = document.createElement('p');
     note.className = 'muted readonly-note';
-    note.textContent = 'У вас открыт режим просмотра: данные можно смотреть, но не редактировать.';
+    note.textContent = 'У вас открыт режим просмотра для текущей вкладки: данные можно смотреть, но не редактировать.';
     header.appendChild(note);
 }
 
-function mountUserBar(currentUser) {
-    const container = document.querySelector('.container');
-    if (!container) return;
+function mountHeaderUser(currentUser) {
+    const header = stickyHeader();
+    if (!header) return;
 
-    const bar = document.createElement('section');
-    bar.className = 'card auth-bar';
-    bar.innerHTML = `
-        <div class="row auth-row">
-            <div>
-                <strong>${currentUser.fullName}</strong>
-                <div class="muted">${currentUser.roleDisplayName} · логин: ${currentUser.username}</div>
-            </div>
-            <div class="row auth-actions">
-                ${currentUser.canEdit ? '<span class="permission-badge edit-badge">Редактирование</span>' : '<span class="permission-badge view-badge">Только просмотр</span>'}
-                <button type="button" id="logout-btn">Выйти</button>
-            </div>
-        </div>`;
-    container.insertBefore(bar, container.firstChild);
+    header.classList.add('app-shell-header');
+
+    const title = header.querySelector('h1');
+    if (!title) return;
+
+    let titleRow = header.querySelector('.header-title-row');
+    if (!titleRow) {
+        titleRow = document.createElement('div');
+        titleRow.className = 'header-title-row';
+        title.before(titleRow);
+        titleRow.appendChild(title);
+    }
+
+    let controls = titleRow.querySelector('.header-user-inline');
+    if (!controls) {
+        controls = document.createElement('div');
+        controls.className = 'header-user-inline';
+        controls.innerHTML = `
+            <span class="header-user-badge"></span>
+            <button type="button" id="logout-btn">Выйти</button>`;
+        titleRow.appendChild(controls);
+    }
+
+    const badge = controls.querySelector('.header-user-badge');
+    if (badge) {
+        badge.textContent = currentUser.fullName;
+    }
 
     document.getElementById('logout-btn')?.addEventListener('click', async () => {
         try {
@@ -69,14 +119,24 @@ function mountUserBar(currentUser) {
         }
         window.location.href = '/login.html';
     });
+
+    updateStickyHeaderMetrics();
+    window.addEventListener('resize', updateStickyHeaderMetrics, { passive: true });
 }
 
 function enrichNavigation(currentUser) {
+    const permissions = tabPermissionMap(currentUser);
     document.querySelectorAll('.page-nav').forEach((nav) => {
+        nav.querySelectorAll('[data-tab]').forEach((link) => {
+            const tab = link.dataset.tab;
+            if (currentUser.admin || permissions[tab]?.canView) return;
+            link.remove();
+        });
         if (currentUser.admin && !nav.querySelector('a[href="/admin.html"]')) {
             const link = document.createElement('a');
             link.className = 'nav-link';
             link.href = '/admin.html';
+            link.dataset.tab = 'USERS';
             link.textContent = 'Пользователи';
             if (window.location.pathname === '/admin.html') {
                 link.classList.add('active');
@@ -90,10 +150,12 @@ function enrichNavigation(currentUser) {
     try {
         const currentUser = await tarificationApi('/api/auth/me');
         window.tarificationAuth = currentUser;
-        mountUserBar(currentUser);
+        window.tarificationTabPermissions = tabPermissionMap(currentUser);
         enrichNavigation(currentUser);
-        insertReadonlyNotice(currentUser.canEdit || currentUser.admin);
-        disableEditAreas(currentUser.canEdit || currentUser.admin);
+        mountHeaderUser(currentUser);
+        insertReadonlyNotice(currentUser);
+        disableEditAreas(currentUser);
+        updateStickyHeaderMetrics();
     } catch {
         window.location.href = '/login.html';
     }

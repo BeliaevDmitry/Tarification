@@ -27,6 +27,17 @@ public class AppUser {
     @Column(length = 255)
     private String email;
 
+    @Column(length = 50)
+    private String managedBuildingCode;
+
+    @Column(nullable = false)
+    private boolean loadEditAllBuildings = false;
+
+    @ElementCollection
+    @CollectionTable(name = "app_user_load_building", joinColumns = @JoinColumn(name = "user_id"))
+    @Column(name = "building_code", nullable = false, length = 50)
+    private java.util.Set<String> loadEditableBuildingCodes = new java.util.LinkedHashSet<>();
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private UserRole role;

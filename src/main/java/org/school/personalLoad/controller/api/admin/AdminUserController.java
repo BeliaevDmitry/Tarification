@@ -18,7 +18,9 @@ public class AdminUserController {
 
     @GetMapping
     public ResponseEntity<List<UserResponse>> findAll() {
-        return ResponseEntity.ok(appUserService.findAll().stream().map(AdminUserMapper::fromEntity).toList());
+        return ResponseEntity.ok(appUserService.findAll().stream()
+                .map(user -> AdminUserMapper.fromEntity(user, appUserService.getTabPermissions(user.getId())))
+                .toList());
     }
 
     @PostMapping
@@ -26,22 +28,23 @@ public class AdminUserController {
         AppUser user = appUserService.createUser(request);
         String tempPassword = appUserService.resetPassword(user.getId());
         return ResponseEntity.ok(CreatedUserResponse.builder()
-                .user(AdminUserMapper.fromEntity(user))
+                .user(AdminUserMapper.fromEntity(user, appUserService.getTabPermissions(user.getId())))
                 .temporaryPassword(tempPassword)
                 .build());
     }
 
     @PatchMapping("/{userId}")
     public ResponseEntity<UserResponse> update(@PathVariable Long userId, @RequestBody UpdateUserRequest request) {
-        return ResponseEntity.ok(AdminUserMapper.fromEntity(appUserService.updateUser(userId, request)));
+        AppUser updatedUser = appUserService.updateUser(userId, request);
+        return ResponseEntity.ok(AdminUserMapper.fromEntity(updatedUser, appUserService.getTabPermissions(updatedUser.getId())));
     }
 
     @PostMapping("/{userId}/reset-password")
     public ResponseEntity<ResetPasswordResponse> resetPassword(@PathVariable Long userId) {
-        List<UserResponse> allUsers = appUserService.findAll().stream().map(AdminUserMapper::fromEntity).toList();
-        UserResponse targetUser = allUsers.stream()
+        UserResponse targetUser = appUserService.findAll().stream()
                 .filter(user -> user.getId().equals(userId))
                 .findFirst()
+                .map(user -> AdminUserMapper.fromEntity(user, appUserService.getTabPermissions(user.getId())))
                 .orElseThrow(() -> new IllegalArgumentException("Пользователь не найден"));
         return ResponseEntity.ok(ResetPasswordResponse.builder()
                 .userId(userId)

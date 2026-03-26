@@ -7,6 +7,7 @@ import org.school.personalLoad.dto.ManualLoadPlanFactSummary;
 import org.school.personalLoad.dto.ManualLoadProcessResult;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.ManualLoadEntry;
+import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.SubjectWithGroup;
 import org.school.personalLoad.model.TarifficationPerson;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
@@ -14,6 +15,7 @@ import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.DatabaseService;
 import org.school.personalLoad.service.ManualLoadService;
 import org.school.personalLoad.service.TarifficationProcessingService;
+import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -31,6 +33,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private final TarifficationProcessingService tarifficationProcessingService;
     private final DatabaseService databaseService;
     private final CurriculumPlanService curriculumPlanService;
+    private final StudyPeriodSettingService studyPeriodSettingService;
 
     @Override
     public ManualLoadEntry create(ManualLoadEntryRequest request) {
@@ -65,7 +68,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             CurriculumPlanEntry rule = validateAgainstCurriculum(entry);
             int effectiveLoad = entry.getGroupLoad() != null ? entry.getGroupLoad() : entry.getLoad();
 
-            RuleKey key = new RuleKey(rule.getClassName(), rule.getSubjectName(), rule.getEducationLevel());
+            RuleKey key = new RuleKey(rule.getClassName(), rule.getSubjectName(), rule.getEducationLevel(), rule.getStudyPeriod());
             summaryByRule.computeIfAbsent(key, k -> new SummaryAccumulator(rule.getPlannedHours()))
                     .addActualHours(effectiveLoad);
 
@@ -127,17 +130,22 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         entity.setGroupNameEducationalPlan(request.getGroupNameEducationalPlan());
         entity.setGroupLoad(request.getGroupLoad());
         entity.setEducationLevel(request.getEducationLevel());
+        entity.setStudyPeriod(resolveStudyPeriod(request.getClassName(), request.getStudyPeriod(), request.getLoadFromDate(), request.getLoadToDate()));
         entity.setLoadFromDate(request.getLoadFromDate());
         entity.setLoadToDate(request.getLoadToDate());
         return entity;
     }
 
-
     private CurriculumPlanEntry validateAgainstCurriculum(ManualLoadEntry entry) {
-        CurriculumPlanEntry rule = curriculumPlanService
-                .findRule(entry.getNumberSchoolBuilding().trim(), ClassNameNormalizer.normalize(entry.getClassName()), entry.getSubjectName().trim(), entry.getEducationLevel())
-                .orElseThrow(() -> new IllegalArgumentException("Curriculum rule not found for class=" + entry.getClassName() +
-                        ", subject=" + entry.getSubjectName() + ", level=" + entry.getEducationLevel()));
+        StudyPeriod effectiveStudyPeriod = resolveStudyPeriod(entry.getClassName(), entry.getStudyPeriod(), entry.getLoadFromDate(), entry.getLoadToDate());
+        CurriculumPlanEntry rule = findRuleWithFallback(
+                entry.getNumberSchoolBuilding().trim(),
+                entry.getClassName(),
+                entry.getSubjectName(),
+                entry.getEducationLevel(),
+                effectiveStudyPeriod
+        ).orElseThrow(() -> new IllegalArgumentException("Curriculum rule not found for class=" + entry.getClassName() +
+                ", subject=" + entry.getSubjectName() + ", level=" + entry.getEducationLevel() + ", period=" + effectiveStudyPeriod));
 
         int effectiveLoad = entry.getGroupLoad() != null ? entry.getGroupLoad() : entry.getLoad();
         if (BigDecimal.valueOf(effectiveLoad).compareTo(rule.getPlannedHours()) > 0) {
@@ -153,6 +161,38 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         return rule;
     }
 
+
+    private java.util.Optional<CurriculumPlanEntry> findRuleWithFallback(String numberSchoolBuilding,
+                                                                         String className,
+                                                                         String subjectName,
+                                                                         org.school.personalLoad.model.EducationLevel educationLevel,
+                                                                         StudyPeriod effectiveStudyPeriod) {
+        java.util.List<StudyPeriod> candidates = new java.util.ArrayList<>();
+        candidates.add(effectiveStudyPeriod == null ? StudyPeriod.YEAR : effectiveStudyPeriod);
+        candidates.add(StudyPeriod.YEAR);
+        candidates.add(StudyPeriod.H1);
+        candidates.add(StudyPeriod.H2);
+        return candidates.stream()
+                .distinct()
+                .map(period -> curriculumPlanService.findRule(numberSchoolBuilding,
+                        ClassNameNormalizer.normalize(className),
+                        subjectName.trim(),
+                        educationLevel,
+                        period))
+                .filter(java.util.Optional::isPresent)
+                .map(java.util.Optional::get)
+                .findFirst();
+    }
+
+    private StudyPeriod resolveStudyPeriod(String className,
+                                           StudyPeriod explicitStudyPeriod,
+                                           java.time.LocalDate loadFromDate,
+                                           java.time.LocalDate loadToDate) {
+        if (explicitStudyPeriod != null) {
+            return explicitStudyPeriod;
+        }
+        return studyPeriodSettingService.inferStudyPeriod(className, loadFromDate, loadToDate);
+    }
 
     private static class SummaryAccumulator {
         private final BigDecimal plannedHours;
@@ -172,11 +212,13 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         private final String className;
         private final String subjectName;
         private final org.school.personalLoad.model.EducationLevel educationLevel;
+        private final StudyPeriod studyPeriod;
 
-        private RuleKey(String className, String subjectName, org.school.personalLoad.model.EducationLevel educationLevel) {
+        private RuleKey(String className, String subjectName, org.school.personalLoad.model.EducationLevel educationLevel, StudyPeriod studyPeriod) {
             this.className = className;
             this.subjectName = subjectName;
             this.educationLevel = educationLevel;
+            this.studyPeriod = studyPeriod;
         }
 
         @Override
@@ -190,12 +232,13 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             RuleKey ruleKey = (RuleKey) o;
             return className.equals(ruleKey.className)
                     && subjectName.equals(ruleKey.subjectName)
-                    && educationLevel == ruleKey.educationLevel;
+                    && educationLevel == ruleKey.educationLevel
+                    && studyPeriod == ruleKey.studyPeriod;
         }
 
         @Override
         public int hashCode() {
-            return java.util.Objects.hash(className, subjectName, educationLevel);
+            return java.util.Objects.hash(className, subjectName, educationLevel, studyPeriod);
         }
     }
 

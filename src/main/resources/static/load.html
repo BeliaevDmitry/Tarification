@@ -12,12 +12,13 @@
         <h1>Нагрузка по корпусам</h1>
         <p class="muted">Нагрузка отображается в формате таблицы: предмет, педагог, часы и распределение по классам. Для предметов с делением создаются отдельные строки групп.</p>
         <nav class="page-nav">
-            <a class="nav-link" href="/buildings.html">Корпуса</a>
-            <a class="nav-link" href="/classes.html">Классы</a>
-            <a class="nav-link" href="/subjects.html">Предметы</a>
-            <a class="nav-link" href="/curriculum.html">Учебный план</a>
-            <a class="nav-link active" href="/load.html">Нагрузка по корпусам</a>
-            <a class="nav-link" href="/teachers.html">Педагоги</a>
+            <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
+            <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
+            <a class="nav-link" href="/subjects.html" data-tab="SUBJECTS">Предметы</a>
+            <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
+            <a class="nav-link active" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/settings.html" data-tab="SETTINGS">Настройки</a>
+            <a class="nav-link" href="/teachers.html" data-tab="TEACHERS">Педагоги</a>
         </nav>
     </header>
 
@@ -40,7 +41,7 @@
                 </select>
             </label>
             <button id="refresh-load-btn" type="button">Обновить из учебного плана</button>
-            <button id="save-building-btn" type="button" class="clean-save" data-requires-edit>Сохранить нагрузку корпуса</button>
+            <button id="save-building-btn" type="button" class="clean-save" data-requires-edit data-load-edit-control="true">Сохранить нагрузку корпуса</button>
         </div>
         <pre id="load-result"></pre>
     </section>
@@ -52,7 +53,7 @@
         <button id="next-error-btn" type="button">Перейти к ошибке</button>
     </section>
 
-    <section class="card" data-requires-edit>
+    <section class="card" data-requires-edit data-load-edit-area="true">
         <h2>Распределение педагогов</h2>
         <div class="sheet-wrap"><table class="sheet-table" id="building-load-table"><thead id="building-load-head"></thead><tbody id="building-load-body"></tbody></table></div>
     </section>
@@ -60,7 +61,7 @@
 </main>
 
 <dialog id="load-period-dialog">
-  <form method="dialog" id="load-period-form" class="grid" data-requires-edit>
+  <form method="dialog" id="load-period-form" class="grid" data-requires-edit data-load-edit-area="true">
     <h3>Редактирование нагрузки</h3>
     <input type="hidden" name="subjectKey">
     <input type="hidden" name="rowId">
