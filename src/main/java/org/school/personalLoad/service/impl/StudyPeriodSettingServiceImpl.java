@@ -197,23 +197,9 @@ public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService 
     }
 
     private void ensureDefaults() {
-        migrateLegacySplitRangesToUnifiedDefault();
-
-        for (StudyPeriodSettingKey key : StudyPeriodSettingKey.values()) {
-            createIfMissing(key, DEFAULT_START_DATE, DEFAULT_END_DATE);
+        if (repository.count() >= StudyPeriodSettingKey.values().length) {
+            return;
         }
-    }
-
-    private void migrateLegacySplitRangesToUnifiedDefault() {
-        for (StudyPeriodSettingKey key : StudyPeriodSettingKey.values()) {
-            repository.findBySettingKey(key).ifPresent(setting -> {
-                if (isLegacySplitRange(key, setting.getStartDate(), setting.getEndDate())) {
-                    fillEntity(setting, key, DEFAULT_START_DATE, DEFAULT_END_DATE);
-                    repository.save(setting);
-                }
-            });
-        }
-    }
 
         createIfMissing(StudyPeriodSettingKey.YEAR_1_9, DEFAULT_YEAR_START, DEFAULT_YEAR_END);
         createIfMissing(StudyPeriodSettingKey.H1_1_9, DEFAULT_YEAR_START, DEFAULT_H1_END);
