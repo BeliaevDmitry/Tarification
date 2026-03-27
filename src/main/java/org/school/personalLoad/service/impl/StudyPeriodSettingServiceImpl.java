@@ -32,7 +32,6 @@ public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService 
     private final StudyPeriodSettingRepository repository;
 
     @Override
-    @Transactional(readOnly = true)
     public List<StudyPeriodSetting> findAll() {
         ensureDefaults();
         List<StudyPeriodSetting> result = new ArrayList<>();
@@ -77,7 +76,6 @@ public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService 
     }
 
     @Override
-    @Transactional(readOnly = true)
     public Map<StudyPeriodSettingKey, DateRange> rangesByKey() {
         Map<StudyPeriodSettingKey, DateRange> result = new EnumMap<>(StudyPeriodSettingKey.class);
         findAll().forEach(setting -> result.put(setting.getSettingKey(), new DateRange(setting.getStartDate(), setting.getEndDate())));
@@ -85,7 +83,6 @@ public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService 
     }
 
     @Override
-    @Transactional(readOnly = true)
     public DateRange resolveDateRange(String className, StudyPeriod studyPeriod) {
         ensureDefaults();
         StudyPeriodSettingKey key = resolveKey(className, studyPeriod == null ? StudyPeriod.YEAR : studyPeriod);
@@ -95,7 +92,6 @@ public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService 
     }
 
     @Override
-    @Transactional(readOnly = true)
     public StudyPeriod inferStudyPeriod(String className, LocalDate loadFromDate, LocalDate loadToDate) {
         Integer parallel = ClassNameNormalizer.extractParallel(className);
         if (parallel == null) {
