@@ -22,8 +22,12 @@ import java.util.Map;
 @Transactional
 public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService {
 
-    private static final LocalDate DEFAULT_START_DATE = LocalDate.of(2026, 9, 1);
-    private static final LocalDate DEFAULT_END_DATE = LocalDate.of(2027, 5, 31);
+    private static final LocalDate DEFAULT_YEAR_START = LocalDate.of(2026, 9, 1);
+    private static final LocalDate DEFAULT_YEAR_END = LocalDate.of(2027, 5, 31);
+    private static final LocalDate DEFAULT_H1_END = LocalDate.of(2026, 12, 31);
+    private static final LocalDate DEFAULT_H2_START = LocalDate.of(2027, 1, 10);
+    private static final LocalDate DEFAULT_11_H1_END = LocalDate.of(2027, 1, 31);
+    private static final LocalDate DEFAULT_11_H2_START = LocalDate.of(2027, 2, 1);
 
     private final StudyPeriodSettingRepository repository;
 
@@ -211,25 +215,13 @@ public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService 
         }
     }
 
-    private boolean isLegacySplitRange(StudyPeriodSettingKey key, LocalDate startDate, LocalDate endDate) {
-        if (startDate == null || endDate == null) {
-            return false;
-        }
-
-        LocalDate legacyYearStart = LocalDate.of(2026, 9, 1);
-        LocalDate legacyYearEnd = LocalDate.of(2027, 5, 31);
-        LocalDate legacyCommonH1End = LocalDate.of(2026, 12, 31);
-        LocalDate legacyTenH2Start = LocalDate.of(2027, 1, 1);
-        LocalDate legacyElevenH1End = LocalDate.of(2027, 1, 31);
-        LocalDate legacyElevenH2Start = LocalDate.of(2027, 2, 1);
-
-        return switch (key) {
-            case YEAR_1_9 -> startDate.equals(legacyYearStart) && endDate.equals(legacyYearEnd);
-            case H1_1_9, H1_10 -> startDate.equals(legacyYearStart) && endDate.equals(legacyCommonH1End);
-            case H2_1_9, H2_10 -> startDate.equals(legacyTenH2Start) && endDate.equals(legacyYearEnd);
-            case H1_11 -> startDate.equals(legacyYearStart) && endDate.equals(legacyElevenH1End);
-            case H2_11 -> startDate.equals(legacyElevenH2Start) && endDate.equals(legacyYearEnd);
-        };
+        createIfMissing(StudyPeriodSettingKey.YEAR_1_9, DEFAULT_YEAR_START, DEFAULT_YEAR_END);
+        createIfMissing(StudyPeriodSettingKey.H1_1_9, DEFAULT_YEAR_START, DEFAULT_H1_END);
+        createIfMissing(StudyPeriodSettingKey.H2_1_9, DEFAULT_H2_START, DEFAULT_YEAR_END);
+        createIfMissing(StudyPeriodSettingKey.H1_10, DEFAULT_YEAR_START, DEFAULT_H1_END);
+        createIfMissing(StudyPeriodSettingKey.H2_10, DEFAULT_H2_START, DEFAULT_YEAR_END);
+        createIfMissing(StudyPeriodSettingKey.H1_11, DEFAULT_YEAR_START, DEFAULT_11_H1_END);
+        createIfMissing(StudyPeriodSettingKey.H2_11, DEFAULT_11_H2_START, DEFAULT_YEAR_END);
     }
 
     private void createIfMissing(StudyPeriodSettingKey key, LocalDate startDate, LocalDate endDate) {
