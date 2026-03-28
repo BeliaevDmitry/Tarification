@@ -152,20 +152,37 @@ async function refreshArchived() {
 }
 
 async function generateMemos() {
-    const fioTeachers = checkedTeachers();
-    if (!fioTeachers.length) {
-        print({ message: 'Выберите педагогов галочками перед формированием служебки.' });
-        return;
+    try {
+        const fioTeachers = checkedTeachers();
+        if (!fioTeachers.length) {
+            print({ message: 'Выберите педагогов галочками перед формированием служебки.' });
+            return;
+        }
+
+        ui.generateBtn.disabled = true;
+        ui.generateBtn.textContent = 'Формируем...';
+
+        const result = await api('/api/service-memos/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fioTeachers })
+        });
+
+        if (!Array.isArray(result) || result.length === 0) {
+            print({ warning: 'Служебки не сформированы. Проверьте, что выбранные педагоги есть в списке «Не отработанные» и у них есть изменения нагрузки.' });
+            return;
+        }
+
+        print(result);
+        await refreshPending();
+        await refreshProcessed();
+        switchTab('processed');
+    } catch (error) {
+        print({ error: error.message });
+    } finally {
+        ui.generateBtn.disabled = false;
+        ui.generateBtn.textContent = 'Сформировать служебку';
     }
-    const result = await api('/api/service-memos/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fioTeachers })
-    });
-    print(result);
-    await refreshPending();
-    await refreshProcessed();
-    switchTab('processed');
 }
 
 function bindEvents() {

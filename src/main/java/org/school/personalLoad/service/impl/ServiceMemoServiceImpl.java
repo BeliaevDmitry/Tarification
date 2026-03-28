@@ -106,6 +106,9 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             entity.setGeneratedDocument(buildDocx(aggregate.teacherDisplay(), aggregate, createdBy, teacherDativeByFio));
             created.add(serviceMemoRepository.save(entity));
         }
+        if (created.isEmpty()) {
+            throw new IllegalStateException("Не удалось сформировать служебки: выбранные педагоги не найдены среди «Не отработанных»");
+        }
         return created.stream().map(this::toProcessedDto).toList();
     }
 
