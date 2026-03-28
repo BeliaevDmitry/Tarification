@@ -49,14 +49,24 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         Set<String> teacherNames = candidates.values().stream()
                 .map(TeacherChangeAggregate::teacherDisplay)
                 .collect(Collectors.toSet());
-        List<ServiceMemo> existing = serviceMemoRepository.findAllByFioTeacherInAndStatusIn(
-                teacherNames,
-                List.of(ServiceMemo.Status.PROCESSED)
-        );
-        Set<String> alreadyProcessed = existing.stream().map(ServiceMemo::getFioTeacher).collect(Collectors.toSet());
+        Map<String, LocalDateTime> latestMemoByTeacher = serviceMemoRepository
+                .findAllByFioTeacherInAndStatusIn(teacherNames, List.of(ServiceMemo.Status.PROCESSED))
+                .stream()
+                .collect(Collectors.toMap(
+                        ServiceMemo::getFioTeacher,
+                        ServiceMemo::getCreatedAt,
+                        (a, b) -> a.isAfter(b) ? a : b
+                ));
 
         List<ServiceMemoDtos.PendingTeacher> pending = candidates.entrySet().stream()
-                .filter(entry -> !alreadyProcessed.contains(entry.getValue().teacherDisplay()))
+                .filter(entry -> {
+                    LocalDateTime latestMemoAt = latestMemoByTeacher.get(entry.getValue().teacherDisplay());
+                    if (latestMemoAt == null) {
+                        return true;
+                    }
+                    LocalDateTime latestChangeAt = entry.getValue().latestChangeAt();
+                    return latestChangeAt == null || latestChangeAt.isAfter(latestMemoAt);
+                })
                 .map(entry -> toPendingDto(entry.getKey(), entry.getValue()))
                 .sorted(Comparator.comparing(ServiceMemoDtos.PendingTeacher::getFioTeacher, String.CASE_INSENSITIVE_ORDER))
                 .toList();
@@ -214,8 +224,8 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         Map<String, Set<String>> removedByTeacher = new HashMap<>();
         Map<String, Set<String>> addedByTeacher = new HashMap<>();
         Map<String, Set<String>> removedTeachersByKey = new HashMap<>();
-        Map<String, Set<String>> addedTeachersByKey = new HashMap<>();
         Map<String, LocalDate> startByTeacher = new HashMap<>();
+        Map<String, LocalDateTime> latestChangeByTeacher = new HashMap<>();
         Map<String, String> displayNameByTeacher = new HashMap<>();
         Map<String, List<ManualLoadEntry>> removedRowsByTeacher = new HashMap<>();
 
@@ -225,6 +235,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             String key = keyOf(ch);
             LocalDate date = ch.getChangeDate().toLocalDate();
             startByTeacher.merge(teacher, date, (a, b) -> a.isBefore(b) ? a : b);
+            latestChangeByTeacher.merge(teacher, ch.getChangeDate(), (a, b) -> a.isAfter(b) ? a : b);
             displayNameByTeacher.putIfAbsent(teacher, ch.getFioTeacher());
 
             if (ch.getChangeType() == TarifficationChanges.ChangeType.REMOVED) {
@@ -234,7 +245,6 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             }
             if (ch.getChangeType() == TarifficationChanges.ChangeType.ADDED || ch.getChangeType() == TarifficationChanges.ChangeType.MODIFIED) {
                 addedByTeacher.computeIfAbsent(teacher, k -> new LinkedHashSet<>()).add(key);
-                addedTeachersByKey.computeIfAbsent(key, k -> new LinkedHashSet<>()).add(teacher);
             }
         }
 
@@ -259,11 +269,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             if (from != null && from.isAfter(start) && !from.isAfter(end)) {
                 addedByTeacher.computeIfAbsent(teacher, k -> new LinkedHashSet<>()).add(key);
                 startByTeacher.merge(teacher, from, (a, b) -> a.isBefore(b) ? a : b);
-            }
-            if (to != null && !to.isBefore(start) && !to.isAfter(end) && to.isBefore(end)) {
-                removedByTeacher.computeIfAbsent(teacher, k -> new LinkedHashSet<>()).add(key);
-                removedRowsByTeacher.computeIfAbsent(teacher, k -> new ArrayList<>()).add(row);
-                startByTeacher.merge(teacher, to, (a, b) -> a.isBefore(b) ? a : b);
+                latestChangeByTeacher.merge(teacher, from.atStartOfDay(), (a, b) -> a.isAfter(b) ? a : b);
             }
         }
 
@@ -289,9 +295,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         .filter(donor -> !donor.equals(teacher))
                         .collect(Collectors.toCollection(LinkedHashSet::new));
                 transferDonors.addAll(donors);
-                donors.forEach(donor -> donorRows.put(donor, removedRowsByTeacher.getOrDefault(donor, List.of()).stream()
-                        .filter(row -> keyOf(row).equals(key))
-                        .toList()));
+                donors.forEach(donor -> {
+                    List<ManualLoadEntry> rows = donorRows.computeIfAbsent(donor, d -> new ArrayList<>());
+                    removedRowsByTeacher.getOrDefault(donor, List.of()).stream()
+                            .filter(row -> keyOf(row).equals(key))
+                            .forEach(rows::add);
+                });
             }
 
             boolean dismissedTeacherWithoutNewLoad = directoryEntry != null
@@ -322,6 +331,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             result.put(teacher, new TeacherChangeAggregate(
                     teacherDisplay,
                     startDate,
+                    latestChangeByTeacher.get(teacher),
                     rowsForMemo,
                     activeKeys,
                     added,
@@ -381,10 +391,13 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             paragraph(doc, "В связи с производственной необходимостью прошу Вас разрешить изменение в тарификации.", false);
             paragraph(doc, "", false);
 
+            boolean twoPoints = !aggregate.transferDonors().isEmpty() && !aggregate.transferDonors().contains("вакансия");
+
             if (aggregate.onlyAdditions()) {
-                paragraph(doc, "2. Прошу Вас с " + RU_DATE.format(aggregate.startDate()) + " утвердить нагрузку на учебный год вновь принятому сотруднику "
+                String prefix = twoPoints ? "2. " : "";
+                paragraph(doc, prefix + "Прошу Вас с " + RU_DATE.format(aggregate.startDate()) + " утвердить нагрузку на учебный год вновь принятому сотруднику "
                         + teacherDative + ", в следующем объеме:", false);
-            } else if (!aggregate.transferDonors().isEmpty() && !aggregate.transferDonors().contains("вакансия")) {
+            } else if (twoPoints) {
                 String donor = aggregate.transferDonors().iterator().next();
                 String donorDative = Optional.ofNullable(teacherDativeByFio.get(normalize(donor)))
                         .filter(value -> !value.isBlank())
@@ -397,7 +410,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 paragraph(doc, "2. Прошу Вас с " + RU_DATE.format(aggregate.startDate()) + " утвердить нагрузку на учебный год сотруднику "
                         + teacherDative + ", в следующем объеме:", false);
             } else {
-                paragraph(doc, "1. На основании личного заявления " + teacherDative
+                paragraph(doc, "На основании личного заявления " + teacherDative
                         + " считать актуальной следующую учебную нагрузку данного учителя с "
                         + RU_DATE.format(aggregate.startDate()) + ":", false);
             }
@@ -418,10 +431,15 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     private int appendTable(XWPFDocument doc, List<ManualLoadEntry> rows, TeacherChangeAggregate aggregate, boolean newEmployeeMode) {
         List<ManualLoadEntry> safeRows = rows == null ? List.of() : rows;
         XWPFTable table = doc.createTable(1, newEmployeeMode ? 3 : 4);
+        table.setWidthType(TableWidthType.PCT);
+        table.setWidth("100%");
+        table.setTableAlignment(TableRowAlign.CENTER);
         List<String> header = newEmployeeMode
                 ? List.of("Предмет", "Класс", "Количество часов")
                 : List.of("Предмет", "Класс", "Количество часов", "Статус");
-        for (int i = 0; i < header.size(); i++) table.getRow(0).getCell(i).setText(header.get(i));
+        for (int i = 0; i < header.size(); i++) {
+            setCellText(table.getRow(0).getCell(i), header.get(i), true);
+        }
 
         int totalRemainingHours = 0;
         for (ManualLoadEntry row : safeRows) {
@@ -430,17 +448,31 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             }
             XWPFTableRow tr = table.createRow();
             String status = resolveStatus(aggregate, row);
-            tr.getCell(0).setText(safeDocText(row.getSubjectName()));
-            tr.getCell(1).setText(safeDocText(row.getClassName()));
-            tr.getCell(2).setText(String.valueOf(row.getLoad() == null ? 0 : row.getLoad()));
+            setCellText(tr.getCell(0), safeDocText(row.getSubjectName()), false);
+            setCellText(tr.getCell(1), safeDocText(row.getClassName()), false);
+            setCellText(tr.getCell(2), String.valueOf(row.getLoad() == null ? 0 : row.getLoad()), false);
             if (!"Снять".equalsIgnoreCase(status)) {
                 totalRemainingHours += row.getLoad() == null ? 0 : row.getLoad();
             }
             if (!newEmployeeMode) {
-                tr.getCell(3).setText(status);
+                setCellText(tr.getCell(3), status, false);
             }
         }
         return totalRemainingHours;
+    }
+
+    private void setCellText(XWPFTableCell cell, String text, boolean bold) {
+        if (cell == null) {
+            return;
+        }
+        cell.removeParagraph(0);
+        XWPFParagraph paragraph = cell.addParagraph();
+        paragraph.setAlignment(ParagraphAlignment.CENTER);
+        XWPFRun run = paragraph.createRun();
+        run.setFontFamily("Times New Roman");
+        run.setFontSize(12);
+        run.setBold(bold);
+        run.setText(text == null ? "" : text);
     }
 
     private void paragraph(XWPFDocument doc, String text, boolean bold) {
@@ -500,6 +532,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     private record TeacherChangeAggregate(
             String teacherDisplay,
             LocalDate startDate,
+            LocalDateTime latestChangeAt,
             List<ManualLoadEntry> rows,
             Set<String> activeKeys,
             Set<String> addedKeys,
