@@ -1078,3 +1078,35 @@ dialog::backdrop {
 .period-accent-cell .mini-level {
     color: rgba(255,255,255,0.9) !important;
 }
+
+.tab-btn {
+    border: 1px solid var(--line);
+    background: #fff;
+    padding: 8px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+}
+
+.tab-btn.active {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(29, 78, 216, 0.25);
+}
+
+.file-upload-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 8px;
+}
+
+.file-upload-inline input[type="file"] {
+    max-width: 220px;
+}
+
+#pending-body input[type="checkbox"][data-pending-check] {
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+}
