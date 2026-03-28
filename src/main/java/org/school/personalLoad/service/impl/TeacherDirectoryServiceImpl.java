@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
 import org.school.personalLoad.dto.TeacherCreateRequest;
+import org.school.personalLoad.dto.TeacherUpdateRequest;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
@@ -20,6 +21,7 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
+    private static final String VACANCY_TEACHER = "Вакансия";
 
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final ManualLoadEntryRepository manualLoadEntryRepository;
@@ -96,12 +98,25 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         }
 
         String normalized = request.getFioTeacher().trim();
+        String dative = normalizeOptional(request.getFioTeacherDative());
         return teacherDirectoryRepository.findByFioTeacher(normalized)
                 .orElseGet(() -> {
                     TeacherDirectoryEntry entry = new TeacherDirectoryEntry();
                     entry.setFioTeacher(normalized);
+                    entry.setFioTeacherDative(dative);
                     return teacherDirectoryRepository.save(entry);
                 });
+    }
+
+    @Override
+    @Transactional
+    public TeacherDirectoryEntry update(Long teacherId, TeacherUpdateRequest request) {
+        TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
+                .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
+        if (request != null) {
+            entry.setFioTeacherDative(normalizeOptional(request.getFioTeacherDative()));
+        }
+        return teacherDirectoryRepository.save(entry);
     }
 
     @Override
@@ -116,15 +131,34 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
 
         entry.setDismissalDate(dismissalDate);
 
+        TeacherDirectoryEntry vacancyTeacher = ensureVacancyTeacher();
         manualLoadEntryRepository.findByFioTeacherIgnoreCase(entry.getFioTeacher()).forEach(loadEntry -> {
             if (loadEntry.getLoadToDate() == null) {
                 return;
             }
             if (loadEntry.getLoadToDate().isAfter(dismissalDate)) {
+                LocalDate originalLoadToDate = loadEntry.getLoadToDate();
                 loadEntry.setBackupLoadToDate(loadEntry.getLoadToDate());
                 loadEntry.setLoadToDate(dismissalDate);
                 loadEntry.setDismissalAdjusted(true);
                 manualLoadEntryRepository.save(loadEntry);
+
+                LocalDate vacancyFrom = dismissalDate.plusDays(1);
+                if (!vacancyFrom.isAfter(originalLoadToDate) && !isLoadAlreadyAssigned(loadEntry, vacancyFrom, originalLoadToDate)) {
+                    var vacancyEntry = new org.school.personalLoad.model.ManualLoadEntry();
+                    vacancyEntry.setFioTeacher(vacancyTeacher.getFioTeacher());
+                    vacancyEntry.setNumberSchoolBuilding(loadEntry.getNumberSchoolBuilding());
+                    vacancyEntry.setSubjectName(loadEntry.getSubjectName());
+                    vacancyEntry.setClassName(loadEntry.getClassName());
+                    vacancyEntry.setLoad(loadEntry.getLoad());
+                    vacancyEntry.setGroupNameEducationalPlan(loadEntry.getGroupNameEducationalPlan());
+                    vacancyEntry.setGroupLoad(loadEntry.getGroupLoad());
+                    vacancyEntry.setEducationLevel(loadEntry.getEducationLevel());
+                    vacancyEntry.setStudyPeriod(loadEntry.getStudyPeriod());
+                    vacancyEntry.setLoadFromDate(vacancyFrom);
+                    vacancyEntry.setLoadToDate(originalLoadToDate);
+                    manualLoadEntryRepository.save(vacancyEntry);
+                }
             }
         });
 
@@ -166,6 +200,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
 
     @Override
     public List<TeacherDirectoryEntry> findAll() {
+        ensureVacancyTeacher();
         return teacherDirectoryRepository.findAll();
     }
 
@@ -205,5 +240,41 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
             }
             default -> "";
         };
+    }
+
+    private String normalizeOptional(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim();
+        return normalized.isBlank() ? null : normalized;
+    }
+
+    private TeacherDirectoryEntry ensureVacancyTeacher() {
+        return teacherDirectoryRepository.findByFioTeacher(VACANCY_TEACHER).orElseGet(() -> {
+            TeacherDirectoryEntry entry = new TeacherDirectoryEntry();
+            entry.setFioTeacher(VACANCY_TEACHER);
+            entry.setFioTeacherDative("Вакансии");
+            return teacherDirectoryRepository.save(entry);
+        });
+    }
+
+    private boolean isLoadAlreadyAssigned(org.school.personalLoad.model.ManualLoadEntry source,
+                                          LocalDate fromDate,
+                                          LocalDate toDate) {
+        return manualLoadEntryRepository.findAll().stream().anyMatch(existing -> {
+            if (existing.getId() != null && existing.getId().equals(source.getId())) {
+                return false;
+            }
+            if (existing.getFioTeacher() == null || VACANCY_TEACHER.equalsIgnoreCase(existing.getFioTeacher())) {
+                return false;
+            }
+            if (!Objects.equals(existing.getSubjectName(), source.getSubjectName())) return false;
+            if (!Objects.equals(existing.getClassName(), source.getClassName())) return false;
+            if (!Objects.equals(existing.getGroupNameEducationalPlan(), source.getGroupNameEducationalPlan())) return false;
+            if (!Objects.equals(existing.getEducationLevel(), source.getEducationLevel())) return false;
+            if (existing.getLoadFromDate() == null || existing.getLoadToDate() == null) return false;
+            return !existing.getLoadFromDate().isAfter(toDate) && !existing.getLoadToDate().isBefore(fromDate);
+        });
     }
 }
