@@ -91,13 +91,18 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         }
 
         Map<String, TeacherChangeAggregate> allPending = loadTeacherChanges();
-        Map<String, String> teacherDativeByFio = teacherDirectoryRepository.findAll().stream()
-                .filter(entry -> entry.getFioTeacher() != null)
-                .collect(Collectors.toMap(
-                        entry -> normalize(entry.getFioTeacher()),
-                        entry -> entry.getFioTeacherDative(),
-                        (a, b) -> a
-                ));
+        Map<String, String> teacherDativeByFio = new HashMap<>();
+        teacherDirectoryRepository.findAll().forEach(entry -> {
+            String key = normalize(entry.getFioTeacher());
+            if (key == null) {
+                return;
+            }
+            String dative = entry.getFioTeacherDative();
+            if (dative == null || dative.isBlank()) {
+                return;
+            }
+            teacherDativeByFio.putIfAbsent(key, dative);
+        });
         List<ServiceMemo> created = new ArrayList<>();
         List<String> generationErrors = new ArrayList<>();
 
