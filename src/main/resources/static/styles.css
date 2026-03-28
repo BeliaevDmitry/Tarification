@@ -558,6 +558,8 @@ dialog::backdrop {
 
 .load-status-card { position: sticky; top: calc(var(--sticky-header-height, 140px) + 12px); z-index: 20; display:flex; gap:20px; align-items:center; }
 .error-row-highlight { outline: 2px solid #d32f2f; background: #fff2f2; }
+.load-change-row td { background: #f3e8ff; }
+.load-change-row .subject-cell { color: #6b21a8; font-weight: 700; }
 
 .labeled-grid .field-row {
     display: grid;
@@ -637,12 +639,15 @@ dialog::backdrop {
     z-index: 40;
 }
 
-.load-page .load-status-card {
-    top: calc(var(--sticky-header-height, 140px) + 116px);
+.load-page .load-toolbar .load-status-card {
+    position: static;
+    top: auto;
+    z-index: auto;
+    margin-top: 8px;
 }
 
 .load-page .sheet-wrap {
-    max-height: calc(100vh - 280px);
+    max-height: calc(100vh - 240px);
 }
 
 .load-page .sheet-table thead th {

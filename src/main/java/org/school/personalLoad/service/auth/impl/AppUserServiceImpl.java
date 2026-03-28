@@ -38,7 +38,7 @@ public class AppUserServiceImpl implements AppUserService {
     @Value("${app.security.default-admin.username:admin}")
     private String defaultAdminUsername;
 
-    @Value("${app.security.default-admin.password:admin12345}")
+    @Value("${app.security.default-admin.password:admin}")
     private String defaultAdminPassword;
 
     @Value("${app.security.default-admin.full-name:Главный администратор}")
