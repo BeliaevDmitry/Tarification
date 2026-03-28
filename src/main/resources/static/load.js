@@ -9,6 +9,9 @@ const ui = {
     tableBody: document.getElementById("building-load-body"),
     sortField: document.getElementById("sort-field-select"),
     sortDirection: document.getElementById("sort-direction-select"),
+    viewMode: document.getElementById("load-view-mode-select"),
+    viewDateLabel: document.getElementById("load-view-date-label"),
+    viewDateInput: document.getElementById("load-view-date-input"),
     periodDialog: document.getElementById("load-period-dialog"),
     periodForm: document.getElementById("load-period-form"),
     removeLoadBtn: document.getElementById("load-remove-btn"),
@@ -36,6 +39,8 @@ const state = {
     rowOrderByBuilding: {},
     sortField: "subject",
     sortDirection: "asc",
+    viewMode: "all",
+    viewDate: "",
     forceResort: true,
     hasUnsavedChanges: false,
     classSort: "",
@@ -320,6 +325,27 @@ function referencePlanningDate() {
     return today < period.from ? period.from : today;
 }
 
+function currentDisplayDate() {
+    if (state.viewMode === "date" && state.viewDate) {
+        return state.viewDate;
+    }
+    return referencePlanningDate();
+}
+
+function updateViewModeControls() {
+    const dateMode = state.viewMode === "date";
+    if (ui.viewDateLabel) {
+        ui.viewDateLabel.style.display = dateMode ? "" : "none";
+    }
+    if (ui.viewDateInput) {
+        ui.viewDateInput.disabled = !dateMode;
+        if (dateMode && !ui.viewDateInput.value) {
+            ui.viewDateInput.value = currentDisplayDate();
+            state.viewDate = ui.viewDateInput.value;
+        }
+    }
+}
+
 
 
 function currentAuthUser() {
@@ -455,12 +481,11 @@ function detectManualLoadConflicts() {
     return conflicts;
 }
 
-function prefillFromManualLoad() {
+function prefillFromManualLoad(referenceDate = referencePlanningDate()) {
     state.assignmentsByBuilding = {};
     state.subjectTeacherRowsByBuilding = {};
     state.futurePlansByBuilding = {};
 
-    const referenceDate = referencePlanningDate();
     const allApiRows = expandCurriculumRows(curriculumRows);
 
     const matchByManual = (entry) => {
@@ -708,6 +733,31 @@ function buildPresentationRows() {
     return getOrderedRows(result);
 }
 
+function filterPresentationRowsByViewMode(rows) {
+    if (state.viewMode !== "date" || !state.viewDate) {
+        return rows;
+    }
+    return rows.filter((row) => {
+        const teacherName = String(row.teacherName || "").trim();
+        if (!teacherName) return true;
+        return dateInRange(state.viewDate, row.loadFromDate, row.loadToDate);
+    });
+}
+
+function rowHasPlannedLoadChange(row, referenceDate) {
+    const plans = futurePlansForBuilding(selectedBuilding);
+    const rowTeacher = String(row.teacherName || "").trim().toLowerCase();
+    if (!rowTeacher) return false;
+
+    return Object.values(row.rowsByClass || {}).some((curriculumRow) => {
+        const plan = plans[apiKeyOfRow(curriculumRow)];
+        if (!plan || !plan.fromDate || plan.fromDate <= referenceDate) return false;
+        const target = String(plan.targetTeacher || "").trim().toLowerCase();
+        const previous = String(plan.previousTeacher || "").trim().toLowerCase();
+        return rowTeacher === target || rowTeacher === previous;
+    });
+}
+
 
 function applySorting(presentationRows) {
     const dir = state.sortDirection === "desc" ? -1 : 1;
@@ -850,6 +900,26 @@ function setTeacherForRow(subjectKey, teacherRowId, value) {
     }
 }
 
+function applyTeacherSelection(subjectKey, teacherRowId, inputEl) {
+    const raw = String(inputEl?.value || "").trim();
+    if (!raw) {
+        setTeacherForRow(subjectKey, teacherRowId, "");
+        return { ok: true, changedTo: "" };
+    }
+
+    const exact = teacherNames.find((name) => name.toLowerCase() === raw.toLowerCase());
+    if (!exact) {
+        print({ warning: `Педагог «${raw}» не найден в справочнике` });
+        if (inputEl) inputEl.value = "";
+        setTeacherForRow(subjectKey, teacherRowId, "");
+        return { ok: false, changedTo: "" };
+    }
+
+    if (inputEl) inputEl.value = exact;
+    setTeacherForRow(subjectKey, teacherRowId, exact);
+    return { ok: true, changedTo: exact };
+}
+
 
 
 function findTeacherRowMeta(subjectKey, teacherRowId) {
@@ -876,7 +946,8 @@ function onClassCellClick(presentationRow, className) {
     if (!curriculumRow) return;
 
     const assignments = assignmentsForBuilding(selectedBuilding);
-    const targetTeacher = String(presentationRow.teacherName || "").trim();
+    const rowMeta = findTeacherRowMeta(presentationRow.subjectKey, presentationRow.teacherRowId);
+    const targetTeacher = String(rowMeta?.teacherName || presentationRow.teacherName || "").trim();
     if (!targetTeacher) {
         print({ warning: "Сначала заполните ФИО педагога в строке" });
         return;
@@ -892,7 +963,6 @@ function onClassCellClick(presentationRow, className) {
         return;
     }
 
-    const rowMeta = findTeacherRowMeta(presentationRow.subjectKey, presentationRow.teacherRowId);
     const period = defaultLoadPeriod(curriculumRow.className, presentationRow.studyPeriod || rowStudyPeriod(curriculumRow));
     ui.periodForm.elements.subjectKey.value = presentationRow.subjectKey;
     ui.periodForm.elements.rowId.value = presentationRow.teacherRowId;
@@ -982,7 +1052,8 @@ function renderTable() {
     ensureTeacherRowsForBuilding();
 
     const classes = classesForSelectedBuilding();
-    const presentationRows = buildPresentationRows();
+    const referenceDate = currentDisplayDate();
+    const presentationRows = filterPresentationRowsByViewMode(buildPresentationRows());
     collectLoadIssues(presentationRows, classes);
 
     const head = document.createElement("tr");
@@ -997,6 +1068,9 @@ function renderTable() {
 
     presentationRows.forEach((row, index) => {
         const tr = document.createElement("tr");
+        if (rowHasPlannedLoadChange(row, referenceDate)) {
+            tr.classList.add("load-change-row");
+        }
         const listId = `teacher-list-${row.teacherRowId}`;
 
         tr.innerHTML = `
@@ -1015,7 +1089,6 @@ function renderTable() {
                 const assignedTeacher = assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)] || "";
                 const rowTeacher = String(row.teacherName || "").trim();
                 const futurePlan = futurePlansForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)];
-                const referenceDate = referencePlanningDate();
                 const isPlanned = Boolean(futurePlan && futurePlan.targetTeacher === rowTeacher && futurePlan.fromDate > referenceDate);
                 const isTransferOut = Boolean(futurePlan && futurePlan.previousTeacher === rowTeacher && futurePlan.fromDate > referenceDate);
                 const isActive = assignedTeacher === rowTeacher && assignedTeacher !== "";
@@ -1036,23 +1109,17 @@ function renderTable() {
         });
 
         teacherInput.addEventListener("blur", () => {
-            const raw = String(teacherInput.value || "").trim();
-            if (!raw) {
-                setTeacherForRow(row.subjectKey, row.teacherRowId, "");
-                renderTable();
-                return;
-            }
+            applyTeacherSelection(row.subjectKey, row.teacherRowId, teacherInput);
+        });
 
-            const exact = teacherNames.find((name) => name.toLowerCase() === raw.toLowerCase());
-            if (!exact) {
-                print({ warning: `Педагог «${raw}» не найден в справочнике` });
-                teacherInput.value = "";
-                setTeacherForRow(row.subjectKey, row.teacherRowId, "");
-            } else {
-                teacherInput.value = exact;
-                setTeacherForRow(row.subjectKey, row.teacherRowId, exact);
-            }
-            renderTable();
+        teacherInput.addEventListener("change", () => {
+            applyTeacherSelection(row.subjectKey, row.teacherRowId, teacherInput);
+        });
+
+        teacherInput.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            applyTeacherSelection(row.subjectKey, row.teacherRowId, teacherInput);
         });
     });
 
@@ -1291,9 +1358,10 @@ async function refreshSourceData() {
 
     buildings = [...buildingByCode.values()].sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"));
 
-    prefillFromManualLoad();
+    prefillFromManualLoad(currentDisplayDate());
     state.forceResort = true;
     markDirty(false);
+    updateViewModeControls();
 
     if (selectedBuilding !== ARCHIVE_BUILDING_CODE && !buildings.some((row) => row.code === selectedBuilding)) {
         selectedBuilding = buildings[0]?.code || "";
@@ -1321,7 +1389,7 @@ function bindEvents() {
         if (takeover) {
             const assignments = assignmentsForBuilding(selectedBuilding);
             const plans = futurePlansForBuilding(selectedBuilding);
-            const referenceDate = referencePlanningDate();
+            const referenceDate = currentDisplayDate();
 
             setPeriodForRow(subjectKey, rowId, fromDate, toDate);
 
@@ -1401,11 +1469,36 @@ function bindEvents() {
         renderTable();
     });
 
+    ui.viewMode?.addEventListener("change", () => {
+        state.viewMode = ui.viewMode.value || "all";
+        if (state.viewMode === "date" && !state.viewDate) {
+            state.viewDate = referencePlanningDate();
+            ui.viewDateInput.value = state.viewDate;
+        }
+        updateViewModeControls();
+        prefillFromManualLoad(currentDisplayDate());
+        state.forceResort = true;
+        renderTable();
+    });
+
+    ui.viewDateInput?.addEventListener("change", () => {
+        state.viewDate = ui.viewDateInput.value || "";
+        if (state.viewMode !== "date") return;
+        prefillFromManualLoad(currentDisplayDate());
+        state.forceResort = true;
+        renderTable();
+    });
+
     ui.nextErrorBtn.addEventListener("click", jumpToFirstError);
 }
 
 async function init() {
     bindEvents();
+    state.viewDate = referencePlanningDate();
+    if (ui.viewDateInput) {
+        ui.viewDateInput.value = state.viewDate;
+    }
+    updateViewModeControls();
 
     try {
         await refreshSourceData();

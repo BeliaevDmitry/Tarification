@@ -127,6 +127,54 @@ class CurriculumExcelParserTest {
         assertTrue(rows.isEmpty());
     }
 
+    @Test
+    void skipsКоличествоУчебныхНедельRow() throws Exception {
+        Workbook wb = new XSSFWorkbook();
+        Sheet sheet = wb.createSheet("НОО");
+        row(sheet, 0).createCell(0).setCellValue("Учебный год 2025-2026");
+        row(sheet, 1).createCell(0).setCellValue("Период обучения");
+        row(sheet, 2).createCell(0).setCellValue("Направленность класса");
+        row(sheet, 3).createCell(0).setCellValue("Класс");
+        row(sheet, 1).createCell(2).setCellValue("");
+        row(sheet, 2).createCell(2).setCellValue("обычный");
+        row(sheet, 3).createCell(2).setCellValue("1А");
+        row(sheet, 4).createCell(0).setCellValue("Обязательная часть");
+
+        row(sheet, 5).createCell(1).setCellValue("Количество учебных недель");
+        row(sheet, 5).createCell(2).setCellValue(34);
+
+        row(sheet, 6).createCell(1).setCellValue("Русский язык");
+        row(sheet, 6).createCell(2).setCellValue(5);
+
+        List<CurriculumImportRow> rows = parseWorkbook(wb);
+        assertEquals(1, rows.size());
+        assertEquals("Русский язык", rows.get(0).getSubjectName());
+    }
+
+    @Test
+    void skipsКоличествоЧасовЗаГодПоУчебномуПлануRow() throws Exception {
+        Workbook wb = new XSSFWorkbook();
+        Sheet sheet = wb.createSheet("НОО");
+        row(sheet, 0).createCell(0).setCellValue("Учебный год 2025-2026");
+        row(sheet, 1).createCell(0).setCellValue("Период обучения");
+        row(sheet, 2).createCell(0).setCellValue("Направленность класса");
+        row(sheet, 3).createCell(0).setCellValue("Класс");
+        row(sheet, 1).createCell(2).setCellValue("");
+        row(sheet, 2).createCell(2).setCellValue("обычный");
+        row(sheet, 3).createCell(2).setCellValue("1А");
+        row(sheet, 4).createCell(0).setCellValue("Обязательная часть");
+
+        row(sheet, 5).createCell(1).setCellValue("Количество часов за год по учебному плану");
+        row(sheet, 5).createCell(2).setCellValue(165);
+
+        row(sheet, 6).createCell(1).setCellValue("Русский язык");
+        row(sheet, 6).createCell(2).setCellValue(5);
+
+        List<CurriculumImportRow> rows = parseWorkbook(wb);
+        assertEquals(1, rows.size());
+        assertEquals("Русский язык", rows.get(0).getSubjectName());
+    }
+
     private Row row(Sheet sheet, int index) {
         Row row = sheet.getRow(index);
         return row == null ? sheet.createRow(index) : row;
