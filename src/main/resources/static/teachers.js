@@ -50,6 +50,12 @@ function renderTeachers(rows) {
             if (row.dismissalDate) tr.classList.add("dismissal-row");
             tr.innerHTML = `
                 <td>${escapeHtml(row.fioTeacher)}</td>
+                <td>
+                    <div class="row">
+                        <input class="teacher-dative-input" data-id="${row.id}" value="${escapeHtml(row.fioTeacherDative || "")}" placeholder="Напр.: Иванову И.И.">
+                        <button type="button" class="save-dative-btn" data-id="${row.id}">Сохранить</button>
+                    </div>
+                </td>
                 <td>${escapeHtml(statusLabel(row))}</td>
                 <td>${escapeHtml(row.createdAt)}</td>
                 <td>
@@ -62,6 +68,25 @@ function renderTeachers(rows) {
                 </td>`;
             ui.tbody.appendChild(tr);
         });
+
+    ui.tbody.querySelectorAll(".save-dative-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+            const id = btn.dataset.id;
+            const input = ui.tbody.querySelector(`.teacher-dative-input[data-id="${id}"]`);
+            const fioTeacherDative = (input?.value || "").trim();
+            try {
+                const result = await api(`/api/teachers/${id}`, {
+                    method: "PATCH",
+                    headers: jsonHeaders,
+                    body: JSON.stringify({ fioTeacherDative })
+                });
+                print(result);
+                await loadTeachers();
+            } catch (error) {
+                print({ error: error.message });
+            }
+        });
+    });
 
     ui.tbody.querySelectorAll(".mark-dismiss-btn").forEach((btn) => {
         btn.addEventListener("click", async () => {
@@ -148,7 +173,7 @@ async function createTeacher(e) {
         const result = await api('/api/teachers', {
             method: 'POST',
             headers: jsonHeaders,
-            body: JSON.stringify({ fioTeacher })
+            body: JSON.stringify({ fioTeacher, fioTeacherDative: null })
         });
         print(result);
         ui.createForm.reset();
