@@ -3,6 +3,7 @@ package org.school.personalLoad.controller.api;
 import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.dto.TeacherCreateRequest;
 import org.school.personalLoad.dto.TeacherDismissRequest;
+import org.school.personalLoad.dto.TeacherUpdateRequest;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.service.TeacherDirectoryService;
 import org.springframework.http.ResponseEntity;
@@ -27,6 +28,12 @@ public class TeacherDirectoryController {
     @PostMapping
     public ResponseEntity<TeacherDirectoryEntry> create(@RequestBody TeacherCreateRequest request) {
         return ResponseEntity.ok(teacherDirectoryService.create(request));
+    }
+
+    @PatchMapping("/{teacherId}")
+    public ResponseEntity<TeacherDirectoryEntry> update(@PathVariable Long teacherId,
+                                                        @RequestBody TeacherUpdateRequest request) {
+        return ResponseEntity.ok(teacherDirectoryService.update(teacherId, request));
     }
 
     @PatchMapping("/{teacherId}/dismiss")
