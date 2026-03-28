@@ -43,7 +43,8 @@ function switchTab(tab) {
 
 function checkedTeachers() {
     return Array.from(document.querySelectorAll('[data-pending-check]:checked'))
-        .map((el) => decodeURIComponent(el.dataset.pendingCheck));
+        .map((el) => decodeURIComponent(el.dataset.pendingCheck))
+        .filter(Boolean);
 }
 
 function setAllPending(checked) {
@@ -55,7 +56,7 @@ function setAllPending(checked) {
 function renderPending(rows) {
     ui.pendingBody.innerHTML = rows.map((row) => `
         <tr>
-            <td><input type="checkbox" data-pending-check="${encodeURIComponent(row.fioTeacher)}"></td>
+            <td><input type="checkbox" data-pending-check="${encodeURIComponent(row.teacherKey || row.fioTeacher)}"></td>
             <td>${esc(row.fioTeacher)}</td>
             <td>${esc(row.startDate || '')}</td>
             <td>${row.memoType === 'NEW' ? 'Назначение' : 'Изменение'}</td>

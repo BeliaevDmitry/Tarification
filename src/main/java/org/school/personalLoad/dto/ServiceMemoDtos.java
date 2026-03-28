@@ -13,6 +13,7 @@ public class ServiceMemoDtos {
     @Value
     @Builder
     public static class PendingTeacher {
+        String teacherKey;
         String fioTeacher;
         LocalDate startDate;
         String memoType;

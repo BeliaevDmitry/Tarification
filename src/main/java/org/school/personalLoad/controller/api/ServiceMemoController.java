@@ -11,12 +11,14 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import org.springframework.http.HttpStatus;
 
 @RestController
 @RequestMapping("/api/service-memos")
@@ -44,7 +46,13 @@ public class ServiceMemoController {
     public ResponseEntity<List<ServiceMemoDtos.ProcessedMemo>> generate(@RequestBody ServiceMemoDtos.GenerateRequest request,
                                                                         HttpServletRequest httpServletRequest) {
         SessionUser user = AuthSessionUtils.requiredUser(httpServletRequest);
-        return ResponseEntity.ok(serviceMemoService.generateForTeachers(request.getFioTeachers(), user.getFullName()));
+        try {
+            return ResponseEntity.ok(serviceMemoService.generateForTeachers(request.getFioTeachers(), user.getFullName()));
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
+        } catch (Exception ex) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Ошибка формирования служебки: " + ex.getMessage(), ex);
+        }
     }
 
     @GetMapping("/{id}/download")

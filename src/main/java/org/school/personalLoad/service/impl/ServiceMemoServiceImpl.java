@@ -52,9 +52,9 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         );
         Set<String> alreadyProcessed = existing.stream().map(ServiceMemo::getFioTeacher).collect(Collectors.toSet());
 
-        return candidates.values().stream()
-                .filter(aggregate -> !alreadyProcessed.contains(aggregate.teacherDisplay()))
-                .map(this::toPendingDto)
+        return candidates.entrySet().stream()
+                .filter(entry -> !alreadyProcessed.contains(entry.getValue().teacherDisplay()))
+                .map(entry -> toPendingDto(entry.getKey(), entry.getValue()))
                 .sorted(Comparator.comparing(ServiceMemoDtos.PendingTeacher::getFioTeacher, String.CASE_INSENSITIVE_ORDER))
                 .toList();
     }
@@ -106,9 +106,6 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             entity.setGeneratedDocument(buildDocx(aggregate.teacherDisplay(), aggregate, createdBy, teacherDativeByFio));
             created.add(serviceMemoRepository.save(entity));
         }
-        if (created.isEmpty()) {
-            throw new IllegalStateException("Не удалось сформировать служебки: выбранные педагоги не найдены среди «Не отработанных»");
-        }
         return created.stream().map(this::toProcessedDto).toList();
     }
 
@@ -147,7 +144,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 .build();
     }
 
-    private ServiceMemoDtos.PendingTeacher toPendingDto(TeacherChangeAggregate aggregate) {
+    private ServiceMemoDtos.PendingTeacher toPendingDto(String teacherKey, TeacherChangeAggregate aggregate) {
         List<ServiceMemoDtos.LoadRow> rows = aggregate.rows().stream()
                 .map(row -> ServiceMemoDtos.LoadRow.builder()
                         .fioTeacher(row.getFioTeacher())
@@ -159,6 +156,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 .toList();
         int total = rows.stream().map(ServiceMemoDtos.LoadRow::getLoad).filter(Objects::nonNull).mapToInt(Integer::intValue).sum();
         return ServiceMemoDtos.PendingTeacher.builder()
+                .teacherKey(teacherKey)
                 .fioTeacher(aggregate.teacherDisplay())
                 .startDate(aggregate.startDate())
                 .memoType(aggregate.onlyAdditions() ? "NEW" : "CHANGED")
