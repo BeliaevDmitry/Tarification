@@ -85,6 +85,13 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         }
 
         Map<String, TeacherChangeAggregate> allPending = loadTeacherChanges();
+        Map<String, String> teacherDativeByFio = teacherDirectoryRepository.findAll().stream()
+                .filter(entry -> entry.getFioTeacher() != null)
+                .collect(Collectors.toMap(
+                        entry -> normalize(entry.getFioTeacher()),
+                        entry -> entry.getFioTeacherDative(),
+                        (a, b) -> a
+                ));
         List<ServiceMemo> created = new ArrayList<>();
 
         for (String fioTeacher : normalized) {
@@ -96,7 +103,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             entity.setChangeStartDate(aggregate.startDate());
             entity.setCreatedBy(createdBy);
             entity.setGeneratedFilename("sluzhebnaya_" + safeName(aggregate.teacherDisplay()) + "_" + LocalDate.now() + ".docx");
-            entity.setGeneratedDocument(buildDocx(aggregate.teacherDisplay(), aggregate, createdBy));
+            entity.setGeneratedDocument(buildDocx(aggregate.teacherDisplay(), aggregate, createdBy, teacherDativeByFio));
             created.add(serviceMemoRepository.save(entity));
         }
         return created.stream().map(this::toProcessedDto).toList();
@@ -159,8 +166,8 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
 
     private String resolveStatus(TeacherChangeAggregate aggregate, ManualLoadEntry row) {
         String key = keyOf(row);
-        if (aggregate.addedKeys().contains(key) && !aggregate.removedKeys().contains(key)) return "добавлено";
-        if (aggregate.removedKeys().contains(key) && !aggregate.addedKeys().contains(key)) return "снято";
+        if (aggregate.removedKeys().contains(key) && !aggregate.activeKeys().contains(key)) return "Снять";
+        if (aggregate.addedKeys().contains(key) && !aggregate.removedKeys().contains(key)) return "Добавить";
         return "";
     }
 
@@ -178,6 +185,8 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
 
         Map<String, Set<String>> removedByTeacher = new HashMap<>();
         Map<String, Set<String>> addedByTeacher = new HashMap<>();
+        Map<String, Set<String>> removedTeachersByKey = new HashMap<>();
+        Map<String, Set<String>> addedTeachersByKey = new HashMap<>();
         Map<String, LocalDate> startByTeacher = new HashMap<>();
         Map<String, String> displayNameByTeacher = new HashMap<>();
         Map<String, List<ManualLoadEntry>> removedRowsByTeacher = new HashMap<>();
@@ -192,10 +201,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
 
             if (ch.getChangeType() == TarifficationChanges.ChangeType.REMOVED) {
                 removedByTeacher.computeIfAbsent(teacher, k -> new LinkedHashSet<>()).add(key);
+                removedTeachersByKey.computeIfAbsent(key, k -> new LinkedHashSet<>()).add(teacher);
                 removedRowsByTeacher.computeIfAbsent(teacher, k -> new ArrayList<>()).add(toSyntheticRow(ch));
             }
             if (ch.getChangeType() == TarifficationChanges.ChangeType.ADDED || ch.getChangeType() == TarifficationChanges.ChangeType.MODIFIED) {
                 addedByTeacher.computeIfAbsent(teacher, k -> new LinkedHashSet<>()).add(key);
+                addedTeachersByKey.computeIfAbsent(key, k -> new LinkedHashSet<>()).add(teacher);
             }
         }
 
@@ -239,9 +250,22 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
 
         for (String teacher : candidateTeachers) {
             List<ManualLoadEntry> activeRows = new ArrayList<>(rowsByTeacher.getOrDefault(teacher, List.of()));
+            Set<String> activeKeys = activeRows.stream().map(this::keyOf).collect(Collectors.toSet());
             TeacherDirectoryEntry directoryEntry = directory.get(teacher);
             Set<String> added = addedByTeacher.getOrDefault(teacher, Set.of());
             Set<String> removed = removedByTeacher.getOrDefault(teacher, Set.of());
+            Set<String> transferDonors = new LinkedHashSet<>();
+            Map<String, List<ManualLoadEntry>> donorRows = new LinkedHashMap<>();
+            for (String key : added) {
+                Set<String> donors = removedTeachersByKey.getOrDefault(key, Set.of()).stream()
+                        .filter(donor -> !donor.equals(teacher))
+                        .collect(Collectors.toCollection(LinkedHashSet::new));
+                transferDonors.addAll(donors);
+                donors.forEach(donor -> donorRows.put(donor, removedRowsByTeacher.getOrDefault(donor, List.of()).stream()
+                        .filter(row -> keyOf(row).equals(key))
+                        .toList()));
+            }
+
             boolean dismissedTeacherWithoutNewLoad = directoryEntry != null
                     && directoryEntry.getDismissalDate() != null
                     && added.isEmpty()
@@ -250,27 +274,47 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 continue;
             }
 
-            List<ManualLoadEntry> rowsForMemo = !activeRows.isEmpty()
-                    ? activeRows
-                    : new ArrayList<>(removedRowsByTeacher.getOrDefault(teacher, List.of()));
+            List<ManualLoadEntry> rowsForMemo = mergeRows(activeRows, removedRowsByTeacher.getOrDefault(teacher, List.of()));
             if (rowsForMemo.isEmpty()) {
                 continue;
             }
 
-            boolean onlyAdditions = !added.isEmpty() && removed.isEmpty();
             LocalDate startDate = resolveStartDate(rowsForMemo, startByTeacher.getOrDefault(teacher, start), start, end);
+            boolean onlyAdditions = !added.isEmpty() && removed.isEmpty();
+            if (transferDonors.contains("вакансия")) {
+                boolean hadPreviousLoad = manualLoadEntryRepository.findAll().stream()
+                        .filter(row -> normalize(row.getFioTeacher()) != null && normalize(row.getFioTeacher()).equals(teacher))
+                        .anyMatch(row -> row.getLoadFromDate() != null && row.getLoadFromDate().isBefore(startDate));
+                if (hadPreviousLoad) {
+                    onlyAdditions = false;
+                }
+            }
             String teacherDisplay = displayNameByTeacher.getOrDefault(teacher, rowsForMemo.get(0).getFioTeacher());
 
             result.put(teacher, new TeacherChangeAggregate(
                     teacherDisplay,
                     startDate,
                     rowsForMemo,
+                    activeKeys,
                     added,
                     removed,
-                    onlyAdditions
+                    onlyAdditions,
+                    transferDonors,
+                    donorRows
             ));
         }
         return result;
+    }
+
+    private List<ManualLoadEntry> mergeRows(List<ManualLoadEntry> activeRows, List<ManualLoadEntry> removedRows) {
+        LinkedHashMap<String, ManualLoadEntry> merged = new LinkedHashMap<>();
+        for (ManualLoadEntry row : activeRows) {
+            merged.put(keyOf(row), row);
+        }
+        for (ManualLoadEntry row : removedRows) {
+            merged.putIfAbsent(keyOf(row), row);
+        }
+        return new ArrayList<>(merged.values());
     }
 
     private LocalDate resolveStartDate(List<ManualLoadEntry> rows, LocalDate fallback, LocalDate periodStart, LocalDate periodEnd) {
@@ -291,50 +335,49 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         return row;
     }
 
-    private byte[] buildDocx(String fioTeacher, TeacherChangeAggregate aggregate, String createdBy) {
+    private byte[] buildDocx(String fioTeacher,
+                             TeacherChangeAggregate aggregate,
+                             String createdBy,
+                             Map<String, String> teacherDativeByFio) {
         try (XWPFDocument doc = new XWPFDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            paragraph(doc, "Директору ГБОУ Школы №7", false);
-            paragraph(doc, "Ждановой И.Д.", false);
-            paragraph(doc, "от заместителя директора", false);
-            paragraph(doc, createdBy, false);
+            String teacherDative = Optional.ofNullable(teacherDativeByFio.get(normalize(fioTeacher)))
+                    .filter(value -> !value.isBlank())
+                    .orElse(fioTeacher);
+            paragraph(doc, "Директору ГБОУ Школы №7", false, ParagraphAlignment.RIGHT);
+            paragraph(doc, "Ждановой И.Д.", false, ParagraphAlignment.RIGHT);
+            paragraph(doc, "от заместителя директора", false, ParagraphAlignment.RIGHT);
+            paragraph(doc, createdBy, false, ParagraphAlignment.RIGHT);
             paragraph(doc, "", false);
-            paragraph(doc, "служебная записка.", true);
-            paragraph(doc, "", false);
+            paragraph(doc, "служебная записка.", true, ParagraphAlignment.CENTER);
             paragraph(doc, "В связи с производственной необходимостью прошу Вас разрешить изменение в тарификации.", false);
             paragraph(doc, "", false);
 
             if (aggregate.onlyAdditions()) {
                 paragraph(doc, "2. Прошу Вас с " + RU_DATE.format(aggregate.startDate()) + " утвердить нагрузку на учебный год вновь принятому сотруднику "
-                        + fioTeacher + ", в следующем объеме:", false);
+                        + teacherDative + ", в следующем объеме:", false);
+            } else if (!aggregate.transferDonors().isEmpty() && !aggregate.transferDonors().contains("вакансия")) {
+                String donor = aggregate.transferDonors().iterator().next();
+                String donorDative = Optional.ofNullable(teacherDativeByFio.get(normalize(donor)))
+                        .filter(value -> !value.isBlank())
+                        .orElse(donor);
+                paragraph(doc, "1. На основании личного заявления " + donorDative
+                        + " считать актуальной следующую учебную нагрузку данного учителя с "
+                        + RU_DATE.format(aggregate.startDate()) + ":", false);
+                appendTable(doc, aggregate.donorRows().getOrDefault(donor, List.of()), aggregate, false);
+                paragraph(doc, "", false);
+                paragraph(doc, "2. Прошу Вас с " + RU_DATE.format(aggregate.startDate()) + " утвердить нагрузку на учебный год сотруднику "
+                        + teacherDative + ", в следующем объеме:", false);
             } else {
-                paragraph(doc, "1. На основании личного заявления " + fioTeacher
+                paragraph(doc, "1. На основании личного заявления " + teacherDative
                         + " считать актуальной следующую учебную нагрузку данного учителя с "
                         + RU_DATE.format(aggregate.startDate()) + ":", false);
             }
-
-            XWPFTable table = doc.createTable(1, aggregate.onlyAdditions() ? 4 : 5);
-            List<String> header = aggregate.onlyAdditions()
-                    ? List.of("ФИО", "Предмет", "Класс", "Количество часов")
-                    : List.of("ФИО", "Предмет", "Класс", "Количество часов", "Статус");
-            for (int i = 0; i < header.size(); i++) table.getRow(0).getCell(i).setText(header.get(i));
-
-            int total = 0;
-            for (ManualLoadEntry row : aggregate.rows()) {
-                XWPFTableRow tr = table.createRow();
-                tr.getCell(0).setText(row.getFioTeacher());
-                tr.getCell(1).setText(row.getSubjectName());
-                tr.getCell(2).setText(row.getClassName());
-                tr.getCell(3).setText(String.valueOf(row.getLoad()));
-                total += row.getLoad() == null ? 0 : row.getLoad();
-                if (!aggregate.onlyAdditions()) {
-                    tr.getCell(4).setText(resolveStatus(aggregate, row));
-                }
-            }
+            int totalRemainingHours = appendTable(doc, aggregate.rows(), aggregate, aggregate.onlyAdditions());
 
             paragraph(doc, "", false);
-            paragraph(doc, "ИТОГО: " + total + " ч.", true);
+            paragraph(doc, "ИТОГО: " + totalRemainingHours + " ч.", true);
             paragraph(doc, createdBy, false);
-            paragraph(doc, "Дата формирования: " + RU_DATE.format(LocalDate.now()), false);
+            paragraph(doc, RU_DATE.format(LocalDate.now()), false);
 
             doc.write(out);
             return out.toByteArray();
@@ -343,8 +386,37 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         }
     }
 
+    private int appendTable(XWPFDocument doc, List<ManualLoadEntry> rows, TeacherChangeAggregate aggregate, boolean newEmployeeMode) {
+        XWPFTable table = doc.createTable(1, newEmployeeMode ? 3 : 4);
+        List<String> header = newEmployeeMode
+                ? List.of("Предмет", "Класс", "Количество часов")
+                : List.of("Предмет", "Класс", "Количество часов", "Статус");
+        for (int i = 0; i < header.size(); i++) table.getRow(0).getCell(i).setText(header.get(i));
+
+        int totalRemainingHours = 0;
+        for (ManualLoadEntry row : rows) {
+            XWPFTableRow tr = table.createRow();
+            String status = resolveStatus(aggregate, row);
+            tr.getCell(0).setText(row.getSubjectName());
+            tr.getCell(1).setText(row.getClassName());
+            tr.getCell(2).setText(String.valueOf(row.getLoad()));
+            if (!"Снять".equalsIgnoreCase(status)) {
+                totalRemainingHours += row.getLoad() == null ? 0 : row.getLoad();
+            }
+            if (!newEmployeeMode) {
+                tr.getCell(3).setText(status);
+            }
+        }
+        return totalRemainingHours;
+    }
+
     private void paragraph(XWPFDocument doc, String text, boolean bold) {
+        paragraph(doc, text, bold, ParagraphAlignment.LEFT);
+    }
+
+    private void paragraph(XWPFDocument doc, String text, boolean bold, ParagraphAlignment alignment) {
         XWPFParagraph p = doc.createParagraph();
+        p.setAlignment(alignment == null ? ParagraphAlignment.LEFT : alignment);
         XWPFRun run = p.createRun();
         run.setText(text == null ? "" : text);
         run.setFontFamily("Times New Roman");
@@ -392,9 +464,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             String teacherDisplay,
             LocalDate startDate,
             List<ManualLoadEntry> rows,
+            Set<String> activeKeys,
             Set<String> addedKeys,
             Set<String> removedKeys,
-            boolean onlyAdditions
+            boolean onlyAdditions,
+            Set<String> transferDonors,
+            Map<String, List<ManualLoadEntry>> donorRows
     ) {
     }
 }
