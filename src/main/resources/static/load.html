@@ -40,6 +40,15 @@
                     <option value="desc">по убыванию</option>
                 </select>
             </label>
+            <label>Режим отображения:
+                <select id="load-view-mode-select">
+                    <option value="all">вся нагрузка</option>
+                    <option value="date">на конкретную дату</option>
+                </select>
+            </label>
+            <label id="load-view-date-label" style="display:none;">Дата:
+                <input type="date" id="load-view-date-input">
+            </label>
             <button id="refresh-load-btn" type="button">Обновить из учебного плана</button>
             <button id="save-building-btn" type="button" class="clean-save" data-requires-edit data-load-edit-control="true">Сохранить нагрузку корпуса</button>
         </div>
