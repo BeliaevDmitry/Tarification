@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarification — Служебные записки</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container">
+    <header class="card">
+        <h1>Служебные записки</h1>
+        <p class="muted">Служебные записки по изменениям нагрузки после 1 сентября и до конца учебного года.</p>
+        <nav class="page-nav"></nav>
+    </header>
+
+    <section class="card" data-requires-edit>
+        <div class="row">
+            <button type="button" class="tab-btn active" data-memo-tab="pending">Не отработанные</button>
+            <button type="button" class="tab-btn" data-memo-tab="processed">Отработанные</button>
+            <button type="button" class="tab-btn" data-memo-tab="archived">Архив</button>
+        </div>
+    </section>
+
+    <section class="card" id="pending-panel" data-memo-panel="pending" data-requires-edit>
+        <h2>Не отработанные</h2>
+        <div class="row">
+            <button id="refresh-pending-btn" type="button">Обновить список</button>
+            <button id="generate-memos-btn" type="button">Сформировать служебку</button>
+        </div>
+        <div class="sheet-wrap">
+            <table class="sheet-table">
+                <thead>
+                <tr>
+                    <th></th><th>Педагог</th><th>Дата изменения</th><th>Тип</th><th>Итого часов</th>
+                </tr>
+                </thead>
+                <tbody id="pending-body"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card" id="processed-panel" data-memo-panel="processed" style="display:none" data-requires-edit>
+        <h2>Отработанные</h2>
+        <div class="sheet-wrap">
+            <table class="sheet-table">
+                <thead>
+                <tr>
+                    <th>Педагог</th><th>Дата изменения</th><th>Кем создано</th><th>Дата формирования</th><th>Действия</th>
+                </tr>
+                </thead>
+                <tbody id="processed-body"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card" id="archived-panel" data-memo-panel="archived" style="display:none">
+        <h2>Архив</h2>
+        <div class="sheet-wrap">
+            <table class="sheet-table">
+                <thead>
+                <tr><th>Педагог</th><th>Дата изменения</th><th>Кем создано</th><th>Дата формирования</th><th>Скачать</th></tr>
+                </thead>
+                <tbody id="archived-body"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card">
+        <h3>Шаблон текста</h3>
+        <p class="muted">DOCX формируется автоматически шрифтом Times New Roman, 14. Текст можно скачать, отредактировать и загрузить обратно во вкладке «Отработанные».</p>
+        <p class="muted">Файл шаблона в проекте: <code>src/main/resources/templates/service-memo-template.txt</code>.</p>
+        <pre id="memo-result"></pre>
+    </section>
+</main>
+<script src="/auth.js"></script>
+<script src="/service-notes.js"></script>
+</body>
+</html>
