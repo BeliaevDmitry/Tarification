@@ -20,6 +20,8 @@ public class TeacherDirectoryEntry {
     @Column(nullable = false)
     private String fioTeacher;
 
+    private String fioTeacherDative;
+
     private LocalDate dismissalDate;
 
     @Column(nullable = false)
