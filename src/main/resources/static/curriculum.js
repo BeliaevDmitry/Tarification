@@ -1,9 +1,9 @@
 const jsonHeaders = { "Content-Type": "application/json" };
 
 const PART_META = {
-    CORE: { label: "1 блок: Основная часть", short: "1 блок", order: 1 },
-    FORMABLE: { label: "2 блок: Формируемая часть", short: "2 блок", order: 2 },
-    EXTRACURRICULAR: { label: "3 блок: Внеурочная деятельность", short: "3 блок", order: 3 }
+    CORE: { label: "Основная часть", short: "основная", order: 1 },
+    FORMABLE: { label: "Формируемая часть", short: "формируемая", order: 2 },
+    EXTRACURRICULAR: { label: "Внеурочная деятельность", short: "внеурочная", order: 3 }
 };
 
 const PERIOD_META = {
@@ -223,7 +223,7 @@ function buildSummaryRows(selectedClasses) {
     });
 
     rows.splice(rows.findIndex((r) => r.type === "part" && r.part === "EXTRACURRICULAR"), 0,
-        { type: "sum12", title: "Сумма 1 и 2 блоков" });
+        { type: "sum12", title: "Сумма О+Ф" });
 
     return rows;
 }
