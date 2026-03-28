@@ -298,13 +298,18 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             paragraph(doc, "от заместителя директора", false);
             paragraph(doc, createdBy, false);
             paragraph(doc, "", false);
-            paragraph(doc, "Служебная записка", true);
+            paragraph(doc, "служебная записка.", true);
+            paragraph(doc, "", false);
+            paragraph(doc, "В связи с производственной необходимостью прошу Вас разрешить изменение в тарификации.", false);
             paragraph(doc, "", false);
 
             if (aggregate.onlyAdditions()) {
-                paragraph(doc, "Прошу Вас согласовать вопрос о назначении учебной нагрузки с " + RU_DATE.format(aggregate.startDate()) + ".", false);
+                paragraph(doc, "2. Прошу Вас с " + RU_DATE.format(aggregate.startDate()) + " утвердить нагрузку на учебный год вновь принятому сотруднику "
+                        + fioTeacher + ", в следующем объеме:", false);
             } else {
-                paragraph(doc, "Прошу Вас согласовать вопрос об изменении учебной нагрузки с " + RU_DATE.format(aggregate.startDate()) + ".", false);
+                paragraph(doc, "1. На основании личного заявления " + fioTeacher
+                        + " считать актуальной следующую учебную нагрузку данного учителя с "
+                        + RU_DATE.format(aggregate.startDate()) + ":", false);
             }
 
             XWPFTable table = doc.createTable(1, aggregate.onlyAdditions() ? 4 : 5);
