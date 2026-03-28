@@ -1,6 +1,7 @@
 package org.school.personalLoad.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.xwpf.usermodel.*;
 import org.school.personalLoad.dto.ServiceMemoDtos;
 import org.school.personalLoad.model.ManualLoadEntry;
@@ -25,6 +26,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 @Transactional
 public class ServiceMemoServiceImpl implements ServiceMemoService {
@@ -41,6 +43,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     @Transactional(readOnly = true)
     public List<ServiceMemoDtos.PendingTeacher> findPendingTeachers() {
         Map<String, TeacherChangeAggregate> candidates = loadTeacherChanges();
+        log.info("service-memos pending: кандидатов={} (до фильтра обработанных)", candidates.size());
         if (candidates.isEmpty()) return List.of();
 
         Set<String> teacherNames = candidates.values().stream()
@@ -52,11 +55,13 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         );
         Set<String> alreadyProcessed = existing.stream().map(ServiceMemo::getFioTeacher).collect(Collectors.toSet());
 
-        return candidates.entrySet().stream()
+        List<ServiceMemoDtos.PendingTeacher> pending = candidates.entrySet().stream()
                 .filter(entry -> !alreadyProcessed.contains(entry.getValue().teacherDisplay()))
                 .map(entry -> toPendingDto(entry.getKey(), entry.getValue()))
                 .sorted(Comparator.comparing(ServiceMemoDtos.PendingTeacher::getFioTeacher, String.CASE_INSENSITIVE_ORDER))
                 .toList();
+        log.info("service-memos pending: доступно к обработке={}", pending.size());
+        return pending;
     }
 
     @Override
@@ -80,6 +85,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 .filter(v -> !v.isBlank())
                 .distinct()
                 .toList();
+        log.info("service-memos generate: входящих педагогов={}, createdBy={}", normalized.size(), createdBy);
         if (normalized.isEmpty()) {
             throw new IllegalArgumentException("Выберите хотя бы одного педагога");
         }
@@ -93,19 +99,34 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         (a, b) -> a
                 ));
         List<ServiceMemo> created = new ArrayList<>();
+        List<String> generationErrors = new ArrayList<>();
 
         for (String fioTeacher : normalized) {
             TeacherChangeAggregate aggregate = allPending.get(normalize(fioTeacher));
-            if (aggregate == null) continue;
+            if (aggregate == null) {
+                log.warn("service-memos generate: педагог '{}' не найден среди pending-кандидатов", fioTeacher);
+                continue;
+            }
 
-            ServiceMemo entity = new ServiceMemo();
-            entity.setFioTeacher(aggregate.teacherDisplay());
-            entity.setChangeStartDate(aggregate.startDate());
-            entity.setCreatedBy(createdBy);
-            entity.setGeneratedFilename("sluzhebnaya_" + safeName(aggregate.teacherDisplay()) + "_" + LocalDate.now() + ".docx");
-            entity.setGeneratedDocument(buildDocx(aggregate.teacherDisplay(), aggregate, createdBy, teacherDativeByFio));
-            created.add(serviceMemoRepository.save(entity));
+            try {
+                ServiceMemo entity = new ServiceMemo();
+                entity.setFioTeacher(aggregate.teacherDisplay());
+                entity.setChangeStartDate(aggregate.startDate());
+                entity.setCreatedBy(createdBy);
+                entity.setGeneratedFilename("sluzhebnaya_" + safeName(aggregate.teacherDisplay()) + "_" + LocalDate.now() + ".docx");
+                entity.setGeneratedDocument(buildDocx(aggregate.teacherDisplay(), aggregate, createdBy, teacherDativeByFio));
+                created.add(serviceMemoRepository.save(entity));
+                log.info("service-memos generate: сформирована служебка для '{}', memoId={}", aggregate.teacherDisplay(), entity.getId());
+            } catch (Exception ex) {
+                generationErrors.add(aggregate.teacherDisplay() + ": " + ex.getMessage());
+                log.error("service-memos generate: ошибка формирования для '{}'", aggregate.teacherDisplay(), ex);
+            }
         }
+        if (created.isEmpty() && !generationErrors.isEmpty()) {
+            log.warn("service-memos generate: не создано ни одной служебки, ошибок={}", generationErrors.size());
+            throw new IllegalArgumentException("Не удалось сформировать служебки. Ошибки: " + String.join(" | ", generationErrors));
+        }
+        log.info("service-memos generate: успешно создано={}, ошибок={}", created.size(), generationErrors.size());
         return created.stream().map(this::toProcessedDto).toList();
     }
 
@@ -183,6 +204,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     return !date.isBefore(start) && !date.isAfter(end);
                 })
                 .toList();
+        log.debug("service-memos loadTeacherChanges: изменений в периоде={}", changes.size());
 
         Map<String, Set<String>> removedByTeacher = new HashMap<>();
         Map<String, Set<String>> addedByTeacher = new HashMap<>();
@@ -304,6 +326,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     donorRows
             ));
         }
+        log.debug("service-memos loadTeacherChanges: итоговых агрегатов={}", result.size());
         return result;
     }
 
@@ -388,6 +411,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private int appendTable(XWPFDocument doc, List<ManualLoadEntry> rows, TeacherChangeAggregate aggregate, boolean newEmployeeMode) {
+        List<ManualLoadEntry> safeRows = rows == null ? List.of() : rows;
         XWPFTable table = doc.createTable(1, newEmployeeMode ? 3 : 4);
         List<String> header = newEmployeeMode
                 ? List.of("Предмет", "Класс", "Количество часов")
@@ -395,12 +419,15 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         for (int i = 0; i < header.size(); i++) table.getRow(0).getCell(i).setText(header.get(i));
 
         int totalRemainingHours = 0;
-        for (ManualLoadEntry row : rows) {
+        for (ManualLoadEntry row : safeRows) {
+            if (row == null) {
+                continue;
+            }
             XWPFTableRow tr = table.createRow();
             String status = resolveStatus(aggregate, row);
-            tr.getCell(0).setText(row.getSubjectName());
-            tr.getCell(1).setText(row.getClassName());
-            tr.getCell(2).setText(String.valueOf(row.getLoad()));
+            tr.getCell(0).setText(safeDocText(row.getSubjectName()));
+            tr.getCell(1).setText(safeDocText(row.getClassName()));
+            tr.getCell(2).setText(String.valueOf(row.getLoad() == null ? 0 : row.getLoad()));
             if (!"Снять".equalsIgnoreCase(status)) {
                 totalRemainingHours += row.getLoad() == null ? 0 : row.getLoad();
             }
@@ -459,6 +486,10 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 .replaceAll("[^\\p{L}\\p{N}]+", "_")
                 .replaceAll("_+", "_")
                 .replaceAll("^_|_$", "");
+    }
+
+    private String safeDocText(String value) {
+        return value == null ? "" : value;
     }
 
     private record TeacherChangeAggregate(
