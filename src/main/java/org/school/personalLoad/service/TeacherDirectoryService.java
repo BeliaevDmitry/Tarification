@@ -1,6 +1,7 @@
 package org.school.personalLoad.service;
 
 import org.school.personalLoad.dto.TeacherCreateRequest;
+import org.school.personalLoad.dto.TeacherUpdateRequest;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -12,6 +13,7 @@ public interface TeacherDirectoryService {
     Map<String, Object> importFromExcel(MultipartFile file);
 
     TeacherDirectoryEntry create(TeacherCreateRequest request);
+    TeacherDirectoryEntry update(Long teacherId, TeacherUpdateRequest request);
 
     TeacherDirectoryEntry markForDismissal(Long teacherId, LocalDate dismissalDate);
 
