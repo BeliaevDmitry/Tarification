@@ -4,10 +4,23 @@ const TAB_PATHS = {
     '/subjects.html': 'SUBJECTS',
     '/curriculum.html': 'CURRICULUM',
     '/load.html': 'LOAD',
+    '/service-notes.html': 'SERVICE_NOTES',
     '/settings.html': 'SETTINGS',
     '/teachers.html': 'TEACHERS',
     '/admin.html': 'USERS'
 };
+
+const NAV_ORDER = [
+    { path: '/buildings.html', tab: 'BUILDINGS', label: 'Корпуса' },
+    { path: '/classes.html', tab: 'CLASSES', label: 'Классы' },
+    { path: '/subjects.html', tab: 'SUBJECTS', label: 'Предметы' },
+    { path: '/curriculum.html', tab: 'CURRICULUM', label: 'Учебный план' },
+    { path: '/load.html', tab: 'LOAD', label: 'Нагрузка по корпусам' },
+    { path: '/service-notes.html', tab: 'SERVICE_NOTES', label: 'Служебные записки' },
+    { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' },
+    { path: '/teachers.html', tab: 'TEACHERS', label: 'Педагоги' },
+    { path: '/admin.html', tab: 'USERS', label: 'Пользователи' }
+];
 
 async function tarificationApi(path, options = {}) {
     const response = await fetch(path, options);
@@ -127,22 +140,20 @@ function mountHeaderUser(currentUser) {
 function enrichNavigation(currentUser) {
     const permissions = tabPermissionMap(currentUser);
     document.querySelectorAll('.page-nav').forEach((nav) => {
-        nav.querySelectorAll('[data-tab]').forEach((link) => {
-            const tab = link.dataset.tab;
-            if (currentUser.admin || permissions[tab]?.canView) return;
-            link.remove();
-        });
-        if (currentUser.admin && !nav.querySelector('a[href="/admin.html"]')) {
+        nav.innerHTML = '';
+        NAV_ORDER.forEach((tabDef) => {
+            const canView = currentUser.admin || permissions[tabDef.tab]?.canView;
+            if (!canView) return;
             const link = document.createElement('a');
             link.className = 'nav-link';
-            link.href = '/admin.html';
-            link.dataset.tab = 'USERS';
-            link.textContent = 'Пользователи';
-            if (window.location.pathname === '/admin.html') {
+            link.href = tabDef.path;
+            link.dataset.tab = tabDef.tab;
+            link.textContent = tabDef.label;
+            if (window.location.pathname === tabDef.path) {
                 link.classList.add('active');
             }
             nav.appendChild(link);
-        }
+        });
     });
 }
 
