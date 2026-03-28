@@ -217,7 +217,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
 
             LocalDate from = row.getLoadFromDate();
             LocalDate to = row.getLoadToDate();
-            if (from != null && !from.isBefore(start) && !from.isAfter(end)) {
+            if (from != null && from.isAfter(start) && !from.isAfter(end)) {
                 addedByTeacher.computeIfAbsent(teacher, k -> new LinkedHashSet<>()).add(key);
                 startByTeacher.merge(teacher, from, (a, b) -> a.isBefore(b) ? a : b);
             }

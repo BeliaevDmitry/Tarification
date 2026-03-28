@@ -1104,3 +1104,9 @@ dialog::backdrop {
 .file-upload-inline input[type="file"] {
     max-width: 220px;
 }
+
+#pending-body input[type="checkbox"][data-pending-check] {
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+}

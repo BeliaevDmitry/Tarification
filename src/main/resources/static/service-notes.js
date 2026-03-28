@@ -5,6 +5,7 @@ const ui = {
     processedBody: document.getElementById('processed-body'),
     archivedBody: document.getElementById('archived-body'),
     refreshPendingBtn: document.getElementById('refresh-pending-btn'),
+    selectAllPendingBtn: document.getElementById('select-all-pending-btn'),
     generateBtn: document.getElementById('generate-memos-btn'),
     result: document.getElementById('memo-result')
 };
@@ -45,6 +46,12 @@ function checkedTeachers() {
         .map((el) => decodeURIComponent(el.dataset.pendingCheck));
 }
 
+function setAllPending(checked) {
+    document.querySelectorAll('[data-pending-check]').forEach((checkbox) => {
+        checkbox.checked = checked;
+    });
+}
+
 function renderPending(rows) {
     ui.pendingBody.innerHTML = rows.map((row) => `
         <tr>
@@ -77,7 +84,13 @@ function renderProcessed(target, rows, archived = false) {
     `).join('');
 
     target.querySelectorAll('[data-download-id]').forEach((btn) => {
-        btn.addEventListener('click', () => window.open(`/api/service-memos/${btn.dataset.downloadId}/download`, '_blank'));
+        btn.addEventListener('click', async () => {
+            try {
+                await downloadMemo(btn.dataset.downloadId);
+            } catch (error) {
+                print({ error: error.message });
+            }
+        });
     });
 
     if (!archived) {
@@ -98,6 +111,30 @@ function renderProcessed(target, rows, archived = false) {
             });
         });
     }
+}
+
+async function downloadMemo(id) {
+    const response = await fetch(`/api/service-memos/${id}/download`);
+    if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `HTTP ${response.status}`);
+    }
+    const blob = await response.blob();
+    const cd = response.headers.get('Content-Disposition') || '';
+    const fallbackName = `service-memo-${id}.docx`;
+    const utf8Match = cd.match(/filename\\*=UTF-8''([^;]+)/i);
+    const asciiMatch = cd.match(/filename=\"?([^\";]+)\"?/i);
+    const fileNameRaw = utf8Match ? decodeURIComponent(utf8Match[1]) : (asciiMatch ? asciiMatch[1] : fallbackName);
+    const fileName = fileNameRaw.toLowerCase().endsWith('.docx') ? fileNameRaw : `${fileNameRaw}.docx`;
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
 }
 
 async function refreshPending() {
@@ -134,6 +171,7 @@ async function generateMemos() {
 function bindEvents() {
     ui.tabs.forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.memoTab)));
     ui.refreshPendingBtn?.addEventListener('click', refreshPending);
+    ui.selectAllPendingBtn?.addEventListener('click', () => setAllPending(true));
     ui.generateBtn?.addEventListener('click', generateMemos);
 }
 
