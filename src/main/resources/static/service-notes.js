@@ -122,10 +122,13 @@ async function downloadMemo(id) {
     }
     const blob = await response.blob();
     const cd = response.headers.get('Content-Disposition') || '';
+    const headerFileName = response.headers.get('X-File-Name');
     const fallbackName = `service-memo-${id}.docx`;
     const utf8Match = cd.match(/filename\\*=UTF-8''([^;]+)/i);
     const asciiMatch = cd.match(/filename=\"?([^\";]+)\"?/i);
-    const fileNameRaw = utf8Match ? decodeURIComponent(utf8Match[1]) : (asciiMatch ? asciiMatch[1] : fallbackName);
+    const fileNameRaw = headerFileName
+        ? decodeURIComponent(headerFileName)
+        : (utf8Match ? decodeURIComponent(utf8Match[1]) : (asciiMatch ? asciiMatch[1] : fallbackName));
     const fileName = fileNameRaw.toLowerCase().endsWith('.docx') ? fileNameRaw : `${fileNameRaw}.docx`;
 
     const url = URL.createObjectURL(blob);

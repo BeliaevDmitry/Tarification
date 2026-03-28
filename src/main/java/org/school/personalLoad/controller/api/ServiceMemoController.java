@@ -59,6 +59,7 @@ public class ServiceMemoController {
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
+                .header("X-File-Name", encodedFileName)
                 .body(payload);
     }
 
