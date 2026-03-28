@@ -28,9 +28,6 @@ docker compose up -d --build
 
 ## Деплой на VPS
 
-Если вы делаете деплой **в первый раз**, откройте также отдельную пошаговую инструкцию `README2.md`.
-
-
 В репозитории добавлен production-набор для VPS в `deploy/vps/`:
 - `docker-compose.prod.yml` — поднимает `postgres`, `app`, `caddy`
 - `Caddyfile` — reverse proxy и автоматический HTTPS
@@ -70,7 +67,7 @@ cp deploy/vps/.env.production.example deploy/vps/.env.production
 - `APP_DOMAIN` — домен для HTTPS
 - `POSTGRES_PASSWORD`
 - `DB_PASSWORD`
-- `APP_ADMIN_PASSWORD`
+- `APP_ADMIN_PASSWORD` (на первом запуске по умолчанию `admin`)
 - `SMTP_USERNAME`
 - `SMTP_PASSWORD`
 
@@ -158,3 +155,29 @@ cat backup.sql | docker compose \
 - Импорт учителей через `/api/teachers/import` (загрузка Excel через UI/API) сохранён как часть веб-сценария.
 - Legacy endpoint'ы и режимы старого файлового пайплайна удалены из конфигурации и документации.
 - В production рекомендуется публиковать приложение только через reverse proxy, а не открывать внутренний порт `8080` наружу.
+
+
+## Обновить только приложение (без удаления базы)
+
+В production-стеке база и приложение находятся в разных контейнерах:
+- `postgres` — контейнер базы данных
+- `app` — контейнер приложения
+- `caddy` — reverse proxy
+
+Чтобы пересобрать и перезапустить **только приложение**, не трогая БД:
+
+```bash
+docker compose \
+  --env-file deploy/vps/.env.production \
+  -f deploy/vps/docker-compose.prod.yml \
+  up -d --build --no-deps app
+```
+
+Перезапустить только приложение без пересборки:
+
+```bash
+docker compose \
+  --env-file deploy/vps/.env.production \
+  -f deploy/vps/docker-compose.prod.yml \
+  restart app
+```

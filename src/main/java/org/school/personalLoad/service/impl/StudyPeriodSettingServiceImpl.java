@@ -22,10 +22,16 @@ import java.util.Map;
 @Transactional
 public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService {
 
+    private static final LocalDate DEFAULT_YEAR_START = LocalDate.of(2026, 9, 1);
+    private static final LocalDate DEFAULT_YEAR_END = LocalDate.of(2027, 5, 31);
+    private static final LocalDate DEFAULT_H1_END = LocalDate.of(2026, 12, 31);
+    private static final LocalDate DEFAULT_H2_START = LocalDate.of(2027, 1, 10);
+    private static final LocalDate DEFAULT_11_H1_END = LocalDate.of(2027, 1, 31);
+    private static final LocalDate DEFAULT_11_H2_START = LocalDate.of(2027, 2, 1);
+
     private final StudyPeriodSettingRepository repository;
 
     @Override
-    @Transactional(readOnly = true)
     public List<StudyPeriodSetting> findAll() {
         ensureDefaults();
         List<StudyPeriodSetting> result = new ArrayList<>();
@@ -70,7 +76,6 @@ public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService 
     }
 
     @Override
-    @Transactional(readOnly = true)
     public Map<StudyPeriodSettingKey, DateRange> rangesByKey() {
         Map<StudyPeriodSettingKey, DateRange> result = new EnumMap<>(StudyPeriodSettingKey.class);
         findAll().forEach(setting -> result.put(setting.getSettingKey(), new DateRange(setting.getStartDate(), setting.getEndDate())));
@@ -78,7 +83,6 @@ public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService 
     }
 
     @Override
-    @Transactional(readOnly = true)
     public DateRange resolveDateRange(String className, StudyPeriod studyPeriod) {
         ensureDefaults();
         StudyPeriodSettingKey key = resolveKey(className, studyPeriod == null ? StudyPeriod.YEAR : studyPeriod);
@@ -88,7 +92,6 @@ public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService 
     }
 
     @Override
-    @Transactional(readOnly = true)
     public StudyPeriod inferStudyPeriod(String className, LocalDate loadFromDate, LocalDate loadToDate) {
         Integer parallel = ClassNameNormalizer.extractParallel(className);
         if (parallel == null) {
@@ -194,20 +197,13 @@ public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService 
             return;
         }
 
-        LocalDate yearStart = LocalDate.of(2026, 9, 1);
-        LocalDate commonH1End = LocalDate.of(2026, 12, 31);
-        LocalDate tenH2Start = LocalDate.of(2027, 1, 1);
-        LocalDate elevenH1End = LocalDate.of(2027, 1, 31);
-        LocalDate elevenH2Start = LocalDate.of(2027, 2, 1);
-        LocalDate yearEnd = LocalDate.of(2027, 5, 31);
-
-        createIfMissing(StudyPeriodSettingKey.YEAR_1_9, yearStart, yearEnd);
-        createIfMissing(StudyPeriodSettingKey.H1_1_9, yearStart, commonH1End);
-        createIfMissing(StudyPeriodSettingKey.H2_1_9, tenH2Start, yearEnd);
-        createIfMissing(StudyPeriodSettingKey.H1_10, yearStart, commonH1End);
-        createIfMissing(StudyPeriodSettingKey.H2_10, tenH2Start, yearEnd);
-        createIfMissing(StudyPeriodSettingKey.H1_11, yearStart, elevenH1End);
-        createIfMissing(StudyPeriodSettingKey.H2_11, elevenH2Start, yearEnd);
+        createIfMissing(StudyPeriodSettingKey.YEAR_1_9, DEFAULT_YEAR_START, DEFAULT_YEAR_END);
+        createIfMissing(StudyPeriodSettingKey.H1_1_9, DEFAULT_YEAR_START, DEFAULT_H1_END);
+        createIfMissing(StudyPeriodSettingKey.H2_1_9, DEFAULT_H2_START, DEFAULT_YEAR_END);
+        createIfMissing(StudyPeriodSettingKey.H1_10, DEFAULT_YEAR_START, DEFAULT_H1_END);
+        createIfMissing(StudyPeriodSettingKey.H2_10, DEFAULT_H2_START, DEFAULT_YEAR_END);
+        createIfMissing(StudyPeriodSettingKey.H1_11, DEFAULT_YEAR_START, DEFAULT_11_H1_END);
+        createIfMissing(StudyPeriodSettingKey.H2_11, DEFAULT_11_H2_START, DEFAULT_YEAR_END);
     }
 
     private void createIfMissing(StudyPeriodSettingKey key, LocalDate startDate, LocalDate endDate) {
