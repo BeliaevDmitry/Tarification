@@ -737,11 +737,41 @@ function filterPresentationRowsByViewMode(rows) {
     if (state.viewMode !== "date" || !state.viewDate) {
         return rows;
     }
-    return rows.filter((row) => {
-        const teacherName = String(row.teacherName || "").trim();
-        if (!teacherName) return true;
-        return dateInRange(state.viewDate, row.loadFromDate, row.loadToDate);
+    const rowsBySubject = new Map();
+    rows.forEach((row) => {
+        if (!rowsBySubject.has(row.subjectKey)) {
+            rowsBySubject.set(row.subjectKey, []);
+        }
+        rowsBySubject.get(row.subjectKey).push(row);
     });
+
+    const result = [];
+    rowsBySubject.forEach((subjectRows) => {
+        const visibleRows = subjectRows.filter((row) => {
+            const teacherName = String(row.teacherName || "").trim();
+            if (!teacherName) return true;
+            return dateInRange(state.viewDate, row.loadFromDate, row.loadToDate);
+        });
+
+        if (visibleRows.length) {
+            result.push(...visibleRows);
+            return;
+        }
+
+        const template = subjectRows[0];
+        result.push({
+            ...template,
+            teacherName: "",
+            loadFromDate: state.viewDate,
+            loadToDate: state.viewDate,
+            subjectHours: 0,
+            buildingHours: 0,
+            complexHours: 0,
+            classCount: 0
+        });
+    });
+
+    return result;
 }
 
 function rowHasPlannedLoadChange(row, referenceDate) {
@@ -1056,15 +1086,23 @@ function renderTable() {
     const presentationRows = filterPresentationRowsByViewMode(buildPresentationRows());
     collectLoadIssues(presentationRows, classes);
 
-    const head = document.createElement("tr");
-    head.innerHTML = `
-        <th>Предмет</th>
-        <th>Педагог</th>
-        <th>Часов в корпусе</th>
-        <th>Всего часов в комплексе</th>
-        ${classes.map((className) => `<th><button type="button" class="class-sort-btn ${state.sortField === `classHours:${className}` ? "active" : ""}" data-class-sort="${esc(className)}">${esc(className)}</button></th>`).join("")}
+    const headMain = document.createElement("tr");
+    headMain.className = "load-main-head";
+    headMain.innerHTML = `
+        <th rowspan="2">Предмет</th>
+        <th rowspan="2">Педагог</th>
+        <th rowspan="2">Часов в корпусе</th>
+        <th rowspan="2">Всего часов в комплексе</th>
+        <th colspan="${Math.max(classes.length, 1)}">Классы</th>
     `;
-    ui.tableHead.appendChild(head);
+    ui.tableHead.appendChild(headMain);
+
+    const headClasses = document.createElement("tr");
+    headClasses.className = "load-class-head";
+    headClasses.innerHTML = classes.length
+        ? classes.map((className) => `<th><button type="button" class="class-sort-btn ${state.sortField === `classHours:${className}` ? "active" : ""}" data-class-sort="${esc(className)}">${esc(className)}</button></th>`).join("")
+        : `<th>—</th>`;
+    ui.tableHead.appendChild(headClasses);
 
     presentationRows.forEach((row, index) => {
         const tr = document.createElement("tr");

@@ -528,16 +528,16 @@ dialog::backdrop {
     box-shadow: inset 0 -1px 0 #d6dae3;
 }
 
-#building-load-table th:first-child,
-#building-load-table td:first-child {
+#building-load-table tbody td:first-child,
+#building-load-table thead tr.load-main-head th:first-child {
     position: sticky;
     left: 0;
     background: #fff;
     z-index: 2;
 }
 
-#building-load-table th:nth-child(2),
-#building-load-table td:nth-child(2) {
+#building-load-table tbody td:nth-child(2),
+#building-load-table thead tr.load-main-head th:nth-child(2) {
     position: sticky;
     left: 180px;
     background: #fff;
@@ -653,6 +653,18 @@ dialog::backdrop {
 .load-page .sheet-table thead th {
     top: 0;
     z-index: 5;
+}
+
+#building-load-table thead tr.load-main-head th {
+    top: 0;
+    z-index: 7;
+    background: #f8fafc;
+}
+
+#building-load-table thead tr.load-class-head th {
+    top: 38px;
+    z-index: 7;
+    background: #f1f5f9;
 }
 
 
