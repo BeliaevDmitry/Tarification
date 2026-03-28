@@ -43,16 +43,18 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         Map<String, TeacherChangeAggregate> candidates = loadTeacherChanges();
         if (candidates.isEmpty()) return List.of();
 
-        Set<String> teacherNames = candidates.keySet();
+        Set<String> teacherNames = candidates.values().stream()
+                .map(TeacherChangeAggregate::teacherDisplay)
+                .collect(Collectors.toSet());
         List<ServiceMemo> existing = serviceMemoRepository.findAllByFioTeacherInAndStatusIn(
                 teacherNames,
                 List.of(ServiceMemo.Status.PROCESSED)
         );
         Set<String> alreadyProcessed = existing.stream().map(ServiceMemo::getFioTeacher).collect(Collectors.toSet());
 
-        return candidates.entrySet().stream()
-                .filter(entry -> !alreadyProcessed.contains(entry.getKey()))
-                .map(entry -> toPendingDto(entry.getKey(), entry.getValue()))
+        return candidates.values().stream()
+                .filter(aggregate -> !alreadyProcessed.contains(aggregate.teacherDisplay()))
+                .map(this::toPendingDto)
                 .sorted(Comparator.comparing(ServiceMemoDtos.PendingTeacher::getFioTeacher, String.CASE_INSENSITIVE_ORDER))
                 .toList();
     }
@@ -86,15 +88,15 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         List<ServiceMemo> created = new ArrayList<>();
 
         for (String fioTeacher : normalized) {
-            TeacherChangeAggregate aggregate = allPending.get(fioTeacher);
+            TeacherChangeAggregate aggregate = allPending.get(normalize(fioTeacher));
             if (aggregate == null) continue;
 
             ServiceMemo entity = new ServiceMemo();
-            entity.setFioTeacher(fioTeacher);
+            entity.setFioTeacher(aggregate.teacherDisplay());
             entity.setChangeStartDate(aggregate.startDate());
             entity.setCreatedBy(createdBy);
-            entity.setGeneratedFilename("sluzhebnaya_" + safeName(fioTeacher) + "_" + LocalDate.now() + ".docx");
-            entity.setGeneratedDocument(buildDocx(fioTeacher, aggregate, createdBy));
+            entity.setGeneratedFilename("sluzhebnaya_" + safeName(aggregate.teacherDisplay()) + "_" + LocalDate.now() + ".docx");
+            entity.setGeneratedDocument(buildDocx(aggregate.teacherDisplay(), aggregate, createdBy));
             created.add(serviceMemoRepository.save(entity));
         }
         return created.stream().map(this::toProcessedDto).toList();
@@ -135,7 +137,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 .build();
     }
 
-    private ServiceMemoDtos.PendingTeacher toPendingDto(String teacher, TeacherChangeAggregate aggregate) {
+    private ServiceMemoDtos.PendingTeacher toPendingDto(TeacherChangeAggregate aggregate) {
         List<ServiceMemoDtos.LoadRow> rows = aggregate.rows().stream()
                 .map(row -> ServiceMemoDtos.LoadRow.builder()
                         .fioTeacher(row.getFioTeacher())
@@ -147,7 +149,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 .toList();
         int total = rows.stream().map(ServiceMemoDtos.LoadRow::getLoad).filter(Objects::nonNull).mapToInt(Integer::intValue).sum();
         return ServiceMemoDtos.PendingTeacher.builder()
-                .fioTeacher(teacher)
+                .fioTeacher(aggregate.teacherDisplay())
                 .startDate(aggregate.startDate())
                 .memoType(aggregate.onlyAdditions() ? "NEW" : "CHANGED")
                 .rows(rows)
@@ -177,6 +179,8 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         Map<String, Set<String>> removedByTeacher = new HashMap<>();
         Map<String, Set<String>> addedByTeacher = new HashMap<>();
         Map<String, LocalDate> startByTeacher = new HashMap<>();
+        Map<String, String> displayNameByTeacher = new HashMap<>();
+        Map<String, List<ManualLoadEntry>> removedRowsByTeacher = new HashMap<>();
 
         for (TarifficationChanges ch : changes) {
             String teacher = normalize(ch.getFioTeacher());
@@ -184,9 +188,11 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             String key = keyOf(ch);
             LocalDate date = ch.getChangeDate().toLocalDate();
             startByTeacher.merge(teacher, date, (a, b) -> a.isBefore(b) ? a : b);
+            displayNameByTeacher.putIfAbsent(teacher, ch.getFioTeacher());
 
             if (ch.getChangeType() == TarifficationChanges.ChangeType.REMOVED) {
                 removedByTeacher.computeIfAbsent(teacher, k -> new LinkedHashSet<>()).add(key);
+                removedRowsByTeacher.computeIfAbsent(teacher, k -> new ArrayList<>()).add(toSyntheticRow(ch));
             }
             if (ch.getChangeType() == TarifficationChanges.ChangeType.ADDED || ch.getChangeType() == TarifficationChanges.ChangeType.MODIFIED) {
                 addedByTeacher.computeIfAbsent(teacher, k -> new LinkedHashSet<>()).add(key);
@@ -195,7 +201,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
 
         Map<String, TeacherDirectoryEntry> directory = teacherDirectoryRepository.findAll().stream()
                 .collect(Collectors.toMap(e -> normalize(e.getFioTeacher()), e -> e, (a, b) -> a));
-        List<ManualLoadEntry> currentRows = manualLoadEntryRepository.findAll().stream()
+        List<ManualLoadEntry> periodRows = manualLoadEntryRepository.findAll().stream()
                 .filter(row -> {
                     LocalDate from = row.getLoadFromDate();
                     LocalDate to = row.getLoadToDate();
@@ -203,32 +209,86 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 })
                 .toList();
 
-        Map<String, List<ManualLoadEntry>> rowsByTeacher = currentRows.stream()
+        for (ManualLoadEntry row : periodRows) {
+            String teacher = normalize(row.getFioTeacher());
+            if (teacher == null) continue;
+            displayNameByTeacher.putIfAbsent(teacher, row.getFioTeacher());
+            String key = keyOf(row);
+
+            LocalDate from = row.getLoadFromDate();
+            LocalDate to = row.getLoadToDate();
+            if (from != null && !from.isBefore(start) && !from.isAfter(end)) {
+                addedByTeacher.computeIfAbsent(teacher, k -> new LinkedHashSet<>()).add(key);
+                startByTeacher.merge(teacher, from, (a, b) -> a.isBefore(b) ? a : b);
+            }
+            if (to != null && !to.isBefore(start) && !to.isAfter(end) && to.isBefore(end)) {
+                removedByTeacher.computeIfAbsent(teacher, k -> new LinkedHashSet<>()).add(key);
+                removedRowsByTeacher.computeIfAbsent(teacher, k -> new ArrayList<>()).add(row);
+                startByTeacher.merge(teacher, to, (a, b) -> a.isBefore(b) ? a : b);
+            }
+        }
+
+        Map<String, List<ManualLoadEntry>> rowsByTeacher = periodRows.stream()
                 .filter(row -> normalize(row.getFioTeacher()) != null)
                 .collect(Collectors.groupingBy(row -> normalize(row.getFioTeacher())));
 
         Map<String, TeacherChangeAggregate> result = new HashMap<>();
-        for (Map.Entry<String, List<ManualLoadEntry>> entry : rowsByTeacher.entrySet()) {
-            String teacher = entry.getKey();
-            if (!addedByTeacher.containsKey(teacher) && !removedByTeacher.containsKey(teacher)) continue;
+        Set<String> candidateTeachers = new HashSet<>();
+        candidateTeachers.addAll(addedByTeacher.keySet());
+        candidateTeachers.addAll(removedByTeacher.keySet());
+
+        for (String teacher : candidateTeachers) {
+            List<ManualLoadEntry> activeRows = new ArrayList<>(rowsByTeacher.getOrDefault(teacher, List.of()));
             TeacherDirectoryEntry directoryEntry = directory.get(teacher);
-            if (directoryEntry != null && directoryEntry.getDismissalDate() != null && entry.getValue().isEmpty()) {
-                continue;
-            }
             Set<String> added = addedByTeacher.getOrDefault(teacher, Set.of());
             Set<String> removed = removedByTeacher.getOrDefault(teacher, Set.of());
+            boolean dismissedTeacherWithoutNewLoad = directoryEntry != null
+                    && directoryEntry.getDismissalDate() != null
+                    && added.isEmpty()
+                    && activeRows.isEmpty();
+            if (dismissedTeacherWithoutNewLoad) {
+                continue;
+            }
+
+            List<ManualLoadEntry> rowsForMemo = !activeRows.isEmpty()
+                    ? activeRows
+                    : new ArrayList<>(removedRowsByTeacher.getOrDefault(teacher, List.of()));
+            if (rowsForMemo.isEmpty()) {
+                continue;
+            }
+
             boolean onlyAdditions = !added.isEmpty() && removed.isEmpty();
+            LocalDate startDate = resolveStartDate(rowsForMemo, startByTeacher.getOrDefault(teacher, start), start, end);
+            String teacherDisplay = displayNameByTeacher.getOrDefault(teacher, rowsForMemo.get(0).getFioTeacher());
 
             result.put(teacher, new TeacherChangeAggregate(
-                    entry.getValue().get(0).getFioTeacher(),
-                    startByTeacher.getOrDefault(teacher, start),
-                    entry.getValue(),
+                    teacherDisplay,
+                    startDate,
+                    rowsForMemo,
                     added,
                     removed,
                     onlyAdditions
             ));
         }
         return result;
+    }
+
+    private LocalDate resolveStartDate(List<ManualLoadEntry> rows, LocalDate fallback, LocalDate periodStart, LocalDate periodEnd) {
+        return rows.stream()
+                .map(ManualLoadEntry::getLoadFromDate)
+                .filter(Objects::nonNull)
+                .filter(date -> !date.isBefore(periodStart) && !date.isAfter(periodEnd))
+                .min(LocalDate::compareTo)
+                .orElse(fallback);
+    }
+
+    private ManualLoadEntry toSyntheticRow(TarifficationChanges ch) {
+        ManualLoadEntry row = new ManualLoadEntry();
+        row.setFioTeacher(ch.getFioTeacher());
+        row.setSubjectName(ch.getSubjectName());
+        row.setClassName(ch.getClassName());
+        row.setLoad(ch.getLoad() == null ? 0 : ch.getLoad());
+        return row;
     }
 
     private byte[] buildDocx(String fioTeacher, TeacherChangeAggregate aggregate, String createdBy) {

@@ -1088,8 +1088,10 @@ dialog::backdrop {
 }
 
 .tab-btn.active {
-    background: var(--primary-soft);
-    border-color: var(--primary);
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(29, 78, 216, 0.25);
 }
 
 .file-upload-inline {
