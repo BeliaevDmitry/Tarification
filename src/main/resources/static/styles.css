@@ -1078,3 +1078,27 @@ dialog::backdrop {
 .period-accent-cell .mini-level {
     color: rgba(255,255,255,0.9) !important;
 }
+
+.tab-btn {
+    border: 1px solid var(--line);
+    background: #fff;
+    padding: 8px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+}
+
+.tab-btn.active {
+    background: var(--primary-soft);
+    border-color: var(--primary);
+}
+
+.file-upload-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 8px;
+}
+
+.file-upload-inline input[type="file"] {
+    max-width: 220px;
+}
