@@ -639,12 +639,15 @@ dialog::backdrop {
     z-index: 40;
 }
 
-.load-page .load-status-card {
-    top: calc(var(--sticky-header-height, 140px) + 116px);
+.load-page .load-toolbar .load-status-card {
+    position: static;
+    top: auto;
+    z-index: auto;
+    margin-top: 8px;
 }
 
 .load-page .sheet-wrap {
-    max-height: calc(100vh - 280px);
+    max-height: calc(100vh - 240px);
 }
 
 .load-page .sheet-table thead th {
