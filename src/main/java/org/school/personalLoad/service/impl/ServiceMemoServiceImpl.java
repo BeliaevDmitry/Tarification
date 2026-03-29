@@ -317,8 +317,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         candidateTeachers.addAll(removedByTeacher.keySet());
 
         for (String teacher : candidateTeachers) {
-            List<ManualLoadEntry> activeRows = new ArrayList<>(rowsByTeacher.getOrDefault(teacher, List.of()));
-            Set<String> activeKeys = activeRows.stream().map(this::keyOf).collect(Collectors.toSet());
+            List<ManualLoadEntry> teacherRows = new ArrayList<>(rowsByTeacher.getOrDefault(teacher, List.of()));
             TeacherDirectoryEntry directoryEntry = directory.get(teacher);
             Set<String> added = addedByTeacher.getOrDefault(teacher, Set.of());
             Set<String> removed = removedByTeacher.getOrDefault(teacher, Set.of());
@@ -340,24 +339,27 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             boolean dismissedTeacherWithoutNewLoad = directoryEntry != null
                     && directoryEntry.getDismissalDate() != null
                     && added.isEmpty()
-                    && activeRows.isEmpty();
+                    && teacherRows.isEmpty();
             if (dismissedTeacherWithoutNewLoad) {
                 continue;
             }
 
             List<ManualLoadEntry> removedRows = removedRowsByTeacher.getOrDefault(teacher, List.of());
-            List<ManualLoadEntry> rowsForMemo = mergeRows(activeRows, removedRows);
-            if (rowsForMemo.isEmpty()) {
-                continue;
-            }
-
             boolean onlyAdditions = !added.isEmpty() && removed.isEmpty();
-            LocalDate startDate = resolveStartDate(rowsForMemo, startByTeacher.getOrDefault(teacher, start), start, end);
+            LocalDate startDate = resolveStartDate(mergeRows(teacherRows, removedRows), startByTeacher.getOrDefault(teacher, start), start, end);
             if (!removed.isEmpty()) {
                 LocalDate removalStart = resolveRemovalStartDate(removedRows, start, end);
                 if (removalStart != null) {
                     startDate = removalStart;
                 }
+            }
+            List<ManualLoadEntry> activeRows = teacherRows.stream()
+                    .filter(row -> row.getLoadToDate() == null || !row.getLoadToDate().isBefore(startDate))
+                    .toList();
+            Set<String> activeKeys = activeRows.stream().map(this::keyOf).collect(Collectors.toSet());
+            List<ManualLoadEntry> rowsForMemo = mergeRows(activeRows, removedRows);
+            if (rowsForMemo.isEmpty()) {
+                continue;
             }
             if (transferDonors.contains("вакансия")) {
                 boolean hadPreviousLoad = hadLoadBeforeByTeacher.getOrDefault(teacher, false);
