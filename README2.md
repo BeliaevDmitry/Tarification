@@ -278,7 +278,7 @@ POSTGRES_USER=tarif_user
 POSTGRES_PASSWORD=change_me_postgres_password
 DB_PASSWORD=change_me_postgres_password
 APP_ADMIN_USERNAME=admin
-APP_ADMIN_PASSWORD=change_me_admin_password
+APP_ADMIN_PASSWORD=admin
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USERNAME=your.mail@example.com
@@ -306,7 +306,7 @@ DB_PASSWORD=ОЧЕНЬ_СЛОЖНЫЙ_ПАРОЛЬ
 
 ```env
 APP_ADMIN_USERNAME=admin
-APP_ADMIN_PASSWORD=СЛОЖНЫЙ_ПАРОЛЬ_АДМИНА
+APP_ADMIN_PASSWORD=admin
 ```
 
 #### 4. SMTP
