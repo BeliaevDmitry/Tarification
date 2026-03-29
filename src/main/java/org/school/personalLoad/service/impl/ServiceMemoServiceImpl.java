@@ -350,8 +350,14 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 continue;
             }
 
-            LocalDate startDate = resolveStartDate(rowsForMemo, startByTeacher.getOrDefault(teacher, start), start, end);
             boolean onlyAdditions = !added.isEmpty() && removed.isEmpty();
+            LocalDate startDate = resolveStartDate(rowsForMemo, startByTeacher.getOrDefault(teacher, start), start, end);
+            if (!removed.isEmpty()) {
+                LocalDate removalStart = resolveRemovalStartDate(rowsForMemo, removed, activeKeys, start, end);
+                if (removalStart != null) {
+                    startDate = removalStart;
+                }
+            }
             if (transferDonors.contains("вакансия")) {
                 boolean hadPreviousLoad = hadLoadBeforeByTeacher.getOrDefault(teacher, false);
                 if (hadPreviousLoad) {
@@ -466,6 +472,21 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 .filter(date -> !date.isBefore(periodStart) && !date.isAfter(periodEnd))
                 .min(LocalDate::compareTo)
                 .orElse(fallback);
+    }
+
+    private LocalDate resolveRemovalStartDate(List<ManualLoadEntry> rows,
+                                              Set<String> removedKeys,
+                                              Set<String> activeKeys,
+                                              LocalDate periodStart,
+                                              LocalDate periodEnd) {
+        return rows.stream()
+                .filter(Objects::nonNull)
+                .filter(row -> row.getLoadToDate() != null)
+                .filter(row -> removedKeys.contains(keyOf(row)) && !activeKeys.contains(keyOf(row)))
+                .map(row -> row.getLoadToDate().plusDays(1))
+                .filter(date -> !date.isBefore(periodStart) && !date.isAfter(periodEnd))
+                .min(LocalDate::compareTo)
+                .orElse(null);
     }
 
     private ManualLoadEntry toSyntheticRow(TarifficationChanges ch) {
