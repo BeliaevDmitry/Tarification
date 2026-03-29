@@ -544,7 +544,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             boolean twoPoints = !aggregate.transferDonors().isEmpty() && !aggregate.transferDonors().contains("вакансия");
 
             if (aggregate.onlyAdditions()) {
-                String prefix = twoPoints ? "2. " : "";
+                String prefix = twoPoints ? "" : "";
                 paragraph(doc, prefix + "Прошу Вас с " + RU_DATE.format(aggregate.startDate()) + " утвердить нагрузку на учебный год вновь принятому сотруднику "
                         + teacherDative + ", в следующем объеме:", false);
             } else if (twoPoints) {
@@ -552,12 +552,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 String donorDative = Optional.ofNullable(teacherDativeByFio.get(normalize(donor)))
                         .filter(value -> !value.isBlank())
                         .orElse(donor);
-                paragraph(doc, "1. На основании личного заявления " + donorDative
+                paragraph(doc, "На основании личного заявления " + donorDative
                         + " считать актуальной следующую учебную нагрузку данного учителя с "
                         + RU_DATE.format(aggregate.startDate()) + ":", false);
                 appendTable(doc, aggregate.donorRows().getOrDefault(donor, List.of()), aggregate, false);
                 paragraph(doc, "", false);
-                paragraph(doc, "2. Прошу Вас с " + RU_DATE.format(aggregate.startDate()) + " утвердить нагрузку на учебный год сотруднику "
+                paragraph(doc, "Прошу Вас с " + RU_DATE.format(aggregate.startDate()) + " утвердить нагрузку на учебный год сотруднику "
                         + teacherDative + ", в следующем объеме:", false);
             } else {
                 paragraph(doc, "На основании личного заявления " + teacherDative
