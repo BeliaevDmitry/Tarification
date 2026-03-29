@@ -356,6 +356,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             LocalDate effectiveStartDate = startDate;
             List<ManualLoadEntry> activeRows = teacherRows.stream()
                     .filter(row -> row.getLoadToDate() == null || !row.getLoadToDate().isBefore(effectiveStartDate))
+                    .filter(row -> !removed.contains(keyOf(row)))
                     .toList();
             Set<String> activeKeys = activeRows.stream().map(this::keyOf).collect(Collectors.toSet());
             List<ManualLoadEntry> rowsForMemo = mergeRows(activeRows, removedRows);
