@@ -205,7 +205,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         .status(resolveStatus(aggregate, row))
                         .build())
                 .toList();
-        int total = rows.stream().map(ServiceMemoDtos.LoadRow::getLoad).filter(Objects::nonNull).mapToInt(Integer::intValue).sum();
+        int total = rows.stream()
+                .filter(row -> !"Снять".equalsIgnoreCase(String.valueOf(row.getStatus())))
+                .map(ServiceMemoDtos.LoadRow::getLoad)
+                .filter(Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .sum();
         return ServiceMemoDtos.PendingTeacher.builder()
                 .teacherKey(teacherKey)
                 .fioTeacher(aggregate.teacherDisplay())
@@ -272,6 +277,8 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     return from != null && to != null && !from.isAfter(end) && !to.isBefore(start);
                 })
                 .toList();
+        Map<String, List<ManualLoadEntry>> rowsByTransferKey = periodRows.stream()
+                .collect(Collectors.groupingBy(this::transferKeyOf));
 
         for (ManualLoadEntry row : periodRows) {
             String teacher = normalize(row.getFioTeacher());
@@ -282,7 +289,9 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             LocalDate from = row.getLoadFromDate();
             LocalDate to = row.getLoadToDate();
             if (from != null && from.isAfter(start) && !from.isAfter(end)) {
-                addedByTeacher.computeIfAbsent(teacher, k -> new LinkedHashSet<>()).add(key);
+                if (!hasSameTeacherPredecessor(row, rowsByTransferKey)) {
+                    addedByTeacher.computeIfAbsent(teacher, k -> new LinkedHashSet<>()).add(key);
+                }
                 startByTeacher.merge(teacher, from, (a, b) -> a.isBefore(b) ? a : b);
                 LocalDateTime rowCreatedAt = row.getCreatedAt() == null ? from.atStartOfDay() : row.getCreatedAt();
                 latestChangeByTeacher.merge(teacher, rowCreatedAt, (a, b) -> a.isAfter(b) ? a : b);
@@ -391,7 +400,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     if (i == j) continue;
                     ManualLoadEntry successor = sorted.get(j);
                     if (successor.getLoadFromDate() == null) continue;
-                    if (!successor.getLoadFromDate().isAfter(current.getLoadToDate())) continue;
+                    if (!successor.getLoadFromDate().isEqual(current.getLoadToDate().plusDays(1))) continue;
                     if (normalize(current.getFioTeacher()) == null || normalize(successor.getFioTeacher()) == null) continue;
                     if (normalize(current.getFioTeacher()).equals(normalize(successor.getFioTeacher()))) continue;
 
@@ -408,6 +417,25 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 }
             }
         });
+    }
+
+    private boolean hasSameTeacherPredecessor(ManualLoadEntry row, Map<String, List<ManualLoadEntry>> rowsByTransferKey) {
+        if (row == null || row.getLoadFromDate() == null) {
+            return false;
+        }
+        String teacher = normalize(row.getFioTeacher());
+        if (teacher == null) {
+            return false;
+        }
+        return rowsByTransferKey.getOrDefault(transferKeyOf(row), List.of()).stream()
+                .filter(candidate -> candidate.getId() == null || !candidate.getId().equals(row.getId()))
+                .filter(candidate -> candidate.getLoadToDate() != null)
+                .filter(candidate -> !candidate.getLoadToDate().isBefore(row.getLoadFromDate().minusDays(1)))
+                .filter(candidate -> !candidate.getLoadFromDate().isAfter(row.getLoadFromDate().minusDays(1)))
+                .map(ManualLoadEntry::getFioTeacher)
+                .map(this::normalize)
+                .filter(Objects::nonNull)
+                .anyMatch(teacher::equals);
     }
 
     private List<ManualLoadEntry> mergeRows(List<ManualLoadEntry> activeRows, List<ManualLoadEntry> removedRows) {
