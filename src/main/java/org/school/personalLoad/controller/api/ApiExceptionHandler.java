@@ -1,5 +1,6 @@
 package org.school.personalLoad.controller.api;
 
+import lombok.extern.slf4j.Slf4j;
 import org.school.personalLoad.auth.AuthExceptions.ForbiddenException;
 import org.school.personalLoad.auth.AuthExceptions.UnauthorizedException;
 import org.school.personalLoad.dto.ApiErrorResponse;
@@ -12,6 +13,7 @@ import javax.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
 
 @RestControllerAdvice(basePackages = "org.school.personalLoad.controller.api")
+@Slf4j
 public class ApiExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -44,6 +46,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleUnexpected(Exception e, HttpServletRequest request) {
+        log.error("Unhandled API exception on {}: {}", request.getRequestURI(), e.getMessage(), e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                 new ApiErrorResponse("error", "Internal server error", request.getRequestURI(), LocalDateTime.now())
         );
