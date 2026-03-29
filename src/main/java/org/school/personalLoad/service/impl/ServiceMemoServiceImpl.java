@@ -403,22 +403,31 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     .toList();
             for (int i = 0; i < sorted.size(); i++) {
                 ManualLoadEntry current = sorted.get(i);
-                if (current.getLoadToDate() == null || !current.getLoadToDate().isBefore(academicEnd)) {
+                if (current.getLoadFromDate() == null || current.getLoadToDate() == null) {
                     continue;
                 }
                 for (int j = 0; j < sorted.size(); j++) {
                     if (i == j) continue;
                     ManualLoadEntry successor = sorted.get(j);
                     if (successor.getLoadFromDate() == null) continue;
-                    if (!successor.getLoadFromDate().isEqual(current.getLoadToDate().plusDays(1))) continue;
                     if (normalize(current.getFioTeacher()) == null || normalize(successor.getFioTeacher()) == null) continue;
                     if (normalize(current.getFioTeacher()).equals(normalize(successor.getFioTeacher()))) continue;
+                    if (!successor.getLoadFromDate().isAfter(current.getLoadFromDate())) continue;
+
+                    boolean explicitTransfer = current.getLoadToDate().isBefore(academicEnd)
+                            && successor.getLoadFromDate().isEqual(current.getLoadToDate().plusDays(1));
+                    boolean implicitOverlapTransfer = !successor.getLoadFromDate().isAfter(current.getLoadToDate());
+                    if (!explicitTransfer && !implicitOverlapTransfer) {
+                        continue;
+                    }
 
                     String currentTeacher = normalize(current.getFioTeacher());
                     String key = keyOf(current);
                     removedByTeacher.computeIfAbsent(currentTeacher, k -> new LinkedHashSet<>()).add(key);
                     removedTeachersByKey.computeIfAbsent(key, k -> new LinkedHashSet<>()).add(currentTeacher);
-                    removedRowsByTeacher.computeIfAbsent(currentTeacher, k -> new ArrayList<>()).add(current);
+                    LocalDate removalToDate = successor.getLoadFromDate().minusDays(1);
+                    ManualLoadEntry removedRow = copyForRemoval(current, removalToDate);
+                    removedRowsByTeacher.computeIfAbsent(currentTeacher, k -> new ArrayList<>()).add(removedRow);
                     LocalDateTime changeAt = successor.getCreatedAt() == null
                             ? successor.getLoadFromDate().atStartOfDay()
                             : successor.getCreatedAt();
@@ -427,6 +436,20 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 }
             }
         });
+    }
+
+    private ManualLoadEntry copyForRemoval(ManualLoadEntry source, LocalDate removalToDate) {
+        ManualLoadEntry row = new ManualLoadEntry();
+        row.setFioTeacher(source.getFioTeacher());
+        row.setSubjectName(source.getSubjectName());
+        row.setClassName(source.getClassName());
+        row.setLoad(source.getLoad());
+        row.setLoadFromDate(source.getLoadFromDate());
+        row.setLoadToDate(removalToDate);
+        row.setGroupNameEducationalPlan(source.getGroupNameEducationalPlan());
+        row.setEducationLevel(source.getEducationLevel());
+        row.setStudyPeriod(source.getStudyPeriod());
+        return row;
     }
 
     private boolean hasSameTeacherPredecessor(ManualLoadEntry row, Map<String, List<ManualLoadEntry>> rowsByTransferKey) {
