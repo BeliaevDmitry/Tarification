@@ -44,16 +44,23 @@ public class ServiceMemoController {
     public ResponseEntity<List<ServiceMemoDtos.ProcessedMemo>> generate(@RequestBody ServiceMemoDtos.GenerateRequest request,
                                                                         HttpServletRequest httpServletRequest) {
         SessionUser user = AuthSessionUtils.requiredUser(httpServletRequest);
-        return ResponseEntity.ok(serviceMemoService.generateForTeachers(request.getFioTeachers(), user.getFullName()));
+        List<String> fioTeachers = request == null ? List.of() : request.getFioTeachers();
+        return ResponseEntity.ok(serviceMemoService.generateForTeachers(fioTeachers, user.getFullName()));
     }
 
     @GetMapping("/{id}/download")
     public ResponseEntity<byte[]> download(@PathVariable Long id) {
         ServiceMemo memo = serviceMemoService.getById(id);
         byte[] payload = memo.getCorrectedDocument() != null ? memo.getCorrectedDocument() : memo.getGeneratedDocument();
+        if (payload == null || payload.length == 0) {
+            throw new IllegalStateException("Файл служебной записки отсутствует");
+        }
         String filename = memo.getCorrectedDocument() != null && memo.getCorrectedFilename() != null
                 ? memo.getCorrectedFilename()
                 : memo.getGeneratedFilename();
+        if (filename == null || filename.isBlank()) {
+            filename = "служебка по нагрузке " + memo.getId() + ".docx";
+        }
         String encodedFileName = URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
 
         return ResponseEntity.ok()

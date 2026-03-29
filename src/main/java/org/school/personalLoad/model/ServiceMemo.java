@@ -43,6 +43,9 @@ public class ServiceMemo {
     @Column(nullable = false)
     private String generatedFilename;
 
+    @Column(length = 4000)
+    private String loadSignature;
+
     private String correctedFilename;
 
     @Column(nullable = false)

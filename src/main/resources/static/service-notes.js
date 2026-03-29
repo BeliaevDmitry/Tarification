@@ -123,7 +123,7 @@ async function downloadMemo(id) {
     const blob = await response.blob();
     const cd = response.headers.get('Content-Disposition') || '';
     const headerFileName = response.headers.get('X-File-Name');
-    const fallbackName = `service-memo-${id}.docx`;
+    const fallbackName = `служебка по нагрузке ${id}.docx`;
     const utf8Match = cd.match(/filename\\*=UTF-8''([^;]+)/i);
     const asciiMatch = cd.match(/filename=\"?([^\";]+)\"?/i);
     const fileNameRaw = headerFileName
