@@ -345,7 +345,8 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 continue;
             }
 
-            List<ManualLoadEntry> rowsForMemo = mergeRows(activeRows, removedRowsByTeacher.getOrDefault(teacher, List.of()));
+            List<ManualLoadEntry> removedRows = removedRowsByTeacher.getOrDefault(teacher, List.of());
+            List<ManualLoadEntry> rowsForMemo = mergeRows(activeRows, removedRows);
             if (rowsForMemo.isEmpty()) {
                 continue;
             }
@@ -353,7 +354,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             boolean onlyAdditions = !added.isEmpty() && removed.isEmpty();
             LocalDate startDate = resolveStartDate(rowsForMemo, startByTeacher.getOrDefault(teacher, start), start, end);
             if (!removed.isEmpty()) {
-                LocalDate removalStart = resolveRemovalStartDate(rowsForMemo, removed, activeKeys, start, end);
+                LocalDate removalStart = resolveRemovalStartDate(removedRows, start, end);
                 if (removalStart != null) {
                     startDate = removalStart;
                 }
@@ -474,15 +475,10 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 .orElse(fallback);
     }
 
-    private LocalDate resolveRemovalStartDate(List<ManualLoadEntry> rows,
-                                              Set<String> removedKeys,
-                                              Set<String> activeKeys,
-                                              LocalDate periodStart,
-                                              LocalDate periodEnd) {
-        return rows.stream()
+    private LocalDate resolveRemovalStartDate(List<ManualLoadEntry> removedRows, LocalDate periodStart, LocalDate periodEnd) {
+        return removedRows.stream()
                 .filter(Objects::nonNull)
                 .filter(row -> row.getLoadToDate() != null)
-                .filter(row -> removedKeys.contains(keyOf(row)) && !activeKeys.contains(keyOf(row)))
                 .map(row -> row.getLoadToDate().plusDays(1))
                 .filter(date -> !date.isBefore(periodStart) && !date.isAfter(periodEnd))
                 .min(LocalDate::compareTo)
