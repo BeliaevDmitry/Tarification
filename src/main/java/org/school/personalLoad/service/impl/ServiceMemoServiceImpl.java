@@ -205,7 +205,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         .status(resolveStatus(aggregate, row))
                         .build())
                 .toList();
-        int total = rows.stream().map(ServiceMemoDtos.LoadRow::getLoad).filter(Objects::nonNull).mapToInt(Integer::intValue).sum();
+        int total = rows.stream()
+                .filter(row -> !"Снять".equalsIgnoreCase(String.valueOf(row.getStatus())))
+                .map(ServiceMemoDtos.LoadRow::getLoad)
+                .filter(Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .sum();
         return ServiceMemoDtos.PendingTeacher.builder()
                 .teacherKey(teacherKey)
                 .fioTeacher(aggregate.teacherDisplay())
@@ -272,6 +277,8 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     return from != null && to != null && !from.isAfter(end) && !to.isBefore(start);
                 })
                 .toList();
+        Map<String, List<ManualLoadEntry>> rowsByTransferKey = periodRows.stream()
+                .collect(Collectors.groupingBy(this::transferKeyOf));
 
         for (ManualLoadEntry row : periodRows) {
             String teacher = normalize(row.getFioTeacher());
@@ -282,7 +289,9 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             LocalDate from = row.getLoadFromDate();
             LocalDate to = row.getLoadToDate();
             if (from != null && from.isAfter(start) && !from.isAfter(end)) {
-                addedByTeacher.computeIfAbsent(teacher, k -> new LinkedHashSet<>()).add(key);
+                if (!hasSameTeacherPredecessor(row, rowsByTransferKey)) {
+                    addedByTeacher.computeIfAbsent(teacher, k -> new LinkedHashSet<>()).add(key);
+                }
                 startByTeacher.merge(teacher, from, (a, b) -> a.isBefore(b) ? a : b);
                 LocalDateTime rowCreatedAt = row.getCreatedAt() == null ? from.atStartOfDay() : row.getCreatedAt();
                 latestChangeByTeacher.merge(teacher, rowCreatedAt, (a, b) -> a.isAfter(b) ? a : b);
@@ -308,8 +317,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         candidateTeachers.addAll(removedByTeacher.keySet());
 
         for (String teacher : candidateTeachers) {
-            List<ManualLoadEntry> activeRows = new ArrayList<>(rowsByTeacher.getOrDefault(teacher, List.of()));
-            Set<String> activeKeys = activeRows.stream().map(this::keyOf).collect(Collectors.toSet());
+            List<ManualLoadEntry> teacherRows = new ArrayList<>(rowsByTeacher.getOrDefault(teacher, List.of()));
             TeacherDirectoryEntry directoryEntry = directory.get(teacher);
             Set<String> added = addedByTeacher.getOrDefault(teacher, Set.of());
             Set<String> removed = removedByTeacher.getOrDefault(teacher, Set.of());
@@ -331,18 +339,30 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             boolean dismissedTeacherWithoutNewLoad = directoryEntry != null
                     && directoryEntry.getDismissalDate() != null
                     && added.isEmpty()
-                    && activeRows.isEmpty();
+                    && teacherRows.isEmpty();
             if (dismissedTeacherWithoutNewLoad) {
                 continue;
             }
 
-            List<ManualLoadEntry> rowsForMemo = mergeRows(activeRows, removedRowsByTeacher.getOrDefault(teacher, List.of()));
+            List<ManualLoadEntry> removedRows = removedRowsByTeacher.getOrDefault(teacher, List.of());
+            boolean onlyAdditions = !added.isEmpty() && removed.isEmpty();
+            LocalDate startDate = resolveStartDate(mergeRows(teacherRows, removedRows), startByTeacher.getOrDefault(teacher, start), start, end);
+            if (!removed.isEmpty()) {
+                LocalDate removalStart = resolveRemovalStartDate(removedRows, start, end);
+                if (removalStart != null) {
+                    startDate = removalStart;
+                }
+            }
+            LocalDate effectiveStartDate = startDate;
+            List<ManualLoadEntry> activeRows = teacherRows.stream()
+                    .filter(row -> row.getLoadToDate() == null || !row.getLoadToDate().isBefore(effectiveStartDate))
+                    .filter(row -> !removed.contains(keyOf(row)))
+                    .toList();
+            Set<String> activeKeys = activeRows.stream().map(this::keyOf).collect(Collectors.toSet());
+            List<ManualLoadEntry> rowsForMemo = mergeRows(activeRows, removedRows);
             if (rowsForMemo.isEmpty()) {
                 continue;
             }
-
-            LocalDate startDate = resolveStartDate(rowsForMemo, startByTeacher.getOrDefault(teacher, start), start, end);
-            boolean onlyAdditions = !added.isEmpty() && removed.isEmpty();
             if (transferDonors.contains("вакансия")) {
                 boolean hadPreviousLoad = hadLoadBeforeByTeacher.getOrDefault(teacher, false);
                 if (hadPreviousLoad) {
@@ -384,22 +404,31 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     .toList();
             for (int i = 0; i < sorted.size(); i++) {
                 ManualLoadEntry current = sorted.get(i);
-                if (current.getLoadToDate() == null || !current.getLoadToDate().isBefore(academicEnd)) {
+                if (current.getLoadFromDate() == null || current.getLoadToDate() == null) {
                     continue;
                 }
                 for (int j = 0; j < sorted.size(); j++) {
                     if (i == j) continue;
                     ManualLoadEntry successor = sorted.get(j);
                     if (successor.getLoadFromDate() == null) continue;
-                    if (!successor.getLoadFromDate().isAfter(current.getLoadToDate())) continue;
                     if (normalize(current.getFioTeacher()) == null || normalize(successor.getFioTeacher()) == null) continue;
                     if (normalize(current.getFioTeacher()).equals(normalize(successor.getFioTeacher()))) continue;
+                    if (!successor.getLoadFromDate().isAfter(current.getLoadFromDate())) continue;
+
+                    boolean explicitTransfer = current.getLoadToDate().isBefore(academicEnd)
+                            && successor.getLoadFromDate().isEqual(current.getLoadToDate().plusDays(1));
+                    boolean implicitOverlapTransfer = !successor.getLoadFromDate().isAfter(current.getLoadToDate());
+                    if (!explicitTransfer && !implicitOverlapTransfer) {
+                        continue;
+                    }
 
                     String currentTeacher = normalize(current.getFioTeacher());
                     String key = keyOf(current);
                     removedByTeacher.computeIfAbsent(currentTeacher, k -> new LinkedHashSet<>()).add(key);
                     removedTeachersByKey.computeIfAbsent(key, k -> new LinkedHashSet<>()).add(currentTeacher);
-                    removedRowsByTeacher.computeIfAbsent(currentTeacher, k -> new ArrayList<>()).add(current);
+                    LocalDate removalToDate = successor.getLoadFromDate().minusDays(1);
+                    ManualLoadEntry removedRow = copyForRemoval(current, removalToDate);
+                    removedRowsByTeacher.computeIfAbsent(currentTeacher, k -> new ArrayList<>()).add(removedRow);
                     LocalDateTime changeAt = successor.getCreatedAt() == null
                             ? successor.getLoadFromDate().atStartOfDay()
                             : successor.getCreatedAt();
@@ -408,6 +437,39 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 }
             }
         });
+    }
+
+    private ManualLoadEntry copyForRemoval(ManualLoadEntry source, LocalDate removalToDate) {
+        ManualLoadEntry row = new ManualLoadEntry();
+        row.setFioTeacher(source.getFioTeacher());
+        row.setSubjectName(source.getSubjectName());
+        row.setClassName(source.getClassName());
+        row.setLoad(source.getLoad());
+        row.setLoadFromDate(source.getLoadFromDate());
+        row.setLoadToDate(removalToDate);
+        row.setGroupNameEducationalPlan(source.getGroupNameEducationalPlan());
+        row.setEducationLevel(source.getEducationLevel());
+        row.setStudyPeriod(source.getStudyPeriod());
+        return row;
+    }
+
+    private boolean hasSameTeacherPredecessor(ManualLoadEntry row, Map<String, List<ManualLoadEntry>> rowsByTransferKey) {
+        if (row == null || row.getLoadFromDate() == null) {
+            return false;
+        }
+        String teacher = normalize(row.getFioTeacher());
+        if (teacher == null) {
+            return false;
+        }
+        return rowsByTransferKey.getOrDefault(transferKeyOf(row), List.of()).stream()
+                .filter(candidate -> candidate.getId() == null || !candidate.getId().equals(row.getId()))
+                .filter(candidate -> candidate.getLoadToDate() != null)
+                .filter(candidate -> !candidate.getLoadToDate().isBefore(row.getLoadFromDate().minusDays(1)))
+                .filter(candidate -> !candidate.getLoadFromDate().isAfter(row.getLoadFromDate().minusDays(1)))
+                .map(ManualLoadEntry::getFioTeacher)
+                .map(this::normalize)
+                .filter(Objects::nonNull)
+                .anyMatch(teacher::equals);
     }
 
     private List<ManualLoadEntry> mergeRows(List<ManualLoadEntry> activeRows, List<ManualLoadEntry> removedRows) {
@@ -438,6 +500,16 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 .filter(date -> !date.isBefore(periodStart) && !date.isAfter(periodEnd))
                 .min(LocalDate::compareTo)
                 .orElse(fallback);
+    }
+
+    private LocalDate resolveRemovalStartDate(List<ManualLoadEntry> removedRows, LocalDate periodStart, LocalDate periodEnd) {
+        return removedRows.stream()
+                .filter(Objects::nonNull)
+                .filter(row -> row.getLoadToDate() != null)
+                .map(row -> row.getLoadToDate().plusDays(1))
+                .filter(date -> !date.isBefore(periodStart) && !date.isAfter(periodEnd))
+                .min(LocalDate::compareTo)
+                .orElse(null);
     }
 
     private ManualLoadEntry toSyntheticRow(TarifficationChanges ch) {
