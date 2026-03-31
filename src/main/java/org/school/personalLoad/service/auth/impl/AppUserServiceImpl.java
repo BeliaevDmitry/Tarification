@@ -173,6 +173,28 @@ public class AppUserServiceImpl implements AppUserService {
     }
 
     @Override
+    public void changeOwnPassword(Long userId, String currentPassword, String newPassword) {
+        AppUser user = appUserRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Пользователь не найден"));
+
+        String normalizedCurrentPassword = normalizeText(currentPassword, "Текущий пароль обязателен");
+        String normalizedNewPassword = normalizeText(newPassword, "Новый пароль обязателен");
+
+        if (!passwordEncoder.matches(normalizedCurrentPassword, user.getPasswordHash())) {
+            throw new IllegalArgumentException("Текущий пароль введён неверно");
+        }
+        if (normalizedNewPassword.length() < 8) {
+            throw new IllegalArgumentException("Новый пароль должен содержать минимум 8 символов");
+        }
+        if (normalizedCurrentPassword.equals(normalizedNewPassword)) {
+            throw new IllegalArgumentException("Новый пароль должен отличаться от текущего");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(normalizedNewPassword));
+        appUserRepository.save(user);
+    }
+
+    @Override
     public void ensureDefaultAdmin() {
         if (appUserRepository.count() > 0) {
             return;
