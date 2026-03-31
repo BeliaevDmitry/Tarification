@@ -115,6 +115,7 @@ function mountHeaderUser(currentUser) {
         controls.className = 'header-user-inline';
         controls.innerHTML = `
             <span class="header-user-badge"></span>
+            <button type="button" id="change-password-btn">Сменить пароль</button>
             <button type="button" id="logout-btn">Выйти</button>`;
         titleRow.appendChild(controls);
     }
@@ -123,6 +124,10 @@ function mountHeaderUser(currentUser) {
     if (badge) {
         badge.textContent = currentUser.fullName;
     }
+
+    document.getElementById('change-password-btn')?.addEventListener('click', () => {
+        openChangePasswordModal();
+    });
 
     document.getElementById('logout-btn')?.addEventListener('click', async () => {
         try {
@@ -135,6 +140,64 @@ function mountHeaderUser(currentUser) {
 
     updateStickyHeaderMetrics();
     window.addEventListener('resize', updateStickyHeaderMetrics, { passive: true });
+}
+
+function openChangePasswordModal() {
+    if (document.getElementById('change-password-modal')) return;
+    const overlay = document.createElement('div');
+    overlay.className = 'password-modal-overlay';
+    overlay.id = 'change-password-modal';
+    overlay.innerHTML = `
+        <div class="password-modal card">
+            <h3>Смена пароля</h3>
+            <label>Текущий пароль
+                <input type="password" id="current-password" autocomplete="current-password" />
+            </label>
+            <label>Новый пароль
+                <input type="password" id="new-password" autocomplete="new-password" />
+            </label>
+            <label>Подтверждение нового пароля
+                <input type="password" id="confirm-password" autocomplete="new-password" />
+            </label>
+            <p class="muted" id="change-password-message"></p>
+            <div class="password-modal-actions">
+                <button type="button" id="cancel-password-btn">Отмена</button>
+                <button type="button" id="save-password-btn">Сохранить</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const closeModal = () => overlay.remove();
+    overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) closeModal();
+    });
+    overlay.querySelector('#cancel-password-btn')?.addEventListener('click', closeModal);
+    overlay.querySelector('#save-password-btn')?.addEventListener('click', async () => {
+        const currentPassword = overlay.querySelector('#current-password')?.value || '';
+        const newPassword = overlay.querySelector('#new-password')?.value || '';
+        const confirmPassword = overlay.querySelector('#confirm-password')?.value || '';
+        const message = overlay.querySelector('#change-password-message');
+        if (!currentPassword || !newPassword || !confirmPassword) {
+            message.textContent = 'Заполните все поля.';
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            message.textContent = 'Подтверждение пароля не совпадает.';
+            return;
+        }
+        try {
+            await tarificationApi('/api/auth/change-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ currentPassword, newPassword })
+            });
+            message.textContent = 'Пароль успешно обновлён.';
+            setTimeout(closeModal, 500);
+        } catch (error) {
+            message.textContent = error.message || 'Не удалось сменить пароль.';
+        }
+    });
 }
 
 function enrichNavigation(currentUser) {

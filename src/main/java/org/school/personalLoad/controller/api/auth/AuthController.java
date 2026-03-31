@@ -1,8 +1,10 @@
 package org.school.personalLoad.controller.api.auth;
 
 import lombok.RequiredArgsConstructor;
+import org.school.personalLoad.auth.AuthSessionUtils;
 import org.school.personalLoad.auth.SessionUser;
 import org.school.personalLoad.controller.api.admin.AdminUserMapper;
+import org.school.personalLoad.dto.auth.ChangeOwnPasswordRequest;
 import org.school.personalLoad.dto.auth.LoginRequest;
 import org.school.personalLoad.dto.auth.UserResponse;
 import org.school.personalLoad.service.auth.AppUserService;
@@ -49,5 +51,12 @@ public class AuthController {
         SessionUser refreshedUser = appUserService.findSessionUser(user.getId());
         session.setAttribute(SessionUser.SESSION_KEY, refreshedUser);
         return ResponseEntity.ok(AdminUserMapper.fromSession(refreshedUser));
+    }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<Void> changePassword(@RequestBody ChangeOwnPasswordRequest request, HttpServletRequest httpServletRequest) {
+        SessionUser user = AuthSessionUtils.requiredUser(httpServletRequest);
+        appUserService.changeOwnPassword(user.getId(), request.getCurrentPassword(), request.getNewPassword());
+        return ResponseEntity.noContent().build();
     }
 }
