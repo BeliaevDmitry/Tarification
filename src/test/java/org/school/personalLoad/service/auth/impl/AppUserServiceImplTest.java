@@ -67,4 +67,44 @@ class AppUserServiceImplTest {
         assertEquals("Текущий пароль введён неверно", exception.getMessage());
         verify(appUserRepository, never()).save(any());
     }
+
+    @Test
+    void changeOwnPasswordThrowsWhenNewPasswordIsTooShort() {
+        AppUserServiceImpl service = new AppUserServiceImpl(
+                appUserRepository,
+                schoolBuildingRepository,
+                tabPermissionRepository,
+                passwordEncoder
+        );
+        AppUser user = new AppUser();
+        user.setId(9L);
+        user.setPasswordHash(passwordEncoder.encode("old-password"));
+        when(appUserRepository.findById(9L)).thenReturn(Optional.of(user));
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> service.changeOwnPassword(9L, "old-password", "short"));
+
+        assertEquals("Новый пароль должен содержать минимум 8 символов", exception.getMessage());
+        verify(appUserRepository, never()).save(any());
+    }
+
+    @Test
+    void changeOwnPasswordThrowsWhenNewPasswordMatchesCurrent() {
+        AppUserServiceImpl service = new AppUserServiceImpl(
+                appUserRepository,
+                schoolBuildingRepository,
+                tabPermissionRepository,
+                passwordEncoder
+        );
+        AppUser user = new AppUser();
+        user.setId(10L);
+        user.setPasswordHash(passwordEncoder.encode("same-password"));
+        when(appUserRepository.findById(10L)).thenReturn(Optional.of(user));
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> service.changeOwnPassword(10L, "same-password", "same-password"));
+
+        assertEquals("Новый пароль должен отличаться от текущего", exception.getMessage());
+        verify(appUserRepository, never()).save(any());
+    }
 }

@@ -177,20 +177,20 @@ public class AppUserServiceImpl implements AppUserService {
         AppUser user = appUserRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Пользователь не найден"));
 
-        String normalizedCurrentPassword = normalizeText(currentPassword, "Текущий пароль обязателен");
-        String normalizedNewPassword = normalizeText(newPassword, "Новый пароль обязателен");
+        String verifiedCurrentPassword = requirePassword(currentPassword, "Текущий пароль обязателен");
+        String verifiedNewPassword = requirePassword(newPassword, "Новый пароль обязателен");
 
-        if (!passwordEncoder.matches(normalizedCurrentPassword, user.getPasswordHash())) {
+        if (!passwordEncoder.matches(verifiedCurrentPassword, user.getPasswordHash())) {
             throw new IllegalArgumentException("Текущий пароль введён неверно");
         }
-        if (normalizedNewPassword.length() < 8) {
+        if (verifiedNewPassword.length() < 8) {
             throw new IllegalArgumentException("Новый пароль должен содержать минимум 8 символов");
         }
-        if (normalizedCurrentPassword.equals(normalizedNewPassword)) {
+        if (verifiedCurrentPassword.equals(verifiedNewPassword)) {
             throw new IllegalArgumentException("Новый пароль должен отличаться от текущего");
         }
 
-        user.setPasswordHash(passwordEncoder.encode(normalizedNewPassword));
+        user.setPasswordHash(passwordEncoder.encode(verifiedNewPassword));
         appUserRepository.save(user);
     }
 
@@ -372,6 +372,13 @@ public class AppUserServiceImpl implements AppUserService {
         }
         String normalized = value.trim();
         return normalized.isBlank() ? null : normalized;
+    }
+
+    private String requirePassword(String value, String errorMessage) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(errorMessage);
+        }
+        return value;
     }
 
 

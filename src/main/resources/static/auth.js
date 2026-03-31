@@ -114,19 +114,18 @@ function mountHeaderUser(currentUser) {
         controls = document.createElement('div');
         controls.className = 'header-user-inline';
         controls.innerHTML = `
-            <span class="header-user-badge"></span>
-            <button type="button" id="change-password-btn">Сменить пароль</button>
+            <button type="button" class="header-user-badge" id="profile-btn"></button>
             <button type="button" id="logout-btn">Выйти</button>`;
         titleRow.appendChild(controls);
     }
 
-    const badge = controls.querySelector('.header-user-badge');
+    const badge = controls.querySelector('#profile-btn');
     if (badge) {
         badge.textContent = currentUser.fullName;
     }
 
-    document.getElementById('change-password-btn')?.addEventListener('click', () => {
-        openChangePasswordModal();
+    document.getElementById('profile-btn')?.addEventListener('click', () => {
+        openProfileModal(currentUser);
     });
 
     document.getElementById('logout-btn')?.addEventListener('click', async () => {
@@ -142,14 +141,29 @@ function mountHeaderUser(currentUser) {
     window.addEventListener('resize', updateStickyHeaderMetrics, { passive: true });
 }
 
-function openChangePasswordModal() {
-    if (document.getElementById('change-password-modal')) return;
+function openProfileModal(currentUser) {
+    if (document.getElementById('profile-modal')) return;
     const overlay = document.createElement('div');
     overlay.className = 'password-modal-overlay';
-    overlay.id = 'change-password-modal';
+    overlay.id = 'profile-modal';
+    const buildingAccess = currentUser.loadEditAllBuildings
+        ? 'Все корпуса'
+        : (currentUser.loadEditableBuildingCodes || []).join(', ') || '—';
     overlay.innerHTML = `
-        <div class="password-modal card">
-            <h3>Смена пароля</h3>
+        <div class="password-modal card profile-modal-card">
+            <h3>Личный кабинет</h3>
+            <div class="profile-grid">
+                <div><span class="muted">ФИО:</span> ${currentUser.fullName || '—'}</div>
+                <div><span class="muted">Логин:</span> ${currentUser.username || '—'}</div>
+                <div><span class="muted">Роль:</span> ${currentUser.roleDisplayName || currentUser.role || '—'}</div>
+                <div><span class="muted">Email:</span> ${currentUser.email || '—'}</div>
+                <div><span class="muted">Доступ к просмотру:</span> ${currentUser.canView ? 'Да' : 'Нет'}</div>
+                <div><span class="muted">Доступ к редактированию:</span> ${currentUser.canEdit ? 'Да' : 'Нет'}</div>
+                <div><span class="muted">Корпус руководителя:</span> ${currentUser.managedBuildingCode || '—'}</div>
+                <div><span class="muted">Корпуса для нагрузки:</span> ${buildingAccess}</div>
+            </div>
+            <hr />
+            <h4 class="profile-subtitle">Смена пароля</h4>
             <label>Текущий пароль
                 <input type="password" id="current-password" autocomplete="current-password" />
             </label>
@@ -161,8 +175,8 @@ function openChangePasswordModal() {
             </label>
             <p class="muted" id="change-password-message"></p>
             <div class="password-modal-actions">
-                <button type="button" id="cancel-password-btn">Отмена</button>
-                <button type="button" id="save-password-btn">Сохранить</button>
+                <button type="button" id="close-profile-btn">Закрыть</button>
+                <button type="button" id="save-password-btn">Сменить пароль</button>
             </div>
         </div>
     `;
@@ -172,7 +186,7 @@ function openChangePasswordModal() {
     overlay.addEventListener('click', (event) => {
         if (event.target === overlay) closeModal();
     });
-    overlay.querySelector('#cancel-password-btn')?.addEventListener('click', closeModal);
+    overlay.querySelector('#close-profile-btn')?.addEventListener('click', closeModal);
     overlay.querySelector('#save-password-btn')?.addEventListener('click', async () => {
         const currentPassword = overlay.querySelector('#current-password')?.value || '';
         const newPassword = overlay.querySelector('#new-password')?.value || '';

@@ -55,6 +55,9 @@ public class AuthController {
 
     @PostMapping("/change-password")
     public ResponseEntity<Void> changePassword(@RequestBody ChangeOwnPasswordRequest request, HttpServletRequest httpServletRequest) {
+        if (request == null) {
+            throw new IllegalArgumentException("Тело запроса не передано");
+        }
         SessionUser user = AuthSessionUtils.requiredUser(httpServletRequest);
         appUserService.changeOwnPassword(user.getId(), request.getCurrentPassword(), request.getNewPassword());
         return ResponseEntity.noContent().build();
