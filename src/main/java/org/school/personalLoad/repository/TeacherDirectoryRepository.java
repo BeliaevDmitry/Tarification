@@ -9,4 +9,5 @@ import java.util.Optional;
 @Repository
 public interface TeacherDirectoryRepository extends JpaRepository<TeacherDirectoryEntry, Long> {
     Optional<TeacherDirectoryEntry> findByFioTeacher(String fioTeacher);
+    Optional<TeacherDirectoryEntry> findByFioTeacherIgnoreCase(String fioTeacher);
 }
