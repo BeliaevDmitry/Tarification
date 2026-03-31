@@ -24,9 +24,11 @@
 
     <section class="card">
         <h2>Импорт из Excel</h2>
+        <p class="muted">Можно скачать текущий список, заполнить дательный падеж и загрузить файл обратно.</p>
         <div class="row" data-requires-edit>
             <input id="teacher-file" type="file" accept=".xls,.xlsx">
             <button id="import-teachers-btn" type="button">Импортировать</button>
+            <button id="download-teachers-template-btn" type="button" data-allow-readonly="true">Скачать педагогов</button>
         </div>
         <h2>Ручное добавление</h2>
         <form id="teacher-create-form" class="row" data-requires-edit>
