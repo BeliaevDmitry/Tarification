@@ -587,14 +587,16 @@ dialog::backdrop {
     left: 0;
     background: #fff;
     z-index: 2;
+    min-width: 220px;
 }
 
 #building-load-table tbody td:nth-child(2),
 #building-load-table thead tr.load-main-head th:nth-child(2) {
     position: sticky;
-    left: 180px;
+    left: 220px;
     background: #fff;
     z-index: 2;
+    min-width: 260px;
 }
 
 #building-load-table thead th:first-child,
@@ -700,7 +702,7 @@ dialog::backdrop {
 }
 
 .load-page .sheet-wrap {
-    max-height: calc(100vh - 240px);
+    max-height: calc(100vh - 210px);
 }
 
 .load-page .sheet-table thead th {
@@ -718,6 +720,20 @@ dialog::backdrop {
     top: 38px;
     z-index: 7;
     background: #f1f5f9;
+}
+
+.load-page .compact-note {
+    margin: 6px 0 0;
+}
+
+.debug-panel summary {
+    cursor: pointer;
+    color: #475569;
+    font-size: 13px;
+}
+
+.debug-panel pre {
+    margin-top: 8px;
 }
 
 
