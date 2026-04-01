@@ -282,32 +282,55 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         for (Map.Entry<TeacherDateKey, AggregateBuilder> entry : builders.entrySet()) {
             TeacherDateKey key = entry.getKey();
             AggregateBuilder builder = entry.getValue();
-            List<ManualLoadEntry> activeRows = rowsByTeacher.getOrDefault(key.teacherKey(), List.of()).stream()
-                    .filter(row -> !row.getLoadFromDate().isAfter(key.changeDate()))
-                    .filter(row -> row.getLoadToDate() == null || !row.getLoadToDate().isBefore(key.changeDate()))
+
+            List<ManualLoadEntry> beforeRows = rowsByTeacher.getOrDefault(key.teacherKey(), List.of()).stream()
+                    .filter(row -> isActiveAt(row, key.changeDate().minusDays(1)))
                     .toList();
-            Set<String> activeKeys = activeRows.stream().map(this::keyOf).collect(Collectors.toSet());
-            List<ManualLoadEntry> rowsForMemo = mergeRows(activeRows, builder.removedRows, builder.addedRows);
-            if (rowsForMemo.isEmpty()) {
+            List<ManualLoadEntry> afterRows = rowsByTeacher.getOrDefault(key.teacherKey(), List.of()).stream()
+                    .filter(row -> isActiveAt(row, key.changeDate()))
+                    .toList();
+
+            Set<String> beforeKeys = beforeRows.stream().map(this::keyOf).collect(Collectors.toSet());
+            Set<String> afterKeys = afterRows.stream().map(this::keyOf).collect(Collectors.toSet());
+
+            Set<String> removedKeys = new LinkedHashSet<>(beforeKeys);
+            removedKeys.removeAll(afterKeys);
+            Set<String> addedKeys = new LinkedHashSet<>(afterKeys);
+            addedKeys.removeAll(beforeKeys);
+
+            List<ManualLoadEntry> removedRows = beforeRows.stream()
+                    .filter(row -> removedKeys.contains(keyOf(row)))
+                    .map(row -> copyForRemoval(row, key.changeDate().minusDays(1)))
+                    .toList();
+
+            List<ManualLoadEntry> rowsForMemo = mergeRows(afterRows, removedRows);
+            if (rowsForMemo.isEmpty() || (addedKeys.isEmpty() && removedKeys.isEmpty())) {
                 continue;
             }
 
             String displayName = firstNonBlank(builder.displayName,
                     displayByTeacher.getOrDefault(key.teacherKey(), rowsForMemo.get(0).getFioTeacher()));
-            boolean onlyAdditions = !builder.addedKeys.isEmpty() && builder.removedKeys.isEmpty();
+            boolean onlyAdditions = !addedKeys.isEmpty() && removedKeys.isEmpty();
             result.put(key, new TeacherChangeAggregate(
                     displayName,
                     key.changeDate(),
                     builder.latestChangeAt,
                     rowsForMemo,
-                    activeKeys,
-                    Set.copyOf(builder.addedKeys),
-                    Set.copyOf(builder.removedKeys),
+                    Set.copyOf(afterKeys),
+                    Set.copyOf(addedKeys),
+                    Set.copyOf(removedKeys),
                     onlyAdditions
             ));
         }
 
         return result;
+    }
+
+    private boolean isActiveAt(ManualLoadEntry row, LocalDate date) {
+        if (row == null || date == null || row.getLoadFromDate() == null || row.getLoadToDate() == null) {
+            return false;
+        }
+        return !row.getLoadFromDate().isAfter(date) && !row.getLoadToDate().isBefore(date);
     }
 
     private void appendTransferRemovalEvents(List<ManualLoadEntry> rows,

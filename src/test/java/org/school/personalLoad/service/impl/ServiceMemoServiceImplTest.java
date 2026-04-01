@@ -203,6 +203,47 @@ class ServiceMemoServiceImplTest {
                 .anyMatch(r -> "Геометрия".equals(r.getSubjectName()) && (r.getStatus() == null || r.getStatus().isBlank())));
     }
 
+
+    @Test
+    void laterTransferDoesNotCarryRemovedRowsFromEarlierMemo() {
+        String donor = "Иванов И.И.";
+
+        ManualLoadEntry algebra = row(donor, "Алгебра", "8-А", 6,
+                LocalDate.of(2025, 9, 1), LocalDate.of(2025, 10, 10));
+        ManualLoadEntry geometry = row(donor, "Геометрия", "8-А", 4,
+                LocalDate.of(2025, 9, 1), LocalDate.of(2025, 12, 10));
+        ManualLoadEntry physics = row(donor, "Физика", "8-А", 3,
+                LocalDate.of(2025, 9, 1), LocalDate.of(2026, 5, 31));
+
+        ManualLoadEntry recipient1 = row("Петров П.П.", "Алгебра", "8-А", 6,
+                LocalDate.of(2025, 10, 11), LocalDate.of(2026, 5, 31));
+        ManualLoadEntry recipient2 = row("Сидоров С.С.", "Геометрия", "8-А", 4,
+                LocalDate.of(2025, 12, 11), LocalDate.of(2026, 5, 31));
+
+        when(manualLoadEntryRepository.findAll()).thenReturn(List.of(algebra, geometry, physics, recipient1, recipient2));
+        when(changesDAO.findAll()).thenReturn(List.of());
+
+        List<ServiceMemoDtos.PendingTeacher> pending = service.findPendingTeachers();
+
+        ServiceMemoDtos.PendingTeacher donorFirst = pending.stream()
+                .filter(it -> donor.equals(it.getFioTeacher()))
+                .filter(it -> LocalDate.of(2025, 10, 11).equals(it.getStartDate()))
+                .findFirst()
+                .orElseThrow();
+        ServiceMemoDtos.PendingTeacher donorSecond = pending.stream()
+                .filter(it -> donor.equals(it.getFioTeacher()))
+                .filter(it -> LocalDate.of(2025, 12, 11).equals(it.getStartDate()))
+                .findFirst()
+                .orElseThrow();
+
+        assertTrue(donorFirst.getRows().stream().anyMatch(r -> "Алгебра".equals(r.getSubjectName()) && "Снять".equals(r.getStatus())));
+        assertFalse(donorFirst.getRows().stream().anyMatch(r -> "Геометрия".equals(r.getSubjectName()) && "Снять".equals(r.getStatus())));
+
+        assertTrue(donorSecond.getRows().stream().anyMatch(r -> "Геометрия".equals(r.getSubjectName()) && "Снять".equals(r.getStatus())));
+        assertFalse(donorSecond.getRows().stream().anyMatch(r -> "Алгебра".equals(r.getSubjectName()) && "Снять".equals(r.getStatus())));
+        assertTrue(donorSecond.getRows().stream().anyMatch(r -> "Физика".equals(r.getSubjectName()) && (r.getStatus() == null || r.getStatus().isBlank())));
+    }
+
     @Test
     void secondGenerationWithoutChangesDoesNotCreateDuplicateMemo() {
         String fio = "Иванова И.И.";
