@@ -152,6 +152,56 @@ class ServiceMemoServiceImplTest {
     }
 
     @Test
+    void doesNotCreateMemoForAcademicStartDate() {
+        String fio = "Иванова И.И.";
+        ManualLoadEntry row = row(fio, "Математика", "5-А", 10,
+                LocalDate.of(2025, 9, 1), LocalDate.of(2026, 5, 31));
+
+        when(manualLoadEntryRepository.findAll()).thenReturn(List.of(row));
+        when(changesDAO.findAll()).thenReturn(List.of(
+                change(fio, "Математика", "5-А", 9, TarifficationChanges.ChangeType.REMOVED,
+                        LocalDateTime.of(2025, 9, 1, 8, 0)),
+                change(fio, "Математика", "5-А", 10, TarifficationChanges.ChangeType.ADDED,
+                        LocalDateTime.of(2025, 9, 1, 8, 5))
+        ));
+
+        List<ServiceMemoDtos.PendingTeacher> pending = service.findPendingTeachers();
+
+        assertTrue(pending.isEmpty());
+    }
+
+    @Test
+    void unchangedRowsWithNewPeriodBordersAreNotDuplicatedAsAddedAndRemoved() {
+        String fio = "Архангельская Т.М.";
+        LocalDate changeDate = LocalDate.of(2025, 9, 16);
+
+        ManualLoadEntry beforeRemoved = row(fio, "Русский язык", "1-А", 5,
+                LocalDate.of(2025, 9, 1), LocalDate.of(2025, 9, 15));
+        ManualLoadEntry beforeUnchanged = row(fio, "Русский язык", "1-Е", 5,
+                LocalDate.of(2025, 9, 1), LocalDate.of(2025, 9, 15));
+        ManualLoadEntry afterUnchanged = row(fio, "Русский язык", "1-Е", 5,
+                LocalDate.of(2025, 9, 16), LocalDate.of(2026, 5, 31));
+
+        when(manualLoadEntryRepository.findAll()).thenReturn(List.of(beforeRemoved, beforeUnchanged, afterUnchanged));
+        when(changesDAO.findAll()).thenReturn(List.of());
+
+        ServiceMemoDtos.PendingTeacher memo = service.findPendingTeachers().stream()
+                .filter(it -> fio.equals(it.getFioTeacher()))
+                .filter(it -> changeDate.equals(it.getStartDate()))
+                .findFirst()
+                .orElseThrow();
+
+        long removedCount = memo.getRows().stream()
+                .filter(r -> "Снять".equals(r.getStatus()))
+                .count();
+        assertEquals(1, removedCount);
+        assertTrue(memo.getRows().stream()
+                .anyMatch(r -> "1-А".equals(r.getClassName()) && "Снять".equals(r.getStatus())));
+        assertFalse(memo.getRows().stream()
+                .anyMatch(r -> "1-Е".equals(r.getClassName()) && "Снять".equals(r.getStatus())));
+    }
+
+    @Test
     void transferFromOneTeacherToDifferentTeachersOnDifferentDatesCreatesSeparateLogicalMemos() {
         ManualLoadEntry donor = row("Иванов И.И.", "Алгебра", "8-А", 6,
                 LocalDate.of(2025, 9, 1), LocalDate.of(2025, 10, 10));
