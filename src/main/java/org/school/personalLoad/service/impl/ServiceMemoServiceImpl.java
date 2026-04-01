@@ -308,8 +308,14 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         changeDate,
                         latestChangeAt,
                         rowsForMemo,
+<<<<<<< codex/fix-n25aus
                         rowsKeySet(addedRows),
                         rowsKeySet(removedRows),
+=======
+                        Set.copyOf(afterKeys),
+                        Set.copyOf(addedKeys),
+                        Set.copyOf(removedKeys),
+>>>>>>> fix-password-and-sluzebka
                         newEmployment
                 ));
             }
