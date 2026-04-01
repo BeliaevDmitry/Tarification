@@ -154,7 +154,7 @@ function periodLabel(studyPeriod) {
 }
 
 function displaySubjectName(row) {
-    const suffix = rowStudyPeriod(row) !== "YEAR" ? ` · ${periodLabel(rowStudyPeriod(row))}` : "";
+    const suffix = classParallel(row.className) >= 10 ? "" : (rowStudyPeriod(row) !== "YEAR" ? ` · ${periodLabel(rowStudyPeriod(row))}` : "");
     return row.__groupIndex ? `${row.subjectName} ${row.__groupIndex}${suffix}` : `${row.subjectName}${suffix}`;
 }
 
@@ -163,7 +163,34 @@ function apiKeyOfRow(row) {
 }
 
 function subjectKeyOfRow(row) {
-    return `${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}|${rowStudyPeriod(row)}${groupSuffix(row)}`;
+    const periodToken = classParallel(row.className) >= 10 ? "YEAR" : rowStudyPeriod(row);
+    return `${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}|${periodToken}${groupSuffix(row)}`;
+}
+
+function highSchoolUnifiedSubject(row) {
+    return classParallel(row?.className) >= 10;
+}
+
+function defaultPeriodForRows(rows) {
+    const baseRow = rows?.[0] || {};
+    if (!highSchoolUnifiedSubject(baseRow)) {
+        const periodValue = rowStudyPeriod(baseRow);
+        return { studyPeriod: periodValue, ...defaultLoadPeriod(baseRow?.className, periodValue) };
+    }
+    const h1 = defaultLoadPeriod(baseRow?.className, "H1");
+    const h2 = defaultLoadPeriod(baseRow?.className, "H2");
+    return { studyPeriod: "YEAR", from: h1.from, to: h2.to };
+}
+
+function rowsToSyncForCurriculumRow(curriculumRow) {
+    if (!highSchoolUnifiedSubject(curriculumRow)) return [curriculumRow];
+    return expandCurriculumRows(rowsForSelectedBuilding()).filter((row) =>
+        row.className === curriculumRow.className
+        && row.subjectName === curriculumRow.subjectName
+        && (row.curriculumPart || "CORE") === (curriculumRow.curriculumPart || "CORE")
+        && row.educationLevel === curriculumRow.educationLevel
+        && groupSuffix(row) === groupSuffix(curriculumRow)
+    );
 }
 
 function rowId() {
@@ -586,11 +613,11 @@ function prefillFromManualLoad(referenceDate = referencePlanningDate()) {
             const teacherName = String(chosen.fioTeacher || "").trim();
             const exists = teacherRowsMap[subjectKey].some((row) => String(row.teacherName || "").trim().toLowerCase() === key);
             if (!exists) {
-                const period = defaultLoadPeriod(matched.className, rowStudyPeriod(matched));
+                const period = defaultPeriodForRows([matched]);
                 teacherRowsMap[subjectKey].push({
                     id: rowId(),
                     teacherName,
-                    studyPeriod: rowStudyPeriod(matched),
+                    studyPeriod: period.studyPeriod,
                     loadFromDate: chosen.loadFromDate || period.from,
                     loadToDate: chosen.loadToDate || period.to
                 });
@@ -625,16 +652,14 @@ function ensureTeacherRowsForBuilding() {
         teachersFromAssignments.forEach((teacherName) => {
             const exists = rowsMap[subjectKey].some((row) => row.teacherName.toLowerCase() === teacherName.toLowerCase());
             if (!exists) {
-                const periodValue = rowStudyPeriod(rows[0]);
-                const period = defaultLoadPeriod(rows[0]?.className, periodValue);
-                rowsMap[subjectKey].push({ id: rowId(), teacherName, studyPeriod: periodValue, loadFromDate: period.from, loadToDate: period.to });
+                const period = defaultPeriodForRows(rows);
+                rowsMap[subjectKey].push({ id: rowId(), teacherName, studyPeriod: period.studyPeriod, loadFromDate: period.from, loadToDate: period.to });
             }
         });
 
         if (!rowsMap[subjectKey].length) {
-            const periodValue = rowStudyPeriod(rows[0]);
-            const period = defaultLoadPeriod(rows[0]?.className, periodValue);
-            rowsMap[subjectKey].push({ id: rowId(), teacherName: "", studyPeriod: periodValue, loadFromDate: period.from, loadToDate: period.to });
+            const period = defaultPeriodForRows(rows);
+            rowsMap[subjectKey].push({ id: rowId(), teacherName: "", studyPeriod: period.studyPeriod, loadFromDate: period.from, loadToDate: period.to });
         }
     });
 }
@@ -688,25 +713,38 @@ function buildPresentationRows() {
                 curriculumPart: row.curriculumPart,
                 educationLevel: row.educationLevel,
                 groupIndex: row.__groupIndex,
-                rowsByClass: {}
+                rowsByClass: {},
+                rowsByClassAll: {}
             });
         }
-        subjectInfo.get(subjectKey).rowsByClass[row.className] = row;
+        const info = subjectInfo.get(subjectKey);
+        if (!info.rowsByClass[row.className]) {
+            info.rowsByClass[row.className] = row;
+        }
+        if (!info.rowsByClassAll[row.className]) {
+            info.rowsByClassAll[row.className] = [];
+        }
+        info.rowsByClassAll[row.className].push(row);
     });
 
     const result = [];
     subjectInfo.forEach((info) => {
-        const teacherRows = rowsMap[info.subjectKey] || [{ ...defaultLoadPeriod(Object.values(info.rowsByClass)[0]?.className, rowStudyPeriod(Object.values(info.rowsByClass)[0])), id: rowId(), teacherName: "", studyPeriod: rowStudyPeriod(Object.values(info.rowsByClass)[0]) }];
+        const defaults = defaultPeriodForRows(Object.values(info.rowsByClass));
+        const teacherRows = rowsMap[info.subjectKey] || [{ from: defaults.from, to: defaults.to, id: rowId(), teacherName: "", studyPeriod: defaults.studyPeriod }];
         teacherRows.forEach((teacherRow) => {
             let totalHours = 0;
             let classCount = 0;
 
-            Object.values(info.rowsByClass).forEach((row) => {
-                const assignedTeacher = String(assignments[apiKeyOfRow(row)] || "").trim();
-                if (assignedTeacher && assignedTeacher === String(teacherRow.teacherName || "").trim()) {
-                    totalHours += Number(row.plannedHours || 0);
-                    classCount += 1;
-                }
+            Object.values(info.rowsByClassAll).forEach((rowsInClass) => {
+                let classMatched = false;
+                rowsInClass.forEach((row) => {
+                    const assignedTeacher = String(assignments[apiKeyOfRow(row)] || "").trim();
+                    if (assignedTeacher && assignedTeacher === String(teacherRow.teacherName || "").trim()) {
+                        totalHours += Number(row.plannedHours || 0);
+                        classMatched = true;
+                    }
+                });
+                if (classMatched) classCount += 1;
             });
 
             result.push({
@@ -718,10 +756,11 @@ function buildPresentationRows() {
                 educationLevel: info.educationLevel,
                 groupIndex: info.groupIndex,
                 teacherName: teacherRow.teacherName || "",
-                studyPeriod: teacherRow.studyPeriod || rowStudyPeriod(Object.values(info.rowsByClass)[0]),
-                loadFromDate: teacherRow.loadFromDate || defaultLoadPeriod(Object.values(info.rowsByClass)[0]?.className, teacherRow.studyPeriod || rowStudyPeriod(Object.values(info.rowsByClass)[0])).from,
-                loadToDate: teacherRow.loadToDate || defaultLoadPeriod(Object.values(info.rowsByClass)[0]?.className, teacherRow.studyPeriod || rowStudyPeriod(Object.values(info.rowsByClass)[0])).to,
+                studyPeriod: teacherRow.studyPeriod || defaults.studyPeriod,
+                loadFromDate: teacherRow.loadFromDate || defaults.from,
+                loadToDate: teacherRow.loadToDate || defaults.to,
                 rowsByClass: info.rowsByClass,
+                rowsByClassAll: info.rowsByClassAll,
                 classCount,
                 subjectHours: totalHours,
                 buildingHours: teacherHoursInBuilding(selectedBuilding, teacherRow.teacherName || ""),
@@ -779,7 +818,7 @@ function rowHasPlannedLoadChange(row, referenceDate) {
     const rowTeacher = String(row.teacherName || "").trim().toLowerCase();
     if (!rowTeacher) return false;
 
-    return Object.values(row.rowsByClass || {}).some((curriculumRow) => {
+    return Object.values(row.rowsByClassAll || {}).flat().some((curriculumRow) => {
         const plan = plans[apiKeyOfRow(curriculumRow)];
         if (!plan || !plan.fromDate || plan.fromDate <= referenceDate) return false;
         const target = String(plan.targetTeacher || "").trim().toLowerCase();
@@ -798,10 +837,10 @@ function applySorting(presentationRows) {
         const classSortMatch = /^classHours:(.+)$/.exec(state.sortField || "");
         if (classSortMatch) {
             const className = classSortMatch[1];
-            const aRow = a.rowsByClass[className];
-            const bRow = b.rowsByClass[className];
-            const aVal = aRow ? Number(aRow.plannedHours || 0) : -1;
-            const bVal = bRow ? Number(bRow.plannedHours || 0) : -1;
+            const aRows = a.rowsByClassAll?.[className] || [];
+            const bRows = b.rowsByClassAll?.[className] || [];
+            const aVal = aRows.length ? aRows.reduce((sum, row) => sum + Number(row.plannedHours || 0), 0) : -1;
+            const bVal = bRows.length ? bRows.reduce((sum, row) => sum + Number(row.plannedHours || 0), 0) : -1;
             result = aVal - bVal;
         } else switch (state.sortField) {
             case "teacher":
@@ -866,7 +905,7 @@ function renderBuildingTabs() {
         button.className = `parallel-tab ${building.code === selectedBuilding ? "active" : ""}`;
         button.textContent = building.code === ARCHIVE_BUILDING_CODE
             ? `🗂 ${building.name}`
-            : `${building.code} — ${building.name}`;
+            : `${building.name}`;
         button.addEventListener("click", () => {
             selectedBuilding = building.code;
             state.forceResort = true;
@@ -883,9 +922,8 @@ function addTeacherRow(subjectKey, afterRowId = null) {
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
     if (!rowsMap[subjectKey]) rowsMap[subjectKey] = [];
     const rows = expandCurriculumRows(rowsForSelectedBuilding()).filter((row) => subjectKeyOfRow(row) === subjectKey);
-    const periodValue = rowStudyPeriod(rows[0] || {});
-    const period = defaultLoadPeriod(rows[0]?.className, periodValue);
-    const newRow = { id: rowId(), teacherName: "", studyPeriod: periodValue, loadFromDate: period.from, loadToDate: period.to };
+    const period = defaultPeriodForRows(rows);
+    const newRow = { id: rowId(), teacherName: "", studyPeriod: period.studyPeriod, loadFromDate: period.from, loadToDate: period.to };
     if (!afterRowId) {
         rowsMap[subjectKey].push(newRow);
     } else {
@@ -983,17 +1021,18 @@ function onClassCellClick(presentationRow, className) {
         return;
     }
 
-    const apiKey = apiKeyOfRow(curriculumRow);
-    const currentTeacher = String(assignments[apiKey] || "").trim();
+    const syncRows = rowsToSyncForCurriculumRow(curriculumRow);
+    const apiKeys = syncRows.map((row) => apiKeyOfRow(row));
+    const currentTeacher = String(assignments[apiKeys.find((key) => String(assignments[key] || "").trim())] || "").trim();
 
     if (!currentTeacher) {
-        assignments[apiKey] = targetTeacher;
+        apiKeys.forEach((key) => { assignments[key] = targetTeacher; });
         markDirty();
         renderTable();
         return;
     }
 
-    const period = defaultLoadPeriod(curriculumRow.className, presentationRow.studyPeriod || rowStudyPeriod(curriculumRow));
+    const period = defaultPeriodForRows([curriculumRow]);
     ui.periodForm.elements.subjectKey.value = presentationRow.subjectKey;
     ui.periodForm.elements.rowId.value = presentationRow.teacherRowId;
     ui.periodForm.elements.className.value = className;
@@ -1002,7 +1041,7 @@ function onClassCellClick(presentationRow, className) {
 
     if (currentTeacher !== targetTeacher) {
         state.takeoverContext = {
-            apiKey,
+            apiKeys,
             previousTeacher: currentTeacher,
             targetTeacher,
             subjectKey: presentationRow.subjectKey,
@@ -1030,13 +1069,14 @@ function collectLoadIssues(presentationRows, classes) {
             errorCount += 1;
         }
         classes.forEach((className) => {
-            const curriculumRow = row.rowsByClass[className];
-            if (!curriculumRow) return;
-            const assignedTeacher = String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)] || "").trim();
-            if (!assignedTeacher) {
-                unassignedHours += Number(curriculumRow.plannedHours || 0);
-                errorCount += 1;
-            }
+            const classRows = row.rowsByClassAll?.[className] || [];
+            classRows.forEach((curriculumRow) => {
+                const assignedTeacher = String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)] || "").trim();
+                if (!assignedTeacher) {
+                    unassignedHours += Number(curriculumRow.plannedHours || 0);
+                    errorCount += 1;
+                }
+            });
         });
     });
 
@@ -1124,15 +1164,19 @@ function renderTable() {
             ${classes.map((className) => {
                 const curriculumRow = row.rowsByClass[className];
                 if (!curriculumRow) return "<td></td>";
-                const assignedTeacher = assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)] || "";
+                const classRows = row.rowsByClassAll?.[className] || [curriculumRow];
+                const hoursTotal = classRows.reduce((sum, item) => sum + Number(item.plannedHours || 0), 0);
+                const assignedTeachers = classRows.map((item) => String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(item)] || "").trim()).filter(Boolean);
                 const rowTeacher = String(row.teacherName || "").trim();
-                const futurePlan = futurePlansForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)];
-                const isPlanned = Boolean(futurePlan && futurePlan.targetTeacher === rowTeacher && futurePlan.fromDate > referenceDate);
-                const isTransferOut = Boolean(futurePlan && futurePlan.previousTeacher === rowTeacher && futurePlan.fromDate > referenceDate);
-                const isActive = assignedTeacher === rowTeacher && assignedTeacher !== "";
-                const isMuted = rowTeacher !== "" && !isActive && !isPlanned && !isTransferOut;
-                const isUnassigned = !assignedTeacher && !isPlanned;
-                return `<td><button type="button" class="hour-pill ${isActive ? "active" : ""} ${isMuted ? "muted" : ""} ${isUnassigned ? "unassigned" : ""} ${isPlanned ? "planned" : ""} ${isTransferOut ? "transfer-out" : ""}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(curriculumRow.plannedHours)} ч</button></td>`;
+                const hasAnyAssigned = assignedTeachers.length > 0;
+                const hasRowTeacherAssigned = rowTeacher ? assignedTeachers.includes(rowTeacher) : false;
+                const plans = classRows.map((item) => futurePlansForBuilding(selectedBuilding)[apiKeyOfRow(item)]).filter(Boolean);
+                const isPlanned = plans.some((plan) => plan.targetTeacher === rowTeacher && plan.fromDate > referenceDate);
+                const isTransferOut = plans.some((plan) => plan.previousTeacher === rowTeacher && plan.fromDate > referenceDate);
+                const isActive = hasRowTeacherAssigned;
+                const isMuted = rowTeacher !== "" && !hasRowTeacherAssigned && !isPlanned && !isTransferOut;
+                const isUnassigned = !hasAnyAssigned && !isPlanned;
+                return `<td><button type="button" class="hour-pill ${isActive ? "active" : ""} ${isMuted ? "muted" : ""} ${isUnassigned ? "unassigned" : ""} ${isPlanned ? "planned" : ""} ${isTransferOut ? "transfer-out" : ""}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(hoursTotal)} ч</button></td>`;
             }).join("")}
         `;
 
@@ -1441,20 +1485,24 @@ function bindEvents() {
             }
 
             if (fromDate > referenceDate) {
-                plans[takeover.apiKey] = {
-                    targetTeacher: takeover.targetTeacher,
-                    previousTeacher: takeover.previousTeacher,
-                    fromDate,
-                    toDate,
-                    subjectKey: takeover.subjectKey,
-                    plannedHours: takeover.plannedHours,
-                    className: takeover.className,
-                    educationLevel: takeover.educationLevel,
-                    subjectName: takeover.curriculumRow.subjectName
-                };
+                takeover.apiKeys.forEach((apiKey) => {
+                    plans[apiKey] = {
+                        targetTeacher: takeover.targetTeacher,
+                        previousTeacher: takeover.previousTeacher,
+                        fromDate,
+                        toDate,
+                        subjectKey: takeover.subjectKey,
+                        plannedHours: takeover.plannedHours,
+                        className: takeover.className,
+                        educationLevel: takeover.educationLevel,
+                        subjectName: takeover.curriculumRow.subjectName
+                    };
+                });
             } else {
-                assignments[takeover.apiKey] = takeover.targetTeacher;
-                delete plans[takeover.apiKey];
+                takeover.apiKeys.forEach((apiKey) => {
+                    assignments[apiKey] = takeover.targetTeacher;
+                    delete plans[apiKey];
+                });
             }
 
             state.takeoverContext = null;
@@ -1479,7 +1527,9 @@ function bindEvents() {
         const curriculumRow = row?.rowsByClass?.[className];
         if (rowMeta && curriculumRow) {
             const assignments = assignmentsForBuilding(selectedBuilding);
-            assignments[apiKeyOfRow(curriculumRow)] = "";
+            rowsToSyncForCurriculumRow(curriculumRow).forEach((rowToClear) => {
+                assignments[apiKeyOfRow(rowToClear)] = "";
+            });
             markDirty();
         }
         ui.periodDialog.close();

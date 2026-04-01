@@ -10,7 +10,7 @@
 <main class="container">
     <header class="card">
         <h1>Нагрузка по корпусам</h1>
-        <p class="muted">Нагрузка отображается в формате таблицы: предмет, педагог, часы и распределение по классам. Для предметов с делением создаются отдельные строки групп.</p>
+        <p class="muted compact-note">Таблица оптимизирована для прокрутки: шапка и названия классов закреплены. Для 10–11 классов предметы показываются без деления на полугодия.</p>
         <nav class="page-nav">
             <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
             <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
@@ -57,7 +57,10 @@
             <strong>Ошибки: <span id="error-count">0</span></strong>
             <button id="next-error-btn" type="button">Перейти к ошибке</button>
         </div>
-        <pre id="load-result"></pre>
+        <details class="debug-panel">
+            <summary>Служебный вывод</summary>
+            <pre id="load-result"></pre>
+        </details>
     </section>
 
     <section class="card" data-requires-edit data-load-edit-area="true">
