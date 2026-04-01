@@ -18,6 +18,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -56,7 +59,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         return true;
                     }
                     String currentSignature = aggregateSignature(entry.getValue());
-                    return !Objects.equals(currentSignature, latest.getLoadSignature());
+                    return !signatureMatches(latest.getLoadSignature(), currentSignature);
                 })
                 .map(entry -> toPendingDto(selectionKey(entry.getKey()), entry.getValue()))
                 .sorted(Comparator.comparing(ServiceMemoDtos.PendingTeacher::getStartDate)
@@ -107,7 +110,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 TeacherChangeAggregate aggregate = entry.getValue();
                 String signature = aggregateSignature(aggregate);
                 ServiceMemo latest = latestMemoBySelection.get(selectionKey);
-                if (latest != null && Objects.equals(signature, latest.getLoadSignature())) {
+                if (latest != null && signatureMatches(latest.getLoadSignature(), signature)) {
                     continue;
                 }
 
@@ -195,70 +198,46 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         LocalDate start = academicStart();
         LocalDate end = academicEnd();
 
-        List<ManualLoadEntry> allRows = manualLoadEntryRepository.findAll();
-        List<ManualLoadEntry> periodRows = allRows.stream()
+        List<ManualLoadEntry> periodRows = manualLoadEntryRepository.findAll().stream()
                 .filter(row -> row.getLoadFromDate() != null && row.getLoadToDate() != null)
                 .filter(row -> !row.getLoadFromDate().isAfter(end) && !row.getLoadToDate().isBefore(start))
                 .toList();
+
         Map<String, List<ManualLoadEntry>> rowsByTeacher = periodRows.stream()
                 .filter(row -> normalize(row.getFioTeacher()) != null)
                 .collect(Collectors.groupingBy(row -> normalize(row.getFioTeacher())));
-        Map<String, List<ManualLoadEntry>> rowsByTransferKey = periodRows.stream()
-                .collect(Collectors.groupingBy(this::transferKeyOf));
 
-        Map<TeacherDateKey, AggregateBuilder> builders = new LinkedHashMap<>();
-        List<TarifficationChanges> changes = changesDAO.findAll().stream()
+        List<TarifficationChanges> periodChanges = changesDAO.findAll().stream()
                 .filter(ch -> ch.getChangeDate() != null)
+                .filter(ch -> normalize(ch.getFioTeacher()) != null)
                 .filter(ch -> {
                     LocalDate date = ch.getChangeDate().toLocalDate();
                     return !date.isBefore(start) && !date.isAfter(end);
                 })
                 .toList();
 
-        for (TarifficationChanges ch : changes) {
-            if (ch.getChangeType() != TarifficationChanges.ChangeType.ADDED
-                    && ch.getChangeType() != TarifficationChanges.ChangeType.REMOVED
-                    && ch.getChangeType() != TarifficationChanges.ChangeType.MODIFIED) {
+        Map<String, NavigableSet<LocalDate>> candidateDatesByTeacher = new HashMap<>();
+        rowsByTeacher.forEach((teacher, rows) -> {
+            NavigableSet<LocalDate> dates = candidateDatesByTeacher.computeIfAbsent(teacher, t -> new TreeSet<>());
+            for (ManualLoadEntry row : rows) {
+                if (!row.getLoadFromDate().isBefore(start) && !row.getLoadFromDate().isAfter(end)) {
+                    dates.add(row.getLoadFromDate());
+                }
+                LocalDate nextDay = row.getLoadToDate().plusDays(1);
+                if (!nextDay.isBefore(start) && !nextDay.isAfter(end)) {
+                    dates.add(nextDay);
+                }
+            }
+        });
+        for (TarifficationChanges change : periodChanges) {
+            String teacher = normalize(change.getFioTeacher());
+            if (teacher == null) {
                 continue;
             }
-            String teacherKey = normalize(ch.getFioTeacher());
-            if (teacherKey == null) {
-                continue;
-            }
-            LocalDate date = ch.getChangeDate().toLocalDate();
-            AggregateBuilder builder = builders.computeIfAbsent(new TeacherDateKey(teacherKey, date), k -> new AggregateBuilder());
-            builder.displayName = firstNonBlank(builder.displayName, ch.getFioTeacher());
-            builder.latestChangeAt = max(builder.latestChangeAt, ch.getChangeDate());
-            String rowKey = keyOf(ch);
-            if (ch.getChangeType() == TarifficationChanges.ChangeType.REMOVED) {
-                builder.removedKeys.add(rowKey);
-                builder.removedRows.add(toSyntheticRow(ch, date));
-            } else {
-                builder.addedKeys.add(rowKey);
-            }
+            candidateDatesByTeacher
+                    .computeIfAbsent(teacher, t -> new TreeSet<>())
+                    .add(change.getChangeDate().toLocalDate());
         }
-
-        for (ManualLoadEntry row : periodRows) {
-            if (row.getLoadFromDate() == null
-                    || !row.getLoadFromDate().isAfter(start)
-                    || row.getLoadFromDate().isAfter(end)) {
-                continue;
-            }
-            if (hasSameTeacherPredecessor(row, rowsByTransferKey)) {
-                continue;
-            }
-            String teacherKey = normalize(row.getFioTeacher());
-            if (teacherKey == null) {
-                continue;
-            }
-            AggregateBuilder builder = builders.computeIfAbsent(new TeacherDateKey(teacherKey, row.getLoadFromDate()), k -> new AggregateBuilder());
-            builder.displayName = firstNonBlank(builder.displayName, row.getFioTeacher());
-            builder.addedKeys.add(keyOf(row));
-            builder.latestChangeAt = max(builder.latestChangeAt,
-                    row.getCreatedAt() == null ? row.getLoadFromDate().atStartOfDay() : row.getCreatedAt());
-        }
-
-        appendTransferRemovalEvents(periodRows, end, builders);
 
         Map<String, String> displayByTeacher = new HashMap<>();
         teacherDirectoryRepository.findAll().forEach(row -> {
@@ -275,85 +254,69 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         });
 
         Map<TeacherDateKey, TeacherChangeAggregate> result = new LinkedHashMap<>();
-        for (Map.Entry<TeacherDateKey, AggregateBuilder> entry : builders.entrySet()) {
-            TeacherDateKey key = entry.getKey();
-            AggregateBuilder builder = entry.getValue();
-            List<ManualLoadEntry> activeRows = rowsByTeacher.getOrDefault(key.teacherKey(), List.of()).stream()
-                    .filter(row -> !row.getLoadFromDate().isAfter(key.changeDate()))
-                    .filter(row -> row.getLoadToDate() == null || !row.getLoadToDate().isBefore(key.changeDate()))
-                    .toList();
-            Set<String> activeKeys = activeRows.stream().map(this::keyOf).collect(Collectors.toSet());
-            List<ManualLoadEntry> rowsForMemo = mergeRows(activeRows, builder.removedRows);
-            if (rowsForMemo.isEmpty()) {
-                continue;
-            }
+        for (Map.Entry<String, NavigableSet<LocalDate>> entry : candidateDatesByTeacher.entrySet()) {
+            String teacherKey = entry.getKey();
+            List<ManualLoadEntry> teacherRows = rowsByTeacher.getOrDefault(teacherKey, List.of());
+            for (LocalDate changeDate : entry.getValue()) {
+                List<ManualLoadEntry> beforeRows = teacherRows.stream()
+                        .filter(row -> isActiveAt(row, changeDate.minusDays(1)))
+                        .toList();
+                List<ManualLoadEntry> afterRows = teacherRows.stream()
+                        .filter(row -> isActiveAt(row, changeDate))
+                        .toList();
 
-            String displayName = firstNonBlank(builder.displayName,
-                    displayByTeacher.getOrDefault(key.teacherKey(), rowsForMemo.get(0).getFioTeacher()));
-            boolean onlyAdditions = !builder.addedKeys.isEmpty() && builder.removedKeys.isEmpty();
-            result.put(key, new TeacherChangeAggregate(
-                    displayName,
-                    key.changeDate(),
-                    builder.latestChangeAt,
-                    rowsForMemo,
-                    activeKeys,
-                    Set.copyOf(builder.addedKeys),
-                    Set.copyOf(builder.removedKeys),
-                    onlyAdditions
-            ));
+                Set<String> beforeKeys = beforeRows.stream().map(this::keyOf).collect(Collectors.toSet());
+                Set<String> afterKeys = afterRows.stream().map(this::keyOf).collect(Collectors.toSet());
+
+                Set<String> removedKeys = new LinkedHashSet<>(beforeKeys);
+                removedKeys.removeAll(afterKeys);
+                Set<String> addedKeys = new LinkedHashSet<>(afterKeys);
+                addedKeys.removeAll(beforeKeys);
+                if (addedKeys.isEmpty() && removedKeys.isEmpty()) {
+                    continue;
+                }
+
+                List<ManualLoadEntry> removedRows = beforeRows.stream()
+                        .filter(row -> removedKeys.contains(keyOf(row)))
+                        .map(row -> copyForRemoval(row, changeDate.minusDays(1)))
+                        .toList();
+                List<ManualLoadEntry> addedRows = afterRows.stream()
+                        .filter(row -> addedKeys.contains(keyOf(row)))
+                        .toList();
+                List<ManualLoadEntry> rowsForMemo = mergeRowsForMemo(afterRows, removedRows, addedRows);
+                if (rowsForMemo.isEmpty()) {
+                    continue;
+                }
+
+                LocalDateTime latestChangeAt = periodChanges.stream()
+                        .filter(ch -> Objects.equals(teacherKey, normalize(ch.getFioTeacher())))
+                        .filter(ch -> Objects.equals(changeDate, ch.getChangeDate().toLocalDate()))
+                        .map(TarifficationChanges::getChangeDate)
+                        .max(LocalDateTime::compareTo)
+                        .orElse(changeDate.atStartOfDay());
+
+                String displayName = displayByTeacher.getOrDefault(teacherKey, rowsForMemo.get(0).getFioTeacher());
+                result.put(new TeacherDateKey(teacherKey, changeDate), new TeacherChangeAggregate(
+                        displayName,
+                        changeDate,
+                        latestChangeAt,
+                        rowsForMemo,
+                        Set.copyOf(afterKeys),
+                        Set.copyOf(addedKeys),
+                        Set.copyOf(removedKeys),
+                        !addedKeys.isEmpty() && removedKeys.isEmpty()
+                ));
+            }
         }
 
         return result;
     }
 
-    private void appendTransferRemovalEvents(List<ManualLoadEntry> rows,
-                                             LocalDate academicEnd,
-                                             Map<TeacherDateKey, AggregateBuilder> builders) {
-        Map<String, List<ManualLoadEntry>> byTransferKey = rows.stream()
-                .filter(row -> row.getLoadFromDate() != null && row.getLoadToDate() != null)
-                .collect(Collectors.groupingBy(this::transferKeyOf));
-
-        byTransferKey.values().forEach(groupRows -> {
-            List<ManualLoadEntry> sorted = groupRows.stream()
-                    .sorted(Comparator.comparing(ManualLoadEntry::getLoadFromDate))
-                    .toList();
-            for (int i = 0; i < sorted.size(); i++) {
-                ManualLoadEntry current = sorted.get(i);
-                if (current.getLoadFromDate() == null || current.getLoadToDate() == null) {
-                    continue;
-                }
-                for (int j = 0; j < sorted.size(); j++) {
-                    if (i == j) continue;
-                    ManualLoadEntry successor = sorted.get(j);
-                    if (successor.getLoadFromDate() == null) continue;
-                    if (normalize(current.getFioTeacher()) == null || normalize(successor.getFioTeacher()) == null) continue;
-                    if (normalize(current.getFioTeacher()).equals(normalize(successor.getFioTeacher()))) continue;
-                    if (!successor.getLoadFromDate().isAfter(current.getLoadFromDate())) continue;
-
-                    boolean explicitTransfer = current.getLoadToDate().isBefore(academicEnd)
-                            && successor.getLoadFromDate().isEqual(current.getLoadToDate().plusDays(1));
-                    boolean implicitOverlapTransfer = !successor.getLoadFromDate().isAfter(current.getLoadToDate());
-                    if (!explicitTransfer && !implicitOverlapTransfer) {
-                        continue;
-                    }
-
-                    LocalDate eventDate = successor.getLoadFromDate();
-                    String currentTeacher = normalize(current.getFioTeacher());
-                    if (currentTeacher == null || eventDate == null) {
-                        continue;
-                    }
-                    AggregateBuilder builder = builders.computeIfAbsent(new TeacherDateKey(currentTeacher, eventDate), k -> new AggregateBuilder());
-                    builder.displayName = firstNonBlank(builder.displayName, current.getFioTeacher());
-                    builder.removedKeys.add(keyOf(current));
-                    builder.removedRows.add(copyForRemoval(current, eventDate.minusDays(1)));
-                    LocalDateTime changeAt = successor.getCreatedAt() == null
-                            ? successor.getLoadFromDate().atStartOfDay()
-                            : successor.getCreatedAt();
-                    builder.latestChangeAt = max(builder.latestChangeAt, changeAt);
-                    break;
-                }
-            }
-        });
+    private boolean isActiveAt(ManualLoadEntry row, LocalDate date) {
+        if (row == null || date == null || row.getLoadFromDate() == null || row.getLoadToDate() == null) {
+            return false;
+        }
+        return !row.getLoadFromDate().isAfter(date) && !row.getLoadToDate().isBefore(date);
     }
 
     private Map<String, String> loadTeacherDativeByFio() {
@@ -433,46 +396,20 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         return row;
     }
 
-    private boolean hasSameTeacherPredecessor(ManualLoadEntry row, Map<String, List<ManualLoadEntry>> rowsByTransferKey) {
-        if (row == null || row.getLoadFromDate() == null) {
-            return false;
-        }
-        String teacher = normalize(row.getFioTeacher());
-        if (teacher == null) {
-            return false;
-        }
-        return rowsByTransferKey.getOrDefault(transferKeyOf(row), List.of()).stream()
-                .filter(candidate -> candidate.getId() == null || !candidate.getId().equals(row.getId()))
-                .filter(candidate -> candidate.getLoadToDate() != null)
-                .filter(candidate -> !candidate.getLoadToDate().isBefore(row.getLoadFromDate().minusDays(1)))
-                .filter(candidate -> !candidate.getLoadFromDate().isAfter(row.getLoadFromDate().minusDays(1)))
-                .map(ManualLoadEntry::getFioTeacher)
-                .map(this::normalize)
-                .filter(Objects::nonNull)
-                .anyMatch(teacher::equals);
-    }
-
-    private List<ManualLoadEntry> mergeRows(List<ManualLoadEntry> activeRows, List<ManualLoadEntry> removedRows) {
+    private List<ManualLoadEntry> mergeRowsForMemo(List<ManualLoadEntry> activeRows,
+                                                   List<ManualLoadEntry> removedRows,
+                                                   List<ManualLoadEntry> addedRows) {
         LinkedHashMap<String, ManualLoadEntry> merged = new LinkedHashMap<>();
-        for (ManualLoadEntry row : activeRows) {
+        for (ManualLoadEntry row : Optional.ofNullable(activeRows).orElseGet(List::of)) {
             merged.put(keyOf(row), row);
         }
-        for (ManualLoadEntry row : removedRows) {
+        for (ManualLoadEntry row : Optional.ofNullable(removedRows).orElseGet(List::of)) {
+            merged.putIfAbsent(keyOf(row), row);
+        }
+        for (ManualLoadEntry row : Optional.ofNullable(addedRows).orElseGet(List::of)) {
             merged.putIfAbsent(keyOf(row), row);
         }
         return new ArrayList<>(merged.values());
-    }
-
-    private ManualLoadEntry toSyntheticRow(TarifficationChanges ch, LocalDate changeDate) {
-        ManualLoadEntry row = new ManualLoadEntry();
-        row.setFioTeacher(ch.getFioTeacher());
-        row.setSubjectName(ch.getSubjectName());
-        row.setClassName(ch.getClassName());
-        row.setLoad(ch.getLoad() == null ? 0 : ch.getLoad());
-        if (changeDate != null) {
-            row.setLoadToDate(changeDate.minusDays(1));
-        }
-        return row;
     }
 
     private byte[] buildDocx(String fioTeacher,
@@ -607,7 +544,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private String keyOf(ManualLoadEntry row) {
-        return String.join("|", safe(row.getSubjectName()), safe(row.getClassName()), String.valueOf(row.getLoad()));
+        return String.join("|",
+                safe(row.getSubjectName()),
+                safe(row.getClassName()),
+                String.valueOf(row.getLoad()),
+                String.valueOf(row.getLoadFromDate() == null ? "" : row.getLoadFromDate()),
+                String.valueOf(row.getLoadToDate() == null ? "" : row.getLoadToDate()));
     }
 
     private String transferKeyOf(ManualLoadEntry row) {
@@ -643,7 +585,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         if (aggregate == null || aggregate.rows() == null) {
             return "";
         }
-        return aggregate.rows().stream()
+        String payload = aggregate.rows().stream()
                 .filter(Objects::nonNull)
                 .map(row -> String.join("|",
                         safe(row.getSubjectName()),
@@ -654,6 +596,34 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         resolveStatus(aggregate, row)))
                 .sorted()
                 .collect(Collectors.joining("||", aggregate.startDate() + "|" + aggregate.onlyAdditions() + "|", ""));
+        return signatureHash(payload);
+    }
+
+    private boolean signatureMatches(String persistedSignature, String currentSignature) {
+        if (Objects.equals(persistedSignature, currentSignature)) {
+            return true;
+        }
+        if (persistedSignature == null || persistedSignature.isBlank() || currentSignature == null || currentSignature.isBlank()) {
+            return false;
+        }
+        return Objects.equals(signatureHash(persistedSignature), currentSignature);
+    }
+
+    private String signatureHash(String payload) {
+        if (payload == null || payload.isBlank()) {
+            return "";
+        }
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(payload.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder("sha256:");
+            for (byte b : hash) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 недоступен", e);
+        }
     }
 
     private String selectionKey(TeacherDateKey key) {
@@ -677,14 +647,6 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private record TeacherDateKey(String teacherKey, LocalDate changeDate) {
-    }
-
-    private static class AggregateBuilder {
-        private String displayName;
-        private LocalDateTime latestChangeAt;
-        private final Set<String> addedKeys = new LinkedHashSet<>();
-        private final Set<String> removedKeys = new LinkedHashSet<>();
-        private final List<ManualLoadEntry> removedRows = new ArrayList<>();
     }
 
     private record TeacherChangeAggregate(
