@@ -341,8 +341,6 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         rowsForMemo,
                         rowsKeySet(addedRows),
                         rowsKeySet(removedRows),
-                        rowsKeySet(addedRows),
-                        rowsKeySet(removedRows),
                         newEmployment
                 ));
             }
@@ -783,5 +781,17 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             Set<String> removedRowKeys,
             boolean onlyAdditions
     ) {
+        private TeacherChangeAggregate(
+                String teacherDisplay,
+                LocalDate startDate,
+                LocalDateTime latestChangeAt,
+                List<ManualLoadEntry> rows,
+                Set<String> activeKeys,
+                Set<String> addedKeys,
+                Set<String> removedKeys,
+                boolean onlyAdditions
+        ) {
+            this(teacherDisplay, startDate, latestChangeAt, rows, addedKeys, removedKeys, onlyAdditions);
+        }
     }
 }
