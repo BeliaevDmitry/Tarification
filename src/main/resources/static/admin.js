@@ -161,7 +161,7 @@ function renderLoadBuildings(target, selectedCodes = [], prefix = 'create') {
     target.innerHTML = buildings.map((building) => `
         <label class="building-checkbox-pill">
             <input type="checkbox" data-load-building="${esc(building.code)}" data-prefix="${prefix}" ${selected.has(building.code) ? 'checked' : ''}>
-            <span>${esc(building.code)} — ${esc(building.name)}</span>
+            <span>${esc(building.name)}</span>
         </label>
     `).join('');
     target.querySelectorAll('[data-load-building]').forEach((checkbox) => {

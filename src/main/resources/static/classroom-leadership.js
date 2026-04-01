@@ -36,7 +36,7 @@ function renderTabs() {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = `parallel-tab ${b.code === selectedBuilding ? "active" : ""}`;
-        btn.textContent = `${b.code} — ${b.name}`;
+        btn.textContent = `${b.name}`;
         btn.addEventListener("click", () => { selectedBuilding = b.code; renderTabs(); renderTable(); });
         ui.tabs.appendChild(btn);
     });

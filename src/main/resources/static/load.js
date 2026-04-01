@@ -905,7 +905,7 @@ function renderBuildingTabs() {
         button.className = `parallel-tab ${building.code === selectedBuilding ? "active" : ""}`;
         button.textContent = building.code === ARCHIVE_BUILDING_CODE
             ? `🗂 ${building.name}`
-            : `${building.code} — ${building.name}`;
+            : `${building.name}`;
         button.addEventListener("click", () => {
             selectedBuilding = building.code;
             state.forceResort = true;
