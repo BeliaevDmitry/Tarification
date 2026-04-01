@@ -7,6 +7,8 @@ import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.service.CurriculumImportService;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -34,6 +36,15 @@ public class CurriculumPlanController {
     @PostMapping("/import")
     public ResponseEntity<CurriculumImportResult> importCurriculum(@RequestParam("file") MultipartFile file) {
         return ResponseEntity.ok(curriculumImportService.importFile(file));
+    }
+
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> exportCurriculum() throws Exception {
+        byte[] body = curriculumImportService.exportEditableWorkbook();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"curriculum-editable.xlsx\"")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(body);
     }
 
     @GetMapping

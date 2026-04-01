@@ -16,5 +16,6 @@ public interface AppUserService {
     AppUser createUser(CreateUserRequest request);
     AppUser updateUser(Long userId, UpdateUserRequest request);
     String resetPassword(Long userId);
+    void changeOwnPassword(Long userId, String currentPassword, String newPassword);
     void ensureDefaultAdmin();
 }

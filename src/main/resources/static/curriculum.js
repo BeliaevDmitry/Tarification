@@ -25,6 +25,7 @@ const ui = {
     formStudyPeriod: document.getElementById("subject-study-period"),
     importFile: document.getElementById("curriculum-import-file"),
     importBtn: document.getElementById("import-curriculum-btn"),
+    exportBtn: document.getElementById("export-curriculum-btn"),
     subgroupRequired: document.getElementById("subgroup-required"),
     subgroupConfig: document.getElementById("subgroup-config"),
     summaryHead: document.getElementById("summary-head"),
@@ -361,6 +362,28 @@ async function importCurriculumFile() {
     }
 }
 
+async function exportCurriculumFile() {
+    try {
+        const response = await fetch("/api/curriculum/export");
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || `HTTP ${response.status}`);
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "curriculum-editable.xlsx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        print({ status: "exported", file: "curriculum-editable.xlsx" });
+    } catch (error) {
+        print({ error: error.message });
+    }
+}
+
 async function reload() {
     const [curriculum, classRows, buildingRows, subjectRows] = await Promise.all([
         api("/api/curriculum"),
@@ -417,6 +440,7 @@ function bindEvents() {
 
     ui.refreshBtn.addEventListener("click", () => reload().catch((error) => print({ error: error.message })));
     ui.importBtn?.addEventListener("click", importCurriculumFile);
+    ui.exportBtn?.addEventListener("click", exportCurriculumFile);
     ui.subgroupRequired.addEventListener("change", () => {
         toggleSubgroupConfig(ui.subgroupConfig, ui.subgroupRequired.value);
         if (ui.subgroupRequired.value === "true") {
