@@ -3,6 +3,7 @@ const jsonHeaders = { "Content-Type": "application/json" };
 const ui = {
     fileInput: document.getElementById("teacher-file"),
     importBtn: document.getElementById("import-teachers-btn"),
+    downloadBtn: document.getElementById("download-teachers-template-btn"),
     createForm: document.getElementById("teacher-create-form"),
     fioInput: document.getElementById("teacher-fio"),
     refreshBtn: document.getElementById("refresh-teachers-btn"),
@@ -164,6 +165,10 @@ async function importTeachers() {
     }
 }
 
+function downloadTeachers() {
+    window.location.href = '/api/teachers/export';
+}
+
 async function createTeacher(e) {
     e.preventDefault();
     const fioTeacher = (ui.fioInput.value || '').trim();
@@ -195,6 +200,7 @@ async function clearTeachers() {
 
 function bindEvents() {
     ui.importBtn.addEventListener('click', importTeachers);
+    ui.downloadBtn.addEventListener('click', downloadTeachers);
     ui.createForm.addEventListener('submit', createTeacher);
     ui.refreshBtn.addEventListener('click', () => loadTeachers().catch((e) => print({ error: e.message })));
     ui.clearBtn.addEventListener('click', clearTeachers);

@@ -58,6 +58,7 @@ class ServiceMemoServiceImplTest {
 
         AtomicLong seq = new AtomicLong(1);
         when(serviceMemoRepository.save(any(ServiceMemo.class))).thenAnswer(invocation -> {
+
             ServiceMemo memo = invocation.getArgument(0);
             if (memo.getId() == null) {
                 memo.setId(seq.getAndIncrement());
