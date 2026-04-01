@@ -220,7 +220,9 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         rowsByTeacher.forEach((teacher, rows) -> {
             NavigableSet<LocalDate> dates = candidateDatesByTeacher.computeIfAbsent(teacher, t -> new TreeSet<>());
             for (ManualLoadEntry row : rows) {
-                if (!row.getLoadFromDate().isBefore(start) && !row.getLoadFromDate().isAfter(end)) {
+                if (!row.getLoadFromDate().isBefore(start)
+                        && !row.getLoadFromDate().isAfter(end)
+                        && !row.getLoadFromDate().isEqual(start)) {
                     dates.add(row.getLoadFromDate());
                 }
                 LocalDate nextDay = row.getLoadToDate().plusDays(1);
@@ -237,6 +239,9 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             candidateDatesByTeacher
                     .computeIfAbsent(teacher, t -> new TreeSet<>())
                     .add(change.getChangeDate().toLocalDate());
+        }
+        for (NavigableSet<LocalDate> dates : candidateDatesByTeacher.values()) {
+            dates.remove(start);
         }
 
         Map<String, String> displayByTeacher = new HashMap<>();
@@ -544,12 +549,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private String keyOf(ManualLoadEntry row) {
-        return String.join("|",
-                safe(row.getSubjectName()),
-                safe(row.getClassName()),
-                String.valueOf(row.getLoad()),
-                String.valueOf(row.getLoadFromDate() == null ? "" : row.getLoadFromDate()),
-                String.valueOf(row.getLoadToDate() == null ? "" : row.getLoadToDate()));
+        return String.join("|", safe(row.getSubjectName()), safe(row.getClassName()), String.valueOf(row.getLoad()));
     }
 
     private String transferKeyOf(ManualLoadEntry row) {
