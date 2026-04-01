@@ -198,26 +198,37 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         LocalDate start = academicStart();
         LocalDate end = academicEnd();
 
-        List<ManualLoadEntry> allRows = manualLoadEntryRepository.findAll();
-        List<ManualLoadEntry> periodRows = allRows.stream()
+        List<ManualLoadEntry> periodRows = manualLoadEntryRepository.findAll().stream()
                 .filter(row -> row.getLoadFromDate() != null && row.getLoadToDate() != null)
                 .filter(row -> !row.getLoadFromDate().isAfter(end) && !row.getLoadToDate().isBefore(start))
                 .toList();
+
         Map<String, List<ManualLoadEntry>> rowsByTeacher = periodRows.stream()
                 .filter(row -> normalize(row.getFioTeacher()) != null)
                 .collect(Collectors.groupingBy(row -> normalize(row.getFioTeacher())));
-        Map<String, List<ManualLoadEntry>> rowsByTransferKey = periodRows.stream()
-                .collect(Collectors.groupingBy(this::transferKeyOf));
 
-        Map<TeacherDateKey, AggregateBuilder> builders = new LinkedHashMap<>();
-        List<TarifficationChanges> changes = changesDAO.findAll().stream()
+        List<TarifficationChanges> periodChanges = changesDAO.findAll().stream()
                 .filter(ch -> ch.getChangeDate() != null)
+                .filter(ch -> normalize(ch.getFioTeacher()) != null)
                 .filter(ch -> {
                     LocalDate date = ch.getChangeDate().toLocalDate();
                     return !date.isBefore(start) && !date.isAfter(end);
                 })
                 .toList();
 
+<<<<<<< codex/fix-build-failure-due-to-test-errors-rqnfcv
+        Map<String, NavigableSet<LocalDate>> candidateDatesByTeacher = new HashMap<>();
+        rowsByTeacher.forEach((teacher, rows) -> {
+            NavigableSet<LocalDate> dates = candidateDatesByTeacher.computeIfAbsent(teacher, t -> new TreeSet<>());
+            for (ManualLoadEntry row : rows) {
+                if (!row.getLoadFromDate().isBefore(start) && !row.getLoadFromDate().isAfter(end)) {
+                    dates.add(row.getLoadFromDate());
+                }
+                LocalDate nextDay = row.getLoadToDate().plusDays(1);
+                if (!nextDay.isBefore(start) && !nextDay.isAfter(end)) {
+                    dates.add(nextDay);
+                }
+=======
         for (TarifficationChanges ch : changes) {
             if (ch.getChangeType() != TarifficationChanges.ChangeType.ADDED
                     && ch.getChangeType() != TarifficationChanges.ChangeType.REMOVED
@@ -250,19 +261,18 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             }
             if (hasSameTeacherPredecessor(row, rowsByTransferKey)) {
                 continue;
+>>>>>>> fix-password-and-sluzebka
             }
-            String teacherKey = normalize(row.getFioTeacher());
-            if (teacherKey == null) {
+        });
+        for (TarifficationChanges change : periodChanges) {
+            String teacher = normalize(change.getFioTeacher());
+            if (teacher == null) {
                 continue;
             }
-            AggregateBuilder builder = builders.computeIfAbsent(new TeacherDateKey(teacherKey, row.getLoadFromDate()), k -> new AggregateBuilder());
-            builder.displayName = firstNonBlank(builder.displayName, row.getFioTeacher());
-            builder.addedKeys.add(keyOf(row));
-            builder.latestChangeAt = max(builder.latestChangeAt,
-                    row.getCreatedAt() == null ? row.getLoadFromDate().atStartOfDay() : row.getCreatedAt());
+            candidateDatesByTeacher
+                    .computeIfAbsent(teacher, t -> new TreeSet<>())
+                    .add(change.getChangeDate().toLocalDate());
         }
-
-        appendTransferRemovalEvents(periodRows, end, builders);
 
         Map<String, String> displayByTeacher = new HashMap<>();
         teacherDirectoryRepository.findAll().forEach(row -> {
@@ -279,6 +289,61 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         });
 
         Map<TeacherDateKey, TeacherChangeAggregate> result = new LinkedHashMap<>();
+<<<<<<< codex/fix-build-failure-due-to-test-errors-rqnfcv
+        for (Map.Entry<String, NavigableSet<LocalDate>> entry : candidateDatesByTeacher.entrySet()) {
+            String teacherKey = entry.getKey();
+            List<ManualLoadEntry> teacherRows = rowsByTeacher.getOrDefault(teacherKey, List.of());
+            for (LocalDate changeDate : entry.getValue()) {
+                List<ManualLoadEntry> beforeRows = teacherRows.stream()
+                        .filter(row -> isActiveAt(row, changeDate.minusDays(1)))
+                        .toList();
+                List<ManualLoadEntry> afterRows = teacherRows.stream()
+                        .filter(row -> isActiveAt(row, changeDate))
+                        .toList();
+
+                Set<String> beforeKeys = beforeRows.stream().map(this::keyOf).collect(Collectors.toSet());
+                Set<String> afterKeys = afterRows.stream().map(this::keyOf).collect(Collectors.toSet());
+
+                Set<String> removedKeys = new LinkedHashSet<>(beforeKeys);
+                removedKeys.removeAll(afterKeys);
+                Set<String> addedKeys = new LinkedHashSet<>(afterKeys);
+                addedKeys.removeAll(beforeKeys);
+                if (addedKeys.isEmpty() && removedKeys.isEmpty()) {
+                    continue;
+                }
+
+                List<ManualLoadEntry> removedRows = beforeRows.stream()
+                        .filter(row -> removedKeys.contains(keyOf(row)))
+                        .map(row -> copyForRemoval(row, changeDate.minusDays(1)))
+                        .toList();
+                List<ManualLoadEntry> addedRows = afterRows.stream()
+                        .filter(row -> addedKeys.contains(keyOf(row)))
+                        .toList();
+                List<ManualLoadEntry> rowsForMemo = mergeRowsForMemo(afterRows, removedRows, addedRows);
+                if (rowsForMemo.isEmpty()) {
+                    continue;
+                }
+
+                LocalDateTime latestChangeAt = periodChanges.stream()
+                        .filter(ch -> Objects.equals(teacherKey, normalize(ch.getFioTeacher())))
+                        .filter(ch -> Objects.equals(changeDate, ch.getChangeDate().toLocalDate()))
+                        .map(TarifficationChanges::getChangeDate)
+                        .max(LocalDateTime::compareTo)
+                        .orElse(changeDate.atStartOfDay());
+
+                String displayName = displayByTeacher.getOrDefault(teacherKey, rowsForMemo.get(0).getFioTeacher());
+                result.put(new TeacherDateKey(teacherKey, changeDate), new TeacherChangeAggregate(
+                        displayName,
+                        changeDate,
+                        latestChangeAt,
+                        rowsForMemo,
+                        Set.copyOf(afterKeys),
+                        Set.copyOf(addedKeys),
+                        Set.copyOf(removedKeys),
+                        !addedKeys.isEmpty() && removedKeys.isEmpty()
+                ));
+            }
+=======
         for (Map.Entry<TeacherDateKey, AggregateBuilder> entry : builders.entrySet()) {
             TeacherDateKey key = entry.getKey();
             AggregateBuilder builder = entry.getValue();
@@ -324,6 +389,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     Set.copyOf(removedKeys),
                     onlyAdditions
             ));
+>>>>>>> fix-password-and-sluzebka
         }
 
         return result;
@@ -334,6 +400,8 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             return false;
         }
         return !row.getLoadFromDate().isAfter(date) && !row.getLoadToDate().isBefore(date);
+<<<<<<< codex/fix-build-failure-due-to-test-errors-rqnfcv
+=======
     }
 
     private void appendTransferRemovalEvents(List<ManualLoadEntry> rows,
@@ -384,6 +452,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 }
             }
         });
+>>>>>>> fix-password-and-sluzebka
     }
 
     private Map<String, String> loadTeacherDativeByFio() {
@@ -463,6 +532,8 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         return row;
     }
 
+<<<<<<< codex/fix-build-failure-due-to-test-errors-rqnfcv
+=======
     private boolean hasSameTeacherPredecessor(ManualLoadEntry row, Map<String, List<ManualLoadEntry>> rowsByTransferKey) {
         if (row == null || row.getLoadFromDate() == null) {
             return false;
@@ -482,6 +553,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 .anyMatch(teacher::equals);
     }
 
+>>>>>>> fix-password-and-sluzebka
     private List<ManualLoadEntry> mergeRowsForMemo(List<ManualLoadEntry> activeRows,
                                                    List<ManualLoadEntry> removedRows,
                                                    List<ManualLoadEntry> addedRows) {
@@ -490,27 +562,21 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             merged.put(keyOf(row), row);
         }
         for (ManualLoadEntry row : Optional.ofNullable(removedRows).orElseGet(List::of)) {
+<<<<<<< codex/fix-build-failure-due-to-test-errors-rqnfcv
+=======
             merged.putIfAbsent(keyOf(row), row);
         }
         for (ManualLoadEntry row : Optional.ofNullable(addedRows).orElseGet(List::of)) {
             merged.putIfAbsent(keyOf(row), row);
         }
         for (ManualLoadEntry row : addedRows) {
+>>>>>>> fix-password-and-sluzebka
+            merged.putIfAbsent(keyOf(row), row);
+        }
+        for (ManualLoadEntry row : Optional.ofNullable(addedRows).orElseGet(List::of)) {
             merged.putIfAbsent(keyOf(row), row);
         }
         return new ArrayList<>(merged.values());
-    }
-
-    private ManualLoadEntry toSyntheticRow(TarifficationChanges ch, LocalDate changeDate) {
-        ManualLoadEntry row = new ManualLoadEntry();
-        row.setFioTeacher(ch.getFioTeacher());
-        row.setSubjectName(ch.getSubjectName());
-        row.setClassName(ch.getClassName());
-        row.setLoad(ch.getLoad() == null ? 0 : ch.getLoad());
-        if (changeDate != null) {
-            row.setLoadToDate(changeDate.minusDays(1));
-        }
-        return row;
     }
 
     private ManualLoadEntry toSyntheticAddedRow(TarifficationChanges ch, LocalDate changeDate) {
@@ -761,6 +827,8 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     private record TeacherDateKey(String teacherKey, LocalDate changeDate) {
     }
 
+<<<<<<< codex/fix-build-failure-due-to-test-errors-rqnfcv
+=======
     private static class AggregateBuilder {
         private String displayName;
         private LocalDateTime latestChangeAt;
@@ -770,6 +838,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         private final List<ManualLoadEntry> addedRows = new ArrayList<>();
     }
 
+>>>>>>> fix-password-and-sluzebka
     private record TeacherChangeAggregate(
             String teacherDisplay,
             LocalDate startDate,
