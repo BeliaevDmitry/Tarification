@@ -341,6 +341,8 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         rowsForMemo,
                         rowsKeySet(addedRows),
                         rowsKeySet(removedRows),
+                        rowsKeySet(addedRows),
+                        rowsKeySet(removedRows),
                         newEmployment
                 ));
             }
