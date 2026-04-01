@@ -18,6 +18,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -56,7 +59,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         return true;
                     }
                     String currentSignature = aggregateSignature(entry.getValue());
-                    return !Objects.equals(currentSignature, latest.getLoadSignature());
+                    return !signatureMatches(latest.getLoadSignature(), currentSignature);
                 })
                 .map(entry -> toPendingDto(selectionKey(entry.getKey()), entry.getValue()))
                 .sorted(Comparator.comparing(ServiceMemoDtos.PendingTeacher::getStartDate)
@@ -107,7 +110,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 TeacherChangeAggregate aggregate = entry.getValue();
                 String signature = aggregateSignature(aggregate);
                 ServiceMemo latest = latestMemoBySelection.get(selectionKey);
-                if (latest != null && Objects.equals(signature, latest.getLoadSignature())) {
+                if (latest != null && signatureMatches(latest.getLoadSignature(), signature)) {
                     continue;
                 }
 
@@ -278,32 +281,55 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         for (Map.Entry<TeacherDateKey, AggregateBuilder> entry : builders.entrySet()) {
             TeacherDateKey key = entry.getKey();
             AggregateBuilder builder = entry.getValue();
-            List<ManualLoadEntry> activeRows = rowsByTeacher.getOrDefault(key.teacherKey(), List.of()).stream()
-                    .filter(row -> !row.getLoadFromDate().isAfter(key.changeDate()))
-                    .filter(row -> row.getLoadToDate() == null || !row.getLoadToDate().isBefore(key.changeDate()))
+
+            List<ManualLoadEntry> beforeRows = rowsByTeacher.getOrDefault(key.teacherKey(), List.of()).stream()
+                    .filter(row -> isActiveAt(row, key.changeDate().minusDays(1)))
                     .toList();
-            Set<String> activeKeys = activeRows.stream().map(this::keyOf).collect(Collectors.toSet());
-            List<ManualLoadEntry> rowsForMemo = mergeRows(activeRows, builder.removedRows);
-            if (rowsForMemo.isEmpty()) {
+            List<ManualLoadEntry> afterRows = rowsByTeacher.getOrDefault(key.teacherKey(), List.of()).stream()
+                    .filter(row -> isActiveAt(row, key.changeDate()))
+                    .toList();
+
+            Set<String> beforeKeys = beforeRows.stream().map(this::keyOf).collect(Collectors.toSet());
+            Set<String> afterKeys = afterRows.stream().map(this::keyOf).collect(Collectors.toSet());
+
+            Set<String> removedKeys = new LinkedHashSet<>(beforeKeys);
+            removedKeys.removeAll(afterKeys);
+            Set<String> addedKeys = new LinkedHashSet<>(afterKeys);
+            addedKeys.removeAll(beforeKeys);
+
+            List<ManualLoadEntry> removedRows = beforeRows.stream()
+                    .filter(row -> removedKeys.contains(keyOf(row)))
+                    .map(row -> copyForRemoval(row, key.changeDate().minusDays(1)))
+                    .toList();
+
+            List<ManualLoadEntry> rowsForMemo = mergeRowsForMemo(afterRows, removedRows);
+            if (rowsForMemo.isEmpty() || (addedKeys.isEmpty() && removedKeys.isEmpty())) {
                 continue;
             }
 
             String displayName = firstNonBlank(builder.displayName,
                     displayByTeacher.getOrDefault(key.teacherKey(), rowsForMemo.get(0).getFioTeacher()));
-            boolean onlyAdditions = !builder.addedKeys.isEmpty() && builder.removedKeys.isEmpty();
+            boolean onlyAdditions = !addedKeys.isEmpty() && removedKeys.isEmpty();
             result.put(key, new TeacherChangeAggregate(
                     displayName,
                     key.changeDate(),
                     builder.latestChangeAt,
                     rowsForMemo,
-                    activeKeys,
-                    Set.copyOf(builder.addedKeys),
-                    Set.copyOf(builder.removedKeys),
+                    Set.copyOf(afterKeys),
+                    Set.copyOf(addedKeys),
+                    Set.copyOf(removedKeys),
                     onlyAdditions
             ));
         }
 
         return result;
+    }
+
+    private boolean isActiveAt(ManualLoadEntry row, LocalDate date) {
+        if (row == null || date == null || row.getLoadFromDate() == null || row.getLoadToDate() == null) {
+            return false;
+        }
+        return !row.getLoadFromDate().isAfter(date) && !row.getLoadToDate().isBefore(date);
     }
 
     private void appendTransferRemovalEvents(List<ManualLoadEntry> rows,
@@ -452,7 +478,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 .anyMatch(teacher::equals);
     }
 
-    private List<ManualLoadEntry> mergeRows(List<ManualLoadEntry> activeRows, List<ManualLoadEntry> removedRows) {
+    private List<ManualLoadEntry> mergeRowsForMemo(List<ManualLoadEntry> activeRows, List<ManualLoadEntry> removedRows) {
         LinkedHashMap<String, ManualLoadEntry> merged = new LinkedHashMap<>();
         for (ManualLoadEntry row : activeRows) {
             merged.put(keyOf(row), row);
@@ -607,7 +633,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private String keyOf(ManualLoadEntry row) {
-        return String.join("|", safe(row.getSubjectName()), safe(row.getClassName()), String.valueOf(row.getLoad()));
+        return String.join("|",
+                safe(row.getSubjectName()),
+                safe(row.getClassName()),
+                String.valueOf(row.getLoad()),
+                String.valueOf(row.getLoadFromDate() == null ? "" : row.getLoadFromDate()),
+                String.valueOf(row.getLoadToDate() == null ? "" : row.getLoadToDate()));
     }
 
     private String transferKeyOf(ManualLoadEntry row) {
@@ -643,7 +674,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         if (aggregate == null || aggregate.rows() == null) {
             return "";
         }
-        return aggregate.rows().stream()
+        String payload = aggregate.rows().stream()
                 .filter(Objects::nonNull)
                 .map(row -> String.join("|",
                         safe(row.getSubjectName()),
@@ -654,6 +685,34 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         resolveStatus(aggregate, row)))
                 .sorted()
                 .collect(Collectors.joining("||", aggregate.startDate() + "|" + aggregate.onlyAdditions() + "|", ""));
+        return signatureHash(payload);
+    }
+
+    private boolean signatureMatches(String persistedSignature, String currentSignature) {
+        if (Objects.equals(persistedSignature, currentSignature)) {
+            return true;
+        }
+        if (persistedSignature == null || persistedSignature.isBlank() || currentSignature == null || currentSignature.isBlank()) {
+            return false;
+        }
+        return Objects.equals(signatureHash(persistedSignature), currentSignature);
+    }
+
+    private String signatureHash(String payload) {
+        if (payload == null || payload.isBlank()) {
+            return "";
+        }
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(payload.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder("sha256:");
+            for (byte b : hash) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 недоступен", e);
+        }
     }
 
     private String selectionKey(TeacherDateKey key) {
