@@ -18,6 +18,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -56,7 +59,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         return true;
                     }
                     String currentSignature = aggregateSignature(entry.getValue());
-                    return !Objects.equals(currentSignature, latest.getLoadSignature());
+                    return !signatureMatches(latest.getLoadSignature(), currentSignature);
                 })
                 .map(entry -> toPendingDto(selectionKey(entry.getKey()), entry.getValue()))
                 .sorted(Comparator.comparing(ServiceMemoDtos.PendingTeacher::getStartDate)
@@ -107,7 +110,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 TeacherChangeAggregate aggregate = entry.getValue();
                 String signature = aggregateSignature(aggregate);
                 ServiceMemo latest = latestMemoBySelection.get(selectionKey);
-                if (latest != null && Objects.equals(signature, latest.getLoadSignature())) {
+                if (latest != null && signatureMatches(latest.getLoadSignature(), signature)) {
                     continue;
                 }
 
@@ -623,7 +626,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private String keyOf(ManualLoadEntry row) {
-        return String.join("|", safe(row.getSubjectName()), safe(row.getClassName()), String.valueOf(row.getLoad()));
+        return String.join("|",
+                safe(row.getSubjectName()),
+                safe(row.getClassName()),
+                String.valueOf(row.getLoad()),
+                String.valueOf(row.getLoadFromDate() == null ? "" : row.getLoadFromDate()),
+                String.valueOf(row.getLoadToDate() == null ? "" : row.getLoadToDate()));
     }
 
     private String transferKeyOf(ManualLoadEntry row) {
@@ -660,7 +668,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         if (aggregate == null || aggregate.rows() == null) {
             return "";
         }
-        return aggregate.rows().stream()
+        String payload = aggregate.rows().stream()
                 .filter(Objects::nonNull)
                 .map(row -> String.join("|",
                         safe(row.getSubjectName()),
@@ -671,6 +679,34 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         resolveStatus(aggregate, row)))
                 .sorted()
                 .collect(Collectors.joining("||", aggregate.startDate() + "|" + aggregate.onlyAdditions() + "|", ""));
+        return signatureHash(payload);
+    }
+
+    private boolean signatureMatches(String persistedSignature, String currentSignature) {
+        if (Objects.equals(persistedSignature, currentSignature)) {
+            return true;
+        }
+        if (persistedSignature == null || persistedSignature.isBlank() || currentSignature == null || currentSignature.isBlank()) {
+            return false;
+        }
+        return Objects.equals(signatureHash(persistedSignature), currentSignature);
+    }
+
+    private String signatureHash(String payload) {
+        if (payload == null || payload.isBlank()) {
+            return "";
+        }
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(payload.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder("sha256:");
+            for (byte b : hash) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 недоступен", e);
+        }
     }
 
     private String selectionKey(TeacherDateKey key) {

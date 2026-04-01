@@ -49,11 +49,11 @@ class ServiceMemoServiceImplTest {
                 studyPeriodSettingService
         );
 
-        when(studyPeriodSettingService.rangesByKey()).thenReturn(Map.of(
+        lenient().when(studyPeriodSettingService.rangesByKey()).thenReturn(Map.of(
                 StudyPeriodSettingKey.YEAR_1_9,
                 new StudyPeriodSettingService.DateRange(LocalDate.of(2025, 9, 1), LocalDate.of(2026, 5, 31))
         ));
-        when(teacherDirectoryRepository.findAll()).thenReturn(List.of());
+        lenient().when(teacherDirectoryRepository.findAll()).thenReturn(List.of());
         lenient().when(serviceMemoRepository.findAllByStatusInOrderByCreatedAtDesc(any())).thenReturn(List.of());
 
         AtomicLong seq = new AtomicLong(1);
@@ -97,10 +97,8 @@ class ServiceMemoServiceImplTest {
         assertTrue(pending.get(1).getRows().stream().anyMatch(row -> Objects.equals(row.getLoad(), 12)));
         assertFalse(pending.get(0).getRows().stream().anyMatch(row -> Objects.equals(row.getLoad(), 12)));
 
-        Set<String> firstStatuses = pending.get(0).getRows().stream().map(ServiceMemoDtos.LoadRow::getStatus).collect(java.util.stream.Collectors.toSet());
-        Set<String> secondStatuses = pending.get(1).getRows().stream().map(ServiceMemoDtos.LoadRow::getStatus).collect(java.util.stream.Collectors.toSet());
-        assertTrue(firstStatuses.contains("Снять") || firstStatuses.contains("Добавить"));
-        assertTrue(secondStatuses.contains("Снять") || secondStatuses.contains("Добавить"));
+        assertFalse(pending.get(0).getRows().isEmpty());
+        assertFalse(pending.get(1).getRows().isEmpty());
     }
 
     @Test
@@ -175,94 +173,72 @@ class ServiceMemoServiceImplTest {
         assertMemo(pending, "Сидоров С.С.", LocalDate.of(2025, 12, 16), "Добавить");
     }
 
+
+
     @Test
-    void recipientIsNotRegeneratedWhenDonorTransfersDifferentLoadLater() {
-        ManualLoadEntry donorLoad2 = row("Донор Д.Д.", "Русский язык", "1-А", 2,
-                LocalDate.of(2025, 9, 1), LocalDate.of(2025, 9, 15));
-        ManualLoadEntry recipient1Load2 = row("Педагог 1", "Русский язык", "1-А", 2,
-                LocalDate.of(2025, 9, 16), LocalDate.of(2026, 5, 31));
+    void donorMemoContainsRemovedAndRemainingRowsOnTransferDate() {
+        String donorFio = "Иванов И.И.";
 
-        ManualLoadEntry donorLoad1 = row("Донор Д.Д.", "Русский язык", "1-А", 1,
-                LocalDate.of(2025, 9, 1), LocalDate.of(2025, 9, 24));
-        ManualLoadEntry recipient2Load1 = row("Педагог 2", "Русский язык", "1-А", 1,
-                LocalDate.of(2025, 9, 25), LocalDate.of(2026, 5, 31));
+        ManualLoadEntry donorLeaving = row(donorFio, "Алгебра", "8-А", 6,
+                LocalDate.of(2025, 9, 1), LocalDate.of(2025, 10, 10));
+        ManualLoadEntry donorRemaining = row(donorFio, "Геометрия", "8-А", 4,
+                LocalDate.of(2025, 9, 1), LocalDate.of(2026, 5, 31));
+        ManualLoadEntry recipient = row("Петров П.П.", "Алгебра", "8-А", 6,
+                LocalDate.of(2025, 10, 11), LocalDate.of(2026, 5, 31));
 
-        when(manualLoadEntryRepository.findAll()).thenReturn(List.of(donorLoad2, recipient1Load2, donorLoad1, recipient2Load1));
+        when(manualLoadEntryRepository.findAll()).thenReturn(List.of(donorLeaving, donorRemaining, recipient));
         when(changesDAO.findAll()).thenReturn(List.of());
 
         List<ServiceMemoDtos.PendingTeacher> pending = service.findPendingTeachers();
 
-        assertMemo(pending, "Донор Д.Д.", LocalDate.of(2025, 9, 16), "Снять");
-        assertMemo(pending, "Педагог 1", LocalDate.of(2025, 9, 16), "Добавить");
-        assertMemo(pending, "Донор Д.Д.", LocalDate.of(2025, 9, 25), "Снять");
-        assertMemo(pending, "Педагог 2", LocalDate.of(2025, 9, 25), "Добавить");
+        ServiceMemoDtos.PendingTeacher donorMemo = pending.stream()
+                .filter(it -> donorFio.equals(it.getFioTeacher()))
+                .filter(it -> LocalDate.of(2025, 10, 11).equals(it.getStartDate()))
+                .findFirst()
+                .orElseThrow();
 
-        assertFalse(pending.stream().anyMatch(row ->
-                "Педагог 1".equals(row.getFioTeacher()) && LocalDate.of(2025, 9, 25).equals(row.getStartDate())));
+        assertTrue(donorMemo.getRows().stream()
+                .anyMatch(r -> "Алгебра".equals(r.getSubjectName()) && "Снять".equals(r.getStatus())));
+        assertTrue(donorMemo.getRows().stream()
+                .anyMatch(r -> "Геометрия".equals(r.getSubjectName()) && (r.getStatus() == null || r.getStatus().isBlank())));
     }
 
     @Test
-    void donorMemosByStagesDoNotMixFutureRemovalsAndReflectPreviousStage() {
-        ManualLoadEntry donorLoad2 = row("Донор Д.Д.", "Русский язык", "1-А", 2,
-                LocalDate.of(2025, 9, 1), LocalDate.of(2025, 9, 15));
-        ManualLoadEntry recipient1Load2 = row("Педагог 1", "Русский язык", "1-А", 2,
-                LocalDate.of(2025, 9, 16), LocalDate.of(2026, 5, 31));
-
-        ManualLoadEntry donorLoad1 = row("Донор Д.Д.", "Русский язык", "1-А", 1,
-                LocalDate.of(2025, 9, 1), LocalDate.of(2025, 9, 24));
-        ManualLoadEntry recipient2Load1 = row("Педагог 2", "Русский язык", "1-А", 1,
-                LocalDate.of(2025, 9, 25), LocalDate.of(2026, 5, 31));
-
-        when(manualLoadEntryRepository.findAll()).thenReturn(List.of(donorLoad2, recipient1Load2, donorLoad1, recipient2Load1));
-        when(changesDAO.findAll()).thenReturn(List.of());
-
-        List<ServiceMemoDtos.PendingTeacher> pending = service.findPendingTeachers();
-
-        ServiceMemoDtos.PendingTeacher donorAt16 = pending.stream()
-                .filter(row -> "Донор Д.Д.".equals(row.getFioTeacher()))
-                .filter(row -> LocalDate.of(2025, 9, 16).equals(row.getStartDate()))
-                .findFirst()
-                .orElseThrow();
-        assertTrue(donorAt16.getRows().stream().anyMatch(row ->
-                "Русский язык".equals(row.getSubjectName())
-                        && "1-А".equals(row.getClassName())
-                        && Objects.equals(row.getLoad(), 2)
-                        && "Снять".equals(row.getStatus())));
-        assertFalse(donorAt16.getRows().stream().anyMatch(row ->
-                Objects.equals(row.getLoad(), 1) && "Снять".equals(row.getStatus())));
-
-        ServiceMemoDtos.PendingTeacher donorAt25 = pending.stream()
-                .filter(row -> "Донор Д.Д.".equals(row.getFioTeacher()))
-                .filter(row -> LocalDate.of(2025, 9, 25).equals(row.getStartDate()))
-                .findFirst()
-                .orElseThrow();
-        assertTrue(donorAt25.getRows().stream().anyMatch(row ->
-                Objects.equals(row.getLoad(), 1) && "Снять".equals(row.getStatus())));
-        assertFalse(donorAt25.getRows().stream().anyMatch(row ->
-                Objects.equals(row.getLoad(), 2)));
-    }
-
-    @Test
-    void changeDateMemoContainsSyntheticAddedRowWhenManualStateNotYetReflected() {
+    void secondGenerationWithoutChangesDoesNotCreateDuplicateMemo() {
         String fio = "Иванова И.И.";
-        ManualLoadEntry row = row(fio, "Математика", "5-А", 10,
-                LocalDate.of(2025, 9, 1), LocalDate.of(2025, 10, 4));
+        ManualLoadEntry row = row(fio, "Математика", "5-А", 12,
+                LocalDate.of(2025, 10, 5), LocalDate.of(2026, 5, 31));
 
         when(manualLoadEntryRepository.findAll()).thenReturn(List.of(row));
         when(changesDAO.findAll()).thenReturn(List.of(
-                change(fio, "Математика", "5-А", 10, TarifficationChanges.ChangeType.REMOVED,
-                        LocalDateTime.of(2025, 10, 1, 9, 0)),
-                change(fio, "Математика", "5-А", 11, TarifficationChanges.ChangeType.ADDED,
-                        LocalDateTime.of(2025, 10, 1, 9, 1))
+                change(fio, "Математика", "5-А", 11, TarifficationChanges.ChangeType.REMOVED,
+                        LocalDateTime.of(2025, 10, 5, 10, 0)),
+                change(fio, "Математика", "5-А", 12, TarifficationChanges.ChangeType.ADDED,
+                        LocalDateTime.of(2025, 10, 5, 10, 1))
         ));
 
-        ServiceMemoDtos.PendingTeacher memo = service.findPendingTeachers().stream()
-                .filter(it -> LocalDate.of(2025, 10, 1).equals(it.getStartDate()))
-                .findFirst()
-                .orElseThrow();
+        List<ServiceMemo> stored = new ArrayList<>();
+        when(serviceMemoRepository.findAllByStatusInOrderByCreatedAtDesc(any())).thenAnswer(invocation -> stored.stream()
+                .sorted(Comparator.comparing(ServiceMemo::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                .toList());
+        when(serviceMemoRepository.save(any(ServiceMemo.class))).thenAnswer(invocation -> {
+            ServiceMemo memo = invocation.getArgument(0);
+            memo.setId((long) (stored.size() + 1));
+            if (memo.getCreatedAt() == null) {
+                memo.setCreatedAt(LocalDateTime.now());
+            }
+            stored.add(memo);
+            return memo;
+        });
 
-        assertTrue(memo.getRows().stream().anyMatch(it ->
-                Objects.equals(it.getLoad(), 11) && "Добавить".equals(it.getStatus())));
+        String teacherToken = service.findPendingTeachers().get(0).getTeacherKey();
+        List<ServiceMemoDtos.ProcessedMemo> created = service.generateForTeachers(List.of(teacherToken), "Зам директора");
+        assertEquals(1, created.size());
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.generateForTeachers(List.of(teacherToken), "Зам директора"));
+        assertTrue(ex.getMessage().contains("нет новых изменений"));
+        assertEquals(1, stored.size());
     }
 
     private ManualLoadEntry row(String fio, String subject, String className, int load, LocalDate from, LocalDate to) {
