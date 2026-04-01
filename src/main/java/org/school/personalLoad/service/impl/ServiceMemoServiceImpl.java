@@ -281,11 +281,21 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 Map<String, Integer> removedCounts = diffCounts(beforeCounts, afterCounts);
                 Map<String, Integer> addedCounts = diffCounts(afterCounts, beforeCounts);
 
-                List<TarifficationChanges> dayChanges = periodChanges.stream()
+                List<TarifficationChanges> teacherDateChanges = periodChanges.stream()
                         .filter(ch -> Objects.equals(teacherKey, normalize(ch.getFioTeacher())))
                         .filter(ch -> Objects.equals(changeDate, ch.getChangeDate().toLocalDate()))
                         .toList();
+                LocalDateTime latestChangeAt = teacherDateChanges.stream()
+                        .map(TarifficationChanges::getChangeDate)
+                        .max(LocalDateTime::compareTo)
+                        .orElse(changeDate.atStartOfDay());
+                List<TarifficationChanges> dayChanges = teacherDateChanges.stream()
+                        .filter(ch -> Objects.equals(latestChangeAt, ch.getChangeDate()))
+                        .toList();
                 if (!dayChanges.isEmpty()) {
+                    Set<String> anyShortKeys = dayChanges.stream()
+                            .map(this::shortKeyOf)
+                            .collect(Collectors.toSet());
                     Set<String> removedShortKeys = dayChanges.stream()
                             .filter(ch -> ch.getChangeType() == TarifficationChanges.ChangeType.REMOVED)
                             .map(this::shortKeyOf)
@@ -296,9 +306,13 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                             .collect(Collectors.toSet());
                     if (!removedShortKeys.isEmpty()) {
                         removedCounts = filterCountsByShortKeys(removedCounts, removedShortKeys);
+                    } else if (!anyShortKeys.isEmpty()) {
+                        removedCounts = filterCountsByShortKeys(removedCounts, anyShortKeys);
                     }
                     if (!addedShortKeys.isEmpty()) {
                         addedCounts = filterCountsByShortKeys(addedCounts, addedShortKeys);
+                    } else if (!anyShortKeys.isEmpty()) {
+                        addedCounts = filterCountsByShortKeys(addedCounts, anyShortKeys);
                     }
                 }
                 if (removedCounts.isEmpty() && addedCounts.isEmpty()) {
@@ -313,13 +327,6 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 if (rowsForMemo.isEmpty()) {
                     continue;
                 }
-
-                LocalDateTime latestChangeAt = periodChanges.stream()
-                        .filter(ch -> Objects.equals(teacherKey, normalize(ch.getFioTeacher())))
-                        .filter(ch -> Objects.equals(changeDate, ch.getChangeDate().toLocalDate()))
-                        .map(TarifficationChanges::getChangeDate)
-                        .max(LocalDateTime::compareTo)
-                        .orElse(changeDate.atStartOfDay());
 
                 String displayName = displayByTeacher.getOrDefault(teacherKey, rowsForMemo.get(0).getFioTeacher());
                 boolean firstLoadAppearance = beforeRows.isEmpty()
