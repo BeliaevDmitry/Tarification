@@ -54,11 +54,10 @@ class ServiceMemoServiceImplTest {
                 new StudyPeriodSettingService.DateRange(LocalDate.of(2025, 9, 1), LocalDate.of(2026, 5, 31))
         ));
         when(teacherDirectoryRepository.findAll()).thenReturn(List.of());
-        when(serviceMemoRepository.findAllByStatusInOrderByCreatedAtDesc(any())).thenReturn(List.of());
+        lenient().when(serviceMemoRepository.findAllByStatusInOrderByCreatedAtDesc(any())).thenReturn(List.of());
 
         AtomicLong seq = new AtomicLong(1);
-        when(serviceMemoRepository.save(any(ServiceMemo.class))).thenAnswer(invocation -> {
-
+        lenient().when(serviceMemoRepository.save(any(ServiceMemo.class))).thenAnswer(invocation -> {
             ServiceMemo memo = invocation.getArgument(0);
             if (memo.getId() == null) {
                 memo.setId(seq.getAndIncrement());
