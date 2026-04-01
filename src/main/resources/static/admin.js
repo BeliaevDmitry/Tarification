@@ -95,7 +95,7 @@ function buildingByCode(code) {
 function formatBuilding(code) {
     if (!code) return '—';
     const building = buildingByCode(code);
-    return building ? `${building.code} — ${building.name}` : code;
+    return building ? building.name : code;
 }
 
 function loadScopeLabel(user) {
@@ -117,7 +117,7 @@ function renderBuildingSelect(selectEl, selectedValue = '') {
     buildings.forEach((building) => {
         const option = document.createElement('option');
         option.value = building.code;
-        option.textContent = `${building.code} — ${building.name}`;
+        option.textContent = building.name;
         if (selectedValue && selectedValue === building.code) option.selected = true;
         selectEl.appendChild(option);
     });
@@ -161,7 +161,7 @@ function renderLoadBuildings(target, selectedCodes = [], prefix = 'create') {
     target.innerHTML = buildings.map((building) => `
         <label class="building-checkbox-pill">
             <input type="checkbox" data-load-building="${esc(building.code)}" data-prefix="${prefix}" ${selected.has(building.code) ? 'checked' : ''}>
-            <span>${esc(building.code)} — ${esc(building.name)}</span>
+            <span>${esc(building.name)}</span>
         </label>
     `).join('');
     target.querySelectorAll('[data-load-building]').forEach((checkbox) => {
