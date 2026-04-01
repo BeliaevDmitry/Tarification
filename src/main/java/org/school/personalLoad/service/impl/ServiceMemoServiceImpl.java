@@ -238,6 +238,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 builder.removedRows.add(toSyntheticRow(ch, date));
             } else {
                 builder.addedKeys.add(rowKey);
+                builder.addedRows.add(toSyntheticAddedRow(ch, date));
             }
         }
 
@@ -494,6 +495,9 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         for (ManualLoadEntry row : Optional.ofNullable(addedRows).orElseGet(List::of)) {
             merged.putIfAbsent(keyOf(row), row);
         }
+        for (ManualLoadEntry row : addedRows) {
+            merged.putIfAbsent(keyOf(row), row);
+        }
         return new ArrayList<>(merged.values());
     }
 
@@ -506,6 +510,16 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         if (changeDate != null) {
             row.setLoadToDate(changeDate.minusDays(1));
         }
+        return row;
+    }
+
+    private ManualLoadEntry toSyntheticAddedRow(TarifficationChanges ch, LocalDate changeDate) {
+        ManualLoadEntry row = new ManualLoadEntry();
+        row.setFioTeacher(ch.getFioTeacher());
+        row.setSubjectName(ch.getSubjectName());
+        row.setClassName(ch.getClassName());
+        row.setLoad(ch.getLoad() == null ? 0 : ch.getLoad());
+        row.setLoadFromDate(changeDate);
         return row;
     }
 
@@ -653,6 +667,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         return String.join("|",
                 safe(row.getSubjectName()),
                 safe(row.getClassName()),
+                String.valueOf(row.getLoad() == null ? 0 : row.getLoad()),
                 safe(row.getGroupNameEducationalPlan()),
                 String.valueOf(row.getEducationLevel()),
                 String.valueOf(row.getStudyPeriod()));
@@ -752,6 +767,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         private final Set<String> addedKeys = new LinkedHashSet<>();
         private final Set<String> removedKeys = new LinkedHashSet<>();
         private final List<ManualLoadEntry> removedRows = new ArrayList<>();
+        private final List<ManualLoadEntry> addedRows = new ArrayList<>();
     }
 
     private record TeacherChangeAggregate(
