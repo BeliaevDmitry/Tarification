@@ -302,8 +302,11 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     .filter(row -> removedKeys.contains(keyOf(row)))
                     .map(row -> copyForRemoval(row, key.changeDate().minusDays(1)))
                     .toList();
+            List<ManualLoadEntry> addedRows = afterRows.stream()
+                    .filter(row -> addedKeys.contains(keyOf(row)))
+                    .toList();
 
-            List<ManualLoadEntry> rowsForMemo = mergeRowsForMemo(afterRows, removedRows);
+            List<ManualLoadEntry> rowsForMemo = mergeRowsForMemo(afterRows, removedRows, addedRows);
             if (rowsForMemo.isEmpty() || (addedKeys.isEmpty() && removedKeys.isEmpty())) {
                 continue;
             }
@@ -479,12 +482,17 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 .anyMatch(teacher::equals);
     }
 
-    private List<ManualLoadEntry> mergeRowsForMemo(List<ManualLoadEntry> activeRows, List<ManualLoadEntry> removedRows) {
+    private List<ManualLoadEntry> mergeRowsForMemo(List<ManualLoadEntry> activeRows,
+                                                   List<ManualLoadEntry> removedRows,
+                                                   List<ManualLoadEntry> addedRows) {
         LinkedHashMap<String, ManualLoadEntry> merged = new LinkedHashMap<>();
-        for (ManualLoadEntry row : activeRows) {
+        for (ManualLoadEntry row : Optional.ofNullable(activeRows).orElseGet(List::of)) {
             merged.put(keyOf(row), row);
         }
-        for (ManualLoadEntry row : removedRows) {
+        for (ManualLoadEntry row : Optional.ofNullable(removedRows).orElseGet(List::of)) {
+            merged.putIfAbsent(keyOf(row), row);
+        }
+        for (ManualLoadEntry row : Optional.ofNullable(addedRows).orElseGet(List::of)) {
             merged.putIfAbsent(keyOf(row), row);
         }
         for (ManualLoadEntry row : addedRows) {
