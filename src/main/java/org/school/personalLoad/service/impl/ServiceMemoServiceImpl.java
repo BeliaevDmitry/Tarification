@@ -244,11 +244,17 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             dates.remove(start);
         }
 
+        List<org.school.personalLoad.model.TeacherDirectoryEntry> directoryRows = teacherDirectoryRepository.findAll();
         Map<String, String> displayByTeacher = new HashMap<>();
-        teacherDirectoryRepository.findAll().forEach(row -> {
+        Map<String, LocalDate> teacherDirectoryCreatedDate = new HashMap<>();
+        directoryRows.forEach(row -> {
             String key = normalize(row.getFioTeacher());
             if (key != null) {
                 displayByTeacher.putIfAbsent(key, row.getFioTeacher());
+                LocalDate createdDate = Optional.ofNullable(row.getCreatedAt()).map(LocalDateTime::toLocalDate).orElse(null);
+                if (createdDate != null) {
+                    teacherDirectoryCreatedDate.putIfAbsent(key, createdDate);
+                }
             }
         });
         periodRows.forEach(row -> {
@@ -274,6 +280,27 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 Map<String, Integer> afterCounts = countRows(afterRows);
                 Map<String, Integer> removedCounts = diffCounts(beforeCounts, afterCounts);
                 Map<String, Integer> addedCounts = diffCounts(afterCounts, beforeCounts);
+
+                List<TarifficationChanges> dayChanges = periodChanges.stream()
+                        .filter(ch -> Objects.equals(teacherKey, normalize(ch.getFioTeacher())))
+                        .filter(ch -> Objects.equals(changeDate, ch.getChangeDate().toLocalDate()))
+                        .toList();
+                if (!dayChanges.isEmpty()) {
+                    Set<String> removedShortKeys = dayChanges.stream()
+                            .filter(ch -> ch.getChangeType() == TarifficationChanges.ChangeType.REMOVED)
+                            .map(this::shortKeyOf)
+                            .collect(Collectors.toSet());
+                    Set<String> addedShortKeys = dayChanges.stream()
+                            .filter(ch -> ch.getChangeType() == TarifficationChanges.ChangeType.ADDED)
+                            .map(this::shortKeyOf)
+                            .collect(Collectors.toSet());
+                    if (!removedShortKeys.isEmpty()) {
+                        removedCounts = filterCountsByShortKeys(removedCounts, removedShortKeys);
+                    }
+                    if (!addedShortKeys.isEmpty()) {
+                        addedCounts = filterCountsByShortKeys(addedCounts, addedShortKeys);
+                    }
+                }
                 if (removedCounts.isEmpty() && addedCounts.isEmpty()) {
                     continue;
                 }
@@ -295,27 +322,27 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         .orElse(changeDate.atStartOfDay());
 
                 String displayName = displayByTeacher.getOrDefault(teacherKey, rowsForMemo.get(0).getFioTeacher());
-                boolean newEmployment = beforeRows.isEmpty()
+                boolean firstLoadAppearance = beforeRows.isEmpty()
                         && !afterRows.isEmpty()
                         && teacherRows.stream()
                         .filter(Objects::nonNull)
                         .map(ManualLoadEntry::getLoadFromDate)
                         .filter(Objects::nonNull)
                         .noneMatch(fromDate -> fromDate.isBefore(changeDate));
+                boolean newEmploymentByDirectory = Optional.ofNullable(teacherDirectoryCreatedDate.get(teacherKey))
+                        .map(createdDate -> !createdDate.isBefore(changeDate))
+                        .orElse(true);
+                boolean newEmployment = firstLoadAppearance && newEmploymentByDirectory;
 
                 result.put(new TeacherDateKey(teacherKey, changeDate), new TeacherChangeAggregate(
                         displayName,
                         changeDate,
                         latestChangeAt,
                         rowsForMemo,
-<<<<<<< codex/fix-n25aus
                         rowsKeySet(addedRows),
                         rowsKeySet(removedRows),
-=======
-                        Set.copyOf(afterKeys),
-                        Set.copyOf(addedKeys),
-                        Set.copyOf(removedKeys),
->>>>>>> fix-password-and-sluzebka
+                        rowsKeySet(addedRows),
+                        rowsKeySet(removedRows),
                         newEmployment
                 ));
             }
@@ -442,6 +469,20 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             }
         }
         return diff;
+    }
+
+    private Map<String, Integer> filterCountsByShortKeys(Map<String, Integer> counts, Set<String> allowedShortKeys) {
+        if (counts == null || counts.isEmpty() || allowedShortKeys == null || allowedShortKeys.isEmpty()) {
+            return counts == null ? Map.of() : counts;
+        }
+        return counts.entrySet().stream()
+                .filter(entry -> allowedShortKeys.contains(shortKeyFromTransferKey(entry.getKey())))
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        Map.Entry::getValue,
+                        (a, b) -> a,
+                        LinkedHashMap::new
+                ));
     }
 
     private List<ManualLoadEntry> selectRowsByCount(List<ManualLoadEntry> sourceRows, Map<String, Integer> requiredCounts) {
@@ -620,6 +661,22 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 safe(row.getGroupNameEducationalPlan()),
                 String.valueOf(row.getEducationLevel()),
                 String.valueOf(row.getStudyPeriod()));
+    }
+
+    private String shortKeyOf(TarifficationChanges ch) {
+        return String.join("|",
+                safe(ch.getSubjectName()),
+                safe(ch.getClassName()),
+                String.valueOf(ch.getLoad() == null ? 0 : ch.getLoad()));
+    }
+
+    private String shortKeyFromTransferKey(String transferKey) {
+        String safeKey = String.valueOf(transferKey == null ? "" : transferKey);
+        String[] parts = safeKey.split("\\|", -1);
+        if (parts.length < 3) {
+            return safeKey;
+        }
+        return parts[0] + "|" + parts[1] + "|" + parts[2];
     }
 
     private String memoRowKey(ManualLoadEntry row) {
