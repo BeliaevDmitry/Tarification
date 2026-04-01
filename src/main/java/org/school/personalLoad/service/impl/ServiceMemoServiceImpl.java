@@ -301,6 +301,14 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         .orElse(changeDate.atStartOfDay());
 
                 String displayName = displayByTeacher.getOrDefault(teacherKey, rowsForMemo.get(0).getFioTeacher());
+                boolean newEmployment = beforeRows.isEmpty()
+                        && !afterRows.isEmpty()
+                        && teacherRows.stream()
+                        .filter(Objects::nonNull)
+                        .map(ManualLoadEntry::getLoadFromDate)
+                        .filter(Objects::nonNull)
+                        .noneMatch(fromDate -> fromDate.isBefore(changeDate));
+
                 result.put(new TeacherDateKey(teacherKey, changeDate), new TeacherChangeAggregate(
                         displayName,
                         changeDate,
@@ -309,7 +317,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         Set.copyOf(afterKeys),
                         Set.copyOf(addedKeys),
                         Set.copyOf(removedKeys),
-                        !addedKeys.isEmpty() && removedKeys.isEmpty()
+                        newEmployment
                 ));
             }
         }
@@ -549,7 +557,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private String keyOf(ManualLoadEntry row) {
-        return String.join("|", safe(row.getSubjectName()), safe(row.getClassName()), String.valueOf(row.getLoad()));
+        return transferKeyOf(row);
     }
 
     private String transferKeyOf(ManualLoadEntry row) {
