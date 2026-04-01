@@ -303,7 +303,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     .map(row -> copyForRemoval(row, key.changeDate().minusDays(1)))
                     .toList();
 
-            List<ManualLoadEntry> rowsForMemo = mergeRows(afterRows, removedRows);
+            List<ManualLoadEntry> rowsForMemo = mergeRowsForMemo(afterRows, removedRows);
             if (rowsForMemo.isEmpty() || (addedKeys.isEmpty() && removedKeys.isEmpty())) {
                 continue;
             }
@@ -479,9 +479,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 .anyMatch(teacher::equals);
     }
 
-    private List<ManualLoadEntry> mergeRows(List<ManualLoadEntry> activeRows,
-                                            List<ManualLoadEntry> removedRows,
-                                            List<ManualLoadEntry> addedRows) {
+    private List<ManualLoadEntry> mergeRowsForMemo(List<ManualLoadEntry> activeRows, List<ManualLoadEntry> removedRows) {
         LinkedHashMap<String, ManualLoadEntry> merged = new LinkedHashMap<>();
         for (ManualLoadEntry row : activeRows) {
             merged.put(keyOf(row), row);
