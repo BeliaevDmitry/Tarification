@@ -270,24 +270,18 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         .filter(row -> isActiveAt(row, changeDate))
                         .toList();
 
-                Set<String> beforeKeys = beforeRows.stream().map(this::keyOf).collect(Collectors.toSet());
-                Set<String> afterKeys = afterRows.stream().map(this::keyOf).collect(Collectors.toSet());
-
-                Set<String> removedKeys = new LinkedHashSet<>(beforeKeys);
-                removedKeys.removeAll(afterKeys);
-                Set<String> addedKeys = new LinkedHashSet<>(afterKeys);
-                addedKeys.removeAll(beforeKeys);
-                if (addedKeys.isEmpty() && removedKeys.isEmpty()) {
+                Map<String, Integer> beforeCounts = countRows(beforeRows);
+                Map<String, Integer> afterCounts = countRows(afterRows);
+                Map<String, Integer> removedCounts = diffCounts(beforeCounts, afterCounts);
+                Map<String, Integer> addedCounts = diffCounts(afterCounts, beforeCounts);
+                if (removedCounts.isEmpty() && addedCounts.isEmpty()) {
                     continue;
                 }
 
-                List<ManualLoadEntry> removedRows = beforeRows.stream()
-                        .filter(row -> removedKeys.contains(keyOf(row)))
+                List<ManualLoadEntry> removedRows = selectRowsByCount(beforeRows, removedCounts).stream()
                         .map(row -> copyForRemoval(row, changeDate.minusDays(1)))
                         .toList();
-                List<ManualLoadEntry> addedRows = afterRows.stream()
-                        .filter(row -> addedKeys.contains(keyOf(row)))
-                        .toList();
+                List<ManualLoadEntry> addedRows = selectRowsByCount(afterRows, addedCounts);
                 List<ManualLoadEntry> rowsForMemo = mergeRowsForMemo(afterRows, removedRows, addedRows);
                 if (rowsForMemo.isEmpty()) {
                     continue;
@@ -301,15 +295,22 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         .orElse(changeDate.atStartOfDay());
 
                 String displayName = displayByTeacher.getOrDefault(teacherKey, rowsForMemo.get(0).getFioTeacher());
+                boolean newEmployment = beforeRows.isEmpty()
+                        && !afterRows.isEmpty()
+                        && teacherRows.stream()
+                        .filter(Objects::nonNull)
+                        .map(ManualLoadEntry::getLoadFromDate)
+                        .filter(Objects::nonNull)
+                        .noneMatch(fromDate -> fromDate.isBefore(changeDate));
+
                 result.put(new TeacherDateKey(teacherKey, changeDate), new TeacherChangeAggregate(
                         displayName,
                         changeDate,
                         latestChangeAt,
                         rowsForMemo,
-                        Set.copyOf(afterKeys),
-                        Set.copyOf(addedKeys),
-                        Set.copyOf(removedKeys),
-                        !addedKeys.isEmpty() && removedKeys.isEmpty()
+                        rowsKeySet(addedRows),
+                        rowsKeySet(removedRows),
+                        newEmployment
                 ));
             }
         }
@@ -381,9 +382,9 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private String resolveStatus(TeacherChangeAggregate aggregate, ManualLoadEntry row) {
-        String key = keyOf(row);
-        if (aggregate.removedKeys().contains(key) && !aggregate.activeKeys().contains(key)) return "Снять";
-        if (aggregate.addedKeys().contains(key) && !aggregate.removedKeys().contains(key)) return "Добавить";
+        String rowKey = memoRowKey(row);
+        if (aggregate.removedRowKeys().contains(rowKey)) return "Снять";
+        if (aggregate.addedRowKeys().contains(rowKey)) return "Добавить";
         return "";
     }
 
@@ -406,15 +407,67 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                                                    List<ManualLoadEntry> addedRows) {
         LinkedHashMap<String, ManualLoadEntry> merged = new LinkedHashMap<>();
         for (ManualLoadEntry row : Optional.ofNullable(activeRows).orElseGet(List::of)) {
-            merged.put(keyOf(row), row);
+            merged.put(memoRowKey(row), row);
         }
         for (ManualLoadEntry row : Optional.ofNullable(removedRows).orElseGet(List::of)) {
-            merged.putIfAbsent(keyOf(row), row);
+            merged.putIfAbsent(memoRowKey(row), row);
         }
         for (ManualLoadEntry row : Optional.ofNullable(addedRows).orElseGet(List::of)) {
-            merged.putIfAbsent(keyOf(row), row);
+            merged.putIfAbsent(memoRowKey(row), row);
         }
         return new ArrayList<>(merged.values());
+    }
+
+    private Map<String, Integer> countRows(List<ManualLoadEntry> rows) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (ManualLoadEntry row : Optional.ofNullable(rows).orElseGet(List::of)) {
+            counts.merge(keyOf(row), 1, Integer::sum);
+        }
+        return counts;
+    }
+
+    private Map<String, Integer> diffCounts(Map<String, Integer> minuend, Map<String, Integer> subtrahend) {
+        Map<String, Integer> diff = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> entry : minuend.entrySet()) {
+            int left = entry.getValue() == null ? 0 : entry.getValue();
+            int right = subtrahend.getOrDefault(entry.getKey(), 0);
+            if (left > right) {
+                diff.put(entry.getKey(), left - right);
+            }
+        }
+        return diff;
+    }
+
+    private List<ManualLoadEntry> selectRowsByCount(List<ManualLoadEntry> sourceRows, Map<String, Integer> requiredCounts) {
+        if (requiredCounts == null || requiredCounts.isEmpty()) {
+            return List.of();
+        }
+        Map<String, Integer> remaining = new HashMap<>(requiredCounts);
+        List<ManualLoadEntry> selected = new ArrayList<>();
+        for (ManualLoadEntry row : Optional.ofNullable(sourceRows).orElseGet(List::of)) {
+            String key = keyOf(row);
+            int count = remaining.getOrDefault(key, 0);
+            if (count <= 0) {
+                continue;
+            }
+            selected.add(row);
+            if (count == 1) {
+                remaining.remove(key);
+            } else {
+                remaining.put(key, count - 1);
+            }
+            if (remaining.isEmpty()) {
+                break;
+            }
+        }
+        return selected;
+    }
+
+    private Set<String> rowsKeySet(List<ManualLoadEntry> rows) {
+        return Optional.ofNullable(rows).orElseGet(List::of).stream()
+                .filter(Objects::nonNull)
+                .map(this::memoRowKey)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     private byte[] buildDocx(String fioTeacher,
@@ -549,7 +602,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private String keyOf(ManualLoadEntry row) {
-        return String.join("|", safe(row.getSubjectName()), safe(row.getClassName()), String.valueOf(row.getLoad()));
+        return transferKeyOf(row);
     }
 
     private String transferKeyOf(ManualLoadEntry row) {
@@ -557,9 +610,17 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 safe(row.getSubjectName()),
                 safe(row.getClassName()),
                 String.valueOf(row.getLoad() == null ? 0 : row.getLoad()),
+                safe(row.getNumberSchoolBuilding()),
                 safe(row.getGroupNameEducationalPlan()),
                 String.valueOf(row.getEducationLevel()),
                 String.valueOf(row.getStudyPeriod()));
+    }
+
+    private String memoRowKey(ManualLoadEntry row) {
+        return String.join("|",
+                keyOf(row),
+                String.valueOf(row.getLoadFromDate() == null ? "" : row.getLoadFromDate()),
+                String.valueOf(row.getLoadToDate() == null ? "" : row.getLoadToDate()));
     }
 
     private String safe(String value) {
@@ -655,9 +716,8 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             LocalDate startDate,
             LocalDateTime latestChangeAt,
             List<ManualLoadEntry> rows,
-            Set<String> activeKeys,
-            Set<String> addedKeys,
-            Set<String> removedKeys,
+            Set<String> addedRowKeys,
+            Set<String> removedRowKeys,
             boolean onlyAdditions
     ) {
     }

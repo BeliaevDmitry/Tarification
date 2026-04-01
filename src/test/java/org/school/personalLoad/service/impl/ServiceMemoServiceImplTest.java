@@ -253,6 +253,118 @@ class ServiceMemoServiceImplTest {
                 .anyMatch(r -> "Геометрия".equals(r.getSubjectName()) && (r.getStatus() == null || r.getStatus().isBlank())));
     }
 
+    @Test
+    void recipientWithoutPreviousLoadIsMarkedAsNewEmploymentOnlyForFirstAppearance() {
+        String fio = "Новиков Н.Н.";
+        ManualLoadEntry firstLoad = row(fio, "Информатика", "9-А", 8,
+                LocalDate.of(2025, 11, 1), LocalDate.of(2026, 5, 31));
+
+        when(manualLoadEntryRepository.findAll()).thenReturn(List.of(firstLoad));
+        when(changesDAO.findAll()).thenReturn(List.of());
+
+        ServiceMemoDtos.PendingTeacher pending = service.findPendingTeachers().stream()
+                .filter(it -> fio.equals(it.getFioTeacher()))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals("NEW", pending.getMemoType());
+    }
+
+    @Test
+    void pureAdditionForExistingTeacherIsNotMarkedAsNewEmployment() {
+        String fio = "Петров П.П.";
+        ManualLoadEntry oldLoad = row(fio, "История", "6-А", 6,
+                LocalDate.of(2025, 9, 1), LocalDate.of(2026, 5, 31));
+        ManualLoadEntry newSubject = row(fio, "Обществознание", "6-Б", 3,
+                LocalDate.of(2025, 10, 15), LocalDate.of(2026, 5, 31));
+
+        when(manualLoadEntryRepository.findAll()).thenReturn(List.of(oldLoad, newSubject));
+        when(changesDAO.findAll()).thenReturn(List.of());
+
+        ServiceMemoDtos.PendingTeacher pending = service.findPendingTeachers().stream()
+                .filter(it -> fio.equals(it.getFioTeacher()))
+                .filter(it -> LocalDate.of(2025, 10, 15).equals(it.getStartDate()))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals("CHANGED", pending.getMemoType());
+    }
+
+    @Test
+    void donorRemovalDetectedWhenRowsDifferByEducationalPlanGroup() {
+        String fio = "Иванов И.И.";
+        LocalDate changeDate = LocalDate.of(2025, 10, 11);
+
+        ManualLoadEntry removed = row(fio, "Алгебра", "8-А", 6,
+                LocalDate.of(2025, 9, 1), LocalDate.of(2025, 10, 10));
+        removed.setGroupNameEducationalPlan("Группа 1");
+        ManualLoadEntry staying = row(fio, "Алгебра", "8-А", 6,
+                LocalDate.of(2025, 9, 1), LocalDate.of(2026, 5, 31));
+        staying.setGroupNameEducationalPlan("Группа 2");
+
+        when(manualLoadEntryRepository.findAll()).thenReturn(List.of(removed, staying));
+        when(changesDAO.findAll()).thenReturn(List.of());
+
+        ServiceMemoDtos.PendingTeacher pending = service.findPendingTeachers().stream()
+                .filter(it -> fio.equals(it.getFioTeacher()))
+                .filter(it -> changeDate.equals(it.getStartDate()))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals(1, pending.getRows().stream().filter(r -> "Снять".equals(r.getStatus())).count());
+    }
+
+    @Test
+    void donorRemovalDetectedWhenRowsDifferOnlyBySchoolBuilding() {
+        String fio = "Иванов И.И.";
+        LocalDate changeDate = LocalDate.of(2025, 10, 11);
+
+        ManualLoadEntry removed = row(fio, "Алгебра", "8-А", 6,
+                LocalDate.of(2025, 9, 1), LocalDate.of(2025, 10, 10));
+        removed.setNumberSchoolBuilding("1");
+        ManualLoadEntry staying = row(fio, "Алгебра", "8-А", 6,
+                LocalDate.of(2025, 9, 1), LocalDate.of(2026, 5, 31));
+        staying.setNumberSchoolBuilding("2");
+
+        when(manualLoadEntryRepository.findAll()).thenReturn(List.of(removed, staying));
+        when(changesDAO.findAll()).thenReturn(List.of());
+
+        ServiceMemoDtos.PendingTeacher pending = service.findPendingTeachers().stream()
+                .filter(it -> fio.equals(it.getFioTeacher()))
+                .filter(it -> changeDate.equals(it.getStartDate()))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals(1, pending.getRows().stream().filter(r -> "Снять".equals(r.getStatus())).count());
+    }
+
+    @Test
+    void donorRemovalDetectedWhenOneOfIdenticalRowsIsRemoved() {
+        String fio = "Иванов И.И.";
+        LocalDate changeDate = LocalDate.of(2025, 10, 11);
+
+        ManualLoadEntry removed = row(fio, "Алгебра", "8-А", 6,
+                LocalDate.of(2025, 9, 1), LocalDate.of(2025, 10, 10));
+        removed.setNumberSchoolBuilding("1");
+        removed.setGroupNameEducationalPlan("Группа 1");
+
+        ManualLoadEntry staying = row(fio, "Алгебра", "8-А", 6,
+                LocalDate.of(2025, 9, 1), LocalDate.of(2026, 5, 31));
+        staying.setNumberSchoolBuilding("1");
+        staying.setGroupNameEducationalPlan("Группа 1");
+
+        when(manualLoadEntryRepository.findAll()).thenReturn(List.of(removed, staying));
+        when(changesDAO.findAll()).thenReturn(List.of());
+
+        ServiceMemoDtos.PendingTeacher pending = service.findPendingTeachers().stream()
+                .filter(it -> fio.equals(it.getFioTeacher()))
+                .filter(it -> changeDate.equals(it.getStartDate()))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals(1, pending.getRows().stream().filter(r -> "Снять".equals(r.getStatus())).count());
+    }
+
 
     @Test
     void laterTransferDoesNotCarryRemovedRowsFromEarlierMemo() {
