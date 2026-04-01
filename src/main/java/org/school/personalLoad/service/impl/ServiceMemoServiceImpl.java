@@ -614,6 +614,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         return String.join("|",
                 safe(row.getSubjectName()),
                 safe(row.getClassName()),
+                String.valueOf(row.getLoad() == null ? 0 : row.getLoad()),
                 safe(row.getGroupNameEducationalPlan()),
                 String.valueOf(row.getEducationLevel()),
                 String.valueOf(row.getStudyPeriod()));
