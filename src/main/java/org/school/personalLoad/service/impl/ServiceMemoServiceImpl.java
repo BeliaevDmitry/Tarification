@@ -235,6 +235,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 builder.removedRows.add(toSyntheticRow(ch, date));
             } else {
                 builder.addedKeys.add(rowKey);
+                builder.addedRows.add(toSyntheticAddedRow(ch, date));
             }
         }
 
@@ -283,7 +284,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     .filter(row -> row.getLoadToDate() == null || !row.getLoadToDate().isBefore(key.changeDate()))
                     .toList();
             Set<String> activeKeys = activeRows.stream().map(this::keyOf).collect(Collectors.toSet());
-            List<ManualLoadEntry> rowsForMemo = mergeRows(activeRows, builder.removedRows);
+            List<ManualLoadEntry> rowsForMemo = mergeRows(activeRows, builder.removedRows, builder.addedRows);
             if (rowsForMemo.isEmpty()) {
                 continue;
             }
@@ -452,12 +453,17 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 .anyMatch(teacher::equals);
     }
 
-    private List<ManualLoadEntry> mergeRows(List<ManualLoadEntry> activeRows, List<ManualLoadEntry> removedRows) {
+    private List<ManualLoadEntry> mergeRows(List<ManualLoadEntry> activeRows,
+                                            List<ManualLoadEntry> removedRows,
+                                            List<ManualLoadEntry> addedRows) {
         LinkedHashMap<String, ManualLoadEntry> merged = new LinkedHashMap<>();
         for (ManualLoadEntry row : activeRows) {
             merged.put(keyOf(row), row);
         }
         for (ManualLoadEntry row : removedRows) {
+            merged.putIfAbsent(keyOf(row), row);
+        }
+        for (ManualLoadEntry row : addedRows) {
             merged.putIfAbsent(keyOf(row), row);
         }
         return new ArrayList<>(merged.values());
@@ -472,6 +478,16 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         if (changeDate != null) {
             row.setLoadToDate(changeDate.minusDays(1));
         }
+        return row;
+    }
+
+    private ManualLoadEntry toSyntheticAddedRow(TarifficationChanges ch, LocalDate changeDate) {
+        ManualLoadEntry row = new ManualLoadEntry();
+        row.setFioTeacher(ch.getFioTeacher());
+        row.setSubjectName(ch.getSubjectName());
+        row.setClassName(ch.getClassName());
+        row.setLoad(ch.getLoad() == null ? 0 : ch.getLoad());
+        row.setLoadFromDate(changeDate);
         return row;
     }
 
@@ -686,6 +702,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         private final Set<String> addedKeys = new LinkedHashSet<>();
         private final Set<String> removedKeys = new LinkedHashSet<>();
         private final List<ManualLoadEntry> removedRows = new ArrayList<>();
+        private final List<ManualLoadEntry> addedRows = new ArrayList<>();
     }
 
     private record TeacherChangeAggregate(

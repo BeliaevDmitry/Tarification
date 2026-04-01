@@ -49,7 +49,6 @@ class ServiceMemoServiceImplTest {
                 studyPeriodSettingService
         );
 
-<<<<<<< codex/rewrite-service-report-logic-eoghxy
         when(studyPeriodSettingService.rangesByKey()).thenReturn(Map.of(
                 StudyPeriodSettingKey.YEAR_1_9,
                 new StudyPeriodSettingService.DateRange(LocalDate.of(2025, 9, 1), LocalDate.of(2026, 5, 31))
@@ -59,17 +58,7 @@ class ServiceMemoServiceImplTest {
 
         AtomicLong seq = new AtomicLong(1);
         when(serviceMemoRepository.save(any(ServiceMemo.class))).thenAnswer(invocation -> {
-=======
-        lenient().when(studyPeriodSettingService.rangesByKey()).thenReturn(Map.of(
-                StudyPeriodSettingKey.YEAR_1_9,
-                new StudyPeriodSettingService.DateRange(LocalDate.of(2025, 9, 1), LocalDate.of(2026, 5, 31))
-        ));
-        lenient().when(teacherDirectoryRepository.findAll()).thenReturn(List.of());
-        lenient().when(serviceMemoRepository.findAllByStatusInOrderByCreatedAtDesc(any())).thenReturn(List.of());
 
-        AtomicLong seq = new AtomicLong(1);
-        lenient().when(serviceMemoRepository.save(any(ServiceMemo.class))).thenAnswer(invocation -> {
->>>>>>> fix-password-and-sluzebka
             ServiceMemo memo = invocation.getArgument(0);
             if (memo.getId() == null) {
                 memo.setId(seq.getAndIncrement());
@@ -109,15 +98,10 @@ class ServiceMemoServiceImplTest {
         assertTrue(pending.get(1).getRows().stream().anyMatch(row -> Objects.equals(row.getLoad(), 12)));
         assertFalse(pending.get(0).getRows().stream().anyMatch(row -> Objects.equals(row.getLoad(), 12)));
 
-<<<<<<< codex/rewrite-service-report-logic-eoghxy
         Set<String> firstStatuses = pending.get(0).getRows().stream().map(ServiceMemoDtos.LoadRow::getStatus).collect(java.util.stream.Collectors.toSet());
         Set<String> secondStatuses = pending.get(1).getRows().stream().map(ServiceMemoDtos.LoadRow::getStatus).collect(java.util.stream.Collectors.toSet());
         assertTrue(firstStatuses.contains("Снять") || firstStatuses.contains("Добавить"));
         assertTrue(secondStatuses.contains("Снять") || secondStatuses.contains("Добавить"));
-=======
-        assertFalse(pending.get(0).getRows().isEmpty());
-        assertFalse(pending.get(1).getRows().isEmpty());
->>>>>>> fix-password-and-sluzebka
     }
 
     @Test
@@ -192,7 +176,6 @@ class ServiceMemoServiceImplTest {
         assertMemo(pending, "Сидоров С.С.", LocalDate.of(2025, 12, 16), "Добавить");
     }
 
-<<<<<<< codex/rewrite-service-report-logic-eoghxy
     @Test
     void recipientIsNotRegeneratedWhenDonorTransfersDifferentLoadLater() {
         ManualLoadEntry donorLoad2 = row("Донор Д.Д.", "Русский язык", "1-А", 2,
@@ -260,8 +243,29 @@ class ServiceMemoServiceImplTest {
                 Objects.equals(row.getLoad(), 2)));
     }
 
-=======
->>>>>>> fix-password-and-sluzebka
+    @Test
+    void changeDateMemoContainsSyntheticAddedRowWhenManualStateNotYetReflected() {
+        String fio = "Иванова И.И.";
+        ManualLoadEntry row = row(fio, "Математика", "5-А", 10,
+                LocalDate.of(2025, 9, 1), LocalDate.of(2025, 10, 4));
+
+        when(manualLoadEntryRepository.findAll()).thenReturn(List.of(row));
+        when(changesDAO.findAll()).thenReturn(List.of(
+                change(fio, "Математика", "5-А", 10, TarifficationChanges.ChangeType.REMOVED,
+                        LocalDateTime.of(2025, 10, 1, 9, 0)),
+                change(fio, "Математика", "5-А", 11, TarifficationChanges.ChangeType.ADDED,
+                        LocalDateTime.of(2025, 10, 1, 9, 1))
+        ));
+
+        ServiceMemoDtos.PendingTeacher memo = service.findPendingTeachers().stream()
+                .filter(it -> LocalDate.of(2025, 10, 1).equals(it.getStartDate()))
+                .findFirst()
+                .orElseThrow();
+
+        assertTrue(memo.getRows().stream().anyMatch(it ->
+                Objects.equals(it.getLoad(), 11) && "Добавить".equals(it.getStatus())));
+    }
+
     private ManualLoadEntry row(String fio, String subject, String className, int load, LocalDate from, LocalDate to) {
         ManualLoadEntry row = new ManualLoadEntry();
         row.setFioTeacher(fio);
