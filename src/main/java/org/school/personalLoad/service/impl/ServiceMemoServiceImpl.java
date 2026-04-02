@@ -71,14 +71,18 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     @Transactional(readOnly = true)
     public List<ServiceMemoDtos.ProcessedMemo> findProcessed() {
         return serviceMemoRepository.findAllByStatusOrderByCreatedAtDesc(ServiceMemo.Status.PROCESSED)
-                .stream().map(this::toProcessedDto).toList();
+                .stream()
+                .map(this::toProcessedDto)
+                .toList();
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<ServiceMemoDtos.ProcessedMemo> findArchived() {
         return serviceMemoRepository.findAllByStatusOrderByCreatedAtDesc(ServiceMemo.Status.ARCHIVED)
-                .stream().map(this::toProcessedDto).toList();
+                .stream()
+                .map(this::toProcessedDto)
+                .toList();
     }
 
     @Override
@@ -105,11 +109,13 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             if (matched.isEmpty()) {
                 continue;
             }
+
             for (Map.Entry<TeacherDateKey, TeacherChangeAggregate> entry : matched) {
                 String selectionKey = selectionKey(entry.getKey());
                 TeacherChangeAggregate aggregate = entry.getValue();
                 String signature = aggregateSignature(aggregate);
                 ServiceMemo latest = latestMemoBySelection.get(selectionKey);
+
                 if (latest != null && signatureMatches(latest.getLoadSignature(), signature)) {
                     continue;
                 }
@@ -121,7 +127,13 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 entity.setGeneratedFilename("служебка по нагрузке " + safeName(aggregate.teacherDisplay())
                         + " " + aggregate.startDate() + ".docx");
                 entity.setLoadSignature(signature);
-                entity.setGeneratedDocument(buildDocx(aggregate.teacherDisplay(), aggregate, createdBy, teacherDativeByFio));
+                entity.setGeneratedDocument(buildDocx(
+                        aggregate.teacherDisplay(),
+                        aggregate,
+                        createdBy,
+                        teacherDativeByFio
+                ));
+
                 created.add(serviceMemoRepository.save(entity));
                 latestMemoBySelection.put(selectionKey, entity);
             }
@@ -130,13 +142,15 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         if (created.isEmpty()) {
             throw new IllegalArgumentException("Служебки не сформированы: для выбранных записей нет новых изменений");
         }
+
         return created.stream().map(this::toProcessedDto).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
     public ServiceMemo getById(Long id) {
-        return serviceMemoRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Служебная записка не найдена"));
+        return serviceMemoRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Служебная записка не найдена"));
     }
 
     @Override
@@ -178,12 +192,14 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         .status(resolveStatus(aggregate, row))
                         .build())
                 .toList();
+
         int total = rows.stream()
                 .filter(row -> !"Снять".equalsIgnoreCase(String.valueOf(row.getStatus())))
                 .map(ServiceMemoDtos.LoadRow::getLoad)
                 .filter(Objects::nonNull)
                 .mapToInt(Integer::intValue)
                 .sum();
+
         return ServiceMemoDtos.PendingTeacher.builder()
                 .teacherKey(teacherKey)
                 .fioTeacher(aggregate.teacherDisplay())
@@ -231,6 +247,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 }
             }
         });
+
         for (TarifficationChanges change : periodChanges) {
             String teacher = normalize(change.getFioTeacher());
             if (teacher == null) {
@@ -240,6 +257,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     .computeIfAbsent(teacher, t -> new TreeSet<>())
                     .add(change.getChangeDate().toLocalDate());
         }
+
         for (NavigableSet<LocalDate> dates : candidateDatesByTeacher.values()) {
             dates.remove(start);
         }
@@ -247,16 +265,20 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         List<org.school.personalLoad.model.TeacherDirectoryEntry> directoryRows = teacherDirectoryRepository.findAll();
         Map<String, String> displayByTeacher = new HashMap<>();
         Map<String, LocalDate> teacherDirectoryCreatedDate = new HashMap<>();
+
         directoryRows.forEach(row -> {
             String key = normalize(row.getFioTeacher());
             if (key != null) {
                 displayByTeacher.putIfAbsent(key, row.getFioTeacher());
-                LocalDate createdDate = Optional.ofNullable(row.getCreatedAt()).map(LocalDateTime::toLocalDate).orElse(null);
+                LocalDate createdDate = Optional.ofNullable(row.getCreatedAt())
+                        .map(LocalDateTime::toLocalDate)
+                        .orElse(null);
                 if (createdDate != null) {
                     teacherDirectoryCreatedDate.putIfAbsent(key, createdDate);
                 }
             }
         });
+
         periodRows.forEach(row -> {
             String key = normalize(row.getFioTeacher());
             if (key != null) {
@@ -265,70 +287,103 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         });
 
         Map<TeacherDateKey, TeacherChangeAggregate> result = new LinkedHashMap<>();
+
         for (Map.Entry<String, NavigableSet<LocalDate>> entry : candidateDatesByTeacher.entrySet()) {
             String teacherKey = entry.getKey();
             List<ManualLoadEntry> teacherRows = rowsByTeacher.getOrDefault(teacherKey, List.of());
+
             for (LocalDate changeDate : entry.getValue()) {
-                List<ManualLoadEntry> beforeRows = teacherRows.stream()
+                List<ManualLoadEntry> rawBeforeRows = teacherRows.stream()
                         .filter(row -> isActiveAt(row, changeDate.minusDays(1)))
                         .toList();
-                List<ManualLoadEntry> afterRows = teacherRows.stream()
+
+                List<ManualLoadEntry> rawAfterRows = teacherRows.stream()
                         .filter(row -> isActiveAt(row, changeDate))
                         .toList();
+
+                List<ManualLoadEntry> beforeRows = normalizeActiveRows(rawBeforeRows);
+                List<ManualLoadEntry> afterRows = normalizeActiveRows(rawAfterRows);
 
                 Map<String, Integer> beforeCounts = countRows(beforeRows);
                 Map<String, Integer> afterCounts = countRows(afterRows);
                 Map<String, Integer> removedCounts = diffCounts(beforeCounts, afterCounts);
                 Map<String, Integer> addedCounts = diffCounts(afterCounts, beforeCounts);
 
-                List<TarifficationChanges> teacherDateChanges = periodChanges.stream()
+                List<TarifficationChanges> dayChanges = periodChanges.stream()
                         .filter(ch -> Objects.equals(teacherKey, normalize(ch.getFioTeacher())))
                         .filter(ch -> Objects.equals(changeDate, ch.getChangeDate().toLocalDate()))
                         .toList();
-                LocalDateTime latestChangeAt = teacherDateChanges.stream()
+
+                LocalDateTime latestChangeAt = dayChanges.stream()
                         .map(TarifficationChanges::getChangeDate)
                         .max(LocalDateTime::compareTo)
                         .orElse(changeDate.atStartOfDay());
-                List<TarifficationChanges> dayChanges = teacherDateChanges.stream()
-                        .filter(ch -> Objects.equals(latestChangeAt, ch.getChangeDate()))
-                        .toList();
+
                 if (!dayChanges.isEmpty()) {
                     Set<String> anyShortKeys = dayChanges.stream()
                             .map(this::shortKeyOf)
                             .collect(Collectors.toSet());
+
                     Set<String> removedShortKeys = dayChanges.stream()
                             .filter(ch -> ch.getChangeType() == TarifficationChanges.ChangeType.REMOVED)
                             .map(this::shortKeyOf)
                             .collect(Collectors.toSet());
+
                     Set<String> addedShortKeys = dayChanges.stream()
                             .filter(ch -> ch.getChangeType() == TarifficationChanges.ChangeType.ADDED)
                             .map(this::shortKeyOf)
                             .collect(Collectors.toSet());
+
                     if (!removedShortKeys.isEmpty()) {
                         removedCounts = filterCountsByShortKeys(removedCounts, removedShortKeys);
                     } else if (!anyShortKeys.isEmpty()) {
                         removedCounts = filterCountsByShortKeys(removedCounts, anyShortKeys);
                     }
+
                     if (!addedShortKeys.isEmpty()) {
                         addedCounts = filterCountsByShortKeys(addedCounts, addedShortKeys);
                     } else if (!anyShortKeys.isEmpty()) {
                         addedCounts = filterCountsByShortKeys(addedCounts, anyShortKeys);
                     }
                 }
+
+                log.debug("=== SERVICE MEMO DIAGNOSTICS ===");
+                log.debug("teacherKey={}, changeDate={}", teacherKey, changeDate);
+                log.debug("rawBeforeRows={}", rawBeforeRows.stream().map(this::debugRow).toList());
+                log.debug("rawAfterRows={}", rawAfterRows.stream().map(this::debugRow).toList());
+                log.debug("beforeRows(normalized)={}", beforeRows.stream().map(this::debugRow).toList());
+                log.debug("afterRows(normalized)={}", afterRows.stream().map(this::debugRow).toList());
+                log.debug("dayChanges={}", dayChanges.stream().map(this::debugChange).toList());
+                log.debug("beforeCounts={}", beforeCounts);
+                log.debug("afterCounts={}", afterCounts);
+                log.debug("removedCounts(after filter)={}", removedCounts);
+                log.debug("addedCounts(after filter)={}", addedCounts);
+
                 if (removedCounts.isEmpty() && addedCounts.isEmpty()) {
+                    log.debug("skip memo for teacherKey={}, changeDate={} because no diff remains after filtering",
+                            teacherKey, changeDate);
                     continue;
                 }
 
                 List<ManualLoadEntry> removedRows = selectRowsByCount(beforeRows, removedCounts).stream()
                         .map(row -> copyForRemoval(row, changeDate.minusDays(1)))
                         .toList();
+
                 List<ManualLoadEntry> addedRows = selectRowsByCount(afterRows, addedCounts);
                 List<ManualLoadEntry> rowsForMemo = mergeRowsForMemo(afterRows, removedRows, addedRows);
+
+                log.debug("removedRows={}", removedRows.stream().map(this::debugRowWithStatus).toList());
+                log.debug("addedRows={}", addedRows.stream().map(this::debugRowWithStatus).toList());
+                log.debug("rowsForMemo={}", rowsForMemo.stream()
+                        .map(row -> debugRowWithResolvedStatus(row, removedRows, addedRows))
+                        .toList());
+
                 if (rowsForMemo.isEmpty()) {
                     continue;
                 }
 
                 String displayName = displayByTeacher.getOrDefault(teacherKey, rowsForMemo.get(0).getFioTeacher());
+
                 boolean firstLoadAppearance = beforeRows.isEmpty()
                         && !afterRows.isEmpty()
                         && teacherRows.stream()
@@ -336,12 +391,14 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         .map(ManualLoadEntry::getLoadFromDate)
                         .filter(Objects::nonNull)
                         .noneMatch(fromDate -> fromDate.isBefore(changeDate));
+
                 boolean newEmploymentByDirectory = Optional.ofNullable(teacherDirectoryCreatedDate.get(teacherKey))
                         .map(createdDate -> !createdDate.isBefore(changeDate))
                         .orElse(true);
+
                 boolean newEmployment = firstLoadAppearance && newEmploymentByDirectory;
 
-                result.put(new TeacherDateKey(teacherKey, changeDate), new TeacherChangeAggregate(
+                TeacherChangeAggregate aggregate = new TeacherChangeAggregate(
                         displayName,
                         changeDate,
                         latestChangeAt,
@@ -349,11 +406,75 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         rowsKeySet(addedRows),
                         rowsKeySet(removedRows),
                         newEmployment
-                ));
+                );
+
+                result.put(new TeacherDateKey(teacherKey, changeDate), aggregate);
             }
         }
 
         return result;
+    }
+
+    private List<ManualLoadEntry> normalizeActiveRows(List<ManualLoadEntry> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, ManualLoadEntry> bestByTransferKey = new LinkedHashMap<>();
+        for (ManualLoadEntry row : rows) {
+            if (row == null) {
+                continue;
+            }
+
+            String key = transferKeyOf(row);
+            ManualLoadEntry existing = bestByTransferKey.get(key);
+            if (existing == null || isBetterActiveRow(row, existing)) {
+                bestByTransferKey.put(key, row);
+            }
+        }
+
+        return new ArrayList<>(bestByTransferKey.values());
+    }
+
+    private boolean isBetterActiveRow(ManualLoadEntry candidate, ManualLoadEntry current) {
+        if (candidate == null) {
+            return false;
+        }
+        if (current == null) {
+            return true;
+        }
+
+        LocalDate candidateTo = candidate.getLoadToDate();
+        LocalDate currentTo = current.getLoadToDate();
+
+        if (candidateTo != null && currentTo != null && !candidateTo.equals(currentTo)) {
+            return candidateTo.isAfter(currentTo);
+        }
+        if (candidateTo != null && currentTo == null) {
+            return true;
+        }
+        if (candidateTo == null && currentTo != null) {
+            return false;
+        }
+
+        LocalDate candidateFrom = candidate.getLoadFromDate();
+        LocalDate currentFrom = current.getLoadFromDate();
+
+        if (candidateFrom != null && currentFrom != null && !candidateFrom.equals(currentFrom)) {
+            return candidateFrom.isAfter(currentFrom);
+        }
+        if (candidateFrom != null && currentFrom == null) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private String memoCompareKeyOf(ManualLoadEntry row) {
+        return String.join("|",
+                safe(row.getSubjectName()),
+                safe(row.getClassName()),
+                String.valueOf(row.getLoad() == null ? 0 : row.getLoad()));
     }
 
     private boolean isActiveAt(ManualLoadEntry row, LocalDate date) {
@@ -421,8 +542,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
 
     private String resolveStatus(TeacherChangeAggregate aggregate, ManualLoadEntry row) {
         String rowKey = memoRowKey(row);
-        if (aggregate.removedRowKeys().contains(rowKey)) return "Снять";
-        if (aggregate.addedRowKeys().contains(rowKey)) return "Добавить";
+        if (aggregate.removedRowKeys().contains(rowKey)) {
+            return "Снять";
+        }
+        if (aggregate.addedRowKeys().contains(rowKey)) {
+            return "Добавить";
+        }
         return "";
     }
 
@@ -437,6 +562,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         row.setGroupNameEducationalPlan(source.getGroupNameEducationalPlan());
         row.setEducationLevel(source.getEducationLevel());
         row.setStudyPeriod(source.getStudyPeriod());
+        row.setNumberSchoolBuilding(source.getNumberSchoolBuilding());
         return row;
     }
 
@@ -444,6 +570,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                                                    List<ManualLoadEntry> removedRows,
                                                    List<ManualLoadEntry> addedRows) {
         LinkedHashMap<String, ManualLoadEntry> merged = new LinkedHashMap<>();
+
         for (ManualLoadEntry row : Optional.ofNullable(activeRows).orElseGet(List::of)) {
             merged.put(memoRowKey(row), row);
         }
@@ -453,13 +580,17 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         for (ManualLoadEntry row : Optional.ofNullable(addedRows).orElseGet(List::of)) {
             merged.putIfAbsent(memoRowKey(row), row);
         }
+
         return new ArrayList<>(merged.values());
     }
 
     private Map<String, Integer> countRows(List<ManualLoadEntry> rows) {
         Map<String, Integer> counts = new LinkedHashMap<>();
         for (ManualLoadEntry row : Optional.ofNullable(rows).orElseGet(List::of)) {
-            counts.merge(keyOf(row), 1, Integer::sum);
+            if (row == null) {
+                continue;
+            }
+            counts.merge(memoCompareKeyOf(row), 1, Integer::sum);
         }
         return counts;
     }
@@ -480,8 +611,9 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         if (counts == null || counts.isEmpty() || allowedShortKeys == null || allowedShortKeys.isEmpty()) {
             return counts == null ? Map.of() : counts;
         }
+
         return counts.entrySet().stream()
-                .filter(entry -> allowedShortKeys.contains(shortKeyFromTransferKey(entry.getKey())))
+                .filter(entry -> allowedShortKeys.contains(entry.getKey()))
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
                         Map.Entry::getValue,
@@ -494,24 +626,33 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         if (requiredCounts == null || requiredCounts.isEmpty()) {
             return List.of();
         }
+
         Map<String, Integer> remaining = new HashMap<>(requiredCounts);
         List<ManualLoadEntry> selected = new ArrayList<>();
+
         for (ManualLoadEntry row : Optional.ofNullable(sourceRows).orElseGet(List::of)) {
-            String key = keyOf(row);
+            if (row == null) {
+                continue;
+            }
+            String key = memoCompareKeyOf(row);
             int count = remaining.getOrDefault(key, 0);
             if (count <= 0) {
                 continue;
             }
+
             selected.add(row);
+
             if (count == 1) {
                 remaining.remove(key);
             } else {
                 remaining.put(key, count - 1);
             }
+
             if (remaining.isEmpty()) {
                 break;
             }
         }
+
         return selected;
     }
 
@@ -530,22 +671,30 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             String teacherDative = Optional.ofNullable(teacherDativeByFio.get(normalize(fioTeacher)))
                     .filter(value -> !value.isBlank())
                     .orElse(fioTeacher);
+
             paragraph(doc, "Директору ГБОУ Школы №7", false, ParagraphAlignment.RIGHT, 12, 0, 0, 0);
             paragraph(doc, "Ждановой И.Д.", false, ParagraphAlignment.RIGHT, 12, 0, 160, 0);
             paragraph(doc, "от заместителя директора", false, ParagraphAlignment.RIGHT, 12, 0, 0, 0);
             paragraph(doc, createdBy, false, ParagraphAlignment.RIGHT, 12, 0, 220, 0);
 
             paragraph(doc, "СЛУЖЕБНАЯ ЗАПИСКА", true, ParagraphAlignment.CENTER, 14, 0, 220, 0);
-            paragraph(doc, "В связи с производственной необходимостью прошу Вас утвердить изменение учебной нагрузки.", false,
-                    ParagraphAlignment.BOTH, 12, 0, 120, 420);
+
+            paragraph(doc,
+                    "В связи с производственной необходимостью направляю на утверждение изменение учебной нагрузки.",
+                    false, ParagraphAlignment.BOTH, 12, 0, 120, 420);
 
             if (aggregate.onlyAdditions()) {
-                paragraph(doc, "Прошу Вас с " + RU_DATE.format(aggregate.startDate()) + " утвердить нагрузку на учебный год сотруднику "
-                        + teacherDative + " в следующем объеме:", false, ParagraphAlignment.BOTH, 12, 0, 120, 420);
+                paragraph(doc,
+                        "С " + RU_DATE.format(aggregate.startDate())
+                                + " установить учебную нагрузку на учебный год сотруднику "
+                                + teacherDative + " в следующем объеме:",
+                        false, ParagraphAlignment.BOTH, 12, 0, 120, 420);
             } else {
-                paragraph(doc, "На основании личного заявления " + teacherDative
-                        + " считать актуальной следующую учебную нагрузку данного учителя с "
-                        + RU_DATE.format(aggregate.startDate()) + ":", false, ParagraphAlignment.BOTH, 12, 0, 120, 420);
+                paragraph(doc,
+                        "С " + RU_DATE.format(aggregate.startDate())
+                                + " считать актуальной следующую учебную нагрузку "
+                                + teacherDative + ":",
+                        false, ParagraphAlignment.BOTH, 12, 0, 120, 420);
             }
 
             int totalRemainingHours = appendTable(doc, aggregate.rows(), aggregate, aggregate.onlyAdditions());
@@ -564,34 +713,59 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
 
     private int appendTable(XWPFDocument doc, List<ManualLoadEntry> rows, TeacherChangeAggregate aggregate, boolean newEmployeeMode) {
         List<ManualLoadEntry> safeRows = rows == null ? List.of() : rows;
+
+        LinkedHashMap<String, DisplayRow> displayRows = new LinkedHashMap<>();
+        for (ManualLoadEntry row : safeRows) {
+            if (row == null) {
+                continue;
+            }
+
+            String status = resolveStatus(aggregate, row);
+            String key = String.join("|",
+                    safe(row.getSubjectName()),
+                    safe(row.getClassName()),
+                    String.valueOf(row.getLoad() == null ? 0 : row.getLoad()),
+                    safe(status));
+
+            displayRows.putIfAbsent(key, new DisplayRow(
+                    safeDocText(row.getSubjectName()),
+                    safeDocText(row.getClassName()),
+                    row.getLoad() == null ? 0 : row.getLoad(),
+                    status
+            ));
+        }
+
+        log.debug("displayRows for memo={}", displayRows.values());
+
         XWPFTable table = doc.createTable(1, newEmployeeMode ? 3 : 4);
         table.setWidthType(TableWidthType.PCT);
         table.setWidth("100%");
         table.setTableAlignment(TableRowAlign.CENTER);
+
         List<String> header = newEmployeeMode
                 ? List.of("Предмет", "Класс", "Количество часов")
                 : List.of("Предмет", "Класс", "Количество часов", "Статус");
+
         for (int i = 0; i < header.size(); i++) {
             setCellText(table.getRow(0).getCell(i), header.get(i), true);
         }
 
         int totalRemainingHours = 0;
-        for (ManualLoadEntry row : safeRows) {
-            if (row == null) {
-                continue;
-            }
+        for (DisplayRow row : displayRows.values()) {
             XWPFTableRow tr = table.createRow();
-            String status = resolveStatus(aggregate, row);
-            setCellText(tr.getCell(0), safeDocText(row.getSubjectName()), false);
-            setCellText(tr.getCell(1), safeDocText(row.getClassName()), false);
-            setCellText(tr.getCell(2), String.valueOf(row.getLoad() == null ? 0 : row.getLoad()), false);
-            if (!"Снять".equalsIgnoreCase(status)) {
-                totalRemainingHours += row.getLoad() == null ? 0 : row.getLoad();
+            setCellText(tr.getCell(0), row.subjectName(), false);
+            setCellText(tr.getCell(1), row.className(), false);
+            setCellText(tr.getCell(2), String.valueOf(row.load()), false);
+
+            if (!"Снять".equalsIgnoreCase(row.status())) {
+                totalRemainingHours += row.load();
             }
+
             if (!newEmployeeMode) {
-                setCellText(tr.getCell(3), status, false);
+                setCellText(tr.getCell(3), row.status(), false);
             }
         }
+
         return totalRemainingHours;
     }
 
@@ -609,14 +783,6 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         run.setText(text == null ? "" : text);
     }
 
-    private void paragraph(XWPFDocument doc, String text, boolean bold) {
-        paragraph(doc, text, bold, ParagraphAlignment.LEFT, 12, 0, 0, 0);
-    }
-
-    private void paragraph(XWPFDocument doc, String text, boolean bold, ParagraphAlignment alignment) {
-        paragraph(doc, text, bold, alignment, 12, 0, 0, 0);
-    }
-
     private void paragraph(XWPFDocument doc,
                            String text,
                            boolean bold,
@@ -630,6 +796,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         p.setSpacingBefore(spacingBefore);
         p.setSpacingAfter(spacingAfter);
         p.setFirstLineIndent(firstLineIndent);
+
         XWPFRun run = p.createRun();
         run.setText(text == null ? "" : text);
         run.setFontFamily("Times New Roman");
@@ -639,22 +806,16 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
 
     private LocalDate academicStart() {
         var ranges = studyPeriodSettingService.rangesByKey();
-        return Optional.ofNullable(ranges.get(StudyPeriodSettingKey.YEAR_1_9)).map(StudyPeriodSettingService.DateRange::startDate)
+        return Optional.ofNullable(ranges.get(StudyPeriodSettingKey.YEAR_1_9))
+                .map(StudyPeriodSettingService.DateRange::startDate)
                 .orElse(LocalDate.of(LocalDate.now().getYear(), 9, 1));
     }
 
     private LocalDate academicEnd() {
         var ranges = studyPeriodSettingService.rangesByKey();
-        return Optional.ofNullable(ranges.get(StudyPeriodSettingKey.YEAR_1_9)).map(StudyPeriodSettingService.DateRange::endDate)
+        return Optional.ofNullable(ranges.get(StudyPeriodSettingKey.YEAR_1_9))
+                .map(StudyPeriodSettingService.DateRange::endDate)
                 .orElse(LocalDate.of(LocalDate.now().plusYears(1).getYear(), 5, 31));
-    }
-
-    private String keyOf(TarifficationChanges ch) {
-        return String.join("|", safe(ch.getSubjectName()), safe(ch.getClassName()), String.valueOf(ch.getLoad()));
-    }
-
-    private String keyOf(ManualLoadEntry row) {
-        return transferKeyOf(row);
     }
 
     private String transferKeyOf(ManualLoadEntry row) {
@@ -675,18 +836,9 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 String.valueOf(ch.getLoad() == null ? 0 : ch.getLoad()));
     }
 
-    private String shortKeyFromTransferKey(String transferKey) {
-        String safeKey = String.valueOf(transferKey == null ? "" : transferKey);
-        String[] parts = safeKey.split("\\|", -1);
-        if (parts.length < 3) {
-            return safeKey;
-        }
-        return parts[0] + "|" + parts[1] + "|" + parts[2];
-    }
-
     private String memoRowKey(ManualLoadEntry row) {
         return String.join("|",
-                keyOf(row),
+                transferKeyOf(row),
                 String.valueOf(row.getLoadFromDate() == null ? "" : row.getLoadFromDate()),
                 String.valueOf(row.getLoadToDate() == null ? "" : row.getLoadToDate()));
     }
@@ -715,6 +867,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         if (aggregate == null || aggregate.rows() == null) {
             return "";
         }
+
         String payload = aggregate.rows().stream()
                 .filter(Objects::nonNull)
                 .map(row -> String.join("|",
@@ -726,6 +879,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         resolveStatus(aggregate, row)))
                 .sorted()
                 .collect(Collectors.joining("||", aggregate.startDate() + "|" + aggregate.onlyAdditions() + "|", ""));
+
         return signatureHash(payload);
     }
 
@@ -760,17 +914,70 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         return key.teacherKey() + SELECTION_SEPARATOR + key.changeDate();
     }
 
-    private LocalDateTime max(LocalDateTime first, LocalDateTime second) {
-        if (first == null) return second;
-        if (second == null) return first;
-        return first.isAfter(second) ? first : second;
+    private Map<String, Object> debugRow(ManualLoadEntry row) {
+        return Map.ofEntries(
+                Map.entry("teacher", String.valueOf(row.getFioTeacher())),
+                Map.entry("subject", String.valueOf(row.getSubjectName())),
+                Map.entry("class", String.valueOf(row.getClassName())),
+                Map.entry("load", String.valueOf(row.getLoad())),
+                Map.entry("from", String.valueOf(row.getLoadFromDate())),
+                Map.entry("to", String.valueOf(row.getLoadToDate())),
+                Map.entry("memoCompareKey", memoCompareKeyOf(row)),
+                Map.entry("transferKey", transferKeyOf(row)),
+                Map.entry("building", String.valueOf(row.getNumberSchoolBuilding())),
+                Map.entry("groupPlan", String.valueOf(row.getGroupNameEducationalPlan())),
+                Map.entry("educationLevel", String.valueOf(row.getEducationLevel())),
+                Map.entry("studyPeriod", String.valueOf(row.getStudyPeriod()))
+        );
     }
 
-    private String firstNonBlank(String first, String second) {
-        if (first != null && !first.isBlank()) {
-            return first;
+    private Map<String, Object> debugChange(TarifficationChanges ch) {
+        return Map.ofEntries(
+                Map.entry("teacher", String.valueOf(ch.getFioTeacher())),
+                Map.entry("subject", String.valueOf(ch.getSubjectName())),
+                Map.entry("class", String.valueOf(ch.getClassName())),
+                Map.entry("load", String.valueOf(ch.getLoad())),
+                Map.entry("type", String.valueOf(ch.getChangeType())),
+                Map.entry("dateTime", String.valueOf(ch.getChangeDate())),
+                Map.entry("shortKey", shortKeyOf(ch))
+        );
+    }
+
+    private Map<String, Object> debugRowWithStatus(ManualLoadEntry row) {
+        return Map.ofEntries(
+                Map.entry("subject", String.valueOf(row.getSubjectName())),
+                Map.entry("class", String.valueOf(row.getClassName())),
+                Map.entry("load", String.valueOf(row.getLoad())),
+                Map.entry("from", String.valueOf(row.getLoadFromDate())),
+                Map.entry("to", String.valueOf(row.getLoadToDate())),
+                Map.entry("transferKey", transferKeyOf(row))
+        );
+    }
+
+    private Map<String, Object> debugRowWithResolvedStatus(ManualLoadEntry row,
+                                                           List<ManualLoadEntry> removedRows,
+                                                           List<ManualLoadEntry> addedRows) {
+        Set<String> removedKeys = rowsKeySet(removedRows);
+        Set<String> addedKeys = rowsKeySet(addedRows);
+        String rowKey = memoRowKey(row);
+
+        String status = "";
+        if (removedKeys.contains(rowKey)) {
+            status = "Снять";
+        } else if (addedKeys.contains(rowKey)) {
+            status = "Добавить";
         }
-        return second;
+
+        return Map.ofEntries(
+                Map.entry("subject", String.valueOf(row.getSubjectName())),
+                Map.entry("class", String.valueOf(row.getClassName())),
+                Map.entry("load", String.valueOf(row.getLoad())),
+                Map.entry("from", String.valueOf(row.getLoadFromDate())),
+                Map.entry("to", String.valueOf(row.getLoadToDate())),
+                Map.entry("status", status),
+                Map.entry("memoCompareKey", memoCompareKeyOf(row)),
+                Map.entry("transferKey", transferKeyOf(row))
+        );
     }
 
     private record SelectionRequest(String teacherKey, LocalDate changeDate) {
@@ -788,17 +995,13 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             Set<String> removedRowKeys,
             boolean onlyAdditions
     ) {
-        private TeacherChangeAggregate(
-                String teacherDisplay,
-                LocalDate startDate,
-                LocalDateTime latestChangeAt,
-                List<ManualLoadEntry> rows,
-                Set<String> activeKeys,
-                Set<String> addedKeys,
-                Set<String> removedKeys,
-                boolean onlyAdditions
-        ) {
-            this(teacherDisplay, startDate, latestChangeAt, rows, addedKeys, removedKeys, onlyAdditions);
-        }
+    }
+
+    private record DisplayRow(
+            String subjectName,
+            String className,
+            int load,
+            String status
+    ) {
     }
 }
