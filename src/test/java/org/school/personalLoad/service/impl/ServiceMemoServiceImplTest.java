@@ -314,7 +314,7 @@ class ServiceMemoServiceImplTest {
     }
 
     @Test
-    void donorRemovalDetectedWhenRowsDifferByEducationalPlanGroup() {
+    void donorRowsDifferingOnlyByEducationalPlanGroupAreNotDuplicatedAsRemoval() {
         String fio = "Иванов И.И.";
         LocalDate changeDate = LocalDate.of(2025, 10, 11);
 
@@ -334,11 +334,11 @@ class ServiceMemoServiceImplTest {
                 .findFirst()
                 .orElseThrow();
 
-        assertEquals(1, pending.getRows().stream().filter(r -> "Снять".equals(r.getStatus())).count());
+        assertEquals(0, pending.getRows().stream().filter(r -> "Снять".equals(r.getStatus())).count());
     }
 
     @Test
-    void donorRemovalDetectedWhenRowsDifferOnlyBySchoolBuilding() {
+    void donorRowsDifferingOnlyBySchoolBuildingAreNotDuplicatedAsRemoval() {
         String fio = "Иванов И.И.";
         LocalDate changeDate = LocalDate.of(2025, 10, 11);
 
@@ -358,7 +358,7 @@ class ServiceMemoServiceImplTest {
                 .findFirst()
                 .orElseThrow();
 
-        assertEquals(1, pending.getRows().stream().filter(r -> "Снять".equals(r.getStatus())).count());
+        assertEquals(0, pending.getRows().stream().filter(r -> "Снять".equals(r.getStatus())).count());
     }
 
     @Test
