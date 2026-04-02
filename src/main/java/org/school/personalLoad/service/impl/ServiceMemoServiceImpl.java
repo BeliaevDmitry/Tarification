@@ -290,12 +290,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             List<ManualLoadEntry> teacherRows = rowsByTeacher.getOrDefault(teacherKey, List.of());
 
             for (LocalDate changeDate : entry.getValue()) {
-                List<ManualLoadEntry> rowsBeforeDate = teacherRows.stream()
+                List<ManualLoadEntry> rowsBeforeDate = normalizeActiveRows(teacherRows.stream()
                         .filter(row -> isActiveAt(row, changeDate.minusDays(1)))
-                        .toList();
-                List<ManualLoadEntry> rowsOnDate = teacherRows.stream()
+                        .toList());
+                List<ManualLoadEntry> rowsOnDate = normalizeActiveRows(teacherRows.stream()
                         .filter(row -> isActiveAt(row, changeDate))
-                        .toList();
+                        .toList());
 
                 Map<String, Integer> beforeCounts = countRows(rowsBeforeDate);
                 Map<String, Integer> afterCounts = countRows(rowsOnDate);
@@ -310,9 +310,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         .map(TarifficationChanges::getChangeDate)
                         .max(LocalDateTime::compareTo)
                         .orElse(changeDate.atStartOfDay());
-                List<TarifficationChanges> dayChanges = teacherDateChanges.stream()
-                        .filter(ch -> Objects.equals(latestChangeAt, ch.getChangeDate()))
-                        .toList();
+                List<TarifficationChanges> dayChanges = teacherDateChanges;
                 if (!dayChanges.isEmpty()) {
                     Set<String> anyShortKeys = dayChanges.stream()
                             .map(this::shortKeyOf)
@@ -797,7 +795,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private String shortKeyFromTransferKey(String transferKey) {
-        return String.valueOf(transferKey == null ? "" : transferKey);
+        String safeValue = String.valueOf(transferKey == null ? "" : transferKey);
+        String[] parts = safeValue.split("\\|", -1);
+        if (parts.length < 3) {
+            return safeValue;
+        }
+        return String.join("|", parts[0], parts[1], parts[2]);
     }
 
     private String memoRowKey(ManualLoadEntry row) {
@@ -971,5 +974,13 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         ) {
             this(teacherDisplay, startDate, latestChangeAt, rows, addedKeys, removedKeys, onlyAdditions);
         }
+    }
+
+    private record DisplayRow(
+            String subjectName,
+            String className,
+            int load,
+            String status
+    ) {
     }
 }
