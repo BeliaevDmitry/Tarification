@@ -372,7 +372,75 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             }
         }
 
+        // Фолбэк для случаев, когда у донора после передачи больше нет ни одной активной строки
+        // в текущей ручной нагрузке: берём удалённые строки из истории изменений.
+        Map<String, List<TarifficationChanges>> removedByTeacherAndDate = periodChanges.stream()
+                .filter(ch -> ch.getChangeType() == TarifficationChanges.ChangeType.REMOVED)
+                .collect(Collectors.groupingBy(ch -> {
+                    String teacher = normalize(ch.getFioTeacher());
+                    LocalDate date = ch.getChangeDate() == null ? null : ch.getChangeDate().toLocalDate();
+                    return String.valueOf(teacher) + "|" + String.valueOf(date);
+                }));
+
+        for (Map.Entry<String, List<TarifficationChanges>> entry : removedByTeacherAndDate.entrySet()) {
+            List<TarifficationChanges> removedChanges = entry.getValue();
+            if (removedChanges == null || removedChanges.isEmpty()) {
+                continue;
+            }
+
+            TarifficationChanges first = removedChanges.get(0);
+            String teacherKey = normalize(first.getFioTeacher());
+            LocalDate changeDate = first.getChangeDate() == null ? null : first.getChangeDate().toLocalDate();
+            if (teacherKey == null || changeDate == null) {
+                continue;
+            }
+
+            TeacherDateKey mapKey = new TeacherDateKey(teacherKey, changeDate);
+            if (result.containsKey(mapKey)) {
+                continue;
+            }
+
+            List<ManualLoadEntry> removedRows = removedChanges.stream()
+                    .map(ch -> manualRowFromChange(ch, changeDate.minusDays(1)))
+                    .toList();
+            if (removedRows.isEmpty()) {
+                continue;
+            }
+
+            LocalDateTime latestChangeAt = removedChanges.stream()
+                    .map(TarifficationChanges::getChangeDate)
+                    .filter(Objects::nonNull)
+                    .max(LocalDateTime::compareTo)
+                    .orElse(changeDate.atStartOfDay());
+
+            String displayName = Optional.ofNullable(displayByTeacher.get(teacherKey))
+                    .orElse(first.getFioTeacher());
+
+            result.put(mapKey, new TeacherChangeAggregate(
+                    displayName,
+                    changeDate,
+                    latestChangeAt,
+                    removedRows,
+                    Set.of(),
+                    rowsKeySet(removedRows),
+                    false
+            ));
+        }
+
         return result;
+    }
+
+    private ManualLoadEntry manualRowFromChange(TarifficationChanges change, LocalDate removalToDate) {
+        ManualLoadEntry row = new ManualLoadEntry();
+        row.setFioTeacher(change.getFioTeacher());
+        row.setSubjectName(change.getSubjectName());
+        row.setClassName(change.getClassName());
+        row.setLoad(change.getLoad());
+        row.setLoadFromDate(null);
+        row.setLoadToDate(removalToDate);
+        row.setGroupNameEducationalPlan(change.getGroupNameEducationalPlan());
+        row.setNumberSchoolBuilding(change.getNumberSchoolBuilding());
+        return row;
     }
 
     private List<ManualLoadEntry> normalizeActiveRows(List<ManualLoadEntry> rows) {
