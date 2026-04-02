@@ -766,7 +766,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private String keyOf(ManualLoadEntry row) {
-        return shortKeyOf(row);
+        return transferKeyOf(row);
     }
 
     private String transferKeyOf(ManualLoadEntry row) {
