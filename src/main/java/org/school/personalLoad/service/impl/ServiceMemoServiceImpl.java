@@ -290,16 +290,15 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             List<ManualLoadEntry> teacherRows = rowsByTeacher.getOrDefault(teacherKey, List.of());
 
             for (LocalDate changeDate : entry.getValue()) {
-                List<ManualLoadEntry> rawBeforeRows = teacherRows.stream()
+                List<ManualLoadEntry> rowsBeforeDate = teacherRows.stream()
                         .filter(row -> isActiveAt(row, changeDate.minusDays(1)))
                         .toList();
-
-                List<ManualLoadEntry> rawAfterRows = teacherRows.stream()
+                List<ManualLoadEntry> rowsOnDate = teacherRows.stream()
                         .filter(row -> isActiveAt(row, changeDate))
                         .toList();
 
-                Map<String, Integer> beforeCounts = countRows(beforeRows);
-                Map<String, Integer> afterCounts = countRows(afterRows);
+                Map<String, Integer> beforeCounts = countRows(rowsBeforeDate);
+                Map<String, Integer> afterCounts = countRows(rowsOnDate);
                 Map<String, Integer> removedCounts = diffCounts(beforeCounts, afterCounts);
                 Map<String, Integer> addedCounts = diffCounts(afterCounts, beforeCounts);
 
@@ -341,25 +340,18 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     continue;
                 }
 
-                List<ManualLoadEntry> removedRows = selectRowsByCount(beforeRows, removedCounts).stream()
+                List<ManualLoadEntry> removedRows = selectRowsByCount(rowsBeforeDate, removedCounts).stream()
                         .map(row -> copyForRemoval(row, changeDate.minusDays(1)))
                         .toList();
-                List<ManualLoadEntry> addedRows = selectRowsByCount(afterRows, addedCounts);
-                List<ManualLoadEntry> rowsForMemo = mergeRowsForMemo(afterRows, removedRows, addedRows);
-
-                log.debug("removedRows={}", removedRows.stream().map(this::debugRowWithStatus).toList());
-                log.debug("addedRows={}", addedRows.stream().map(this::debugRowWithStatus).toList());
-                log.debug("rowsForMemo={}", rowsForMemo.stream()
-                        .map(row -> debugRowWithResolvedStatus(row, removedRows, addedRows))
-                        .toList());
-
+                List<ManualLoadEntry> addedRows = selectRowsByCount(rowsOnDate, addedCounts);
+                List<ManualLoadEntry> rowsForMemo = mergeRowsForMemo(rowsOnDate, removedRows, addedRows);
                 if (rowsForMemo.isEmpty()) {
                     continue;
                 }
 
                 String displayName = displayByTeacher.getOrDefault(teacherKey, rowsForMemo.get(0).getFioTeacher());
-                boolean firstLoadAppearance = beforeRows.isEmpty()
-                        && !afterRows.isEmpty()
+                boolean firstLoadAppearance = rowsBeforeDate.isEmpty()
+                        && !rowsOnDate.isEmpty()
                         && teacherRows.stream()
                         .filter(Objects::nonNull)
                         .map(ManualLoadEntry::getLoadFromDate)
@@ -979,13 +971,5 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         ) {
             this(teacherDisplay, startDate, latestChangeAt, rows, addedKeys, removedKeys, onlyAdditions);
         }
-    }
-
-    private record DisplayRow(
-            String subjectName,
-            String className,
-            int load,
-            String status
-    ) {
     }
 }
