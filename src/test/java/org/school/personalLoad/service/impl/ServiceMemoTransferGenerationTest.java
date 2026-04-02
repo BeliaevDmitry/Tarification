@@ -10,17 +10,25 @@ import org.school.personalLoad.dto.ServiceMemoDtos;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.ServiceMemo;
 import org.school.personalLoad.model.StudyPeriodSettingKey;
+<<<<<<< codex/investigate-servicememoserviceimpl-issues-thh4eb
 import org.school.personalLoad.model.TarifficationChanges;
+=======
+>>>>>>> fix-password-and-sluzebka
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.ServiceMemoRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.StudyPeriodSettingService;
 
 import java.time.LocalDate;
+<<<<<<< codex/investigate-servicememoserviceimpl-issues-thh4eb
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+=======
+import java.util.List;
+import java.util.Map;
+>>>>>>> fix-password-and-sluzebka
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -79,6 +87,7 @@ class ServiceMemoTransferGenerationTest {
                 && LocalDate.of(2025, 10, 11).equals(p.getStartDate())));
     }
 
+<<<<<<< codex/investigate-servicememoserviceimpl-issues-thh4eb
     @Test
     void donorWithoutCurrentRowsIsRecoveredFromRemovedHistoryChanges() {
         LocalDateTime changeTs = LocalDateTime.of(2025, 10, 11, 9, 0);
@@ -141,6 +150,8 @@ class ServiceMemoTransferGenerationTest {
         assertTrue(unchangedCount >= 4);
     }
 
+=======
+>>>>>>> fix-password-and-sluzebka
     private ManualLoadEntry row(String fio, String subject, String className, int load,
                                 LocalDate from, LocalDate to) {
         ManualLoadEntry entry = new ManualLoadEntry();
@@ -152,6 +163,7 @@ class ServiceMemoTransferGenerationTest {
         entry.setLoadToDate(to);
         return entry;
     }
+<<<<<<< codex/investigate-servicememoserviceimpl-issues-thh4eb
 
     private TarifficationChanges change(String fio, String subject, String className, int load,
                                         TarifficationChanges.ChangeType type, LocalDateTime when) {
@@ -164,4 +176,6 @@ class ServiceMemoTransferGenerationTest {
         change.setChangeDate(when);
         return change;
     }
+=======
+>>>>>>> fix-password-and-sluzebka
 }
