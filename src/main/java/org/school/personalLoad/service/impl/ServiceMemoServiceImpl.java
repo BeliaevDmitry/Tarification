@@ -290,12 +290,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             List<ManualLoadEntry> teacherRows = rowsByTeacher.getOrDefault(teacherKey, List.of());
 
             for (LocalDate changeDate : entry.getValue()) {
-                List<ManualLoadEntry> rowsBeforeDate = teacherRows.stream()
+                List<ManualLoadEntry> rowsBeforeDate = normalizeActiveRows(teacherRows.stream()
                         .filter(row -> isActiveAt(row, changeDate.minusDays(1)))
-                        .toList();
-                List<ManualLoadEntry> rowsOnDate = teacherRows.stream()
+                        .toList());
+                List<ManualLoadEntry> rowsOnDate = normalizeActiveRows(teacherRows.stream()
                         .filter(row -> isActiveAt(row, changeDate))
-                        .toList();
+                        .toList());
 
                 Map<String, Integer> beforeCounts = countRows(rowsBeforeDate);
                 Map<String, Integer> afterCounts = countRows(rowsOnDate);
@@ -310,9 +310,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         .map(TarifficationChanges::getChangeDate)
                         .max(LocalDateTime::compareTo)
                         .orElse(changeDate.atStartOfDay());
-                List<TarifficationChanges> dayChanges = teacherDateChanges.stream()
-                        .filter(ch -> Objects.equals(latestChangeAt, ch.getChangeDate()))
-                        .toList();
+                List<TarifficationChanges> dayChanges = teacherDateChanges;
                 if (!dayChanges.isEmpty()) {
                     Set<String> anyShortKeys = dayChanges.stream()
                             .map(this::shortKeyOf)
@@ -374,7 +372,75 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             }
         }
 
+        // Фолбэк для случаев, когда у донора после передачи больше нет ни одной активной строки
+        // в текущей ручной нагрузке: берём удалённые строки из истории изменений.
+        Map<String, List<TarifficationChanges>> removedByTeacherAndDate = periodChanges.stream()
+                .filter(ch -> ch.getChangeType() == TarifficationChanges.ChangeType.REMOVED)
+                .collect(Collectors.groupingBy(ch -> {
+                    String teacher = normalize(ch.getFioTeacher());
+                    LocalDate date = ch.getChangeDate() == null ? null : ch.getChangeDate().toLocalDate();
+                    return String.valueOf(teacher) + "|" + String.valueOf(date);
+                }));
+
+        for (Map.Entry<String, List<TarifficationChanges>> entry : removedByTeacherAndDate.entrySet()) {
+            List<TarifficationChanges> removedChanges = entry.getValue();
+            if (removedChanges == null || removedChanges.isEmpty()) {
+                continue;
+            }
+
+            TarifficationChanges first = removedChanges.get(0);
+            String teacherKey = normalize(first.getFioTeacher());
+            LocalDate changeDate = first.getChangeDate() == null ? null : first.getChangeDate().toLocalDate();
+            if (teacherKey == null || changeDate == null) {
+                continue;
+            }
+
+            TeacherDateKey mapKey = new TeacherDateKey(teacherKey, changeDate);
+            if (result.containsKey(mapKey)) {
+                continue;
+            }
+
+            List<ManualLoadEntry> removedRows = removedChanges.stream()
+                    .map(ch -> manualRowFromChange(ch, changeDate.minusDays(1)))
+                    .toList();
+            if (removedRows.isEmpty()) {
+                continue;
+            }
+
+            LocalDateTime latestChangeAt = removedChanges.stream()
+                    .map(TarifficationChanges::getChangeDate)
+                    .filter(Objects::nonNull)
+                    .max(LocalDateTime::compareTo)
+                    .orElse(changeDate.atStartOfDay());
+
+            String displayName = Optional.ofNullable(displayByTeacher.get(teacherKey))
+                    .orElse(first.getFioTeacher());
+
+            result.put(mapKey, new TeacherChangeAggregate(
+                    displayName,
+                    changeDate,
+                    latestChangeAt,
+                    removedRows,
+                    Set.of(),
+                    rowsKeySet(removedRows),
+                    false
+            ));
+        }
+
         return result;
+    }
+
+    private ManualLoadEntry manualRowFromChange(TarifficationChanges change, LocalDate removalToDate) {
+        ManualLoadEntry row = new ManualLoadEntry();
+        row.setFioTeacher(change.getFioTeacher());
+        row.setSubjectName(change.getSubjectName());
+        row.setClassName(change.getClassName());
+        row.setLoad(change.getLoad());
+        row.setLoadFromDate(null);
+        row.setLoadToDate(removalToDate);
+        row.setGroupNameEducationalPlan(change.getGroupNameEducationalPlan());
+        row.setNumberSchoolBuilding(change.getNumberSchoolBuilding());
+        return row;
     }
 
     private List<ManualLoadEntry> normalizeActiveRows(List<ManualLoadEntry> rows) {
@@ -797,7 +863,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private String shortKeyFromTransferKey(String transferKey) {
-        return String.valueOf(transferKey == null ? "" : transferKey);
+        String safeValue = String.valueOf(transferKey == null ? "" : transferKey);
+        String[] parts = safeValue.split("\\|", -1);
+        if (parts.length < 3) {
+            return safeValue;
+        }
+        return String.join("|", parts[0], parts[1], parts[2]);
     }
 
     private String memoRowKey(ManualLoadEntry row) {
@@ -971,5 +1042,13 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         ) {
             this(teacherDisplay, startDate, latestChangeAt, rows, addedKeys, removedKeys, onlyAdditions);
         }
+    }
+
+    private record DisplayRow(
+            String subjectName,
+            String className,
+            int load,
+            String status
+    ) {
     }
 }
