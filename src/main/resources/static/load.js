@@ -1517,15 +1517,6 @@ function bindEvents() {
 
             setPeriodForRow(subjectKey, rowId, fromDate, toDate);
 
-            const rowsMap = teacherRowsForBuilding(selectedBuilding);
-            const oldRow = (rowsMap[takeover.subjectKey] || []).find((r) => String(r.teacherName || "").trim() === takeover.previousTeacher);
-            if (oldRow) {
-                const cut = dayBefore(fromDate);
-                if (!oldRow.loadToDate || oldRow.loadToDate > cut) {
-                    oldRow.loadToDate = cut < oldRow.loadFromDate ? oldRow.loadFromDate : cut;
-                }
-            }
-
             if (fromDate > referenceDate) {
                 takeover.apiKeys.forEach((apiKey) => {
                     plans[apiKey] = {
