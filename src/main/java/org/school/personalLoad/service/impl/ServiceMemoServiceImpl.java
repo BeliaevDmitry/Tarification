@@ -311,6 +311,11 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         .max(LocalDateTime::compareTo)
                         .orElse(changeDate.atStartOfDay());
                 List<TarifficationChanges> dayChanges = teacherDateChanges;
+                if (!teacherDateChanges.isEmpty()) {
+                    dayChanges = teacherDateChanges.stream()
+                            .filter(ch -> Objects.equals(latestChangeAt, ch.getChangeDate()))
+                            .toList();
+                }
                 if (!dayChanges.isEmpty()) {
                     Set<String> anyShortKeys = dayChanges.stream()
                             .map(this::shortKeyOf)
@@ -374,15 +379,33 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
 
         // Фолбэк для случаев, когда у донора после передачи больше нет ни одной активной строки
         // в текущей ручной нагрузке: берём удалённые строки из истории изменений.
-        Map<String, List<TarifficationChanges>> removedByTeacherAndDate = periodChanges.stream()
+        Map<String, List<TarifficationChanges>> removedByTeacherAndDateTime = periodChanges.stream()
                 .filter(ch -> ch.getChangeType() == TarifficationChanges.ChangeType.REMOVED)
                 .collect(Collectors.groupingBy(ch -> {
                     String teacher = normalize(ch.getFioTeacher());
-                    LocalDate date = ch.getChangeDate() == null ? null : ch.getChangeDate().toLocalDate();
-                    return String.valueOf(teacher) + "|" + String.valueOf(date);
+                    return String.valueOf(teacher) + "|" + String.valueOf(ch.getChangeDate());
                 }));
 
-        for (Map.Entry<String, List<TarifficationChanges>> entry : removedByTeacherAndDate.entrySet()) {
+        Map<String, List<TarifficationChanges>> latestRemovedByTeacher = new HashMap<>();
+        Map<String, LocalDateTime> latestTimestampByTeacher = new HashMap<>();
+        for (List<TarifficationChanges> changes : removedByTeacherAndDateTime.values()) {
+            if (changes == null || changes.isEmpty()) {
+                continue;
+            }
+            TarifficationChanges first = changes.get(0);
+            String teacherKey = normalize(first.getFioTeacher());
+            LocalDateTime ts = first.getChangeDate();
+            if (teacherKey == null || ts == null) {
+                continue;
+            }
+            LocalDateTime prev = latestTimestampByTeacher.get(teacherKey);
+            if (prev == null || ts.isAfter(prev)) {
+                latestTimestampByTeacher.put(teacherKey, ts);
+                latestRemovedByTeacher.put(teacherKey, changes);
+            }
+        }
+
+        for (Map.Entry<String, List<TarifficationChanges>> entry : latestRemovedByTeacher.entrySet()) {
             List<TarifficationChanges> removedChanges = entry.getValue();
             if (removedChanges == null || removedChanges.isEmpty()) {
                 continue;

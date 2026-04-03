@@ -1005,6 +1005,45 @@ function setPeriodForRow(subjectKey, teacherRowId, fromDate, toDate) {
     markDirty();
 }
 
+function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
+    const teacher = String(teacherName || "").trim().toLowerCase();
+    if (!curriculumRow || !teacher) return null;
+
+    const buildingCode = normalizeBuildingCode(selectedBuilding);
+    const targetPeriod = rowStudyPeriod(curriculumRow);
+    const targetGroup = curriculumRow.__groupIndex ? `ГРУППА ${curriculumRow.__groupIndex}` : "";
+    const referenceDate = currentDisplayDate();
+
+    const matched = (manualRows || []).filter((entry) => {
+        const entryTeacher = String(entry.fioTeacher || "").trim().toLowerCase();
+        if (!entryTeacher || entryTeacher !== teacher) return false;
+        if (normalizeBuildingCode(entry.numberSchoolBuilding) !== buildingCode) return false;
+        if (normalizeClassName(entry.className) !== normalizeClassName(curriculumRow.className)) return false;
+        if (String(entry.subjectName || "").trim() !== String(curriculumRow.subjectName || "").trim()) return false;
+        if (String(entry.educationLevel || "") !== String(curriculumRow.educationLevel || "")) return false;
+        if (String(manualEntryStudyPeriod(entry) || "YEAR") !== String(targetPeriod || "YEAR")) return false;
+        const entryGroup = String(entry.groupNameEducationalPlan || "").trim().toUpperCase();
+        return entryGroup === targetGroup;
+    });
+
+    if (!matched.length) return null;
+
+    const active = matched.filter((entry) => {
+        const from = String(entry.loadFromDate || "");
+        const to = String(entry.loadToDate || "");
+        return from && to && from <= referenceDate && referenceDate <= to;
+    });
+    const candidates = (active.length ? active : matched)
+        .sort((a, b) => String(a.loadFromDate || "").localeCompare(String(b.loadFromDate || "")));
+    const source = candidates[candidates.length - 1];
+    if (!source) return null;
+
+    return {
+        from: String(source.loadFromDate || ""),
+        to: String(source.loadToDate || "")
+    };
+}
+
 function onClassCellClick(presentationRow, className) {
     if (!canEditSelectedBuildingLoad()) {
         print({ warning: loadReadOnlyReason() || "Редактирование этой нагрузки недоступно" });
@@ -1033,11 +1072,12 @@ function onClassCellClick(presentationRow, className) {
     }
 
     const period = defaultPeriodForRows([curriculumRow]);
+    const classTeacherPeriod = findManualPeriodForClassTeacher(curriculumRow, targetTeacher);
     ui.periodForm.elements.subjectKey.value = presentationRow.subjectKey;
     ui.periodForm.elements.rowId.value = presentationRow.teacherRowId;
     ui.periodForm.elements.className.value = className;
-    ui.periodForm.elements.loadFromDate.value = rowMeta?.loadFromDate || period.from;
-    ui.periodForm.elements.loadToDate.value = rowMeta?.loadToDate || period.to;
+    ui.periodForm.elements.loadFromDate.value = classTeacherPeriod?.from || rowMeta?.loadFromDate || period.from;
+    ui.periodForm.elements.loadToDate.value = classTeacherPeriod?.to || rowMeta?.loadToDate || period.to;
 
     if (currentTeacher !== targetTeacher) {
         state.takeoverContext = {
