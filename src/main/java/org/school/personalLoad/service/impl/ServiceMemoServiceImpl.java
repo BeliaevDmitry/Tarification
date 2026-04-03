@@ -351,6 +351,25 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 if (rowsForMemo.isEmpty()) {
                     continue;
                 }
+                if (!rowsForMemo.isEmpty() && removedRows.size() == rowsForMemo.size()) {
+                    log.warn("memo-debug all rows marked as removed for teacher={} date={} before={} onDate={} removed={} added={} dayChanges={}",
+                            teacherKey,
+                            changeDate,
+                            rowsBeforeDate.stream().map(this::debugRow).toList(),
+                            rowsOnDate.stream().map(this::debugRow).toList(),
+                            removedRows.stream().map(this::debugRow).toList(),
+                            addedRows.stream().map(this::debugRow).toList(),
+                            dayChanges.stream().map(this::debugChange).toList());
+                } else if (log.isDebugEnabled()) {
+                    log.debug("memo-debug aggregate teacher={} date={} rowsForMemo={} removed={} added={}",
+                            teacherKey,
+                            changeDate,
+                            rowsForMemo.stream()
+                                    .map(row -> debugRowWithResolvedStatus(row, removedRows, addedRows))
+                                    .toList(),
+                            removedRows.size(),
+                            addedRows.size());
+                }
 
                 String displayName = displayByTeacher.getOrDefault(teacherKey, rowsForMemo.get(0).getFioTeacher());
                 boolean firstLoadAppearance = rowsBeforeDate.isEmpty()
@@ -448,6 +467,11 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     rowsKeySet(removedRows),
                     false
             ));
+            log.warn("memo-debug fallback aggregate from removed history teacher={} date={} removedChanges={} reconstructedRows={}",
+                    teacherKey,
+                    changeDate,
+                    removedChanges.stream().map(this::debugChange).toList(),
+                    removedRows.stream().map(this::debugRow).toList());
         }
 
         return result;
