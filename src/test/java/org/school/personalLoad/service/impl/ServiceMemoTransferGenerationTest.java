@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
@@ -168,6 +169,41 @@ class ServiceMemoTransferGenerationTest {
         assertTrue(removedRows == 1);
         assertTrue(donorMemo.getRows().stream()
                 .anyMatch(r -> "1-А".equals(r.getClassName()) && "Снять".equals(r.getStatus())));
+    }
+
+    @Test
+    void alreadyProcessedDateIsNotReopenedWithoutNewHistoryChanges() {
+        LocalDate changeDate = LocalDate.of(2025, 10, 11);
+        LocalDateTime changeMoment = LocalDateTime.of(2025, 10, 11, 9, 0);
+
+        ManualLoadEntry donor = row("Иванов И.И.", "Алгебра", "8-А", 6,
+                LocalDate.of(2025, 9, 1), LocalDate.of(2025, 10, 10));
+        ManualLoadEntry recipient = row("Петров П.П.", "Алгебра", "8-А", 6,
+                changeDate, LocalDate.of(2026, 5, 31));
+        when(manualLoadEntryRepository.findAll()).thenReturn(List.of(donor, recipient));
+        when(changesDAO.findAll()).thenReturn(List.of(
+                change("Иванов И.И.", "Алгебра", "8-А", 6, TarifficationChanges.ChangeType.REMOVED, changeMoment),
+                change("Петров П.П.", "Алгебра", "8-А", 6, TarifficationChanges.ChangeType.ADDED, changeMoment)
+        ));
+
+        ServiceMemo processed = new ServiceMemo();
+        processed.setStatus(ServiceMemo.Status.PROCESSED);
+        processed.setFioTeacher("Иванов И.И.");
+        processed.setChangeStartDate(changeDate);
+        processed.setCreatedBy("tester");
+        processed.setGeneratedFilename("memo.docx");
+        processed.setGeneratedDocument(new byte[]{1});
+        processed.setLoadSignature("legacy-signature");
+        processed.setCreatedAt(changeMoment.plusDays(1));
+        when(serviceMemoRepository.findAllByStatusInOrderByCreatedAtDesc(any()))
+                .thenReturn(List.of(processed));
+
+        List<ServiceMemoDtos.PendingTeacher> pending = service.findPendingTeachers();
+
+        assertFalse(pending.stream().anyMatch(p ->
+                "Иванов И.И.".equals(p.getFioTeacher()) && changeDate.equals(p.getStartDate())));
+        assertTrue(pending.stream().anyMatch(p ->
+                "Петров П.П.".equals(p.getFioTeacher()) && changeDate.equals(p.getStartDate())));
     }
 
     private ManualLoadEntry row(String fio, String subject, String className, int load,
