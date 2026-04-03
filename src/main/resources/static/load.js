@@ -1364,11 +1364,13 @@ async function saveBuildingLoad() {
 
         const teacherRow = (rowsMap[subjectKeyOfRow(row)] || []).find((r) => String(r.teacherName || "").trim() === fioTeacher);
         const period = defaultLoadPeriod(row.className, rowStudyPeriod(row));
+        const manualPeriod = findManualPeriodForClassTeacher(row, fioTeacher);
+        const rowLoadFromDate = manualPeriod?.from || teacherRow?.loadFromDate || period.from;
+        let rowLoadToDate = manualPeriod?.to || teacherRow?.loadToDate || period.to;
         const plan = plans[apiKey];
-        let loadToDate = teacherRow?.loadToDate || period.to;
         if (plan && plan.previousTeacher === fioTeacher) {
             const cut = dayBefore(plan.fromDate);
-            loadToDate = cut < (teacherRow?.loadFromDate || period.from) ? (teacherRow?.loadFromDate || period.from) : cut;
+            rowLoadToDate = cut < rowLoadFromDate ? rowLoadFromDate : cut;
         }
 
         return {
@@ -1381,8 +1383,8 @@ async function saveBuildingLoad() {
             groupLoad: row.__groupIndex ? Number(row.plannedHours || 0) : null,
             educationLevel: row.educationLevel,
             studyPeriod: rowStudyPeriod(row),
-            loadFromDate: teacherRow?.loadFromDate || period.from,
-            loadToDate
+            loadFromDate: rowLoadFromDate,
+            loadToDate: rowLoadToDate
         };
     }).filter(Boolean);
 
