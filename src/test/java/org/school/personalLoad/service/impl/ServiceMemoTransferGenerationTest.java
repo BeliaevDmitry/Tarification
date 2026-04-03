@@ -11,6 +11,8 @@ import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.ServiceMemo;
 import org.school.personalLoad.model.StudyPeriodSettingKey;
 import org.school.personalLoad.model.TarifficationChanges;
+import org.school.personalLoad.model.TarifficationChanges;
+
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.ServiceMemoRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
@@ -170,6 +172,7 @@ class ServiceMemoTransferGenerationTest {
                 .anyMatch(r -> "1-А".equals(r.getClassName()) && "Снять".equals(r.getStatus())));
     }
 
+
     private ManualLoadEntry row(String fio, String subject, String className, int load,
                                 LocalDate from, LocalDate to) {
         ManualLoadEntry entry = new ManualLoadEntry();
@@ -193,4 +196,5 @@ class ServiceMemoTransferGenerationTest {
         change.setChangeDate(when);
         return change;
     }
+
 }
