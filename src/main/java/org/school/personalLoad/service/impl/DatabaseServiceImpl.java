@@ -169,7 +169,8 @@ public class DatabaseServiceImpl implements DatabaseService {
     }
 
     private TarifficationChanges createHistoryRecord(TarifficationPerson current,
-                                                     TarifficationChanges.ChangeType changeType) {
+                                                     TarifficationChanges.ChangeType changeType,
+                                                     LocalDateTime changeMoment) {
         TarifficationChanges history = new TarifficationChanges();
         history.setFioTeacher(current.getFioTeacher() != null ? current.getFioTeacher() : "");
         history.setNumberSchoolBuilding(current.getNumberSchoolBuilding() != null ? current.getNumberSchoolBuilding() : "");
@@ -179,13 +180,14 @@ public class DatabaseServiceImpl implements DatabaseService {
         history.setGroupNameEducationalPlan(current.getGroupNameEducationalPlan() != null ? current.getGroupNameEducationalPlan() : "");
         history.setGroupLoad(current.getGroupLoad() != null ? current.getGroupLoad() : 0);
         history.setChangeType(changeType);
-        history.setChangeDate(LocalDateTime.now());
+        history.setChangeDate(changeMoment == null ? LocalDateTime.now() : changeMoment);
         return history;
     }
 
     private void findChangesComparedToHistory(List<TarifficationPerson> oldTariffications,
                                               List<TarifficationPerson> newTariffication,
                                               List<TarifficationChanges> changes) {
+        LocalDateTime batchTimestamp = LocalDateTime.now();
 
         Map<String, TarifficationPerson> historyMap = createPersonMap(oldTariffications);
         Map<String, TarifficationPerson> newMap = createPersonMap(newTariffication);
@@ -195,7 +197,8 @@ public class DatabaseServiceImpl implements DatabaseService {
             String key = entry.getKey();
             if (!newMap.containsKey(key)) {
                 changes.add(createHistoryRecord(entry.getValue(),
-                        TarifficationChanges.ChangeType.REMOVED));
+                        TarifficationChanges.ChangeType.REMOVED,
+                        batchTimestamp));
             }
         }
 
@@ -204,7 +207,8 @@ public class DatabaseServiceImpl implements DatabaseService {
             String key = entry.getKey();
             if (!historyMap.containsKey(key)) {
                 changes.add(createHistoryRecord(entry.getValue(),
-                        TarifficationChanges.ChangeType.ADDED));
+                        TarifficationChanges.ChangeType.ADDED,
+                        batchTimestamp));
             }
         }
 
@@ -227,7 +231,8 @@ public class DatabaseServiceImpl implements DatabaseService {
                     log.debug("Новое load: {}, groupLoad: {}", newPerson.getLoad(), newPerson.getGroupLoad());
 
                     changes.add(createHistoryRecord(newPerson,
-                            TarifficationChanges.ChangeType.MODIFIED));
+                            TarifficationChanges.ChangeType.MODIFIED,
+                            batchTimestamp));
                 }
             }
         }
