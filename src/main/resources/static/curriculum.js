@@ -42,6 +42,7 @@ let buildings = [];
 let classes = [];
 let curriculumRows = [];
 let subjects = [];
+let studyPeriodSettings = [];
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -77,6 +78,69 @@ function periodColumnsForParallel(parallel = selectedParallel) {
     return isHighSchoolParallel(parallel)
         ? [{ key: "H1", label: PERIOD_META.H1.label }, { key: "H2", label: PERIOD_META.H2.label }]
         : [{ key: "YEAR", label: PERIOD_META.YEAR.label }];
+}
+
+function periodOptionsForParallel(parallel) {
+    const p = Number(parallel || selectedParallel || 1);
+    const matched = (studyPeriodSettings || [])
+        .filter((s) => Number(s.parallelFrom) <= p && p <= Number(s.parallelTo))
+        .sort((a, b) => Number(a.parallelFrom) - Number(b.parallelFrom)
+            || Number(a.parallelTo) - Number(b.parallelTo)
+            || String(a.displayName || "").localeCompare(String(b.displayName || ""), "ru"));
+    if (!matched.length) {
+        return isHighSchoolParallel(p) ? ["H1", "H2"] : ["YEAR"];
+    }
+    const unique = [];
+    const seen = new Set();
+    matched.forEach((m) => {
+        const key = String(m.studyPeriod || "").toUpperCase();
+        if (!["YEAR", "H1", "H2"].includes(key) || seen.has(key)) return;
+        seen.add(key);
+        unique.push(key);
+    });
+    return unique.length ? unique : (isHighSchoolParallel(p) ? ["H1", "H2"] : ["YEAR"]);
+}
+
+function periodSelectItemsForParallel(parallel) {
+    const p = Number(parallel || selectedParallel || 1);
+    const matched = (studyPeriodSettings || [])
+        .filter((s) => Number(s.parallelFrom) <= p && p <= Number(s.parallelTo))
+        .sort((a, b) => Number(a.parallelFrom) - Number(b.parallelFrom)
+            || Number(a.parallelTo) - Number(b.parallelTo)
+            || String(a.displayName || "").localeCompare(String(b.displayName || ""), "ru"));
+    const items = matched
+        .map((item) => ({
+            value: String(item.settingKey || "").trim(),
+            label: String(item.displayName || "").trim(),
+            studyPeriod: String(item.studyPeriod || "").toUpperCase()
+        }))
+        .filter((item) => item.value && item.label && ["YEAR", "H1", "H2"].includes(item.studyPeriod));
+    if (items.length) return items;
+    return periodOptionsForParallel(p).map((key) => ({ value: key, label: PERIOD_META[key]?.label || key, studyPeriod: key }));
+}
+
+function renderStudyPeriodSelect(selectEl, parallel, currentValue) {
+    if (!selectEl) return;
+    const items = periodSelectItemsForParallel(parallel);
+    const html = items.map((item) => `<option value="${esc(item.value)}">${esc(item.label)}</option>`).join("");
+    selectEl.innerHTML = html;
+    const allowed = items.map((i) => i.value);
+    if (allowed.includes(currentValue)) {
+        selectEl.value = currentValue;
+        return;
+    }
+    const byPeriod = items.find((i) => i.studyPeriod === currentValue);
+    selectEl.value = byPeriod?.value || allowed[0] || "YEAR";
+}
+
+function studyPeriodFromSelection(className, selectedValue) {
+    const raw = String(selectedValue || "").trim();
+    if (["YEAR", "H1", "H2"].includes(raw)) {
+        return normalizeStudyPeriod(className, raw);
+    }
+    const found = (studyPeriodSettings || []).find((s) => String(s.settingKey || "").trim() === raw);
+    const period = String(found?.studyPeriod || "").toUpperCase();
+    return normalizeStudyPeriod(className, ["YEAR", "H1", "H2"].includes(period) ? period : "YEAR");
 }
 
 function toggleSubgroupConfig(container, requiredValue) {
@@ -156,27 +220,12 @@ function renderClassOptions() {
 
 function syncStudyPeriodControls() {
     const parallel = classToParallel(ui.formClass.value) || selectedParallel;
-    const highSchool = isHighSchoolParallel(parallel);
     if (ui.formStudyPeriod) {
-        const yearOption = ui.formStudyPeriod.querySelector('option[value="YEAR"]');
-        if (yearOption) yearOption.disabled = highSchool;
-        if (highSchool && !["H1", "H2"].includes(ui.formStudyPeriod.value)) {
-            ui.formStudyPeriod.value = "H1";
-        }
-        if (!highSchool && !["YEAR", "H1", "H2"].includes(ui.formStudyPeriod.value)) {
-            ui.formStudyPeriod.value = "YEAR";
-        }
+        renderStudyPeriodSelect(ui.formStudyPeriod, parallel, ui.formStudyPeriod.value);
     }
     if (ui.editForm?.elements.studyPeriod) {
-        const dialogHighSchool = isHighSchoolParallel(classToParallel(ui.editForm.elements.className?.value || selectedParallel));
-        const yearOption = ui.editForm.elements.studyPeriod.querySelector('option[value="YEAR"]');
-        if (yearOption) yearOption.disabled = dialogHighSchool;
-        if (dialogHighSchool && !["H1", "H2"].includes(ui.editForm.elements.studyPeriod.value)) {
-            ui.editForm.elements.studyPeriod.value = "H1";
-        }
-        if (!dialogHighSchool && !["YEAR", "H1", "H2"].includes(ui.editForm.elements.studyPeriod.value)) {
-            ui.editForm.elements.studyPeriod.value = "YEAR";
-        }
+        const p = classToParallel(ui.editForm.elements.className?.value || selectedParallel);
+        renderStudyPeriodSelect(ui.editForm.elements.studyPeriod, p, ui.editForm.elements.studyPeriod.value);
     }
 }
 
@@ -338,7 +387,7 @@ function normalizeForm() {
         subgroup2Hours: Number(f.get("subgroup2Hours") || 0) || null,
         subgroup2EducationLevel: f.get("subgroup2EducationLevel") || null,
         curriculumPart: f.get("curriculumPart"),
-        studyPeriod: normalizeStudyPeriod(className, f.get("studyPeriod"))
+        studyPeriod: studyPeriodFromSelection(className, f.get("studyPeriod"))
     };
 }
 
@@ -385,14 +434,16 @@ async function exportCurriculumFile() {
 }
 
 async function reload() {
-    const [curriculum, classRows, buildingRows, subjectRows] = await Promise.all([
+    const [curriculum, classRows, buildingRows, subjectRows, settingsRows] = await Promise.all([
         api("/api/curriculum"),
         api("/api/classroom-leadership"),
         api("/api/buildings"),
-        api("/api/subjects")
+        api("/api/subjects"),
+        api("/api/settings/study-periods")
     ]);
     curriculumRows = curriculum || [];
     subjects = subjectRows || [];
+    studyPeriodSettings = settingsRows || [];
     classes = (classRows || []).map((r) => ({
         numberSchoolBuilding: norm(r.numberSchoolBuilding),
         className: norm(r.className),
@@ -484,7 +535,7 @@ function bindEvents() {
             educationLevel: ui.editForm.elements.educationLevel.value,
             subgroupRequired,
             subgroupCount: 2,
-            studyPeriod: normalizeStudyPeriod(existing.className, ui.editForm.elements.studyPeriod.value),
+            studyPeriod: studyPeriodFromSelection(existing.className, ui.editForm.elements.studyPeriod.value),
             subgroup1Hours: subgroupRequired ? Number(ui.editForm.elements.subgroup1Hours.value || 0) : null,
             subgroup2Hours: subgroupRequired ? Number(ui.editForm.elements.subgroup2Hours.value || 0) : null,
             subgroup1EducationLevel: subgroupRequired ? ui.editForm.elements.subgroup1EducationLevel.value : null,
