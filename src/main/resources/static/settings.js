@@ -1,8 +1,9 @@
 const jsonHeaders = { 'Content-Type': 'application/json' };
-const SETTING_KEYS = ['YEAR_1_9', 'H1_1_9', 'H2_1_9', 'H1_10', 'H2_10', 'H1_11', 'H2_11'];
 
 const ui = {
     form: document.getElementById('study-periods-form'),
+    body: document.getElementById('study-periods-body'),
+    addBtn: document.getElementById('study-periods-add-btn'),
     refreshBtn: document.getElementById('study-periods-refresh-btn'),
     result: document.getElementById('settings-result')
 };
@@ -24,11 +25,52 @@ function print(value) {
     ui.result.textContent = JSON.stringify(value, null, 2);
 }
 
+function esc(value) {
+    return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+}
+
+function rowHtml(item = {}) {
+    return `
+      <tr>
+        <td><input name="settingKey" value="${esc(item.settingKey || '')}" placeholder="AUTO для нового" readonly></td>
+        <td><input name="displayName" value="${esc(item.displayName || '')}" required></td>
+        <td>
+          <select name="studyPeriod" required>
+            <option value="YEAR" ${item.studyPeriod === 'YEAR' ? 'selected' : ''}>Учебный год</option>
+            <option value="H1" ${item.studyPeriod === 'H1' ? 'selected' : ''}>1 полугодие</option>
+            <option value="H2" ${item.studyPeriod === 'H2' ? 'selected' : ''}>2 полугодие</option>
+          </select>
+        </td>
+        <td><input name="parallelFrom" type="number" min="1" max="11" value="${esc(item.parallelFrom || 1)}" required></td>
+        <td><input name="parallelTo" type="number" min="1" max="11" value="${esc(item.parallelTo || 11)}" required></td>
+        <td><input name="startDate" type="date" value="${esc(item.startDate || '')}" required></td>
+        <td><input name="endDate" type="date" value="${esc(item.endDate || '')}" required></td>
+        <td><button type="button" data-remove-row="1">Удалить</button></td>
+      </tr>
+    `;
+}
+
 function fillForm(settings = []) {
-    const byKey = Object.fromEntries((settings || []).map((item) => [item.settingKey, item]));
-    SETTING_KEYS.forEach((key) => {
-        ui.form.elements[`${key}_startDate`].value = byKey[key]?.startDate || '';
-        ui.form.elements[`${key}_endDate`].value = byKey[key]?.endDate || '';
+    ui.body.innerHTML = (settings || []).map((item) => rowHtml(item)).join("");
+}
+
+function collectRows() {
+    return [...ui.body.querySelectorAll("tr")].map((tr) => {
+        const read = (name) => tr.querySelector(`[name="${name}"]`)?.value;
+        return {
+            settingKey: String(read("settingKey") || "").trim() || null,
+            displayName: String(read("displayName") || "").trim(),
+            studyPeriod: read("studyPeriod"),
+            parallelFrom: Number(read("parallelFrom")),
+            parallelTo: Number(read("parallelTo")),
+            startDate: read("startDate"),
+            endDate: read("endDate")
+        };
     });
 }
 
@@ -38,25 +80,24 @@ async function reload() {
     return settings;
 }
 
-function buildPayload() {
-    return SETTING_KEYS.map((key) => ({
-        settingKey: key,
-        startDate: ui.form.elements[`${key}_startDate`].value,
-        endDate: ui.form.elements[`${key}_endDate`].value
-    }));
-}
-
 async function saveSettings(event) {
     event.preventDefault();
-    const payload = buildPayload();
-
+    const payload = collectRows();
+    if (!payload.length) {
+        print({ error: "Добавьте хотя бы один период" });
+        return;
+    }
     for (const row of payload) {
-        if (!row.startDate || !row.endDate) {
-            print({ error: `Заполните даты для периода ${row.settingKey}` });
+        if (!row.displayName || !row.studyPeriod || !row.startDate || !row.endDate) {
+            print({ error: "Заполните все поля периода" });
             return;
         }
         if (row.startDate > row.endDate) {
-            print({ error: `Период ${row.settingKey} задан некорректно` });
+            print({ error: `Некорректные даты для периода «${row.displayName}»` });
+            return;
+        }
+        if (row.parallelFrom > row.parallelTo) {
+            print({ error: `Некорректный диапазон классов для периода «${row.displayName}»` });
             return;
         }
     }
@@ -83,6 +124,14 @@ function bindEvents() {
         } catch (error) {
             print({ error: error.message });
         }
+    });
+    ui.addBtn?.addEventListener('click', () => {
+        ui.body.insertAdjacentHTML("beforeend", rowHtml({}));
+    });
+    ui.body?.addEventListener('click', (event) => {
+        const btn = event.target.closest("[data-remove-row]");
+        if (!btn) return;
+        btn.closest("tr")?.remove();
     });
 }
 
