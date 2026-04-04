@@ -58,8 +58,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     if (latest == null) {
                         return true;
                     }
-                    String currentSignature = aggregateSignature(entry.getValue());
-                    return !signatureMatches(latest.getLoadSignature(), currentSignature);
+                    TeacherChangeAggregate aggregate = entry.getValue();
+                    String currentSignature = aggregateSignature(aggregate);
+                    if (signatureMatches(latest.getLoadSignature(), currentSignature)) {
+                        return false;
+                    }
+                    return hasChangesAfterMemo(aggregate, latest);
                 })
                 .map(entry -> toPendingDto(selectionKey(entry.getKey()), entry.getValue()))
                 .sorted(Comparator.comparing(ServiceMemoDtos.PendingTeacher::getStartDate)
@@ -116,8 +120,13 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 String signature = aggregateSignature(aggregate);
                 ServiceMemo latest = latestMemoBySelection.get(selectionKey);
 
-                if (latest != null && signatureMatches(latest.getLoadSignature(), signature)) {
-                    continue;
+                if (latest != null) {
+                    if (signatureMatches(latest.getLoadSignature(), signature)) {
+                        continue;
+                    }
+                    if (!hasChangesAfterMemo(aggregate, latest)) {
+                        continue;
+                    }
                 }
 
                 ServiceMemo entity = new ServiceMemo();
@@ -290,12 +299,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             List<ManualLoadEntry> teacherRows = rowsByTeacher.getOrDefault(teacherKey, List.of());
 
             for (LocalDate changeDate : entry.getValue()) {
-                List<ManualLoadEntry> rowsBeforeDate = teacherRows.stream()
+                List<ManualLoadEntry> rowsBeforeDate = normalizeActiveRows(teacherRows.stream()
                         .filter(row -> isActiveAt(row, changeDate.minusDays(1)))
-                        .toList();
-                List<ManualLoadEntry> rowsOnDate = teacherRows.stream()
+                        .toList());
+                List<ManualLoadEntry> rowsOnDate = normalizeActiveRows(teacherRows.stream()
                         .filter(row -> isActiveAt(row, changeDate))
-                        .toList();
+                        .toList());
 
                 Map<String, Integer> beforeCounts = countRows(rowsBeforeDate);
                 Map<String, Integer> afterCounts = countRows(rowsOnDate);
@@ -822,7 +831,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private String keyOf(ManualLoadEntry row) {
-        return shortKeyOf(row);
+        return transferKeyOf(row);
     }
 
     private String transferKeyOf(ManualLoadEntry row) {
@@ -920,6 +929,18 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             return false;
         }
         return Objects.equals(signatureHash(persistedSignature), currentSignature);
+    }
+
+    private boolean hasChangesAfterMemo(TeacherChangeAggregate aggregate, ServiceMemo latestMemo) {
+        if (aggregate == null || latestMemo == null) {
+            return true;
+        }
+        LocalDateTime latestChangeAt = aggregate.latestChangeAt();
+        LocalDateTime memoCreatedAt = latestMemo.getCreatedAt();
+        if (latestChangeAt == null || memoCreatedAt == null) {
+            return true;
+        }
+        return latestChangeAt.isAfter(memoCreatedAt);
     }
 
     private String signatureHash(String payload) {
