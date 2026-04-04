@@ -687,6 +687,12 @@ dialog::backdrop {
     background: #fee2e2;
 }
 
+.summary-value.conflict-row {
+    background: #fee2e2;
+    color: #991b1b;
+    font-weight: 700;
+}
+
 
 .load-page .load-toolbar {
     position: sticky;

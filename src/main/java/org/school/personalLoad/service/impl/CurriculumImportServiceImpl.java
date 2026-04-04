@@ -36,7 +36,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
     @Override
     public byte[] exportEditableWorkbook() throws IOException {
-        List<CurriculumPlanEntry> entries = curriculumRepository.findAll();
+        List<CurriculumPlanEntry> entries = curriculumRepository.findAll().stream().filter(e -> !e.isDeprecated()).toList();
         entries.sort(Comparator
                 .comparing((CurriculumPlanEntry e) -> String.valueOf(e.getNumberSchoolBuilding()), String.CASE_INSENSITIVE_ORDER)
                 .thenComparing(e -> String.valueOf(e.getClassName()), String.CASE_INSENSITIVE_ORDER)
@@ -46,44 +46,63 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 .thenComparing(e -> String.valueOf(e.getStudyPeriod())));
 
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            Sheet sheet = workbook.createSheet("CURRICULUM_EDITABLE");
+            Sheet sheet = workbook.createSheet("CURRICULUM_VISUAL");
+            List<String> classes = entries.stream()
+                    .map(e -> normalizeSubject(e.getNumberSchoolBuilding()) + "|" + ClassNameNormalizer.normalize(e.getClassName()))
+                    .distinct()
+                    .sorted(String::compareTo)
+                    .toList();
             Row header = sheet.createRow(0);
-            String[] columns = new String[]{
-                    "Корпус", "Класс", "Направленность", "Часть", "Предмет", "Уровень", "Период", "Часы",
-                    "Деление", "Подгр1 часы", "Подгр1 уровень", "Подгр2 часы", "Подгр2 уровень"
-            };
-            for (int i = 0; i < columns.length; i++) {
-                header.createCell(i).setCellValue(columns[i]);
+            header.createCell(0).setCellValue("Блок / предмет / часы");
+            for (int i = 0; i < classes.size(); i++) {
+                header.createCell(i + 1).setCellValue(classes.get(i));
             }
 
-            Map<String, String> classDirections = new HashMap<>();
-            classroomRepository.findAll().forEach(cls -> classDirections.put(
-                    ClassNameNormalizer.normalize(cls.getNumberSchoolBuilding()) + "|" + ClassNameNormalizer.normalize(cls.getClassName()),
-                    String.valueOf(cls.getClassDirection() == null ? "" : cls.getClassDirection())
-            ));
+            Map<String, List<CurriculumPlanEntry>> byPartSubject = new LinkedHashMap<>();
+            entries.forEach(e -> {
+                String key = (e.getCurriculumPart() == null ? CurriculumPart.CORE : e.getCurriculumPart()) + "|" + normalizeSubject(e.getSubjectName());
+                byPartSubject.computeIfAbsent(key, k -> new ArrayList<>()).add(e);
+            });
 
             int rowNum = 1;
-            for (CurriculumPlanEntry entry : entries) {
-                Row row = sheet.createRow(rowNum++);
-                String classKey = ClassNameNormalizer.normalize(entry.getNumberSchoolBuilding()) + "|" + ClassNameNormalizer.normalize(entry.getClassName());
-                row.createCell(0).setCellValue(String.valueOf(entry.getNumberSchoolBuilding()));
-                row.createCell(1).setCellValue(String.valueOf(entry.getClassName()));
-                row.createCell(2).setCellValue(classDirections.getOrDefault(classKey, ""));
-                row.createCell(3).setCellValue(String.valueOf(entry.getCurriculumPart()));
-                row.createCell(4).setCellValue(String.valueOf(entry.getSubjectName()));
-                row.createCell(5).setCellValue(String.valueOf(entry.getEducationLevel()));
-                row.createCell(6).setCellValue(String.valueOf(entry.getStudyPeriod()));
-                row.createCell(7).setCellValue(entry.getPlannedHours() == null ? 0D : entry.getPlannedHours().doubleValue());
-                row.createCell(8).setCellValue(entry.isSubgroupRequired());
-                row.createCell(9).setCellValue(entry.getSubgroup1Hours() == null ? "" : String.valueOf(entry.getSubgroup1Hours()));
-                row.createCell(10).setCellValue(entry.getSubgroup1EducationLevel() == null ? "" : String.valueOf(entry.getSubgroup1EducationLevel()));
-                row.createCell(11).setCellValue(entry.getSubgroup2Hours() == null ? "" : String.valueOf(entry.getSubgroup2Hours()));
-                row.createCell(12).setCellValue(entry.getSubgroup2EducationLevel() == null ? "" : String.valueOf(entry.getSubgroup2EducationLevel()));
+            for (CurriculumPart part : List.of(CurriculumPart.CORE, CurriculumPart.FORMABLE, CurriculumPart.EXTRACURRICULAR)) {
+                Row partRow = sheet.createRow(rowNum++);
+                partRow.createCell(0).setCellValue(part == CurriculumPart.CORE ? "Основная часть"
+                        : (part == CurriculumPart.FORMABLE ? "Формируемая часть" : "Внеурочная деятельность"));
+
+                List<Map.Entry<String, List<CurriculumPlanEntry>>> subjects = byPartSubject.entrySet().stream()
+                        .filter(e -> e.getKey().startsWith(part.name() + "|"))
+                        .sorted(Map.Entry.comparingByKey())
+                        .toList();
+
+                for (Map.Entry<String, List<CurriculumPlanEntry>> subjectEntry : subjects) {
+                    String subjectName = subjectEntry.getKey().substring(subjectEntry.getKey().indexOf('|') + 1);
+                    Row row = sheet.createRow(rowNum++);
+                    row.createCell(0).setCellValue(subjectName);
+                    for (int i = 0; i < classes.size(); i++) {
+                        String classKey = classes.get(i);
+                        List<CurriculumPlanEntry> values = subjectEntry.getValue().stream()
+                                .filter(e -> (normalizeSubject(e.getNumberSchoolBuilding()) + "|" + ClassNameNormalizer.normalize(e.getClassName())).equals(classKey))
+                                .toList();
+                        BigDecimal year = values.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.YEAR)
+                                .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+                        BigDecimal h1 = values.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H1)
+                                .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+                        BigDecimal h2 = values.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H2)
+                                .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                        String rendered = "";
+                        if (year.compareTo(BigDecimal.ZERO) > 0) rendered = year.stripTrailingZeros().toPlainString();
+                        else if (h1.compareTo(BigDecimal.ZERO) > 0 || h2.compareTo(BigDecimal.ZERO) > 0) {
+                            rendered = (h1.compareTo(BigDecimal.ZERO) > 0 ? h1.stripTrailingZeros().toPlainString() : "")
+                                    + "/" + (h2.compareTo(BigDecimal.ZERO) > 0 ? h2.stripTrailingZeros().toPlainString() : "");
+                        }
+                        row.createCell(i + 1).setCellValue(rendered);
+                    }
+                }
             }
 
-            for (int i = 0; i < columns.length; i++) {
-                sheet.autoSizeColumn(i);
-            }
+            for (int i = 0; i <= classes.size(); i++) sheet.autoSizeColumn(i);
 
             workbook.write(output);
             return output.toByteArray();
@@ -96,6 +115,11 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
         try {
             List<EditableImportRow> editableRows = parseEditableRows(file);
+            VisualParseResult visualParseResult = null;
+            if (editableRows.isEmpty()) {
+                visualParseResult = parseVisualRows(file);
+                editableRows = visualParseResult.rows();
+            }
             List<CurriculumImportRow> parsed = editableRows.isEmpty() ? normalizeImportedRows(parser.parse(file.getInputStream())) : List.of();
             int created = 0, updated = 0, classesCreated = 0, subjectsImported = 0;
             Set<Long> importedIds = new HashSet<>();
@@ -245,7 +269,10 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             }
             manualLoadRepository.saveAll(loads);
 
-            return new CurriculumImportResult(created, updated, deprecated, classesCreated, orphaned, subjectsImported);
+            List<CurriculumImportResult.SumMismatch> mismatches = visualParseResult == null
+                    ? List.of()
+                    : compareVisualSums(visualParseResult.expectedSums(), visualParseResult.rows());
+            return new CurriculumImportResult(created, updated, deprecated, classesCreated, orphaned, subjectsImported, mismatches);
         } catch (Exception e) {
             throw new RuntimeException("Не удалось импортировать учебный план", e);
         }
@@ -311,6 +338,174 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             byKey.put(baseKey + "|" + row.getStudyPeriod(), row);
         }
         return new ArrayList<>(byKey.values());
+    }
+
+    private VisualParseResult parseVisualRows(MultipartFile file) {
+        try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
+            Sheet sheet = workbook.getSheet("CURRICULUM_VISUAL");
+            if (sheet == null) return new VisualParseResult(List.of(), Map.of());
+            Row header = sheet.getRow(0);
+            if (header == null) return new VisualParseResult(List.of(), Map.of());
+
+            List<ClassHeaderMeta> classColumns = new ArrayList<>();
+            for (int col = 1; col < header.getLastCellNum(); col++) {
+                String raw = normalizeSubject(readCell(header.getCell(col)));
+                if (raw.isBlank()) continue;
+                String[] parts = raw.split("\\|", 2);
+                String building = parts.length > 1 ? normalizeSubject(parts[0]) : "СП0";
+                String className = ClassNameNormalizer.normalize(parts.length > 1 ? parts[1] : raw);
+                if (className.isBlank()) continue;
+                classColumns.add(new ClassHeaderMeta(col, building.isBlank() ? "СП0" : building, className));
+            }
+
+            if (classColumns.isEmpty()) return new VisualParseResult(List.of(), Map.of());
+            List<EditableImportRow> result = new ArrayList<>();
+            Map<String, Map<String, SumPair>> expectedSums = new LinkedHashMap<>();
+            CurriculumPart currentPart = CurriculumPart.CORE;
+
+            for (int rowIdx = 1; rowIdx <= sheet.getLastRowNum(); rowIdx++) {
+                Row row = sheet.getRow(rowIdx);
+                if (row == null) continue;
+                String title = normalizeSubject(readCell(row.getCell(0)));
+                if (title.isBlank()) continue;
+                String lower = title.toLowerCase(Locale.ROOT);
+
+                if (lower.contains("основная часть")) {
+                    currentPart = CurriculumPart.CORE;
+                    continue;
+                }
+                if (lower.contains("формируем")) {
+                    currentPart = CurriculumPart.FORMABLE;
+                    continue;
+                }
+                if (lower.contains("внеуроч")) {
+                    currentPart = CurriculumPart.EXTRACURRICULAR;
+                    continue;
+                }
+                if (lower.startsWith("сумма")) {
+                    String label = normalizeSumLabel(lower);
+                    if (label != null) {
+                        Map<String, SumPair> byClass = expectedSums.computeIfAbsent(label, k -> new LinkedHashMap<>());
+                        for (ClassHeaderMeta classMeta : classColumns) {
+                            SumPair pair = parseSumCell(readCell(row.getCell(classMeta.colIndex)));
+                            if (pair != null) {
+                                byClass.put(classMeta.building + "|" + classMeta.className, pair);
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                for (ClassHeaderMeta classMeta : classColumns) {
+                    String rawHours = normalizeSubject(readCell(row.getCell(classMeta.colIndex)));
+                    if (rawHours.isBlank() || "0".equals(rawHours)) continue;
+                    if (rawHours.contains("/")) {
+                        String[] halves = rawHours.split("/", -1);
+                        BigDecimal h1 = parseDecimal(halves.length > 0 ? halves[0] : "");
+                        BigDecimal h2 = parseDecimal(halves.length > 1 ? halves[1] : "");
+                        if (h1 != null && h1.compareTo(BigDecimal.ZERO) > 0) {
+                            result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title,
+                                    EducationLevel.BASIC, StudyPeriod.H1, h1, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC));
+                        }
+                        if (h2 != null && h2.compareTo(BigDecimal.ZERO) > 0) {
+                            result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title,
+                                    EducationLevel.BASIC, StudyPeriod.H2, h2, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC));
+                        }
+                        continue;
+                    }
+                    BigDecimal year = parseDecimal(rawHours);
+                    if (year == null || year.compareTo(BigDecimal.ZERO) <= 0) continue;
+                    result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title,
+                            EducationLevel.BASIC, StudyPeriod.YEAR, year, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC));
+                }
+            }
+            return new VisualParseResult(result, expectedSums);
+        } catch (Exception e) {
+            return new VisualParseResult(List.of(), Map.of());
+        }
+    }
+
+    private List<CurriculumImportResult.SumMismatch> compareVisualSums(Map<String, Map<String, SumPair>> expected,
+                                                                       List<EditableImportRow> rows) {
+        if (expected == null || expected.isEmpty() || rows == null || rows.isEmpty()) return List.of();
+        Map<String, Map<String, SumPair>> actual = new LinkedHashMap<>();
+        for (EditableImportRow row : rows) {
+            String classKey = row.numberSchoolBuilding() + "|" + row.className();
+            BigDecimal hours = row.plannedHours() == null ? BigDecimal.ZERO : row.plannedHours();
+            if (row.curriculumPart() == CurriculumPart.CORE || row.curriculumPart() == CurriculumPart.FORMABLE) {
+                accumulateSum(actual, "sum_of", classKey, row.studyPeriod(), hours);
+            }
+            if (row.curriculumPart() == CurriculumPart.CORE) {
+                accumulateSum(actual, "sum_core", classKey, row.studyPeriod(), hours);
+            }
+            if (row.curriculumPart() == CurriculumPart.FORMABLE) {
+                accumulateSum(actual, "sum_formable", classKey, row.studyPeriod(), hours);
+            }
+            if (row.curriculumPart() == CurriculumPart.EXTRACURRICULAR) {
+                accumulateSum(actual, "sum_extracurricular", classKey, row.studyPeriod(), hours);
+            }
+        }
+
+        List<CurriculumImportResult.SumMismatch> mismatches = new ArrayList<>();
+        for (Map.Entry<String, Map<String, SumPair>> sumEntry : expected.entrySet()) {
+            String label = sumEntry.getKey();
+            for (Map.Entry<String, SumPair> classEntry : sumEntry.getValue().entrySet()) {
+                SumPair exp = classEntry.getValue();
+                SumPair act = actual.getOrDefault(label, Map.of()).getOrDefault(classEntry.getKey(), new SumPair(BigDecimal.ZERO, BigDecimal.ZERO));
+                if (exp.h1.compareTo(act.h1) != 0 || exp.h2.compareTo(act.h2) != 0) {
+                    mismatches.add(new CurriculumImportResult.SumMismatch(
+                            classEntry.getKey(),
+                            label,
+                            formatPair(exp),
+                            formatPair(act)
+                    ));
+                }
+            }
+        }
+        return mismatches;
+    }
+
+    private void accumulateSum(Map<String, Map<String, SumPair>> actual,
+                               String label,
+                               String classKey,
+                               StudyPeriod period,
+                               BigDecimal hours) {
+        Map<String, SumPair> byClass = actual.computeIfAbsent(label, k -> new LinkedHashMap<>());
+        SumPair pair = byClass.getOrDefault(classKey, new SumPair(BigDecimal.ZERO, BigDecimal.ZERO));
+        if (period == StudyPeriod.H1) {
+            pair = new SumPair(pair.h1.add(hours), pair.h2);
+        } else if (period == StudyPeriod.H2) {
+            pair = new SumPair(pair.h1, pair.h2.add(hours));
+        } else {
+            pair = new SumPair(pair.h1.add(hours), pair.h2.add(hours));
+        }
+        byClass.put(classKey, pair);
+    }
+
+    private String formatPair(SumPair pair) {
+        return pair.h1.stripTrailingZeros().toPlainString() + "/" + pair.h2.stripTrailingZeros().toPlainString();
+    }
+
+    private String normalizeSumLabel(String lowerTitle) {
+        if (lowerTitle.contains("о+ф") || lowerTitle.contains("о + ф")) return "sum_of";
+        if (lowerTitle.contains("основ")) return "sum_core";
+        if (lowerTitle.contains("формируем")) return "sum_formable";
+        if (lowerTitle.contains("внеуроч")) return "sum_extracurricular";
+        return null;
+    }
+
+    private SumPair parseSumCell(String rawValue) {
+        String value = normalizeSubject(rawValue);
+        if (value.isBlank()) return null;
+        if (value.contains("/")) {
+            String[] halves = value.split("/", -1);
+            BigDecimal h1 = parseDecimal(halves.length > 0 ? halves[0] : "");
+            BigDecimal h2 = parseDecimal(halves.length > 1 ? halves[1] : "");
+            return new SumPair(h1 == null ? BigDecimal.ZERO : h1, h2 == null ? BigDecimal.ZERO : h2);
+        }
+        BigDecimal one = parseDecimal(value);
+        if (one == null) return null;
+        return new SumPair(one, one);
     }
 
     private List<EditableImportRow> parseEditableRows(MultipartFile file) {
@@ -429,6 +624,10 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             Integer subgroup2Hours,
             EducationLevel subgroup2EducationLevel
     ) {}
+
+    private record ClassHeaderMeta(int colIndex, String building, String className) {}
+    private record SumPair(BigDecimal h1, BigDecimal h2) {}
+    private record VisualParseResult(List<EditableImportRow> rows, Map<String, Map<String, SumPair>> expectedSums) {}
 
     private SubjectType resolveSubjectType(CurriculumImportRow row) {
         if (row.getCurriculumPart() == CurriculumPart.EXTRACURRICULAR) {

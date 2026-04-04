@@ -43,6 +43,7 @@ let classes = [];
 let curriculumRows = [];
 let subjects = [];
 let studyPeriodSettings = [];
+let sumMismatchKeys = new Set();
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -116,58 +117,6 @@ function columnsForClass(classRow) {
     const h1 = options.find((o) => o.studyPeriod === "H1");
     const h2 = options.find((o) => o.studyPeriod === "H2");
     return [h1, h2].filter(Boolean).map((x) => ({ key: String(x.id), label: x.displayName, studyPeriod: x.studyPeriod }));
-}
-
-function periodOptionsForParallel(parallel) {
-    const p = Number(parallel || selectedParallel || 1);
-    const matched = (studyPeriodSettings || [])
-        .filter((s) => Number(s.parallelFrom) <= p && p <= Number(s.parallelTo))
-        .sort((a, b) => Number(a.parallelFrom) - Number(b.parallelFrom)
-            || Number(a.parallelTo) - Number(b.parallelTo)
-            || String(a.displayName || "").localeCompare(String(b.displayName || ""), "ru"));
-    if (!matched.length) {
-        return isHighSchoolParallel(p) ? ["H1", "H2"] : ["YEAR"];
-    }
-    const unique = [];
-    const seen = new Set();
-    matched.forEach((m) => {
-        const key = String(m.studyPeriod || "").toUpperCase();
-        if (!["YEAR", "H1", "H2"].includes(key) || seen.has(key)) return;
-        seen.add(key);
-        unique.push(key);
-    });
-    return unique.length ? unique : (isHighSchoolParallel(p) ? ["H1", "H2"] : ["YEAR"]);
-}
-
-function periodSelectItemsForParallel(parallel) {
-    const p = Number(parallel || selectedParallel || 1);
-    const matched = (studyPeriodSettings || [])
-        .filter((s) => Number(s.parallelFrom) <= p && p <= Number(s.parallelTo))
-        .sort((a, b) => Number(a.parallelFrom) - Number(b.parallelFrom)
-            || Number(a.parallelTo) - Number(b.parallelTo)
-            || String(a.displayName || "").localeCompare(String(b.displayName || ""), "ru"));
-    const byStudyPeriod = new Map();
-    matched.forEach((item) => {
-        const key = String(item.studyPeriod || "").toUpperCase();
-        if (!["YEAR", "H1", "H2"].includes(key) || byStudyPeriod.has(key)) return;
-        byStudyPeriod.set(key, {
-            value: key,
-            label: String(item.displayName || PERIOD_META[key]?.label || key)
-        });
-    });
-    if (byStudyPeriod.size) {
-        return [...byStudyPeriod.values()];
-    }
-    return periodOptionsForParallel(p).map((key) => ({ value: key, label: PERIOD_META[key]?.label || key }));
-}
-
-function renderStudyPeriodSelect(selectEl, parallel, currentValue) {
-    if (!selectEl) return;
-    const items = periodSelectItemsForParallel(parallel);
-    const html = items.map((item) => `<option value="${esc(item.value)}">${esc(item.label)}</option>`).join("");
-    selectEl.innerHTML = html;
-    const allowed = items.map((i) => i.value);
-    selectEl.value = allowed.includes(currentValue) ? currentValue : (allowed[0] || "YEAR");
 }
 
 function toggleSubgroupConfig(container, requiredValue) {
@@ -393,7 +342,9 @@ function renderSummaryTable() {
                         h2 += Number(info.h2?.hours || 0);
                     }
                 });
-                return `<td class="summary-value">${h1 || h2 ? `${h1}/${h2}` : ""}</td>`;
+                const sumLabel = row.type === "sum12" ? "sum_of" : (row.part === "CORE" ? "sum_core" : (row.part === "FORMABLE" ? "sum_formable" : "sum_extracurricular"));
+                const mismatch = sumMismatchKeys.has(`${col.classKey}|${sumLabel}`);
+                return `<td class="summary-value ${mismatch ? "conflict-row" : ""}">${h1 || h2 ? `${h1}/${h2}` : ""}</td>`;
             }).join("");
             tr.className = "summary-sum-row";
             tr.innerHTML = `<td>${esc(row.title)}</td>${calc}`;
@@ -453,6 +404,7 @@ async function importCurriculumFile() {
 
     try {
         const result = await api("/api/curriculum/import", { method: "POST", body: form });
+        sumMismatchKeys = new Set((result?.sumMismatches || []).map((x) => `${x.classKey}|${x.sumLabel}`));
         print({ status: "imported", ...result });
         ui.importFile.value = "";
         await reload();
@@ -522,6 +474,7 @@ function bindEvents() {
             }
 
             await api("/api/curriculum", { method: "POST", headers: jsonHeaders, body: JSON.stringify(payload) });
+            sumMismatchKeys = new Set();
             print({ status: "saved", payload });
             await reload();
         } catch (error) {
@@ -594,6 +547,7 @@ function bindEvents() {
 
         try {
             await api(`/api/curriculum/${id}`, { method: "PATCH", headers: jsonHeaders, body: JSON.stringify(payload) });
+            sumMismatchKeys = new Set();
             ui.editDialog.close();
             await reload();
         } catch (error) {
