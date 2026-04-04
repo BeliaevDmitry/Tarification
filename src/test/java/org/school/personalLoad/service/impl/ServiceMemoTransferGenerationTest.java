@@ -175,18 +175,18 @@ class ServiceMemoTransferGenerationTest {
     @Test
     void processedDonorMemoIsNotReopenedWhenOnlyUnchangedRowsAreUpdatedLater() {
         String donorFio = "Бегунц Александр Владимирович";
-        LocalDate changeDate = LocalDate.of(2026, 9, 23);
+        LocalDate changeDate = LocalDate.of(2025, 9, 23);
 
         ManualLoadEntry donorRemoved = row(donorFio, "Изобразительное искусство", "1-А", 1,
-                LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 22));
+                LocalDate.of(2025, 9, 1), LocalDate.of(2025, 9, 22));
         ManualLoadEntry donorOther = row(donorFio, "Изобразительное искусство", "1-Е", 1,
-                LocalDate.of(2026, 9, 1), LocalDate.of(2027, 5, 31));
+                LocalDate.of(2025, 9, 1), LocalDate.of(2026, 5, 31));
         ManualLoadEntry recipient = row("Бардина Наталья Николаевна", "Изобразительное искусство", "1-А", 1,
-                changeDate, LocalDate.of(2027, 5, 31));
+                changeDate, LocalDate.of(2026, 5, 31));
         when(manualLoadEntryRepository.findAll()).thenReturn(List.of(donorRemoved, donorOther, recipient));
 
-        String donorSignaturePayload = "2026-09-23|false|"
-                + "Снять|изобразительное искусство|1-а|1|2026-09-01|2026-09-22";
+        String donorSignaturePayload = "2025-09-23|false|"
+                + "Снять|изобразительное искусство|1-а|1|2025-09-01|2025-09-22";
         ServiceMemo processed = new ServiceMemo();
         processed.setStatus(ServiceMemo.Status.PROCESSED);
         processed.setFioTeacher(donorFio);
@@ -200,7 +200,7 @@ class ServiceMemoTransferGenerationTest {
                 .thenReturn(List.of(processed));
 
         ManualLoadEntry donorOtherChangedLater = row(donorFio, "Изобразительное искусство", "1-Е", 1,
-                LocalDate.of(2026, 9, 1), LocalDate.of(2026, 11, 10));
+                LocalDate.of(2025, 9, 1), LocalDate.of(2025, 11, 10));
         when(manualLoadEntryRepository.findAll()).thenReturn(List.of(donorRemoved, donorOtherChangedLater, recipient));
 
         List<ServiceMemoDtos.PendingTeacher> pending = service.findPendingTeachers();
