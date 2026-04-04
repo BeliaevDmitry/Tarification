@@ -702,7 +702,7 @@ dialog::backdrop {
 }
 
 .load-page .sheet-wrap {
-    max-height: calc(100vh - 300px);
+    max-height: calc(100vh - 230px);
 }
 
 .load-page .sheet-table thead th {
@@ -726,14 +726,11 @@ dialog::backdrop {
     margin: 6px 0 0;
 }
 
-.debug-panel summary {
-    cursor: pointer;
-    color: #475569;
-    font-size: 13px;
-}
-
-.debug-panel pre {
-    margin-top: 8px;
+.inline-load-stats {
+    margin-left: auto;
+    display: flex;
+    gap: 14px;
+    align-items: center;
 }
 
 
