@@ -42,6 +42,7 @@ let buildings = [];
 let classes = [];
 let curriculumRows = [];
 let subjects = [];
+let studyPeriodSettings = [];
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -68,15 +69,53 @@ function levelShort(v) { return v === "ADVANCED" ? "У" : "Б"; }
 function subjectTypeByPart(part) { return part === "EXTRACURRICULAR" ? "EXTRACURRICULAR" : "CORE_FORMABLE"; }
 function isHighSchoolParallel(parallel = selectedParallel) { return Number(parallel) >= 10; }
 function normalizeStudyPeriod(className, studyPeriod) {
-    return isHighSchoolParallel(classToParallel(className))
-        ? (studyPeriod === "H2" ? "H2" : "H1")
-        : (studyPeriod || "YEAR");
+    return studyPeriod || (isHighSchoolParallel(classToParallel(className)) ? "H1" : "YEAR");
+}
+
+function settingsForParallel(parallel = selectedParallel) {
+    return (studyPeriodSettings || []).filter((x) => Number(x.parallelFrom) <= Number(parallel) && Number(x.parallelTo) >= Number(parallel));
 }
 
 function periodColumnsForParallel(parallel = selectedParallel) {
-    return isHighSchoolParallel(parallel)
-        ? [{ key: "H1", label: PERIOD_META.H1.label }, { key: "H2", label: PERIOD_META.H2.label }]
-        : [{ key: "YEAR", label: PERIOD_META.YEAR.label }];
+    return settingsForParallel(parallel).map((x) => ({ key: String(x.id), label: x.displayName, studyPeriod: x.studyPeriod }));
+}
+
+
+
+function hasSemesterSplitForClass(classRow) {
+    const classRows = curriculumRows.filter((r) => r.className === classRow.className && r.numberSchoolBuilding === classRow.numberSchoolBuilding);
+    const grouped = new Map();
+    classRows.forEach((r) => {
+        const key = `${r.subjectName}|${r.educationLevel}|${r.curriculumPart || "CORE"}`;
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key).push(r);
+    });
+    for (const rows of grouped.values()) {
+        let h1 = 0, h2 = 0, year = 0;
+        rows.forEach((r) => {
+            const v = Number(r.plannedHours || 0);
+            if (r.studyPeriod === "H1") h1 += v;
+            else if (r.studyPeriod === "H2") h2 += v;
+            else year += v;
+        });
+        if (year > 0) continue;
+        if ((h1 > 0) !== (h2 > 0)) return true;
+        if (h1 !== h2) return true;
+    }
+    return false;
+}
+
+function columnsForClass(classRow) {
+    const parallel = classToParallel(classRow.className);
+    const options = settingsForParallel(parallel);
+    const split = hasSemesterSplitForClass(classRow);
+    if (!split) {
+        const year = options.find((o) => o.studyPeriod === "YEAR") || options[0];
+        return year ? [{ key: String(year.id), label: year.displayName, studyPeriod: year.studyPeriod }] : [];
+    }
+    const h1 = options.find((o) => o.studyPeriod === "H1");
+    const h2 = options.find((o) => o.studyPeriod === "H2");
+    return [h1, h2].filter(Boolean).map((x) => ({ key: String(x.id), label: x.displayName, studyPeriod: x.studyPeriod }));
 }
 
 function toggleSubgroupConfig(container, requiredValue) {
@@ -156,27 +195,18 @@ function renderClassOptions() {
 
 function syncStudyPeriodControls() {
     const parallel = classToParallel(ui.formClass.value) || selectedParallel;
-    const highSchool = isHighSchoolParallel(parallel);
-    if (ui.formStudyPeriod) {
-        const yearOption = ui.formStudyPeriod.querySelector('option[value="YEAR"]');
-        if (yearOption) yearOption.disabled = highSchool;
-        if (highSchool && !["H1", "H2"].includes(ui.formStudyPeriod.value)) {
-            ui.formStudyPeriod.value = "H1";
-        }
-        if (!highSchool && !["YEAR", "H1", "H2"].includes(ui.formStudyPeriod.value)) {
-            ui.formStudyPeriod.value = "YEAR";
-        }
-    }
+    const options = settingsForParallel(parallel);
+    const selected = ui.formStudyPeriod.value;
+    ui.formStudyPeriod.innerHTML = options.map((o) => `<option value="${esc(o.id)}">${esc(o.displayName)}</option>`).join('');
+    ui.formStudyPeriod.value = options.some((o) => String(o.id) === selected) ? selected : String(options[0]?.id || '');
+
     if (ui.editForm?.elements.studyPeriod) {
-        const dialogHighSchool = isHighSchoolParallel(classToParallel(ui.editForm.elements.className?.value || selectedParallel));
-        const yearOption = ui.editForm.elements.studyPeriod.querySelector('option[value="YEAR"]');
-        if (yearOption) yearOption.disabled = dialogHighSchool;
-        if (dialogHighSchool && !["H1", "H2"].includes(ui.editForm.elements.studyPeriod.value)) {
-            ui.editForm.elements.studyPeriod.value = "H1";
-        }
-        if (!dialogHighSchool && !["YEAR", "H1", "H2"].includes(ui.editForm.elements.studyPeriod.value)) {
-            ui.editForm.elements.studyPeriod.value = "YEAR";
-        }
+        const classParallel = classToParallel(ui.editForm.elements.className?.value || selectedParallel);
+        const dialogOptions = settingsForParallel(classParallel);
+        const editSelect = ui.editForm.elements.studyPeriod;
+        const current = editSelect.value;
+        editSelect.innerHTML = dialogOptions.map((o) => `<option value="${esc(o.id)}">${esc(o.displayName)}</option>`).join('');
+        editSelect.value = dialogOptions.some((o) => String(o.id) === current) ? current : String(dialogOptions[0]?.id || '');
     }
 }
 
@@ -205,14 +235,13 @@ function buildSummaryRows(selectedClasses) {
                 const [subjectName, educationLevel] = key.split("|");
                 const perClassPeriod = {};
                 values.forEach((v) => {
-                    const period = normalizeStudyPeriod(v.className, v.studyPeriod);
-                    const columnPeriod = isHighSchoolParallel(classToParallel(v.className)) ? period : "YEAR";
+                    const columnPeriod = String(v.studyPeriodSettingId || '');
                     perClassPeriod[`${v.numberSchoolBuilding}|${v.className}|${columnPeriod}`] = {
                         hours: Number(v.plannedHours || 0),
                         subgroupRequired: Boolean(v.subgroupRequired),
                         subgroupCount: Number(v.subgroupCount || 0),
                         id: v.id,
-                        studyPeriod: period
+                        studyPeriod: v.studyPeriod
                     };
                 });
                 return { part, subjectName, educationLevel, perClassPeriod };
@@ -241,13 +270,13 @@ function cellHoursMarkup(info, rowMeta) {
 
 function renderSummaryTable() {
     const selectedClasses = classesForSelectedContext();
-    const periodColumns = periodColumnsForParallel();
-    const columnDescriptors = selectedClasses.flatMap((c) => periodColumns.map((period) => ({
-        classKey: `${c.numberSchoolBuilding}|${c.className}`,
-        columnKey: `${c.numberSchoolBuilding}|${c.className}|${period.key}`,
-        className: c.className,
-        classDirection: c.classDirection,
-        studyPeriod: period.key,
+    const classColumns = selectedClasses.map((c) => ({ c, periods: columnsForClass(c) }));
+    const columnDescriptors = classColumns.flatMap((cp) => cp.periods.map((period) => ({
+        classKey: `${cp.c.numberSchoolBuilding}|${cp.c.className}`,
+        columnKey: `${cp.c.numberSchoolBuilding}|${cp.c.className}|${period.key}`,
+        className: cp.c.className,
+        classDirection: cp.c.classDirection,
+        studyPeriod: period.studyPeriod,
         periodLabel: period.label
     })));
     const rows = buildSummaryRows(selectedClasses);
@@ -257,10 +286,10 @@ function renderSummaryTable() {
 
     const directionRow = document.createElement("tr");
     directionRow.className = "summary-direction-row";
-    directionRow.innerHTML = `<th rowspan="2">Блок / предмет / часы</th>${selectedClasses.map((c) => `<th colspan="${periodColumns.length}">${esc(c.classDirection)}</th>`).join("")}`;
+    directionRow.innerHTML = `<th rowspan="2">Блок / предмет / часы</th>${classColumns.map((cp) => `<th colspan="${Math.max(cp.periods.length,1)}">${esc(cp.c.classDirection)}</th>`).join("")}`;
     const classRow = document.createElement("tr");
     classRow.className = "summary-class-row";
-    classRow.innerHTML = selectedClasses.map((c) => periodColumns.map((period) => `<th>${esc(c.className)}${periodColumns.length > 1 ? `<div class="muted">${esc(period.label)}</div>` : ""}</th>`).join("")).join("");
+    classRow.innerHTML = classColumns.map((cp) => cp.periods.map((period) => `<th>${esc(cp.c.className)}${cp.periods.length > 1 ? `<div class="muted">${esc(period.label)}</div>` : ""}</th>`).join("")).join("");
     ui.summaryHead.appendChild(directionRow);
     ui.summaryHead.appendChild(classRow);
 
@@ -299,7 +328,7 @@ function renderSummaryTable() {
             ui.editForm.elements.plannedHours.value = String(existing.plannedHours || 1);
             ui.editForm.elements.educationLevel.value = existing.educationLevel || "BASIC";
             ui.editForm.elements.subgroupRequired.value = String(Boolean(existing.subgroupRequired));
-            ui.editForm.elements.studyPeriod.value = normalizeStudyPeriod(existing.className, existing.studyPeriod);
+            ui.editForm.elements.studyPeriod.value = String(existing.studyPeriodSettingId || "");
             ui.editForm.elements.subgroup1Hours.value = existing.subgroup1Hours || existing.plannedHours || "";
             ui.editForm.elements.subgroup2Hours.value = existing.subgroup2Hours || existing.plannedHours || "";
             ui.editForm.elements.subgroup1EducationLevel.value = existing.subgroup1EducationLevel || existing.educationLevel || "BASIC";
@@ -338,7 +367,7 @@ function normalizeForm() {
         subgroup2Hours: Number(f.get("subgroup2Hours") || 0) || null,
         subgroup2EducationLevel: f.get("subgroup2EducationLevel") || null,
         curriculumPart: f.get("curriculumPart"),
-        studyPeriod: normalizeStudyPeriod(className, f.get("studyPeriod"))
+        studyPeriodSettingId: Number(f.get("studyPeriod") || 0) || null
     };
 }
 
@@ -385,14 +414,16 @@ async function exportCurriculumFile() {
 }
 
 async function reload() {
-    const [curriculum, classRows, buildingRows, subjectRows] = await Promise.all([
+    const [curriculum, classRows, buildingRows, subjectRows, settingRows] = await Promise.all([
         api("/api/curriculum"),
         api("/api/classroom-leadership"),
         api("/api/buildings"),
-        api("/api/subjects")
+        api("/api/subjects"),
+        api("/api/settings/study-periods")
     ]);
     curriculumRows = curriculum || [];
     subjects = subjectRows || [];
+    studyPeriodSettings = settingRows || [];
     classes = (classRows || []).map((r) => ({
         numberSchoolBuilding: norm(r.numberSchoolBuilding),
         className: norm(r.className),
@@ -484,7 +515,7 @@ function bindEvents() {
             educationLevel: ui.editForm.elements.educationLevel.value,
             subgroupRequired,
             subgroupCount: 2,
-            studyPeriod: normalizeStudyPeriod(existing.className, ui.editForm.elements.studyPeriod.value),
+            studyPeriodSettingId: Number(ui.editForm.elements.studyPeriod.value || 0) || null,
             subgroup1Hours: subgroupRequired ? Number(ui.editForm.elements.subgroup1Hours.value || 0) : null,
             subgroup2Hours: subgroupRequired ? Number(ui.editForm.elements.subgroup2Hours.value || 0) : null,
             subgroup1EducationLevel: subgroupRequired ? ui.editForm.elements.subgroup1EducationLevel.value : null,

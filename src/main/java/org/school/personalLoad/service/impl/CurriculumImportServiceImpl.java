@@ -12,6 +12,7 @@ import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.service.CurriculumImportService;
+import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -30,6 +31,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     private final ManualLoadEntryRepository manualLoadRepository;
     private final TeacherDirectoryRepository teacherRepository;
     private final SubjectCatalogRepository subjectCatalogRepository;
+    private final StudyPeriodSettingService studyPeriodSettingService;
 
 
     @Override
@@ -104,14 +106,16 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
             if (!editableRows.isEmpty()) {
                 for (EditableImportRow row : editableRows) {
+                    StudyPeriodSetting resolvedEditableRule = studyPeriodSettingService.resolveRuleForClassAndPeriod(row.className(), row.studyPeriod());
                     CurriculumPlanEntry entry = curriculumRepository
-                            .findByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriod(
+                            .findByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriodAndStudyPeriodSettingId(
                                     row.numberSchoolBuilding(),
                                     row.className(),
                                     row.subjectName(),
                                     row.educationLevel(),
                                     row.curriculumPart(),
-                                    row.studyPeriod()
+                                    resolvedEditableRule.getStudyPeriod(),
+                                    resolvedEditableRule.getId()
                             )
                             .orElseGet(CurriculumPlanEntry::new);
                     boolean isNew = entry.getId() == null;
@@ -122,7 +126,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     entry.setSubjectName(row.subjectName());
                     entry.setCurriculumPart(row.curriculumPart());
                     entry.setEducationLevel(row.educationLevel());
-                    entry.setStudyPeriod(row.studyPeriod());
+                    entry.setStudyPeriod(resolvedEditableRule.getStudyPeriod());
+                    entry.setStudyPeriodSettingId(resolvedEditableRule.getId());
                     entry.setPlannedHours(row.plannedHours());
                     entry.setSubgroupRequired(row.subgroupRequired());
                     entry.setSubgroupCount(row.subgroupRequired() ? 2 : 0);
@@ -165,7 +170,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     entry.setStage(row.getStage());
                     entry.setClassName(row.getClassName());
                     entry.setSubjectName(row.getSubjectName());
-                    entry.setStudyPeriod(row.getStudyPeriod());
+                    StudyPeriodSetting resolvedRule = studyPeriodSettingService.resolveRuleForClassAndPeriod(row.getClassName(), row.getStudyPeriod());
+                    entry.setStudyPeriod(resolvedRule.getStudyPeriod());
+                    entry.setStudyPeriodSettingId(resolvedRule.getId());
                     entry.setPlannedHours(row.getPlannedHours());
                     entry.setCurriculumPart(row.getCurriculumPart() == null ? CurriculumPart.CORE : row.getCurriculumPart());
                     entry.setDeprecated(false);
