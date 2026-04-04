@@ -293,7 +293,7 @@ function classCellMarkup(cellInfo, rowMeta) {
 
     const left = h1 ? `<button class="hours-cell" data-id="${esc(h1.id)}">${esc(h1.hours)}</button>` : '<div class="hours-cell muted"></div>';
     const right = h2 ? `<button class="hours-cell" data-id="${esc(h2.id)}">${esc(h2.hours)}</button>` : '<div class="hours-cell muted"></div>';
-    return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">${left}${right}</div>`;
+    return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0"><div style="padding-right:4px">${left}</div><div style="border-left:1px solid #cbd5e1;padding-left:4px">${right}</div></div>`;
 }
 
 function renderSummaryTable() {

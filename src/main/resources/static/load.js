@@ -93,7 +93,11 @@ function classBuildingMap() {
 }
 
 function print(value) {
-    ui.loadResult.textContent = JSON.stringify(value, null, 2);
+    if (ui.loadResult) {
+        ui.loadResult.textContent = JSON.stringify(value, null, 2);
+    } else {
+        console.debug(value);
+    }
 }
 
 function markDirty(flag=true) {
