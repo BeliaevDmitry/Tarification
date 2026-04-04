@@ -495,6 +495,15 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         return row;
     }
 
+    /**
+     * Совместимость с предыдущими правками/чери-пиками:
+     * оставляем отдельный шаг "normalization", но без дедупликации строк.
+     * Это сохраняет фактическое поведение сравнения по количеству строк.
+     */
+    private List<ManualLoadEntry> normalizeActiveRows(List<ManualLoadEntry> rows) {
+        return rows == null ? List.of() : rows;
+    }
+
     private String memoCompareKeyOf(ManualLoadEntry row) {
         return String.join("|",
                 safe(row.getSubjectName()),
