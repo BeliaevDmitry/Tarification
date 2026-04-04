@@ -12,6 +12,7 @@ import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.service.CurriculumImportService;
+import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -30,6 +31,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     private final ManualLoadEntryRepository manualLoadRepository;
     private final TeacherDirectoryRepository teacherRepository;
     private final SubjectCatalogRepository subjectCatalogRepository;
+    private final StudyPeriodSettingService studyPeriodSettingService;
 
 
     @Override
@@ -94,7 +96,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
         try {
             List<EditableImportRow> editableRows = parseEditableRows(file);
-            List<CurriculumImportRow> parsed = editableRows.isEmpty() ? parser.parse(file.getInputStream()) : List.of();
+            List<CurriculumImportRow> parsed = editableRows.isEmpty() ? normalizeImportedRows(parser.parse(file.getInputStream())) : List.of();
             int created = 0, updated = 0, classesCreated = 0, subjectsImported = 0;
             Set<Long> importedIds = new HashSet<>();
             Map<String, SubjectCatalogEntry> existingSubjects = new HashMap<>();
@@ -104,14 +106,16 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
             if (!editableRows.isEmpty()) {
                 for (EditableImportRow row : editableRows) {
+                    StudyPeriodSetting resolvedEditableRule = studyPeriodSettingService.resolveRuleForClassAndPeriod(row.className(), row.studyPeriod());
                     CurriculumPlanEntry entry = curriculumRepository
-                            .findByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriod(
+                            .findByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriodAndStudyPeriodSettingId(
                                     row.numberSchoolBuilding(),
                                     row.className(),
                                     row.subjectName(),
                                     row.educationLevel(),
                                     row.curriculumPart(),
-                                    row.studyPeriod()
+                                    resolvedEditableRule.getStudyPeriod(),
+                                    resolvedEditableRule.getId()
                             )
                             .orElseGet(CurriculumPlanEntry::new);
                     boolean isNew = entry.getId() == null;
@@ -122,7 +126,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     entry.setSubjectName(row.subjectName());
                     entry.setCurriculumPart(row.curriculumPart());
                     entry.setEducationLevel(row.educationLevel());
-                    entry.setStudyPeriod(row.studyPeriod());
+                    entry.setStudyPeriod(resolvedEditableRule.getStudyPeriod());
+                    entry.setStudyPeriodSettingId(resolvedEditableRule.getId());
                     entry.setPlannedHours(row.plannedHours());
                     entry.setSubgroupRequired(row.subgroupRequired());
                     entry.setSubgroupCount(row.subgroupRequired() ? 2 : 0);
@@ -165,7 +170,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     entry.setStage(row.getStage());
                     entry.setClassName(row.getClassName());
                     entry.setSubjectName(row.getSubjectName());
-                    entry.setStudyPeriod(row.getStudyPeriod());
+                    StudyPeriodSetting resolvedRule = studyPeriodSettingService.resolveRuleForClassAndPeriod(row.getClassName(), row.getStudyPeriod());
+                    entry.setStudyPeriod(resolvedRule.getStudyPeriod());
+                    entry.setStudyPeriodSettingId(resolvedRule.getId());
                     entry.setPlannedHours(row.getPlannedHours());
                     entry.setCurriculumPart(row.getCurriculumPart() == null ? CurriculumPart.CORE : row.getCurriculumPart());
                     entry.setDeprecated(false);
@@ -252,6 +259,58 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         cls.setClassDirection(classDirection == null || classDirection.isBlank() ? "Не указана" : classDirection);
         cls.setFioTeacher(fallbackTeacher);
         classroomRepository.save(cls);
+    }
+
+    private List<CurriculumImportRow> normalizeImportedRows(List<CurriculumImportRow> rows) {
+        Map<String, CurriculumImportRow> byKey = new LinkedHashMap<>();
+        for (CurriculumImportRow row : rows) {
+            String baseKey = String.join("|",
+                    String.valueOf(row.getAcademicYear()),
+                    String.valueOf(row.getStage()),
+                    String.valueOf(row.getClassName()),
+                    String.valueOf(row.getSubjectName()),
+                    String.valueOf(row.getCurriculumPart()));
+            String h1Key = baseKey + "|H1";
+            String h2Key = baseKey + "|H2";
+            if (row.getStudyPeriod() == StudyPeriod.H1 && byKey.containsKey(h2Key)
+                    && row.getPlannedHours() != null
+                    && byKey.get(h2Key).getPlannedHours() != null
+                    && row.getPlannedHours().compareTo(byKey.get(h2Key).getPlannedHours()) == 0) {
+                CurriculumImportRow merged = new CurriculumImportRow(
+                        row.getAcademicYear(),
+                        row.getStage(),
+                        row.getClassName(),
+                        row.getClassDirection(),
+                        row.getSubjectName(),
+                        row.getPlannedHours(),
+                        StudyPeriod.YEAR,
+                        row.getCurriculumPart()
+                );
+                byKey.remove(h2Key);
+                byKey.put(baseKey + "|YEAR", merged);
+                continue;
+            }
+            if (row.getStudyPeriod() == StudyPeriod.H2 && byKey.containsKey(h1Key)
+                    && row.getPlannedHours() != null
+                    && byKey.get(h1Key).getPlannedHours() != null
+                    && row.getPlannedHours().compareTo(byKey.get(h1Key).getPlannedHours()) == 0) {
+                CurriculumImportRow merged = new CurriculumImportRow(
+                        row.getAcademicYear(),
+                        row.getStage(),
+                        row.getClassName(),
+                        row.getClassDirection(),
+                        row.getSubjectName(),
+                        row.getPlannedHours(),
+                        StudyPeriod.YEAR,
+                        row.getCurriculumPart()
+                );
+                byKey.remove(h1Key);
+                byKey.put(baseKey + "|YEAR", merged);
+                continue;
+            }
+            byKey.put(baseKey + "|" + row.getStudyPeriod(), row);
+        }
+        return new ArrayList<>(byKey.values());
     }
 
     private List<EditableImportRow> parseEditableRows(MultipartFile file) {
