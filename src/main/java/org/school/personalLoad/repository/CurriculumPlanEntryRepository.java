@@ -10,6 +10,14 @@ import java.util.Optional;
 @Repository
 public interface CurriculumPlanEntryRepository extends JpaRepository<CurriculumPlanEntry, Long> {
     Optional<CurriculumPlanEntry> findByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriodAndStudyPeriodSettingId(String numberSchoolBuilding, String className, String subjectName, EducationLevel educationLevel, CurriculumPart curriculumPart, StudyPeriod studyPeriod, Long studyPeriodSettingId);
+    Optional<CurriculumPlanEntry> findFirstByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriod(
+            String numberSchoolBuilding,
+            String className,
+            String subjectName,
+            EducationLevel educationLevel,
+            CurriculumPart curriculumPart,
+            StudyPeriod studyPeriod
+    );
 
     Optional<CurriculumPlanEntry> findFirstByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndStudyPeriodAndDeprecatedFalse(String numberSchoolBuilding, String className, String subjectName, EducationLevel educationLevel, StudyPeriod studyPeriod);
 

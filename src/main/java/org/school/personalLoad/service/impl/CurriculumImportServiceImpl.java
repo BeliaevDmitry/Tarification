@@ -96,7 +96,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
         try {
             List<EditableImportRow> editableRows = parseEditableRows(file);
-            List<CurriculumImportRow> parsed = editableRows.isEmpty() ? parser.parse(file.getInputStream()) : List.of();
+            List<CurriculumImportRow> parsed = editableRows.isEmpty() ? normalizeImportedRows(parser.parse(file.getInputStream())) : List.of();
             int created = 0, updated = 0, classesCreated = 0, subjectsImported = 0;
             Set<Long> importedIds = new HashSet<>();
             Map<String, SubjectCatalogEntry> existingSubjects = new HashMap<>();
@@ -259,6 +259,58 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         cls.setClassDirection(classDirection == null || classDirection.isBlank() ? "Не указана" : classDirection);
         cls.setFioTeacher(fallbackTeacher);
         classroomRepository.save(cls);
+    }
+
+    private List<CurriculumImportRow> normalizeImportedRows(List<CurriculumImportRow> rows) {
+        Map<String, CurriculumImportRow> byKey = new LinkedHashMap<>();
+        for (CurriculumImportRow row : rows) {
+            String baseKey = String.join("|",
+                    String.valueOf(row.getAcademicYear()),
+                    String.valueOf(row.getStage()),
+                    String.valueOf(row.getClassName()),
+                    String.valueOf(row.getSubjectName()),
+                    String.valueOf(row.getCurriculumPart()));
+            String h1Key = baseKey + "|H1";
+            String h2Key = baseKey + "|H2";
+            if (row.getStudyPeriod() == StudyPeriod.H1 && byKey.containsKey(h2Key)
+                    && row.getPlannedHours() != null
+                    && byKey.get(h2Key).getPlannedHours() != null
+                    && row.getPlannedHours().compareTo(byKey.get(h2Key).getPlannedHours()) == 0) {
+                CurriculumImportRow merged = new CurriculumImportRow(
+                        row.getAcademicYear(),
+                        row.getStage(),
+                        row.getClassName(),
+                        row.getClassDirection(),
+                        row.getSubjectName(),
+                        row.getPlannedHours(),
+                        StudyPeriod.YEAR,
+                        row.getCurriculumPart()
+                );
+                byKey.remove(h2Key);
+                byKey.put(baseKey + "|YEAR", merged);
+                continue;
+            }
+            if (row.getStudyPeriod() == StudyPeriod.H2 && byKey.containsKey(h1Key)
+                    && row.getPlannedHours() != null
+                    && byKey.get(h1Key).getPlannedHours() != null
+                    && row.getPlannedHours().compareTo(byKey.get(h1Key).getPlannedHours()) == 0) {
+                CurriculumImportRow merged = new CurriculumImportRow(
+                        row.getAcademicYear(),
+                        row.getStage(),
+                        row.getClassName(),
+                        row.getClassDirection(),
+                        row.getSubjectName(),
+                        row.getPlannedHours(),
+                        StudyPeriod.YEAR,
+                        row.getCurriculumPart()
+                );
+                byKey.remove(h1Key);
+                byKey.put(baseKey + "|YEAR", merged);
+                continue;
+            }
+            byKey.put(baseKey + "|" + row.getStudyPeriod(), row);
+        }
+        return new ArrayList<>(byKey.values());
     }
 
     private List<EditableImportRow> parseEditableRows(MultipartFile file) {

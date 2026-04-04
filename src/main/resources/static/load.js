@@ -144,8 +144,10 @@ function periodSettingKeyForClass(className, studyPeriod = "YEAR") {
         return "YEAR_1_9";
     }
     if (parallel === 10) {
+        if (studyPeriod === "YEAR") return "YEAR_10";
         return studyPeriod === "H2" ? "H2_10" : "H1_10";
     }
+    if (studyPeriod === "YEAR") return "YEAR_11";
     return studyPeriod === "H2" ? "H2_11" : "H1_11";
 }
 

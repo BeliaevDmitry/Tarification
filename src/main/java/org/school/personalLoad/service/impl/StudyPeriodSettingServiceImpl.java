@@ -164,8 +164,10 @@ public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService 
         seed("H2_1_9", "1–9 классы · 2 полугодие", StudyPeriod.H2, 1, 9, DEFAULT_H2_START, DEFAULT_YEAR_END);
         seed("H1_10", "10 класс · 1 полугодие", StudyPeriod.H1, 10, 10, DEFAULT_YEAR_START, DEFAULT_H1_END);
         seed("H2_10", "10 класс · 2 полугодие", StudyPeriod.H2, 10, 10, DEFAULT_H2_START, DEFAULT_YEAR_END);
+        seed("YEAR_10", "10 класс · учебный год", StudyPeriod.YEAR, 10, 10, DEFAULT_YEAR_START, DEFAULT_YEAR_END);
         seed("H1_11", "11 класс · 1 полугодие", StudyPeriod.H1, 11, 11, DEFAULT_YEAR_START, DEFAULT_11_H1_END);
         seed("H2_11", "11 класс · 2 полугодие", StudyPeriod.H2, 11, 11, DEFAULT_11_H2_START, DEFAULT_YEAR_END);
+        seed("YEAR_11", "11 класс · учебный год", StudyPeriod.YEAR, 11, 11, DEFAULT_YEAR_START, DEFAULT_YEAR_END);
     }
 
     private void seed(String code, String displayName, StudyPeriod period, int from, int to, LocalDate startDate, LocalDate endDate) {
