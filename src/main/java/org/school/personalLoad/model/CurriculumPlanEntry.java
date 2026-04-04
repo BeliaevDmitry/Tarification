@@ -30,6 +30,8 @@ public class CurriculumPlanEntry {
     @Column(nullable = false)
     private StudyPeriod studyPeriod = StudyPeriod.YEAR;
 
+    private Long studyPeriodSettingId;
+
     @Column(nullable = false)
     private boolean deprecated = false;
 
