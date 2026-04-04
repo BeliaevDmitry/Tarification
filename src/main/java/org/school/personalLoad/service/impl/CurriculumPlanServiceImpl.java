@@ -6,8 +6,11 @@ import org.school.personalLoad.model.CurriculumPart;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.StudyPeriod;
+import org.school.personalLoad.model.StudyPeriodSetting;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
+import org.school.personalLoad.repository.StudyPeriodSettingRepository;
 import org.school.personalLoad.service.CurriculumPlanService;
+import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -19,26 +22,30 @@ import java.util.Optional;
 public class CurriculumPlanServiceImpl implements CurriculumPlanService {
 
     private final CurriculumPlanEntryRepository repository;
+    private final StudyPeriodSettingRepository studyPeriodSettingRepository;
+    private final StudyPeriodSettingService studyPeriodSettingService;
 
     @Override
     public CurriculumPlanEntry upsert(CurriculumPlanEntryRequest request) {
         validate(request);
         CurriculumPart curriculumPart = request.getCurriculumPart() == null ? CurriculumPart.CORE : request.getCurriculumPart();
-        StudyPeriod studyPeriod = normalizedStudyPeriod(request);
+        StudyPeriodSetting rule = resolveRule(request);
+        rule = normalizeYearRuleIfNeeded(request, curriculumPart, rule);
         String normalizedClassName = ClassNameNormalizer.normalize(request.getClassName());
 
         CurriculumPlanEntry entity = repository
-                .findByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriod(
+                .findByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriodAndStudyPeriodSettingId(
                         request.getNumberSchoolBuilding().trim(),
                         normalizedClassName,
                         request.getSubjectName().trim(),
                         request.getEducationLevel(),
                         curriculumPart,
-                        studyPeriod
+                        rule.getStudyPeriod(),
+                        rule.getId()
                 )
                 .orElseGet(CurriculumPlanEntry::new);
 
-        applyValues(entity, request, curriculumPart, studyPeriod);
+        applyValues(entity, request, curriculumPart, rule);
         return repository.save(entity);
     }
 
@@ -66,8 +73,10 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         validate(request);
         CurriculumPlanEntry entity = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Curriculum entry not found: " + id));
-
-        applyValues(entity, request, request.getCurriculumPart() == null ? CurriculumPart.CORE : request.getCurriculumPart(), normalizedStudyPeriod(request));
+        CurriculumPart curriculumPart = request.getCurriculumPart() == null ? CurriculumPart.CORE : request.getCurriculumPart();
+        StudyPeriodSetting rule = resolveRule(request);
+        rule = normalizeYearRuleIfNeeded(request, curriculumPart, rule);
+        applyValues(entity, request, curriculumPart, rule);
         return repository.save(entity);
     }
 
@@ -109,10 +118,55 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         );
     }
 
+    private StudyPeriodSetting resolveRule(CurriculumPlanEntryRequest request) {
+        if (request.getStudyPeriodSettingId() != null) {
+            StudyPeriodSetting byId = studyPeriodSettingRepository.findById(request.getStudyPeriodSettingId())
+                    .orElseThrow(() -> new IllegalArgumentException("Период обучения не найден: " + request.getStudyPeriodSettingId()));
+            Integer parallel = ClassNameNormalizer.extractParallel(request.getClassName());
+            if (parallel != null && (parallel < byId.getParallelFrom() || parallel > byId.getParallelTo())) {
+                throw new IllegalArgumentException("Период не подходит для выбранного класса");
+            }
+            return byId;
+        }
+        return studyPeriodSettingService.resolveRuleForClassAndPeriod(request.getClassName(), request.getStudyPeriod());
+    }
+
+    private StudyPeriodSetting normalizeYearRuleIfNeeded(CurriculumPlanEntryRequest request,
+                                                         CurriculumPart curriculumPart,
+                                                         StudyPeriodSetting resolvedRule) {
+        if (resolvedRule.getStudyPeriod() == StudyPeriod.YEAR) {
+            return resolvedRule;
+        }
+        StudyPeriod oppositePeriod = resolvedRule.getStudyPeriod() == StudyPeriod.H1 ? StudyPeriod.H2 : StudyPeriod.H1;
+        Optional<CurriculumPlanEntry> opposite = repository.findFirstByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriod(
+                request.getNumberSchoolBuilding().trim(),
+                ClassNameNormalizer.normalize(request.getClassName()),
+                request.getSubjectName().trim(),
+                request.getEducationLevel(),
+                curriculumPart,
+                oppositePeriod
+        );
+        if (opposite.isEmpty()) {
+            return resolvedRule;
+        }
+        if (request.getPlannedHours() == null || opposite.get().getPlannedHours() == null) {
+            return resolvedRule;
+        }
+        if (request.getPlannedHours().compareTo(opposite.get().getPlannedHours()) != 0) {
+            return resolvedRule;
+        }
+        repository.delete(opposite.get());
+        try {
+            return studyPeriodSettingService.resolveRuleForClassAndPeriod(request.getClassName(), StudyPeriod.YEAR);
+        } catch (Exception ignored) {
+            return resolvedRule;
+        }
+    }
+
     private void applyValues(CurriculumPlanEntry entity,
                              CurriculumPlanEntryRequest request,
                              CurriculumPart curriculumPart,
-                             StudyPeriod studyPeriod) {
+                             StudyPeriodSetting rule) {
         entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
         entity.setClassName(ClassNameNormalizer.normalize(request.getClassName()));
         entity.setSubjectName(request.getSubjectName().trim());
@@ -125,18 +179,8 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         entity.setSubgroup2Hours(request.isSubgroupRequired() ? request.getSubgroup2Hours() : null);
         entity.setSubgroup2EducationLevel(request.isSubgroupRequired() ? request.getSubgroup2EducationLevel() : null);
         entity.setCurriculumPart(curriculumPart);
-        entity.setStudyPeriod(studyPeriod);
-    }
-
-    private StudyPeriod normalizedStudyPeriod(CurriculumPlanEntryRequest request) {
-        Integer parallel = ClassNameNormalizer.extractParallel(request.getClassName());
-        if (parallel != null && parallel >= 10) {
-            if (request.getStudyPeriod() == StudyPeriod.H2) {
-                return StudyPeriod.H2;
-            }
-            return StudyPeriod.H1;
-        }
-        return request.getStudyPeriod() == null ? StudyPeriod.YEAR : request.getStudyPeriod();
+        entity.setStudyPeriod(rule.getStudyPeriod());
+        entity.setStudyPeriodSettingId(rule.getId());
     }
 
     private void validate(CurriculumPlanEntryRequest request) {
