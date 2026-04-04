@@ -118,6 +118,58 @@ function columnsForClass(classRow) {
     return [h1, h2].filter(Boolean).map((x) => ({ key: String(x.id), label: x.displayName, studyPeriod: x.studyPeriod }));
 }
 
+function periodOptionsForParallel(parallel) {
+    const p = Number(parallel || selectedParallel || 1);
+    const matched = (studyPeriodSettings || [])
+        .filter((s) => Number(s.parallelFrom) <= p && p <= Number(s.parallelTo))
+        .sort((a, b) => Number(a.parallelFrom) - Number(b.parallelFrom)
+            || Number(a.parallelTo) - Number(b.parallelTo)
+            || String(a.displayName || "").localeCompare(String(b.displayName || ""), "ru"));
+    if (!matched.length) {
+        return isHighSchoolParallel(p) ? ["H1", "H2"] : ["YEAR"];
+    }
+    const unique = [];
+    const seen = new Set();
+    matched.forEach((m) => {
+        const key = String(m.studyPeriod || "").toUpperCase();
+        if (!["YEAR", "H1", "H2"].includes(key) || seen.has(key)) return;
+        seen.add(key);
+        unique.push(key);
+    });
+    return unique.length ? unique : (isHighSchoolParallel(p) ? ["H1", "H2"] : ["YEAR"]);
+}
+
+function periodSelectItemsForParallel(parallel) {
+    const p = Number(parallel || selectedParallel || 1);
+    const matched = (studyPeriodSettings || [])
+        .filter((s) => Number(s.parallelFrom) <= p && p <= Number(s.parallelTo))
+        .sort((a, b) => Number(a.parallelFrom) - Number(b.parallelFrom)
+            || Number(a.parallelTo) - Number(b.parallelTo)
+            || String(a.displayName || "").localeCompare(String(b.displayName || ""), "ru"));
+    const byStudyPeriod = new Map();
+    matched.forEach((item) => {
+        const key = String(item.studyPeriod || "").toUpperCase();
+        if (!["YEAR", "H1", "H2"].includes(key) || byStudyPeriod.has(key)) return;
+        byStudyPeriod.set(key, {
+            value: key,
+            label: String(item.displayName || PERIOD_META[key]?.label || key)
+        });
+    });
+    if (byStudyPeriod.size) {
+        return [...byStudyPeriod.values()];
+    }
+    return periodOptionsForParallel(p).map((key) => ({ value: key, label: PERIOD_META[key]?.label || key }));
+}
+
+function renderStudyPeriodSelect(selectEl, parallel, currentValue) {
+    if (!selectEl) return;
+    const items = periodSelectItemsForParallel(parallel);
+    const html = items.map((item) => `<option value="${esc(item.value)}">${esc(item.label)}</option>`).join("");
+    selectEl.innerHTML = html;
+    const allowed = items.map((i) => i.value);
+    selectEl.value = allowed.includes(currentValue) ? currentValue : (allowed[0] || "YEAR");
+}
+
 function toggleSubgroupConfig(container, requiredValue) {
     const required = String(requiredValue) === "true";
     if (!container) return;
