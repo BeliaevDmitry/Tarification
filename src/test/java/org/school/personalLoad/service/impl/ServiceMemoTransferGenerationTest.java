@@ -18,11 +18,12 @@ import org.school.personalLoad.service.StudyPeriodSettingService;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
@@ -172,38 +173,40 @@ class ServiceMemoTransferGenerationTest {
     }
 
     @Test
-    void alreadyProcessedDateIsNotReopenedWithoutNewHistoryChanges() {
-        LocalDate changeDate = LocalDate.of(2025, 10, 11);
-        LocalDateTime changeMoment = LocalDateTime.of(2025, 10, 11, 9, 0);
+    void processedDonorMemoIsNotReopenedWhenOnlyUnchangedRowsAreUpdatedLater() {
+        String donorFio = "Бегунц Александр Владимирович";
+        LocalDate changeDate = LocalDate.of(2026, 9, 23);
 
-        ManualLoadEntry donor = row("Иванов И.И.", "Алгебра", "8-А", 6,
-                LocalDate.of(2025, 9, 1), LocalDate.of(2025, 10, 10));
-        ManualLoadEntry recipient = row("Петров П.П.", "Алгебра", "8-А", 6,
-                changeDate, LocalDate.of(2026, 5, 31));
-        when(manualLoadEntryRepository.findAll()).thenReturn(List.of(donor, recipient));
-        when(changesDAO.findAll()).thenReturn(List.of(
-                change("Иванов И.И.", "Алгебра", "8-А", 6, TarifficationChanges.ChangeType.REMOVED, changeMoment),
-                change("Петров П.П.", "Алгебра", "8-А", 6, TarifficationChanges.ChangeType.ADDED, changeMoment)
-        ));
+        ManualLoadEntry donorRemoved = row(donorFio, "Изобразительное искусство", "1-А", 1,
+                LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 22));
+        ManualLoadEntry donorOther = row(donorFio, "Изобразительное искусство", "1-Е", 1,
+                LocalDate.of(2026, 9, 1), LocalDate.of(2027, 5, 31));
+        ManualLoadEntry recipient = row("Бардина Наталья Николаевна", "Изобразительное искусство", "1-А", 1,
+                changeDate, LocalDate.of(2027, 5, 31));
+        when(manualLoadEntryRepository.findAll()).thenReturn(List.of(donorRemoved, donorOther, recipient));
 
+        String donorSignaturePayload = "2026-09-23|false|"
+                + "Снять|изобразительное искусство|1-а|1|2026-09-01|2026-09-22";
         ServiceMemo processed = new ServiceMemo();
         processed.setStatus(ServiceMemo.Status.PROCESSED);
-        processed.setFioTeacher("Иванов И.И.");
+        processed.setFioTeacher(donorFio);
         processed.setChangeStartDate(changeDate);
         processed.setCreatedBy("tester");
         processed.setGeneratedFilename("memo.docx");
         processed.setGeneratedDocument(new byte[]{1});
-        processed.setLoadSignature("legacy-signature");
-        processed.setCreatedAt(changeMoment.plusDays(1));
+        processed.setLoadSignature(sha256(donorSignaturePayload));
+        processed.setCreatedAt(LocalDateTime.now());
         when(serviceMemoRepository.findAllByStatusInOrderByCreatedAtDesc(any()))
                 .thenReturn(List.of(processed));
 
+        ManualLoadEntry donorOtherChangedLater = row(donorFio, "Изобразительное искусство", "1-Е", 1,
+                LocalDate.of(2026, 9, 1), LocalDate.of(2026, 11, 10));
+        when(manualLoadEntryRepository.findAll()).thenReturn(List.of(donorRemoved, donorOtherChangedLater, recipient));
+
         List<ServiceMemoDtos.PendingTeacher> pending = service.findPendingTeachers();
 
-        assertFalse(pending.stream().anyMatch(p ->
-                "Иванов И.И.".equals(p.getFioTeacher()) && changeDate.equals(p.getStartDate())));
-        assertTrue(pending.stream().anyMatch(p ->
-                "Петров П.П.".equals(p.getFioTeacher()) && changeDate.equals(p.getStartDate())));
+        assertTrue(pending.stream().noneMatch(p ->
+                donorFio.equals(p.getFioTeacher()) && changeDate.equals(p.getStartDate())));
     }
 
     private ManualLoadEntry row(String fio, String subject, String className, int load,
@@ -228,5 +231,19 @@ class ServiceMemoTransferGenerationTest {
         change.setChangeType(type);
         change.setChangeDate(when);
         return change;
+    }
+
+    private String sha256(String payload) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(payload.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder("sha256:");
+            for (byte b : hash) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }

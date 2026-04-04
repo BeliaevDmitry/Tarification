@@ -961,13 +961,19 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
 
         String payload = aggregate.rows().stream()
                 .filter(Objects::nonNull)
-                .map(row -> String.join("|",
-                        safe(row.getSubjectName()),
-                        safe(row.getClassName()),
-                        String.valueOf(row.getLoad() == null ? 0 : row.getLoad()),
-                        String.valueOf(row.getLoadFromDate() == null ? "" : row.getLoadFromDate()),
-                        String.valueOf(row.getLoadToDate() == null ? "" : row.getLoadToDate()),
-                        resolveStatus(aggregate, row)))
+                .map(row -> new AbstractMap.SimpleEntry<>(row, resolveStatus(aggregate, row)))
+                .filter(entry -> !safe(entry.getValue()).isBlank())
+                .map(entry -> {
+                    ManualLoadEntry row = entry.getKey();
+                    String status = entry.getValue();
+                    return String.join("|",
+                            status,
+                            safe(row.getSubjectName()),
+                            safe(row.getClassName()),
+                            String.valueOf(row.getLoad() == null ? 0 : row.getLoad()),
+                            String.valueOf(row.getLoadFromDate() == null ? "" : row.getLoadFromDate()),
+                            String.valueOf(row.getLoadToDate() == null ? "" : row.getLoadToDate()));
+                })
                 .sorted()
                 .collect(Collectors.joining("||", aggregate.startDate() + "|" + aggregate.onlyAdditions() + "|", ""));
 
