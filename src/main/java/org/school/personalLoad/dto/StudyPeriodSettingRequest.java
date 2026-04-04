@@ -7,11 +7,13 @@ import java.time.LocalDate;
 
 @Data
 public class StudyPeriodSettingRequest {
-    private String settingKey;
+    private Long id;
+    private String code;
     private String displayName;
     private StudyPeriod studyPeriod;
     private Integer parallelFrom;
     private Integer parallelTo;
+    private Boolean defaultRule;
     private LocalDate startDate;
     private LocalDate endDate;
 }

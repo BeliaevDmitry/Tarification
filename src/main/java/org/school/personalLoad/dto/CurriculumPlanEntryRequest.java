@@ -20,4 +20,5 @@ public class CurriculumPlanEntryRequest {
     private EducationLevel subgroup2EducationLevel;
     private CurriculumPart curriculumPart;
     private StudyPeriod studyPeriod;
+    private Long studyPeriodSettingId;
 }

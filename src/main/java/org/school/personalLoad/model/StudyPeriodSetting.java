@@ -15,8 +15,8 @@ public class StudyPeriodSetting {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
-    private String settingKey;
+    @Column(nullable = false, unique = true, length = 64)
+    private String code;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -30,6 +30,9 @@ public class StudyPeriodSetting {
 
     @Column(nullable = false)
     private String displayName;
+
+    @Column(nullable = false)
+    private boolean defaultRule = false;
 
     @Column(nullable = false)
     private LocalDate startDate;

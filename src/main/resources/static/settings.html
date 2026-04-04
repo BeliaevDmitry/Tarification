@@ -26,30 +26,15 @@
         <div class="section-heading">
             <div>
                 <h2>Периоды обучения</h2>
-                <p class="muted">Можно добавлять собственные периоды. Значения по умолчанию: 1–9 — учебный год, 10/11 — 1 и 2 полугодия.</p>
+                <p class="muted">Можно добавлять новые периоды. Периоды затем доступны в «Учебные планы» для классов из заданного диапазона.</p>
             </div>
         </div>
-        <form id="study-periods-form">
-            <div class="sheet-wrap">
-                <table class="sheet-table">
-                    <thead>
-                    <tr>
-                        <th>Код</th>
-                        <th>Название периода</th>
-                        <th>Тип</th>
-                        <th>Класс с</th>
-                        <th>Класс по</th>
-                        <th>Дата начала</th>
-                        <th>Дата окончания</th>
-                        <th>Действие</th>
-                    </tr>
-                    </thead>
-                    <tbody id="study-periods-body"></tbody>
-                </table>
-            </div>
-            <div class="row">
-                <button type="button" id="study-periods-add-btn">Добавить период</button>
-                <button type="submit">Сохранить периоды</button>
+
+        <form id="study-periods-form" class="grid">
+            <div id="study-periods-list" class="grid settings-period-grid"></div>
+            <div class="row full-span">
+                <button type="button" id="add-period-btn">Добавить период</button>
+                <button type="submit">Сохранить изменения</button>
                 <button type="button" id="study-periods-refresh-btn">Обновить</button>
             </div>
         </form>
