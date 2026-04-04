@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarification — учебные планы</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="curriculum-page">
+<main class="container">
+    <header class="card">
+        <h1>Учебные планы 1–11</h1>
+        <p class="muted">Класс выбирается только из справочника «Классы». Клик по ячейке часов в сводной таблице — полное редактирование.</p>
+        <nav class="page-nav">
+            <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
+            <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
+            <a class="nav-link" href="/subjects.html" data-tab="SUBJECTS">Предметы</a>
+            <a class="nav-link active" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
+            <a class="nav-link" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/settings.html" data-tab="SETTINGS">Настройки</a>
+            <a class="nav-link" href="/teachers.html" data-tab="TEACHERS">Педагоги</a>
+        </nav>
+    </header>
+
+    <section class="card">
+        <div class="parallel-tabs" id="parallel-tabs"></div>
+        <div class="row">
+            <select id="parallel-building-filter"></select>
+            <button id="refresh-btn" type="button">Обновить таблицу</button>
+            <button id="clear-curriculum-btn" type="button" data-requires-edit>Очистить весь учебный план</button>
+        </div>
+        <pre id="curriculum-result"></pre>
+    </section>
+
+
+    <section class="card plan-block">
+        <h2>Импорт учебного плана из Excel</h2>
+        <p class="muted">Загрузите файл УП (листы НОО/ООО/СОО). После импорта предметы автоматически добавляются в справочник «Предметы».</p>
+        <div class="row" data-requires-edit>
+            <input id="curriculum-import-file" type="file" accept=".xlsx,.xls">
+            <button id="import-curriculum-btn" type="button">Импортировать учебный план</button>
+            <button id="export-curriculum-btn" type="button">Экспортировать учебный план (Excel)</button>
+        </div>
+    </section>
+
+    <section class="card plan-block">
+        <h2>Добавить/обновить предмет</h2>
+        <form id="subject-form" class="grid curriculum-form" data-requires-edit>
+            <select name="numberSchoolBuilding" id="subject-building" required></select>
+            <select name="className" id="subject-class" required></select>
+            <select name="curriculumPart" required>
+                <option value="CORE">1) Основная часть</option>
+                <option value="FORMABLE">2) Формируемая часть</option>
+                <option value="EXTRACURRICULAR">3) Внеурочная деятельность</option>
+            </select>
+            <select name="subjectName" id="subject-name" required><option value="">Выберите предмет</option></select>
+            <label>Период<select name="studyPeriod" id="subject-study-period" required>
+                <option value="YEAR">Учебный год (1–9)</option>
+                <option value="H1">1 полугодие (10–11)</option>
+                <option value="H2">2 полугодие (10–11)</option>
+            </select></label>
+            <input name="plannedHours" type="number" min="0.1" step="0.1" placeholder="Всего часов" required>
+            <label>Уровень<select name="educationLevel" required>
+                <option value="BASIC">Базовый</option>
+                <option value="ADVANCED">Углублённый</option>
+            </select></label>
+            <select name="subgroupRequired" id="subgroup-required" required>
+                <option value="false">Без деления</option>
+                <option value="true">С делением</option>
+            </select>
+                        <div id="subgroup-config" class="grid subgroup-config hidden">
+                <input name="subgroup1Hours" type="number" min="1" placeholder="1 подгруппа, часы">
+                <select name="subgroup1EducationLevel">
+                    <option value="BASIC">1 подгруппа: Базовый</option>
+                    <option value="ADVANCED">1 подгруппа: Углублённый</option>
+                </select>
+                <input name="subgroup2Hours" type="number" min="1" placeholder="2 подгруппа, часы">
+                <select name="subgroup2EducationLevel">
+                    <option value="BASIC">2 подгруппа: Базовый</option>
+                    <option value="ADVANCED">2 подгруппа: Углублённый</option>
+                </select>
+            </div>
+            <button type="submit">Сохранить предмет</button>
+        </form>
+    </section>
+
+    <section class="card" data-requires-edit>
+        <h2>Сводная таблица УП</h2>
+        <div class="sheet-wrap">
+            <table class="sheet-table" id="summary-table">
+                <thead id="summary-head"></thead>
+                <tbody id="summary-body"></tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<dialog id="curriculum-edit-dialog">
+    <form method="dialog" id="curriculum-edit-form" class="grid" data-requires-edit>
+        <h3>Редактирование позиции</h3>
+        <input type="hidden" name="id">
+        <input type="hidden" name="className">
+        <label>Период<select name="studyPeriod" required>
+            <option value="YEAR">Учебный год (1–9)</option>
+            <option value="H1">1 полугодие (10–11)</option>
+            <option value="H2">2 полугодие (10–11)</option>
+        </select></label>
+        <input name="plannedHours" type="number" min="0.1" step="0.1" placeholder="Всего часов" required>
+        <label>Уровень<select name="educationLevel" required>
+            <option value="BASIC">Базовый</option>
+            <option value="ADVANCED">Углублённый</option>
+        </select></label>
+        <label>Деление<select name="subgroupRequired" required>
+            <option value="false">Без деления</option>
+            <option value="true">С делением</option>
+        </select></label>
+                <input name="subgroup1Hours" type="number" min="1" placeholder="1 подгруппа, часы">
+        <select name="subgroup1EducationLevel">
+            <option value="BASIC">1 подгруппа: Базовый</option>
+            <option value="ADVANCED">1 подгруппа: Углублённый</option>
+        </select>
+        <input name="subgroup2Hours" type="number" min="1" placeholder="2 подгруппа, часы">
+        <select name="subgroup2EducationLevel">
+            <option value="BASIC">2 подгруппа: Базовый</option>
+            <option value="ADVANCED">2 подгруппа: Углублённый</option>
+        </select>
+        <div class="row">
+            <button id="save-curriculum-item" type="submit">Сохранить</button>
+            <button id="delete-curriculum-item" type="button" class="danger-btn">Удалить</button>
+            <button type="button" id="close-curriculum-dialog">Отмена</button>
+        </div>
+    </form>
+</dialog>
+
+<script src="/auth.js"></script>
+<script src="/table-scroll.js"></script>
+<script src="/curriculum.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+package org.school.personalLoad.service;
+
+import org.school.personalLoad.dto.CurriculumImportResult;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+
+public interface CurriculumImportService {
+    CurriculumImportResult importFile(MultipartFile file);
+
+    byte[] exportEditableWorkbook() throws IOException;
+}

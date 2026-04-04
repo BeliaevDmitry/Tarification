@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarification — Педагоги</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container">
+    <header class="card">
+        <h1>Педагоги</h1>
+        <p class="muted">Справочник корректных ФИО: импорт из Excel, ручное добавление и пометка на увольнение.</p>
+        <nav class="page-nav">
+            <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
+            <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
+            <a class="nav-link" href="/subjects.html" data-tab="SUBJECTS">Предметы</a>
+            <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
+            <a class="nav-link" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/settings.html" data-tab="SETTINGS">Настройки</a>
+            <a class="nav-link active" href="/teachers.html" data-tab="TEACHERS">Педагоги</a>
+        </nav>
+    </header>
+
+    <section class="card">
+        <h2>Импорт из Excel</h2>
+        <p class="muted">Можно скачать текущий список, заполнить дательный падеж и загрузить файл обратно.</p>
+        <div class="row" data-requires-edit>
+            <input id="teacher-file" type="file" accept=".xls,.xlsx">
+            <button id="import-teachers-btn" type="button">Импортировать</button>
+            <button id="download-teachers-template-btn" type="button" data-allow-readonly="true">Скачать педагогов</button>
+        </div>
+        <h2>Ручное добавление</h2>
+        <form id="teacher-create-form" class="row" data-requires-edit>
+            <input id="teacher-fio" name="fioTeacher" placeholder="ФИО педагога" required>
+            <button type="submit">Добавить педагога</button>
+            <button id="refresh-teachers-btn" type="button" data-allow-readonly="true">Обновить список</button>
+            <button id="clear-teachers-btn" type="button">Очистить справочник</button>
+        </form>
+        <pre id="teachers-result"></pre>
+    </section>
+
+    <section class="card" data-requires-edit>
+        <h2>Список педагогов</h2>
+        <p class="muted">Если педагог назначен на нагрузку, удаление будет запрещено — сначала снимите назначение в разделе «Нагрузка по корпусам».</p>
+        <div class="sheet-wrap">
+            <table class="sheet-table">
+                <thead>
+                <tr>
+                    <th>ФИО</th>
+                    <th>Дательный падеж</th>
+                    <th>Статус</th>
+                    <th>Создано</th>
+                    <th>Действия</th>
+                </tr>
+                </thead>
+                <tbody id="teachers-table-body"></tbody>
+            </table>
+        </div>
+    </section>
+</main>
+<script src="/auth.js"></script>
+<script src="/table-scroll.js"></script>
+<script src="/teachers.js"></script>
+</body>
+</html>

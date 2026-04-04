@@ -1,31 +1,38 @@
 package org.school.personalLoad.service.impl;
 
+import org.springframework.stereotype.Service;
+
 import org.school.personalLoad.dao.TarifficationPersonDAO;
 import org.school.personalLoad.dao.TarifficationChangesDAO;
 import org.school.personalLoad.dao.NamingMeshDAO;
 import org.school.personalLoad.model.TarifficationChanges;
 import org.school.personalLoad.model.TarifficationPerson;
 import org.school.personalLoad.model.NamingMesh;
-import org.school.personalLoad.config.DatabaseConfig;
+import lombok.extern.slf4j.Slf4j;
+import org.school.personalLoad.config.AppConfig;
 import org.school.personalLoad.service.DatabaseService;
 
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
+@Service
 public class DatabaseServiceImpl implements DatabaseService {
 
     private final TarifficationPersonDAO currentDAO;
     private final TarifficationChangesDAO changesDAO;
     private final NamingMeshDAO namingMeshDAO;
+    private final AppConfig appConfig;
 
-    public DatabaseServiceImpl() {
+    public DatabaseServiceImpl(AppConfig appConfig) {
         this.currentDAO = new TarifficationPersonDAO();
         this.changesDAO = new TarifficationChangesDAO();
         this.namingMeshDAO = new NamingMeshDAO();
+        this.appConfig = appConfig;
 
-        if (DatabaseConfig.CLEAR_HISTORY_ON_START) {
-            System.out.println("🗑️ История очищена по запросу (CLEAR_HISTORY_ON_START = true)");
+        if (appConfig.isClearHistoryOnStart()) {
+            log.info("История очищена по запросу (clear-history-on-start = true)");
             fullReset();
         }
     }
@@ -34,22 +41,21 @@ public class DatabaseServiceImpl implements DatabaseService {
      * Основной метод: сравнивает и сохраняет данные
      */
     public void compareAndSave(List<TarifficationPerson> newTariffication, List<NamingMesh> namingMeshes) {
-        System.out.println("🔄 Начало сравнения и сохранения данных...");
+        log.info("Начало сравнения и сохранения данных...");
 
         // 1. Сохраняем naming mesh если предоставлен
         if (namingMeshes != null && !namingMeshes.isEmpty()) {
             namingMeshDAO.saveAll(namingMeshes);
-            System.out.println("💾 Сохранено записей в naming mesh: " + namingMeshes.size());
+            log.info("Сохранено записей в naming mesh: {}", namingMeshes.size());
         }
 
         // 2. Сначала сравниваем с предыдущей версией
         List<TarifficationChanges> changes = compareWithHistory(newTariffication);
 
         // 3. Сохраняем изменения в историю (если включено)
-        if (!changes.isEmpty() && DatabaseConfig.KEEP_HISTORY) {
+        if (!changes.isEmpty() && appConfig.isKeepHistory()) {
             changesDAO.saveAll(changes);
-            System.out.println("💾 Изменения тарификации сохранены в историю и содержат: "
-                    + changes.size() + " записей");
+            log.info("Изменения тарификации сохранены в историю и содержат: {} записей", changes.size());
         }
 
         // 4. Сохраняем новую версию тарификации
@@ -58,7 +64,7 @@ public class DatabaseServiceImpl implements DatabaseService {
         // 5. Обновляем связи с naming mesh
         currentDAO.updateAllNamingMeshRelations();
 
-        System.out.println("✅ Новая тарификация сохранена в базу данных");
+        log.info("Новая тарификация сохранена в базу данных");
     }
 
     /**
@@ -75,15 +81,13 @@ public class DatabaseServiceImpl implements DatabaseService {
         List<TarifficationChanges> allChanges = new ArrayList<>();
         List<TarifficationPerson> oldTariffications = currentDAO.findAll();
 
-        System.out.println("📊 Начинаем сравнивать! в БД хранится " + oldTariffications.size()
-                + " записей, в новой тарификации хранится " + newTariffication.size() + " записей");
+        log.info("Начинаем сравнение: в БД {} записей, в новой тарификации {}", oldTariffications.size(), newTariffication.size());
 
         if (oldTariffications.isEmpty()) {
-            System.out.println("⭐ Первая загрузка: " + newTariffication.size() +
-                    " записей, изменений не найдено (история пуста)");
+            log.info("Первая загрузка: {} записей, история пуста", newTariffication.size());
         } else {
             findChangesComparedToHistory(oldTariffications, newTariffication, allChanges);
-            System.out.println("📈 Найдено изменений: " + allChanges.size());
+            log.info("Найдено изменений: {}", allChanges.size());
         }
 
         return allChanges;
@@ -96,14 +100,14 @@ public class DatabaseServiceImpl implements DatabaseService {
 
     public void saveCurrentTariffication(List<TarifficationPerson> tarifficationList) {
         currentDAO.saveAll(tarifficationList);
-        System.out.println("💾 Сохранено записей в базу данных: " + tarifficationList.size());
+        log.info("Сохранено записей в базу данных: {}", tarifficationList.size());
     }
 
     public void fullReset() {
         changesDAO.deleteAllHistory();
         currentDAO.deleteAll();
         namingMeshDAO.deleteAll();
-        System.out.println("✅ Полный сброс: история, текущая тарификация и naming mesh очищены");
+        log.info("Полный сброс: история, текущая тарификация и naming mesh очищены");
     }
 
     public List<TarifficationPerson> findAllByFieldsHistory(String subject, String className, String NumberSchoolBuilding) {
@@ -141,7 +145,7 @@ public class DatabaseServiceImpl implements DatabaseService {
 
     public void saveNamingMeshes(List<NamingMesh> namingMeshes) {
         namingMeshDAO.saveAll(namingMeshes);
-        System.out.println("💾 Сохранено записей в naming mesh: " + namingMeshes.size());
+        log.info("Сохранено записей в naming mesh: {}", namingMeshes.size());
 
         // Обновляем связи после сохранения новых mesh
         currentDAO.updateAllNamingMeshRelations();
@@ -161,11 +165,12 @@ public class DatabaseServiceImpl implements DatabaseService {
 
     public void updateNamingMeshRelations() {
         currentDAO.updateAllNamingMeshRelations();
-        System.out.println("🔗 Обновлены связи с naming mesh");
+        log.info("Обновлены связи с naming mesh");
     }
 
     private TarifficationChanges createHistoryRecord(TarifficationPerson current,
-                                                     TarifficationChanges.ChangeType changeType) {
+                                                     TarifficationChanges.ChangeType changeType,
+                                                     LocalDateTime changeMoment) {
         TarifficationChanges history = new TarifficationChanges();
         history.setFioTeacher(current.getFioTeacher() != null ? current.getFioTeacher() : "");
         history.setNumberSchoolBuilding(current.getNumberSchoolBuilding() != null ? current.getNumberSchoolBuilding() : "");
@@ -175,13 +180,14 @@ public class DatabaseServiceImpl implements DatabaseService {
         history.setGroupNameEducationalPlan(current.getGroupNameEducationalPlan() != null ? current.getGroupNameEducationalPlan() : "");
         history.setGroupLoad(current.getGroupLoad() != null ? current.getGroupLoad() : 0);
         history.setChangeType(changeType);
-        history.setChangeDate(LocalDateTime.now());
+        history.setChangeDate(changeMoment == null ? LocalDateTime.now() : changeMoment);
         return history;
     }
 
     private void findChangesComparedToHistory(List<TarifficationPerson> oldTariffications,
                                               List<TarifficationPerson> newTariffication,
                                               List<TarifficationChanges> changes) {
+        LocalDateTime batchTimestamp = LocalDateTime.now();
 
         Map<String, TarifficationPerson> historyMap = createPersonMap(oldTariffications);
         Map<String, TarifficationPerson> newMap = createPersonMap(newTariffication);
@@ -191,7 +197,8 @@ public class DatabaseServiceImpl implements DatabaseService {
             String key = entry.getKey();
             if (!newMap.containsKey(key)) {
                 changes.add(createHistoryRecord(entry.getValue(),
-                        TarifficationChanges.ChangeType.REMOVED));
+                        TarifficationChanges.ChangeType.REMOVED,
+                        batchTimestamp));
             }
         }
 
@@ -200,7 +207,8 @@ public class DatabaseServiceImpl implements DatabaseService {
             String key = entry.getKey();
             if (!historyMap.containsKey(key)) {
                 changes.add(createHistoryRecord(entry.getValue(),
-                        TarifficationChanges.ChangeType.ADDED));
+                        TarifficationChanges.ChangeType.ADDED,
+                        batchTimestamp));
             }
         }
 
@@ -218,8 +226,13 @@ public class DatabaseServiceImpl implements DatabaseService {
                 );
 
                 if (loadChanged || groupLoadChanged) {
+                    log.debug("Обнаружено изменение для ключа: {}", key);
+                    log.debug("Старое load: {}, groupLoad: {}", oldPerson.getLoad(), oldPerson.getGroupLoad());
+                    log.debug("Новое load: {}, groupLoad: {}", newPerson.getLoad(), newPerson.getGroupLoad());
+
                     changes.add(createHistoryRecord(newPerson,
-                            TarifficationChanges.ChangeType.MODIFIED));
+                            TarifficationChanges.ChangeType.MODIFIED,
+                            batchTimestamp));
                 }
             }
         }
