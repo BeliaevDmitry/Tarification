@@ -17,6 +17,7 @@ import org.school.personalLoad.service.ManualLoadService;
 import org.school.personalLoad.service.TarifficationProcessingService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -42,8 +43,18 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
     @Override
+    @Transactional
     public List<ManualLoadEntry> createBulk(List<ManualLoadEntryRequest> requests) {
         List<ManualLoadEntry> entries = requests.stream().map(this::toEntity).toList();
+        java.util.Set<String> buildingCodes = entries.stream()
+                .map(ManualLoadEntry::getNumberSchoolBuilding)
+                .filter(java.util.Objects::nonNull)
+                .map(code -> code.trim().toLowerCase())
+                .filter(code -> !code.isBlank())
+                .collect(java.util.stream.Collectors.toSet());
+        if (!buildingCodes.isEmpty()) {
+            manualLoadEntryRepository.deleteByBuildingCodes(buildingCodes);
+        }
         return manualLoadEntryRepository.saveAll(entries);
     }
 
