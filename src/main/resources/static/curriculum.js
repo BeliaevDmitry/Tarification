@@ -101,6 +101,37 @@ function periodOptionsForParallel(parallel) {
     return unique.length ? unique : (isHighSchoolParallel(p) ? ["H1", "H2"] : ["YEAR"]);
 }
 
+function periodSelectItemsForParallel(parallel) {
+    const p = Number(parallel || selectedParallel || 1);
+    const matched = (studyPeriodSettings || [])
+        .filter((s) => Number(s.parallelFrom) <= p && p <= Number(s.parallelTo))
+        .sort((a, b) => Number(a.parallelFrom) - Number(b.parallelFrom)
+            || Number(a.parallelTo) - Number(b.parallelTo)
+            || String(a.displayName || "").localeCompare(String(b.displayName || ""), "ru"));
+    const byStudyPeriod = new Map();
+    matched.forEach((item) => {
+        const key = String(item.studyPeriod || "").toUpperCase();
+        if (!["YEAR", "H1", "H2"].includes(key) || byStudyPeriod.has(key)) return;
+        byStudyPeriod.set(key, {
+            value: key,
+            label: String(item.displayName || PERIOD_META[key]?.label || key)
+        });
+    });
+    if (byStudyPeriod.size) {
+        return [...byStudyPeriod.values()];
+    }
+    return periodOptionsForParallel(p).map((key) => ({ value: key, label: PERIOD_META[key]?.label || key }));
+}
+
+function renderStudyPeriodSelect(selectEl, parallel, currentValue) {
+    if (!selectEl) return;
+    const items = periodSelectItemsForParallel(parallel);
+    const html = items.map((item) => `<option value="${esc(item.value)}">${esc(item.label)}</option>`).join("");
+    selectEl.innerHTML = html;
+    const allowed = items.map((i) => i.value);
+    selectEl.value = allowed.includes(currentValue) ? currentValue : (allowed[0] || "YEAR");
+}
+
 function toggleSubgroupConfig(container, requiredValue) {
     const required = String(requiredValue) === "true";
     if (!container) return;
@@ -178,20 +209,12 @@ function renderClassOptions() {
 
 function syncStudyPeriodControls() {
     const parallel = classToParallel(ui.formClass.value) || selectedParallel;
-    const allowed = periodOptionsForParallel(parallel);
     if (ui.formStudyPeriod) {
-        [...ui.formStudyPeriod.options].forEach((o) => { o.hidden = !allowed.includes(o.value); });
-        if (!allowed.includes(ui.formStudyPeriod.value)) {
-            ui.formStudyPeriod.value = allowed[0] || "YEAR";
-        }
+        renderStudyPeriodSelect(ui.formStudyPeriod, parallel, ui.formStudyPeriod.value);
     }
     if (ui.editForm?.elements.studyPeriod) {
         const p = classToParallel(ui.editForm.elements.className?.value || selectedParallel);
-        const allowedDialog = periodOptionsForParallel(p);
-        [...ui.editForm.elements.studyPeriod.options].forEach((o) => { o.hidden = !allowedDialog.includes(o.value); });
-        if (!allowedDialog.includes(ui.editForm.elements.studyPeriod.value)) {
-            ui.editForm.elements.studyPeriod.value = allowedDialog[0] || "YEAR";
-        }
+        renderStudyPeriodSelect(ui.editForm.elements.studyPeriod, p, ui.editForm.elements.studyPeriod.value);
     }
 }
 
