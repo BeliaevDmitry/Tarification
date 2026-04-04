@@ -6,6 +6,9 @@ import org.school.personalLoad.dto.TeacherDismissRequest;
 import org.school.personalLoad.dto.TeacherUpdateRequest;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.service.TeacherDirectoryService;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -23,6 +26,15 @@ public class TeacherDirectoryController {
     @PostMapping("/import")
     public ResponseEntity<Map<String, Object>> importFromExcel(@RequestParam("file") MultipartFile file) {
         return ResponseEntity.ok(teacherDirectoryService.importFromExcel(file));
+    }
+
+    @GetMapping({"/template", "/export"})
+    public ResponseEntity<Resource> downloadTemplate() {
+        Resource resource = teacherDirectoryService.buildImportTemplate();
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=teachers-template.xlsx")
+                .body(resource);
     }
 
     @PostMapping

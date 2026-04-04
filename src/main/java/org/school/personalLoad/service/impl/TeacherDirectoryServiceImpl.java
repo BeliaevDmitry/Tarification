@@ -3,16 +3,20 @@ package org.school.personalLoad.service.impl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.TeacherCreateRequest;
 import org.school.personalLoad.dto.TeacherUpdateRequest;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.TeacherDirectoryService;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.time.LocalDate;
 import java.util.*;
@@ -33,6 +37,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         }
 
         int imported = 0;
+        int updated = 0;
         int skipped = 0;
         Set<String> seen = new HashSet<>();
 
@@ -51,6 +56,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 }
 
                 String fio = getCellStringValue(row.getCell(0));
+                String fioDative = normalizeOptional(getCellStringValue(row.getCell(1)));
                 if (fio.isBlank()) {
                     skipped++;
                     continue;
@@ -62,32 +68,74 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                     continue;
                 }
 
-                if (!seen.add(normalized.toLowerCase())) {
+                if (!seen.add(normalized.toLowerCase(Locale.ROOT))) {
                     skipped++;
                     continue;
                 }
 
-                if (teacherDirectoryRepository.findByFioTeacher(normalized).isPresent()) {
-                    skipped++;
+                Optional<TeacherDirectoryEntry> existing = teacherDirectoryRepository.findByFioTeacherIgnoreCase(normalized);
+                if (existing.isPresent()) {
+                    TeacherDirectoryEntry teacher = existing.get();
+                    if (fioDative != null && !fioDative.equals(teacher.getFioTeacherDative())) {
+                        teacher.setFioTeacherDative(fioDative);
+                        teacherDirectoryRepository.save(teacher);
+                        updated++;
+                    } else {
+                        skipped++;
+                    }
                     continue;
                 }
 
                 TeacherDirectoryEntry entry = new TeacherDirectoryEntry();
                 entry.setFioTeacher(normalized);
+                entry.setFioTeacherDative(fioDative);
                 teacherDirectoryRepository.save(entry);
                 imported++;
             }
 
-            log.info("Импорт педагогов завершен: imported={}, skipped={}", imported, skipped);
+            log.info("Импорт педагогов завершен: imported={}, updated={}, skipped={}", imported, updated, skipped);
             return Map.of(
                     "status", "ok",
                     "imported", imported,
+                    "updated", updated,
                     "skipped", skipped,
                     "sheet", sheet.getSheetName()
             );
         } catch (Exception e) {
             log.error("Ошибка импорта педагогов", e);
             throw new RuntimeException("Не удалось импортировать педагогов из Excel", e);
+        }
+    }
+
+    @Override
+    public Resource buildImportTemplate() {
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("Педагоги");
+            Row header = sheet.createRow(0);
+            header.createCell(0).setCellValue("ФИО");
+            header.createCell(1).setCellValue("Дательный падеж");
+
+            List<TeacherDirectoryEntry> rows = teacherDirectoryRepository.findAll();
+            if (rows.isEmpty()) {
+                Row example = sheet.createRow(1);
+                example.createCell(0).setCellValue("Иванов Иван Иванович");
+                example.createCell(1).setCellValue("Иванову И.И.");
+            } else {
+                rows.sort(Comparator.comparing(TeacherDirectoryEntry::getFioTeacher, String.CASE_INSENSITIVE_ORDER));
+                int rowIndex = 1;
+                for (TeacherDirectoryEntry entry : rows) {
+                    Row row = sheet.createRow(rowIndex++);
+                    row.createCell(0).setCellValue(entry.getFioTeacher());
+                    row.createCell(1).setCellValue(Objects.toString(entry.getFioTeacherDative(), ""));
+                }
+            }
+
+            sheet.autoSizeColumn(0);
+            sheet.autoSizeColumn(1);
+            workbook.write(out);
+            return new ByteArrayResource(out.toByteArray());
+        } catch (Exception e) {
+            throw new RuntimeException("Не удалось сформировать файл педагогов", e);
         }
     }
 
@@ -99,7 +147,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
 
         String normalized = request.getFioTeacher().trim();
         String dative = normalizeOptional(request.getFioTeacherDative());
-        return teacherDirectoryRepository.findByFioTeacher(normalized)
+        return teacherDirectoryRepository.findByFioTeacherIgnoreCase(normalized)
                 .orElseGet(() -> {
                     TeacherDirectoryEntry entry = new TeacherDirectoryEntry();
                     entry.setFioTeacher(normalized);
@@ -251,7 +299,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
     }
 
     private TeacherDirectoryEntry ensureVacancyTeacher() {
-        return teacherDirectoryRepository.findByFioTeacher(VACANCY_TEACHER).orElseGet(() -> {
+        return teacherDirectoryRepository.findByFioTeacherIgnoreCase(VACANCY_TEACHER).orElseGet(() -> {
             TeacherDirectoryEntry entry = new TeacherDirectoryEntry();
             entry.setFioTeacher(VACANCY_TEACHER);
             entry.setFioTeacherDative("Вакансии");
