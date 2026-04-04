@@ -702,7 +702,7 @@ dialog::backdrop {
 }
 
 .load-page .sheet-wrap {
-    max-height: calc(100vh - 210px);
+    max-height: calc(100vh - 300px);
 }
 
 .load-page .sheet-table thead th {
