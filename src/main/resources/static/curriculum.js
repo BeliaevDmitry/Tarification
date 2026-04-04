@@ -108,19 +108,15 @@ function periodSelectItemsForParallel(parallel) {
         .sort((a, b) => Number(a.parallelFrom) - Number(b.parallelFrom)
             || Number(a.parallelTo) - Number(b.parallelTo)
             || String(a.displayName || "").localeCompare(String(b.displayName || ""), "ru"));
-    const byStudyPeriod = new Map();
-    matched.forEach((item) => {
-        const key = String(item.studyPeriod || "").toUpperCase();
-        if (!["YEAR", "H1", "H2"].includes(key) || byStudyPeriod.has(key)) return;
-        byStudyPeriod.set(key, {
-            value: key,
-            label: String(item.displayName || PERIOD_META[key]?.label || key)
-        });
-    });
-    if (byStudyPeriod.size) {
-        return [...byStudyPeriod.values()];
-    }
-    return periodOptionsForParallel(p).map((key) => ({ value: key, label: PERIOD_META[key]?.label || key }));
+    const items = matched
+        .map((item) => ({
+            value: String(item.settingKey || "").trim(),
+            label: String(item.displayName || "").trim(),
+            studyPeriod: String(item.studyPeriod || "").toUpperCase()
+        }))
+        .filter((item) => item.value && item.label && ["YEAR", "H1", "H2"].includes(item.studyPeriod));
+    if (items.length) return items;
+    return periodOptionsForParallel(p).map((key) => ({ value: key, label: PERIOD_META[key]?.label || key, studyPeriod: key }));
 }
 
 function renderStudyPeriodSelect(selectEl, parallel, currentValue) {
@@ -129,7 +125,22 @@ function renderStudyPeriodSelect(selectEl, parallel, currentValue) {
     const html = items.map((item) => `<option value="${esc(item.value)}">${esc(item.label)}</option>`).join("");
     selectEl.innerHTML = html;
     const allowed = items.map((i) => i.value);
-    selectEl.value = allowed.includes(currentValue) ? currentValue : (allowed[0] || "YEAR");
+    if (allowed.includes(currentValue)) {
+        selectEl.value = currentValue;
+        return;
+    }
+    const byPeriod = items.find((i) => i.studyPeriod === currentValue);
+    selectEl.value = byPeriod?.value || allowed[0] || "YEAR";
+}
+
+function studyPeriodFromSelection(className, selectedValue) {
+    const raw = String(selectedValue || "").trim();
+    if (["YEAR", "H1", "H2"].includes(raw)) {
+        return normalizeStudyPeriod(className, raw);
+    }
+    const found = (studyPeriodSettings || []).find((s) => String(s.settingKey || "").trim() === raw);
+    const period = String(found?.studyPeriod || "").toUpperCase();
+    return normalizeStudyPeriod(className, ["YEAR", "H1", "H2"].includes(period) ? period : "YEAR");
 }
 
 function toggleSubgroupConfig(container, requiredValue) {
@@ -376,7 +387,7 @@ function normalizeForm() {
         subgroup2Hours: Number(f.get("subgroup2Hours") || 0) || null,
         subgroup2EducationLevel: f.get("subgroup2EducationLevel") || null,
         curriculumPart: f.get("curriculumPart"),
-        studyPeriod: normalizeStudyPeriod(className, f.get("studyPeriod"))
+        studyPeriod: studyPeriodFromSelection(className, f.get("studyPeriod"))
     };
 }
 
@@ -524,7 +535,7 @@ function bindEvents() {
             educationLevel: ui.editForm.elements.educationLevel.value,
             subgroupRequired,
             subgroupCount: 2,
-            studyPeriod: normalizeStudyPeriod(existing.className, ui.editForm.elements.studyPeriod.value),
+            studyPeriod: studyPeriodFromSelection(existing.className, ui.editForm.elements.studyPeriod.value),
             subgroup1Hours: subgroupRequired ? Number(ui.editForm.elements.subgroup1Hours.value || 0) : null,
             subgroup2Hours: subgroupRequired ? Number(ui.editForm.elements.subgroup2Hours.value || 0) : null,
             subgroup1EducationLevel: subgroupRequired ? ui.editForm.elements.subgroup1EducationLevel.value : null,

@@ -405,81 +405,77 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             }
         }
 
-        // Фолбэк для случаев, когда у донора после передачи больше нет ни одной активной строки
-        // в текущей ручной нагрузке: берём удалённые строки из истории изменений.
-        Map<String, List<TarifficationChanges>> removedByTeacherAndDateTime = periodChanges.stream()
-                .filter(ch -> ch.getChangeType() == TarifficationChanges.ChangeType.REMOVED)
-                .collect(Collectors.groupingBy(ch -> {
-                    String teacher = normalize(ch.getFioTeacher());
-                    return String.valueOf(teacher) + "|" + String.valueOf(ch.getChangeDate());
-                }));
+        // Фолбэк: если по дате есть история изменений, но по снапшотам "вчера/сегодня"
+        // отличия не вычислились (или строка полностью исчезла из текущей ручной нагрузки),
+        // строим снятые строки из последнего батча истории на эту дату.
+        Map<TeacherDateKey, List<TarifficationChanges>> changesByTeacherAndDate = periodChanges.stream()
+                .collect(Collectors.groupingBy(ch -> new TeacherDateKey(
+                        normalize(ch.getFioTeacher()),
+                        ch.getChangeDate() == null ? null : ch.getChangeDate().toLocalDate()
+                )));
 
-        Map<String, List<TarifficationChanges>> latestRemovedByTeacher = new HashMap<>();
-        Map<String, LocalDateTime> latestTimestampByTeacher = new HashMap<>();
-        for (List<TarifficationChanges> changes : removedByTeacherAndDateTime.values()) {
-            if (changes == null || changes.isEmpty()) {
+        for (Map.Entry<TeacherDateKey, List<TarifficationChanges>> entry : changesByTeacherAndDate.entrySet()) {
+            TeacherDateKey mapKey = entry.getKey();
+            if (mapKey.teacherKey() == null || mapKey.changeDate() == null || mapKey.changeDate().isEqual(start)) {
                 continue;
             }
-            TarifficationChanges first = changes.get(0);
-            String teacherKey = normalize(first.getFioTeacher());
-            LocalDateTime ts = first.getChangeDate();
-            if (teacherKey == null || ts == null) {
-                continue;
-            }
-            LocalDateTime prev = latestTimestampByTeacher.get(teacherKey);
-            if (prev == null || ts.isAfter(prev)) {
-                latestTimestampByTeacher.put(teacherKey, ts);
-                latestRemovedByTeacher.put(teacherKey, changes);
-            }
-        }
-
-        for (Map.Entry<String, List<TarifficationChanges>> entry : latestRemovedByTeacher.entrySet()) {
-            List<TarifficationChanges> removedChanges = entry.getValue();
-            if (removedChanges == null || removedChanges.isEmpty()) {
-                continue;
-            }
-
-            TarifficationChanges first = removedChanges.get(0);
-            String teacherKey = normalize(first.getFioTeacher());
-            LocalDate changeDate = first.getChangeDate() == null ? null : first.getChangeDate().toLocalDate();
-            if (teacherKey == null || changeDate == null) {
-                continue;
-            }
-
-            TeacherDateKey mapKey = new TeacherDateKey(teacherKey, changeDate);
             if (result.containsKey(mapKey)) {
                 continue;
             }
 
-            List<ManualLoadEntry> removedRows = removedChanges.stream()
-                    .map(ch -> manualRowFromChange(ch, changeDate.minusDays(1)))
+            List<TarifficationChanges> teacherDateChanges = entry.getValue();
+            if (teacherDateChanges == null || teacherDateChanges.isEmpty()) {
+                continue;
+            }
+
+            LocalDateTime latestChangeAt = teacherDateChanges.stream()
+                    .map(TarifficationChanges::getChangeDate)
+                    .filter(Objects::nonNull)
+                    .max(LocalDateTime::compareTo)
+                    .orElse(mapKey.changeDate().atStartOfDay());
+            List<TarifficationChanges> latestBatch = teacherDateChanges.stream()
+                    .filter(ch -> Objects.equals(latestChangeAt, ch.getChangeDate()))
+                    .toList();
+            if (latestBatch.isEmpty()) {
+                continue;
+            }
+
+            Set<String> removedShortKeys = latestBatch.stream()
+                    .filter(ch -> ch.getChangeType() == TarifficationChanges.ChangeType.REMOVED)
+                    .map(this::shortKeyOf)
+                    .collect(Collectors.toSet());
+            Set<String> fallbackShortKeys = latestBatch.stream()
+                    .map(this::shortKeyOf)
+                    .collect(Collectors.toSet());
+            Set<String> allowedShortKeys = removedShortKeys.isEmpty() ? fallbackShortKeys : removedShortKeys;
+            if (allowedShortKeys.isEmpty()) {
+                continue;
+            }
+
+            List<ManualLoadEntry> removedRows = latestBatch.stream()
+                    .filter(ch -> allowedShortKeys.contains(shortKeyOf(ch)))
+                    .map(ch -> manualRowFromChange(ch, mapKey.changeDate().minusDays(1)))
                     .toList();
             if (removedRows.isEmpty()) {
                 continue;
             }
 
-            LocalDateTime latestChangeAt = removedChanges.stream()
-                    .map(TarifficationChanges::getChangeDate)
-                    .filter(Objects::nonNull)
-                    .max(LocalDateTime::compareTo)
-                    .orElse(changeDate.atStartOfDay());
-
-            String displayName = Optional.ofNullable(displayByTeacher.get(teacherKey))
-                    .orElse(first.getFioTeacher());
+            String displayName = Optional.ofNullable(displayByTeacher.get(mapKey.teacherKey()))
+                    .orElse(latestBatch.get(0).getFioTeacher());
 
             result.put(mapKey, new TeacherChangeAggregate(
                     displayName,
-                    changeDate,
+                    mapKey.changeDate(),
                     latestChangeAt,
                     removedRows,
                     Set.of(),
                     rowsKeySet(removedRows),
                     false
             ));
-            log.warn("memo-debug fallback aggregate from removed history teacher={} date={} removedChanges={} reconstructedRows={}",
-                    teacherKey,
-                    changeDate,
-                    removedChanges.stream().map(this::debugChange).toList(),
+            log.warn("memo-debug fallback aggregate from history teacher={} date={} latestBatch={} reconstructedRows={}",
+                    mapKey.teacherKey(),
+                    mapKey.changeDate(),
+                    latestBatch.stream().map(this::debugChange).toList(),
                     removedRows.stream().map(this::debugRow).toList());
         }
 
@@ -497,61 +493,6 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         row.setGroupNameEducationalPlan(change.getGroupNameEducationalPlan());
         row.setNumberSchoolBuilding(change.getNumberSchoolBuilding());
         return row;
-    }
-
-    private List<ManualLoadEntry> normalizeActiveRows(List<ManualLoadEntry> rows) {
-        if (rows == null || rows.isEmpty()) {
-            return List.of();
-        }
-
-        Map<String, ManualLoadEntry> bestByTransferKey = new LinkedHashMap<>();
-        for (ManualLoadEntry row : rows) {
-            if (row == null) {
-                continue;
-            }
-
-            String key = transferKeyOf(row);
-            ManualLoadEntry existing = bestByTransferKey.get(key);
-            if (existing == null || isBetterActiveRow(row, existing)) {
-                bestByTransferKey.put(key, row);
-            }
-        }
-
-        return new ArrayList<>(bestByTransferKey.values());
-    }
-
-    private boolean isBetterActiveRow(ManualLoadEntry candidate, ManualLoadEntry current) {
-        if (candidate == null) {
-            return false;
-        }
-        if (current == null) {
-            return true;
-        }
-
-        LocalDate candidateTo = candidate.getLoadToDate();
-        LocalDate currentTo = current.getLoadToDate();
-
-        if (candidateTo != null && currentTo != null && !candidateTo.equals(currentTo)) {
-            return candidateTo.isAfter(currentTo);
-        }
-        if (candidateTo != null && currentTo == null) {
-            return true;
-        }
-        if (candidateTo == null && currentTo != null) {
-            return false;
-        }
-
-        LocalDate candidateFrom = candidate.getLoadFromDate();
-        LocalDate currentFrom = current.getLoadFromDate();
-
-        if (candidateFrom != null && currentFrom != null && !candidateFrom.equals(currentFrom)) {
-            return candidateFrom.isAfter(currentFrom);
-        }
-        if (candidateFrom != null && currentFrom == null) {
-            return true;
-        }
-
-        return false;
     }
 
     private String memoCompareKeyOf(ManualLoadEntry row) {

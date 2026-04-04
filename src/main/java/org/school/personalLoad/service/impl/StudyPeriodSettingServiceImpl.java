@@ -20,12 +20,12 @@ import java.util.stream.Collectors;
 @Transactional
 public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService {
 
-    private static final LocalDate DEFAULT_YEAR_START = LocalDate.of(2026, 9, 1);
-    private static final LocalDate DEFAULT_YEAR_END = LocalDate.of(2027, 5, 31);
-    private static final LocalDate DEFAULT_H1_END = LocalDate.of(2026, 12, 31);
-    private static final LocalDate DEFAULT_H2_START = LocalDate.of(2027, 1, 10);
-    private static final LocalDate DEFAULT_11_H1_END = LocalDate.of(2027, 1, 31);
-    private static final LocalDate DEFAULT_11_H2_START = LocalDate.of(2027, 2, 1);
+    private static final LocalDate DEFAULT_YEAR_START = LocalDate.of(2025, 9, 1);
+    private static final LocalDate DEFAULT_YEAR_END = LocalDate.of(2026, 5, 31);
+    private static final LocalDate DEFAULT_H1_END = LocalDate.of(2025, 12, 31);
+    private static final LocalDate DEFAULT_H2_START = LocalDate.of(2026, 1, 10);
+    private static final LocalDate DEFAULT_11_H1_END = LocalDate.of(2026, 1, 31);
+    private static final LocalDate DEFAULT_11_H2_START = LocalDate.of(2026, 2, 1);
 
     private final StudyPeriodSettingRepository repository;
 
