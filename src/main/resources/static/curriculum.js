@@ -233,18 +233,22 @@ function buildSummaryRows(selectedClasses) {
             .sort((a, b) => a[0].localeCompare(b[0], "ru"))
             .map(([key, values]) => {
                 const [subjectName, educationLevel] = key.split("|");
-                const perClassPeriod = {};
+                const perClass = {};
                 values.forEach((v) => {
-                    const columnPeriod = String(v.studyPeriodSettingId || '');
-                    perClassPeriod[`${v.numberSchoolBuilding}|${v.className}|${columnPeriod}`] = {
+                    const classKey = `${v.numberSchoolBuilding}|${v.className}`;
+                    if (!perClass[classKey]) perClass[classKey] = { year: null, h1: null, h2: null };
+                    const item = {
                         hours: Number(v.plannedHours || 0),
                         subgroupRequired: Boolean(v.subgroupRequired),
                         subgroupCount: Number(v.subgroupCount || 0),
                         id: v.id,
                         studyPeriod: v.studyPeriod
                     };
+                    if (v.studyPeriod === "H1") perClass[classKey].h1 = item;
+                    else if (v.studyPeriod === "H2") perClass[classKey].h2 = item;
+                    else perClass[classKey].year = item;
                 });
-                return { part, subjectName, educationLevel, perClassPeriod };
+                return { part, subjectName, educationLevel, perClass };
             });
 
         rows.push({ type: "part", part, title: PART_META[part].label });
@@ -258,27 +262,47 @@ function buildSummaryRows(selectedClasses) {
     return rows;
 }
 
-function cellHoursMarkup(info, rowMeta) {
-    if (!info) return "";
-    const mark = info.subgroupRequired ? `<span class="subgroup-mark" title="Деление на подгруппы">д</span>` : "";
-    const advancedClass = rowMeta.educationLevel === "ADVANCED" ? "advanced-cell" : "";
-    const periodClass = info.studyPeriod && info.studyPeriod !== "YEAR" ? "period-accent-cell" : "";
-    const lvl = `<span class="mini-level">${esc(levelShort(rowMeta.educationLevel))}</span>`;
-    const period = info.studyPeriod && info.studyPeriod !== "YEAR" ? `<span class="mini-level">${esc(PERIOD_META[info.studyPeriod]?.short || info.studyPeriod)}</span>` : "";
-    return `<button class="hours-cell ${advancedClass} ${periodClass}" data-id="${esc(info.id)}" data-hours="${esc(info.hours)}">${esc(info.hours)}${mark}${lvl}${period}</button>`;
+function openEditById(id) {
+    const existing = curriculumRows.find((r) => r.id === id);
+    if (!existing) return;
+
+    ui.editForm.elements.id.value = String(existing.id);
+    ui.editForm.elements.className.value = existing.className || "";
+    ui.editForm.elements.plannedHours.value = String(existing.plannedHours || 1);
+    ui.editForm.elements.educationLevel.value = existing.educationLevel || "BASIC";
+    ui.editForm.elements.subgroupRequired.value = String(Boolean(existing.subgroupRequired));
+    ui.editForm.elements.studyPeriod.value = String(existing.studyPeriodSettingId || "");
+    ui.editForm.elements.subgroup1Hours.value = existing.subgroup1Hours || existing.plannedHours || "";
+    ui.editForm.elements.subgroup2Hours.value = existing.subgroup2Hours || existing.plannedHours || "";
+    ui.editForm.elements.subgroup1EducationLevel.value = existing.subgroup1EducationLevel || existing.educationLevel || "BASIC";
+    ui.editForm.elements.subgroup2EducationLevel.value = existing.subgroup2EducationLevel || existing.educationLevel || "BASIC";
+    toggleSubgroupConfig(ui.editForm, ui.editForm.elements.subgroupRequired.value);
+    syncStudyPeriodControls();
+    ui.editDialog.showModal();
+}
+
+function classCellMarkup(cellInfo, rowMeta) {
+    if (!cellInfo) return "";
+    const year = cellInfo.year;
+    const h1 = cellInfo.h1;
+    const h2 = cellInfo.h2;
+
+    if (year) {
+        return `<button class="hours-cell ${rowMeta.educationLevel === "ADVANCED" ? "advanced-cell" : ""}" data-id="${esc(year.id)}">${esc(year.hours)}</button>`;
+    }
+
+    const left = h1 ? `<button class="hours-cell" data-id="${esc(h1.id)}">${esc(h1.hours)}</button>` : '<div class="hours-cell muted"></div>';
+    const right = h2 ? `<button class="hours-cell" data-id="${esc(h2.id)}">${esc(h2.hours)}</button>` : '<div class="hours-cell muted"></div>';
+    return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">${left}${right}</div>`;
 }
 
 function renderSummaryTable() {
     const selectedClasses = classesForSelectedContext();
-    const classColumns = selectedClasses.map((c) => ({ c, periods: columnsForClass(c) }));
-    const columnDescriptors = classColumns.flatMap((cp) => cp.periods.map((period) => ({
-        classKey: `${cp.c.numberSchoolBuilding}|${cp.c.className}`,
-        columnKey: `${cp.c.numberSchoolBuilding}|${cp.c.className}|${period.key}`,
-        className: cp.c.className,
-        classDirection: cp.c.classDirection,
-        studyPeriod: period.studyPeriod,
-        periodLabel: period.label
-    })));
+    const classDescriptors = selectedClasses.map((c) => ({
+        classKey: `${c.numberSchoolBuilding}|${c.className}`,
+        className: c.className,
+        classDirection: c.classDirection
+    }));
     const rows = buildSummaryRows(selectedClasses);
 
     ui.summaryHead.innerHTML = "";
@@ -286,10 +310,10 @@ function renderSummaryTable() {
 
     const directionRow = document.createElement("tr");
     directionRow.className = "summary-direction-row";
-    directionRow.innerHTML = `<th rowspan="2">Блок / предмет / часы</th>${classColumns.map((cp) => `<th colspan="${Math.max(cp.periods.length,1)}">${esc(cp.c.classDirection)}</th>`).join("")}`;
+    directionRow.innerHTML = `<th rowspan="2">Блок / предмет / часы</th>${selectedClasses.map((c) => `<th>${esc(c.classDirection)}</th>`).join("")}`;
     const classRow = document.createElement("tr");
     classRow.className = "summary-class-row";
-    classRow.innerHTML = classColumns.map((cp) => cp.periods.map((period) => `<th>${esc(cp.c.className)}${cp.periods.length > 1 ? `<div class="muted">${esc(period.label)}</div>` : ""}</th>`).join("")).join("");
+    classRow.innerHTML = selectedClasses.map((c) => `<th>${esc(c.className)}</th>`).join("");
     ui.summaryHead.appendChild(directionRow);
     ui.summaryHead.appendChild(classRow);
 
@@ -297,18 +321,27 @@ function renderSummaryTable() {
         const tr = document.createElement("tr");
         if (row.type === "part") {
             tr.className = "summary-part-row";
-            tr.innerHTML = `<td>${esc(row.title)}</td>${columnDescriptors.map(() => "<td></td>").join("")}`;
+            tr.innerHTML = `<td>${esc(row.title)}</td>${classDescriptors.map(() => "<td></td>").join("")}`;
         } else if (row.type === "subject") {
-            tr.innerHTML = `<td>${esc(row.subjectName)}</td>` + columnDescriptors.map((col) => `<td class="hours-cell-wrap">${cellHoursMarkup(row.perClassPeriod[col.columnKey], row)}</td>`).join("");
+            tr.innerHTML = `<td>${esc(row.subjectName)}</td>` + classDescriptors
+                .map((col) => `<td class="hours-cell-wrap">${classCellMarkup(row.perClass[col.classKey], row)}</td>`)
+                .join("");
         } else {
-            const calc = columnDescriptors.map((col) => {
-                let value = 0;
-                if (row.type === "sum") {
-                    value = rows.filter((r) => r.type === "subject" && r.part === row.part).reduce((acc, s) => acc + (s.perClassPeriod[col.columnKey]?.hours || 0), 0);
-                } else if (row.type === "sum12") {
-                    value = rows.filter((r) => r.type === "subject" && (r.part === "CORE" || r.part === "FORMABLE")).reduce((acc, s) => acc + (s.perClassPeriod[col.columnKey]?.hours || 0), 0);
-                }
-                return `<td class="summary-value">${value || ""}</td>`;
+            const calc = classDescriptors.map((col) => {
+                let h1 = 0, h2 = 0;
+                const sourceRows = rows.filter((r) => r.type === "subject" && (row.type === "sum" ? r.part === row.part : (r.part === "CORE" || r.part === "FORMABLE")));
+                sourceRows.forEach((s) => {
+                    const info = s.perClass[col.classKey];
+                    if (!info) return;
+                    if (info.year) {
+                        h1 += Number(info.year.hours || 0);
+                        h2 += Number(info.year.hours || 0);
+                    } else {
+                        h1 += Number(info.h1?.hours || 0);
+                        h2 += Number(info.h2?.hours || 0);
+                    }
+                });
+                return `<td class="summary-value">${h1 || h2 ? `${h1}/${h2}` : ""}</td>`;
             }).join("");
             tr.className = "summary-sum-row";
             tr.innerHTML = `<td>${esc(row.title)}</td>${calc}`;
@@ -316,26 +349,11 @@ function renderSummaryTable() {
         ui.summaryBody.appendChild(tr);
     });
 
-    ui.summaryBody.querySelectorAll(".hours-cell").forEach((btn) => {
-        btn.addEventListener("click", async () => {
+    ui.summaryBody.querySelectorAll('.hours-cell[data-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
             const id = Number(btn.dataset.id);
             if (!Number.isFinite(id)) return;
-            const existing = curriculumRows.find((r) => r.id === id);
-            if (!existing) return;
-
-            ui.editForm.elements.id.value = String(existing.id);
-            ui.editForm.elements.className.value = existing.className || "";
-            ui.editForm.elements.plannedHours.value = String(existing.plannedHours || 1);
-            ui.editForm.elements.educationLevel.value = existing.educationLevel || "BASIC";
-            ui.editForm.elements.subgroupRequired.value = String(Boolean(existing.subgroupRequired));
-            ui.editForm.elements.studyPeriod.value = String(existing.studyPeriodSettingId || "");
-            ui.editForm.elements.subgroup1Hours.value = existing.subgroup1Hours || existing.plannedHours || "";
-            ui.editForm.elements.subgroup2Hours.value = existing.subgroup2Hours || existing.plannedHours || "";
-            ui.editForm.elements.subgroup1EducationLevel.value = existing.subgroup1EducationLevel || existing.educationLevel || "BASIC";
-            ui.editForm.elements.subgroup2EducationLevel.value = existing.subgroup2EducationLevel || existing.educationLevel || "BASIC";
-            toggleSubgroupConfig(ui.editForm, ui.editForm.elements.subgroupRequired.value);
-            syncStudyPeriodControls();
-            ui.editDialog.showModal();
+            openEditById(id);
         });
     });
 }
