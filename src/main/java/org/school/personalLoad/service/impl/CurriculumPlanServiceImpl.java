@@ -181,6 +181,7 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         entity.setCurriculumPart(curriculumPart);
         entity.setStudyPeriod(rule.getStudyPeriod());
         entity.setStudyPeriodSettingId(rule.getId());
+        entity.setMetaGroup(request.isMetaGroup());
     }
 
     private void validate(CurriculumPlanEntryRequest request) {

@@ -26,4 +26,8 @@ public interface CurriculumPlanEntryRepository extends JpaRepository<CurriculumP
     Optional<CurriculumPlanEntry> findFirstByAcademicYearAndStageAndClassNameAndSubjectNameAndStudyPeriod(String academicYear, CurriculumStage stage, String className, String subjectName, StudyPeriod studyPeriod);
 
     List<CurriculumPlanEntry> findAllByAcademicYearAndStage(String academicYear, CurriculumStage stage);
+
+    List<CurriculumPlanEntry> findAllByNumberSchoolBuildingAndClassName(String numberSchoolBuilding, String className);
+
+    void deleteByNumberSchoolBuildingAndClassName(String numberSchoolBuilding, String className);
 }

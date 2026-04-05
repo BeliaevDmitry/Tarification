@@ -394,6 +394,17 @@ hr {
     background: #eef2ff;
 }
 
+.hours-cell.empty-hours-cell {
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    color: #94a3b8;
+}
+
+.hours-cell.empty-hours-cell:hover {
+    background: #eef2ff;
+    border-color: #94a3b8;
+}
+
 .hours-cell.advanced-cell {
     background: #ffd8b5;
 }
@@ -685,6 +696,12 @@ dialog::backdrop {
 
 .conflict-row td {
     background: #fee2e2;
+}
+
+.summary-value.conflict-row {
+    background: #fee2e2;
+    color: #991b1b;
+    font-weight: 700;
 }
 
 
@@ -1175,4 +1192,11 @@ dialog::backdrop {
     width: 24px;
     height: 24px;
     cursor: pointer;
+}
+
+.meta-group-cell {
+    background: #dcfce7 !important;
+    border-color: #22c55e !important;
+    color: #166534;
+    font-weight: 700;
 }
