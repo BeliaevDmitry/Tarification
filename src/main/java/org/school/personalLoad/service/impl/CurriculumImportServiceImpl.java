@@ -149,16 +149,24 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             }
         }
 
-        rowNum = appendPartSumRow(sheet, rowNum, "Сумма О+Ф", entries, classes,
-                e -> e.getCurriculumPart() == CurriculumPart.CORE || e.getCurriculumPart() == CurriculumPart.FORMABLE, sumStyle);
-        rowNum = appendPartSumRow(sheet, rowNum, "Сумма внеурочной деятельности", entries, classes,
-                e -> e.getCurriculumPart() == CurriculumPart.EXTRACURRICULAR, sumStyle);
-        rowNum = appendLevelSumRow(sheet, rowNum, "Сумма Базовый уровень", entries, classes, EducationLevel.BASIC, sumStyle);
-        rowNum = appendLevelSumRow(sheet, rowNum, "Сумма Углублённый уровень", entries, classes, EducationLevel.ADVANCED, sumStyle);
+        java.util.function.Predicate<CurriculumPlanEntry> coreFormableFilter =
+                entry -> entry.getCurriculumPart() == CurriculumPart.CORE || entry.getCurriculumPart() == CurriculumPart.FORMABLE;
+        java.util.function.Predicate<CurriculumPlanEntry> extracurricularFilter =
+                entry -> entry.getCurriculumPart() == CurriculumPart.EXTRACURRICULAR;
+
+        rowNum = appendPartSumRowVisual(sheet, rowNum, "Сумма О+Ф", entries, classes, coreFormableFilter, sumStyle);
+        rowNum = appendPartSumRowVisual(sheet, rowNum, "Сумма внеурочной деятельности", entries, classes, extracurricularFilter, sumStyle);
+        rowNum = appendLevelSumRowVisual(sheet, rowNum, "Сумма Базовый уровень", entries, classes, EducationLevel.BASIC, sumStyle);
+        rowNum = appendLevelSumRowVisual(sheet, rowNum, "Сумма Углублённый уровень", entries, classes, EducationLevel.ADVANCED, sumStyle);
 
         if (entries.stream().anyMatch(CurriculumPlanEntry::isMetaGroup)) {
             Row noteRow = sheet.createRow(rowNum);
             noteRow.createCell(0).setCellValue("* часы реализуются в метагруппе");
+        }
+
+        sheet.setColumnWidth(0, 12000);
+        for (int i = 1; i <= classes.size(); i++) {
+            sheet.setColumnWidth(i, 3200);
         }
 
         sheet.setColumnWidth(0, 12000);
@@ -380,6 +388,91 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                                  List<String> classes,
                                  java.util.function.Predicate<CurriculumPlanEntry> filter,
                                  CellStyle style) {
+        Row sumRow = sheet.createRow(rowNum++);
+        sumRow.createCell(0).setCellValue(title);
+        sumRow.getCell(0).setCellStyle(style);
+        for (int i = 0; i < classes.size(); i++) {
+            String classKey = classes.get(i);
+            List<CurriculumPlanEntry> values = entries.stream()
+                    .filter(filter)
+                    .filter(e -> (normalizeSubject(e.getNumberSchoolBuilding()) + "|" + ClassNameNormalizer.normalize(e.getClassName())).equals(classKey))
+                    .toList();
+            BigDecimal year = values.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.YEAR).map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal h1 = values.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H1).map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal h2 = values.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H2).map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+            String rendered = year.compareTo(BigDecimal.ZERO) > 0
+                    ? year.stripTrailingZeros().toPlainString() + "/" + year.stripTrailingZeros().toPlainString()
+                    : (h1.compareTo(BigDecimal.ZERO) > 0 || h2.compareTo(BigDecimal.ZERO) > 0
+                    ? h1.stripTrailingZeros().toPlainString() + "/" + h2.stripTrailingZeros().toPlainString()
+                    : "");
+            sumRow.createCell(i + 1).setCellValue(rendered);
+            sumRow.getCell(i + 1).setCellStyle(style);
+        }
+        return rowNum;
+    }
+
+    private String renderCellValueForClass(List<CurriculumPlanEntry> values, String classKey) {
+        List<CurriculumPlanEntry> classValues = values.stream()
+                .filter(e -> (normalizeSubject(e.getNumberSchoolBuilding()) + "|" + ClassNameNormalizer.normalize(e.getClassName())).equals(classKey))
+                .toList();
+        BigDecimal year = classValues.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.YEAR)
+                .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal h1 = classValues.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H1)
+                .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal h2 = classValues.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H2)
+                .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        boolean meta = classValues.stream().anyMatch(CurriculumPlanEntry::isMetaGroup);
+        if (year.compareTo(BigDecimal.ZERO) > 0) return year.stripTrailingZeros().toPlainString() + (meta ? "*" : "");
+        if (h1.compareTo(BigDecimal.ZERO) > 0 || h2.compareTo(BigDecimal.ZERO) > 0) {
+            String left = h1.compareTo(BigDecimal.ZERO) > 0 ? h1.stripTrailingZeros().toPlainString() : "";
+            String right = h2.compareTo(BigDecimal.ZERO) > 0 ? h2.stripTrailingZeros().toPlainString() : "";
+            return left + "/" + right + (meta ? "*" : "");
+        }
+        return "";
+    }
+
+    private void buildLegacyVisualSheetCompat(Workbook workbook, List<CurriculumPlanEntry> entries) {
+        Sheet sheet = workbook.createSheet("CURRICULUM_VISUAL");
+        Row row = sheet.createRow(0);
+        row.createCell(0).setCellValue("Экспорт перенесен в листы НОО/ООО/СОО. Этот лист оставлен для совместимости импорта.");
+    }
+
+    private int appendLevelSumRowVisual(Sheet sheet,
+                                        int rowNum,
+                                        String title,
+                                        List<CurriculumPlanEntry> entries,
+                                        List<String> classes,
+                                        EducationLevel level,
+                                        CellStyle headerStyle) {
+        Row sumRow = sheet.createRow(rowNum++);
+        sumRow.createCell(0).setCellValue(title);
+        sumRow.getCell(0).setCellStyle(headerStyle);
+        for (int i = 0; i < classes.size(); i++) {
+            String classKey = classes.get(i);
+            List<CurriculumPlanEntry> values = entries.stream()
+                    .filter(e -> e.getEducationLevel() == level)
+                    .filter(e -> (normalizeSubject(e.getNumberSchoolBuilding()) + "|" + ClassNameNormalizer.normalize(e.getClassName())).equals(classKey))
+                    .toList();
+            BigDecimal year = values.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.YEAR).map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal h1 = values.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H1).map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal h2 = values.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H2).map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+            String rendered = year.compareTo(BigDecimal.ZERO) > 0
+                    ? year.stripTrailingZeros().toPlainString() + "/" + year.stripTrailingZeros().toPlainString()
+                    : (h1.compareTo(BigDecimal.ZERO) > 0 || h2.compareTo(BigDecimal.ZERO) > 0
+                    ? h1.stripTrailingZeros().toPlainString() + "/" + h2.stripTrailingZeros().toPlainString()
+                    : "");
+            sumRow.createCell(i + 1).setCellValue(rendered);
+        }
+        return rowNum;
+    }
+
+    private int appendPartSumRowVisual(Sheet sheet,
+                                       int rowNum,
+                                       String title,
+                                       List<CurriculumPlanEntry> entries,
+                                       List<String> classes,
+                                       java.util.function.Predicate<CurriculumPlanEntry> filter,
+                                       CellStyle style) {
         Row sumRow = sheet.createRow(rowNum++);
         sumRow.createCell(0).setCellValue(title);
         sumRow.getCell(0).setCellStyle(style);
