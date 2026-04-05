@@ -44,6 +44,8 @@
                 <select id="load-view-mode-select">
                     <option value="all">вся нагрузка</option>
                     <option value="date">на конкретную дату</option>
+                    <option value="h1">1 полугодие</option>
+                    <option value="h2">2 полугодие</option>
                 </select>
             </label>
             <label id="load-view-date-label" style="display:none;">Дата:
@@ -51,16 +53,12 @@
             </label>
             <button id="refresh-load-btn" type="button">Обновить из учебного плана</button>
             <button id="save-building-btn" type="button" class="clean-save" data-requires-edit data-load-edit-control="true">Сохранить нагрузку корпуса</button>
+            <div class="inline-load-stats">
+                <strong>Нераспределённые часы: <span id="unassigned-hours">0</span></strong>
+                <strong>Ошибки: <span id="error-count">0</span></strong>
+                <button id="next-error-btn" type="button">Перейти к ошибке</button>
+            </div>
         </div>
-        <div class="row load-status-card" id="load-status-card">
-            <strong>Нераспределённые часы: <span id="unassigned-hours">0</span></strong>
-            <strong>Ошибки: <span id="error-count">0</span></strong>
-            <button id="next-error-btn" type="button">Перейти к ошибке</button>
-        </div>
-        <details class="debug-panel">
-            <summary>Служебный вывод</summary>
-            <pre id="load-result"></pre>
-        </details>
     </section>
 
     <section class="card" data-requires-edit data-load-edit-area="true">

@@ -30,6 +30,8 @@ public class CurriculumPlanEntry {
     @Column(nullable = false)
     private StudyPeriod studyPeriod = StudyPeriod.YEAR;
 
+    private Long studyPeriodSettingId;
+
     @Column(nullable = false)
     private boolean deprecated = false;
 
@@ -68,4 +70,7 @@ public class CurriculumPlanEntry {
 
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    @Column(nullable = false)
+    private boolean metaGroup = false;
 }
