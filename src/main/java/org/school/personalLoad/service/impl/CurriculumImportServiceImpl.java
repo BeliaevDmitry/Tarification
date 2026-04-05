@@ -590,6 +590,14 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     private VisualParseResult parseVisualSheet(Sheet sheet, int headerRowIndex) {
         Row header = sheet.getRow(headerRowIndex);
         if (header == null) return new VisualParseResult(List.of(), Map.of());
+
+        // Парсим только новый "визуальный" формат экспорта (колонка A = "Блок / предмет / часы").
+        // Для классического шаблона (где в этой строке обычно "Период обучения")
+        // возвращаем пустой результат, чтобы сработал legacy-парсер CurriculumExcelParser.
+        String headerTitle = normalizeSubject(readCell(header.getCell(0))).toLowerCase(Locale.ROOT);
+        if (!headerTitle.contains("блок") || !headerTitle.contains("предмет")) {
+            return new VisualParseResult(List.of(), Map.of());
+        }
         List<ClassHeaderMeta> classColumns = new ArrayList<>();
         for (int col = 1; col < header.getLastCellNum(); col++) {
             String raw = normalizeSubject(readCell(header.getCell(col)));
