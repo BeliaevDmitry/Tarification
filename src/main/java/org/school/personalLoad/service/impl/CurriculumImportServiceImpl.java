@@ -46,67 +46,204 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 .thenComparing(e -> String.valueOf(e.getStudyPeriod())));
 
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            Sheet sheet = workbook.createSheet("CURRICULUM_VISUAL");
-            List<String> classes = entries.stream()
-                    .map(e -> normalizeSubject(e.getNumberSchoolBuilding()) + "|" + ClassNameNormalizer.normalize(e.getClassName()))
-                    .distinct()
-                    .sorted(String::compareTo)
-                    .toList();
-            Row header = sheet.createRow(0);
-            header.createCell(0).setCellValue("Блок / предмет / часы");
-            for (int i = 0; i < classes.size(); i++) {
-                header.createCell(i + 1).setCellValue(classes.get(i));
-            }
-
-            Map<String, List<CurriculumPlanEntry>> byPartSubject = new LinkedHashMap<>();
-            entries.forEach(e -> {
-                String key = (e.getCurriculumPart() == null ? CurriculumPart.CORE : e.getCurriculumPart()) + "|" + normalizeSubject(e.getSubjectName());
-                byPartSubject.computeIfAbsent(key, k -> new ArrayList<>()).add(e);
-            });
-
-            int rowNum = 1;
-            for (CurriculumPart part : List.of(CurriculumPart.CORE, CurriculumPart.FORMABLE, CurriculumPart.EXTRACURRICULAR)) {
-                Row partRow = sheet.createRow(rowNum++);
-                partRow.createCell(0).setCellValue(part == CurriculumPart.CORE ? "Основная часть"
-                        : (part == CurriculumPart.FORMABLE ? "Формируемая часть" : "Внеурочная деятельность"));
-
-                List<Map.Entry<String, List<CurriculumPlanEntry>>> subjects = byPartSubject.entrySet().stream()
-                        .filter(e -> e.getKey().startsWith(part.name() + "|"))
-                        .sorted(Map.Entry.comparingByKey())
-                        .toList();
-
-                for (Map.Entry<String, List<CurriculumPlanEntry>> subjectEntry : subjects) {
-                    String subjectName = subjectEntry.getKey().substring(subjectEntry.getKey().indexOf('|') + 1);
-                    Row row = sheet.createRow(rowNum++);
-                    row.createCell(0).setCellValue(subjectName);
-                    for (int i = 0; i < classes.size(); i++) {
-                        String classKey = classes.get(i);
-                        List<CurriculumPlanEntry> values = subjectEntry.getValue().stream()
-                                .filter(e -> (normalizeSubject(e.getNumberSchoolBuilding()) + "|" + ClassNameNormalizer.normalize(e.getClassName())).equals(classKey))
-                                .toList();
-                        BigDecimal year = values.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.YEAR)
-                                .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
-                        BigDecimal h1 = values.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H1)
-                                .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
-                        BigDecimal h2 = values.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H2)
-                                .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
-
-                        String rendered = "";
-                        if (year.compareTo(BigDecimal.ZERO) > 0) rendered = year.stripTrailingZeros().toPlainString();
-                        else if (h1.compareTo(BigDecimal.ZERO) > 0 || h2.compareTo(BigDecimal.ZERO) > 0) {
-                            rendered = (h1.compareTo(BigDecimal.ZERO) > 0 ? h1.stripTrailingZeros().toPlainString() : "")
-                                    + "/" + (h2.compareTo(BigDecimal.ZERO) > 0 ? h2.stripTrailingZeros().toPlainString() : "");
-                        }
-                        row.createCell(i + 1).setCellValue(rendered);
-                    }
-                }
-            }
-
-            for (int i = 0; i <= classes.size(); i++) sheet.autoSizeColumn(i);
+            buildVisualSheet(workbook, "НОО", entries, 1, 4);
+            buildVisualSheet(workbook, "ООО", entries, 5, 9);
+            buildVisualSheet(workbook, "СОО", entries, 10, 11);
+            buildLegacyVisualSheet(workbook, entries);
 
             workbook.write(output);
             return output.toByteArray();
         }
+    }
+
+    private void buildVisualSheet(Workbook workbook, String sheetName, List<CurriculumPlanEntry> allEntries, int parallelFrom, int parallelTo) {
+        List<CurriculumPlanEntry> entries = allEntries.stream()
+                .filter(e -> {
+                    Integer p = ClassNameNormalizer.extractParallel(e.getClassName());
+                    return p != null && p >= parallelFrom && p <= parallelTo;
+                })
+                .toList();
+        Sheet sheet = workbook.createSheet(sheetName);
+        if (entries.isEmpty()) {
+            sheet.createRow(0).createCell(0).setCellValue("Нет данных");
+            return;
+        }
+        List<String> classes = entries.stream()
+                .map(e -> normalizeSubject(e.getNumberSchoolBuilding()) + "|" + ClassNameNormalizer.normalize(e.getClassName()))
+                .distinct()
+                .sorted(String::compareTo)
+                .toList();
+
+        CellStyle headerStyle = workbook.createCellStyle();
+        Font bold = workbook.createFont();
+        bold.setBold(true);
+        headerStyle.setFont(bold);
+        headerStyle.setAlignment(HorizontalAlignment.CENTER);
+        headerStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+
+        CellStyle partStyle = workbook.createCellStyle();
+        partStyle.cloneStyleFrom(headerStyle);
+        partStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+        partStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+        CellStyle sumStyle = workbook.createCellStyle();
+        sumStyle.cloneStyleFrom(headerStyle);
+        sumStyle.setFillForegroundColor(IndexedColors.LIGHT_YELLOW.getIndex());
+        sumStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+        Row titleRow = sheet.createRow(0);
+        titleRow.createCell(0).setCellValue(sheetName + " (классы " + parallelFrom + "–" + parallelTo + ")");
+
+        Row buildingRow = sheet.createRow(1);
+        Row classRow = sheet.createRow(2);
+        classRow.createCell(0).setCellValue("Блок / предмет / часы");
+        classRow.getCell(0).setCellStyle(headerStyle);
+
+        String prevBuilding = null;
+        int buildingStart = 1;
+        for (int i = 0; i < classes.size(); i++) {
+            String[] parts = classes.get(i).split("\\|", 2);
+            String building = parts.length > 1 ? parts[0] : "СП0";
+            String className = parts.length > 1 ? parts[1] : classes.get(i);
+            int col = i + 1;
+            buildingRow.createCell(col).setCellValue(building);
+            classRow.createCell(col).setCellValue(className);
+            classRow.getCell(col).setCellStyle(headerStyle);
+            if (!Objects.equals(prevBuilding, building)) {
+                if (prevBuilding != null && col - 1 > buildingStart) {
+                    sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(1, 1, buildingStart, col - 1));
+                }
+                buildingStart = col;
+                prevBuilding = building;
+            }
+        }
+        if (prevBuilding != null && classes.size() >= 1 && classes.size() >= buildingStart) {
+            sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(1, 1, buildingStart, classes.size()));
+        }
+
+        int rowNum = 3;
+        Map<String, List<CurriculumPlanEntry>> byPartSubject = new LinkedHashMap<>();
+        entries.forEach(e -> {
+            String key = (e.getCurriculumPart() == null ? CurriculumPart.CORE : e.getCurriculumPart()) + "|" + normalizeSubject(e.getSubjectName());
+            byPartSubject.computeIfAbsent(key, k -> new ArrayList<>()).add(e);
+        });
+
+        for (CurriculumPart part : List.of(CurriculumPart.CORE, CurriculumPart.FORMABLE, CurriculumPart.EXTRACURRICULAR)) {
+            Row partRow = sheet.createRow(rowNum++);
+            partRow.createCell(0).setCellValue(part == CurriculumPart.CORE ? "Основная часть"
+                    : (part == CurriculumPart.FORMABLE ? "Формируемая часть" : "Внеурочная деятельность"));
+            partRow.getCell(0).setCellStyle(partStyle);
+
+            List<Map.Entry<String, List<CurriculumPlanEntry>>> subjects = byPartSubject.entrySet().stream()
+                    .filter(e -> e.getKey().startsWith(part.name() + "|"))
+                    .sorted(Map.Entry.comparingByKey())
+                    .toList();
+
+            for (Map.Entry<String, List<CurriculumPlanEntry>> subjectEntry : subjects) {
+                String subjectName = subjectEntry.getKey().substring(subjectEntry.getKey().indexOf('|') + 1);
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(subjectName);
+                for (int i = 0; i < classes.size(); i++) {
+                    row.createCell(i + 1).setCellValue(renderCellValue(subjectEntry.getValue(), classes.get(i)));
+                }
+            }
+        }
+
+        rowNum = appendPartSumRow(sheet, rowNum, "Сумма О+Ф", entries, classes,
+                e -> e.getCurriculumPart() == CurriculumPart.CORE || e.getCurriculumPart() == CurriculumPart.FORMABLE, sumStyle);
+        rowNum = appendPartSumRow(sheet, rowNum, "Сумма внеурочной деятельности", entries, classes,
+                e -> e.getCurriculumPart() == CurriculumPart.EXTRACURRICULAR, sumStyle);
+        rowNum = appendLevelSumRow(sheet, rowNum, "Сумма Базовый уровень", entries, classes, EducationLevel.BASIC, sumStyle);
+        appendLevelSumRow(sheet, rowNum, "Сумма Углублённый уровень", entries, classes, EducationLevel.ADVANCED, sumStyle);
+
+        sheet.setColumnWidth(0, 12000);
+        for (int i = 1; i <= classes.size(); i++) {
+            sheet.setColumnWidth(i, 3200);
+        }
+    }
+
+    private int appendLevelSumRow(Sheet sheet,
+                                  int rowNum,
+                                  String title,
+                                  List<CurriculumPlanEntry> entries,
+                                  List<String> classes,
+                                  EducationLevel level,
+                                  CellStyle headerStyle) {
+        Row sumRow = sheet.createRow(rowNum++);
+        sumRow.createCell(0).setCellValue(title);
+        sumRow.getCell(0).setCellStyle(headerStyle);
+        for (int i = 0; i < classes.size(); i++) {
+            String classKey = classes.get(i);
+            List<CurriculumPlanEntry> values = entries.stream()
+                    .filter(e -> e.getEducationLevel() == level)
+                    .filter(e -> (normalizeSubject(e.getNumberSchoolBuilding()) + "|" + ClassNameNormalizer.normalize(e.getClassName())).equals(classKey))
+                    .toList();
+            BigDecimal year = values.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.YEAR).map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal h1 = values.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H1).map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal h2 = values.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H2).map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+            String rendered = year.compareTo(BigDecimal.ZERO) > 0
+                    ? year.stripTrailingZeros().toPlainString() + "/" + year.stripTrailingZeros().toPlainString()
+                    : (h1.compareTo(BigDecimal.ZERO) > 0 || h2.compareTo(BigDecimal.ZERO) > 0
+                    ? h1.stripTrailingZeros().toPlainString() + "/" + h2.stripTrailingZeros().toPlainString()
+                    : "");
+            sumRow.createCell(i + 1).setCellValue(rendered);
+        }
+        return rowNum;
+    }
+
+    private int appendPartSumRow(Sheet sheet,
+                                 int rowNum,
+                                 String title,
+                                 List<CurriculumPlanEntry> entries,
+                                 List<String> classes,
+                                 java.util.function.Predicate<CurriculumPlanEntry> filter,
+                                 CellStyle style) {
+        Row sumRow = sheet.createRow(rowNum++);
+        sumRow.createCell(0).setCellValue(title);
+        sumRow.getCell(0).setCellStyle(style);
+        for (int i = 0; i < classes.size(); i++) {
+            String classKey = classes.get(i);
+            List<CurriculumPlanEntry> values = entries.stream()
+                    .filter(filter)
+                    .filter(e -> (normalizeSubject(e.getNumberSchoolBuilding()) + "|" + ClassNameNormalizer.normalize(e.getClassName())).equals(classKey))
+                    .toList();
+            BigDecimal year = values.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.YEAR).map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal h1 = values.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H1).map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal h2 = values.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H2).map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+            String rendered = year.compareTo(BigDecimal.ZERO) > 0
+                    ? year.stripTrailingZeros().toPlainString() + "/" + year.stripTrailingZeros().toPlainString()
+                    : (h1.compareTo(BigDecimal.ZERO) > 0 || h2.compareTo(BigDecimal.ZERO) > 0
+                    ? h1.stripTrailingZeros().toPlainString() + "/" + h2.stripTrailingZeros().toPlainString()
+                    : "");
+            sumRow.createCell(i + 1).setCellValue(rendered);
+            sumRow.getCell(i + 1).setCellStyle(style);
+        }
+        return rowNum;
+    }
+
+    private String renderCellValue(List<CurriculumPlanEntry> values, String classKey) {
+        List<CurriculumPlanEntry> classValues = values.stream()
+                .filter(e -> (normalizeSubject(e.getNumberSchoolBuilding()) + "|" + ClassNameNormalizer.normalize(e.getClassName())).equals(classKey))
+                .toList();
+        BigDecimal year = classValues.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.YEAR)
+                .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal h1 = classValues.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H1)
+                .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal h2 = classValues.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H2)
+                .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (year.compareTo(BigDecimal.ZERO) > 0) return year.stripTrailingZeros().toPlainString();
+        if (h1.compareTo(BigDecimal.ZERO) > 0 || h2.compareTo(BigDecimal.ZERO) > 0) {
+            String left = h1.compareTo(BigDecimal.ZERO) > 0 ? h1.stripTrailingZeros().toPlainString() : "";
+            String right = h2.compareTo(BigDecimal.ZERO) > 0 ? h2.stripTrailingZeros().toPlainString() : "";
+            return left + "/" + right;
+        }
+        return "";
+    }
+
+    private void buildLegacyVisualSheet(Workbook workbook, List<CurriculumPlanEntry> entries) {
+        Sheet sheet = workbook.createSheet("CURRICULUM_VISUAL");
+        Row row = sheet.createRow(0);
+        row.createCell(0).setCellValue("Экспорт перенесен в листы НОО/ООО/СОО. Этот лист оставлен для совместимости импорта.");
     }
 
     @Override
@@ -343,7 +480,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     private VisualParseResult parseVisualRows(MultipartFile file) {
         try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
             Sheet sheet = workbook.getSheet("CURRICULUM_VISUAL");
-            if (sheet == null) return new VisualParseResult(List.of(), Map.of());
+            if (sheet == null) {
+                return parseStageVisualSheets(workbook);
+            }
             Row header = sheet.getRow(0);
             if (header == null) return new VisualParseResult(List.of(), Map.of());
 
@@ -423,6 +562,75 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         } catch (Exception e) {
             return new VisualParseResult(List.of(), Map.of());
         }
+    }
+
+    private VisualParseResult parseStageVisualSheets(Workbook workbook) {
+        List<EditableImportRow> allRows = new ArrayList<>();
+        Map<String, Map<String, SumPair>> expected = new LinkedHashMap<>();
+        for (String name : List.of("НОО", "ООО", "СОО")) {
+            Sheet sheet = workbook.getSheet(name);
+            if (sheet == null) continue;
+            VisualParseResult one = parseVisualSheet(sheet, 2);
+            allRows.addAll(one.rows());
+            one.expectedSums().forEach((k, v) -> expected.computeIfAbsent(k, kk -> new LinkedHashMap<>()).putAll(v));
+        }
+        return new VisualParseResult(allRows, expected);
+    }
+
+    private VisualParseResult parseVisualSheet(Sheet sheet, int headerRowIndex) {
+        Row header = sheet.getRow(headerRowIndex);
+        if (header == null) return new VisualParseResult(List.of(), Map.of());
+        List<ClassHeaderMeta> classColumns = new ArrayList<>();
+        for (int col = 1; col < header.getLastCellNum(); col++) {
+            String raw = normalizeSubject(readCell(header.getCell(col)));
+            if (raw.isBlank()) continue;
+            String[] parts = raw.split("\\|", 2);
+            String building = parts.length > 1 ? normalizeSubject(parts[0]) : "СП0";
+            String className = ClassNameNormalizer.normalize(parts.length > 1 ? parts[1] : raw);
+            if (className.isBlank()) continue;
+            classColumns.add(new ClassHeaderMeta(col, building.isBlank() ? "СП0" : building, className));
+        }
+        if (classColumns.isEmpty()) return new VisualParseResult(List.of(), Map.of());
+
+        List<EditableImportRow> result = new ArrayList<>();
+        Map<String, Map<String, SumPair>> expectedSums = new LinkedHashMap<>();
+        CurriculumPart currentPart = CurriculumPart.CORE;
+        for (int rowIdx = headerRowIndex + 1; rowIdx <= sheet.getLastRowNum(); rowIdx++) {
+            Row row = sheet.getRow(rowIdx);
+            if (row == null) continue;
+            String title = normalizeSubject(readCell(row.getCell(0)));
+            if (title.isBlank()) continue;
+            String lower = title.toLowerCase(Locale.ROOT);
+            if (lower.contains("основная часть")) { currentPart = CurriculumPart.CORE; continue; }
+            if (lower.contains("формируем")) { currentPart = CurriculumPart.FORMABLE; continue; }
+            if (lower.contains("внеуроч")) { currentPart = CurriculumPart.EXTRACURRICULAR; continue; }
+            if (lower.startsWith("сумма")) {
+                String label = normalizeSumLabel(lower);
+                if (label != null) {
+                    Map<String, SumPair> byClass = expectedSums.computeIfAbsent(label, k -> new LinkedHashMap<>());
+                    for (ClassHeaderMeta classMeta : classColumns) {
+                        SumPair pair = parseSumCell(readCell(row.getCell(classMeta.colIndex)));
+                        if (pair != null) byClass.put(classMeta.building + "|" + classMeta.className, pair);
+                    }
+                }
+                continue;
+            }
+            for (ClassHeaderMeta classMeta : classColumns) {
+                String rawHours = normalizeSubject(readCell(row.getCell(classMeta.colIndex)));
+                if (rawHours.isBlank() || "0".equals(rawHours)) continue;
+                if (rawHours.contains("/")) {
+                    String[] halves = rawHours.split("/", -1);
+                    BigDecimal h1 = parseDecimal(halves.length > 0 ? halves[0] : "");
+                    BigDecimal h2 = parseDecimal(halves.length > 1 ? halves[1] : "");
+                    if (h1 != null && h1.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.H1, h1, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC));
+                    if (h2 != null && h2.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.H2, h2, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC));
+                } else {
+                    BigDecimal year = parseDecimal(rawHours);
+                    if (year != null && year.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.YEAR, year, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC));
+                }
+            }
+        }
+        return new VisualParseResult(result, expectedSums);
     }
 
     private List<CurriculumImportResult.SumMismatch> compareVisualSums(Map<String, Map<String, SumPair>> expected,
