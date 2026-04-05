@@ -233,7 +233,7 @@ function syncStudyPeriodControls() {
     ui.formStudyPeriod.value = options.some((o) => String(o.id) === selected) ? selected : String(options[0]?.id || '');
 
     if (ui.editForm?.elements.studyPeriod) {
-        const classParallel = classToParallel(ui.editForm.elements.className?.value || selectedParallel);
+        const classParallel = classToParallel(ui.editForm.elements.className?.value) || selectedParallel;
         const dialogOptions = settingsForParallel(classParallel);
         const editSelect = ui.editForm.elements.studyPeriod;
         const current = editSelect.value;
@@ -386,7 +386,23 @@ function renderSummaryTable() {
         className: `МГ:${m.name}`,
         classDirection: "Метагруппа"
     }));
-    const allColumns = [...selectedClasses, ...selectedMetaGroups];
+    const knownMetaParallelByKey = new Map((metaGroups || []).map((m) => [makeClassKey(m.numberSchoolBuilding, `МГ:${m.name}`), Number(m.parallel)]));
+    const metagroupsFromData = (curriculumRows || [])
+        .filter((r) => norm(r.className).startsWith("МГ:"))
+        .filter((r) => !selectedBuilding || norm(r.numberSchoolBuilding) === selectedBuilding)
+        .filter((r) => {
+            const byKey = knownMetaParallelByKey.get(makeClassKey(r.numberSchoolBuilding, r.className));
+            if (Number.isFinite(byKey)) return byKey === Number(selectedParallel);
+            return true;
+        })
+        .map((r) => ({
+            numberSchoolBuilding: norm(r.numberSchoolBuilding),
+            className: norm(r.className),
+            classDirection: "Метагруппа"
+        }));
+    const allColumns = [...selectedClasses, ...selectedMetaGroups, ...metagroupsFromData]
+        .filter((c) => c.numberSchoolBuilding && c.className)
+        .filter((c, idx, arr) => arr.findIndex((x) => makeClassKey(x.numberSchoolBuilding, x.className) === makeClassKey(c.numberSchoolBuilding, c.className)) === idx);
     const classDescriptors = allColumns.map((c) => ({
         classKey: makeClassKey(c.numberSchoolBuilding, c.className),
         className: c.className,
