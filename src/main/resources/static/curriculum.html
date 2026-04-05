@@ -26,6 +26,9 @@
         <div class="parallel-tabs" id="parallel-tabs"></div>
         <div class="row">
             <select id="parallel-building-filter"></select>
+            <button id="create-meta-group-btn" type="button" data-requires-edit>Создать метагруппу</button>
+            <button id="rename-meta-group-btn" type="button" data-requires-edit>Переименовать метагруппу</button>
+            <button id="delete-meta-group-btn" type="button" data-requires-edit>Удалить метагруппу</button>
             <button id="refresh-btn" type="button">Обновить таблицу</button>
             <button id="clear-curriculum-btn" type="button" data-requires-edit>Очистить весь учебный план</button>
         </div>
@@ -54,11 +57,11 @@
                 <option value="EXTRACURRICULAR">3) Внеурочная деятельность</option>
             </select>
             <select name="subjectName" id="subject-name" required><option value="">Выберите предмет</option></select>
-            <label>Период<select name="studyPeriod" id="subject-study-period" required>
-                <option value="YEAR">Учебный год (1–9)</option>
-                <option value="H1">1 полугодие (10–11)</option>
-                <option value="H2">2 полугодие (10–11)</option>
+            <label>Метагруппа<select name="metaGroup" id="subject-meta-group" required>
+                <option value="false">Нет</option>
+                <option value="true">Да (не переносить в нагрузку)</option>
             </select></label>
+            <label>Период<select name="studyPeriod" id="subject-study-period" required></select></label>
             <input name="plannedHours" type="number" min="0.1" step="0.1" placeholder="Всего часов" required>
             <label>Уровень<select name="educationLevel" required>
                 <option value="BASIC">Базовый</option>
@@ -100,10 +103,10 @@
         <h3>Редактирование позиции</h3>
         <input type="hidden" name="id">
         <input type="hidden" name="className">
-        <label>Период<select name="studyPeriod" required>
-            <option value="YEAR">Учебный год (1–9)</option>
-            <option value="H1">1 полугодие (10–11)</option>
-            <option value="H2">2 полугодие (10–11)</option>
+        <label>Период<select name="studyPeriod" required></select></label>
+        <label>Метагруппа<select name="metaGroup" required>
+            <option value="false">Нет</option>
+            <option value="true">Да (не переносить в нагрузку)</option>
         </select></label>
         <input name="plannedHours" type="number" min="0.1" step="0.1" placeholder="Всего часов" required>
         <label>Уровень<select name="educationLevel" required>
