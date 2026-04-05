@@ -21,6 +21,16 @@ public class StudyPeriodSettingController {
         return ResponseEntity.ok(studyPeriodSettingService.findAll());
     }
 
+    @GetMapping("/for-class")
+    public ResponseEntity<List<StudyPeriodSetting>> findByClass(@RequestParam String className) {
+        return ResponseEntity.ok(studyPeriodSettingService.findAvailableForClass(className));
+    }
+
+    @PostMapping
+    public ResponseEntity<StudyPeriodSetting> create(@RequestBody StudyPeriodSettingRequest request) {
+        return ResponseEntity.ok(studyPeriodSettingService.create(request));
+    }
+
     @PutMapping
     public ResponseEntity<List<StudyPeriodSetting>> saveAll(@RequestBody List<StudyPeriodSettingRequest> requests) {
         return ResponseEntity.ok(studyPeriodSettingService.saveAll(requests));
