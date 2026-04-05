@@ -361,7 +361,7 @@ function classCellMarkup(cellInfo, rowMeta, classMeta) {
     const h2 = info.h2;
     const split = Boolean(classMeta.split || h1 || h2);
 
-    if (year && !split) {
+    if (year) {
         const cls = `${rowMeta.educationLevel === "ADVANCED" ? "advanced-cell" : ""} ${year.metaGroup ? "meta-group-cell" : ""}`;
         return `<button class="hours-cell ${cls}" data-id="${esc(year.id)}">${esc(year.hours)}</button>`;
     }
