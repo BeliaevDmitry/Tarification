@@ -1182,3 +1182,10 @@ dialog::backdrop {
     height: 24px;
     cursor: pointer;
 }
+
+.meta-group-cell {
+    background: #dcfce7 !important;
+    border-color: #22c55e !important;
+    color: #166534;
+    font-weight: 700;
+}

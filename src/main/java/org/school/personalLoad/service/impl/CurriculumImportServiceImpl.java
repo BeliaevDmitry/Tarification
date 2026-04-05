@@ -154,12 +154,43 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         rowNum = appendPartSumRow(sheet, rowNum, "Сумма внеурочной деятельности", entries, classes,
                 e -> e.getCurriculumPart() == CurriculumPart.EXTRACURRICULAR, sumStyle);
         rowNum = appendLevelSumRow(sheet, rowNum, "Сумма Базовый уровень", entries, classes, EducationLevel.BASIC, sumStyle);
-        appendLevelSumRow(sheet, rowNum, "Сумма Углублённый уровень", entries, classes, EducationLevel.ADVANCED, sumStyle);
+        rowNum = appendLevelSumRow(sheet, rowNum, "Сумма Углублённый уровень", entries, classes, EducationLevel.ADVANCED, sumStyle);
+
+        if (entries.stream().anyMatch(CurriculumPlanEntry::isMetaGroup)) {
+            Row noteRow = sheet.createRow(rowNum);
+            noteRow.createCell(0).setCellValue("* часы реализуются в метагруппе");
+        }
 
         sheet.setColumnWidth(0, 12000);
         for (int i = 1; i <= classes.size(); i++) {
             sheet.setColumnWidth(i, 3200);
         }
+        return rowNum;
+    }
+
+    private String renderCellValue(List<CurriculumPlanEntry> values, String classKey) {
+        List<CurriculumPlanEntry> classValues = values.stream()
+                .filter(e -> (normalizeSubject(e.getNumberSchoolBuilding()) + "|" + ClassNameNormalizer.normalize(e.getClassName())).equals(classKey))
+                .toList();
+        BigDecimal year = classValues.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.YEAR)
+                .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal h1 = classValues.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H1)
+                .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal h2 = classValues.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H2)
+                .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (year.compareTo(BigDecimal.ZERO) > 0) return year.stripTrailingZeros().toPlainString();
+        if (h1.compareTo(BigDecimal.ZERO) > 0 || h2.compareTo(BigDecimal.ZERO) > 0) {
+            String left = h1.compareTo(BigDecimal.ZERO) > 0 ? h1.stripTrailingZeros().toPlainString() : "";
+            String right = h2.compareTo(BigDecimal.ZERO) > 0 ? h2.stripTrailingZeros().toPlainString() : "";
+            return left + "/" + right;
+        }
+        return "";
+    }
+
+    private void buildLegacyVisualSheet(Workbook workbook, List<CurriculumPlanEntry> entries) {
+        Sheet sheet = workbook.createSheet("CURRICULUM_VISUAL");
+        Row row = sheet.createRow(0);
+        row.createCell(0).setCellValue("Экспорт перенесен в листы НОО/ООО/СОО. Этот лист оставлен для совместимости импорта.");
     }
 
     private int appendLevelSumRow(Sheet sheet,
@@ -231,11 +262,12 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal h2 = classValues.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H2)
                 .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (year.compareTo(BigDecimal.ZERO) > 0) return year.stripTrailingZeros().toPlainString();
+        boolean meta = classValues.stream().anyMatch(CurriculumPlanEntry::isMetaGroup);
+        if (year.compareTo(BigDecimal.ZERO) > 0) return year.stripTrailingZeros().toPlainString() + (meta ? "*" : "");
         if (h1.compareTo(BigDecimal.ZERO) > 0 || h2.compareTo(BigDecimal.ZERO) > 0) {
             String left = h1.compareTo(BigDecimal.ZERO) > 0 ? h1.stripTrailingZeros().toPlainString() : "";
             String right = h2.compareTo(BigDecimal.ZERO) > 0 ? h2.stripTrailingZeros().toPlainString() : "";
-            return left + "/" + right;
+            return left + "/" + right + (meta ? "*" : "");
         }
         return "";
     }
@@ -297,6 +329,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     entry.setSubgroup1EducationLevel(row.subgroupRequired() ? row.subgroup1EducationLevel() : null);
                     entry.setSubgroup2EducationLevel(row.subgroupRequired() ? row.subgroup2EducationLevel() : null);
                     entry.setDeprecated(false);
+                    entry.setMetaGroup(row.metaGroup());
 
                     CurriculumPlanEntry saved = curriculumRepository.save(entry);
                     importedIds.add(saved.getId());
@@ -537,6 +570,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
                 for (ClassHeaderMeta classMeta : classColumns) {
                     String rawHours = normalizeSubject(readCell(row.getCell(classMeta.colIndex)));
+                    boolean metaGroup = rawHours.endsWith("*");
+                    rawHours = rawHours.replace("*", "").trim();
                     if (rawHours.isBlank() || "0".equals(rawHours)) continue;
                     if (rawHours.contains("/")) {
                         String[] halves = rawHours.split("/", -1);
@@ -544,18 +579,18 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         BigDecimal h2 = parseDecimal(halves.length > 1 ? halves[1] : "");
                         if (h1 != null && h1.compareTo(BigDecimal.ZERO) > 0) {
                             result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title,
-                                    EducationLevel.BASIC, StudyPeriod.H1, h1, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC));
+                                    EducationLevel.BASIC, StudyPeriod.H1, h1, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC, metaGroup));
                         }
                         if (h2 != null && h2.compareTo(BigDecimal.ZERO) > 0) {
                             result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title,
-                                    EducationLevel.BASIC, StudyPeriod.H2, h2, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC));
+                                    EducationLevel.BASIC, StudyPeriod.H2, h2, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC, metaGroup));
                         }
                         continue;
                     }
                     BigDecimal year = parseDecimal(rawHours);
                     if (year == null || year.compareTo(BigDecimal.ZERO) <= 0) continue;
                     result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title,
-                            EducationLevel.BASIC, StudyPeriod.YEAR, year, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC));
+                            EducationLevel.BASIC, StudyPeriod.YEAR, year, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC, metaGroup));
                 }
             }
             return new VisualParseResult(result, expectedSums);
@@ -617,16 +652,18 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             }
             for (ClassHeaderMeta classMeta : classColumns) {
                 String rawHours = normalizeSubject(readCell(row.getCell(classMeta.colIndex)));
+                boolean metaGroup = rawHours.endsWith("*");
+                rawHours = rawHours.replace("*", "").trim();
                 if (rawHours.isBlank() || "0".equals(rawHours)) continue;
                 if (rawHours.contains("/")) {
                     String[] halves = rawHours.split("/", -1);
                     BigDecimal h1 = parseDecimal(halves.length > 0 ? halves[0] : "");
                     BigDecimal h2 = parseDecimal(halves.length > 1 ? halves[1] : "");
-                    if (h1 != null && h1.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.H1, h1, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC));
-                    if (h2 != null && h2.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.H2, h2, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC));
+                    if (h1 != null && h1.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.H1, h1, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC, metaGroup));
+                    if (h2 != null && h2.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.H2, h2, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC, metaGroup));
                 } else {
                     BigDecimal year = parseDecimal(rawHours);
-                    if (year != null && year.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.YEAR, year, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC));
+                    if (year != null && year.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.YEAR, year, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC, metaGroup));
                 }
             }
         }
@@ -751,7 +788,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         subgroup1Hours,
                         subgroup1Level == null ? EducationLevel.BASIC : subgroup1Level,
                         subgroup2Hours,
-                        subgroup2Level == null ? EducationLevel.BASIC : subgroup2Level
+                        subgroup2Level == null ? EducationLevel.BASIC : subgroup2Level,
+                        false
                 ));
             }
             return rows;
@@ -830,7 +868,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             Integer subgroup1Hours,
             EducationLevel subgroup1EducationLevel,
             Integer subgroup2Hours,
-            EducationLevel subgroup2EducationLevel
+            EducationLevel subgroup2EducationLevel,
+            boolean metaGroup
     ) {}
 
     private record ClassHeaderMeta(int colIndex, String building, String className) {}
