@@ -48,6 +48,7 @@ let subjects = [];
 let studyPeriodSettings = [];
 let metaGroups = [];
 let sumMismatchKeys = new Set();
+let pendingCreateContext = null;
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -73,6 +74,7 @@ function classToParallel(className) { const m = norm(className).match(/^(\d{1,2}
 function levelShort(v) { return v === "ADVANCED" ? "У" : "Б"; }
 function subjectTypeByPart(part) { return part === "EXTRACURRICULAR" ? "EXTRACURRICULAR" : "CORE_FORMABLE"; }
 function isHighSchoolParallel(parallel = selectedParallel) { return Number(parallel) >= 10; }
+function makeClassKey(numberSchoolBuilding, className) { return `${norm(numberSchoolBuilding)}|${norm(className)}`; }
 function normalizeStudyPeriod(className, studyPeriod) {
     return studyPeriod || (isHighSchoolParallel(classToParallel(className)) ? "H1" : "YEAR");
 }
@@ -242,10 +244,10 @@ function syncStudyPeriodControls() {
 
 function buildSummaryRows(selectedClasses) {
     const byPart = { CORE: [], FORMABLE: [], EXTRACURRICULAR: [] };
-    const classSet = new Set(selectedClasses.map((c) => `${c.numberSchoolBuilding}|${c.className}`));
+    const classSet = new Set(selectedClasses.map((c) => makeClassKey(c.numberSchoolBuilding, c.className)));
 
     curriculumRows.forEach((r) => {
-        const key = `${r.numberSchoolBuilding}|${r.className}`;
+        const key = makeClassKey(r.numberSchoolBuilding, r.className);
         if (!classSet.has(key)) return;
         byPart[r.curriculumPart || "CORE"].push(r);
     });
@@ -265,7 +267,7 @@ function buildSummaryRows(selectedClasses) {
                 const [subjectName, educationLevel] = key.split("|");
                 const perClass = {};
                 values.forEach((v) => {
-                    const classKey = `${v.numberSchoolBuilding}|${v.className}`;
+                    const classKey = makeClassKey(v.numberSchoolBuilding, v.className);
                     if (!perClass[classKey]) perClass[classKey] = { year: null, h1: null, h2: null };
                     const item = {
                         hours: Number(v.plannedHours || 0),
@@ -296,6 +298,7 @@ function buildSummaryRows(selectedClasses) {
 function openEditById(id) {
     const existing = curriculumRows.find((r) => r.id === id);
     if (!existing) return;
+    pendingCreateContext = null;
 
     ui.editForm.elements.id.value = String(existing.id);
     ui.editForm.elements.className.value = existing.className || "";
@@ -310,22 +313,69 @@ function openEditById(id) {
     ui.editForm.elements.subgroup2EducationLevel.value = existing.subgroup2EducationLevel || existing.educationLevel || "BASIC";
     toggleSubgroupConfig(ui.editForm, ui.editForm.elements.subgroupRequired.value);
     syncStudyPeriodControls();
+    ui.deleteItemBtn.style.display = "";
     ui.editDialog.showModal();
 }
 
-function classCellMarkup(cellInfo, rowMeta) {
-    if (!cellInfo) return "";
-    const year = cellInfo.year;
-    const h1 = cellInfo.h1;
-    const h2 = cellInfo.h2;
+function openCreateByCell(cellCtx) {
+    pendingCreateContext = cellCtx;
+    ui.editForm.reset();
+    ui.editForm.elements.id.value = "";
+    ui.editForm.elements.className.value = cellCtx.className;
+    ui.editForm.elements.plannedHours.value = "";
+    ui.editForm.elements.educationLevel.value = cellCtx.educationLevel || "BASIC";
+    ui.editForm.elements.subgroupRequired.value = "false";
+    ui.editForm.elements.metaGroup.value = "false";
+    ui.editForm.elements.subgroup1Hours.value = "";
+    ui.editForm.elements.subgroup2Hours.value = "";
+    ui.editForm.elements.subgroup1EducationLevel.value = ui.editForm.elements.educationLevel.value;
+    ui.editForm.elements.subgroup2EducationLevel.value = ui.editForm.elements.educationLevel.value;
+    toggleSubgroupConfig(ui.editForm, ui.editForm.elements.subgroupRequired.value);
+    syncStudyPeriodControls();
+    const options = Array.from(ui.editForm.elements.studyPeriod.options || []);
+    const preferredById = options.find((opt) => String(opt.value) === String(cellCtx.studyPeriodSettingId || ""));
+    const classParallel = classToParallel(cellCtx.className) || selectedParallel;
+    const periodSetting = settingsForParallel(classParallel).find((s) => s.studyPeriod === cellCtx.studyPeriod);
+    const preferred = preferredById || options.find((opt) => String(opt.value) === String(periodSetting?.id || ""));
+    if (preferred) {
+        ui.editForm.elements.studyPeriod.value = preferred.value;
+    }
+    ui.deleteItemBtn.style.display = "none";
+    ui.editDialog.showModal();
+}
 
-    if (year) {
+function classCellMarkup(cellInfo, rowMeta, classMeta) {
+    const info = cellInfo || { year: null, h1: null, h2: null };
+    const createAttrs = (studyPeriod) => {
+        const candidateSettings = columnsForClass({ className: classMeta.className, numberSchoolBuilding: classMeta.numberSchoolBuilding });
+        const setting = candidateSettings.find((x) => x.studyPeriod === studyPeriod)
+            || settingsForParallel(classToParallel(classMeta.className) || selectedParallel).find((x) => x.studyPeriod === studyPeriod)
+            || candidateSettings[0]
+            || settingsForParallel(classToParallel(classMeta.className) || selectedParallel)[0];
+        return `data-create="1" data-building="${esc(classMeta.numberSchoolBuilding)}" data-class-name="${esc(classMeta.className)}" data-subject-name="${esc(rowMeta.subjectName)}" data-curriculum-part="${esc(rowMeta.part)}" data-education-level="${esc(rowMeta.educationLevel)}" data-study-period="${esc(studyPeriod)}" data-study-period-setting-id="${esc(setting?.id || "")}"`;
+    };
+    const emptyBtn = (studyPeriod) => `<button type="button" class="hours-cell empty-hours-cell" ${createAttrs(studyPeriod)}></button>`;
+
+    const year = info.year;
+    const h1 = info.h1;
+    const h2 = info.h2;
+    const split = Boolean(classMeta.split || h1 || h2);
+
+    if (year && !split) {
         const cls = `${rowMeta.educationLevel === "ADVANCED" ? "advanced-cell" : ""} ${year.metaGroup ? "meta-group-cell" : ""}`;
         return `<button class="hours-cell ${cls}" data-id="${esc(year.id)}">${esc(year.hours)}</button>`;
     }
 
-    const left = h1 ? `<button class="hours-cell ${h1.metaGroup ? "meta-group-cell" : ""}" data-id="${esc(h1.id)}">${esc(h1.hours)}</button>` : '<div class="hours-cell muted"></div>';
-    const right = h2 ? `<button class="hours-cell ${h2.metaGroup ? "meta-group-cell" : ""}" data-id="${esc(h2.id)}">${esc(h2.hours)}</button>` : '<div class="hours-cell muted"></div>';
+    if (!split) {
+        return emptyBtn("YEAR");
+    }
+
+    const left = h1
+        ? `<button class="hours-cell ${h1.metaGroup ? "meta-group-cell" : ""}" data-id="${esc(h1.id)}">${esc(h1.hours)}</button>`
+        : emptyBtn("H1");
+    const right = h2
+        ? `<button class="hours-cell ${h2.metaGroup ? "meta-group-cell" : ""}" data-id="${esc(h2.id)}">${esc(h2.hours)}</button>`
+        : emptyBtn("H2");
     return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0"><div style="padding-right:4px">${left}</div><div style="border-left:1px solid #cbd5e1;padding-left:4px">${right}</div></div>`;
 }
 
@@ -338,9 +388,11 @@ function renderSummaryTable() {
     }));
     const allColumns = [...selectedClasses, ...selectedMetaGroups];
     const classDescriptors = allColumns.map((c) => ({
-        classKey: `${c.numberSchoolBuilding}|${c.className}`,
+        classKey: makeClassKey(c.numberSchoolBuilding, c.className),
         className: c.className,
-        classDirection: c.classDirection
+        classDirection: c.classDirection,
+        numberSchoolBuilding: c.numberSchoolBuilding,
+        split: hasSemesterSplitForClass(c)
     }));
     const rows = buildSummaryRows(allColumns);
 
@@ -363,7 +415,7 @@ function renderSummaryTable() {
             tr.innerHTML = `<td>${esc(row.title)}</td>${classDescriptors.map(() => "<td></td>").join("")}`;
         } else if (row.type === "subject") {
             tr.innerHTML = `<td>${esc(row.subjectName)}</td>` + classDescriptors
-                .map((col) => `<td class="hours-cell-wrap">${classCellMarkup(row.perClass[col.classKey], row)}</td>`)
+                .map((col) => `<td class="hours-cell-wrap">${classCellMarkup(row.perClass[col.classKey], row, col)}</td>`)
                 .join("");
         } else {
             const calc = classDescriptors.map((col) => {
@@ -395,6 +447,19 @@ function renderSummaryTable() {
             const id = Number(btn.dataset.id);
             if (!Number.isFinite(id)) return;
             openEditById(id);
+        });
+    });
+    ui.summaryBody.querySelectorAll('.hours-cell[data-create="1"]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            openCreateByCell({
+                numberSchoolBuilding: norm(btn.dataset.building),
+                className: norm(btn.dataset.className),
+                subjectName: norm(btn.dataset.subjectName),
+                curriculumPart: norm(btn.dataset.curriculumPart || "CORE"),
+                educationLevel: norm(btn.dataset.educationLevel || "BASIC"),
+                studyPeriod: norm(btn.dataset.studyPeriod || "YEAR"),
+                studyPeriodSettingId: Number(btn.dataset.studyPeriodSettingId || 0) || null
+            });
         });
     });
 }
@@ -620,16 +685,15 @@ function bindEvents() {
         e.preventDefault();
         const id = Number(ui.editForm.elements.id.value);
         const existing = curriculumRows.find((r) => r.id === id);
-        if (!existing) return;
 
         const subgroupRequired = ui.editForm.elements.subgroupRequired.value === "true";
         const payload = {
-            numberSchoolBuilding: existing.numberSchoolBuilding,
-            className: existing.className,
-            subjectName: existing.subjectName,
-            curriculumPart: existing.curriculumPart,
+            numberSchoolBuilding: existing?.numberSchoolBuilding || pendingCreateContext?.numberSchoolBuilding,
+            className: existing?.className || pendingCreateContext?.className,
+            subjectName: existing?.subjectName || pendingCreateContext?.subjectName,
+            curriculumPart: existing?.curriculumPart || pendingCreateContext?.curriculumPart,
             plannedHours: Number(ui.editForm.elements.plannedHours.value || 0),
-            educationLevel: ui.editForm.elements.educationLevel.value,
+            educationLevel: ui.editForm.elements.educationLevel.value || existing?.educationLevel || pendingCreateContext?.educationLevel || "BASIC",
             subgroupRequired,
             subgroupCount: 2,
             studyPeriodSettingId: Number(ui.editForm.elements.studyPeriod.value || 0) || null,
@@ -641,8 +705,16 @@ function bindEvents() {
         };
 
         try {
-            await api(`/api/curriculum/${id}`, { method: "PATCH", headers: jsonHeaders, body: JSON.stringify(payload) });
+            if (existing) {
+                await api(`/api/curriculum/${id}`, { method: "PATCH", headers: jsonHeaders, body: JSON.stringify(payload) });
+            } else {
+                if (!payload.numberSchoolBuilding || !payload.className || !payload.subjectName || !payload.curriculumPart) {
+                    throw new Error("Недостаточно данных для создания записи");
+                }
+                await api("/api/curriculum", { method: "POST", headers: jsonHeaders, body: JSON.stringify(payload) });
+            }
             sumMismatchKeys = new Set();
+            pendingCreateContext = null;
             ui.editDialog.close();
             await reload();
         } catch (error) {
