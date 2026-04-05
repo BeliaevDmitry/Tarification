@@ -15,6 +15,9 @@ const PERIOD_META = {
 const ui = {
     parallelTabs: document.getElementById("parallel-tabs"),
     buildingFilter: document.getElementById("parallel-building-filter"),
+    createMetaGroupBtn: document.getElementById("create-meta-group-btn"),
+    renameMetaGroupBtn: document.getElementById("rename-meta-group-btn"),
+    deleteMetaGroupBtn: document.getElementById("delete-meta-group-btn"),
     refreshBtn: document.getElementById("refresh-btn"),
     clearBtn: document.getElementById("clear-curriculum-btn"),
     result: document.getElementById("curriculum-result"),
@@ -43,6 +46,8 @@ let classes = [];
 let curriculumRows = [];
 let subjects = [];
 let studyPeriodSettings = [];
+let metaGroups = [];
+let sumMismatchKeys = new Set();
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -118,58 +123,6 @@ function columnsForClass(classRow) {
     return [h1, h2].filter(Boolean).map((x) => ({ key: String(x.id), label: x.displayName, studyPeriod: x.studyPeriod }));
 }
 
-function periodOptionsForParallel(parallel) {
-    const p = Number(parallel || selectedParallel || 1);
-    const matched = (studyPeriodSettings || [])
-        .filter((s) => Number(s.parallelFrom) <= p && p <= Number(s.parallelTo))
-        .sort((a, b) => Number(a.parallelFrom) - Number(b.parallelFrom)
-            || Number(a.parallelTo) - Number(b.parallelTo)
-            || String(a.displayName || "").localeCompare(String(b.displayName || ""), "ru"));
-    if (!matched.length) {
-        return isHighSchoolParallel(p) ? ["H1", "H2"] : ["YEAR"];
-    }
-    const unique = [];
-    const seen = new Set();
-    matched.forEach((m) => {
-        const key = String(m.studyPeriod || "").toUpperCase();
-        if (!["YEAR", "H1", "H2"].includes(key) || seen.has(key)) return;
-        seen.add(key);
-        unique.push(key);
-    });
-    return unique.length ? unique : (isHighSchoolParallel(p) ? ["H1", "H2"] : ["YEAR"]);
-}
-
-function periodSelectItemsForParallel(parallel) {
-    const p = Number(parallel || selectedParallel || 1);
-    const matched = (studyPeriodSettings || [])
-        .filter((s) => Number(s.parallelFrom) <= p && p <= Number(s.parallelTo))
-        .sort((a, b) => Number(a.parallelFrom) - Number(b.parallelFrom)
-            || Number(a.parallelTo) - Number(b.parallelTo)
-            || String(a.displayName || "").localeCompare(String(b.displayName || ""), "ru"));
-    const byStudyPeriod = new Map();
-    matched.forEach((item) => {
-        const key = String(item.studyPeriod || "").toUpperCase();
-        if (!["YEAR", "H1", "H2"].includes(key) || byStudyPeriod.has(key)) return;
-        byStudyPeriod.set(key, {
-            value: key,
-            label: String(item.displayName || PERIOD_META[key]?.label || key)
-        });
-    });
-    if (byStudyPeriod.size) {
-        return [...byStudyPeriod.values()];
-    }
-    return periodOptionsForParallel(p).map((key) => ({ value: key, label: PERIOD_META[key]?.label || key }));
-}
-
-function renderStudyPeriodSelect(selectEl, parallel, currentValue) {
-    if (!selectEl) return;
-    const items = periodSelectItemsForParallel(parallel);
-    const html = items.map((item) => `<option value="${esc(item.value)}">${esc(item.label)}</option>`).join("");
-    selectEl.innerHTML = html;
-    const allowed = items.map((i) => i.value);
-    selectEl.value = allowed.includes(currentValue) ? currentValue : (allowed[0] || "YEAR");
-}
-
 function toggleSubgroupConfig(container, requiredValue) {
     const required = String(requiredValue) === "true";
     if (!container) return;
@@ -181,6 +134,27 @@ function classesForSelectedContext() {
         .filter((c) => classToParallel(c.className) === selectedParallel)
         .filter((c) => !selectedBuilding || c.numberSchoolBuilding === selectedBuilding)
         .sort((a, b) => `${a.numberSchoolBuilding}|${a.className}`.localeCompare(`${b.numberSchoolBuilding}|${b.className}`, "ru"));
+}
+
+
+function metaGroupsForSelectedContext() {
+    return (metaGroups || [])
+        .filter((m) => Number(m.parallel) === Number(selectedParallel))
+        .filter((m) => !selectedBuilding || norm(m.numberSchoolBuilding) === selectedBuilding)
+        .sort((a, b) => String(a.name).localeCompare(String(b.name), "ru"));
+}
+
+
+function chooseMetaGroupInContext() {
+    const list = metaGroupsForSelectedContext();
+    if (!list.length) throw new Error("Нет метагрупп в выбранном корпусе/параллели");
+    const promptText = list.map((m, i) => `${i + 1}. ${m.name}`).join("\n");
+    const raw = prompt(`Выберите номер метагруппы:
+${promptText}`);
+    if (!raw) return null;
+    const idx = Number(raw) - 1;
+    if (!Number.isInteger(idx) || idx < 0 || idx >= list.length) throw new Error("Некорректный номер метагруппы");
+    return list[idx];
 }
 
 function renderParallelTabs() {
@@ -243,6 +217,10 @@ function renderClassOptions() {
     items.forEach((c) => {
         ui.formClass.innerHTML += `<option value="${esc(c.className)}">${esc(c.className)} (${esc(c.classDirection)})</option>`;
     });
+    metaGroupsForSelectedContext().forEach((m) => {
+        const value = `МГ:${m.name}`;
+        ui.formClass.innerHTML += `<option value="${esc(value)}">${esc(value)} (Метагруппа)</option>`;
+    });
 }
 
 function syncStudyPeriodControls() {
@@ -294,7 +272,8 @@ function buildSummaryRows(selectedClasses) {
                         subgroupRequired: Boolean(v.subgroupRequired),
                         subgroupCount: Number(v.subgroupCount || 0),
                         id: v.id,
-                        studyPeriod: v.studyPeriod
+                        studyPeriod: v.studyPeriod,
+                        metaGroup: Boolean(v.metaGroup)
                     };
                     if (v.studyPeriod === "H1") perClass[classKey].h1 = item;
                     else if (v.studyPeriod === "H2") perClass[classKey].h2 = item;
@@ -324,6 +303,7 @@ function openEditById(id) {
     ui.editForm.elements.educationLevel.value = existing.educationLevel || "BASIC";
     ui.editForm.elements.subgroupRequired.value = String(Boolean(existing.subgroupRequired));
     ui.editForm.elements.studyPeriod.value = String(existing.studyPeriodSettingId || "");
+    ui.editForm.elements.metaGroup.value = String(Boolean(existing.metaGroup));
     ui.editForm.elements.subgroup1Hours.value = existing.subgroup1Hours || existing.plannedHours || "";
     ui.editForm.elements.subgroup2Hours.value = existing.subgroup2Hours || existing.plannedHours || "";
     ui.editForm.elements.subgroup1EducationLevel.value = existing.subgroup1EducationLevel || existing.educationLevel || "BASIC";
@@ -340,32 +320,39 @@ function classCellMarkup(cellInfo, rowMeta) {
     const h2 = cellInfo.h2;
 
     if (year) {
-        return `<button class="hours-cell ${rowMeta.educationLevel === "ADVANCED" ? "advanced-cell" : ""}" data-id="${esc(year.id)}">${esc(year.hours)}</button>`;
+        const cls = `${rowMeta.educationLevel === "ADVANCED" ? "advanced-cell" : ""} ${year.metaGroup ? "meta-group-cell" : ""}`;
+        return `<button class="hours-cell ${cls}" data-id="${esc(year.id)}">${esc(year.hours)}</button>`;
     }
 
-    const left = h1 ? `<button class="hours-cell" data-id="${esc(h1.id)}">${esc(h1.hours)}</button>` : '<div class="hours-cell muted"></div>';
-    const right = h2 ? `<button class="hours-cell" data-id="${esc(h2.id)}">${esc(h2.hours)}</button>` : '<div class="hours-cell muted"></div>';
+    const left = h1 ? `<button class="hours-cell ${h1.metaGroup ? "meta-group-cell" : ""}" data-id="${esc(h1.id)}">${esc(h1.hours)}</button>` : '<div class="hours-cell muted"></div>';
+    const right = h2 ? `<button class="hours-cell ${h2.metaGroup ? "meta-group-cell" : ""}" data-id="${esc(h2.id)}">${esc(h2.hours)}</button>` : '<div class="hours-cell muted"></div>';
     return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0"><div style="padding-right:4px">${left}</div><div style="border-left:1px solid #cbd5e1;padding-left:4px">${right}</div></div>`;
 }
 
 function renderSummaryTable() {
     const selectedClasses = classesForSelectedContext();
-    const classDescriptors = selectedClasses.map((c) => ({
+    const selectedMetaGroups = metaGroupsForSelectedContext().map((m) => ({
+        numberSchoolBuilding: m.numberSchoolBuilding,
+        className: `МГ:${m.name}`,
+        classDirection: "Метагруппа"
+    }));
+    const allColumns = [...selectedClasses, ...selectedMetaGroups];
+    const classDescriptors = allColumns.map((c) => ({
         classKey: `${c.numberSchoolBuilding}|${c.className}`,
         className: c.className,
         classDirection: c.classDirection
     }));
-    const rows = buildSummaryRows(selectedClasses);
+    const rows = buildSummaryRows(allColumns);
 
     ui.summaryHead.innerHTML = "";
     ui.summaryBody.innerHTML = "";
 
     const directionRow = document.createElement("tr");
     directionRow.className = "summary-direction-row";
-    directionRow.innerHTML = `<th rowspan="2">Блок / предмет / часы</th>${selectedClasses.map((c) => `<th>${esc(c.classDirection)}</th>`).join("")}`;
+    directionRow.innerHTML = `<th rowspan="2">Блок / предмет / часы</th>${allColumns.map((c) => `<th>${esc(c.classDirection)}</th>`).join("")}`;
     const classRow = document.createElement("tr");
     classRow.className = "summary-class-row";
-    classRow.innerHTML = selectedClasses.map((c) => `<th>${esc(c.className)}</th>`).join("");
+    classRow.innerHTML = allColumns.map((c) => `<th>${esc(c.className)}</th>`).join("");
     ui.summaryHead.appendChild(directionRow);
     ui.summaryHead.appendChild(classRow);
 
@@ -393,7 +380,9 @@ function renderSummaryTable() {
                         h2 += Number(info.h2?.hours || 0);
                     }
                 });
-                return `<td class="summary-value">${h1 || h2 ? `${h1}/${h2}` : ""}</td>`;
+                const sumLabel = row.type === "sum12" ? "sum_of" : (row.part === "CORE" ? "sum_core" : (row.part === "FORMABLE" ? "sum_formable" : "sum_extracurricular"));
+                const mismatch = sumMismatchKeys.has(`${col.classKey}|${sumLabel}`);
+                return `<td class="summary-value ${mismatch ? "conflict-row" : ""}">${h1 || h2 ? `${h1}/${h2}` : ""}</td>`;
             }).join("");
             tr.className = "summary-sum-row";
             tr.innerHTML = `<td>${esc(row.title)}</td>${calc}`;
@@ -437,7 +426,8 @@ function normalizeForm() {
         subgroup2Hours: Number(f.get("subgroup2Hours") || 0) || null,
         subgroup2EducationLevel: f.get("subgroup2EducationLevel") || null,
         curriculumPart: f.get("curriculumPart"),
-        studyPeriodSettingId: Number(f.get("studyPeriod") || 0) || null
+        studyPeriodSettingId: Number(f.get("studyPeriod") || 0) || null,
+        metaGroup: String(f.get("metaGroup")) === "true"
     };
 }
 
@@ -453,6 +443,7 @@ async function importCurriculumFile() {
 
     try {
         const result = await api("/api/curriculum/import", { method: "POST", body: form });
+        sumMismatchKeys = new Set((result?.sumMismatches || []).map((x) => `${x.classKey}|${x.sumLabel}`));
         print({ status: "imported", ...result });
         ui.importFile.value = "";
         await reload();
@@ -484,16 +475,18 @@ async function exportCurriculumFile() {
 }
 
 async function reload() {
-    const [curriculum, classRows, buildingRows, subjectRows, settingRows] = await Promise.all([
+    const [curriculum, classRows, buildingRows, subjectRows, settingRows, metaGroupRows] = await Promise.all([
         api("/api/curriculum"),
         api("/api/classroom-leadership"),
         api("/api/buildings"),
         api("/api/subjects"),
-        api("/api/settings/study-periods")
+        api("/api/settings/study-periods"),
+        api("/api/meta-groups")
     ]);
     curriculumRows = curriculum || [];
     subjects = subjectRows || [];
     studyPeriodSettings = settingRows || [];
+    metaGroups = metaGroupRows || [];
     classes = (classRows || []).map((r) => ({
         numberSchoolBuilding: norm(r.numberSchoolBuilding),
         className: norm(r.className),
@@ -517,11 +510,14 @@ function bindEvents() {
         try {
             const payload = normalizeForm();
             if (!payload.numberSchoolBuilding || !payload.className) throw new Error("Выберите корпус и класс из справочника классов");
-            if (!classes.some((c) => c.numberSchoolBuilding === payload.numberSchoolBuilding && c.className === payload.className)) {
-                throw new Error("Класс не найден в справочнике классов");
+            const isKnownClass = classes.some((c) => c.numberSchoolBuilding === payload.numberSchoolBuilding && c.className === payload.className);
+            const isKnownMetaGroup = metaGroups.some((m) => m.numberSchoolBuilding === payload.numberSchoolBuilding && `МГ:${m.name}` === payload.className);
+            if (!isKnownClass && !isKnownMetaGroup) {
+                throw new Error("Класс/метагруппа не найдены в справочнике");
             }
 
             await api("/api/curriculum", { method: "POST", headers: jsonHeaders, body: JSON.stringify(payload) });
+            sumMismatchKeys = new Set();
             print({ status: "saved", payload });
             await reload();
         } catch (error) {
@@ -537,6 +533,57 @@ function bindEvents() {
         renderClassOptions();
         syncStudyPeriodControls();
         renderSummaryTable();
+    });
+
+
+    ui.createMetaGroupBtn?.addEventListener("click", async () => {
+        try {
+            const name = prompt("Название метагруппы");
+            if (!name || !name.trim()) return;
+            const building = norm(selectedBuilding || ui.buildingFilter.value);
+            if (!building) throw new Error("Выберите корпус для метагруппы");
+            await api("/api/meta-groups", {
+                method: "POST",
+                headers: jsonHeaders,
+                body: JSON.stringify({ numberSchoolBuilding: building, parallel: selectedParallel, name: name.trim() })
+            });
+            await reload();
+            print({ status: "meta-group-created", name: name.trim(), building, parallel: selectedParallel });
+        } catch (error) {
+            print({ error: error.message });
+        }
+    });
+
+
+    ui.renameMetaGroupBtn?.addEventListener("click", async () => {
+        try {
+            const selected = chooseMetaGroupInContext();
+            if (!selected) return;
+            const name = prompt("Новое название метагруппы", selected.name);
+            if (!name || !name.trim()) return;
+            await api(`/api/meta-groups/${selected.id}`, {
+                method: "PATCH",
+                headers: jsonHeaders,
+                body: JSON.stringify({ name: name.trim() })
+            });
+            await reload();
+            print({ status: "meta-group-renamed", id: selected.id, name: name.trim() });
+        } catch (error) {
+            print({ error: error.message });
+        }
+    });
+
+    ui.deleteMetaGroupBtn?.addEventListener("click", async () => {
+        try {
+            const selected = chooseMetaGroupInContext();
+            if (!selected) return;
+            if (!confirm(`Удалить метагруппу '${selected.name}'? Все записи УП этой метагруппы будут удалены.`)) return;
+            await api(`/api/meta-groups/${selected.id}`, { method: "DELETE" });
+            await reload();
+            print({ status: "meta-group-deleted", id: selected.id, name: selected.name });
+        } catch (error) {
+            print({ error: error.message });
+        }
     });
 
     ui.refreshBtn.addEventListener("click", () => reload().catch((error) => print({ error: error.message })));
@@ -586,6 +633,7 @@ function bindEvents() {
             subgroupRequired,
             subgroupCount: 2,
             studyPeriodSettingId: Number(ui.editForm.elements.studyPeriod.value || 0) || null,
+            metaGroup: ui.editForm.elements.metaGroup.value === "true",
             subgroup1Hours: subgroupRequired ? Number(ui.editForm.elements.subgroup1Hours.value || 0) : null,
             subgroup2Hours: subgroupRequired ? Number(ui.editForm.elements.subgroup2Hours.value || 0) : null,
             subgroup1EducationLevel: subgroupRequired ? ui.editForm.elements.subgroup1EducationLevel.value : null,
@@ -594,6 +642,7 @@ function bindEvents() {
 
         try {
             await api(`/api/curriculum/${id}`, { method: "PATCH", headers: jsonHeaders, body: JSON.stringify(payload) });
+            sumMismatchKeys = new Set();
             ui.editDialog.close();
             await reload();
         } catch (error) {

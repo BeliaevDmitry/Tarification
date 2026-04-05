@@ -21,4 +21,5 @@ public class CurriculumPlanEntryRequest {
     private CurriculumPart curriculumPart;
     private StudyPeriod studyPeriod;
     private Long studyPeriodSettingId;
+    private boolean metaGroup;
 }
