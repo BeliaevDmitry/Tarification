@@ -191,6 +191,33 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         for (int i = 1; i <= classes.size(); i++) {
             sheet.setColumnWidth(i, 3200);
         }
+        return rowNum;
+    }
+
+    private String renderCellValueForClass(List<CurriculumPlanEntry> values, String classKey) {
+        List<CurriculumPlanEntry> classValues = values.stream()
+                .filter(e -> (normalizeSubject(e.getNumberSchoolBuilding()) + "|" + ClassNameNormalizer.normalize(e.getClassName())).equals(classKey))
+                .toList();
+        BigDecimal year = classValues.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.YEAR)
+                .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal h1 = classValues.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H1)
+                .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal h2 = classValues.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H2)
+                .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        boolean meta = classValues.stream().anyMatch(CurriculumPlanEntry::isMetaGroup);
+        if (year.compareTo(BigDecimal.ZERO) > 0) return year.stripTrailingZeros().toPlainString() + (meta ? "*" : "");
+        if (h1.compareTo(BigDecimal.ZERO) > 0 || h2.compareTo(BigDecimal.ZERO) > 0) {
+            String left = h1.compareTo(BigDecimal.ZERO) > 0 ? h1.stripTrailingZeros().toPlainString() : "";
+            String right = h2.compareTo(BigDecimal.ZERO) > 0 ? h2.stripTrailingZeros().toPlainString() : "";
+            return left + "/" + right + (meta ? "*" : "");
+        }
+        return "";
+    }
+
+    private void buildLegacyVisualSheetCompat(Workbook workbook, List<CurriculumPlanEntry> entries) {
+        Sheet sheet = workbook.createSheet("CURRICULUM_VISUAL");
+        Row row = sheet.createRow(0);
+        row.createCell(0).setCellValue("Экспорт перенесен в листы НОО/ООО/СОО. Этот лист оставлен для совместимости импорта.");
     }
 
     private int appendLevelSumRowVisual(Sheet sheet,
