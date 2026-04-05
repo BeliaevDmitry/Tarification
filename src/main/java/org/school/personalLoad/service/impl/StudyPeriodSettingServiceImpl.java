@@ -12,10 +12,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.EnumMap;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -34,11 +33,20 @@ public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService 
     @Override
     public List<StudyPeriodSetting> findAll() {
         ensureDefaults();
-        List<StudyPeriodSetting> result = new ArrayList<>();
-        for (StudyPeriodSettingKey key : StudyPeriodSettingKey.values()) {
-            result.add(repository.findBySettingKey(key).orElseThrow());
-        }
-        return result;
+        return repository.findAll().stream()
+                .sorted(Comparator.comparing(StudyPeriodSetting::getParallelFrom)
+                        .thenComparing(StudyPeriodSetting::getParallelTo)
+                        .thenComparing(StudyPeriodSetting::getStudyPeriod)
+                        .thenComparing(StudyPeriodSetting::getId))
+                .toList();
+    }
+
+    @Override
+    public StudyPeriodSetting create(StudyPeriodSettingRequest request) {
+        validateRequest(request, false);
+        StudyPeriodSetting entity = new StudyPeriodSetting();
+        fillEntity(entity, request);
+        return repository.save(entity);
     }
 
     @Override
@@ -46,183 +54,133 @@ public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService 
         if (requests == null || requests.isEmpty()) {
             throw new IllegalArgumentException("Передайте хотя бы одну настройку периода обучения");
         }
-
-        ensureDefaults();
-        Map<StudyPeriodSettingKey, StudyPeriodSettingRequest> byKey = new EnumMap<>(StudyPeriodSettingKey.class);
         for (StudyPeriodSettingRequest request : requests) {
-            if (request == null || request.getSettingKey() == null) {
-                throw new IllegalArgumentException("settingKey is required");
-            }
-            if (request.getStartDate() == null || request.getEndDate() == null) {
-                throw new IllegalArgumentException("Для настройки " + request.getSettingKey() + " обязательны startDate и endDate");
-            }
-            if (request.getStartDate().isAfter(request.getEndDate())) {
-                throw new IllegalArgumentException("Для настройки " + request.getSettingKey() + " startDate должен быть раньше или равен endDate");
-            }
-            byKey.put(request.getSettingKey(), request);
+            validateRequest(request, true);
+            StudyPeriodSetting entity = repository.findById(request.getId())
+                    .orElseThrow(() -> new IllegalArgumentException("Период не найден: " + request.getId()));
+            fillEntity(entity, request);
+            repository.save(entity);
         }
-
-        List<StudyPeriodSetting> updated = new ArrayList<>();
-        for (StudyPeriodSettingKey key : StudyPeriodSettingKey.values()) {
-            StudyPeriodSettingRequest request = byKey.get(key);
-            if (request == null) {
-                throw new IllegalArgumentException("Не передана настройка для периода " + key);
-            }
-            StudyPeriodSetting entity = repository.findBySettingKey(key).orElseGet(StudyPeriodSetting::new);
-            fillEntity(entity, key, request.getStartDate(), request.getEndDate());
-            updated.add(repository.save(entity));
-        }
-        return updated;
+        return findAll();
     }
 
     @Override
-    public Map<StudyPeriodSettingKey, DateRange> rangesByKey() {
-        Map<StudyPeriodSettingKey, DateRange> result = new EnumMap<>(StudyPeriodSettingKey.class);
-        findAll().forEach(setting -> result.put(setting.getSettingKey(), new DateRange(setting.getStartDate(), setting.getEndDate())));
+    @Transactional(readOnly = true)
+    public List<StudyPeriodSetting> findAvailableForClass(String className) {
+        ensureDefaults();
+        int parallel = resolveParallel(className);
+        return repository.findByParallelFromLessThanEqualAndParallelToGreaterThanEqualOrderByDefaultRuleDescIdAsc(parallel, parallel);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public StudyPeriodSetting resolveRuleForClassAndPeriod(String className, StudyPeriod studyPeriod) {
+        int parallel = resolveParallel(className);
+        StudyPeriod effectivePeriod = studyPeriod == null ? (parallel <= 9 ? StudyPeriod.YEAR : StudyPeriod.H1) : studyPeriod;
+        List<StudyPeriodSetting> byType = repository.findByParallelFromLessThanEqualAndParallelToGreaterThanEqualAndStudyPeriodOrderByDefaultRuleDescIdAsc(parallel, parallel, effectivePeriod);
+        if (!byType.isEmpty()) {
+            return byType.get(0);
+        }
+        List<StudyPeriodSetting> all = repository.findByParallelFromLessThanEqualAndParallelToGreaterThanEqualOrderByDefaultRuleDescIdAsc(parallel, parallel);
+        if (all.isEmpty()) {
+            throw new IllegalArgumentException("Не найден период обучения для класса " + className);
+        }
+        return all.get(0);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.Map<StudyPeriodSettingKey, DateRange> rangesByKey() {
+        ensureDefaults();
+        java.util.Map<StudyPeriodSettingKey, DateRange> result = new java.util.EnumMap<>(StudyPeriodSettingKey.class);
+        for (StudyPeriodSettingKey key : StudyPeriodSettingKey.values()) {
+            repository.findByCode(key.name()).ifPresent(row -> result.put(key, new DateRange(row.getStartDate(), row.getEndDate())));
+        }
         return result;
     }
 
     @Override
+    @Transactional(readOnly = true)
     public DateRange resolveDateRange(String className, StudyPeriod studyPeriod) {
-        ensureDefaults();
-        StudyPeriodSettingKey key = resolveKey(className, studyPeriod == null ? StudyPeriod.YEAR : studyPeriod);
-        StudyPeriodSetting setting = repository.findBySettingKey(key)
-                .orElseThrow(() -> new IllegalArgumentException("Настройка периода не найдена: " + key));
+        StudyPeriodSetting setting = resolveRuleForClassAndPeriod(className, studyPeriod);
         return new DateRange(setting.getStartDate(), setting.getEndDate());
     }
 
     @Override
     public StudyPeriod inferStudyPeriod(String className, LocalDate loadFromDate, LocalDate loadToDate) {
+        int parallel = resolveParallel(className);
+        List<StudyPeriodSetting> options = findAvailableForClass(className);
+        for (StudyPeriodSetting option : options) {
+            DateRange range = new DateRange(option.getStartDate(), option.getEndDate());
+            if (range.fullyContains(loadFromDate, loadToDate)) {
+                return option.getStudyPeriod();
+            }
+        }
+        return parallel <= 9 ? StudyPeriod.YEAR : StudyPeriod.H1;
+    }
+
+    private int resolveParallel(String className) {
         Integer parallel = ClassNameNormalizer.extractParallel(className);
-        if (parallel == null) {
-            return StudyPeriod.YEAR;
-        }
-        ensureDefaults();
-        Map<StudyPeriodSettingKey, DateRange> ranges = rangesByKey();
-
-        if (parallel >= 11) {
-            return inferForHighSchool(parallel, loadFromDate, loadToDate, ranges);
-        }
-        if (parallel == 10) {
-            return inferForHighSchool(parallel, loadFromDate, loadToDate, ranges);
-        }
-        return inferForMiddleSchool(loadFromDate, loadToDate, ranges);
+        return parallel == null ? 1 : parallel;
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public StudyPeriodSettingKey resolveKey(String className, StudyPeriod studyPeriod) {
-        Integer parallel = ClassNameNormalizer.extractParallel(className);
-        if (parallel == null || parallel <= 9) {
-            if (studyPeriod == StudyPeriod.H1) return StudyPeriodSettingKey.H1_1_9;
-            if (studyPeriod == StudyPeriod.H2) return StudyPeriodSettingKey.H2_1_9;
-            return StudyPeriodSettingKey.YEAR_1_9;
+    private void validateRequest(StudyPeriodSettingRequest request, boolean requireId) {
+        if (request == null) throw new IllegalArgumentException("request is required");
+        if (requireId && request.getId() == null) throw new IllegalArgumentException("id is required");
+        if (request.getStudyPeriod() == null) throw new IllegalArgumentException("studyPeriod is required");
+        if (request.getParallelFrom() == null || request.getParallelTo() == null) throw new IllegalArgumentException("parallelFrom/parallelTo is required");
+        if (request.getParallelFrom() < 1 || request.getParallelTo() > 11 || request.getParallelFrom() > request.getParallelTo()) {
+            throw new IllegalArgumentException("Некорректный диапазон классов");
         }
-        if (parallel == 10) {
-            return studyPeriod == StudyPeriod.H2 ? StudyPeriodSettingKey.H2_10 : StudyPeriodSettingKey.H1_10;
+        if (request.getStartDate() == null || request.getEndDate() == null || request.getStartDate().isAfter(request.getEndDate())) {
+            throw new IllegalArgumentException("Некорректные даты периода");
         }
-        return studyPeriod == StudyPeriod.H2 ? StudyPeriodSettingKey.H2_11 : StudyPeriodSettingKey.H1_11;
+        if (request.getDisplayName() == null || request.getDisplayName().isBlank()) {
+            throw new IllegalArgumentException("displayName is required");
+        }
     }
 
-    private StudyPeriod inferForMiddleSchool(LocalDate loadFromDate,
-                                             LocalDate loadToDate,
-                                             Map<StudyPeriodSettingKey, DateRange> ranges) {
-        DateRange year = ranges.get(StudyPeriodSettingKey.YEAR_1_9);
-        DateRange h1 = ranges.get(StudyPeriodSettingKey.H1_1_9);
-        DateRange h2 = ranges.get(StudyPeriodSettingKey.H2_1_9);
-
-        if (loadFromDate == null || loadToDate == null || year == null || h1 == null || h2 == null) {
-            return StudyPeriod.YEAR;
-        }
-        if (loadFromDate.equals(year.startDate()) && loadToDate.equals(year.endDate())) {
-            return StudyPeriod.YEAR;
-        }
-        if (loadFromDate.equals(h1.startDate()) && loadToDate.equals(h1.endDate())) {
-            return StudyPeriod.H1;
-        }
-        if (loadFromDate.equals(h2.startDate()) && loadToDate.equals(h2.endDate())) {
-            return StudyPeriod.H2;
-        }
-        if (h1.fullyContains(loadFromDate, loadToDate)) {
-            return StudyPeriod.H1;
-        }
-        if (h2.fullyContains(loadFromDate, loadToDate)) {
-            return StudyPeriod.H2;
-        }
-        return StudyPeriod.YEAR;
+    private void fillEntity(StudyPeriodSetting entity, StudyPeriodSettingRequest request) {
+        entity.setCode((request.getCode() == null || request.getCode().isBlank()) ? defaultCode(request) : request.getCode().trim());
+        entity.setDisplayName(request.getDisplayName().trim());
+        entity.setStudyPeriod(request.getStudyPeriod());
+        entity.setParallelFrom(request.getParallelFrom());
+        entity.setParallelTo(request.getParallelTo());
+        entity.setDefaultRule(Boolean.TRUE.equals(request.getDefaultRule()));
+        entity.setStartDate(request.getStartDate());
+        entity.setEndDate(request.getEndDate());
+        entity.setUpdatedAt(LocalDateTime.now());
     }
 
-    private StudyPeriod inferForHighSchool(int parallel,
-                                           LocalDate loadFromDate,
-                                           LocalDate loadToDate,
-                                           Map<StudyPeriodSettingKey, DateRange> ranges) {
-        StudyPeriodSettingKey h1Key = parallel >= 11 ? StudyPeriodSettingKey.H1_11 : StudyPeriodSettingKey.H1_10;
-        StudyPeriodSettingKey h2Key = parallel >= 11 ? StudyPeriodSettingKey.H2_11 : StudyPeriodSettingKey.H2_10;
-        DateRange h1 = ranges.get(h1Key);
-        DateRange h2 = ranges.get(h2Key);
-        if (loadFromDate == null || loadToDate == null || h1 == null || h2 == null) {
-            return StudyPeriod.H1;
-        }
-        if (loadFromDate.equals(h1.startDate()) && loadToDate.equals(h1.endDate())) {
-            return StudyPeriod.H1;
-        }
-        if (loadFromDate.equals(h2.startDate()) && loadToDate.equals(h2.endDate())) {
-            return StudyPeriod.H2;
-        }
-        if (h1.fullyContains(loadFromDate, loadToDate)) {
-            return StudyPeriod.H1;
-        }
-        if (h2.fullyContains(loadFromDate, loadToDate)) {
-            return StudyPeriod.H2;
-        }
-        long overlapH1 = overlapDays(loadFromDate, loadToDate, h1.startDate(), h1.endDate());
-        long overlapH2 = overlapDays(loadFromDate, loadToDate, h2.startDate(), h2.endDate());
-        return overlapH2 > overlapH1 ? StudyPeriod.H2 : StudyPeriod.H1;
-    }
-
-    private long overlapDays(LocalDate fromA, LocalDate toA, LocalDate fromB, LocalDate toB) {
-        if (fromA == null || toA == null || fromB == null || toB == null) {
-            return 0;
-        }
-        LocalDate start = fromA.isAfter(fromB) ? fromA : fromB;
-        LocalDate end = toA.isBefore(toB) ? toA : toB;
-        if (end.isBefore(start)) {
-            return 0;
-        }
-        return java.time.temporal.ChronoUnit.DAYS.between(start, end) + 1;
+    private String defaultCode(StudyPeriodSettingRequest request) {
+        return (request.getStudyPeriod().name() + "_" + request.getParallelFrom() + "_" + request.getParallelTo() + "_" + System.currentTimeMillis())
+                .toLowerCase(Locale.ROOT);
     }
 
     private void ensureDefaults() {
-        if (repository.count() >= StudyPeriodSettingKey.values().length) {
-            return;
-        }
-
-        createIfMissing(StudyPeriodSettingKey.YEAR_1_9, DEFAULT_YEAR_START, DEFAULT_YEAR_END);
-        createIfMissing(StudyPeriodSettingKey.H1_1_9, DEFAULT_YEAR_START, DEFAULT_H1_END);
-        createIfMissing(StudyPeriodSettingKey.H2_1_9, DEFAULT_H2_START, DEFAULT_YEAR_END);
-        createIfMissing(StudyPeriodSettingKey.H1_10, DEFAULT_YEAR_START, DEFAULT_H1_END);
-        createIfMissing(StudyPeriodSettingKey.H2_10, DEFAULT_H2_START, DEFAULT_YEAR_END);
-        createIfMissing(StudyPeriodSettingKey.H1_11, DEFAULT_YEAR_START, DEFAULT_11_H1_END);
-        createIfMissing(StudyPeriodSettingKey.H2_11, DEFAULT_11_H2_START, DEFAULT_YEAR_END);
+        if (repository.count() > 0) return;
+        seed("YEAR_1_9", "1–9 классы · учебный год", StudyPeriod.YEAR, 1, 9, DEFAULT_YEAR_START, DEFAULT_YEAR_END);
+        seed("H1_1_9", "1–9 классы · 1 полугодие", StudyPeriod.H1, 1, 9, DEFAULT_YEAR_START, DEFAULT_H1_END);
+        seed("H2_1_9", "1–9 классы · 2 полугодие", StudyPeriod.H2, 1, 9, DEFAULT_H2_START, DEFAULT_YEAR_END);
+        seed("H1_10", "10 класс · 1 полугодие", StudyPeriod.H1, 10, 10, DEFAULT_YEAR_START, DEFAULT_H1_END);
+        seed("H2_10", "10 класс · 2 полугодие", StudyPeriod.H2, 10, 10, DEFAULT_H2_START, DEFAULT_YEAR_END);
+        seed("YEAR_10", "10 класс · учебный год", StudyPeriod.YEAR, 10, 10, DEFAULT_YEAR_START, DEFAULT_YEAR_END);
+        seed("H1_11", "11 класс · 1 полугодие", StudyPeriod.H1, 11, 11, DEFAULT_YEAR_START, DEFAULT_11_H1_END);
+        seed("H2_11", "11 класс · 2 полугодие", StudyPeriod.H2, 11, 11, DEFAULT_11_H2_START, DEFAULT_YEAR_END);
+        seed("YEAR_11", "11 класс · учебный год", StudyPeriod.YEAR, 11, 11, DEFAULT_YEAR_START, DEFAULT_YEAR_END);
     }
 
-    private void createIfMissing(StudyPeriodSettingKey key, LocalDate startDate, LocalDate endDate) {
-        if (repository.findBySettingKey(key).isPresent()) {
-            return;
-        }
+    private void seed(String code, String displayName, StudyPeriod period, int from, int to, LocalDate startDate, LocalDate endDate) {
         StudyPeriodSetting entity = new StudyPeriodSetting();
-        fillEntity(entity, key, startDate, endDate);
-        repository.save(entity);
-    }
-
-    private void fillEntity(StudyPeriodSetting entity, StudyPeriodSettingKey key, LocalDate startDate, LocalDate endDate) {
-        entity.setSettingKey(key);
-        entity.setStudyPeriod(key.getStudyPeriod());
-        entity.setParallelFrom(key.getParallelFrom());
-        entity.setParallelTo(key.getParallelTo());
-        entity.setDisplayName(key.getDisplayName());
+        entity.setCode(code);
+        entity.setDisplayName(displayName);
+        entity.setStudyPeriod(period);
+        entity.setParallelFrom(from);
+        entity.setParallelTo(to);
+        entity.setDefaultRule(true);
         entity.setStartDate(startDate);
         entity.setEndDate(endDate);
         entity.setUpdatedAt(LocalDateTime.now());
+        repository.save(entity);
     }
 }
