@@ -15,6 +15,7 @@ import org.school.personalLoad.service.ClassroomLeadershipService;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
@@ -168,6 +169,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     }
 
     @Override
+    @Transactional
     public void deleteOne(String numberSchoolBuilding, String className) {
         String building = normalizeBuildingCode(numberSchoolBuilding);
         String normalizedClassName = ClassNameNormalizer.normalize(className);

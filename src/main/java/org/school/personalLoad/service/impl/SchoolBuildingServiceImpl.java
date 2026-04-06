@@ -8,6 +8,7 @@ import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.auth.AppUserRepository;
 import org.school.personalLoad.service.SchoolBuildingService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -55,6 +56,7 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
     }
 
     @Override
+    @Transactional
     public void deleteByCode(String code) {
         String normalizedCode = normalize(code);
         if (normalizedCode.isBlank()) {
