@@ -394,6 +394,17 @@ hr {
     background: #eef2ff;
 }
 
+.hours-cell.empty-hours-cell {
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    color: #94a3b8;
+}
+
+.hours-cell.empty-hours-cell:hover {
+    background: #eef2ff;
+    border-color: #94a3b8;
+}
+
 .hours-cell.advanced-cell {
     background: #ffd8b5;
 }
@@ -556,9 +567,9 @@ dialog::backdrop {
 }
 
 #save-building-btn {
-    position: sticky;
-    top: calc(var(--sticky-header-height, 140px) + 12px);
-    z-index: 20;
+    position: static;
+    top: auto;
+    z-index: auto;
 }
 
 #save-building-btn.clean-save {
@@ -687,11 +698,17 @@ dialog::backdrop {
     background: #fee2e2;
 }
 
+.summary-value.conflict-row {
+    background: #fee2e2;
+    color: #991b1b;
+    font-weight: 700;
+}
+
 
 .load-page .load-toolbar {
-    position: sticky;
-    top: calc(var(--sticky-header-height, 140px) + 12px);
-    z-index: 40;
+    position: static;
+    top: auto;
+    z-index: auto;
 }
 
 .load-page .load-toolbar .load-status-card {
@@ -702,7 +719,7 @@ dialog::backdrop {
 }
 
 .load-page .sheet-wrap {
-    max-height: calc(100vh - 300px);
+    max-height: calc(100vh - 230px);
 }
 
 .load-page .sheet-table thead th {
@@ -717,23 +734,33 @@ dialog::backdrop {
 }
 
 #building-load-table thead tr.load-class-head th {
+    position: sticky;
     top: 38px;
     z-index: 7;
     background: #f1f5f9;
+}
+
+.load-head-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.head-action-btn {
+    padding: 6px 10px;
+    border-radius: 8px;
 }
 
 .load-page .compact-note {
     margin: 6px 0 0;
 }
 
-.debug-panel summary {
-    cursor: pointer;
-    color: #475569;
-    font-size: 13px;
-}
-
-.debug-panel pre {
-    margin-top: 8px;
+.inline-load-stats {
+    margin-left: auto;
+    display: flex;
+    gap: 14px;
+    align-items: center;
 }
 
 
@@ -1178,4 +1205,11 @@ dialog::backdrop {
     width: 24px;
     height: 24px;
     cursor: pointer;
+}
+
+.meta-group-cell {
+    background: #dcfce7 !important;
+    border-color: #22c55e !important;
+    color: #166534;
+    font-weight: 700;
 }

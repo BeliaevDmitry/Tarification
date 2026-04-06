@@ -45,6 +45,13 @@ public class ClassroomLeadershipController {
         return ResponseEntity.ok(classroomLeadershipService.findAll());
     }
 
+    @DeleteMapping("/one")
+    public ResponseEntity<Void> deleteOne(@RequestParam String numberSchoolBuilding,
+                                          @RequestParam String className) {
+        classroomLeadershipService.deleteOne(numberSchoolBuilding, className);
+        return ResponseEntity.noContent().build();
+    }
+
     @DeleteMapping
     public ResponseEntity<Void> clearAll() {
         classroomLeadershipService.clearAll();
