@@ -168,6 +168,16 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     }
 
     @Override
+    public void deleteOne(String numberSchoolBuilding, String className) {
+        String building = normalizeBuildingCode(numberSchoolBuilding);
+        String normalizedClassName = ClassNameNormalizer.normalize(className);
+        if (building.isBlank() || normalizedClassName.isBlank()) {
+            throw new IllegalArgumentException("numberSchoolBuilding and className are required");
+        }
+        classroomLeadershipRepository.deleteByNumberSchoolBuildingAndClassName(building, normalizedClassName);
+    }
+
+    @Override
     public void clearAll() {
         classroomLeadershipRepository.deleteAll();
     }

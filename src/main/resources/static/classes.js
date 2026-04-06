@@ -13,6 +13,7 @@ const ui = {
     editDialog: document.getElementById("class-edit-dialog"),
     editForm: document.getElementById("class-edit-form"),
     editBuilding: document.getElementById("class-edit-building"),
+    editDeleteBtn: document.getElementById("class-edit-delete-btn"),
     editCloseBtn: document.getElementById("class-edit-close-btn")
 };
 
@@ -178,6 +179,23 @@ ui.editForm.addEventListener('submit', async (e) => {
 });
 
 ui.editCloseBtn.addEventListener('click', () => ui.editDialog.close());
+ui.editDeleteBtn?.addEventListener('click', async () => {
+    const building = normalizeBuildingCode(ui.editForm.elements.numberSchoolBuilding.value);
+    const className = normalizeClassName(ui.editForm.elements.className.value);
+    if (!building || !className) {
+        print({ error: "Выберите корпус и класс для удаления" });
+        return;
+    }
+    if (!window.confirm(`Удалить класс ${className} в корпусе ${building}?`)) return;
+    try {
+        await api(`/api/classroom-leadership/one?numberSchoolBuilding=${encodeURIComponent(building)}&className=${encodeURIComponent(className)}`, { method: "DELETE" });
+        ui.editDialog.close();
+        print({ status: "deleted", numberSchoolBuilding: building, className });
+        await reload();
+    } catch (error) {
+        print({ error: error.message });
+    }
+});
 
 ui.importBtn.addEventListener("click", async () => {
     const file = ui.fileInput.files?.[0];

@@ -7,21 +7,18 @@ import org.school.personalLoad.model.StudyPeriodSettingKey;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
 
 public interface StudyPeriodSettingService {
     List<StudyPeriodSetting> findAll();
     List<StudyPeriodSetting> saveAll(List<StudyPeriodSettingRequest> requests);
-    Map<StudyPeriodSettingKey, DateRange> rangesByKey();
+    StudyPeriodSetting create(StudyPeriodSettingRequest request);
+    java.util.Map<StudyPeriodSettingKey, DateRange> rangesByKey();
     DateRange resolveDateRange(String className, StudyPeriod studyPeriod);
     StudyPeriod inferStudyPeriod(String className, LocalDate loadFromDate, LocalDate loadToDate);
-    StudyPeriodSettingKey resolveKey(String className, StudyPeriod studyPeriod);
+    List<StudyPeriodSetting> findAvailableForClass(String className);
+    StudyPeriodSetting resolveRuleForClassAndPeriod(String className, StudyPeriod studyPeriod);
 
     record DateRange(LocalDate startDate, LocalDate endDate) {
-        public boolean contains(LocalDate date) {
-            return date != null && !date.isBefore(startDate) && !date.isAfter(endDate);
-        }
-
         public boolean fullyContains(LocalDate fromDate, LocalDate toDate) {
             return fromDate != null && toDate != null && !fromDate.isBefore(startDate) && !toDate.isAfter(endDate);
         }
