@@ -9,6 +9,7 @@ const ui = {
     editDialog: document.getElementById("building-edit-dialog"),
     editForm: document.getElementById("building-edit-form"),
     closeBtn: document.getElementById("building-close-btn"),
+    deleteBtn: document.getElementById("building-delete-btn"),
     managerDisplay: document.getElementById("building-manager-display")
 };
 
@@ -100,6 +101,22 @@ ui.editForm.addEventListener('submit', async (e) => {
 });
 
 ui.closeBtn.addEventListener('click', () => ui.editDialog.close());
+ui.deleteBtn?.addEventListener('click', async () => {
+    const code = String(ui.editForm.elements.code.value || "").trim();
+    if (!code) {
+        print({ error: "Код корпуса не найден" });
+        return;
+    }
+    if (!window.confirm("Удалить корпус? Действие необратимо.")) return;
+    try {
+        await api(`/api/buildings/one?code=${encodeURIComponent(code)}`, { method: "DELETE" });
+        ui.editDialog.close();
+        print({ status: "deleted", code });
+        await reload();
+    } catch (error) {
+        print({ error: error.message });
+    }
+});
 ui.refreshBtn.addEventListener("click", () => reload().catch((e) => print({ error: e.message })));
 ui.clearBtn.addEventListener("click", async () => {
     try { await api("/api/buildings", { method: "DELETE" }); print({ status: "cleared" }); await reload(); }
