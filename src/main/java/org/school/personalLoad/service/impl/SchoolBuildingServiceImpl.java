@@ -54,6 +54,15 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
                 .toList();
     }
 
+    @Override
+    public void deleteByCode(String code) {
+        String normalizedCode = normalize(code);
+        if (normalizedCode.isBlank()) {
+            throw new IllegalArgumentException("code is required");
+        }
+        repository.deleteByCode(normalizedCode);
+    }
+
 
     private SchoolBuilding withDisplayManager(SchoolBuilding source, String assignedManagerFio) {
         SchoolBuilding copy = new SchoolBuilding();

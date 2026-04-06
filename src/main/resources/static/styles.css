@@ -734,8 +734,9 @@ dialog::backdrop {
 }
 
 #building-load-table thead tr.load-class-head th {
-    top: 38px;
-    z-index: 7;
+    position: static;
+    top: auto;
+    z-index: 1;
     background: #f1f5f9;
 }
 
