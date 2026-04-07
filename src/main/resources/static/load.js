@@ -1235,9 +1235,19 @@ function renderTable() {
         <th rowspan="2">Педагог</th>
         <th rowspan="2">Часов в корпусе</th>
         <th rowspan="2">Всего часов в комплексе</th>
-        <th colspan="${Math.max(classes.length, 1)}">Классы</th>
+        <th colspan="${Math.max(classes.length, 1)}">
+            <div class="load-head-actions">
+                <span><strong>Ошибки: ${loadIssues.length}</strong></span>
+                <button type="button" class="head-action-btn" data-head-save="1">Сохранить нагрузку корпуса</button>
+                <button type="button" class="head-action-btn" data-head-next-error="1">Перейти к ошибке</button>
+            </div>
+        </th>
     `;
     ui.tableHead.appendChild(headMain);
+    const headSaveBtn = headMain.querySelector('[data-head-save="1"]');
+    const headNextErrorBtn = headMain.querySelector('[data-head-next-error="1"]');
+    headSaveBtn?.addEventListener("click", () => ui.saveBuildingBtn?.click());
+    headNextErrorBtn?.addEventListener("click", () => ui.nextErrorBtn?.click());
 
     const headClasses = document.createElement("tr");
     headClasses.className = "load-class-head";

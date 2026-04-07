@@ -734,10 +734,22 @@ dialog::backdrop {
 }
 
 #building-load-table thead tr.load-class-head th {
-    position: static;
-    top: auto;
-    z-index: 1;
+    position: sticky;
+    top: 38px;
+    z-index: 7;
     background: #f1f5f9;
+}
+
+.load-head-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.head-action-btn {
+    padding: 6px 10px;
+    border-radius: 8px;
 }
 
 .load-page .compact-note {
