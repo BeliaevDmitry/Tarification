@@ -420,6 +420,52 @@ function currentAuthUser() {
     return window.tarificationAuth || null;
 }
 
+function hasCurriculumRowsForBuilding(buildingCode) {
+    const normalizedBuilding = normalizeBuildingCode(buildingCode);
+    if (!normalizedBuilding) return false;
+    const classMap = classBuildingMap();
+    return (curriculumRows || []).some((row) => {
+        if (row.metaGroup) return false;
+        const rowBuilding = normalizeBuildingCode(row.numberSchoolBuilding);
+        const classBuilding = classMap.get(normalizeClassName(row.className));
+        return rowBuilding === normalizedBuilding || classBuilding === normalizedBuilding;
+    });
+}
+
+function preferredBuildingCode(availableBuildings) {
+    if (!Array.isArray(availableBuildings) || !availableBuildings.length) return "";
+    const user = currentAuthUser();
+    const byCode = new Map(availableBuildings.map((b) => [normalizeBuildingCode(b.code), b.code]));
+    const allOrderedCodes = availableBuildings.map((b) => normalizeBuildingCode(b.code)).filter(Boolean);
+    const editableCodes = [];
+
+    if (!user || user.admin || user.loadEditAllBuildings) {
+        editableCodes.push(...allOrderedCodes);
+    } else {
+        editableCodes.push(...(user.loadEditableBuildingCodes || [])
+            .map((code) => normalizeBuildingCode(code))
+            .filter(Boolean));
+        const managedCode = normalizeBuildingCode(user.managedBuildingCode);
+        if (managedCode) editableCodes.push(managedCode);
+        if (!editableCodes.length) {
+            editableCodes.push(...allOrderedCodes);
+        }
+    }
+
+    const uniqueEditableCodes = [...new Set(editableCodes)];
+    for (const code of uniqueEditableCodes) {
+        if (byCode.has(code) && hasCurriculumRowsForBuilding(code)) {
+            return byCode.get(code);
+        }
+    }
+    for (const code of uniqueEditableCodes) {
+        if (byCode.has(code)) {
+            return byCode.get(code);
+        }
+    }
+    return availableBuildings[0].code;
+}
+
 function canEditSelectedBuildingLoad() {
     const user = currentAuthUser();
     if (!user) return false;
@@ -1559,8 +1605,16 @@ async function refreshSourceData() {
     markDirty(false);
     updateViewModeControls();
 
-    if (selectedBuilding !== ARCHIVE_BUILDING_CODE && !buildings.some((row) => row.code === selectedBuilding)) {
-        selectedBuilding = buildings[0]?.code || "";
+    if (selectedBuilding !== ARCHIVE_BUILDING_CODE) {
+        const existsInTabs = buildings.some((row) => row.code === selectedBuilding);
+        if (!existsInTabs) {
+            selectedBuilding = preferredBuildingCode(buildings);
+        } else if (!canEditSelectedBuildingLoad()) {
+            const preferred = preferredBuildingCode(buildings);
+            if (preferred) {
+                selectedBuilding = preferred;
+            }
+        }
     }
 
     state.takeoverContext = null;
