@@ -24,21 +24,24 @@ function print(value) { ui.result.textContent = JSON.stringify(value, null, 2); 
 
 function rowMarkup(item, idx) {
     return `
-        <div class="settings-period-card" data-idx="${idx}">
-            <input type="hidden" name="id" value="${item.id || ''}">
-            <label>Название<input name="displayName" value="${item.displayName || ''}" required></label>
-            <label>Код<input name="code" value="${item.code || ''}" required></label>
-            <label>Тип периода
+        <tr data-idx="${idx}">
+            <td>
+                <input type="hidden" name="id" value="${item.id || ''}">
+                <input name="displayName" value="${item.displayName || ''}" required>
+            </td>
+            <td><input name="code" value="${item.code || ''}" required></td>
+            <td>
                 <select name="studyPeriod" required>
                     ${PERIODS.map((p) => `<option value="${p}" ${item.studyPeriod === p ? 'selected' : ''}>${p}</option>`).join('')}
                 </select>
-            </label>
-            <label>Классы с<input name="parallelFrom" type="number" min="1" max="11" value="${item.parallelFrom || 1}" required></label>
-            <label>Классы по<input name="parallelTo" type="number" min="1" max="11" value="${item.parallelTo || 11}" required></label>
-            <label>Начало<input name="startDate" type="date" value="${item.startDate || ''}" required></label>
-            <label>Окончание<input name="endDate" type="date" value="${item.endDate || ''}" required></label>
-            <label><input name="defaultRule" type="checkbox" ${item.defaultRule ? 'checked' : ''}> По умолчанию</label>
-        </div>`;
+            </td>
+            <td><input name="parallelFrom" type="number" min="1" max="11" value="${item.parallelFrom || 1}" required></td>
+            <td><input name="parallelTo" type="number" min="1" max="11" value="${item.parallelTo || 11}" required></td>
+            <td><input name="startDate" type="date" value="${item.startDate || ''}" required></td>
+            <td><input name="endDate" type="date" value="${item.endDate || ''}" required></td>
+            <td class="period-default-cell"><input name="defaultRule" type="checkbox" ${item.defaultRule ? 'checked' : ''}></td>
+            <td><button type="button" class="danger-btn" data-remove-period="${idx}">Удалить</button></td>
+        </tr>`;
 }
 
 function render() {
@@ -51,16 +54,16 @@ async function reload() {
 }
 
 function collectPayload() {
-    return Array.from(ui.list.querySelectorAll('.settings-period-card')).map((card) => ({
-        id: card.querySelector('[name=id]').value ? Number(card.querySelector('[name=id]').value) : null,
-        displayName: card.querySelector('[name=displayName]').value.trim(),
-        code: card.querySelector('[name=code]').value.trim(),
-        studyPeriod: card.querySelector('[name=studyPeriod]').value,
-        parallelFrom: Number(card.querySelector('[name=parallelFrom]').value),
-        parallelTo: Number(card.querySelector('[name=parallelTo]').value),
-        startDate: card.querySelector('[name=startDate]').value,
-        endDate: card.querySelector('[name=endDate]').value,
-        defaultRule: card.querySelector('[name=defaultRule]').checked
+    return Array.from(ui.list.querySelectorAll('tr[data-idx]')).map((row) => ({
+        id: row.querySelector('[name=id]').value ? Number(row.querySelector('[name=id]').value) : null,
+        displayName: row.querySelector('[name=displayName]').value.trim(),
+        code: row.querySelector('[name=code]').value.trim(),
+        studyPeriod: row.querySelector('[name=studyPeriod]').value,
+        parallelFrom: Number(row.querySelector('[name=parallelFrom]').value),
+        parallelTo: Number(row.querySelector('[name=parallelTo]').value),
+        startDate: row.querySelector('[name=startDate]').value,
+        endDate: row.querySelector('[name=endDate]').value,
+        defaultRule: row.querySelector('[name=defaultRule]').checked
     }));
 }
 
@@ -105,6 +108,14 @@ function bindEvents() {
             startDate: '',
             endDate: ''
         });
+        render();
+    });
+    ui.list?.addEventListener('click', (event) => {
+        const btn = event.target.closest('[data-remove-period]');
+        if (!btn) return;
+        const idx = Number(btn.getAttribute('data-remove-period'));
+        if (!Number.isInteger(idx)) return;
+        state.splice(idx, 1);
         render();
     });
 }

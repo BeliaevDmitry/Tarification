@@ -31,7 +31,24 @@
         </div>
 
         <form id="study-periods-form" class="grid">
-            <div id="study-periods-list" class="grid settings-period-grid"></div>
+            <div class="full-span sheet-wrap">
+                <table class="sheet-table settings-period-table">
+                    <thead>
+                    <tr>
+                        <th>Название</th>
+                        <th>Код</th>
+                        <th>Тип периода</th>
+                        <th>Классы с</th>
+                        <th>Классы по</th>
+                        <th>Начало</th>
+                        <th>Окончание</th>
+                        <th>По умолчанию</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody id="study-periods-list"></tbody>
+                </table>
+            </div>
             <div class="row full-span">
                 <button type="button" id="add-period-btn">Добавить период</button>
                 <button type="submit">Сохранить изменения</button>
