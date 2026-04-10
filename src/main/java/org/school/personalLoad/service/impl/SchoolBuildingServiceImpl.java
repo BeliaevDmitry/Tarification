@@ -8,6 +8,7 @@ import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.auth.AppUserRepository;
 import org.school.personalLoad.service.SchoolBuildingService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -52,6 +53,16 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
         return repository.findAll().stream()
                 .map(entity -> withDisplayManager(entity, buildingHeadByCode.get(normalize(entity.getCode()))))
                 .toList();
+    }
+
+    @Override
+    @Transactional
+    public void deleteByCode(String code) {
+        String normalizedCode = normalize(code);
+        if (normalizedCode.isBlank()) {
+            throw new IllegalArgumentException("code is required");
+        }
+        repository.deleteByCode(normalizedCode);
     }
 
 

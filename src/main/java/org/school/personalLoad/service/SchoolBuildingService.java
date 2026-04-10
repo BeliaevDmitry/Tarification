@@ -10,5 +10,7 @@ public interface SchoolBuildingService {
 
     List<SchoolBuilding> findAll();
 
+    void deleteByCode(String code);
+
     void clearAll();
 }

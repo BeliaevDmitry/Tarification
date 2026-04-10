@@ -26,54 +26,32 @@
         <div class="section-heading">
             <div>
                 <h2>Периоды обучения</h2>
-                <p class="muted">Для 1–9 классов доступны учебный год, 1 и 2 полугодие. Для 10 и 11 классов сроки полугодий настраиваются отдельно.</p>
+                <p class="muted">Можно добавлять новые периоды. Периоды затем доступны в «Учебные планы» для классов из заданного диапазона.</p>
             </div>
         </div>
-        <form id="study-periods-form" class="grid settings-period-grid">
-            <div class="settings-period-card">
-                <h3>1–9 классы · учебный год</h3>
-                <input type="hidden" name="YEAR_1_9_settingKey" value="YEAR_1_9">
-                <label>Дата начала<input type="date" name="YEAR_1_9_startDate" required></label>
-                <label>Дата окончания<input type="date" name="YEAR_1_9_endDate" required></label>
-            </div>
-            <div class="settings-period-card">
-                <h3>1–9 классы · 1 полугодие</h3>
-                <input type="hidden" name="H1_1_9_settingKey" value="H1_1_9">
-                <label>Дата начала<input type="date" name="H1_1_9_startDate" required></label>
-                <label>Дата окончания<input type="date" name="H1_1_9_endDate" required></label>
-            </div>
-            <div class="settings-period-card">
-                <h3>1–9 классы · 2 полугодие</h3>
-                <input type="hidden" name="H2_1_9_settingKey" value="H2_1_9">
-                <label>Дата начала<input type="date" name="H2_1_9_startDate" required></label>
-                <label>Дата окончания<input type="date" name="H2_1_9_endDate" required></label>
-            </div>
-            <div class="settings-period-card">
-                <h3>10 класс · 1 полугодие</h3>
-                <input type="hidden" name="H1_10_settingKey" value="H1_10">
-                <label>Дата начала<input type="date" name="H1_10_startDate" required></label>
-                <label>Дата окончания<input type="date" name="H1_10_endDate" required></label>
-            </div>
-            <div class="settings-period-card">
-                <h3>10 класс · 2 полугодие</h3>
-                <input type="hidden" name="H2_10_settingKey" value="H2_10">
-                <label>Дата начала<input type="date" name="H2_10_startDate" required></label>
-                <label>Дата окончания<input type="date" name="H2_10_endDate" required></label>
-            </div>
-            <div class="settings-period-card">
-                <h3>11 класс · 1 полугодие</h3>
-                <input type="hidden" name="H1_11_settingKey" value="H1_11">
-                <label>Дата начала<input type="date" name="H1_11_startDate" required></label>
-                <label>Дата окончания<input type="date" name="H1_11_endDate" required></label>
-            </div>
-            <div class="settings-period-card">
-                <h3>11 класс · 2 полугодие</h3>
-                <input type="hidden" name="H2_11_settingKey" value="H2_11">
-                <label>Дата начала<input type="date" name="H2_11_startDate" required></label>
-                <label>Дата окончания<input type="date" name="H2_11_endDate" required></label>
+
+        <form id="study-periods-form" class="grid">
+            <div class="full-span sheet-wrap">
+                <table class="sheet-table settings-period-table">
+                    <thead>
+                    <tr>
+                        <th>Название</th>
+                        <th>Код</th>
+                        <th>Тип периода</th>
+                        <th>Классы с</th>
+                        <th>Классы по</th>
+                        <th>Начало</th>
+                        <th>Окончание</th>
+                        <th>По умолчанию</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody id="study-periods-list"></tbody>
+                </table>
             </div>
             <div class="row full-span">
-                <button type="submit">Сохранить периоды</button>
+                <button type="button" id="add-period-btn">Добавить период</button>
+                <button type="submit">Сохранить изменения</button>
                 <button type="button" id="study-periods-refresh-btn">Обновить</button>
             </div>
         </form>

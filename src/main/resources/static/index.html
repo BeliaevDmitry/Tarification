@@ -8,19 +8,43 @@
 </head>
 <body>
 <main class="container">
-  <header class="card">
-    <h1>Tarification</h1>
-    <p class="muted">Выберите режим работы в верхнем меню.</p>
-    <nav class="page-nav">
-      <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
-      <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
-      <a class="nav-link" href="/subjects.html" data-tab="SUBJECTS">Предметы</a>
-      <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
-      <a class="nav-link" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
-      <a class="nav-link" href="/settings.html" data-tab="SETTINGS">Настройки</a>
-            <a class="nav-link" href="/teachers.html" data-tab="TEACHERS">Педагоги</a>
-    </nav>
-  </header>
+    <header class="card">
+        <h1>Главное меню</h1>
+        <p class="muted">Выберите модуль системы.</p>
+        <nav class="page-nav"></nav>
+    </header>
+
+    <section class="module-grid">
+        <a class="module-card module-card-primary" href="/load.html">
+            <span class="module-icon">📊</span>
+            <h2>Нагрузка</h2>
+            <p>Основной рабочий модуль. Текущая функциональность системы доступна здесь.</p>
+        </a>
+
+        <a class="module-card module-card-placeholder" href="/contingent.html">
+            <span class="module-icon">👥</span>
+            <h2>Контингент</h2>
+            <p>Модуль-заглушка под будущий сервис.</p>
+        </a>
+
+        <a class="module-card module-card-placeholder" href="/vsoko.html">
+            <span class="module-icon">🧭</span>
+            <h2>ВСОКО</h2>
+            <p>Модуль-заглушка под будущий сервис.</p>
+        </a>
+    </section>
+
+    <section class="card module-admin-section" data-requires-tab="USERS">
+        <h2>Администрирование</h2>
+        <p class="muted">Управление пользователями системы и правами доступа.</p>
+        <div class="module-grid">
+            <a class="module-card" href="/admin.html">
+                <span class="module-icon">🛡️</span>
+                <h2>Пользователи</h2>
+                <p>Создание пользователей и редактирование прав доступа.</p>
+            </a>
+        </div>
+    </section>
 </main>
 <script src="/auth.js"></script>
 </body>
