@@ -270,12 +270,13 @@ function dayBefore(isoDate) {
 
 function rowsForSelectedBuilding() {
     if (selectedBuilding === ARCHIVE_BUILDING_CODE) return [];
+    const normalizedSelectedBuilding = normalizeBuildingCode(selectedBuilding);
     const map = classBuildingMap();
     return curriculumRows.filter((row) => {
         if (row.metaGroup) return false;
         const rowBuilding = normalizeBuildingCode(row.numberSchoolBuilding);
         const byClass = map.get(normalizeClassName(row.className));
-        return rowBuilding === selectedBuilding || byClass === selectedBuilding;
+        return rowBuilding === normalizedSelectedBuilding || byClass === normalizedSelectedBuilding;
     });
 }
 
