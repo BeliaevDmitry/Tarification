@@ -425,7 +425,6 @@ function hasCurriculumRowsForBuilding(buildingCode) {
     if (!normalizedBuilding) return false;
     const classMap = classBuildingMap();
     return (curriculumRows || []).some((row) => {
-        if (row.metaGroup) return false;
         const rowBuilding = normalizeBuildingCode(row.numberSchoolBuilding);
         const classBuilding = classMap.get(normalizeClassName(row.className));
         return rowBuilding === normalizedBuilding || classBuilding === normalizedBuilding;
