@@ -13,6 +13,8 @@ public interface ClassroomLeadershipService {
 
     List<ClassroomLeadershipEntry> findAll();
 
+    void deleteOne(String numberSchoolBuilding, String className);
+
     void clearAll();
 
     Map<String, Object> importFromExcel(MultipartFile file);

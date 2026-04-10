@@ -13,6 +13,7 @@ const ui = {
     editDialog: document.getElementById("class-edit-dialog"),
     editForm: document.getElementById("class-edit-form"),
     editBuilding: document.getElementById("class-edit-building"),
+    editDeleteBtn: document.getElementById("class-edit-delete-btn"),
     editCloseBtn: document.getElementById("class-edit-close-btn")
 };
 
@@ -20,6 +21,7 @@ let teachers = [];
 let buildings = [];
 let classRows = [];
 let editingOriginalKey = null;
+let editingOriginalEntry = null;
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -41,7 +43,7 @@ function normalizeClassName(value) {
 }
 
 function normalizeBuildingCode(value) {
-    return norm(value).replaceAll(" ", "").toUpperCase();
+    return norm(value).replaceAll(" ", "");
 }
 
 function entryKey(entry) {
@@ -72,7 +74,10 @@ function renderBuildings() {
 
 function openEditDialog(entry) {
     editingOriginalKey = entryKey(entry);
-    ui.editForm.elements.numberSchoolBuilding.value = normalizeBuildingCode(entry.numberSchoolBuilding);
+    editingOriginalEntry = { ...entry };
+    const normalizedEntryCode = normalizeBuildingCode(entry.numberSchoolBuilding);
+    const matchingBuilding = buildings.find((b) => normalizeBuildingCode(b.code) === normalizedEntryCode);
+    ui.editForm.elements.numberSchoolBuilding.value = matchingBuilding?.code || entry.numberSchoolBuilding || "";
     ui.editForm.elements.className.value = entry.className || "";
     ui.editForm.elements.classDirection.value = entry.classDirection || "";
     ui.editForm.elements.fioTeacher.value = entry.fioTeacher || "";
@@ -178,6 +183,23 @@ ui.editForm.addEventListener('submit', async (e) => {
 });
 
 ui.editCloseBtn.addEventListener('click', () => ui.editDialog.close());
+ui.editDeleteBtn?.addEventListener('click', async () => {
+    const building = normalizeBuildingCode(editingOriginalEntry?.numberSchoolBuilding || ui.editForm.elements.numberSchoolBuilding.value);
+    const className = normalizeClassName(editingOriginalEntry?.className || ui.editForm.elements.className.value);
+    if (!building || !className) {
+        print({ error: "Выберите корпус и класс для удаления" });
+        return;
+    }
+    if (!window.confirm(`Удалить класс ${className} в корпусе ${building}?`)) return;
+    try {
+        await api(`/api/classroom-leadership/one?numberSchoolBuilding=${encodeURIComponent(building)}&className=${encodeURIComponent(className)}`, { method: "DELETE" });
+        ui.editDialog.close();
+        print({ status: "deleted", numberSchoolBuilding: building, className });
+        await reload();
+    } catch (error) {
+        print({ error: error.message });
+    }
+});
 
 ui.importBtn.addEventListener("click", async () => {
     const file = ui.fileInput.files?.[0];

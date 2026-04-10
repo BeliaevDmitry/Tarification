@@ -218,6 +218,17 @@ function enrichNavigation(currentUser) {
     const permissions = tabPermissionMap(currentUser);
     document.querySelectorAll('.page-nav').forEach((nav) => {
         nav.innerHTML = '';
+        const homeLink = document.createElement('a');
+        homeLink.className = 'nav-link nav-home-link';
+        homeLink.href = '/';
+        homeLink.title = 'Главная';
+        homeLink.setAttribute('aria-label', 'Главная');
+        homeLink.textContent = '🏠';
+        if (window.location.pathname === '/' || window.location.pathname === '/index.html') {
+            homeLink.classList.add('active');
+        }
+        nav.appendChild(homeLink);
+
         NAV_ORDER.forEach((tabDef) => {
             const canView = currentUser.admin || permissions[tabDef.tab]?.canView;
             if (!canView) return;
@@ -234,12 +245,25 @@ function enrichNavigation(currentUser) {
     });
 }
 
+function applyTabVisibility(currentUser) {
+    const permissions = tabPermissionMap(currentUser);
+    document.querySelectorAll('[data-requires-tab]').forEach((el) => {
+        const tab = el.getAttribute('data-requires-tab');
+        if (!tab) return;
+        const canView = currentUser.admin || Boolean(permissions[tab]?.canView);
+        if (!canView) {
+            el.style.display = 'none';
+        }
+    });
+}
+
 (async function initAuth() {
     try {
         const currentUser = await tarificationApi('/api/auth/me');
         window.tarificationAuth = currentUser;
         window.tarificationTabPermissions = tabPermissionMap(currentUser);
         enrichNavigation(currentUser);
+        applyTabVisibility(currentUser);
         mountHeaderUser(currentUser);
         insertReadonlyNotice(currentUser);
         disableEditAreas(currentUser);

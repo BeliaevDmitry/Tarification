@@ -9,7 +9,15 @@ import java.util.Optional;
 
 @Repository
 public interface CurriculumPlanEntryRepository extends JpaRepository<CurriculumPlanEntry, Long> {
-    Optional<CurriculumPlanEntry> findByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriod(String numberSchoolBuilding, String className, String subjectName, EducationLevel educationLevel, CurriculumPart curriculumPart, StudyPeriod studyPeriod);
+    Optional<CurriculumPlanEntry> findByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriodAndStudyPeriodSettingId(String numberSchoolBuilding, String className, String subjectName, EducationLevel educationLevel, CurriculumPart curriculumPart, StudyPeriod studyPeriod, Long studyPeriodSettingId);
+    Optional<CurriculumPlanEntry> findFirstByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriod(
+            String numberSchoolBuilding,
+            String className,
+            String subjectName,
+            EducationLevel educationLevel,
+            CurriculumPart curriculumPart,
+            StudyPeriod studyPeriod
+    );
 
     Optional<CurriculumPlanEntry> findFirstByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndStudyPeriodAndDeprecatedFalse(String numberSchoolBuilding, String className, String subjectName, EducationLevel educationLevel, StudyPeriod studyPeriod);
 
@@ -18,4 +26,8 @@ public interface CurriculumPlanEntryRepository extends JpaRepository<CurriculumP
     Optional<CurriculumPlanEntry> findFirstByAcademicYearAndStageAndClassNameAndSubjectNameAndStudyPeriod(String academicYear, CurriculumStage stage, String className, String subjectName, StudyPeriod studyPeriod);
 
     List<CurriculumPlanEntry> findAllByAcademicYearAndStage(String academicYear, CurriculumStage stage);
+
+    List<CurriculumPlanEntry> findAllByNumberSchoolBuildingAndClassName(String numberSchoolBuilding, String className);
+
+    void deleteByNumberSchoolBuildingAndClassName(String numberSchoolBuilding, String className);
 }
