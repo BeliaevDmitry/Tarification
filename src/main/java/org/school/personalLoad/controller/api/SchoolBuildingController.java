@@ -26,6 +26,12 @@ public class SchoolBuildingController {
         return ResponseEntity.ok(schoolBuildingService.findAll());
     }
 
+    @DeleteMapping("/one")
+    public ResponseEntity<Void> deleteOne(@RequestParam String code) {
+        schoolBuildingService.deleteByCode(code);
+        return ResponseEntity.noContent().build();
+    }
+
     @DeleteMapping
     public ResponseEntity<Void> clearAll() {
         schoolBuildingService.clearAll();
