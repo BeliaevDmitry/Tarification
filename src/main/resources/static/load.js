@@ -75,6 +75,17 @@ function normalizeBuildingCode(value) {
         .replace(/\s+/g, "");
 }
 
+function canonicalBuildingCode(value) {
+    const normalized = normalizeBuildingCode(value);
+    if (!normalized) return "";
+    const match = (buildings || []).find((b) => {
+        const code = normalizeBuildingCode(b?.code);
+        const name = normalizeBuildingCode(b?.name);
+        return code === normalized || name === normalized;
+    });
+    return match ? normalizeBuildingCode(match.code) : normalized;
+}
+
 
 function normalizeClassName(value) {
     const v = String(value || "").trim().toUpperCase().replace(/[–—]/g, "-");
@@ -270,12 +281,12 @@ function dayBefore(isoDate) {
 
 function rowsForSelectedBuilding() {
     if (selectedBuilding === ARCHIVE_BUILDING_CODE) return [];
+    const normalizedSelectedBuilding = canonicalBuildingCode(selectedBuilding);
     const map = classBuildingMap();
     return curriculumRows.filter((row) => {
-        if (row.metaGroup) return false;
-        const rowBuilding = normalizeBuildingCode(row.numberSchoolBuilding);
-        const byClass = map.get(normalizeClassName(row.className));
-        return rowBuilding === selectedBuilding || byClass === selectedBuilding;
+        const rowBuilding = canonicalBuildingCode(row.numberSchoolBuilding);
+        const byClass = canonicalBuildingCode(map.get(normalizeClassName(row.className)));
+        return rowBuilding === normalizedSelectedBuilding || byClass === normalizedSelectedBuilding;
     });
 }
 
@@ -418,6 +429,51 @@ function updateViewModeControls() {
 
 function currentAuthUser() {
     return window.tarificationAuth || null;
+}
+
+function hasCurriculumRowsForBuilding(buildingCode) {
+    const normalizedBuilding = canonicalBuildingCode(buildingCode);
+    if (!normalizedBuilding) return false;
+    const classMap = classBuildingMap();
+    return (curriculumRows || []).some((row) => {
+        const rowBuilding = canonicalBuildingCode(row.numberSchoolBuilding);
+        const classBuilding = canonicalBuildingCode(classMap.get(normalizeClassName(row.className)));
+        return rowBuilding === normalizedBuilding || classBuilding === normalizedBuilding;
+    });
+}
+
+function preferredBuildingCode(availableBuildings) {
+    if (!Array.isArray(availableBuildings) || !availableBuildings.length) return "";
+    const user = currentAuthUser();
+    const byCode = new Map(availableBuildings.map((b) => [normalizeBuildingCode(b.code), b.code]));
+    const allOrderedCodes = availableBuildings.map((b) => normalizeBuildingCode(b.code)).filter(Boolean);
+    const editableCodes = [];
+
+    if (!user || user.admin || user.loadEditAllBuildings) {
+        editableCodes.push(...allOrderedCodes);
+    } else {
+        editableCodes.push(...(user.loadEditableBuildingCodes || [])
+            .map((code) => normalizeBuildingCode(code))
+            .filter(Boolean));
+        const managedCode = normalizeBuildingCode(user.managedBuildingCode);
+        if (managedCode) editableCodes.push(managedCode);
+        if (!editableCodes.length) {
+            editableCodes.push(...allOrderedCodes);
+        }
+    }
+
+    const uniqueEditableCodes = [...new Set(editableCodes)];
+    for (const code of uniqueEditableCodes) {
+        if (byCode.has(code) && hasCurriculumRowsForBuilding(code)) {
+            return byCode.get(code);
+        }
+    }
+    for (const code of uniqueEditableCodes) {
+        if (byCode.has(code)) {
+            return byCode.get(code);
+        }
+    }
+    return availableBuildings[0].code;
 }
 
 function canEditSelectedBuildingLoad() {
@@ -714,12 +770,12 @@ function teacherHoursInBuilding(buildingCode, teacherName) {
     const normalizedTeacher = String(teacherName || "").trim();
     if (!normalizedTeacher) return { h1: 0, h2: 0 };
 
-    const normalizedBuilding = normalizeBuildingCode(buildingCode);
+    const normalizedBuilding = canonicalBuildingCode(buildingCode);
     const assignments = assignmentsForBuilding(normalizedBuilding);
     const classMap = classBuildingMap();
     const buildingRows = expandCurriculumRows(curriculumRows.filter((row) => {
-        const rowBuilding = normalizeBuildingCode(row.numberSchoolBuilding);
-        const byClass = classMap.get(normalizeClassName(row.className));
+        const rowBuilding = canonicalBuildingCode(row.numberSchoolBuilding);
+        const byClass = canonicalBuildingCode(classMap.get(normalizeClassName(row.className)));
         return rowBuilding === normalizedBuilding || byClass === normalizedBuilding;
     }));
 
@@ -1235,9 +1291,19 @@ function renderTable() {
         <th rowspan="2">Педагог</th>
         <th rowspan="2">Часов в корпусе</th>
         <th rowspan="2">Всего часов в комплексе</th>
-        <th colspan="${Math.max(classes.length, 1)}">Классы</th>
+        <th colspan="${Math.max(classes.length, 1)}">
+            <div class="load-head-actions">
+                <span><strong>Ошибки: ${loadIssues.length}</strong></span>
+                <button type="button" class="head-action-btn" data-head-save="1">Сохранить нагрузку корпуса</button>
+                <button type="button" class="head-action-btn" data-head-next-error="1">Перейти к ошибке</button>
+            </div>
+        </th>
     `;
     ui.tableHead.appendChild(headMain);
+    const headSaveBtn = headMain.querySelector('[data-head-save="1"]');
+    const headNextErrorBtn = headMain.querySelector('[data-head-next-error="1"]');
+    headSaveBtn?.addEventListener("click", () => ui.saveBuildingBtn?.click());
+    headNextErrorBtn?.addEventListener("click", () => ui.nextErrorBtn?.click());
 
     const headClasses = document.createElement("tr");
     headClasses.className = "load-class-head";
@@ -1549,8 +1615,16 @@ async function refreshSourceData() {
     markDirty(false);
     updateViewModeControls();
 
-    if (selectedBuilding !== ARCHIVE_BUILDING_CODE && !buildings.some((row) => row.code === selectedBuilding)) {
-        selectedBuilding = buildings[0]?.code || "";
+    if (selectedBuilding !== ARCHIVE_BUILDING_CODE) {
+        const existsInTabs = buildings.some((row) => row.code === selectedBuilding);
+        if (!existsInTabs) {
+            selectedBuilding = preferredBuildingCode(buildings);
+        } else if (!canEditSelectedBuildingLoad()) {
+            const preferred = preferredBuildingCode(buildings);
+            if (preferred) {
+                selectedBuilding = preferred;
+            }
+        }
     }
 
     state.takeoverContext = null;

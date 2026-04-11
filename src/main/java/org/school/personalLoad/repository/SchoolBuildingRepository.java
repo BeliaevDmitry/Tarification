@@ -9,4 +9,6 @@ import java.util.Optional;
 @Repository
 public interface SchoolBuildingRepository extends JpaRepository<SchoolBuilding, Long> {
     Optional<SchoolBuilding> findByCode(String code);
+
+    void deleteByCode(String code);
 }

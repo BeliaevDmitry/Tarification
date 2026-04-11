@@ -33,7 +33,7 @@ ui.form.addEventListener('submit', async (event) => {
                 password: ui.password.value
             })
         });
-        window.location.href = '/load.html';
+        window.location.href = '/';
     } catch (error) {
         print({ error: error.message });
     }
