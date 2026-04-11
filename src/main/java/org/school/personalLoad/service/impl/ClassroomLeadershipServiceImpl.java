@@ -15,6 +15,7 @@ import org.school.personalLoad.service.ClassroomLeadershipService;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
@@ -165,6 +166,17 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     @Override
     public List<ClassroomLeadershipEntry> findAll() {
         return classroomLeadershipRepository.findAll();
+    }
+
+    @Override
+    @Transactional
+    public void deleteOne(String numberSchoolBuilding, String className) {
+        String building = normalizeBuildingCode(numberSchoolBuilding);
+        String normalizedClassName = ClassNameNormalizer.normalize(className);
+        if (building.isBlank() || normalizedClassName.isBlank()) {
+            throw new IllegalArgumentException("numberSchoolBuilding and className are required");
+        }
+        classroomLeadershipRepository.deleteByNumberSchoolBuildingAndClassName(building, normalizedClassName);
     }
 
     @Override

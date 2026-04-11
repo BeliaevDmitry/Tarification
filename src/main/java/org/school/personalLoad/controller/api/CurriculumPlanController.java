@@ -12,6 +12,10 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @RestController
@@ -41,8 +45,11 @@ public class CurriculumPlanController {
     @GetMapping("/export")
     public ResponseEntity<byte[]> exportCurriculum() throws Exception {
         byte[] body = curriculumImportService.exportEditableWorkbook();
+        String date = LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"));
+        String fileName = "УП ГБОУ 7 2026/2027 от " + date + ".xlsx";
+        String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"curriculum-editable.xlsx\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .body(body);
     }
