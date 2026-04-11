@@ -235,6 +235,17 @@ function enrichNavigation(currentUser) {
     const permissions = tabPermissionMap(currentUser);
     document.querySelectorAll('.page-nav').forEach((nav) => {
         nav.innerHTML = '';
+        const homeLink = document.createElement('a');
+        homeLink.className = 'nav-link nav-home-link';
+        homeLink.href = '/';
+        homeLink.title = 'Главная';
+        homeLink.setAttribute('aria-label', 'Главная');
+        homeLink.textContent = '🏠';
+        if (window.location.pathname === '/' || window.location.pathname === '/index.html') {
+            homeLink.classList.add('active');
+        }
+        nav.appendChild(homeLink);
+
         NAV_ORDER.forEach((tabDef) => {
             const canView = currentUser.admin || permissions[tabDef.tab]?.canView;
             if (!canView) return;
