@@ -75,6 +75,17 @@ function normalizeBuildingCode(value) {
         .replace(/\s+/g, "");
 }
 
+function canonicalBuildingCode(value) {
+    const normalized = normalizeBuildingCode(value);
+    if (!normalized) return "";
+    const match = (buildings || []).find((b) => {
+        const code = normalizeBuildingCode(b?.code);
+        const name = normalizeBuildingCode(b?.name);
+        return code === normalized || name === normalized;
+    });
+    return match ? normalizeBuildingCode(match.code) : normalized;
+}
+
 
 function normalizeClassName(value) {
     const v = String(value || "").trim().toUpperCase().replace(/[–—]/g, "-");
@@ -270,12 +281,11 @@ function dayBefore(isoDate) {
 
 function rowsForSelectedBuilding() {
     if (selectedBuilding === ARCHIVE_BUILDING_CODE) return [];
-    const normalizedSelectedBuilding = normalizeBuildingCode(selectedBuilding);
+    const normalizedSelectedBuilding = canonicalBuildingCode(selectedBuilding);
     const map = classBuildingMap();
     return curriculumRows.filter((row) => {
-        if (row.metaGroup) return false;
-        const rowBuilding = normalizeBuildingCode(row.numberSchoolBuilding);
-        const byClass = map.get(normalizeClassName(row.className));
+        const rowBuilding = canonicalBuildingCode(row.numberSchoolBuilding);
+        const byClass = canonicalBuildingCode(map.get(normalizeClassName(row.className)));
         return rowBuilding === normalizedSelectedBuilding || byClass === normalizedSelectedBuilding;
     });
 }
@@ -422,12 +432,12 @@ function currentAuthUser() {
 }
 
 function hasCurriculumRowsForBuilding(buildingCode) {
-    const normalizedBuilding = normalizeBuildingCode(buildingCode);
+    const normalizedBuilding = canonicalBuildingCode(buildingCode);
     if (!normalizedBuilding) return false;
     const classMap = classBuildingMap();
     return (curriculumRows || []).some((row) => {
-        const rowBuilding = normalizeBuildingCode(row.numberSchoolBuilding);
-        const classBuilding = classMap.get(normalizeClassName(row.className));
+        const rowBuilding = canonicalBuildingCode(row.numberSchoolBuilding);
+        const classBuilding = canonicalBuildingCode(classMap.get(normalizeClassName(row.className)));
         return rowBuilding === normalizedBuilding || classBuilding === normalizedBuilding;
     });
 }
@@ -760,12 +770,12 @@ function teacherHoursInBuilding(buildingCode, teacherName) {
     const normalizedTeacher = String(teacherName || "").trim();
     if (!normalizedTeacher) return { h1: 0, h2: 0 };
 
-    const normalizedBuilding = normalizeBuildingCode(buildingCode);
+    const normalizedBuilding = canonicalBuildingCode(buildingCode);
     const assignments = assignmentsForBuilding(normalizedBuilding);
     const classMap = classBuildingMap();
     const buildingRows = expandCurriculumRows(curriculumRows.filter((row) => {
-        const rowBuilding = normalizeBuildingCode(row.numberSchoolBuilding);
-        const byClass = classMap.get(normalizeClassName(row.className));
+        const rowBuilding = canonicalBuildingCode(row.numberSchoolBuilding);
+        const byClass = canonicalBuildingCode(classMap.get(normalizeClassName(row.className)));
         return rowBuilding === normalizedBuilding || byClass === normalizedBuilding;
     }));
 
