@@ -172,6 +172,23 @@ hr {
     margin-left: auto;
 }
 
+.home-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    text-decoration: none;
+    background: #eef2ff;
+    border: 1px solid #c7d2fe;
+    font-size: 18px;
+}
+
+.home-link:hover {
+    background: #dbeafe;
+}
+
 .header-user-badge {
     display: inline-flex;
     align-items: center;
@@ -819,6 +836,61 @@ dialog::backdrop {
 
 .login-page .container {
     max-width: 520px;
+}
+
+.home-page {
+    background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+}
+
+.home-page .container {
+    max-width: 1200px;
+}
+
+.home-menu-grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.home-menu-card {
+    text-decoration: none;
+    color: inherit;
+    border: 1px solid #dbe5f1;
+    transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+}
+
+.home-menu-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(30, 41, 59, 0.12);
+    border-color: #93c5fd;
+}
+
+.home-menu-sticker {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #e0e7ff;
+    font-size: 22px;
+}
+
+.home-menu-card h2 {
+    margin: 12px 0 8px;
+}
+
+.home-menu-load .home-menu-sticker {
+    background: #dbeafe;
+}
+
+.home-menu-admin .home-menu-sticker {
+    background: #fef3c7;
+}
+
+.placeholder-card,
+.access-denied-card {
+    max-width: 680px;
 }
 
 .login-card {
