@@ -1,4 +1,6 @@
 const TAB_PATHS = {
+    '/': null,
+    '/index.html': null,
     '/buildings.html': 'BUILDINGS',
     '/classes.html': 'CLASSES',
     '/subjects.html': 'SUBJECTS',
@@ -18,8 +20,7 @@ const NAV_ORDER = [
     { path: '/load.html', tab: 'LOAD', label: 'Нагрузка по корпусам' },
     { path: '/service-notes.html', tab: 'SERVICE_NOTES', label: 'Служебные записки' },
     { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' },
-    { path: '/teachers.html', tab: 'TEACHERS', label: 'Педагоги' },
-    { path: '/admin.html', tab: 'USERS', label: 'Пользователи' }
+    { path: '/teachers.html', tab: 'TEACHERS', label: 'Педагоги' }
 ];
 
 async function tarificationApi(path, options = {}) {
@@ -41,6 +42,21 @@ function tabPermissionMap(currentUser) {
 
 function currentTab() {
     return TAB_PATHS[window.location.pathname] || null;
+}
+
+function isAdminPage() {
+    return window.location.pathname === '/admin.html';
+}
+
+function showAccessDenied() {
+    const container = document.querySelector('main.container');
+    if (!container) return;
+    container.innerHTML = `
+        <section class="card access-denied-card">
+            <h1>⛔ Доступ запрещён</h1>
+            <p class="muted">У вас нет прав для доступа к разделу «Пользователи».</p>
+            <a class="nav-link" href="/index.html">Вернуться в главное меню</a>
+        </section>`;
 }
 
 function canEditCurrentPage(currentUser) {
@@ -114,6 +130,7 @@ function mountHeaderUser(currentUser) {
         controls = document.createElement('div');
         controls.className = 'header-user-inline';
         controls.innerHTML = `
+            <a class="home-link" href="/index.html" title="Главное меню" aria-label="Главное меню">🏠</a>
             <button type="button" class="header-user-badge" id="profile-btn"></button>
             <button type="button" id="logout-btn">Выйти</button>`;
         titleRow.appendChild(controls);
@@ -234,12 +251,25 @@ function enrichNavigation(currentUser) {
     });
 }
 
+function enrichMainMenu(currentUser) {
+    const adminCard = document.querySelector('[data-admin-card]');
+    if (adminCard) {
+        adminCard.style.display = currentUser.admin ? '' : 'none';
+    }
+}
+
 (async function initAuth() {
     try {
         const currentUser = await tarificationApi('/api/auth/me');
         window.tarificationAuth = currentUser;
         window.tarificationTabPermissions = tabPermissionMap(currentUser);
+        if (isAdminPage() && !currentUser.admin) {
+            mountHeaderUser(currentUser);
+            showAccessDenied();
+            return;
+        }
         enrichNavigation(currentUser);
+        enrichMainMenu(currentUser);
         mountHeaderUser(currentUser);
         insertReadonlyNotice(currentUser);
         disableEditAreas(currentUser);
