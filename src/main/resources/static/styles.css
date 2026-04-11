@@ -598,16 +598,20 @@ dialog::backdrop {
     left: 0;
     background: #fff;
     z-index: 9;
-    min-width: 220px;
+    width: var(--load-subject-col-width, 220px);
+    min-width: var(--load-subject-col-width, 220px);
+    max-width: var(--load-subject-col-width, 220px);
 }
 
 #building-load-table tbody td:nth-child(2),
 #building-load-table thead tr.load-main-head th:nth-child(2) {
     position: sticky;
-    left: 220px;
+    left: var(--load-subject-col-width, 220px);
     background: #fff;
     z-index: 9;
-    min-width: 260px;
+    width: var(--load-teacher-col-width, 260px);
+    min-width: var(--load-teacher-col-width, 260px);
+    max-width: var(--load-teacher-col-width, 260px);
 }
 
 #building-load-table thead th:first-child,
@@ -675,6 +679,8 @@ dialog::backdrop {
 
 #building-load-table {
     min-width: 1500px;
+    --load-subject-col-width: 220px;
+    --load-teacher-col-width: 260px;
 }
 
 .load-page .container {
