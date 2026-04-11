@@ -24,6 +24,7 @@ public class SessionUser implements Serializable {
     private boolean active;
     private boolean canView;
     private boolean canEdit;
+    private boolean canEditAllAcademicYears;
     private String managedBuildingCode;
     private boolean loadEditAllBuildings;
     private Set<String> loadEditableBuildingCodes = new LinkedHashSet<>();

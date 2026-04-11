@@ -16,5 +16,6 @@ public class CreateUserRequest {
     private UserRole role;
     private Boolean canView;
     private Boolean canEdit;
+    private Boolean canEditAllAcademicYears;
     private List<UserTabPermissionRequest> tabPermissions;
 }
