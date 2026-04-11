@@ -1,6 +1,6 @@
 package org.school.personalLoad.service.impl;
 
-/*
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,6 +15,7 @@ import org.school.personalLoad.repository.ServiceMemoRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.StudyPeriodSettingService;
 
+/*
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
