@@ -683,6 +683,8 @@ dialog::backdrop {
 
 #building-load-table {
     min-width: 1500px;
+    --load-subject-col-width: 220px;
+    --load-teacher-col-width: 260px;
 }
 
 .load-page .container {
