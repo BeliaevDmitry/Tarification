@@ -6,45 +6,38 @@
   <title>Tarification</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
-<body>
+<body class="home-page">
 <main class="container">
-    <header class="card">
-        <h1>Главное меню</h1>
-        <p class="muted">Выберите модуль системы.</p>
-        <nav class="page-nav"></nav>
-    </header>
+  <header class="card">
+    <h1>Главное меню</h1>
+    <p class="muted">Выберите рабочий контур системы.</p>
+  </header>
 
-    <section class="module-grid">
-        <a class="module-card module-card-primary" href="/load.html">
-            <span class="module-icon">📊</span>
-            <h2>Нагрузка</h2>
-            <p>Основной рабочий модуль. Текущая функциональность системы доступна здесь.</p>
-        </a>
+  <section class="home-menu-grid">
+    <a class="card home-menu-card home-menu-load" href="/load.html">
+      <div class="home-menu-sticker">📊</div>
+      <h2>Нагрузка</h2>
+      <p class="muted">Полный рабочий контур: корпуса, классы, предметы, учебный план, нагрузка, служебные записки, настройки и педагоги.</p>
+    </a>
 
-        <a class="module-card module-card-placeholder" href="/contingent.html">
-            <span class="module-icon">👥</span>
-            <h2>Контингент</h2>
-            <p>Модуль-заглушка под будущий сервис.</p>
-        </a>
+    <a class="card home-menu-card home-menu-placeholder" href="/contingent.html">
+      <div class="home-menu-sticker">👥</div>
+      <h2>Контингент</h2>
+      <p class="muted">Раздел находится в разработке.</p>
+    </a>
 
-        <a class="module-card module-card-placeholder" href="/vsoko.html">
-            <span class="module-icon">🧭</span>
-            <h2>ВСОКО</h2>
-            <p>Модуль-заглушка под будущий сервис.</p>
-        </a>
-    </section>
+    <a class="card home-menu-card home-menu-placeholder" href="/vsoko.html">
+      <div class="home-menu-sticker">✅</div>
+      <h2>ВСОКО</h2>
+      <p class="muted">Раздел находится в разработке.</p>
+    </a>
 
-    <section class="card module-admin-section" data-requires-tab="USERS">
-        <h2>Администрирование</h2>
-        <p class="muted">Управление пользователями системы и правами доступа.</p>
-        <div class="module-grid">
-            <a class="module-card" href="/admin.html">
-                <span class="module-icon">🛡️</span>
-                <h2>Пользователи</h2>
-                <p>Создание пользователей и редактирование прав доступа.</p>
-            </a>
-        </div>
-    </section>
+    <a class="card home-menu-card home-menu-admin" href="/admin.html" data-admin-card>
+      <div class="home-menu-sticker">🛡️</div>
+      <h2>Администрирование</h2>
+      <p class="muted">Управление пользователями системы (только для администратора).</p>
+    </a>
+  </section>
 </main>
 <script src="/auth.js"></script>
 </body>
