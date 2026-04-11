@@ -597,22 +597,27 @@ dialog::backdrop {
     position: sticky;
     left: 0;
     background: #fff;
-    z-index: 2;
-    min-width: 220px;
+    z-index: 9;
+    width: var(--load-subject-col-width, 220px);
+    min-width: var(--load-subject-col-width, 220px);
+    max-width: var(--load-subject-col-width, 220px);
 }
 
 #building-load-table tbody td:nth-child(2),
 #building-load-table thead tr.load-main-head th:nth-child(2) {
     position: sticky;
-    left: 220px;
+    left: var(--load-subject-col-width, 220px);
     background: #fff;
-    z-index: 2;
-    min-width: 260px;
+    z-index: 9;
+    width: var(--load-teacher-col-width, 260px);
+    min-width: var(--load-teacher-col-width, 260px);
+    max-width: var(--load-teacher-col-width, 260px);
 }
 
 #building-load-table thead th:first-child,
 #building-load-table thead th:nth-child(2) {
-    z-index: 10;
+    top: 0;
+    z-index: 11;
 }
 
 .mini-level {
@@ -674,6 +679,8 @@ dialog::backdrop {
 
 #building-load-table {
     min-width: 1500px;
+    --load-subject-col-width: 220px;
+    --load-teacher-col-width: 260px;
 }
 
 .load-page .container {
@@ -706,9 +713,9 @@ dialog::backdrop {
 
 
 .load-page .load-toolbar {
-    position: static;
+    position: static !important;
     top: auto;
-    z-index: auto;
+    z-index: 0;
 }
 
 .load-page .load-toolbar .load-status-card {
@@ -734,9 +741,9 @@ dialog::backdrop {
 }
 
 #building-load-table thead tr.load-class-head th {
-    position: static;
-    top: auto;
-    z-index: 1;
+    position: sticky;
+    top: 38px;
+    z-index: 7;
     background: #f1f5f9;
 }
 
