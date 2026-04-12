@@ -94,8 +94,12 @@ public class AcademicYearServiceImpl implements AcademicYearService {
             throw new IllegalArgumentException("code is required");
         }
         String normalized = code.trim().replace('\\', '/');
+        if (normalized.matches("\\d{4}")) {
+            int from = Integer.parseInt(normalized);
+            return from + "/" + (from + 1);
+        }
         if (!normalized.matches("\\d{4}/\\d{4}")) {
-            throw new IllegalArgumentException("Формат учебного года должен быть YYYY/YYYY");
+            throw new IllegalArgumentException("Формат учебного года должен быть YYYY или YYYY/YYYY");
         }
         int from = Integer.parseInt(normalized.substring(0, 4));
         int to = Integer.parseInt(normalized.substring(5));

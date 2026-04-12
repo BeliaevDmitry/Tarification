@@ -83,6 +83,15 @@ function yesNo(flag) {
     return flag ? 'Да' : 'Нет';
 }
 
+function normalizeAcademicYearInput(rawValue) {
+    const value = String(rawValue || '').trim().replace('\\', '/');
+    if (/^\d{4}$/.test(value)) {
+        const start = Number(value);
+        return `${start}/${start + 1}`;
+    }
+    return value;
+}
+
 async function renderAcademicYears() {
     if (!ui.academicYearsBody) return;
     const years = await api('/api/academic-years');
@@ -584,10 +593,11 @@ ui.adminTabYearsBtn?.addEventListener('click', () => setAdminTab('years'));
 ui.academicYearForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
     try {
+        const code = normalizeAcademicYearInput(ui.academicYearCode?.value);
         await api('/api/academic-years', {
             method: 'POST',
             headers: jsonHeaders,
-            body: JSON.stringify({ code: String(ui.academicYearCode?.value || '').trim() })
+            body: JSON.stringify({ code })
         });
         if (ui.academicYearCode) ui.academicYearCode.value = '';
         await renderAcademicYears();

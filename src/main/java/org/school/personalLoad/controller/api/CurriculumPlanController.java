@@ -44,7 +44,8 @@ public class CurriculumPlanController {
 
     @PostMapping("/import")
     public ResponseEntity<CurriculumImportResult> importCurriculum(@RequestParam("file") MultipartFile file, @RequestParam(required = false) String academicYear) {
-        return ResponseEntity.ok(curriculumImportService.importFile(file));
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        return ResponseEntity.ok(curriculumImportService.importFile(file, effectiveYear));
     }
 
     @GetMapping("/export")
