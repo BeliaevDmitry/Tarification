@@ -36,6 +36,27 @@ async function tarificationApi(path, options = {}) {
     return body;
 }
 
+const ACADEMIC_YEAR_STORAGE_KEY = 'tarification.academicYear';
+
+function getStoredAcademicYear() {
+    return sessionStorage.getItem(ACADEMIC_YEAR_STORAGE_KEY) || '';
+}
+
+function setStoredAcademicYear(value) {
+    if (!value) {
+        sessionStorage.removeItem(ACADEMIC_YEAR_STORAGE_KEY);
+        return;
+    }
+    sessionStorage.setItem(ACADEMIC_YEAR_STORAGE_KEY, value);
+}
+
+function withAcademicYear(path) {
+    const selectedYear = getStoredAcademicYear();
+    if (!selectedYear) return path;
+    const separator = path.includes('?') ? '&' : '?';
+    return `${path}${separator}academicYear=${encodeURIComponent(selectedYear)}`;
+}
+
 function tabPermissionMap(currentUser) {
     return Object.fromEntries((currentUser.tabPermissions || []).map((permission) => [permission.tab, permission]));
 }
@@ -131,6 +152,9 @@ function mountHeaderUser(currentUser) {
         controls.className = 'header-user-inline';
         controls.innerHTML = `
             <a class="home-link" href="/index.html" title="Главное меню" aria-label="Главное меню">🏠</a>
+            <label class="header-year-select-wrap">
+                <select id="academic-year-select"></select>
+            </label>
             <button type="button" class="header-user-badge" id="profile-btn"></button>
             <button type="button" id="logout-btn">Выйти</button>`;
         titleRow.appendChild(controls);
@@ -151,11 +175,34 @@ function mountHeaderUser(currentUser) {
         } catch {
             // ignore
         }
+        sessionStorage.removeItem(ACADEMIC_YEAR_STORAGE_KEY);
         window.location.href = '/login.html';
     });
 
     updateStickyHeaderMetrics();
     window.addEventListener('resize', updateStickyHeaderMetrics, { passive: true });
+}
+
+async function mountAcademicYearSelector() {
+    const select = document.getElementById('academic-year-select');
+    if (!select) return;
+    const years = await tarificationApi('/api/academic-years');
+    const active = await tarificationApi('/api/academic-years/active');
+    const currentStored = getStoredAcademicYear();
+    const effective = currentStored || active.active;
+    if (!currentStored) {
+        setStoredAcademicYear(effective);
+    }
+
+    select.innerHTML = (years || [])
+        .sort((a, b) => String(a.code).localeCompare(String(b.code), 'ru'))
+        .map((year) => `<option value="${year.code}">${year.code}</option>`)
+        .join('');
+    select.value = effective;
+    select.addEventListener('change', () => {
+        setStoredAcademicYear(select.value);
+        window.location.reload();
+    });
 }
 
 function openProfileModal(currentUser) {
@@ -282,9 +329,12 @@ function enrichMainMenu(currentUser) {
         enrichNavigation(currentUser);
         enrichMainMenu(currentUser);
         mountHeaderUser(currentUser);
+        await mountAcademicYearSelector();
         insertReadonlyNotice(currentUser);
         disableEditAreas(currentUser);
         updateStickyHeaderMetrics();
+        window.withAcademicYear = withAcademicYear;
+        window.getStoredAcademicYear = getStoredAcademicYear;
     } catch {
         window.location.href = '/login.html';
     }

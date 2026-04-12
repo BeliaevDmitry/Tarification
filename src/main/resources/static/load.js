@@ -50,7 +50,8 @@ const state = {
 
 
 async function api(path, options = {}) {
-    const response = await fetch(path, options);
+    const scopedPath = window.withAcademicYear ? window.withAcademicYear(path) : path;
+    const response = await fetch(scopedPath, options);
     const text = await response.text();
     let body = null;
     try {
@@ -1282,7 +1283,7 @@ function renderTable() {
     const classes = classesForSelectedBuilding();
     const referenceDate = currentDisplayDate();
     const presentationRows = filterPresentationRowsByViewMode(buildPresentationRows());
-    collectLoadIssues(presentationRows, classes);
+    const { errors: loadIssues } = collectLoadIssues(presentationRows, classes);
 
     const headMain = document.createElement("tr");
     headMain.className = "load-main-head";
