@@ -49,6 +49,7 @@ const ui = {
     adminTabYearsBtn: document.getElementById('admin-tab-years-btn'),
     academicYearForm: document.getElementById('academic-year-create-form'),
     academicYearCode: document.getElementById('academic-year-code'),
+    academicYearFeedback: document.getElementById('academic-year-feedback'),
     academicYearsBody: document.getElementById('academic-years-body')
 };
 
@@ -600,8 +601,14 @@ ui.academicYearForm?.addEventListener('submit', async (event) => {
             body: JSON.stringify({ code })
         });
         if (ui.academicYearCode) ui.academicYearCode.value = '';
+        if (ui.academicYearFeedback) {
+            ui.academicYearFeedback.textContent = `Учебный год ${code} создан.`;
+        }
         await renderAcademicYears();
     } catch (error) {
+        if (ui.academicYearFeedback) {
+            ui.academicYearFeedback.textContent = `Ошибка: ${error.message}`;
+        }
         print({ error: error.message });
     }
 });
