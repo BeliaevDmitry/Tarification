@@ -6,6 +6,7 @@ import org.school.personalLoad.dto.CurriculumImportResult;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.service.CurriculumImportService;
 import org.school.personalLoad.service.CurriculumPlanService;
+import org.school.personalLoad.service.AcademicYearService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -25,28 +26,33 @@ public class CurriculumPlanController {
 
     private final CurriculumPlanService curriculumPlanService;
     private final CurriculumImportService curriculumImportService;
+    private final AcademicYearService academicYearService;
 
     @PostMapping
-    public ResponseEntity<CurriculumPlanEntry> upsert(@RequestBody CurriculumPlanEntryRequest request) {
+    public ResponseEntity<CurriculumPlanEntry> upsert(@RequestParam(required = false) String academicYear, @RequestBody CurriculumPlanEntryRequest request) {
+        request.setAcademicYear(academicYearService.resolveRequestedOrDefault(academicYear));
         return ResponseEntity.ok(curriculumPlanService.upsert(request));
     }
 
     @PostMapping("/bulk")
-    public ResponseEntity<List<CurriculumPlanEntry>> upsertBulk(@RequestBody List<CurriculumPlanEntryRequest> requests) {
+    public ResponseEntity<List<CurriculumPlanEntry>> upsertBulk(@RequestParam(required = false) String academicYear, @RequestBody List<CurriculumPlanEntryRequest> requests) {
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        requests.forEach(req -> req.setAcademicYear(effectiveYear));
         return ResponseEntity.ok(curriculumPlanService.upsertBulk(requests));
     }
 
 
     @PostMapping("/import")
-    public ResponseEntity<CurriculumImportResult> importCurriculum(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<CurriculumImportResult> importCurriculum(@RequestParam("file") MultipartFile file, @RequestParam(required = false) String academicYear) {
         return ResponseEntity.ok(curriculumImportService.importFile(file));
     }
 
     @GetMapping("/export")
-    public ResponseEntity<byte[]> exportCurriculum() throws Exception {
+    public ResponseEntity<byte[]> exportCurriculum(@RequestParam(required = false) String academicYear) throws Exception {
         byte[] body = curriculumImportService.exportEditableWorkbook();
         String date = LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"));
-        String fileName = "УП ГБОУ 7 2026/2027 от " + date + ".xlsx";
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        String fileName = "УП ГБОУ 7 " + effectiveYear + " от " + date + ".xlsx";
         String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
@@ -55,12 +61,14 @@ public class CurriculumPlanController {
     }
 
     @GetMapping
-    public ResponseEntity<List<CurriculumPlanEntry>> findAll() {
-        return ResponseEntity.ok(curriculumPlanService.findAll());
+    public ResponseEntity<List<CurriculumPlanEntry>> findAll(@RequestParam(required = false) String academicYear) {
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        return ResponseEntity.ok(curriculumPlanService.findAll(effectiveYear));
     }
 
     @PatchMapping("/{id}")
-    public ResponseEntity<CurriculumPlanEntry> updateById(@PathVariable Long id, @RequestBody CurriculumPlanEntryRequest request) {
+    public ResponseEntity<CurriculumPlanEntry> updateById(@PathVariable Long id, @RequestParam(required = false) String academicYear, @RequestBody CurriculumPlanEntryRequest request) {
+        request.setAcademicYear(academicYearService.resolveRequestedOrDefault(academicYear));
         return ResponseEntity.ok(curriculumPlanService.updateById(id, request));
     }
 
@@ -71,8 +79,8 @@ public class CurriculumPlanController {
     }
 
     @DeleteMapping
-    public ResponseEntity<Void> clearAll() {
-        curriculumPlanService.clearAll();
+    public ResponseEntity<Void> clearAll(@RequestParam(required = false) String academicYear) {
+        curriculumPlanService.clearAll(academicYearService.resolveRequestedOrDefault(academicYear));
         return ResponseEntity.noContent().build();
     }
 }

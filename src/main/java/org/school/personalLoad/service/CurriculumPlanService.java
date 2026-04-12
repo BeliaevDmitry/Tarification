@@ -13,15 +13,16 @@ public interface CurriculumPlanService {
 
     List<CurriculumPlanEntry> upsertBulk(List<CurriculumPlanEntryRequest> requests);
 
-    List<CurriculumPlanEntry> findAll();
+    List<CurriculumPlanEntry> findAll(String academicYear);
 
-    void clearAll();
+    void clearAll(String academicYear);
 
     CurriculumPlanEntry updateById(Long id, CurriculumPlanEntryRequest request);
 
     void deleteById(Long id);
 
-    Optional<CurriculumPlanEntry> findRule(String numberSchoolBuilding,
+    Optional<CurriculumPlanEntry> findRule(String academicYear,
+                                           String numberSchoolBuilding,
                                            String className,
                                            String subjectName,
                                            EducationLevel educationLevel,
