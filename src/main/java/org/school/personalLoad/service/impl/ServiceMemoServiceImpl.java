@@ -136,7 +136,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 }
 
                 ServiceMemo entity = new ServiceMemo();
-                entity.setAcademicYear(academicYear);
+                entity.setAcademicYear(resolveMemoAcademicYear(academicYear));
                 entity.setFioTeacher(aggregate.teacherDisplay());
                 entity.setChangeStartDate(aggregate.startDate());
                 entity.setCreatedBy(createdBy);
@@ -230,7 +230,10 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         LocalDate start = academicStart(academicYear);
         LocalDate end = academicEnd(academicYear);
 
-        List<ManualLoadEntry> periodRows = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
+        List<ManualLoadEntry> sourceRows = (academicYear == null || academicYear.isBlank())
+                ? manualLoadEntryRepository.findAll()
+                : manualLoadEntryRepository.findAllByAcademicYear(academicYear);
+        List<ManualLoadEntry> periodRows = sourceRows.stream()
                 .filter(row -> row.getLoadFromDate() != null && row.getLoadToDate() != null)
                 .filter(row -> !row.getLoadFromDate().isAfter(end) && !row.getLoadToDate().isBefore(start))
                 .toList();
@@ -592,9 +595,10 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private Map<String, ServiceMemo> latestMemoBySelectionKey(String academicYear) {
-        return serviceMemoRepository
-                .findAllByAcademicYearAndStatusInOrderByCreatedAtDesc(academicYear, List.of(ServiceMemo.Status.PROCESSED, ServiceMemo.Status.ARCHIVED))
-                .stream()
+        List<ServiceMemo> source = (academicYear == null || academicYear.isBlank())
+                ? serviceMemoRepository.findAllByStatusInOrderByCreatedAtDesc(List.of(ServiceMemo.Status.PROCESSED, ServiceMemo.Status.ARCHIVED))
+                : serviceMemoRepository.findAllByAcademicYearAndStatusInOrderByCreatedAtDesc(academicYear, List.of(ServiceMemo.Status.PROCESSED, ServiceMemo.Status.ARCHIVED));
+        return source.stream()
                 .filter(memo -> normalize(memo.getFioTeacher()) != null && memo.getChangeStartDate() != null)
                 .collect(Collectors.toMap(
                         memo -> selectionKey(new TeacherDateKey(normalize(memo.getFioTeacher()), memo.getChangeStartDate())),
@@ -879,17 +883,30 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private LocalDate academicStart(String academicYear) {
-        var ranges = studyPeriodSettingService.rangesByKey(academicYear);
+        var ranges = (academicYear == null || academicYear.isBlank())
+                ? studyPeriodSettingService.rangesByKey()
+                : studyPeriodSettingService.rangesByKey(academicYear);
         return Optional.ofNullable(ranges.get(StudyPeriodSettingKey.YEAR_1_9))
                 .map(StudyPeriodSettingService.DateRange::startDate)
                 .orElse(LocalDate.of(LocalDate.now().getYear(), 9, 1));
     }
 
     private LocalDate academicEnd(String academicYear) {
-        var ranges = studyPeriodSettingService.rangesByKey(academicYear);
+        var ranges = (academicYear == null || academicYear.isBlank())
+                ? studyPeriodSettingService.rangesByKey()
+                : studyPeriodSettingService.rangesByKey(academicYear);
         return Optional.ofNullable(ranges.get(StudyPeriodSettingKey.YEAR_1_9))
                 .map(StudyPeriodSettingService.DateRange::endDate)
                 .orElse(LocalDate.of(LocalDate.now().plusYears(1).getYear(), 5, 31));
+    }
+
+    private String resolveMemoAcademicYear(String academicYear) {
+        if (academicYear != null && !academicYear.isBlank()) {
+            return academicYear;
+        }
+        LocalDate now = LocalDate.now();
+        int start = now.getMonthValue() >= 7 ? now.getYear() : now.getYear() - 1;
+        return start + "/" + (start + 1);
     }
 
     private String keyOf(TarifficationChanges ch) {

@@ -15,7 +15,7 @@ public interface ServiceMemoService {
     List<ServiceMemoDtos.ProcessedMemo> generateForTeachers(String academicYear, List<String> fioTeachers, String createdBy);
 
     default List<ServiceMemoDtos.PendingTeacher> findPendingTeachers() {
-        return findPendingTeachers(currentAcademicYear());
+        return findPendingTeachers(null);
     }
 
     default List<ServiceMemoDtos.ProcessedMemo> findProcessed() {
@@ -27,7 +27,7 @@ public interface ServiceMemoService {
     }
 
     default List<ServiceMemoDtos.ProcessedMemo> generateForTeachers(List<String> fioTeachers, String createdBy) {
-        return generateForTeachers(currentAcademicYear(), fioTeachers, createdBy);
+        return generateForTeachers(null, fioTeachers, createdBy);
     }
 
     ServiceMemo getById(Long id);
@@ -36,9 +36,4 @@ public interface ServiceMemoService {
 
     ServiceMemo uploadCorrected(Long id, String filename, byte[] content);
 
-    private static String currentAcademicYear() {
-        java.time.LocalDate now = java.time.LocalDate.now();
-        int start = now.getMonthValue() >= 7 ? now.getYear() : now.getYear() - 1;
-        return start + "/" + (start + 1);
-    }
 }
