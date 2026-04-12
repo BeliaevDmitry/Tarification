@@ -11,4 +11,8 @@ public interface StudyPeriodSettingRepository extends JpaRepository<StudyPeriodS
     Optional<StudyPeriodSetting> findByCode(String code);
     List<StudyPeriodSetting> findByParallelFromLessThanEqualAndParallelToGreaterThanEqualOrderByDefaultRuleDescIdAsc(Integer parallelFrom, Integer parallelTo);
     List<StudyPeriodSetting> findByParallelFromLessThanEqualAndParallelToGreaterThanEqualAndStudyPeriodOrderByDefaultRuleDescIdAsc(Integer parallelFrom, Integer parallelTo, StudyPeriod studyPeriod);
+    Optional<StudyPeriodSetting> findByAcademicYearAndCode(String academicYear, String code);
+    List<StudyPeriodSetting> findByAcademicYearAndParallelFromLessThanEqualAndParallelToGreaterThanEqualOrderByDefaultRuleDescIdAsc(String academicYear, Integer parallelFrom, Integer parallelTo);
+    List<StudyPeriodSetting> findByAcademicYearAndParallelFromLessThanEqualAndParallelToGreaterThanEqualAndStudyPeriodOrderByDefaultRuleDescIdAsc(String academicYear, Integer parallelFrom, Integer parallelTo, StudyPeriod studyPeriod);
+    List<StudyPeriodSetting> findAllByAcademicYearOrderByIdAsc(String academicYear);
 }
