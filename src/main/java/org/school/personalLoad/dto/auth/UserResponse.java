@@ -22,6 +22,7 @@ public class UserResponse {
     boolean active;
     boolean canView;
     boolean canEdit;
+    boolean canEditAllAcademicYears;
     boolean admin;
     List<UserTabPermissionResponse> tabPermissions;
     LocalDateTime createdAt;

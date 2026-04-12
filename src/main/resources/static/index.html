@@ -6,21 +6,38 @@
   <title>Tarification</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
-<body>
+<body class="home-page">
 <main class="container">
   <header class="card">
-    <h1>Tarification</h1>
-    <p class="muted">Выберите режим работы в верхнем меню.</p>
-    <nav class="page-nav">
-      <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
-      <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
-      <a class="nav-link" href="/subjects.html" data-tab="SUBJECTS">Предметы</a>
-      <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
-      <a class="nav-link" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
-      <a class="nav-link" href="/settings.html" data-tab="SETTINGS">Настройки</a>
-            <a class="nav-link" href="/teachers.html" data-tab="TEACHERS">Педагоги</a>
-    </nav>
+    <h1>Главное меню</h1>
+    <p class="muted">Выберите рабочий контур системы.</p>
   </header>
+
+  <section class="home-menu-grid">
+    <a class="card home-menu-card home-menu-load" href="/load.html">
+      <div class="home-menu-sticker">📊</div>
+      <h2>Нагрузка</h2>
+      <p class="muted">Полный рабочий контур: корпуса, классы, предметы, учебный план, нагрузка, служебные записки, настройки и педагоги.</p>
+    </a>
+
+    <a class="card home-menu-card home-menu-placeholder" href="/contingent.html">
+      <div class="home-menu-sticker">👥</div>
+      <h2>Контингент</h2>
+      <p class="muted">Раздел находится в разработке.</p>
+    </a>
+
+    <a class="card home-menu-card home-menu-placeholder" href="/vsoko.html">
+      <div class="home-menu-sticker">✅</div>
+      <h2>ВСОКО</h2>
+      <p class="muted">Раздел находится в разработке.</p>
+    </a>
+
+    <a class="card home-menu-card home-menu-admin" href="/admin.html" data-admin-card>
+      <div class="home-menu-sticker">🛡️</div>
+      <h2>Администрирование</h2>
+      <p class="muted">Управление пользователями системы (только для администратора).</p>
+    </a>
+  </section>
 </main>
 <script src="/auth.js"></script>
 </body>
