@@ -11,6 +11,7 @@ import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.school.personalLoad.service.AcademicYearService;
 import org.school.personalLoad.service.CurriculumImportService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.springframework.stereotype.Service;
@@ -32,11 +33,16 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     private final TeacherDirectoryRepository teacherRepository;
     private final SubjectCatalogRepository subjectCatalogRepository;
     private final StudyPeriodSettingService studyPeriodSettingService;
+    private final AcademicYearService academicYearService;
 
 
     @Override
-    public byte[] exportEditableWorkbook() throws IOException {
-        List<CurriculumPlanEntry> entries = new ArrayList<>(curriculumRepository.findAll().stream().filter(e -> !e.isDeprecated()).toList());
+    public byte[] exportEditableWorkbook(String academicYear) throws IOException {
+        String effectiveAcademicYear = resolveAcademicYear(academicYear);
+        List<CurriculumPlanEntry> entries = new ArrayList<>(curriculumRepository.findAllByAcademicYear(effectiveAcademicYear)
+                .stream()
+                .filter(e -> !e.isDeprecated())
+                .toList());
         entries.sort(Comparator
                 .comparing((CurriculumPlanEntry e) -> String.valueOf(e.getNumberSchoolBuilding()), String.CASE_INSENSITIVE_ORDER)
                 .thenComparing(e -> String.valueOf(e.getClassName()), String.CASE_INSENSITIVE_ORDER)
@@ -254,10 +260,19 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     }
 
     @Override
-    public CurriculumImportResult importFile(MultipartFile file) {
+    public CurriculumImportResult importFile(String academicYear, MultipartFile file, boolean confirmLargeReduction) {
         if (file == null || file.isEmpty()) throw new IllegalArgumentException("Файл обязателен");
 
         try {
+            String effectiveAcademicYear = resolveAcademicYear(academicYear);
+            List<CurriculumPlanEntry> existingEntries = curriculumRepository.findAllByAcademicYear(effectiveAcademicYear)
+                    .stream()
+                    .filter(e -> !e.isDeprecated())
+                    .toList();
+            BigDecimal existingTotalHours = existingEntries.stream()
+                    .map(CurriculumPlanEntry::getPlannedHours)
+                    .filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
             List<EditableImportRow> editableRows = parseEditableRows(file);
             VisualParseResult visualParseResult = null;
             if (editableRows.isEmpty()) {
@@ -265,6 +280,10 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 editableRows = visualParseResult.rows();
             }
             List<CurriculumImportRow> parsed = editableRows.isEmpty() ? normalizeImportedRows(parser.parse(file.getInputStream())) : List.of();
+            BigDecimal importedTotalHours = editableRows.isEmpty()
+                    ? parsed.stream().map(CurriculumImportRow::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add)
+                    : editableRows.stream().map(EditableImportRow::plannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+            ensureReductionConfirmed(existingTotalHours, importedTotalHours, confirmLargeReduction);
             int created = 0, updated = 0, classesCreated = 0, subjectsImported = 0;
             Set<Long> importedIds = new HashSet<>();
             Map<String, SubjectCatalogEntry> existingSubjects = new HashMap<>();
@@ -274,9 +293,10 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
             if (!editableRows.isEmpty()) {
                 for (EditableImportRow row : editableRows) {
-                    StudyPeriodSetting resolvedEditableRule = studyPeriodSettingService.resolveRuleForClassAndPeriod(row.className(), row.studyPeriod());
+                    StudyPeriodSetting resolvedEditableRule = studyPeriodSettingService.resolveRuleForClassAndPeriod(effectiveAcademicYear, row.className(), row.studyPeriod());
                     CurriculumPlanEntry entry = curriculumRepository
-                            .findByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriodAndStudyPeriodSettingId(
+                            .findByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriodAndStudyPeriodSettingId(
+                                    effectiveAcademicYear,
                                     row.numberSchoolBuilding(),
                                     row.className(),
                                     row.subjectName(),
@@ -287,7 +307,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                             )
                             .orElseGet(CurriculumPlanEntry::new);
                     boolean isNew = entry.getId() == null;
-                    entry.setAcademicYear(entry.getAcademicYear() == null ? "" : entry.getAcademicYear());
+                    entry.setAcademicYear(effectiveAcademicYear);
                     entry.setStage(entry.getStage() == null ? CurriculumStage.NOO : entry.getStage());
                     entry.setNumberSchoolBuilding(row.numberSchoolBuilding());
                     entry.setClassName(row.className());
@@ -310,8 +330,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     importedIds.add(saved.getId());
                     if (isNew) created++; else updated++;
 
-                    boolean existedClass = classroomRepository.existsByNumberSchoolBuildingAndClassName(row.numberSchoolBuilding(), row.className());
-                    ensureClassroom(row.numberSchoolBuilding(), row.className(), row.classDirection(), fallbackTeacher);
+                    boolean existedClass = classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(effectiveAcademicYear, row.numberSchoolBuilding(), row.className());
+                    ensureClassroom(effectiveAcademicYear, row.numberSchoolBuilding(), row.className(), row.classDirection(), fallbackTeacher);
                     if (!existedClass) classesCreated++;
 
                     SubjectType subjectType = row.curriculumPart() == CurriculumPart.EXTRACURRICULAR
@@ -329,17 +349,18 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 }
             } else {
                 for (CurriculumImportRow row : parsed) {
+                    String rowAcademicYear = effectiveAcademicYear;
                     CurriculumPlanEntry entry = curriculumRepository
                             .findFirstByAcademicYearAndStageAndClassNameAndSubjectNameAndStudyPeriod(
-                                    row.getAcademicYear(), row.getStage(), row.getClassName(), row.getSubjectName(), row.getStudyPeriod())
+                                    rowAcademicYear, row.getStage(), row.getClassName(), row.getSubjectName(), row.getStudyPeriod())
                             .orElseGet(CurriculumPlanEntry::new);
 
                     boolean isNew = entry.getId() == null;
-                    entry.setAcademicYear(row.getAcademicYear());
+                    entry.setAcademicYear(rowAcademicYear);
                     entry.setStage(row.getStage());
                     entry.setClassName(row.getClassName());
                     entry.setSubjectName(row.getSubjectName());
-                    StudyPeriodSetting resolvedRule = studyPeriodSettingService.resolveRuleForClassAndPeriod(row.getClassName(), row.getStudyPeriod());
+                    StudyPeriodSetting resolvedRule = studyPeriodSettingService.resolveRuleForClassAndPeriod(rowAcademicYear, row.getClassName(), row.getStudyPeriod());
                     entry.setStudyPeriod(resolvedRule.getStudyPeriod());
                     entry.setStudyPeriodSettingId(resolvedRule.getId());
                     entry.setPlannedHours(row.getPlannedHours());
@@ -363,8 +384,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     importedIds.add(saved.getId());
                     if (isNew) created++; else updated++;
 
-                    if (!classroomRepository.existsByNumberSchoolBuildingAndClassName("СП0", row.getClassName())) {
+                    if (!classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(rowAcademicYear, "СП0", row.getClassName())) {
                         ClassroomLeadershipEntry cls = new ClassroomLeadershipEntry();
+                        cls.setAcademicYear(rowAcademicYear);
                         cls.setNumberSchoolBuilding("СП0");
                         cls.setClassName(row.getClassName());
                         cls.setClassDirection(row.getClassDirection() == null || row.getClassDirection().isBlank() ? "Не указана" : row.getClassDirection());
@@ -386,51 +408,78 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 }
             }
 
-            int deprecated = 0;
-            List<CurriculumPlanEntry> all = curriculumRepository.findAll();
+            int deleted = 0;
+            List<CurriculumPlanEntry> all = curriculumRepository.findAllByAcademicYear(effectiveAcademicYear);
             for (CurriculumPlanEntry e : all) {
-                boolean shouldDeprecate = !importedIds.contains(e.getId());
-                if (shouldDeprecate && !e.isDeprecated()) {
-                    e.setDeprecated(true);
-                    curriculumRepository.save(e);
-                    deprecated++;
+                if (!importedIds.contains(e.getId())) {
+                    curriculumRepository.delete(e);
+                    deleted++;
                 }
             }
 
             Set<String> activeKeys = new HashSet<>();
-            curriculumRepository.findAll().stream().filter(e -> !e.isDeprecated()).forEach(e ->
+            curriculumRepository.findAllByAcademicYear(effectiveAcademicYear).stream().filter(e -> !e.isDeprecated()).forEach(e ->
                     activeKeys.add(keyWithoutBuilding(e.getClassName(), e.getSubjectName(), e.getEducationLevel(), e.getStudyPeriod())));
 
             int orphaned = 0;
-            List<ManualLoadEntry> loads = manualLoadRepository.findAll();
+            List<ManualLoadEntry> loads = manualLoadRepository.findAllByAcademicYear(effectiveAcademicYear);
+            List<ManualLoadEntry> toDelete = new ArrayList<>();
             for (ManualLoadEntry l : loads) {
                 boolean isOrphan = !activeKeys.contains(keyWithoutBuilding(
                         ClassNameNormalizer.normalize(l.getClassName()),
                         l.getSubjectName(),
                         l.getEducationLevel(),
                         l.getStudyPeriod() == null ? StudyPeriod.YEAR : l.getStudyPeriod()));
-                l.setOrphaned(isOrphan);
-                if (isOrphan) orphaned++;
+                if (isOrphan) {
+                    toDelete.add(l);
+                    orphaned++;
+                } else {
+                    l.setOrphaned(false);
+                }
             }
-            manualLoadRepository.saveAll(loads);
+            if (!toDelete.isEmpty()) {
+                manualLoadRepository.deleteAll(toDelete);
+            }
+            manualLoadRepository.saveAll(loads.stream().filter(l -> !toDelete.contains(l)).toList());
 
             List<CurriculumImportResult.SumMismatch> mismatches = visualParseResult == null
                     ? List.of()
                     : compareVisualSums(visualParseResult.expectedSums(), visualParseResult.rows());
-            return new CurriculumImportResult(created, updated, deprecated, classesCreated, orphaned, subjectsImported, mismatches);
+            return new CurriculumImportResult(created, updated, deleted, classesCreated, orphaned, subjectsImported, mismatches);
         } catch (Exception e) {
             throw new RuntimeException("Не удалось импортировать учебный план", e);
         }
     }
 
-    private void ensureClassroom(String building, String className, String classDirection, String fallbackTeacher) {
-        if (classroomRepository.existsByNumberSchoolBuildingAndClassName(building, className)) return;
+    private void ensureReductionConfirmed(BigDecimal existingTotalHours,
+                                          BigDecimal importedTotalHours,
+                                          boolean confirmLargeReduction) {
+        if (existingTotalHours == null || existingTotalHours.compareTo(BigDecimal.ZERO) <= 0) return;
+        if (importedTotalHours == null) return;
+        BigDecimal threshold = new BigDecimal("0.70");
+        BigDecimal allowedMinimum = existingTotalHours.multiply(threshold);
+        if (importedTotalHours.compareTo(allowedMinimum) >= 0) return;
+        BigDecimal ratio = importedTotalHours
+                .divide(existingTotalHours, 4, java.math.RoundingMode.HALF_UP)
+                .multiply(new BigDecimal("100"));
+        if (!confirmLargeReduction) {
+            throw new IllegalStateException("LARGE_REDUCTION_CONFIRM_REQUIRED:" + ratio.stripTrailingZeros().toPlainString());
+        }
+    }
+
+    private void ensureClassroom(String academicYear, String building, String className, String classDirection, String fallbackTeacher) {
+        if (classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, className)) return;
         ClassroomLeadershipEntry cls = new ClassroomLeadershipEntry();
+        cls.setAcademicYear(academicYear);
         cls.setNumberSchoolBuilding(building);
         cls.setClassName(className);
         cls.setClassDirection(classDirection == null || classDirection.isBlank() ? "Не указана" : classDirection);
         cls.setFioTeacher(fallbackTeacher);
         classroomRepository.save(cls);
+    }
+
+    private String resolveAcademicYear(String requestedAcademicYear) {
+        return academicYearService.resolveByNameOrCurrent(requestedAcademicYear).getName();
     }
 
     private List<CurriculumImportRow> normalizeImportedRows(List<CurriculumImportRow> rows) {

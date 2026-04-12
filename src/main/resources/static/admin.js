@@ -40,12 +40,18 @@ const ui = {
     editLoadClear: document.getElementById('edit-load-clear'),
     editCloseBtn: document.getElementById('user-edit-close-btn'),
     resetPasswordBtn: document.getElementById('reset-password-btn'),
-    editSaveBtn: document.getElementById('save-user-btn')
+    editSaveBtn: document.getElementById('save-user-btn'),
+    academicYearForm: document.getElementById('academic-year-form'),
+    academicYearStartInput: document.getElementById('academic-year-start'),
+    academicYearsTbody: document.getElementById('academic-years-table-body'),
+    integrityCheckBtn: document.getElementById('integrity-check-btn'),
+    integrityTbody: document.getElementById('integrity-table-body')
 };
 
 let buildings = [];
 let users = [];
 let editingUserId = null;
+let academicYearsState = { years: [], currentAcademicYear: '' };
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -397,6 +403,89 @@ function renderUsers(rows) {
     });
 }
 
+function formatDate(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString('ru-RU');
+}
+
+function renderAcademicYears(payload) {
+    const years = payload?.years || [];
+    const currentAcademicYear = payload?.currentAcademicYear || '';
+    academicYearsState = { years, currentAcademicYear };
+
+    ui.academicYearsTbody.innerHTML = years.map((year) => `
+        <tr>
+            <td><strong>${esc(year.name)}</strong></td>
+            <td>${esc(formatDate(year.startDate))}</td>
+            <td>${esc(formatDate(year.endDate))}</td>
+            <td>${year.name === currentAcademicYear
+                ? '<span class="table-badge status-active">Да</span>'
+                : '<span class="table-badge status-muted">Нет</span>'
+            }</td>
+            <td>
+                <button type="button" class="danger-btn delete-academic-year-btn" data-id="${year.id}">Удалить</button>
+            </td>
+        </tr>
+    `).join('');
+
+    ui.academicYearsTbody.querySelectorAll('.delete-academic-year-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const yearId = Number(btn.dataset.id);
+            const year = academicYearsState.years.find((row) => row.id === yearId);
+            if (!year) return;
+
+            const confirmation = window.prompt(
+                `Для удаления введите точное название учебного года: ${year.name}`,
+                ''
+            );
+            if (confirmation === null) return;
+            if (confirmation.trim() !== year.name) {
+                print({ error: 'Название введено неверно. Удаление отменено.' });
+                return;
+            }
+
+            try {
+                await api(`/api/academic-years/${yearId}`, { method: 'DELETE' });
+                print({ ok: true, message: `Учебный год ${year.name} удалён` });
+                await reload();
+            } catch (error) {
+                print({ error: error.message });
+            }
+        });
+    });
+}
+
+function renderIntegrity(payload) {
+    const issues = payload?.issues || [];
+    if (!issues.length) {
+        ui.integrityTbody.innerHTML = `
+            <tr>
+                <td colspan="3"><span class="table-badge status-active">Проблем не найдено</span></td>
+            </tr>
+        `;
+        return;
+    }
+    ui.integrityTbody.innerHTML = issues.map((issue) => `
+        <tr>
+            <td>${esc(issue.code)}</td>
+            <td>${esc(issue.message)}</td>
+            <td><span class="table-badge status-muted">${esc(issue.count)}</span></td>
+        </tr>
+    `).join('');
+}
+
+async function runIntegrityCheck() {
+    try {
+        const payload = await api('/api/admin/integrity');
+        renderIntegrity(payload);
+        print(payload);
+    } catch (error) {
+        print({ error: error.message });
+    }
+}
+
 function openEditDialog(userId) {
     const user = users.find((row) => row.id === userId);
     if (!user) return;
@@ -426,15 +515,17 @@ function resetCreateForm() {
 }
 
 async function reload() {
-    const [userRows, buildingRows] = await Promise.all([
+    const [userRows, buildingRows, academicYearsPayload] = await Promise.all([
         api('/api/admin/users'),
-        api('/api/buildings')
+        api('/api/buildings'),
+        api('/api/academic-years')
     ]);
     users = userRows || [];
     buildings = (buildingRows || []).slice().sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), 'ru'));
     renderBuildingSelect(ui.createManagedBuilding, ui.createManagedBuilding.value);
     renderLoadBuildings(ui.createLoadBuildings, selectedLoadBuildings('create'), 'create');
     renderUsers(users);
+    renderAcademicYears(academicYearsPayload);
     syncRoleSpecificFields('create');
 }
 
@@ -520,5 +611,29 @@ ui.resetPasswordBtn.addEventListener('click', async () => {
     }
 });
 
+ui.academicYearForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const value = Number(ui.academicYearStartInput.value);
+    if (!Number.isInteger(value)) {
+        print({ error: 'Введите корректный стартовый год.' });
+        return;
+    }
+    try {
+        const created = await api('/api/academic-years', {
+            method: 'POST',
+            headers: jsonHeaders,
+            body: JSON.stringify({ startYear: value })
+        });
+        print(created);
+        ui.academicYearForm.reset();
+        await reload();
+    } catch (error) {
+        print({ error: error.message });
+    }
+});
+ui.integrityCheckBtn.addEventListener('click', () => runIntegrityCheck());
+
 resetCreateForm();
-reload().catch((error) => print({ error: error.message }));
+reload()
+    .then(() => runIntegrityCheck())
+    .catch((error) => print({ error: error.message }));

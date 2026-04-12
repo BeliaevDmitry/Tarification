@@ -11,16 +11,6 @@
     <header class="card">
         <h1>Пользователи системы</h1>
         <p class="muted">Только администратор может создавать пользователей, сбрасывать им пароль, задавать видимость вкладок, права на редактирование и гибко ограничивать редактирование нагрузки по корпусам.</p>
-        <nav class="page-nav">
-            <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
-            <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
-            <a class="nav-link" href="/subjects.html" data-tab="SUBJECTS">Предметы</a>
-            <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
-            <a class="nav-link" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
-            <a class="nav-link" href="/settings.html" data-tab="SETTINGS">Настройки</a>
-            <a class="nav-link" href="/teachers.html" data-tab="TEACHERS">Педагоги</a>
-            <a class="nav-link active" href="/admin.html" data-tab="USERS">Пользователи</a>
-        </nav>
     </header>
 
     <section class="card admin-card" data-requires-edit>
@@ -153,6 +143,64 @@
                 </tr>
                 </thead>
                 <tbody id="users-table-body"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card admin-card" data-requires-edit>
+        <div class="section-heading">
+            <div>
+                <h2>Учебные годы</h2>
+                <p class="muted">Добавляйте новые учебные годы вручную. Для удаления нужно подтверждение по точному названию учебного года.</p>
+            </div>
+            <span class="admin-section-badge soft">Справочник</span>
+        </div>
+
+        <form id="academic-year-form" class="row compact-row">
+            <label class="field-stack">
+                <span>Стартовый год</span>
+                <input id="academic-year-start" type="number" min="2000" max="2100" step="1" placeholder="Например, 2026" required>
+            </label>
+            <button type="submit">Добавить учебный год</button>
+        </form>
+
+        <div class="sheet-wrap">
+            <table class="sheet-table users-table">
+                <thead>
+                <tr>
+                    <th>Название</th>
+                    <th>Начало</th>
+                    <th>Окончание</th>
+                    <th>Текущий</th>
+                    <th>Действия</th>
+                </tr>
+                </thead>
+                <tbody id="academic-years-table-body"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card admin-card">
+        <div class="section-heading">
+            <div>
+                <h2>Проверка целостности по годам</h2>
+                <p class="muted">Показывает проблемы со связями и пустыми учебными годами. Пока без авто-исправлений.</p>
+            </div>
+            <span class="admin-section-badge soft">Диагностика</span>
+        </div>
+        <div class="row compact-row compact-actions">
+            <button type="button" id="integrity-check-btn">Запустить проверку</button>
+        </div>
+        <div class="sheet-wrap">
+            <table class="sheet-table users-table">
+                <thead>
+                <tr>
+                    <th>Код</th>
+                    <th>Описание</th>
+                    <th>Количество</th>
+                </tr>
+                </thead>
+                <tbody id="integrity-table-body"></tbody>
             </table>
         </div>
     </section>

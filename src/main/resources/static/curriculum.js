@@ -522,13 +522,40 @@ async function importCurriculumFile() {
     const form = new FormData();
     form.append("file", file);
 
+    const upload = async (confirmLargeReduction = false) => {
+        const url = confirmLargeReduction
+            ? "/api/curriculum/import?confirmLargeReduction=true"
+            : "/api/curriculum/import";
+        return api(url, { method: "POST", body: form });
+    };
+
     try {
-        const result = await api("/api/curriculum/import", { method: "POST", body: form });
+        const result = await upload(false);
         sumMismatchKeys = new Set((result?.sumMismatches || []).map((x) => `${x.classKey}|${x.sumLabel}`));
         print({ status: "imported", ...result });
         ui.importFile.value = "";
         await reload();
     } catch (error) {
+        const marker = "LARGE_REDUCTION_CONFIRM_REQUIRED:";
+        if (String(error.message || "").startsWith(marker)) {
+            const ratio = String(error.message || "").slice(marker.length) || "0";
+            const proceed = window.confirm(`Импорт уменьшает общий объём часов до ${ratio}% от текущего. Продолжить?`);
+            if (!proceed) {
+                print({ warning: "Импорт отменён пользователем" });
+                return;
+            }
+            try {
+                const result = await upload(true);
+                sumMismatchKeys = new Set((result?.sumMismatches || []).map((x) => `${x.classKey}|${x.sumLabel}`));
+                print({ status: "imported", ...result });
+                ui.importFile.value = "";
+                await reload();
+                return;
+            } catch (retryError) {
+                print({ error: retryError.message });
+                return;
+            }
+        }
         print({ error: error.message });
     }
 }
