@@ -1283,7 +1283,7 @@ function renderTable() {
     const classes = classesForSelectedBuilding();
     const referenceDate = currentDisplayDate();
     const presentationRows = filterPresentationRowsByViewMode(buildPresentationRows());
-    collectLoadIssues(presentationRows, classes);
+    const { errors: loadIssues } = collectLoadIssues(presentationRows, classes);
 
     const headMain = document.createElement("tr");
     headMain.className = "load-main-head";
