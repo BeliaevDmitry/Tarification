@@ -22,14 +22,12 @@ public class AcademicYearServiceImpl implements AcademicYearService {
     private final StudyPeriodSettingRepository studyPeriodSettingRepository;
 
     @Override
-    @Transactional(readOnly = true)
     public List<AcademicYear> findAll() {
         ensureCurrentYearExists();
         return academicYearRepository.findAllByOrderByStartYearAsc();
     }
 
     @Override
-    @Transactional(readOnly = true)
     public AcademicYear resolveCurrent() {
         ensureCurrentYearExists();
         int expectedStartYear = currentStartYearBySystemDate();
@@ -38,7 +36,6 @@ public class AcademicYearServiceImpl implements AcademicYearService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public AcademicYear resolveByNameOrCurrent(String name) {
         ensureCurrentYearExists();
         if (name == null || name.isBlank()) {
@@ -125,4 +122,3 @@ public class AcademicYearServiceImpl implements AcademicYearService {
         }
     }
 }
-
