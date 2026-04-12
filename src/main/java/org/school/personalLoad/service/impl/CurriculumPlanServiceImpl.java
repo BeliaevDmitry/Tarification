@@ -34,7 +34,8 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         String normalizedClassName = ClassNameNormalizer.normalize(request.getClassName());
 
         CurriculumPlanEntry entity = repository
-                .findByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriodAndStudyPeriodSettingId(
+                .findByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriodAndStudyPeriodSettingId(
+                        request.getAcademicYear(),
                         request.getNumberSchoolBuilding().trim(),
                         normalizedClassName,
                         request.getSubjectName().trim(),
@@ -59,13 +60,17 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
     }
 
     @Override
-    public List<CurriculumPlanEntry> findAll() {
-        return repository.findAll();
+    public List<CurriculumPlanEntry> findAll(String academicYear) {
+        return repository.findAll().stream()
+                .filter(item -> academicYear.equals(item.getAcademicYear()))
+                .toList();
     }
 
     @Override
-    public void clearAll() {
-        repository.deleteAll();
+    public void clearAll(String academicYear) {
+        repository.findAll().stream()
+                .filter(item -> academicYear.equals(item.getAcademicYear()))
+                .forEach(repository::delete);
     }
 
     @Override
@@ -89,7 +94,8 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
     }
 
     @Override
-    public Optional<CurriculumPlanEntry> findRule(String numberSchoolBuilding,
+    public Optional<CurriculumPlanEntry> findRule(String academicYear,
+                                                  String numberSchoolBuilding,
                                                   String className,
                                                   String subjectName,
                                                   EducationLevel educationLevel,
@@ -98,7 +104,8 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         String normalizedSubject = subjectName == null ? "" : subjectName.trim();
         StudyPeriod effectiveStudyPeriod = studyPeriod == null ? StudyPeriod.YEAR : studyPeriod;
 
-        Optional<CurriculumPlanEntry> exactRule = repository.findFirstByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+        Optional<CurriculumPlanEntry> exactRule = repository.findFirstByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                academicYear,
                 numberSchoolBuilding,
                 normalizedClass,
                 normalizedSubject,
@@ -110,7 +117,8 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
             return exactRule;
         }
 
-        return repository.findFirstByClassNameAndSubjectNameAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+        return repository.findFirstByAcademicYearAndClassNameAndSubjectNameAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                academicYear,
                 normalizedClass,
                 normalizedSubject,
                 educationLevel,
@@ -128,7 +136,7 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
             }
             return byId;
         }
-        return studyPeriodSettingService.resolveRuleForClassAndPeriod(request.getClassName(), request.getStudyPeriod());
+        return studyPeriodSettingService.resolveRuleForClassAndPeriod(request.getAcademicYear(), request.getClassName(), request.getStudyPeriod());
     }
 
     private StudyPeriodSetting normalizeYearRuleIfNeeded(CurriculumPlanEntryRequest request,
@@ -138,7 +146,8 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
             return resolvedRule;
         }
         StudyPeriod oppositePeriod = resolvedRule.getStudyPeriod() == StudyPeriod.H1 ? StudyPeriod.H2 : StudyPeriod.H1;
-        Optional<CurriculumPlanEntry> opposite = repository.findFirstByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriod(
+        Optional<CurriculumPlanEntry> opposite = repository.findFirstByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriod(
+                request.getAcademicYear(),
                 request.getNumberSchoolBuilding().trim(),
                 ClassNameNormalizer.normalize(request.getClassName()),
                 request.getSubjectName().trim(),
@@ -157,7 +166,7 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         }
         repository.delete(opposite.get());
         try {
-            return studyPeriodSettingService.resolveRuleForClassAndPeriod(request.getClassName(), StudyPeriod.YEAR);
+            return studyPeriodSettingService.resolveRuleForClassAndPeriod(request.getAcademicYear(), request.getClassName(), StudyPeriod.YEAR);
         } catch (Exception ignored) {
             return resolvedRule;
         }
@@ -167,6 +176,7 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
                              CurriculumPlanEntryRequest request,
                              CurriculumPart curriculumPart,
                              StudyPeriodSetting rule) {
+        entity.setAcademicYear(request.getAcademicYear());
         entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
         entity.setClassName(ClassNameNormalizer.normalize(request.getClassName()));
         entity.setSubjectName(request.getSubjectName().trim());
@@ -185,6 +195,9 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
     }
 
     private void validate(CurriculumPlanEntryRequest request) {
+        if (request.getAcademicYear() == null || request.getAcademicYear().isBlank()) {
+            throw new IllegalArgumentException("academicYear is required");
+        }
         if (request.getNumberSchoolBuilding() == null || request.getNumberSchoolBuilding().isBlank()) {
             throw new IllegalArgumentException("numberSchoolBuilding is required");
         }

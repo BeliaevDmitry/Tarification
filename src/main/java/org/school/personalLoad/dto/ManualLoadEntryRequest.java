@@ -8,6 +8,7 @@ import java.time.LocalDate;
 
 @Data
 public class ManualLoadEntryRequest {
+    private String academicYear;
     private String fioTeacher;
     private String numberSchoolBuilding;
     private String subjectName;
