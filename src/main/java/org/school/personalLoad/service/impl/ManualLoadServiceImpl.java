@@ -38,6 +38,49 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private final StudyPeriodSettingService studyPeriodSettingService;
     private final AcademicYearService academicYearService;
 
+    /**
+     * Legacy/testing constructor kept for backward compatibility with unit tests
+     * that were written before AcademicYearService dependency was introduced.
+     */
+    public ManualLoadServiceImpl(ManualLoadEntryRepository manualLoadEntryRepository,
+                                 TarifficationProcessingService tarifficationProcessingService,
+                                 DatabaseService databaseService,
+                                 CurriculumPlanService curriculumPlanService,
+                                 StudyPeriodSettingService studyPeriodSettingService) {
+        this(
+                manualLoadEntryRepository,
+                tarifficationProcessingService,
+                databaseService,
+                curriculumPlanService,
+                studyPeriodSettingService,
+                new AcademicYearService() {
+                    @Override
+                    public java.util.List<org.school.personalLoad.model.AcademicYear> findAll() { return java.util.List.of(); }
+                    @Override
+                    public org.school.personalLoad.model.AcademicYear resolveCurrent() {
+                        org.school.personalLoad.model.AcademicYear year = new org.school.personalLoad.model.AcademicYear();
+                        year.setName("");
+                        year.setStartYear(0);
+                        year.setStartDate(java.time.LocalDate.now());
+                        year.setEndDate(java.time.LocalDate.now());
+                        return year;
+                    }
+                    @Override
+                    public org.school.personalLoad.model.AcademicYear resolveByNameOrCurrent(String name) {
+                        org.school.personalLoad.model.AcademicYear year = resolveCurrent();
+                        year.setName(name == null ? "" : name);
+                        return year;
+                    }
+                    @Override
+                    public org.school.personalLoad.model.AcademicYear create(Integer startYear) { throw new UnsupportedOperationException(); }
+                    @Override
+                    public void delete(Long id) { throw new UnsupportedOperationException(); }
+                    @Override
+                    public String formatName(int startYear) { return String.valueOf(startYear); }
+                }
+        );
+    }
+
     @Override
     public ManualLoadEntry create(String academicYear, ManualLoadEntryRequest request) {
         ManualLoadEntry entity = toEntity(resolveAcademicYear(academicYear), request);
