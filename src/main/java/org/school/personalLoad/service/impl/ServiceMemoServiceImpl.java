@@ -44,13 +44,13 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ServiceMemoDtos.PendingTeacher> findPendingTeachers() {
-        Map<TeacherDateKey, TeacherChangeAggregate> candidates = loadTeacherChangesByDate();
+    public List<ServiceMemoDtos.PendingTeacher> findPendingTeachers(String academicYear) {
+        Map<TeacherDateKey, TeacherChangeAggregate> candidates = loadTeacherChangesByDate(academicYear);
         if (candidates.isEmpty()) {
             return List.of();
         }
 
-        Map<String, ServiceMemo> latestMemoBySelection = latestMemoBySelectionKey();
+        Map<String, ServiceMemo> latestMemoBySelection = latestMemoBySelectionKey(academicYear);
         return candidates.entrySet().stream()
                 .filter(entry -> {
                     String selectionKey = selectionKey(entry.getKey());
@@ -73,8 +73,11 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ServiceMemoDtos.ProcessedMemo> findProcessed() {
-        return serviceMemoRepository.findAllByStatusOrderByCreatedAtDesc(ServiceMemo.Status.PROCESSED)
+    public List<ServiceMemoDtos.ProcessedMemo> findProcessed(String academicYear) {
+        java.util.List<ServiceMemo> items = (academicYear == null || academicYear.isBlank())
+                ? serviceMemoRepository.findAllByStatusOrderByCreatedAtDesc(ServiceMemo.Status.PROCESSED)
+                : serviceMemoRepository.findAllByAcademicYearAndStatusOrderByCreatedAtDesc(academicYear, ServiceMemo.Status.PROCESSED);
+        return items
                 .stream()
                 .map(this::toProcessedDto)
                 .toList();
@@ -82,15 +85,18 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ServiceMemoDtos.ProcessedMemo> findArchived() {
-        return serviceMemoRepository.findAllByStatusOrderByCreatedAtDesc(ServiceMemo.Status.ARCHIVED)
+    public List<ServiceMemoDtos.ProcessedMemo> findArchived(String academicYear) {
+        java.util.List<ServiceMemo> items = (academicYear == null || academicYear.isBlank())
+                ? serviceMemoRepository.findAllByStatusOrderByCreatedAtDesc(ServiceMemo.Status.ARCHIVED)
+                : serviceMemoRepository.findAllByAcademicYearAndStatusOrderByCreatedAtDesc(academicYear, ServiceMemo.Status.ARCHIVED);
+        return items
                 .stream()
                 .map(this::toProcessedDto)
                 .toList();
     }
 
     @Override
-    public List<ServiceMemoDtos.ProcessedMemo> generateForTeachers(List<String> fioTeachers, String createdBy) {
+    public List<ServiceMemoDtos.ProcessedMemo> generateForTeachers(String academicYear, List<String> fioTeachers, String createdBy) {
         List<String> requested = Optional.ofNullable(fioTeachers).orElseGet(List::of).stream()
                 .map(v -> String.valueOf(v == null ? "" : v).trim())
                 .filter(v -> !v.isBlank())
@@ -100,8 +106,8 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             throw new IllegalArgumentException("Выберите хотя бы одну запись со списком изменений");
         }
 
-        Map<TeacherDateKey, TeacherChangeAggregate> allPending = loadTeacherChangesByDate();
-        Map<String, ServiceMemo> latestMemoBySelection = latestMemoBySelectionKey();
+        Map<TeacherDateKey, TeacherChangeAggregate> allPending = loadTeacherChangesByDate(academicYear);
+        Map<String, ServiceMemo> latestMemoBySelection = latestMemoBySelectionKey(academicYear);
         Map<String, String> teacherDativeByFio = loadTeacherDativeByFio();
 
         List<ServiceMemo> created = new ArrayList<>();
@@ -130,6 +136,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 }
 
                 ServiceMemo entity = new ServiceMemo();
+                entity.setAcademicYear(resolveMemoAcademicYear(academicYear));
                 entity.setFioTeacher(aggregate.teacherDisplay());
                 entity.setChangeStartDate(aggregate.startDate());
                 entity.setCreatedBy(createdBy);
@@ -219,11 +226,14 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 .build();
     }
 
-    private Map<TeacherDateKey, TeacherChangeAggregate> loadTeacherChangesByDate() {
-        LocalDate start = academicStart();
-        LocalDate end = academicEnd();
+    private Map<TeacherDateKey, TeacherChangeAggregate> loadTeacherChangesByDate(String academicYear) {
+        LocalDate start = academicStart(academicYear);
+        LocalDate end = academicEnd(academicYear);
 
-        List<ManualLoadEntry> periodRows = manualLoadEntryRepository.findAll().stream()
+        List<ManualLoadEntry> sourceRows = (academicYear == null || academicYear.isBlank())
+                ? manualLoadEntryRepository.findAll()
+                : manualLoadEntryRepository.findAllByAcademicYear(academicYear);
+        List<ManualLoadEntry> periodRows = sourceRows.stream()
                 .filter(row -> row.getLoadFromDate() != null && row.getLoadToDate() != null)
                 .filter(row -> !row.getLoadFromDate().isAfter(end) && !row.getLoadToDate().isBefore(start))
                 .toList();
@@ -584,10 +594,11 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         return teacherDativeByFio;
     }
 
-    private Map<String, ServiceMemo> latestMemoBySelectionKey() {
-        return serviceMemoRepository
-                .findAllByStatusInOrderByCreatedAtDesc(List.of(ServiceMemo.Status.PROCESSED, ServiceMemo.Status.ARCHIVED))
-                .stream()
+    private Map<String, ServiceMemo> latestMemoBySelectionKey(String academicYear) {
+        List<ServiceMemo> source = (academicYear == null || academicYear.isBlank())
+                ? serviceMemoRepository.findAllByStatusInOrderByCreatedAtDesc(List.of(ServiceMemo.Status.PROCESSED, ServiceMemo.Status.ARCHIVED))
+                : serviceMemoRepository.findAllByAcademicYearAndStatusInOrderByCreatedAtDesc(academicYear, List.of(ServiceMemo.Status.PROCESSED, ServiceMemo.Status.ARCHIVED));
+        return source.stream()
                 .filter(memo -> normalize(memo.getFioTeacher()) != null && memo.getChangeStartDate() != null)
                 .collect(Collectors.toMap(
                         memo -> selectionKey(new TeacherDateKey(normalize(memo.getFioTeacher()), memo.getChangeStartDate())),
@@ -871,18 +882,31 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         run.setBold(bold);
     }
 
-    private LocalDate academicStart() {
-        var ranges = studyPeriodSettingService.rangesByKey();
+    private LocalDate academicStart(String academicYear) {
+        var ranges = (academicYear == null || academicYear.isBlank())
+                ? studyPeriodSettingService.rangesByKey()
+                : studyPeriodSettingService.rangesByKey(academicYear);
         return Optional.ofNullable(ranges.get(StudyPeriodSettingKey.YEAR_1_9))
                 .map(StudyPeriodSettingService.DateRange::startDate)
                 .orElse(LocalDate.of(LocalDate.now().getYear(), 9, 1));
     }
 
-    private LocalDate academicEnd() {
-        var ranges = studyPeriodSettingService.rangesByKey();
+    private LocalDate academicEnd(String academicYear) {
+        var ranges = (academicYear == null || academicYear.isBlank())
+                ? studyPeriodSettingService.rangesByKey()
+                : studyPeriodSettingService.rangesByKey(academicYear);
         return Optional.ofNullable(ranges.get(StudyPeriodSettingKey.YEAR_1_9))
                 .map(StudyPeriodSettingService.DateRange::endDate)
                 .orElse(LocalDate.of(LocalDate.now().plusYears(1).getYear(), 5, 31));
+    }
+
+    private String resolveMemoAcademicYear(String academicYear) {
+        if (academicYear != null && !academicYear.isBlank()) {
+            return academicYear;
+        }
+        LocalDate now = LocalDate.now();
+        int start = now.getMonthValue() >= 7 ? now.getYear() : now.getYear() - 1;
+        return start + "/" + (start + 1);
     }
 
     private String keyOf(TarifficationChanges ch) {

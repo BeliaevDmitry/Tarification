@@ -18,6 +18,8 @@ import java.time.LocalDate;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -63,7 +65,33 @@ class ManualLoadServiceImplBulkReplaceTest {
 
         service.createBulk(List.of(request));
 
+        verify(studyPeriodSettingService).inferStudyPeriod(
+                argThat(year -> year != null && !year.isBlank()),
+                any(),
+                any(),
+                any()
+        );
         verify(manualLoadEntryRepository).deleteByBuildingCodes(java.util.Set.of("b1"));
+        verify(manualLoadEntryRepository).saveAll(any());
+    }
+
+    @Test
+    void createBulkReplacesRowsForAffectedBuildingAndAcademicYearWhenYearIsExplicit() {
+        ManualLoadEntryRequest request = new ManualLoadEntryRequest();
+        request.setAcademicYear("2025/2026");
+        request.setFioTeacher("Иванов И.И.");
+        request.setNumberSchoolBuilding("B1");
+        request.setSubjectName("Алгебра");
+        request.setClassName("8-А");
+        request.setLoad(6);
+        request.setEducationLevel(EducationLevel.BASIC);
+        request.setLoadFromDate(LocalDate.of(2025, 9, 1));
+        request.setLoadToDate(LocalDate.of(2026, 5, 31));
+
+        service.createBulk(List.of(request));
+
+        verify(manualLoadEntryRepository).deleteByAcademicYearAndBuildingCodes("2025/2026", java.util.Set.of("b1"));
+        verify(manualLoadEntryRepository, never()).deleteByBuildingCodes(any());
         verify(manualLoadEntryRepository).saveAll(any());
     }
 }
