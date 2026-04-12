@@ -1,4 +1,8 @@
 const jsonHeaders = { 'Content-Type': 'application/json' };
+
+function withAcademicYear(path) {
+    return window.withAcademicYear ? window.withAcademicYear(path) : path;
+}
 const TABS = [
     { key: 'BUILDINGS', label: 'Корпуса' },
     { key: 'CLASSES', label: 'Классы' },
@@ -40,7 +44,12 @@ const ui = {
     editLoadClear: document.getElementById('edit-load-clear'),
     editCloseBtn: document.getElementById('user-edit-close-btn'),
     resetPasswordBtn: document.getElementById('reset-password-btn'),
-    editSaveBtn: document.getElementById('save-user-btn')
+    editSaveBtn: document.getElementById('save-user-btn'),
+    adminTabUsersBtn: document.getElementById('admin-tab-users-btn'),
+    adminTabYearsBtn: document.getElementById('admin-tab-years-btn'),
+    academicYearForm: document.getElementById('academic-year-create-form'),
+    academicYearCode: document.getElementById('academic-year-code'),
+    academicYearsBody: document.getElementById('academic-years-body')
 };
 
 let buildings = [];
@@ -48,7 +57,7 @@ let users = [];
 let editingUserId = null;
 
 async function api(path, options = {}) {
-    const response = await fetch(path, options);
+    const response = await fetch(withAcademicYear(path), options);
     const text = await response.text();
     let body = null;
     try {
@@ -62,6 +71,61 @@ async function api(path, options = {}) {
 
 function print(value) {
     ui.result.textContent = JSON.stringify(value, null, 2);
+}
+
+function setAdminTab(tab) {
+    document.querySelectorAll('[data-admin-tab]').forEach((section) => {
+        section.style.display = section.dataset.adminTab === tab ? '' : 'none';
+    });
+}
+
+function yesNo(flag) {
+    return flag ? 'Да' : 'Нет';
+}
+
+function normalizeAcademicYearInput(rawValue) {
+    const value = String(rawValue || '').trim().replace('\\', '/');
+    if (/^\d{4}$/.test(value)) {
+        const start = Number(value);
+        return `${start}/${start + 1}`;
+    }
+    return value;
+}
+
+async function renderAcademicYears() {
+    if (!ui.academicYearsBody) return;
+    const years = await api('/api/academic-years');
+    const rows = await Promise.all((years || []).map(async (year) => {
+        const [curriculum, manual] = await Promise.all([
+            api(`/api/curriculum?academicYear=${encodeURIComponent(year.code)}`),
+            api(`/api/manual-load?academicYear=${encodeURIComponent(year.code)}`)
+        ]);
+        const loadFilled = (manual || []).some((item) => String(item.fioTeacher || '').trim());
+        return {
+            ...year,
+            curriculumLoaded: (curriculum || []).length > 0,
+            loadFilled
+        };
+    }));
+    ui.academicYearsBody.innerHTML = rows.map((row) => `
+        <tr>
+            <td>${esc(row.code)}</td>
+            <td>${yesNo(row.curriculumLoaded)}</td>
+            <td>${yesNo(row.loadFilled)}</td>
+            <td>${yesNo(row.continuityApplied)}</td>
+            <td><button type="button" data-year-delete="${esc(row.id)}">Удалить</button></td>
+        </tr>
+    `).join('');
+    ui.academicYearsBody.querySelectorAll('[data-year-delete]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            try {
+                await api(`/api/academic-years/${btn.dataset.yearDelete}`, { method: 'DELETE' });
+                await renderAcademicYears();
+            } catch (error) {
+                print({ error: error.message });
+            }
+        });
+    });
 }
 
 function esc(value) {
@@ -521,4 +585,23 @@ ui.resetPasswordBtn.addEventListener('click', async () => {
 });
 
 resetCreateForm();
-reload().catch((error) => print({ error: error.message }));
+reload().then(renderAcademicYears).catch((error) => print({ error: error.message }));
+
+ui.adminTabUsersBtn?.addEventListener('click', () => setAdminTab('users'));
+ui.adminTabYearsBtn?.addEventListener('click', () => setAdminTab('years'));
+
+ui.academicYearForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+        const code = normalizeAcademicYearInput(ui.academicYearCode?.value);
+        await api('/api/academic-years', {
+            method: 'POST',
+            headers: jsonHeaders,
+            body: JSON.stringify({ code })
+        });
+        if (ui.academicYearCode) ui.academicYearCode.value = '';
+        await renderAcademicYears();
+    } catch (error) {
+        print({ error: error.message });
+    }
+});

@@ -52,6 +52,7 @@ class ManualLoadServiceImplBulkReplaceTest {
     @Test
     void createBulkReplacesRowsForAffectedBuilding() {
         ManualLoadEntryRequest request = new ManualLoadEntryRequest();
+        request.setAcademicYear("2025/2026");
         request.setFioTeacher("Иванов И.И.");
         request.setNumberSchoolBuilding("B1");
         request.setSubjectName("Алгебра");
@@ -63,7 +64,7 @@ class ManualLoadServiceImplBulkReplaceTest {
 
         service.createBulk(List.of(request));
 
-        verify(manualLoadEntryRepository).deleteByBuildingCodes(java.util.Set.of("b1"));
+        verify(manualLoadEntryRepository).deleteByAcademicYearAndBuildingCodes("2025/2026", java.util.Set.of("b1"));
         verify(manualLoadEntryRepository).saveAll(any());
     }
 }
