@@ -365,6 +365,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
                     if (!classroomRepository.existsByNumberSchoolBuildingAndClassName("СП0", row.getClassName())) {
                         ClassroomLeadershipEntry cls = new ClassroomLeadershipEntry();
+                        cls.setAcademicYear(row.getAcademicYear());
                         cls.setNumberSchoolBuilding("СП0");
                         cls.setClassName(row.getClassName());
                         cls.setClassDirection(row.getClassDirection() == null || row.getClassDirection().isBlank() ? "Не указана" : row.getClassDirection());
@@ -426,11 +427,18 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     private void ensureClassroom(String building, String className, String classDirection, String fallbackTeacher) {
         if (classroomRepository.existsByNumberSchoolBuildingAndClassName(building, className)) return;
         ClassroomLeadershipEntry cls = new ClassroomLeadershipEntry();
+        cls.setAcademicYear(currentAcademicYear());
         cls.setNumberSchoolBuilding(building);
         cls.setClassName(className);
         cls.setClassDirection(classDirection == null || classDirection.isBlank() ? "Не указана" : classDirection);
         cls.setFioTeacher(fallbackTeacher);
         classroomRepository.save(cls);
+    }
+
+    private String currentAcademicYear() {
+        java.time.LocalDate now = java.time.LocalDate.now();
+        int start = now.getMonthValue() >= 7 ? now.getYear() : now.getYear() - 1;
+        return start + "/" + (start + 1);
     }
 
     private List<CurriculumImportRow> normalizeImportedRows(List<CurriculumImportRow> rows) {
