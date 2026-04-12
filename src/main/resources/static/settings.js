@@ -12,7 +12,8 @@ const ui = {
 let state = [];
 
 async function api(path, options = {}) {
-    const response = await fetch(path, options);
+    const scopedPath = window.withAcademicYear ? window.withAcademicYear(path) : path;
+    const response = await fetch(scopedPath, options);
     const text = await response.text();
     let body = null;
     try { body = text ? JSON.parse(text) : null; } catch { body = text ? { message: text } : null; }
