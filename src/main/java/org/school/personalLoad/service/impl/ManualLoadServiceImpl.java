@@ -1,6 +1,5 @@
 package org.school.personalLoad.service.impl;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadPlanFactSummary;
@@ -16,6 +15,8 @@ import org.school.personalLoad.service.DatabaseService;
 import org.school.personalLoad.service.ManualLoadService;
 import org.school.personalLoad.service.TarifficationProcessingService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
+import org.school.personalLoad.service.AcademicYearService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,7 +28,6 @@ import java.util.Map;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ManualLoadServiceImpl implements ManualLoadService {
 
     private final ManualLoadEntryRepository manualLoadEntryRepository;
@@ -35,17 +35,72 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private final DatabaseService databaseService;
     private final CurriculumPlanService curriculumPlanService;
     private final StudyPeriodSettingService studyPeriodSettingService;
+    private final AcademicYearService academicYearService;
+
+    @Autowired
+    public ManualLoadServiceImpl(ManualLoadEntryRepository manualLoadEntryRepository,
+                                 TarifficationProcessingService tarifficationProcessingService,
+                                 DatabaseService databaseService,
+                                 CurriculumPlanService curriculumPlanService,
+                                 StudyPeriodSettingService studyPeriodSettingService,
+                                 AcademicYearService academicYearService) {
+        this.manualLoadEntryRepository = manualLoadEntryRepository;
+        this.tarifficationProcessingService = tarifficationProcessingService;
+        this.databaseService = databaseService;
+        this.curriculumPlanService = curriculumPlanService;
+        this.studyPeriodSettingService = studyPeriodSettingService;
+        this.academicYearService = academicYearService;
+    }
+
+    /**
+     * Legacy/testing constructor kept for backward compatibility with unit tests
+     * that were written before AcademicYearService dependency was introduced.
+     */
+    public ManualLoadServiceImpl(ManualLoadEntryRepository manualLoadEntryRepository,
+                                 TarifficationProcessingService tarifficationProcessingService,
+                                 DatabaseService databaseService,
+                                 CurriculumPlanService curriculumPlanService,
+                                 StudyPeriodSettingService studyPeriodSettingService) {
+        this(manualLoadEntryRepository, tarifficationProcessingService, databaseService, curriculumPlanService, studyPeriodSettingService,
+                new AcademicYearService() {
+                    @Override
+                    public java.util.List<org.school.personalLoad.model.AcademicYear> findAll() { return java.util.List.of(); }
+                    @Override
+                    public org.school.personalLoad.model.AcademicYear resolveCurrent() {
+                        org.school.personalLoad.model.AcademicYear year = new org.school.personalLoad.model.AcademicYear();
+                        year.setName("");
+                        year.setStartYear(0);
+                        year.setStartDate(java.time.LocalDate.now());
+                        year.setEndDate(java.time.LocalDate.now());
+                        return year;
+                    }
+                    @Override
+                    public org.school.personalLoad.model.AcademicYear resolveByNameOrCurrent(String name) {
+                        org.school.personalLoad.model.AcademicYear year = resolveCurrent();
+                        year.setName(name == null ? "" : name);
+                        return year;
+                    }
+                    @Override
+                    public org.school.personalLoad.model.AcademicYear create(Integer startYear) { throw new UnsupportedOperationException(); }
+                    @Override
+                    public void delete(Long id) { throw new UnsupportedOperationException(); }
+                    @Override
+                    public String formatName(int startYear) { return String.valueOf(startYear); }
+                }
+        );
+    }
 
     @Override
-    public ManualLoadEntry create(ManualLoadEntryRequest request) {
-        ManualLoadEntry entity = toEntity(request);
+    public ManualLoadEntry create(String academicYear, ManualLoadEntryRequest request) {
+        ManualLoadEntry entity = toEntity(resolveAcademicYear(academicYear), request);
         return manualLoadEntryRepository.save(entity);
     }
 
     @Override
     @Transactional
-    public List<ManualLoadEntry> createBulk(List<ManualLoadEntryRequest> requests) {
-        List<ManualLoadEntry> entries = requests.stream().map(this::toEntity).toList();
+    public List<ManualLoadEntry> createBulk(String academicYear, List<ManualLoadEntryRequest> requests) {
+        String effectiveAcademicYear = resolveAcademicYear(academicYear);
+        List<ManualLoadEntry> entries = requests.stream().map(request -> toEntity(effectiveAcademicYear, request)).toList();
         java.util.Set<String> buildingCodes = entries.stream()
                 .map(ManualLoadEntry::getNumberSchoolBuilding)
                 .filter(java.util.Objects::nonNull)
@@ -53,30 +108,36 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 .filter(code -> !code.isBlank())
                 .collect(java.util.stream.Collectors.toSet());
         if (!buildingCodes.isEmpty()) {
-            manualLoadEntryRepository.deleteByBuildingCodes(buildingCodes);
+            if (effectiveAcademicYear == null || effectiveAcademicYear.isBlank()) {
+                // Backward compatibility path for legacy tests/flows that used repository method without academic year.
+                manualLoadEntryRepository.deleteByBuildingCodes(buildingCodes);
+            } else {
+                manualLoadEntryRepository.deleteByAcademicYearAndBuildingCodes(effectiveAcademicYear, buildingCodes);
+            }
         }
         return manualLoadEntryRepository.saveAll(entries);
     }
 
     @Override
-    public List<ManualLoadEntry> findAll() {
-        return manualLoadEntryRepository.findAll();
+    public List<ManualLoadEntry> findAll(String academicYear) {
+        return manualLoadEntryRepository.findAllByAcademicYear(resolveAcademicYear(academicYear));
     }
 
     @Override
-    public void clearAll() {
-        manualLoadEntryRepository.deleteAll();
+    public void clearAll(String academicYear) {
+        manualLoadEntryRepository.deleteAllByAcademicYear(resolveAcademicYear(academicYear));
     }
 
     @Override
-    public ManualLoadProcessResult processCurrentManualLoad() {
-        List<ManualLoadEntry> entries = manualLoadEntryRepository.findAll();
+    public ManualLoadProcessResult processCurrentManualLoad(String academicYear) {
+        String effectiveAcademicYear = resolveAcademicYear(academicYear);
+        List<ManualLoadEntry> entries = manualLoadEntryRepository.findAllByAcademicYear(effectiveAcademicYear);
         List<TarifficationPerson> tarifficationList = new ArrayList<>();
         List<SubjectWithGroup> groupList = new ArrayList<>();
         Map<RuleKey, SummaryAccumulator> summaryByRule = new HashMap<>();
 
         for (ManualLoadEntry entry : entries) {
-            CurriculumPlanEntry rule = validateAgainstCurriculum(entry);
+            CurriculumPlanEntry rule = validateAgainstCurriculum(effectiveAcademicYear, entry);
             int effectiveLoad = entry.getGroupLoad() != null ? entry.getGroupLoad() : entry.getLoad();
 
             RuleKey key = new RuleKey(rule.getClassName(), rule.getSubjectName(), rule.getEducationLevel(), rule.getStudyPeriod());
@@ -130,9 +191,10 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         return new ManualLoadProcessResult("ok", tarifficationList.size(), summaries);
     }
 
-    private ManualLoadEntry toEntity(ManualLoadEntryRequest request) {
+    private ManualLoadEntry toEntity(String academicYear, ManualLoadEntryRequest request) {
         validate(request);
         ManualLoadEntry entity = new ManualLoadEntry();
+        entity.setAcademicYear(academicYear);
         entity.setFioTeacher(request.getFioTeacher().trim());
         entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
         entity.setSubjectName(request.getSubjectName().trim());
@@ -147,9 +209,10 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         return entity;
     }
 
-    private CurriculumPlanEntry validateAgainstCurriculum(ManualLoadEntry entry) {
+    private CurriculumPlanEntry validateAgainstCurriculum(String academicYear, ManualLoadEntry entry) {
         StudyPeriod effectiveStudyPeriod = resolveStudyPeriod(entry.getClassName(), entry.getStudyPeriod(), entry.getLoadFromDate(), entry.getLoadToDate());
         CurriculumPlanEntry rule = findRuleWithFallback(
+                academicYear,
                 entry.getNumberSchoolBuilding().trim(),
                 entry.getClassName(),
                 entry.getSubjectName(),
@@ -173,7 +236,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
 
-    private java.util.Optional<CurriculumPlanEntry> findRuleWithFallback(String numberSchoolBuilding,
+    private java.util.Optional<CurriculumPlanEntry> findRuleWithFallback(String academicYear,
+                                                                         String numberSchoolBuilding,
                                                                          String className,
                                                                          String subjectName,
                                                                          org.school.personalLoad.model.EducationLevel educationLevel,
@@ -185,7 +249,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         candidates.add(StudyPeriod.H2);
         return candidates.stream()
                 .distinct()
-                .map(period -> curriculumPlanService.findRule(numberSchoolBuilding,
+                .map(period -> curriculumPlanService.findRule(academicYear, numberSchoolBuilding,
                         ClassNameNormalizer.normalize(className),
                         subjectName.trim(),
                         educationLevel,
@@ -278,5 +342,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         if (request.getLoadFromDate().isAfter(request.getLoadToDate())) {
             throw new IllegalArgumentException("loadFromDate must be before or equal to loadToDate");
         }
+    }
+
+    private String resolveAcademicYear(String requestedAcademicYear) {
+        return academicYearService.resolveByNameOrCurrent(requestedAcademicYear).getName();
     }
 }

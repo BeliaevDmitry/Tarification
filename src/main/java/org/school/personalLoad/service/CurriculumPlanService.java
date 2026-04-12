@@ -21,9 +21,18 @@ public interface CurriculumPlanService {
 
     void deleteById(Long id);
 
-    Optional<CurriculumPlanEntry> findRule(String numberSchoolBuilding,
+    Optional<CurriculumPlanEntry> findRule(String academicYear,
+                                           String numberSchoolBuilding,
                                            String className,
                                            String subjectName,
                                            EducationLevel educationLevel,
                                            StudyPeriod studyPeriod);
+
+    default Optional<CurriculumPlanEntry> findRule(String numberSchoolBuilding,
+                                                   String className,
+                                                   String subjectName,
+                                                   EducationLevel educationLevel,
+                                                   StudyPeriod studyPeriod) {
+        return findRule(null, numberSchoolBuilding, className, subjectName, educationLevel, studyPeriod);
+    }
 }

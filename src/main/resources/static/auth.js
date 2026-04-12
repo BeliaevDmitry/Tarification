@@ -1,4 +1,6 @@
 const TAB_PATHS = {
+    '/': null,
+    '/index.html': null,
     '/buildings.html': 'BUILDINGS',
     '/classes.html': 'CLASSES',
     '/subjects.html': 'SUBJECTS',
@@ -18,9 +20,9 @@ const NAV_ORDER = [
     { path: '/load.html', tab: 'LOAD', label: 'Нагрузка по корпусам' },
     { path: '/service-notes.html', tab: 'SERVICE_NOTES', label: 'Служебные записки' },
     { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' },
-    { path: '/teachers.html', tab: 'TEACHERS', label: 'Педагоги' },
-    { path: '/admin.html', tab: 'USERS', label: 'Пользователи' }
+    { path: '/teachers.html', tab: 'TEACHERS', label: 'Педагоги' }
 ];
+const ACADEMIC_YEAR_STORAGE_KEY = 'tarification.selectedAcademicYear';
 
 async function tarificationApi(path, options = {}) {
     const response = await fetch(path, options);
@@ -35,12 +37,35 @@ async function tarificationApi(path, options = {}) {
     return body;
 }
 
+function selectedAcademicYear() {
+    return localStorage.getItem(ACADEMIC_YEAR_STORAGE_KEY) || '';
+}
+
+function setSelectedAcademicYear(value) {
+    localStorage.setItem(ACADEMIC_YEAR_STORAGE_KEY, String(value || '').trim());
+}
+
 function tabPermissionMap(currentUser) {
     return Object.fromEntries((currentUser.tabPermissions || []).map((permission) => [permission.tab, permission]));
 }
 
 function currentTab() {
     return TAB_PATHS[window.location.pathname] || null;
+}
+
+function isAdminPage() {
+    return window.location.pathname === '/admin.html';
+}
+
+function showAccessDenied() {
+    const container = document.querySelector('main.container');
+    if (!container) return;
+    container.innerHTML = `
+        <section class="card access-denied-card">
+            <h1>⛔ Доступ запрещён</h1>
+            <p class="muted">У вас нет прав для доступа к разделу «Пользователи».</p>
+            <a class="nav-link" href="/index.html">Вернуться в главное меню</a>
+        </section>`;
 }
 
 function canEditCurrentPage(currentUser) {
@@ -114,6 +139,8 @@ function mountHeaderUser(currentUser) {
         controls = document.createElement('div');
         controls.className = 'header-user-inline';
         controls.innerHTML = `
+            <a class="home-link" href="/index.html" title="Главное меню" aria-label="Главное меню">🏠</a>
+            <select id="academic-year-select" class="academic-year-select" title="Учебный год"></select>
             <button type="button" class="header-user-badge" id="profile-btn"></button>
             <button type="button" id="logout-btn">Выйти</button>`;
         titleRow.appendChild(controls);
@@ -139,6 +166,135 @@ function mountHeaderUser(currentUser) {
 
     updateStickyHeaderMetrics();
     window.addEventListener('resize', updateStickyHeaderMetrics, { passive: true });
+}
+
+let unsavedChanges = false;
+let unsavedBaseline = new Map();
+let unsavedTrackCounter = 0;
+
+function trackableEditElements() {
+    return Array.from(document.querySelectorAll('[data-requires-edit] input, [data-requires-edit] select, [data-requires-edit] textarea'))
+        .filter((el) => {
+            if (el.dataset.allowReadonly === 'true') return false;
+            if (el.dataset.unsavedIgnore === 'true') return false;
+            if (el.disabled) return false;
+            if (el.tagName === 'INPUT') {
+                const type = String(el.type || '').toLowerCase();
+                if (['button', 'submit', 'reset', 'hidden'].includes(type)) return false;
+            }
+            return true;
+        });
+}
+
+function ensureUnsavedTrackId(el) {
+    if (el.dataset.unsavedTrackId) return el.dataset.unsavedTrackId;
+    unsavedTrackCounter += 1;
+    el.dataset.unsavedTrackId = `u${unsavedTrackCounter}`;
+    return el.dataset.unsavedTrackId;
+}
+
+function normalizeTrackedValue(el) {
+    if (el.type === 'checkbox' || el.type === 'radio') {
+        return el.checked ? '1' : '0';
+    }
+    if (el.type === 'file') {
+        return String(el.files?.length || 0);
+    }
+    return String(el.value ?? '');
+}
+
+function captureUnsavedBaseline() {
+    const nextBaseline = new Map();
+    trackableEditElements().forEach((el) => {
+        const id = ensureUnsavedTrackId(el);
+        nextBaseline.set(id, normalizeTrackedValue(el));
+    });
+    unsavedBaseline = nextBaseline;
+    unsavedChanges = false;
+}
+
+function computeUnsavedChanges() {
+    const current = trackableEditElements();
+    if (current.length !== unsavedBaseline.size) {
+        return true;
+    }
+    return current.some((el) => {
+        const id = ensureUnsavedTrackId(el);
+        return unsavedBaseline.get(id) !== normalizeTrackedValue(el);
+    });
+}
+
+function setupUnsavedChangesGuards() {
+    const syncUnsavedState = (event) => {
+        if (!event.target.closest('[data-requires-edit]')) return;
+        unsavedChanges = computeUnsavedChanges();
+    };
+
+    document.addEventListener('input', syncUnsavedState, { passive: true });
+    document.addEventListener('change', syncUnsavedState, { passive: true });
+    document.addEventListener('reset', () => {
+        setTimeout(() => {
+            unsavedChanges = computeUnsavedChanges();
+        }, 0);
+    }, { passive: true });
+
+    window.addEventListener('beforeunload', (event) => {
+        if (!unsavedChanges) return;
+        event.preventDefault();
+        event.returnValue = '';
+    });
+
+    window.markUnsavedChangesCommitted = () => captureUnsavedBaseline();
+
+    const observer = new MutationObserver(() => {
+        if (unsavedChanges) return;
+        captureUnsavedBaseline();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    setTimeout(() => captureUnsavedBaseline(), 0);
+}
+
+function patchFetchWithAcademicYear() {
+    if (window.__academicYearFetchPatched) return;
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (input, init = {}) => {
+        const urlString = typeof input === 'string' ? input : String(input?.url || '');
+        const isApi = urlString.startsWith('/api/');
+        if (!isApi) return originalFetch(input, init);
+        const url = new URL(urlString, window.location.origin);
+        const year = selectedAcademicYear();
+        if (year && !url.searchParams.has('academicYear')) {
+            url.searchParams.set('academicYear', year);
+        }
+        return originalFetch(url.pathname + url.search + url.hash, init);
+    };
+    window.__academicYearFetchPatched = true;
+}
+
+async function mountAcademicYearSelector(currentUser) {
+    const select = document.getElementById('academic-year-select');
+    if (!select) return;
+    const payload = await tarificationApi('/api/academic-years');
+    const years = payload?.years || [];
+    const currentYear = payload?.currentAcademicYear || '';
+    const stored = selectedAcademicYear();
+    const effective = years.some((y) => y.name === stored) ? stored : currentYear;
+    setSelectedAcademicYear(effective);
+    select.innerHTML = years.map((row) => `<option value="${row.name}">${row.name}</option>`).join('');
+    select.value = effective;
+    select.addEventListener('change', (event) => {
+        if (unsavedChanges && !window.confirm('Есть несохранённые изменения. Переключить учебный год?')) {
+            event.target.value = selectedAcademicYear();
+            return;
+        }
+        setSelectedAcademicYear(event.target.value);
+        unsavedChanges = false;
+        window.location.reload();
+    });
+    if (!currentUser.admin && !currentUser.canEditAllAcademicYears && effective !== currentYear) {
+        document.body.classList.add('readonly-year');
+    }
 }
 
 function openProfileModal(currentUser) {
@@ -234,13 +390,29 @@ function enrichNavigation(currentUser) {
     });
 }
 
+function enrichMainMenu(currentUser) {
+    const adminCard = document.querySelector('[data-admin-card]');
+    if (adminCard) {
+        adminCard.style.display = currentUser.admin ? '' : 'none';
+    }
+}
+
 (async function initAuth() {
     try {
         const currentUser = await tarificationApi('/api/auth/me');
         window.tarificationAuth = currentUser;
         window.tarificationTabPermissions = tabPermissionMap(currentUser);
+        patchFetchWithAcademicYear();
+        setupUnsavedChangesGuards();
+        if (isAdminPage() && !currentUser.admin) {
+            mountHeaderUser(currentUser);
+            showAccessDenied();
+            return;
+        }
         enrichNavigation(currentUser);
+        enrichMainMenu(currentUser);
         mountHeaderUser(currentUser);
+        await mountAcademicYearSelector(currentUser);
         insertReadonlyNotice(currentUser);
         disableEditAreas(currentUser);
         updateStickyHeaderMetrics();

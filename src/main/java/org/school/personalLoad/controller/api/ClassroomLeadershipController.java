@@ -22,18 +22,20 @@ public class ClassroomLeadershipController {
     private final ClassroomLeadershipService classroomLeadershipService;
 
     @PutMapping
-    public ResponseEntity<List<ClassroomLeadershipEntry>> replaceAll(@RequestBody List<ClassroomLeadershipEntryRequest> requests) {
-        return ResponseEntity.ok(classroomLeadershipService.replaceAll(requests));
+    public ResponseEntity<List<ClassroomLeadershipEntry>> replaceAll(@RequestParam(required = false) String academicYear,
+                                                                     @RequestBody List<ClassroomLeadershipEntryRequest> requests) {
+        return ResponseEntity.ok(classroomLeadershipService.replaceAll(academicYear, requests));
     }
 
     @PostMapping("/import")
-    public ResponseEntity<Map<String, Object>> importFromExcel(@RequestParam("file") MultipartFile file) {
-        return ResponseEntity.ok(classroomLeadershipService.importFromExcel(file));
+    public ResponseEntity<Map<String, Object>> importFromExcel(@RequestParam(required = false) String academicYear,
+                                                               @RequestParam("file") MultipartFile file) {
+        return ResponseEntity.ok(classroomLeadershipService.importFromExcel(academicYear, file));
     }
 
     @GetMapping("/template")
-    public ResponseEntity<Resource> template() {
-        Resource template = classroomLeadershipService.buildImportTemplate();
+    public ResponseEntity<Resource> template(@RequestParam(required = false) String academicYear) {
+        Resource template = classroomLeadershipService.buildImportTemplate(academicYear);
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=classes-template.xlsx")
@@ -41,20 +43,21 @@ public class ClassroomLeadershipController {
     }
 
     @GetMapping
-    public ResponseEntity<List<ClassroomLeadershipEntry>> findAll() {
-        return ResponseEntity.ok(classroomLeadershipService.findAll());
+    public ResponseEntity<List<ClassroomLeadershipEntry>> findAll(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(classroomLeadershipService.findAll(academicYear));
     }
 
     @DeleteMapping("/one")
-    public ResponseEntity<Void> deleteOne(@RequestParam String numberSchoolBuilding,
+    public ResponseEntity<Void> deleteOne(@RequestParam(required = false) String academicYear,
+                                          @RequestParam String numberSchoolBuilding,
                                           @RequestParam String className) {
-        classroomLeadershipService.deleteOne(numberSchoolBuilding, className);
+        classroomLeadershipService.deleteOne(academicYear, numberSchoolBuilding, className);
         return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping
-    public ResponseEntity<Void> clearAll() {
-        classroomLeadershipService.clearAll();
+    public ResponseEntity<Void> clearAll(@RequestParam(required = false) String academicYear) {
+        classroomLeadershipService.clearAll(academicYear);
         return ResponseEntity.noContent().build();
     }
 }

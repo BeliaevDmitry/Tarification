@@ -25,34 +25,37 @@ public class ManualLoadController {
     private final ManualLoadService manualLoadService;
 
     @PostMapping
-    public ResponseEntity<ManualLoadEntry> create(@RequestBody ManualLoadEntryRequest request, HttpServletRequest httpServletRequest) {
+    public ResponseEntity<ManualLoadEntry> create(@RequestParam(required = false) String academicYear,
+                                                  @RequestBody ManualLoadEntryRequest request, HttpServletRequest httpServletRequest) {
         validateLoadAccess(AuthSessionUtils.requiredUser(httpServletRequest), List.of(request));
-        return ResponseEntity.ok(manualLoadService.create(request));
+        return ResponseEntity.ok(manualLoadService.create(academicYear, request));
     }
 
     @PostMapping("/bulk")
-    public ResponseEntity<List<ManualLoadEntry>> createBulk(@RequestBody List<ManualLoadEntryRequest> requests,
+    public ResponseEntity<List<ManualLoadEntry>> createBulk(@RequestParam(required = false) String academicYear,
+                                                            @RequestBody List<ManualLoadEntryRequest> requests,
                                                             HttpServletRequest httpServletRequest) {
         validateLoadAccess(AuthSessionUtils.requiredUser(httpServletRequest), requests);
-        return ResponseEntity.ok(manualLoadService.createBulk(requests));
+        return ResponseEntity.ok(manualLoadService.createBulk(academicYear, requests));
     }
 
     @GetMapping
-    public ResponseEntity<List<ManualLoadEntry>> findAll() {
-        return ResponseEntity.ok(manualLoadService.findAll());
+    public ResponseEntity<List<ManualLoadEntry>> findAll(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(manualLoadService.findAll(academicYear));
     }
 
     @DeleteMapping
-    public ResponseEntity<Void> clear(HttpServletRequest httpServletRequest) {
+    public ResponseEntity<Void> clear(@RequestParam(required = false) String academicYear, HttpServletRequest httpServletRequest) {
         validateGlobalLoadOperation(AuthSessionUtils.requiredUser(httpServletRequest));
-        manualLoadService.clearAll();
+        manualLoadService.clearAll(academicYear);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/process")
-    public ResponseEntity<ManualLoadProcessResult> process(HttpServletRequest httpServletRequest) {
+    public ResponseEntity<ManualLoadProcessResult> process(@RequestParam(required = false) String academicYear,
+                                                           HttpServletRequest httpServletRequest) {
         validateGlobalLoadOperation(AuthSessionUtils.requiredUser(httpServletRequest));
-        return ResponseEntity.ok(manualLoadService.processCurrentManualLoad());
+        return ResponseEntity.ok(manualLoadService.processCurrentManualLoad(academicYear));
     }
 
     private void validateLoadAccess(SessionUser user, List<ManualLoadEntryRequest> requests) {

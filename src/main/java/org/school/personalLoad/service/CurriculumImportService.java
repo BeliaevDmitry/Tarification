@@ -6,7 +6,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 
 public interface CurriculumImportService {
-    CurriculumImportResult importFile(MultipartFile file);
+    CurriculumImportResult importFile(String academicYear, MultipartFile file, boolean confirmLargeReduction);
 
-    byte[] exportEditableWorkbook() throws IOException;
+    byte[] exportEditableWorkbook(String academicYear) throws IOException;
 }
