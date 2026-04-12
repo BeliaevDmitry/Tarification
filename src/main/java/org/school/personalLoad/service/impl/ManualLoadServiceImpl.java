@@ -99,7 +99,12 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 .filter(code -> !code.isBlank())
                 .collect(java.util.stream.Collectors.toSet());
         if (!buildingCodes.isEmpty()) {
-            manualLoadEntryRepository.deleteByAcademicYearAndBuildingCodes(effectiveAcademicYear, buildingCodes);
+            if (effectiveAcademicYear == null || effectiveAcademicYear.isBlank()) {
+                // Backward compatibility path for legacy tests/flows that used repository method without academic year.
+                manualLoadEntryRepository.deleteByBuildingCodes(buildingCodes);
+            } else {
+                manualLoadEntryRepository.deleteByAcademicYearAndBuildingCodes(effectiveAcademicYear, buildingCodes);
+            }
         }
         return manualLoadEntryRepository.saveAll(entries);
     }
