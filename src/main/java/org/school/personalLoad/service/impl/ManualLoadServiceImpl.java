@@ -45,6 +45,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     @Override
     @Transactional
     public List<ManualLoadEntry> createBulk(List<ManualLoadEntryRequest> requests) {
+        boolean hasExplicitAcademicYear = requests.stream()
+                .anyMatch(request -> request != null && request.getAcademicYear() != null && !request.getAcademicYear().isBlank());
         List<ManualLoadEntry> entries = requests.stream().map(this::toEntity).toList();
         java.util.Set<String> buildingCodes = entries.stream()
                 .map(ManualLoadEntry::getNumberSchoolBuilding)
@@ -54,7 +56,11 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 .collect(java.util.stream.Collectors.toSet());
         if (!buildingCodes.isEmpty()) {
             String academicYear = entries.get(0).getAcademicYear();
-            manualLoadEntryRepository.deleteByAcademicYearAndBuildingCodes(academicYear, buildingCodes);
+            if (!hasExplicitAcademicYear || academicYear == null || academicYear.isBlank()) {
+                manualLoadEntryRepository.deleteByBuildingCodes(buildingCodes);
+            } else {
+                manualLoadEntryRepository.deleteByAcademicYearAndBuildingCodes(academicYear, buildingCodes);
+            }
         }
         return manualLoadEntryRepository.saveAll(entries);
     }
@@ -134,7 +140,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private ManualLoadEntry toEntity(ManualLoadEntryRequest request) {
         validate(request);
         ManualLoadEntry entity = new ManualLoadEntry();
-        entity.setAcademicYear(request.getAcademicYear());
+        entity.setAcademicYear(resolveAcademicYearOrDefault(request.getAcademicYear()));
         entity.setFioTeacher(request.getFioTeacher().trim());
         entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
         entity.setSubjectName(request.getSubjectName().trim());
@@ -286,5 +292,14 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         if (request.getLoadFromDate().isAfter(request.getLoadToDate())) {
             throw new IllegalArgumentException("loadFromDate must be before or equal to loadToDate");
         }
+    }
+
+    private String resolveAcademicYearOrDefault(String value) {
+        if (value != null && !value.isBlank()) {
+            return value.trim();
+        }
+        java.time.LocalDate now = java.time.LocalDate.now();
+        int start = now.getMonthValue() >= 7 ? now.getYear() : now.getYear() - 1;
+        return start + "/" + (start + 1);
     }
 }
