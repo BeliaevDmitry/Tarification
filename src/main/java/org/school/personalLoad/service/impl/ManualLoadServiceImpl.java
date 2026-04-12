@@ -1,6 +1,5 @@
 package org.school.personalLoad.service.impl;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadPlanFactSummary;
@@ -17,6 +16,7 @@ import org.school.personalLoad.service.ManualLoadService;
 import org.school.personalLoad.service.TarifficationProcessingService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.school.personalLoad.service.AcademicYearService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,7 +28,6 @@ import java.util.Map;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ManualLoadServiceImpl implements ManualLoadService {
 
     private final ManualLoadEntryRepository manualLoadEntryRepository;
@@ -37,6 +36,21 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private final CurriculumPlanService curriculumPlanService;
     private final StudyPeriodSettingService studyPeriodSettingService;
     private final AcademicYearService academicYearService;
+
+    @Autowired
+    public ManualLoadServiceImpl(ManualLoadEntryRepository manualLoadEntryRepository,
+                                 TarifficationProcessingService tarifficationProcessingService,
+                                 DatabaseService databaseService,
+                                 CurriculumPlanService curriculumPlanService,
+                                 StudyPeriodSettingService studyPeriodSettingService,
+                                 AcademicYearService academicYearService) {
+        this.manualLoadEntryRepository = manualLoadEntryRepository;
+        this.tarifficationProcessingService = tarifficationProcessingService;
+        this.databaseService = databaseService;
+        this.curriculumPlanService = curriculumPlanService;
+        this.studyPeriodSettingService = studyPeriodSettingService;
+        this.academicYearService = academicYearService;
+    }
 
     /**
      * Legacy/testing constructor kept for backward compatibility with unit tests
@@ -47,12 +61,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                                  DatabaseService databaseService,
                                  CurriculumPlanService curriculumPlanService,
                                  StudyPeriodSettingService studyPeriodSettingService) {
-        this(
-                manualLoadEntryRepository,
-                tarifficationProcessingService,
-                databaseService,
-                curriculumPlanService,
-                studyPeriodSettingService,
+        this(manualLoadEntryRepository, tarifficationProcessingService, databaseService, curriculumPlanService, studyPeriodSettingService,
                 new AcademicYearService() {
                     @Override
                     public java.util.List<org.school.personalLoad.model.AcademicYear> findAll() { return java.util.List.of(); }
