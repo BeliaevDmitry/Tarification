@@ -8,15 +8,20 @@ import java.time.LocalDateTime;
 
 @Data
 @Entity
-@Table(name = "study_period_rule")
+@Table(name = "study_period_rule", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_study_period_code_year", columnNames = {"academicYear", "code"})
+})
 public class StudyPeriodSetting {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 64)
+    @Column(nullable = false, length = 64)
     private String code;
+
+    @Column(nullable = false)
+    private String academicYear;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

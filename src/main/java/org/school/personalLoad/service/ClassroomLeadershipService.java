@@ -11,13 +11,13 @@ import java.util.Map;
 public interface ClassroomLeadershipService {
     List<ClassroomLeadershipEntry> replaceAll(List<ClassroomLeadershipEntryRequest> requests);
 
-    List<ClassroomLeadershipEntry> findAll();
+    List<ClassroomLeadershipEntry> findAll(String academicYear);
 
-    void deleteOne(String numberSchoolBuilding, String className);
+    void deleteOne(String academicYear, String numberSchoolBuilding, String className);
 
-    void clearAll();
+    void clearAll(String academicYear);
 
-    Map<String, Object> importFromExcel(MultipartFile file);
+    Map<String, Object> importFromExcel(String academicYear, MultipartFile file);
 
     Resource buildImportTemplate();
 }

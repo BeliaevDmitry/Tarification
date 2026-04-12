@@ -8,13 +8,16 @@ import java.time.LocalDateTime;
 @Data
 @Entity
 @Table(name = "classroom_leadership_entry", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_classroom_leadership_class", columnNames = {"numberSchoolBuilding", "className"})
+        @UniqueConstraint(name = "uk_classroom_leadership_class", columnNames = {"academicYear", "numberSchoolBuilding", "className"})
 })
 public class ClassroomLeadershipEntry {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(nullable = false)
+    private String academicYear;
 
     @Column(nullable = false)
     private String numberSchoolBuilding;

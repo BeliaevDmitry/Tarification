@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.dto.ClassroomLeadershipEntryRequest;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.service.ClassroomLeadershipService;
+import org.school.personalLoad.service.AcademicYearService;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -20,15 +21,18 @@ import java.util.Map;
 public class ClassroomLeadershipController {
 
     private final ClassroomLeadershipService classroomLeadershipService;
+    private final AcademicYearService academicYearService;
 
     @PutMapping
-    public ResponseEntity<List<ClassroomLeadershipEntry>> replaceAll(@RequestBody List<ClassroomLeadershipEntryRequest> requests) {
+    public ResponseEntity<List<ClassroomLeadershipEntry>> replaceAll(@RequestParam(required = false) String academicYear, @RequestBody List<ClassroomLeadershipEntryRequest> requests) {
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        requests.forEach(req -> req.setAcademicYear(effectiveYear));
         return ResponseEntity.ok(classroomLeadershipService.replaceAll(requests));
     }
 
     @PostMapping("/import")
-    public ResponseEntity<Map<String, Object>> importFromExcel(@RequestParam("file") MultipartFile file) {
-        return ResponseEntity.ok(classroomLeadershipService.importFromExcel(file));
+    public ResponseEntity<Map<String, Object>> importFromExcel(@RequestParam("file") MultipartFile file, @RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(classroomLeadershipService.importFromExcel(academicYearService.resolveRequestedOrDefault(academicYear), file));
     }
 
     @GetMapping("/template")
@@ -41,20 +45,21 @@ public class ClassroomLeadershipController {
     }
 
     @GetMapping
-    public ResponseEntity<List<ClassroomLeadershipEntry>> findAll() {
-        return ResponseEntity.ok(classroomLeadershipService.findAll());
+    public ResponseEntity<List<ClassroomLeadershipEntry>> findAll(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(classroomLeadershipService.findAll(academicYearService.resolveRequestedOrDefault(academicYear)));
     }
 
     @DeleteMapping("/one")
     public ResponseEntity<Void> deleteOne(@RequestParam String numberSchoolBuilding,
-                                          @RequestParam String className) {
-        classroomLeadershipService.deleteOne(numberSchoolBuilding, className);
+                                          @RequestParam String className,
+                                          @RequestParam(required = false) String academicYear) {
+        classroomLeadershipService.deleteOne(academicYearService.resolveRequestedOrDefault(academicYear), numberSchoolBuilding, className);
         return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping
-    public ResponseEntity<Void> clearAll() {
-        classroomLeadershipService.clearAll();
+    public ResponseEntity<Void> clearAll(@RequestParam(required = false) String academicYear) {
+        classroomLeadershipService.clearAll(academicYearService.resolveRequestedOrDefault(academicYear));
         return ResponseEntity.noContent().build();
     }
 }
