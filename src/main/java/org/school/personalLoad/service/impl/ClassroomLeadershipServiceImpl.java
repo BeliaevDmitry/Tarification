@@ -11,6 +11,7 @@ import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
+import org.school.personalLoad.service.AcademicYearService;
 import org.school.personalLoad.service.ClassroomLeadershipService;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
@@ -31,9 +32,11 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final SchoolBuildingRepository schoolBuildingRepository;
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
+    private final AcademicYearService academicYearService;
 
     @Override
-    public List<ClassroomLeadershipEntry> replaceAll(List<ClassroomLeadershipEntryRequest> requests) {
+    public List<ClassroomLeadershipEntry> replaceAll(String academicYear, List<ClassroomLeadershipEntryRequest> requests) {
+        String effectiveAcademicYear = resolveAcademicYear(academicYear);
         List<ClassroomLeadershipEntryRequest> safeRequests = requests == null ? List.of() : requests;
 
         Map<String, ClassroomLeadershipEntryRequest> normalized = new LinkedHashMap<>();
@@ -52,10 +55,11 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             normalized.put(building + "|" + className, request);
         }
 
-        classroomLeadershipRepository.deleteAll();
+        classroomLeadershipRepository.deleteAllByAcademicYear(effectiveAcademicYear);
         List<ClassroomLeadershipEntry> toSave = new ArrayList<>();
         normalized.values().forEach((request) -> {
             ClassroomLeadershipEntry entry = new ClassroomLeadershipEntry();
+            entry.setAcademicYear(effectiveAcademicYear);
             entry.setNumberSchoolBuilding(normalizeBuildingCode(request.getNumberSchoolBuilding()));
             entry.setClassName(ClassNameNormalizer.normalize(request.getClassName()));
             entry.setClassDirection(normalize(request.getClassDirection()));
@@ -64,18 +68,19 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         });
 
         List<ClassroomLeadershipEntry> saved = classroomLeadershipRepository.saveAll(toSave);
-        syncCurriculumBuildingByClass(saved);
+        syncCurriculumBuildingByClass(effectiveAcademicYear, saved);
         return saved;
     }
 
     @Override
-    public Map<String, Object> importFromExcel(MultipartFile file) {
+    public Map<String, Object> importFromExcel(String academicYear, MultipartFile file) {
+        String effectiveAcademicYear = resolveAcademicYear(academicYear);
         if (file == null || file.isEmpty()) throw new IllegalArgumentException("Файл обязателен");
 
         int imported = 0;
         int skipped = 0;
         Map<String, ClassroomLeadershipEntryRequest> merged = new LinkedHashMap<>();
-        findAll().forEach(existing -> {
+        findAll(effectiveAcademicYear).forEach(existing -> {
             ClassroomLeadershipEntryRequest req = new ClassroomLeadershipEntryRequest();
             req.setNumberSchoolBuilding(existing.getNumberSchoolBuilding());
             req.setClassName(existing.getClassName());
@@ -120,7 +125,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
                 imported++;
             }
 
-            List<ClassroomLeadershipEntry> saved = replaceAll(new ArrayList<>(merged.values()));
+            List<ClassroomLeadershipEntry> saved = replaceAll(effectiveAcademicYear, new ArrayList<>(merged.values()));
             return Map.of("status", "ok", "imported", imported, "skipped", skipped, "total", saved.size());
         } catch (Exception e) {
             throw new RuntimeException("Не удалось импортировать классы", e);
@@ -128,7 +133,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     }
 
     @Override
-    public Resource buildImportTemplate() {
+    public Resource buildImportTemplate(String academicYear) {
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = workbook.createSheet("Классы");
             Row header = sheet.createRow(0);
@@ -137,7 +142,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             header.createCell(2).setCellValue("Направление класса");
             header.createCell(3).setCellValue("Классный руководитель");
 
-            List<ClassroomLeadershipEntry> rows = classroomLeadershipRepository.findAll();
+            List<ClassroomLeadershipEntry> rows = classroomLeadershipRepository.findAllByAcademicYear(resolveAcademicYear(academicYear));
             if (rows.isEmpty()) {
                 Row ex = sheet.createRow(1);
                 ex.createCell(0).setCellValue("СП1");
@@ -164,24 +169,24 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     }
 
     @Override
-    public List<ClassroomLeadershipEntry> findAll() {
-        return classroomLeadershipRepository.findAll();
+    public List<ClassroomLeadershipEntry> findAll(String academicYear) {
+        return classroomLeadershipRepository.findAllByAcademicYear(resolveAcademicYear(academicYear));
     }
 
     @Override
     @Transactional
-    public void deleteOne(String numberSchoolBuilding, String className) {
+    public void deleteOne(String academicYear, String numberSchoolBuilding, String className) {
         String building = normalizeBuildingCode(numberSchoolBuilding);
         String normalizedClassName = ClassNameNormalizer.normalize(className);
         if (building.isBlank() || normalizedClassName.isBlank()) {
             throw new IllegalArgumentException("numberSchoolBuilding and className are required");
         }
-        classroomLeadershipRepository.deleteByNumberSchoolBuildingAndClassName(building, normalizedClassName);
+        classroomLeadershipRepository.deleteByAcademicYearAndNumberSchoolBuildingAndClassName(resolveAcademicYear(academicYear), building, normalizedClassName);
     }
 
     @Override
-    public void clearAll() {
-        classroomLeadershipRepository.deleteAll();
+    public void clearAll(String academicYear) {
+        classroomLeadershipRepository.deleteAllByAcademicYear(resolveAcademicYear(academicYear));
     }
 
 
@@ -191,7 +196,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
      * обновляем numberSchoolBuilding в учебном плане для этого className.
      * Это предотвращает "пропадание" предметов во вкладке "Нагрузка по корпусам".
      */
-    private void syncCurriculumBuildingByClass(List<ClassroomLeadershipEntry> classes) {
+    private void syncCurriculumBuildingByClass(String academicYear, List<ClassroomLeadershipEntry> classes) {
         if (classes == null || classes.isEmpty()) {
             return;
         }
@@ -209,7 +214,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             return;
         }
 
-        List<CurriculumPlanEntry> entries = curriculumPlanEntryRepository.findAll();
+        List<CurriculumPlanEntry> entries = curriculumPlanEntryRepository.findAllByAcademicYear(academicYear);
         boolean changed = false;
         for (CurriculumPlanEntry entry : entries) {
             String className = ClassNameNormalizer.normalize(entry.getClassName());
@@ -266,5 +271,9 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             }
             default -> "";
         };
+    }
+
+    private String resolveAcademicYear(String requestedAcademicYear) {
+        return academicYearService.resolveByNameOrCurrent(requestedAcademicYear).getName();
     }
 }

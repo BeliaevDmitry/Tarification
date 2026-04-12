@@ -54,6 +54,9 @@ public class AppUser {
     @Column(nullable = false)
     private boolean canEdit = false;
 
+    @Column(nullable = false)
+    private boolean canEditAllAcademicYears = false;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
