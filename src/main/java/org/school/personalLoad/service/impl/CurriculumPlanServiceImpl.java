@@ -11,6 +11,7 @@ import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.StudyPeriodSettingRepository;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
+import org.school.personalLoad.service.AcademicYearService;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -24,17 +25,20 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
     private final CurriculumPlanEntryRepository repository;
     private final StudyPeriodSettingRepository studyPeriodSettingRepository;
     private final StudyPeriodSettingService studyPeriodSettingService;
+    private final AcademicYearService academicYearService;
 
     @Override
     public CurriculumPlanEntry upsert(CurriculumPlanEntryRequest request) {
         validate(request);
         CurriculumPart curriculumPart = request.getCurriculumPart() == null ? CurriculumPart.CORE : request.getCurriculumPart();
+        String academicYear = resolveAcademicYear(request.getAcademicYear());
         StudyPeriodSetting rule = resolveRule(request);
         rule = normalizeYearRuleIfNeeded(request, curriculumPart, rule);
         String normalizedClassName = ClassNameNormalizer.normalize(request.getClassName());
 
         CurriculumPlanEntry entity = repository
-                .findByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriodAndStudyPeriodSettingId(
+                .findByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriodAndStudyPeriodSettingId(
+                        academicYear,
                         request.getNumberSchoolBuilding().trim(),
                         normalizedClassName,
                         request.getSubjectName().trim(),
@@ -45,7 +49,7 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
                 )
                 .orElseGet(CurriculumPlanEntry::new);
 
-        applyValues(entity, request, curriculumPart, rule);
+        applyValues(entity, academicYear, request, curriculumPart, rule);
         return repository.save(entity);
     }
 
@@ -60,7 +64,7 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
 
     @Override
     public List<CurriculumPlanEntry> findAll() {
-        return repository.findAll();
+        return repository.findAllByAcademicYear(academicYearService.resolveCurrent().getName());
     }
 
     @Override
@@ -74,9 +78,10 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         CurriculumPlanEntry entity = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Curriculum entry not found: " + id));
         CurriculumPart curriculumPart = request.getCurriculumPart() == null ? CurriculumPart.CORE : request.getCurriculumPart();
+        String academicYear = resolveAcademicYear(request.getAcademicYear());
         StudyPeriodSetting rule = resolveRule(request);
         rule = normalizeYearRuleIfNeeded(request, curriculumPart, rule);
-        applyValues(entity, request, curriculumPart, rule);
+        applyValues(entity, academicYear, request, curriculumPart, rule);
         return repository.save(entity);
     }
 
@@ -89,7 +94,8 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
     }
 
     @Override
-    public Optional<CurriculumPlanEntry> findRule(String numberSchoolBuilding,
+    public Optional<CurriculumPlanEntry> findRule(String academicYear,
+                                                  String numberSchoolBuilding,
                                                   String className,
                                                   String subjectName,
                                                   EducationLevel educationLevel,
@@ -98,7 +104,9 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         String normalizedSubject = subjectName == null ? "" : subjectName.trim();
         StudyPeriod effectiveStudyPeriod = studyPeriod == null ? StudyPeriod.YEAR : studyPeriod;
 
-        Optional<CurriculumPlanEntry> exactRule = repository.findFirstByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+        String effectiveAcademicYear = resolveAcademicYear(academicYear);
+        Optional<CurriculumPlanEntry> exactRule = repository.findFirstByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                effectiveAcademicYear,
                 numberSchoolBuilding,
                 normalizedClass,
                 normalizedSubject,
@@ -110,7 +118,8 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
             return exactRule;
         }
 
-        return repository.findFirstByClassNameAndSubjectNameAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+        return repository.findFirstByAcademicYearAndClassNameAndSubjectNameAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                effectiveAcademicYear,
                 normalizedClass,
                 normalizedSubject,
                 educationLevel,
@@ -138,7 +147,9 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
             return resolvedRule;
         }
         StudyPeriod oppositePeriod = resolvedRule.getStudyPeriod() == StudyPeriod.H1 ? StudyPeriod.H2 : StudyPeriod.H1;
-        Optional<CurriculumPlanEntry> opposite = repository.findFirstByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriod(
+        String academicYear = resolveAcademicYear(request.getAcademicYear());
+        Optional<CurriculumPlanEntry> opposite = repository.findFirstByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriod(
+                academicYear,
                 request.getNumberSchoolBuilding().trim(),
                 ClassNameNormalizer.normalize(request.getClassName()),
                 request.getSubjectName().trim(),
@@ -164,9 +175,11 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
     }
 
     private void applyValues(CurriculumPlanEntry entity,
+                             String academicYear,
                              CurriculumPlanEntryRequest request,
                              CurriculumPart curriculumPart,
                              StudyPeriodSetting rule) {
+        entity.setAcademicYear(academicYear);
         entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
         entity.setClassName(ClassNameNormalizer.normalize(request.getClassName()));
         entity.setSubjectName(request.getSubjectName().trim());
@@ -211,5 +224,9 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
                 throw new IllegalArgumentException("subgroup levels are required when subgroupRequired=true");
             }
         }
+    }
+
+    private String resolveAcademicYear(String requestedAcademicYear) {
+        return academicYearService.resolveByNameOrCurrent(requestedAcademicYear).getName();
     }
 }

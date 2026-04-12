@@ -17,22 +17,25 @@ public class StudyPeriodSettingController {
     private final StudyPeriodSettingService studyPeriodSettingService;
 
     @GetMapping
-    public ResponseEntity<List<StudyPeriodSetting>> findAll() {
-        return ResponseEntity.ok(studyPeriodSettingService.findAll());
+    public ResponseEntity<List<StudyPeriodSetting>> findAll(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(studyPeriodSettingService.findAll(academicYear));
     }
 
     @GetMapping("/for-class")
-    public ResponseEntity<List<StudyPeriodSetting>> findByClass(@RequestParam String className) {
-        return ResponseEntity.ok(studyPeriodSettingService.findAvailableForClass(className));
+    public ResponseEntity<List<StudyPeriodSetting>> findByClass(@RequestParam(required = false) String academicYear,
+                                                                @RequestParam String className) {
+        return ResponseEntity.ok(studyPeriodSettingService.findAvailableForClass(academicYear, className));
     }
 
     @PostMapping
-    public ResponseEntity<StudyPeriodSetting> create(@RequestBody StudyPeriodSettingRequest request) {
-        return ResponseEntity.ok(studyPeriodSettingService.create(request));
+    public ResponseEntity<StudyPeriodSetting> create(@RequestParam(required = false) String academicYear,
+                                                     @RequestBody StudyPeriodSettingRequest request) {
+        return ResponseEntity.ok(studyPeriodSettingService.create(academicYear, request));
     }
 
     @PutMapping
-    public ResponseEntity<List<StudyPeriodSetting>> saveAll(@RequestBody List<StudyPeriodSettingRequest> requests) {
-        return ResponseEntity.ok(studyPeriodSettingService.saveAll(requests));
+    public ResponseEntity<List<StudyPeriodSetting>> saveAll(@RequestParam(required = false) String academicYear,
+                                                            @RequestBody List<StudyPeriodSettingRequest> requests) {
+        return ResponseEntity.ok(studyPeriodSettingService.saveAll(academicYear, requests));
     }
 }

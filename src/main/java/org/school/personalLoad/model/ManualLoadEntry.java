@@ -18,6 +18,9 @@ public class ManualLoadEntry {
     @Column(nullable = false)
     private String fioTeacher;
 
+    @Column(nullable = false, length = 32)
+    private String academicYear = "";
+
     @Column(nullable = false)
     private String numberSchoolBuilding;
 

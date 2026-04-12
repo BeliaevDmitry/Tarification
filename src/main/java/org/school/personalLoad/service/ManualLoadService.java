@@ -7,13 +7,19 @@ import org.school.personalLoad.model.ManualLoadEntry;
 import java.util.List;
 
 public interface ManualLoadService {
-    ManualLoadEntry create(ManualLoadEntryRequest request);
+    ManualLoadEntry create(String academicYear, ManualLoadEntryRequest request);
 
-    List<ManualLoadEntry> createBulk(List<ManualLoadEntryRequest> requests);
+    List<ManualLoadEntry> createBulk(String academicYear, List<ManualLoadEntryRequest> requests);
 
-    List<ManualLoadEntry> findAll();
+    List<ManualLoadEntry> findAll(String academicYear);
 
-    void clearAll();
+    void clearAll(String academicYear);
 
-    ManualLoadProcessResult processCurrentManualLoad();
+    ManualLoadProcessResult processCurrentManualLoad(String academicYear);
+
+    default ManualLoadEntry create(ManualLoadEntryRequest request) { return create(null, request); }
+    default List<ManualLoadEntry> createBulk(List<ManualLoadEntryRequest> requests) { return createBulk(null, requests); }
+    default List<ManualLoadEntry> findAll() { return findAll(null); }
+    default void clearAll() { clearAll(null); }
+    default ManualLoadProcessResult processCurrentManualLoad() { return processCurrentManualLoad(null); }
 }

@@ -107,6 +107,7 @@ public class AppUserServiceImpl implements AppUserService {
         user.setActive(true);
         user.setCanView(request.getCanView() == null || request.getCanView());
         user.setCanEdit(Boolean.TRUE.equals(request.getCanEdit()));
+        user.setCanEditAllAcademicYears(Boolean.TRUE.equals(request.getCanEditAllAcademicYears()));
         enforceAdminFlags(user);
         validateBuildingHeadAssignment(user);
         user.setPasswordHash(passwordEncoder.encode(generateTemporaryPassword()));
@@ -149,6 +150,9 @@ public class AppUserServiceImpl implements AppUserService {
         }
         if (request.getCanEdit() != null) {
             user.setCanEdit(request.getCanEdit());
+        }
+        if (request.getCanEditAllAcademicYears() != null) {
+            user.setCanEditAllAcademicYears(request.getCanEditAllAcademicYears());
         }
         enforceAdminFlags(user);
         validateBuildingHeadAssignment(user);
@@ -208,6 +212,7 @@ public class AppUserServiceImpl implements AppUserService {
         admin.setActive(true);
         admin.setCanView(true);
         admin.setCanEdit(true);
+        admin.setCanEditAllAcademicYears(true);
         admin.setLoadEditAllBuildings(true);
         admin.setLoadEditableBuildingCodes(new LinkedHashSet<>());
         admin.setPasswordHash(passwordEncoder.encode(defaultAdminPassword));
@@ -331,6 +336,7 @@ public class AppUserServiceImpl implements AppUserService {
         if (user.getRole() == UserRole.ADMIN) {
             user.setCanView(true);
             user.setCanEdit(true);
+            user.setCanEditAllAcademicYears(true);
             user.setActive(true);
             user.setManagedBuildingCode(null);
             user.setLoadEditAllBuildings(true);
@@ -429,6 +435,7 @@ public class AppUserServiceImpl implements AppUserService {
                 user.isActive(),
                 user.isCanView(),
                 user.isCanEdit() || user.getRole() == UserRole.ADMIN,
+                user.isCanEditAllAcademicYears() || user.getRole() == UserRole.ADMIN,
                 user.getManagedBuildingCode(),
                 user.isLoadEditAllBuildings() || user.getRole() == UserRole.ADMIN,
                 new LinkedHashSet<>(user.getLoadEditableBuildingCodes()),

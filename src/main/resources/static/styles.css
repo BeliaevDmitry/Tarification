@@ -189,6 +189,12 @@ hr {
     background: #dbeafe;
 }
 
+.academic-year-select {
+    min-width: 130px;
+    font-weight: 600;
+    background: #f8fafc;
+}
+
 .header-user-badge {
     display: inline-flex;
     align-items: center;
@@ -891,6 +897,11 @@ dialog::backdrop {
 .placeholder-card,
 .access-denied-card {
     max-width: 680px;
+}
+
+.readonly-year [data-requires-edit] {
+    opacity: 0.92;
+    box-shadow: inset 0 0 0 2px #f59e0b;
 }
 
 .login-card {

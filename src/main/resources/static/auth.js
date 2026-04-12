@@ -22,6 +22,7 @@ const NAV_ORDER = [
     { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' },
     { path: '/teachers.html', tab: 'TEACHERS', label: 'Педагоги' }
 ];
+const ACADEMIC_YEAR_STORAGE_KEY = 'tarification.selectedAcademicYear';
 
 async function tarificationApi(path, options = {}) {
     const response = await fetch(path, options);
@@ -34,6 +35,14 @@ async function tarificationApi(path, options = {}) {
     }
     if (!response.ok) throw new Error(body?.message || body?.error || `HTTP ${response.status}`);
     return body;
+}
+
+function selectedAcademicYear() {
+    return localStorage.getItem(ACADEMIC_YEAR_STORAGE_KEY) || '';
+}
+
+function setSelectedAcademicYear(value) {
+    localStorage.setItem(ACADEMIC_YEAR_STORAGE_KEY, String(value || '').trim());
 }
 
 function tabPermissionMap(currentUser) {
@@ -131,6 +140,7 @@ function mountHeaderUser(currentUser) {
         controls.className = 'header-user-inline';
         controls.innerHTML = `
             <a class="home-link" href="/index.html" title="Главное меню" aria-label="Главное меню">🏠</a>
+            <select id="academic-year-select" class="academic-year-select" title="Учебный год"></select>
             <button type="button" class="header-user-badge" id="profile-btn"></button>
             <button type="button" id="logout-btn">Выйти</button>`;
         titleRow.appendChild(controls);
@@ -156,6 +166,62 @@ function mountHeaderUser(currentUser) {
 
     updateStickyHeaderMetrics();
     window.addEventListener('resize', updateStickyHeaderMetrics, { passive: true });
+}
+
+let unsavedChanges = false;
+
+function setupUnsavedChangesGuards() {
+    document.addEventListener('input', (event) => {
+        if (event.target.closest('[data-requires-edit]')) unsavedChanges = true;
+    }, { passive: true });
+    window.addEventListener('beforeunload', (event) => {
+        if (!unsavedChanges) return;
+        event.preventDefault();
+        event.returnValue = '';
+    });
+    document.addEventListener('submit', () => { unsavedChanges = false; });
+}
+
+function patchFetchWithAcademicYear() {
+    if (window.__academicYearFetchPatched) return;
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (input, init = {}) => {
+        const urlString = typeof input === 'string' ? input : String(input?.url || '');
+        const isApi = urlString.startsWith('/api/');
+        if (!isApi) return originalFetch(input, init);
+        const url = new URL(urlString, window.location.origin);
+        const year = selectedAcademicYear();
+        if (year && !url.searchParams.has('academicYear')) {
+            url.searchParams.set('academicYear', year);
+        }
+        return originalFetch(url.pathname + url.search + url.hash, init);
+    };
+    window.__academicYearFetchPatched = true;
+}
+
+async function mountAcademicYearSelector(currentUser) {
+    const select = document.getElementById('academic-year-select');
+    if (!select) return;
+    const payload = await tarificationApi('/api/academic-years');
+    const years = payload?.years || [];
+    const currentYear = payload?.currentAcademicYear || '';
+    const stored = selectedAcademicYear();
+    const effective = years.some((y) => y.name === stored) ? stored : currentYear;
+    setSelectedAcademicYear(effective);
+    select.innerHTML = years.map((row) => `<option value="${row.name}">${row.name}</option>`).join('');
+    select.value = effective;
+    select.addEventListener('change', (event) => {
+        if (unsavedChanges && !window.confirm('Есть несохранённые изменения. Переключить учебный год?')) {
+            event.target.value = selectedAcademicYear();
+            return;
+        }
+        setSelectedAcademicYear(event.target.value);
+        unsavedChanges = false;
+        window.location.reload();
+    });
+    if (!currentUser.admin && !currentUser.canEditAllAcademicYears && effective !== currentYear) {
+        document.body.classList.add('readonly-year');
+    }
 }
 
 function openProfileModal(currentUser) {
@@ -263,6 +329,8 @@ function enrichMainMenu(currentUser) {
         const currentUser = await tarificationApi('/api/auth/me');
         window.tarificationAuth = currentUser;
         window.tarificationTabPermissions = tabPermissionMap(currentUser);
+        patchFetchWithAcademicYear();
+        setupUnsavedChangesGuards();
         if (isAdminPage() && !currentUser.admin) {
             mountHeaderUser(currentUser);
             showAccessDenied();
@@ -271,6 +339,7 @@ function enrichMainMenu(currentUser) {
         enrichNavigation(currentUser);
         enrichMainMenu(currentUser);
         mountHeaderUser(currentUser);
+        await mountAcademicYearSelector(currentUser);
         insertReadonlyNotice(currentUser);
         disableEditAreas(currentUser);
         updateStickyHeaderMetrics();

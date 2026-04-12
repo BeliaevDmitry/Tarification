@@ -6,18 +6,45 @@
     <title>Tarification — Контингент</title>
     <link rel="stylesheet" href="/styles.css">
 </head>
-<body>
+<body class="contingent-page">
 <main class="container">
     <header class="card">
         <h1>Контингент</h1>
-        <p class="muted">Раздел находится в разработке.</p>
+        <p class="muted">Импорт снимков, реестр детей и сводки по классам/параллелям/корпусам.</p>
     </header>
-    <section class="card placeholder-card">
-        <h2>🚧 В разработке</h2>
-        <p class="muted">Функционал «Контингент» будет добавлен в следующих версиях.</p>
-        <a class="nav-link" href="/index.html">Вернуться в главное меню</a>
+
+    <section class="card">
+        <div class="row">
+            <label>Снимок:
+                <select id="contingent-snapshot-select"></select>
+            </label>
+            <label>Файл реестра:
+                <input type="file" id="contingent-file-input" accept=".xlsx,.xls">
+            </label>
+            <button id="contingent-import-btn" type="button" data-requires-edit>Импорт</button>
+            <button id="contingent-recalc-btn" type="button">Пересчитать предупреждения</button>
+        </div>
+        <div class="row">
+            <label>Корпус:<input id="contingent-filter-building"></label>
+            <label>Параллель:<input id="contingent-filter-parallel" type="number" min="1" max="11"></label>
+            <label>Класс:<input id="contingent-filter-class"></label>
+            <label>Поиск ФИО:<input id="contingent-filter-query"></label>
+            <button id="contingent-apply-filter-btn" type="button">Применить</button>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="children">Дети</button>
+            <button class="tab-btn" data-tab="classes">Классы</button>
+            <button class="tab-btn" data-tab="parallels">Параллели</button>
+            <button class="tab-btn" data-tab="buildings">Корпуса</button>
+            <button class="tab-btn" data-tab="warnings">ВНИМАНИЕ</button>
+        </div>
+        <div id="contingent-content" class="sheet-wrap"></div>
     </section>
 </main>
 <script src="/auth.js"></script>
+<script src="/contingent.js"></script>
 </body>
 </html>
