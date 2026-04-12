@@ -1,7 +1,11 @@
 const jsonHeaders = { 'Content-Type': 'application/json' };
 
-function withAcademicYear(path) {
-    return window.withAcademicYear ? window.withAcademicYear(path) : path;
+function applyAcademicYearScope(path) {
+    const resolver = typeof window.withAcademicYear === 'function' ? window.withAcademicYear : null;
+    if (!resolver || resolver === applyAcademicYearScope) {
+        return path;
+    }
+    return resolver(path);
 }
 const TABS = [
     { key: 'BUILDINGS', label: 'Корпуса' },
@@ -58,7 +62,7 @@ let users = [];
 let editingUserId = null;
 
 async function api(path, options = {}) {
-    const response = await fetch(withAcademicYear(path), options);
+    const response = await fetch(applyAcademicYearScope(path), options);
     const text = await response.text();
     let body = null;
     try {
