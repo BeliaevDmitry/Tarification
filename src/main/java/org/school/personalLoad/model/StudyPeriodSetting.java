@@ -15,8 +15,11 @@ public class StudyPeriodSetting {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 64)
+    @Column(nullable = false, length = 64)
     private String code;
+
+    @Column(nullable = false, length = 32)
+    private String academicYear = "";
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

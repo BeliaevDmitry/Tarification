@@ -16,5 +16,6 @@ public class UpdateUserRequest {
     private Boolean active;
     private Boolean canView;
     private Boolean canEdit;
+    private Boolean canEditAllAcademicYears;
     private List<UserTabPermissionRequest> tabPermissions;
 }
