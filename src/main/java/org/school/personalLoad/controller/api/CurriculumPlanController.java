@@ -44,13 +44,15 @@ public class CurriculumPlanController {
 
 
     @PostMapping("/import")
-    public ResponseEntity<CurriculumImportResult> importCurriculum(@RequestParam("file") MultipartFile file) {
-        return ResponseEntity.ok(curriculumImportService.importFile(file));
+    public ResponseEntity<CurriculumImportResult> importCurriculum(@RequestParam(required = false) String academicYear,
+                                                                   @RequestParam(defaultValue = "false") boolean confirmLargeReduction,
+                                                                   @RequestParam("file") MultipartFile file) {
+        return ResponseEntity.ok(curriculumImportService.importFile(academicYear, file, confirmLargeReduction));
     }
 
     @GetMapping("/export")
     public ResponseEntity<byte[]> exportCurriculum(@RequestParam(required = false) String academicYear) throws Exception {
-        byte[] body = curriculumImportService.exportEditableWorkbook();
+        byte[] body = curriculumImportService.exportEditableWorkbook(academicYear);
         String date = LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"));
         String yearName = academicYearService.resolveByNameOrCurrent(academicYear).getName();
         String fileName = "УП ГБОУ 7 " + yearName + " от " + date + ".xlsx";

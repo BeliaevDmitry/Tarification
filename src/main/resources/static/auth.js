@@ -169,17 +169,90 @@ function mountHeaderUser(currentUser) {
 }
 
 let unsavedChanges = false;
+let unsavedBaseline = new Map();
+let unsavedTrackCounter = 0;
+
+function trackableEditElements() {
+    return Array.from(document.querySelectorAll('[data-requires-edit] input, [data-requires-edit] select, [data-requires-edit] textarea'))
+        .filter((el) => {
+            if (el.dataset.allowReadonly === 'true') return false;
+            if (el.dataset.unsavedIgnore === 'true') return false;
+            if (el.disabled) return false;
+            if (el.tagName === 'INPUT') {
+                const type = String(el.type || '').toLowerCase();
+                if (['button', 'submit', 'reset', 'hidden'].includes(type)) return false;
+            }
+            return true;
+        });
+}
+
+function ensureUnsavedTrackId(el) {
+    if (el.dataset.unsavedTrackId) return el.dataset.unsavedTrackId;
+    unsavedTrackCounter += 1;
+    el.dataset.unsavedTrackId = `u${unsavedTrackCounter}`;
+    return el.dataset.unsavedTrackId;
+}
+
+function normalizeTrackedValue(el) {
+    if (el.type === 'checkbox' || el.type === 'radio') {
+        return el.checked ? '1' : '0';
+    }
+    if (el.type === 'file') {
+        return String(el.files?.length || 0);
+    }
+    return String(el.value ?? '');
+}
+
+function captureUnsavedBaseline() {
+    const nextBaseline = new Map();
+    trackableEditElements().forEach((el) => {
+        const id = ensureUnsavedTrackId(el);
+        nextBaseline.set(id, normalizeTrackedValue(el));
+    });
+    unsavedBaseline = nextBaseline;
+    unsavedChanges = false;
+}
+
+function computeUnsavedChanges() {
+    const current = trackableEditElements();
+    if (current.length !== unsavedBaseline.size) {
+        return true;
+    }
+    return current.some((el) => {
+        const id = ensureUnsavedTrackId(el);
+        return unsavedBaseline.get(id) !== normalizeTrackedValue(el);
+    });
+}
 
 function setupUnsavedChangesGuards() {
-    document.addEventListener('input', (event) => {
-        if (event.target.closest('[data-requires-edit]')) unsavedChanges = true;
+    const syncUnsavedState = (event) => {
+        if (!event.target.closest('[data-requires-edit]')) return;
+        unsavedChanges = computeUnsavedChanges();
+    };
+
+    document.addEventListener('input', syncUnsavedState, { passive: true });
+    document.addEventListener('change', syncUnsavedState, { passive: true });
+    document.addEventListener('reset', () => {
+        setTimeout(() => {
+            unsavedChanges = computeUnsavedChanges();
+        }, 0);
     }, { passive: true });
+
     window.addEventListener('beforeunload', (event) => {
         if (!unsavedChanges) return;
         event.preventDefault();
         event.returnValue = '';
     });
-    document.addEventListener('submit', () => { unsavedChanges = false; });
+
+    window.markUnsavedChangesCommitted = () => captureUnsavedBaseline();
+
+    const observer = new MutationObserver(() => {
+        if (unsavedChanges) return;
+        captureUnsavedBaseline();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    setTimeout(() => captureUnsavedBaseline(), 0);
 }
 
 function patchFetchWithAcademicYear() {
