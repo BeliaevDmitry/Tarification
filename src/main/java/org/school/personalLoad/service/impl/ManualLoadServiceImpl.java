@@ -53,24 +53,25 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 .filter(code -> !code.isBlank())
                 .collect(java.util.stream.Collectors.toSet());
         if (!buildingCodes.isEmpty()) {
-            manualLoadEntryRepository.deleteByBuildingCodes(buildingCodes);
+            String academicYear = entries.get(0).getAcademicYear();
+            manualLoadEntryRepository.deleteByAcademicYearAndBuildingCodes(academicYear, buildingCodes);
         }
         return manualLoadEntryRepository.saveAll(entries);
     }
 
     @Override
-    public List<ManualLoadEntry> findAll() {
-        return manualLoadEntryRepository.findAll();
+    public List<ManualLoadEntry> findAll(String academicYear) {
+        return manualLoadEntryRepository.findAllByAcademicYear(academicYear);
     }
 
     @Override
-    public void clearAll() {
-        manualLoadEntryRepository.deleteAll();
+    public void clearAll(String academicYear) {
+        manualLoadEntryRepository.deleteAllByAcademicYear(academicYear);
     }
 
     @Override
-    public ManualLoadProcessResult processCurrentManualLoad() {
-        List<ManualLoadEntry> entries = manualLoadEntryRepository.findAll();
+    public ManualLoadProcessResult processCurrentManualLoad(String academicYear) {
+        List<ManualLoadEntry> entries = manualLoadEntryRepository.findAllByAcademicYear(academicYear);
         List<TarifficationPerson> tarifficationList = new ArrayList<>();
         List<SubjectWithGroup> groupList = new ArrayList<>();
         Map<RuleKey, SummaryAccumulator> summaryByRule = new HashMap<>();
@@ -133,6 +134,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private ManualLoadEntry toEntity(ManualLoadEntryRequest request) {
         validate(request);
         ManualLoadEntry entity = new ManualLoadEntry();
+        entity.setAcademicYear(request.getAcademicYear());
         entity.setFioTeacher(request.getFioTeacher().trim());
         entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
         entity.setSubjectName(request.getSubjectName().trim());
@@ -141,15 +143,16 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         entity.setGroupNameEducationalPlan(request.getGroupNameEducationalPlan());
         entity.setGroupLoad(request.getGroupLoad());
         entity.setEducationLevel(request.getEducationLevel());
-        entity.setStudyPeriod(resolveStudyPeriod(request.getClassName(), request.getStudyPeriod(), request.getLoadFromDate(), request.getLoadToDate()));
+        entity.setStudyPeriod(resolveStudyPeriod(request.getAcademicYear(), request.getClassName(), request.getStudyPeriod(), request.getLoadFromDate(), request.getLoadToDate()));
         entity.setLoadFromDate(request.getLoadFromDate());
         entity.setLoadToDate(request.getLoadToDate());
         return entity;
     }
 
     private CurriculumPlanEntry validateAgainstCurriculum(ManualLoadEntry entry) {
-        StudyPeriod effectiveStudyPeriod = resolveStudyPeriod(entry.getClassName(), entry.getStudyPeriod(), entry.getLoadFromDate(), entry.getLoadToDate());
+        StudyPeriod effectiveStudyPeriod = resolveStudyPeriod(entry.getAcademicYear(), entry.getClassName(), entry.getStudyPeriod(), entry.getLoadFromDate(), entry.getLoadToDate());
         CurriculumPlanEntry rule = findRuleWithFallback(
+                entry.getAcademicYear(),
                 entry.getNumberSchoolBuilding().trim(),
                 entry.getClassName(),
                 entry.getSubjectName(),
@@ -173,7 +176,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
 
-    private java.util.Optional<CurriculumPlanEntry> findRuleWithFallback(String numberSchoolBuilding,
+    private java.util.Optional<CurriculumPlanEntry> findRuleWithFallback(String academicYear,
+                                                                         String numberSchoolBuilding,
                                                                          String className,
                                                                          String subjectName,
                                                                          org.school.personalLoad.model.EducationLevel educationLevel,
@@ -185,7 +189,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         candidates.add(StudyPeriod.H2);
         return candidates.stream()
                 .distinct()
-                .map(period -> curriculumPlanService.findRule(numberSchoolBuilding,
+                .map(period -> curriculumPlanService.findRule(academicYear, numberSchoolBuilding,
                         ClassNameNormalizer.normalize(className),
                         subjectName.trim(),
                         educationLevel,
@@ -195,14 +199,15 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 .findFirst();
     }
 
-    private StudyPeriod resolveStudyPeriod(String className,
+    private StudyPeriod resolveStudyPeriod(String academicYear,
+                                           String className,
                                            StudyPeriod explicitStudyPeriod,
                                            java.time.LocalDate loadFromDate,
                                            java.time.LocalDate loadToDate) {
         if (explicitStudyPeriod != null) {
             return explicitStudyPeriod;
         }
-        return studyPeriodSettingService.inferStudyPeriod(className, loadFromDate, loadToDate);
+        return studyPeriodSettingService.inferStudyPeriod(academicYear, className, loadFromDate, loadToDate);
     }
 
     private static class SummaryAccumulator {
@@ -254,6 +259,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
     private void validate(ManualLoadEntryRequest request) {
+        if (request.getAcademicYear() == null || request.getAcademicYear().isBlank()) {
+            throw new IllegalArgumentException("academicYear is required");
+        }
         if (request.getFioTeacher() == null || request.getFioTeacher().isBlank()) {
             throw new IllegalArgumentException("fioTeacher is required");
         }
