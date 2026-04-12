@@ -1,4 +1,12 @@
 const jsonHeaders = { 'Content-Type': 'application/json' };
+
+function applyAcademicYearScope(path) {
+    const resolver = typeof window.withAcademicYear === 'function' ? window.withAcademicYear : null;
+    if (!resolver || resolver === applyAcademicYearScope) {
+        return path;
+    }
+    return resolver(path);
+}
 const TABS = [
     { key: 'BUILDINGS', label: 'Корпуса' },
     { key: 'CLASSES', label: 'Классы' },
@@ -40,7 +48,13 @@ const ui = {
     editLoadClear: document.getElementById('edit-load-clear'),
     editCloseBtn: document.getElementById('user-edit-close-btn'),
     resetPasswordBtn: document.getElementById('reset-password-btn'),
-    editSaveBtn: document.getElementById('save-user-btn')
+    editSaveBtn: document.getElementById('save-user-btn'),
+    adminTabUsersBtn: document.getElementById('admin-tab-users-btn'),
+    adminTabYearsBtn: document.getElementById('admin-tab-years-btn'),
+    academicYearForm: document.getElementById('academic-year-create-form'),
+    academicYearCode: document.getElementById('academic-year-code'),
+    academicYearFeedback: document.getElementById('academic-year-feedback'),
+    academicYearsBody: document.getElementById('academic-years-body')
 };
 
 let buildings = [];
@@ -48,7 +62,7 @@ let users = [];
 let editingUserId = null;
 
 async function api(path, options = {}) {
-    const response = await fetch(path, options);
+    const response = await fetch(applyAcademicYearScope(path), options);
     const text = await response.text();
     let body = null;
     try {
@@ -62,6 +76,93 @@ async function api(path, options = {}) {
 
 function print(value) {
     ui.result.textContent = JSON.stringify(value, null, 2);
+}
+
+function setAdminTab(tab) {
+    document.querySelectorAll('[data-admin-tab]').forEach((section) => {
+        section.style.display = section.dataset.adminTab === tab ? '' : 'none';
+    });
+}
+
+function yesNo(flag) {
+    return flag ? 'Да' : 'Нет';
+}
+
+function normalizeAcademicYearInput(rawValue) {
+    const value = String(rawValue || '').trim().replace('\\', '/');
+    if (/^\d{4}$/.test(value)) {
+        const start = Number(value);
+        return `${start}/${start + 1}`;
+    }
+    return value;
+}
+
+async function renderAcademicYears() {
+    if (!ui.academicYearsBody) return;
+    const years = await api('/api/academic-years');
+    const rows = await Promise.all((years || []).map(async (year) => {
+        let curriculumLoaded = false;
+        let loadFilled = false;
+        try {
+            const [curriculumResult, manualResult] = await Promise.allSettled([
+                api(`/api/curriculum?academicYear=${encodeURIComponent(year.code)}`),
+                api(`/api/manual-load?academicYear=${encodeURIComponent(year.code)}`)
+            ]);
+            if (curriculumResult.status === 'fulfilled') {
+                curriculumLoaded = (curriculumResult.value || []).length > 0;
+            }
+            if (manualResult.status === 'fulfilled') {
+                loadFilled = (manualResult.value || []).some((item) => String(item.fioTeacher || '').trim());
+            }
+        } catch {
+            // Не блокируем отображение списка годов, даже если статусные запросы временно неуспешны.
+        }
+        return {
+            ...year,
+            curriculumLoaded,
+            loadFilled
+        };
+    }));
+    ui.academicYearsBody.innerHTML = rows.map((row) => `
+        <tr>
+            <td>${esc(row.code)}</td>
+            <td>${yesNo(row.curriculumLoaded)}</td>
+            <td>${yesNo(row.loadFilled)}</td>
+            <td>${yesNo(row.continuityApplied)}</td>
+            <td class="row compact-row compact-actions">
+                <button type="button" data-year-continuity="${esc(row.code)}" ${row.continuityApplied ? 'disabled' : ''}>
+                    ${row.continuityApplied ? 'Преемственность отмечена' : 'Отметить преемственность'}
+                </button>
+                <button type="button" data-year-delete="${esc(row.id)}">Удалить</button>
+            </td>
+        </tr>
+    `).join('');
+    ui.academicYearsBody.querySelectorAll('[data-year-continuity]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            try {
+                await api(`/api/academic-years/${encodeURIComponent(btn.dataset.yearContinuity)}/continuity`, { method: 'POST' });
+                if (ui.academicYearFeedback) {
+                    ui.academicYearFeedback.textContent = `Преемственность отмечена для ${btn.dataset.yearContinuity}.`;
+                }
+                await renderAcademicYears();
+            } catch (error) {
+                if (ui.academicYearFeedback) {
+                    ui.academicYearFeedback.textContent = `Ошибка: ${error.message}`;
+                }
+                print({ error: error.message });
+            }
+        });
+    });
+    ui.academicYearsBody.querySelectorAll('[data-year-delete]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            try {
+                await api(`/api/academic-years/${btn.dataset.yearDelete}`, { method: 'DELETE' });
+                await renderAcademicYears();
+            } catch (error) {
+                print({ error: error.message });
+            }
+        });
+    });
 }
 
 function esc(value) {
@@ -521,4 +622,29 @@ ui.resetPasswordBtn.addEventListener('click', async () => {
 });
 
 resetCreateForm();
-reload().catch((error) => print({ error: error.message }));
+reload().then(renderAcademicYears).catch((error) => print({ error: error.message }));
+
+ui.adminTabUsersBtn?.addEventListener('click', () => setAdminTab('users'));
+ui.adminTabYearsBtn?.addEventListener('click', () => setAdminTab('years'));
+
+ui.academicYearForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+        const code = normalizeAcademicYearInput(ui.academicYearCode?.value);
+        await api('/api/academic-years', {
+            method: 'POST',
+            headers: jsonHeaders,
+            body: JSON.stringify({ code })
+        });
+        if (ui.academicYearCode) ui.academicYearCode.value = '';
+        if (ui.academicYearFeedback) {
+            ui.academicYearFeedback.textContent = `Учебный год ${code} создан.`;
+        }
+        await renderAcademicYears();
+    } catch (error) {
+        if (ui.academicYearFeedback) {
+            ui.academicYearFeedback.textContent = `Ошибка: ${error.message}`;
+        }
+        print({ error: error.message });
+    }
+});

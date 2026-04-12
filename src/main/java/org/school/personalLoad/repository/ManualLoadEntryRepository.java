@@ -14,6 +14,15 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
     java.util.List<ManualLoadEntry> findByFioTeacherIgnoreCase(String fioTeacher);
 
     @Modifying
+    @Query("delete from ManualLoadEntry m where m.academicYear = :academicYear and lower(m.numberSchoolBuilding) in :codes")
+    void deleteByAcademicYearAndBuildingCodes(@Param("academicYear") String academicYear,
+                                              @Param("codes") java.util.Collection<String> codes);
+
+    java.util.List<ManualLoadEntry> findAllByAcademicYear(String academicYear);
+
+    void deleteAllByAcademicYear(String academicYear);
+
+    @Modifying
     @Query("delete from ManualLoadEntry m where lower(m.numberSchoolBuilding) in :codes")
     void deleteByBuildingCodes(@Param("codes") java.util.Collection<String> codes);
 }

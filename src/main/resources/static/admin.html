@@ -11,9 +11,13 @@
     <header class="card">
         <h1>Пользователи системы</h1>
         <p class="muted">Только администратор может создавать пользователей, сбрасывать им пароль, задавать видимость вкладок, права на редактирование и гибко ограничивать редактирование нагрузки по корпусам.</p>
+        <div class="row">
+            <button type="button" id="admin-tab-users-btn">Создание пользователя</button>
+            <button type="button" id="admin-tab-years-btn">Учебные года</button>
+        </div>
     </header>
 
-    <section class="card admin-card" data-requires-edit>
+    <section class="card admin-card" data-requires-edit data-admin-tab="users">
         <div class="section-heading">
             <div>
                 <h2>Создать пользователя</h2>
@@ -120,7 +124,7 @@
         <pre id="admin-result"></pre>
     </section>
 
-    <section class="card admin-card">
+    <section class="card admin-card" data-admin-tab="users">
         <div class="section-heading">
             <div>
                 <h2>Список пользователей</h2>
@@ -143,6 +147,27 @@
                 </tr>
                 </thead>
                 <tbody id="users-table-body"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card admin-card" data-admin-tab="years" style="display:none;" data-requires-edit>
+        <div class="section-heading">
+            <div>
+                <h2>Учебные года</h2>
+                <p class="muted">Создание учебных годов и контроль статусов: УП, нагрузка, преемственность.</p>
+            </div>
+            <span class="admin-section-badge soft">Учебный контур</span>
+        </div>
+        <form id="academic-year-create-form" class="row">
+            <input id="academic-year-code" placeholder="Например 2027 или 2027/2028" required>
+            <button type="submit">Создать учебный год</button>
+        </form>
+        <p id="academic-year-feedback" class="muted"></p>
+        <div class="sheet-wrap">
+            <table class="sheet-table">
+                <thead><tr><th>Учебный год</th><th>УП загружен</th><th>Нагрузка заполнена</th><th>Преемственность</th><th>Действие</th></tr></thead>
+                <tbody id="academic-years-body"></tbody>
             </table>
         </div>
     </section>
