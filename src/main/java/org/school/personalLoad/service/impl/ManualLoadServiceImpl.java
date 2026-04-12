@@ -144,8 +144,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
     private ManualLoadEntry toEntity(ManualLoadEntryRequest request) {
         validate(request);
+        String effectiveAcademicYear = resolveAcademicYearOrDefault(request.getAcademicYear());
         ManualLoadEntry entity = new ManualLoadEntry();
-        entity.setAcademicYear(resolveAcademicYearOrDefault(request.getAcademicYear()));
+        entity.setAcademicYear(effectiveAcademicYear);
         entity.setFioTeacher(request.getFioTeacher().trim());
         entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
         entity.setSubjectName(request.getSubjectName().trim());
@@ -154,7 +155,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         entity.setGroupNameEducationalPlan(request.getGroupNameEducationalPlan());
         entity.setGroupLoad(request.getGroupLoad());
         entity.setEducationLevel(request.getEducationLevel());
-        entity.setStudyPeriod(resolveStudyPeriod(request.getAcademicYear(), request.getClassName(), request.getStudyPeriod(), request.getLoadFromDate(), request.getLoadToDate()));
+        entity.setStudyPeriod(resolveStudyPeriod(effectiveAcademicYear, request.getClassName(), request.getStudyPeriod(), request.getLoadFromDate(), request.getLoadToDate()));
         entity.setLoadFromDate(request.getLoadFromDate());
         entity.setLoadToDate(request.getLoadToDate());
         return entity;

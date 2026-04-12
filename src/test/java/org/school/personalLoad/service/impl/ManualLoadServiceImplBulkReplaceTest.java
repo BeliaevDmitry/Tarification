@@ -18,6 +18,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -64,6 +65,12 @@ class ManualLoadServiceImplBulkReplaceTest {
 
         service.createBulk(List.of(request));
 
+        verify(studyPeriodSettingService).inferStudyPeriod(
+                argThat(year -> year != null && !year.isBlank()),
+                any(),
+                any(),
+                any()
+        );
         verify(manualLoadEntryRepository).deleteByBuildingCodes(java.util.Set.of("b1"));
         verify(manualLoadEntryRepository).saveAll(any());
     }
