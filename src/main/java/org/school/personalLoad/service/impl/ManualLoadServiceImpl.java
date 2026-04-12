@@ -45,8 +45,13 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     @Override
     @Transactional
     public List<ManualLoadEntry> createBulk(List<ManualLoadEntryRequest> requests) {
-        boolean hasExplicitAcademicYear = requests.stream()
-                .anyMatch(request -> request != null && request.getAcademicYear() != null && !request.getAcademicYear().isBlank());
+        java.util.Set<String> explicitAcademicYears = requests.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(ManualLoadEntryRequest::getAcademicYear)
+                .filter(java.util.Objects::nonNull)
+                .map(String::trim)
+                .filter(year -> !year.isBlank())
+                .collect(java.util.stream.Collectors.toSet());
         List<ManualLoadEntry> entries = requests.stream().map(this::toEntity).toList();
         java.util.Set<String> buildingCodes = entries.stream()
                 .map(ManualLoadEntry::getNumberSchoolBuilding)
@@ -55,11 +60,11 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 .filter(code -> !code.isBlank())
                 .collect(java.util.stream.Collectors.toSet());
         if (!buildingCodes.isEmpty()) {
-            String academicYear = entries.get(0).getAcademicYear();
-            if (!hasExplicitAcademicYear || academicYear == null || academicYear.isBlank()) {
-                manualLoadEntryRepository.deleteByBuildingCodes(buildingCodes);
-            } else {
+            if (explicitAcademicYears.size() == 1) {
+                String academicYear = explicitAcademicYears.iterator().next();
                 manualLoadEntryRepository.deleteByAcademicYearAndBuildingCodes(academicYear, buildingCodes);
+            } else {
+                manualLoadEntryRepository.deleteByBuildingCodes(buildingCodes);
             }
         }
         return manualLoadEntryRepository.saveAll(entries);
