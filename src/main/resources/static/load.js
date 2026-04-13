@@ -854,9 +854,9 @@ function buildPresentationRows() {
 
             const subjectRowsFlat = Object.values(info.rowsByClassAll).flat();
             const periodTotals = classPeriodHours(subjectRowsFlat);
-            let displayName = info.subjectName;
-            if (periodTotals.year <= 0 && periodTotals.h1 > 0 && periodTotals.h2 <= 0) displayName = `${info.subjectName} (1П)`;
-            else if (periodTotals.year <= 0 && periodTotals.h2 > 0 && periodTotals.h1 <= 0) displayName = `${info.subjectName} (2П)`;
+            let displayName = info.groupIndex ? `${info.subjectName} ${info.groupIndex}Г` : info.subjectName;
+            if (periodTotals.year <= 0 && periodTotals.h1 > 0 && periodTotals.h2 <= 0) displayName = `${displayName} (1П)`;
+            else if (periodTotals.year <= 0 && periodTotals.h2 > 0 && periodTotals.h1 <= 0) displayName = `${displayName} (2П)`;
 
             result.push({
                 subjectKey: info.subjectKey,
