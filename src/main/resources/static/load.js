@@ -1251,7 +1251,7 @@ function collectLoadIssues(presentationRows, classes) {
 
     ui.unassignedHours.textContent = String(unassignedHours);
     ui.errorCount.textContent = String(errorCount);
-    return { errors };
+    return { errors, errorCount };
 }
 
 function jumpToFirstError() {
@@ -1283,7 +1283,11 @@ function renderTable() {
     const classes = classesForSelectedBuilding();
     const referenceDate = currentDisplayDate();
     const presentationRows = filterPresentationRowsByViewMode(buildPresentationRows());
+<<<<<<< codex/design-year-switching-logic-for-curriculum-fqnxlj
+    const { errorCount } = collectLoadIssues(presentationRows, classes);
+=======
     const { errors: loadIssues } = collectLoadIssues(presentationRows, classes);
+>>>>>>> menu-2
 
     const headMain = document.createElement("tr");
     headMain.className = "load-main-head";
@@ -1294,7 +1298,7 @@ function renderTable() {
         <th rowspan="2">Всего часов в комплексе</th>
         <th colspan="${Math.max(classes.length, 1)}">
             <div class="load-head-actions">
-                <span><strong>Ошибки: ${loadIssues.length}</strong></span>
+                <span><strong>Ошибки: ${errorCount}</strong></span>
                 <button type="button" class="head-action-btn" data-head-save="1">Сохранить нагрузку корпуса</button>
                 <button type="button" class="head-action-btn" data-head-next-error="1">Перейти к ошибке</button>
             </div>

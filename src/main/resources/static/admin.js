@@ -101,6 +101,27 @@ async function renderAcademicYears() {
     if (!ui.academicYearsBody) return;
     const years = await api('/api/academic-years');
     const rows = await Promise.all((years || []).map(async (year) => {
+<<<<<<< codex/design-year-switching-logic-for-curriculum-fqnxlj
+        let curriculumLoaded = false;
+        let loadFilled = false;
+        try {
+            const [curriculumResult, manualResult] = await Promise.allSettled([
+                api(`/api/curriculum?academicYear=${encodeURIComponent(year.code)}`),
+                api(`/api/manual-load?academicYear=${encodeURIComponent(year.code)}`)
+            ]);
+            if (curriculumResult.status === 'fulfilled') {
+                curriculumLoaded = (curriculumResult.value || []).length > 0;
+            }
+            if (manualResult.status === 'fulfilled') {
+                loadFilled = (manualResult.value || []).some((item) => String(item.fioTeacher || '').trim());
+            }
+        } catch {
+            // Не блокируем отображение списка годов, даже если статусные запросы временно неуспешны.
+        }
+        return {
+            ...year,
+            curriculumLoaded,
+=======
         const [curriculum, manual] = await Promise.all([
             api(`/api/curriculum?academicYear=${encodeURIComponent(year.code)}`),
             api(`/api/manual-load?academicYear=${encodeURIComponent(year.code)}`)
@@ -109,6 +130,7 @@ async function renderAcademicYears() {
         return {
             ...year,
             curriculumLoaded: (curriculum || []).length > 0,
+>>>>>>> menu-2
             loadFilled
         };
     }));
@@ -118,9 +140,36 @@ async function renderAcademicYears() {
             <td>${yesNo(row.curriculumLoaded)}</td>
             <td>${yesNo(row.loadFilled)}</td>
             <td>${yesNo(row.continuityApplied)}</td>
+<<<<<<< codex/design-year-switching-logic-for-curriculum-fqnxlj
+            <td class="row compact-row compact-actions">
+                <button type="button" data-year-continuity="${esc(row.code)}" ${row.continuityApplied ? 'disabled' : ''}>
+                    ${row.continuityApplied ? 'Преемственность отмечена' : 'Отметить преемственность'}
+                </button>
+                <button type="button" data-year-delete="${esc(row.id)}">Удалить</button>
+            </td>
+        </tr>
+    `).join('');
+    ui.academicYearsBody.querySelectorAll('[data-year-continuity]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            try {
+                await api(`/api/academic-years/${encodeURIComponent(btn.dataset.yearContinuity)}/continuity`, { method: 'POST' });
+                if (ui.academicYearFeedback) {
+                    ui.academicYearFeedback.textContent = `Преемственность отмечена для ${btn.dataset.yearContinuity}.`;
+                }
+                await renderAcademicYears();
+            } catch (error) {
+                if (ui.academicYearFeedback) {
+                    ui.academicYearFeedback.textContent = `Ошибка: ${error.message}`;
+                }
+                print({ error: error.message });
+            }
+        });
+    });
+=======
             <td><button type="button" data-year-delete="${esc(row.id)}">Удалить</button></td>
         </tr>
     `).join('');
+>>>>>>> menu-2
     ui.academicYearsBody.querySelectorAll('[data-year-delete]').forEach((btn) => {
         btn.addEventListener('click', async () => {
             try {
