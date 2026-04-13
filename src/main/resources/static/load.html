@@ -18,7 +18,6 @@
             <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
             <a class="nav-link active" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
             <a class="nav-link" href="/settings.html" data-tab="SETTINGS">Настройки</a>
-            <a class="nav-link" href="/teachers.html" data-tab="TEACHERS">Педагоги</a>
         </nav>
     </header>
 
@@ -52,6 +51,9 @@
                 <input type="date" id="load-view-date-input">
             </label>
             <button id="refresh-load-btn" type="button">Обновить из учебного плана</button>
+            <button id="export-load-btn" type="button" data-allow-readonly="true">Экспорт нагрузки</button>
+            <input id="import-load-file" type="file" accept=".xlsx,.xls" style="display:none;">
+            <button id="import-load-btn" type="button" data-requires-edit>Импорт нагрузки</button>
             <button id="save-building-btn" type="button" class="clean-save" data-requires-edit data-load-edit-control="true">Сохранить нагрузку корпуса</button>
             <div class="inline-load-stats">
                 <strong>Нераспределённые часы: <span id="unassigned-hours">0</span></strong>

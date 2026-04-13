@@ -3,6 +3,9 @@ const jsonHeaders = { "Content-Type": "application/json" };
 const ui = {
     buildingTabs: document.getElementById("building-tabs"),
     refreshLoadBtn: document.getElementById("refresh-load-btn"),
+    exportLoadBtn: document.getElementById("export-load-btn"),
+    importLoadBtn: document.getElementById("import-load-btn"),
+    importLoadFile: document.getElementById("import-load-file"),
     saveBuildingBtn: document.getElementById("save-building-btn"),
     loadResult: document.getElementById("load-result"),
     tableHead: document.getElementById("building-load-head"),
@@ -50,7 +53,8 @@ const state = {
 
 
 async function api(path, options = {}) {
-    const response = await fetch(path, options);
+    const scopedPath = window.withAcademicYear ? window.withAcademicYear(path) : path;
+    const response = await fetch(scopedPath, options);
     const text = await response.text();
     let body = null;
     try {
@@ -172,7 +176,7 @@ function periodLabel(studyPeriod) {
 
 function displaySubjectName(row) {
     const suffix = classParallel(row.className) >= 10 ? "" : (rowStudyPeriod(row) !== "YEAR" ? ` · ${periodLabel(rowStudyPeriod(row))}` : "");
-    return row.__groupIndex ? `${row.subjectName} ${row.__groupIndex}${suffix}` : `${row.subjectName}${suffix}`;
+    return row.__groupIndex ? `${row.subjectName} ${row.__groupIndex}Г${suffix}` : `${row.subjectName}${suffix}`;
 }
 
 function classPeriodHours(rows = []) {
@@ -853,9 +857,9 @@ function buildPresentationRows() {
 
             const subjectRowsFlat = Object.values(info.rowsByClassAll).flat();
             const periodTotals = classPeriodHours(subjectRowsFlat);
-            let displayName = info.subjectName;
-            if (periodTotals.year <= 0 && periodTotals.h1 > 0 && periodTotals.h2 <= 0) displayName = `${info.subjectName} (1П)`;
-            else if (periodTotals.year <= 0 && periodTotals.h2 > 0 && periodTotals.h1 <= 0) displayName = `${info.subjectName} (2П)`;
+            let displayName = info.groupIndex ? `${info.subjectName} ${info.groupIndex}Г` : info.subjectName;
+            if (periodTotals.year <= 0 && periodTotals.h1 > 0 && periodTotals.h2 <= 0) displayName = `${displayName} (1П)`;
+            else if (periodTotals.year <= 0 && periodTotals.h2 > 0 && periodTotals.h1 <= 0) displayName = `${displayName} (2П)`;
 
             result.push({
                 subjectKey: info.subjectKey,
@@ -901,7 +905,9 @@ function filterPresentationRowsByViewMode(rows) {
             if (!teacherName) return true;
 
             if (state.viewMode === "date") {
-                return dateInRange(state.viewDate, row.loadFromDate, row.loadToDate);
+                // В режиме «на дату» оставляем строку педагога видимой, даже если его период
+                // уже завершился к выбранной дате: это нужно, чтобы видеть донора при передаче часов.
+                return true;
             }
             const targetPeriod = state.viewMode === "h1" ? "H1" : "H2";
             return Object.keys(row.rowsByClassAll || {}).some((className) => {
@@ -1250,7 +1256,7 @@ function collectLoadIssues(presentationRows, classes) {
 
     ui.unassignedHours.textContent = String(unassignedHours);
     ui.errorCount.textContent = String(errorCount);
-    return { errors };
+    return { errors, errorCount };
 }
 
 function jumpToFirstError() {
@@ -1282,7 +1288,7 @@ function renderTable() {
     const classes = classesForSelectedBuilding();
     const referenceDate = currentDisplayDate();
     const presentationRows = filterPresentationRowsByViewMode(buildPresentationRows());
-    collectLoadIssues(presentationRows, classes);
+    const { errorCount } = collectLoadIssues(presentationRows, classes);
 
     const headMain = document.createElement("tr");
     headMain.className = "load-main-head";
@@ -1293,7 +1299,7 @@ function renderTable() {
         <th rowspan="2">Всего часов в комплексе</th>
         <th colspan="${Math.max(classes.length, 1)}">
             <div class="load-head-actions">
-                <span><strong>Ошибки: ${loadIssues.length}</strong></span>
+                <span><strong>Ошибки: ${errorCount}</strong></span>
                 <button type="button" class="head-action-btn" data-head-save="1">Сохранить нагрузку корпуса</button>
                 <button type="button" class="head-action-btn" data-head-next-error="1">Перейти к ошибке</button>
             </div>
@@ -1570,6 +1576,48 @@ async function saveBuildingLoad() {
     }
 }
 
+async function exportLoadWorkbook() {
+    try {
+        const scopedPath = window.withAcademicYear ? window.withAcademicYear("/api/manual-load/export") : "/api/manual-load/export";
+        const response = await fetch(scopedPath);
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || `HTTP ${response.status}`);
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const disposition = response.headers.get("Content-Disposition") || "";
+        const match = disposition.match(/filename\\*=UTF-8''([^;]+)/);
+        a.href = url;
+        a.download = match ? decodeURIComponent(match[1]) : "load-export.xlsx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        print({ status: "exported" });
+    } catch (error) {
+        print({ error: error.message });
+    }
+}
+
+async function importLoadWorkbook(file) {
+    try {
+        const form = new FormData();
+        form.append("file", file);
+        const scopedPath = window.withAcademicYear ? window.withAcademicYear("/api/manual-load/import") : "/api/manual-load/import";
+        const response = await fetch(scopedPath, { method: "POST", body: form });
+        const text = await response.text();
+        let body = null;
+        try { body = text ? JSON.parse(text) : null; } catch { body = { message: text }; }
+        if (!response.ok) throw new Error(body?.message || body?.error || `HTTP ${response.status}`);
+        print({ status: "imported", rows: Array.isArray(body) ? body.length : 0 });
+        await reloadAll();
+    } catch (error) {
+        print({ error: error.message });
+    }
+}
+
 async function refreshSourceData() {
     const [curriculum, manual, teachers, buildingRows, classRows, periodSettings] = await Promise.all([
         api("/api/curriculum"),
@@ -1712,6 +1760,20 @@ function bindEvents() {
         refreshSourceData()
             .then(() => print({ status: "Синхронизировано с учебным планом" }))
             .catch((error) => print({ error: error.message }));
+    });
+
+    ui.exportLoadBtn?.addEventListener("click", exportLoadWorkbook);
+    ui.importLoadBtn?.addEventListener("click", () => ui.importLoadFile?.click());
+    ui.importLoadFile?.addEventListener("change", async () => {
+        const file = ui.importLoadFile.files?.[0];
+        if (!file) return;
+        const confirmed = confirm("Импорт нагрузки заменит текущие назначения по корпусам из файла. Продолжить?");
+        if (!confirmed) {
+            ui.importLoadFile.value = "";
+            return;
+        }
+        await importLoadWorkbook(file);
+        ui.importLoadFile.value = "";
     });
 
     ui.sortField.addEventListener("change", () => {
