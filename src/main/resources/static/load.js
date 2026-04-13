@@ -173,7 +173,7 @@ function periodLabel(studyPeriod) {
 
 function displaySubjectName(row) {
     const suffix = classParallel(row.className) >= 10 ? "" : (rowStudyPeriod(row) !== "YEAR" ? ` · ${periodLabel(rowStudyPeriod(row))}` : "");
-    return row.__groupIndex ? `${row.subjectName} ${row.__groupIndex}${suffix}` : `${row.subjectName}${suffix}`;
+    return row.__groupIndex ? `${row.subjectName} ${row.__groupIndex}Г${suffix}` : `${row.subjectName}${suffix}`;
 }
 
 function classPeriodHours(rows = []) {
