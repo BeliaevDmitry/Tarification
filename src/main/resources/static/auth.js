@@ -23,6 +23,16 @@ const NAV_ORDER = [
     { path: '/teachers.html', tab: 'TEACHERS', label: 'Кадры' }
 ];
 
+function navItemsForPath(pathname) {
+    if (pathname === '/teachers.html') {
+        return NAV_ORDER.filter((tabDef) => tabDef.tab === 'SERVICE_NOTES');
+    }
+    if (pathname === '/load.html') {
+        return NAV_ORDER.filter((tabDef) => tabDef.tab !== 'TEACHERS');
+    }
+    return NAV_ORDER;
+}
+
 async function tarificationApi(path, options = {}) {
     const response = await fetch(path, options);
     const text = await response.text();
@@ -280,6 +290,7 @@ function openProfileModal(currentUser) {
 
 function enrichNavigation(currentUser) {
     const permissions = tabPermissionMap(currentUser);
+    const navItems = navItemsForPath(window.location.pathname);
     document.querySelectorAll('.page-nav').forEach((nav) => {
         nav.innerHTML = '';
         const homeLink = document.createElement('a');
@@ -293,7 +304,7 @@ function enrichNavigation(currentUser) {
         }
         nav.appendChild(homeLink);
 
-        NAV_ORDER.forEach((tabDef) => {
+        navItems.forEach((tabDef) => {
             const canView = currentUser.admin || permissions[tabDef.tab]?.canView;
             if (!canView) return;
             const link = document.createElement('a');
