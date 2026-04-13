@@ -153,7 +153,6 @@ async function renderAcademicYears() {
             }
         });
     });
-
     ui.academicYearsBody.querySelectorAll('[data-year-delete]').forEach((btn) => {
         btn.addEventListener('click', async () => {
             try {

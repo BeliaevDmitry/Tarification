@@ -1286,8 +1286,6 @@ function renderTable() {
     const referenceDate = currentDisplayDate();
     const presentationRows = filterPresentationRowsByViewMode(buildPresentationRows());
     const { errorCount } = collectLoadIssues(presentationRows, classes);
-    const { errorCount } = collectLoadIssues(presentationRows, classes);
-
 
     const headMain = document.createElement("tr");
     headMain.className = "load-main-head";

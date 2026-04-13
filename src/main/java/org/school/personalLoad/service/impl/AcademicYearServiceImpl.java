@@ -116,13 +116,19 @@ public class AcademicYearServiceImpl implements AcademicYearService {
             throw new IllegalArgumentException("Невозможно выполнить преемственность: в " + targetYear + " не загружен учебный план");
         }
 
-        Map<String, ManualLoadEntry> sourceAssignments = manualLoadEntryRepository.findAllByAcademicYear(sourceYear).stream()
+        List<ManualLoadEntry> sourceManual = manualLoadEntryRepository.findAllByAcademicYear(sourceYear).stream()
+                .filter(entry -> entry.getFioTeacher() != null && !entry.getFioTeacher().isBlank())
+                .toList();
+
+        Map<String, ManualLoadEntry> sourceAssignments = sourceManual.stream()
                 .filter(entry -> entry.getFioTeacher() != null && !entry.getFioTeacher().isBlank())
                 .collect(Collectors.toMap(
                         this::continuityKey,
                         Function.identity(),
                         (left, right) -> left.getId() != null && right.getId() != null && left.getId() > right.getId() ? left : right
                 ));
+        Map<String, List<ManualLoadEntry>> sourceAssignmentsByClassSubject = sourceManual.stream()
+                .collect(Collectors.groupingBy(this::classSubjectKey));
 
         if (sourceAssignments.isEmpty()) {
             throw new IllegalArgumentException("Невозможно выполнить преемственность: в " + sourceYear + " нет распределённых педагогов");
@@ -138,6 +144,12 @@ public class AcademicYearServiceImpl implements AcademicYearService {
                         return null;
                     }
                     ManualLoadEntry source = sourceAssignments.get(key);
+                    if (source == null) {
+                        List<ManualLoadEntry> fallback = sourceAssignmentsByClassSubject.get(classSubjectKey(curriculum));
+                        if (fallback != null && !fallback.isEmpty()) {
+                            source = fallback.get(0);
+                        }
+                    }
                     if (source == null) {
                         return null;
                     }
@@ -166,6 +178,22 @@ public class AcademicYearServiceImpl implements AcademicYearService {
     }
 
     private String continuityKey(CurriculumPlanEntry entry) {
+        return joinKey(
+                entry.getClassName(),
+                entry.getSubjectName(),
+                ""
+        );
+    }
+
+    private String classSubjectKey(ManualLoadEntry entry) {
+        return joinKey(
+                entry.getClassName(),
+                entry.getSubjectName(),
+                ""
+        );
+    }
+
+    private String classSubjectKey(CurriculumPlanEntry entry) {
         return joinKey(
                 entry.getClassName(),
                 entry.getSubjectName(),
