@@ -902,7 +902,9 @@ function filterPresentationRowsByViewMode(rows) {
             if (!teacherName) return true;
 
             if (state.viewMode === "date") {
-                return dateInRange(state.viewDate, row.loadFromDate, row.loadToDate);
+                // В режиме «на дату» оставляем строку педагога видимой, даже если его период
+                // уже завершился к выбранной дате: это нужно, чтобы видеть донора при передаче часов.
+                return true;
             }
             const targetPeriod = state.viewMode === "h1" ? "H1" : "H2";
             return Object.keys(row.rowsByClassAll || {}).some((className) => {
@@ -1283,11 +1285,9 @@ function renderTable() {
     const classes = classesForSelectedBuilding();
     const referenceDate = currentDisplayDate();
     const presentationRows = filterPresentationRowsByViewMode(buildPresentationRows());
-<<<<<<< codex/design-year-switching-logic-for-curriculum-fqnxlj
     const { errorCount } = collectLoadIssues(presentationRows, classes);
-=======
-    const { errors: loadIssues } = collectLoadIssues(presentationRows, classes);
->>>>>>> menu-2
+    const { errorCount } = collectLoadIssues(presentationRows, classes);
+
 
     const headMain = document.createElement("tr");
     headMain.className = "load-main-head";

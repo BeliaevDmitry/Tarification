@@ -20,7 +20,7 @@ const NAV_ORDER = [
     { path: '/load.html', tab: 'LOAD', label: 'Нагрузка по корпусам' },
     { path: '/service-notes.html', tab: 'SERVICE_NOTES', label: 'Служебные записки' },
     { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' },
-    { path: '/teachers.html', tab: 'TEACHERS', label: 'Педагоги' }
+    { path: '/teachers.html', tab: 'TEACHERS', label: 'Кадры' }
 ];
 
 async function tarificationApi(path, options = {}) {
