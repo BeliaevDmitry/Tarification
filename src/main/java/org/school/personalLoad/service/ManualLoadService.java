@@ -11,9 +11,9 @@ public interface ManualLoadService {
 
     List<ManualLoadEntry> createBulk(List<ManualLoadEntryRequest> requests);
 
-    List<ManualLoadEntry> findAll();
+    List<ManualLoadEntry> findAll(String academicYear);
 
-    void clearAll();
+    void clearAll(String academicYear);
 
-    ManualLoadProcessResult processCurrentManualLoad();
+    ManualLoadProcessResult processCurrentManualLoad(String academicYear);
 }

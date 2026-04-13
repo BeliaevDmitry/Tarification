@@ -21,6 +21,9 @@ public class ServiceMemo {
     private Long id;
 
     @Column(nullable = false)
+    private String academicYear;
+
+    @Column(nullable = false)
     private String fioTeacher;
 
     @Column(nullable = false)

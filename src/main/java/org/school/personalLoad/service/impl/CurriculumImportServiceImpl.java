@@ -156,14 +156,16 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                             .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
                     BigDecimal h2 = classValues.stream().filter(v -> v.getStudyPeriod() == StudyPeriod.H2)
                             .map(CurriculumPlanEntry::getPlannedHours).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+                    boolean subgroup = classValues.stream().anyMatch(CurriculumPlanEntry::isSubgroupRequired);
                     boolean meta = classValues.stream().anyMatch(CurriculumPlanEntry::isMetaGroup);
+                    String marker = markerSuffixForExport(subgroup, meta);
                     String rendered;
                     if (year.compareTo(BigDecimal.ZERO) > 0) {
-                        rendered = year.stripTrailingZeros().toPlainString() + (meta ? "*" : "");
+                        rendered = year.stripTrailingZeros().toPlainString() + marker;
                     } else if (h1.compareTo(BigDecimal.ZERO) > 0 || h2.compareTo(BigDecimal.ZERO) > 0) {
                         String left = h1.compareTo(BigDecimal.ZERO) > 0 ? h1.stripTrailingZeros().toPlainString() : "";
                         String right = h2.compareTo(BigDecimal.ZERO) > 0 ? h2.stripTrailingZeros().toPlainString() : "";
-                        rendered = left + "/" + right + (meta ? "*" : "");
+                        rendered = left + "/" + right + marker;
                     } else {
                         rendered = "";
                     }
@@ -182,9 +184,15 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         rowNum = appendLevelSumRowVisual(sheet, rowNum, "Сумма Базовый уровень", entries, classes, EducationLevel.BASIC, sumStyle);
         rowNum = appendLevelSumRowVisual(sheet, rowNum, "Сумма Углублённый уровень", entries, classes, EducationLevel.ADVANCED, sumStyle);
 
+        if (entries.stream().anyMatch(CurriculumPlanEntry::isSubgroupRequired)) {
+            Row noteRow = sheet.createRow(rowNum);
+            noteRow.createCell(0).setCellValue("* предмет делится на 2 группы");
+            rowNum++;
+        }
         if (entries.stream().anyMatch(CurriculumPlanEntry::isMetaGroup)) {
             Row noteRow = sheet.createRow(rowNum);
-            noteRow.createCell(0).setCellValue("* часы реализуются в метагруппе");
+            noteRow.createCell(0).setCellValue("** часы реализуются в метагруппе");
+            rowNum++;
         }
 
         sheet.setColumnWidth(0, 12000);
@@ -254,8 +262,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     }
 
     @Override
-    public CurriculumImportResult importFile(MultipartFile file) {
+    public CurriculumImportResult importFile(MultipartFile file, String academicYear) {
         if (file == null || file.isEmpty()) throw new IllegalArgumentException("Файл обязателен");
+        if (academicYear == null || academicYear.isBlank()) throw new IllegalArgumentException("academicYear is required");
 
         try {
             List<EditableImportRow> editableRows = parseEditableRows(file);
@@ -274,9 +283,10 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
             if (!editableRows.isEmpty()) {
                 for (EditableImportRow row : editableRows) {
-                    StudyPeriodSetting resolvedEditableRule = studyPeriodSettingService.resolveRuleForClassAndPeriod(row.className(), row.studyPeriod());
+                    StudyPeriodSetting resolvedEditableRule = studyPeriodSettingService.resolveRuleForClassAndPeriod(academicYear, row.className(), row.studyPeriod());
                     CurriculumPlanEntry entry = curriculumRepository
-                            .findByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriodAndStudyPeriodSettingId(
+                            .findByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriodAndStudyPeriodSettingId(
+                                    academicYear,
                                     row.numberSchoolBuilding(),
                                     row.className(),
                                     row.subjectName(),
@@ -287,7 +297,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                             )
                             .orElseGet(CurriculumPlanEntry::new);
                     boolean isNew = entry.getId() == null;
-                    entry.setAcademicYear(entry.getAcademicYear() == null ? "" : entry.getAcademicYear());
+                    entry.setAcademicYear(academicYear);
                     entry.setStage(entry.getStage() == null ? CurriculumStage.NOO : entry.getStage());
                     entry.setNumberSchoolBuilding(row.numberSchoolBuilding());
                     entry.setClassName(row.className());
@@ -310,8 +320,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     importedIds.add(saved.getId());
                     if (isNew) created++; else updated++;
 
-                    boolean existedClass = classroomRepository.existsByNumberSchoolBuildingAndClassName(row.numberSchoolBuilding(), row.className());
-                    ensureClassroom(row.numberSchoolBuilding(), row.className(), row.classDirection(), fallbackTeacher);
+                    boolean existedClass = classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, row.numberSchoolBuilding(), row.className());
+                    ensureClassroom(academicYear, row.numberSchoolBuilding(), row.className(), row.classDirection(), fallbackTeacher);
                     if (!existedClass) classesCreated++;
 
                     SubjectType subjectType = row.curriculumPart() == CurriculumPart.EXTRACURRICULAR
@@ -329,6 +339,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 }
             } else {
                 for (CurriculumImportRow row : parsed) {
+                    row.setAcademicYear(academicYear);
                     CurriculumPlanEntry entry = curriculumRepository
                             .findFirstByAcademicYearAndStageAndClassNameAndSubjectNameAndStudyPeriod(
                                     row.getAcademicYear(), row.getStage(), row.getClassName(), row.getSubjectName(), row.getStudyPeriod())
@@ -339,7 +350,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     entry.setStage(row.getStage());
                     entry.setClassName(row.getClassName());
                     entry.setSubjectName(row.getSubjectName());
-                    StudyPeriodSetting resolvedRule = studyPeriodSettingService.resolveRuleForClassAndPeriod(row.getClassName(), row.getStudyPeriod());
+                    StudyPeriodSetting resolvedRule = studyPeriodSettingService.resolveRuleForClassAndPeriod(academicYear, row.getClassName(), row.getStudyPeriod());
                     entry.setStudyPeriod(resolvedRule.getStudyPeriod());
                     entry.setStudyPeriodSettingId(resolvedRule.getId());
                     entry.setPlannedHours(row.getPlannedHours());
@@ -363,8 +374,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     importedIds.add(saved.getId());
                     if (isNew) created++; else updated++;
 
-                    if (!classroomRepository.existsByNumberSchoolBuildingAndClassName("СП0", row.getClassName())) {
+                    if (!classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, "СП0", row.getClassName())) {
                         ClassroomLeadershipEntry cls = new ClassroomLeadershipEntry();
+                        cls.setAcademicYear(academicYear);
                         cls.setNumberSchoolBuilding("СП0");
                         cls.setClassName(row.getClassName());
                         cls.setClassDirection(row.getClassDirection() == null || row.getClassDirection().isBlank() ? "Не указана" : row.getClassDirection());
@@ -387,7 +399,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             }
 
             int deprecated = 0;
-            List<CurriculumPlanEntry> all = curriculumRepository.findAll();
+            List<CurriculumPlanEntry> all = curriculumRepository.findAll().stream()
+                    .filter(e -> academicYear.equals(e.getAcademicYear()))
+                    .toList();
             for (CurriculumPlanEntry e : all) {
                 boolean shouldDeprecate = !importedIds.contains(e.getId());
                 if (shouldDeprecate && !e.isDeprecated()) {
@@ -398,11 +412,14 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             }
 
             Set<String> activeKeys = new HashSet<>();
-            curriculumRepository.findAll().stream().filter(e -> !e.isDeprecated()).forEach(e ->
+            curriculumRepository.findAll().stream()
+                    .filter(e -> academicYear.equals(e.getAcademicYear()))
+                    .filter(e -> !e.isDeprecated())
+                    .forEach(e ->
                     activeKeys.add(keyWithoutBuilding(e.getClassName(), e.getSubjectName(), e.getEducationLevel(), e.getStudyPeriod())));
 
             int orphaned = 0;
-            List<ManualLoadEntry> loads = manualLoadRepository.findAll();
+            List<ManualLoadEntry> loads = manualLoadRepository.findAllByAcademicYear(academicYear);
             for (ManualLoadEntry l : loads) {
                 boolean isOrphan = !activeKeys.contains(keyWithoutBuilding(
                         ClassNameNormalizer.normalize(l.getClassName()),
@@ -423,9 +440,10 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         }
     }
 
-    private void ensureClassroom(String building, String className, String classDirection, String fallbackTeacher) {
-        if (classroomRepository.existsByNumberSchoolBuildingAndClassName(building, className)) return;
+    private void ensureClassroom(String academicYear, String building, String className, String classDirection, String fallbackTeacher) {
+        if (classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, className)) return;
         ClassroomLeadershipEntry cls = new ClassroomLeadershipEntry();
+        cls.setAcademicYear(academicYear);
         cls.setNumberSchoolBuilding(building);
         cls.setClassName(className);
         cls.setClassDirection(classDirection == null || classDirection.isBlank() ? "Не указана" : classDirection);
@@ -544,9 +562,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 }
 
                 for (ClassHeaderMeta classMeta : classColumns) {
-                    String rawHours = normalizeSubject(readCell(row.getCell(classMeta.colIndex)));
-                    boolean metaGroup = rawHours.endsWith("*");
-                    rawHours = rawHours.replace("*", "").trim();
+                    MarkerFlags markerFlags = parseMarkerFlags(readCell(row.getCell(classMeta.colIndex)));
+                    String rawHours = markerFlags.value();
                     if (rawHours.isBlank() || "0".equals(rawHours)) continue;
                     if (rawHours.contains("/")) {
                         String[] halves = rawHours.split("/", -1);
@@ -554,18 +571,18 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         BigDecimal h2 = parseDecimal(halves.length > 1 ? halves[1] : "");
                         if (h1 != null && h1.compareTo(BigDecimal.ZERO) > 0) {
                             result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title,
-                                    EducationLevel.BASIC, StudyPeriod.H1, h1, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC, metaGroup));
+                                    EducationLevel.BASIC, StudyPeriod.H1, h1, markerFlags.subgroupRequired(), h1.intValue(), EducationLevel.BASIC, h1.intValue(), EducationLevel.BASIC, markerFlags.metaGroup()));
                         }
                         if (h2 != null && h2.compareTo(BigDecimal.ZERO) > 0) {
                             result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title,
-                                    EducationLevel.BASIC, StudyPeriod.H2, h2, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC, metaGroup));
+                                    EducationLevel.BASIC, StudyPeriod.H2, h2, markerFlags.subgroupRequired(), h2.intValue(), EducationLevel.BASIC, h2.intValue(), EducationLevel.BASIC, markerFlags.metaGroup()));
                         }
                         continue;
                     }
                     BigDecimal year = parseDecimal(rawHours);
                     if (year == null || year.compareTo(BigDecimal.ZERO) <= 0) continue;
                     result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title,
-                            EducationLevel.BASIC, StudyPeriod.YEAR, year, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC, metaGroup));
+                            EducationLevel.BASIC, StudyPeriod.YEAR, year, markerFlags.subgroupRequired(), year.intValue(), EducationLevel.BASIC, year.intValue(), EducationLevel.BASIC, markerFlags.metaGroup()));
                 }
             }
             return new VisualParseResult(result, expectedSums);
@@ -634,19 +651,18 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 continue;
             }
             for (ClassHeaderMeta classMeta : classColumns) {
-                String rawHours = normalizeSubject(readCell(row.getCell(classMeta.colIndex)));
-                boolean metaGroup = rawHours.endsWith("*");
-                rawHours = rawHours.replace("*", "").trim();
+                MarkerFlags markerFlags = parseMarkerFlags(readCell(row.getCell(classMeta.colIndex)));
+                String rawHours = markerFlags.value();
                 if (rawHours.isBlank() || "0".equals(rawHours)) continue;
                 if (rawHours.contains("/")) {
                     String[] halves = rawHours.split("/", -1);
                     BigDecimal h1 = parseDecimal(halves.length > 0 ? halves[0] : "");
                     BigDecimal h2 = parseDecimal(halves.length > 1 ? halves[1] : "");
-                    if (h1 != null && h1.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.H1, h1, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC, metaGroup));
-                    if (h2 != null && h2.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.H2, h2, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC, metaGroup));
+                    if (h1 != null && h1.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.H1, h1, markerFlags.subgroupRequired(), h1.intValue(), EducationLevel.BASIC, h1.intValue(), EducationLevel.BASIC, markerFlags.metaGroup()));
+                    if (h2 != null && h2.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.H2, h2, markerFlags.subgroupRequired(), h2.intValue(), EducationLevel.BASIC, h2.intValue(), EducationLevel.BASIC, markerFlags.metaGroup()));
                 } else {
                     BigDecimal year = parseDecimal(rawHours);
-                    if (year != null && year.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.YEAR, year, false, null, EducationLevel.BASIC, null, EducationLevel.BASIC, metaGroup));
+                    if (year != null && year.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.YEAR, year, markerFlags.subgroupRequired(), year.intValue(), EducationLevel.BASIC, year.intValue(), EducationLevel.BASIC, markerFlags.metaGroup()));
                 }
             }
         }
@@ -858,6 +874,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     private record ClassHeaderMeta(int colIndex, String building, String className) {}
     private record SumPair(BigDecimal h1, BigDecimal h2) {}
     private record VisualParseResult(List<EditableImportRow> rows, Map<String, Map<String, SumPair>> expectedSums) {}
+    private record MarkerFlags(String value, boolean subgroupRequired, boolean metaGroup) {}
 
     private SubjectType resolveSubjectType(CurriculumImportRow row) {
         if (row.getCurriculumPart() == CurriculumPart.EXTRACURRICULAR) {
@@ -872,6 +889,23 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
     private String normalizeSubject(String value) {
         return String.valueOf(value == null ? "" : value).replace('\u00A0', ' ').replaceAll("\\s+", " ").trim();
+    }
+
+    private MarkerFlags parseMarkerFlags(String raw) {
+        String value = normalizeSubject(raw);
+        if (value.endsWith("**")) {
+            return new MarkerFlags(value.substring(0, value.length() - 2).trim(), false, true);
+        }
+        if (value.endsWith("*")) {
+            return new MarkerFlags(value.substring(0, value.length() - 1).trim(), true, false);
+        }
+        return new MarkerFlags(value, false, false);
+    }
+
+    private String markerSuffixForExport(boolean subgroupRequired, boolean metaGroup) {
+        if (metaGroup) return "**";
+        if (subgroupRequired) return "*";
+        return "";
     }
 
     private String subjectKey(String name, SubjectType type) {
