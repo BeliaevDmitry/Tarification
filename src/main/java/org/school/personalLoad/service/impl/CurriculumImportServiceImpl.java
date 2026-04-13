@@ -254,8 +254,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     }
 
     @Override
-    public CurriculumImportResult importFile(MultipartFile file) {
+    public CurriculumImportResult importFile(MultipartFile file, String academicYear) {
         if (file == null || file.isEmpty()) throw new IllegalArgumentException("Файл обязателен");
+        if (academicYear == null || academicYear.isBlank()) throw new IllegalArgumentException("academicYear is required");
 
         try {
             List<EditableImportRow> editableRows = parseEditableRows(file);
@@ -274,9 +275,10 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
             if (!editableRows.isEmpty()) {
                 for (EditableImportRow row : editableRows) {
-                    StudyPeriodSetting resolvedEditableRule = studyPeriodSettingService.resolveRuleForClassAndPeriod(row.className(), row.studyPeriod());
+                    StudyPeriodSetting resolvedEditableRule = studyPeriodSettingService.resolveRuleForClassAndPeriod(academicYear, row.className(), row.studyPeriod());
                     CurriculumPlanEntry entry = curriculumRepository
-                            .findByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriodAndStudyPeriodSettingId(
+                            .findByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriodAndStudyPeriodSettingId(
+                                    academicYear,
                                     row.numberSchoolBuilding(),
                                     row.className(),
                                     row.subjectName(),
@@ -287,7 +289,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                             )
                             .orElseGet(CurriculumPlanEntry::new);
                     boolean isNew = entry.getId() == null;
-                    entry.setAcademicYear(entry.getAcademicYear() == null ? "" : entry.getAcademicYear());
+                    entry.setAcademicYear(academicYear);
                     entry.setStage(entry.getStage() == null ? CurriculumStage.NOO : entry.getStage());
                     entry.setNumberSchoolBuilding(row.numberSchoolBuilding());
                     entry.setClassName(row.className());
@@ -310,8 +312,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     importedIds.add(saved.getId());
                     if (isNew) created++; else updated++;
 
-                    boolean existedClass = classroomRepository.existsByNumberSchoolBuildingAndClassName(row.numberSchoolBuilding(), row.className());
-                    ensureClassroom(row.numberSchoolBuilding(), row.className(), row.classDirection(), fallbackTeacher);
+                    boolean existedClass = classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, row.numberSchoolBuilding(), row.className());
+                    ensureClassroom(academicYear, row.numberSchoolBuilding(), row.className(), row.classDirection(), fallbackTeacher);
                     if (!existedClass) classesCreated++;
 
                     SubjectType subjectType = row.curriculumPart() == CurriculumPart.EXTRACURRICULAR
@@ -329,6 +331,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 }
             } else {
                 for (CurriculumImportRow row : parsed) {
+                    row.setAcademicYear(academicYear);
                     CurriculumPlanEntry entry = curriculumRepository
                             .findFirstByAcademicYearAndStageAndClassNameAndSubjectNameAndStudyPeriod(
                                     row.getAcademicYear(), row.getStage(), row.getClassName(), row.getSubjectName(), row.getStudyPeriod())
@@ -339,7 +342,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     entry.setStage(row.getStage());
                     entry.setClassName(row.getClassName());
                     entry.setSubjectName(row.getSubjectName());
-                    StudyPeriodSetting resolvedRule = studyPeriodSettingService.resolveRuleForClassAndPeriod(row.getClassName(), row.getStudyPeriod());
+                    StudyPeriodSetting resolvedRule = studyPeriodSettingService.resolveRuleForClassAndPeriod(academicYear, row.getClassName(), row.getStudyPeriod());
                     entry.setStudyPeriod(resolvedRule.getStudyPeriod());
                     entry.setStudyPeriodSettingId(resolvedRule.getId());
                     entry.setPlannedHours(row.getPlannedHours());
@@ -363,8 +366,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     importedIds.add(saved.getId());
                     if (isNew) created++; else updated++;
 
-                    if (!classroomRepository.existsByNumberSchoolBuildingAndClassName("СП0", row.getClassName())) {
+                    if (!classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, "СП0", row.getClassName())) {
                         ClassroomLeadershipEntry cls = new ClassroomLeadershipEntry();
+                        cls.setAcademicYear(academicYear);
                         cls.setNumberSchoolBuilding("СП0");
                         cls.setClassName(row.getClassName());
                         cls.setClassDirection(row.getClassDirection() == null || row.getClassDirection().isBlank() ? "Не указана" : row.getClassDirection());
@@ -387,7 +391,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             }
 
             int deprecated = 0;
-            List<CurriculumPlanEntry> all = curriculumRepository.findAll();
+            List<CurriculumPlanEntry> all = curriculumRepository.findAll().stream()
+                    .filter(e -> academicYear.equals(e.getAcademicYear()))
+                    .toList();
             for (CurriculumPlanEntry e : all) {
                 boolean shouldDeprecate = !importedIds.contains(e.getId());
                 if (shouldDeprecate && !e.isDeprecated()) {
@@ -398,11 +404,14 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             }
 
             Set<String> activeKeys = new HashSet<>();
-            curriculumRepository.findAll().stream().filter(e -> !e.isDeprecated()).forEach(e ->
+            curriculumRepository.findAll().stream()
+                    .filter(e -> academicYear.equals(e.getAcademicYear()))
+                    .filter(e -> !e.isDeprecated())
+                    .forEach(e ->
                     activeKeys.add(keyWithoutBuilding(e.getClassName(), e.getSubjectName(), e.getEducationLevel(), e.getStudyPeriod())));
 
             int orphaned = 0;
-            List<ManualLoadEntry> loads = manualLoadRepository.findAll();
+            List<ManualLoadEntry> loads = manualLoadRepository.findAllByAcademicYear(academicYear);
             for (ManualLoadEntry l : loads) {
                 boolean isOrphan = !activeKeys.contains(keyWithoutBuilding(
                         ClassNameNormalizer.normalize(l.getClassName()),
@@ -423,9 +432,10 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         }
     }
 
-    private void ensureClassroom(String building, String className, String classDirection, String fallbackTeacher) {
-        if (classroomRepository.existsByNumberSchoolBuildingAndClassName(building, className)) return;
+    private void ensureClassroom(String academicYear, String building, String className, String classDirection, String fallbackTeacher) {
+        if (classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, className)) return;
         ClassroomLeadershipEntry cls = new ClassroomLeadershipEntry();
+        cls.setAcademicYear(academicYear);
         cls.setNumberSchoolBuilding(building);
         cls.setClassName(className);
         cls.setClassDirection(classDirection == null || classDirection.isBlank() ? "Не указана" : classDirection);

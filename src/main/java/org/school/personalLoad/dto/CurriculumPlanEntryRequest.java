@@ -7,6 +7,7 @@ import org.school.personalLoad.model.StudyPeriod;
 
 @Data
 public class CurriculumPlanEntryRequest {
+    private String academicYear;
     private String numberSchoolBuilding;
     private String className;
     private String subjectName;

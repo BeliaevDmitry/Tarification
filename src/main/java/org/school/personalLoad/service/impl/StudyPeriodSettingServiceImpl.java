@@ -21,19 +21,12 @@ import java.util.Locale;
 @Transactional
 public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService {
 
-    private static final LocalDate DEFAULT_YEAR_START = LocalDate.of(2026, 9, 1);
-    private static final LocalDate DEFAULT_YEAR_END = LocalDate.of(2027, 5, 31);
-    private static final LocalDate DEFAULT_H1_END = LocalDate.of(2026, 12, 31);
-    private static final LocalDate DEFAULT_H2_START = LocalDate.of(2027, 1, 10);
-    private static final LocalDate DEFAULT_11_H1_END = LocalDate.of(2027, 1, 31);
-    private static final LocalDate DEFAULT_11_H2_START = LocalDate.of(2027, 2, 1);
-
     private final StudyPeriodSettingRepository repository;
 
     @Override
-    public List<StudyPeriodSetting> findAll() {
-        ensureDefaults();
-        return repository.findAll().stream()
+    public List<StudyPeriodSetting> findAll(String academicYear) {
+        ensureDefaults(academicYear);
+        return repository.findAllByAcademicYearOrderByIdAsc(academicYear).stream()
                 .sorted(Comparator.comparing(StudyPeriodSetting::getParallelFrom)
                         .thenComparing(StudyPeriodSetting::getParallelTo)
                         .thenComparing(StudyPeriodSetting::getStudyPeriod)
@@ -42,15 +35,15 @@ public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService 
     }
 
     @Override
-    public StudyPeriodSetting create(StudyPeriodSettingRequest request) {
+    public StudyPeriodSetting create(String academicYear, StudyPeriodSettingRequest request) {
         validateRequest(request, false);
         StudyPeriodSetting entity = new StudyPeriodSetting();
-        fillEntity(entity, request);
+        fillEntity(academicYear, entity, request);
         return repository.save(entity);
     }
 
     @Override
-    public List<StudyPeriodSetting> saveAll(List<StudyPeriodSettingRequest> requests) {
+    public List<StudyPeriodSetting> saveAll(String academicYear, List<StudyPeriodSettingRequest> requests) {
         if (requests == null || requests.isEmpty()) {
             throw new IllegalArgumentException("Передайте хотя бы одну настройку периода обучения");
         }
@@ -58,30 +51,32 @@ public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService 
             validateRequest(request, true);
             StudyPeriodSetting entity = repository.findById(request.getId())
                     .orElseThrow(() -> new IllegalArgumentException("Период не найден: " + request.getId()));
-            fillEntity(entity, request);
+            fillEntity(academicYear, entity, request);
             repository.save(entity);
         }
-        return findAll();
+        return findAll(academicYear);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<StudyPeriodSetting> findAvailableForClass(String className) {
-        ensureDefaults();
+    public List<StudyPeriodSetting> findAvailableForClass(String academicYear, String className) {
+        ensureDefaults(academicYear);
         int parallel = resolveParallel(className);
-        return repository.findByParallelFromLessThanEqualAndParallelToGreaterThanEqualOrderByDefaultRuleDescIdAsc(parallel, parallel);
+        return repository.findByAcademicYearAndParallelFromLessThanEqualAndParallelToGreaterThanEqualOrderByDefaultRuleDescIdAsc(academicYear, parallel, parallel);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public StudyPeriodSetting resolveRuleForClassAndPeriod(String className, StudyPeriod studyPeriod) {
+    public StudyPeriodSetting resolveRuleForClassAndPeriod(String academicYear, String className, StudyPeriod studyPeriod) {
         int parallel = resolveParallel(className);
         StudyPeriod effectivePeriod = studyPeriod == null ? (parallel <= 9 ? StudyPeriod.YEAR : StudyPeriod.H1) : studyPeriod;
-        List<StudyPeriodSetting> byType = repository.findByParallelFromLessThanEqualAndParallelToGreaterThanEqualAndStudyPeriodOrderByDefaultRuleDescIdAsc(parallel, parallel, effectivePeriod);
+        List<StudyPeriodSetting> byType = repository.findByAcademicYearAndParallelFromLessThanEqualAndParallelToGreaterThanEqualAndStudyPeriodOrderByDefaultRuleDescIdAsc(
+                academicYear, parallel, parallel, effectivePeriod);
         if (!byType.isEmpty()) {
             return byType.get(0);
         }
-        List<StudyPeriodSetting> all = repository.findByParallelFromLessThanEqualAndParallelToGreaterThanEqualOrderByDefaultRuleDescIdAsc(parallel, parallel);
+        List<StudyPeriodSetting> all = repository.findByAcademicYearAndParallelFromLessThanEqualAndParallelToGreaterThanEqualOrderByDefaultRuleDescIdAsc(
+                academicYear, parallel, parallel);
         if (all.isEmpty()) {
             throw new IllegalArgumentException("Не найден период обучения для класса " + className);
         }
@@ -90,26 +85,27 @@ public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService 
 
     @Override
     @Transactional(readOnly = true)
-    public java.util.Map<StudyPeriodSettingKey, DateRange> rangesByKey() {
-        ensureDefaults();
+    public java.util.Map<StudyPeriodSettingKey, DateRange> rangesByKey(String academicYear) {
+        ensureDefaults(academicYear);
         java.util.Map<StudyPeriodSettingKey, DateRange> result = new java.util.EnumMap<>(StudyPeriodSettingKey.class);
         for (StudyPeriodSettingKey key : StudyPeriodSettingKey.values()) {
-            repository.findByCode(key.name()).ifPresent(row -> result.put(key, new DateRange(row.getStartDate(), row.getEndDate())));
+            repository.findByAcademicYearAndCode(academicYear, key.name())
+                    .ifPresent(row -> result.put(key, new DateRange(row.getStartDate(), row.getEndDate())));
         }
         return result;
     }
 
     @Override
     @Transactional(readOnly = true)
-    public DateRange resolveDateRange(String className, StudyPeriod studyPeriod) {
-        StudyPeriodSetting setting = resolveRuleForClassAndPeriod(className, studyPeriod);
+    public DateRange resolveDateRange(String academicYear, String className, StudyPeriod studyPeriod) {
+        StudyPeriodSetting setting = resolveRuleForClassAndPeriod(academicYear, className, studyPeriod);
         return new DateRange(setting.getStartDate(), setting.getEndDate());
     }
 
     @Override
-    public StudyPeriod inferStudyPeriod(String className, LocalDate loadFromDate, LocalDate loadToDate) {
+    public StudyPeriod inferStudyPeriod(String academicYear, String className, LocalDate loadFromDate, LocalDate loadToDate) {
         int parallel = resolveParallel(className);
-        List<StudyPeriodSetting> options = findAvailableForClass(className);
+        List<StudyPeriodSetting> options = findAvailableForClass(academicYear, className);
         for (StudyPeriodSetting option : options) {
             DateRange range = new DateRange(option.getStartDate(), option.getEndDate());
             if (range.fullyContains(loadFromDate, loadToDate)) {
@@ -140,7 +136,8 @@ public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService 
         }
     }
 
-    private void fillEntity(StudyPeriodSetting entity, StudyPeriodSettingRequest request) {
+    private void fillEntity(String academicYear, StudyPeriodSetting entity, StudyPeriodSettingRequest request) {
+        entity.setAcademicYear(academicYear);
         entity.setCode((request.getCode() == null || request.getCode().isBlank()) ? defaultCode(request) : request.getCode().trim());
         entity.setDisplayName(request.getDisplayName().trim());
         entity.setStudyPeriod(request.getStudyPeriod());
@@ -157,21 +154,31 @@ public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService 
                 .toLowerCase(Locale.ROOT);
     }
 
-    private void ensureDefaults() {
-        if (repository.count() > 0) return;
-        seed("YEAR_1_9", "1–9 классы · учебный год", StudyPeriod.YEAR, 1, 9, DEFAULT_YEAR_START, DEFAULT_YEAR_END);
-        seed("H1_1_9", "1–9 классы · 1 полугодие", StudyPeriod.H1, 1, 9, DEFAULT_YEAR_START, DEFAULT_H1_END);
-        seed("H2_1_9", "1–9 классы · 2 полугодие", StudyPeriod.H2, 1, 9, DEFAULT_H2_START, DEFAULT_YEAR_END);
-        seed("H1_10", "10 класс · 1 полугодие", StudyPeriod.H1, 10, 10, DEFAULT_YEAR_START, DEFAULT_H1_END);
-        seed("H2_10", "10 класс · 2 полугодие", StudyPeriod.H2, 10, 10, DEFAULT_H2_START, DEFAULT_YEAR_END);
-        seed("YEAR_10", "10 класс · учебный год", StudyPeriod.YEAR, 10, 10, DEFAULT_YEAR_START, DEFAULT_YEAR_END);
-        seed("H1_11", "11 класс · 1 полугодие", StudyPeriod.H1, 11, 11, DEFAULT_YEAR_START, DEFAULT_11_H1_END);
-        seed("H2_11", "11 класс · 2 полугодие", StudyPeriod.H2, 11, 11, DEFAULT_11_H2_START, DEFAULT_YEAR_END);
-        seed("YEAR_11", "11 класс · учебный год", StudyPeriod.YEAR, 11, 11, DEFAULT_YEAR_START, DEFAULT_YEAR_END);
+    private void ensureDefaults(String academicYear) {
+        if (!repository.findAllByAcademicYearOrderByIdAsc(academicYear).isEmpty()) return;
+        int yearStart = Integer.parseInt(academicYear.substring(0, 4));
+        int yearEnd = Integer.parseInt(academicYear.substring(5));
+        LocalDate defaultYearStart = LocalDate.of(yearStart, 9, 1);
+        LocalDate defaultYearEnd = LocalDate.of(yearEnd, 5, 31);
+        LocalDate defaultH1End = LocalDate.of(yearStart, 12, 31);
+        LocalDate defaultH2Start = LocalDate.of(yearEnd, 1, 10);
+        LocalDate default11H1End = LocalDate.of(yearEnd, 1, 31);
+        LocalDate default11H2Start = LocalDate.of(yearEnd, 2, 1);
+
+        seed(academicYear, "YEAR_1_9", "1–9 классы · учебный год", StudyPeriod.YEAR, 1, 9, defaultYearStart, defaultYearEnd);
+        seed(academicYear, "H1_1_9", "1–9 классы · 1 полугодие", StudyPeriod.H1, 1, 9, defaultYearStart, defaultH1End);
+        seed(academicYear, "H2_1_9", "1–9 классы · 2 полугодие", StudyPeriod.H2, 1, 9, defaultH2Start, defaultYearEnd);
+        seed(academicYear, "H1_10", "10 класс · 1 полугодие", StudyPeriod.H1, 10, 10, defaultYearStart, defaultH1End);
+        seed(academicYear, "H2_10", "10 класс · 2 полугодие", StudyPeriod.H2, 10, 10, defaultH2Start, defaultYearEnd);
+        seed(academicYear, "YEAR_10", "10 класс · учебный год", StudyPeriod.YEAR, 10, 10, defaultYearStart, defaultYearEnd);
+        seed(academicYear, "H1_11", "11 класс · 1 полугодие", StudyPeriod.H1, 11, 11, defaultYearStart, default11H1End);
+        seed(academicYear, "H2_11", "11 класс · 2 полугодие", StudyPeriod.H2, 11, 11, default11H2Start, defaultYearEnd);
+        seed(academicYear, "YEAR_11", "11 класс · учебный год", StudyPeriod.YEAR, 11, 11, defaultYearStart, defaultYearEnd);
     }
 
-    private void seed(String code, String displayName, StudyPeriod period, int from, int to, LocalDate startDate, LocalDate endDate) {
+    private void seed(String academicYear, String code, String displayName, StudyPeriod period, int from, int to, LocalDate startDate, LocalDate endDate) {
         StudyPeriodSetting entity = new StudyPeriodSetting();
+        entity.setAcademicYear(academicYear);
         entity.setCode(code);
         entity.setDisplayName(displayName);
         entity.setStudyPeriod(period);
