@@ -8,10 +8,17 @@ import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadProcessResult;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.service.ManualLoadService;
+import org.school.personalLoad.service.AcademicYearService;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletRequest;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -23,36 +30,64 @@ import java.util.stream.Collectors;
 public class ManualLoadController {
 
     private final ManualLoadService manualLoadService;
+    private final AcademicYearService academicYearService;
 
     @PostMapping
-    public ResponseEntity<ManualLoadEntry> create(@RequestBody ManualLoadEntryRequest request, HttpServletRequest httpServletRequest) {
+    public ResponseEntity<ManualLoadEntry> create(@RequestParam(required = false) String academicYear, @RequestBody ManualLoadEntryRequest request, HttpServletRequest httpServletRequest) {
+        request.setAcademicYear(academicYearService.resolveRequestedOrDefault(academicYear));
         validateLoadAccess(AuthSessionUtils.requiredUser(httpServletRequest), List.of(request));
         return ResponseEntity.ok(manualLoadService.create(request));
     }
 
     @PostMapping("/bulk")
-    public ResponseEntity<List<ManualLoadEntry>> createBulk(@RequestBody List<ManualLoadEntryRequest> requests,
+    public ResponseEntity<List<ManualLoadEntry>> createBulk(@RequestParam(required = false) String academicYear, @RequestBody List<ManualLoadEntryRequest> requests,
                                                             HttpServletRequest httpServletRequest) {
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        requests.forEach(req -> req.setAcademicYear(effectiveYear));
         validateLoadAccess(AuthSessionUtils.requiredUser(httpServletRequest), requests);
         return ResponseEntity.ok(manualLoadService.createBulk(requests));
     }
 
     @GetMapping
-    public ResponseEntity<List<ManualLoadEntry>> findAll() {
-        return ResponseEntity.ok(manualLoadService.findAll());
+    public ResponseEntity<List<ManualLoadEntry>> findAll(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(manualLoadService.findAll(academicYearService.resolveRequestedOrDefault(academicYear)));
     }
 
     @DeleteMapping
-    public ResponseEntity<Void> clear(HttpServletRequest httpServletRequest) {
+    public ResponseEntity<Void> clear(@RequestParam(required = false) String academicYear, HttpServletRequest httpServletRequest) {
         validateGlobalLoadOperation(AuthSessionUtils.requiredUser(httpServletRequest));
-        manualLoadService.clearAll();
+        manualLoadService.clearAll(academicYearService.resolveRequestedOrDefault(academicYear));
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/process")
-    public ResponseEntity<ManualLoadProcessResult> process(HttpServletRequest httpServletRequest) {
+    public ResponseEntity<ManualLoadProcessResult> process(@RequestParam(required = false) String academicYear, HttpServletRequest httpServletRequest) {
         validateGlobalLoadOperation(AuthSessionUtils.requiredUser(httpServletRequest));
-        return ResponseEntity.ok(manualLoadService.processCurrentManualLoad());
+        return ResponseEntity.ok(manualLoadService.processCurrentManualLoad(academicYearService.resolveRequestedOrDefault(academicYear)));
+    }
+
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> exportWorkbook(@RequestParam(required = false) String academicYear, HttpServletRequest httpServletRequest) throws Exception {
+        validateGlobalLoadOperation(AuthSessionUtils.requiredUser(httpServletRequest));
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        byte[] body = manualLoadService.exportWorkbook(effectiveYear);
+        String date = LocalDate.now().toString();
+        String fileName = "Распределение нагрузки " + effectiveYear + " " + date + ".xlsx";
+        String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(body);
+    }
+
+    @PostMapping("/import")
+    public ResponseEntity<List<ManualLoadEntry>> importWorkbook(@RequestParam(required = false) String academicYear,
+                                                                @RequestParam("file") MultipartFile file,
+                                                                HttpServletRequest httpServletRequest) {
+        validateGlobalLoadOperation(AuthSessionUtils.requiredUser(httpServletRequest));
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        List<ManualLoadEntry> imported = manualLoadService.importWorkbook(effectiveYear, file);
+        return ResponseEntity.ok(imported);
     }
 
     private void validateLoadAccess(SessionUser user, List<ManualLoadEntryRequest> requests) {

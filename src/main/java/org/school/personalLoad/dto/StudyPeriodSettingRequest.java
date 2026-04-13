@@ -8,6 +8,7 @@ import java.time.LocalDate;
 @Data
 public class StudyPeriodSettingRequest {
     private Long id;
+    private String academicYear;
     private String code;
     private String displayName;
     private StudyPeriod studyPeriod;

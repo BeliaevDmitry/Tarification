@@ -9,6 +9,7 @@ import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.DatabaseService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
@@ -34,6 +35,8 @@ class ManualLoadServiceImplBulkReplaceTest {
     private CurriculumPlanService curriculumPlanService;
     @Mock
     private StudyPeriodSettingService studyPeriodSettingService;
+    @Mock
+    private TeacherDirectoryRepository teacherDirectoryRepository;
 
     private ManualLoadServiceImpl service;
 
@@ -44,7 +47,8 @@ class ManualLoadServiceImplBulkReplaceTest {
                 tarifficationProcessingService,
                 databaseService,
                 curriculumPlanService,
-                studyPeriodSettingService
+                studyPeriodSettingService,
+                teacherDirectoryRepository
         );
         when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
@@ -52,6 +56,7 @@ class ManualLoadServiceImplBulkReplaceTest {
     @Test
     void createBulkReplacesRowsForAffectedBuilding() {
         ManualLoadEntryRequest request = new ManualLoadEntryRequest();
+        request.setAcademicYear("2025/2026");
         request.setFioTeacher("Иванов И.И.");
         request.setNumberSchoolBuilding("B1");
         request.setSubjectName("Алгебра");
@@ -63,7 +68,7 @@ class ManualLoadServiceImplBulkReplaceTest {
 
         service.createBulk(List.of(request));
 
-        verify(manualLoadEntryRepository).deleteByBuildingCodes(java.util.Set.of("b1"));
+        verify(manualLoadEntryRepository).deleteByAcademicYearAndBuildingCodes("2025/2026", java.util.Set.of("b1"));
         verify(manualLoadEntryRepository).saveAll(any());
     }
 }
