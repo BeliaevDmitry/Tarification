@@ -3,6 +3,9 @@ const jsonHeaders = { "Content-Type": "application/json" };
 const ui = {
     buildingTabs: document.getElementById("building-tabs"),
     refreshLoadBtn: document.getElementById("refresh-load-btn"),
+    exportLoadBtn: document.getElementById("export-load-btn"),
+    importLoadBtn: document.getElementById("import-load-btn"),
+    importLoadFile: document.getElementById("import-load-file"),
     saveBuildingBtn: document.getElementById("save-building-btn"),
     loadResult: document.getElementById("load-result"),
     tableHead: document.getElementById("building-load-head"),
@@ -1573,6 +1576,48 @@ async function saveBuildingLoad() {
     }
 }
 
+async function exportLoadWorkbook() {
+    try {
+        const scopedPath = window.withAcademicYear ? window.withAcademicYear("/api/manual-load/export") : "/api/manual-load/export";
+        const response = await fetch(scopedPath);
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || `HTTP ${response.status}`);
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const disposition = response.headers.get("Content-Disposition") || "";
+        const match = disposition.match(/filename\\*=UTF-8''([^;]+)/);
+        a.href = url;
+        a.download = match ? decodeURIComponent(match[1]) : "load-export.xlsx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        print({ status: "exported" });
+    } catch (error) {
+        print({ error: error.message });
+    }
+}
+
+async function importLoadWorkbook(file) {
+    try {
+        const form = new FormData();
+        form.append("file", file);
+        const scopedPath = window.withAcademicYear ? window.withAcademicYear("/api/manual-load/import") : "/api/manual-load/import";
+        const response = await fetch(scopedPath, { method: "POST", body: form });
+        const text = await response.text();
+        let body = null;
+        try { body = text ? JSON.parse(text) : null; } catch { body = { message: text }; }
+        if (!response.ok) throw new Error(body?.message || body?.error || `HTTP ${response.status}`);
+        print({ status: "imported", rows: Array.isArray(body) ? body.length : 0 });
+        await reloadAll();
+    } catch (error) {
+        print({ error: error.message });
+    }
+}
+
 async function refreshSourceData() {
     const [curriculum, manual, teachers, buildingRows, classRows, periodSettings] = await Promise.all([
         api("/api/curriculum"),
@@ -1715,6 +1760,20 @@ function bindEvents() {
         refreshSourceData()
             .then(() => print({ status: "Синхронизировано с учебным планом" }))
             .catch((error) => print({ error: error.message }));
+    });
+
+    ui.exportLoadBtn?.addEventListener("click", exportLoadWorkbook);
+    ui.importLoadBtn?.addEventListener("click", () => ui.importLoadFile?.click());
+    ui.importLoadFile?.addEventListener("change", async () => {
+        const file = ui.importLoadFile.files?.[0];
+        if (!file) return;
+        const confirmed = confirm("Импорт нагрузки заменит текущие назначения по корпусам из файла. Продолжить?");
+        if (!confirmed) {
+            ui.importLoadFile.value = "";
+            return;
+        }
+        await importLoadWorkbook(file);
+        ui.importLoadFile.value = "";
     });
 
     ui.sortField.addEventListener("change", () => {

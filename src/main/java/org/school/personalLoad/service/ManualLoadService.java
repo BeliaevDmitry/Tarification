@@ -3,7 +3,9 @@ package org.school.personalLoad.service;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadProcessResult;
 import org.school.personalLoad.model.ManualLoadEntry;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
 
 public interface ManualLoadService {
@@ -16,4 +18,8 @@ public interface ManualLoadService {
     void clearAll(String academicYear);
 
     ManualLoadProcessResult processCurrentManualLoad(String academicYear);
+
+    byte[] exportWorkbook(String academicYear) throws IOException;
+
+    List<ManualLoadEntry> importWorkbook(String academicYear, MultipartFile file);
 }
