@@ -579,6 +579,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                                          String rowKey) {}
 
     private void validate(ManualLoadEntryRequest request) {
+        if (request.getAcademicYear() == null || request.getAcademicYear().isBlank()) {
+            throw new IllegalArgumentException("academicYear is required");
+        }
         if (request.getFioTeacher() == null || request.getFioTeacher().isBlank()) {
             throw new IllegalArgumentException("fioTeacher is required");
         }

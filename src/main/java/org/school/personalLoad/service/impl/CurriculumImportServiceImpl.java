@@ -451,6 +451,12 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         classroomRepository.save(cls);
     }
 
+    private String currentAcademicYear() {
+        java.time.LocalDate now = java.time.LocalDate.now();
+        int start = now.getMonthValue() >= 7 ? now.getYear() : now.getYear() - 1;
+        return start + "/" + (start + 1);
+    }
+
     private List<CurriculumImportRow> normalizeImportedRows(List<CurriculumImportRow> rows) {
         Map<String, CurriculumImportRow> byKey = new LinkedHashMap<>();
         for (CurriculumImportRow row : rows) {
