@@ -1283,7 +1283,11 @@ function renderTable() {
     const classes = classesForSelectedBuilding();
     const referenceDate = currentDisplayDate();
     const presentationRows = filterPresentationRowsByViewMode(buildPresentationRows());
+<<<<<<< codex/design-year-switching-logic-for-curriculum-fqnxlj
     const { errorCount } = collectLoadIssues(presentationRows, classes);
+=======
+    const { errors: loadIssues } = collectLoadIssues(presentationRows, classes);
+>>>>>>> menu-2
 
     const headMain = document.createElement("tr");
     headMain.className = "load-main-head";
