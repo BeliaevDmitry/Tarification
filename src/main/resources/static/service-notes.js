@@ -11,7 +11,8 @@ const ui = {
 };
 
 async function api(path, options = {}) {
-    const response = await fetch(path, options);
+    const scopedPath = window.withAcademicYear ? window.withAcademicYear(path) : path;
+    const response = await fetch(scopedPath, options);
     const text = await response.text();
     let body = null;
     try {
@@ -115,7 +116,8 @@ function renderProcessed(target, rows, archived = false) {
 }
 
 async function downloadMemo(id) {
-    const response = await fetch(`/api/service-memos/${id}/download`);
+    const path = window.withAcademicYear ? window.withAcademicYear(`/api/service-memos/${id}/download`) : `/api/service-memos/${id}/download`;
+    const response = await fetch(path);
     if (!response.ok) {
         const text = await response.text();
         throw new Error(text || `HTTP ${response.status}`);

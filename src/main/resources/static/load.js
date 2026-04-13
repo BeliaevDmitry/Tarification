@@ -50,7 +50,8 @@ const state = {
 
 
 async function api(path, options = {}) {
-    const response = await fetch(path, options);
+    const scopedPath = window.withAcademicYear ? window.withAcademicYear(path) : path;
+    const response = await fetch(scopedPath, options);
     const text = await response.text();
     let body = null;
     try {
@@ -172,7 +173,7 @@ function periodLabel(studyPeriod) {
 
 function displaySubjectName(row) {
     const suffix = classParallel(row.className) >= 10 ? "" : (rowStudyPeriod(row) !== "YEAR" ? ` · ${periodLabel(rowStudyPeriod(row))}` : "");
-    return row.__groupIndex ? `${row.subjectName} ${row.__groupIndex}${suffix}` : `${row.subjectName}${suffix}`;
+    return row.__groupIndex ? `${row.subjectName} ${row.__groupIndex}Г${suffix}` : `${row.subjectName}${suffix}`;
 }
 
 function classPeriodHours(rows = []) {
@@ -853,9 +854,9 @@ function buildPresentationRows() {
 
             const subjectRowsFlat = Object.values(info.rowsByClassAll).flat();
             const periodTotals = classPeriodHours(subjectRowsFlat);
-            let displayName = info.subjectName;
-            if (periodTotals.year <= 0 && periodTotals.h1 > 0 && periodTotals.h2 <= 0) displayName = `${info.subjectName} (1П)`;
-            else if (periodTotals.year <= 0 && periodTotals.h2 > 0 && periodTotals.h1 <= 0) displayName = `${info.subjectName} (2П)`;
+            let displayName = info.groupIndex ? `${info.subjectName} ${info.groupIndex}Г` : info.subjectName;
+            if (periodTotals.year <= 0 && periodTotals.h1 > 0 && periodTotals.h2 <= 0) displayName = `${displayName} (1П)`;
+            else if (periodTotals.year <= 0 && periodTotals.h2 > 0 && periodTotals.h1 <= 0) displayName = `${displayName} (2П)`;
 
             result.push({
                 subjectKey: info.subjectKey,
@@ -901,7 +902,9 @@ function filterPresentationRowsByViewMode(rows) {
             if (!teacherName) return true;
 
             if (state.viewMode === "date") {
-                return dateInRange(state.viewDate, row.loadFromDate, row.loadToDate);
+                // В режиме «на дату» оставляем строку педагога видимой, даже если его период
+                // уже завершился к выбранной дате: это нужно, чтобы видеть донора при передаче часов.
+                return true;
             }
             const targetPeriod = state.viewMode === "h1" ? "H1" : "H2";
             return Object.keys(row.rowsByClassAll || {}).some((className) => {
@@ -1250,7 +1253,7 @@ function collectLoadIssues(presentationRows, classes) {
 
     ui.unassignedHours.textContent = String(unassignedHours);
     ui.errorCount.textContent = String(errorCount);
-    return { errors };
+    return { errors, errorCount };
 }
 
 function jumpToFirstError() {
@@ -1282,7 +1285,7 @@ function renderTable() {
     const classes = classesForSelectedBuilding();
     const referenceDate = currentDisplayDate();
     const presentationRows = filterPresentationRowsByViewMode(buildPresentationRows());
-    collectLoadIssues(presentationRows, classes);
+    const { errorCount } = collectLoadIssues(presentationRows, classes);
 
     const headMain = document.createElement("tr");
     headMain.className = "load-main-head";
@@ -1293,7 +1296,7 @@ function renderTable() {
         <th rowspan="2">Всего часов в комплексе</th>
         <th colspan="${Math.max(classes.length, 1)}">
             <div class="load-head-actions">
-                <span><strong>Ошибки: ${loadIssues.length}</strong></span>
+                <span><strong>Ошибки: ${errorCount}</strong></span>
                 <button type="button" class="head-action-btn" data-head-save="1">Сохранить нагрузку корпуса</button>
                 <button type="button" class="head-action-btn" data-head-next-error="1">Перейти к ошибке</button>
             </div>

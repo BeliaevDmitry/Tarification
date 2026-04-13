@@ -5,6 +5,7 @@ import org.school.personalLoad.auth.AuthSessionUtils;
 import org.school.personalLoad.auth.SessionUser;
 import org.school.personalLoad.dto.ServiceMemoDtos;
 import org.school.personalLoad.model.ServiceMemo;
+import org.school.personalLoad.service.AcademicYearService;
 import org.school.personalLoad.service.ServiceMemoService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -24,28 +25,34 @@ import java.util.List;
 public class ServiceMemoController {
 
     private final ServiceMemoService serviceMemoService;
+    private final AcademicYearService academicYearService;
 
     @GetMapping("/pending")
-    public ResponseEntity<List<ServiceMemoDtos.PendingTeacher>> pending() {
-        return ResponseEntity.ok(serviceMemoService.findPendingTeachers());
+    public ResponseEntity<List<ServiceMemoDtos.PendingTeacher>> pending(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(serviceMemoService.findPendingTeachers(academicYearService.resolveRequestedOrDefault(academicYear)));
     }
 
     @GetMapping("/processed")
-    public ResponseEntity<List<ServiceMemoDtos.ProcessedMemo>> processed() {
-        return ResponseEntity.ok(serviceMemoService.findProcessed());
+    public ResponseEntity<List<ServiceMemoDtos.ProcessedMemo>> processed(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(serviceMemoService.findProcessed(academicYear));
     }
 
     @GetMapping("/archived")
-    public ResponseEntity<List<ServiceMemoDtos.ProcessedMemo>> archived() {
-        return ResponseEntity.ok(serviceMemoService.findArchived());
+    public ResponseEntity<List<ServiceMemoDtos.ProcessedMemo>> archived(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(serviceMemoService.findArchived(academicYear));
     }
 
     @PostMapping("/generate")
     public ResponseEntity<List<ServiceMemoDtos.ProcessedMemo>> generate(@RequestBody ServiceMemoDtos.GenerateRequest request,
+                                                                        @RequestParam(required = false) String academicYear,
                                                                         HttpServletRequest httpServletRequest) {
         SessionUser user = AuthSessionUtils.requiredUser(httpServletRequest);
         List<String> fioTeachers = request == null ? List.of() : request.getFioTeachers();
-        return ResponseEntity.ok(serviceMemoService.generateForTeachers(fioTeachers, user.getFullName()));
+        return ResponseEntity.ok(serviceMemoService.generateForTeachers(
+                academicYearService.resolveRequestedOrDefault(academicYear),
+                fioTeachers,
+                user.getFullName()
+        ));
     }
 
     @GetMapping("/{id}/download")
