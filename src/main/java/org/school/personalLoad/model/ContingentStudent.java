@@ -112,7 +112,6 @@ public class ContingentStudent {
     @Column(nullable = false, length = 1000)
     private String removedFromVshuReason;
 
-    @Lob
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "text")
     private String rawPayload;
 }

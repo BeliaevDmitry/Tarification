@@ -167,7 +167,7 @@ public class ContingentServiceImpl implements ContingentService {
     @Override
     public ContingentDtos.StatsResponse getStats(String academicYear, LocalDate snapshotDate) {
         ContingentSnapshot snapshot = resolveSnapshot(academicYear, snapshotDate);
-        List<ContingentStudent> students = studentRepository.findAllBySnapshotId(snapshot.getId());
+        List<String> classNames = studentRepository.findClassNamesBySnapshotId(snapshot.getId());
 
         Map<String, String> buildingByClass = new HashMap<>();
         classroomLeadershipRepository.findAllByAcademicYear(academicYear)
@@ -180,8 +180,8 @@ public class ContingentServiceImpl implements ContingentService {
         Map<String, Integer> totalByBuildingClass = new HashMap<>();
         Map<Integer, Integer> totalByParallel = new TreeMap<>();
 
-        for (ContingentStudent student : students) {
-            String className = ClassNameNormalizer.normalize(student.getClassName());
+        for (String rawClassName : classNames) {
+            String className = ClassNameNormalizer.normalize(rawClassName);
             int parallel = extractParallel(className);
             if (parallel < 0) {
                 continue;
@@ -229,7 +229,7 @@ public class ContingentServiceImpl implements ContingentService {
         ContingentDtos.StatsResponse response = new ContingentDtos.StatsResponse();
         response.setSnapshotId(snapshot.getId());
         response.setSnapshotDate(snapshot.getSnapshotDate());
-        response.setTotalStudents(students.size());
+        response.setTotalStudents(classNames.size());
         response.setParallels(new ArrayList<>(table.keySet()));
         response.setColumns(columns);
         response.setParallelTotals(parallelTotals);
@@ -254,8 +254,8 @@ public class ContingentServiceImpl implements ContingentService {
                 .collect(java.util.stream.Collectors.toSet());
 
         Map<String, Integer> studentCountByClass = new TreeMap<>();
-        studentRepository.findAllBySnapshotId(snapshot.getId())
-                .forEach(student -> studentCountByClass.merge(ClassNameNormalizer.normalize(student.getClassName()), 1, Integer::sum));
+        studentRepository.findClassNamesBySnapshotId(snapshot.getId())
+                .forEach(className -> studentCountByClass.merge(ClassNameNormalizer.normalize(className), 1, Integer::sum));
 
         List<ContingentDtos.ImportProblem> problems = new ArrayList<>();
         studentCountByClass.forEach((className, count) -> {
