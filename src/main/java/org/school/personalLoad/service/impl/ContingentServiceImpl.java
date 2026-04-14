@@ -62,9 +62,9 @@ public class ContingentServiceImpl implements ContingentService {
             Row header = sheet.getRow(headerRowIndex);
             Map<String, Integer> indexByHeader = extractHeaderIndices(header, formatter);
 
-            int recordCol = indexByHeader.getOrDefault("Личное дело №", -1);
-            int fioCol = indexByHeader.getOrDefault("ФИО", -1);
-            int classCol = indexByHeader.getOrDefault("Номер и буква класса", -1);
+            int recordCol = resolveColumnIndex(indexByHeader, "личное дело");
+            int fioCol = resolveColumnIndex(indexByHeader, "фио");
+            int classCol = resolveColumnIndex(indexByHeader, "номер и буква класса", "класс");
 
             if (recordCol < 0 || fioCol < 0 || classCol < 0) {
                 throw new IllegalArgumentException("В файле не найдены обязательные колонки: Личное дело №, ФИО, Номер и буква класса");
@@ -75,9 +75,9 @@ public class ContingentServiceImpl implements ContingentService {
                 if (row == null) {
                     continue;
                 }
-                String recordNumber = normalize(getCellValue(row, indexByHeader.get("Личное дело №"), formatter));
-                String fullName = normalize(getCellValue(row, indexByHeader.get("ФИО"), formatter));
-                String className = ClassNameNormalizer.normalize(getCellValue(row, indexByHeader.get("Номер и буква класса"), formatter));
+                String recordNumber = normalize(getCellValueByMarker(row, indexByHeader, formatter, "личное дело"));
+                String fullName = normalize(getCellValueByMarker(row, indexByHeader, formatter, "фио"));
+                String className = ClassNameNormalizer.normalize(getCellValueByMarker(row, indexByHeader, formatter, "номер и буква класса", "класс"));
 
                 if (recordNumber.isBlank() && fullName.isBlank() && className.isBlank()) {
                     continue;
@@ -92,35 +92,35 @@ public class ContingentServiceImpl implements ContingentService {
                 ContingentStudent student = new ContingentStudent();
                 student.setAcademicYear(academicYear);
                 student.setRecordNumber(recordNumber.isBlank() ? UUID.randomUUID().toString() : recordNumber);
-                student.setEnrollmentDate(getCellValue(row, indexByHeader.get("Заведено"), formatter));
+                student.setEnrollmentDate(getCellValueByMarker(row, indexByHeader, formatter, "заведено"));
                 student.setFullName(fullName);
-                student.setGender(getCellValue(row, indexByHeader.get("Пол"), formatter));
-                student.setBirthDate(getCellValue(row, indexByHeader.get("Родился"), formatter));
-                student.setBirthCertificate(getCellValue(row, indexByHeader.get("Свидетельство о рождении"), formatter));
-                student.setSocialCard(getCellValue(row, indexByHeader.get("Социальная карта"), formatter));
-                student.setPensionInsurance(getCellValue(row, indexByHeader.get("Полис пенсионного страхования"), formatter));
-                student.setMedicalInsurance(getCellValue(row, indexByHeader.get("Полис медицинского страхования"), formatter));
-                student.setPassport(getCellValue(row, indexByHeader.get("Паспорт"), formatter));
-                student.setCitizenship(getCellValue(row, indexByHeader.get("Гражданство"), formatter));
-                student.setAdditionalInfoCode(getCellValue(row, indexByHeader.get("Дополнительные сведения (код)"), formatter));
-                student.setAoopVariant(getCellValue(row, indexByHeader.get("Вариант АООП"), formatter));
-                student.setEducationReceivingForm(getCellValue(row, indexByHeader.get("Сведения о форме получения образования"), formatter));
-                student.setEducationForm(getCellValue(row, indexByHeader.get("Сведения о форме обучения"), formatter));
+                student.setGender(getCellValueByMarker(row, indexByHeader, formatter, "пол"));
+                student.setBirthDate(getCellValueByMarker(row, indexByHeader, formatter, "родился"));
+                student.setBirthCertificate(getCellValueByMarker(row, indexByHeader, formatter, "свидетельство о рождении"));
+                student.setSocialCard(getCellValueByMarker(row, indexByHeader, formatter, "социальная карта"));
+                student.setPensionInsurance(getCellValueByMarker(row, indexByHeader, formatter, "полис пенсионного страхования"));
+                student.setMedicalInsurance(getCellValueByMarker(row, indexByHeader, formatter, "полис медицинского страхования"));
+                student.setPassport(getCellValueByMarker(row, indexByHeader, formatter, "паспорт"));
+                student.setCitizenship(getCellValueByMarker(row, indexByHeader, formatter, "гражданство"));
+                student.setAdditionalInfoCode(getCellValueByMarker(row, indexByHeader, formatter, "дополнительные сведения"));
+                student.setAoopVariant(getCellValueByMarker(row, indexByHeader, formatter, "вариант аооп"));
+                student.setEducationReceivingForm(getCellValueByMarker(row, indexByHeader, formatter, "форме получения образования"));
+                student.setEducationForm(getCellValueByMarker(row, indexByHeader, formatter, "форме обучения"));
                 student.setClassName(className);
-                student.setAlphabetBookNumber(getCellValue(row, indexByHeader.get("Номер алфавитной книги"), formatter));
-                student.setRegistrationAddress(getCellValue(row, indexByHeader.get("Регистрация по месту жительства"), formatter));
-                student.setTemporaryRegistrationAddress(getCellValue(row, indexByHeader.get("Регистрация по месту пребывания"), formatter));
-                student.setActualAddress(getCellValue(row, indexByHeader.get("Адрес фактического проживания"), formatter));
-                student.setPhone(getCellValue(row, indexByHeader.get("Телефон"), formatter));
-                student.setEmail(getCellValue(row, indexByHeader.get("Email"), formatter));
-                student.setOnVshuFrom(getCellValue(row, indexByHeader.get("На ВШУ с"), formatter));
-                student.setOnVshuReason(getCellValue(row, indexByHeader.get("Основание(я) постановки на ВШУ"), formatter));
-                student.setOnKdnFrom(getCellValue(row, indexByHeader.get("На учете КДН с"), formatter));
-                student.setOnKdnReason(getCellValue(row, indexByHeader.get("Основание(я) постановки на учет КДН"), formatter));
-                student.setOnPdnFrom(getCellValue(row, indexByHeader.get("На учете ПДН с"), formatter));
-                student.setOnPdnReason(getCellValue(row, indexByHeader.get("Основание(я) постановки на учет ПДН"), formatter));
-                student.setRemovedFromVshu(getCellValue(row, indexByHeader.get("Снят с ВШУ"), formatter));
-                student.setRemovedFromVshuReason(getCellValue(row, indexByHeader.get("Основание снятия с ВШУ"), formatter));
+                student.setAlphabetBookNumber(getCellValueByMarker(row, indexByHeader, formatter, "номер алфавитной книги"));
+                student.setRegistrationAddress(getCellValueByMarker(row, indexByHeader, formatter, "регистрация по месту жительства"));
+                student.setTemporaryRegistrationAddress(getCellValueByMarker(row, indexByHeader, formatter, "регистрация по месту пребывания"));
+                student.setActualAddress(getCellValueByMarker(row, indexByHeader, formatter, "адрес фактического проживания"));
+                student.setPhone(getCellValueByMarker(row, indexByHeader, formatter, "телефон"));
+                student.setEmail(getCellValueByMarker(row, indexByHeader, formatter, "email"));
+                student.setOnVshuFrom(getCellValueByMarker(row, indexByHeader, formatter, "на вшу с"));
+                student.setOnVshuReason(getCellValueByMarker(row, indexByHeader, formatter, "основание(я) постановки на вшу", "основание постановки на вшу"));
+                student.setOnKdnFrom(getCellValueByMarker(row, indexByHeader, formatter, "на учете кдн с"));
+                student.setOnKdnReason(getCellValueByMarker(row, indexByHeader, formatter, "основание(я) постановки на учет кдн", "основание постановки на учет кдн"));
+                student.setOnPdnFrom(getCellValueByMarker(row, indexByHeader, formatter, "на учете пдн с"));
+                student.setOnPdnReason(getCellValueByMarker(row, indexByHeader, formatter, "основание(я) постановки на учет пдн", "основание постановки на учет пдн"));
+                student.setRemovedFromVshu(getCellValueByMarker(row, indexByHeader, formatter, "снят с вшу"));
+                student.setRemovedFromVshuReason(getCellValueByMarker(row, indexByHeader, formatter, "основание снятия с вшу"));
                 student.setRawPayload(toJson(rawValues));
 
                 parsedStudents.add(student);
@@ -286,6 +286,31 @@ public class ContingentServiceImpl implements ContingentService {
         LinkedHashMap<String, String> raw = new LinkedHashMap<>();
         indexByHeader.forEach((header, index) -> raw.put(header, getCellValue(row, index, formatter)));
         return raw;
+    }
+
+
+    private int resolveColumnIndex(Map<String, Integer> indexByHeader, String... markers) {
+        if (indexByHeader == null || indexByHeader.isEmpty()) {
+            return -1;
+        }
+        for (String marker : markers) {
+            if (marker == null || marker.isBlank()) {
+                continue;
+            }
+            String needle = normalize(marker).toLowerCase(Locale.ROOT);
+            for (Map.Entry<String, Integer> entry : indexByHeader.entrySet()) {
+                String header = normalize(entry.getKey()).toLowerCase(Locale.ROOT);
+                if (header.contains(needle)) {
+                    return entry.getValue();
+                }
+            }
+        }
+        return -1;
+    }
+
+    private String getCellValueByMarker(Row row, Map<String, Integer> indexByHeader, DataFormatter formatter, String... markers) {
+        int index = resolveColumnIndex(indexByHeader, markers);
+        return getCellValue(row, index, formatter);
     }
 
     private String getCellValue(Row row, Integer index, DataFormatter formatter) {
