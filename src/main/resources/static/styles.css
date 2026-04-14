@@ -1397,7 +1397,9 @@ dialog::backdrop {
 }
 
 .contingent-tabs {
+    display: flex;
     gap: 10px;
+    flex-wrap: wrap;
 }
 
 .contingent-tabs button.nav-link {
