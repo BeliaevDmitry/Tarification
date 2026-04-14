@@ -280,8 +280,27 @@ public class AppUserServiceImpl implements AppUserService {
     }
 
     private void ensureTabPermissions(AppUser user) {
-        if (tabPermissionRepository.findAllByUserIdOrderByTabAsc(user.getId()).isEmpty()) {
+        List<AppUserTabPermission> existing = tabPermissionRepository.findAllByUserIdOrderByTabAsc(user.getId());
+        if (existing.isEmpty()) {
             saveDefaultPermissions(user, user.isCanView(), user.isCanView() && user.isCanEdit());
+            return;
+        }
+
+        EnumSet<AppTab> existingTabs = existing.stream()
+                .map(AppUserTabPermission::getTab)
+                .collect(java.util.stream.Collectors.toCollection(() -> EnumSet.noneOf(AppTab.class)));
+
+        List<AppUserTabPermission> missing = new ArrayList<>();
+        for (AppTab tab : AppTab.navigableTabs()) {
+            if (existingTabs.contains(tab)) {
+                continue;
+            }
+            boolean canView = user.getRole() == UserRole.ADMIN ? true : user.isCanView();
+            boolean canEdit = user.getRole() == UserRole.ADMIN ? true : (user.isCanView() && user.isCanEdit());
+            missing.add(buildPermission(user, tab, canView, canEdit));
+        }
+        if (!missing.isEmpty()) {
+            tabPermissionRepository.saveAll(missing);
         }
     }
 
