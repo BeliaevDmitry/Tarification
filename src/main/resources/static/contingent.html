@@ -10,14 +10,55 @@
 <main class="container">
     <header class="card">
         <h1>Контингент</h1>
-        <p class="muted">Раздел находится в разработке.</p>
+        <p class="muted">Импорт выгрузки и анализ численности по корпусам, классам и параллелям.</p>
     </header>
-    <section class="card placeholder-card">
-        <h2>🚧 В разработке</h2>
-        <p class="muted">Функционал «Контингент» будет добавлен в следующих версиях.</p>
-        <a class="nav-link" href="/index.html">Вернуться в главное меню</a>
+
+    <section class="card">
+        <nav class="page-nav contingent-tabs">
+            <button type="button" class="nav-link active" data-contingent-tab="import">Импорт</button>
+            <button type="button" class="nav-link" data-contingent-tab="stats">Численность</button>
+        </nav>
+    </section>
+
+    <section class="card" data-contingent-pane="import" data-requires-edit>
+        <h2>Импорт</h2>
+        <div class="row controls-row">
+            <input id="contingent-file" type="file" accept=".xlsx,.xls">
+            <button id="contingent-import-btn" type="button">Загрузить в БД</button>
+        </div>
+        <pre id="contingent-import-result" class="result-box"></pre>
+
+        <h3>Проблемы</h3>
+        <p class="muted">Если в выгрузке есть класс, которого нет в учебном плане, он появится здесь.</p>
+        <div class="sheet-wrap">
+            <table class="sheet-table">
+                <thead>
+                <tr>
+                    <th>Класс</th>
+                    <th>Учеников</th>
+                    <th>Описание</th>
+                </tr>
+                </thead>
+                <tbody id="contingent-problems-body"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card" data-contingent-pane="stats" style="display:none;">
+        <h2>Численность</h2>
+        <div class="row controls-row">
+            <label>Дата выгрузки:
+                <select id="contingent-snapshot-date"></select>
+            </label>
+            <button id="contingent-stats-refresh-btn" type="button">Обновить</button>
+        </div>
+        <div id="contingent-stats-summary" class="muted"></div>
+        <div class="sheet-wrap">
+            <table class="sheet-table" id="contingent-stats-table"></table>
+        </div>
     </section>
 </main>
 <script src="/auth.js"></script>
+<script src="/contingent.js"></script>
 </body>
 </html>
