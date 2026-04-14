@@ -1386,3 +1386,20 @@ dialog::backdrop {
         grid-template-columns: 1fr;
     }
 }
+
+.result-box {
+    max-height: 240px;
+    overflow: auto;
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 12px;
+    border-radius: 10px;
+}
+
+.contingent-tabs {
+    gap: 10px;
+}
+
+.contingent-tabs button.nav-link {
+    cursor: pointer;
+}
