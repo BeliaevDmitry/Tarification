@@ -13,6 +13,38 @@ const ui = {
 
 const esc = (v) => String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 
+function contingentPermissions() {
+    const permissions = window.tarificationTabPermissions || {};
+    if (window.tarificationAuth?.admin) {
+        return { canImportView: true, canStatsView: true };
+    }
+    return {
+        canImportView: Boolean(permissions.CONTINGENT_IMPORT?.canView),
+        canStatsView: Boolean(permissions.CONTINGENT_STATS?.canView)
+    };
+}
+
+
+async function waitForAuthContext() {
+    for (let i = 0; i < 40; i += 1) {
+        if (window.tarificationAuth) return;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+}
+
+function applyTabAccess() {
+    const { canImportView, canStatsView } = contingentPermissions();
+    ui.tabs.forEach((tab) => {
+        const tabName = tab.dataset.contingentTab;
+        const allowed = tabName === 'import' ? canImportView : canStatsView;
+        tab.style.display = allowed ? '' : 'none';
+    });
+
+    if (canImportView) return 'import';
+    if (canStatsView) return 'stats';
+    return null;
+}
+
 async function api(path, options = {}) {
     const scopedPath = window.withAcademicYear ? window.withAcademicYear(path) : path;
     const response = await fetch(scopedPath, options);
@@ -114,7 +146,11 @@ async function refreshStats() {
     renderStatsTable(stats);
 }
 
-ui.tabs.forEach((tab) => tab.addEventListener('click', () => showTab(tab.dataset.contingentTab)));
+ui.tabs.forEach((tab) => tab.addEventListener('click', () => {
+    const tabName = tab.dataset.contingentTab;
+    showTab(tabName);
+    window.location.hash = tabName === 'import' ? '#import' : '#stats';
+}));
 
 ui.importBtn.addEventListener('click', async () => {
     const file = ui.fileInput.files?.[0];
@@ -146,13 +182,31 @@ ui.snapshotDateSelect.addEventListener('change', () => refreshStats().catch((err
 
 (async function init() {
     try {
+        await waitForAuthContext();
+        const defaultTab = applyTabAccess();
+        if (!defaultTab) {
+            ui.statsSummary.textContent = 'Нет доступа к вкладкам контингента.';
+            return;
+        }
+
+        const hash = String(window.location.hash || '').toLowerCase();
+        const requestedTab = hash === '#import' ? 'import' : (hash === '#stats' ? 'stats' : defaultTab);
+        const finalTab = (requestedTab === 'import' && contingentPermissions().canImportView) || (requestedTab === 'stats' && contingentPermissions().canStatsView)
+            ? requestedTab
+            : defaultTab;
+        showTab(finalTab);
+
         await loadSnapshots();
-        await refreshProblems();
-        if (ui.snapshotDateSelect.options.length) {
-            await refreshStats();
+        if (contingentPermissions().canImportView) {
+            await refreshProblems();
         } else {
-            ui.statsSummary.textContent = 'Данные контингента пока не загружены.';
             renderProblems([]);
+        }
+
+        if (contingentPermissions().canStatsView && ui.snapshotDateSelect.options.length) {
+            await refreshStats();
+        } else if (contingentPermissions().canStatsView) {
+            ui.statsSummary.textContent = 'Данные контингента пока не загружены.';
             ui.statsTable.innerHTML = '';
         }
     } catch (error) {
