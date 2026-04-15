@@ -71,6 +71,11 @@ function tabPermissionMap(currentUser) {
 }
 
 function currentTab() {
+    if (window.location.pathname === '/load.html') {
+        const hash = String(window.location.hash || '').toLowerCase();
+        if (hash === '#stats') return 'LOAD_STATS';
+        return 'LOAD';
+    }
     if (window.location.pathname === '/contingent.html') {
         const hash = String(window.location.hash || '').toLowerCase();
         if (hash === '#import') return 'CONTINGENT_IMPORT';
@@ -87,10 +92,20 @@ function isContingentPage() {
     return window.location.pathname === '/contingent.html';
 }
 
+function isLoadPage() {
+    return window.location.pathname === '/load.html';
+}
+
 function hasContingentAccess(currentUser) {
     if (currentUser.admin) return true;
     const permissions = tabPermissionMap(currentUser);
     return Boolean(permissions.CONTINGENT_IMPORT?.canView || permissions.CONTINGENT_STATS?.canView);
+}
+
+function hasLoadAccess(currentUser) {
+    if (currentUser.admin) return true;
+    const permissions = tabPermissionMap(currentUser);
+    return Boolean(permissions.LOAD?.canView || permissions.LOAD_STATS?.canView);
 }
 
 function showAccessDenied(sectionTitle = 'раздела') {
@@ -359,6 +374,11 @@ function enrichMainMenu(currentUser) {
         if (isContingentPage() && !hasContingentAccess(currentUser)) {
             mountHeaderUser(currentUser);
             showAccessDenied('разделу «Контингент»');
+            return;
+        }
+        if (isLoadPage() && !hasLoadAccess(currentUser)) {
+            mountHeaderUser(currentUser);
+            showAccessDenied('разделу «Нагрузка»');
             return;
         }
         enrichNavigation(currentUser);

@@ -88,6 +88,13 @@ public class AuthFilter extends OncePerRequestFilter {
             return;
         }
 
+        if ("/load.html".equals(path)
+                && !currentUser.canViewTab(AppTab.LOAD)
+                && !currentUser.canViewTab(AppTab.LOAD_STATS)) {
+            rejectForbidden(request, response, "У пользователя нет прав на просмотр раздела нагрузки");
+            return;
+        }
+
         AppTab pageTab = PAGE_TABS.get(path);
         if (pageTab != null && !currentUser.canViewTab(pageTab)) {
             rejectForbidden(request, response, "У пользователя нет прав на просмотр этой вкладки");

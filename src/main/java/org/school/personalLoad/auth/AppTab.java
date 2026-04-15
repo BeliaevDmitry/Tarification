@@ -9,6 +9,7 @@ public enum AppTab {
     SUBJECTS("Предметы", "/subjects.html"),
     CURRICULUM("Учебный план", "/curriculum.html"),
     LOAD("Нагрузка по корпусам", "/load.html"),
+    LOAD_STATS("Нагрузка: статистика", "/load.html#stats"),
     SERVICE_NOTES("Служебные записки", "/service-notes.html"),
     SETTINGS("Настройки", "/settings.html"),
     TEACHERS("Педагоги", "/teachers.html"),
@@ -34,6 +35,6 @@ public enum AppTab {
     }
 
     public static List<AppTab> navigableTabs() {
-        return Arrays.asList(BUILDINGS, CLASSES, SUBJECTS, CURRICULUM, LOAD, SERVICE_NOTES, SETTINGS, TEACHERS, CONTINGENT_IMPORT, CONTINGENT_STATS, SUBJECT_AREAS, USERS);
+        return Arrays.asList(BUILDINGS, CLASSES, SUBJECTS, CURRICULUM, LOAD, LOAD_STATS, SERVICE_NOTES, SETTINGS, TEACHERS, CONTINGENT_IMPORT, CONTINGENT_STATS, SUBJECT_AREAS, USERS);
     }
 }

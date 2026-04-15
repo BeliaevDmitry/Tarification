@@ -13,6 +13,7 @@ const TABS = [
     { key: 'SUBJECTS', label: 'Предметы' },
     { key: 'CURRICULUM', label: 'Учебный план' },
     { key: 'LOAD', label: 'Нагрузка по корпусам' },
+    { key: 'LOAD_STATS', label: 'Нагрузка: статистика' },
     { key: 'SERVICE_NOTES', label: 'Служебные записки' },
     { key: 'SETTINGS', label: 'Настройки' },
     { key: 'TEACHERS', label: 'Кадры' },
