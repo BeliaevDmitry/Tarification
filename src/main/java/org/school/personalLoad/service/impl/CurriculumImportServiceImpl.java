@@ -381,6 +381,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         cls.setClassName(row.getClassName());
                         cls.setClassDirection(row.getClassDirection() == null || row.getClassDirection().isBlank() ? "Не указана" : row.getClassDirection());
                         cls.setFioTeacher(fallbackTeacher);
+                        cls.setCampusAddress("Не указан");
                         classroomRepository.save(cls);
                         classesCreated++;
                     }
@@ -448,6 +449,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         cls.setClassName(className);
         cls.setClassDirection(classDirection == null || classDirection.isBlank() ? "Не указана" : classDirection);
         cls.setFioTeacher(fallbackTeacher);
+        cls.setCampusAddress("Не указан");
         classroomRepository.save(cls);
     }
 

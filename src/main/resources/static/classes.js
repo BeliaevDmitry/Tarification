@@ -82,6 +82,7 @@ function openEditDialog(entry) {
     ui.editForm.elements.className.value = entry.className || "";
     ui.editForm.elements.classDirection.value = entry.classDirection || "";
     ui.editForm.elements.fioTeacher.value = entry.fioTeacher || "";
+    ui.editForm.elements.campusAddress.value = entry.campusAddress || "";
     ui.editDialog.showModal();
 }
 
@@ -95,6 +96,7 @@ function renderClasses(rows) {
             <td>${esc(r.className)}</td>
             <td>${esc(r.classDirection)}</td>
             <td>${esc(r.fioTeacher)}</td>
+            <td>${esc(r.campusAddress || "")}</td>
             <td><button type="button" class="inline-plus" title="Редактировать" data-edit-class="${esc(entryKey(r))}">✏️</button></td>
         `;
         ui.body.appendChild(tr);
@@ -140,7 +142,8 @@ ui.form.addEventListener("submit", async (e) => {
         numberSchoolBuilding: normalizeBuildingCode(form.get("numberSchoolBuilding")),
         className: normalizeClassName(form.get("className")),
         classDirection: norm(form.get("classDirection")),
-        fioTeacher: norm(form.get("fioTeacher"))
+        fioTeacher: norm(form.get("fioTeacher")),
+        campusAddress: norm(form.get("campusAddress"))
     };
 
     if (!entry.numberSchoolBuilding || !entry.className || !entry.classDirection || !entry.fioTeacher) {
@@ -165,7 +168,8 @@ ui.editForm.addEventListener('submit', async (e) => {
         numberSchoolBuilding: normalizeBuildingCode(form.get("numberSchoolBuilding")),
         className: normalizeClassName(form.get("className")),
         classDirection: norm(form.get("classDirection")),
-        fioTeacher: norm(form.get("fioTeacher"))
+        fioTeacher: norm(form.get("fioTeacher")),
+        campusAddress: norm(form.get("campusAddress"))
     };
 
     if (!entry.numberSchoolBuilding || !entry.className || !entry.classDirection || !entry.fioTeacher) {
