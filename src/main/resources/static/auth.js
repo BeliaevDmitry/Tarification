@@ -9,6 +9,7 @@ const TAB_PATHS = {
     '/service-notes.html': 'SERVICE_NOTES',
     '/settings.html': 'SETTINGS',
     '/teachers.html': 'TEACHERS',
+    '/contingent.html': 'CONTINGENT_STATS',
     '/admin.html': 'USERS'
 };
 
@@ -19,16 +20,12 @@ const NAV_ORDER = [
     { path: '/curriculum.html', tab: 'CURRICULUM', label: 'Учебный план' },
     { path: '/load.html', tab: 'LOAD', label: 'Нагрузка по корпусам' },
     { path: '/service-notes.html', tab: 'SERVICE_NOTES', label: 'Служебные записки' },
-    { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' },
-    { path: '/teachers.html', tab: 'TEACHERS', label: 'Кадры' }
+    { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' }
 ];
 
 function navItemsForPath(pathname) {
     if (pathname === '/teachers.html') {
         return NAV_ORDER.filter((tabDef) => tabDef.tab === 'SERVICE_NOTES');
-    }
-    if (pathname === '/load.html') {
-        return NAV_ORDER.filter((tabDef) => tabDef.tab !== 'TEACHERS');
     }
     return NAV_ORDER;
 }
@@ -72,6 +69,11 @@ function tabPermissionMap(currentUser) {
 }
 
 function currentTab() {
+    if (window.location.pathname === '/contingent.html') {
+        const hash = String(window.location.hash || '').toLowerCase();
+        if (hash === '#import') return 'CONTINGENT_IMPORT';
+        return 'CONTINGENT_STATS';
+    }
     return TAB_PATHS[window.location.pathname] || null;
 }
 
@@ -79,13 +81,23 @@ function isAdminPage() {
     return window.location.pathname === '/admin.html';
 }
 
-function showAccessDenied() {
+function isContingentPage() {
+    return window.location.pathname === '/contingent.html';
+}
+
+function hasContingentAccess(currentUser) {
+    if (currentUser.admin) return true;
+    const permissions = tabPermissionMap(currentUser);
+    return Boolean(permissions.CONTINGENT_IMPORT?.canView || permissions.CONTINGENT_STATS?.canView);
+}
+
+function showAccessDenied(sectionTitle = 'раздела') {
     const container = document.querySelector('main.container');
     if (!container) return;
     container.innerHTML = `
         <section class="card access-denied-card">
             <h1>⛔ Доступ запрещён</h1>
-            <p class="muted">У вас нет прав для доступа к разделу «Пользователи».</p>
+            <p class="muted">У вас нет прав для доступа к ${sectionTitle}.</p>
             <a class="nav-link" href="/index.html">Вернуться в главное меню</a>
         </section>`;
 }
@@ -325,6 +337,11 @@ function enrichMainMenu(currentUser) {
     if (adminCard) {
         adminCard.style.display = currentUser.admin ? '' : 'none';
     }
+
+    const contingentCard = document.querySelector('[data-contingent-card]');
+    if (contingentCard) {
+        contingentCard.style.display = hasContingentAccess(currentUser) ? '' : 'none';
+    }
 }
 
 (async function initAuth() {
@@ -334,7 +351,12 @@ function enrichMainMenu(currentUser) {
         window.tarificationTabPermissions = tabPermissionMap(currentUser);
         if (isAdminPage() && !currentUser.admin) {
             mountHeaderUser(currentUser);
-            showAccessDenied();
+            showAccessDenied('разделу «Пользователи»');
+            return;
+        }
+        if (isContingentPage() && !hasContingentAccess(currentUser)) {
+            mountHeaderUser(currentUser);
+            showAccessDenied('разделу «Контингент»');
             return;
         }
         enrichNavigation(currentUser);
