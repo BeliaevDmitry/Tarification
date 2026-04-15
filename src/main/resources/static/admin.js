@@ -16,6 +16,9 @@ const TABS = [
     { key: 'SERVICE_NOTES', label: 'Служебные записки' },
     { key: 'SETTINGS', label: 'Настройки' },
     { key: 'TEACHERS', label: 'Кадры' },
+    { key: 'CONTINGENT_IMPORT', label: 'Контингент: импорт' },
+    { key: 'CONTINGENT_STATS', label: 'Контингент: численность' },
+    { key: 'SUBJECT_AREAS', label: 'Предметные области' },
     { key: 'USERS', label: 'Пользователи' }
 ];
 

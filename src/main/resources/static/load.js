@@ -1,6 +1,8 @@
 const jsonHeaders = { "Content-Type": "application/json" };
 
 const ui = {
+    tabs: Array.from(document.querySelectorAll("[data-load-tab]")),
+    panes: Array.from(document.querySelectorAll("[data-load-pane]")),
     buildingTabs: document.getElementById("building-tabs"),
     refreshLoadBtn: document.getElementById("refresh-load-btn"),
     exportLoadBtn: document.getElementById("export-load-btn"),
@@ -21,7 +23,9 @@ const ui = {
     cancelLoadBtn: document.getElementById("load-cancel-btn"),
     unassignedHours: document.getElementById("unassigned-hours"),
     errorCount: document.getElementById("error-count"),
-    nextErrorBtn: document.getElementById("next-error-btn")
+    nextErrorBtn: document.getElementById("next-error-btn"),
+    statsSummary: document.getElementById("load-stats-summary"),
+    statsBody: document.getElementById("load-stats-body")
 };
 
 let curriculumRows = [];
@@ -32,6 +36,7 @@ let buildings = [];
 let classroomRows = [];
 let studyPeriodSettings = [];
 let selectedBuilding = "";
+let activeLoadTab = "distribution";
 
 const ARCHIVE_BUILDING_CODE = "__ARCHIVE__";
 const ARCHIVE_BUILDING_LABEL = "Архив нагрузки";
@@ -112,6 +117,17 @@ function print(value) {
         ui.loadResult.textContent = JSON.stringify(value, null, 2);
     } else {
         console.debug(value);
+    }
+}
+
+function showLoadTab(name) {
+    activeLoadTab = name === "stats" ? "stats" : "distribution";
+    ui.tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.loadTab === activeLoadTab));
+    ui.panes.forEach((pane) => {
+        pane.style.display = pane.dataset.loadPane === activeLoadTab ? "" : "none";
+    });
+    if (activeLoadTab === "stats") {
+        renderStatsView();
     }
 }
 
@@ -1269,17 +1285,68 @@ function jumpToFirstError() {
     setTimeout(() => target.classList.remove('error-row-highlight'), 1400);
 }
 
+function statsRowsForCurrentBuilding() {
+    if (!selectedBuilding || selectedBuilding === ARCHIVE_BUILDING_CODE) return [];
+    const normalizedSelected = canonicalBuildingCode(selectedBuilding);
+    return (manualRows || []).filter((row) => canonicalBuildingCode(row.numberSchoolBuilding) === normalizedSelected);
+}
+
+function renderStatsView() {
+    if (!ui.statsBody || !ui.statsSummary) return;
+    const rows = statsRowsForCurrentBuilding();
+    if (!selectedBuilding) {
+        ui.statsSummary.textContent = "Выберите корпус, чтобы посмотреть статистику.";
+        ui.statsBody.innerHTML = '<tr><td colspan="4">Нет данных.</td></tr>';
+        return;
+    }
+    if (selectedBuilding === ARCHIVE_BUILDING_CODE) {
+        ui.statsSummary.textContent = "Для архива показана только таблица распределения.";
+        ui.statsBody.innerHTML = '<tr><td colspan="4">Статистика для архива не формируется.</td></tr>';
+        return;
+    }
+
+    const byTeacher = new Map();
+    rows.forEach((row) => {
+        const teacher = String(row.fioTeacher || "").trim() || "Не назначен";
+        if (!byTeacher.has(teacher)) {
+            byTeacher.set(teacher, { teacher, hours: 0, subjects: new Set(), classes: new Set() });
+        }
+        const bucket = byTeacher.get(teacher);
+        bucket.hours += Number(row.load || 0);
+        bucket.subjects.add(String(row.subjectName || "").trim());
+        bucket.classes.add(String(row.className || "").trim());
+    });
+
+    const sorted = [...byTeacher.values()].sort((a, b) => b.hours - a.hours || a.teacher.localeCompare(b.teacher, "ru"));
+    const totalHours = sorted.reduce((sum, row) => sum + row.hours, 0);
+    ui.statsSummary.textContent = `Корпус: ${selectedBuilding}. Записей: ${rows.length}. Педагогов: ${sorted.length}. Всего часов: ${totalHours}.`;
+    if (!sorted.length) {
+        ui.statsBody.innerHTML = '<tr><td colspan="4">По выбранному корпусу нет сохранённых назначений.</td></tr>';
+        return;
+    }
+    ui.statsBody.innerHTML = sorted.map((row) => `
+        <tr>
+            <td>${esc(row.teacher)}</td>
+            <td>${esc(row.hours)}</td>
+            <td>${esc(row.subjects.size)}</td>
+            <td>${esc(row.classes.size)}</td>
+        </tr>
+    `).join("");
+}
+
 function renderTable() {
     ui.tableHead.innerHTML = "";
     ui.tableBody.innerHTML = "";
 
     if (!selectedBuilding) {
         ui.tableBody.innerHTML = '<tr><td colspan="7">Добавьте корпуса, чтобы распределять нагрузку.</td></tr>';
+        renderStatsView();
         return;
     }
 
     if (selectedBuilding === ARCHIVE_BUILDING_CODE) {
         renderArchiveAsMainTable();
+        renderStatsView();
         return;
     }
 
@@ -1681,6 +1748,13 @@ async function refreshSourceData() {
 }
 
 function bindEvents() {
+    ui.tabs.forEach((tab) => {
+        tab.addEventListener("click", () => {
+            const tabName = tab.dataset.loadTab;
+            showLoadTab(tabName);
+            window.location.hash = tabName === "stats" ? "#stats" : "";
+        });
+    });
     ui.saveBuildingBtn.addEventListener("click", saveBuildingLoad);
     ui.periodForm.addEventListener("submit", (e) => {
         e.preventDefault();
@@ -1809,10 +1883,12 @@ function bindEvents() {
     });
 
     ui.nextErrorBtn.addEventListener("click", jumpToFirstError);
+    renderStatsView();
 }
 
 async function init() {
     bindEvents();
+    showLoadTab(window.location.hash === "#stats" ? "stats" : "distribution");
     state.viewDate = referencePlanningDate();
     if (ui.viewDateInput) {
         ui.viewDateInput.value = state.viewDate;
