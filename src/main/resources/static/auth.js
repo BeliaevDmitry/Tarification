@@ -10,6 +10,7 @@ const TAB_PATHS = {
     '/settings.html': 'SETTINGS',
     '/teachers.html': 'TEACHERS',
     '/contingent.html': 'CONTINGENT_STATS',
+    '/subject-areas.html': 'SUBJECT_AREAS',
     '/admin.html': 'USERS'
 };
 
@@ -20,7 +21,8 @@ const NAV_ORDER = [
     { path: '/curriculum.html', tab: 'CURRICULUM', label: 'Учебный план' },
     { path: '/load.html', tab: 'LOAD', label: 'Нагрузка по корпусам' },
     { path: '/service-notes.html', tab: 'SERVICE_NOTES', label: 'Служебные записки' },
-    { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' }
+    { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' },
+    { path: '/subject-areas.html', tab: 'SUBJECT_AREAS', label: 'Предметные области' }
 ];
 
 function navItemsForPath(pathname) {
