@@ -36,7 +36,9 @@
                 <option value="CORE_FORMABLE">1 тип: основная/формируемая часть</option>
                 <option value="EXTRACURRICULAR">2 тип: внеурочная деятельность</option>
             </select>
-            <input id="subject-area" placeholder="Предметная область">
+            <select id="subject-area">
+                <option value="Без области">Без области</option>
+            </select>
             <input id="subject-coefficient" type="number" step="0.01" min="0" value="1" placeholder="Коэффициент">
             <button type="submit">Добавить предмет</button>
             <button id="refresh-subjects-btn" type="button" data-allow-readonly="true">Обновить</button>
@@ -65,7 +67,9 @@
             <option value="CORE_FORMABLE">1 тип: основная/формируемая часть</option>
             <option value="EXTRACURRICULAR">2 тип: внеурочная деятельность</option>
         </select>
-        <input name="subjectAreaName" placeholder="Предметная область">
+        <select name="subjectAreaName">
+            <option value="Без области">Без области</option>
+        </select>
         <input name="subjectCoefficient" type="number" step="0.01" min="0" value="1" placeholder="Коэффициент">
         <div class="row">
             <button type="submit">Сохранить</button>
