@@ -20,16 +20,12 @@ const NAV_ORDER = [
     { path: '/curriculum.html', tab: 'CURRICULUM', label: 'Учебный план' },
     { path: '/load.html', tab: 'LOAD', label: 'Нагрузка по корпусам' },
     { path: '/service-notes.html', tab: 'SERVICE_NOTES', label: 'Служебные записки' },
-    { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' },
-    { path: '/teachers.html', tab: 'TEACHERS', label: 'Кадры' }
+    { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' }
 ];
 
 function navItemsForPath(pathname) {
     if (pathname === '/teachers.html') {
         return NAV_ORDER.filter((tabDef) => tabDef.tab === 'SERVICE_NOTES');
-    }
-    if (pathname === '/load.html') {
-        return NAV_ORDER.filter((tabDef) => tabDef.tab !== 'TEACHERS');
     }
     return NAV_ORDER;
 }

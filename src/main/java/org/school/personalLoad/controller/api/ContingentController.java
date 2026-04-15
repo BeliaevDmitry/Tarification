@@ -5,10 +5,14 @@ import org.school.personalLoad.dto.contingent.ContingentDtos;
 import org.school.personalLoad.service.AcademicYearService;
 import org.school.personalLoad.service.ContingentService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @RestController
@@ -37,6 +41,21 @@ public class ContingentController {
         return ResponseEntity.ok(contingentService.getStats(academicYearService.resolveRequestedOrDefault(academicYear), date));
     }
 
+
+    @GetMapping("/stats/export")
+    public ResponseEntity<byte[]> exportStats(@RequestParam(required = false) String academicYear,
+                                              @RequestParam(required = false) String snapshotDate) {
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        LocalDate date = (snapshotDate == null || snapshotDate.isBlank()) ? null : LocalDate.parse(snapshotDate);
+        byte[] body = contingentService.exportStats(effectiveYear, date);
+        String suffix = date == null ? "последние" : date.toString();
+        String fileName = "Контингент_" + effectiveYear + "_" + suffix + ".xlsx";
+        String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(body);
+    }
     @GetMapping("/problems")
     public ResponseEntity<List<ContingentDtos.ImportProblem>> problems(@RequestParam(required = false) String academicYear,
                                                                         @RequestParam(required = false) Long snapshotId) {

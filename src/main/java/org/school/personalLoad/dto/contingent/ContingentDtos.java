@@ -44,15 +44,23 @@ public final class ContingentDtos {
 
     @Data
     public static class ClassTotal {
+        private Integer parallel;
         private String className;
         private Integer students;
+    }
+
+    @Data
+    public static class AddressColumn {
+        private String address;
+        private List<ClassTotal> classes;
+        private Integer totalStudents;
     }
 
     @Data
     public static class BuildingColumn {
         private String buildingCode;
         private String buildingName;
-        private List<ClassTotal> classes;
+        private List<AddressColumn> addresses;
         private Integer totalStudents;
     }
 

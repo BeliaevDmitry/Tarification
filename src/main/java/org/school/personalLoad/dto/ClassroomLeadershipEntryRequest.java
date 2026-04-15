@@ -9,4 +9,5 @@ public class ClassroomLeadershipEntryRequest {
     private String className;
     private String classDirection;
     private String fioTeacher;
+    private String campusAddress;
 }

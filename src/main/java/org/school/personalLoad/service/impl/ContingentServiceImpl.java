@@ -2,6 +2,8 @@ package org.school.personalLoad.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.contingent.ContingentDtos;
 import org.school.personalLoad.model.ContingentSnapshot;
 import org.school.personalLoad.model.ContingentStudent;
@@ -15,6 +17,7 @@ import org.school.personalLoad.service.ContingentService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -169,16 +172,29 @@ public class ContingentServiceImpl implements ContingentService {
         ContingentSnapshot snapshot = resolveSnapshot(academicYear, snapshotDate);
         List<String> classNames = studentRepository.findClassNamesBySnapshotId(snapshot.getId());
 
-        Map<String, String> buildingByClass = new HashMap<>();
-        classroomLeadershipRepository.findAllByAcademicYear(academicYear)
-                .forEach(c -> buildingByClass.put(ClassNameNormalizer.normalize(c.getClassName()), normalize(c.getNumberSchoolBuilding())));
+        record ClassPlacement(String buildingCode, String buildingName, String address) {}
 
-        Map<String, String> buildingNameByCode = new HashMap<>();
-        schoolBuildingRepository.findAll().forEach(b -> buildingNameByCode.put(normalize(b.getCode()), b.getName()));
+        Map<String, ClassPlacement> placementByClass = new HashMap<>();
+        classroomLeadershipRepository.findAllByAcademicYear(academicYear).forEach(entry -> {
+            String className = ClassNameNormalizer.normalize(entry.getClassName());
+            String buildingCode = normalize(entry.getNumberSchoolBuilding());
+            String buildingName = schoolBuildingRepository.findByCode(buildingCode)
+                    .map(b -> normalize(b.getName()))
+                    .filter(name -> !name.isBlank())
+                    .orElse(buildingCode);
+            String address = normalize(entry.getCampusAddress());
+            if (address.isBlank()) {
+                address = schoolBuildingRepository.findByCode(buildingCode)
+                        .map(b -> normalize(b.getAddress()))
+                        .filter(a -> !a.isBlank())
+                        .orElse("Адрес не указан");
+            }
+            placementByClass.put(className, new ClassPlacement(buildingCode, buildingName, address));
+        });
 
-        Map<Integer, Map<String, Integer>> table = new TreeMap<>();
-        Map<String, Integer> totalByBuildingClass = new HashMap<>();
         Map<Integer, Integer> totalByParallel = new TreeMap<>();
+        Map<String, Integer> totalByAddress = new LinkedHashMap<>();
+        Map<String, List<ContingentDtos.ClassTotal>> classesByAddress = new LinkedHashMap<>();
 
         for (String rawClassName : classNames) {
             String className = ClassNameNormalizer.normalize(rawClassName);
@@ -186,36 +202,65 @@ public class ContingentServiceImpl implements ContingentService {
             if (parallel < 0) {
                 continue;
             }
-            String buildingCode = buildingByClass.getOrDefault(className, "НЕОПР");
-            String key = buildingCode + "|" + className;
-            totalByBuildingClass.merge(key, 1, Integer::sum);
-            table.computeIfAbsent(parallel, k -> new HashMap<>()).merge(key, 1, Integer::sum);
+
+            ClassPlacement placement = placementByClass.getOrDefault(className, new ClassPlacement("НЕОПР", "НЕОПР", "Адрес не указан"));
+            String addressKey = placement.buildingCode + "|" + placement.buildingName + "|" + placement.address;
+
+            List<ContingentDtos.ClassTotal> classTotals = classesByAddress.computeIfAbsent(addressKey, k -> new ArrayList<>());
+            ContingentDtos.ClassTotal existing = classTotals.stream()
+                    .filter(item -> Objects.equals(item.getClassName(), className) && Objects.equals(item.getParallel(), parallel))
+                    .findFirst()
+                    .orElse(null);
+            if (existing == null) {
+                ContingentDtos.ClassTotal created = new ContingentDtos.ClassTotal();
+                created.setParallel(parallel);
+                created.setClassName(className);
+                created.setStudents(1);
+                classTotals.add(created);
+            } else {
+                existing.setStudents(existing.getStudents() + 1);
+            }
+
             totalByParallel.merge(parallel, 1, Integer::sum);
+            totalByAddress.merge(addressKey, 1, Integer::sum);
         }
 
-        List<String> classKeys = new ArrayList<>(totalByBuildingClass.keySet());
-        classKeys.sort(Comparator.comparing((String key) -> key.split("\\|")[0])
-                .thenComparing(key -> extractParallel(key.split("\\|")[1]))
-                .thenComparing(key -> key.split("\\|")[1]));
+        List<String> sortedAddressKeys = new ArrayList<>(classesByAddress.keySet());
+        sortedAddressKeys.sort(Comparator
+                .comparing((String key) -> key.split("\\|")[0])
+                .thenComparing(key -> key.split("\\|")[2]));
 
-        Map<String, List<ContingentDtos.ClassTotal>> grouped = new LinkedHashMap<>();
-        for (String key : classKeys) {
-            String[] split = key.split("\\|");
+        Map<String, List<ContingentDtos.AddressColumn>> addressesByBuilding = new LinkedHashMap<>();
+        Map<String, Integer> totalByBuilding = new LinkedHashMap<>();
+
+        for (String addressKey : sortedAddressKeys) {
+            String[] split = addressKey.split("\\|", 3);
             String buildingCode = split[0];
-            String className = split[1];
-            ContingentDtos.ClassTotal classTotal = new ContingentDtos.ClassTotal();
-            classTotal.setClassName(className);
-            classTotal.setStudents(totalByBuildingClass.get(key));
-            grouped.computeIfAbsent(buildingCode, k -> new ArrayList<>()).add(classTotal);
+            String buildingName = split[1];
+            String address = split[2];
+
+            List<ContingentDtos.ClassTotal> classTotals = classesByAddress.get(addressKey);
+            classTotals.sort(Comparator.comparing(ContingentDtos.ClassTotal::getParallel)
+                    .thenComparing(ContingentDtos.ClassTotal::getClassName));
+
+            ContingentDtos.AddressColumn addressColumn = new ContingentDtos.AddressColumn();
+            addressColumn.setAddress(address);
+            addressColumn.setClasses(classTotals);
+            addressColumn.setTotalStudents(totalByAddress.getOrDefault(addressKey, 0));
+
+            String buildingKey = buildingCode + "|" + buildingName;
+            addressesByBuilding.computeIfAbsent(buildingKey, k -> new ArrayList<>()).add(addressColumn);
+            totalByBuilding.merge(buildingKey, addressColumn.getTotalStudents(), Integer::sum);
         }
 
         List<ContingentDtos.BuildingColumn> columns = new ArrayList<>();
-        grouped.forEach((buildingCode, classes) -> {
+        addressesByBuilding.forEach((buildingKey, addressColumns) -> {
+            String[] split = buildingKey.split("\\|", 2);
             ContingentDtos.BuildingColumn column = new ContingentDtos.BuildingColumn();
-            column.setBuildingCode(buildingCode);
-            column.setBuildingName(buildingNameByCode.getOrDefault(buildingCode, buildingCode));
-            column.setClasses(classes);
-            column.setTotalStudents(classes.stream().map(ContingentDtos.ClassTotal::getStudents).reduce(0, Integer::sum));
+            column.setBuildingCode(split[0]);
+            column.setBuildingName(split[1]);
+            column.setAddresses(addressColumns);
+            column.setTotalStudents(totalByBuilding.getOrDefault(buildingKey, 0));
             columns.add(column);
         });
 
@@ -230,10 +275,101 @@ public class ContingentServiceImpl implements ContingentService {
         response.setSnapshotId(snapshot.getId());
         response.setSnapshotDate(snapshot.getSnapshotDate());
         response.setTotalStudents(classNames.size());
-        response.setParallels(new ArrayList<>(table.keySet()));
+        response.setParallels(new ArrayList<>(totalByParallel.keySet()));
         response.setColumns(columns);
         response.setParallelTotals(parallelTotals);
         return response;
+    }
+
+
+    @Override
+    public byte[] exportStats(String academicYear, LocalDate snapshotDate) {
+        ContingentDtos.StatsResponse stats = getStats(academicYear, snapshotDate);
+
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("Численность");
+
+            int rowIdx = 0;
+            Row title = sheet.createRow(rowIdx++);
+            title.createCell(0).setCellValue("Численность по состоянию на " + stats.getSnapshotDate());
+
+            Row h1 = sheet.createRow(rowIdx++);
+            Row h2 = sheet.createRow(rowIdx++);
+            h1.createCell(0).setCellValue("Параллель");
+            h1.createCell(1).setCellValue("Всего детей");
+            sheet.addMergedRegion(new CellRangeAddress(1, 2, 0, 0));
+            sheet.addMergedRegion(new CellRangeAddress(1, 2, 1, 1));
+
+            int col = 2;
+            for (ContingentDtos.BuildingColumn building : stats.getColumns()) {
+                int start = col;
+                for (ContingentDtos.AddressColumn address : building.getAddresses()) {
+                    h2.createCell(col).setCellValue(address.getAddress());
+                    sheet.addMergedRegion(new CellRangeAddress(2, 2, col, col + 1));
+                    col += 2;
+                }
+                if (col - 1 >= start) {
+                    h1.createCell(start).setCellValue(building.getBuildingName());
+                    sheet.addMergedRegion(new CellRangeAddress(1, 1, start, col - 1));
+                }
+            }
+
+            Map<Integer, Integer> totalByParallel = stats.getParallelTotals().stream()
+                    .collect(java.util.stream.Collectors.toMap(ContingentDtos.ParallelTotal::getParallel, ContingentDtos.ParallelTotal::getTotalStudents));
+
+            for (Integer parallel : stats.getParallels()) {
+                List<List<ContingentDtos.ClassTotal>> perAddress = new ArrayList<>();
+                for (ContingentDtos.BuildingColumn building : stats.getColumns()) {
+                    for (ContingentDtos.AddressColumn address : building.getAddresses()) {
+                        List<ContingentDtos.ClassTotal> rows = address.getClasses().stream()
+                                .filter(c -> Objects.equals(c.getParallel(), parallel))
+                                .toList();
+                        perAddress.add(rows);
+                    }
+                }
+
+                int lines = Math.max(1, perAddress.stream().mapToInt(List::size).max().orElse(1));
+                int startRow = rowIdx;
+                for (int i = 0; i < lines; i++) {
+                    Row row = sheet.createRow(rowIdx++);
+                    if (i == 0) {
+                        row.createCell(0).setCellValue(parallel);
+                        row.createCell(1).setCellValue(totalByParallel.getOrDefault(parallel, 0));
+                    }
+                    int dataCol = 2;
+                    for (List<ContingentDtos.ClassTotal> rows : perAddress) {
+                        ContingentDtos.ClassTotal item = i < rows.size() ? rows.get(i) : null;
+                        row.createCell(dataCol).setCellValue(item == null ? "" : item.getClassName());
+                        row.createCell(dataCol + 1).setCellValue(item == null ? "" : String.valueOf(item.getStudents()));
+                        dataCol += 2;
+                    }
+                }
+                if (lines > 1) {
+                    sheet.addMergedRegion(new CellRangeAddress(startRow, rowIdx - 1, 0, 0));
+                    sheet.addMergedRegion(new CellRangeAddress(startRow, rowIdx - 1, 1, 1));
+                }
+            }
+
+            Row totalRow = sheet.createRow(rowIdx);
+            totalRow.createCell(0).setCellValue("ИТОГО");
+            totalRow.createCell(1).setCellValue(stats.getTotalStudents());
+            int totalCol = 2;
+            for (ContingentDtos.BuildingColumn building : stats.getColumns()) {
+                for (ContingentDtos.AddressColumn address : building.getAddresses()) {
+                    totalRow.createCell(totalCol).setCellValue("");
+                    totalRow.createCell(totalCol + 1).setCellValue(address.getTotalStudents());
+                    totalCol += 2;
+                }
+            }
+
+            for (int i = 0; i < Math.max(totalCol, 4); i++) {
+                sheet.autoSizeColumn(i);
+            }
+            workbook.write(out);
+            return out.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("Не удалось экспортировать численность", e);
+        }
     }
 
     @Override
