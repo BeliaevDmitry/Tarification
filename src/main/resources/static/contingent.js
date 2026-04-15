@@ -87,13 +87,14 @@ function renderStatsTable(stats) {
     const totalByParallel = Object.fromEntries((stats?.parallelTotals || []).map((x) => [x.parallel, x.totalStudents]));
 
     const buildingHeader = columns.map((building) => {
-        const span = Math.max((building.addresses || []).length * 2, 2);
-        return `<th colspan="${span}">${esc(building.buildingName || building.buildingCode)}</th>`;
+        const addressSpan = Math.max((building.addresses || []).length * 2, 0);
+        return `<th colspan="${addressSpan + 1}">${esc(building.buildingName || building.buildingCode)}</th>`;
     }).join('');
 
-    const addressHeader = columns.map((building) => (building.addresses || []).map((address) =>
-        `<th colspan="2">${esc(address.address || 'Адрес не указан')}</th>`
-    ).join('')).join('');
+    const addressHeader = columns.map((building) => {
+        const addressHeaders = (building.addresses || []).map((address) => `<th colspan="2">${esc(address.address || 'Адрес не указан')}</th>`).join('');
+        return `${addressHeaders}<th>Σ СП</th>`;
+    }).join('');
 
     const thead = `
         <thead>
@@ -107,15 +108,15 @@ function renderStatsTable(stats) {
 
     const tbodyRows = [];
     parallels.forEach((parallel) => {
-        const rowsPerAddress = [];
-        columns.forEach((building) => {
-            (building.addresses || []).forEach((address) => {
-                const rows = (address.classes || []).filter((item) => Number(item.parallel) === Number(parallel));
-                rowsPerAddress.push(rows);
-            });
+        const perBuilding = columns.map((building) => {
+            const addressRows = (building.addresses || []).map((address) =>
+                (address.classes || []).filter((item) => Number(item.parallel) === Number(parallel))
+            );
+            const total = addressRows.flat().reduce((sum, item) => sum + Number(item.students || 0), 0);
+            return { addressRows, total };
         });
 
-        const rowCount = Math.max(1, ...rowsPerAddress.map((rows) => rows.length));
+        const rowCount = Math.max(1, ...perBuilding.flatMap((b) => b.addressRows.map((rows) => rows.length)));
         for (let i = 0; i < rowCount; i += 1) {
             let row = '<tr>';
             if (i === 0) {
@@ -123,23 +124,37 @@ function renderStatsTable(stats) {
                 row += `<th rowspan="${rowCount}">${esc(totalByParallel[parallel] || 0)}</th>`;
             }
 
-            rowsPerAddress.forEach((rows) => {
-                const item = rows[i];
-                row += `<td>${esc(item?.className || '')}</td>`;
-                row += `<td>${esc(item?.students || '')}</td>`;
+            perBuilding.forEach((buildingData) => {
+                buildingData.addressRows.forEach((rows) => {
+                    const item = rows[i];
+                    row += `<td>${esc(item?.className || '')}</td>`;
+                    row += `<td>${esc(item?.students || '')}</td>`;
+                });
+                if (i === 0) {
+                    row += `<th rowspan="${rowCount}">${esc(buildingData.total)}</th>`;
+                }
             });
+
             row += '</tr>';
             tbodyRows.push(row);
         }
     });
 
-    const footerCells = columns.map((building) => (building.addresses || []).map((address) =>
-        `<th></th><th>${esc(address.totalStudents || 0)}</th>`
-    ).join('')).join('');
+    const footerTotals = columns.map((building) => {
+        const addressCells = (building.addresses || []).map((address) => `<th></th><th>${esc(address.totalStudents || 0)}</th>`).join('');
+        return `${addressCells}<th>${esc(building.totalStudents || 0)}</th>`;
+    }).join('');
 
-    const footer = `<tr><th>ИТОГО</th><th>${esc(stats?.totalStudents || 0)}</th>${footerCells}</tr>`;
+    const footerClasses = columns.map((building) => {
+        const addressCells = (building.addresses || []).map((address) => `<th></th><th>${esc((address.classes || []).length)}</th>`).join('');
+        const buildingClasses = (building.addresses || []).reduce((sum, address) => sum + (address.classes || []).length, 0);
+        return `${addressCells}<th>${esc(buildingClasses)}</th>`;
+    }).join('');
 
-    ui.statsTable.innerHTML = `${thead}<tbody>${tbodyRows.join('')}${footer}</tbody>`;
+    const footerTotalRow = `<tr><th>ИТОГО</th><th>${esc(stats?.totalStudents || 0)}</th>${footerTotals}</tr>`;
+    const footerClassRow = `<tr><th>Классов</th><th></th>${footerClasses}</tr>`;
+
+    ui.statsTable.innerHTML = `${thead}<tbody>${tbodyRows.join('')}${footerTotalRow}${footerClassRow}</tbody>`;
 }
 
 async function loadSnapshots() {
