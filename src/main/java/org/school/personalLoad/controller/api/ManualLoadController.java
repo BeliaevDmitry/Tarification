@@ -9,10 +9,16 @@ import org.school.personalLoad.dto.ManualLoadProcessResult;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.service.ManualLoadService;
 import org.school.personalLoad.service.AcademicYearService;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletRequest;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -58,6 +64,30 @@ public class ManualLoadController {
     public ResponseEntity<ManualLoadProcessResult> process(@RequestParam(required = false) String academicYear, HttpServletRequest httpServletRequest) {
         validateGlobalLoadOperation(AuthSessionUtils.requiredUser(httpServletRequest));
         return ResponseEntity.ok(manualLoadService.processCurrentManualLoad(academicYearService.resolveRequestedOrDefault(academicYear)));
+    }
+
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> exportWorkbook(@RequestParam(required = false) String academicYear, HttpServletRequest httpServletRequest) throws Exception {
+        validateGlobalLoadOperation(AuthSessionUtils.requiredUser(httpServletRequest));
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        byte[] body = manualLoadService.exportWorkbook(effectiveYear);
+        String date = LocalDate.now().toString();
+        String fileName = "Распределение нагрузки " + effectiveYear + " " + date + ".xlsx";
+        String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(body);
+    }
+
+    @PostMapping("/import")
+    public ResponseEntity<List<ManualLoadEntry>> importWorkbook(@RequestParam(required = false) String academicYear,
+                                                                @RequestParam("file") MultipartFile file,
+                                                                HttpServletRequest httpServletRequest) {
+        validateGlobalLoadOperation(AuthSessionUtils.requiredUser(httpServletRequest));
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        List<ManualLoadEntry> imported = manualLoadService.importWorkbook(effectiveYear, file);
+        return ResponseEntity.ok(imported);
     }
 
     private void validateLoadAccess(SessionUser user, List<ManualLoadEntryRequest> requests) {

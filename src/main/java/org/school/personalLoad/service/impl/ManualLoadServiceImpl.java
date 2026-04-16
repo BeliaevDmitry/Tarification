@@ -2,15 +2,23 @@ package org.school.personalLoad.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadPlanFactSummary;
 import org.school.personalLoad.dto.ManualLoadProcessResult;
 import org.school.personalLoad.model.CurriculumPlanEntry;
+import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.StudyPeriod;
+import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.model.SubjectWithGroup;
 import org.school.personalLoad.model.TarifficationPerson;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.DatabaseService;
 import org.school.personalLoad.service.ManualLoadService;
@@ -18,12 +26,19 @@ import org.school.personalLoad.service.TarifficationProcessingService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 @Slf4j
 @Service
@@ -35,6 +50,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private final DatabaseService databaseService;
     private final CurriculumPlanService curriculumPlanService;
     private final StudyPeriodSettingService studyPeriodSettingService;
+    private final TeacherDirectoryRepository teacherDirectoryRepository;
 
     @Override
     public ManualLoadEntry create(ManualLoadEntryRequest request) {
@@ -140,6 +156,285 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
         log.info("Ручная нагрузка обработана. Записей: {}, сводок: {}", tarifficationList.size(), summaries.size());
         return new ManualLoadProcessResult("ok", tarifficationList.size(), summaries);
+    }
+
+    @Override
+    public byte[] exportWorkbook(String academicYear) throws IOException {
+        List<ManualLoadTemplateRow> templateRows = buildTemplateRows(academicYear);
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("LOAD_EDITABLE");
+            Row header = sheet.createRow(0);
+            header.createCell(0).setCellValue("Учебный год");
+            header.createCell(1).setCellValue("Корпус");
+            header.createCell(2).setCellValue("Класс");
+            header.createCell(3).setCellValue("Предмет");
+            header.createCell(4).setCellValue("Группа");
+            header.createCell(5).setCellValue("Период");
+            header.createCell(6).setCellValue("С");
+            header.createCell(7).setCellValue("По");
+            header.createCell(8).setCellValue("Часы");
+            header.createCell(9).setCellValue("Уровень");
+            header.createCell(10).setCellValue("ФИО педагога");
+            header.createCell(11).setCellValue("ROW_KEY");
+
+            int rowNum = 1;
+            for (ManualLoadTemplateRow row : templateRows) {
+                Row excelRow = sheet.createRow(rowNum++);
+                excelRow.createCell(0).setCellValue(row.academicYear());
+                excelRow.createCell(1).setCellValue(row.numberSchoolBuilding());
+                excelRow.createCell(2).setCellValue(row.className());
+                excelRow.createCell(3).setCellValue(row.subjectName());
+                excelRow.createCell(4).setCellValue(row.groupNameEducationalPlan() == null ? "" : row.groupNameEducationalPlan());
+                excelRow.createCell(5).setCellValue(row.studyPeriod().name());
+                excelRow.createCell(6).setCellValue(row.loadFromDate().toString());
+                excelRow.createCell(7).setCellValue(row.loadToDate().toString());
+                excelRow.createCell(8).setCellValue(row.load());
+                excelRow.createCell(9).setCellValue(row.educationLevel().name());
+                excelRow.createCell(10).setCellValue(row.fioTeacher() == null ? "" : row.fioTeacher());
+                excelRow.createCell(11).setCellValue(row.rowKey());
+            }
+
+            for (int i = 0; i <= 11; i++) {
+                sheet.autoSizeColumn(i);
+            }
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    @Override
+    @Transactional
+    public List<ManualLoadEntry> importWorkbook(String academicYear, MultipartFile file) {
+        List<ManualLoadEntryRequest> requests = new ArrayList<>();
+        List<String> errors = new ArrayList<>();
+        LocalDate today = LocalDate.now();
+        try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
+            Sheet sheet = workbook.getSheet("LOAD_EDITABLE");
+            if (sheet == null) {
+                throw new IllegalArgumentException("В файле отсутствует лист LOAD_EDITABLE");
+            }
+            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+                Row row = sheet.getRow(i);
+                if (row == null) continue;
+                String rowKey = readCell(row, 11);
+                if (rowKey.isBlank()) {
+                    errors.add("Строка " + (i + 1) + ": отсутствует ROW_KEY");
+                    continue;
+                }
+                String rowYear = readCell(row, 0);
+                if (!rowYear.isBlank() && !academicYear.equals(rowYear.trim())) {
+                    errors.add("Строка " + (i + 1) + ": учебный год " + rowYear + " не совпадает с выбранным " + academicYear);
+                    continue;
+                }
+                String fio = readCell(row, 10).trim();
+                if (fio.isBlank()) {
+                    fio = "Вакансия";
+                } else if (!"вакансия".equalsIgnoreCase(fio)) {
+                    TeacherDirectoryEntry teacher = teacherDirectoryRepository.findByFioTeacherIgnoreCase(fio).orElse(null);
+                    if (teacher == null) {
+                        errors.add("Строка " + (i + 1) + ": педагог не найден в справочнике — " + fio);
+                        continue;
+                    }
+                    LocalDate dismissalDate = teacher.getDismissalDate();
+                    LocalDate from = parseDate(readCell(row, 6));
+                    LocalDate to = parseDate(readCell(row, 7));
+                    if (dismissalDate != null && from != null && to != null) {
+                        boolean currentPeriod = !today.isBefore(from) && !today.isAfter(to);
+                        if (currentPeriod && !dismissalDate.isAfter(today)) {
+                            errors.add("Строка " + (i + 1) + ": педагог уволен и не может быть назначен на текущий период — " + fio);
+                            continue;
+                        }
+                    }
+                }
+
+                ManualLoadEntryRequest request = new ManualLoadEntryRequest();
+                request.setAcademicYear(academicYear);
+                request.setNumberSchoolBuilding(readCell(row, 1));
+                request.setClassName(readCell(row, 2));
+                request.setSubjectName(readCell(row, 3));
+                request.setGroupNameEducationalPlan(emptyToNull(readCell(row, 4)));
+                request.setStudyPeriod(parseStudyPeriod(readCell(row, 5)));
+                request.setLoadFromDate(parseDate(readCell(row, 6)));
+                request.setLoadToDate(parseDate(readCell(row, 7)));
+                Integer load = parseInteger(readCell(row, 8));
+                request.setLoad(load);
+                request.setGroupLoad(request.getGroupNameEducationalPlan() == null ? null : load);
+                request.setEducationLevel(parseEducationLevel(readCell(row, 9)));
+                request.setFioTeacher(fio);
+                try {
+                    validate(request);
+                } catch (Exception e) {
+                    errors.add("Строка " + (i + 1) + ": " + e.getMessage());
+                    continue;
+                }
+                requests.add(request);
+            }
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Не удалось прочитать файл импорта нагрузки");
+        }
+        if (!errors.isEmpty()) {
+            throw new IllegalArgumentException("Импорт отклонён:\n" + String.join("\n", errors));
+        }
+        if (requests.isEmpty()) {
+            throw new IllegalArgumentException("Импорт отклонён: в файле нет строк для загрузки");
+        }
+        return createBulk(requests);
+    }
+
+    private List<ManualLoadTemplateRow> buildTemplateRows(String academicYear) {
+        List<CurriculumPlanEntry> curriculum = curriculumPlanService.findAll(academicYear).stream()
+                .filter(row -> !row.isDeprecated())
+                .toList();
+        Map<String, ManualLoadEntry> existingByKey = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
+                .collect(java.util.stream.Collectors.toMap(this::manualRowKey, java.util.function.Function.identity(), (a, b) -> a));
+        List<ManualLoadTemplateRow> result = new ArrayList<>();
+        for (CurriculumPlanEntry row : curriculum) {
+            if (row.isSubgroupRequired()) {
+                result.add(toTemplateRow(academicYear, row, 1, existingByKey));
+                result.add(toTemplateRow(academicYear, row, 2, existingByKey));
+            } else {
+                result.add(toTemplateRow(academicYear, row, null, existingByKey));
+            }
+        }
+        result.sort(Comparator.comparing(ManualLoadTemplateRow::numberSchoolBuilding)
+                .thenComparing(ManualLoadTemplateRow::className)
+                .thenComparing(ManualLoadTemplateRow::subjectName)
+                .thenComparing(row -> row.groupNameEducationalPlan() == null ? "" : row.groupNameEducationalPlan()));
+        return result;
+    }
+
+    private ManualLoadTemplateRow toTemplateRow(String academicYear,
+                                                CurriculumPlanEntry curriculum,
+                                                Integer groupIndex,
+                                                Map<String, ManualLoadEntry> existingByKey) {
+        StudyPeriod studyPeriod = curriculum.getStudyPeriod() == null ? StudyPeriod.YEAR : curriculum.getStudyPeriod();
+        StudyPeriodSettingService.DateRange range = studyPeriodSettingService.resolveDateRange(academicYear, curriculum.getClassName(), studyPeriod);
+        String groupName = groupIndex == null ? null : ("Группа " + groupIndex);
+        int loadHours = curriculum.getPlannedHours() == null ? 0 : curriculum.getPlannedHours().intValue();
+        EducationLevel level = curriculum.getEducationLevel();
+        if (groupIndex != null) {
+            loadHours = groupIndex == 1
+                    ? (curriculum.getSubgroup1Hours() == null ? loadHours : curriculum.getSubgroup1Hours())
+                    : (curriculum.getSubgroup2Hours() == null ? loadHours : curriculum.getSubgroup2Hours());
+            level = groupIndex == 1
+                    ? (curriculum.getSubgroup1EducationLevel() == null ? level : curriculum.getSubgroup1EducationLevel())
+                    : (curriculum.getSubgroup2EducationLevel() == null ? level : curriculum.getSubgroup2EducationLevel());
+        }
+        ManualLoadTemplateRow template = new ManualLoadTemplateRow(
+                academicYear,
+                curriculum.getNumberSchoolBuilding(),
+                ClassNameNormalizer.normalize(curriculum.getClassName()),
+                curriculum.getSubjectName(),
+                groupName,
+                studyPeriod,
+                range.startDate(),
+                range.endDate(),
+                loadHours,
+                level,
+                "",
+                exportRowKey(academicYear, curriculum.getNumberSchoolBuilding(), curriculum.getClassName(), curriculum.getSubjectName(), groupName, studyPeriod, range.startDate(), range.endDate(), level)
+        );
+        ManualLoadEntry existing = existingByKey.get(template.rowKey());
+        if (existing != null) {
+            return new ManualLoadTemplateRow(
+                    template.academicYear(),
+                    template.numberSchoolBuilding(),
+                    template.className(),
+                    template.subjectName(),
+                    template.groupNameEducationalPlan(),
+                    template.studyPeriod(),
+                    template.loadFromDate(),
+                    template.loadToDate(),
+                    template.load(),
+                    template.educationLevel(),
+                    existing.getFioTeacher(),
+                    template.rowKey()
+            );
+        }
+        return template;
+    }
+
+    private String manualRowKey(ManualLoadEntry row) {
+        return exportRowKey(
+                row.getAcademicYear(),
+                row.getNumberSchoolBuilding(),
+                row.getClassName(),
+                row.getSubjectName(),
+                row.getGroupNameEducationalPlan(),
+                row.getStudyPeriod() == null ? StudyPeriod.YEAR : row.getStudyPeriod(),
+                row.getLoadFromDate(),
+                row.getLoadToDate(),
+                row.getEducationLevel()
+        );
+    }
+
+    private String exportRowKey(String year,
+                                String building,
+                                String className,
+                                String subject,
+                                String group,
+                                StudyPeriod studyPeriod,
+                                LocalDate from,
+                                LocalDate to,
+                                EducationLevel level) {
+        return String.join("|",
+                normalizeToken(year),
+                normalizeToken(building),
+                normalizeToken(ClassNameNormalizer.normalize(className)),
+                normalizeToken(subject),
+                normalizeToken(group),
+                normalizeToken(studyPeriod == null ? StudyPeriod.YEAR.name() : studyPeriod.name()),
+                normalizeToken(from == null ? "" : from.toString()),
+                normalizeToken(to == null ? "" : to.toString()),
+                normalizeToken(level == null ? EducationLevel.BASIC.name() : level.name()));
+    }
+
+    private String normalizeToken(String value) {
+        return String.valueOf(value == null ? "" : value).trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String readCell(Row row, int index) {
+        if (row.getCell(index) == null) return "";
+        return switch (row.getCell(index).getCellType()) {
+            case STRING -> row.getCell(index).getStringCellValue();
+            case NUMERIC -> BigDecimal.valueOf(row.getCell(index).getNumericCellValue()).stripTrailingZeros().toPlainString();
+            case BOOLEAN -> String.valueOf(row.getCell(index).getBooleanCellValue());
+            case FORMULA -> row.getCell(index).toString();
+            default -> "";
+        };
+    }
+
+    private LocalDate parseDate(String raw) {
+        String value = String.valueOf(raw == null ? "" : raw).trim();
+        if (value.isBlank()) return null;
+        return LocalDate.parse(value);
+    }
+
+    private Integer parseInteger(String raw) {
+        String value = String.valueOf(raw == null ? "" : raw).trim();
+        if (value.isBlank()) return null;
+        return Integer.parseInt(value);
+    }
+
+    private StudyPeriod parseStudyPeriod(String raw) {
+        String value = String.valueOf(raw == null ? "" : raw).trim().toUpperCase(Locale.ROOT);
+        if (value.isBlank() || "ГОД".equals(value)) return StudyPeriod.YEAR;
+        if ("1П".equals(value)) return StudyPeriod.H1;
+        if ("2П".equals(value)) return StudyPeriod.H2;
+        return StudyPeriod.valueOf(value);
+    }
+
+    private EducationLevel parseEducationLevel(String raw) {
+        String value = String.valueOf(raw == null ? "" : raw).trim().toUpperCase(Locale.ROOT);
+        if (value.isBlank()) return EducationLevel.BASIC;
+        if ("БАЗОВЫЙ".equals(value)) return EducationLevel.BASIC;
+        if ("УГЛУБЛЁННЫЙ".equals(value) || "УГЛУБЛЕННЫЙ".equals(value)) return EducationLevel.ADVANCED;
+        return EducationLevel.valueOf(value);
+    }
+
+    private String emptyToNull(String value) {
+        String normalized = String.valueOf(value == null ? "" : value).trim();
+        return normalized.isBlank() ? null : normalized;
     }
 
     private ManualLoadEntry toEntity(ManualLoadEntryRequest request) {
@@ -269,6 +564,19 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             return java.util.Objects.hash(className, subjectName, educationLevel, studyPeriod);
         }
     }
+
+    private record ManualLoadTemplateRow(String academicYear,
+                                         String numberSchoolBuilding,
+                                         String className,
+                                         String subjectName,
+                                         String groupNameEducationalPlan,
+                                         StudyPeriod studyPeriod,
+                                         LocalDate loadFromDate,
+                                         LocalDate loadToDate,
+                                         Integer load,
+                                         EducationLevel educationLevel,
+                                         String fioTeacher,
+                                         String rowKey) {}
 
     private void validate(ManualLoadEntryRequest request) {
         if (request.getAcademicYear() == null || request.getAcademicYear().isBlank()) {
