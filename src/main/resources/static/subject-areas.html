@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarification — Предметные области</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container">
+    <header class="card">
+        <h1>Предметные области</h1>
+        <p class="muted">Справочник предметных областей для предметов и статистики нагрузки.</p>
+        <nav class="page-nav"></nav>
+    </header>
+
+    <section class="card">
+        <form id="subject-area-form" class="row" data-requires-edit>
+            <input id="subject-area-name" placeholder="Название предметной области" required>
+            <button type="submit">Добавить область</button>
+            <button type="button" id="subject-area-refresh" data-allow-readonly="true">Обновить</button>
+        </form>
+        <pre id="subject-area-result"></pre>
+    </section>
+
+    <section class="card" data-requires-edit>
+        <h2>Список областей</h2>
+        <div class="sheet-wrap">
+            <table class="sheet-table">
+                <thead><tr><th>Название</th><th></th></tr></thead>
+                <tbody id="subject-area-body"></tbody>
+            </table>
+        </div>
+    </section>
+</main>
+<script src="/auth.js"></script>
+<script src="/subject-areas.js"></script>
+</body>
+</html>
