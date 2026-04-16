@@ -5,6 +5,9 @@ function applyAcademicYearScope(path) {
     if (!resolver || resolver === applyAcademicYearScope) {
         return path;
     }
+    if (String(path).includes('academicYear=')) {
+        return path;
+    }
     return resolver(path);
 }
 const TABS = [
@@ -13,9 +16,13 @@ const TABS = [
     { key: 'SUBJECTS', label: 'Предметы' },
     { key: 'CURRICULUM', label: 'Учебный план' },
     { key: 'LOAD', label: 'Нагрузка по корпусам' },
+    { key: 'LOAD_STATS', label: 'Нагрузка: статистика' },
     { key: 'SERVICE_NOTES', label: 'Служебные записки' },
     { key: 'SETTINGS', label: 'Настройки' },
     { key: 'TEACHERS', label: 'Кадры' },
+    { key: 'CONTINGENT_IMPORT', label: 'Контингент: импорт' },
+    { key: 'CONTINGENT_STATS', label: 'Контингент: численность' },
+    { key: 'SUBJECT_AREAS', label: 'Предметные области' },
     { key: 'USERS', label: 'Пользователи' }
 ];
 

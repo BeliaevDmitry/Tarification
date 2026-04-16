@@ -36,6 +36,10 @@
                 <option value="CORE_FORMABLE">1 тип: основная/формируемая часть</option>
                 <option value="EXTRACURRICULAR">2 тип: внеурочная деятельность</option>
             </select>
+            <select id="subject-area">
+                <option value="Без области">Без области</option>
+            </select>
+            <input id="subject-coefficient" type="number" step="0.01" min="0" value="1" placeholder="Коэффициент">
             <button type="submit">Добавить предмет</button>
             <button id="refresh-subjects-btn" type="button" data-allow-readonly="true">Обновить</button>
             <button id="clear-subjects-btn" type="button">Очистить</button>
@@ -47,7 +51,7 @@
         <h2>Список предметов</h2>
         <div class="sheet-wrap">
             <table class="sheet-table">
-                <thead><tr><th>Предмет</th><th>Тип</th></tr></thead>
+                <thead><tr><th>Предмет</th><th>Тип</th><th>Область</th><th>Коэффициент</th></tr></thead>
                 <tbody id="subjects-body"></tbody>
             </table>
         </div>
@@ -63,6 +67,10 @@
             <option value="CORE_FORMABLE">1 тип: основная/формируемая часть</option>
             <option value="EXTRACURRICULAR">2 тип: внеурочная деятельность</option>
         </select>
+        <select name="subjectAreaName">
+            <option value="Без области">Без области</option>
+        </select>
+        <input name="subjectCoefficient" type="number" step="0.01" min="0" value="1" placeholder="Коэффициент">
         <div class="row">
             <button type="submit">Сохранить</button>
             <button type="button" id="subject-delete-btn" class="danger-btn">Удалить</button>

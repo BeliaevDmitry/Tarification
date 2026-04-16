@@ -33,6 +33,8 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
                     SubjectCatalogEntry entry = new SubjectCatalogEntry();
                     entry.setSubjectName(name);
                     entry.setSubjectType(type);
+                    entry.setSubjectAreaName(resolveAreaName(request.getSubjectAreaName()));
+                    entry.setSubjectCoefficient(resolveCoefficient(request.getSubjectCoefficient()));
                     return repository.save(entry);
                 });
     }
@@ -53,6 +55,8 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
 
         existing.setSubjectName(name);
         existing.setSubjectType(type);
+        existing.setSubjectAreaName(resolveAreaName(request.getSubjectAreaName()));
+        existing.setSubjectCoefficient(resolveCoefficient(request.getSubjectCoefficient()));
         return repository.save(existing);
     }
 
@@ -107,6 +111,9 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
                     continue;
                 }
 
+                String areaName = resolveAreaName(cellValue(row.getCell(2)));
+                java.math.BigDecimal coefficient = resolveCoefficient(parseDecimal(cellValue(row.getCell(3))));
+
                 String key = subjectName.trim().toLowerCase() + "|" + type.name();
                 if (!seen.add(key)) {
                     skipped++;
@@ -121,6 +128,8 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
                 SubjectCatalogEntry entry = new SubjectCatalogEntry();
                 entry.setSubjectName(subjectName.trim());
                 entry.setSubjectType(type);
+                entry.setSubjectAreaName(areaName);
+                entry.setSubjectCoefficient(coefficient);
                 repository.save(entry);
                 imported++;
             }
@@ -138,16 +147,22 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
             Row header = sheet.createRow(0);
             header.createCell(0).setCellValue("Предмет");
             header.createCell(1).setCellValue("Тип");
+            header.createCell(2).setCellValue("Предметная область");
+            header.createCell(3).setCellValue("Коэффициент");
 
             List<SubjectCatalogEntry> rows = repository.findAll();
             if (rows.isEmpty()) {
                 Row ex1 = sheet.createRow(1);
                 ex1.createCell(0).setCellValue("Математика");
                 ex1.createCell(1).setCellValue("1");
+                ex1.createCell(2).setCellValue("Математика и информатика");
+                ex1.createCell(3).setCellValue("1");
 
                 Row ex2 = sheet.createRow(2);
                 ex2.createCell(0).setCellValue("Разговоры о важном");
                 ex2.createCell(1).setCellValue("2");
+                ex2.createCell(2).setCellValue("Без области");
+                ex2.createCell(3).setCellValue("1");
             } else {
                 rows.sort(Comparator.comparing(SubjectCatalogEntry::getSubjectName, String.CASE_INSENSITIVE_ORDER));
                 int idx = 1;
@@ -155,11 +170,15 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
                     Row row = sheet.createRow(idx++);
                     row.createCell(0).setCellValue(entry.getSubjectName());
                     row.createCell(1).setCellValue(entry.getSubjectType() == SubjectType.EXTRACURRICULAR ? "2" : "1");
+                    row.createCell(2).setCellValue(resolveAreaName(entry.getSubjectAreaName()));
+                    row.createCell(3).setCellValue(resolveCoefficient(entry.getSubjectCoefficient()).toPlainString());
                 }
             }
 
             sheet.autoSizeColumn(0);
             sheet.autoSizeColumn(1);
+            sheet.autoSizeColumn(2);
+            sheet.autoSizeColumn(3);
             workbook.write(out);
             return new ByteArrayResource(out.toByteArray());
         } catch (Exception e) {
@@ -179,6 +198,25 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
             throw new IllegalArgumentException("subjectType is required");
         }
         return request.getSubjectType();
+    }
+
+    private String resolveAreaName(String value) {
+        String normalized = value == null ? "" : value.trim();
+        return normalized.isBlank() ? "Без области" : normalized;
+    }
+
+    private java.math.BigDecimal resolveCoefficient(java.math.BigDecimal value) {
+        if (value == null || value.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            return java.math.BigDecimal.ONE;
+        }
+        return value;
+    }
+
+    private java.math.BigDecimal parseDecimal(String value) {
+        String normalized = value == null ? "" : value.trim().replace(',', '.');
+        if (normalized.isBlank()) return null;
+        try { return new java.math.BigDecimal(normalized); }
+        catch (Exception ignored) { return null; }
     }
 
     private String cellValue(Cell cell) {
