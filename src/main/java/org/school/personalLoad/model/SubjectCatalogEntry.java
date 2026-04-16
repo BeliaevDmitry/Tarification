@@ -24,5 +24,11 @@ public class SubjectCatalogEntry {
     private SubjectType subjectType;
 
     @Column(nullable = false)
+    private String subjectAreaName = "Без области";
+
+    @Column(nullable = false)
+    private java.math.BigDecimal subjectCoefficient = java.math.BigDecimal.ONE;
+
+    @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 }
