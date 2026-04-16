@@ -233,6 +233,9 @@ public class CurriculumExcelParser {
                 .replace("\u00A0", "")
                 .replace(" ", "")
                 .replace(',', '.');
+        while (value.endsWith("*")) {
+            value = value.substring(0, value.length() - 1);
+        }
         if (value.isBlank()) {
             return null;
         }

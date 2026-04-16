@@ -570,20 +570,25 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 }
 
                 for (ClassHeaderMeta classMeta : classColumns) {
-                    MarkerFlags markerFlags = parseMarkerFlags(readCell(row.getCell(classMeta.colIndex)));
+                    String cellRaw = readCell(row.getCell(classMeta.colIndex));
+                    MarkerFlags markerFlags = parseMarkerFlags(cellRaw);
                     String rawHours = markerFlags.value();
                     if (rawHours.isBlank() || "0".equals(rawHours)) continue;
                     if (rawHours.contains("/")) {
                         String[] halves = rawHours.split("/", -1);
-                        BigDecimal h1 = parseDecimal(halves.length > 0 ? halves[0] : "");
-                        BigDecimal h2 = parseDecimal(halves.length > 1 ? halves[1] : "");
+                        MarkerFlags h1Flags = parseMarkerFlags(halves.length > 0 ? halves[0] : "");
+                        MarkerFlags h2Flags = parseMarkerFlags(halves.length > 1 ? halves[1] : "");
+                        boolean subgroup = markerFlags.subgroupRequired() || h1Flags.subgroupRequired() || h2Flags.subgroupRequired();
+                        boolean meta = markerFlags.metaGroup() || h1Flags.metaGroup() || h2Flags.metaGroup();
+                        BigDecimal h1 = parseDecimal(h1Flags.value());
+                        BigDecimal h2 = parseDecimal(h2Flags.value());
                         if (h1 != null && h1.compareTo(BigDecimal.ZERO) > 0) {
                             result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title,
-                                    EducationLevel.BASIC, StudyPeriod.H1, h1, markerFlags.subgroupRequired(), h1.intValue(), EducationLevel.BASIC, h1.intValue(), EducationLevel.BASIC, markerFlags.metaGroup()));
+                                    EducationLevel.BASIC, StudyPeriod.H1, h1, subgroup, h1.intValue(), EducationLevel.BASIC, h1.intValue(), EducationLevel.BASIC, meta));
                         }
                         if (h2 != null && h2.compareTo(BigDecimal.ZERO) > 0) {
                             result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title,
-                                    EducationLevel.BASIC, StudyPeriod.H2, h2, markerFlags.subgroupRequired(), h2.intValue(), EducationLevel.BASIC, h2.intValue(), EducationLevel.BASIC, markerFlags.metaGroup()));
+                                    EducationLevel.BASIC, StudyPeriod.H2, h2, subgroup, h2.intValue(), EducationLevel.BASIC, h2.intValue(), EducationLevel.BASIC, meta));
                         }
                         continue;
                     }
@@ -659,15 +664,20 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 continue;
             }
             for (ClassHeaderMeta classMeta : classColumns) {
-                MarkerFlags markerFlags = parseMarkerFlags(readCell(row.getCell(classMeta.colIndex)));
+                String cellRaw = readCell(row.getCell(classMeta.colIndex));
+                MarkerFlags markerFlags = parseMarkerFlags(cellRaw);
                 String rawHours = markerFlags.value();
                 if (rawHours.isBlank() || "0".equals(rawHours)) continue;
                 if (rawHours.contains("/")) {
                     String[] halves = rawHours.split("/", -1);
-                    BigDecimal h1 = parseDecimal(halves.length > 0 ? halves[0] : "");
-                    BigDecimal h2 = parseDecimal(halves.length > 1 ? halves[1] : "");
-                    if (h1 != null && h1.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.H1, h1, markerFlags.subgroupRequired(), h1.intValue(), EducationLevel.BASIC, h1.intValue(), EducationLevel.BASIC, markerFlags.metaGroup()));
-                    if (h2 != null && h2.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.H2, h2, markerFlags.subgroupRequired(), h2.intValue(), EducationLevel.BASIC, h2.intValue(), EducationLevel.BASIC, markerFlags.metaGroup()));
+                    MarkerFlags h1Flags = parseMarkerFlags(halves.length > 0 ? halves[0] : "");
+                    MarkerFlags h2Flags = parseMarkerFlags(halves.length > 1 ? halves[1] : "");
+                    boolean subgroup = markerFlags.subgroupRequired() || h1Flags.subgroupRequired() || h2Flags.subgroupRequired();
+                    boolean meta = markerFlags.metaGroup() || h1Flags.metaGroup() || h2Flags.metaGroup();
+                    BigDecimal h1 = parseDecimal(h1Flags.value());
+                    BigDecimal h2 = parseDecimal(h2Flags.value());
+                    if (h1 != null && h1.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.H1, h1, subgroup, h1.intValue(), EducationLevel.BASIC, h1.intValue(), EducationLevel.BASIC, meta));
+                    if (h2 != null && h2.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.H2, h2, subgroup, h2.intValue(), EducationLevel.BASIC, h2.intValue(), EducationLevel.BASIC, meta));
                 } else {
                     BigDecimal year = parseDecimal(rawHours);
                     if (year != null && year.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.YEAR, year, markerFlags.subgroupRequired(), year.intValue(), EducationLevel.BASIC, year.intValue(), EducationLevel.BASIC, markerFlags.metaGroup()));
