@@ -356,11 +356,24 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     entry.setPlannedHours(row.getPlannedHours());
                     entry.setCurriculumPart(row.getCurriculumPart() == null ? CurriculumPart.CORE : row.getCurriculumPart());
                     entry.setDeprecated(false);
+                    entry.setMetaGroup(row.isMetaGroup());
+                    entry.setSubgroupRequired(row.isSubgroupRequired());
+                    entry.setSubgroupCount(row.isSubgroupRequired() ? 2 : 0);
+                    if (row.isSubgroupRequired() && row.getPlannedHours() != null) {
+                        int subgroupHours = row.getPlannedHours().intValue();
+                        entry.setSubgroup1Hours(subgroupHours);
+                        entry.setSubgroup2Hours(subgroupHours);
+                        entry.setSubgroup1EducationLevel(entry.getEducationLevel() == EducationLevel.ADVANCED ? EducationLevel.ADVANCED : EducationLevel.BASIC);
+                        entry.setSubgroup2EducationLevel(entry.getEducationLevel() == EducationLevel.ADVANCED ? EducationLevel.ADVANCED : EducationLevel.BASIC);
+                    } else {
+                        entry.setSubgroup1Hours(null);
+                        entry.setSubgroup2Hours(null);
+                        entry.setSubgroup1EducationLevel(null);
+                        entry.setSubgroup2EducationLevel(null);
+                    }
                     if (isNew) {
                         entry.setNumberSchoolBuilding("СП0");
                         entry.setEducationLevel(EducationLevel.BASIC);
-                        entry.setSubgroupRequired(false);
-                        entry.setSubgroupCount(0);
                     }
 
                     if (entry.getEducationLevel() != EducationLevel.ADVANCED) {
@@ -482,7 +495,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         row.getSubjectName(),
                         row.getPlannedHours(),
                         StudyPeriod.YEAR,
-                        row.getCurriculumPart()
+                        row.getCurriculumPart(),
+                        row.isSubgroupRequired(),
+                        row.isMetaGroup()
                 );
                 byKey.remove(h2Key);
                 byKey.put(baseKey + "|YEAR", merged);
@@ -500,7 +515,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         row.getSubjectName(),
                         row.getPlannedHours(),
                         StudyPeriod.YEAR,
-                        row.getCurriculumPart()
+                        row.getCurriculumPart(),
+                        row.isSubgroupRequired(),
+                        row.isMetaGroup()
                 );
                 byKey.remove(h1Key);
                 byKey.put(baseKey + "|YEAR", merged);

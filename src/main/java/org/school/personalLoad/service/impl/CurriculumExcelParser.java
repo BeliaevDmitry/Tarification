@@ -73,8 +73,8 @@ public class CurriculumExcelParser {
 
             // 4) Идём по всем классам (колонкам) и берём часы на пересечении строка/колонка.
             for (ColumnMeta column : columns) {
-                BigDecimal hours = parseHours(readMergedCell(sheet, rowIndex, column.colIndex));
-                if (hours == null || hours.compareTo(BigDecimal.ZERO) <= 0) {
+                ParsedHours parsedHours = parseHoursWithMarkers(readMergedCell(sheet, rowIndex, column.colIndex));
+                if (parsedHours.hours() == null || parsedHours.hours().compareTo(BigDecimal.ZERO) <= 0) {
                     continue;
                 }
 
@@ -84,9 +84,11 @@ public class CurriculumExcelParser {
                         column.className,
                         column.classDirection,
                         normalizedSubject,
-                        hours,
+                        parsedHours.hours(),
                         column.studyPeriod,
-                        currentPart
+                        currentPart,
+                        parsedHours.subgroupRequired(),
+                        parsedHours.metaGroup()
                 ));
             }
         }
@@ -228,21 +230,30 @@ public class CurriculumExcelParser {
         return StudyPeriod.YEAR;
     }
 
-    private BigDecimal parseHours(String raw) {
+    private ParsedHours parseHoursWithMarkers(String raw) {
         String value = normalizeText(raw)
                 .replace("\u00A0", "")
                 .replace(" ", "")
                 .replace(',', '.');
+        boolean subgroupRequired = false;
+        boolean metaGroup = false;
+        if (value.endsWith("**")) {
+            metaGroup = true;
+            value = value.substring(0, value.length() - 2);
+        } else if (value.endsWith("*")) {
+            subgroupRequired = true;
+            value = value.substring(0, value.length() - 1);
+        }
         while (value.endsWith("*")) {
             value = value.substring(0, value.length() - 1);
         }
         if (value.isBlank()) {
-            return null;
+            return new ParsedHours(null, subgroupRequired, metaGroup);
         }
         try {
-            return new BigDecimal(value);
+            return new ParsedHours(new BigDecimal(value), subgroupRequired, metaGroup);
         } catch (Exception ignored) {
-            return null;
+            return new ParsedHours(null, subgroupRequired, metaGroup);
         }
     }
 
@@ -321,4 +332,6 @@ public class CurriculumExcelParser {
             this.studyPeriod = studyPeriod;
         }
     }
+
+    private record ParsedHours(BigDecimal hours, boolean subgroupRequired, boolean metaGroup) {}
 }
