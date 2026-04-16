@@ -5,6 +5,9 @@ function applyAcademicYearScope(path) {
     if (!resolver || resolver === applyAcademicYearScope) {
         return path;
     }
+    if (String(path).includes('academicYear=')) {
+        return path;
+    }
     return resolver(path);
 }
 const TABS = [
