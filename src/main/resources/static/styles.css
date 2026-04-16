@@ -1417,6 +1417,18 @@ dialog::backdrop {
     background: #f1f5f9;
 }
 
+.year-status-ok {
+    background: #d8f7dd;
+    color: #1f6a2a;
+    font-weight: 600;
+}
+
+.year-status-broken {
+    background: #fff3cd;
+    color: #7a5800;
+    font-weight: 600;
+}
+
 @media print {
     body { background: #fff; }
     .container { max-width: 100%; padding: 0; }

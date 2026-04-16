@@ -408,6 +408,10 @@ function dismissalDateOfTeacher(teacherName) {
     return teacher?.dismissalDate || null;
 }
 
+function isVacancyTeacherName(teacherName) {
+    return String(teacherName || "").trim().toLowerCase().includes("вакан");
+}
+
 function periodSettingsMap() {
     return Object.fromEntries((studyPeriodSettings || []).map((item) => [item.code || item.settingKey, item]));
 }
@@ -1359,7 +1363,7 @@ function renderStatsView() {
         const buildingCode = fromRow || fromClass;
         const assignmentMap = assignmentsForBuilding(buildingCode);
         const assignedTeacher = String(assignmentMap[apiKeyOfRow(curriculumRow)] || "").trim();
-        const assigned = assignedTeacher ? planned : 0;
+        const assigned = (assignedTeacher && !isVacancyTeacherName(assignedTeacher)) ? planned : 0;
 
         row.totalPlanned += planned;
         row.totalAssigned += assigned;
