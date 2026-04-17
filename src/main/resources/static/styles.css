@@ -1386,3 +1386,52 @@ dialog::backdrop {
         grid-template-columns: 1fr;
     }
 }
+
+.result-box {
+    max-height: 240px;
+    overflow: auto;
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 12px;
+    border-radius: 10px;
+}
+
+.contingent-tabs {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.contingent-tabs button.nav-link {
+    cursor: pointer;
+}
+
+#contingent-stats-table th,
+#contingent-stats-table td {
+    text-align: center;
+    white-space: nowrap;
+    padding: 4px 6px;
+}
+
+#contingent-stats-table thead th {
+    background: #f1f5f9;
+}
+
+.year-status-ok {
+    background: #d8f7dd;
+    color: #1f6a2a;
+    font-weight: 600;
+}
+
+.year-status-broken {
+    background: #fff3cd;
+    color: #7a5800;
+    font-weight: 600;
+}
+
+@media print {
+    body { background: #fff; }
+    .container { max-width: 100%; padding: 0; }
+    .card { box-shadow: none; border: 1px solid #000; page-break-inside: avoid; }
+    #contingent-stats-table { font-size: 11px; }
+}

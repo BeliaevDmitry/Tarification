@@ -10,7 +10,9 @@ const ui = {
     editForm: document.getElementById("building-edit-form"),
     closeBtn: document.getElementById("building-close-btn"),
     deleteBtn: document.getElementById("building-delete-btn"),
-    managerDisplay: document.getElementById("building-manager-display")
+    managerDisplay: document.getElementById("building-manager-display"),
+    fileInput: document.getElementById("buildings-file"),
+    importBtn: document.getElementById("import-buildings-btn")
 };
 
 let buildings = [];
@@ -117,6 +119,25 @@ ui.deleteBtn?.addEventListener('click', async () => {
         print({ error: error.message });
     }
 });
+
+ui.importBtn?.addEventListener('click', async () => {
+    const file = ui.fileInput?.files?.[0];
+    if (!file) {
+        print({ error: 'Выберите файл для импорта' });
+        return;
+    }
+    try {
+        const form = new FormData();
+        form.append('file', file);
+        const result = await api('/api/buildings/import', { method: 'POST', body: form });
+        print(result);
+        ui.fileInput.value = '';
+        await reload();
+    } catch (error) {
+        print({ error: error.message });
+    }
+});
+
 ui.refreshBtn.addEventListener("click", () => reload().catch((e) => print({ error: e.message })));
 ui.clearBtn.addEventListener("click", async () => {
     try { await api("/api/buildings", { method: "DELETE" }); print({ status: "cleared" }); await reload(); }

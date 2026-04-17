@@ -21,7 +21,14 @@
         </nav>
     </header>
 
-    <section class="card load-toolbar">
+    <section class="card">
+        <nav class="contingent-tabs">
+            <button type="button" class="nav-link active" data-load-tab="distribution">Распределение</button>
+            <button type="button" class="nav-link" data-load-tab="stats">Статистика</button>
+        </nav>
+    </section>
+
+    <section class="card load-toolbar" data-load-pane="distribution">
         <div class="row"><strong>Корпуса:</strong><div id="building-tabs" class="parallel-tabs"></div></div>
         <div class="row controls-row">
             <label>Сортировка:
@@ -61,11 +68,20 @@
                 <button id="next-error-btn" type="button">Перейти к ошибке</button>
             </div>
         </div>
+        <pre id="load-result" class="result-box"></pre>
     </section>
 
-    <section class="card" data-requires-edit data-load-edit-area="true">
+    <section class="card" data-load-pane="distribution" data-requires-edit data-load-edit-area="true">
         <h2>Распределение педагогов</h2>
         <div class="sheet-wrap"><table class="sheet-table" id="building-load-table"><thead id="building-load-head"></thead><tbody id="building-load-body"></tbody></table></div>
+    </section>
+
+    <section class="card" data-load-pane="stats" style="display:none;">
+        <h2>Статистика нагрузки</h2>
+        <div id="load-stats-summary" class="muted"></div>
+        <div class="sheet-wrap">
+            <table class="sheet-table" id="load-stats-table"></table>
+        </div>
     </section>
 
 </main>
