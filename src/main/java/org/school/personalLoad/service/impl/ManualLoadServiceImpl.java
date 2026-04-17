@@ -92,6 +92,17 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
     @Override
+    public List<ManualLoadEntry> findAll(String academicYear, String numberSchoolBuilding) {
+        if (numberSchoolBuilding == null || numberSchoolBuilding.isBlank()) {
+            return findAll(academicYear);
+        }
+        return manualLoadEntryRepository.findAllByAcademicYearAndNumberSchoolBuildingIgnoreCase(
+                academicYear,
+                numberSchoolBuilding.trim()
+        );
+    }
+
+    @Override
     public void clearAll(String academicYear) {
         manualLoadEntryRepository.deleteAllByAcademicYear(academicYear);
     }
