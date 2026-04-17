@@ -1774,9 +1774,10 @@ async function importLoadWorkbook(file) {
         try { body = text ? JSON.parse(text) : null; } catch { body = { message: text }; }
         if (!response.ok) throw new Error(body?.message || body?.error || `HTTP ${response.status}`);
         print({ status: "imported", rows: Array.isArray(body) ? body.length : 0 });
-        await reloadAll();
+        await refreshSourceData();
     } catch (error) {
         print({ error: error.message });
+        alert(`Ошибка импорта нагрузки: ${error.message}`);
     }
 }
 
