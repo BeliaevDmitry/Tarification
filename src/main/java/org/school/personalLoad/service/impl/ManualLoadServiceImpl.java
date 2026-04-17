@@ -272,11 +272,12 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         } catch (IOException e) {
             throw new IllegalArgumentException("Не удалось прочитать файл импорта нагрузки");
         }
-        if (!errors.isEmpty()) {
-            throw new IllegalArgumentException("Импорт отклонён:\n" + String.join("\n", errors));
-        }
         if (requests.isEmpty()) {
-            throw new IllegalArgumentException("Импорт отклонён: в файле нет строк для загрузки");
+            String details = errors.isEmpty() ? "" : ("\n" + String.join("\n", errors));
+            throw new IllegalArgumentException("Импорт отклонён: в файле нет строк для загрузки" + details);
+        }
+        if (!errors.isEmpty()) {
+            log.warn("Импорт нагрузки выполнен частично: пропущено {} строк(и): {}", errors.size(), String.join(" | ", errors));
         }
         return createBulk(requests);
     }
