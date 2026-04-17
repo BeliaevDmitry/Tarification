@@ -1773,12 +1773,8 @@ async function importLoadWorkbook(file) {
         let body = null;
         try { body = text ? JSON.parse(text) : null; } catch { body = { message: text }; }
         if (!response.ok) throw new Error(body?.message || body?.error || `HTTP ${response.status}`);
-        const importedRows = Array.isArray(body) ? body.length : 0;
-        print({ status: "imported", rows: importedRows });
-        if (!ui.loadResult) {
-            alert(`Импорт завершён: загружено строк ${importedRows}.`);
-        }
-        await reloadAll();
+        print({ status: "imported", rows: Array.isArray(body) ? body.length : 0 });
+        await refreshSourceData();
     } catch (error) {
         print({ error: error.message });
         alert(`Ошибка импорта нагрузки: ${error.message}`);

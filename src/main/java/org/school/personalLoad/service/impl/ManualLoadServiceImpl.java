@@ -229,7 +229,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 String fio = readCell(row, 10).trim();
                 if (fio.isBlank()) {
                     fio = "Вакансия";
-                } else if (!"вакансия".equalsIgnoreCase(fio)) {
+                } else if (!fio.toLowerCase(Locale.ROOT).contains("вакан")) {
                     TeacherDirectoryEntry teacher = teacherDirectoryRepository.findByFioTeacherIgnoreCase(fio).orElse(null);
                     if (teacher == null) {
                         errors.add("Строка " + (i + 1) + ": педагог не найден в справочнике — " + fio);
