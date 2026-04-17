@@ -1777,6 +1777,7 @@ async function importLoadWorkbook(file) {
         await refreshSourceData();
     } catch (error) {
         print({ error: error.message });
+        alert(`Ошибка импорта нагрузки: ${error.message}`);
     }
 }
 
