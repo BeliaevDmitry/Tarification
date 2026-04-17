@@ -5,6 +5,9 @@ function applyAcademicYearScope(path) {
     if (!resolver || resolver === applyAcademicYearScope) {
         return path;
     }
+    if (String(path).includes('academicYear=')) {
+        return path;
+    }
     return resolver(path);
 }
 const TABS = [
@@ -13,9 +16,13 @@ const TABS = [
     { key: 'SUBJECTS', label: 'Предметы' },
     { key: 'CURRICULUM', label: 'Учебный план' },
     { key: 'LOAD', label: 'Нагрузка по корпусам' },
+    { key: 'LOAD_STATS', label: 'Нагрузка: статистика' },
     { key: 'SERVICE_NOTES', label: 'Служебные записки' },
     { key: 'SETTINGS', label: 'Настройки' },
     { key: 'TEACHERS', label: 'Кадры' },
+    { key: 'CONTINGENT_IMPORT', label: 'Контингент: импорт' },
+    { key: 'CONTINGENT_STATS', label: 'Контингент: численность' },
+    { key: 'SUBJECT_AREAS', label: 'Предметные области' },
     { key: 'USERS', label: 'Пользователи' }
 ];
 
@@ -97,41 +104,128 @@ function normalizeAcademicYearInput(rawValue) {
     return value;
 }
 
+function normalizeClassForContinuity(value) {
+    const raw = String(value || '').trim().toUpperCase().replace(/[–—]/g, '-');
+    const match = raw.match(/^(\d{1,2})\s*[- ]?\s*([А-ЯA-Z])$/);
+    return match ? `${match[1]}-${match[2]}` : raw;
+}
+
+function previousClassForContinuity(targetClass) {
+    const normalized = normalizeClassForContinuity(targetClass);
+    const match = normalized.match(/^(\d{1,2})-([А-ЯA-Z])$/);
+    if (!match) return null;
+    const parallel = Number(match[1]);
+    if (!Number.isFinite(parallel) || parallel <= 1) return null;
+    if (parallel === 5 || parallel === 10) return null; // Из 4→5 и 9→10 преемственность не переносим.
+    return `${parallel - 1}-${match[2]}`;
+}
+
+function continuityRowKey(className, subjectName, groupName) {
+    return `${normalizeClassForContinuity(className)}|${String(subjectName || '').trim().toLowerCase()}|${String(groupName || '').trim().toLowerCase()}`;
+}
+
+function continuityStateForYear(yearCode, manualRowsByYear, curriculumRowsByYear, continuityApplied) {
+    if (!continuityApplied) return 'none';
+    const [fromYear] = String(yearCode || '').split('/');
+    const sourceYear = `${Number(fromYear) - 1}/${fromYear}`;
+    const sourceManual = manualRowsByYear.get(sourceYear) || [];
+    const targetManual = manualRowsByYear.get(yearCode) || [];
+    const targetCurriculum = curriculumRowsByYear.get(yearCode) || [];
+    if (!sourceManual.length || !targetCurriculum.length) return 'none';
+
+    const sourceByKey = new Map();
+    sourceManual.forEach((row) => {
+        const fio = String(row.fioTeacher || '').trim();
+        if (!fio || fio.toLowerCase().includes('вакан')) return;
+        sourceByKey.set(
+            continuityRowKey(row.className, row.subjectName, row.groupNameEducationalPlan),
+            fio.toLowerCase()
+        );
+    });
+    if (!sourceByKey.size) return 'none';
+
+    const targetByKey = new Map();
+    targetManual.forEach((row) => {
+        const fio = String(row.fioTeacher || '').trim();
+        if (!fio || fio.toLowerCase().includes('вакан')) return;
+        targetByKey.set(
+            continuityRowKey(row.className, row.subjectName, row.groupNameEducationalPlan),
+            fio.toLowerCase()
+        );
+    });
+
+    let checked = 0;
+    let violations = 0;
+    targetCurriculum.forEach((curriculum) => {
+        const prevClass = previousClassForContinuity(curriculum.className);
+        if (!prevClass) return;
+        const groupName = curriculum.subgroupRequired ? 'группа 1' : '';
+        const sourceKey = continuityRowKey(prevClass, curriculum.subjectName, groupName);
+        const expectedTeacher = sourceByKey.get(sourceKey);
+        if (!expectedTeacher) return;
+        const targetKey = continuityRowKey(curriculum.className, curriculum.subjectName, groupName);
+        const actualTeacher = targetByKey.get(targetKey);
+        if (!actualTeacher) return;
+        checked += 1;
+        if (actualTeacher !== expectedTeacher) violations += 1;
+    });
+
+    if (!checked) return 'none';
+    return violations > 0 ? 'broken' : 'ok';
+}
+
 async function renderAcademicYears() {
     if (!ui.academicYearsBody) return;
     const years = await api('/api/academic-years');
-    const rows = await Promise.all((years || []).map(async (year) => {
+    const rawRows = await Promise.all((years || []).map(async (year) => {
         let curriculumLoaded = false;
         let loadFilled = false;
+        let curriculumRows = [];
+        let manualRows = [];
         try {
             const [curriculumResult, manualResult] = await Promise.allSettled([
                 api(`/api/curriculum?academicYear=${encodeURIComponent(year.code)}`),
                 api(`/api/manual-load?academicYear=${encodeURIComponent(year.code)}`)
             ]);
             if (curriculumResult.status === 'fulfilled') {
-                curriculumLoaded = (curriculumResult.value || []).length > 0;
+                curriculumRows = curriculumResult.value || [];
+                curriculumLoaded = curriculumRows.length > 0;
             }
             if (manualResult.status === 'fulfilled') {
-                loadFilled = (manualResult.value || []).some((item) => String(item.fioTeacher || '').trim());
+                manualRows = manualResult.value || [];
+                loadFilled = manualRows.some((item) => {
+                    const fio = String(item.fioTeacher || '').trim().toLowerCase();
+                    return fio && !fio.includes('вакан');
+                });
             }
         } catch {
             // Не блокируем отображение списка годов, даже если статусные запросы временно неуспешны.
         }
         return {
             ...year,
+            curriculumRows,
+            manualRows,
             curriculumLoaded,
             loadFilled
         };
+    }));
+    const curriculumRowsByYear = new Map(rawRows.map((row) => [row.code, row.curriculumRows || []]));
+    const manualRowsByYear = new Map(rawRows.map((row) => [row.code, row.manualRows || []]));
+    const rows = rawRows.map((row) => ({
+        ...row,
+        continuityState: continuityStateForYear(row.code, manualRowsByYear, curriculumRowsByYear, row.continuityApplied)
     }));
     ui.academicYearsBody.innerHTML = rows.map((row) => `
         <tr>
             <td>${esc(row.code)}</td>
             <td>${yesNo(row.curriculumLoaded)}</td>
             <td>${yesNo(row.loadFilled)}</td>
-            <td>${yesNo(row.continuityApplied)}</td>
+            <td class="${row.continuityState === 'ok' ? 'year-status-ok' : row.continuityState === 'broken' ? 'year-status-broken' : ''}">
+                ${row.continuityApplied ? (row.continuityState === 'ok' ? 'Да' : row.continuityState === 'broken' ? 'Нарушена' : 'Да') : 'Нет'}
+            </td>
             <td class="row compact-row compact-actions">
-                <button type="button" data-year-continuity="${esc(row.code)}" ${row.continuityApplied ? 'disabled' : ''}>
-                    ${row.continuityApplied ? 'Преемственность отмечена' : 'Отметить преемственность'}
+                <button type="button" data-year-continuity="${esc(row.code)}">
+                    Запустить преемственность
                 </button>
                 <button type="button" data-year-delete="${esc(row.id)}">Удалить</button>
             </td>
