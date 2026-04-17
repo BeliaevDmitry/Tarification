@@ -1,6 +1,8 @@
 const jsonHeaders = { "Content-Type": "application/json" };
 
 const ui = {
+    tabs: Array.from(document.querySelectorAll("[data-load-tab]")),
+    panes: Array.from(document.querySelectorAll("[data-load-pane]")),
     buildingTabs: document.getElementById("building-tabs"),
     refreshLoadBtn: document.getElementById("refresh-load-btn"),
     exportLoadBtn: document.getElementById("export-load-btn"),
@@ -21,7 +23,9 @@ const ui = {
     cancelLoadBtn: document.getElementById("load-cancel-btn"),
     unassignedHours: document.getElementById("unassigned-hours"),
     errorCount: document.getElementById("error-count"),
-    nextErrorBtn: document.getElementById("next-error-btn")
+    nextErrorBtn: document.getElementById("next-error-btn"),
+    statsSummary: document.getElementById("load-stats-summary"),
+    statsTable: document.getElementById("load-stats-table")
 };
 
 let curriculumRows = [];
@@ -31,7 +35,9 @@ let teacherDirectory = [];
 let buildings = [];
 let classroomRows = [];
 let studyPeriodSettings = [];
+let subjectCatalog = [];
 let selectedBuilding = "";
+let activeLoadTab = "distribution";
 
 const ARCHIVE_BUILDING_CODE = "__ARCHIVE__";
 const ARCHIVE_BUILDING_LABEL = "Архив нагрузки";
@@ -112,6 +118,51 @@ function print(value) {
         ui.loadResult.textContent = JSON.stringify(value, null, 2);
     } else {
         console.debug(value);
+    }
+}
+
+function showLoadTab(name) {
+    activeLoadTab = name === "stats" ? "stats" : "distribution";
+    ui.tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.loadTab === activeLoadTab));
+    ui.panes.forEach((pane) => {
+        pane.style.display = pane.dataset.loadPane === activeLoadTab ? "" : "none";
+    });
+    if (activeLoadTab === "stats") {
+        renderStatsView();
+    }
+}
+
+function loadPermissions() {
+    if (window.tarificationAuth?.admin) {
+        return { canDistributionView: true, canStatsView: true };
+    }
+    const permissions = window.tarificationTabPermissions || {};
+    return {
+        canDistributionView: Boolean(permissions.LOAD?.canView),
+        canStatsView: Boolean(permissions.LOAD_STATS?.canView)
+    };
+}
+
+function applyLoadTabAccess() {
+    const { canDistributionView, canStatsView } = loadPermissions();
+    ui.tabs.forEach((tab) => {
+        const isStats = tab.dataset.loadTab === "stats";
+        tab.style.display = (isStats ? canStatsView : canDistributionView) ? "" : "none";
+    });
+    ui.panes.forEach((pane) => {
+        const isStats = pane.dataset.loadPane === "stats";
+        const allowed = isStats ? canStatsView : canDistributionView;
+        if (!allowed) pane.style.display = "none";
+    });
+    if (canDistributionView) return "distribution";
+    if (canStatsView) return "stats";
+    return null;
+}
+
+async function waitForAuthContext() {
+    for (let i = 0; i < 40; i += 1) {
+        if (window.tarificationAuth) return;
+        await new Promise((resolve) => setTimeout(resolve, 50));
     }
 }
 
@@ -355,6 +406,10 @@ function dismissalDateOfTeacher(teacherName) {
     const normalized = String(teacherName || "").trim().toLowerCase();
     const teacher = teacherDirectory.find((t) => String(t.fioTeacher || "").trim().toLowerCase() === normalized);
     return teacher?.dismissalDate || null;
+}
+
+function isVacancyTeacherName(teacherName) {
+    return String(teacherName || "").trim().toLowerCase().includes("вакан");
 }
 
 function periodSettingsMap() {
@@ -1269,17 +1324,124 @@ function jumpToFirstError() {
     setTimeout(() => target.classList.remove('error-row-highlight'), 1400);
 }
 
+function renderStatsView() {
+    if (!ui.statsTable || !ui.statsSummary) return;
+    if (!(curriculumRows || []).length) {
+        ui.statsSummary.textContent = "Нет строк учебного плана для формирования статистики.";
+        ui.statsTable.innerHTML = "<tbody><tr><td>Нет данных.</td></tr></tbody>";
+        return;
+    }
+
+    const buildingRows = (buildings || []).filter((b) => b.code !== ARCHIVE_BUILDING_CODE);
+    const classToBuilding = classBuildingMap();
+    const subjectAreaByName = new Map(
+        (subjectCatalog || []).map((subject) => [String(subject.subjectName || "").trim().toLowerCase(), String(subject.subjectAreaName || "").trim() || "Без области"])
+    );
+
+    const rowsBySubject = new Map();
+    const getRow = (subjectName) => {
+        const key = String(subjectName || "").trim().toLowerCase();
+        if (!rowsBySubject.has(key)) {
+            rowsBySubject.set(key, {
+                subjectArea: subjectAreaByName.get(key) || "Без области",
+                subjectName: String(subjectName || "").trim(),
+                totalPlanned: 0,
+                totalAssigned: 0,
+                perBuilding: Object.fromEntries(buildingRows.map((b) => [b.code, { planned: 0, assigned: 0 }]))
+            });
+        }
+        return rowsBySubject.get(key);
+    };
+
+    expandCurriculumRows(curriculumRows || []).forEach((curriculumRow) => {
+        const subjectName = String(curriculumRow.subjectName || "").trim();
+        if (!subjectName) return;
+        const row = getRow(subjectName);
+        const planned = Number(curriculumRow.plannedHours || 0);
+        const fromClass = canonicalBuildingCode(classToBuilding.get(normalizeClassName(curriculumRow.className)));
+        const fromRow = canonicalBuildingCode(curriculumRow.numberSchoolBuilding);
+        const buildingCode = fromRow || fromClass;
+        const assignmentMap = assignmentsForBuilding(buildingCode);
+        const assignedTeacher = String(assignmentMap[apiKeyOfRow(curriculumRow)] || "").trim();
+        const assigned = (assignedTeacher && !isVacancyTeacherName(assignedTeacher)) ? planned : 0;
+
+        row.totalPlanned += planned;
+        row.totalAssigned += assigned;
+        if (row.perBuilding[buildingCode]) {
+            row.perBuilding[buildingCode].planned += planned;
+            row.perBuilding[buildingCode].assigned += assigned;
+        }
+    });
+
+    const areaTotals = new Map();
+    rowsBySubject.forEach((row) => {
+        const area = row.subjectArea || "Без области";
+        areaTotals.set(area, (areaTotals.get(area) || 0) + row.totalPlanned);
+    });
+
+    const rows = [...rowsBySubject.values()]
+        .sort((a, b) => (a.subjectArea || "").localeCompare(b.subjectArea || "", "ru") || a.subjectName.localeCompare(b.subjectName, "ru"));
+
+    const totalPlanned = rows.reduce((sum, row) => sum + row.totalPlanned, 0);
+    const totalAssigned = rows.reduce((sum, row) => sum + row.totalAssigned, 0);
+    ui.statsSummary.textContent = `Предметов: ${rows.length}. Плановых часов: ${totalPlanned}. Распределено: ${totalAssigned}. Нераспределено: ${totalPlanned - totalAssigned}.`;
+
+    const buildingHeader = buildingRows.map((building) =>
+        `<th colspan="3">${esc(building.code)}${building.name ? ` — ${esc(building.name)}` : ""}</th>`
+    ).join("");
+    const buildingSubHeader = buildingRows.map(() =>
+        "<th>часы</th><th>распр.</th><th>не распр.</th>"
+    ).join("");
+
+    const thead = `
+        <thead>
+            <tr>
+                <th rowspan="2">Предметная область</th>
+                <th rowspan="2">Предмет</th>
+                <th rowspan="2">Часы по УП</th>
+                <th rowspan="2">Распределено</th>
+                <th rowspan="2">Не распределено</th>
+                ${buildingHeader}
+                <th rowspan="2">Суммарно часов по предметной области</th>
+            </tr>
+            <tr>${buildingSubHeader}</tr>
+        </thead>`;
+
+    const tbody = rows.map((row) => {
+        const totalUnassigned = row.totalPlanned - row.totalAssigned;
+        const perBuildingCols = buildingRows.map((building) => {
+            const bucket = row.perBuilding[building.code] || { planned: 0, assigned: 0 };
+            const buildingUnassigned = bucket.planned - bucket.assigned;
+            return `<td>${esc(bucket.planned)}</td><td>${esc(bucket.assigned)}</td><td>${esc(buildingUnassigned)}</td>`;
+        }).join("");
+        return `
+            <tr>
+                <td>${esc(row.subjectArea || "Без области")}</td>
+                <td>${esc(row.subjectName)}</td>
+                <td>${esc(row.totalPlanned)}</td>
+                <td>${esc(row.totalAssigned)}</td>
+                <td>${esc(totalUnassigned)}</td>
+                ${perBuildingCols}
+                <td>${esc(areaTotals.get(row.subjectArea || "Без области") || 0)}</td>
+            </tr>`;
+    }).join("");
+
+    ui.statsTable.innerHTML = `${thead}<tbody>${tbody}</tbody>`;
+}
+
 function renderTable() {
     ui.tableHead.innerHTML = "";
     ui.tableBody.innerHTML = "";
 
     if (!selectedBuilding) {
         ui.tableBody.innerHTML = '<tr><td colspan="7">Добавьте корпуса, чтобы распределять нагрузку.</td></tr>';
+        renderStatsView();
         return;
     }
 
     if (selectedBuilding === ARCHIVE_BUILDING_CODE) {
         renderArchiveAsMainTable();
+        renderStatsView();
         return;
     }
 
@@ -1612,20 +1774,21 @@ async function importLoadWorkbook(file) {
         try { body = text ? JSON.parse(text) : null; } catch { body = { message: text }; }
         if (!response.ok) throw new Error(body?.message || body?.error || `HTTP ${response.status}`);
         print({ status: "imported", rows: Array.isArray(body) ? body.length : 0 });
-        await reloadAll();
+        await refreshSourceData();
     } catch (error) {
         print({ error: error.message });
     }
 }
 
 async function refreshSourceData() {
-    const [curriculum, manual, teachers, buildingRows, classRows, periodSettings] = await Promise.all([
+    const [curriculum, manual, teachers, buildingRows, classRows, periodSettings, subjects] = await Promise.all([
         api("/api/curriculum"),
         api("/api/manual-load"),
         api("/api/teachers"),
         api("/api/buildings"),
         api("/api/classroom-leadership"),
-        api("/api/settings/study-periods")
+        api("/api/settings/study-periods"),
+        api("/api/subjects")
     ]);
 
     curriculumRows = curriculum || [];
@@ -1634,6 +1797,7 @@ async function refreshSourceData() {
     teacherNames = sortRu(Array.from(new Set(teacherDirectory.map((t) => String(t.fioTeacher || "").trim()).filter(Boolean))));
     classroomRows = classRows || [];
     studyPeriodSettings = periodSettings || [];
+    subjectCatalog = subjects || [];
 
     const buildingByCode = new Map();
     (buildingRows || []).forEach((b) => {
@@ -1681,6 +1845,13 @@ async function refreshSourceData() {
 }
 
 function bindEvents() {
+    ui.tabs.forEach((tab) => {
+        tab.addEventListener("click", () => {
+            const tabName = tab.dataset.loadTab;
+            showLoadTab(tabName);
+            window.location.hash = tabName === "stats" ? "#stats" : "";
+        });
+    });
     ui.saveBuildingBtn.addEventListener("click", saveBuildingLoad);
     ui.periodForm.addEventListener("submit", (e) => {
         e.preventDefault();
@@ -1809,10 +1980,21 @@ function bindEvents() {
     });
 
     ui.nextErrorBtn.addEventListener("click", jumpToFirstError);
+    renderStatsView();
 }
 
 async function init() {
+    await waitForAuthContext();
     bindEvents();
+    const defaultTab = applyLoadTabAccess();
+    if (!defaultTab) return;
+    const requestedTab = window.location.hash === "#stats" ? "stats" : "distribution";
+    if (requestedTab === "stats" && defaultTab !== "stats") {
+        showLoadTab(defaultTab);
+        window.location.hash = "";
+    } else {
+        showLoadTab(requestedTab === "distribution" && defaultTab === "stats" ? "stats" : requestedTab);
+    }
     state.viewDate = referencePlanningDate();
     if (ui.viewDateInput) {
         ui.viewDateInput.value = state.viewDate;

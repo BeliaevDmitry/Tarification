@@ -17,4 +17,17 @@ public class CurriculumImportRow {
     private java.math.BigDecimal plannedHours;
     private StudyPeriod studyPeriod;
     private CurriculumPart curriculumPart;
+    private boolean subgroupRequired;
+    private boolean metaGroup;
+
+    public CurriculumImportRow(String academicYear,
+                               CurriculumStage stage,
+                               String className,
+                               String classDirection,
+                               String subjectName,
+                               java.math.BigDecimal plannedHours,
+                               StudyPeriod studyPeriod,
+                               CurriculumPart curriculumPart) {
+        this(academicYear, stage, className, classDirection, subjectName, plannedHours, studyPeriod, curriculumPart, false, false);
+    }
 }
