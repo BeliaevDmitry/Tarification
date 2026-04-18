@@ -35,5 +35,8 @@ public class ClassroomLeadershipEntry {
     private String campusAddress;
 
     @Column(nullable = false)
+    private boolean manualBuildingAssignment = false;
+
+    @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 }
