@@ -34,6 +34,9 @@ public class ClassroomLeadershipEntry {
     @Column(nullable = false)
     private String campusAddress;
 
+    @Transient
+    private boolean manualBuildingAssignment = false;
+
     @Column(nullable = false)
     private boolean manualBuildingAssignment = false;
 

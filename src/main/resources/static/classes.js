@@ -149,7 +149,7 @@ function updateSortButtons() {
 }
 
 async function reload() {
-    const [rows, buildingRows] = await Promise.all([
+    const [rowsResult, buildingsResult] = await Promise.allSettled([
         api("/api/classroom-leadership"),
         api("/api/buildings"),
     ]);
@@ -159,8 +159,11 @@ async function reload() {
     ]);
     const teacherRows = teacherResult.status === "fulfilled" ? teacherResult.value : [];
     const curriculumRows = curriculumResult.status === "fulfilled" ? curriculumResult.value : [];
-    const actualRows = rows || [];
-    buildings = buildingRows || [];
+    const actualRows = rowsResult.status === "fulfilled" ? (rowsResult.value || []) : [];
+    buildings = buildingsResult.status === "fulfilled" ? (buildingsResult.value || []) : [];
+    if (rowsResult.status !== "fulfilled") {
+        print({ warning: "Не удалось загрузить сохранённые классы, отображаем данные из учебного плана", details: rowsResult.reason?.message || String(rowsResult.reason || "") });
+    }
     teachers = (teacherRows || []).map((r) => norm(r.fioTeacher)).filter(Boolean);
     const buildingAddressByCode = new Map(
         buildings.map((b) => [normalizeBuildingCode(b.code), norm(b.address) || "Не указан"])
@@ -193,7 +196,12 @@ async function reload() {
 }
 
 async function upsertEntry(entry, originalKey = null) {
-    const current = await api("/api/classroom-leadership");
+    let current = [];
+    try {
+        current = await api("/api/classroom-leadership");
+    } catch {
+        current = [];
+    }
     const filtered = (current || []).filter((r) => {
         const key = entryKey(r);
         if (originalKey) return key !== originalKey;

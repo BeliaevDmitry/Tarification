@@ -217,7 +217,7 @@ public class AcademicYearServiceImpl implements AcademicYearService {
             String className = curriculum.getClassName();
             ClassroomLeadershipEntry existingTarget = targetByClass.get(entry.getKey());
 
-            if (existingTarget != null && existingTarget.isManualBuildingAssignment()) {
+            if (existingTarget != null && !isAutoFilledBuilding(existingTarget)) {
                 continue;
             }
 
@@ -243,7 +243,6 @@ public class AcademicYearServiceImpl implements AcademicYearService {
             if (targetEntry.getFioTeacher() == null || targetEntry.getFioTeacher().isBlank()) {
                 targetEntry.setFioTeacher("Класс не назначен");
             }
-            targetEntry.setManualBuildingAssignment(false);
             toSave.add(targetEntry);
         }
 
@@ -266,6 +265,11 @@ public class AcademicYearServiceImpl implements AcademicYearService {
         return suffix == null || suffix.isBlank()
                 ? String.valueOf(previousParallel)
                 : previousParallel + "-" + suffix.toUpperCase(Locale.ROOT);
+    }
+
+    private boolean isAutoFilledBuilding(ClassroomLeadershipEntry entry) {
+        String building = String.valueOf(entry.getNumberSchoolBuilding() == null ? "" : entry.getNumberSchoolBuilding()).trim().toUpperCase(Locale.ROOT);
+        return building.isBlank() || "СП0".equals(building);
     }
 
     private String previousAcademicYear(String academicYearCode) {
