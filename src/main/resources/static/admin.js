@@ -225,7 +225,10 @@ async function renderAcademicYears() {
             </td>
             <td class="row compact-row compact-actions">
                 <button type="button" data-year-continuity="${esc(row.code)}">
-                    Запустить преемственность
+                    Преемств. педагогов
+                </button>
+                <button type="button" data-year-continuity-buildings="${esc(row.code)}">
+                    Преемств. корпусов
                 </button>
                 <button type="button" data-year-delete="${esc(row.id)}">Удалить</button>
             </td>
@@ -234,9 +237,25 @@ async function renderAcademicYears() {
     ui.academicYearsBody.querySelectorAll('[data-year-continuity]').forEach((btn) => {
         btn.addEventListener('click', async () => {
             try {
-                await api(`/api/academic-years/${encodeURIComponent(btn.dataset.yearContinuity)}/continuity`, { method: 'POST' });
+                await api(`/api/academic-years/continuity?code=${encodeURIComponent(btn.dataset.yearContinuity)}`, { method: 'POST' });
                 if (ui.academicYearFeedback) {
-                    ui.academicYearFeedback.textContent = `Преемственность отмечена для ${btn.dataset.yearContinuity}.`;
+                    ui.academicYearFeedback.textContent = `Преемственность педагогов выполнена для ${btn.dataset.yearContinuity}.`;
+                }
+                await renderAcademicYears();
+            } catch (error) {
+                if (ui.academicYearFeedback) {
+                    ui.academicYearFeedback.textContent = `Ошибка: ${error.message}`;
+                }
+                print({ error: error.message });
+            }
+        });
+    });
+    ui.academicYearsBody.querySelectorAll('[data-year-continuity-buildings]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            try {
+                await api(`/api/academic-years/continuity/buildings?code=${encodeURIComponent(btn.dataset.yearContinuityBuildings)}`, { method: 'POST' });
+                if (ui.academicYearFeedback) {
+                    ui.academicYearFeedback.textContent = `Преемственность корпусов выполнена для ${btn.dataset.yearContinuityBuildings}.`;
                 }
                 await renderAcademicYears();
             } catch (error) {

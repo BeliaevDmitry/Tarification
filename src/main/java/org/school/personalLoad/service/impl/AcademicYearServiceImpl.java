@@ -2,10 +2,12 @@ package org.school.personalLoad.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.model.AcademicYearConfig;
+import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.repository.AcademicYearRepository;
+import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.service.AcademicYearService;
@@ -28,6 +30,7 @@ public class AcademicYearServiceImpl implements AcademicYearService {
     private final AcademicYearRepository academicYearRepository;
     private final ManualLoadEntryRepository manualLoadEntryRepository;
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
+    private final ClassroomLeadershipRepository classroomLeadershipRepository;
 
     @Override
     public List<AcademicYearConfig> findAll() {
@@ -102,6 +105,16 @@ public class AcademicYearServiceImpl implements AcademicYearService {
         return academicYearRepository.save(year);
     }
 
+    @Override
+    @Transactional
+    public AcademicYearConfig applyBuildingContinuity(String code) {
+        String normalized = normalizeCode(code);
+        AcademicYearConfig year = academicYearRepository.findByCode(normalized)
+                .orElseThrow(() -> new IllegalArgumentException("Учебный год не найден: " + normalized));
+        applyClassBuildingContinuity(normalized);
+        return academicYearRepository.save(year);
+    }
+
     private void applyTeacherContinuity(String targetYear) {
         String sourceYear = previousAcademicYear(targetYear);
         if (!academicYearRepository.existsByCode(sourceYear)) {
@@ -161,6 +174,102 @@ public class AcademicYearServiceImpl implements AcademicYearService {
         if (!toCreate.isEmpty()) {
             manualLoadEntryRepository.saveAll(toCreate);
         }
+    }
+
+    private void applyClassBuildingContinuity(String targetYear) {
+        String sourceYear = previousAcademicYear(targetYear);
+        if (!academicYearRepository.existsByCode(sourceYear)) {
+            throw new IllegalArgumentException("Для преемственности корпусов не найден предыдущий учебный год: " + sourceYear);
+        }
+
+        List<CurriculumPlanEntry> targetCurriculum = curriculumPlanEntryRepository.findAll().stream()
+                .filter(entry -> targetYear.equals(entry.getAcademicYear()))
+                .filter(entry -> !entry.isDeprecated())
+                .toList();
+        if (targetCurriculum.isEmpty()) {
+            throw new IllegalArgumentException("Невозможно выполнить преемственность корпусов: в " + targetYear + " не загружен учебный план");
+        }
+
+        Map<String, ClassroomLeadershipEntry> sourceByClass = classroomLeadershipRepository.findAllByAcademicYear(sourceYear).stream()
+                .collect(Collectors.toMap(
+                        entry -> normalizeKey(entry.getClassName()),
+                        Function.identity(),
+                        (left, right) -> left
+                ));
+
+        Map<String, ClassroomLeadershipEntry> targetByClass = classroomLeadershipRepository.findAllByAcademicYear(targetYear).stream()
+                .collect(Collectors.toMap(
+                        entry -> normalizeKey(entry.getClassName()),
+                        Function.identity(),
+                        (left, right) -> left
+                ));
+
+        Map<String, CurriculumPlanEntry> targetCurriculumByClass = targetCurriculum.stream()
+                .collect(Collectors.toMap(
+                        entry -> normalizeKey(entry.getClassName()),
+                        Function.identity(),
+                        (left, right) -> left
+                ));
+
+        List<ClassroomLeadershipEntry> toSave = new java.util.ArrayList<>();
+        for (Map.Entry<String, CurriculumPlanEntry> entry : targetCurriculumByClass.entrySet()) {
+            CurriculumPlanEntry curriculum = entry.getValue();
+            String className = curriculum.getClassName();
+            ClassroomLeadershipEntry existingTarget = targetByClass.get(entry.getKey());
+
+            if (existingTarget != null && !isAutoFilledBuilding(existingTarget)) {
+                continue;
+            }
+
+            String sourceClassName = previousClassForContinuity(className);
+            String targetBuilding = "СП0";
+            String targetAddress = "Не указан";
+            if (sourceClassName != null) {
+                ClassroomLeadershipEntry source = sourceByClass.get(normalizeKey(sourceClassName));
+                if (source != null && source.getNumberSchoolBuilding() != null && !source.getNumberSchoolBuilding().isBlank()) {
+                    targetBuilding = source.getNumberSchoolBuilding();
+                    targetAddress = source.getCampusAddress();
+                }
+            }
+
+            ClassroomLeadershipEntry targetEntry = existingTarget == null ? new ClassroomLeadershipEntry() : existingTarget;
+            targetEntry.setAcademicYear(targetYear);
+            targetEntry.setClassName(className);
+            targetEntry.setNumberSchoolBuilding(targetBuilding);
+            targetEntry.setCampusAddress(targetAddress == null || targetAddress.isBlank() ? "Не указан" : targetAddress);
+            if (targetEntry.getClassDirection() == null || targetEntry.getClassDirection().isBlank()) {
+                targetEntry.setClassDirection("Не указана");
+            }
+            if (targetEntry.getFioTeacher() == null || targetEntry.getFioTeacher().isBlank()) {
+                targetEntry.setFioTeacher("Класс не назначен");
+            }
+            toSave.add(targetEntry);
+        }
+
+        if (!toSave.isEmpty()) {
+            classroomLeadershipRepository.saveAll(toSave);
+        }
+    }
+
+    private String previousClassForContinuity(String targetClassName) {
+        String normalized = ClassNameNormalizer.normalize(targetClassName);
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("^(\\d{1,2})(?:\\s*[- ]?\\s*([А-ЯA-Z]))?$").matcher(normalized);
+        if (!matcher.matches()) {
+            return null;
+        }
+        int parallel = Integer.parseInt(matcher.group(1));
+        if (parallel <= 1) return null;
+        if (parallel == 5 || parallel == 10) return null;
+        int previousParallel = parallel - 1;
+        String suffix = matcher.group(2);
+        return suffix == null || suffix.isBlank()
+                ? String.valueOf(previousParallel)
+                : previousParallel + "-" + suffix.toUpperCase(Locale.ROOT);
+    }
+
+    private boolean isAutoFilledBuilding(ClassroomLeadershipEntry entry) {
+        String building = String.valueOf(entry.getNumberSchoolBuilding() == null ? "" : entry.getNumberSchoolBuilding()).trim().toUpperCase(Locale.ROOT);
+        return building.isBlank() || "СП0".equals(building);
     }
 
     private String previousAcademicYear(String academicYearCode) {

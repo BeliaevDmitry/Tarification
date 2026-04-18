@@ -19,6 +19,7 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
                                               @Param("codes") java.util.Collection<String> codes);
 
     java.util.List<ManualLoadEntry> findAllByAcademicYear(String academicYear);
+    java.util.List<ManualLoadEntry> findAllByAcademicYearAndNumberSchoolBuildingIgnoreCase(String academicYear, String numberSchoolBuilding);
 
     void deleteAllByAcademicYear(String academicYear);
 

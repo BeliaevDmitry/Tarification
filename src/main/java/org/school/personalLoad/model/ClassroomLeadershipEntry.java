@@ -34,6 +34,10 @@ public class ClassroomLeadershipEntry {
     @Column(nullable = false)
     private String campusAddress;
 
+    // Runtime marker only (not persisted): used by UI/service flows to tag explicitly edited assignments.
+    @Transient
+    private boolean manualBuildingAssignment = false;
+
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 }
