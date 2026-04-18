@@ -11,4 +11,5 @@ public interface AcademicYearService {
     String resolveRequestedOrDefault(String requestedCode);
     String currentByDate();
     AcademicYearConfig markContinuityApplied(String code);
+    AcademicYearConfig applyBuildingContinuity(String code);
 }
