@@ -10,4 +10,5 @@ public class ClassroomLeadershipEntryRequest {
     private String classDirection;
     private String fioTeacher;
     private String campusAddress;
+    private Boolean manualBuildingAssignment;
 }

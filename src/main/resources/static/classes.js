@@ -170,7 +170,8 @@ async function reload() {
                 className: normalizeClassName(row.className),
                 classDirection: "Не указана",
                 fioTeacher: "Класс не назначен",
-                campusAddress: buildingAddressByCode.get(normalizeBuildingCode(row.numberSchoolBuilding)) || "Не указан"
+                campusAddress: buildingAddressByCode.get(normalizeBuildingCode(row.numberSchoolBuilding)) || "Не указан",
+                manualBuildingAssignment: false
             };
             const key = entryKey(candidate);
             if (!existingByKey.has(key)) {
@@ -206,7 +207,8 @@ ui.form.addEventListener("submit", async (e) => {
         className: normalizeClassName(form.get("className")),
         classDirection: norm(form.get("classDirection")),
         fioTeacher: norm(form.get("fioTeacher")),
-        campusAddress: norm(form.get("campusAddress"))
+        campusAddress: norm(form.get("campusAddress")),
+        manualBuildingAssignment: true
     };
 
     if (!entry.numberSchoolBuilding || !entry.className || !entry.classDirection || !entry.fioTeacher) {
@@ -232,7 +234,8 @@ ui.editForm.addEventListener('submit', async (e) => {
         className: normalizeClassName(form.get("className")),
         classDirection: norm(form.get("classDirection")),
         fioTeacher: norm(form.get("fioTeacher")),
-        campusAddress: norm(form.get("campusAddress"))
+        campusAddress: norm(form.get("campusAddress")),
+        manualBuildingAssignment: true
     };
 
     if (!entry.numberSchoolBuilding || !entry.className || !entry.classDirection || !entry.fioTeacher) {

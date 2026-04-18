@@ -45,6 +45,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             String classDirection = normalize(request.getClassDirection());
             String fioTeacher = normalize(request.getFioTeacher());
             String campusAddress = resolveCampusAddress(building, request.getCampusAddress());
+            boolean manualBuildingAssignment = request.getManualBuildingAssignment() == null || request.getManualBuildingAssignment();
             if (building.isBlank() || className.isBlank() || classDirection.isBlank() || fioTeacher.isBlank()) continue;
 
             // Не блокируем сохранение: при отсутствии педагога создаём его автоматически.
@@ -53,6 +54,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             request.setClassName(className);
             request.setCampusAddress(campusAddress);
             request.setAcademicYear(academicYear);
+            request.setManualBuildingAssignment(manualBuildingAssignment);
             normalized.put(building + "|" + className, request);
         }
 
@@ -66,6 +68,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             entry.setClassDirection(normalize(request.getClassDirection()));
             entry.setFioTeacher(normalize(request.getFioTeacher()));
             entry.setCampusAddress(resolveCampusAddress(entry.getNumberSchoolBuilding(), request.getCampusAddress()));
+            entry.setManualBuildingAssignment(request.getManualBuildingAssignment() == null || request.getManualBuildingAssignment());
             toSave.add(entry);
         });
 
@@ -89,6 +92,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             req.setClassDirection(existing.getClassDirection());
             req.setFioTeacher(existing.getFioTeacher());
             req.setCampusAddress(existing.getCampusAddress());
+            req.setManualBuildingAssignment(existing.isManualBuildingAssignment());
             merged.put(existing.getNumberSchoolBuilding() + "|" + existing.getClassName(), req);
         });
 
@@ -127,6 +131,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
                 req.setFioTeacher(teacher);
                 req.setCampusAddress(resolveCampusAddress(building, campusAddress));
                 req.setAcademicYear(academicYear);
+                req.setManualBuildingAssignment(true);
                 merged.put(building + "|" + className, req);
                 imported++;
             }
