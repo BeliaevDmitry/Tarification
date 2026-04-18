@@ -11,6 +11,7 @@ import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.repository.AcademicYearRepository;
+import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 
@@ -32,6 +33,8 @@ class AcademicYearServiceImplContinuityTest {
     private ManualLoadEntryRepository manualLoadEntryRepository;
     @Mock
     private CurriculumPlanEntryRepository curriculumPlanEntryRepository;
+    @Mock
+    private ClassroomLeadershipRepository classroomLeadershipRepository;
 
     private AcademicYearServiceImpl service;
 
@@ -40,7 +43,8 @@ class AcademicYearServiceImplContinuityTest {
         service = new AcademicYearServiceImpl(
                 academicYearRepository,
                 manualLoadEntryRepository,
-                curriculumPlanEntryRepository
+                curriculumPlanEntryRepository,
+                classroomLeadershipRepository
         );
     }
 
@@ -93,4 +97,3 @@ class AcademicYearServiceImplContinuityTest {
         assertThrows(IllegalArgumentException.class, () -> service.markContinuityApplied("2026/2027"));
     }
 }
-
