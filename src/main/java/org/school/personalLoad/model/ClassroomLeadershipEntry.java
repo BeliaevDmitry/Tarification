@@ -38,5 +38,8 @@ public class ClassroomLeadershipEntry {
     private boolean manualBuildingAssignment = false;
 
     @Column(nullable = false)
+    private boolean manualBuildingAssignment = false;
+
+    @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 }
