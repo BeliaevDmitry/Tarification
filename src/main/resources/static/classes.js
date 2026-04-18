@@ -149,14 +149,35 @@ function updateSortButtons() {
 }
 
 async function reload() {
-    const [rows, buildingRows, teacherRows] = await Promise.all([
+    const [rows, buildingRows, teacherRows, curriculumRows] = await Promise.all([
         api("/api/classroom-leadership"),
         api("/api/buildings"),
-        api("/api/teachers")
+        api("/api/teachers"),
+        api("/api/curriculum")
     ]);
-    classRows = rows || [];
+    const actualRows = rows || [];
     buildings = buildingRows || [];
     teachers = (teacherRows || []).map((r) => norm(r.fioTeacher)).filter(Boolean);
+    const buildingAddressByCode = new Map(
+        buildings.map((b) => [normalizeBuildingCode(b.code), norm(b.address) || "Не указан"])
+    );
+    const existingByKey = new Map((actualRows || []).map((row) => [entryKey(row), row]));
+    (curriculumRows || [])
+        .filter((row) => !row?.deprecated)
+        .forEach((row) => {
+            const candidate = {
+                numberSchoolBuilding: normalizeBuildingCode(row.numberSchoolBuilding),
+                className: normalizeClassName(row.className),
+                classDirection: "Не указана",
+                fioTeacher: "Класс не назначен",
+                campusAddress: buildingAddressByCode.get(normalizeBuildingCode(row.numberSchoolBuilding)) || "Не указан"
+            };
+            const key = entryKey(candidate);
+            if (!existingByKey.has(key)) {
+                existingByKey.set(key, candidate);
+            }
+        });
+    classRows = Array.from(existingByKey.values());
     const templateLink = document.getElementById("download-classes-template");
     if (templateLink) {
         templateLink.href = withAcademicYearScope("/api/classroom-leadership/template");
