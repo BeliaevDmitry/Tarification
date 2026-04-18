@@ -62,9 +62,10 @@ public class CurriculumPlanController {
     }
 
     @GetMapping
-    public ResponseEntity<List<CurriculumPlanEntry>> findAll(@RequestParam(required = false) String academicYear) {
+    public ResponseEntity<List<CurriculumPlanEntry>> findAll(@RequestParam(required = false) String academicYear,
+                                                             @RequestParam(required = false) String building) {
         String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
-        return ResponseEntity.ok(curriculumPlanService.findAll(effectiveYear));
+        return ResponseEntity.ok(curriculumPlanService.findAll(effectiveYear, building));
     }
 
     @PatchMapping("/{id}")

@@ -61,16 +61,20 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
 
     @Override
     public List<CurriculumPlanEntry> findAll(String academicYear) {
-        return repository.findAll().stream()
-                .filter(item -> academicYear.equals(item.getAcademicYear()))
-                .toList();
+        return repository.findAllByAcademicYear(academicYear);
+    }
+
+    @Override
+    public List<CurriculumPlanEntry> findAll(String academicYear, String numberSchoolBuilding) {
+        if (numberSchoolBuilding == null || numberSchoolBuilding.isBlank()) {
+            return findAll(academicYear);
+        }
+        return repository.findAllByAcademicYearAndNumberSchoolBuildingIgnoreCase(academicYear, numberSchoolBuilding.trim());
     }
 
     @Override
     public void clearAll(String academicYear) {
-        repository.findAll().stream()
-                .filter(item -> academicYear.equals(item.getAcademicYear()))
-                .forEach(repository::delete);
+        repository.deleteAllByAcademicYear(academicYear);
     }
 
     @Override

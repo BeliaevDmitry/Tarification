@@ -722,6 +722,21 @@ dialog::backdrop {
     text-decoration: underline;
 }
 
+.head-sort-btn {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.head-sort-btn.active {
+    color: #1d4ed8;
+    text-decoration: underline;
+}
+
 .conflict-row td {
     background: #fee2e2;
 }
