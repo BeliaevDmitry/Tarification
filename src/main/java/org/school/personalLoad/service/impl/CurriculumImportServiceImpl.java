@@ -320,8 +320,14 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     importedIds.add(saved.getId());
                     if (isNew) created++; else updated++;
 
-                    boolean existedClass = classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, row.numberSchoolBuilding(), row.className());
-                    ensureClassroom(academicYear, row.numberSchoolBuilding(), row.className(), row.classDirection(), fallbackTeacher);
+                    String normalizedBuilding = normalizeBuildingCode(row.numberSchoolBuilding());
+                    String normalizedClassName = ClassNameNormalizer.normalize(row.className());
+                    boolean existedClass = classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(
+                            academicYear,
+                            normalizedBuilding,
+                            normalizedClassName
+                    );
+                    ensureClassroom(academicYear, normalizedBuilding, normalizedClassName, row.classDirection(), fallbackTeacher);
                     if (!existedClass) classesCreated++;
 
                     SubjectType subjectType = row.curriculumPart() == CurriculumPart.EXTRACURRICULAR
@@ -395,6 +401,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         cls.setClassDirection(row.getClassDirection() == null || row.getClassDirection().isBlank() ? "Не указана" : row.getClassDirection());
                         cls.setFioTeacher(fallbackTeacher);
                         cls.setCampusAddress("Не указан");
+                        cls.setManualBuildingAssignment(false);
                         classroomRepository.save(cls);
                         classesCreated++;
                     }
@@ -455,15 +462,23 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     }
 
     private void ensureClassroom(String academicYear, String building, String className, String classDirection, String fallbackTeacher) {
-        if (classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, className)) return;
+        String normalizedBuilding = normalizeBuildingCode(building);
+        String normalizedClass = ClassNameNormalizer.normalize(className);
+        if (classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, normalizedBuilding, normalizedClass)) return;
         ClassroomLeadershipEntry cls = new ClassroomLeadershipEntry();
         cls.setAcademicYear(academicYear);
-        cls.setNumberSchoolBuilding(building);
-        cls.setClassName(className);
+        cls.setNumberSchoolBuilding(normalizedBuilding);
+        cls.setClassName(normalizedClass);
         cls.setClassDirection(classDirection == null || classDirection.isBlank() ? "Не указана" : classDirection);
         cls.setFioTeacher(fallbackTeacher);
         cls.setCampusAddress("Не указан");
+        cls.setManualBuildingAssignment(false);
         classroomRepository.save(cls);
+    }
+
+    private String normalizeBuildingCode(String value) {
+        String normalized = String.valueOf(value == null ? "" : value).trim().replace(" ", "").toUpperCase(Locale.ROOT);
+        return normalized.isBlank() ? "СП0" : normalized;
     }
 
     private String currentAcademicYear() {

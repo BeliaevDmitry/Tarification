@@ -49,8 +49,12 @@ public class ManualLoadController {
     }
 
     @GetMapping
-    public ResponseEntity<List<ManualLoadEntry>> findAll(@RequestParam(required = false) String academicYear) {
-        return ResponseEntity.ok(manualLoadService.findAll(academicYearService.resolveRequestedOrDefault(academicYear)));
+    public ResponseEntity<List<ManualLoadEntry>> findAll(@RequestParam(required = false) String academicYear,
+                                                         @RequestParam(required = false) String building) {
+        return ResponseEntity.ok(manualLoadService.findAll(
+                academicYearService.resolveRequestedOrDefault(academicYear),
+                building
+        ));
     }
 
     @DeleteMapping

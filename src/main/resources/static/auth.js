@@ -66,6 +66,11 @@ function withAcademicYear(path) {
     return `${path}${separator}academicYear=${encodeURIComponent(selectedYear)}`;
 }
 
+// Публикуем helpers сразу, до async-инициализации auth.
+// Иначе страницы могут успеть отправить первые API-запросы без academicYear.
+window.withAcademicYear = withAcademicYear;
+window.getStoredAcademicYear = getStoredAcademicYear;
+
 function tabPermissionMap(currentUser) {
     return Object.fromEntries((currentUser.tabPermissions || []).map((permission) => [permission.tab, permission]));
 }
