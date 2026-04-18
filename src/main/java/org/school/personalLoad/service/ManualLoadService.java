@@ -15,6 +15,10 @@ public interface ManualLoadService {
 
     List<ManualLoadEntry> findAll(String academicYear);
 
+    default List<ManualLoadEntry> findAll(String academicYear, String numberSchoolBuilding) {
+        return findAll(academicYear);
+    }
+
     void clearAll(String academicYear);
 
     ManualLoadProcessResult processCurrentManualLoad(String academicYear);

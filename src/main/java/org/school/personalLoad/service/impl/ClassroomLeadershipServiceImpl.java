@@ -139,7 +139,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     }
 
     @Override
-    public Resource buildImportTemplate() {
+    public Resource buildImportTemplate(String academicYear) {
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = workbook.createSheet("Классы");
             Row header = sheet.createRow(0);
@@ -147,9 +147,9 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             header.createCell(1).setCellValue("Класс");
             header.createCell(2).setCellValue("Направление класса");
             header.createCell(3).setCellValue("Классный руководитель");
-            header.createCell(4).setCellValue("Адрес корпуса/площадки");
+            header.createCell(4).setCellValue("Адрес площадки (по умолчанию: адрес корпуса)");
 
-            List<ClassroomLeadershipEntry> rows = classroomLeadershipRepository.findAll();
+            List<ClassroomLeadershipEntry> rows = classroomLeadershipRepository.findAllByAcademicYear(academicYear);
             if (rows.isEmpty()) {
                 Row ex = sheet.createRow(1);
                 ex.createCell(0).setCellValue("СП1");
@@ -165,7 +165,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
                     row.createCell(1).setCellValue(entry.getClassName());
                     row.createCell(2).setCellValue(entry.getClassDirection());
                     row.createCell(3).setCellValue(entry.getFioTeacher());
-                    row.createCell(4).setCellValue(entry.getCampusAddress());
+                    row.createCell(4).setCellValue(resolveCampusAddress(entry.getNumberSchoolBuilding(), entry.getCampusAddress()));
                 }
             }
 

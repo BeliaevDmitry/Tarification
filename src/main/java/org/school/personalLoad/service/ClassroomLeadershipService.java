@@ -19,5 +19,5 @@ public interface ClassroomLeadershipService {
 
     Map<String, Object> importFromExcel(String academicYear, MultipartFile file);
 
-    Resource buildImportTemplate();
+    Resource buildImportTemplate(String academicYear);
 }
