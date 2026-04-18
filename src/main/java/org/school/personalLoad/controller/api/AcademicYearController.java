@@ -48,4 +48,9 @@ public class AcademicYearController {
     public ResponseEntity<AcademicYearConfig> markContinuity(@PathVariable String code) {
         return ResponseEntity.ok(academicYearService.markContinuityApplied(code));
     }
+
+    @PostMapping("/continuity")
+    public ResponseEntity<AcademicYearConfig> markContinuityByQuery(@RequestParam String code) {
+        return ResponseEntity.ok(academicYearService.markContinuityApplied(code));
+    }
 }
