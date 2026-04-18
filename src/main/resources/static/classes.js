@@ -29,6 +29,10 @@ const sortState = {
 const ACADEMIC_YEAR_STORAGE_KEY = "tarification.academicYear";
 
 function withAcademicYearScope(path) {
+    const unscoped = ["/api/buildings", "/api/teachers"];
+    if (unscoped.some((prefix) => String(path || "").startsWith(prefix))) {
+        return path;
+    }
     if (typeof window.withAcademicYear === "function") {
         return window.withAcademicYear(path);
     }
@@ -161,6 +165,14 @@ async function reload() {
     const curriculumRows = curriculumResult.status === "fulfilled" ? curriculumResult.value : [];
     const actualRows = rowsResult.status === "fulfilled" ? (rowsResult.value || []) : [];
     buildings = buildingsResult.status === "fulfilled" ? (buildingsResult.value || []) : [];
+    if (!buildings.length) {
+        const fallbackCodes = new Set();
+        actualRows.forEach((row) => fallbackCodes.add(normalizeBuildingCode(row.numberSchoolBuilding)));
+        (curriculumRows || []).forEach((row) => fallbackCodes.add(normalizeBuildingCode(row.numberSchoolBuilding)));
+        buildings = [...fallbackCodes]
+            .filter(Boolean)
+            .map((code) => ({ code, name: code, address: "Не указан" }));
+    }
     if (rowsResult.status !== "fulfilled") {
         print({ warning: "Не удалось загрузить сохранённые классы, отображаем данные из учебного плана", details: rowsResult.reason?.message || String(rowsResult.reason || "") });
     }
