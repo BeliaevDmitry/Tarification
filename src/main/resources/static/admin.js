@@ -234,7 +234,7 @@ async function renderAcademicYears() {
     ui.academicYearsBody.querySelectorAll('[data-year-continuity]').forEach((btn) => {
         btn.addEventListener('click', async () => {
             try {
-                await api(`/api/academic-years/${encodeURIComponent(btn.dataset.yearContinuity)}/continuity`, { method: 'POST' });
+                await api(`/api/academic-years/continuity?code=${encodeURIComponent(btn.dataset.yearContinuity)}`, { method: 'POST' });
                 if (ui.academicYearFeedback) {
                     ui.academicYearFeedback.textContent = `Преемственность отмечена для ${btn.dataset.yearContinuity}.`;
                 }
