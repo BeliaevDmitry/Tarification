@@ -36,8 +36,10 @@ public class ClassroomLeadershipController {
     }
 
     @GetMapping("/template")
-    public ResponseEntity<Resource> template() {
-        Resource template = classroomLeadershipService.buildImportTemplate();
+    public ResponseEntity<Resource> template(@RequestParam(required = false) String academicYear) {
+        Resource template = classroomLeadershipService.buildImportTemplate(
+                academicYearService.resolveRequestedOrDefault(academicYear)
+        );
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=classes-template.xlsx")

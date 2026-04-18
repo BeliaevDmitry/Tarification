@@ -22,9 +22,28 @@ let buildings = [];
 let classRows = [];
 let editingOriginalKey = null;
 let editingOriginalEntry = null;
+const sortState = {
+    field: "building",
+    direction: "asc"
+};
+const ACADEMIC_YEAR_STORAGE_KEY = "tarification.academicYear";
+
+function withAcademicYearScope(path) {
+    const unscoped = ["/api/buildings", "/api/teachers"];
+    if (unscoped.some((prefix) => String(path || "").startsWith(prefix))) {
+        return path;
+    }
+    if (typeof window.withAcademicYear === "function") {
+        return window.withAcademicYear(path);
+    }
+    const selectedYear = sessionStorage.getItem(ACADEMIC_YEAR_STORAGE_KEY) || "";
+    if (!selectedYear) return path;
+    const separator = path.includes("?") ? "&" : "?";
+    return `${path}${separator}academicYear=${encodeURIComponent(selectedYear)}`;
+}
 
 async function api(path, options = {}) {
-    const scopedPath = window.withAcademicYear ? window.withAcademicYear(path) : path;
+    const scopedPath = withAcademicYearScope(path);
     const response = await fetch(scopedPath, options);
     const text = await response.text();
     let body = null;
@@ -88,7 +107,20 @@ function openEditDialog(entry) {
 
 function renderClasses(rows) {
     ui.body.innerHTML = "";
-    classRows = (rows || []).slice();
+    const sourceRows = (rows || []).slice();
+    const collator = new Intl.Collator("ru", { numeric: true, sensitivity: "base" });
+    const sortedRows = sourceRows.sort((a, b) => {
+        const field = sortState.field;
+        const dir = sortState.direction === "desc" ? -1 : 1;
+        const aValue = field === "building"
+            ? String(buildingLabel(a.numberSchoolBuilding || "")).trim()
+            : String(a[field] || "").trim();
+        const bValue = field === "building"
+            ? String(buildingLabel(b.numberSchoolBuilding || "")).trim()
+            : String(b[field] || "").trim();
+        return collator.compare(aValue, bValue) * dir;
+    });
+    classRows = sortedRows;
     classRows.forEach((r) => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
@@ -96,7 +128,6 @@ function renderClasses(rows) {
             <td>${esc(r.className)}</td>
             <td>${esc(r.classDirection)}</td>
             <td>${esc(r.fioTeacher)}</td>
-            <td>${esc(r.campusAddress || "")}</td>
             <td><button type="button" class="inline-plus" title="Редактировать" data-edit-class="${esc(entryKey(r))}">✏️</button></td>
         `;
         ui.body.appendChild(tr);
@@ -110,22 +141,54 @@ function renderClasses(rows) {
     });
 }
 
+function updateSortButtons() {
+    document.querySelectorAll('button[data-sort-key]').forEach((btn) => {
+        const isActive = btn.dataset.sortKey === sortState.field;
+        btn.classList.toggle("active", isActive);
+        const label = btn.textContent.replace(/\s[↑↓]$/, "");
+        btn.textContent = isActive
+            ? `${label} ${sortState.direction === "asc" ? "↑" : "↓"}`
+            : label;
+    });
+}
+
 async function reload() {
-    const [rows, buildingRows, teacherRows] = await Promise.all([
+    const [rowsResult, buildingsResult, teacherResult] = await Promise.allSettled([
         api("/api/classroom-leadership"),
         api("/api/buildings"),
-        api("/api/teachers")
+        api("/api/teachers"),
     ]);
-    classRows = rows || [];
-    buildings = buildingRows || [];
+    const teacherRows = teacherResult.status === "fulfilled" ? teacherResult.value : [];
+    const actualRows = rowsResult.status === "fulfilled" ? (rowsResult.value || []) : [];
+    buildings = buildingsResult.status === "fulfilled" ? (buildingsResult.value || []) : [];
+    if (!buildings.length) {
+        const fallbackCodes = new Set();
+        actualRows.forEach((row) => fallbackCodes.add(normalizeBuildingCode(row.numberSchoolBuilding)));
+        buildings = [...fallbackCodes]
+            .filter(Boolean)
+            .map((code) => ({ code, name: code, address: "Не указан" }));
+    }
+    if (rowsResult.status !== "fulfilled") {
+        print({ warning: "Не удалось загрузить сохранённые классы", details: rowsResult.reason?.message || String(rowsResult.reason || "") });
+    }
     teachers = (teacherRows || []).map((r) => norm(r.fioTeacher)).filter(Boolean);
+    classRows = actualRows;
+    const templateLink = document.getElementById("download-classes-template");
+    if (templateLink) {
+        templateLink.href = withAcademicYearScope("/api/classroom-leadership/template");
+    }
     renderTeachers();
     renderBuildings();
     renderClasses(classRows);
 }
 
 async function upsertEntry(entry, originalKey = null) {
-    const current = await api("/api/classroom-leadership");
+    let current = [];
+    try {
+        current = await api("/api/classroom-leadership");
+    } catch {
+        current = [];
+    }
     const filtered = (current || []).filter((r) => {
         const key = entryKey(r);
         if (originalKey) return key !== originalKey;
@@ -143,7 +206,8 @@ ui.form.addEventListener("submit", async (e) => {
         className: normalizeClassName(form.get("className")),
         classDirection: norm(form.get("classDirection")),
         fioTeacher: norm(form.get("fioTeacher")),
-        campusAddress: norm(form.get("campusAddress"))
+        campusAddress: norm(form.get("campusAddress")),
+        manualBuildingAssignment: true
     };
 
     if (!entry.numberSchoolBuilding || !entry.className || !entry.classDirection || !entry.fioTeacher) {
@@ -169,7 +233,8 @@ ui.editForm.addEventListener('submit', async (e) => {
         className: normalizeClassName(form.get("className")),
         classDirection: norm(form.get("classDirection")),
         fioTeacher: norm(form.get("fioTeacher")),
-        campusAddress: norm(form.get("campusAddress"))
+        campusAddress: norm(form.get("campusAddress")),
+        manualBuildingAssignment: true
     };
 
     if (!entry.numberSchoolBuilding || !entry.className || !entry.classDirection || !entry.fioTeacher) {
@@ -188,6 +253,19 @@ ui.editForm.addEventListener('submit', async (e) => {
 });
 
 ui.editCloseBtn.addEventListener('click', () => ui.editDialog.close());
+document.querySelectorAll('button[data-sort-key]').forEach((button) => {
+    button.addEventListener('click', () => {
+        const nextField = button.dataset.sortKey;
+        if (sortState.field === nextField) {
+            sortState.direction = sortState.direction === "asc" ? "desc" : "asc";
+        } else {
+            sortState.field = nextField;
+            sortState.direction = "asc";
+        }
+        updateSortButtons();
+        renderClasses(classRows);
+    });
+});
 ui.editDeleteBtn?.addEventListener('click', async () => {
     const building = normalizeBuildingCode(editingOriginalEntry?.numberSchoolBuilding || ui.editForm.elements.numberSchoolBuilding.value);
     const className = normalizeClassName(editingOriginalEntry?.className || ui.editForm.elements.className.value);
@@ -232,4 +310,5 @@ ui.clearBtn.addEventListener("click", async () => {
     }
 });
 
+updateSortButtons();
 reload().catch((error) => print({ error: error.message }));

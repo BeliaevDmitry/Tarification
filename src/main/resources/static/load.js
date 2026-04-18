@@ -32,6 +32,7 @@ let curriculumRows = [];
 let manualRows = [];
 let teacherNames = [];
 let teacherDirectory = [];
+let teacherDirectoryByName = new Map();
 let buildings = [];
 let classroomRows = [];
 let studyPeriodSettings = [];
@@ -393,18 +394,19 @@ function updateDatalistOptions(listEl, query = "") {
 function isDismissedTeacher(teacherName) {
     const normalized = String(teacherName || "").trim().toLowerCase();
     if (!normalized) return false;
-    return teacherDirectory.some((t) => String(t.fioTeacher || "").trim().toLowerCase() === normalized && t.dismissalDate);
+    const teacher = teacherDirectoryByName.get(normalized);
+    return Boolean(teacher?.dismissalDate);
 }
 
 function teacherExists(teacherName) {
     const normalized = String(teacherName || "").trim().toLowerCase();
     if (!normalized) return true;
-    return teacherDirectory.some((t) => String(t.fioTeacher || "").trim().toLowerCase() === normalized);
+    return teacherDirectoryByName.has(normalized);
 }
 
 function dismissalDateOfTeacher(teacherName) {
     const normalized = String(teacherName || "").trim().toLowerCase();
-    const teacher = teacherDirectory.find((t) => String(t.fioTeacher || "").trim().toLowerCase() === normalized);
+    const teacher = teacherDirectoryByName.get(normalized);
     return teacher?.dismissalDate || null;
 }
 
@@ -860,10 +862,41 @@ function teacherHoursInComplex(teacherName) {
     return totals;
 }
 
+function computeTeacherHourIndexes() {
+    const buildingTeacherHours = {};
+    const complexTeacherHours = {};
+    const classMap = classBuildingMap();
+
+    expandCurriculumRows(curriculumRows || []).forEach((row) => {
+        const fromRow = canonicalBuildingCode(row.numberSchoolBuilding);
+        const fromClass = canonicalBuildingCode(classMap.get(normalizeClassName(row.className)));
+        const buildingCode = fromRow || fromClass;
+        if (!buildingCode) return;
+        const assignedTeacher = String(assignmentsForBuilding(buildingCode)[apiKeyOfRow(row)] || "").trim();
+        if (!assignedTeacher) return;
+
+        if (!buildingTeacherHours[buildingCode]) {
+            buildingTeacherHours[buildingCode] = {};
+        }
+        if (!buildingTeacherHours[buildingCode][assignedTeacher]) {
+            buildingTeacherHours[buildingCode][assignedTeacher] = { h1: 0, h2: 0 };
+        }
+        if (!complexTeacherHours[assignedTeacher]) {
+            complexTeacherHours[assignedTeacher] = { h1: 0, h2: 0 };
+        }
+
+        accumulateSplit(buildingTeacherHours[buildingCode][assignedTeacher], row);
+        accumulateSplit(complexTeacherHours[assignedTeacher], row);
+    });
+
+    return { buildingTeacherHours, complexTeacherHours };
+}
+
 function buildPresentationRows() {
     const rows = expandCurriculumRows(rowsForSelectedBuilding());
     const assignments = assignmentsForBuilding(selectedBuilding);
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
+    const { buildingTeacherHours, complexTeacherHours } = computeTeacherHourIndexes();
 
     const subjectInfo = new Map();
     rows.forEach((row) => {
@@ -932,8 +965,10 @@ function buildPresentationRows() {
                 rowsByClassAll: info.rowsByClassAll,
                 classCount,
                 subjectHours: totalHours,
-                buildingHours: formatSplitHours(teacherHoursInBuilding(selectedBuilding, teacherRow.teacherName || "")),
-                complexHours: formatSplitHours(teacherHoursInComplex(teacherRow.teacherName || ""))
+                buildingHours: formatSplitHours(
+                    buildingTeacherHours[selectedBuilding]?.[teacherRow.teacherName || ""] || { h1: 0, h2: 0 }
+                ),
+                complexHours: formatSplitHours(complexTeacherHours[teacherRow.teacherName || ""] || { h1: 0, h2: 0 })
             });
         });
     });
@@ -1796,6 +1831,11 @@ async function refreshSourceData() {
     manualRows = manual || [];
     teacherDirectory = teachers || [];
     teacherNames = sortRu(Array.from(new Set(teacherDirectory.map((t) => String(t.fioTeacher || "").trim()).filter(Boolean))));
+    teacherDirectoryByName = new Map(
+        teacherDirectory
+            .map((teacher) => [String(teacher.fioTeacher || "").trim().toLowerCase(), teacher])
+            .filter(([name]) => Boolean(name))
+    );
     classroomRows = classRows || [];
     studyPeriodSettings = periodSettings || [];
     subjectCatalog = subjects || [];
