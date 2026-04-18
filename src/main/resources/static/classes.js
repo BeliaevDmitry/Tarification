@@ -149,12 +149,16 @@ function updateSortButtons() {
 }
 
 async function reload() {
-    const [rows, buildingRows, teacherRows, curriculumRows] = await Promise.all([
+    const [rows, buildingRows] = await Promise.all([
         api("/api/classroom-leadership"),
         api("/api/buildings"),
+    ]);
+    const [teacherResult, curriculumResult] = await Promise.allSettled([
         api("/api/teachers"),
         api("/api/curriculum")
     ]);
+    const teacherRows = teacherResult.status === "fulfilled" ? teacherResult.value : [];
+    const curriculumRows = curriculumResult.status === "fulfilled" ? curriculumResult.value : [];
     const actualRows = rows || [];
     buildings = buildingRows || [];
     teachers = (teacherRows || []).map((r) => norm(r.fioTeacher)).filter(Boolean);
