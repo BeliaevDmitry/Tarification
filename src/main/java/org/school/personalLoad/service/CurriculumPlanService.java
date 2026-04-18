@@ -15,6 +15,10 @@ public interface CurriculumPlanService {
 
     List<CurriculumPlanEntry> findAll(String academicYear);
 
+    default List<CurriculumPlanEntry> findAll(String academicYear, String numberSchoolBuilding) {
+        return findAll(academicYear);
+    }
+
     void clearAll(String academicYear);
 
     CurriculumPlanEntry updateById(Long id, CurriculumPlanEntryRequest request);
