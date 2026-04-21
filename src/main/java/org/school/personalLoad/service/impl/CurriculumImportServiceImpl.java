@@ -119,7 +119,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 prevBuilding = building;
             }
         }
-        if (prevBuilding != null && classes.size() >= 1 && classes.size() >= buildingStart) {
+        if (prevBuilding != null && classes.size() >= 1 && classes.size() > buildingStart) {
             sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(1, 1, buildingStart, classes.size()));
         }
 
@@ -333,6 +333,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         SubjectCatalogEntry subjectCatalogEntry = new SubjectCatalogEntry();
                         subjectCatalogEntry.setSubjectName(normalizedSubject);
                         subjectCatalogEntry.setSubjectType(subjectType);
+                        subjectCatalogEntry.setSubjectAreaName("Без области");
                         existingSubjects.put(subjectKey, subjectCatalogRepository.save(subjectCatalogEntry));
                         subjectsImported++;
                     }
@@ -406,6 +407,11 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         SubjectCatalogEntry subjectCatalogEntry = new SubjectCatalogEntry();
                         subjectCatalogEntry.setSubjectName(normalizedSubject);
                         subjectCatalogEntry.setSubjectType(subjectType);
+                        subjectCatalogEntry.setSubjectAreaName(
+                                row.getSubjectAreaName() == null || row.getSubjectAreaName().isBlank()
+                                        ? "Без области"
+                                        : row.getSubjectAreaName().trim()
+                        );
                         existingSubjects.put(subjectKey, subjectCatalogRepository.save(subjectCatalogEntry));
                         subjectsImported++;
                     }
@@ -492,6 +498,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         row.getStage(),
                         row.getClassName(),
                         row.getClassDirection(),
+                        row.getSubjectAreaName(),
                         row.getSubjectName(),
                         row.getPlannedHours(),
                         StudyPeriod.YEAR,
@@ -512,6 +519,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         row.getStage(),
                         row.getClassName(),
                         row.getClassDirection(),
+                        row.getSubjectAreaName(),
                         row.getSubjectName(),
                         row.getPlannedHours(),
                         StudyPeriod.YEAR,
