@@ -55,13 +55,27 @@ const state = {
     hasUnsavedChanges: false,
     classSort: "",
     futurePlansByBuilding: {},
-    takeoverContext: null
+    takeoverContext: null,
+    continuityExpectedByKey: new Map()
 };
 
 
 async function api(path, options = {}) {
     const scopedPath = window.withAcademicYear ? window.withAcademicYear(path) : path;
     const response = await fetch(scopedPath, options);
+    const text = await response.text();
+    let body = null;
+    try {
+        body = text ? JSON.parse(text) : null;
+    } catch {
+        body = text ? { message: text } : null;
+    }
+    if (!response.ok) throw new Error(body?.message || body?.error || `HTTP ${response.status}`);
+    return body;
+}
+
+async function apiUnscoped(path, options = {}) {
+    const response = await fetch(path, options);
     const text = await response.text();
     let body = null;
     try {
@@ -102,6 +116,61 @@ function normalizeClassName(value) {
     const v = String(value || "").trim().toUpperCase().replace(/[–—]/g, "-");
     const m = v.match(/^(\d{1,2})\s*[- ]?\s*([А-ЯA-Z])$/);
     return m ? `${m[1]}-${m[2]}` : v;
+}
+
+function previousClassForContinuity(targetClass) {
+    const normalized = normalizeClassName(targetClass);
+    const match = normalized.match(/^(\d{1,2})-([А-ЯA-Z])$/);
+    if (!match) return null;
+    const parallel = Number(match[1]);
+    if (!Number.isFinite(parallel) || parallel <= 1) return null;
+    if (parallel === 5 || parallel === 10) return null;
+    return `${parallel - 1}-${match[2]}`;
+}
+
+function previousAcademicYearCode(yearCode) {
+    const [fromYear] = String(yearCode || "").split("/");
+    const year = Number(fromYear);
+    if (!Number.isFinite(year) || year <= 0) return null;
+    return `${year - 1}/${year}`;
+}
+
+function continuityGroupName(row) {
+    if (row?.groupNameEducationalPlan) return String(row.groupNameEducationalPlan).trim();
+    if (row?.__groupIndex) return `Группа ${row.__groupIndex}`;
+    if (row?.subgroupRequired) return "Группа 1";
+    return "";
+}
+
+function continuityKey(className, subjectName, groupName) {
+    return [
+        normalizeClassName(className),
+        String(subjectName || "").trim().toLowerCase(),
+        String(groupName || "").trim().toLowerCase()
+    ].join("|");
+}
+
+function computeContinuityExpectedByKey(sourceManual, targetCurriculum) {
+    const sourceByKey = new Map();
+    (sourceManual || []).forEach((row) => {
+        const teacher = String(row.fioTeacher || "").trim();
+        if (!teacher || isVacancyTeacherName(teacher)) return;
+        sourceByKey.set(
+            continuityKey(row.className, row.subjectName, row.groupNameEducationalPlan),
+            teacher.toLowerCase()
+        );
+    });
+
+    const expectedByTarget = new Map();
+    (targetCurriculum || []).forEach((row) => {
+        const prevClass = previousClassForContinuity(row.className);
+        if (!prevClass) return;
+        const groupName = continuityGroupName(row);
+        const expectedTeacher = sourceByKey.get(continuityKey(prevClass, row.subjectName, groupName));
+        if (!expectedTeacher) return;
+        expectedByTarget.set(continuityKey(row.className, row.subjectName, groupName), expectedTeacher);
+    });
+    return expectedByTarget;
 }
 
 function classBuildingMap() {
@@ -1547,11 +1616,16 @@ function renderTable() {
                 const isActive = hasRowTeacherAssigned;
                 const isMuted = rowTeacher !== "" && !hasRowTeacherAssigned && !isPlanned && !isTransferOut;
                 const isUnassigned = !hasAnyAssigned && !isPlanned;
-                const continuityStates = classRows
-                    .map((item) => String(item?.continuityState || item?.continuityStatus || "").trim().toLowerCase())
-                    .filter(Boolean);
-                const hasContinuityBroken = continuityStates.some((state) => state === "broken" || state === "violation" || state === "mismatch");
-                const hasContinuityOk = !hasContinuityBroken && continuityStates.some((state) => state === "ok" || state === "done" || state === "applied");
+                const hasContinuityExpectation = classRows.some((item) => state.continuityExpectedByKey.has(
+                    continuityKey(item.className, item.subjectName, continuityGroupName(item))
+                ));
+                const hasContinuityOk = hasContinuityExpectation && isActive && classRows.some((item) => {
+                    const expectedTeacher = state.continuityExpectedByKey.get(
+                        continuityKey(item.className, item.subjectName, continuityGroupName(item))
+                    );
+                    return Boolean(expectedTeacher) && expectedTeacher === rowTeacher.toLowerCase();
+                });
+                const hasContinuityBroken = hasContinuityExpectation && isActive && !hasContinuityOk;
                 const classesForCell = [
                     "hour-pill",
                     isActive ? "active" : "",
@@ -1832,14 +1906,16 @@ async function importLoadWorkbook(file) {
 }
 
 async function refreshSourceData() {
-    const [curriculum, manual, teachers, buildingRows, classRows, periodSettings, subjects] = await Promise.all([
+    const [curriculum, manual, teachers, buildingRows, classRows, periodSettings, subjects, yearResolve, academicYears] = await Promise.all([
         api("/api/curriculum"),
         api("/api/manual-load"),
         api("/api/teachers"),
         api("/api/buildings"),
         api("/api/classroom-leadership"),
         api("/api/settings/study-periods"),
-        api("/api/subjects")
+        api("/api/subjects"),
+        api("/api/academic-years/resolve"),
+        api("/api/academic-years")
     ]);
 
     curriculumRows = curriculum || [];
@@ -1854,6 +1930,19 @@ async function refreshSourceData() {
     classroomRows = classRows || [];
     studyPeriodSettings = periodSettings || [];
     subjectCatalog = subjects || [];
+    state.continuityExpectedByKey = new Map();
+
+    try {
+        const activeAcademicYear = String(yearResolve?.active || "").trim();
+        const activeYearMeta = (academicYears || []).find((row) => String(row.code || "").trim() === activeAcademicYear);
+        const sourceAcademicYear = previousAcademicYearCode(activeAcademicYear);
+        if (activeYearMeta?.continuityApplied && sourceAcademicYear) {
+            const sourceManualRows = await apiUnscoped(`/api/manual-load?academicYear=${encodeURIComponent(sourceAcademicYear)}`);
+            state.continuityExpectedByKey = computeContinuityExpectedByKey(sourceManualRows || [], curriculumRows || []);
+        }
+    } catch (error) {
+        print({ warning: `Не удалось вычислить подсветку преемственности: ${error.message}` });
+    }
 
     const buildingByCode = new Map();
     (buildingRows || []).forEach((b) => {
