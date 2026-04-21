@@ -110,6 +110,7 @@ public class CurriculumExcelParser {
             String teacherName = teacherRow >= 0 ? normalizeText(readMergedCell(sheet, teacherRow, col)) : "";
             String periodRawDirect = readCell(sheet.getRow(periodRow) == null ? null : sheet.getRow(periodRow).getCell(col));
             StudyPeriod period = mapPeriod(periodRawDirect.isBlank() ? readMergedCell(sheet, periodRow, col) : periodRawDirect);
+            className = resolveAmbiguousSooClassName(className, period, prev);
 
             // Для СОО в паре колонок (1П/2П) во второй колонке значения могут быть пустыми — наследуем слева.
             if (stage == CurriculumStage.SOO && prev != null) {
@@ -215,6 +216,36 @@ public class CurriculumExcelParser {
         int columnsPerClass = Math.max(1, width / tokens.size());
         int index = Math.min(tokens.size() - 1, Math.max(0, (col - range.getFirstColumn()) / columnsPerClass));
         return tokens.get(index);
+    }
+
+    private String resolveAmbiguousSooClassName(String className, StudyPeriod period, ColumnMeta prev) {
+        String normalized = normalizeText(className);
+        if (normalized.isBlank()) {
+            return normalized;
+        }
+        if (!normalized.contains(",") && !normalized.contains(";")) {
+            return normalized;
+        }
+
+        List<String> tokens = Arrays.stream(normalized.split("[,;]"))
+                .map(ClassNameNormalizer::normalize)
+                .filter(s -> !s.isBlank())
+                .toList();
+        if (tokens.isEmpty()) {
+            return "";
+        }
+        if (tokens.size() == 1) {
+            return tokens.get(0);
+        }
+
+        if (period == StudyPeriod.H2 && prev != null && tokens.contains(prev.className)) {
+            return prev.className;
+        }
+
+        if (prev != null) {
+            return tokens.stream().filter(token -> !token.equals(prev.className)).findFirst().orElse(tokens.get(0));
+        }
+        return tokens.get(0);
     }
 
     private boolean isPartMarker(String subject) {
