@@ -13,6 +13,7 @@ public class CurriculumImportRow {
     private CurriculumStage stage;
     private String className;
     private String classDirection;
+    private String subjectAreaName;
     private String subjectName;
     private java.math.BigDecimal plannedHours;
     private StudyPeriod studyPeriod;
@@ -24,10 +25,11 @@ public class CurriculumImportRow {
                                CurriculumStage stage,
                                String className,
                                String classDirection,
+                               String subjectAreaName,
                                String subjectName,
                                java.math.BigDecimal plannedHours,
                                StudyPeriod studyPeriod,
                                CurriculumPart curriculumPart) {
-        this(academicYear, stage, className, classDirection, subjectName, plannedHours, studyPeriod, curriculumPart, false, false);
+        this(academicYear, stage, className, classDirection, subjectAreaName, subjectName, plannedHours, studyPeriod, curriculumPart, false, false);
     }
 }
