@@ -136,29 +136,29 @@ public class AcademicYearServiceImpl implements AcademicYearService {
 
         List<ManualLoadEntry> toCreate = sourceManual.stream()
                 .map(source -> {
-                    String targetClass = nextClassForContinuity(source.getClassName());
-                    if (targetClass == null) {
-                        return null;
-                    }
                     StudyPeriod period = source.getStudyPeriod() == null ? StudyPeriod.YEAR : source.getStudyPeriod();
-                    CurriculumPlanEntry curriculum = curriculumByClassSubjectPeriod.get(
-                            classSubjectPeriodKey(targetClass, source.getSubjectName(), period)
-                    );
-                    if (curriculum == null && period != StudyPeriod.YEAR) {
-                        curriculum = curriculumByClassSubjectPeriod.get(
-                                classSubjectPeriodKey(targetClass, source.getSubjectName(), StudyPeriod.YEAR)
+                    List<String> classCandidates = continuityClassCandidates(source.getClassName());
+                    for (String targetClass : classCandidates) {
+                        CurriculumPlanEntry curriculum = curriculumByClassSubjectPeriod.get(
+                                classSubjectPeriodKey(targetClass, source.getSubjectName(), period)
                         );
+                        if (curriculum == null && period != StudyPeriod.YEAR) {
+                            curriculum = curriculumByClassSubjectPeriod.get(
+                                    classSubjectPeriodKey(targetClass, source.getSubjectName(), StudyPeriod.YEAR)
+                            );
+                        }
+                        if (curriculum == null) {
+                            continue;
+                        }
+                        String targetKey = joinKey(targetClass, source.getSubjectName(), source.getGroupNameEducationalPlan());
+                        if (targetExisting.containsKey(targetKey)) {
+                            return null;
+                        }
+                        ManualLoadEntry created = createContinuityEntry(targetYear, curriculum, source);
+                        targetExisting.put(targetKey, created);
+                        return created;
                     }
-                    if (curriculum == null) {
-                        return null;
-                    }
-                    String targetKey = joinKey(targetClass, source.getSubjectName(), source.getGroupNameEducationalPlan());
-                    if (targetExisting.containsKey(targetKey)) {
-                        return null;
-                    }
-                    ManualLoadEntry created = createContinuityEntry(targetYear, curriculum, source);
-                    targetExisting.put(targetKey, created);
-                    return created;
+                    return null;
                 })
                 .filter(Objects::nonNull)
                 .toList();
@@ -240,6 +240,15 @@ public class AcademicYearServiceImpl implements AcademicYearService {
             return null;
         }
         return (parallel + 1) + "-" + matcher.group(2);
+    }
+
+    private List<String> continuityClassCandidates(String sourceClassName) {
+        String normalizedSource = ClassNameNormalizer.normalize(sourceClassName);
+        String nextClass = nextClassForContinuity(normalizedSource);
+        if (nextClass == null || nextClass.equals(normalizedSource)) {
+            return List.of(normalizedSource);
+        }
+        return List.of(nextClass, normalizedSource);
     }
 
     private ManualLoadEntry createContinuityEntry(String targetYear, CurriculumPlanEntry curriculum, ManualLoadEntry source) {
