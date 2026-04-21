@@ -111,6 +111,9 @@ public class CurriculumExcelParser {
             String periodRawDirect = readCell(sheet.getRow(periodRow) == null ? null : sheet.getRow(periodRow).getCell(col));
             StudyPeriod period = mapPeriod(periodRawDirect.isBlank() ? readMergedCell(sheet, periodRow, col) : periodRawDirect);
             className = resolveAmbiguousSooClassName(stage, className, period, prev);
+            if (period == StudyPeriod.H2 && prev != null && prev.studyPeriod == StudyPeriod.H1) {
+                className = prev.className;
+            }
 
             // Для СОО в паре колонок (1П/2П) во второй колонке значения могут быть пустыми — наследуем слева.
             if (stage == CurriculumStage.SOO && prev != null) {

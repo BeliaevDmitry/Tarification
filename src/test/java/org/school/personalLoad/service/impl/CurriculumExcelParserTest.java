@@ -196,6 +196,38 @@ class CurriculumExcelParserTest {
     }
 
     @Test
+    void parseOooH2ColumnUsesSameClassAsPreviousH1() throws Exception {
+        Workbook wb = new XSSFWorkbook();
+        Sheet ooo = wb.createSheet("ООО");
+
+        row(ooo, 0).createCell(0).setCellValue("Учебный год 2025-2026");
+        row(ooo, 1).createCell(0).setCellValue("Период обучения");
+        row(ooo, 1).createCell(2).setCellValue("1П");
+        row(ooo, 1).createCell(3).setCellValue("2П");
+        row(ooo, 1).createCell(4).setCellValue("1П");
+        row(ooo, 1).createCell(5).setCellValue("2П");
+        row(ooo, 2).createCell(0).setCellValue("Направленность класса");
+        row(ooo, 2).createCell(2).setCellValue("универсальный");
+        row(ooo, 3).createCell(0).setCellValue("Класс");
+        row(ooo, 3).createCell(2).setCellValue("5Е");
+        row(ooo, 3).createCell(3).setCellValue("5В"); // типичный сдвиг в исходнике: H2 ошибочно содержит следующий класс
+        row(ooo, 3).createCell(4).setCellValue("5В");
+        row(ooo, 3).createCell(5).setCellValue("5В");
+        row(ooo, 4).createCell(0).setCellValue("Обязательная часть");
+        row(ooo, 5).createCell(1).setCellValue("Русский язык");
+        row(ooo, 5).createCell(2).setCellValue(5);
+        row(ooo, 5).createCell(3).setCellValue(5);
+        row(ooo, 5).createCell(4).setCellValue(5);
+        row(ooo, 5).createCell(5).setCellValue(5);
+
+        List<CurriculumImportRow> rows = parseWorkbook(wb);
+        assertTrue(rows.stream().anyMatch(r -> r.getClassName().equals("5-Е") && r.getStudyPeriod() == StudyPeriod.H1));
+        assertTrue(rows.stream().anyMatch(r -> r.getClassName().equals("5-Е") && r.getStudyPeriod() == StudyPeriod.H2));
+        assertTrue(rows.stream().anyMatch(r -> r.getClassName().equals("5-В") && r.getStudyPeriod() == StudyPeriod.H1));
+        assertTrue(rows.stream().anyMatch(r -> r.getClassName().equals("5-В") && r.getStudyPeriod() == StudyPeriod.H2));
+    }
+
+    @Test
     void skipsServiceRows() throws Exception {
         Workbook wb = new XSSFWorkbook();
         Sheet sheet = wb.createSheet("НОО");
