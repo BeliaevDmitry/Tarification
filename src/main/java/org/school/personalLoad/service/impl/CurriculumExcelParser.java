@@ -56,8 +56,14 @@ public class CurriculumExcelParser {
 
         // 3) После "Обязательная часть" идут строки предметов и часы по классам.
         CurriculumPart currentPart = CurriculumPart.CORE;
+        String currentSubjectArea = "Без области";
         for (int rowIndex = requiredPartRow + 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
-            String subject = extractSubject(sheet, rowIndex);
+            String areaCell = normalizeText(readMergedCell(sheet, rowIndex, 0));
+            String subjectCell = normalizeText(readMergedCell(sheet, rowIndex, 1));
+            if (!areaCell.isBlank() && !isPartMarker(areaCell) && !isServiceRow(areaCell)) {
+                currentSubjectArea = areaCell;
+            }
+            String subject = subjectCell.isBlank() ? areaCell : subjectCell;
             if (subject.isBlank()) {
                 continue;
             }
@@ -83,6 +89,7 @@ public class CurriculumExcelParser {
                         stage,
                         column.className,
                         column.classDirection,
+                        currentSubjectArea,
                         normalizedSubject,
                         parsedHours.hours(),
                         column.studyPeriod,
@@ -105,16 +112,24 @@ public class CurriculumExcelParser {
         ColumnMeta prev = null;
 
         for (int col = CLASS_COLUMNS_START; col <= maxCol; col++) {
-            String className = ClassNameNormalizer.normalize(readMergedCell(sheet, classRow, col));
+            String className = ClassNameNormalizer.normalize(resolveClassName(sheet, stage, classRow, col));
             String classDirection = normalizeText(readMergedCell(sheet, directionRow, col));
             String teacherName = teacherRow >= 0 ? normalizeText(readMergedCell(sheet, teacherRow, col)) : "";
-            StudyPeriod period = mapPeriod(readMergedCell(sheet, periodRow, col));
+            String periodRawDirect = readCell(sheet.getRow(periodRow) == null ? null : sheet.getRow(periodRow).getCell(col));
+            StudyPeriod period = mapPeriod(periodRawDirect.isBlank() ? readMergedCell(sheet, periodRow, col) : periodRawDirect);
+            className = resolveAmbiguousSooClassName(stage, className, period, prev);
+            if (period == StudyPeriod.H2 && prev != null && prev.studyPeriod == StudyPeriod.H1) {
+                className = prev.className;
+            }
 
             // Для СОО в паре колонок (1П/2П) во второй колонке значения могут быть пустыми — наследуем слева.
             if (stage == CurriculumStage.SOO && prev != null) {
                 if (className.isBlank()) className = prev.className;
                 if (classDirection.isBlank()) classDirection = prev.classDirection;
                 if (teacherName.isBlank()) teacherName = prev.teacherName;
+                if (period == null || (period == prev.studyPeriod && className.equals(prev.className))) {
+                    period = prev.studyPeriod == StudyPeriod.H1 ? StudyPeriod.H2 : StudyPeriod.H1;
+                }
             }
 
             if (className.isBlank()) {
@@ -183,6 +198,67 @@ public class CurriculumExcelParser {
         String a = normalizeText(readMergedCell(sheet, rowIndex, 0));
         String b = normalizeText(readMergedCell(sheet, rowIndex, 1));
         return b.isBlank() ? a : b;
+    }
+
+    private String resolveClassName(Sheet sheet, CurriculumStage stage, int classRow, int col) {
+        String raw = normalizeText(readMergedCell(sheet, classRow, col));
+        if (stage != CurriculumStage.SOO) {
+            return raw;
+        }
+        if (!raw.contains(",") && !raw.contains(";")) {
+            return raw;
+        }
+
+        List<String> tokens = Arrays.stream(raw.split("[,;]"))
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .toList();
+        if (tokens.size() <= 1) {
+            return raw;
+        }
+
+        CellRangeAddress range = mergedRangeForCell(sheet, classRow, col);
+        if (range == null) {
+            return tokens.get(0);
+        }
+
+        int width = range.getLastColumn() - range.getFirstColumn() + 1;
+        int columnsPerClass = Math.max(1, width / tokens.size());
+        int index = Math.min(tokens.size() - 1, Math.max(0, (col - range.getFirstColumn()) / columnsPerClass));
+        return tokens.get(index);
+    }
+
+    private String resolveAmbiguousSooClassName(CurriculumStage stage, String className, StudyPeriod period, ColumnMeta prev) {
+        if (stage != CurriculumStage.SOO) {
+            return normalizeText(className);
+        }
+        String normalized = normalizeText(className);
+        if (normalized.isBlank()) {
+            return normalized;
+        }
+        if (!normalized.contains(",") && !normalized.contains(";")) {
+            return normalized;
+        }
+
+        List<String> tokens = Arrays.stream(normalized.split("[,;]"))
+                .map(ClassNameNormalizer::normalize)
+                .filter(s -> !s.isBlank())
+                .toList();
+        if (tokens.isEmpty()) {
+            return "";
+        }
+        if (tokens.size() == 1) {
+            return tokens.get(0);
+        }
+
+        if (period == StudyPeriod.H2 && prev != null && tokens.contains(prev.className)) {
+            return prev.className;
+        }
+
+        if (prev != null) {
+            return tokens.stream().filter(token -> !token.equals(prev.className)).findFirst().orElse(tokens.get(0));
+        }
+        return tokens.get(0);
     }
 
     private boolean isPartMarker(String subject) {
@@ -283,6 +359,15 @@ public class CurriculumExcelParser {
             }
         }
         return false;
+    }
+
+    private CellRangeAddress mergedRangeForCell(Sheet sheet, int rowIndex, int colIndex) {
+        for (CellRangeAddress range : sheet.getMergedRegions()) {
+            if (range.isInRange(new CellAddress(rowIndex, colIndex))) {
+                return range;
+            }
+        }
+        return null;
     }
 
     private String readCell(Cell cell) {
