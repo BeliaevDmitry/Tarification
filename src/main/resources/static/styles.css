@@ -394,6 +394,15 @@ hr {
     font-weight: 600;
 }
 
+.summary-area-row td {
+    background: #f8fafc;
+    font-weight: 600;
+}
+
+.subject-name-cell {
+    text-align: center !important;
+}
+
 .hours-cell-wrap {
     padding: 0;
 }
@@ -424,6 +433,13 @@ hr {
 
 .hours-cell.advanced-cell {
     background: #ffd8b5;
+}
+
+.hours-index {
+    color: #7c3aed;
+    font-weight: 700;
+    font-size: 11px;
+    margin-left: 2px;
 }
 
 .subgroup-mark {
