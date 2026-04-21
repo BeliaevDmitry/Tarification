@@ -120,40 +120,45 @@ public class AcademicYearServiceImpl implements AcademicYearService {
                 .filter(entry -> entry.getFioTeacher() != null && !entry.getFioTeacher().isBlank())
                 .toList();
 
-        Map<String, ManualLoadEntry> sourceAssignments = sourceManual.stream()
-                .filter(entry -> entry.getFioTeacher() != null && !entry.getFioTeacher().isBlank())
-                .collect(Collectors.toMap(
-                        this::continuityKey,
-                        Function.identity(),
-                        (left, right) -> left.getId() != null && right.getId() != null && left.getId() > right.getId() ? left : right
-                ));
-        Map<String, List<ManualLoadEntry>> sourceAssignmentsByClassSubject = sourceManual.stream()
-                .collect(Collectors.groupingBy(this::classSubjectKey));
-
-        if (sourceAssignments.isEmpty()) {
+        if (sourceManual.isEmpty()) {
             throw new IllegalArgumentException("Невозможно выполнить преемственность: в " + sourceYear + " нет распределённых педагогов");
         }
+
+        Map<String, CurriculumPlanEntry> curriculumByClassSubjectPeriod = targetCurriculum.stream()
+                .collect(Collectors.toMap(
+                        this::classSubjectPeriodKey,
+                        Function.identity(),
+                        (left, right) -> left
+                ));
 
         Map<String, ManualLoadEntry> targetExisting = manualLoadEntryRepository.findAllByAcademicYear(targetYear).stream()
                 .collect(Collectors.toMap(this::continuityKey, Function.identity(), (left, right) -> left));
 
-        List<ManualLoadEntry> toCreate = targetCurriculum.stream()
-                .map(curriculum -> {
-                    String key = continuityKey(curriculum);
-                    if (targetExisting.containsKey(key)) {
-                        return null;
-                    }
-                    ManualLoadEntry source = sourceAssignments.get(key);
-                    if (source == null) {
-                        List<ManualLoadEntry> fallback = sourceAssignmentsByClassSubject.get(classSubjectKey(curriculum));
-                        if (fallback != null && !fallback.isEmpty()) {
-                            source = fallback.get(0);
+        List<ManualLoadEntry> toCreate = sourceManual.stream()
+                .map(source -> {
+                    StudyPeriod period = source.getStudyPeriod() == null ? StudyPeriod.YEAR : source.getStudyPeriod();
+                    List<String> classCandidates = continuityClassCandidates(source.getClassName());
+                    for (String targetClass : classCandidates) {
+                        CurriculumPlanEntry curriculum = curriculumByClassSubjectPeriod.get(
+                                classSubjectPeriodKey(targetClass, source.getSubjectName(), period)
+                        );
+                        if (curriculum == null && period != StudyPeriod.YEAR) {
+                            curriculum = curriculumByClassSubjectPeriod.get(
+                                    classSubjectPeriodKey(targetClass, source.getSubjectName(), StudyPeriod.YEAR)
+                            );
                         }
+                        if (curriculum == null) {
+                            continue;
+                        }
+                        String targetKey = joinKey(targetClass, source.getSubjectName(), source.getGroupNameEducationalPlan());
+                        if (targetExisting.containsKey(targetKey)) {
+                            return null;
+                        }
+                        ManualLoadEntry created = createContinuityEntry(targetYear, curriculum, source);
+                        targetExisting.put(targetKey, created);
+                        return created;
                     }
-                    if (source == null) {
-                        return null;
-                    }
-                    return createContinuityEntry(targetYear, curriculum, source);
+                    return null;
                 })
                 .filter(Objects::nonNull)
                 .toList();
@@ -201,6 +206,15 @@ public class AcademicYearServiceImpl implements AcademicYearService {
         );
     }
 
+    private String classSubjectPeriodKey(CurriculumPlanEntry entry) {
+        StudyPeriod period = entry.getStudyPeriod() == null ? StudyPeriod.YEAR : entry.getStudyPeriod();
+        return classSubjectPeriodKey(entry.getClassName(), entry.getSubjectName(), period);
+    }
+
+    private String classSubjectPeriodKey(String className, String subjectName, StudyPeriod studyPeriod) {
+        return joinKey(className, subjectName, studyPeriod == null ? StudyPeriod.YEAR.name() : studyPeriod.name());
+    }
+
     private String joinKey(String className, String subjectName, String groupNameEducationalPlan) {
         return String.join("|",
                 normalizeKey(className),
@@ -210,6 +224,31 @@ public class AcademicYearServiceImpl implements AcademicYearService {
 
     private String normalizeKey(String value) {
         return String.valueOf(value == null ? "" : value).trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String nextClassForContinuity(String sourceClassName) {
+        String normalized = ClassNameNormalizer.normalize(sourceClassName);
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("^(\\d{1,2})-([А-ЯA-Z])$").matcher(normalized);
+        if (!matcher.matches()) {
+            return null;
+        }
+        int parallel = Integer.parseInt(matcher.group(1));
+        if (parallel >= 11) {
+            return null;
+        }
+        if (parallel == 4 || parallel == 9) {
+            return null;
+        }
+        return (parallel + 1) + "-" + matcher.group(2);
+    }
+
+    private List<String> continuityClassCandidates(String sourceClassName) {
+        String normalizedSource = ClassNameNormalizer.normalize(sourceClassName);
+        String nextClass = nextClassForContinuity(normalizedSource);
+        if (nextClass == null || nextClass.equals(normalizedSource)) {
+            return List.of(normalizedSource);
+        }
+        return List.of(nextClass, normalizedSource);
     }
 
     private ManualLoadEntry createContinuityEntry(String targetYear, CurriculumPlanEntry curriculum, ManualLoadEntry source) {

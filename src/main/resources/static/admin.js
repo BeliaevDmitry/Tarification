@@ -116,7 +116,7 @@ function previousClassForContinuity(targetClass) {
     if (!match) return null;
     const parallel = Number(match[1]);
     if (!Number.isFinite(parallel) || parallel <= 1) return null;
-    if (parallel === 5 || parallel === 10) return null; // Из 4→5 и 9→10 преемственность не переносим.
+    if (parallel === 5 || parallel === 10) return null;
     return `${parallel - 1}-${match[2]}`;
 }
 
