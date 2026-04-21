@@ -119,7 +119,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 prevBuilding = building;
             }
         }
-        if (prevBuilding != null && classes.size() >= 1 && classes.size() >= buildingStart) {
+        if (prevBuilding != null && classes.size() >= 1 && classes.size() > buildingStart) {
             sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(1, 1, buildingStart, classes.size()));
         }
 
