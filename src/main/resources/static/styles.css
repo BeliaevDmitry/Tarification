@@ -394,6 +394,15 @@ hr {
     font-weight: 600;
 }
 
+.summary-area-row td {
+    background: #f8fafc;
+    font-weight: 600;
+}
+
+.subject-name-cell {
+    text-align: center !important;
+}
+
 .hours-cell-wrap {
     padding: 0;
 }
@@ -424,6 +433,13 @@ hr {
 
 .hours-cell.advanced-cell {
     background: #ffd8b5;
+}
+
+.hours-index {
+    color: #7c3aed;
+    font-weight: 700;
+    font-size: 11px;
+    margin-left: 2px;
 }
 
 .subgroup-mark {
@@ -488,11 +504,22 @@ hr {
     border: 1px solid #cbd5e1;
 }
 
-.hour-pill.active {
-    background: #dbeafe;
-    border-color: #60a5fa;
-    color: #1d4ed8;
-    font-weight: 600;
+.load-page {
+    --load-pill-blue-bg: #dbeafe;
+    --load-pill-blue-border: #60a5fa;
+    --load-pill-blue-text: #1d4ed8;
+    --load-pill-purple-bright-bg: #c4b5fd;
+    --load-pill-purple-bright-border: #8b5cf6;
+    --load-pill-purple-bright-text: #4c1d95;
+    --load-pill-purple-soft-bg: #ede9fe;
+    --load-pill-purple-soft-border: #c4b5fd;
+    --load-pill-purple-soft-text: #6d28d9;
+    --load-pill-continuity-ok-bg: #dcfce7;
+    --load-pill-continuity-ok-border: #86efac;
+    --load-pill-continuity-ok-text: #166534;
+    --load-pill-continuity-broken-bg: #fef9c3;
+    --load-pill-continuity-broken-border: #fde047;
+    --load-pill-continuity-broken-text: #854d0e;
 }
 
 .teacher-input {
@@ -552,17 +579,44 @@ hr {
     color: #991b1b;
 }
 
-.hour-pill.planned {
-    background: #ede9fe;
-    border-color: #a78bfa;
-    color: #5b21b6;
+.hour-pill.planned,
+.hour-pill.planned.active,
+.hour-pill.planned.continuity-ok,
+.hour-pill.planned.continuity-broken {
+    background: var(--load-pill-purple-bright-bg);
+    border-color: var(--load-pill-purple-bright-border);
+    color: var(--load-pill-purple-bright-text);
     font-weight: 600;
 }
 
-.hour-pill.transfer-out {
-    background: #dbeafe;
-    border-color: #60a5fa;
-    color: #1d4ed8;
+.hour-pill.transfer-out,
+.hour-pill.transfer-out.active,
+.hour-pill.transfer-out.continuity-ok,
+.hour-pill.transfer-out.continuity-broken {
+    background: var(--load-pill-purple-soft-bg);
+    border-color: var(--load-pill-purple-soft-border);
+    color: var(--load-pill-purple-soft-text);
+    font-weight: 600;
+}
+
+.hour-pill.continuity-ok:not(.planned):not(.transfer-out) {
+    background: var(--load-pill-continuity-ok-bg);
+    border-color: var(--load-pill-continuity-ok-border);
+    color: var(--load-pill-continuity-ok-text);
+    font-weight: 600;
+}
+
+.hour-pill.continuity-broken:not(.planned):not(.transfer-out) {
+    background: var(--load-pill-continuity-broken-bg);
+    border-color: var(--load-pill-continuity-broken-border);
+    color: var(--load-pill-continuity-broken-text);
+    font-weight: 600;
+}
+
+.hour-pill.active:not(.planned):not(.transfer-out):not(.continuity-ok):not(.continuity-broken) {
+    background: var(--load-pill-blue-bg);
+    border-color: var(--load-pill-blue-border);
+    color: var(--load-pill-blue-text);
     font-weight: 600;
 }
 
@@ -789,6 +843,59 @@ dialog::backdrop {
     display: flex;
     gap: 14px;
     align-items: center;
+}
+
+.load-color-legend {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin: 8px 0 0;
+    font-size: 13px;
+}
+
+.legend-title {
+    font-weight: 600;
+    color: #334155;
+}
+
+.legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #334155;
+}
+
+.legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    border: 1px solid #cbd5e1;
+}
+
+.legend-swatch-ok {
+    background: var(--load-pill-continuity-ok-bg);
+    border-color: var(--load-pill-continuity-ok-border);
+}
+
+.legend-swatch-broken {
+    background: var(--load-pill-continuity-broken-bg);
+    border-color: var(--load-pill-continuity-broken-border);
+}
+
+.legend-swatch-blue {
+    background: var(--load-pill-blue-bg);
+    border-color: var(--load-pill-blue-border);
+}
+
+.legend-swatch-transfer-in {
+    background: var(--load-pill-purple-bright-bg);
+    border-color: var(--load-pill-purple-bright-border);
+}
+
+.legend-swatch-transfer-out {
+    background: var(--load-pill-purple-soft-bg);
+    border-color: var(--load-pill-purple-soft-border);
 }
 
 

@@ -35,7 +35,7 @@
                 <select id="sort-field-select">
                     <option value="subject">по предмету</option>
                     <option value="teacher">по педагогу</option>
-                                                            <option value="buildingHours">по часам в корпусе</option>
+                    <option value="buildingHours">по часам в корпусе</option>
                     <option value="complexHours">по часам в комплексе</option>
                     <option value="classCount">по числу классов</option>
                 </select>
@@ -67,6 +67,14 @@
                 <strong>Ошибки: <span id="error-count">0</span></strong>
                 <button id="next-error-btn" type="button">Перейти к ошибке</button>
             </div>
+        </div>
+        <div class="load-color-legend">
+            <span class="legend-title">Легенда:</span>
+            <span class="legend-item"><span class="legend-swatch legend-swatch-blue"></span>Обычные часы (синий приоритет)</span>
+            <span class="legend-item"><span class="legend-swatch legend-swatch-ok"></span>Преемственность выполнена</span>
+            <span class="legend-item"><span class="legend-swatch legend-swatch-broken"></span>Преемственность нарушена</span>
+            <span class="legend-item"><span class="legend-swatch legend-swatch-transfer-in"></span>Передача часов: кому передали</span>
+            <span class="legend-item"><span class="legend-swatch legend-swatch-transfer-out"></span>Передача часов: от кого передали</span>
         </div>
         <pre id="load-result" class="result-box"></pre>
     </section>
