@@ -12,6 +12,18 @@ const PERIOD_META = {
     H2: { label: "2 полугодие", short: "2П" }
 };
 
+const CORE_AREA_ORDER = [
+    "Русский язык и литература",
+    "Иностранные языки",
+    "Математика и информатика",
+    "Общественно-научные предметы",
+    "Основы духовно-нравственной культуры народов России",
+    "Естественно-научные предметы",
+    "Искусство",
+    "Технология",
+    "Физическая культура и основы безопасности и защиты Родины"
+];
+
 const ui = {
     parallelTabs: document.getElementById("parallel-tabs"),
     buildingFilter: document.getElementById("parallel-building-filter"),
@@ -265,44 +277,78 @@ function buildSummaryRows(selectedClasses) {
         const groupedByArea = new Map();
         byPart[part].forEach((r) => {
             const area = subjectAreaForRow(r);
-            const gk = `${r.subjectName}|${r.educationLevel}`;
-            if (!groupedByArea.has(area)) groupedByArea.set(area, new Map());
-            const areaMap = groupedByArea.get(area);
-            if (!areaMap.has(gk)) areaMap.set(gk, []);
-            areaMap.get(gk).push(r);
+            const gk = `${r.subjectName}|${r.educationLevel}|${area}`;
+            if (!grouped.has(gk)) grouped.set(gk, []);
+            grouped.get(gk).push(r);
         });
 
-        const items = [];
-        Array.from(groupedByArea.entries())
-            .sort((a, b) => a[0].localeCompare(b[0], "ru"))
-            .forEach(([area, areaMap]) => {
-                items.push({ type: "area", part, subjectArea: area });
-                Array.from(areaMap.entries())
-                    .sort((a, b) => a[0].localeCompare(b[0], "ru"))
-                    .forEach(([key, values]) => {
-                        const [subjectName, educationLevel] = key.split("|");
-                        const perClass = {};
-                        values.forEach((v) => {
-                            const classKey = makeClassKey(v.numberSchoolBuilding, v.className);
-                            if (!perClass[classKey]) perClass[classKey] = { year: null, h1: null, h2: null };
-                            const item = {
-                                hours: Number(v.plannedHours || 0),
-                                subgroupRequired: Boolean(v.subgroupRequired),
-                                subgroupCount: Number(v.subgroupCount || 0),
-                                id: v.id,
-                                studyPeriod: v.studyPeriod,
-                                metaGroup: Boolean(v.metaGroup)
-                            };
-                            if (v.studyPeriod === "H1") perClass[classKey].h1 = item;
-                            else if (v.studyPeriod === "H2") perClass[classKey].h2 = item;
-                            else perClass[classKey].year = item;
+        const items = Array.from(grouped.entries()).map(([key, values]) => {
+            const [subjectName, educationLevel, subjectArea] = key.split("|");
+            const perClass = {};
+            values.forEach((v) => {
+                const classKey = makeClassKey(v.numberSchoolBuilding, v.className);
+                if (!perClass[classKey]) perClass[classKey] = { year: null, h1: null, h2: null };
+                const item = {
+                    hours: Number(v.plannedHours || 0),
+                    subgroupRequired: Boolean(v.subgroupRequired),
+                    subgroupCount: Number(v.subgroupCount || 0),
+                    id: v.id,
+                    studyPeriod: v.studyPeriod,
+                    metaGroup: Boolean(v.metaGroup)
+                };
+                if (v.studyPeriod === "H1") perClass[classKey].h1 = item;
+                else if (v.studyPeriod === "H2") perClass[classKey].h2 = item;
+                else perClass[classKey].year = item;
+            });
+            return { type: "subject", part, subjectName, educationLevel, subjectArea, perClass };
+        }).sort((a, b) => a.subjectName.localeCompare(b.subjectName, "ru"));
+
+        const preparedSubjects = [];
+        if (part !== "CORE") {
+            items.forEach((item) => preparedSubjects.push({ ...item, subjectColspan: 2, areaRowspan: 0 }));
+        } else {
+            const orderedAreas = [];
+            const byArea = new Map();
+            const noArea = [];
+            items.forEach((item) => {
+                const area = norm(item.subjectArea);
+                if (!area || area === "Без области") {
+                    noArea.push(item);
+                    return;
+                }
+                if (!byArea.has(area)) {
+                    byArea.set(area, []);
+                    orderedAreas.push(area);
+                }
+                byArea.get(area).push(item);
+            });
+
+            const areaRank = (area) => {
+                const idx = CORE_AREA_ORDER.findIndex((x) => x.toLowerCase() === area.toLowerCase());
+                return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
+            };
+
+            orderedAreas
+                .sort((a, b) => areaRank(a) - areaRank(b) || a.localeCompare(b, "ru"))
+                .forEach((area) => {
+                    const list = byArea.get(area) || [];
+                    list.sort((a, b) => a.subjectName.localeCompare(b.subjectName, "ru"));
+                    list.forEach((item, index) => {
+                        preparedSubjects.push({
+                            ...item,
+                            subjectColspan: 1,
+                            areaLabel: area,
+                            areaRowspan: index === 0 ? list.length : 0
                         });
-                        items.push({ type: "subject", part, subjectName, educationLevel, subjectArea: area, perClass });
                     });
                 });
 
+            noArea.sort((a, b) => a.subjectName.localeCompare(b.subjectName, "ru"))
+                .forEach((item) => preparedSubjects.push({ ...item, subjectColspan: 2, areaRowspan: 0 }));
+        }
+
         rows.push({ type: "part", part, title: PART_META[part].label });
-        rows.push(...items);
+        rows.push(...preparedSubjects);
         rows.push({ type: "sum", part, title: `Сумма ${PART_META[part].short}` });
     });
 
@@ -456,11 +502,11 @@ function renderSummaryTable() {
         if (row.type === "part") {
             tr.className = "summary-part-row";
             tr.innerHTML = `<td>${esc(row.title)}</td><td></td>${classDescriptors.map(() => "<td></td>").join("")}`;
-        } else if (row.type === "area") {
-            tr.className = "summary-area-row";
-            tr.innerHTML = `<td>${esc(row.subjectArea)}</td><td></td>${classDescriptors.map(() => "<td></td>").join("")}`;
         } else if (row.type === "subject") {
-            tr.innerHTML = `<td></td><td>${esc(row.subjectName)}</td>` + classDescriptors
+            const lead = row.subjectColspan === 2
+                ? `<td colspan="2">${esc(row.subjectName)}</td>`
+                : `${row.areaRowspan > 0 ? `<td rowspan="${esc(row.areaRowspan)}">${esc(row.areaLabel || "")}</td>` : ""}<td>${esc(row.subjectName)}</td>`;
+            tr.innerHTML = `${lead}` + classDescriptors
                 .map((col) => `<td class="hours-cell-wrap">${classCellMarkup(row.perClass[col.classKey], row, col)}</td>`)
                 .join("");
         } else {
