@@ -41,8 +41,8 @@ function applyTabAccess() {
         tab.style.display = allowed ? '' : 'none';
     });
 
-    if (canImportView) return 'import';
     if (canStatsView) return 'stats';
+    if (canImportView) return 'import';
     return null;
 }
 

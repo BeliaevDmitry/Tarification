@@ -16,12 +16,12 @@
     <section class="card">
         <nav class="contingent-tabs">
             <a class="nav-link nav-home-link" href="/" title="Главная" aria-label="Главная">🏠</a>
-            <button type="button" class="nav-link active" data-contingent-tab="import">Импорт</button>
-            <button type="button" class="nav-link" data-contingent-tab="stats">Численность</button>
+            <button type="button" class="nav-link active" data-contingent-tab="stats">Численность</button>
+            <button type="button" class="nav-link" data-contingent-tab="import">Импорт</button>
         </nav>
     </section>
 
-    <section class="card" data-contingent-pane="import" data-requires-edit>
+    <section class="card" data-contingent-pane="import" data-requires-edit style="display:none;">
         <h2>Импорт</h2>
         <div class="row controls-row">
             <input id="contingent-file" type="file" accept=".xlsx,.xls">
@@ -45,7 +45,7 @@
         </div>
     </section>
 
-    <section class="card" data-contingent-pane="stats" style="display:none;">
+    <section class="card" data-contingent-pane="stats">
         <h2>Численность</h2>
         <div class="row controls-row">
             <label>Дата выгрузки:
