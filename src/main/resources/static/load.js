@@ -1914,7 +1914,7 @@ async function refreshSourceData() {
         api("/api/classroom-leadership"),
         api("/api/settings/study-periods"),
         api("/api/subjects"),
-        api("/api/academic-years/resolve"),
+        api("/api/academic-years/active"),
         api("/api/academic-years")
     ]);
 
