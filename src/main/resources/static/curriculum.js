@@ -274,15 +274,15 @@ function buildSummaryRows(selectedClasses) {
 
     const rows = [];
     ["CORE", "FORMABLE", "EXTRACURRICULAR"].forEach((part) => {
-        const groupedByArea = new Map();
+        const groupedBySubject = new Map();
         byPart[part].forEach((r) => {
             const area = subjectAreaForRow(r);
             const gk = `${r.subjectName}|${r.educationLevel}|${area}`;
-            if (!grouped.has(gk)) grouped.set(gk, []);
-            grouped.get(gk).push(r);
+            if (!groupedBySubject.has(gk)) groupedBySubject.set(gk, []);
+            groupedBySubject.get(gk).push(r);
         });
 
-        const items = Array.from(grouped.entries()).map(([key, values]) => {
+        const items = Array.from(groupedBySubject.entries()).map(([key, values]) => {
             const [subjectName, educationLevel, subjectArea] = key.split("|");
             const perClass = {};
             values.forEach((v) => {
