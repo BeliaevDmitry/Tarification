@@ -92,6 +92,17 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
     @Override
+    public List<ManualLoadEntry> findAll(String academicYear, String numberSchoolBuilding) {
+        if (numberSchoolBuilding == null || numberSchoolBuilding.isBlank()) {
+            return findAll(academicYear);
+        }
+        return manualLoadEntryRepository.findAllByAcademicYearAndNumberSchoolBuildingIgnoreCase(
+                academicYear,
+                numberSchoolBuilding.trim()
+        );
+    }
+
+    @Override
     public void clearAll(String academicYear) {
         manualLoadEntryRepository.deleteAllByAcademicYear(academicYear);
     }
@@ -229,7 +240,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 String fio = readCell(row, 10).trim();
                 if (fio.isBlank()) {
                     fio = "Вакансия";
-                } else if (!"вакансия".equalsIgnoreCase(fio)) {
+                } else if (!fio.toLowerCase(Locale.ROOT).contains("вакан")) {
                     TeacherDirectoryEntry teacher = teacherDirectoryRepository.findByFioTeacherIgnoreCase(fio).orElse(null);
                     if (teacher == null) {
                         errors.add("Строка " + (i + 1) + ": педагог не найден в справочнике — " + fio);
@@ -272,11 +283,12 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         } catch (IOException e) {
             throw new IllegalArgumentException("Не удалось прочитать файл импорта нагрузки");
         }
-        if (!errors.isEmpty()) {
-            throw new IllegalArgumentException("Импорт отклонён:\n" + String.join("\n", errors));
-        }
         if (requests.isEmpty()) {
-            throw new IllegalArgumentException("Импорт отклонён: в файле нет строк для загрузки");
+            String details = errors.isEmpty() ? "" : ("\n" + String.join("\n", errors));
+            throw new IllegalArgumentException("Импорт отклонён: в файле нет строк для загрузки" + details);
+        }
+        if (!errors.isEmpty()) {
+            log.warn("Импорт нагрузки выполнен частично: пропущено {} строк(и): {}", errors.size(), String.join(" | ", errors));
         }
         return createBulk(requests);
     }
