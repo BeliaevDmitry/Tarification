@@ -394,6 +394,11 @@ hr {
     font-weight: 600;
 }
 
+.summary-area-row td {
+    background: #f8fafc;
+    font-weight: 600;
+}
+
 .hours-cell-wrap {
     padding: 0;
 }

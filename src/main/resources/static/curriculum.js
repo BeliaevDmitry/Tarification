@@ -243,6 +243,13 @@ function syncStudyPeriodControls() {
     }
 }
 
+function subjectAreaForRow(row) {
+    const type = subjectTypeByPart(row?.curriculumPart || "CORE");
+    const name = norm(row?.subjectName);
+    const match = (subjects || []).find((s) => norm(s.subjectName) === name && s.subjectType === type);
+    return norm(match?.subjectAreaName) || "Без области";
+}
+
 function buildSummaryRows(selectedClasses) {
     const byPart = { CORE: [], FORMABLE: [], EXTRACURRICULAR: [] };
     const classSet = new Set(selectedClasses.map((c) => makeClassKey(c.numberSchoolBuilding, c.className)));
@@ -255,38 +262,47 @@ function buildSummaryRows(selectedClasses) {
 
     const rows = [];
     ["CORE", "FORMABLE", "EXTRACURRICULAR"].forEach((part) => {
-        const grouped = new Map();
+        const groupedByArea = new Map();
         byPart[part].forEach((r) => {
+            const area = subjectAreaForRow(r);
             const gk = `${r.subjectName}|${r.educationLevel}`;
-            if (!grouped.has(gk)) grouped.set(gk, []);
-            grouped.get(gk).push(r);
+            if (!groupedByArea.has(area)) groupedByArea.set(area, new Map());
+            const areaMap = groupedByArea.get(area);
+            if (!areaMap.has(gk)) areaMap.set(gk, []);
+            areaMap.get(gk).push(r);
         });
 
-        const items = Array.from(grouped.entries())
+        const items = [];
+        Array.from(groupedByArea.entries())
             .sort((a, b) => a[0].localeCompare(b[0], "ru"))
-            .map(([key, values]) => {
-                const [subjectName, educationLevel] = key.split("|");
-                const perClass = {};
-                values.forEach((v) => {
-                    const classKey = makeClassKey(v.numberSchoolBuilding, v.className);
-                    if (!perClass[classKey]) perClass[classKey] = { year: null, h1: null, h2: null };
-                    const item = {
-                        hours: Number(v.plannedHours || 0),
-                        subgroupRequired: Boolean(v.subgroupRequired),
-                        subgroupCount: Number(v.subgroupCount || 0),
-                        id: v.id,
-                        studyPeriod: v.studyPeriod,
-                        metaGroup: Boolean(v.metaGroup)
-                    };
-                    if (v.studyPeriod === "H1") perClass[classKey].h1 = item;
-                    else if (v.studyPeriod === "H2") perClass[classKey].h2 = item;
-                    else perClass[classKey].year = item;
+            .forEach(([area, areaMap]) => {
+                items.push({ type: "area", part, subjectArea: area });
+                Array.from(areaMap.entries())
+                    .sort((a, b) => a[0].localeCompare(b[0], "ru"))
+                    .forEach(([key, values]) => {
+                        const [subjectName, educationLevel] = key.split("|");
+                        const perClass = {};
+                        values.forEach((v) => {
+                            const classKey = makeClassKey(v.numberSchoolBuilding, v.className);
+                            if (!perClass[classKey]) perClass[classKey] = { year: null, h1: null, h2: null };
+                            const item = {
+                                hours: Number(v.plannedHours || 0),
+                                subgroupRequired: Boolean(v.subgroupRequired),
+                                subgroupCount: Number(v.subgroupCount || 0),
+                                id: v.id,
+                                studyPeriod: v.studyPeriod,
+                                metaGroup: Boolean(v.metaGroup)
+                            };
+                            if (v.studyPeriod === "H1") perClass[classKey].h1 = item;
+                            else if (v.studyPeriod === "H2") perClass[classKey].h2 = item;
+                            else perClass[classKey].year = item;
+                        });
+                        items.push({ type: "subject", part, subjectName, educationLevel, subjectArea: area, perClass });
+                    });
                 });
-                return { part, subjectName, educationLevel, perClass };
-            });
 
         rows.push({ type: "part", part, title: PART_META[part].label });
-        rows.push(...items.map((item) => ({ type: "subject", ...item })));
+        rows.push(...items);
         rows.push({ type: "sum", part, title: `Сумма ${PART_META[part].short}` });
     });
 
@@ -428,7 +444,7 @@ function renderSummaryTable() {
 
     const directionRow = document.createElement("tr");
     directionRow.className = "summary-direction-row";
-    directionRow.innerHTML = `<th rowspan="2">Блок / предмет / часы</th>${allColumns.map((c) => `<th>${esc(c.classDirection)}</th>`).join("")}`;
+    directionRow.innerHTML = `<th rowspan="2">Блок / область</th><th rowspan="2">Предмет</th>${allColumns.map((c) => `<th>${esc(c.classDirection)}</th>`).join("")}`;
     const classRow = document.createElement("tr");
     classRow.className = "summary-class-row";
     classRow.innerHTML = allColumns.map((c) => `<th>${esc(c.className)}</th>`).join("");
@@ -439,9 +455,12 @@ function renderSummaryTable() {
         const tr = document.createElement("tr");
         if (row.type === "part") {
             tr.className = "summary-part-row";
-            tr.innerHTML = `<td>${esc(row.title)}</td>${classDescriptors.map(() => "<td></td>").join("")}`;
+            tr.innerHTML = `<td>${esc(row.title)}</td><td></td>${classDescriptors.map(() => "<td></td>").join("")}`;
+        } else if (row.type === "area") {
+            tr.className = "summary-area-row";
+            tr.innerHTML = `<td>${esc(row.subjectArea)}</td><td></td>${classDescriptors.map(() => "<td></td>").join("")}`;
         } else if (row.type === "subject") {
-            tr.innerHTML = `<td>${esc(row.subjectName)}</td>` + classDescriptors
+            tr.innerHTML = `<td></td><td>${esc(row.subjectName)}</td>` + classDescriptors
                 .map((col) => `<td class="hours-cell-wrap">${classCellMarkup(row.perClass[col.classKey], row, col)}</td>`)
                 .join("");
         } else {
@@ -464,7 +483,7 @@ function renderSummaryTable() {
                 return `<td class="summary-value ${mismatch ? "conflict-row" : ""}">${h1 || h2 ? `${h1}/${h2}` : ""}</td>`;
             }).join("");
             tr.className = "summary-sum-row";
-            tr.innerHTML = `<td>${esc(row.title)}</td>${calc}`;
+            tr.innerHTML = `<td>${esc(row.title)}</td><td></td>${calc}`;
         }
         ui.summaryBody.appendChild(tr);
     });

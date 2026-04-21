@@ -56,8 +56,14 @@ public class CurriculumExcelParser {
 
         // 3) После "Обязательная часть" идут строки предметов и часы по классам.
         CurriculumPart currentPart = CurriculumPart.CORE;
+        String currentSubjectArea = "Без области";
         for (int rowIndex = requiredPartRow + 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
-            String subject = extractSubject(sheet, rowIndex);
+            String areaCell = normalizeText(readMergedCell(sheet, rowIndex, 0));
+            String subjectCell = normalizeText(readMergedCell(sheet, rowIndex, 1));
+            if (!areaCell.isBlank() && !isPartMarker(areaCell) && !isServiceRow(areaCell)) {
+                currentSubjectArea = areaCell;
+            }
+            String subject = subjectCell.isBlank() ? areaCell : subjectCell;
             if (subject.isBlank()) {
                 continue;
             }
@@ -83,6 +89,7 @@ public class CurriculumExcelParser {
                         stage,
                         column.className,
                         column.classDirection,
+                        currentSubjectArea,
                         normalizedSubject,
                         parsedHours.hours(),
                         column.studyPeriod,
