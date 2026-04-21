@@ -1547,7 +1547,22 @@ function renderTable() {
                 const isActive = hasRowTeacherAssigned;
                 const isMuted = rowTeacher !== "" && !hasRowTeacherAssigned && !isPlanned && !isTransferOut;
                 const isUnassigned = !hasAnyAssigned && !isPlanned;
-                return `<td><button type="button" class="hour-pill ${isActive ? "active" : ""} ${isMuted ? "muted" : ""} ${isUnassigned ? "unassigned" : ""} ${isPlanned ? "planned" : ""} ${isTransferOut ? "transfer-out" : ""}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(hoursTotal)}</button></td>`;
+                const continuityStates = classRows
+                    .map((item) => String(item?.continuityState || item?.continuityStatus || "").trim().toLowerCase())
+                    .filter(Boolean);
+                const hasContinuityBroken = continuityStates.some((state) => state === "broken" || state === "violation" || state === "mismatch");
+                const hasContinuityOk = !hasContinuityBroken && continuityStates.some((state) => state === "ok" || state === "done" || state === "applied");
+                const classesForCell = [
+                    "hour-pill",
+                    isActive ? "active" : "",
+                    isMuted ? "muted" : "",
+                    isUnassigned ? "unassigned" : "",
+                    isPlanned ? "planned" : "",
+                    isTransferOut ? "transfer-out" : "",
+                    !isPlanned && !isTransferOut && hasContinuityOk ? "continuity-ok" : "",
+                    !isPlanned && !isTransferOut && hasContinuityBroken ? "continuity-broken" : ""
+                ].filter(Boolean).join(" ");
+                return `<td><button type="button" class="${classesForCell}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(hoursTotal)}</button></td>`;
             }).join("")}
         `;
 
