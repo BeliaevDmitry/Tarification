@@ -274,7 +274,7 @@ function buildSummaryRows(selectedClasses) {
 
     const rows = [];
     ["CORE", "FORMABLE", "EXTRACURRICULAR"].forEach((part) => {
-        const grouped = new Map();
+        const groupedByArea = new Map();
         byPart[part].forEach((r) => {
             const area = subjectAreaForRow(r);
             const gk = `${r.subjectName}|${r.educationLevel}|${area}`;
