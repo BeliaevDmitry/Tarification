@@ -358,6 +358,30 @@ function buildSummaryRows(selectedClasses) {
                 .forEach((item) => preparedSubjects.push({ ...item, subjectColspan: 2, areaRowspan: 0 }));
         }
 
+            const areaRank = (area) => {
+                const idx = CORE_AREA_ORDER.findIndex((x) => x.toLowerCase() === area.toLowerCase());
+                return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
+            };
+
+            orderedAreas
+                .sort((a, b) => areaRank(a) - areaRank(b) || a.localeCompare(b, "ru"))
+                .forEach((area) => {
+                    const list = byArea.get(area) || [];
+                    list.sort((a, b) => a.subjectName.localeCompare(b.subjectName, "ru"));
+                    list.forEach((item, index) => {
+                        preparedSubjects.push({
+                            ...item,
+                            subjectColspan: 1,
+                            areaLabel: area,
+                            areaRowspan: index === 0 ? list.length : 0
+                        });
+                    });
+                });
+
+            noArea.sort((a, b) => a.subjectName.localeCompare(b.subjectName, "ru"))
+                .forEach((item) => preparedSubjects.push({ ...item, subjectColspan: 2, areaRowspan: 0 }));
+        }
+
         rows.push({ type: "part", part, title: PART_META[part].label });
         rows.push(...preparedSubjects);
         rows.push({ type: "sum", part, title: `Сумма ${PART_META[part].short}` });
