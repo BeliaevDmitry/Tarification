@@ -109,6 +109,93 @@ class CurriculumExcelParserTest {
     }
 
     @Test
+    void parseSooWhenPeriodCellMergedFallsBackToAlternatingPeriods() throws Exception {
+        Workbook wb = new XSSFWorkbook();
+        Sheet soo = wb.createSheet("СОО");
+
+        row(soo, 0).createCell(0).setCellValue("Учебный год 2025-2026");
+        row(soo, 1).createCell(0).setCellValue("Период обучения");
+        row(soo, 1).createCell(2).setCellValue("1П");
+        soo.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(1, 1, 2, 3));
+        row(soo, 2).createCell(0).setCellValue("Направленность класса");
+        row(soo, 2).createCell(2).setCellValue("гуманитарный");
+        row(soo, 4).createCell(0).setCellValue("Класс");
+        row(soo, 4).createCell(2).setCellValue("10Д");
+        row(soo, 5).createCell(0).setCellValue("Обязательная часть");
+        row(soo, 6).createCell(1).setCellValue("Алгебра");
+        row(soo, 6).createCell(2).setCellValue(4);
+        row(soo, 6).createCell(3).setCellValue(4);
+
+        List<CurriculumImportRow> rows = parseWorkbook(wb);
+        assertEquals(2, rows.size());
+        assertTrue(rows.stream().anyMatch(r -> r.getStudyPeriod() == StudyPeriod.H1 && r.getClassName().equals("10-Д")));
+        assertTrue(rows.stream().anyMatch(r -> r.getStudyPeriod() == StudyPeriod.H2 && r.getClassName().equals("10-Д")));
+    }
+
+    @Test
+    void parseSooSplitsMergedClassCellWithSeveralClasses() throws Exception {
+        Workbook wb = new XSSFWorkbook();
+        Sheet soo = wb.createSheet("СОО");
+
+        row(soo, 0).createCell(0).setCellValue("Учебный год 2025-2026");
+        row(soo, 1).createCell(0).setCellValue("Период обучения");
+        row(soo, 1).createCell(2).setCellValue("1П");
+        row(soo, 1).createCell(3).setCellValue("2П");
+        row(soo, 1).createCell(4).setCellValue("1П");
+        row(soo, 1).createCell(5).setCellValue("2П");
+        row(soo, 2).createCell(0).setCellValue("Направленность класса");
+        row(soo, 2).createCell(2).setCellValue("ИТ-класс");
+        row(soo, 4).createCell(0).setCellValue("Класс");
+        row(soo, 4).createCell(2).setCellValue("11А, 11Б");
+        soo.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(4, 4, 2, 5));
+        row(soo, 5).createCell(0).setCellValue("Обязательная часть");
+        row(soo, 6).createCell(1).setCellValue("Алгебра");
+        row(soo, 6).createCell(2).setCellValue(4);
+        row(soo, 6).createCell(3).setCellValue(4);
+        row(soo, 6).createCell(4).setCellValue(5);
+        row(soo, 6).createCell(5).setCellValue(5);
+
+        List<CurriculumImportRow> rows = parseWorkbook(wb);
+        assertTrue(rows.stream().anyMatch(r -> r.getClassName().equals("11-А") && r.getPlannedHours().compareTo(new BigDecimal("4")) == 0));
+        assertTrue(rows.stream().anyMatch(r -> r.getClassName().equals("11-Б") && r.getPlannedHours().compareTo(new BigDecimal("5")) == 0));
+    }
+
+    @Test
+    void parseSooCombinedClassNameInSingleCellKeepsBothSemestersForEachClass() throws Exception {
+        Workbook wb = new XSSFWorkbook();
+        Sheet soo = wb.createSheet("СОО");
+
+        row(soo, 0).createCell(0).setCellValue("Учебный год 2025-2026");
+        row(soo, 1).createCell(0).setCellValue("Период обучения");
+        row(soo, 1).createCell(2).setCellValue("1П");
+        row(soo, 1).createCell(3).setCellValue("2П");
+        row(soo, 1).createCell(4).setCellValue("1П");
+        row(soo, 1).createCell(5).setCellValue("2П");
+        row(soo, 2).createCell(0).setCellValue("Направленность класса");
+        row(soo, 2).createCell(2).setCellValue("ИТ-класс");
+        row(soo, 4).createCell(0).setCellValue("Класс");
+        row(soo, 4).createCell(2).setCellValue("11А");
+        row(soo, 4).createCell(3).setCellValue("11А, 11Б");
+        row(soo, 4).createCell(4).setCellValue("11Б");
+        row(soo, 4).createCell(5).setCellValue("11Б");
+        row(soo, 5).createCell(0).setCellValue("Обязательная часть");
+        row(soo, 6).createCell(1).setCellValue("Алгебра");
+        row(soo, 6).createCell(2).setCellValue(4);
+        row(soo, 6).createCell(3).setCellValue(4);
+        row(soo, 6).createCell(4).setCellValue(5);
+        row(soo, 6).createCell(5).setCellValue(5);
+
+        List<CurriculumImportRow> rows = parseWorkbook(wb);
+        long class11a = rows.stream().filter(r -> r.getClassName().equals("11-А")).count();
+        long class11b = rows.stream().filter(r -> r.getClassName().equals("11-Б")).count();
+
+        assertEquals(2, class11a);
+        assertEquals(2, class11b);
+        assertTrue(rows.stream().anyMatch(r -> r.getClassName().equals("11-А") && r.getStudyPeriod() == StudyPeriod.H2));
+        assertTrue(rows.stream().anyMatch(r -> r.getClassName().equals("11-Б") && r.getStudyPeriod() == StudyPeriod.H1));
+    }
+
+    @Test
     void skipsServiceRows() throws Exception {
         Workbook wb = new XSSFWorkbook();
         Sheet sheet = wb.createSheet("НОО");
