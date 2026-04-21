@@ -426,6 +426,13 @@ hr {
     background: #ffd8b5;
 }
 
+.hours-index {
+    color: #7c3aed;
+    font-weight: 700;
+    font-size: 11px;
+    margin-left: 2px;
+}
+
 .subgroup-mark {
     position: absolute;
     right: 4px;

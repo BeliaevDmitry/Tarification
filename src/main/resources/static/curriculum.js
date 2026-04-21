@@ -347,6 +347,16 @@ function openCreateByCell(cellCtx) {
 
 function classCellMarkup(cellInfo, rowMeta, classMeta) {
     const info = cellInfo || { year: null, h1: null, h2: null };
+    const hoursLabelMarkup = (cell) => {
+        if (!cell) return "";
+        const markers = [];
+        if (cell.subgroupRequired) markers.push("Д");
+        if (cell.metaGroup) markers.push("М");
+        const markersHtml = markers.length
+            ? `<sup class="hours-index">${markers.join("")}</sup>`
+            : "";
+        return `${esc(cell.hours)}${markersHtml}`;
+    };
     const createAttrs = (studyPeriod) => {
         const candidateSettings = columnsForClass({ className: classMeta.className, numberSchoolBuilding: classMeta.numberSchoolBuilding });
         const setting = candidateSettings.find((x) => x.studyPeriod === studyPeriod)
@@ -364,7 +374,7 @@ function classCellMarkup(cellInfo, rowMeta, classMeta) {
 
     if (year) {
         const cls = `${rowMeta.educationLevel === "ADVANCED" ? "advanced-cell" : ""} ${year.metaGroup ? "meta-group-cell" : ""}`;
-        return `<button class="hours-cell ${cls}" data-id="${esc(year.id)}">${esc(year.hours)}</button>`;
+        return `<button class="hours-cell ${cls}" data-id="${esc(year.id)}">${hoursLabelMarkup(year)}</button>`;
     }
 
     if (!split) {
@@ -372,10 +382,10 @@ function classCellMarkup(cellInfo, rowMeta, classMeta) {
     }
 
     const left = h1
-        ? `<button class="hours-cell ${h1.metaGroup ? "meta-group-cell" : ""}" data-id="${esc(h1.id)}">${esc(h1.hours)}</button>`
+        ? `<button class="hours-cell ${h1.metaGroup ? "meta-group-cell" : ""}" data-id="${esc(h1.id)}">${hoursLabelMarkup(h1)}</button>`
         : emptyBtn("H1");
     const right = h2
-        ? `<button class="hours-cell ${h2.metaGroup ? "meta-group-cell" : ""}" data-id="${esc(h2.id)}">${esc(h2.hours)}</button>`
+        ? `<button class="hours-cell ${h2.metaGroup ? "meta-group-cell" : ""}" data-id="${esc(h2.id)}">${hoursLabelMarkup(h2)}</button>`
         : emptyBtn("H2");
     return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0"><div style="padding-right:4px">${left}</div><div style="border-left:1px solid #cbd5e1;padding-left:4px">${right}</div></div>`;
 }
