@@ -24,6 +24,15 @@ const CORE_AREA_ORDER = [
     "Физическая культура и основы безопасности и защиты Родины"
 ];
 
+const CORE_AREA_ALIASES = {
+    "русский язык и литературное чтение": "Русский язык и литература",
+    "русский язык": "Русский язык и литература",
+    "иностранный язык": "Иностранные языки",
+    "иностранные языки": "Иностранные языки",
+    "общественно научные предметы": "Общественно-научные предметы",
+    "естественно научные предметы": "Естественно-научные предметы"
+};
+
 const ui = {
     parallelTabs: document.getElementById("parallel-tabs"),
     buildingFilter: document.getElementById("parallel-building-filter"),
@@ -259,7 +268,9 @@ function subjectAreaForRow(row) {
     const type = subjectTypeByPart(row?.curriculumPart || "CORE");
     const name = norm(row?.subjectName);
     const match = (subjects || []).find((s) => norm(s.subjectName) === name && s.subjectType === type);
-    return norm(match?.subjectAreaName) || "Без области";
+    const area = norm(match?.subjectAreaName) || "Без области";
+    const normalized = area.toLowerCase().replaceAll("ё", "е").replace(/[—–-]/g, " ").replaceAll(/\s+/g, " ").trim();
+    return CORE_AREA_ALIASES[normalized] || area;
 }
 
 function buildSummaryRows(selectedClasses) {
@@ -322,6 +333,30 @@ function buildSummaryRows(selectedClasses) {
                 }
                 byArea.get(area).push(item);
             });
+
+            const areaRank = (area) => {
+                const idx = CORE_AREA_ORDER.findIndex((x) => x.toLowerCase() === area.toLowerCase());
+                return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
+            };
+
+            orderedAreas
+                .sort((a, b) => areaRank(a) - areaRank(b) || a.localeCompare(b, "ru"))
+                .forEach((area) => {
+                    const list = byArea.get(area) || [];
+                    list.sort((a, b) => a.subjectName.localeCompare(b.subjectName, "ru"));
+                    list.forEach((item, index) => {
+                        preparedSubjects.push({
+                            ...item,
+                            subjectColspan: 1,
+                            areaLabel: area,
+                            areaRowspan: index === 0 ? list.length : 0
+                        });
+                    });
+                });
+
+            noArea.sort((a, b) => a.subjectName.localeCompare(b.subjectName, "ru"))
+                .forEach((item) => preparedSubjects.push({ ...item, subjectColspan: 2, areaRowspan: 0 }));
+        }
 
             const areaRank = (area) => {
                 const idx = CORE_AREA_ORDER.findIndex((x) => x.toLowerCase() === area.toLowerCase());
@@ -504,8 +539,8 @@ function renderSummaryTable() {
             tr.innerHTML = `<td>${esc(row.title)}</td><td></td>${classDescriptors.map(() => "<td></td>").join("")}`;
         } else if (row.type === "subject") {
             const lead = row.subjectColspan === 2
-                ? `<td colspan="2">${esc(row.subjectName)}</td>`
-                : `${row.areaRowspan > 0 ? `<td rowspan="${esc(row.areaRowspan)}">${esc(row.areaLabel || "")}</td>` : ""}<td>${esc(row.subjectName)}</td>`;
+                ? `<td colspan="2" class="subject-name-cell">${esc(row.subjectName)}</td>`
+                : `${row.areaRowspan > 0 ? `<td rowspan="${esc(row.areaRowspan)}" class="subject-area-cell">${esc(row.areaLabel || "")}</td>` : ""}<td class="subject-name-cell">${esc(row.subjectName)}</td>`;
             tr.innerHTML = `${lead}` + classDescriptors
                 .map((col) => `<td class="hours-cell-wrap">${classCellMarkup(row.perClass[col.classKey], row, col)}</td>`)
                 .join("");

@@ -399,6 +399,10 @@ hr {
     font-weight: 600;
 }
 
+.subject-name-cell {
+    text-align: center !important;
+}
+
 .hours-cell-wrap {
     padding: 0;
 }
