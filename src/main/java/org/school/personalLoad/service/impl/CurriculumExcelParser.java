@@ -110,7 +110,7 @@ public class CurriculumExcelParser {
             String teacherName = teacherRow >= 0 ? normalizeText(readMergedCell(sheet, teacherRow, col)) : "";
             String periodRawDirect = readCell(sheet.getRow(periodRow) == null ? null : sheet.getRow(periodRow).getCell(col));
             StudyPeriod period = mapPeriod(periodRawDirect.isBlank() ? readMergedCell(sheet, periodRow, col) : periodRawDirect);
-            className = resolveAmbiguousSooClassName(className, period, prev);
+            className = resolveAmbiguousSooClassName(stage, className, period, prev);
 
             // Для СОО в паре колонок (1П/2П) во второй колонке значения могут быть пустыми — наследуем слева.
             if (stage == CurriculumStage.SOO && prev != null) {
@@ -218,7 +218,10 @@ public class CurriculumExcelParser {
         return tokens.get(index);
     }
 
-    private String resolveAmbiguousSooClassName(String className, StudyPeriod period, ColumnMeta prev) {
+    private String resolveAmbiguousSooClassName(CurriculumStage stage, String className, StudyPeriod period, ColumnMeta prev) {
+        if (stage != CurriculumStage.SOO) {
+            return normalizeText(className);
+        }
         String normalized = normalizeText(className);
         if (normalized.isBlank()) {
             return normalized;
