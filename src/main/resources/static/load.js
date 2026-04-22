@@ -25,7 +25,8 @@ const ui = {
     errorCount: document.getElementById("error-count"),
     nextErrorBtn: document.getElementById("next-error-btn"),
     statsSummary: document.getElementById("load-stats-summary"),
-    statsTable: document.getElementById("load-stats-table")
+    statsTable: document.getElementById("load-stats-table"),
+    exportStatsBtn: document.getElementById("export-load-stats-btn")
 };
 
 let curriculumRows = [];
@@ -1616,16 +1617,22 @@ function renderTable() {
                 const isActive = hasRowTeacherAssigned;
                 const isMuted = rowTeacher !== "" && !hasRowTeacherAssigned && !isPlanned && !isTransferOut;
                 const isUnassigned = !hasAnyAssigned && !isPlanned;
+                const persistedContinuityStates = classRows
+                    .map((item) => String(item?.continuityStatus || "").trim().toUpperCase())
+                    .filter(Boolean);
+                const hasPersistedContinuityOk = persistedContinuityStates.includes("OK");
+                const hasPersistedContinuityBroken = persistedContinuityStates.includes("BROKEN");
                 const hasContinuityExpectation = classRows.some((item) => state.continuityExpectedByKey.has(
                     continuityKey(item.className, item.subjectName, continuityGroupName(item))
                 ));
-                const hasContinuityOk = hasContinuityExpectation && isActive && classRows.some((item) => {
+                const expectationMatchesActiveTeacher = hasContinuityExpectation && classRows.some((item) => {
                     const expectedTeacher = state.continuityExpectedByKey.get(
                         continuityKey(item.className, item.subjectName, continuityGroupName(item))
                     );
                     return Boolean(expectedTeacher) && expectedTeacher === rowTeacher.toLowerCase();
                 });
-                const hasContinuityBroken = hasContinuityExpectation && isActive && !hasContinuityOk;
+                const hasContinuityOk = isActive && (hasPersistedContinuityOk || expectationMatchesActiveTeacher);
+                const hasContinuityBroken = isActive && (hasPersistedContinuityBroken || (!hasPersistedContinuityOk && hasContinuityExpectation && !expectationMatchesActiveTeacher));
                 const classesForCell = [
                     "hour-pill",
                     isActive ? "active" : "",
@@ -1887,6 +1894,28 @@ async function exportLoadWorkbook() {
     }
 }
 
+function exportLoadStatsCsv() {
+    if (!ui.statsTable) return;
+    const rows = Array.from(ui.statsTable.querySelectorAll("tr"));
+    if (!rows.length) {
+        print({ warning: "Нет данных для экспорта статистики" });
+        return;
+    }
+    const csvRows = rows.map((row) => {
+        const cells = Array.from(row.querySelectorAll("th,td"));
+        return cells.map((cell) => `"${String(cell.textContent || "").replaceAll('"', '""').trim()}"`).join(";");
+    });
+    const blob = new Blob(["\uFEFF" + csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const datePart = currentDisplayDate().replaceAll("-", "");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `load-stats-${datePart}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+}
+
 async function importLoadWorkbook(file) {
     try {
         const form = new FormData();
@@ -2078,6 +2107,7 @@ function bindEvents() {
     });
 
     ui.exportLoadBtn?.addEventListener("click", exportLoadWorkbook);
+    ui.exportStatsBtn?.addEventListener("click", exportLoadStatsCsv);
     ui.importLoadBtn?.addEventListener("click", () => ui.importLoadFile?.click());
     ui.importLoadFile?.addEventListener("change", async () => {
         const file = ui.importLoadFile.files?.[0];

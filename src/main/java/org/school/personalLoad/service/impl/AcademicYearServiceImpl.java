@@ -2,6 +2,7 @@ package org.school.personalLoad.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.model.AcademicYearConfig;
+import org.school.personalLoad.model.ContinuityStatus;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.StudyPeriod;
@@ -268,6 +269,7 @@ public class AcademicYearServiceImpl implements AcademicYearService {
         entry.setLoadToDate(defaultToDate(targetYear, studyPeriod));
         entry.setOrphaned(false);
         entry.setDismissalAdjusted(false);
+        entry.setContinuityStatus(ContinuityStatus.OK);
         return entry;
     }
 

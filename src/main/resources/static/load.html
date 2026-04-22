@@ -86,6 +86,9 @@
 
     <section class="card" data-load-pane="stats" style="display:none;">
         <h2>Статистика нагрузки</h2>
+        <div class="row controls-row">
+            <button id="export-load-stats-btn" type="button" data-allow-readonly="true">Скачать статистику (CSV)</button>
+        </div>
         <div id="load-stats-summary" class="muted"></div>
         <div class="sheet-wrap">
             <table class="sheet-table" id="load-stats-table"></table>

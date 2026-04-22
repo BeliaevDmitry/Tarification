@@ -11,6 +11,7 @@ import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadPlanFactSummary;
 import org.school.personalLoad.dto.ManualLoadProcessResult;
 import org.school.personalLoad.model.CurriculumPlanEntry;
+import org.school.personalLoad.model.ContinuityStatus;
 import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.StudyPeriod;
@@ -465,6 +466,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         entity.setStudyPeriod(resolveStudyPeriod(effectiveAcademicYear, request.getClassName(), request.getStudyPeriod(), request.getLoadFromDate(), request.getLoadToDate()));
         entity.setLoadFromDate(request.getLoadFromDate());
         entity.setLoadToDate(request.getLoadToDate());
+        entity.setContinuityStatus(ContinuityStatus.UNKNOWN);
         return entity;
     }
 
