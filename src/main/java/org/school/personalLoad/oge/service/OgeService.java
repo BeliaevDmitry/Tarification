@@ -4,11 +4,15 @@ import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.school.personalLoad.model.ContingentSnapshot;
+import org.school.personalLoad.model.ContingentStudent;
 import org.school.personalLoad.oge.dto.OgeDtos;
 import org.school.personalLoad.oge.model.OgeGiaParticipant;
 import org.school.personalLoad.oge.model.OgeGiaVersion;
 import org.school.personalLoad.oge.model.OgeScoreScaleEntry;
 import org.school.personalLoad.oge.model.OgeWorkResult;
+import org.school.personalLoad.repository.ContingentSnapshotRepository;
+import org.school.personalLoad.repository.ContingentStudentRepository;
 import org.school.personalLoad.oge.repository.OgeGiaVersionRepository;
 import org.school.personalLoad.oge.repository.OgeScoreScaleRepository;
 import org.school.personalLoad.oge.repository.OgeWorkResultRepository;
@@ -30,9 +34,11 @@ public class OgeService {
     private final OgeGiaVersionRepository giaVersionRepository;
     private final OgeWorkResultRepository workResultRepository;
     private final OgeScoreScaleRepository scoreScaleRepository;
+    private final ContingentSnapshotRepository contingentSnapshotRepository;
+    private final ContingentStudentRepository contingentStudentRepository;
 
     @Transactional
-    public List<OgeDtos.ImportFileResult> importGia(List<MultipartFile> files) {
+    public List<OgeDtos.ImportFileResult> importGia(String academicYear, List<MultipartFile> files) {
         List<OgeDtos.ImportFileResult> results = new ArrayList<>();
         for (MultipartFile file : files) {
             String fileName = Optional.ofNullable(file.getOriginalFilename()).orElse("upload.xlsx");
@@ -61,6 +67,7 @@ public class OgeService {
                     p.setVersion(version);
                     p.setFullName(fio);
                     p.setSnils(OgeSubjects.normalizeSnils(getText(row.getCell(3))));
+                    p.setDocument(getText(row.getCell(2)).trim());
                     p.setClassName(OgeSubjects.normalizeClassName(getText(row.getCell(5))));
                     p.setExamCount(parseInt(getText(row.getCell(28))));
 
@@ -250,10 +257,11 @@ public class OgeService {
     }
 
     @Transactional
-    public List<OgeDtos.ImportFileResult> importWorks(List<MultipartFile> files) {
+    public List<OgeDtos.ImportFileResult> importWorks(String academicYear, List<MultipartFile> files) {
         ensureDefaultScale();
         Map<String, Map<Integer, Integer>> scale = scaleMap();
         List<OgeDtos.ImportFileResult> out = new ArrayList<>();
+        Set<String> contingentFio9 = loadContingent9Fio(academicYear);
 
         for (MultipartFile file : files) {
             String fileName = Optional.ofNullable(file.getOriginalFilename()).orElse("work.xlsx");
@@ -270,11 +278,16 @@ public class OgeService {
                 HeaderPos pos = detectHeader(data);
                 if (pos == null) throw new IllegalArgumentException("Не найдены заголовки ФИО/Итог");
                 int count = 0;
+                Set<String> unknownFio = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
                 for (int r = pos.dataStartRow; r <= data.getLastRowNum(); r++) {
                     Row row = data.getRow(r);
                     if (row == null) continue;
                     String fio = OgeSubjects.normalizeFio(getText(row.getCell(pos.fioCol)));
                     if (fio.isBlank()) continue;
+                    if (!contingentFio9.contains(normalizeFioCompare(fio))) {
+                        unknownFio.add(fio);
+                        continue;
+                    }
                     Integer score = parseInt(getText(row.getCell(pos.scoreCol)));
                     if (!isMeaningfulResultRow(row, pos, score)) {
                         continue;
@@ -304,7 +317,10 @@ public class OgeService {
                     workResultRepository.save(entity);
                     count++;
                 }
-                out.add(new OgeDtos.ImportFileResult(fileName, true, "OK", count));
+                String message = unknownFio.isEmpty()
+                        ? "OK"
+                        : "OK. Пропущены ФИО (нет в контингенте 9-х): " + String.join(", ", unknownFio);
+                out.add(new OgeDtos.ImportFileResult(fileName, true, message, count));
             } catch (Exception e) {
                 out.add(new OgeDtos.ImportFileResult(fileName, false, e.getMessage(), 0));
             }
@@ -355,8 +371,9 @@ public class OgeService {
         return new OgeDtos.WorkDatasetResponse(resultRows, missing, stats);
     }
 
-    public byte[] exportWorksWorkbook() throws IOException {
+    public byte[] exportWorksWorkbook(String academicYear) throws IOException {
         OgeDtos.WorkDatasetResponse data = workDataset();
+        OgeDtos.GiaMismatchResponse mismatches = giaMismatches(academicYear);
         try (Workbook wb = new XSSFWorkbook()) {
             Sheet results = wb.createSheet("Результаты");
             writeWorkResults(results, data.results());
@@ -364,10 +381,78 @@ public class OgeService {
             writeMissing(missing, data.missing());
             Sheet stats = wb.createSheet("Статистика");
             writeStats(stats, data.statistics());
+            Sheet mismatchSheet = wb.createSheet("Нестыковки");
+            writeMismatches(mismatchSheet, mismatches.rows());
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             wb.write(bos);
             return bos.toByteArray();
         }
+    }
+
+    public OgeDtos.GiaMismatchResponse giaMismatches(String academicYear) {
+        OgeGiaVersion latestGia = latestVersion();
+        ContingentSnapshot snapshot = contingentSnapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear)
+                .orElseGet(() -> contingentSnapshotRepository.findFirstByOrderByImportedAtDesc().orElse(null));
+        if (latestGia == null || snapshot == null) return new OgeDtos.GiaMismatchResponse(List.of());
+
+        List<ContingentStudent> ninth = contingentStudentRepository.findAllBySnapshotId(snapshot.getId()).stream()
+                .filter(s -> normalizeClassLoose(s.getClassName()).startsWith("9"))
+                .toList();
+
+        Map<String, OgeGiaParticipant> giaByFioClass = latestGia.getParticipants().stream()
+                .filter(p -> normalizeClassLoose(p.getClassName()).startsWith("9"))
+                .collect(Collectors.toMap(
+                        p -> normalizeFioCompare(p.getFullName()) + "|" + normalizeClassLoose(p.getClassName()),
+                        Function.identity(),
+                        (a, b) -> a,
+                        LinkedHashMap::new
+                ));
+        Map<String, ContingentStudent> contByFioClass = ninth.stream()
+                .collect(Collectors.toMap(
+                        c -> normalizeFioCompare(c.getFullName()) + "|" + normalizeClassLoose(c.getClassName()),
+                        Function.identity(),
+                        (a, b) -> a,
+                        LinkedHashMap::new
+                ));
+
+        List<OgeDtos.GiaMismatchRow> rows = new ArrayList<>();
+        Set<String> allKeys = new TreeSet<>();
+        allKeys.addAll(giaByFioClass.keySet());
+        allKeys.addAll(contByFioClass.keySet());
+        for (String key : allKeys) {
+            OgeGiaParticipant g = giaByFioClass.get(key);
+            ContingentStudent c = contByFioClass.get(key);
+            if (g == null) {
+                rows.add(new OgeDtos.GiaMismatchRow("ОГЭ/Нестыковка", c.getClassName(), "", c.getFullName(), "", c.getPassport(), "Не найден в выгрузке ГИА"));
+                continue;
+            }
+            if (c == null) {
+                rows.add(new OgeDtos.GiaMismatchRow("ОГЭ/Нестыковка", g.getClassName(), g.getFullName(), "", g.getDocument(), "", "Не найден в контингенте"));
+                continue;
+            }
+            String docG = normalizePassport(g.getDocument());
+            String docC = normalizePassport(c.getPassport());
+            if (!docG.equals(docC)) {
+                rows.add(new OgeDtos.GiaMismatchRow("ОГЭ/Нестыковка", g.getClassName(), g.getFullName(), c.getFullName(), g.getDocument(), c.getPassport(), "Не совпадает документ"));
+            }
+        }
+
+        Map<String, OgeGiaParticipant> giaByDocClass = latestGia.getParticipants().stream()
+                .filter(p -> normalizeClassLoose(p.getClassName()).startsWith("9"))
+                .filter(p -> !normalizePassport(p.getDocument()).isBlank())
+                .collect(Collectors.toMap(
+                        p -> normalizePassport(p.getDocument()) + "|" + normalizeClassLoose(p.getClassName()),
+                        Function.identity(),
+                        (a, b) -> a
+                ));
+        for (ContingentStudent c : ninth) {
+            String key = normalizePassport(c.getPassport()) + "|" + normalizeClassLoose(c.getClassName());
+            OgeGiaParticipant g = giaByDocClass.get(key);
+            if (g != null && !normalizeFioCompare(g.getFullName()).equals(normalizeFioCompare(c.getFullName()))) {
+                rows.add(new OgeDtos.GiaMismatchRow("ОГЭ/Нестыковка", c.getClassName(), g.getFullName(), c.getFullName(), g.getDocument(), c.getPassport(), "Не совпадает ФИО"));
+            }
+        }
+        return new OgeDtos.GiaMismatchResponse(rows);
     }
 
     public byte[] exportGiaWorkbook() throws IOException {
@@ -500,6 +585,28 @@ public class OgeService {
         }
     }
 
+    private void writeMismatches(Sheet sheet, List<OgeDtos.GiaMismatchRow> rows) {
+        Row h = sheet.createRow(0);
+        h.createCell(0).setCellValue("Тип");
+        h.createCell(1).setCellValue("Класс");
+        h.createCell(2).setCellValue("ФИО (ГИА)");
+        h.createCell(3).setCellValue("ФИО (Контингент)");
+        h.createCell(4).setCellValue("Документ (ГИА)");
+        h.createCell(5).setCellValue("Документ (Контингент)");
+        h.createCell(6).setCellValue("Причина");
+        int r = 1;
+        for (OgeDtos.GiaMismatchRow row : rows) {
+            Row rr = sheet.createRow(r++);
+            rr.createCell(0).setCellValue(row.type());
+            rr.createCell(1).setCellValue(row.className());
+            rr.createCell(2).setCellValue(row.fioGia());
+            rr.createCell(3).setCellValue(row.fioContingent());
+            rr.createCell(4).setCellValue(row.documentGia());
+            rr.createCell(5).setCellValue(row.documentContingent());
+            rr.createCell(6).setCellValue(row.reason());
+        }
+    }
+
     private CellStyle color(Workbook wb, short color) {
         CellStyle style = wb.createCellStyle();
         style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
@@ -520,6 +627,17 @@ public class OgeService {
                 .filter(s -> s != null && !s.isBlank())
                 .findFirst()
                 .orElse("");
+    }
+
+    private Set<String> loadContingent9Fio(String academicYear) {
+        ContingentSnapshot snapshot = contingentSnapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear)
+                .orElseGet(() -> contingentSnapshotRepository.findFirstByOrderByImportedAtDesc().orElse(null));
+        if (snapshot == null) return Set.of();
+        return contingentStudentRepository.findAllBySnapshotId(snapshot.getId()).stream()
+                .filter(s -> normalizeClassLoose(s.getClassName()).startsWith("9"))
+                .map(ContingentStudent::getFullName)
+                .map(this::normalizeFioCompare)
+                .collect(Collectors.toCollection(() -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER)));
     }
 
     private String extractSubject(Sheet info) {
@@ -625,6 +743,27 @@ public class OgeService {
 
     private String blank(String value) {
         return value == null ? "" : value;
+    }
+
+    private String normalizeClassLoose(String className) {
+        return blank(className).replaceAll("[^А-Яа-яA-Za-z0-9]", "").toUpperCase(Locale.ROOT);
+    }
+
+    private String normalizeFioCompare(String fio) {
+        return OgeSubjects.normalizeFio(blank(fio))
+                .replace('Ё', 'Е')
+                .replace('ё', 'е')
+                .toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizePassport(String value) {
+        if (value == null) return "";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\d+").matcher(value);
+        List<String> parts = new ArrayList<>();
+        while (m.find() && parts.size() < 2) {
+            parts.add(m.group());
+        }
+        return String.join(" ", parts);
     }
 
     private Integer parseInt(String text) {

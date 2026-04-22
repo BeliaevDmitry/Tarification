@@ -7,6 +7,7 @@ import org.school.personalLoad.auth.AuthSessionUtils;
 import org.school.personalLoad.auth.SessionUser;
 import org.school.personalLoad.oge.dto.OgeDtos;
 import org.school.personalLoad.oge.service.OgeService;
+import org.school.personalLoad.service.AcademicYearService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -24,13 +25,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class OgeController {
     private final OgeService ogeService;
+    private final AcademicYearService academicYearService;
 
     @PostMapping("/gia/import")
     public ResponseEntity<List<OgeDtos.ImportFileResult>> importGia(@RequestParam("files") List<MultipartFile> files,
+                                                                    @RequestParam(required = false) String academicYear,
                                                                     HttpServletRequest request) {
         SessionUser user = AuthSessionUtils.requiredUser(request);
         ensureCanEditTab(user, AppTab.OGE_GIA_UPLOAD, "Загрузка выгрузок ГИА");
-        return ResponseEntity.ok(ogeService.importGia(files));
+        return ResponseEntity.ok(ogeService.importGia(academicYearService.resolveRequestedOrDefault(academicYear), files));
     }
 
     @GetMapping("/gia/versions")
@@ -51,6 +54,11 @@ public class OgeController {
     @GetMapping("/gia/stats")
     public ResponseEntity<OgeDtos.GiaStatsResponse> giaStats() {
         return ResponseEntity.ok(ogeService.giaStats());
+    }
+
+    @GetMapping("/mismatches")
+    public ResponseEntity<OgeDtos.GiaMismatchResponse> mismatches(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(ogeService.giaMismatches(academicYearService.resolveRequestedOrDefault(academicYear)));
     }
 
     @GetMapping("/gia/export")
@@ -76,10 +84,11 @@ public class OgeController {
 
     @PostMapping("/works/import")
     public ResponseEntity<List<OgeDtos.ImportFileResult>> importWorks(@RequestParam("files") List<MultipartFile> files,
+                                                                      @RequestParam(required = false) String academicYear,
                                                                       HttpServletRequest request) {
         SessionUser user = AuthSessionUtils.requiredUser(request);
         ensureCanEditTab(user, AppTab.OGE_WORK_UPLOAD, "Загрузка работ ОГЭ");
-        return ResponseEntity.ok(ogeService.importWorks(files));
+        return ResponseEntity.ok(ogeService.importWorks(academicYearService.resolveRequestedOrDefault(academicYear), files));
     }
 
     @GetMapping("/works/dataset")
@@ -88,8 +97,8 @@ public class OgeController {
     }
 
     @GetMapping("/works/export")
-    public ResponseEntity<byte[]> exportWorks() throws Exception {
-        byte[] body = ogeService.exportWorksWorkbook();
+    public ResponseEntity<byte[]> exportWorks(@RequestParam(required = false) String academicYear) throws Exception {
+        byte[] body = ogeService.exportWorksWorkbook(academicYearService.resolveRequestedOrDefault(academicYear));
         String fileName = "ОГЭ_работы_" + LocalDate.now() + ".xlsx";
         return excel(fileName, body);
     }

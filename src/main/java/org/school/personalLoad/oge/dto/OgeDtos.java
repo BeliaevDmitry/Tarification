@@ -13,6 +13,16 @@ public class OgeDtos {
 
     public record GiaChangesResponse(List<GiaChangeItem> changes) {}
 
+    public record GiaMismatchRow(String type,
+                                 String className,
+                                 String fioGia,
+                                 String fioContingent,
+                                 String documentGia,
+                                 String documentContingent,
+                                 String reason) {}
+
+    public record GiaMismatchResponse(List<GiaMismatchRow> rows) {}
+
     public record GiaChangeItem(String type, String key, String wasValue, String becameValue) {}
 
     public record GiaStatsResponse(List<String> subjects,

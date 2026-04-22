@@ -39,6 +39,7 @@
             <button data-tab="upload" class="active">Выгрузка</button>
             <button data-tab="students">Таблица учеников</button>
             <button data-tab="gia-stats">Статистика по выбору ГИА</button>
+            <button data-tab="mismatches">Нестыковки</button>
             <button data-tab="works">Внутренние работы</button>
             <button data-tab="scores">Баллы за задания</button>
         </div>
@@ -80,6 +81,19 @@
                     <tfoot id="gia-stats-foot"></tfoot>
                 </table>
             </div>
+        </div>
+
+        <div id="tab-mismatches" class="tab-pane">
+            <h2>ОГЭ / Нестыковки</h2>
+            <table class="compact-table sticky-head">
+                <thead>
+                <tr>
+                    <th>Тип</th><th>Класс</th><th>ФИО (ГИА)</th><th>ФИО (Контингент)</th>
+                    <th>Документ (ГИА)</th><th>Документ (Контингент)</th><th>Причина</th>
+                </tr>
+                </thead>
+                <tbody id="mismatch-body"></tbody>
+            </table>
         </div>
 
         <div id="tab-works" class="tab-pane">

@@ -16,6 +16,10 @@ async function api(path, options = {}) {
     return body;
 }
 
+function scoped(path) {
+    return window.withAcademicYear ? window.withAcademicYear(path) : path;
+}
+
 function pickStatusColor(status) {
     if (status === 'red') return 'background:#ffd6d6;';
     if (status === 'yellow') return 'background:#fff5cc;';
@@ -81,13 +85,23 @@ function renderStudents() {
 }
 
 async function reloadGiaStats() {
-    const data = await api('/api/oge/gia/stats');
+    const data = await api(scoped('/api/oge/gia/stats'));
     const subjects = data.subjects || [];
     document.getElementById('gia-stats-head').innerHTML = `<tr><th>Класс</th>${subjects.map(s => `<th>${s}</th>`).join('')}</tr>`;
     document.getElementById('gia-stats-body').innerHTML = (data.classes || []).map(r => `<tr><td>${r.className}</td>${subjects.map(s => `<td style="${(r.counts?.[s] || 0) > 0 ? 'background:#e8f7e8;' : ''}">${r.counts?.[s] || 0}</td>`).join('')}</tr>`).join('');
     document.getElementById('gia-stats-foot').innerHTML = `<tr><th>ИТОГО</th>${subjects.map(s => `<th>${data.totalsBySubject?.[s] || 0}</th>`).join('')}</tr>`;
     const dist = data.examCountDistribution || {};
     document.getElementById('exam-dist').textContent = `Сдают 2 экзамена: ${dist['2'] || 0}, сдают 4 экзамена: ${dist['4'] || 0}`;
+}
+
+async function reloadMismatches() {
+    const data = await api(scoped('/api/oge/mismatches'));
+    document.getElementById('mismatch-body').innerHTML = (data.rows || []).map(r => `
+      <tr>
+        <td>${r.type || ''}</td><td>${r.className || ''}</td><td>${r.fioGia || ''}</td><td>${r.fioContingent || ''}</td>
+        <td>${r.documentGia || ''}</td><td>${r.documentContingent || ''}</td><td>${r.reason || ''}</td>
+      </tr>
+    `).join('') || '<tr><td colspan=\"7\" class=\"muted\">Нестыковок не найдено</td></tr>';
 }
 
 function buildResultsMatrix(rows) {
@@ -155,16 +169,16 @@ async function saveScale() {
 }
 
 async function reloadAll() {
-    await Promise.all([reloadChanges(), reloadStudents(), reloadGiaStats(), reloadWorks(), reloadScale()]);
+    await Promise.all([reloadChanges(), reloadStudents(), reloadGiaStats(), reloadMismatches(), reloadWorks(), reloadScale()]);
 }
 
 function bindButtons() {
-    document.getElementById('gia-upload-btn').addEventListener('click', () => uploadFiles('gia-files', '/api/oge/gia/import', 'gia-upload-log'));
-    document.getElementById('work-upload-btn').addEventListener('click', () => uploadFiles('work-files', '/api/oge/works/import', 'work-upload-log'));
+    document.getElementById('gia-upload-btn').addEventListener('click', () => uploadFiles('gia-files', scoped('/api/oge/gia/import'), 'gia-upload-log'));
+    document.getElementById('work-upload-btn').addEventListener('click', () => uploadFiles('work-files', scoped('/api/oge/works/import'), 'work-upload-log'));
     document.getElementById('save-scale-btn').addEventListener('click', saveScale);
     document.getElementById('students-search').addEventListener('input', renderStudents);
-    document.getElementById('works-export-btn').addEventListener('click', () => window.location.href = '/api/oge/works/export');
-    document.getElementById('gia-export-btn').addEventListener('click', () => window.location.href = '/api/oge/gia/export');
+    document.getElementById('works-export-btn').addEventListener('click', () => window.location.href = scoped('/api/oge/works/export'));
+    document.getElementById('gia-export-btn').addEventListener('click', () => window.location.href = scoped('/api/oge/gia/export'));
 }
 
 (async function init() {

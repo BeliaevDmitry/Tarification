@@ -26,6 +26,9 @@ public class OgeGiaParticipant {
     @Column(length = 50)
     private String snils;
 
+    @Column(length = 255)
+    private String document;
+
     @Column(length = 100)
     private String className;
 
