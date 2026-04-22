@@ -3,21 +3,87 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tarification — ВСОКО</title>
+    <title>Tarification — ВСОКО / ОГЭ</title>
     <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
 <main class="container">
     <header class="card">
-        <h1>ВСОКО</h1>
-        <p class="muted">Раздел находится в разработке.</p>
+        <h1>ВСОКО — ОГЭ</h1>
+        <p class="muted">Выгрузка ГИА, загрузка работ, результаты и статистика.</p>
     </header>
-    <section class="card placeholder-card">
-        <h2>🚧 В разработке</h2>
-        <p class="muted">Функционал «ВСОКО» будет добавлен в следующих версиях.</p>
-        <a class="nav-link" href="/index.html">Вернуться в главное меню</a>
+
+    <section class="card" data-requires-edit>
+        <h2>ОГЭ / Выгрузка</h2>
+        <div class="inline-form">
+            <input type="file" id="gia-files" multiple accept=".xlsx" data-allow-readonly="true">
+            <button id="gia-upload-btn" type="button">Загрузить выгрузку(и)</button>
+            <button id="gia-export-btn" type="button" data-allow-readonly="true">Скачать Excel (выгрузка ГИА)</button>
+        </div>
+        <div id="gia-upload-log" class="muted"></div>
+    </section>
+
+    <section class="card" data-requires-edit>
+        <h2>ОГЭ / Работы</h2>
+        <div class="inline-form">
+            <input type="file" id="work-files" multiple accept=".xlsx" data-allow-readonly="true">
+            <button id="work-upload-btn" type="button">Загрузить работы</button>
+            <button id="works-export-btn" type="button" data-allow-readonly="true">Скачать Excel (результаты работ)</button>
+        </div>
+        <div id="work-upload-log" class="muted"></div>
+    </section>
+
+    <section class="card">
+        <h2>ОГЭ / Изменения между двумя последними выгрузками</h2>
+        <table>
+            <thead><tr><th>Тип</th><th>Ключ</th><th>Было</th><th>Стало</th></tr></thead>
+            <tbody id="changes-body"></tbody>
+        </table>
+    </section>
+
+    <section class="card">
+        <h2>ОГЭ / Результаты</h2>
+        <table>
+            <thead><tr><th>Класс</th><th>ФИО</th><th>Предмет</th><th>Балл</th><th>Оценка</th><th>Статус</th></tr></thead>
+            <tbody id="results-body"></tbody>
+        </table>
+    </section>
+
+    <section class="card">
+        <h2>ОГЭ / Не сдали (нет результата)</h2>
+        <table>
+            <thead><tr><th>Предмет</th><th>Класс</th><th>ФИО</th></tr></thead>
+            <tbody id="missing-body"></tbody>
+        </table>
+    </section>
+
+    <section class="card">
+        <h2>ОГЭ / Статистика по работам</h2>
+        <table>
+            <thead><tr><th>Класс</th><th>Предмет</th><th>2</th><th>3</th><th>4</th><th>5</th></tr></thead>
+            <tbody id="work-stats-body"></tbody>
+        </table>
+    </section>
+
+    <section class="card">
+        <h2>ОГЭ / Статистика по выбору ГИА</h2>
+        <div id="exam-dist" class="muted"></div>
+        <table>
+            <thead id="gia-stats-head"></thead>
+            <tbody id="gia-stats-body"></tbody>
+            <tfoot id="gia-stats-foot"></tfoot>
+        </table>
+    </section>
+
+    <section class="card" data-requires-edit>
+        <h2>ОГЭ / Баллы за задания</h2>
+        <button id="save-scale-btn" type="button">Сохранить шкалу</button>
+        <div class="table-wrap" style="overflow:auto; max-height:500px; margin-top:8px;">
+            <table id="scale-table"></table>
+        </div>
     </section>
 </main>
 <script src="/auth.js"></script>
+<script src="/vsoko.js"></script>
 </body>
 </html>

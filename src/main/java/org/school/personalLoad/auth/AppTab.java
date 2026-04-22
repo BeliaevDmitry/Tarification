@@ -16,6 +16,10 @@ public enum AppTab {
     CONTINGENT_IMPORT("Контингент: импорт", "/contingent.html#import"),
     CONTINGENT_STATS("Контингент: численность", "/contingent.html#stats"),
     SUBJECT_AREAS("Предметные области", "/subject-areas.html"),
+    VSOKO_VIEW("ВСОКО: просмотр", "/vsoko.html"),
+    VSOKO_EDIT("ВСОКО: редактирование", "/vsoko.html"),
+    OGE_GIA_UPLOAD("ВСОКО: загрузка выгрузок ГИА", "/vsoko.html#gia"),
+    OGE_WORK_UPLOAD("ВСОКО: загрузка работ ОГЭ", "/vsoko.html#results"),
     USERS("Пользователи", "/admin.html");
 
     private final String displayName;
@@ -35,6 +39,6 @@ public enum AppTab {
     }
 
     public static List<AppTab> navigableTabs() {
-        return Arrays.asList(BUILDINGS, CLASSES, SUBJECTS, CURRICULUM, LOAD, LOAD_STATS, SERVICE_NOTES, SETTINGS, TEACHERS, CONTINGENT_IMPORT, CONTINGENT_STATS, SUBJECT_AREAS, USERS);
+        return Arrays.asList(BUILDINGS, CLASSES, SUBJECTS, CURRICULUM, LOAD, LOAD_STATS, SERVICE_NOTES, SETTINGS, TEACHERS, CONTINGENT_IMPORT, CONTINGENT_STATS, SUBJECT_AREAS, VSOKO_VIEW, VSOKO_EDIT, OGE_GIA_UPLOAD, OGE_WORK_UPLOAD, USERS);
     }
 }
