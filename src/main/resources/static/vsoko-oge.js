@@ -107,15 +107,15 @@ async function uploadFiles(inputId, url, logId) {
 }
 
 async function reloadChanges() {
-    const data = await api('/api/oge/gia/changes');
+    const data = await api(scoped('/api/oge/gia/changes'));
     document.getElementById('changes-body').innerHTML = (data.changes || []).map(c => `
       <tr><td>${c.type || ''}</td><td>${c.key || ''}</td><td>${c.wasValue || ''}</td><td>${c.becameValue || ''}</td></tr>`).join('')
       || '<tr><td colspan="4" class="muted">Нет изменений</td></tr>';
 }
 
 async function reloadStudents() {
-    state.students = await api('/api/oge/gia/participants');
-    const versions = await api('/api/oge/gia/versions');
+    state.students = await api(scoped('/api/oge/gia/participants'));
+    const versions = await api(scoped('/api/oge/gia/versions'));
     const latest = versions && versions.length ? versions[0] : null;
     const title = document.getElementById('students-title');
     if (title && latest?.uploadedAt) {
@@ -149,6 +149,8 @@ async function reloadGiaStats() {
 async function reloadMismatches() {
     const data = await api(scoped('/api/oge/mismatches'));
     state.mismatches = data.rows || [];
+    const info = document.getElementById('mismatch-info');
+    if (info) info.textContent = data.infoMessage || '';
     renderMismatches();
 }
 
@@ -278,7 +280,7 @@ function bindResultsMatrixSorting() {
 }
 
 async function reloadWorks() {
-    const data = await api('/api/oge/works/dataset');
+    const data = await api(scoped('/api/oge/works/dataset'));
     document.getElementById('results-matrix').innerHTML = buildResultsMatrix(data.results || []);
     bindResultsMatrixSorting();
     document.getElementById('missing-body').innerHTML = (data.missing || []).map(r => `<tr style="${pickStatusColor('yellow')}"><td>${r.subject}</td><td>${r.className}</td><td>${r.fullName}</td></tr>`).join('');
@@ -286,7 +288,7 @@ async function reloadWorks() {
 }
 
 async function reloadScale() {
-    const rows = await api('/api/oge/scores');
+    const rows = await api(scoped('/api/oge/scores'));
     let html = `<thead><tr><th>Баллы за ОГЭ</th>${SUBJECTS.map(s => `<th>${s}</th>`).join('')}</tr></thead><tbody>`;
     for (const row of rows) {
         html += `<tr data-score="${row.score}"><td>${row.score}</td>`;
@@ -309,7 +311,7 @@ async function saveScale() {
         });
         return { score, gradesBySubject };
     });
-    await api('/api/oge/scores', { method: 'PUT', headers: jsonHeaders, body: JSON.stringify(rows) });
+    await api(scoped('/api/oge/scores'), { method: 'PUT', headers: jsonHeaders, body: JSON.stringify(rows) });
 }
 
 async function reloadAll() {

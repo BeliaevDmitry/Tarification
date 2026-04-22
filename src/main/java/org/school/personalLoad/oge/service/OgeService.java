@@ -55,6 +55,7 @@ public class OgeService {
                 }
                 OgeGiaVersion version = new OgeGiaVersion();
                 version.setSourceFileName(fileName);
+                version.setAcademicYear(academicYear);
                 version.setUploadedAt(LocalDateTime.now());
 
                 int loaded = 0;
@@ -69,6 +70,7 @@ public class OgeService {
                     p.setSnils(OgeSubjects.normalizeSnils(getText(row.getCell(3))));
                     p.setDocument(getText(row.getCell(2)).trim());
                     p.setClassName(OgeSubjects.normalizeClassName(getText(row.getCell(5))));
+                    p.setAcademicYear(academicYear);
                     p.setExamCount(parseInt(getText(row.getCell(28))));
 
                     Set<String> selected = new LinkedHashSet<>();
@@ -96,14 +98,14 @@ public class OgeService {
         return results;
     }
 
-    public List<OgeDtos.GiaVersionView> versions() {
-        return giaVersionRepository.findAllByOrderByUploadedAtDescIdDesc().stream()
+    public List<OgeDtos.GiaVersionView> versions(String academicYear) {
+        return giaVersionRepository.findAllByAcademicYearOrderByUploadedAtDescIdDesc(academicYear).stream()
                 .map(v -> new OgeDtos.GiaVersionView(v.getId(), v.getSourceFileName(), v.getUploadedAt(), v.getParticipants().size()))
                 .toList();
     }
 
-    public List<OgeDtos.GiaParticipantView> latestParticipants() {
-        OgeGiaVersion latest = latestVersion();
+    public List<OgeDtos.GiaParticipantView> latestParticipants(String academicYear) {
+        OgeGiaVersion latest = latestVersion(academicYear);
         if (latest == null) return List.of();
         return latest.getParticipants().stream()
                 .sorted(Comparator.comparing(OgeGiaParticipant::getClassName, Comparator.nullsLast(String::compareTo))
@@ -116,8 +118,8 @@ public class OgeService {
                 .toList();
     }
 
-    public OgeDtos.GiaStatsResponse giaStats() {
-        OgeGiaVersion latest = latestVersion();
+    public OgeDtos.GiaStatsResponse giaStats(String academicYear) {
+        OgeGiaVersion latest = latestVersion(academicYear);
         if (latest == null) {
             return new OgeDtos.GiaStatsResponse(OgeSubjects.CORE_SUBJECTS, List.of(), Map.of(), Map.of());
         }
@@ -145,8 +147,8 @@ public class OgeService {
         return new OgeDtos.GiaStatsResponse(OgeSubjects.CORE_SUBJECTS, rows, totals, examDist);
     }
 
-    public OgeDtos.GiaChangesResponse changesBetweenLastTwo() {
-        List<OgeGiaVersion> versions = giaVersionRepository.findTop2ByOrderByUploadedAtDescIdDesc();
+    public OgeDtos.GiaChangesResponse changesBetweenLastTwo(String academicYear) {
+        List<OgeGiaVersion> versions = giaVersionRepository.findTop2ByAcademicYearOrderByUploadedAtDescIdDesc(academicYear);
         if (versions.size() < 2) return new OgeDtos.GiaChangesResponse(List.of());
         OgeGiaVersion current = versions.get(0);
         OgeGiaVersion previous = versions.get(1);
@@ -225,12 +227,13 @@ public class OgeService {
     }
 
     @Transactional
-    public void upsertScoreScale(List<OgeDtos.ScoreScaleRow> rows) {
-        scoreScaleRepository.deleteAllInBatch();
+    public void upsertScoreScale(String academicYear, List<OgeDtos.ScoreScaleRow> rows) {
+        scoreScaleRepository.deleteAllByAcademicYear(academicYear);
         List<OgeScoreScaleEntry> entities = new ArrayList<>();
         for (OgeDtos.ScoreScaleRow row : rows) {
             for (String subject : OgeSubjects.CORE_SUBJECTS) {
                 OgeScoreScaleEntry entry = new OgeScoreScaleEntry();
+                entry.setAcademicYear(academicYear);
                 entry.setScore(row.score());
                 entry.setSubjectName(subject);
                 entry.setGrade(row.gradesBySubject().get(subject));
@@ -241,16 +244,16 @@ public class OgeService {
     }
 
     @Transactional
-    public void ensureDefaultScale() {
-        if (scoreScaleRepository.count() > 0) return;
+    public void ensureDefaultScale(String academicYear) {
+        if (scoreScaleRepository.countByAcademicYear(academicYear) > 0) return;
         List<OgeDtos.ScoreScaleRow> defaults = OgeDefaultScale.defaultRows();
-        upsertScoreScale(defaults);
+        upsertScoreScale(academicYear, defaults);
     }
 
-    public List<OgeDtos.ScoreScaleRow> scoreScale() {
-        ensureDefaultScale();
+    public List<OgeDtos.ScoreScaleRow> scoreScale(String academicYear) {
+        ensureDefaultScale(academicYear);
         Map<Integer, Map<String, Integer>> out = new TreeMap<>();
-        for (OgeScoreScaleEntry entry : scoreScaleRepository.findAllByOrderByScoreAscSubjectNameAsc()) {
+        for (OgeScoreScaleEntry entry : scoreScaleRepository.findAllByAcademicYearOrderByScoreAscSubjectNameAsc(academicYear)) {
             out.computeIfAbsent(entry.getScore(), k -> new LinkedHashMap<>()).put(entry.getSubjectName(), entry.getGrade());
         }
         return out.entrySet().stream().map(e -> new OgeDtos.ScoreScaleRow(e.getKey(), e.getValue())).toList();
@@ -258,8 +261,8 @@ public class OgeService {
 
     @Transactional
     public List<OgeDtos.ImportFileResult> importWorks(String academicYear, List<MultipartFile> files) {
-        ensureDefaultScale();
-        Map<String, Map<Integer, Integer>> scale = scaleMap();
+        ensureDefaultScale(academicYear);
+        Map<String, Map<Integer, Integer>> scale = scaleMap(academicYear);
         List<OgeDtos.ImportFileResult> out = new ArrayList<>();
         Set<String> contingentFio9 = loadContingent9Fio(academicYear);
 
@@ -292,7 +295,7 @@ public class OgeService {
                     if (!isMeaningfulResultRow(row, pos, score)) {
                         continue;
                     }
-                    String className = resolveClassFromGia(fio);
+                    String className = resolveClassFromGia(academicYear, fio);
                     if (className.isBlank()) className = "9";
 
                     Integer grade = score == null ? null : scale.getOrDefault(subject, Map.of()).get(score);
@@ -301,8 +304,9 @@ public class OgeService {
                     }
 
                     OgeWorkResult entity = workResultRepository
-                            .findByFullNameAndSubjectName(fio, subject)
+                            .findByAcademicYearAndFullNameAndSubjectName(academicYear, fio, subject)
                             .orElseGet(OgeWorkResult::new);
+                    entity.setAcademicYear(academicYear);
                     entity.setClassName(className);
                     entity.setFullName(fio);
                     entity.setSubjectName(subject);
@@ -328,9 +332,9 @@ public class OgeService {
         return out;
     }
 
-    public OgeDtos.WorkDatasetResponse workDataset() {
-        OgeGiaVersion latest = latestVersion();
-        List<OgeWorkResult> work = workResultRepository.findAllByOrderByClassNameAscFullNameAscSubjectNameAsc();
+    public OgeDtos.WorkDatasetResponse workDataset(String academicYear) {
+        OgeGiaVersion latest = latestVersion(academicYear);
+        List<OgeWorkResult> work = workResultRepository.findAllByAcademicYearOrderByClassNameAscFullNameAscSubjectNameAsc(academicYear);
         Map<String, OgeWorkResult> workByKey = work.stream().collect(Collectors.toMap(
                 w -> key(w.getFullName(), w.getSubjectName()), Function.identity(), (a, b) -> b, LinkedHashMap::new));
 
@@ -372,7 +376,7 @@ public class OgeService {
     }
 
     public byte[] exportWorksWorkbook(String academicYear) throws IOException {
-        OgeDtos.WorkDatasetResponse data = workDataset();
+        OgeDtos.WorkDatasetResponse data = workDataset(academicYear);
         OgeDtos.GiaMismatchResponse mismatches = giaMismatches(academicYear);
         try (Workbook wb = new XSSFWorkbook()) {
             Sheet results = wb.createSheet("Результаты");
@@ -401,10 +405,18 @@ public class OgeService {
     }
 
     public OgeDtos.GiaMismatchResponse giaMismatches(String academicYear) {
-        OgeGiaVersion latestGia = latestVersion();
+        OgeGiaVersion latestGia = latestVersion(academicYear);
         ContingentSnapshot snapshot = contingentSnapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear)
-                .orElseGet(() -> contingentSnapshotRepository.findFirstByOrderByImportedAtDesc().orElse(null));
-        if (latestGia == null || snapshot == null) return new OgeDtos.GiaMismatchResponse(List.of());
+                .orElse(null);
+        if (latestGia == null && snapshot == null) {
+            return new OgeDtos.GiaMismatchResponse(List.of(), "Пусто: нет выгрузки ГИА и нет снимка контингента за " + academicYear + ".");
+        }
+        if (latestGia == null) {
+            return new OgeDtos.GiaMismatchResponse(List.of(), "Пусто: нет выгрузки ГИА за " + academicYear + ".");
+        }
+        if (snapshot == null) {
+            return new OgeDtos.GiaMismatchResponse(List.of(), "Пусто: нет снимка контингента за " + academicYear + ".");
+        }
 
         List<ContingentStudent> ninth = contingentStudentRepository.findAllBySnapshotId(snapshot.getId()).stream()
                 .filter(s -> normalizeClassLoose(s.getClassName()).startsWith("9"))
@@ -463,13 +475,13 @@ public class OgeService {
                 rows.add(new OgeDtos.GiaMismatchRow("ОГЭ/Нестыковка", c.getClassName(), g.getFullName(), c.getFullName(), g.getDocument(), c.getPassport(), "Не совпадает ФИО"));
             }
         }
-        return new OgeDtos.GiaMismatchResponse(rows);
+        return new OgeDtos.GiaMismatchResponse(rows, rows.isEmpty() ? "Нестыковки не найдены." : "");
     }
 
-    public byte[] exportGiaWorkbook() throws IOException {
-        List<OgeDtos.GiaParticipantView> participants = latestParticipants();
-        OgeDtos.GiaChangesResponse changes = changesBetweenLastTwo();
-        OgeDtos.GiaStatsResponse stats = giaStats();
+    public byte[] exportGiaWorkbook(String academicYear) throws IOException {
+        List<OgeDtos.GiaParticipantView> participants = latestParticipants(academicYear);
+        OgeDtos.GiaChangesResponse changes = changesBetweenLastTwo(academicYear);
+        OgeDtos.GiaStatsResponse stats = giaStats(academicYear);
         try (Workbook wb = new XSSFWorkbook()) {
             Sheet who = wb.createSheet("Кто что сдаёт");
             Row h = who.createRow(0);
@@ -625,12 +637,12 @@ public class OgeService {
         return style;
     }
 
-    private OgeGiaVersion latestVersion() {
-        return giaVersionRepository.findTop2ByOrderByUploadedAtDescIdDesc().stream().findFirst().orElse(null);
+    private OgeGiaVersion latestVersion(String academicYear) {
+        return giaVersionRepository.findTop2ByAcademicYearOrderByUploadedAtDescIdDesc(academicYear).stream().findFirst().orElse(null);
     }
 
-    private String resolveClassFromGia(String fio) {
-        OgeGiaVersion latest = latestVersion();
+    private String resolveClassFromGia(String academicYear, String fio) {
+        OgeGiaVersion latest = latestVersion(academicYear);
         if (latest == null) return "";
         return latest.getParticipants().stream()
                 .filter(p -> OgeSubjects.normalizeFio(p.getFullName()).equalsIgnoreCase(fio))
@@ -642,8 +654,10 @@ public class OgeService {
 
     private Set<String> loadContingent9Fio(String academicYear) {
         ContingentSnapshot snapshot = contingentSnapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear)
-                .orElseGet(() -> contingentSnapshotRepository.findFirstByOrderByImportedAtDesc().orElse(null));
-        if (snapshot == null) return Set.of();
+                .orElse(null);
+        if (snapshot == null) {
+            throw new IllegalStateException("Нет снимка контингента за учебный год " + academicYear + ". Загрузите контингент этого года.");
+        }
         return contingentStudentRepository.findAllBySnapshotId(snapshot.getId()).stream()
                 .filter(s -> normalizeClassLoose(s.getClassName()).startsWith("9"))
                 .map(ContingentStudent::getFullName)
@@ -705,10 +719,10 @@ public class OgeService {
         return false;
     }
 
-    private Map<String, Map<Integer, Integer>> scaleMap() {
+    private Map<String, Map<Integer, Integer>> scaleMap(String academicYear) {
         Map<String, Map<Integer, Integer>> map = new LinkedHashMap<>();
         for (String s : OgeSubjects.CORE_SUBJECTS) map.put(s, new HashMap<>());
-        for (OgeScoreScaleEntry e : scoreScaleRepository.findAllByOrderByScoreAscSubjectNameAsc()) {
+        for (OgeScoreScaleEntry e : scoreScaleRepository.findAllByAcademicYearOrderByScoreAscSubjectNameAsc(academicYear)) {
             map.computeIfAbsent(e.getSubjectName(), k -> new HashMap<>()).put(e.getScore(), e.getGrade());
         }
         return map;

@@ -21,7 +21,7 @@ public class OgeDtos {
                                  String documentContingent,
                                  String reason) {}
 
-    public record GiaMismatchResponse(List<GiaMismatchRow> rows) {}
+    public record GiaMismatchResponse(List<GiaMismatchRow> rows, String infoMessage) {}
 
     public record GiaChangeItem(String type, String key, String wasValue, String becameValue) {}
 

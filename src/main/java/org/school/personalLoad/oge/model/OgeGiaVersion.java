@@ -20,6 +20,9 @@ public class OgeGiaVersion {
     @Column(nullable = false, length = 500)
     private String sourceFileName;
 
+    @Column(length = 20)
+    private String academicYear;
+
     @Column(nullable = false)
     private LocalDateTime uploadedAt;
 

@@ -7,7 +7,7 @@ import javax.persistence.*;
 
 @Entity
 @Table(name = "oge_score_scale", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_oge_score_scale", columnNames = {"score", "subject_name"})
+        @UniqueConstraint(name = "uk_oge_score_scale", columnNames = {"academic_year", "score", "subject_name"})
 })
 @Getter
 @Setter
@@ -18,6 +18,9 @@ public class OgeScoreScaleEntry {
 
     @Column(nullable = false)
     private Integer score;
+
+    @Column(name = "academic_year", length = 20)
+    private String academicYear;
 
     @Column(name = "subject_name", nullable = false, length = 200)
     private String subjectName;

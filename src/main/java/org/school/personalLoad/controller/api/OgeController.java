@@ -38,24 +38,24 @@ public class OgeController {
     }
 
     @GetMapping("/gia/versions")
-    public ResponseEntity<List<OgeDtos.GiaVersionView>> versions() {
-        return ResponseEntity.ok(ogeService.versions());
+    public ResponseEntity<List<OgeDtos.GiaVersionView>> versions(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(ogeService.versions(academicYearService.resolveRequestedOrDefault(academicYear)));
     }
 
     @GetMapping("/gia/participants")
-    public ResponseEntity<List<OgeDtos.GiaParticipantView>> participants() {
-        return ResponseEntity.ok(ogeService.latestParticipants());
+    public ResponseEntity<List<OgeDtos.GiaParticipantView>> participants(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(ogeService.latestParticipants(academicYearService.resolveRequestedOrDefault(academicYear)));
     }
 
     @GetMapping("/gia/changes")
-    public ResponseEntity<OgeDtos.GiaChangesResponse> changes(HttpServletRequest request) {
+    public ResponseEntity<OgeDtos.GiaChangesResponse> changes(@RequestParam(required = false) String academicYear, HttpServletRequest request) {
         ensureCanViewTab(AuthSessionUtils.requiredUser(request), AppTab.OGE_UPLOAD_VIEW, "ОГЭ / Выгрузка");
-        return ResponseEntity.ok(ogeService.changesBetweenLastTwo());
+        return ResponseEntity.ok(ogeService.changesBetweenLastTwo(academicYearService.resolveRequestedOrDefault(academicYear)));
     }
 
     @GetMapping("/gia/stats")
-    public ResponseEntity<OgeDtos.GiaStatsResponse> giaStats() {
-        return ResponseEntity.ok(ogeService.giaStats());
+    public ResponseEntity<OgeDtos.GiaStatsResponse> giaStats(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(ogeService.giaStats(academicYearService.resolveRequestedOrDefault(academicYear)));
     }
 
     @GetMapping("/mismatches")
@@ -75,23 +75,24 @@ public class OgeController {
     }
 
     @GetMapping("/gia/export")
-    public ResponseEntity<byte[]> exportGia() throws Exception {
-        byte[] body = ogeService.exportGiaWorkbook();
+    public ResponseEntity<byte[]> exportGia(@RequestParam(required = false) String academicYear) throws Exception {
+        byte[] body = ogeService.exportGiaWorkbook(academicYearService.resolveRequestedOrDefault(academicYear));
         String fileName = "ОГЭ_выгрузка_" + LocalDate.now() + ".xlsx";
         return excel(fileName, body);
     }
 
     @GetMapping("/scores")
-    public ResponseEntity<List<OgeDtos.ScoreScaleRow>> scores() {
-        return ResponseEntity.ok(ogeService.scoreScale());
+    public ResponseEntity<List<OgeDtos.ScoreScaleRow>> scores(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(ogeService.scoreScale(academicYearService.resolveRequestedOrDefault(academicYear)));
     }
 
     @PutMapping("/scores")
-    public ResponseEntity<Void> updateScores(@RequestBody List<OgeDtos.ScoreScaleRow> rows,
+    public ResponseEntity<Void> updateScores(@RequestParam(required = false) String academicYear,
+                                             @RequestBody List<OgeDtos.ScoreScaleRow> rows,
                                              HttpServletRequest request) {
         SessionUser user = AuthSessionUtils.requiredUser(request);
         ensureCanEditTab(user, AppTab.VSOKO_EDIT, "Редактирование шкалы баллов ОГЭ");
-        ogeService.upsertScoreScale(rows);
+        ogeService.upsertScoreScale(academicYearService.resolveRequestedOrDefault(academicYear), rows);
         return ResponseEntity.noContent().build();
     }
 
@@ -105,8 +106,8 @@ public class OgeController {
     }
 
     @GetMapping("/works/dataset")
-    public ResponseEntity<OgeDtos.WorkDatasetResponse> workDataset() {
-        return ResponseEntity.ok(ogeService.workDataset());
+    public ResponseEntity<OgeDtos.WorkDatasetResponse> workDataset(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(ogeService.workDataset(academicYearService.resolveRequestedOrDefault(academicYear)));
     }
 
     @GetMapping("/works/export")
