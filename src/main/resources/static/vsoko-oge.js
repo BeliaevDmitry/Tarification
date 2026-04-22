@@ -202,11 +202,11 @@ function buildResultsMatrix(rows) {
     html += `<th rowspan="2" data-sort="fullName">ФИО${sortBadge('fullName')}</th>`;
     html += `<th rowspan="2" data-sort="examCount">Кол-во предметов для сдачи${sortBadge('examCount')}</th>`;
     html += `<th rowspan="2" data-sort="avgGrade">Средний балл за сданные предметы${sortBadge('avgGrade')}</th>`;
-    for (const s of SUBJECTS) html += `<th colspan="2">${s}</th>`;
+    for (const s of SUBJECTS) html += `<th colspan="2" class="${subjectHeaderClass(s)}">${s}</th>`;
     html += '</tr><tr>';
     for (const s of SUBJECTS) {
-        html += `<th data-sort="score:${s}">Тестовый балл${sortBadge(`score:${s}`)}</th>`;
-        html += `<th data-sort="grade:${s}">Оценка${sortBadge(`grade:${s}`)}</th>`;
+        html += `<th data-sort="score:${s}" class="${subjectScoreClass(s)}">Тестовый балл${sortBadge(`score:${s}`)}</th>`;
+        html += `<th data-sort="grade:${s}" class="${subjectGradeClass(s)}">Оценка${sortBadge(`grade:${s}`)}</th>`;
     }
     html += '</tr></thead><tbody>';
 
@@ -216,12 +216,24 @@ function buildResultsMatrix(rows) {
         html += `<tr><td>${st.className}</td><td>${st.fullName}</td><td>${examCount}</td><td>${avg}</td>`;
         for (const s of SUBJECTS) {
             const v = st.values[s];
-            html += `<td style="${pickStatusColor(v?.status)}">${v?.score ?? ''}</td><td style="${pickStatusColor(v?.status)}">${v?.grade ?? ''}</td>`;
+            html += `<td class="${subjectScoreClass(s)}" style="${pickStatusColor(v?.status)}">${v?.score ?? ''}</td><td class="${subjectGradeClass(s)}" style="${pickStatusColor(v?.status)}">${v?.grade ?? ''}</td>`;
         }
         html += '</tr>';
     }
     html += '</tbody>';
     return html;
+}
+
+function subjectHeaderClass(subject) {
+    return subject === 'Русский язык' ? 'subject-ru' : '';
+}
+
+function subjectScoreClass(subject) {
+    return subject === 'Русский язык' ? 'subject-ru-score' : '';
+}
+
+function subjectGradeClass(subject) {
+    return subject === 'Русский язык' ? 'subject-ru-grade' : '';
 }
 
 function sortBadge(key) {
