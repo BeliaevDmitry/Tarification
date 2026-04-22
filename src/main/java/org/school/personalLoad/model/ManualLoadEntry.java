@@ -56,6 +56,10 @@ public class ManualLoadEntry {
     @Column(nullable = false)
     private boolean orphaned = false;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private ContinuityStatus continuityStatus = ContinuityStatus.UNKNOWN;
+
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 }

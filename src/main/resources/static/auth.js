@@ -46,6 +46,7 @@ async function tarificationApi(path, options = {}) {
 }
 
 const ACADEMIC_YEAR_STORAGE_KEY = 'tarification.academicYear';
+const DEBUG_OUTPUT_STORAGE_KEY = 'tarification.debugOutput';
 
 function getStoredAcademicYear() {
     return sessionStorage.getItem(ACADEMIC_YEAR_STORAGE_KEY) || '';
@@ -64,6 +65,19 @@ function withAcademicYear(path) {
     if (!selectedYear) return path;
     const separator = path.includes('?') ? '&' : '?';
     return `${path}${separator}academicYear=${encodeURIComponent(selectedYear)}`;
+}
+
+function debugOutputEnabledForUser(currentUser) {
+    if (!currentUser?.admin) return false;
+    const raw = localStorage.getItem(DEBUG_OUTPUT_STORAGE_KEY);
+    if (raw === null) return true;
+    return raw === '1';
+}
+
+function applyDebugOutputVisibility(currentUser) {
+    const enabled = debugOutputEnabledForUser(currentUser);
+    document.body.classList.toggle('debug-output-hidden', !enabled);
+    window.tarificationDebugOutputEnabled = enabled;
 }
 
 function tabPermissionMap(currentUser) {
@@ -390,6 +404,13 @@ function enrichMainMenu(currentUser) {
         updateStickyHeaderMetrics();
         window.withAcademicYear = withAcademicYear;
         window.getStoredAcademicYear = getStoredAcademicYear;
+        window.setDebugOutputEnabled = (enabled) => {
+            localStorage.setItem(DEBUG_OUTPUT_STORAGE_KEY, enabled ? '1' : '0');
+            if (window.tarificationAuth) {
+                applyDebugOutputVisibility(window.tarificationAuth);
+            }
+        };
+        applyDebugOutputVisibility(currentUser);
     } catch {
         window.location.href = '/login.html';
     }

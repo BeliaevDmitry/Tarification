@@ -14,6 +14,7 @@
         <div class="row">
             <button type="button" id="admin-tab-users-btn">Создание пользователя</button>
             <button type="button" id="admin-tab-years-btn">Учебные года</button>
+            <button type="button" id="admin-tab-options-btn">Опции</button>
         </div>
     </header>
 
@@ -121,7 +122,7 @@
                 <button type="submit">Создать пользователя</button>
             </div>
         </form>
-        <pre id="admin-result"></pre>
+        <pre id="admin-result" class="result-box"></pre>
     </section>
 
     <section class="card admin-card" data-admin-tab="users">
@@ -170,6 +171,22 @@
                 <tbody id="academic-years-body"></tbody>
             </table>
         </div>
+    </section>
+
+    <section class="card admin-card" data-admin-tab="options" style="display:none;">
+        <div class="section-heading">
+            <div>
+                <h2>Опции</h2>
+                <p class="muted">Показывать или скрывать отладочные окна с JSON-ответами сервера.</p>
+            </div>
+            <span class="admin-section-badge soft">Отладка</span>
+        </div>
+        <div class="row controls-row">
+            <strong>Отладка:</strong>
+            <label><input type="radio" name="admin-debug-mode" value="yes"> Да</label>
+            <label><input type="radio" name="admin-debug-mode" value="no"> Нет</label>
+        </div>
+        <p id="admin-options-feedback" class="muted"></p>
     </section>
 </main>
 
