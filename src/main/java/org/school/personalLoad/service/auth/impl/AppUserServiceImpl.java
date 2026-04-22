@@ -229,6 +229,7 @@ public class AppUserServiceImpl implements AppUserService {
 
     private void saveTabPermissions(AppUser user, List<UserTabPermissionRequest> requestedPermissions) {
         tabPermissionRepository.deleteAllByUserId(user.getId());
+        tabPermissionRepository.flush();
         if (user.getRole() == UserRole.ADMIN) {
             saveDefaultPermissions(user, true, true);
             return;
