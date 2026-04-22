@@ -126,6 +126,7 @@
                 <button data-subtab="results" class="active">Результаты</button>
                 <button data-subtab="missing">Не сдали (нет результата)</button>
                 <button data-subtab="stats">Статистика</button>
+                <button data-subtab="teacher-binding">Привязка к педагогу</button>
             </div>
 
             <div id="works-results" class="tab-pane active" style="display:block; overflow:auto; max-height:72vh;">
@@ -141,6 +142,17 @@
                 <table class="compact-table">
                     <thead><tr><th>Класс</th><th>Предмет</th><th>2</th><th>3</th><th>4</th><th>5</th></tr></thead>
                     <tbody id="work-stats-body"></tbody>
+                </table>
+            </div>
+            <div id="works-teacher-binding" class="tab-pane" style="overflow:auto;">
+                <div class="inline-form">
+                    <button id="bind-from-load-btn" type="button">Привязка из нагрузки</button>
+                    <button id="save-teacher-binding-btn" type="button">Сохранить привязку</button>
+                </div>
+                <div id="teacher-binding-log" class="muted"></div>
+                <table class="compact-table">
+                    <thead><tr><th>Класс</th><th>ФИО</th><th>Предмет</th><th>Педагог</th></tr></thead>
+                    <tbody id="teacher-binding-body"></tbody>
                 </table>
             </div>
         </div>

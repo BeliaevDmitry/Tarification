@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "oge_work_result", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_oge_work_result", columnNames = {"academic_year", "full_name", "subject_name"})
+        @UniqueConstraint(name = "uk_oge_work_result", columnNames = {"academic_year", "full_name", "birth_date", "snils", "subject_name"})
 })
 @Getter
 @Setter
@@ -26,8 +26,17 @@ public class OgeWorkResult {
     @Column(name = "full_name", nullable = false, length = 500)
     private String fullName;
 
+    @Column(name = "birth_date", length = 20)
+    private String birthDate;
+
+    @Column(name = "snils", length = 20)
+    private String snils;
+
     @Column(name = "subject_name", nullable = false, length = 200)
     private String subjectName;
+
+    @Column(name = "task_scores_json", columnDefinition = "text")
+    private String taskScoresJson;
 
     @Column(name = "test_score")
     private Integer testScore;
@@ -40,4 +49,16 @@ public class OgeWorkResult {
 
     @Column(name = "source_file", length = 1000)
     private String sourceFile;
+
+    @Column(name = "teacher_fio", length = 500)
+    private String teacherFio;
+
+    @Column(name = "needs_teacher_binding", nullable = false)
+    private boolean needsTeacherBinding = true;
+
+    @Column(name = "needs_manual_student_match", nullable = false)
+    private boolean needsManualStudentMatch = false;
+
+    @Column(name = "source_issue", length = 1000)
+    private String sourceIssue;
 }

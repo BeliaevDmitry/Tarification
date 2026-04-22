@@ -6,6 +6,8 @@ import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.model.ContingentSnapshot;
 import org.school.personalLoad.model.ContingentStudent;
+import org.school.personalLoad.model.ManualLoadEntry;
+import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.oge.dto.OgeDtos;
 import org.school.personalLoad.oge.model.OgeGiaParticipant;
 import org.school.personalLoad.oge.model.OgeGiaVersion;
@@ -16,6 +18,10 @@ import org.school.personalLoad.repository.ContingentStudentRepository;
 import org.school.personalLoad.oge.repository.OgeGiaVersionRepository;
 import org.school.personalLoad.oge.repository.OgeScoreScaleRepository;
 import org.school.personalLoad.oge.repository.OgeWorkResultRepository;
+import org.school.personalLoad.oge.repository.SubjectAliasRepository;
+import org.school.personalLoad.oge.model.SubjectAlias;
+import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -34,8 +40,11 @@ public class OgeService {
     private final OgeGiaVersionRepository giaVersionRepository;
     private final OgeWorkResultRepository workResultRepository;
     private final OgeScoreScaleRepository scoreScaleRepository;
+    private final SubjectAliasRepository subjectAliasRepository;
     private final ContingentSnapshotRepository contingentSnapshotRepository;
     private final ContingentStudentRepository contingentStudentRepository;
+    private final TeacherDirectoryRepository teacherDirectoryRepository;
+    private final ManualLoadEntryRepository manualLoadEntryRepository;
 
     @Transactional
     public List<OgeDtos.ImportFileResult> importGia(String academicYear, List<MultipartFile> files) {
@@ -262,9 +271,11 @@ public class OgeService {
     @Transactional
     public List<OgeDtos.ImportFileResult> importWorks(String academicYear, List<MultipartFile> files) {
         ensureDefaultScale(academicYear);
+        ensureDefaultSubjectAliases();
         Map<String, Map<Integer, Integer>> scale = scaleMap(academicYear);
         List<OgeDtos.ImportFileResult> out = new ArrayList<>();
         Set<String> contingentFio9 = loadContingent9Fio(academicYear);
+        Map<String, List<ContingentStudent>> contingentByFioClass = loadContingentByFioClass(academicYear);
 
         for (MultipartFile file : files) {
             String fileName = Optional.ofNullable(file.getOriginalFilename()).orElse("work.xlsx");
@@ -281,6 +292,7 @@ public class OgeService {
                 HeaderPos pos = detectHeader(data);
                 if (pos == null) throw new IllegalArgumentException("Не найдены заголовки ФИО/Итог");
                 int count = 0;
+                List<String> sumErrors = new ArrayList<>();
                 Set<String> unknownFio = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
                 for (int r = pos.dataStartRow; r <= data.getLastRowNum(); r++) {
                     Row row = data.getRow(r);
@@ -297,19 +309,48 @@ public class OgeService {
                     }
                     String className = resolveClassFromGia(academicYear, fio);
                     if (className.isBlank()) className = "9";
+                    String normalizedClass = normalizeClassLoose(className);
+
+                    Map<Integer, Integer> taskScores = extractTaskScores(row, pos);
+                    int sumByTasks = taskScores.values().stream().filter(Objects::nonNull).mapToInt(Integer::intValue).sum();
+                    if (score != null && sumByTasks != score) {
+                        sumErrors.add("строка " + (r + 1) + " (" + fio + "): Итог=" + score + ", сумма по заданиям=" + sumByTasks);
+                        continue;
+                    }
 
                     Integer grade = score == null ? null : scale.getOrDefault(subject, Map.of()).get(score);
                     if (score != null && grade == null) {
                         throw new IllegalArgumentException("Нет оценки в таблице баллов для предмета '" + subject + "' и балла " + score);
                     }
 
-                    OgeWorkResult entity = workResultRepository
-                            .findByAcademicYearAndFullNameAndSubjectName(academicYear, fio, subject)
+                    List<ContingentStudent> matchedStudents = contingentByFioClass.getOrDefault(
+                            normalizeFioCompare(fio) + "|" + normalizedClass, List.of());
+                    String birthDate = "";
+                    String snils = "";
+                    boolean needsManualStudentMatch = false;
+                    String sourceIssue = null;
+                    if (matchedStudents.size() == 1) {
+                        ContingentStudent matched = matchedStudents.get(0);
+                        birthDate = blank(matched.getBirthDate());
+                        snils = OgeSubjects.normalizeSnils(matched.getPensionInsurance());
+                    } else if (matchedStudents.isEmpty()) {
+                        needsManualStudentMatch = true;
+                        sourceIssue = "Не найден ученик в контингенте по ФИО+класс";
+                    } else {
+                        needsManualStudentMatch = true;
+                        sourceIssue = "Найдено несколько учеников в контингенте по ФИО+класс";
+                    }
+
+                    OgeWorkResult entity = workResultRepository.findByAcademicYearAndFullNameAndBirthDateAndSnilsAndSubjectName(
+                                    academicYear, fio, birthDate, snils, subject)
                             .orElseGet(OgeWorkResult::new);
                     entity.setAcademicYear(academicYear);
                     entity.setClassName(className);
                     entity.setFullName(fio);
+                    entity.setBirthDate(birthDate);
+                    entity.setSnils(snils);
                     entity.setSubjectName(subject);
+                    entity.setTaskScoresJson(toJson(taskScores));
                     if (entity.getId() != null && entity.getTestScore() != null && score == null) {
                         // Не затираем уже рассчитанный итог частично заполненным отчетом.
                     } else {
@@ -318,13 +359,22 @@ public class OgeService {
                     }
                     entity.setSourceFile(fileName);
                     entity.setUpdatedAt(LocalDateTime.now());
+                    if (entity.getTeacherFio() == null || entity.getTeacherFio().isBlank()) {
+                        entity.setNeedsTeacherBinding(true);
+                    }
+                    entity.setNeedsManualStudentMatch(needsManualStudentMatch);
+                    entity.setSourceIssue(sourceIssue);
                     workResultRepository.save(entity);
                     count++;
                 }
-                String message = unknownFio.isEmpty()
-                        ? "OK"
-                        : "OK. Пропущены ФИО (нет в контингенте 9-х): " + String.join(", ", unknownFio);
-                out.add(new OgeDtos.ImportFileResult(fileName, true, message, count));
+                StringBuilder message = new StringBuilder("OK");
+                if (!unknownFio.isEmpty()) {
+                    message.append(". Пропущены ФИО (нет в контингенте 9-х): ").append(String.join(", ", unknownFio));
+                }
+                if (!sumErrors.isEmpty()) {
+                    message.append(". Ошибки по сумме заданий/итога: ").append(String.join(" | ", sumErrors));
+                }
+                out.add(new OgeDtos.ImportFileResult(fileName, true, message.toString(), count));
             } catch (Exception e) {
                 out.add(new OgeDtos.ImportFileResult(fileName, false, e.getMessage(), 0));
             }
@@ -353,12 +403,15 @@ public class OgeService {
             String status = "ok";
             if (!expectedNow) status = "gray";
             else if (wr.getGrade() != null && wr.getGrade() == 2) status = "red";
-            resultRows.add(new OgeDtos.WorkResultRow(wr.getClassName(), wr.getFullName(), wr.getSubjectName(), wr.getTestScore(), wr.getGrade(), expectedNow, status));
+            if (wr.getTestScore() != null && (wr.getTeacherFio() == null || wr.getTeacherFio().isBlank())) status = "orange";
+            resultRows.add(new OgeDtos.WorkResultRow(
+                    wr.getClassName(), wr.getFullName(), wr.getSubjectName(), wr.getTestScore(), wr.getGrade(), expectedNow, status,
+                    blank(wr.getTeacherFio()), wr.isNeedsTeacherBinding(), wr.isNeedsManualStudentMatch()));
         }
 
         List<OgeDtos.WorkResultRow> missing = expected.entrySet().stream()
                 .filter(e -> !workByKey.containsKey(e.getKey()))
-                .map(e -> new OgeDtos.WorkResultRow(e.getValue().getClassName(), e.getValue().getFullName(), splitKeySubject(e.getKey()), null, null, true, "yellow"))
+                .map(e -> new OgeDtos.WorkResultRow(e.getValue().getClassName(), e.getValue().getFullName(), splitKeySubject(e.getKey()), null, null, true, "yellow", "", true, false))
                 .sorted(Comparator.comparing(OgeDtos.WorkResultRow::subject).thenComparing(OgeDtos.WorkResultRow::className).thenComparing(OgeDtos.WorkResultRow::fullName))
                 .toList();
         resultRows.addAll(missing);
@@ -391,6 +444,68 @@ public class OgeService {
             wb.write(bos);
             return bos.toByteArray();
         }
+    }
+
+    public List<String> teachers() {
+        return teacherDirectoryRepository.findAll().stream()
+                .map(TeacherDirectoryEntry::getFioTeacher)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList();
+    }
+
+    public List<OgeDtos.TeacherBindingRow> teacherBindings(String academicYear) {
+        return workResultRepository.findAllByAcademicYearOrderByClassNameAscFullNameAscSubjectNameAsc(academicYear).stream()
+                .filter(w -> w.getTestScore() != null)
+                .sorted(Comparator.comparing(OgeWorkResult::getClassName).thenComparing(OgeWorkResult::getFullName).thenComparing(OgeWorkResult::getSubjectName))
+                .map(w -> new OgeDtos.TeacherBindingRow(w.getId(), w.getClassName(), w.getFullName(), w.getSubjectName(), blank(w.getTeacherFio())))
+                .toList();
+    }
+
+    @Transactional
+    public void updateTeacherBindings(String academicYear, List<OgeDtos.TeacherBindingUpdate> updates) {
+        Map<Long, OgeDtos.TeacherBindingUpdate> byId = updates.stream()
+                .filter(u -> u.id() != null)
+                .collect(Collectors.toMap(OgeDtos.TeacherBindingUpdate::id, Function.identity(), (a, b) -> b));
+        List<OgeWorkResult> rows = workResultRepository.findAllById(byId.keySet());
+        for (OgeWorkResult row : rows) {
+            if (!Objects.equals(row.getAcademicYear(), academicYear)) continue;
+            String teacher = Optional.ofNullable(byId.get(row.getId())).map(OgeDtos.TeacherBindingUpdate::teacherFio).orElse("");
+            row.setTeacherFio(teacher == null ? "" : teacher.trim());
+            row.setNeedsTeacherBinding(row.getTeacherFio() == null || row.getTeacherFio().isBlank());
+        }
+        workResultRepository.saveAll(rows);
+    }
+
+    @Transactional
+    public int bindTeachersFromLoad(String academicYear) {
+        ensureDefaultSubjectAliases();
+        Map<String, List<String>> byClassSubject = new HashMap<>();
+        for (ManualLoadEntry entry : manualLoadEntryRepository.findAllByAcademicYear(academicYear)) {
+            String cls = normalizeClassLoose(entry.getClassName());
+            String sub = normalizeSubjectKey(mapSubjectForLoad(entry.getSubjectName()));
+            String key = cls + "|" + sub;
+            byClassSubject.computeIfAbsent(key, k -> new ArrayList<>()).add(blank(entry.getFioTeacher()).trim());
+        }
+        int updated = 0;
+        List<OgeWorkResult> rows = workResultRepository.findAllByAcademicYearOrderByClassNameAscFullNameAscSubjectNameAsc(academicYear);
+        for (OgeWorkResult row : rows) {
+            String cls = normalizeClassLoose(row.getClassName());
+            String sub = normalizeSubjectKey(mapSubjectForLoad(row.getSubjectName()));
+            List<String> teachers = byClassSubject.getOrDefault(cls + "|" + sub, List.of()).stream()
+                    .filter(s -> !s.isBlank()).distinct().toList();
+            if (teachers.size() == 1) {
+                row.setTeacherFio(teachers.get(0));
+                row.setNeedsTeacherBinding(false);
+                updated++;
+            } else if (row.getTeacherFio() == null || row.getTeacherFio().isBlank()) {
+                row.setNeedsTeacherBinding(true);
+            }
+        }
+        workResultRepository.saveAll(rows);
+        return updated;
     }
 
     public byte[] exportMismatchesWorkbook(String academicYear) throws IOException {
@@ -665,6 +780,19 @@ public class OgeService {
                 .collect(Collectors.toCollection(() -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER)));
     }
 
+    private Map<String, List<ContingentStudent>> loadContingentByFioClass(String academicYear) {
+        ContingentSnapshot snapshot = contingentSnapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear)
+                .orElse(null);
+        if (snapshot == null) return Map.of();
+        return contingentStudentRepository.findAllBySnapshotId(snapshot.getId()).stream()
+                .filter(s -> normalizeClassLoose(s.getClassName()).startsWith("9"))
+                .collect(Collectors.groupingBy(
+                        s -> normalizeFioCompare(s.getFullName()) + "|" + normalizeClassLoose(s.getClassName()),
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+    }
+
     private String extractSubject(Sheet info) {
         Row row = info.getRow(2);
         if (row == null) return null;
@@ -726,6 +854,58 @@ public class OgeService {
             map.computeIfAbsent(e.getSubjectName(), k -> new HashMap<>()).put(e.getScore(), e.getGrade());
         }
         return map;
+    }
+
+    private Map<Integer, Integer> extractTaskScores(Row row, HeaderPos pos) {
+        Map<Integer, Integer> scores = new LinkedHashMap<>();
+        int taskIndex = 1;
+        for (int c = pos.variantCol + 1; c < pos.scoreCol; c++) {
+            if (c == pos.classCol || c == pos.presenceCol || c == pos.variantCol) continue;
+            scores.put(taskIndex++, parseInt(getText(row.getCell(c))));
+        }
+        return scores;
+    }
+
+    private String toJson(Map<Integer, Integer> taskScores) {
+        StringBuilder sb = new StringBuilder("{");
+        boolean first = true;
+        for (Map.Entry<Integer, Integer> e : taskScores.entrySet()) {
+            if (!first) sb.append(",");
+            first = false;
+            sb.append("\"").append(e.getKey()).append("\":");
+            sb.append(e.getValue() == null ? "null" : e.getValue());
+        }
+        sb.append("}");
+        return sb.toString();
+    }
+
+    private void ensureDefaultSubjectAliases() {
+        ensureSubjectAlias("LOAD", "Математика", "Алгебра");
+        ensureSubjectAlias("LOAD", "Информатика и ИКТ", "Информатика");
+    }
+
+    private void ensureSubjectAlias(String scope, String source, String target) {
+        subjectAliasRepository.findByScopeAndSourceNameIgnoreCase(scope, source).orElseGet(() -> {
+            SubjectAlias alias = new SubjectAlias();
+            alias.setScope(scope);
+            alias.setSourceName(source);
+            alias.setTargetName(target);
+            alias.setActive(true);
+            return subjectAliasRepository.save(alias);
+        });
+    }
+
+    private String mapSubjectForLoad(String subjectName) {
+        if (subjectName == null) return "";
+        return subjectAliasRepository.findAllByScopeAndActiveTrue("LOAD").stream()
+                .filter(a -> a.getSourceName().equalsIgnoreCase(subjectName))
+                .map(SubjectAlias::getTargetName)
+                .findFirst()
+                .orElse(subjectName);
+    }
+
+    private String normalizeSubjectKey(String subjectName) {
+        return blank(subjectName).trim().toLowerCase(Locale.ROOT).replace('ё', 'е');
     }
 
     private Map<String, OgeGiaParticipant> indexByKey(List<OgeGiaParticipant> participants) {

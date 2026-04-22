@@ -40,11 +40,22 @@ public class OgeDtos {
                                 Integer score,
                                 Integer grade,
                                 boolean expectedByGia,
-                                String status) {}
+                                String status,
+                                String teacherFio,
+                                boolean needsTeacherBinding,
+                                boolean needsManualStudentMatch) {}
 
     public record WorkStatsRow(String className, String subject, int count2, int count3, int count4, int count5) {}
 
     public record WorkDatasetResponse(List<WorkResultRow> results,
                                       List<WorkResultRow> missing,
                                       List<WorkStatsRow> statistics) {}
+
+    public record TeacherBindingRow(Long id,
+                                    String className,
+                                    String fullName,
+                                    String subject,
+                                    String teacherFio) {}
+
+    public record TeacherBindingUpdate(Long id, String teacherFio) {}
 }

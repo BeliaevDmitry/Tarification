@@ -110,6 +110,33 @@ public class OgeController {
         return ResponseEntity.ok(ogeService.workDataset(academicYearService.resolveRequestedOrDefault(academicYear)));
     }
 
+    @GetMapping("/works/teachers")
+    public ResponseEntity<List<String>> teachers() {
+        return ResponseEntity.ok(ogeService.teachers());
+    }
+
+    @GetMapping("/works/teacher-binding")
+    public ResponseEntity<List<OgeDtos.TeacherBindingRow>> teacherBinding(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(ogeService.teacherBindings(academicYearService.resolveRequestedOrDefault(academicYear)));
+    }
+
+    @PutMapping("/works/teacher-binding")
+    public ResponseEntity<Void> updateTeacherBinding(@RequestParam(required = false) String academicYear,
+                                                     @RequestBody List<OgeDtos.TeacherBindingUpdate> updates,
+                                                     HttpServletRequest request) {
+        ensureCanEditTab(AuthSessionUtils.requiredUser(request), AppTab.OGE_WORK_UPLOAD, "Привязка педагога для результатов ОГЭ");
+        ogeService.updateTeacherBindings(academicYearService.resolveRequestedOrDefault(academicYear), updates);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/works/teacher-binding/from-load")
+    public ResponseEntity<String> bindTeachersFromLoad(@RequestParam(required = false) String academicYear,
+                                                       HttpServletRequest request) {
+        ensureCanEditTab(AuthSessionUtils.requiredUser(request), AppTab.OGE_WORK_UPLOAD, "Привязка педагога из нагрузки");
+        int updated = ogeService.bindTeachersFromLoad(academicYearService.resolveRequestedOrDefault(academicYear));
+        return ResponseEntity.ok("Привязано записей: " + updated);
+    }
+
     @GetMapping("/works/export")
     public ResponseEntity<byte[]> exportWorks(@RequestParam(required = false) String academicYear) throws Exception {
         byte[] body = ogeService.exportWorksWorkbook(academicYearService.resolveRequestedOrDefault(academicYear));

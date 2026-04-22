@@ -8,6 +8,8 @@ const SUBJECTS = [
 const state = {
     students: [],
     mismatches: [],
+    teachers: [],
+    teacherBindings: [],
     canViewUpload: true,
     canViewMismatches: true,
     workSorts: [
@@ -66,6 +68,7 @@ function pickStatusColor(status) {
     if (status === 'red') return 'background:#ffd6d6;';
     if (status === 'yellow') return 'background:#fff5cc;';
     if (status === 'gray') return 'background:#e6e6e6;';
+    if (status === 'orange') return 'background:#ffe5cc;';
     return '';
 }
 
@@ -86,7 +89,7 @@ function bindWorkSubtabs() {
         btn.addEventListener('click', () => {
             document.querySelectorAll('#works-tabs button').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            ['results', 'missing', 'stats'].forEach(key => {
+            ['results', 'missing', 'stats', 'teacher-binding'].forEach(key => {
                 const pane = document.getElementById(`works-${key}`);
                 if (!pane) return;
                 pane.style.display = key === btn.dataset.subtab ? 'block' : 'none';
@@ -297,6 +300,54 @@ async function reloadWorks() {
     bindResultsMatrixSorting();
     document.getElementById('missing-body').innerHTML = (data.missing || []).map(r => `<tr style="${pickStatusColor('yellow')}"><td>${r.subject}</td><td>${r.className}</td><td>${r.fullName}</td></tr>`).join('');
     document.getElementById('work-stats-body').innerHTML = (data.statistics || []).map(r => `<tr><td>${r.className}</td><td>${r.subject}</td><td>${r.count2}</td><td>${r.count3}</td><td>${r.count4}</td><td>${r.count5}</td></tr>`).join('');
+    await reloadTeacherBinding();
+}
+
+async function reloadTeacherBinding() {
+    state.teachers = await api(scoped('/api/oge/works/teachers'));
+    state.teacherBindings = await api(scoped('/api/oge/works/teacher-binding'));
+    state.teacherBindings.sort((a, b) => String(a.className || '').localeCompare(String(b.className || ''), 'ru')
+        || String(a.fullName || '').localeCompare(String(b.fullName || ''), 'ru')
+        || String(a.subject || '').localeCompare(String(b.subject || ''), 'ru'));
+    const options = ['<option value="">— не выбран —</option>']
+        .concat((state.teachers || []).map(t => `<option value="${t}">${t}</option>`))
+        .join('');
+    document.getElementById('teacher-binding-body').innerHTML = (state.teacherBindings || []).map(r => `
+      <tr data-id="${r.id}">
+        <td>${r.className || ''}</td>
+        <td>${r.fullName || ''}</td>
+        <td>${r.subject || ''}</td>
+        <td><select class="teacher-select">${options}</select></td>
+      </tr>
+    `).join('') || '<tr><td colspan="4" class="muted">Нет данных</td></tr>';
+    document.querySelectorAll('#teacher-binding-body tr[data-id]').forEach(tr => {
+        const id = Number(tr.dataset.id);
+        const row = (state.teacherBindings || []).find(x => x.id === id);
+        const sel = tr.querySelector('select.teacher-select');
+        if (sel) sel.value = row?.teacherFio || '';
+    });
+}
+
+async function saveTeacherBindings() {
+    const updates = [...document.querySelectorAll('#teacher-binding-body tr[data-id]')].map(tr => ({
+        id: Number(tr.dataset.id),
+        teacherFio: tr.querySelector('select.teacher-select')?.value || ''
+    }));
+    await api(scoped('/api/oge/works/teacher-binding'), {
+        method: 'PUT',
+        headers: jsonHeaders,
+        body: JSON.stringify(updates)
+    });
+    const log = document.getElementById('teacher-binding-log');
+    if (log) log.textContent = 'Привязка сохранена';
+    await reloadWorks();
+}
+
+async function bindTeachersFromLoad() {
+    const msg = await api(scoped('/api/oge/works/teacher-binding/from-load'), { method: 'POST' });
+    const log = document.getElementById('teacher-binding-log');
+    if (log) log.textContent = typeof msg === 'string' ? msg : (msg?.message || JSON.stringify(msg));
+    await reloadWorks();
 }
 
 async function reloadScale() {
@@ -341,6 +392,8 @@ function bindButtons() {
     document.getElementById('works-export-btn').addEventListener('click', () => window.location.href = scoped('/api/oge/works/export'));
     document.getElementById('gia-export-btn').addEventListener('click', () => window.location.href = scoped('/api/oge/gia/export'));
     document.getElementById('mismatch-export-btn').addEventListener('click', () => window.location.href = scoped('/api/oge/mismatches/export'));
+    document.getElementById('save-teacher-binding-btn').addEventListener('click', saveTeacherBindings);
+    document.getElementById('bind-from-load-btn').addEventListener('click', bindTeachersFromLoad);
     ['flt-type', 'flt-class', 'flt-fio-gia', 'flt-fio-cont', 'flt-doc-gia', 'flt-doc-cont', 'flt-reason']
         .forEach(id => document.getElementById(id)?.addEventListener('input', renderMismatches));
 }
