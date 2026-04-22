@@ -276,6 +276,9 @@ public class OgeService {
                     String fio = OgeSubjects.normalizeFio(getText(row.getCell(pos.fioCol)));
                     if (fio.isBlank()) continue;
                     Integer score = parseInt(getText(row.getCell(pos.scoreCol)));
+                    if (!isMeaningfulResultRow(row, pos, score)) {
+                        continue;
+                    }
                     String className = resolveClassFromGia(fio);
                     if (className.isBlank()) className = "9";
 
@@ -290,8 +293,12 @@ public class OgeService {
                     entity.setClassName(className);
                     entity.setFullName(fio);
                     entity.setSubjectName(subject);
-                    entity.setTestScore(score);
-                    entity.setGrade(grade);
+                    if (entity.getId() != null && entity.getTestScore() != null && score == null) {
+                        // Не затираем уже рассчитанный итог частично заполненным отчетом.
+                    } else {
+                        entity.setTestScore(score);
+                        entity.setGrade(grade);
+                    }
                     entity.setSourceFile(fileName);
                     entity.setUpdatedAt(LocalDateTime.now());
                     workResultRepository.save(entity);
@@ -334,6 +341,7 @@ public class OgeService {
                 .map(e -> new OgeDtos.WorkResultRow(e.getValue().getClassName(), e.getValue().getFullName(), splitKeySubject(e.getKey()), null, null, true, "yellow"))
                 .sorted(Comparator.comparing(OgeDtos.WorkResultRow::subject).thenComparing(OgeDtos.WorkResultRow::className).thenComparing(OgeDtos.WorkResultRow::fullName))
                 .toList();
+        resultRows.addAll(missing);
 
         Map<String, Map<String, int[]>> agg = new TreeMap<>();
         for (OgeWorkResult wr : work) {
@@ -529,14 +537,43 @@ public class OgeService {
         if (header == null) return null;
         int fioCol = -1;
         int classCol = -1;
+        int presenceCol = -1;
+        int variantCol = -1;
         int scoreCol = -1;
         for (int c = 0; c <= Math.min(80, header.getLastCellNum()); c++) {
-            String val = getText(header.getCell(c)).toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
-            if (val.contains("фио")) fioCol = c;
-            if (val.contains("класс")) classCol = c;
+            String valRaw = getText(header.getCell(c)).toLowerCase(Locale.ROOT);
+            String val = valRaw.replaceAll("\\s+", "");
+            if (valRaw.contains("фио")) fioCol = c;
+            if (valRaw.contains("класс")) classCol = c;
+            if (valRaw.contains("присутств")) presenceCol = c;
+            if (valRaw.contains("вариант")) variantCol = c;
             if ("итог".equals(val) || "итого".equals(val)) scoreCol = c;
         }
-        return fioCol >= 0 && scoreCol >= 0 ? new HeaderPos(fioCol, classCol < 0 ? 0 : classCol, scoreCol, 3) : null;
+        return fioCol >= 0 && scoreCol >= 0 ? new HeaderPos(fioCol, classCol < 0 ? 0 : classCol, presenceCol, variantCol, scoreCol, 3) : null;
+    }
+
+    private boolean isMeaningfulResultRow(Row row, HeaderPos pos, Integer score) {
+        String presence = pos.presenceCol >= 0 ? getText(row.getCell(pos.presenceCol)).trim().toLowerCase(Locale.ROOT) : "";
+        boolean variantFilled = pos.variantCol >= 0 && !getText(row.getCell(pos.variantCol)).trim().isEmpty();
+        boolean taskPointsFilled = hasTaskPoints(row, pos);
+
+        if (score != null && score > 0) return true;
+        if ((presence.contains("не был") || presence.contains("отсутств")) && !variantFilled && !taskPointsFilled) return false;
+        if (presence.isBlank() && !variantFilled && !taskPointsFilled && (score == null || score == 0)) return false;
+        if (score != null && score == 0) return taskPointsFilled;
+        return variantFilled || taskPointsFilled;
+    }
+
+    private boolean hasTaskPoints(Row row, HeaderPos pos) {
+        if (pos.scoreCol < 0) return false;
+        int start = Math.max(0, Math.min(pos.fioCol, pos.scoreCol) + 1);
+        int end = Math.max(pos.fioCol, pos.scoreCol) - 1;
+        for (int c = start; c <= end; c++) {
+            if (c == pos.classCol || c == pos.presenceCol || c == pos.variantCol) continue;
+            String value = getText(row.getCell(c)).trim();
+            if (!value.isEmpty() && !"0".equals(value)) return true;
+        }
+        return false;
     }
 
     private Map<String, Map<Integer, Integer>> scaleMap() {
@@ -624,5 +661,5 @@ public class OgeService {
         };
     }
 
-    private record HeaderPos(int fioCol, int classCol, int scoreCol, int dataStartRow) {}
+    private record HeaderPos(int fioCol, int classCol, int presenceCol, int variantCol, int scoreCol, int dataStartRow) {}
 }
