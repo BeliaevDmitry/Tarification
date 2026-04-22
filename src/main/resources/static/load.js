@@ -1616,11 +1616,16 @@ function renderTable() {
                 const isActive = hasRowTeacherAssigned;
                 const isMuted = rowTeacher !== "" && !hasRowTeacherAssigned && !isPlanned && !isTransferOut;
                 const isUnassigned = !hasAnyAssigned && !isPlanned;
-                const continuityStates = classRows
-                    .map((item) => String(item?.continuityState || item?.continuityStatus || "").trim().toLowerCase())
-                    .filter(Boolean);
-                const hasContinuityBroken = continuityStates.some((state) => state === "broken" || state === "violation" || state === "mismatch");
-                const hasContinuityOk = !hasContinuityBroken && continuityStates.some((state) => state === "ok" || state === "done" || state === "applied");
+                const hasContinuityExpectation = classRows.some((item) => state.continuityExpectedByKey.has(
+                    continuityKey(item.className, item.subjectName, continuityGroupName(item))
+                ));
+                const hasContinuityOk = hasContinuityExpectation && isActive && classRows.some((item) => {
+                    const expectedTeacher = state.continuityExpectedByKey.get(
+                        continuityKey(item.className, item.subjectName, continuityGroupName(item))
+                    );
+                    return Boolean(expectedTeacher) && expectedTeacher === rowTeacher.toLowerCase();
+                });
+                const hasContinuityBroken = hasContinuityExpectation && isActive && !hasContinuityOk;
                 const classesForCell = [
                     "hour-pill",
                     isActive ? "active" : "",
@@ -1901,7 +1906,7 @@ async function importLoadWorkbook(file) {
 }
 
 async function refreshSourceData() {
-    const [curriculum, manual, teachers, buildingRows, classRows, periodSettings, subjects, yearResolve, academicYears] = await Promise.all([
+    const [curriculum, manual, teachers, buildingRows, classRows, periodSettings, subjects, yearResolve] = await Promise.all([
         api("/api/curriculum"),
         api("/api/manual-load"),
         api("/api/teachers"),
@@ -1909,8 +1914,7 @@ async function refreshSourceData() {
         api("/api/classroom-leadership"),
         api("/api/settings/study-periods"),
         api("/api/subjects"),
-        api("/api/academic-years/active"),
-        api("/api/academic-years")
+        api("/api/academic-years/active")
     ]);
 
     curriculumRows = curriculum || [];
@@ -1928,10 +1932,10 @@ async function refreshSourceData() {
     state.continuityExpectedByKey = new Map();
 
     try {
-        const activeAcademicYear = String(yearResolve?.active || "").trim();
-        const activeYearMeta = (academicYears || []).find((row) => String(row.code || "").trim() === activeAcademicYear);
+        const requestedAcademicYear = String(sessionStorage.getItem("tarification.academicYear") || "").trim();
+        const activeAcademicYear = requestedAcademicYear || String(yearResolve?.active || "").trim();
         const sourceAcademicYear = previousAcademicYearCode(activeAcademicYear);
-        if (activeYearMeta?.continuityApplied && sourceAcademicYear) {
+        if (sourceAcademicYear) {
             const sourceManualRows = await apiUnscoped(`/api/manual-load?academicYear=${encodeURIComponent(sourceAcademicYear)}`);
             state.continuityExpectedByKey = computeContinuityExpectedByKey(sourceManualRows || [], curriculumRows || []);
         }
