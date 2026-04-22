@@ -44,6 +44,10 @@ public class AuthFilter extends OncePerRequestFilter {
             "/service-notes.html", AppTab.SERVICE_NOTES,
             "/settings.html", AppTab.SETTINGS,
             "/teachers.html", AppTab.TEACHERS,
+            "/vsoko.html", AppTab.VSOKO_VIEW,
+            "/vsoko-oge.html", AppTab.VSOKO_VIEW,
+            "/vsoko-ege.html", AppTab.VSOKO_VIEW,
+            "/vsoko-pa.html", AppTab.VSOKO_VIEW,
             "/admin.html", AppTab.USERS
     );
 
