@@ -389,6 +389,17 @@ public class OgeService {
         }
     }
 
+    public byte[] exportMismatchesWorkbook(String academicYear) throws IOException {
+        OgeDtos.GiaMismatchResponse mismatches = giaMismatches(academicYear);
+        try (Workbook wb = new XSSFWorkbook()) {
+            Sheet sheet = wb.createSheet("Нестыковки");
+            writeMismatches(sheet, mismatches.rows());
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            wb.write(bos);
+            return bos.toByteArray();
+        }
+    }
+
     public OgeDtos.GiaMismatchResponse giaMismatches(String academicYear) {
         OgeGiaVersion latestGia = latestVersion();
         ContingentSnapshot snapshot = contingentSnapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear)

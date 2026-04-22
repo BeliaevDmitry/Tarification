@@ -5,7 +5,7 @@ const SUBJECTS = [
     'Обществознание', 'Испанский язык', 'Литература'
 ];
 
-const state = { students: [] };
+const state = { students: [], mismatches: [], canViewUpload: true, canViewMismatches: true };
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -18,6 +18,39 @@ async function api(path, options = {}) {
 
 function scoped(path) {
     return window.withAcademicYear ? window.withAcademicYear(path) : path;
+}
+
+function hasViewPermission(tab) {
+    const user = window.tarificationAuth;
+    if (!user) return true;
+    if (user.admin) return true;
+    const perms = user.tabPermissions || [];
+    return perms.some(p => p.tab === tab && p.canView);
+}
+
+async function waitForAuthContext() {
+    for (let i = 0; i < 50; i++) {
+        if (window.tarificationAuth) return;
+        await new Promise(resolve => setTimeout(resolve, 50));
+    }
+}
+
+function applyTabVisibility() {
+    state.canViewUpload = hasViewPermission('OGE_UPLOAD_VIEW');
+    state.canViewMismatches = hasViewPermission('OGE_MISMATCH_VIEW');
+    const uploadBtn = document.querySelector('#main-tabs button[data-tab="upload"]');
+    const uploadPane = document.getElementById('tab-upload');
+    const mismatchBtn = document.querySelector('#main-tabs button[data-tab="mismatches"]');
+    const mismatchPane = document.getElementById('tab-mismatches');
+    if (uploadBtn) uploadBtn.style.display = state.canViewUpload ? '' : 'none';
+    if (uploadPane) uploadPane.style.display = state.canViewUpload ? '' : 'none';
+    if (mismatchBtn) mismatchBtn.style.display = state.canViewMismatches ? '' : 'none';
+    if (mismatchPane) mismatchPane.style.display = state.canViewMismatches ? '' : 'none';
+    const active = document.querySelector('#main-tabs button.active');
+    if (!active || active.style.display === 'none') {
+        const firstVisible = [...document.querySelectorAll('#main-tabs button[data-tab]')].find(b => b.style.display !== 'none');
+        firstVisible?.click();
+    }
 }
 
 function pickStatusColor(status) {
@@ -73,6 +106,16 @@ async function reloadChanges() {
 
 async function reloadStudents() {
     state.students = await api('/api/oge/gia/participants');
+    const versions = await api('/api/oge/gia/versions');
+    const latest = versions && versions.length ? versions[0] : null;
+    const title = document.getElementById('students-title');
+    if (title && latest?.uploadedAt) {
+        const d = new Date(latest.uploadedAt);
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        title.textContent = `ОГЭ / Выбор ОГЭ (${dd}.${mm}.${yyyy})`;
+    }
     renderStudents();
 }
 
@@ -96,7 +139,28 @@ async function reloadGiaStats() {
 
 async function reloadMismatches() {
     const data = await api(scoped('/api/oge/mismatches'));
-    document.getElementById('mismatch-body').innerHTML = (data.rows || []).map(r => `
+    state.mismatches = data.rows || [];
+    renderMismatches();
+}
+
+function renderMismatches() {
+    const fType = (document.getElementById('flt-type')?.value || '').toLowerCase();
+    const fClass = (document.getElementById('flt-class')?.value || '').toLowerCase();
+    const fFioGia = (document.getElementById('flt-fio-gia')?.value || '').toLowerCase();
+    const fFioCont = (document.getElementById('flt-fio-cont')?.value || '').toLowerCase();
+    const fDocGia = (document.getElementById('flt-doc-gia')?.value || '').toLowerCase();
+    const fDocCont = (document.getElementById('flt-doc-cont')?.value || '').toLowerCase();
+    const fReason = (document.getElementById('flt-reason')?.value || '').toLowerCase();
+    const rows = state.mismatches.filter(r =>
+        String(r.type || '').toLowerCase().includes(fType) &&
+        String(r.className || '').toLowerCase().includes(fClass) &&
+        String(r.fioGia || '').toLowerCase().includes(fFioGia) &&
+        String(r.fioContingent || '').toLowerCase().includes(fFioCont) &&
+        String(r.documentGia || '').toLowerCase().includes(fDocGia) &&
+        String(r.documentContingent || '').toLowerCase().includes(fDocCont) &&
+        String(r.reason || '').toLowerCase().includes(fReason)
+    );
+    document.getElementById('mismatch-body').innerHTML = rows.map(r => `
       <tr>
         <td>${r.type || ''}</td><td>${r.className || ''}</td><td>${r.fioGia || ''}</td><td>${r.fioContingent || ''}</td>
         <td>${r.documentGia || ''}</td><td>${r.documentContingent || ''}</td><td>${r.reason || ''}</td>
@@ -169,7 +233,10 @@ async function saveScale() {
 }
 
 async function reloadAll() {
-    await Promise.all([reloadChanges(), reloadStudents(), reloadGiaStats(), reloadMismatches(), reloadWorks(), reloadScale()]);
+    const tasks = [reloadStudents(), reloadGiaStats(), reloadWorks(), reloadScale()];
+    if (state.canViewUpload) tasks.push(reloadChanges());
+    if (state.canViewMismatches) tasks.push(reloadMismatches());
+    await Promise.all(tasks);
 }
 
 function bindButtons() {
@@ -179,11 +246,16 @@ function bindButtons() {
     document.getElementById('students-search').addEventListener('input', renderStudents);
     document.getElementById('works-export-btn').addEventListener('click', () => window.location.href = scoped('/api/oge/works/export'));
     document.getElementById('gia-export-btn').addEventListener('click', () => window.location.href = scoped('/api/oge/gia/export'));
+    document.getElementById('mismatch-export-btn').addEventListener('click', () => window.location.href = scoped('/api/oge/mismatches/export'));
+    ['flt-type', 'flt-class', 'flt-fio-gia', 'flt-fio-cont', 'flt-doc-gia', 'flt-doc-cont', 'flt-reason']
+        .forEach(id => document.getElementById(id)?.addEventListener('input', renderMismatches));
 }
 
 (async function init() {
+    await waitForAuthContext();
     bindMainTabs();
     bindWorkSubtabs();
     bindButtons();
+    applyTabVisibility();
     await reloadAll();
 })();

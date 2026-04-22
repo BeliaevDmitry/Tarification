@@ -37,7 +37,7 @@
     <section class="card">
         <div class="tabs" id="main-tabs">
             <button data-tab="upload" class="active">Выгрузка</button>
-            <button data-tab="students">Таблица учеников</button>
+            <button data-tab="students">Выбор ОГЭ</button>
             <button data-tab="gia-stats">Статистика по выбору ГИА</button>
             <button data-tab="mismatches">Нестыковки</button>
             <button data-tab="works">Внутренние работы</button>
@@ -61,7 +61,7 @@
         </div>
 
         <div id="tab-students" class="tab-pane">
-            <h2>ОГЭ / Кто что сдаёт</h2>
+            <h2 id="students-title">ОГЭ / Выбор ОГЭ</h2>
             <div class="inline-form">
                 <input id="students-search" placeholder="Поиск по ФИО" style="min-width:280px;">
             </div>
@@ -85,11 +85,23 @@
 
         <div id="tab-mismatches" class="tab-pane">
             <h2>ОГЭ / Нестыковки</h2>
+            <div class="inline-form">
+                <button id="mismatch-export-btn" type="button">Скачать Excel (Нестыковки)</button>
+            </div>
             <table class="compact-table sticky-head">
                 <thead>
                 <tr>
                     <th>Тип</th><th>Класс</th><th>ФИО (ГИА)</th><th>ФИО (Контингент)</th>
                     <th>Документ (ГИА)</th><th>Документ (Контингент)</th><th>Причина</th>
+                </tr>
+                <tr>
+                    <th><input id="flt-type" placeholder="фильтр"></th>
+                    <th><input id="flt-class" placeholder="фильтр"></th>
+                    <th><input id="flt-fio-gia" placeholder="фильтр"></th>
+                    <th><input id="flt-fio-cont" placeholder="фильтр"></th>
+                    <th><input id="flt-doc-gia" placeholder="фильтр"></th>
+                    <th><input id="flt-doc-cont" placeholder="фильтр"></th>
+                    <th><input id="flt-reason" placeholder="фильтр"></th>
                 </tr>
                 </thead>
                 <tbody id="mismatch-body"></tbody>

@@ -32,6 +32,7 @@ public class OgeController {
                                                                     @RequestParam(required = false) String academicYear,
                                                                     HttpServletRequest request) {
         SessionUser user = AuthSessionUtils.requiredUser(request);
+        ensureCanViewTab(user, AppTab.OGE_UPLOAD_VIEW, "ОГЭ / Выгрузка");
         ensureCanEditTab(user, AppTab.OGE_GIA_UPLOAD, "Загрузка выгрузок ГИА");
         return ResponseEntity.ok(ogeService.importGia(academicYearService.resolveRequestedOrDefault(academicYear), files));
     }
@@ -47,7 +48,8 @@ public class OgeController {
     }
 
     @GetMapping("/gia/changes")
-    public ResponseEntity<OgeDtos.GiaChangesResponse> changes() {
+    public ResponseEntity<OgeDtos.GiaChangesResponse> changes(HttpServletRequest request) {
+        ensureCanViewTab(AuthSessionUtils.requiredUser(request), AppTab.OGE_UPLOAD_VIEW, "ОГЭ / Выгрузка");
         return ResponseEntity.ok(ogeService.changesBetweenLastTwo());
     }
 
@@ -57,8 +59,19 @@ public class OgeController {
     }
 
     @GetMapping("/mismatches")
-    public ResponseEntity<OgeDtos.GiaMismatchResponse> mismatches(@RequestParam(required = false) String academicYear) {
+    public ResponseEntity<OgeDtos.GiaMismatchResponse> mismatches(@RequestParam(required = false) String academicYear,
+                                                                  HttpServletRequest request) {
+        ensureCanViewTab(AuthSessionUtils.requiredUser(request), AppTab.OGE_MISMATCH_VIEW, "ОГЭ / Нестыковки");
         return ResponseEntity.ok(ogeService.giaMismatches(academicYearService.resolveRequestedOrDefault(academicYear)));
+    }
+
+    @GetMapping("/mismatches/export")
+    public ResponseEntity<byte[]> exportMismatches(@RequestParam(required = false) String academicYear,
+                                                   HttpServletRequest request) throws Exception {
+        ensureCanViewTab(AuthSessionUtils.requiredUser(request), AppTab.OGE_MISMATCH_VIEW, "ОГЭ / Нестыковки");
+        byte[] body = ogeService.exportMismatchesWorkbook(academicYearService.resolveRequestedOrDefault(academicYear));
+        String fileName = "ОГЭ_нестыковки_" + LocalDate.now() + ".xlsx";
+        return excel(fileName, body);
     }
 
     @GetMapping("/gia/export")
@@ -114,5 +127,10 @@ public class OgeController {
     private void ensureCanEditTab(SessionUser user, AppTab tab, String action) {
         if (user.isAdmin() || user.canEditTab(tab)) return;
         throw new AuthExceptions.ForbiddenException(action + " доступна только пользователям с соответствующим правом");
+    }
+
+    private void ensureCanViewTab(SessionUser user, AppTab tab, String action) {
+        if (user.isAdmin() || user.canViewTab(tab)) return;
+        throw new AuthExceptions.ForbiddenException(action + " доступна только пользователям с соответствующим правом просмотра");
     }
 }
