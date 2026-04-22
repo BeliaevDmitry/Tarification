@@ -1616,16 +1616,11 @@ function renderTable() {
                 const isActive = hasRowTeacherAssigned;
                 const isMuted = rowTeacher !== "" && !hasRowTeacherAssigned && !isPlanned && !isTransferOut;
                 const isUnassigned = !hasAnyAssigned && !isPlanned;
-                const hasContinuityExpectation = classRows.some((item) => state.continuityExpectedByKey.has(
-                    continuityKey(item.className, item.subjectName, continuityGroupName(item))
-                ));
-                const hasContinuityOk = hasContinuityExpectation && isActive && classRows.some((item) => {
-                    const expectedTeacher = state.continuityExpectedByKey.get(
-                        continuityKey(item.className, item.subjectName, continuityGroupName(item))
-                    );
-                    return Boolean(expectedTeacher) && expectedTeacher === rowTeacher.toLowerCase();
-                });
-                const hasContinuityBroken = hasContinuityExpectation && isActive && !hasContinuityOk;
+                const continuityStates = classRows
+                    .map((item) => String(item?.continuityState || item?.continuityStatus || "").trim().toLowerCase())
+                    .filter(Boolean);
+                const hasContinuityBroken = continuityStates.some((state) => state === "broken" || state === "violation" || state === "mismatch");
+                const hasContinuityOk = !hasContinuityBroken && continuityStates.some((state) => state === "ok" || state === "done" || state === "applied");
                 const classesForCell = [
                     "hour-pill",
                     isActive ? "active" : "",
