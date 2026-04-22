@@ -5,7 +5,16 @@ const SUBJECTS = [
     'Обществознание', 'Испанский язык', 'Литература'
 ];
 
-const state = { students: [], mismatches: [], canViewUpload: true, canViewMismatches: true };
+const state = {
+    students: [],
+    mismatches: [],
+    canViewUpload: true,
+    canViewMismatches: true,
+    workSorts: [
+        { key: 'className', dir: 'asc' },
+        { key: 'fullName', dir: 'asc' }
+    ]
+};
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -176,17 +185,32 @@ function buildResultsMatrix(rows) {
         byStudent.get(key).values[row.subject] = row;
     }
 
-    const students = [...byStudent.values()].sort((a, b) => (a.className || '').localeCompare(b.className || '', 'ru') || (a.fullName || '').localeCompare(b.fullName || '', 'ru'));
-    let html = '<thead><tr><th rowspan="2">Класс</th><th rowspan="2">ФИО</th><th rowspan="2">Кол-во предметов для сдачи</th><th rowspan="2">Средний балл за сданные предметы</th>';
+    const students = [...byStudent.values()].map(st => {
+        const grades = SUBJECTS.map(s => st.values[s]?.grade).filter(v => typeof v === 'number');
+        return {
+            ...st,
+            _avg: grades.length ? grades.reduce((a, b) => a + b, 0) / grades.length : null,
+            _count: SUBJECTS.filter(s => st.values[s]?.expectedByGia).length
+        };
+    });
+    students.sort(compareStudentsByMultiSort);
+
+    let html = '<thead><tr>';
+    html += `<th rowspan="2" data-sort="className">Класс${sortBadge('className')}</th>`;
+    html += `<th rowspan="2" data-sort="fullName">ФИО${sortBadge('fullName')}</th>`;
+    html += `<th rowspan="2" data-sort="examCount">Кол-во предметов для сдачи${sortBadge('examCount')}</th>`;
+    html += `<th rowspan="2" data-sort="avgGrade">Средний балл за сданные предметы${sortBadge('avgGrade')}</th>`;
     for (const s of SUBJECTS) html += `<th colspan="2">${s}</th>`;
     html += '</tr><tr>';
-    for (let i = 0; i < SUBJECTS.length; i++) html += '<th>Тестовый балл</th><th>Оценка</th>';
+    for (const s of SUBJECTS) {
+        html += `<th data-sort="score:${s}">Тестовый балл${sortBadge(`score:${s}`)}</th>`;
+        html += `<th data-sort="grade:${s}">Оценка${sortBadge(`grade:${s}`)}</th>`;
+    }
     html += '</tr></thead><tbody>';
 
     for (const st of students) {
-        const grades = SUBJECTS.map(s => st.values[s]?.grade).filter(v => typeof v === 'number');
-        const avg = grades.length ? (grades.reduce((a, b) => a + b, 0) / grades.length).toFixed(3).replace('.', ',') : '';
-        const examCount = SUBJECTS.filter(s => st.values[s]?.expectedByGia).length;
+        const avg = st._avg != null ? st._avg.toFixed(3).replace('.', ',') : '';
+        const examCount = st._count;
         html += `<tr><td>${st.className}</td><td>${st.fullName}</td><td>${examCount}</td><td>${avg}</td>`;
         for (const s of SUBJECTS) {
             const v = st.values[s];
@@ -198,9 +222,65 @@ function buildResultsMatrix(rows) {
     return html;
 }
 
+function sortBadge(key) {
+    const idx = state.workSorts.findIndex(s => s.key === key);
+    if (idx < 0) return '';
+    const dir = state.workSorts[idx].dir === 'asc' ? '↑' : '↓';
+    return ` <span style="font-size:10px;">${idx + 1}${dir}</span>`;
+}
+
+function valueBySortKey(student, key) {
+    if (key === 'className') return student.className || '';
+    if (key === 'fullName') return student.fullName || '';
+    if (key === 'examCount') return student._count ?? 0;
+    if (key === 'avgGrade') return student._avg ?? -1;
+    if (key.startsWith('score:')) {
+        const subject = key.substring('score:'.length);
+        return student.values[subject]?.score ?? -1;
+    }
+    if (key.startsWith('grade:')) {
+        const subject = key.substring('grade:'.length);
+        return student.values[subject]?.grade ?? -1;
+    }
+    return '';
+}
+
+function compareStudentsByMultiSort(a, b) {
+    for (const sort of state.workSorts) {
+        const av = valueBySortKey(a, sort.key);
+        const bv = valueBySortKey(b, sort.key);
+        let cmp = 0;
+        if (typeof av === 'number' && typeof bv === 'number') cmp = av - bv;
+        else cmp = String(av).localeCompare(String(bv), 'ru');
+        if (cmp !== 0) return sort.dir === 'asc' ? cmp : -cmp;
+    }
+    return 0;
+}
+
+function bindResultsMatrixSorting() {
+    document.querySelectorAll('#results-matrix th[data-sort]').forEach(th => {
+        th.addEventListener('click', (event) => {
+            const key = th.dataset.sort;
+            const existingIdx = state.workSorts.findIndex(s => s.key === key);
+            const toggleDir = existingIdx >= 0 && state.workSorts[existingIdx].dir === 'asc' ? 'desc' : 'asc';
+            if (!event.shiftKey) {
+                state.workSorts = [{ key, dir: toggleDir }];
+            } else {
+                if (existingIdx >= 0) {
+                    state.workSorts[existingIdx].dir = toggleDir;
+                } else {
+                    state.workSorts.push({ key, dir: 'asc' });
+                }
+            }
+            reloadWorks();
+        });
+    });
+}
+
 async function reloadWorks() {
     const data = await api('/api/oge/works/dataset');
     document.getElementById('results-matrix').innerHTML = buildResultsMatrix(data.results || []);
+    bindResultsMatrixSorting();
     document.getElementById('missing-body').innerHTML = (data.missing || []).map(r => `<tr style="${pickStatusColor('yellow')}"><td>${r.subject}</td><td>${r.className}</td><td>${r.fullName}</td></tr>`).join('');
     document.getElementById('work-stats-body').innerHTML = (data.statistics || []).map(r => `<tr><td>${r.className}</td><td>${r.subject}</td><td>${r.count2}</td><td>${r.count3}</td><td>${r.count4}</td><td>${r.count5}</td></tr>`).join('');
 }
