@@ -76,6 +76,7 @@ public class OgeService {
                         }
                     }
                     p.setSelectedSubjects(selected);
+                    p.setDataIssue(detectLanguageMismatch(flags));
                     version.getParticipants().add(p);
                     loaded++;
                 }
@@ -191,12 +192,29 @@ public class OgeService {
     private List<OgeDtos.GiaChangeItem> findOralMismatchErrors(OgeGiaVersion version) {
         List<OgeDtos.GiaChangeItem> errors = new ArrayList<>();
         for (OgeGiaParticipant p : version.getParticipants()) {
-            Set<String> s = p.getSelectedSubjects();
-            if (s.contains("Английский язык") && p.getSelectedSubjects().contains("Английский язык")) {
-                // объединено в один предмет, явную рассинхронизацию по коду не можем восстановить после нормализации
+            if (p.getDataIssue() != null && !p.getDataIssue().isBlank()) {
+                errors.add(new OgeDtos.GiaChangeItem("ОШИБКА", displayKey(p), p.getDataIssue(), ""));
             }
         }
         return errors;
+    }
+
+    private String detectLanguageMismatch(Map<Integer, Integer> flags) {
+        List<String> issues = new ArrayList<>();
+        checkPair(flags, 9, 29, "Английский язык", issues);
+        checkPair(flags, 10, 30, "Немецкий язык", issues);
+        checkPair(flags, 11, 31, "Французский язык", issues);
+        checkPair(flags, 13, 33, "Испанский язык", issues);
+        return String.join("; ", issues);
+    }
+
+    private void checkPair(Map<Integer, Integer> flags, int writtenCode, int oralCode, String subject, List<String> issues) {
+        int written = flags.getOrDefault(writtenCode, 0);
+        int oral = flags.getOrDefault(oralCode, 0);
+        if (written != oral) {
+            if (written == 1) issues.add(subject + ": выбрана письменная часть без устной");
+            if (oral == 1) issues.add(subject + ": выбрана устная часть без письменной");
+        }
     }
 
     @Transactional
@@ -258,11 +276,8 @@ public class OgeService {
                     String fio = OgeSubjects.normalizeFio(getText(row.getCell(pos.fioCol)));
                     if (fio.isBlank()) continue;
                     Integer score = parseInt(getText(row.getCell(pos.scoreCol)));
-                    String className = OgeSubjects.normalizeClassName(getText(row.getCell(pos.classCol)));
-                    if (className.isBlank()) {
-                        className = resolveClassFromGia(fio);
-                    }
-                    if (className.isBlank()) continue;
+                    String className = resolveClassFromGia(fio);
+                    if (className.isBlank()) className = "9";
 
                     Integer grade = score == null ? null : scale.getOrDefault(subject, Map.of()).get(score);
                     if (score != null && grade == null) {
@@ -270,7 +285,7 @@ public class OgeService {
                     }
 
                     OgeWorkResult entity = workResultRepository
-                            .findByClassNameAndFullNameAndSubjectName(className, fio, subject)
+                            .findByFullNameAndSubjectName(fio, subject)
                             .orElseGet(OgeWorkResult::new);
                     entity.setClassName(className);
                     entity.setFullName(fio);
@@ -294,20 +309,20 @@ public class OgeService {
         OgeGiaVersion latest = latestVersion();
         List<OgeWorkResult> work = workResultRepository.findAllByOrderByClassNameAscFullNameAscSubjectNameAsc();
         Map<String, OgeWorkResult> workByKey = work.stream().collect(Collectors.toMap(
-                w -> key(w.getClassName(), w.getFullName(), w.getSubjectName()), Function.identity(), (a, b) -> b, LinkedHashMap::new));
+                w -> key(w.getFullName(), w.getSubjectName()), Function.identity(), (a, b) -> b, LinkedHashMap::new));
 
         Map<String, OgeGiaParticipant> expected = new LinkedHashMap<>();
         if (latest != null) {
             for (OgeGiaParticipant p : latest.getParticipants()) {
                 for (String subject : p.getSelectedSubjects()) {
-                    expected.put(key(p.getClassName(), p.getFullName(), subject), p);
+                    expected.put(key(p.getFullName(), subject), p);
                 }
             }
         }
 
         List<OgeDtos.WorkResultRow> resultRows = new ArrayList<>();
         for (OgeWorkResult wr : work) {
-            boolean expectedNow = expected.containsKey(key(wr.getClassName(), wr.getFullName(), wr.getSubjectName()));
+            boolean expectedNow = expected.containsKey(key(wr.getFullName(), wr.getSubjectName()));
             String status = "ok";
             if (!expectedNow) status = "gray";
             else if (wr.getGrade() != null && wr.getGrade() == 2) status = "red";
@@ -555,13 +570,13 @@ public class OgeService {
         return p.getSelectedSubjects().stream().sorted(String.CASE_INSENSITIVE_ORDER).collect(Collectors.joining(", "));
     }
 
-    private String key(String className, String fio, String subject) {
-        return blank(className) + "|" + OgeSubjects.normalizeFio(fio).toUpperCase(Locale.ROOT) + "|" + subject;
+    private String key(String fio, String subject) {
+        return OgeSubjects.normalizeFio(fio).toUpperCase(Locale.ROOT) + "|" + subject;
     }
 
     private String splitKeySubject(String key) {
         String[] parts = key.split("\\|");
-        return parts.length >= 3 ? parts[2] : "";
+        return parts.length >= 2 ? parts[1] : "";
     }
 
     private boolean isEmptyRow(Row row, int start, int end) {

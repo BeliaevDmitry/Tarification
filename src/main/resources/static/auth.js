@@ -11,6 +11,9 @@ const TAB_PATHS = {
     '/teachers.html': 'TEACHERS',
     '/contingent.html': 'CONTINGENT_STATS',
     '/vsoko.html': 'VSOKO_VIEW',
+    '/vsoko-oge.html': 'VSOKO_VIEW',
+    '/vsoko-ege.html': 'VSOKO_VIEW',
+    '/vsoko-pa.html': 'VSOKO_VIEW',
     '/subject-areas.html': 'SUBJECT_AREAS',
     '/admin.html': 'USERS'
 };

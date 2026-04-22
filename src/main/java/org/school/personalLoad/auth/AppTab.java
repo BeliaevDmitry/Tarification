@@ -17,9 +17,9 @@ public enum AppTab {
     CONTINGENT_STATS("Контингент: численность", "/contingent.html#stats"),
     SUBJECT_AREAS("Предметные области", "/subject-areas.html"),
     VSOKO_VIEW("ВСОКО: просмотр", "/vsoko.html"),
-    VSOKO_EDIT("ВСОКО: редактирование", "/vsoko.html"),
-    OGE_GIA_UPLOAD("ВСОКО: загрузка выгрузок ГИА", "/vsoko.html#gia"),
-    OGE_WORK_UPLOAD("ВСОКО: загрузка работ ОГЭ", "/vsoko.html#results"),
+    VSOKO_EDIT("ВСОКО: редактирование", "/vsoko-oge.html"),
+    OGE_GIA_UPLOAD("ВСОКО: загрузка выгрузок ГИА", "/vsoko-oge.html#upload"),
+    OGE_WORK_UPLOAD("ВСОКО: загрузка работ ОГЭ", "/vsoko-oge.html#works"),
     USERS("Пользователи", "/admin.html");
 
     private final String displayName;

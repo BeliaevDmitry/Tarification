@@ -32,6 +32,9 @@ public class OgeGiaParticipant {
     @Column
     private Integer examCount;
 
+    @Column(length = 500)
+    private String dataIssue;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "oge_gia_participant_subject", joinColumns = @JoinColumn(name = "participant_id"))
     @Column(name = "subject_name", nullable = false, length = 200)
