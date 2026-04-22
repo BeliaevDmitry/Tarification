@@ -1,0 +1,10 @@
+package org.school.personalLoad.oge.repository;
+
+import org.school.personalLoad.oge.model.OgeScoreScaleEntry;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+
+public interface OgeScoreScaleRepository extends JpaRepository<OgeScoreScaleEntry, Long> {
+    List<OgeScoreScaleEntry> findAllByOrderByScoreAscSubjectNameAsc();
+}
