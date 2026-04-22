@@ -10,6 +10,10 @@ const TAB_PATHS = {
     '/settings.html': 'SETTINGS',
     '/teachers.html': 'TEACHERS',
     '/contingent.html': 'CONTINGENT_STATS',
+    '/vsoko.html': 'VSOKO_VIEW',
+    '/vsoko-oge.html': 'VSOKO_VIEW',
+    '/vsoko-ege.html': 'VSOKO_VIEW',
+    '/vsoko-pa.html': 'VSOKO_VIEW',
     '/subject-areas.html': 'SUBJECT_AREAS',
     '/admin.html': 'USERS'
 };
@@ -22,7 +26,8 @@ const NAV_ORDER = [
     { path: '/load.html', tab: 'LOAD', label: 'Нагрузка по корпусам' },
     { path: '/service-notes.html', tab: 'SERVICE_NOTES', label: 'Служебные записки' },
     { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' },
-    { path: '/subject-areas.html', tab: 'SUBJECT_AREAS', label: 'Предметные области' }
+    { path: '/subject-areas.html', tab: 'SUBJECT_AREAS', label: 'Предметные области' },
+    { path: '/vsoko.html', tab: 'VSOKO_VIEW', label: 'ВСОКО' }
 ];
 
 function navItemsForPath(pathname) {
