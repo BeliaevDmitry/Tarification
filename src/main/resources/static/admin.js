@@ -58,6 +58,9 @@ const ui = {
     editSaveBtn: document.getElementById('save-user-btn'),
     adminTabUsersBtn: document.getElementById('admin-tab-users-btn'),
     adminTabYearsBtn: document.getElementById('admin-tab-years-btn'),
+    adminTabOptionsBtn: document.getElementById('admin-tab-options-btn'),
+    debugModeInputs: Array.from(document.querySelectorAll('input[name="admin-debug-mode"]')),
+    optionsFeedback: document.getElementById('admin-options-feedback'),
     academicYearForm: document.getElementById('academic-year-create-form'),
     academicYearCode: document.getElementById('academic-year-code'),
     academicYearFeedback: document.getElementById('academic-year-feedback'),
@@ -91,6 +94,18 @@ function setAdminTab(tab) {
     });
 }
 
+function renderDebugModeOptions() {
+    const enabled = Boolean(window.tarificationDebugOutputEnabled);
+    ui.debugModeInputs.forEach((input) => {
+        input.checked = enabled ? input.value === 'yes' : input.value === 'no';
+    });
+    if (ui.optionsFeedback) {
+        ui.optionsFeedback.textContent = enabled
+            ? 'Отладочные окна отображаются только для администратора.'
+            : 'Отладочные окна скрыты (обычные пользователи их не увидят всегда).';
+    }
+}
+
 function yesNo(flag) {
     return flag ? 'Да' : 'Нет';
 }
@@ -116,7 +131,7 @@ function previousClassForContinuity(targetClass) {
     if (!match) return null;
     const parallel = Number(match[1]);
     if (!Number.isFinite(parallel) || parallel <= 1) return null;
-    if (parallel === 5 || parallel === 10) return null; // Из 4→5 и 9→10 преемственность не переносим.
+    if (parallel === 5 || parallel === 10) return null;
     return `${parallel - 1}-${match[2]}`;
 }
 
@@ -720,6 +735,18 @@ reload().then(renderAcademicYears).catch((error) => print({ error: error.message
 
 ui.adminTabUsersBtn?.addEventListener('click', () => setAdminTab('users'));
 ui.adminTabYearsBtn?.addEventListener('click', () => setAdminTab('years'));
+ui.adminTabOptionsBtn?.addEventListener('click', () => setAdminTab('options'));
+ui.debugModeInputs.forEach((input) => {
+    input.addEventListener('change', () => {
+        const enabled = input.value === 'yes';
+        if (typeof window.setDebugOutputEnabled === 'function') {
+            window.setDebugOutputEnabled(enabled);
+        }
+        renderDebugModeOptions();
+        print({ debug: enabled ? 'enabled' : 'disabled' });
+    });
+});
+renderDebugModeOptions();
 
 ui.academicYearForm?.addEventListener('submit', async (event) => {
     event.preventDefault();

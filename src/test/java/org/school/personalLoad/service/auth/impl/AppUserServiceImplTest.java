@@ -6,11 +6,16 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.school.personalLoad.auth.AppUser;
+import org.school.personalLoad.auth.AppTab;
+import org.school.personalLoad.auth.UserRole;
+import org.school.personalLoad.dto.auth.UpdateUserRequest;
+import org.school.personalLoad.dto.auth.UserTabPermissionRequest;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.auth.AppUserRepository;
 import org.school.personalLoad.repository.auth.AppUserTabPermissionRepository;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -27,6 +32,38 @@ class AppUserServiceImplTest {
     private AppUserTabPermissionRepository tabPermissionRepository;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+
+    @Test
+    void updateUserFlushesDeletedTabPermissionsBeforeInsert() {
+        AppUserServiceImpl service = new AppUserServiceImpl(
+                appUserRepository,
+                schoolBuildingRepository,
+                tabPermissionRepository,
+                passwordEncoder
+        );
+        AppUser user = new AppUser();
+        user.setId(2L);
+        user.setRole(UserRole.BUILDING_HEAD);
+        user.setCanView(true);
+        user.setCanEdit(true);
+        user.setActive(true);
+        when(appUserRepository.findById(2L)).thenReturn(Optional.of(user));
+        when(appUserRepository.save(any(AppUser.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of());
+        when(tabPermissionRepository.findAllByUserIdOrderByTabAsc(2L)).thenReturn(List.of());
+
+        UserTabPermissionRequest permissionRequest = new UserTabPermissionRequest();
+        permissionRequest.setTab(AppTab.BUILDINGS);
+        permissionRequest.setCanView(true);
+        permissionRequest.setCanEdit(true);
+        UpdateUserRequest request = new UpdateUserRequest();
+        request.setTabPermissions(List.of(permissionRequest));
+
+        service.updateUser(2L, request);
+
+        verify(tabPermissionRepository).deleteAllByUserId(2L);
+        verify(tabPermissionRepository).flush();
+    }
 
     @Test
     void changeOwnPasswordUpdatesHashWhenCurrentPasswordIsValid() {
