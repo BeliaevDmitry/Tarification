@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarification — ВСОКО / ОГЭ</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+        .tabs button { padding:8px 12px; border:1px solid #bbb; background:#f5f5f5; cursor:pointer; }
+        .tabs button.active { background:#dfefff; border-color:#7aa2d6; }
+        .tab-pane { display:none; }
+        .tab-pane.active { display:block; }
+        .subtabs { display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+        .subtabs button.active { background:#e9f7e9; }
+        .compact-table { font-size:12px; }
+        .compact-table th, .compact-table td { padding:4px 6px; white-space:nowrap; }
+        .sticky-head thead th { position: sticky; top: 0; z-index: 3; background:#f1f1f1; }
+        .sticky-head thead tr:nth-child(2) th { top: 30px; z-index: 4; }
+        #results-matrix th, #results-matrix td { white-space: normal; word-break: break-word; line-height: 1.05; padding: 3px 4px; }
+        #results-matrix th { font-size: 11px; }
+        #results-matrix td { font-size: 11px; text-align: center; font-weight: 700; }
+        #results-matrix td:nth-child(1), #results-matrix th:nth-child(1) { min-width: 58px; max-width: 58px; }
+        #results-matrix td:nth-child(2), #results-matrix th:nth-child(2) { min-width: 190px; max-width: 190px; text-align: left; }
+        #results-matrix td:nth-child(3), #results-matrix th:nth-child(3) { min-width: 38px; max-width: 38px; }
+        #results-matrix td:nth-child(4), #results-matrix th:nth-child(4) { min-width: 56px; max-width: 56px; }
+        #results-matrix td:nth-child(n+5), #results-matrix th:nth-child(n+5) { min-width: 28px; max-width: 34px; }
+        #results-matrix th.subject-ru { min-width: 52px; max-width: 52px; }
+        #results-matrix th.subject-ru-score, #results-matrix td.subject-ru-score,
+        #results-matrix th.subject-ru-grade, #results-matrix td.subject-ru-grade { min-width: 22px; max-width: 24px; }
+    </style>
+</head>
+<body>
+<main class="container">
+    <header class="card">
+        <h1>ВСОКО / ОГЭ</h1>
+        <a class="nav-link" href="/vsoko.html">← ВСОКО</a>
+    </header>
+
+    <section class="card">
+        <div class="tabs" id="main-tabs">
+            <button data-tab="upload" class="active">Выгрузка</button>
+            <button data-tab="students">Выбор ОГЭ</button>
+            <button data-tab="gia-stats">Статистика по выбору ГИА</button>
+            <button data-tab="mismatches">Нестыковки</button>
+            <button data-tab="works">Внутренние работы</button>
+            <button data-tab="scores">Баллы за задания</button>
+        </div>
+
+        <div id="tab-upload" class="tab-pane active">
+            <h2>ОГЭ / Выгрузка</h2>
+            <div class="inline-form" data-requires-edit>
+                <input type="file" id="gia-files" multiple accept=".xlsx" data-allow-readonly="true">
+                <button id="gia-upload-btn" type="button">Импорт выгрузки(ок)</button>
+                <button id="gia-export-btn" type="button" data-allow-readonly="true">Скачать Excel (выгрузка ГИА)</button>
+            </div>
+            <div id="gia-upload-log" class="muted"></div>
+
+            <h3>Изменения между двумя последними выгрузками</h3>
+            <table class="compact-table">
+                <thead><tr><th>Тип</th><th>Ключ</th><th>Было</th><th>Стало</th></tr></thead>
+                <tbody id="changes-body"></tbody>
+            </table>
+        </div>
+
+        <div id="tab-students" class="tab-pane">
+            <h2 id="students-title">ОГЭ / Выбор ОГЭ</h2>
+            <div class="inline-form">
+                <input id="students-search" placeholder="Поиск по ФИО" style="min-width:280px;">
+            </div>
+            <table class="compact-table">
+                <thead><tr><th>Класс</th><th>ФИО</th><th>Кол-во предметов</th><th>Предметы</th></tr></thead>
+                <tbody id="students-body"></tbody>
+            </table>
+        </div>
+
+        <div id="tab-gia-stats" class="tab-pane">
+            <h2>ОГЭ / Статистика по выбору ГИА</h2>
+            <div id="exam-dist" class="muted"></div>
+            <div style="overflow:auto;">
+                <table class="compact-table">
+                    <thead id="gia-stats-head"></thead>
+                    <tbody id="gia-stats-body"></tbody>
+                    <tfoot id="gia-stats-foot"></tfoot>
+                </table>
+            </div>
+        </div>
+
+        <div id="tab-mismatches" class="tab-pane">
+            <h2>ОГЭ / Нестыковки</h2>
+            <div class="inline-form">
+                <button id="mismatch-export-btn" type="button">Скачать Excel (Нестыковки)</button>
+            </div>
+            <div id="mismatch-info" class="muted"></div>
+            <table class="compact-table sticky-head">
+                <thead>
+                <tr>
+                    <th>Тип</th><th>Класс</th><th>ФИО (ГИА)</th><th>ФИО (Контингент)</th>
+                    <th>Документ (ГИА)</th><th>Документ (Контингент)</th><th>Причина</th>
+                </tr>
+                <tr>
+                    <th><input id="flt-type" placeholder="фильтр"></th>
+                    <th><input id="flt-class" placeholder="фильтр"></th>
+                    <th><input id="flt-fio-gia" placeholder="фильтр"></th>
+                    <th><input id="flt-fio-cont" placeholder="фильтр"></th>
+                    <th><input id="flt-doc-gia" placeholder="фильтр"></th>
+                    <th><input id="flt-doc-cont" placeholder="фильтр"></th>
+                    <th><input id="flt-reason" placeholder="фильтр"></th>
+                </tr>
+                </thead>
+                <tbody id="mismatch-body"></tbody>
+            </table>
+        </div>
+
+        <div id="tab-works" class="tab-pane">
+            <h2>ОГЭ / Внутренние работы</h2>
+            <div class="muted">Подсказка: зажмите <b>Shift</b> и кликайте по заголовкам колонок, чтобы включить мультифильтр (мультисортировку).</div>
+            <div class="inline-form" data-requires-edit>
+                <input type="file" id="work-files" multiple accept=".xlsx" data-allow-readonly="true">
+                <button id="work-upload-btn" type="button">Импорт работ</button>
+                <button id="works-export-btn" type="button" data-allow-readonly="true">Скачать Excel (работы)</button>
+            </div>
+            <div id="work-upload-log" class="muted"></div>
+
+            <div class="subtabs" id="works-tabs">
+                <button data-subtab="results" class="active">Результаты</button>
+                <button data-subtab="missing">Не сдали (нет результата)</button>
+                <button data-subtab="stats">Статистика</button>
+                <button data-subtab="teacher-binding">Привязка к педагогу</button>
+            </div>
+
+            <div id="works-results" class="tab-pane active" style="display:block; overflow:auto; max-height:72vh;">
+                <table class="compact-table sticky-head" id="results-matrix"></table>
+            </div>
+            <div id="works-missing" class="tab-pane" style="overflow:auto;">
+                <table class="compact-table">
+                    <thead><tr><th>Предмет</th><th>Класс</th><th>ФИО</th></tr></thead>
+                    <tbody id="missing-body"></tbody>
+                </table>
+            </div>
+            <div id="works-stats" class="tab-pane" style="overflow:auto;">
+                <table class="compact-table">
+                    <thead><tr><th>Класс</th><th>Предмет</th><th>2</th><th>3</th><th>4</th><th>5</th></tr></thead>
+                    <tbody id="work-stats-body"></tbody>
+                </table>
+            </div>
+            <div id="works-teacher-binding" class="tab-pane" style="overflow:auto;">
+                <div class="inline-form">
+                    <button id="bind-from-load-btn" type="button">Привязка из нагрузки</button>
+                    <button id="save-teacher-binding-btn" type="button">Сохранить привязку</button>
+                </div>
+                <div id="teacher-binding-log" class="muted"></div>
+                <table class="compact-table">
+                    <thead><tr><th>Класс</th><th>ФИО</th><th>Предмет</th><th>Педагог</th></tr></thead>
+                    <tbody id="teacher-binding-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="tab-scores" class="tab-pane">
+            <h2>ОГЭ / Баллы за задания</h2>
+            <button id="save-scale-btn" type="button" data-requires-edit>Сохранить шкалу</button>
+            <div style="overflow:auto; max-height:72vh; margin-top:8px;">
+                <table id="scale-table" class="compact-table sticky-head"></table>
+            </div>
+        </div>
+    </section>
+</main>
+<script src="/auth.js"></script>
+<script src="/vsoko-oge.js"></script>
+</body>
+</html>

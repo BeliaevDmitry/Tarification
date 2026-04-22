@@ -13,4 +13,6 @@ public interface ContingentSnapshotRepository extends JpaRepository<ContingentSn
     Optional<ContingentSnapshot> findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(String academicYear);
 
     Optional<ContingentSnapshot> findFirstByAcademicYearAndSnapshotDateOrderByImportedAtDesc(String academicYear, LocalDate snapshotDate);
+
+    Optional<ContingentSnapshot> findFirstByOrderByImportedAtDesc();
 }
