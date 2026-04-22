@@ -1503,6 +1503,11 @@ dialog::backdrop {
     border-radius: 10px;
 }
 
+.debug-output-hidden .result-box,
+.debug-output-hidden [data-debug-output="1"] {
+    display: none !important;
+}
+
 .contingent-tabs {
     display: flex;
     gap: 10px;
