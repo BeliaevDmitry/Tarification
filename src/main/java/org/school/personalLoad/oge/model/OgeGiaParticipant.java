@@ -8,7 +8,9 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 @Entity
-@Table(name = "oge_gia_participant")
+@Table(name = "oge_gia_participant", indexes = {
+        @Index(name = "idx_oge_gia_participant_year", columnList = "academic_year")
+})
 @Getter
 @Setter
 public class OgeGiaParticipant {
@@ -26,8 +28,14 @@ public class OgeGiaParticipant {
     @Column(length = 50)
     private String snils;
 
+    @Column(length = 255)
+    private String document;
+
     @Column(length = 100)
     private String className;
+
+    @Column(name = "academic_year", nullable = false, length = 20)
+    private String academicYear;
 
     @Column
     private Integer examCount;

@@ -34,6 +34,9 @@ function navItemsForPath(pathname) {
     if (pathname === '/teachers.html') {
         return NAV_ORDER.filter((tabDef) => tabDef.tab === 'SERVICE_NOTES');
     }
+    if (pathname === '/load.html') {
+        return NAV_ORDER.filter((tabDef) => tabDef.tab !== 'VSOKO_VIEW');
+    }
     return NAV_ORDER;
 }
 

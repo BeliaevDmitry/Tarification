@@ -13,6 +13,16 @@ public class OgeDtos {
 
     public record GiaChangesResponse(List<GiaChangeItem> changes) {}
 
+    public record GiaMismatchRow(String type,
+                                 String className,
+                                 String fioGia,
+                                 String fioContingent,
+                                 String documentGia,
+                                 String documentContingent,
+                                 String reason) {}
+
+    public record GiaMismatchResponse(List<GiaMismatchRow> rows, String infoMessage) {}
+
     public record GiaChangeItem(String type, String key, String wasValue, String becameValue) {}
 
     public record GiaStatsResponse(List<String> subjects,
@@ -30,11 +40,22 @@ public class OgeDtos {
                                 Integer score,
                                 Integer grade,
                                 boolean expectedByGia,
-                                String status) {}
+                                String status,
+                                String teacherFio,
+                                boolean needsTeacherBinding,
+                                boolean needsManualStudentMatch) {}
 
     public record WorkStatsRow(String className, String subject, int count2, int count3, int count4, int count5) {}
 
     public record WorkDatasetResponse(List<WorkResultRow> results,
                                       List<WorkResultRow> missing,
                                       List<WorkStatsRow> statistics) {}
+
+    public record TeacherBindingRow(Long id,
+                                    String className,
+                                    String fullName,
+                                    String subject,
+                                    String teacherFio) {}
+
+    public record TeacherBindingUpdate(Long id, String teacherFio) {}
 }

@@ -7,6 +7,7 @@ import org.school.personalLoad.auth.AuthSessionUtils;
 import org.school.personalLoad.auth.SessionUser;
 import org.school.personalLoad.oge.dto.OgeDtos;
 import org.school.personalLoad.oge.service.OgeService;
+import org.school.personalLoad.service.AcademicYearService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -24,72 +25,121 @@ import java.util.List;
 @RequiredArgsConstructor
 public class OgeController {
     private final OgeService ogeService;
+    private final AcademicYearService academicYearService;
 
     @PostMapping("/gia/import")
     public ResponseEntity<List<OgeDtos.ImportFileResult>> importGia(@RequestParam("files") List<MultipartFile> files,
+                                                                    @RequestParam(required = false) String academicYear,
                                                                     HttpServletRequest request) {
         SessionUser user = AuthSessionUtils.requiredUser(request);
+        ensureCanViewTab(user, AppTab.OGE_UPLOAD_VIEW, "ОГЭ / Выгрузка");
         ensureCanEditTab(user, AppTab.OGE_GIA_UPLOAD, "Загрузка выгрузок ГИА");
-        return ResponseEntity.ok(ogeService.importGia(files));
+        return ResponseEntity.ok(ogeService.importGia(academicYearService.resolveRequestedOrDefault(academicYear), files));
     }
 
     @GetMapping("/gia/versions")
-    public ResponseEntity<List<OgeDtos.GiaVersionView>> versions() {
-        return ResponseEntity.ok(ogeService.versions());
+    public ResponseEntity<List<OgeDtos.GiaVersionView>> versions(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(ogeService.versions(academicYearService.resolveRequestedOrDefault(academicYear)));
     }
 
     @GetMapping("/gia/participants")
-    public ResponseEntity<List<OgeDtos.GiaParticipantView>> participants() {
-        return ResponseEntity.ok(ogeService.latestParticipants());
+    public ResponseEntity<List<OgeDtos.GiaParticipantView>> participants(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(ogeService.latestParticipants(academicYearService.resolveRequestedOrDefault(academicYear)));
     }
 
     @GetMapping("/gia/changes")
-    public ResponseEntity<OgeDtos.GiaChangesResponse> changes() {
-        return ResponseEntity.ok(ogeService.changesBetweenLastTwo());
+    public ResponseEntity<OgeDtos.GiaChangesResponse> changes(@RequestParam(required = false) String academicYear, HttpServletRequest request) {
+        ensureCanViewTab(AuthSessionUtils.requiredUser(request), AppTab.OGE_UPLOAD_VIEW, "ОГЭ / Выгрузка");
+        return ResponseEntity.ok(ogeService.changesBetweenLastTwo(academicYearService.resolveRequestedOrDefault(academicYear)));
     }
 
     @GetMapping("/gia/stats")
-    public ResponseEntity<OgeDtos.GiaStatsResponse> giaStats() {
-        return ResponseEntity.ok(ogeService.giaStats());
+    public ResponseEntity<OgeDtos.GiaStatsResponse> giaStats(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(ogeService.giaStats(academicYearService.resolveRequestedOrDefault(academicYear)));
+    }
+
+    @GetMapping("/mismatches")
+    public ResponseEntity<OgeDtos.GiaMismatchResponse> mismatches(@RequestParam(required = false) String academicYear,
+                                                                  HttpServletRequest request) {
+        ensureCanViewTab(AuthSessionUtils.requiredUser(request), AppTab.OGE_MISMATCH_VIEW, "ОГЭ / Нестыковки");
+        return ResponseEntity.ok(ogeService.giaMismatches(academicYearService.resolveRequestedOrDefault(academicYear)));
+    }
+
+    @GetMapping("/mismatches/export")
+    public ResponseEntity<byte[]> exportMismatches(@RequestParam(required = false) String academicYear,
+                                                   HttpServletRequest request) throws Exception {
+        ensureCanViewTab(AuthSessionUtils.requiredUser(request), AppTab.OGE_MISMATCH_VIEW, "ОГЭ / Нестыковки");
+        byte[] body = ogeService.exportMismatchesWorkbook(academicYearService.resolveRequestedOrDefault(academicYear));
+        String fileName = "ОГЭ_нестыковки_" + LocalDate.now() + ".xlsx";
+        return excel(fileName, body);
     }
 
     @GetMapping("/gia/export")
-    public ResponseEntity<byte[]> exportGia() throws Exception {
-        byte[] body = ogeService.exportGiaWorkbook();
+    public ResponseEntity<byte[]> exportGia(@RequestParam(required = false) String academicYear) throws Exception {
+        byte[] body = ogeService.exportGiaWorkbook(academicYearService.resolveRequestedOrDefault(academicYear));
         String fileName = "ОГЭ_выгрузка_" + LocalDate.now() + ".xlsx";
         return excel(fileName, body);
     }
 
     @GetMapping("/scores")
-    public ResponseEntity<List<OgeDtos.ScoreScaleRow>> scores() {
-        return ResponseEntity.ok(ogeService.scoreScale());
+    public ResponseEntity<List<OgeDtos.ScoreScaleRow>> scores(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(ogeService.scoreScale(academicYearService.resolveRequestedOrDefault(academicYear)));
     }
 
     @PutMapping("/scores")
-    public ResponseEntity<Void> updateScores(@RequestBody List<OgeDtos.ScoreScaleRow> rows,
+    public ResponseEntity<Void> updateScores(@RequestParam(required = false) String academicYear,
+                                             @RequestBody List<OgeDtos.ScoreScaleRow> rows,
                                              HttpServletRequest request) {
         SessionUser user = AuthSessionUtils.requiredUser(request);
         ensureCanEditTab(user, AppTab.VSOKO_EDIT, "Редактирование шкалы баллов ОГЭ");
-        ogeService.upsertScoreScale(rows);
+        ogeService.upsertScoreScale(academicYearService.resolveRequestedOrDefault(academicYear), rows);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/works/import")
     public ResponseEntity<List<OgeDtos.ImportFileResult>> importWorks(@RequestParam("files") List<MultipartFile> files,
+                                                                      @RequestParam(required = false) String academicYear,
                                                                       HttpServletRequest request) {
         SessionUser user = AuthSessionUtils.requiredUser(request);
         ensureCanEditTab(user, AppTab.OGE_WORK_UPLOAD, "Загрузка работ ОГЭ");
-        return ResponseEntity.ok(ogeService.importWorks(files));
+        return ResponseEntity.ok(ogeService.importWorks(academicYearService.resolveRequestedOrDefault(academicYear), files));
     }
 
     @GetMapping("/works/dataset")
-    public ResponseEntity<OgeDtos.WorkDatasetResponse> workDataset() {
-        return ResponseEntity.ok(ogeService.workDataset());
+    public ResponseEntity<OgeDtos.WorkDatasetResponse> workDataset(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(ogeService.workDataset(academicYearService.resolveRequestedOrDefault(academicYear)));
+    }
+
+    @GetMapping("/works/teachers")
+    public ResponseEntity<List<String>> teachers() {
+        return ResponseEntity.ok(ogeService.teachers());
+    }
+
+    @GetMapping("/works/teacher-binding")
+    public ResponseEntity<List<OgeDtos.TeacherBindingRow>> teacherBinding(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(ogeService.teacherBindings(academicYearService.resolveRequestedOrDefault(academicYear)));
+    }
+
+    @PutMapping("/works/teacher-binding")
+    public ResponseEntity<Void> updateTeacherBinding(@RequestParam(required = false) String academicYear,
+                                                     @RequestBody List<OgeDtos.TeacherBindingUpdate> updates,
+                                                     HttpServletRequest request) {
+        ensureCanEditTab(AuthSessionUtils.requiredUser(request), AppTab.OGE_WORK_UPLOAD, "Привязка педагога для результатов ОГЭ");
+        ogeService.updateTeacherBindings(academicYearService.resolveRequestedOrDefault(academicYear), updates);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/works/teacher-binding/from-load")
+    public ResponseEntity<String> bindTeachersFromLoad(@RequestParam(required = false) String academicYear,
+                                                       HttpServletRequest request) {
+        ensureCanEditTab(AuthSessionUtils.requiredUser(request), AppTab.OGE_WORK_UPLOAD, "Привязка педагога из нагрузки");
+        int updated = ogeService.bindTeachersFromLoad(academicYearService.resolveRequestedOrDefault(academicYear));
+        return ResponseEntity.ok("Привязано записей: " + updated);
     }
 
     @GetMapping("/works/export")
-    public ResponseEntity<byte[]> exportWorks() throws Exception {
-        byte[] body = ogeService.exportWorksWorkbook();
+    public ResponseEntity<byte[]> exportWorks(@RequestParam(required = false) String academicYear) throws Exception {
+        byte[] body = ogeService.exportWorksWorkbook(academicYearService.resolveRequestedOrDefault(academicYear));
         String fileName = "ОГЭ_работы_" + LocalDate.now() + ".xlsx";
         return excel(fileName, body);
     }
@@ -105,5 +155,10 @@ public class OgeController {
     private void ensureCanEditTab(SessionUser user, AppTab tab, String action) {
         if (user.isAdmin() || user.canEditTab(tab)) return;
         throw new AuthExceptions.ForbiddenException(action + " доступна только пользователям с соответствующим правом");
+    }
+
+    private void ensureCanViewTab(SessionUser user, AppTab tab, String action) {
+        if (user.isAdmin() || user.canViewTab(tab)) return;
+        throw new AuthExceptions.ForbiddenException(action + " доступна только пользователям с соответствующим правом просмотра");
     }
 }
