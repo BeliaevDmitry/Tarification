@@ -143,6 +143,16 @@ function showAccessDenied(sectionTitle = 'раздела') {
 
 function canEditCurrentPage(currentUser) {
     if (currentUser.admin) return true;
+    if (window.location.pathname === '/vsoko-oge.html') {
+        const permissions = tabPermissionMap(currentUser);
+        return Boolean(
+            permissions.VSOKO_EDIT?.canEdit
+            || permissions.OGE_GIA_UPLOAD?.canEdit
+            || permissions.OGE_WORK_UPLOAD?.canEdit
+            || permissions.OGE_SCORE_VIEW?.canEdit
+            || permissions.OGE_EVALUATION_VIEW?.canEdit
+        );
+    }
     const tab = currentTab();
     if (!tab) return currentUser.canEdit;
     return Boolean(tabPermissionMap(currentUser)[tab]?.canEdit);
