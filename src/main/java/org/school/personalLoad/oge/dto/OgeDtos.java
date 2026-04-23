@@ -6,6 +6,7 @@ import java.util.Map;
 
 public class OgeDtos {
     public record ImportFileResult(String fileName, boolean success, String message, int records) {}
+    public record ImportLogRow(String fileName, boolean success, String message, int records, LocalDateTime createdAt) {}
 
     public record GiaVersionView(Long id, String sourceFileName, LocalDateTime uploadedAt, int participants) {}
 

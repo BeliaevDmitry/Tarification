@@ -15,6 +15,7 @@ import org.school.personalLoad.oge.model.OgeScoreScaleEntry;
 import org.school.personalLoad.oge.model.OgeWorkResult;
 import org.school.personalLoad.oge.model.OgeTeacherBinding;
 import org.school.personalLoad.oge.model.OgeTaskScaleEntry;
+import org.school.personalLoad.oge.model.OgeFileImportLog;
 import org.school.personalLoad.repository.ContingentSnapshotRepository;
 import org.school.personalLoad.repository.ContingentStudentRepository;
 import org.school.personalLoad.oge.repository.OgeGiaVersionRepository;
@@ -22,6 +23,7 @@ import org.school.personalLoad.oge.repository.OgeScoreScaleRepository;
 import org.school.personalLoad.oge.repository.OgeWorkResultRepository;
 import org.school.personalLoad.oge.repository.OgeTeacherBindingRepository;
 import org.school.personalLoad.oge.repository.OgeTaskScaleRepository;
+import org.school.personalLoad.oge.repository.OgeFileImportLogRepository;
 import org.school.personalLoad.oge.repository.SubjectAliasRepository;
 import org.school.personalLoad.oge.model.SubjectAlias;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
@@ -48,7 +50,7 @@ public class OgeService {
 
     static {
         MANUAL_MAX_SCORES.put("математика", List.of(1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2));
-        MANUAL_MAX_SCORES.put("русский язык", List.of(6, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 7, 3, 3, 3, 3, 1));
+        MANUAL_MAX_SCORES.put("русский язык", List.of(6,1,1,1,1,1,1,1,1,1,1,1,7,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1));
         MANUAL_MAX_SCORES.put("обществознание", List.of(2,1,1,1,3,2,1,1,1,1,1,4,1,1,2,1,1,1,1,1,2,2,3,2,1));
         MANUAL_MAX_SCORES.put("физика", List.of(2,2,1,2,1,1,1,1,1,1,1,2,2,2,1,2,3,2,2,3,3,3));
         MANUAL_MAX_SCORES.put("химия", List.of(1,1,1,2,1,1,1,1,2,2,1,2,1,1,1,1,2,1,1,3,3,3,5,1,1,1));
@@ -68,6 +70,7 @@ public class OgeService {
     private final OgeScoreScaleRepository scoreScaleRepository;
     private final OgeTeacherBindingRepository teacherBindingRepository;
     private final OgeTaskScaleRepository taskScaleRepository;
+    private final OgeFileImportLogRepository fileImportLogRepository;
     private final SubjectAliasRepository subjectAliasRepository;
     private final ContingentSnapshotRepository contingentSnapshotRepository;
     private final ContingentStudentRepository contingentStudentRepository;
@@ -339,8 +342,10 @@ public class OgeService {
 
         for (MultipartFile file : files) {
             String fileName = Optional.ofNullable(file.getOriginalFilename()).orElse("work.xlsx");
-            if (!fileName.toLowerCase(Locale.ROOT).endsWith(".xlsx")) {
-                out.add(new OgeDtos.ImportFileResult(fileName, false, "Поддерживается только .xlsx", 0));
+                if (!fileName.toLowerCase(Locale.ROOT).endsWith(".xlsx")) {
+                OgeDtos.ImportFileResult result = new OgeDtos.ImportFileResult(fileName, false, "Поддерживается только .xlsx", 0);
+                out.add(result);
+                saveImportLog(academicYear, normalizeSource(source), result);
                 continue;
             }
             try (Workbook workbook = new XSSFWorkbook(file.getInputStream())) {
@@ -475,12 +480,22 @@ public class OgeService {
                 if (!sumErrors.isEmpty()) {
                     message.append(". Ошибки по сумме заданий/итога: ").append(String.join(" | ", sumErrors));
                 }
-                out.add(new OgeDtos.ImportFileResult(fileName, true, message.toString(), count));
+                OgeDtos.ImportFileResult result = new OgeDtos.ImportFileResult(fileName, true, message.toString(), count);
+                out.add(result);
+                saveImportLog(academicYear, sourceKey, result);
             } catch (Exception e) {
-                out.add(new OgeDtos.ImportFileResult(fileName, false, e.getMessage(), 0));
+                OgeDtos.ImportFileResult result = new OgeDtos.ImportFileResult(fileName, false, e.getMessage(), 0);
+                out.add(result);
+                saveImportLog(academicYear, normalizeSource(source), result);
             }
         }
         return out;
+    }
+
+    public List<OgeDtos.ImportLogRow> importLogs(String academicYear, String source) {
+        return fileImportLogRepository.findAllByAcademicYearAndWorkSourceOrderByCreatedAtDescIdDesc(academicYear, normalizeSource(source)).stream()
+                .map(l -> new OgeDtos.ImportLogRow(l.getFileName(), l.isSuccess(), l.getMessage(), l.getRecordsCount(), l.getCreatedAt()))
+                .toList();
     }
 
     public OgeDtos.WorkDatasetResponse workDataset(String academicYear, String source) {
@@ -1183,6 +1198,18 @@ public class OgeService {
 
     private String normalizeSource(String source) {
         return "EXTERNAL_TRYOUT".equalsIgnoreCase(source) ? "EXTERNAL_TRYOUT" : "INTERNAL";
+    }
+
+    private void saveImportLog(String academicYear, String source, OgeDtos.ImportFileResult result) {
+        OgeFileImportLog log = new OgeFileImportLog();
+        log.setAcademicYear(academicYear);
+        log.setWorkSource(normalizeSource(source));
+        log.setFileName(result.fileName());
+        log.setSuccess(result.success());
+        log.setMessage(result.message());
+        log.setRecordsCount(result.records());
+        log.setCreatedAt(LocalDateTime.now());
+        fileImportLogRepository.save(log);
     }
 
     private Map<String, OgeGiaParticipant> indexByKey(List<OgeGiaParticipant> participants) {

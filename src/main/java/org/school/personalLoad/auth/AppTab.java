@@ -20,6 +20,10 @@ public enum AppTab {
     VSOKO_EDIT("ВСОКО: редактирование", "/vsoko-oge.html"),
     OGE_UPLOAD_VIEW("ВСОКО: ОГЭ/Выгрузка (просмотр)", "/vsoko-oge.html#upload"),
     OGE_MISMATCH_VIEW("ВСОКО: ОГЭ/Нестыковки (просмотр)", "/vsoko-oge.html#mismatches"),
+    OGE_EXTERNAL_WORKS_VIEW("ВСОКО: ОГЭ/Внешние работы (просмотр)", "/vsoko-oge.html#external-works"),
+    OGE_TEACHER_BINDING_VIEW("ВСОКО: ОГЭ/Привязка к педагогу (просмотр)", "/vsoko-oge.html#teacher-binding"),
+    OGE_SCORE_VIEW("ВСОКО: ОГЭ/Баллы за задания (просмотр)", "/vsoko-oge.html#scores"),
+    OGE_EVALUATION_VIEW("ВСОКО: ОГЭ/Оценивание (просмотр)", "/vsoko-oge.html#evaluation"),
     OGE_GIA_UPLOAD("ВСОКО: загрузка выгрузок ГИА", "/vsoko-oge.html#upload"),
     OGE_WORK_UPLOAD("ВСОКО: загрузка работ ОГЭ", "/vsoko-oge.html#works"),
     USERS("Пользователи", "/admin.html");
@@ -41,6 +45,6 @@ public enum AppTab {
     }
 
     public static List<AppTab> navigableTabs() {
-        return Arrays.asList(BUILDINGS, CLASSES, SUBJECTS, CURRICULUM, LOAD, LOAD_STATS, SERVICE_NOTES, SETTINGS, TEACHERS, CONTINGENT_IMPORT, CONTINGENT_STATS, SUBJECT_AREAS, VSOKO_VIEW, VSOKO_EDIT, OGE_UPLOAD_VIEW, OGE_MISMATCH_VIEW, OGE_GIA_UPLOAD, OGE_WORK_UPLOAD, USERS);
+        return Arrays.asList(BUILDINGS, CLASSES, SUBJECTS, CURRICULUM, LOAD, LOAD_STATS, SERVICE_NOTES, SETTINGS, TEACHERS, CONTINGENT_IMPORT, CONTINGENT_STATS, SUBJECT_AREAS, VSOKO_VIEW, VSOKO_EDIT, OGE_UPLOAD_VIEW, OGE_MISMATCH_VIEW, OGE_EXTERNAL_WORKS_VIEW, OGE_TEACHER_BINDING_VIEW, OGE_SCORE_VIEW, OGE_EVALUATION_VIEW, OGE_GIA_UPLOAD, OGE_WORK_UPLOAD, USERS);
     }
 }

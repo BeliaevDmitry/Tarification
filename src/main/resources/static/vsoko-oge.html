@@ -70,6 +70,7 @@
             <h2 id="students-title">ОГЭ / Выбор ОГЭ</h2>
             <div class="inline-form">
                 <input id="students-search" placeholder="Поиск по ФИО" style="min-width:280px;">
+                <button id="gia-export-btn-students" type="button" data-allow-readonly="true">Скачать Excel (выгрузка ГИА)</button>
             </div>
             <table class="compact-table">
                 <thead><tr><th>Класс</th><th>ФИО</th><th>Кол-во предметов</th><th>Предметы</th></tr></thead>
@@ -130,6 +131,7 @@
                 <button data-subtab="missing">Не сдали (нет результата)</button>
                 <button data-subtab="stats">Статистика</button>
                 <button data-subtab="errors">Ошибки</button>
+                <button data-subtab="upload-log">Результат загрузки файлов</button>
             </div>
 
             <div id="works-results" class="tab-pane active" style="display:block; overflow:auto; max-height:72vh;">
@@ -151,6 +153,12 @@
                 <table class="compact-table">
                     <thead><tr><th>Ошибка</th></tr></thead>
                     <tbody id="works-errors-body"></tbody>
+                </table>
+            </div>
+            <div id="works-upload-log" class="tab-pane" style="overflow:auto;">
+                <table class="compact-table">
+                    <thead><tr><th>Дата</th><th>Файл</th><th>Статус</th><th>Сообщение</th><th>Записей</th></tr></thead>
+                    <tbody id="works-upload-log-body"></tbody>
                 </table>
             </div>
         </div>

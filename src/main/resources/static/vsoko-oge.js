@@ -12,6 +12,10 @@ const state = {
     teacherBindings: [],
     canViewUpload: true,
     canViewMismatches: true,
+    canViewExternalWorks: true,
+    canViewTeacherBinding: true,
+    canViewScores: true,
+    canViewEvaluation: true,
     workSorts: [
         { key: 'className', dir: 'asc' },
         { key: 'fullName', dir: 'asc' }
@@ -49,14 +53,34 @@ async function waitForAuthContext() {
 function applyTabVisibility() {
     state.canViewUpload = hasViewPermission('OGE_UPLOAD_VIEW');
     state.canViewMismatches = hasViewPermission('OGE_MISMATCH_VIEW');
+    state.canViewExternalWorks = hasViewPermission('OGE_EXTERNAL_WORKS_VIEW');
+    state.canViewTeacherBinding = hasViewPermission('OGE_TEACHER_BINDING_VIEW');
+    state.canViewScores = hasViewPermission('OGE_SCORE_VIEW');
+    state.canViewEvaluation = hasViewPermission('OGE_EVALUATION_VIEW');
     const uploadBtn = document.querySelector('#main-tabs button[data-tab="upload"]');
     const uploadPane = document.getElementById('tab-upload');
     const mismatchBtn = document.querySelector('#main-tabs button[data-tab="mismatches"]');
     const mismatchPane = document.getElementById('tab-mismatches');
+    const externalBtn = document.querySelector('#main-tabs button[data-tab="external-works"]');
+    const externalPane = document.getElementById('tab-external-works');
+    const teacherBindingBtn = document.querySelector('#main-tabs button[data-tab="teacher-binding-main"]');
+    const teacherBindingPane = document.getElementById('tab-teacher-binding-main');
+    const scoresBtn = document.querySelector('#main-tabs button[data-tab="scores"]');
+    const scoresPane = document.getElementById('tab-scores');
+    const evaluationBtn = document.querySelector('#main-tabs button[data-tab="evaluation"]');
+    const evaluationPane = document.getElementById('tab-evaluation');
     if (uploadBtn) uploadBtn.style.display = state.canViewUpload ? '' : 'none';
     if (uploadPane) uploadPane.style.display = state.canViewUpload ? '' : 'none';
     if (mismatchBtn) mismatchBtn.style.display = state.canViewMismatches ? '' : 'none';
     if (mismatchPane) mismatchPane.style.display = state.canViewMismatches ? '' : 'none';
+    if (externalBtn) externalBtn.style.display = state.canViewExternalWorks ? '' : 'none';
+    if (externalPane) externalPane.style.display = state.canViewExternalWorks ? '' : 'none';
+    if (teacherBindingBtn) teacherBindingBtn.style.display = state.canViewTeacherBinding ? '' : 'none';
+    if (teacherBindingPane) teacherBindingPane.style.display = state.canViewTeacherBinding ? '' : 'none';
+    if (scoresBtn) scoresBtn.style.display = state.canViewScores ? '' : 'none';
+    if (scoresPane) scoresPane.style.display = state.canViewScores ? '' : 'none';
+    if (evaluationBtn) evaluationBtn.style.display = state.canViewEvaluation ? '' : 'none';
+    if (evaluationPane) evaluationPane.style.display = state.canViewEvaluation ? '' : 'none';
     const active = document.querySelector('#main-tabs button.active');
     if (!active || active.style.display === 'none') {
         const firstVisible = [...document.querySelectorAll('#main-tabs button[data-tab]')].find(b => b.style.display !== 'none');
@@ -89,7 +113,7 @@ function bindWorkSubtabs() {
         btn.addEventListener('click', () => {
             document.querySelectorAll('#works-tabs button').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            ['results', 'missing', 'stats', 'errors'].forEach(key => {
+            ['results', 'missing', 'stats', 'errors', 'upload-log'].forEach(key => {
                 const pane = document.getElementById(`works-${key}`);
                 if (!pane) return;
                 pane.style.display = key === btn.dataset.subtab ? 'block' : 'none';
@@ -312,6 +336,7 @@ async function reloadWorks(source = 'INTERNAL') {
     const missingId = isExternal ? 'external-missing-body' : 'missing-body';
     const statsId = isExternal ? 'external-work-stats-body' : 'work-stats-body';
     const errorsId = isExternal ? 'external-works-errors-body' : 'works-errors-body';
+    const uploadLogId = isExternal ? null : 'works-upload-log-body';
 
     document.getElementById(matrixId).innerHTML = buildResultsMatrix(data.results || []);
     bindResultsMatrixSorting();
@@ -319,6 +344,18 @@ async function reloadWorks(source = 'INTERNAL') {
     document.getElementById(statsId).innerHTML = (data.statistics || []).map(r => `<tr><td>${r.className}</td><td>${r.subject}</td><td>${r.count2}</td><td>${r.count3}</td><td>${r.count4}</td><td>${r.count5}</td></tr>`).join('');
     document.getElementById(errorsId).innerHTML = (data.errors || []).map(e => `<tr><td>${e}</td></tr>`).join('')
         || '<tr><td class="muted">Ошибок нет</td></tr>';
+    if (uploadLogId) {
+        const logs = await api(scoped('/api/oge/works/import-logs?source=INTERNAL'));
+        document.getElementById(uploadLogId).innerHTML = (logs || []).map(l => `
+          <tr>
+            <td>${new Date(l.createdAt).toLocaleString('ru-RU')}</td>
+            <td>${l.fileName || ''}</td>
+            <td>${l.success ? '✅ OK' : '❌ Ошибка'}</td>
+            <td>${l.message || ''}</td>
+            <td>${l.records ?? 0}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="5" class="muted">Логов пока нет</td></tr>';
+    }
 }
 
 async function reloadTeacherBinding() {
@@ -431,9 +468,13 @@ async function saveScale() {
 }
 
 async function reloadAll() {
-    const tasks = [reloadStudents(), reloadGiaStats(), reloadWorks('INTERNAL'), reloadWorks('EXTERNAL_TRYOUT'), reloadScale(), reloadTeacherBinding(), reloadEvaluation()];
+    const tasks = [reloadStudents(), reloadGiaStats(), reloadWorks('INTERNAL')];
     if (state.canViewUpload) tasks.push(reloadChanges());
     if (state.canViewMismatches) tasks.push(reloadMismatches());
+    if (state.canViewExternalWorks) tasks.push(reloadWorks('EXTERNAL_TRYOUT'));
+    if (state.canViewScores) tasks.push(reloadScale());
+    if (state.canViewTeacherBinding) tasks.push(reloadTeacherBinding());
+    if (state.canViewEvaluation) tasks.push(reloadEvaluation());
     await Promise.all(tasks);
 }
 
@@ -447,6 +488,7 @@ function bindButtons() {
     document.getElementById('works-export-btn').addEventListener('click', () => window.location.href = scoped('/api/oge/works/export?source=INTERNAL'));
     document.getElementById('external-works-export-btn').addEventListener('click', () => window.location.href = scoped('/api/oge/works/export?source=EXTERNAL_TRYOUT'));
     document.getElementById('gia-export-btn').addEventListener('click', () => window.location.href = scoped('/api/oge/gia/export'));
+    document.getElementById('gia-export-btn-students').addEventListener('click', () => window.location.href = scoped('/api/oge/gia/export'));
     document.getElementById('mismatch-export-btn').addEventListener('click', () => window.location.href = scoped('/api/oge/mismatches/export'));
     document.getElementById('save-teacher-binding-btn').addEventListener('click', saveTeacherBindings);
     document.getElementById('bind-from-load-btn').addEventListener('click', bindTeachersFromLoad);
