@@ -1131,6 +1131,15 @@ dialog::backdrop {
     width: 58%;
 }
 
+.permission-group-row td {
+    background: #eef4ff;
+    border-top: 1px solid #cfe0ff;
+}
+
+.permission-tab-cell {
+    padding-left: 22px;
+}
+
 .scope-mode-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
