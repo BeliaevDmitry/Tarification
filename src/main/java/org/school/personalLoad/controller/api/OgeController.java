@@ -116,8 +116,9 @@ public class OgeController {
     }
 
     @GetMapping("/works/teacher-binding")
-    public ResponseEntity<List<OgeDtos.TeacherBindingRow>> teacherBinding(@RequestParam(required = false) String academicYear) {
-        return ResponseEntity.ok(ogeService.teacherBindings(academicYearService.resolveRequestedOrDefault(academicYear)));
+    public ResponseEntity<List<OgeDtos.TeacherBindingRow>> teacherBinding(@RequestParam(required = false) String academicYear,
+                                                                          @RequestParam(defaultValue = "true") boolean onlyUnbound) {
+        return ResponseEntity.ok(ogeService.teacherBindings(academicYearService.resolveRequestedOrDefault(academicYear), onlyUnbound));
     }
 
     @PutMapping("/works/teacher-binding")
