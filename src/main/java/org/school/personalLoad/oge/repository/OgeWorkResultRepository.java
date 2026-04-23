@@ -7,8 +7,9 @@ import java.util.List;
 import java.util.Optional;
 
 public interface OgeWorkResultRepository extends JpaRepository<OgeWorkResult, Long> {
-    Optional<OgeWorkResult> findByAcademicYearAndFullNameAndBirthDateAndSnilsAndSubjectName(
-            String academicYear, String fullName, String birthDate, String snils, String subjectName);
+    Optional<OgeWorkResult> findByAcademicYearAndFullNameAndBirthDateAndSnilsAndSubjectNameAndWorkSourceAndWorkTypeAndWorkDate(
+            String academicYear, String fullName, String birthDate, String snils, String subjectName,
+            String workSource, String workType, String workDate);
 
     List<OgeWorkResult> findAllByAcademicYearOrderByClassNameAscFullNameAscSubjectNameAsc(String academicYear);
 }
