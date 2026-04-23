@@ -148,6 +148,11 @@
                 <div class="inline-form">
                     <button id="bind-from-load-btn" type="button">Привязка из нагрузки</button>
                     <button id="save-teacher-binding-btn" type="button">Сохранить привязку</button>
+                    <label for="teacher-binding-mode">Показ:</label>
+                    <select id="teacher-binding-mode">
+                        <option value="unbound" selected>Только без привязки</option>
+                        <option value="all">Вся привязка</option>
+                    </select>
                 </div>
                 <div id="teacher-binding-log" class="muted"></div>
                 <table class="compact-table">

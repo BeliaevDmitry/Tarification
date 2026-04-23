@@ -456,10 +456,11 @@ public class OgeService {
                 .toList();
     }
 
-    public List<OgeDtos.TeacherBindingRow> teacherBindings(String academicYear) {
+    public List<OgeDtos.TeacherBindingRow> teacherBindings(String academicYear, boolean onlyUnbound) {
         return workResultRepository.findAllByAcademicYearOrderByClassNameAscFullNameAscSubjectNameAsc(academicYear).stream()
                 .filter(w -> w.getTestScore() != null)
-                .sorted(Comparator.comparing(OgeWorkResult::getClassName).thenComparing(OgeWorkResult::getFullName).thenComparing(OgeWorkResult::getSubjectName))
+                .filter(w -> !onlyUnbound || w.getTeacherFio() == null || w.getTeacherFio().isBlank())
+                .sorted(Comparator.comparing(OgeWorkResult::getClassName).thenComparing(OgeWorkResult::getSubjectName).thenComparing(OgeWorkResult::getFullName))
                 .map(w -> new OgeDtos.TeacherBindingRow(w.getId(), w.getClassName(), w.getFullName(), w.getSubjectName(), blank(w.getTeacherFio())))
                 .toList();
     }

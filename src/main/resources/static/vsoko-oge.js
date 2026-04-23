@@ -304,11 +304,13 @@ async function reloadWorks() {
 }
 
 async function reloadTeacherBinding() {
+    const mode = document.getElementById('teacher-binding-mode')?.value || 'unbound';
+    const onlyUnbound = mode !== 'all';
     state.teachers = await api(scoped('/api/oge/works/teachers'));
-    state.teacherBindings = await api(scoped('/api/oge/works/teacher-binding'));
+    state.teacherBindings = await api(scoped(`/api/oge/works/teacher-binding?onlyUnbound=${onlyUnbound}`));
     state.teacherBindings.sort((a, b) => String(a.className || '').localeCompare(String(b.className || ''), 'ru')
-        || String(a.fullName || '').localeCompare(String(b.fullName || ''), 'ru')
-        || String(a.subject || '').localeCompare(String(b.subject || ''), 'ru'));
+        || String(a.subject || '').localeCompare(String(b.subject || ''), 'ru')
+        || String(a.fullName || '').localeCompare(String(b.fullName || ''), 'ru'));
     const options = ['<option value="">— не выбран —</option>']
         .concat((state.teachers || []).map(t => `<option value="${t}">${t}</option>`))
         .join('');
@@ -394,6 +396,7 @@ function bindButtons() {
     document.getElementById('mismatch-export-btn').addEventListener('click', () => window.location.href = scoped('/api/oge/mismatches/export'));
     document.getElementById('save-teacher-binding-btn').addEventListener('click', saveTeacherBindings);
     document.getElementById('bind-from-load-btn').addEventListener('click', bindTeachersFromLoad);
+    document.getElementById('teacher-binding-mode').addEventListener('change', reloadTeacherBinding);
     ['flt-type', 'flt-class', 'flt-fio-gia', 'flt-fio-cont', 'flt-doc-gia', 'flt-doc-cont', 'flt-reason']
         .forEach(id => document.getElementById(id)?.addEventListener('input', renderMismatches));
 }
