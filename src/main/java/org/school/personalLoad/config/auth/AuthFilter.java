@@ -35,16 +35,20 @@ public class AuthFilter extends OncePerRequestFilter {
             "/error"
     );
 
-    private static final Map<String, AppTab> PAGE_TABS = Map.of(
-            "/buildings.html", AppTab.BUILDINGS,
-            "/classes.html", AppTab.CLASSES,
-            "/subjects.html", AppTab.SUBJECTS,
-            "/curriculum.html", AppTab.CURRICULUM,
-            "/load.html", AppTab.LOAD,
-            "/service-notes.html", AppTab.SERVICE_NOTES,
-            "/settings.html", AppTab.SETTINGS,
-            "/teachers.html", AppTab.TEACHERS,
-            "/admin.html", AppTab.USERS
+    private static final Map<String, AppTab> PAGE_TABS = Map.ofEntries(
+            Map.entry("/buildings.html", AppTab.BUILDINGS),
+            Map.entry("/classes.html", AppTab.CLASSES),
+            Map.entry("/subjects.html", AppTab.SUBJECTS),
+            Map.entry("/curriculum.html", AppTab.CURRICULUM),
+            Map.entry("/load.html", AppTab.LOAD),
+            Map.entry("/service-notes.html", AppTab.SERVICE_NOTES),
+            Map.entry("/settings.html", AppTab.SETTINGS),
+            Map.entry("/teachers.html", AppTab.TEACHERS),
+            Map.entry("/vsoko.html", AppTab.VSOKO_VIEW),
+            Map.entry("/vsoko-oge.html", AppTab.VSOKO_VIEW),
+            Map.entry("/vsoko-ege.html", AppTab.VSOKO_VIEW),
+            Map.entry("/vsoko-pa.html", AppTab.VSOKO_VIEW),
+            Map.entry("/admin.html", AppTab.USERS)
     );
 
     private final ObjectMapper objectMapper;
