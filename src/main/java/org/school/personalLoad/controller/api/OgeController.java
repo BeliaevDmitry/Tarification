@@ -86,6 +86,20 @@ public class OgeController {
         return ResponseEntity.ok(ogeService.scoreScale(academicYearService.resolveRequestedOrDefault(academicYear)));
     }
 
+    @GetMapping("/evaluation")
+    public ResponseEntity<List<OgeDtos.EvaluationRow>> evaluation(@RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(ogeService.evaluationRows(academicYearService.resolveRequestedOrDefault(academicYear)));
+    }
+
+    @PutMapping("/evaluation")
+    public ResponseEntity<Void> updateEvaluation(@RequestParam(required = false) String academicYear,
+                                                 @RequestBody List<OgeDtos.EvaluationRow> rows,
+                                                 HttpServletRequest request) {
+        ensureCanEditTab(AuthSessionUtils.requiredUser(request), AppTab.VSOKO_EDIT, "Редактирование оценивания ОГЭ");
+        ogeService.upsertEvaluationRows(academicYearService.resolveRequestedOrDefault(academicYear), rows);
+        return ResponseEntity.noContent().build();
+    }
+
     @PutMapping("/scores")
     public ResponseEntity<Void> updateScores(@RequestParam(required = false) String academicYear,
                                              @RequestBody List<OgeDtos.ScoreScaleRow> rows,
@@ -102,12 +116,22 @@ public class OgeController {
                                                                       HttpServletRequest request) {
         SessionUser user = AuthSessionUtils.requiredUser(request);
         ensureCanEditTab(user, AppTab.OGE_WORK_UPLOAD, "Загрузка работ ОГЭ");
-        return ResponseEntity.ok(ogeService.importWorks(academicYearService.resolveRequestedOrDefault(academicYear), files));
+        return ResponseEntity.ok(ogeService.importWorks(academicYearService.resolveRequestedOrDefault(academicYear), files, "INTERNAL"));
+    }
+
+    @PostMapping("/external-works/import")
+    public ResponseEntity<List<OgeDtos.ImportFileResult>> importExternalWorks(@RequestParam("files") List<MultipartFile> files,
+                                                                               @RequestParam(required = false) String academicYear,
+                                                                               HttpServletRequest request) {
+        SessionUser user = AuthSessionUtils.requiredUser(request);
+        ensureCanEditTab(user, AppTab.OGE_WORK_UPLOAD, "Загрузка внешних работ ОГЭ");
+        return ResponseEntity.ok(ogeService.importWorks(academicYearService.resolveRequestedOrDefault(academicYear), files, "EXTERNAL_TRYOUT"));
     }
 
     @GetMapping("/works/dataset")
-    public ResponseEntity<OgeDtos.WorkDatasetResponse> workDataset(@RequestParam(required = false) String academicYear) {
-        return ResponseEntity.ok(ogeService.workDataset(academicYearService.resolveRequestedOrDefault(academicYear)));
+    public ResponseEntity<OgeDtos.WorkDatasetResponse> workDataset(@RequestParam(required = false) String academicYear,
+                                                                   @RequestParam(defaultValue = "INTERNAL") String source) {
+        return ResponseEntity.ok(ogeService.workDataset(academicYearService.resolveRequestedOrDefault(academicYear), source));
     }
 
     @GetMapping("/works/teachers")
@@ -139,9 +163,10 @@ public class OgeController {
     }
 
     @GetMapping("/works/export")
-    public ResponseEntity<byte[]> exportWorks(@RequestParam(required = false) String academicYear) throws Exception {
-        byte[] body = ogeService.exportWorksWorkbook(academicYearService.resolveRequestedOrDefault(academicYear));
-        String fileName = "ОГЭ_работы_" + LocalDate.now() + ".xlsx";
+    public ResponseEntity<byte[]> exportWorks(@RequestParam(required = false) String academicYear,
+                                              @RequestParam(defaultValue = "INTERNAL") String source) throws Exception {
+        byte[] body = ogeService.exportWorksWorkbook(academicYearService.resolveRequestedOrDefault(academicYear), source);
+        String fileName = ("EXTERNAL_TRYOUT".equalsIgnoreCase(source) ? "ОГЭ_внешние_работы_" : "ОГЭ_внутренние_работы_") + LocalDate.now() + ".xlsx";
         return excel(fileName, body);
     }
 

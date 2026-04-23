@@ -8,7 +8,10 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "oge_work_result", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_oge_work_result", columnNames = {"academic_year", "full_name", "birth_date", "snils", "subject_name"})
+        @UniqueConstraint(name = "uk_oge_work_result", columnNames = {
+                "academic_year", "full_name", "birth_date", "snils", "subject_name",
+                "work_source", "work_type", "work_date"
+        })
 })
 @Getter
 @Setter
@@ -34,6 +37,15 @@ public class OgeWorkResult {
 
     @Column(name = "subject_name", nullable = false, length = 200)
     private String subjectName;
+
+    @Column(name = "work_source", nullable = false, length = 30)
+    private String workSource = "INTERNAL";
+
+    @Column(name = "work_type", nullable = false, length = 50)
+    private String workType = "Входная";
+
+    @Column(name = "work_date", length = 20)
+    private String workDate = "";
 
     @Column(name = "task_scores_json", columnDefinition = "text")
     private String taskScoresJson;

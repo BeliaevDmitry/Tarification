@@ -44,7 +44,10 @@
             <button data-tab="gia-stats">Статистика по выбору ГИА</button>
             <button data-tab="mismatches">Нестыковки</button>
             <button data-tab="works">Внутренние работы</button>
+            <button data-tab="external-works">Внешние работы пробники</button>
+            <button data-tab="teacher-binding-main">Привязка к педагогу</button>
             <button data-tab="scores">Баллы за задания</button>
+            <button data-tab="evaluation">Оценивание</button>
         </div>
 
         <div id="tab-upload" class="tab-pane active">
@@ -126,7 +129,7 @@
                 <button data-subtab="results" class="active">Результаты</button>
                 <button data-subtab="missing">Не сдали (нет результата)</button>
                 <button data-subtab="stats">Статистика</button>
-                <button data-subtab="teacher-binding">Привязка к педагогу</button>
+                <button data-subtab="errors">Ошибки</button>
             </div>
 
             <div id="works-results" class="tab-pane active" style="display:block; overflow:auto; max-height:72vh;">
@@ -144,22 +147,77 @@
                     <tbody id="work-stats-body"></tbody>
                 </table>
             </div>
-            <div id="works-teacher-binding" class="tab-pane" style="overflow:auto;">
-                <div class="inline-form">
-                    <button id="bind-from-load-btn" type="button">Привязка из нагрузки</button>
-                    <button id="save-teacher-binding-btn" type="button">Сохранить привязку</button>
-                    <label for="teacher-binding-mode">Показ:</label>
-                    <select id="teacher-binding-mode">
-                        <option value="unbound" selected>Только без привязки</option>
-                        <option value="all">Вся привязка</option>
-                    </select>
-                </div>
-                <div id="teacher-binding-log" class="muted"></div>
+            <div id="works-errors" class="tab-pane" style="overflow:auto;">
                 <table class="compact-table">
-                    <thead><tr><th>Класс</th><th>ФИО</th><th>Предмет</th><th>Педагог</th></tr></thead>
-                    <tbody id="teacher-binding-body"></tbody>
+                    <thead><tr><th>Ошибка</th></tr></thead>
+                    <tbody id="works-errors-body"></tbody>
                 </table>
             </div>
+        </div>
+
+        <div id="tab-external-works" class="tab-pane">
+            <h2>ОГЭ / Внешние работы пробники</h2>
+            <div class="inline-form" data-requires-edit>
+                <input type="file" id="external-work-files" multiple accept=".xlsx" data-allow-readonly="true">
+                <button id="external-work-upload-btn" type="button">Импорт внешних работ</button>
+                <button id="external-works-export-btn" type="button" data-allow-readonly="true">Скачать Excel (внешние работы)</button>
+            </div>
+            <div id="external-work-upload-log" class="muted"></div>
+            <div class="subtabs" id="external-works-tabs">
+                <button data-subtab="results" class="active">Результаты</button>
+                <button data-subtab="missing">Не сдали (нет результата)</button>
+                <button data-subtab="stats">Статистика</button>
+                <button data-subtab="errors">Ошибки</button>
+            </div>
+            <div id="external-works-results" class="tab-pane active" style="display:block; overflow:auto; max-height:72vh;">
+                <table class="compact-table sticky-head" id="external-results-matrix"></table>
+            </div>
+            <div id="external-works-missing" class="tab-pane" style="overflow:auto;">
+                <table class="compact-table">
+                    <thead><tr><th>Предмет</th><th>Класс</th><th>ФИО</th></tr></thead>
+                    <tbody id="external-missing-body"></tbody>
+                </table>
+            </div>
+            <div id="external-works-stats" class="tab-pane" style="overflow:auto;">
+                <table class="compact-table">
+                    <thead><tr><th>Класс</th><th>Предмет</th><th>2</th><th>3</th><th>4</th><th>5</th></tr></thead>
+                    <tbody id="external-work-stats-body"></tbody>
+                </table>
+            </div>
+            <div id="external-works-errors" class="tab-pane" style="overflow:auto;">
+                <table class="compact-table">
+                    <thead><tr><th>Ошибка</th></tr></thead>
+                    <tbody id="external-works-errors-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="tab-teacher-binding-main" class="tab-pane">
+            <h2>ОГЭ / Привязка к педагогу</h2>
+            <div class="inline-form">
+                <button id="bind-from-load-btn" type="button">Привязка из нагрузки</button>
+                <button id="save-teacher-binding-btn" type="button">Сохранить привязку</button>
+                <label for="teacher-binding-mode">Показ:</label>
+                <select id="teacher-binding-mode">
+                    <option value="unbound" selected>Только без привязки</option>
+                    <option value="all">Вся привязка</option>
+                </select>
+            </div>
+            <div id="teacher-binding-log" class="muted"></div>
+            <table class="compact-table">
+                <thead><tr><th>Класс</th><th>ФИО</th><th>Предмет</th><th>Педагог</th></tr></thead>
+                <tbody id="teacher-binding-body"></tbody>
+            </table>
+        </div>
+
+        <div id="tab-evaluation" class="tab-pane">
+            <h2>ОГЭ / Оценивание</h2>
+            <div class="muted">Максимальные баллы по заданиям для внешних протоколов (MANUAL_MAX_SCORES).</div>
+            <button id="save-evaluation-btn" type="button" data-requires-edit>Сохранить оценивание</button>
+            <table class="compact-table" style="margin-top:8px;">
+                <thead><tr><th>Предмет</th><th>Максимальные баллы (через запятую)</th></tr></thead>
+                <tbody id="evaluation-body"></tbody>
+            </table>
         </div>
 
         <div id="tab-scores" class="tab-pane">

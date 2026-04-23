@@ -33,6 +33,7 @@ public class OgeDtos {
     public record GiaClassStatsRow(String className, Map<String, Integer> counts) {}
 
     public record ScoreScaleRow(int score, Map<String, Integer> gradesBySubject) {}
+    public record EvaluationRow(String subject, List<Integer> maxScores) {}
 
     public record WorkResultRow(String className,
                                 String fullName,
@@ -43,19 +44,25 @@ public class OgeDtos {
                                 String status,
                                 String teacherFio,
                                 boolean needsTeacherBinding,
-                                boolean needsManualStudentMatch) {}
+                                boolean needsManualStudentMatch,
+                                String workSource,
+                                String workType,
+                                String workDate) {}
 
     public record WorkStatsRow(String className, String subject, int count2, int count3, int count4, int count5) {}
 
     public record WorkDatasetResponse(List<WorkResultRow> results,
                                       List<WorkResultRow> missing,
-                                      List<WorkStatsRow> statistics) {}
+                                      List<WorkStatsRow> statistics,
+                                      List<String> errors) {}
 
-    public record TeacherBindingRow(Long id,
-                                    String className,
+    public record TeacherBindingRow(String className,
                                     String fullName,
                                     String subject,
                                     String teacherFio) {}
 
-    public record TeacherBindingUpdate(Long id, String teacherFio) {}
+    public record TeacherBindingUpdate(String className,
+                                       String fullName,
+                                       String subject,
+                                       String teacherFio) {}
 }

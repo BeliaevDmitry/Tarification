@@ -89,8 +89,19 @@ function bindWorkSubtabs() {
         btn.addEventListener('click', () => {
             document.querySelectorAll('#works-tabs button').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            ['results', 'missing', 'stats', 'teacher-binding'].forEach(key => {
+            ['results', 'missing', 'stats', 'errors'].forEach(key => {
                 const pane = document.getElementById(`works-${key}`);
+                if (!pane) return;
+                pane.style.display = key === btn.dataset.subtab ? 'block' : 'none';
+            });
+        });
+    });
+    document.querySelectorAll('#external-works-tabs button[data-subtab]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#external-works-tabs button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            ['results', 'missing', 'stats', 'errors'].forEach(key => {
+                const pane = document.getElementById(`external-works-${key}`);
                 if (!pane) return;
                 pane.style.display = key === btn.dataset.subtab ? 'block' : 'none';
             });
@@ -294,13 +305,20 @@ function bindResultsMatrixSorting() {
     });
 }
 
-async function reloadWorks() {
-    const data = await api(scoped('/api/oge/works/dataset'));
-    document.getElementById('results-matrix').innerHTML = buildResultsMatrix(data.results || []);
+async function reloadWorks(source = 'INTERNAL') {
+    const data = await api(scoped(`/api/oge/works/dataset?source=${encodeURIComponent(source)}`));
+    const isExternal = source === 'EXTERNAL_TRYOUT';
+    const matrixId = isExternal ? 'external-results-matrix' : 'results-matrix';
+    const missingId = isExternal ? 'external-missing-body' : 'missing-body';
+    const statsId = isExternal ? 'external-work-stats-body' : 'work-stats-body';
+    const errorsId = isExternal ? 'external-works-errors-body' : 'works-errors-body';
+
+    document.getElementById(matrixId).innerHTML = buildResultsMatrix(data.results || []);
     bindResultsMatrixSorting();
-    document.getElementById('missing-body').innerHTML = (data.missing || []).map(r => `<tr style="${pickStatusColor('yellow')}"><td>${r.subject}</td><td>${r.className}</td><td>${r.fullName}</td></tr>`).join('');
-    document.getElementById('work-stats-body').innerHTML = (data.statistics || []).map(r => `<tr><td>${r.className}</td><td>${r.subject}</td><td>${r.count2}</td><td>${r.count3}</td><td>${r.count4}</td><td>${r.count5}</td></tr>`).join('');
-    await reloadTeacherBinding();
+    document.getElementById(missingId).innerHTML = (data.missing || []).map(r => `<tr style="${pickStatusColor('yellow')}"><td>${r.subject}</td><td>${r.className}</td><td>${r.fullName}</td></tr>`).join('');
+    document.getElementById(statsId).innerHTML = (data.statistics || []).map(r => `<tr><td>${r.className}</td><td>${r.subject}</td><td>${r.count2}</td><td>${r.count3}</td><td>${r.count4}</td><td>${r.count5}</td></tr>`).join('');
+    document.getElementById(errorsId).innerHTML = (data.errors || []).map(e => `<tr><td>${e}</td></tr>`).join('')
+        || '<tr><td class="muted">Ошибок нет</td></tr>';
 }
 
 async function reloadTeacherBinding() {
@@ -315,24 +333,28 @@ async function reloadTeacherBinding() {
         .concat((state.teachers || []).map(t => `<option value="${t}">${t}</option>`))
         .join('');
     document.getElementById('teacher-binding-body').innerHTML = (state.teacherBindings || []).map(r => `
-      <tr data-id="${r.id}">
+      <tr data-class="${r.className || ''}" data-fio="${r.fullName || ''}" data-subject="${r.subject || ''}">
         <td>${r.className || ''}</td>
         <td>${r.fullName || ''}</td>
         <td>${r.subject || ''}</td>
         <td><select class="teacher-select">${options}</select></td>
       </tr>
     `).join('') || '<tr><td colspan="4" class="muted">Нет данных</td></tr>';
-    document.querySelectorAll('#teacher-binding-body tr[data-id]').forEach(tr => {
-        const id = Number(tr.dataset.id);
-        const row = (state.teacherBindings || []).find(x => x.id === id);
+    document.querySelectorAll('#teacher-binding-body tr[data-class]').forEach(tr => {
+        const cls = tr.dataset.class;
+        const fio = tr.dataset.fio;
+        const sub = tr.dataset.subject;
+        const row = (state.teacherBindings || []).find(x => x.className === cls && x.fullName === fio && x.subject === sub);
         const sel = tr.querySelector('select.teacher-select');
         if (sel) sel.value = row?.teacherFio || '';
     });
 }
 
 async function saveTeacherBindings() {
-    const updates = [...document.querySelectorAll('#teacher-binding-body tr[data-id]')].map(tr => ({
-        id: Number(tr.dataset.id),
+    const updates = [...document.querySelectorAll('#teacher-binding-body tr[data-class]')].map(tr => ({
+        className: tr.dataset.class || '',
+        fullName: tr.dataset.fio || '',
+        subject: tr.dataset.subject || '',
         teacherFio: tr.querySelector('select.teacher-select')?.value || ''
     }));
     await api(scoped('/api/oge/works/teacher-binding'), {
@@ -342,14 +364,14 @@ async function saveTeacherBindings() {
     });
     const log = document.getElementById('teacher-binding-log');
     if (log) log.textContent = 'Привязка сохранена';
-    await reloadWorks();
+    await Promise.all([reloadWorks('INTERNAL'), reloadWorks('EXTERNAL_TRYOUT'), reloadTeacherBinding()]);
 }
 
 async function bindTeachersFromLoad() {
     const msg = await api(scoped('/api/oge/works/teacher-binding/from-load'), { method: 'POST' });
     const log = document.getElementById('teacher-binding-log');
     if (log) log.textContent = typeof msg === 'string' ? msg : (msg?.message || JSON.stringify(msg));
-    await reloadWorks();
+    await Promise.all([reloadWorks('INTERNAL'), reloadWorks('EXTERNAL_TRYOUT'), reloadTeacherBinding()]);
 }
 
 async function reloadScale() {
@@ -367,6 +389,35 @@ async function reloadScale() {
     document.getElementById('scale-table').innerHTML = html;
 }
 
+async function reloadEvaluation() {
+    const rows = await api(scoped('/api/oge/evaluation'));
+    const body = document.getElementById('evaluation-body');
+    if (!body) return;
+    body.innerHTML = (rows || []).map(r => `
+      <tr>
+        <td>${r.subject}</td>
+        <td><input data-subject="${r.subject}" value="${(r.maxScores || []).join(', ')}" style="min-width:560px;"></td>
+      </tr>
+    `).join('') || '<tr><td colspan="2" class="muted">Нет данных</td></tr>';
+}
+
+async function saveEvaluation() {
+    const rows = [...document.querySelectorAll('#evaluation-body input[data-subject]')].map(inp => ({
+        subject: inp.dataset.subject,
+        maxScores: String(inp.value || '').split(',')
+            .map(v => v.trim())
+            .filter(Boolean)
+            .map(v => Number(v))
+            .filter(v => Number.isFinite(v))
+    }));
+    await api(scoped('/api/oge/evaluation'), {
+        method: 'PUT',
+        headers: jsonHeaders,
+        body: JSON.stringify(rows)
+    });
+    await reloadEvaluation();
+}
+
 async function saveScale() {
     const rows = [...document.querySelectorAll('#scale-table tbody tr')].map(tr => {
         const score = Number(tr.dataset.score);
@@ -380,7 +431,7 @@ async function saveScale() {
 }
 
 async function reloadAll() {
-    const tasks = [reloadStudents(), reloadGiaStats(), reloadWorks(), reloadScale()];
+    const tasks = [reloadStudents(), reloadGiaStats(), reloadWorks('INTERNAL'), reloadWorks('EXTERNAL_TRYOUT'), reloadScale(), reloadTeacherBinding(), reloadEvaluation()];
     if (state.canViewUpload) tasks.push(reloadChanges());
     if (state.canViewMismatches) tasks.push(reloadMismatches());
     await Promise.all(tasks);
@@ -389,9 +440,12 @@ async function reloadAll() {
 function bindButtons() {
     document.getElementById('gia-upload-btn').addEventListener('click', () => uploadFiles('gia-files', scoped('/api/oge/gia/import'), 'gia-upload-log'));
     document.getElementById('work-upload-btn').addEventListener('click', () => uploadFiles('work-files', scoped('/api/oge/works/import'), 'work-upload-log'));
+    document.getElementById('external-work-upload-btn').addEventListener('click', () => uploadFiles('external-work-files', scoped('/api/oge/external-works/import'), 'external-work-upload-log'));
     document.getElementById('save-scale-btn').addEventListener('click', saveScale);
+    document.getElementById('save-evaluation-btn').addEventListener('click', saveEvaluation);
     document.getElementById('students-search').addEventListener('input', renderStudents);
-    document.getElementById('works-export-btn').addEventListener('click', () => window.location.href = scoped('/api/oge/works/export'));
+    document.getElementById('works-export-btn').addEventListener('click', () => window.location.href = scoped('/api/oge/works/export?source=INTERNAL'));
+    document.getElementById('external-works-export-btn').addEventListener('click', () => window.location.href = scoped('/api/oge/works/export?source=EXTERNAL_TRYOUT'));
     document.getElementById('gia-export-btn').addEventListener('click', () => window.location.href = scoped('/api/oge/gia/export'));
     document.getElementById('mismatch-export-btn').addEventListener('click', () => window.location.href = scoped('/api/oge/mismatches/export'));
     document.getElementById('save-teacher-binding-btn').addEventListener('click', saveTeacherBindings);
