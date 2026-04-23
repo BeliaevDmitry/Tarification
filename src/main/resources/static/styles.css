@@ -954,7 +954,7 @@ dialog::backdrop {
 }
 
 .login-page .container {
-    max-width: 520px;
+    max-width: 640px;
 }
 
 .home-page {
@@ -1014,6 +1014,48 @@ dialog::backdrop {
 
 .login-card {
     margin-top: 64px;
+}
+
+.login-crest-wrap {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 12px;
+}
+
+.login-crest {
+    width: min(260px, 55vw);
+    max-height: 280px;
+    object-fit: contain;
+}
+
+.login-quick-links {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-top: 18px;
+}
+
+.login-quick-tile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 74px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    border: 1px solid #c7d2fe;
+    background: linear-gradient(180deg, #eef2ff 0%, #e0e7ff 100%);
+    color: #1e3a8a;
+    text-decoration: none;
+    font-size: 20px;
+    font-weight: 700;
+    text-align: center;
+    transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+}
+
+.login-quick-tile:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px rgba(59, 130, 246, 0.16);
+    border-color: #93c5fd;
 }
 
 .admin-card {
