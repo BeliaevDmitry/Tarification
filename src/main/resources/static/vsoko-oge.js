@@ -345,16 +345,20 @@ async function reloadWorks(source = 'INTERNAL') {
     document.getElementById(errorsId).innerHTML = (data.errors || []).map(e => `<tr><td>${e}</td></tr>`).join('')
         || '<tr><td class="muted">Ошибок нет</td></tr>';
     if (uploadLogId) {
-        const logs = await api(scoped('/api/oge/works/import-logs?source=INTERNAL'));
-        document.getElementById(uploadLogId).innerHTML = (logs || []).map(l => `
-          <tr>
-            <td>${new Date(l.createdAt).toLocaleString('ru-RU')}</td>
-            <td>${l.fileName || ''}</td>
-            <td>${l.success ? '✅ OK' : '❌ Ошибка'}</td>
-            <td>${l.message || ''}</td>
-            <td>${l.records ?? 0}</td>
-          </tr>
-        `).join('') || '<tr><td colspan="5" class="muted">Логов пока нет</td></tr>';
+        try {
+            const logs = await api(scoped('/api/oge/works/import-logs?source=INTERNAL'));
+            document.getElementById(uploadLogId).innerHTML = (logs || []).map(l => `
+              <tr>
+                <td>${new Date(l.createdAt).toLocaleString('ru-RU')}</td>
+                <td>${l.fileName || ''}</td>
+                <td>${l.success ? '✅ OK' : '❌ Ошибка'}</td>
+                <td>${l.message || ''}</td>
+                <td>${l.records ?? 0}</td>
+              </tr>
+            `).join('') || '<tr><td colspan="5" class="muted">Логов пока нет</td></tr>';
+        } catch (e) {
+            document.getElementById(uploadLogId).innerHTML = `<tr><td colspan="5" class="muted">${e.message || 'Нет доступа к журналу загрузок'}</td></tr>`;
+        }
     }
 }
 
@@ -428,25 +432,44 @@ async function reloadScale() {
 
 async function reloadEvaluation() {
     const rows = await api(scoped('/api/oge/evaluation'));
+    const subjects = (rows || []).map(r => r.subject);
+    const maxTask = Math.max(0, ...(rows || []).map(r => (r.maxScores || []).length));
+    const head = document.getElementById('evaluation-head');
     const body = document.getElementById('evaluation-body');
-    if (!body) return;
-    body.innerHTML = (rows || []).map(r => `
-      <tr>
-        <td>${r.subject}</td>
-        <td><input data-subject="${r.subject}" value="${(r.maxScores || []).join(', ')}" style="min-width:560px;"></td>
-      </tr>
-    `).join('') || '<tr><td colspan="2" class="muted">Нет данных</td></tr>';
+    if (!body || !head) return;
+    head.innerHTML = `<tr><th>№ задания</th>${subjects.map(s => `<th>${s}</th>`).join('')}</tr>`;
+    if (!rows || !rows.length) {
+        body.innerHTML = '<tr><td colspan="2" class="muted">Нет данных</td></tr>';
+        return;
+    }
+    const bySubject = Object.fromEntries(rows.map(r => [r.subject, r.maxScores || []]));
+    let html = '';
+    for (let task = 1; task <= maxTask; task++) {
+        html += `<tr><td>${task}</td>`;
+        for (const s of subjects) {
+            const value = bySubject[s][task - 1];
+            html += `<td><input data-subject="${s}" data-task="${task}" type="number" min="0" max="20" value="${value ?? ''}" style="width:54px"></td>`;
+        }
+        html += '</tr>';
+    }
+    body.innerHTML = html;
 }
 
 async function saveEvaluation() {
-    const rows = [...document.querySelectorAll('#evaluation-body input[data-subject]')].map(inp => ({
-        subject: inp.dataset.subject,
-        maxScores: String(inp.value || '').split(',')
-            .map(v => v.trim())
-            .filter(Boolean)
-            .map(v => Number(v))
-            .filter(v => Number.isFinite(v))
-    }));
+    const map = new Map();
+    document.querySelectorAll('#evaluation-body input[data-subject][data-task]').forEach(inp => {
+        const subject = inp.dataset.subject;
+        const task = Number(inp.dataset.task);
+        if (!map.has(subject)) map.set(subject, []);
+        const arr = map.get(subject);
+        const val = inp.value === '' ? null : Number(inp.value);
+        arr[task - 1] = Number.isFinite(val) ? val : null;
+    });
+    const rows = [...map.entries()].map(([subject, maxScores]) => {
+        let last = maxScores.length - 1;
+        while (last >= 0 && (maxScores[last] == null)) last--;
+        return { subject, maxScores: maxScores.slice(0, last + 1).map(v => v == null ? 0 : v) };
+    });
     await api(scoped('/api/oge/evaluation'), {
         method: 'PUT',
         headers: jsonHeaders,
