@@ -23,6 +23,16 @@ const TABS = [
     { key: 'CONTINGENT_IMPORT', label: 'Контингент: импорт' },
     { key: 'CONTINGENT_STATS', label: 'Контингент: численность' },
     { key: 'SUBJECT_AREAS', label: 'Предметные области' },
+    { key: 'VSOKO_VIEW', label: 'ВСОКО: просмотр' },
+    { key: 'VSOKO_EDIT', label: 'ВСОКО: редактирование' },
+    { key: 'OGE_UPLOAD_VIEW', label: 'ОГЭ: Выгрузка (просмотр)' },
+    { key: 'OGE_MISMATCH_VIEW', label: 'ОГЭ: Нестыковки (просмотр)' },
+    { key: 'OGE_EXTERNAL_WORKS_VIEW', label: 'ОГЭ: Внешние работы пробники (просмотр)' },
+    { key: 'OGE_TEACHER_BINDING_VIEW', label: 'ОГЭ: Привязка к педагогу (просмотр)' },
+    { key: 'OGE_SCORE_VIEW', label: 'ОГЭ: Баллы за задания (просмотр)' },
+    { key: 'OGE_EVALUATION_VIEW', label: 'ОГЭ: Оценивание (просмотр)' },
+    { key: 'OGE_GIA_UPLOAD', label: 'ОГЭ: Загрузка выгрузок ГИА' },
+    { key: 'OGE_WORK_UPLOAD', label: 'ОГЭ: Загрузка работ ОГЭ' },
     { key: 'USERS', label: 'Пользователи' }
 ];
 
