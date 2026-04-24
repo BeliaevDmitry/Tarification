@@ -14,6 +14,7 @@ import org.school.personalLoad.pa.service.PaService;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.ContingentSnapshotRepository;
 import org.school.personalLoad.repository.ContingentStudentRepository;
+import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +31,9 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.ss.util.CellRangeAddressList;
+import org.apache.poi.ss.util.CellReference;
 
 @Service
 @RequiredArgsConstructor
@@ -40,6 +44,8 @@ public class PaServiceImpl implements PaService {
     private static final DataFormatter FORMATTER = new DataFormatter(Locale.forLanguageTag("ru"));
     private static final String PA_REPORT_STORAGE_DIR = "pa-reports";
     private static final String PA_SPEC_STORAGE_DIR = "pa-specifications";
+    private static final int TEMPLATE_MAX_STUDENTS = 500;
+    private static final int TEMPLATE_VARIANTS_COUNT = 6;
 
     private final PaSpecificationRepository specificationRepository;
     private final PaSpecificationTaskRepository taskRepository;
@@ -49,6 +55,7 @@ public class PaServiceImpl implements PaService {
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final ContingentSnapshotRepository contingentSnapshotRepository;
     private final ContingentStudentRepository contingentStudentRepository;
+    private final ManualLoadEntryRepository manualLoadEntryRepository;
 
     @Override
     @Transactional
@@ -479,7 +486,8 @@ public class PaServiceImpl implements PaService {
             Files.createDirectories(directory);
             try (Workbook workbook = new XSSFWorkbook();
                  OutputStream outputStream = Files.newOutputStream(filePath)) {
-                createInfoSheet(workbook, academicYear, subjectName, className, workType, workDate);
+                String teacherFio = resolveSingleTeacherFio(academicYear, subjectName, className);
+                createInfoSheet(workbook, academicYear, subjectName, className, teacherFio, level, workType, workDate);
                 createDataSheet(workbook, students, tasks);
                 workbook.write(outputStream);
             }
@@ -553,6 +561,30 @@ public class PaServiceImpl implements PaService {
     }
 
     @Override
+    public List<PaDtos.ReportFolderItem> reportFolderItems(String academicYear, PaWorkType workType) {
+        return reportVersionRepository.findAll().stream()
+                .filter(v -> Objects.equals(v.getAcademicYear(), academicYear))
+                .filter(v -> v.getWorkType() == workType)
+                .filter(v -> "GENERATED".equalsIgnoreCase(v.getStatus()))
+                .filter(PaReportVersion::isActiveVersion)
+                .filter(v -> v.getScopeType() == PaScopeType.CLASS)
+                .map(v -> new PaDtos.ReportFolderItem(
+                        v.getId(),
+                        v.getSubjectName(),
+                        Optional.ofNullable(parseParallel(v.getScopeValue())).map(String::valueOf).orElse("—"),
+                        v.getScopeValue(),
+                        v.getLevel(),
+                        v.getSourceFileName(),
+                        v.getCreatedAt()
+                ))
+                .sorted(Comparator
+                        .comparing(PaDtos.ReportFolderItem::subjectName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(PaDtos.ReportFolderItem::parallel, Comparator.nullsLast(String::compareTo))
+                        .thenComparing(PaDtos.ReportFolderItem::className, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+    @Override
     public byte[] loadReportFile(Long reportVersionId) throws IOException {
         PaReportVersion version = reportVersionRepository.findById(reportVersionId)
                 .orElseThrow(() -> new IllegalArgumentException("Версия отчёта не найдена"));
@@ -604,14 +636,22 @@ public class PaServiceImpl implements PaService {
                 .orElse(null);
     }
 
-    private void createInfoSheet(Workbook workbook, String year, String subject, String className, PaWorkType workType, LocalDate workDate) {
+    private void createInfoSheet(Workbook workbook,
+                                 String year,
+                                 String subject,
+                                 String className,
+                                 String teacherFio,
+                                 PaLevel level,
+                                 PaWorkType workType,
+                                 LocalDate workDate) {
         Sheet info = workbook.createSheet("Информация");
         String[][] rows = {
-                {"Учитель", ""},
+                {"Учитель", teacherFio == null ? "" : teacherFio},
                 {"Дата написания работы", workDate == null ? "" : workDate.toString()},
                 {"Предмет", subject},
                 {"Класс", className},
                 {"Тип", workType == PaWorkType.ENTRY ? "Входная работа" : workType == PaWorkType.EXIT ? "Выходная работа" : "Промежуточная работа"},
+                {"Уровень", level == PaLevel.ADVANCED ? "Углублённый" : "Базовый"},
                 {"Школа", "ГБОУ №7"},
                 {"Учебный год", year}
         };
@@ -624,28 +664,138 @@ public class PaServiceImpl implements PaService {
         info.setColumnWidth(1, 9000);
     }
 
+    private String resolveSingleTeacherFio(String academicYear, String subjectName, String className) {
+        Set<String> teachers = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(row -> normalize(row.getSubjectName()).equals(normalize(subjectName)))
+                .filter(row -> normalizeClass(row.getClassName()).equals(normalizeClass(className)))
+                .map(row -> String.valueOf(row.getFioTeacher()).trim())
+                .filter(v -> !v.isBlank())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        return teachers.size() == 1 ? teachers.iterator().next() : "";
+    }
+
     private void createDataSheet(Workbook workbook, List<String> students, List<PaSpecificationTask> tasks) {
         Sheet data = workbook.createSheet("Сбор информации");
-        Row head = data.createRow(0);
-        head.createCell(0).setCellValue("№");
-        head.createCell(1).setCellValue("ФИО ученика");
-        head.createCell(2).setCellValue("Присутствие");
-        head.createCell(3).setCellValue("Вариант");
-        int taskStart = 4;
+        int firstTaskCol = 4;
+        int firstStudentRow = 3;
+        int studentCount = Math.min(students.size(), TEMPLATE_MAX_STUDENTS);
+
+        Row headerRow = data.createRow(0);
+        headerRow.createCell(0).setCellValue("№");
+        headerRow.createCell(1).setCellValue("ФИО ученика");
+        headerRow.createCell(2).setCellValue("Присутствие");
+        headerRow.createCell(3).setCellValue("Вариант");
+        headerRow.createCell(firstTaskCol).setCellValue("Баллы за задания");
+        data.addMergedRegion(new CellRangeAddress(0, 0, firstTaskCol, firstTaskCol + tasks.size() - 1));
+        headerRow.createCell(firstTaskCol + tasks.size()).setCellValue("Итог");
+
+        Row taskNoRow = data.createRow(1);
+        for (int i = 0; i < 4; i++) taskNoRow.createCell(i).setCellValue("");
         for (int i = 0; i < tasks.size(); i++) {
-            head.createCell(taskStart + i).setCellValue("Задание " + tasks.get(i).getTaskNo());
+            taskNoRow.createCell(firstTaskCol + i).setCellValue(tasks.get(i).getTaskNo() == null ? i + 1 : tasks.get(i).getTaskNo());
         }
-        head.createCell(taskStart + tasks.size()).setCellValue("Итог");
-        for (int i = 0; i < students.size(); i++) {
-            Row row = data.createRow(3 + i);
+        taskNoRow.createCell(firstTaskCol + tasks.size()).setCellValue("");
+
+        Row maxScoresRow = data.createRow(2);
+        for (int i = 0; i < 4; i++) maxScoresRow.createCell(i).setCellValue("");
+        for (int i = 0; i < tasks.size(); i++) {
+            Integer max = tasks.get(i).getMaxScore();
+            maxScoresRow.createCell(firstTaskCol + i).setCellValue(max == null ? 0 : max);
+        }
+        maxScoresRow.createCell(firstTaskCol + tasks.size()).setCellValue("");
+
+        for (int i = 0; i < studentCount; i++) {
+            Row row = data.createRow(firstStudentRow + i);
             row.createCell(0).setCellValue(i + 1);
             row.createCell(1).setCellValue(students.get(i));
+            row.createCell(2).setCellValue("");
+            row.createCell(3).setCellValue("");
+            for (int t = 0; t < tasks.size(); t++) {
+                row.createCell(firstTaskCol + t).setCellValue("");
+            }
+            Cell totalCell = row.createCell(firstTaskCol + tasks.size());
+            totalCell.setCellFormula(createTotalFormula(firstTaskCol, firstStudentRow + i + 1, tasks.size()));
         }
-        data.setColumnWidth(0, 1400);
+
+        for (int i = studentCount; i < TEMPLATE_MAX_STUDENTS; i++) {
+            Row row = data.createRow(firstStudentRow + i);
+            row.createCell(0).setCellValue(i + 1);
+            for (int c = 1; c <= firstTaskCol + tasks.size(); c++) {
+                row.createCell(c).setCellValue("");
+            }
+        }
+
+        setupTemplateValidation(data, firstStudentRow, studentCount, tasks, firstTaskCol);
+        setupPresenceConditionalFormatting(data, firstStudentRow, studentCount, 2);
+
+        data.setColumnWidth(0, 1200);
         data.setColumnWidth(1, 9000);
-        for (int i = 2; i < taskStart + tasks.size() + 1; i++) {
-            data.setColumnWidth(i, 3200);
+        data.setColumnWidth(2, 3200);
+        data.setColumnWidth(3, 2600);
+        for (int i = 0; i < tasks.size(); i++) data.setColumnWidth(firstTaskCol + i, 1500);
+        data.setColumnWidth(firstTaskCol + tasks.size(), 2200);
+        data.createFreezePane(0, 3);
+    }
+
+    private void setupTemplateValidation(Sheet sheet, int firstStudentRow, int studentCount, List<PaSpecificationTask> tasks, int firstTaskCol) {
+        DataValidationHelper helper = sheet.getDataValidationHelper();
+        if (studentCount <= 0) return;
+        DataValidationConstraint presenceConstraint = helper.createExplicitListConstraint(new String[]{"Был", "Не был"});
+        CellRangeAddressList presenceRange = new CellRangeAddressList(firstStudentRow, firstStudentRow + studentCount - 1, 2, 2);
+        DataValidation presenceValidation = helper.createValidation(presenceConstraint, presenceRange);
+        presenceValidation.setShowErrorBox(true);
+        presenceValidation.setEmptyCellAllowed(true);
+        sheet.addValidationData(presenceValidation);
+
+        List<String> variants = new ArrayList<>();
+        for (int i = 1; i <= TEMPLATE_VARIANTS_COUNT; i++) variants.add("Вариант " + i);
+        DataValidationConstraint variantConstraint = helper.createExplicitListConstraint(variants.toArray(new String[0]));
+        CellRangeAddressList variantRange = new CellRangeAddressList(firstStudentRow, firstStudentRow + studentCount - 1, 3, 3);
+        DataValidation variantValidation = helper.createValidation(variantConstraint, variantRange);
+        variantValidation.setShowErrorBox(true);
+        variantValidation.setEmptyCellAllowed(true);
+        sheet.addValidationData(variantValidation);
+
+        for (int i = 0; i < tasks.size(); i++) {
+            int max = tasks.get(i).getMaxScore() == null ? 0 : Math.max(0, tasks.get(i).getMaxScore());
+            List<String> allowed = new ArrayList<>();
+            for (int score = 0; score <= max; score++) allowed.add(String.valueOf(score));
+            DataValidationConstraint scoreConstraint = helper.createExplicitListConstraint(allowed.toArray(new String[0]));
+            CellRangeAddressList scoreRange = new CellRangeAddressList(firstStudentRow, firstStudentRow + studentCount - 1, firstTaskCol + i, firstTaskCol + i);
+            DataValidation scoreValidation = helper.createValidation(scoreConstraint, scoreRange);
+            scoreValidation.setShowErrorBox(true);
+            scoreValidation.setEmptyCellAllowed(true);
+            sheet.addValidationData(scoreValidation);
         }
+    }
+
+    private void setupPresenceConditionalFormatting(Sheet sheet, int firstStudentRow, int studentCount, int presenceCol) {
+        if (studentCount <= 0) return;
+        SheetConditionalFormatting scf = sheet.getSheetConditionalFormatting();
+        int excelFirstRow = firstStudentRow + 1;
+        String col = CellReference.convertNumToColString(presenceCol);
+        ConditionalFormattingRule presentRule = scf.createConditionalFormattingRule("EXACT($" + col + excelFirstRow + ",\"Был\")");
+        PatternFormatting presentPattern = presentRule.createPatternFormatting();
+        presentPattern.setFillBackgroundColor(IndexedColors.LIGHT_GREEN.getIndex());
+        presentPattern.setFillPattern(PatternFormatting.SOLID_FOREGROUND);
+
+        ConditionalFormattingRule absentRule = scf.createConditionalFormattingRule("EXACT($" + col + excelFirstRow + ",\"Не был\")");
+        PatternFormatting absentPattern = absentRule.createPatternFormatting();
+        absentPattern.setFillBackgroundColor(IndexedColors.RED.getIndex());
+        absentPattern.setFillPattern(PatternFormatting.SOLID_FOREGROUND);
+
+        CellRangeAddress[] ranges = { new CellRangeAddress(firstStudentRow, firstStudentRow + studentCount - 1, presenceCol, presenceCol) };
+        scf.addConditionalFormatting(ranges, presentRule, absentRule);
+    }
+
+    private String createTotalFormula(int taskStartCol, int excelRowNum, int tasksCount) {
+        StringBuilder formula = new StringBuilder("SUM(");
+        for (int i = 0; i < tasksCount; i++) {
+            if (i > 0) formula.append(",");
+            formula.append(CellReference.convertNumToColString(taskStartCol + i)).append(excelRowNum);
+        }
+        formula.append(")");
+        return formula.toString();
     }
 
     private String sanitizeFileName(String value) {
