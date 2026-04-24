@@ -2,7 +2,8 @@ const paState = {
     specifications: [],
     summary: { primary: [], secondary: [] },
     subjectAreas: [],
-    curriculum: []
+    curriculum: [],
+    importLogHistory: []
 };
 
 function paApi(path, options = {}) {
@@ -385,19 +386,52 @@ function bindSpecificationDownloadButtons() {
 
 async function uploadSpecifications() {
     const input = document.getElementById('pa-spec-files');
-    const log = document.getElementById('pa-spec-import-log');
     if (!input.files.length) return;
     setSpecTab('upload-log');
     const form = new FormData();
     [...input.files].forEach((f) => form.append('files', f));
     try {
         const result = await paApi('/api/pa/specifications/import', { method: 'POST', body: form });
-        log.textContent = JSON.stringify(result, null, 2);
+        appendSpecificationImportLog(result);
         input.value = '';
         await reloadSummaryAndSpecs();
     } catch (e) {
-        log.textContent = JSON.stringify({ error: e.message }, null, 2);
+        appendSpecificationImportLog([{ fileName: [...input.files].map((f) => f.name).join(', '), warnings: [`Ошибка: ${e.message}`], importedTasks: 0 }]);
     }
+}
+
+function appendSpecificationImportLog(result) {
+    const rows = Array.isArray(result) ? result : [result];
+    const timestamp = new Date().toLocaleString('ru-RU');
+    rows.forEach((row) => {
+        const warnings = Array.isArray(row?.warnings) ? row.warnings.filter(Boolean) : [];
+        const hasError = warnings.some((w) => String(w).toLowerCase().startsWith('ошибка'));
+        const status = hasError ? 'Ошибка' : 'Успешно';
+        const message = warnings.length ? warnings.join('; ') : 'Импорт выполнен';
+        const records = Number.isFinite(row?.importedTasks) ? row.importedTasks : 0;
+        paState.importLogHistory.unshift({
+            timestamp,
+            fileName: row?.fileName || '—',
+            status,
+            message,
+            records
+        });
+    });
+    renderSpecificationImportLog();
+}
+
+function renderSpecificationImportLog() {
+    const body = document.getElementById('pa-spec-import-log-body');
+    if (!body) return;
+    body.innerHTML = paState.importLogHistory.map((row) => `
+        <tr>
+            <td>${row.timestamp}</td>
+            <td>${row.fileName}</td>
+            <td>${row.status}</td>
+            <td>${row.message}</td>
+            <td>${row.records}</td>
+        </tr>
+    `).join('') || '<tr><td colspan="5" class="muted">История загрузок пуста</td></tr>';
 }
 
 async function uploadReports(prefix) {
@@ -574,6 +608,7 @@ document.getElementById('pa-entry-scope').addEventListener('change', () => fillC
 document.getElementById('pa-exit-scope').addEventListener('change', () => fillClassSelector('exit', document.getElementById('pa-exit-subject').value, document.getElementById('pa-exit-scope').value));
 
 reloadSummaryAndSpecs().catch((e) => {
-    document.getElementById('pa-spec-import-log').textContent = JSON.stringify({ error: e.message }, null, 2);
+    appendSpecificationImportLog([{ fileName: '—', warnings: [`Ошибка: ${e.message}`], importedTasks: 0 }]);
 });
+renderSpecificationImportLog();
 setSpecTab('summary-5-11');

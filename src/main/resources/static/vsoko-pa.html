@@ -68,7 +68,14 @@
         </div>
 
         <div id="pa-spec-upload-log-panel" class="tab-panel hidden">
-            <pre id="pa-spec-import-log" class="result-box"></pre>
+            <div style="overflow:auto;">
+                <table class="sheet-table">
+                    <thead>
+                    <tr><th>Дата</th><th>Файл</th><th>Статус</th><th>Сообщение</th><th>Записей</th></tr>
+                    </thead>
+                    <tbody id="pa-spec-import-log-body"></tbody>
+                </table>
+            </div>
         </div>
     </section>
 
