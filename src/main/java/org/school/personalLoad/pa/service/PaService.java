@@ -22,4 +22,5 @@ public interface PaService {
     List<PaDtos.ReportUploadResult> generateReportTemplatesByParallel(String academicYear, String subjectName, String parallel, PaLevel level, PaWorkType workType, LocalDate workDate);
     List<PaDtos.ReportUploadResult> generateAllReportTemplates(String academicYear, String subjectName, PaLevel level, PaWorkType workType, LocalDate workDate);
     byte[] loadReportFile(Long reportVersionId) throws IOException;
+    byte[] loadSpecificationFile(String academicYear, Long specificationId) throws IOException;
 }

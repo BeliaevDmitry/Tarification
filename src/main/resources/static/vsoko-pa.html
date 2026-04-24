@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ВСОКО — ПА</title>
     <link rel="stylesheet" href="/styles.css">
+    <style>
+        .sticky-head thead th { position: sticky; top: 0; background: #f1f1f1; z-index: 2; }
+    </style>
 </head>
 <body>
 <main class="container">
@@ -28,21 +31,23 @@
         </div>
         <pre id="pa-spec-import-log" class="result-box"></pre>
         <div class="tabs" id="pa-spec-tabs">
-            <button class="tab-btn active" data-spec-tab="summary">Свод</button>
+            <button class="tab-btn active" data-spec-tab="summary-5-11">Свод 5-11</button>
+            <button class="tab-btn" data-spec-tab="summary-1-4">Свод 1-4</button>
             <button class="tab-btn" data-spec-tab="registry">Спецификации</button>
         </div>
 
-        <div id="pa-spec-summary-panel">
+        <div id="pa-spec-summary-5-11-panel">
             <div style="overflow:auto;">
-                <table class="sheet-table">
-                    <caption>5–11 классы</caption>
+                <table class="sheet-table sticky-head">
                     <thead id="pa-matrix-head"></thead>
                     <tbody id="pa-matrix-body"></tbody>
                 </table>
             </div>
-            <div style="overflow:auto; margin-top:12px;">
-                <table class="sheet-table">
-                    <caption>1–4 классы</caption>
+        </div>
+
+        <div id="pa-spec-summary-1-4-panel" class="hidden">
+            <div style="overflow:auto;">
+                <table class="sheet-table sticky-head">
                     <thead id="pa-matrix-head-primary"></thead>
                     <tbody id="pa-matrix-body-primary"></tbody>
                 </table>
@@ -69,7 +74,7 @@
         <div class="row">
             <select id="pa-entry-subject"></select>
             <select id="pa-entry-scope"></select>
-            <input id="pa-entry-class" type="text" placeholder="Класс (например 10-А)">
+            <select id="pa-entry-class"></select>
             <select id="pa-entry-level">
                 <option value="BASIC">Базовый</option>
                 <option value="ADVANCED">Углублённый</option>
@@ -110,7 +115,7 @@
         <div class="row">
             <select id="pa-exit-subject"></select>
             <select id="pa-exit-scope"></select>
-            <input id="pa-exit-class" type="text" placeholder="Класс (например 10-А)">
+            <select id="pa-exit-class"></select>
             <select id="pa-exit-level">
                 <option value="BASIC">Базовый</option>
                 <option value="ADVANCED">Углублённый</option>

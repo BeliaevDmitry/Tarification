@@ -38,6 +38,7 @@ public class PaServiceImpl implements PaService {
     private static final Pattern PARALLEL_PATTERN = Pattern.compile("^(\\d{1,2}).*");
     private static final DataFormatter FORMATTER = new DataFormatter(Locale.forLanguageTag("ru"));
     private static final String PA_REPORT_STORAGE_DIR = "pa-reports";
+    private static final String PA_SPEC_STORAGE_DIR = "pa-specifications";
 
     private final PaSpecificationRepository specificationRepository;
     private final PaSpecificationTaskRepository taskRepository;
@@ -62,6 +63,11 @@ public class PaServiceImpl implements PaService {
             int importedTasks = 0;
             try (InputStream inputStream = file.getInputStream();
                  Workbook workbook = new XSSFWorkbook(inputStream)) {
+                Path specDir = Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-"));
+                Files.createDirectories(specDir);
+                if (file.getOriginalFilename() != null) {
+                    Files.write(specDir.resolve(file.getOriginalFilename()), file.getBytes());
+                }
                 for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
                     Sheet sheet = workbook.getSheetAt(i);
                     importedSpecs += importSheet(academicYear, file.getOriginalFilename(), sheet, warnings);
@@ -106,9 +112,12 @@ public class PaServiceImpl implements PaService {
             ) + 1);
             PaSpecification saved = specificationRepository.save(spec);
             List<PaSpecificationTask> tasks = parseTasks(sheet, subjectRow, subjectCol, saved);
-            if (!tasks.isEmpty()) {
-                taskRepository.saveAll(tasks);
+            if (tasks.isEmpty()) {
+                specificationRepository.delete(saved);
+                warnings.add("Лист " + sheet.getSheetName() + ": спецификация '" + subjectName + "' не загружена — задания пустые");
+                continue;
             }
+            taskRepository.saveAll(tasks);
             imported += 1;
         }
         return imported;
@@ -196,6 +205,10 @@ public class PaServiceImpl implements PaService {
             emptyStreak = 0;
             Integer taskNo = parseInt(taskNoRaw);
             if (taskNo == null) continue;
+            boolean isTaskEmpty = topic.isBlank()
+                    && getCell(row, colMap.get("skill")).isBlank()
+                    && maxScoreRaw.isBlank();
+            if (isTaskEmpty) continue;
 
             PaSpecificationTask task = new PaSpecificationTask();
             task.setSpecification(specification);
@@ -513,6 +526,20 @@ public class PaServiceImpl implements PaService {
         return Files.readAllBytes(path);
     }
 
+    @Override
+    public byte[] loadSpecificationFile(String academicYear, Long specificationId) throws IOException {
+        PaSpecification specification = specificationRepository.findById(specificationId)
+                .orElseThrow(() -> new IllegalArgumentException("Спецификация не найдена"));
+        if (specification.getSourceFileName() == null || specification.getSourceFileName().isBlank()) {
+            throw new IllegalArgumentException("У спецификации не указан исходный файл");
+        }
+        Path path = Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-"), specification.getSourceFileName());
+        if (!Files.exists(path)) {
+            throw new IllegalArgumentException("Файл спецификации не найден на диске");
+        }
+        return Files.readAllBytes(path);
+    }
+
     private PaSpecification resolveSpecificationForClass(String year, String subject, String className, PaLevel level, PaWorkType workType, LocalDate workDate) {
         String classScope = className.toUpperCase(Locale.ROOT);
         Integer parallel = parseParallel(className);
@@ -684,15 +711,20 @@ public class PaServiceImpl implements PaService {
                                                        int parallelFrom,
                                                        int parallelTo) {
         List<PaDtos.SummaryCell> cells = new ArrayList<>();
-        Map<String, Set<String>> subjectToScopes = specs.stream()
+        Map<String, Set<String>> entryScopes = specs.stream()
+                .filter(s -> s.getWorkType() == PaWorkType.ENTRY)
+                .collect(Collectors.groupingBy(PaSpecification::getSubjectName, Collectors.mapping(PaSpecification::getScopeValue, Collectors.toSet())));
+        Map<String, Set<String>> exitScopes = specs.stream()
+                .filter(s -> s.getWorkType() == PaWorkType.EXIT)
                 .collect(Collectors.groupingBy(PaSpecification::getSubjectName, Collectors.mapping(PaSpecification::getScopeValue, Collectors.toSet())));
         for (String subject : subjects) {
             for (int p = parallelFrom; p <= parallelTo; p++) {
                 String scope = String.valueOf(p);
-                boolean hasSpec = subjectToScopes.getOrDefault(subject, Set.of()).stream().anyMatch(v -> v.startsWith(scope));
+                boolean hasEntrySpec = entryScopes.getOrDefault(subject, Set.of()).stream().anyMatch(v -> v.startsWith(scope));
+                boolean hasExitSpec = exitScopes.getOrDefault(subject, Set.of()).stream().anyMatch(v -> v.startsWith(scope));
                 PaParticipation participation = participationMap.get(participationKey(subject, scope, PaLevel.BASIC));
                 boolean participates = participation == null || participation.isParticipates();
-                cells.add(new PaDtos.SummaryCell(subject, scope, PaLevel.BASIC, participates, hasSpec));
+                cells.add(new PaDtos.SummaryCell(subject, scope, PaLevel.BASIC, participates, hasEntrySpec, hasExitSpec));
             }
         }
         return cells;

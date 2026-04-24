@@ -1,7 +1,8 @@
 const paState = {
     specifications: [],
     summary: { primary: [], secondary: [] },
-    subjectAreas: []
+    subjectAreas: [],
+    curriculum: []
 };
 
 function paApi(path, options = {}) {
@@ -24,7 +25,8 @@ function setPaTab(tab) {
 
 function setSpecTab(tab) {
     document.querySelectorAll('#pa-spec-tabs [data-spec-tab]').forEach((btn) => btn.classList.toggle('active', btn.dataset.specTab === tab));
-    document.getElementById('pa-spec-summary-panel').classList.toggle('hidden', tab !== 'summary');
+    document.getElementById('pa-spec-summary-5-11-panel').classList.toggle('hidden', tab !== 'summary-5-11');
+    document.getElementById('pa-spec-summary-1-4-panel').classList.toggle('hidden', tab !== 'summary-1-4');
     document.getElementById('pa-spec-registry-panel').classList.toggle('hidden', tab !== 'registry');
 }
 
@@ -41,8 +43,10 @@ function workTypeRu(workType) {
 
 function matrixCellSymbol(cell) {
     if (!cell) return '';
-    if (!cell.participates) return '➖';
-    return cell.hasSpecification ? '✅' : '❌';
+    if (!cell.participates) return '➖/➖';
+    const entry = cell.hasEntrySpecification ? '✅' : '❌';
+    const exit = cell.hasExitSpecification ? '✅' : '❌';
+    return `${entry}/${exit}`;
 }
 
 function renderMatrixTable(headId, bodyId, scopes) {
@@ -63,7 +67,13 @@ function renderMatrixTable(headId, bodyId, scopes) {
     }
     let html = '';
     areas.forEach((area) => {
-        const subjects = [...areaMap.get(area).keys()].sort((a, b) => a.localeCompare(b, 'ru'));
+        const subjects = [...areaMap.get(area).keys()]
+            .sort((a, b) => a.localeCompare(b, 'ru'))
+            .filter((subject) => scopes.some((scope) => all.some((row) =>
+                row.subjectName === subject
+                && row.scopeValue === scope
+                && (row.hasEntrySpecification || row.hasExitSpecification || row.participates === false)
+            )));
         subjects.forEach((subject, idx) => {
             html += '<tr>';
             if (idx === 0) html += `<td rowspan="${subjects.length}">${area}</td>`;
@@ -71,9 +81,9 @@ function renderMatrixTable(headId, bodyId, scopes) {
             scopes.forEach((scope) => {
                 const cell = all.find((row) => row.subjectName === subject && row.scopeValue === scope);
                 const symbol = matrixCellSymbol(cell);
-                if (symbol === '❌') {
+                if (symbol === '❌/❌') {
                     html += `<td><button type="button" class="tab-btn" data-summary-toggle-subject="${subject}" data-summary-toggle-scope="${scope}" data-summary-toggle-level="${cell.level}" title="Клик: пометить как не участвует">${symbol}</button></td>`;
-                } else if (symbol === '➖') {
+                } else if (symbol === '➖/➖') {
                     html += `<td><button type="button" class="tab-btn" data-summary-toggle-subject="${subject}" data-summary-toggle-scope="${scope}" data-summary-toggle-level="${cell.level}" title="Клик: вернуть в участие">${symbol}</button></td>`;
                 } else {
                     html += `<td>${symbol}</td>`;
@@ -131,7 +141,7 @@ function renderSpecifications(rows) {
                 <td>${row.level === 'ADVANCED' ? 'Углублённый' : 'Базовый'}</td>
                 <td>${workTypeRu(row.workType)}</td>
                 <td><button type="button" class="tab-btn" data-spec-versions-key="${row.subjectName}|${row.scopeValue}|${row.level}|${row.workType}">v${row.versionNo || 1}</button></td>
-                <td>${row.sourceFileName || ''}</td>
+                <td>${row.sourceFileName ? `<button type="button" class="tab-btn" data-download-spec-id="${row.id}">${row.sourceFileName}</button>` : ''}</td>
                 <td>
                     <label><input type="checkbox" data-participation-subject="${row.subjectName}" data-participation-scope-type="${row.scopeType}" data-participation-scope="${row.scopeValue}" data-participation-level="${row.level}" ${participationMap.get(`${row.subjectName}|${row.scopeValue}|${row.level}`) === false ? '' : 'checked'}> Да</label>
                 </td>
@@ -140,6 +150,7 @@ function renderSpecifications(rows) {
     }).join('') || '<tr><td colspan="8" class="muted">Спецификации не загружены</td></tr>';
     bindParticipationToggles();
     bindSpecificationVersions();
+    bindSpecificationDownloadButtons();
     fillSelectors('entry');
     fillSelectors('exit');
     renderCompactMatrix();
@@ -162,6 +173,19 @@ function fillSelectors(prefix) {
         : filtered.filter((item) => item.subjectName === selectedSubject);
     const scopes = [...new Set(scopedItems.map((item) => item.scopeValue).filter(Boolean))];
     scopeSelect.innerHTML = scopes.map((s) => `<option value="${s}">${s}</option>`).join('');
+    fillClassSelector(prefix, selectedSubject, scopeSelect.value || scopes[0]);
+}
+
+function fillClassSelector(prefix, selectedSubject, selectedScope) {
+    const classSelect = document.getElementById(`pa-${prefix}-class`);
+    const subjectFilter = selectedSubject === 'ALL' ? null : selectedSubject;
+    const classes = [...new Set((paState.curriculum || [])
+        .filter((row) => !subjectFilter || row.subjectName === subjectFilter)
+        .map((row) => row.className)
+        .filter(Boolean)
+        .filter((className) => !selectedScope || String(className).startsWith(String(selectedScope)))
+    )].sort((a, b) => String(a).localeCompare(String(b), 'ru'));
+    classSelect.innerHTML = classes.map((c) => `<option value="${c}">${c}</option>`).join('');
 }
 
 function renderUploadLog(prefix, rows) {
@@ -200,10 +224,14 @@ async function generateForClass(prefix) {
     if (!subject || subject === 'ALL' || !className) return;
     const params = new URLSearchParams({ subjectName: subject, className, level, workType });
     if (workDate) params.set('workDate', workDate);
-    const result = await paApi(`/api/pa/reports/generate?${params.toString()}`, { method: 'POST' });
-    renderUploadLog(prefix, [result]);
-    await loadVersions(prefix);
-    await renderWorkflow(prefix);
+    try {
+        const result = await paApi(`/api/pa/reports/generate?${params.toString()}`, { method: 'POST' });
+        renderUploadLog(prefix, [result]);
+        await loadVersions(prefix);
+        await renderWorkflow(prefix);
+    } catch (e) {
+        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: `Генерация не выполнена: ${e.message}`, versionNo: null }]);
+    }
 }
 
 async function generateForParallel(prefix) {
@@ -215,9 +243,13 @@ async function generateForParallel(prefix) {
     if (!subject || subject === 'ALL' || !parallel) return;
     const params = new URLSearchParams({ subjectName: subject, parallel, level, workType });
     if (workDate) params.set('workDate', workDate);
-    const result = await paApi(`/api/pa/reports/generate/parallel?${params.toString()}`, { method: 'POST' });
-    renderUploadLog(prefix, result);
-    await renderWorkflow(prefix);
+    try {
+        const result = await paApi(`/api/pa/reports/generate/parallel?${params.toString()}`, { method: 'POST' });
+        renderUploadLog(prefix, result);
+        await renderWorkflow(prefix);
+    } catch (e) {
+        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: `Генерация параллели не выполнена: ${e.message}`, versionNo: null }]);
+    }
 }
 
 async function generateAll(prefix) {
@@ -228,19 +260,25 @@ async function generateAll(prefix) {
     if (!subject || subject === 'ALL') return;
     const params = new URLSearchParams({ subjectName: subject, level, workType });
     if (workDate) params.set('workDate', workDate);
-    const result = await paApi(`/api/pa/reports/generate/all?${params.toString()}`, { method: 'POST' });
-    renderUploadLog(prefix, result);
-    await renderWorkflow(prefix);
+    try {
+        const result = await paApi(`/api/pa/reports/generate/all?${params.toString()}`, { method: 'POST' });
+        renderUploadLog(prefix, result);
+        await renderWorkflow(prefix);
+    } catch (e) {
+        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: `Массовая генерация не выполнена: ${e.message}`, versionNo: null }]);
+    }
 }
 
 async function reloadSummaryAndSpecs() {
-    const [summary, specs, subjects] = await Promise.all([
+    const [summary, specs, subjects, curriculum] = await Promise.all([
         paApi('/api/pa/specifications/summary'),
         paApi('/api/pa/specifications'),
-        paApi('/api/subjects')
+        paApi('/api/subjects'),
+        paApi('/api/curriculum')
     ]);
     paState.summary = summary || { primary: [], secondary: [] };
     paState.subjectAreas = subjects || [];
+    paState.curriculum = curriculum || [];
     renderSpecifications(specs || []);
     await renderWorkflow('entry');
     await renderWorkflow('exit');
@@ -277,7 +315,7 @@ function bindSummaryToggles() {
             const scopeValue = btn.dataset.summaryToggleScope;
             const level = btn.dataset.summaryToggleLevel || 'BASIC';
             const currentSymbol = btn.textContent.trim();
-            const participates = currentSymbol === '➖';
+            const participates = currentSymbol === '➖/➖';
             try {
                 await paApi('/api/pa/participation', {
                     method: 'PATCH',
@@ -307,6 +345,17 @@ function bindSpecificationVersions() {
                 .sort((a, b) => (b.versionNo || 0) - (a.versionNo || 0))
                 .map((row) => `v${row.versionNo} — ${row.sourceFileName || 'без файла'}`);
             alert(versions.length ? versions.join('\n') : 'Версии не найдены');
+        });
+    });
+}
+
+function bindSpecificationDownloadButtons() {
+    document.querySelectorAll('[data-download-spec-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.downloadSpecId;
+            const raw = `/api/pa/specifications/${id}/download`;
+            const url = typeof window.withAcademicYear === 'function' ? window.withAcademicYear(raw) : raw;
+            window.open(url, '_blank');
         });
     });
 }
@@ -494,6 +543,8 @@ document.getElementById('pa-entry-generate-all-btn').addEventListener('click', (
 document.getElementById('pa-exit-generate-all-btn').addEventListener('click', () => generateAll('exit'));
 document.getElementById('pa-entry-subject').addEventListener('change', async () => { fillSelectors('entry'); await renderWorkflow('entry'); });
 document.getElementById('pa-exit-subject').addEventListener('change', async () => { fillSelectors('exit'); await renderWorkflow('exit'); });
+document.getElementById('pa-entry-scope').addEventListener('change', () => fillClassSelector('entry', document.getElementById('pa-entry-subject').value, document.getElementById('pa-entry-scope').value));
+document.getElementById('pa-exit-scope').addEventListener('change', () => fillClassSelector('exit', document.getElementById('pa-exit-subject').value, document.getElementById('pa-exit-scope').value));
 
 reloadSummaryAndSpecs().catch((e) => {
     document.getElementById('pa-spec-import-log').textContent = JSON.stringify({ error: e.message }, null, 2);

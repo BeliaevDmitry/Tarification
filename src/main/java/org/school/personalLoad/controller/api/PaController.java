@@ -49,6 +49,17 @@ public class PaController {
         return ResponseEntity.ok(paService.specificationTasks(specificationId));
     }
 
+    @GetMapping("/specifications/{specificationId}/download")
+    public ResponseEntity<byte[]> downloadSpecification(@PathVariable Long specificationId,
+                                                        @RequestParam(required = false) String academicYear) throws Exception {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        byte[] body = paService.loadSpecificationFile(year, specificationId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"pa-specification-" + specificationId + ".xlsx\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(body);
+    }
+
     @GetMapping("/specifications/summary")
     public ResponseEntity<PaDtos.SummaryResponse> summary(@RequestParam(required = false) String academicYear) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
