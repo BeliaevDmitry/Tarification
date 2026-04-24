@@ -161,12 +161,15 @@ public class PaServiceImpl implements PaService {
 
     private List<PaSpecificationTask> parseTasks(Sheet sheet, int baseRow, int baseCol, PaSpecification specification) {
         int headerRow = -1;
+        int headerCol = -1;
         int maxRow = Math.min(sheet.getLastRowNum(), baseRow + 200);
         for (int r = baseRow; r <= maxRow; r++) {
             Row row = sheet.getRow(r);
             if (row == null) continue;
-            if (containsValue(row, "№ задания")) {
+            int taskColumn = findColumnWithLabel(row, "№ задания", baseCol, baseCol + 12);
+            if (taskColumn >= 0) {
                 headerRow = r;
+                headerCol = taskColumn;
                 break;
             }
         }
@@ -174,14 +177,16 @@ public class PaServiceImpl implements PaService {
 
         Row header = sheet.getRow(headerRow);
         Map<String, Integer> colMap = new HashMap<>();
-        for (Cell cell : header) {
-            String value = cellValue(cell).toLowerCase(Locale.ROOT);
-            if (value.contains("№ задания")) colMap.put("task", cell.getColumnIndex());
-            if (value.contains("тема")) colMap.put("topic", cell.getColumnIndex());
-            if (value.contains("навык")) colMap.put("skill", cell.getColumnIndex());
-            if (value.contains("тип задания")) colMap.put("kind", cell.getColumnIndex());
-            if (value.contains("если повторение")) colMap.put("repeat", cell.getColumnIndex());
-            if (value.contains("балл")) colMap.put("score", cell.getColumnIndex());
+        int searchFrom = Math.max(0, headerCol);
+        int searchTo = headerCol + 8;
+        for (int c = searchFrom; c <= searchTo; c++) {
+            String value = getCell(header, c).toLowerCase(Locale.ROOT);
+            if (value.contains("№ задания")) colMap.put("task", c);
+            if (value.contains("тема")) colMap.put("topic", c);
+            if (value.contains("навык")) colMap.put("skill", c);
+            if (value.contains("тип задания")) colMap.put("kind", c);
+            if (value.contains("если повторение")) colMap.put("repeat", c);
+            if (value.contains("балл")) colMap.put("score", c);
         }
         if (!colMap.containsKey("task")) return List.of();
 
@@ -225,6 +230,17 @@ public class PaServiceImpl implements PaService {
             return List.of();
         }
         return tasks;
+    }
+
+    private int findColumnWithLabel(Row row, String label, int fromCol, int toCol) {
+        if (row == null) return -1;
+        for (int c = Math.max(0, fromCol); c <= Math.max(fromCol, toCol); c++) {
+            String value = getCell(row, c);
+            if (!value.isBlank() && value.toLowerCase(Locale.ROOT).contains(label.toLowerCase(Locale.ROOT))) {
+                return c;
+            }
+        }
+        return -1;
     }
 
     @Override
@@ -800,13 +816,6 @@ public class PaServiceImpl implements PaService {
             if (!value.isBlank()) return value;
         }
         return "";
-    }
-
-    private boolean containsValue(Row row, String value) {
-        for (Cell cell : row) {
-            if (cellValue(cell).toLowerCase(Locale.ROOT).contains(value.toLowerCase(Locale.ROOT))) return true;
-        }
-        return false;
     }
 
     private String getCell(Row row, Integer colIdx) {
