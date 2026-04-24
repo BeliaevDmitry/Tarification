@@ -32,6 +32,7 @@ public class AuthFilter extends OncePerRequestFilter {
             "/school-crest.svg",
             "/request-exit.html",
             "/open-forms.html",
+            "/pa.html",
             "/styles.css",
             "/table-scroll.js",
             "/favicon.ico",
@@ -139,6 +140,7 @@ public class AuthFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/settings/")) return AppTab.SETTINGS;
         if (path.startsWith("/api/teachers")) return AppTab.TEACHERS;
         if (path.startsWith("/api/admin/users")) return AppTab.USERS;
+        if (path.startsWith("/api/pa")) return AppTab.VSOKO_EDIT;
         return null;
     }
 
