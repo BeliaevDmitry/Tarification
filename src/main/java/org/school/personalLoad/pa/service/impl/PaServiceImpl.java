@@ -611,6 +611,30 @@ public class PaServiceImpl implements PaService {
     }
 
     @Override
+    public List<PaDtos.ReportFolderItem> reportFolderItems(String academicYear, PaWorkType workType) {
+        return reportVersionRepository.findAll().stream()
+                .filter(v -> Objects.equals(v.getAcademicYear(), academicYear))
+                .filter(v -> v.getWorkType() == workType)
+                .filter(v -> "GENERATED".equalsIgnoreCase(v.getStatus()))
+                .filter(PaReportVersion::isActiveVersion)
+                .filter(v -> v.getScopeType() == PaScopeType.CLASS)
+                .map(v -> new PaDtos.ReportFolderItem(
+                        v.getId(),
+                        v.getSubjectName(),
+                        Optional.ofNullable(parseParallel(v.getScopeValue())).map(String::valueOf).orElse("—"),
+                        v.getScopeValue(),
+                        v.getLevel(),
+                        v.getSourceFileName(),
+                        v.getCreatedAt()
+                ))
+                .sorted(Comparator
+                        .comparing(PaDtos.ReportFolderItem::subjectName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(PaDtos.ReportFolderItem::parallel, Comparator.nullsLast(String::compareTo))
+                        .thenComparing(PaDtos.ReportFolderItem::className, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+    @Override
     public byte[] loadReportFile(Long reportVersionId) throws IOException {
         PaReportVersion version = reportVersionRepository.findById(reportVersionId)
                 .orElseThrow(() -> new IllegalArgumentException("Версия отчёта не найдена"));
