@@ -14,6 +14,7 @@ import org.school.personalLoad.pa.service.PaService;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.ContingentSnapshotRepository;
 import org.school.personalLoad.repository.ContingentStudentRepository;
+import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,15 +31,21 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.ss.util.CellRangeAddressList;
+import org.apache.poi.ss.util.CellReference;
 
 @Service
 @RequiredArgsConstructor
 public class PaServiceImpl implements PaService {
+    private record SheetImportStats(int specs, int tasks) {}
 
     private static final Pattern PARALLEL_PATTERN = Pattern.compile("^(\\d{1,2}).*");
     private static final DataFormatter FORMATTER = new DataFormatter(Locale.forLanguageTag("ru"));
     private static final String PA_REPORT_STORAGE_DIR = "pa-reports";
     private static final String PA_SPEC_STORAGE_DIR = "pa-specifications";
+    private static final int TEMPLATE_MAX_STUDENTS = 500;
+    private static final int TEMPLATE_VARIANTS_COUNT = 6;
 
     private final PaSpecificationRepository specificationRepository;
     private final PaSpecificationTaskRepository taskRepository;
@@ -48,6 +55,7 @@ public class PaServiceImpl implements PaService {
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final ContingentSnapshotRepository contingentSnapshotRepository;
     private final ContingentStudentRepository contingentStudentRepository;
+    private final ManualLoadEntryRepository manualLoadEntryRepository;
 
     @Override
     @Transactional
@@ -70,37 +78,51 @@ public class PaServiceImpl implements PaService {
                 }
                 for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
                     Sheet sheet = workbook.getSheetAt(i);
-                    importedSpecs += importSheet(academicYear, file.getOriginalFilename(), sheet, warnings);
+                    SheetImportStats stats = importSheet(academicYear, file.getOriginalFilename(), sheet, warnings);
+                    importedSpecs += stats.specs();
+                    importedTasks += stats.tasks();
                 }
             } catch (Exception e) {
                 warnings.add("Ошибка чтения файла: " + e.getMessage());
-            }
-            if (warnings.stream().noneMatch(w -> w.startsWith("Ошибка"))) {
-                importedTasks = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear).stream()
-                        .filter(s -> Objects.equals(s.getSourceFileName(), file.getOriginalFilename()))
-                        .mapToInt(s -> taskRepository.findAllBySpecificationIdOrderByTaskNoAsc(s.getId()).size())
-                        .sum();
             }
             results.add(new PaDtos.ImportResult(file.getOriginalFilename(), importedSpecs, importedTasks, warnings));
         }
         return results;
     }
 
-    private int importSheet(String academicYear, String sourceFileName, Sheet sheet, List<String> warnings) {
+    private SheetImportStats importSheet(String academicYear, String sourceFileName, Sheet sheet, List<String> warnings) {
         List<int[]> subjectCells = findCellsByValue(sheet, "Предмет");
         if (subjectCells.isEmpty()) {
             warnings.add("Лист " + sheet.getSheetName() + ": не найден блок 'Предмет'");
-            return 0;
+            return new SheetImportStats(0, 0);
         }
-        int imported = 0;
+        int importedSpecs = 0;
+        int importedTasks = 0;
         for (int[] cellPos : subjectCells) {
             int subjectRow = cellPos[0];
             int subjectCol = cellPos[1];
             String subjectName = firstNonBlank(sheet, subjectRow, subjectCol + 1, subjectCol + 6);
             if (subjectName.isBlank()) continue;
-            PaSpecification spec = parseBlock(academicYear, sourceFileName, sheet, subjectRow, subjectCol, warnings);
+            int blockEndCol = detectBlockEndCol(sheet, subjectRow, subjectCol);
+            PaSpecification spec = parseBlock(academicYear, sourceFileName, sheet, subjectRow, subjectCol, blockEndCol, warnings);
             if (spec == null) continue;
             spec.setCreatedAt(LocalDateTime.now());
+
+            List<PaSpecification> sameSpecs = specificationRepository
+                    .findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear)
+                    .stream()
+                    .filter(s -> normalize(s.getSubjectName()).equals(normalize(spec.getSubjectName())))
+                    .filter(s -> s.getScopeType() == spec.getScopeType())
+                    .filter(s -> normalizeClass(s.getScopeValue()).equals(normalizeClass(spec.getScopeValue())))
+                    .filter(s -> s.getLevel() == spec.getLevel())
+                    .filter(s -> s.getWorkType() == spec.getWorkType())
+                    .filter(s -> Objects.equals(s.getWorkDate(), spec.getWorkDate()))
+                    .toList();
+            sameSpecs.forEach(s -> s.setActiveVersion(false));
+            if (!sameSpecs.isEmpty()) {
+                specificationRepository.saveAll(sameSpecs);
+            }
+
             spec.setVersionNo(specificationRepository.findMaxVersion(
                     spec.getAcademicYear(),
                     spec.getSubjectName(),
@@ -110,23 +132,31 @@ public class PaServiceImpl implements PaService {
                     spec.getWorkType(),
                     spec.getWorkDate()
             ) + 1);
+            spec.setActiveVersion(true);
             PaSpecification saved = specificationRepository.save(spec);
-            List<PaSpecificationTask> tasks = parseTasks(sheet, subjectRow, subjectCol, saved);
+            List<PaSpecificationTask> tasks = parseTasks(sheet, subjectRow, subjectCol, blockEndCol, saved);
             if (tasks.isEmpty()) {
                 specificationRepository.delete(saved);
-                warnings.add("Лист " + sheet.getSheetName() + ": спецификация '" + subjectName + "' не загружена — задания пустые");
+                warnings.add("Лист " + sheet.getSheetName() + ": спецификация '" + subjectName + "' не загружена — нет ни одной темы");
                 continue;
             }
             taskRepository.saveAll(tasks);
-            imported += 1;
+            importedSpecs += 1;
+            importedTasks += tasks.size();
         }
-        return imported;
+        return new SheetImportStats(importedSpecs, importedTasks);
     }
 
-    private PaSpecification parseBlock(String academicYear, String sourceFileName, Sheet sheet, int baseRow, int baseCol, List<String> warnings) {
-        String subject = firstNonBlank(sheet, baseRow, baseCol + 1, baseCol + 6);
-        String scope = findValueNearLabel(sheet, baseRow, baseCol, "Параллель/Класс");
-        String workTypeRaw = findValueNearLabel(sheet, baseRow, baseCol, "Тип");
+    private PaSpecification parseBlock(String academicYear,
+                                       String sourceFileName,
+                                       Sheet sheet,
+                                       int baseRow,
+                                       int baseCol,
+                                       int blockEndCol,
+                                       List<String> warnings) {
+        String subject = firstNonBlank(sheet, baseRow, baseCol + 1, blockEndCol);
+        String scope = findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "Параллель/Класс");
+        String workTypeRaw = findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "Тип");
         if (subject.isBlank() || scope.isBlank() || workTypeRaw.isBlank()) {
             warnings.add("Лист " + sheet.getSheetName() + ": пропущены обязательные поля (предмет/параллель/тип)");
             return null;
@@ -137,7 +167,7 @@ public class PaServiceImpl implements PaService {
             return null;
         }
 
-        String levelRaw = findValueNearLabel(sheet, baseRow, baseCol, "Уровень");
+        String levelRaw = findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "Уровень");
         PaLevel level = parseLevel(levelRaw);
 
         PaSpecification spec = new PaSpecification();
@@ -147,26 +177,29 @@ public class PaServiceImpl implements PaService {
         spec.setScopeType(detectScopeType(scope));
         spec.setWorkType(workType);
         spec.setLevel(level);
-        spec.setSchoolName(findValueNearLabel(sheet, baseRow, baseCol, "Школа"));
-        spec.setTeacherFio(findValueNearLabel(sheet, baseRow, baseCol, "Учитель"));
+        spec.setSchoolName(findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "Школа"));
+        spec.setTeacherFio(findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "Учитель"));
         spec.setTeacherFioNormalized(normalizeFio(spec.getTeacherFio()));
-        spec.setGrade5Percent(parsePercent(findValueNearLabel(sheet, baseRow, baseCol, "\"5\"")));
-        spec.setGrade4Percent(parsePercent(findValueNearLabel(sheet, baseRow, baseCol, "\"4\"")));
-        spec.setGrade3Percent(parsePercent(findValueNearLabel(sheet, baseRow, baseCol, "\"3\"")));
+        spec.setGrade5Percent(parsePercent(findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "5")));
+        spec.setGrade4Percent(parsePercent(findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "4")));
+        spec.setGrade3Percent(parsePercent(findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "3")));
         spec.setSourceFileName(sourceFileName);
-        spec.setPairKey(buildPairKey(academicYear, subject, scope, level, sheet.getSheetName()));
+        spec.setPairKey(buildPairKey(academicYear, subject, scope, level, workType, sheet.getSheetName()));
         spec.setActiveVersion(true);
         return spec;
     }
 
-    private List<PaSpecificationTask> parseTasks(Sheet sheet, int baseRow, int baseCol, PaSpecification specification) {
+    private List<PaSpecificationTask> parseTasks(Sheet sheet, int baseRow, int baseCol, int blockEndCol, PaSpecification specification) {
         int headerRow = -1;
+        int headerCol = -1;
         int maxRow = Math.min(sheet.getLastRowNum(), baseRow + 200);
         for (int r = baseRow; r <= maxRow; r++) {
             Row row = sheet.getRow(r);
             if (row == null) continue;
-            if (containsValue(row, "№ задания")) {
+            int taskColumn = findColumnWithLabel(row, "№ задания", baseCol, blockEndCol);
+            if (taskColumn >= 0) {
                 headerRow = r;
+                headerCol = taskColumn;
                 break;
             }
         }
@@ -174,14 +207,14 @@ public class PaServiceImpl implements PaService {
 
         Row header = sheet.getRow(headerRow);
         Map<String, Integer> colMap = new HashMap<>();
-        for (Cell cell : header) {
-            String value = cellValue(cell).toLowerCase(Locale.ROOT);
-            if (value.contains("№ задания")) colMap.put("task", cell.getColumnIndex());
-            if (value.contains("тема")) colMap.put("topic", cell.getColumnIndex());
-            if (value.contains("навык")) colMap.put("skill", cell.getColumnIndex());
-            if (value.contains("тип задания")) colMap.put("kind", cell.getColumnIndex());
-            if (value.contains("если повторение")) colMap.put("repeat", cell.getColumnIndex());
-            if (value.contains("балл")) colMap.put("score", cell.getColumnIndex());
+        for (int c = headerCol; c <= blockEndCol; c++) {
+            String value = getCell(header, c);
+            if (containsNormalized(value, "№ задания")) colMap.put("task", c);
+            if (containsNormalized(value, "тема")) colMap.put("topic", c);
+            if (containsNormalized(value, "навык")) colMap.put("skill", c);
+            if (containsNormalized(value, "тип задания")) colMap.put("kind", c);
+            if (containsNormalized(value, "если повторение")) colMap.put("repeat", c);
+            if (containsNormalized(value, "балл")) colMap.put("score", c);
         }
         if (!colMap.containsKey("task")) return List.of();
 
@@ -196,8 +229,9 @@ public class PaServiceImpl implements PaService {
             }
             String taskNoRaw = getCell(row, colMap.get("task"));
             String topic = getCell(row, colMap.get("topic"));
+            String skill = getCell(row, colMap.get("skill"));
             String maxScoreRaw = getCell(row, colMap.get("score"));
-            if (taskNoRaw.isBlank() && topic.isBlank() && maxScoreRaw.isBlank()) {
+            if (taskNoRaw.isBlank() && topic.isBlank() && skill.isBlank() && maxScoreRaw.isBlank()) {
                 emptyStreak++;
                 if (emptyStreak >= 3) break;
                 continue;
@@ -206,7 +240,7 @@ public class PaServiceImpl implements PaService {
             Integer taskNo = parseInt(taskNoRaw);
             if (taskNo == null) continue;
             boolean isTaskEmpty = topic.isBlank()
-                    && getCell(row, colMap.get("skill")).isBlank()
+                    && skill.isBlank()
                     && maxScoreRaw.isBlank();
             if (isTaskEmpty) continue;
 
@@ -214,13 +248,28 @@ public class PaServiceImpl implements PaService {
             task.setSpecification(specification);
             task.setTaskNo(taskNo);
             task.setTopic(topic);
-            task.setSkill(getCell(row, colMap.get("skill")));
+            task.setSkill(skill);
             task.setTaskKind(parseTaskKind(getCell(row, colMap.get("kind"))));
-            task.setRepeatFromTaskNo(parseInt(getCell(row, colMap.get("repeat"))));
+            task.setRepeatFromTaskNo(parseRepeatFromTaskNo(getCell(row, colMap.get("repeat"))));
             task.setMaxScore(parseInt(maxScoreRaw));
             tasks.add(task);
         }
+        boolean hasAtLeastOneTopic = tasks.stream().anyMatch(task -> task.getTopic() != null && !task.getTopic().isBlank());
+        if (!hasAtLeastOneTopic) {
+            return List.of();
+        }
         return tasks;
+    }
+
+    private int findColumnWithLabel(Row row, String label, int fromCol, int toCol) {
+        if (row == null) return -1;
+        for (int c = Math.max(0, fromCol); c <= Math.max(fromCol, toCol); c++) {
+            String value = getCell(row, c);
+            if (!value.isBlank() && containsNormalized(value, label)) {
+                return c;
+            }
+        }
+        return -1;
     }
 
     @Override
@@ -437,7 +486,8 @@ public class PaServiceImpl implements PaService {
             Files.createDirectories(directory);
             try (Workbook workbook = new XSSFWorkbook();
                  OutputStream outputStream = Files.newOutputStream(filePath)) {
-                createInfoSheet(workbook, academicYear, subjectName, className, workType, workDate);
+                String teacherFio = resolveSingleTeacherFio(academicYear, subjectName, className);
+                createInfoSheet(workbook, academicYear, subjectName, className, teacherFio, level, workType, workDate);
                 createDataSheet(workbook, students, tasks);
                 workbook.write(outputStream);
             }
@@ -511,6 +561,30 @@ public class PaServiceImpl implements PaService {
     }
 
     @Override
+    public List<PaDtos.ReportFolderItem> reportFolderItems(String academicYear, PaWorkType workType) {
+        return reportVersionRepository.findAll().stream()
+                .filter(v -> Objects.equals(v.getAcademicYear(), academicYear))
+                .filter(v -> v.getWorkType() == workType)
+                .filter(v -> "GENERATED".equalsIgnoreCase(v.getStatus()))
+                .filter(PaReportVersion::isActiveVersion)
+                .filter(v -> v.getScopeType() == PaScopeType.CLASS)
+                .map(v -> new PaDtos.ReportFolderItem(
+                        v.getId(),
+                        v.getSubjectName(),
+                        Optional.ofNullable(parseParallel(v.getScopeValue())).map(String::valueOf).orElse("—"),
+                        v.getScopeValue(),
+                        v.getLevel(),
+                        v.getSourceFileName(),
+                        v.getCreatedAt()
+                ))
+                .sorted(Comparator
+                        .comparing(PaDtos.ReportFolderItem::subjectName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(PaDtos.ReportFolderItem::parallel, Comparator.nullsLast(String::compareTo))
+                        .thenComparing(PaDtos.ReportFolderItem::className, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+    @Override
     public byte[] loadReportFile(Long reportVersionId) throws IOException {
         PaReportVersion version = reportVersionRepository.findById(reportVersionId)
                 .orElseThrow(() -> new IllegalArgumentException("Версия отчёта не найдена"));
@@ -562,14 +636,22 @@ public class PaServiceImpl implements PaService {
                 .orElse(null);
     }
 
-    private void createInfoSheet(Workbook workbook, String year, String subject, String className, PaWorkType workType, LocalDate workDate) {
+    private void createInfoSheet(Workbook workbook,
+                                 String year,
+                                 String subject,
+                                 String className,
+                                 String teacherFio,
+                                 PaLevel level,
+                                 PaWorkType workType,
+                                 LocalDate workDate) {
         Sheet info = workbook.createSheet("Информация");
         String[][] rows = {
-                {"Учитель", ""},
+                {"Учитель", teacherFio == null ? "" : teacherFio},
                 {"Дата написания работы", workDate == null ? "" : workDate.toString()},
                 {"Предмет", subject},
                 {"Класс", className},
                 {"Тип", workType == PaWorkType.ENTRY ? "Входная работа" : workType == PaWorkType.EXIT ? "Выходная работа" : "Промежуточная работа"},
+                {"Уровень", level == PaLevel.ADVANCED ? "Углублённый" : "Базовый"},
                 {"Школа", "ГБОУ №7"},
                 {"Учебный год", year}
         };
@@ -582,28 +664,138 @@ public class PaServiceImpl implements PaService {
         info.setColumnWidth(1, 9000);
     }
 
+    private String resolveSingleTeacherFio(String academicYear, String subjectName, String className) {
+        Set<String> teachers = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(row -> normalize(row.getSubjectName()).equals(normalize(subjectName)))
+                .filter(row -> normalizeClass(row.getClassName()).equals(normalizeClass(className)))
+                .map(row -> String.valueOf(row.getFioTeacher()).trim())
+                .filter(v -> !v.isBlank())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        return teachers.size() == 1 ? teachers.iterator().next() : "";
+    }
+
     private void createDataSheet(Workbook workbook, List<String> students, List<PaSpecificationTask> tasks) {
         Sheet data = workbook.createSheet("Сбор информации");
-        Row head = data.createRow(0);
-        head.createCell(0).setCellValue("№");
-        head.createCell(1).setCellValue("ФИО ученика");
-        head.createCell(2).setCellValue("Присутствие");
-        head.createCell(3).setCellValue("Вариант");
-        int taskStart = 4;
+        int firstTaskCol = 4;
+        int firstStudentRow = 3;
+        int studentCount = Math.min(students.size(), TEMPLATE_MAX_STUDENTS);
+
+        Row headerRow = data.createRow(0);
+        headerRow.createCell(0).setCellValue("№");
+        headerRow.createCell(1).setCellValue("ФИО ученика");
+        headerRow.createCell(2).setCellValue("Присутствие");
+        headerRow.createCell(3).setCellValue("Вариант");
+        headerRow.createCell(firstTaskCol).setCellValue("Баллы за задания");
+        data.addMergedRegion(new CellRangeAddress(0, 0, firstTaskCol, firstTaskCol + tasks.size() - 1));
+        headerRow.createCell(firstTaskCol + tasks.size()).setCellValue("Итог");
+
+        Row taskNoRow = data.createRow(1);
+        for (int i = 0; i < 4; i++) taskNoRow.createCell(i).setCellValue("");
         for (int i = 0; i < tasks.size(); i++) {
-            head.createCell(taskStart + i).setCellValue("Задание " + tasks.get(i).getTaskNo());
+            taskNoRow.createCell(firstTaskCol + i).setCellValue(tasks.get(i).getTaskNo() == null ? i + 1 : tasks.get(i).getTaskNo());
         }
-        head.createCell(taskStart + tasks.size()).setCellValue("Итог");
-        for (int i = 0; i < students.size(); i++) {
-            Row row = data.createRow(3 + i);
+        taskNoRow.createCell(firstTaskCol + tasks.size()).setCellValue("");
+
+        Row maxScoresRow = data.createRow(2);
+        for (int i = 0; i < 4; i++) maxScoresRow.createCell(i).setCellValue("");
+        for (int i = 0; i < tasks.size(); i++) {
+            Integer max = tasks.get(i).getMaxScore();
+            maxScoresRow.createCell(firstTaskCol + i).setCellValue(max == null ? 0 : max);
+        }
+        maxScoresRow.createCell(firstTaskCol + tasks.size()).setCellValue("");
+
+        for (int i = 0; i < studentCount; i++) {
+            Row row = data.createRow(firstStudentRow + i);
             row.createCell(0).setCellValue(i + 1);
             row.createCell(1).setCellValue(students.get(i));
+            row.createCell(2).setCellValue("");
+            row.createCell(3).setCellValue("");
+            for (int t = 0; t < tasks.size(); t++) {
+                row.createCell(firstTaskCol + t).setCellValue("");
+            }
+            Cell totalCell = row.createCell(firstTaskCol + tasks.size());
+            totalCell.setCellFormula(createTotalFormula(firstTaskCol, firstStudentRow + i + 1, tasks.size()));
         }
-        data.setColumnWidth(0, 1400);
+
+        for (int i = studentCount; i < TEMPLATE_MAX_STUDENTS; i++) {
+            Row row = data.createRow(firstStudentRow + i);
+            row.createCell(0).setCellValue(i + 1);
+            for (int c = 1; c <= firstTaskCol + tasks.size(); c++) {
+                row.createCell(c).setCellValue("");
+            }
+        }
+
+        setupTemplateValidation(data, firstStudentRow, studentCount, tasks, firstTaskCol);
+        setupPresenceConditionalFormatting(data, firstStudentRow, studentCount, 2);
+
+        data.setColumnWidth(0, 1200);
         data.setColumnWidth(1, 9000);
-        for (int i = 2; i < taskStart + tasks.size() + 1; i++) {
-            data.setColumnWidth(i, 3200);
+        data.setColumnWidth(2, 3200);
+        data.setColumnWidth(3, 2600);
+        for (int i = 0; i < tasks.size(); i++) data.setColumnWidth(firstTaskCol + i, 1500);
+        data.setColumnWidth(firstTaskCol + tasks.size(), 2200);
+        data.createFreezePane(0, 3);
+    }
+
+    private void setupTemplateValidation(Sheet sheet, int firstStudentRow, int studentCount, List<PaSpecificationTask> tasks, int firstTaskCol) {
+        DataValidationHelper helper = sheet.getDataValidationHelper();
+        if (studentCount <= 0) return;
+        DataValidationConstraint presenceConstraint = helper.createExplicitListConstraint(new String[]{"Был", "Не был"});
+        CellRangeAddressList presenceRange = new CellRangeAddressList(firstStudentRow, firstStudentRow + studentCount - 1, 2, 2);
+        DataValidation presenceValidation = helper.createValidation(presenceConstraint, presenceRange);
+        presenceValidation.setShowErrorBox(true);
+        presenceValidation.setEmptyCellAllowed(true);
+        sheet.addValidationData(presenceValidation);
+
+        List<String> variants = new ArrayList<>();
+        for (int i = 1; i <= TEMPLATE_VARIANTS_COUNT; i++) variants.add("Вариант " + i);
+        DataValidationConstraint variantConstraint = helper.createExplicitListConstraint(variants.toArray(new String[0]));
+        CellRangeAddressList variantRange = new CellRangeAddressList(firstStudentRow, firstStudentRow + studentCount - 1, 3, 3);
+        DataValidation variantValidation = helper.createValidation(variantConstraint, variantRange);
+        variantValidation.setShowErrorBox(true);
+        variantValidation.setEmptyCellAllowed(true);
+        sheet.addValidationData(variantValidation);
+
+        for (int i = 0; i < tasks.size(); i++) {
+            int max = tasks.get(i).getMaxScore() == null ? 0 : Math.max(0, tasks.get(i).getMaxScore());
+            List<String> allowed = new ArrayList<>();
+            for (int score = 0; score <= max; score++) allowed.add(String.valueOf(score));
+            DataValidationConstraint scoreConstraint = helper.createExplicitListConstraint(allowed.toArray(new String[0]));
+            CellRangeAddressList scoreRange = new CellRangeAddressList(firstStudentRow, firstStudentRow + studentCount - 1, firstTaskCol + i, firstTaskCol + i);
+            DataValidation scoreValidation = helper.createValidation(scoreConstraint, scoreRange);
+            scoreValidation.setShowErrorBox(true);
+            scoreValidation.setEmptyCellAllowed(true);
+            sheet.addValidationData(scoreValidation);
         }
+    }
+
+    private void setupPresenceConditionalFormatting(Sheet sheet, int firstStudentRow, int studentCount, int presenceCol) {
+        if (studentCount <= 0) return;
+        SheetConditionalFormatting scf = sheet.getSheetConditionalFormatting();
+        int excelFirstRow = firstStudentRow + 1;
+        String col = CellReference.convertNumToColString(presenceCol);
+        ConditionalFormattingRule presentRule = scf.createConditionalFormattingRule("EXACT($" + col + excelFirstRow + ",\"Был\")");
+        PatternFormatting presentPattern = presentRule.createPatternFormatting();
+        presentPattern.setFillBackgroundColor(IndexedColors.LIGHT_GREEN.getIndex());
+        presentPattern.setFillPattern(PatternFormatting.SOLID_FOREGROUND);
+
+        ConditionalFormattingRule absentRule = scf.createConditionalFormattingRule("EXACT($" + col + excelFirstRow + ",\"Не был\")");
+        PatternFormatting absentPattern = absentRule.createPatternFormatting();
+        absentPattern.setFillBackgroundColor(IndexedColors.RED.getIndex());
+        absentPattern.setFillPattern(PatternFormatting.SOLID_FOREGROUND);
+
+        CellRangeAddress[] ranges = { new CellRangeAddress(firstStudentRow, firstStudentRow + studentCount - 1, presenceCol, presenceCol) };
+        scf.addConditionalFormatting(ranges, presentRule, absentRule);
+    }
+
+    private String createTotalFormula(int taskStartCol, int excelRowNum, int tasksCount) {
+        StringBuilder formula = new StringBuilder("SUM(");
+        for (int i = 0; i < tasksCount; i++) {
+            if (i > 0) formula.append(",");
+            formula.append(CellReference.convertNumToColString(taskStartCol + i)).append(excelRowNum);
+        }
+        formula.append(")");
+        return formula.toString();
     }
 
     private String sanitizeFileName(String value) {
@@ -774,14 +966,14 @@ public class PaServiceImpl implements PaService {
         return coords;
     }
 
-    private String findValueNearLabel(Sheet sheet, int startRow, int startCol, String label) {
+    private String findValueNearLabel(Sheet sheet, int startRow, int startCol, int blockEndCol, String label) {
         int maxRow = Math.min(sheet.getLastRowNum(), startRow + 20);
         for (int r = startRow; r <= maxRow; r++) {
             Row row = sheet.getRow(r);
             if (row == null) continue;
-            for (int c = Math.max(0, startCol - 1); c <= startCol + 4; c++) {
-                if (label.equalsIgnoreCase(getCell(row, c))) {
-                    return firstNonBlank(sheet, r, c + 1, c + 6);
+            for (int c = Math.max(0, startCol - 1); c <= blockEndCol; c++) {
+                if (sameLabel(getCell(row, c), label)) {
+                    return firstNonBlank(sheet, r, c + 1, blockEndCol);
                 }
             }
         }
@@ -796,13 +988,6 @@ public class PaServiceImpl implements PaService {
             if (!value.isBlank()) return value;
         }
         return "";
-    }
-
-    private boolean containsValue(Row row, String value) {
-        for (Cell cell : row) {
-            if (cellValue(cell).toLowerCase(Locale.ROOT).contains(value.toLowerCase(Locale.ROOT))) return true;
-        }
-        return false;
     }
 
     private String getCell(Row row, Integer colIdx) {
@@ -867,14 +1052,70 @@ public class PaServiceImpl implements PaService {
         return value.matches("^\\d{1,2}$") ? PaScopeType.PARALLEL : PaScopeType.CLASS;
     }
 
-    private String buildPairKey(String academicYear, String subject, String scope, PaLevel level, String sheetName) {
+    private String buildPairKey(String academicYear, String subject, String scope, PaLevel level, PaWorkType workType, String sheetName) {
         return String.join("|",
                 String.valueOf(academicYear),
                 normalize(subject),
                 normalize(scope),
                 level.name(),
+                workType.name(),
                 normalize(sheetName)
         );
+    }
+
+    private int detectBlockEndCol(Sheet sheet, int subjectRow, int subjectCol) {
+        Row row = sheet.getRow(subjectRow);
+        if (row == null) return subjectCol + 4;
+        int nextSubjectCol = -1;
+        for (Cell cell : row) {
+            int col = cell.getColumnIndex();
+            if (col <= subjectCol) continue;
+            if (sameLabel(cellValue(cell), "Предмет")) {
+                nextSubjectCol = col;
+                break;
+            }
+        }
+        if (nextSubjectCol > subjectCol) {
+            return nextSubjectCol - 1;
+        }
+        return Math.max(subjectCol + 4, row.getLastCellNum() - 1);
+    }
+
+    private boolean sameLabel(String actual, String expected) {
+        return normalizeLabel(actual).equals(normalizeLabel(expected));
+    }
+
+    private boolean containsNormalized(String actual, String expected) {
+        return normalizeForSearch(actual).contains(normalizeForSearch(expected));
+    }
+
+    private String normalizeLabel(String value) {
+        return normalize(value)
+                .replaceAll("[\\s:\"'«»“”„]+", "")
+                .replaceAll(":+$", "")
+                .trim();
+    }
+
+    private String normalizeForSearch(String value) {
+        return normalize(value)
+                .replaceAll("[\\s\\n\\r\\t]+", " ")
+                .trim();
+    }
+
+    private Integer parseRepeatFromTaskNo(String value) {
+        String raw = String.valueOf(value == null ? "" : value).trim();
+        if (raw.isBlank()) return null;
+        Integer direct = parseInt(raw);
+        if (direct != null) return direct;
+        Matcher matcher = Pattern.compile("(?i)(?:задани[ея]\\s*)?(\\d{1,2})").matcher(raw);
+        if (matcher.find()) {
+            try {
+                return Integer.parseInt(matcher.group(1));
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private Integer parseParallel(String className) {
