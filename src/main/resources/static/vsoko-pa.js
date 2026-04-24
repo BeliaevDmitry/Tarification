@@ -548,8 +548,11 @@ function bindReportDownloadButtons() {
 document.querySelectorAll('#pa-main-tabs [data-tab]').forEach((btn) => {
     btn.addEventListener('click', () => setPaTab(btn.dataset.tab));
 });
-document.querySelectorAll('#pa-spec-tabs [data-spec-tab]').forEach((btn) => {
-    btn.addEventListener('click', () => setSpecTab(btn.dataset.specTab));
+document.getElementById('pa-spec-tabs').addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-spec-tab]');
+    if (!btn) return;
+    event.preventDefault();
+    setSpecTab(btn.dataset.specTab);
 });
 document.getElementById('pa-spec-import-btn').addEventListener('click', uploadSpecifications);
 document.getElementById('pa-spec-reload-btn').addEventListener('click', reloadSummaryAndSpecs);
@@ -571,3 +574,4 @@ document.getElementById('pa-exit-scope').addEventListener('change', () => fillCl
 reloadSummaryAndSpecs().catch((e) => {
     document.getElementById('pa-spec-import-log').textContent = JSON.stringify({ error: e.message }, null, 2);
 });
+setSpecTab('summary-5-11');
