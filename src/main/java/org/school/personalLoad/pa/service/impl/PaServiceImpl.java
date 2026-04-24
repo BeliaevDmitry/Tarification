@@ -473,11 +473,12 @@ public class PaServiceImpl implements PaService {
             return new PaDtos.ReportUploadResult("", "REJECTED", "В спецификации нет заданий для генерации шаблона", null, subjectName, className, workType);
         }
 
-        String fileName = String.format("PA_%s_%s_%s_%s_%s.xlsx",
-                academicYear.replace("/", "-"),
+        String teacherFio = resolveSingleTeacherFio(academicYear, subjectName, className);
+        String safeTeacher = sanitizeFileName((teacherFio == null || teacherFio.isBlank()) ? "без_педагога" : teacherFio);
+        String fileName = String.format("Отчет_%s_%s_%s_%s.xlsx",
                 sanitizeFileName(subjectName),
                 sanitizeFileName(className),
-                workType.name(),
+                safeTeacher,
                 LocalDateTime.now().toString().replace(":", "-"));
         Path directory = Path.of(PA_REPORT_STORAGE_DIR, academicYear.replace("/", "-"));
         Path filePath = directory.resolve(fileName);
@@ -486,7 +487,6 @@ public class PaServiceImpl implements PaService {
             Files.createDirectories(directory);
             try (Workbook workbook = new XSSFWorkbook();
                  OutputStream outputStream = Files.newOutputStream(filePath)) {
-                String teacherFio = resolveSingleTeacherFio(academicYear, subjectName, className);
                 createInfoSheet(workbook, academicYear, subjectName, className, teacherFio, level, workType, workDate);
                 createDataSheet(workbook, students, tasks);
                 workbook.write(outputStream);
@@ -611,30 +611,6 @@ public class PaServiceImpl implements PaService {
     }
 
     @Override
-    public List<PaDtos.ReportFolderItem> reportFolderItems(String academicYear, PaWorkType workType) {
-        return reportVersionRepository.findAll().stream()
-                .filter(v -> Objects.equals(v.getAcademicYear(), academicYear))
-                .filter(v -> v.getWorkType() == workType)
-                .filter(v -> "GENERATED".equalsIgnoreCase(v.getStatus()))
-                .filter(PaReportVersion::isActiveVersion)
-                .filter(v -> v.getScopeType() == PaScopeType.CLASS)
-                .map(v -> new PaDtos.ReportFolderItem(
-                        v.getId(),
-                        v.getSubjectName(),
-                        Optional.ofNullable(parseParallel(v.getScopeValue())).map(String::valueOf).orElse("—"),
-                        v.getScopeValue(),
-                        v.getLevel(),
-                        v.getSourceFileName(),
-                        v.getCreatedAt()
-                ))
-                .sorted(Comparator
-                        .comparing(PaDtos.ReportFolderItem::subjectName, String.CASE_INSENSITIVE_ORDER)
-                        .thenComparing(PaDtos.ReportFolderItem::parallel, Comparator.nullsLast(String::compareTo))
-                        .thenComparing(PaDtos.ReportFolderItem::className, String.CASE_INSENSITIVE_ORDER))
-                .toList();
-    }
-
-    @Override
     public byte[] loadReportFile(Long reportVersionId) throws IOException {
         PaReportVersion version = reportVersionRepository.findById(reportVersionId)
                 .orElseThrow(() -> new IllegalArgumentException("Версия отчёта не найдена"));
@@ -728,7 +704,8 @@ public class PaServiceImpl implements PaService {
         Sheet data = workbook.createSheet("Сбор информации");
         int firstTaskCol = 4;
         int firstStudentRow = 3;
-        int studentCount = Math.min(students.size(), TEMPLATE_MAX_STUDENTS);
+        int studentCount = students.size();
+        int templateRowCount = Math.max(TEMPLATE_MAX_STUDENTS, studentCount);
 
         Row headerRow = data.createRow(0);
         headerRow.createCell(0).setCellValue("№");
@@ -767,7 +744,7 @@ public class PaServiceImpl implements PaService {
             totalCell.setCellFormula(createTotalFormula(firstTaskCol, firstStudentRow + i + 1, tasks.size()));
         }
 
-        for (int i = studentCount; i < TEMPLATE_MAX_STUDENTS; i++) {
+        for (int i = studentCount; i < templateRowCount; i++) {
             Row row = data.createRow(firstStudentRow + i);
             row.createCell(0).setCellValue(i + 1);
             for (int c = 1; c <= firstTaskCol + tasks.size(); c++) {
@@ -817,6 +794,35 @@ public class PaServiceImpl implements PaService {
             scoreValidation.setEmptyCellAllowed(true);
             sheet.addValidationData(scoreValidation);
         }
+    }
+
+    private void setupPresenceConditionalFormatting(Sheet sheet, int firstStudentRow, int studentCount, int presenceCol) {
+        if (studentCount <= 0) return;
+        SheetConditionalFormatting scf = sheet.getSheetConditionalFormatting();
+        int excelFirstRow = firstStudentRow + 1;
+        String col = CellReference.convertNumToColString(presenceCol);
+        ConditionalFormattingRule presentRule = scf.createConditionalFormattingRule("EXACT($" + col + excelFirstRow + ",\"Был\")");
+        PatternFormatting presentPattern = presentRule.createPatternFormatting();
+        presentPattern.setFillBackgroundColor(IndexedColors.LIGHT_GREEN.getIndex());
+        presentPattern.setFillPattern(PatternFormatting.SOLID_FOREGROUND);
+
+        ConditionalFormattingRule absentRule = scf.createConditionalFormattingRule("EXACT($" + col + excelFirstRow + ",\"Не был\")");
+        PatternFormatting absentPattern = absentRule.createPatternFormatting();
+        absentPattern.setFillBackgroundColor(IndexedColors.RED.getIndex());
+        absentPattern.setFillPattern(PatternFormatting.SOLID_FOREGROUND);
+
+        CellRangeAddress[] ranges = { new CellRangeAddress(firstStudentRow, firstStudentRow + studentCount - 1, presenceCol, presenceCol) };
+        scf.addConditionalFormatting(ranges, presentRule, absentRule);
+    }
+
+    private String createTotalFormula(int taskStartCol, int excelRowNum, int tasksCount) {
+        StringBuilder formula = new StringBuilder("SUM(");
+        for (int i = 0; i < tasksCount; i++) {
+            if (i > 0) formula.append(",");
+            formula.append(CellReference.convertNumToColString(taskStartCol + i)).append(excelRowNum);
+        }
+        formula.append(")");
+        return formula.toString();
     }
 
     private void setupPresenceConditionalFormatting(Sheet sheet, int firstStudentRow, int studentCount, int presenceCol) {
