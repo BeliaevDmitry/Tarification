@@ -500,6 +500,40 @@ function loadSpecificationImportLogHistory() {
     }
 }
 
+function appendSpecificationImportLog(result) {
+    const rows = Array.isArray(result) ? result : [result];
+    const timestamp = new Date().toLocaleString('ru-RU');
+    rows.forEach((row) => {
+        const warnings = Array.isArray(row?.warnings) ? row.warnings.filter(Boolean) : [];
+        const hasError = warnings.some((w) => String(w).toLowerCase().startsWith('ошибка'));
+        const status = hasError ? 'Ошибка' : 'Успешно';
+        const message = warnings.length ? warnings.join('; ') : 'Импорт выполнен';
+        const records = Number.isFinite(row?.importedTasks) ? row.importedTasks : 0;
+        paState.importLogHistory.unshift({
+            timestamp,
+            fileName: row?.fileName || '—',
+            status,
+            message,
+            records
+        });
+    });
+    renderSpecificationImportLog();
+}
+
+function renderSpecificationImportLog() {
+    const body = document.getElementById('pa-spec-import-log-body');
+    if (!body) return;
+    body.innerHTML = paState.importLogHistory.map((row) => `
+        <tr>
+            <td>${row.timestamp}</td>
+            <td>${row.fileName}</td>
+            <td>${row.status}</td>
+            <td>${row.message}</td>
+            <td>${row.records}</td>
+        </tr>
+    `).join('') || '<tr><td colspan="5" class="muted">История загрузок пуста</td></tr>';
+}
+
 async function uploadReports(prefix) {
     const input = document.getElementById(`pa-${prefix}-report-files`);
     if (!input.files.length) return;
