@@ -43,6 +43,34 @@ function hasViewPermission(tab) {
     return perms.some(p => p.tab === tab && p.canView);
 }
 
+function hasEditPermission(tab) {
+    const user = window.tarificationAuth;
+    if (!user) return true;
+    if (user.admin) return true;
+    const perms = user.tabPermissions || [];
+    return perms.some(p => p.tab === tab && p.canEdit);
+}
+
+function syncUploadButtonsAccess() {
+    const canImportGia = state.canViewUpload && hasEditPermission('OGE_GIA_UPLOAD');
+    const canImportWorks = hasViewPermission('OGE_WORK_UPLOAD') && hasEditPermission('OGE_WORK_UPLOAD');
+    const canImportExternalWorks = state.canViewExternalWorks && hasEditPermission('OGE_WORK_UPLOAD');
+
+    const giaFiles = document.getElementById('gia-files');
+    const giaUploadBtn = document.getElementById('gia-upload-btn');
+    const workFiles = document.getElementById('work-files');
+    const workUploadBtn = document.getElementById('work-upload-btn');
+    const externalFiles = document.getElementById('external-work-files');
+    const externalUploadBtn = document.getElementById('external-work-upload-btn');
+
+    if (giaFiles) giaFiles.disabled = !canImportGia;
+    if (giaUploadBtn) giaUploadBtn.disabled = !canImportGia;
+    if (workFiles) workFiles.disabled = !canImportWorks;
+    if (workUploadBtn) workUploadBtn.disabled = !canImportWorks;
+    if (externalFiles) externalFiles.disabled = !canImportExternalWorks;
+    if (externalUploadBtn) externalUploadBtn.disabled = !canImportExternalWorks;
+}
+
 async function waitForAuthContext() {
     for (let i = 0; i < 50; i++) {
         if (window.tarificationAuth) return;
@@ -86,6 +114,7 @@ function applyTabVisibility() {
         const firstVisible = [...document.querySelectorAll('#main-tabs button[data-tab]')].find(b => b.style.display !== 'none');
         firstVisible?.click();
     }
+    syncUploadButtonsAccess();
 }
 
 function pickStatusColor(status) {
