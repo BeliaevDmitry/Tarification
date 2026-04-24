@@ -42,52 +42,84 @@ function workTypeRu(workType) {
 }
 
 function matrixCellSymbol(cell) {
-    if (!cell) return '';
-    if (!cell.participates) return '➖/➖';
-    const entry = cell.hasEntrySpecification ? '✅' : '❌';
-    const exit = cell.hasExitSpecification ? '✅' : '❌';
+    if (!cell) return '❌/❌';
+    const entry = cell.entry ? '✅' : '❌';
+    const exit = cell.exit ? '✅' : '❌';
     return `${entry}/${exit}`;
 }
 
-function renderMatrixTable(headId, bodyId, scopes) {
-    const all = [...(paState.summary.primary || []), ...(paState.summary.secondary || [])];
+function parseParallel(scope) {
+    const m = String(scope || '').match(/^(\d{1,2})/);
+    return m ? Number(m[1]) : null;
+}
+
+function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
     const head = document.getElementById(headId);
     const body = document.getElementById(bodyId);
-    head.innerHTML = `<tr><th>Предметная область</th><th>Предмет</th>${scopes.map((s) => `<th>${s}</th>`).join('')}</tr>`;
-    const areaMap = new Map();
-    [...paState.specifications, ...all].forEach((row) => {
-        const area = subjectAreaByName(row.subjectName);
-        if (!areaMap.has(area)) areaMap.set(area, new Map());
-        if (!areaMap.get(area).has(row.subjectName)) areaMap.get(area).set(row.subjectName, true);
+    const curriculumRows = (paState.curriculum || []).filter((row) => {
+        const p = parseParallel(row.className);
+        return p !== null && p >= fromParallel && p <= toParallel && row.subjectName;
     });
-    const areas = [...areaMap.keys()].sort((a, b) => a.localeCompare(b, 'ru'));
-    if (!areas.length) {
+    const subjects = [...new Set(curriculumRows.map((row) => row.subjectName))]
+        .sort((a, b) => a.localeCompare(b, 'ru'));
+    const baseParallels = [...new Set(curriculumRows.map((row) => String(parseParallel(row.className)).trim()))]
+        .sort((a, b) => Number(a) - Number(b));
+    const classScopes = [...new Set((paState.specifications || [])
+        .filter((s) => s.scopeType === 'CLASS')
+        .filter((s) => {
+            const p = parseParallel(s.scopeValue);
+            return p !== null && p >= fromParallel && p <= toParallel;
+        })
+        .map((s) => s.scopeValue)
+    )].sort((a, b) => {
+        const pa = parseParallel(a) || 0;
+        const pb = parseParallel(b) || 0;
+        if (pa !== pb) return pa - pb;
+        return String(a).localeCompare(String(b), 'ru');
+    });
+    const columns = [];
+    baseParallels.forEach((p) => {
+        columns.push(p);
+        classScopes.filter((scope) => String(parseParallel(scope)) === String(p)).forEach((scope) => columns.push(scope));
+    });
+
+    head.innerHTML = `<tr><th>Предметная область</th><th>Предмет</th>${columns.map((c) => `<th>${c}</th>`).join('')}</tr>`;
+    if (!subjects.length || !columns.length) {
         body.innerHTML = '<tr><td colspan="12" class="muted">Нет данных</td></tr>';
         return;
     }
     let html = '';
+    const areas = [...new Set(subjects.map((s) => subjectAreaByName(s)))].sort((a, b) => a.localeCompare(b, 'ru'));
     areas.forEach((area) => {
-        const subjects = [...areaMap.get(area).keys()]
-            .sort((a, b) => a.localeCompare(b, 'ru'))
-            .filter((subject) => scopes.some((scope) => all.some((row) =>
-                row.subjectName === subject
-                && row.scopeValue === scope
-                && (row.hasEntrySpecification || row.hasExitSpecification || row.participates === false)
-            )));
-        subjects.forEach((subject, idx) => {
+        const areaSubjects = subjects.filter((s) => subjectAreaByName(s) === area);
+        const areaRows = [];
+        areaSubjects.forEach((subject) => {
+            const hasAdvanced = (paState.specifications || []).some((s) =>
+                s.subjectName === subject
+                && s.level === 'ADVANCED'
+                && (() => {
+                    const p = parseParallel(s.scopeValue);
+                    return p !== null && p >= fromParallel && p <= toParallel;
+                })()
+            );
+            areaRows.push({ subjectName: subject, level: 'BASIC', title: subject });
+            if (hasAdvanced) areaRows.push({ subjectName: subject, level: 'ADVANCED', title: `${subject} (угл)` });
+        });
+        areaRows.forEach((row, idx) => {
             html += '<tr>';
-            if (idx === 0) html += `<td rowspan="${subjects.length}">${area}</td>`;
-            html += `<td>${subject}</td>`;
-            scopes.forEach((scope) => {
-                const cell = all.find((row) => row.subjectName === subject && row.scopeValue === scope);
-                const symbol = matrixCellSymbol(cell);
-                if (symbol === '❌/❌') {
-                    html += `<td><button type="button" class="tab-btn" data-summary-toggle-subject="${subject}" data-summary-toggle-scope="${scope}" data-summary-toggle-level="${cell.level}" title="Клик: пометить как не участвует">${symbol}</button></td>`;
-                } else if (symbol === '➖/➖') {
-                    html += `<td><button type="button" class="tab-btn" data-summary-toggle-subject="${subject}" data-summary-toggle-scope="${scope}" data-summary-toggle-level="${cell.level}" title="Клик: вернуть в участие">${symbol}</button></td>`;
-                } else {
-                    html += `<td>${symbol}</td>`;
-                }
+            if (idx === 0) html += `<td rowspan="${areaRows.length}">${area}</td>`;
+            html += `<td>${row.title}</td>`;
+            columns.forEach((scope) => {
+                const specs = (paState.specifications || []).filter((s) =>
+                    s.subjectName === row.subjectName
+                    && s.level === row.level
+                    && String(s.scopeValue) === String(scope)
+                    && s.activeVersion
+                );
+                html += `<td>${matrixCellSymbol({
+                    entry: specs.some((s) => s.workType === 'ENTRY'),
+                    exit: specs.some((s) => s.workType === 'EXIT')
+                })}</td>`;
             });
             html += '</tr>';
         });
@@ -96,18 +128,8 @@ function renderMatrixTable(headId, bodyId, scopes) {
 }
 
 function renderCompactMatrix() {
-    const all = [...(paState.summary.primary || []), ...(paState.summary.secondary || [])];
-    const preferredScopes = ['5', '6', '7', '8', '9', '9Б', '10', '11'];
-    const presentScopes = [...new Set(all.map((row) => row.scopeValue).filter(Boolean))];
-    const orderedPreferred = preferredScopes.filter((scope) => presentScopes.includes(scope));
-    const otherScopes = presentScopes
-        .filter((scope) => !preferredScopes.includes(scope))
-        .sort((a, b) => String(a).localeCompare(String(b), 'ru'));
-    const scopes = [...orderedPreferred, ...otherScopes];
-    renderMatrixTable('pa-matrix-head', 'pa-matrix-body', scopes);
-    const primaryScopes = ['1', '2', '3', '4'].filter((s) => presentScopes.includes(s));
-    renderMatrixTable('pa-matrix-head-primary', 'pa-matrix-body-primary', primaryScopes);
-    bindSummaryToggles();
+    renderSummaryRange('pa-matrix-head', 'pa-matrix-body', 5, 11);
+    renderSummaryRange('pa-matrix-head-primary', 'pa-matrix-body-primary', 1, 4);
 }
 
 function renderSpecifications(rows) {
