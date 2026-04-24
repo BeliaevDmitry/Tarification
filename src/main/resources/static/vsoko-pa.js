@@ -194,20 +194,30 @@ function subjectAreaByName(subjectName) {
 function fillSelectors(prefix) {
     const subjectSelect = document.getElementById(`pa-${prefix}-subject`);
     const scopeSelect = document.getElementById(`pa-${prefix}-scope`);
+    const classSelect = document.getElementById(`pa-${prefix}-class`);
+    const previousSubject = subjectSelect.value;
+    const previousScope = scopeSelect.value;
+    const previousClass = classSelect.value;
     const type = prefix === 'entry' ? 'ENTRY' : 'EXIT';
     const filtered = paState.specifications.filter((item) => item.workType === type);
     const subjects = [...new Set(filtered.map((item) => item.subjectName).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
     subjectSelect.innerHTML = ['<option value="ALL">Все предметы</option>', ...subjects.map((s) => `<option value="${s}">${s}</option>`)].join('');
+    if (previousSubject && [...subjects, 'ALL'].includes(previousSubject)) {
+        subjectSelect.value = previousSubject;
+    }
     const selectedSubject = subjectSelect.value || 'ALL';
     const scopedItems = selectedSubject === 'ALL'
         ? filtered
         : filtered.filter((item) => item.subjectName === selectedSubject);
     const scopes = [...new Set(scopedItems.map((item) => item.scopeValue).filter(Boolean))];
     scopeSelect.innerHTML = scopes.map((s) => `<option value="${s}">${s}</option>`).join('');
-    fillClassSelector(prefix, selectedSubject, scopeSelect.value || scopes[0]);
+    if (previousScope && scopes.includes(previousScope)) {
+        scopeSelect.value = previousScope;
+    }
+    fillClassSelector(prefix, selectedSubject, scopeSelect.value || scopes[0], previousClass);
 }
 
-function fillClassSelector(prefix, selectedSubject, selectedScope) {
+function fillClassSelector(prefix, selectedSubject, selectedScope, preferredClass = null) {
     const classSelect = document.getElementById(`pa-${prefix}-class`);
     const subjectFilter = selectedSubject === 'ALL' ? null : selectedSubject;
     const classes = [...new Set((paState.curriculum || [])
@@ -217,6 +227,9 @@ function fillClassSelector(prefix, selectedSubject, selectedScope) {
         .filter((className) => !selectedScope || String(className).startsWith(String(selectedScope)))
     )].sort((a, b) => String(a).localeCompare(String(b), 'ru'));
     classSelect.innerHTML = classes.map((c) => `<option value="${c}">${c}</option>`).join('');
+    if (preferredClass && classes.includes(preferredClass)) {
+        classSelect.value = preferredClass;
+    }
 }
 
 function renderUploadLog(prefix, rows) {

@@ -537,6 +537,10 @@ public class PaServiceImpl implements PaService {
                 .toList();
         List<PaDtos.ReportUploadResult> results = new ArrayList<>();
         for (String className : classes) {
+            if (hasActiveGeneratedTemplate(academicYear, subjectName, className, level, workType, workDate)) {
+                results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Шаблон уже сгенерирован для класса", null, subjectName, className, workType));
+                continue;
+            }
             results.add(generateReportTemplate(academicYear, subjectName, className, level, workType, workDate));
         }
         return results;
@@ -555,9 +559,55 @@ public class PaServiceImpl implements PaService {
                 .toList();
         List<PaDtos.ReportUploadResult> results = new ArrayList<>();
         for (String className : classes) {
+            if (hasActiveGeneratedTemplate(academicYear, subjectName, className, level, workType, workDate)) {
+                results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Шаблон уже сгенерирован для класса", null, subjectName, className, workType));
+                continue;
+            }
             results.add(generateReportTemplate(academicYear, subjectName, className, level, workType, workDate));
         }
         return results;
+    }
+
+    private boolean hasActiveGeneratedTemplate(String academicYear,
+                                               String subjectName,
+                                               String className,
+                                               PaLevel level,
+                                               PaWorkType workType,
+                                               LocalDate workDate) {
+        return reportVersionRepository.findAllByAcademicYearAndSubjectNameAndScopeTypeAndScopeValueAndLevelAndWorkTypeAndWorkDate(
+                        academicYear,
+                        subjectName,
+                        PaScopeType.CLASS,
+                        className.toUpperCase(Locale.ROOT),
+                        level,
+                        workType,
+                        workDate)
+                .stream()
+                .anyMatch(v -> v.isActiveVersion() && "GENERATED".equalsIgnoreCase(v.getStatus()));
+    }
+
+    @Override
+    public List<PaDtos.ReportFolderItem> reportFolderItems(String academicYear, PaWorkType workType) {
+        return reportVersionRepository.findAll().stream()
+                .filter(v -> Objects.equals(v.getAcademicYear(), academicYear))
+                .filter(v -> v.getWorkType() == workType)
+                .filter(v -> "GENERATED".equalsIgnoreCase(v.getStatus()))
+                .filter(PaReportVersion::isActiveVersion)
+                .filter(v -> v.getScopeType() == PaScopeType.CLASS)
+                .map(v -> new PaDtos.ReportFolderItem(
+                        v.getId(),
+                        v.getSubjectName(),
+                        Optional.ofNullable(parseParallel(v.getScopeValue())).map(String::valueOf).orElse("—"),
+                        v.getScopeValue(),
+                        v.getLevel(),
+                        v.getSourceFileName(),
+                        v.getCreatedAt()
+                ))
+                .sorted(Comparator
+                        .comparing(PaDtos.ReportFolderItem::subjectName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(PaDtos.ReportFolderItem::parallel, Comparator.nullsLast(String::compareTo))
+                        .thenComparing(PaDtos.ReportFolderItem::className, String.CASE_INSENSITIVE_ORDER))
+                .toList();
     }
 
     @Override
