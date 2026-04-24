@@ -5,11 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ВСОКО — ПА</title>
     <link rel="stylesheet" href="/styles.css">
+    <style>
+        .sticky-head thead th { position: sticky; top: 0; background: #f1f1f1; z-index: 2; }
+    </style>
 </head>
 <body>
 <main class="container">
     <header class="card">
         <h1>ВСОКО / ПА</h1>
+        <a class="nav-link" href="/vsoko.html">← ВСОКО</a>
         <p class="muted">Полный цикл ПА: спецификации, генерация/сдача отчётов, журнал проблем.</p>
         <div class="tabs" id="pa-main-tabs">
             <button class="tab-btn active" data-tab="specs">Спецификации</button>
@@ -25,34 +29,53 @@
             <button id="pa-spec-import-btn" type="button">Загрузить спецификации</button>
             <button id="pa-spec-reload-btn" type="button" data-allow-readonly="true">Обновить свод</button>
         </div>
-        <pre id="pa-spec-import-log" class="result-box"></pre>
-
-        <h3>Свод 1–4 классы</h3>
-        <div style="overflow:auto;">
-            <table class="sheet-table">
-                <thead><tr><th>Предмет</th><th>Параллель</th><th>Уровень</th><th>Статус</th></tr></thead>
-                <tbody id="pa-summary-primary-body"></tbody>
-            </table>
+        <div class="tabs" id="pa-spec-tabs">
+            <button class="tab-btn active" type="button" data-spec-tab="summary-5-11">Свод 5-11</button>
+            <button class="tab-btn" type="button" data-spec-tab="summary-1-4">Свод 1-4</button>
+            <button class="tab-btn" type="button" data-spec-tab="registry">Спецификации</button>
+            <button class="tab-btn" type="button" data-spec-tab="upload-log">Результат загрузки файлов</button>
         </div>
 
-        <h3>Свод 5–11 классы</h3>
-        <div style="overflow:auto;">
-            <table class="sheet-table">
-                <thead><tr><th>Предмет</th><th>Параллель</th><th>Уровень</th><th>Статус</th></tr></thead>
-                <tbody id="pa-summary-secondary-body"></tbody>
-            </table>
+        <div id="pa-spec-summary-5-11-panel" class="tab-panel">
+            <div style="overflow:auto;">
+                <table class="sheet-table sticky-head">
+                    <thead id="pa-matrix-head"></thead>
+                    <tbody id="pa-matrix-body"></tbody>
+                </table>
+            </div>
         </div>
 
-        <h3>Реестр спецификаций</h3>
-        <div style="overflow:auto;">
-            <table class="sheet-table">
-                <thead>
-                <tr>
-                    <th>Предмет</th><th>Scope</th><th>Уровень</th><th>Тип</th><th>Версия</th><th>Файл</th>
-                </tr>
-                </thead>
-                <tbody id="pa-specifications-body"></tbody>
-            </table>
+        <div id="pa-spec-summary-1-4-panel" class="tab-panel hidden">
+            <div style="overflow:auto;">
+                <table class="sheet-table sticky-head">
+                    <thead id="pa-matrix-head-primary"></thead>
+                    <tbody id="pa-matrix-body-primary"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="pa-spec-registry-panel" class="tab-panel hidden">
+            <div style="overflow:auto;">
+                <table class="sheet-table">
+                    <thead>
+                    <tr>
+                        <th>Предметная область</th><th>Предмет</th><th>Параллель</th><th>Уровень</th><th>Тип</th><th>Версия</th><th>Файл</th><th>Участвует</th>
+                    </tr>
+                    </thead>
+                    <tbody id="pa-specifications-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="pa-spec-upload-log-panel" class="tab-panel hidden">
+            <div style="overflow:auto;">
+                <table class="sheet-table">
+                    <thead>
+                    <tr><th>Дата</th><th>Файл</th><th>Статус</th><th>Сообщение</th><th>Записей</th></tr>
+                    </thead>
+                    <tbody id="pa-spec-import-log-body"></tbody>
+                </table>
+            </div>
         </div>
     </section>
 
@@ -62,12 +85,22 @@
         <div class="row">
             <select id="pa-entry-subject"></select>
             <select id="pa-entry-scope"></select>
+            <select id="pa-entry-class"></select>
             <select id="pa-entry-level">
                 <option value="BASIC">Базовый</option>
                 <option value="ADVANCED">Углублённый</option>
             </select>
             <input id="pa-entry-work-date" type="date">
             <button id="pa-entry-load-versions-btn" type="button" data-allow-readonly="true">Показать версии</button>
+            <button id="pa-entry-generate-all-btn" type="button" data-requires-edit>Сгенерировать все</button>
+            <button id="pa-entry-generate-parallel-btn" type="button" data-requires-edit>Сгенерировать параллель</button>
+            <button id="pa-entry-generate-btn" type="button" data-requires-edit>Сгенерировать для класса</button>
+        </div>
+        <div style="overflow:auto;">
+            <table class="sheet-table">
+                <thead id="pa-entry-workflow-head"></thead>
+                <tbody id="pa-entry-workflow-body"></tbody>
+            </table>
         </div>
         <div class="row" data-requires-edit>
             <input id="pa-entry-report-files" type="file" multiple accept=".xlsx">
@@ -93,12 +126,22 @@
         <div class="row">
             <select id="pa-exit-subject"></select>
             <select id="pa-exit-scope"></select>
+            <select id="pa-exit-class"></select>
             <select id="pa-exit-level">
                 <option value="BASIC">Базовый</option>
                 <option value="ADVANCED">Углублённый</option>
             </select>
             <input id="pa-exit-work-date" type="date">
             <button id="pa-exit-load-versions-btn" type="button" data-allow-readonly="true">Показать версии</button>
+            <button id="pa-exit-generate-all-btn" type="button" data-requires-edit>Сгенерировать все</button>
+            <button id="pa-exit-generate-parallel-btn" type="button" data-requires-edit>Сгенерировать параллель</button>
+            <button id="pa-exit-generate-btn" type="button" data-requires-edit>Сгенерировать для класса</button>
+        </div>
+        <div style="overflow:auto;">
+            <table class="sheet-table">
+                <thead id="pa-exit-workflow-head"></thead>
+                <tbody id="pa-exit-workflow-body"></tbody>
+            </table>
         </div>
         <div class="row" data-requires-edit>
             <input id="pa-exit-report-files" type="file" multiple accept=".xlsx">

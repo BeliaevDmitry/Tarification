@@ -43,7 +43,12 @@ public final class PaDtos {
                                        Integer maxScore) {
     }
 
-    public record SummaryCell(String subjectName, String scopeValue, PaLevel level, boolean participates, boolean hasSpecification) {
+    public record SummaryCell(String subjectName,
+                              String scopeValue,
+                              PaLevel level,
+                              boolean participates,
+                              boolean hasEntrySpecification,
+                              boolean hasExitSpecification) {
     }
 
     public record SummaryResponse(List<SummaryCell> primary, List<SummaryCell> secondary) {
