@@ -28,6 +28,7 @@ function setSpecTab(tab) {
     document.getElementById('pa-spec-summary-5-11-panel').classList.toggle('hidden', tab !== 'summary-5-11');
     document.getElementById('pa-spec-summary-1-4-panel').classList.toggle('hidden', tab !== 'summary-1-4');
     document.getElementById('pa-spec-registry-panel').classList.toggle('hidden', tab !== 'registry');
+    document.getElementById('pa-spec-upload-log-panel').classList.toggle('hidden', tab !== 'upload-log');
 }
 
 function statusIcon(cell) {
@@ -386,6 +387,7 @@ async function uploadSpecifications() {
     const input = document.getElementById('pa-spec-files');
     const log = document.getElementById('pa-spec-import-log');
     if (!input.files.length) return;
+    setSpecTab('upload-log');
     const form = new FormData();
     [...input.files].forEach((f) => form.append('files', f));
     try {
