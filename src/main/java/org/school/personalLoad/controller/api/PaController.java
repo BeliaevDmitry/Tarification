@@ -7,6 +7,8 @@ import org.school.personalLoad.pa.model.PaScopeType;
 import org.school.personalLoad.pa.model.PaWorkType;
 import org.school.personalLoad.pa.service.PaService;
 import org.school.personalLoad.service.AcademicYearService;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -94,5 +96,37 @@ public class PaController {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
         LocalDate date = (workDate == null || workDate.isBlank()) ? null : LocalDate.parse(workDate);
         return ResponseEntity.ok(paService.generateReportTemplate(year, subjectName, className, level, workType, date));
+    }
+
+    @PostMapping("/reports/generate/parallel")
+    public ResponseEntity<List<PaDtos.ReportUploadResult>> generateReportsForParallel(@RequestParam(required = false) String academicYear,
+                                                                                       @RequestParam String subjectName,
+                                                                                       @RequestParam String parallel,
+                                                                                       @RequestParam PaLevel level,
+                                                                                       @RequestParam PaWorkType workType,
+                                                                                       @RequestParam(required = false) String workDate) {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        LocalDate date = (workDate == null || workDate.isBlank()) ? null : LocalDate.parse(workDate);
+        return ResponseEntity.ok(paService.generateReportTemplatesByParallel(year, subjectName, parallel, level, workType, date));
+    }
+
+    @PostMapping("/reports/generate/all")
+    public ResponseEntity<List<PaDtos.ReportUploadResult>> generateReportsForAll(@RequestParam(required = false) String academicYear,
+                                                                                  @RequestParam String subjectName,
+                                                                                  @RequestParam PaLevel level,
+                                                                                  @RequestParam PaWorkType workType,
+                                                                                  @RequestParam(required = false) String workDate) {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        LocalDate date = (workDate == null || workDate.isBlank()) ? null : LocalDate.parse(workDate);
+        return ResponseEntity.ok(paService.generateAllReportTemplates(year, subjectName, level, workType, date));
+    }
+
+    @GetMapping("/reports/{reportVersionId}/download")
+    public ResponseEntity<byte[]> downloadReport(@PathVariable Long reportVersionId) throws Exception {
+        byte[] body = paService.loadReportFile(reportVersionId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"pa-report-" + reportVersionId + ".xlsx\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(body);
     }
 }

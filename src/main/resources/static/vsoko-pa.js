@@ -33,19 +33,23 @@ function statusIcon(cell) {
     return cell.hasSpecification ? '✅ Загружена' : '❌ Не загружена';
 }
 
-function renderCompactMatrix() {
-    const all = [...(paState.summary.primary || []), ...(paState.summary.secondary || [])];
-    const preferredScopes = ['5', '6', '7', '8', '9', '9Б', '10', '11'];
-    const presentScopes = [...new Set(all.map((row) => row.scopeValue).filter(Boolean))];
-    const orderedPreferred = preferredScopes.filter((scope) => presentScopes.includes(scope));
-    const otherScopes = presentScopes
-        .filter((scope) => !preferredScopes.includes(scope))
-        .sort((a, b) => String(a).localeCompare(String(b), 'ru'));
-    const scopes = [...orderedPreferred, ...otherScopes];
-    const head = document.getElementById('pa-matrix-head');
-    const body = document.getElementById('pa-matrix-body');
-    head.innerHTML = `<tr><th>Предметная область</th><th>Предмет</th>${scopes.map((s) => `<th>${s}</th>`).join('')}</tr>`;
+function workTypeRu(workType) {
+    if (workType === 'ENTRY') return 'Входная';
+    if (workType === 'EXIT') return 'Выходная';
+    return 'Промежуточная';
+}
 
+function matrixCellSymbol(cell) {
+    if (!cell) return '';
+    if (!cell.participates) return '➖';
+    return cell.hasSpecification ? '✅' : '❌';
+}
+
+function renderMatrixTable(headId, bodyId, scopes) {
+    const all = [...(paState.summary.primary || []), ...(paState.summary.secondary || [])];
+    const head = document.getElementById(headId);
+    const body = document.getElementById(bodyId);
+    head.innerHTML = `<tr><th>Предметная область</th><th>Предмет</th>${scopes.map((s) => `<th>${s}</th>`).join('')}</tr>`;
     const areaMap = new Map();
     [...paState.specifications, ...all].forEach((row) => {
         const area = subjectAreaByName(row.subjectName);
@@ -57,7 +61,6 @@ function renderCompactMatrix() {
         body.innerHTML = '<tr><td colspan="12" class="muted">Нет данных</td></tr>';
         return;
     }
-
     let html = '';
     areas.forEach((area) => {
         const subjects = [...areaMap.get(area).keys()].sort((a, b) => a.localeCompare(b, 'ru'));
@@ -67,12 +70,34 @@ function renderCompactMatrix() {
             html += `<td>${subject}</td>`;
             scopes.forEach((scope) => {
                 const cell = all.find((row) => row.subjectName === subject && row.scopeValue === scope);
-                html += `<td>${cell ? statusIcon(cell).split(' ')[0] : '❌'}</td>`;
+                const symbol = matrixCellSymbol(cell);
+                if (symbol === '❌') {
+                    html += `<td><button type="button" class="tab-btn" data-summary-toggle-subject="${subject}" data-summary-toggle-scope="${scope}" data-summary-toggle-level="${cell.level}" title="Клик: пометить как не участвует">${symbol}</button></td>`;
+                } else if (symbol === '➖') {
+                    html += `<td><button type="button" class="tab-btn" data-summary-toggle-subject="${subject}" data-summary-toggle-scope="${scope}" data-summary-toggle-level="${cell.level}" title="Клик: вернуть в участие">${symbol}</button></td>`;
+                } else {
+                    html += `<td>${symbol}</td>`;
+                }
             });
             html += '</tr>';
         });
     });
     body.innerHTML = html;
+}
+
+function renderCompactMatrix() {
+    const all = [...(paState.summary.primary || []), ...(paState.summary.secondary || [])];
+    const preferredScopes = ['5', '6', '7', '8', '9', '9Б', '10', '11'];
+    const presentScopes = [...new Set(all.map((row) => row.scopeValue).filter(Boolean))];
+    const orderedPreferred = preferredScopes.filter((scope) => presentScopes.includes(scope));
+    const otherScopes = presentScopes
+        .filter((scope) => !preferredScopes.includes(scope))
+        .sort((a, b) => String(a).localeCompare(String(b), 'ru'));
+    const scopes = [...orderedPreferred, ...otherScopes];
+    renderMatrixTable('pa-matrix-head', 'pa-matrix-body', scopes);
+    const primaryScopes = ['1', '2', '3', '4'].filter((s) => presentScopes.includes(s));
+    renderMatrixTable('pa-matrix-head-primary', 'pa-matrix-body-primary', primaryScopes);
+    bindSummaryToggles();
 }
 
 function renderSpecifications(rows) {
@@ -104,8 +129,8 @@ function renderSpecifications(rows) {
                 <td>${row.subjectName || ''}</td>
                 <td>${row.scopeType || ''} ${row.scopeValue || ''}</td>
                 <td>${row.level === 'ADVANCED' ? 'Углублённый' : 'Базовый'}</td>
-                <td>${row.workType || ''}</td>
-                <td>${row.versionNo || ''}</td>
+                <td>${workTypeRu(row.workType)}</td>
+                <td><button type="button" class="tab-btn" data-spec-versions-key="${row.subjectName}|${row.scopeValue}|${row.level}|${row.workType}">v${row.versionNo || 1}</button></td>
                 <td>${row.sourceFileName || ''}</td>
                 <td>
                     <label><input type="checkbox" data-participation-subject="${row.subjectName}" data-participation-scope-type="${row.scopeType}" data-participation-scope="${row.scopeValue}" data-participation-level="${row.level}" ${participationMap.get(`${row.subjectName}|${row.scopeValue}|${row.level}`) === false ? '' : 'checked'}> Да</label>
@@ -114,6 +139,7 @@ function renderSpecifications(rows) {
         `;
     }).join('') || '<tr><td colspan="8" class="muted">Спецификации не загружены</td></tr>';
     bindParticipationToggles();
+    bindSpecificationVersions();
     fillSelectors('entry');
     fillSelectors('exit');
     renderCompactMatrix();
@@ -129,9 +155,12 @@ function fillSelectors(prefix) {
     const type = prefix === 'entry' ? 'ENTRY' : 'EXIT';
     const filtered = paState.specifications.filter((item) => item.workType === type);
     const subjects = [...new Set(filtered.map((item) => item.subjectName).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
-    subjectSelect.innerHTML = subjects.map((s) => `<option value="${s}">${s}</option>`).join('');
-    const selectedSubject = subjectSelect.value || subjects[0];
-    const scopes = [...new Set(filtered.filter((item) => item.subjectName === selectedSubject).map((item) => item.scopeValue).filter(Boolean))];
+    subjectSelect.innerHTML = ['<option value="ALL">Все предметы</option>', ...subjects.map((s) => `<option value="${s}">${s}</option>`)].join('');
+    const selectedSubject = subjectSelect.value || 'ALL';
+    const scopedItems = selectedSubject === 'ALL'
+        ? filtered
+        : filtered.filter((item) => item.subjectName === selectedSubject);
+    const scopes = [...new Set(scopedItems.map((item) => item.scopeValue).filter(Boolean))];
     scopeSelect.innerHTML = scopes.map((s) => `<option value="${s}">${s}</option>`).join('');
 }
 
@@ -154,25 +183,53 @@ function renderVersions(prefix, rows) {
             <td>${row.versionNo ?? ''}</td>
             <td>${row.status || ''}</td>
             <td>${row.activeVersion ? 'Да' : 'Нет'}</td>
-            <td>${row.sourceFileName || ''}</td>
+            <td>${row.sourceFileName ? `<button type="button" class="tab-btn" data-download-report-id="${row.id}">${row.sourceFileName}</button>` : ''}</td>
             <td>${row.createdAt ? new Date(row.createdAt).toLocaleString('ru-RU') : ''}</td>
             <td>${row.validationMessage || ''}</td>
         </tr>
     `).join('') || '<tr><td colspan="6" class="muted">Версии не найдены</td></tr>';
+    bindReportDownloadButtons();
 }
 
 async function generateForClass(prefix) {
     const subject = document.getElementById(`pa-${prefix}-subject`).value;
-    const className = document.getElementById(`pa-${prefix}-scope`).value;
+    const className = document.getElementById(`pa-${prefix}-class`).value || document.getElementById(`pa-${prefix}-scope`).value;
     const level = document.getElementById(`pa-${prefix}-level`).value;
     const workDate = document.getElementById(`pa-${prefix}-work-date`).value;
     const workType = prefix === 'entry' ? 'ENTRY' : 'EXIT';
-    if (!subject || !className) return;
+    if (!subject || subject === 'ALL' || !className) return;
     const params = new URLSearchParams({ subjectName: subject, className, level, workType });
     if (workDate) params.set('workDate', workDate);
     const result = await paApi(`/api/pa/reports/generate?${params.toString()}`, { method: 'POST' });
     renderUploadLog(prefix, [result]);
     await loadVersions(prefix);
+    await renderWorkflow(prefix);
+}
+
+async function generateForParallel(prefix) {
+    const subject = document.getElementById(`pa-${prefix}-subject`).value;
+    const parallel = document.getElementById(`pa-${prefix}-scope`).value;
+    const level = document.getElementById(`pa-${prefix}-level`).value;
+    const workDate = document.getElementById(`pa-${prefix}-work-date`).value;
+    const workType = prefix === 'entry' ? 'ENTRY' : 'EXIT';
+    if (!subject || subject === 'ALL' || !parallel) return;
+    const params = new URLSearchParams({ subjectName: subject, parallel, level, workType });
+    if (workDate) params.set('workDate', workDate);
+    const result = await paApi(`/api/pa/reports/generate/parallel?${params.toString()}`, { method: 'POST' });
+    renderUploadLog(prefix, result);
+    await renderWorkflow(prefix);
+}
+
+async function generateAll(prefix) {
+    const subject = document.getElementById(`pa-${prefix}-subject`).value;
+    const level = document.getElementById(`pa-${prefix}-level`).value;
+    const workDate = document.getElementById(`pa-${prefix}-work-date`).value;
+    const workType = prefix === 'entry' ? 'ENTRY' : 'EXIT';
+    if (!subject || subject === 'ALL') return;
+    const params = new URLSearchParams({ subjectName: subject, level, workType });
+    if (workDate) params.set('workDate', workDate);
+    const result = await paApi(`/api/pa/reports/generate/all?${params.toString()}`, { method: 'POST' });
+    renderUploadLog(prefix, result);
     await renderWorkflow(prefix);
 }
 
@@ -209,6 +266,47 @@ function bindParticipationToggles() {
                 checkbox.checked = !checkbox.checked;
                 alert(`Ошибка обновления статуса участия: ${e.message}`);
             }
+        });
+    });
+}
+
+function bindSummaryToggles() {
+    document.querySelectorAll('[data-summary-toggle-subject]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const subjectName = btn.dataset.summaryToggleSubject;
+            const scopeValue = btn.dataset.summaryToggleScope;
+            const level = btn.dataset.summaryToggleLevel || 'BASIC';
+            const currentSymbol = btn.textContent.trim();
+            const participates = currentSymbol === '➖';
+            try {
+                await paApi('/api/pa/participation', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        subjectName,
+                        scopeType: /^\d+$/.test(scopeValue) ? 'PARALLEL' : 'CLASS',
+                        scopeValue,
+                        level,
+                        participates
+                    })
+                });
+                await reloadSummaryAndSpecs();
+            } catch (e) {
+                alert(`Ошибка обновления статуса участия: ${e.message}`);
+            }
+        });
+    });
+}
+
+function bindSpecificationVersions() {
+    document.querySelectorAll('[data-spec-versions-key]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const key = btn.dataset.specVersionsKey;
+            const versions = paState.specifications
+                .filter((row) => `${row.subjectName}|${row.scopeValue}|${row.level}|${row.workType}` === key)
+                .sort((a, b) => (b.versionNo || 0) - (a.versionNo || 0))
+                .map((row) => `v${row.versionNo} — ${row.sourceFileName || 'без файла'}`);
+            alert(versions.length ? versions.join('\n') : 'Версии не найдены');
         });
     });
 }
@@ -250,7 +348,7 @@ async function loadVersions(prefix) {
     const level = document.getElementById(`pa-${prefix}-level`).value;
     const workDate = document.getElementById(`pa-${prefix}-work-date`).value;
     const workType = prefix === 'entry' ? 'ENTRY' : 'EXIT';
-    if (!subject || !scopeValue) {
+    if (!subject || subject === 'ALL' || !scopeValue) {
         renderVersions(prefix, []);
         return;
     }
@@ -271,36 +369,109 @@ async function renderWorkflow(prefix, loadedVersions = null) {
     const subject = document.getElementById(`pa-${prefix}-subject`).value;
     const level = document.getElementById(`pa-${prefix}-level`).value;
     const workType = prefix === 'entry' ? 'ENTRY' : 'EXIT';
+    const head = document.getElementById(`pa-${prefix}-workflow-head`);
     const body = document.getElementById(`pa-${prefix}-workflow-body`);
-    if (!subject) {
-        body.innerHTML = '<tr><td colspan="4" class="muted">Нет данных</td></tr>';
+    const specs = paState.specifications.filter((s) =>
+        s.level === level
+        && s.workType === workType
+        && (subject === 'ALL' || s.subjectName === subject)
+    );
+    if (!specs.length) {
+        head.innerHTML = '<tr><th>Предметная область</th><th>Предмет</th><th>Статус</th></tr>';
+        body.innerHTML = '<tr><td colspan="3" class="muted">Нет данных</td></tr>';
         return;
     }
-    const specs = paState.specifications.filter((s) => s.subjectName === subject && s.level === level && s.workType === workType);
-    const scopes = [...new Set(specs.map((s) => s.scopeValue))];
-    const rows = [];
-    for (const scopeValue of scopes) {
-        const versions = loadedVersions && document.getElementById(`pa-${prefix}-scope`).value === scopeValue
+    const scopes = [...new Set(specs.map((s) => s.scopeValue).filter(Boolean))]
+        .sort((a, b) => String(a).localeCompare(String(b), 'ru'));
+    head.innerHTML = `<tr><th>Предметная область</th><th>Предмет</th><th>Статус</th>${scopes.map((s) => `<th>${s}</th>`).join('')}</tr>`;
+
+    const subjectScopeMap = new Map();
+    specs.forEach((spec) => {
+        const key = `${spec.subjectName}|${spec.scopeValue}`;
+        if (!subjectScopeMap.has(key)) {
+            subjectScopeMap.set(key, { subjectName: spec.subjectName, scopeValue: spec.scopeValue });
+        }
+    });
+
+    const versionMap = new Map();
+    for (const item of subjectScopeMap.values()) {
+        const versions = loadedVersions
+            && subject !== 'ALL'
+            && document.getElementById(`pa-${prefix}-scope`).value === item.scopeValue
             ? loadedVersions
             : await paApi(`/api/pa/reports/versions?${new URLSearchParams({
-                subjectName: subject,
-                scopeType: /^\d+$/.test(scopeValue) ? 'PARALLEL' : 'CLASS',
-                scopeValue,
+                subjectName: item.subjectName,
+                scopeType: /^\d+$/.test(item.scopeValue) ? 'PARALLEL' : 'CLASS',
+                scopeValue: item.scopeValue,
                 level,
                 workType
             }).toString()}`);
         const hasGenerated = (versions || []).some((v) => v.status === 'GENERATED');
+        const hasDownloaded = (versions || []).some((v) => v.downloadedAtLeastOnce);
         const hasUploaded = (versions || []).some((v) => v.status === 'ACCEPTED' && v.uploadedBackSuccess);
-        rows.push({ scopeValue, hasSpec: true, hasGenerated, hasUploaded });
+        const latestGenerated = (versions || []).find((v) => v.status === 'GENERATED');
+        const latestUploaded = (versions || []).find((v) => v.status === 'ACCEPTED' && v.uploadedBackSuccess);
+        versionMap.set(`${item.subjectName}|${item.scopeValue}`, {
+            hasGenerated,
+            hasDownloaded,
+            hasUploaded,
+            latestGeneratedId: latestGenerated?.id,
+            latestUploadedId: latestUploaded?.id
+        });
     }
-    body.innerHTML = rows.map((row) => `
-        <tr>
-            <td>${row.scopeValue}</td>
-            <td>${row.hasSpec ? '✅' : '❌'}</td>
-            <td>${row.hasGenerated ? '✅' : '⚠️'}</td>
-            <td>${row.hasUploaded ? '✅' : '⚠️'}</td>
-        </tr>
-    `).join('') || '<tr><td colspan="4" class="muted">Нет данных</td></tr>';
+
+    const grouped = new Map();
+    specs.forEach((spec) => {
+        const area = subjectAreaByName(spec.subjectName);
+        if (!grouped.has(area)) grouped.set(area, new Set());
+        grouped.get(area).add(spec.subjectName);
+    });
+    const areas = [...grouped.keys()].sort((a, b) => a.localeCompare(b, 'ru'));
+
+    let html = '';
+    areas.forEach((area) => {
+        const subjects = [...grouped.get(area)].sort((a, b) => a.localeCompare(b, 'ru'));
+        subjects.forEach((subjectName, idx) => {
+            const subjectRows = ['Спецификация', 'Сгенерирован', 'Скачан', 'Сдан'];
+            subjectRows.forEach((rowName, rowIdx) => {
+                html += '<tr>';
+                if (idx === 0 && rowIdx === 0) {
+                    html += `<td rowspan="${subjects.length * 4}">${area}</td>`;
+                }
+                if (rowIdx === 0) {
+                    html += `<td rowspan="4">${subjectName}</td>`;
+                }
+                html += `<td>${rowName}</td>`;
+                scopes.forEach((scopeValue) => {
+                    const hasSpec = specs.some((s) => s.subjectName === subjectName && s.scopeValue === scopeValue);
+                    const state = versionMap.get(`${subjectName}|${scopeValue}`) || {};
+                    if (rowName === 'Спецификация') {
+                        html += `<td>${hasSpec ? '✅' : ''}</td>`;
+                    } else if (rowName === 'Сгенерирован') {
+                        html += `<td>${state.hasGenerated ? `✅ ${state.latestGeneratedId ? `<button type="button" class="tab-btn" data-download-report-id="${state.latestGeneratedId}">⬇</button>` : ''}` : (hasSpec ? '⚠️' : '')}</td>`;
+                    } else if (rowName === 'Скачан') {
+                        html += `<td>${state.hasDownloaded ? '✅' : (hasSpec ? '⚠️' : '')}</td>`;
+                    } else {
+                        html += `<td>${state.hasUploaded ? `✅ ${state.latestUploadedId ? `<button type="button" class="tab-btn" data-download-report-id="${state.latestUploadedId}">⬇</button>` : ''}` : (hasSpec ? '⚠️' : '')}</td>`;
+                    }
+                });
+                html += '</tr>';
+            });
+        });
+    });
+    body.innerHTML = html;
+    bindReportDownloadButtons();
+}
+
+function bindReportDownloadButtons() {
+    document.querySelectorAll('[data-download-report-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.downloadReportId;
+            const raw = `/api/pa/reports/${id}/download`;
+            const url = typeof window.withAcademicYear === 'function' ? window.withAcademicYear(raw) : raw;
+            window.open(url, '_blank');
+        });
+    });
 }
 
 document.querySelectorAll('#pa-main-tabs [data-tab]').forEach((btn) => {
@@ -317,6 +488,10 @@ document.getElementById('pa-entry-load-versions-btn').addEventListener('click', 
 document.getElementById('pa-exit-load-versions-btn').addEventListener('click', () => loadVersions('exit'));
 document.getElementById('pa-entry-generate-btn').addEventListener('click', () => generateForClass('entry'));
 document.getElementById('pa-exit-generate-btn').addEventListener('click', () => generateForClass('exit'));
+document.getElementById('pa-entry-generate-parallel-btn').addEventListener('click', () => generateForParallel('entry'));
+document.getElementById('pa-exit-generate-parallel-btn').addEventListener('click', () => generateForParallel('exit'));
+document.getElementById('pa-entry-generate-all-btn').addEventListener('click', () => generateAll('entry'));
+document.getElementById('pa-exit-generate-all-btn').addEventListener('click', () => generateAll('exit'));
 document.getElementById('pa-entry-subject').addEventListener('change', async () => { fillSelectors('entry'); await renderWorkflow('entry'); });
 document.getElementById('pa-exit-subject').addEventListener('change', async () => { fillSelectors('exit'); await renderWorkflow('exit'); });
 

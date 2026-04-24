@@ -10,6 +10,7 @@
 <main class="container">
     <header class="card">
         <h1>ВСОКО / ПА</h1>
+        <a class="nav-link" href="/vsoko.html">← ВСОКО</a>
         <p class="muted">Полный цикл ПА: спецификации, генерация/сдача отчётов, журнал проблем.</p>
         <div class="tabs" id="pa-main-tabs">
             <button class="tab-btn active" data-tab="specs">Спецификации</button>
@@ -34,8 +35,16 @@
         <div id="pa-spec-summary-panel">
             <div style="overflow:auto;">
                 <table class="sheet-table">
+                    <caption>5–11 классы</caption>
                     <thead id="pa-matrix-head"></thead>
                     <tbody id="pa-matrix-body"></tbody>
+                </table>
+            </div>
+            <div style="overflow:auto; margin-top:12px;">
+                <table class="sheet-table">
+                    <caption>1–4 классы</caption>
+                    <thead id="pa-matrix-head-primary"></thead>
+                    <tbody id="pa-matrix-body-primary"></tbody>
                 </table>
             </div>
         </div>
@@ -45,7 +54,7 @@
                 <table class="sheet-table">
                     <thead>
                     <tr>
-                        <th>Предметная область</th><th>Предмет</th><th>Scope</th><th>Уровень</th><th>Тип</th><th>Версия</th><th>Файл</th><th>Участвует</th>
+                        <th>Предметная область</th><th>Предмет</th><th>Параллель</th><th>Уровень</th><th>Тип</th><th>Версия</th><th>Файл</th><th>Участвует</th>
                     </tr>
                     </thead>
                     <tbody id="pa-specifications-body"></tbody>
@@ -60,17 +69,20 @@
         <div class="row">
             <select id="pa-entry-subject"></select>
             <select id="pa-entry-scope"></select>
+            <input id="pa-entry-class" type="text" placeholder="Класс (например 10-А)">
             <select id="pa-entry-level">
                 <option value="BASIC">Базовый</option>
                 <option value="ADVANCED">Углублённый</option>
             </select>
             <input id="pa-entry-work-date" type="date">
             <button id="pa-entry-load-versions-btn" type="button" data-allow-readonly="true">Показать версии</button>
+            <button id="pa-entry-generate-all-btn" type="button" data-requires-edit>Сгенерировать все</button>
+            <button id="pa-entry-generate-parallel-btn" type="button" data-requires-edit>Сгенерировать параллель</button>
             <button id="pa-entry-generate-btn" type="button" data-requires-edit>Сгенерировать для класса</button>
         </div>
         <div style="overflow:auto;">
             <table class="sheet-table">
-                <thead><tr><th>Класс</th><th>Спецификация</th><th>Сгенерирован</th><th>Сдан</th></tr></thead>
+                <thead id="pa-entry-workflow-head"></thead>
                 <tbody id="pa-entry-workflow-body"></tbody>
             </table>
         </div>
@@ -98,17 +110,20 @@
         <div class="row">
             <select id="pa-exit-subject"></select>
             <select id="pa-exit-scope"></select>
+            <input id="pa-exit-class" type="text" placeholder="Класс (например 10-А)">
             <select id="pa-exit-level">
                 <option value="BASIC">Базовый</option>
                 <option value="ADVANCED">Углублённый</option>
             </select>
             <input id="pa-exit-work-date" type="date">
             <button id="pa-exit-load-versions-btn" type="button" data-allow-readonly="true">Показать версии</button>
+            <button id="pa-exit-generate-all-btn" type="button" data-requires-edit>Сгенерировать все</button>
+            <button id="pa-exit-generate-parallel-btn" type="button" data-requires-edit>Сгенерировать параллель</button>
             <button id="pa-exit-generate-btn" type="button" data-requires-edit>Сгенерировать для класса</button>
         </div>
         <div style="overflow:auto;">
             <table class="sheet-table">
-                <thead><tr><th>Класс</th><th>Спецификация</th><th>Сгенерирован</th><th>Сдан</th></tr></thead>
+                <thead id="pa-exit-workflow-head"></thead>
                 <tbody id="pa-exit-workflow-body"></tbody>
             </table>
         </div>

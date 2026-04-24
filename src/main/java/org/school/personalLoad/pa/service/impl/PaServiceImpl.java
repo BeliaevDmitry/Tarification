@@ -21,6 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -80,15 +81,15 @@ public class PaServiceImpl implements PaService {
     }
 
     private int importSheet(String academicYear, String sourceFileName, Sheet sheet, List<String> warnings) {
-        List<Integer> subjectRows = findRowsByCellValue(sheet, "Предмет");
-        if (subjectRows.isEmpty()) {
+        List<int[]> subjectCells = findCellsByValue(sheet, "Предмет");
+        if (subjectCells.isEmpty()) {
             warnings.add("Лист " + sheet.getSheetName() + ": не найден блок 'Предмет'");
             return 0;
         }
         int imported = 0;
-        for (Integer subjectRow : subjectRows) {
-            int subjectCol = findColumnByCellValue(sheet.getRow(subjectRow), "Предмет");
-            if (subjectCol < 0) continue;
+        for (int[] cellPos : subjectCells) {
+            int subjectRow = cellPos[0];
+            int subjectCol = cellPos[1];
             String subjectName = firstNonBlank(sheet, subjectRow, subjectCol + 1, subjectCol + 6);
             if (subjectName.isBlank()) continue;
             PaSpecification spec = parseBlock(academicYear, sourceFileName, sheet, subjectRow, subjectCol, warnings);
@@ -351,6 +352,11 @@ public class PaServiceImpl implements PaService {
                 version.setStatus("ACCEPTED");
                 version.setValidationMessage("Отчёт принят");
                 version.setSourceFileName(file.getOriginalFilename());
+                Path directory = Path.of(PA_REPORT_STORAGE_DIR, academicYear.replace("/", "-"), "uploaded");
+                Files.createDirectories(directory);
+                Path stored = directory.resolve(LocalDateTime.now().toString().replace(":", "-") + "_" + sanitizeFileName(file.getOriginalFilename()));
+                Files.write(stored, file.getBytes());
+                version.setSourceFilePath(stored.toString());
                 version.setTeacherFio(teacher.trim());
                 version.setTeacherFioNormalized(normalizedTeacher);
                 version.setUploadedBackSuccess(true);
@@ -449,6 +455,62 @@ public class PaServiceImpl implements PaService {
         version.setCreatedAt(LocalDateTime.now());
         reportVersionRepository.save(version);
         return new PaDtos.ReportUploadResult(fileName, "ACCEPTED", "Шаблон отчёта сгенерирован", versionNo, subjectName, className, workType);
+    }
+
+    @Override
+    @Transactional
+    public List<PaDtos.ReportUploadResult> generateReportTemplatesByParallel(String academicYear, String subjectName, String parallel, PaLevel level, PaWorkType workType, LocalDate workDate) {
+        List<String> classes = curriculumPlanEntryRepository.findAllByAcademicYear(academicYear).stream()
+                .map(CurriculumPlanEntry::getClassName)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(v -> !v.isBlank())
+                .filter(v -> {
+                    Integer p = parseParallel(v);
+                    return p != null && String.valueOf(p).equals(parallel);
+                })
+                .distinct()
+                .sorted()
+                .toList();
+        List<PaDtos.ReportUploadResult> results = new ArrayList<>();
+        for (String className : classes) {
+            results.add(generateReportTemplate(academicYear, subjectName, className, level, workType, workDate));
+        }
+        return results;
+    }
+
+    @Override
+    @Transactional
+    public List<PaDtos.ReportUploadResult> generateAllReportTemplates(String academicYear, String subjectName, PaLevel level, PaWorkType workType, LocalDate workDate) {
+        List<String> classes = curriculumPlanEntryRepository.findAllByAcademicYear(academicYear).stream()
+                .map(CurriculumPlanEntry::getClassName)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(v -> !v.isBlank())
+                .distinct()
+                .sorted()
+                .toList();
+        List<PaDtos.ReportUploadResult> results = new ArrayList<>();
+        for (String className : classes) {
+            results.add(generateReportTemplate(academicYear, subjectName, className, level, workType, workDate));
+        }
+        return results;
+    }
+
+    @Override
+    public byte[] loadReportFile(Long reportVersionId) throws IOException {
+        PaReportVersion version = reportVersionRepository.findById(reportVersionId)
+                .orElseThrow(() -> new IllegalArgumentException("Версия отчёта не найдена"));
+        if (version.getSourceFilePath() == null || version.getSourceFilePath().isBlank()) {
+            throw new IllegalArgumentException("Для версии не сохранён путь к файлу");
+        }
+        Path path = Path.of(version.getSourceFilePath());
+        if (!Files.exists(path)) {
+            throw new IllegalArgumentException("Файл версии не найден на диске");
+        }
+        version.setDownloadedAtLeastOnce(true);
+        reportVersionRepository.save(version);
+        return Files.readAllBytes(path);
     }
 
     private PaSpecification resolveSpecificationForClass(String year, String subject, String className, PaLevel level, PaWorkType workType, LocalDate workDate) {
@@ -664,6 +726,20 @@ public class PaServiceImpl implements PaService {
             if (cellValue(cell).equalsIgnoreCase(expected)) return cell.getColumnIndex();
         }
         return -1;
+    }
+
+    private List<int[]> findCellsByValue(Sheet sheet, String expected) {
+        List<int[]> coords = new ArrayList<>();
+        for (int r = 0; r <= sheet.getLastRowNum(); r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) continue;
+            for (Cell cell : row) {
+                if (cellValue(cell).equalsIgnoreCase(expected)) {
+                    coords.add(new int[]{r, cell.getColumnIndex()});
+                }
+            }
+        }
+        return coords;
     }
 
     private String findValueNearLabel(Sheet sheet, int startRow, int startCol, String label) {
