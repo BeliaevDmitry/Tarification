@@ -114,7 +114,7 @@ public class PaServiceImpl implements PaService {
             List<PaSpecificationTask> tasks = parseTasks(sheet, subjectRow, subjectCol, saved);
             if (tasks.isEmpty()) {
                 specificationRepository.delete(saved);
-                warnings.add("Лист " + sheet.getSheetName() + ": спецификация '" + subjectName + "' не загружена — задания пустые");
+                warnings.add("Лист " + sheet.getSheetName() + ": спецификация '" + subjectName + "' не загружена — нет ни одной темы");
                 continue;
             }
             taskRepository.saveAll(tasks);
@@ -219,6 +219,10 @@ public class PaServiceImpl implements PaService {
             task.setRepeatFromTaskNo(parseInt(getCell(row, colMap.get("repeat"))));
             task.setMaxScore(parseInt(maxScoreRaw));
             tasks.add(task);
+        }
+        boolean hasAtLeastOneTopic = tasks.stream().anyMatch(task -> task.getTopic() != null && !task.getTopic().isBlank());
+        if (!hasAtLeastOneTopic) {
+            return List.of();
         }
         return tasks;
     }
