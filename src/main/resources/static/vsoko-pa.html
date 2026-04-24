@@ -29,14 +29,14 @@
             <button id="pa-spec-import-btn" type="button">Загрузить спецификации</button>
             <button id="pa-spec-reload-btn" type="button" data-allow-readonly="true">Обновить свод</button>
         </div>
-        <pre id="pa-spec-import-log" class="result-box"></pre>
         <div class="tabs" id="pa-spec-tabs">
             <button class="tab-btn active" type="button" data-spec-tab="summary-5-11">Свод 5-11</button>
             <button class="tab-btn" type="button" data-spec-tab="summary-1-4">Свод 1-4</button>
             <button class="tab-btn" type="button" data-spec-tab="registry">Спецификации</button>
+            <button class="tab-btn" type="button" data-spec-tab="upload-log">Результат загрузки файлов</button>
         </div>
 
-        <div id="pa-spec-summary-5-11-panel">
+        <div id="pa-spec-summary-5-11-panel" class="tab-panel">
             <div style="overflow:auto;">
                 <table class="sheet-table sticky-head">
                     <thead id="pa-matrix-head"></thead>
@@ -45,7 +45,7 @@
             </div>
         </div>
 
-        <div id="pa-spec-summary-1-4-panel" class="hidden">
+        <div id="pa-spec-summary-1-4-panel" class="tab-panel hidden">
             <div style="overflow:auto;">
                 <table class="sheet-table sticky-head">
                     <thead id="pa-matrix-head-primary"></thead>
@@ -54,7 +54,7 @@
             </div>
         </div>
 
-        <div id="pa-spec-registry-panel" class="hidden">
+        <div id="pa-spec-registry-panel" class="tab-panel hidden">
             <div style="overflow:auto;">
                 <table class="sheet-table">
                     <thead>
@@ -63,6 +63,17 @@
                     </tr>
                     </thead>
                     <tbody id="pa-specifications-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="pa-spec-upload-log-panel" class="tab-panel hidden">
+            <div style="overflow:auto;">
+                <table class="sheet-table">
+                    <thead>
+                    <tr><th>Дата</th><th>Файл</th><th>Статус</th><th>Сообщение</th><th>Записей</th></tr>
+                    </thead>
+                    <tbody id="pa-spec-import-log-body"></tbody>
                 </table>
             </div>
         </div>
