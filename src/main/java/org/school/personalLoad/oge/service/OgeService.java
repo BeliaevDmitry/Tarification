@@ -811,31 +811,76 @@ public class OgeService {
     }
 
     private void writeWorkResults(Sheet sheet, List<OgeDtos.WorkResultRow> rows) {
-        Row h = sheet.createRow(0);
-        h.createCell(0).setCellValue("Класс");
-        h.createCell(1).setCellValue("ФИО");
-        h.createCell(2).setCellValue("Предмет");
-        h.createCell(3).setCellValue("Балл");
-        h.createCell(4).setCellValue("Оценка");
-        h.createCell(5).setCellValue("Статус");
         Workbook wb = sheet.getWorkbook();
         CellStyle red = color(wb, IndexedColors.ROSE.getIndex());
         CellStyle gray = color(wb, IndexedColors.GREY_25_PERCENT.getIndex());
-        int r = 1;
+        CellStyle yellow = color(wb, IndexedColors.LIGHT_YELLOW.getIndex());
+        CellStyle orange = color(wb, IndexedColors.LIGHT_ORANGE.getIndex());
+
+        Row h0 = sheet.createRow(0);
+        Row h1 = sheet.createRow(1);
+        h0.createCell(0).setCellValue("Класс");
+        h0.createCell(1).setCellValue("ФИО");
+        h0.createCell(2).setCellValue("Кол-во предметов для сдачи");
+        h0.createCell(3).setCellValue("Средний балл за сданные предметы");
+        h1.createCell(0).setCellValue("");
+        h1.createCell(1).setCellValue("");
+        h1.createCell(2).setCellValue("");
+        h1.createCell(3).setCellValue("");
+
+        int col = 4;
+        for (String subject : OgeSubjects.CORE_SUBJECTS) {
+            h0.createCell(col).setCellValue(subject);
+            h1.createCell(col).setCellValue("Тестовый балл");
+            h1.createCell(col + 1).setCellValue("Оценка");
+            sheet.addMergedRegion(new CellRangeAddress(0, 0, col, col + 1));
+            col += 2;
+        }
+        sheet.addMergedRegion(new CellRangeAddress(0, 1, 0, 0));
+        sheet.addMergedRegion(new CellRangeAddress(0, 1, 1, 1));
+        sheet.addMergedRegion(new CellRangeAddress(0, 1, 2, 2));
+        sheet.addMergedRegion(new CellRangeAddress(0, 1, 3, 3));
+
+        Map<String, Map<String, OgeDtos.WorkResultRow>> byStudent = new LinkedHashMap<>();
         for (OgeDtos.WorkResultRow row : rows) {
+            byStudent.computeIfAbsent(row.className() + "|" + row.fullName(), k -> new LinkedHashMap<>())
+                    .put(row.subject(), row);
+        }
+
+        int r = 2;
+        for (Map.Entry<String, Map<String, OgeDtos.WorkResultRow>> entry : byStudent.entrySet()) {
+            Map<String, OgeDtos.WorkResultRow> values = entry.getValue();
+            OgeDtos.WorkResultRow any = values.values().stream().findFirst().orElse(null);
+            if (any == null) continue;
             Row rr = sheet.createRow(r++);
-            rr.createCell(0).setCellValue(row.className());
-            rr.createCell(1).setCellValue(row.fullName());
-            rr.createCell(2).setCellValue(row.subject());
-            if (row.score() != null) rr.createCell(3).setCellValue(row.score());
-            if (row.grade() != null) rr.createCell(4).setCellValue(row.grade());
-            rr.createCell(5).setCellValue(row.status());
-            if ("red".equals(row.status())) {
-                rr.getCell(3).setCellStyle(red);
-                rr.getCell(4).setCellStyle(red);
-            } else if ("gray".equals(row.status())) {
-                rr.getCell(3).setCellStyle(gray);
-                rr.getCell(4).setCellStyle(gray);
+            rr.createCell(0).setCellValue(any.className());
+            rr.createCell(1).setCellValue(any.fullName());
+            int examCount = (int) values.values().stream().filter(OgeDtos.WorkResultRow::expectedByGia).count();
+            rr.createCell(2).setCellValue(examCount);
+            List<Integer> grades = values.values().stream().map(OgeDtos.WorkResultRow::grade).filter(Objects::nonNull).toList();
+            if (!grades.isEmpty()) rr.createCell(3).setCellValue(grades.stream().mapToInt(Integer::intValue).average().orElse(0));
+
+            int c = 4;
+            for (String subject : OgeSubjects.CORE_SUBJECTS) {
+                OgeDtos.WorkResultRow value = values.get(subject);
+                Cell scoreCell = rr.createCell(c++);
+                Cell gradeCell = rr.createCell(c++);
+                if (value != null && value.score() != null) scoreCell.setCellValue(value.score());
+                if (value != null && value.grade() != null) gradeCell.setCellValue(value.grade());
+                if (value == null) continue;
+                if ("red".equals(value.status())) {
+                    scoreCell.setCellStyle(red);
+                    gradeCell.setCellStyle(red);
+                } else if ("gray".equals(value.status())) {
+                    scoreCell.setCellStyle(gray);
+                    gradeCell.setCellStyle(gray);
+                } else if ("yellow".equals(value.status())) {
+                    scoreCell.setCellStyle(yellow);
+                    gradeCell.setCellStyle(yellow);
+                } else if ("orange".equals(value.status())) {
+                    scoreCell.setCellStyle(orange);
+                    gradeCell.setCellStyle(orange);
+                }
             }
         }
     }

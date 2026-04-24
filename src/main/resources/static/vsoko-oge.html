@@ -54,7 +54,7 @@
             <h2>ОГЭ / Выгрузка</h2>
             <div class="inline-form" data-requires-edit>
                 <input type="file" id="gia-files" multiple accept=".xlsx" data-allow-readonly="true">
-                <button id="gia-upload-btn" type="button">Импорт выгрузки(ок)</button>
+                <button id="gia-upload-btn" type="button" data-allow-readonly="true">Импорт выгрузки(ок)</button>
                 <button id="gia-export-btn" type="button" data-allow-readonly="true">Скачать Excel (выгрузка ГИА)</button>
             </div>
             <div id="gia-upload-log" class="muted"></div>
@@ -121,7 +121,7 @@
             <div class="muted">Подсказка: зажмите <b>Shift</b> и кликайте по заголовкам колонок, чтобы включить мультифильтр (мультисортировку).</div>
             <div class="inline-form" data-requires-edit>
                 <input type="file" id="work-files" multiple accept=".xlsx" data-allow-readonly="true">
-                <button id="work-upload-btn" type="button">Импорт работ</button>
+                <button id="work-upload-btn" type="button" data-allow-readonly="true">Импорт работ</button>
                 <button id="works-export-btn" type="button" data-allow-readonly="true">Скачать Excel (работы)</button>
             </div>
             <div id="work-upload-log" class="muted"></div>
@@ -167,7 +167,7 @@
             <h2>ОГЭ / Внешние работы пробники</h2>
             <div class="inline-form" data-requires-edit>
                 <input type="file" id="external-work-files" multiple accept=".xlsx" data-allow-readonly="true">
-                <button id="external-work-upload-btn" type="button">Импорт внешних работ</button>
+                <button id="external-work-upload-btn" type="button" data-allow-readonly="true">Импорт внешних работ</button>
                 <button id="external-works-export-btn" type="button" data-allow-readonly="true">Скачать Excel (внешние работы)</button>
             </div>
             <div id="external-work-upload-log" class="muted"></div>
@@ -223,7 +223,7 @@
             <div class="muted">Максимальные баллы по заданиям для внешних протоколов (MANUAL_MAX_SCORES).</div>
             <button id="save-evaluation-btn" type="button" data-requires-edit>Сохранить оценивание</button>
             <table class="compact-table" style="margin-top:8px;">
-                <thead><tr><th>Предмет</th><th>Максимальные баллы (через запятую)</th></tr></thead>
+                <thead id="evaluation-head"></thead>
                 <tbody id="evaluation-body"></tbody>
             </table>
         </div>
