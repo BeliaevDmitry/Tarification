@@ -19,6 +19,13 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PaController {
 
+    public record ParticipationRequest(String subjectName,
+                                       PaScopeType scopeType,
+                                       String scopeValue,
+                                       PaLevel level,
+                                       Boolean participates) {
+    }
+
     private final PaService paService;
     private final AcademicYearService academicYearService;
 
@@ -64,5 +71,28 @@ public class PaController {
                                                                          @RequestParam(required = false) String academicYear) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
         return ResponseEntity.ok(paService.uploadReports(year, files));
+    }
+
+    @PatchMapping("/participation")
+    public ResponseEntity<Void> setParticipation(@RequestParam(required = false) String academicYear,
+                                                 @RequestBody ParticipationRequest request) {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        if (request == null || request.subjectName == null || request.scopeType == null || request.scopeValue == null || request.level == null || request.participates == null) {
+            throw new IllegalArgumentException("Не переданы обязательные поля участия");
+        }
+        paService.setParticipation(year, request.subjectName, request.scopeType, request.scopeValue, request.level, request.participates);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/reports/generate")
+    public ResponseEntity<PaDtos.ReportUploadResult> generateReport(@RequestParam(required = false) String academicYear,
+                                                                    @RequestParam String subjectName,
+                                                                    @RequestParam String className,
+                                                                    @RequestParam PaLevel level,
+                                                                    @RequestParam PaWorkType workType,
+                                                                    @RequestParam(required = false) String workDate) {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        LocalDate date = (workDate == null || workDate.isBlank()) ? null : LocalDate.parse(workDate);
+        return ResponseEntity.ok(paService.generateReportTemplate(year, subjectName, className, level, workType, date));
     }
 }

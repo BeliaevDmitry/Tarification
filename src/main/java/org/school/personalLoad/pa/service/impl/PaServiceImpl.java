@@ -20,6 +20,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -33,6 +36,7 @@ public class PaServiceImpl implements PaService {
 
     private static final Pattern PARALLEL_PATTERN = Pattern.compile("^(\\d{1,2}).*");
     private static final DataFormatter FORMATTER = new DataFormatter(Locale.forLanguageTag("ru"));
+    private static final String PA_REPORT_STORAGE_DIR = "pa-reports";
 
     private final PaSpecificationRepository specificationRepository;
     private final PaSpecificationTaskRepository taskRepository;
@@ -358,6 +362,163 @@ public class PaServiceImpl implements PaService {
             }
         }
         return results;
+    }
+
+    @Override
+    @Transactional
+    public void setParticipation(String academicYear, String subjectName, PaScopeType scopeType, String scopeValue, PaLevel level, boolean participates) {
+        PaParticipation entity = participationRepository.findFirstByAcademicYearAndSubjectNameAndScopeTypeAndScopeValueAndLevel(
+                        academicYear, subjectName, scopeType, scopeValue, level)
+                .orElseGet(PaParticipation::new);
+        entity.setAcademicYear(academicYear);
+        entity.setSubjectName(subjectName);
+        entity.setScopeType(scopeType);
+        entity.setScopeValue(scopeValue);
+        entity.setLevel(level);
+        entity.setParticipates(participates);
+        entity.setUpdatedAt(LocalDateTime.now());
+        participationRepository.save(entity);
+    }
+
+    @Override
+    @Transactional
+    public PaDtos.ReportUploadResult generateReportTemplate(String academicYear, String subjectName, String className, PaLevel level, PaWorkType workType, LocalDate workDate) {
+        PaSpecification spec = resolveSpecificationForClass(academicYear, subjectName, className, level, workType, workDate);
+        if (spec == null) {
+            return new PaDtos.ReportUploadResult("", "REJECTED", "Не найдена активная спецификация для генерации", null, subjectName, className, workType);
+        }
+        var snapshot = contingentSnapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear).orElse(null);
+        if (snapshot == null) {
+            return new PaDtos.ReportUploadResult("", "REJECTED", "Нет актуального контингента для выбранного учебного года", null, subjectName, className, workType);
+        }
+        List<String> students = contingentStudentRepository.findAllBySnapshotId(snapshot.getId()).stream()
+                .filter(s -> normalizeClass(s.getClassName()).equals(normalizeClass(className)))
+                .map(s -> s.getFullName().trim())
+                .filter(v -> !v.isBlank())
+                .sorted(String::compareToIgnoreCase)
+                .toList();
+        if (students.isEmpty()) {
+            return new PaDtos.ReportUploadResult("", "REJECTED", "Для класса нет учеников в контингенте", null, subjectName, className, workType);
+        }
+        List<PaSpecificationTask> tasks = taskRepository.findAllBySpecificationIdOrderByTaskNoAsc(spec.getId());
+        if (tasks.isEmpty()) {
+            return new PaDtos.ReportUploadResult("", "REJECTED", "В спецификации нет заданий для генерации шаблона", null, subjectName, className, workType);
+        }
+
+        String fileName = String.format("PA_%s_%s_%s_%s_%s.xlsx",
+                academicYear.replace("/", "-"),
+                sanitizeFileName(subjectName),
+                sanitizeFileName(className),
+                workType.name(),
+                LocalDateTime.now().toString().replace(":", "-"));
+        Path directory = Path.of(PA_REPORT_STORAGE_DIR, academicYear.replace("/", "-"));
+        Path filePath = directory.resolve(fileName);
+
+        try {
+            Files.createDirectories(directory);
+            try (Workbook workbook = new XSSFWorkbook();
+                 OutputStream outputStream = Files.newOutputStream(filePath)) {
+                createInfoSheet(workbook, academicYear, subjectName, className, workType, workDate);
+                createDataSheet(workbook, students, tasks);
+                workbook.write(outputStream);
+            }
+        } catch (Exception e) {
+            return new PaDtos.ReportUploadResult(fileName, "REJECTED", "Ошибка генерации файла: " + e.getMessage(), null, subjectName, className, workType);
+        }
+
+        List<PaReportVersion> sameKey = reportVersionRepository.findAllByAcademicYearAndSubjectNameAndScopeTypeAndScopeValueAndLevelAndWorkTypeAndWorkDate(
+                academicYear, subjectName, PaScopeType.CLASS, className.toUpperCase(Locale.ROOT), level, workType, workDate
+        );
+        sameKey.forEach(v -> v.setActiveVersion(false));
+        if (!sameKey.isEmpty()) reportVersionRepository.saveAll(sameKey);
+        int versionNo = reportVersionRepository.findMaxVersion(academicYear, subjectName, PaScopeType.CLASS, className.toUpperCase(Locale.ROOT), level, workType, workDate) + 1;
+        PaReportVersion version = new PaReportVersion();
+        version.setAcademicYear(academicYear);
+        version.setSubjectName(subjectName);
+        version.setScopeType(PaScopeType.CLASS);
+        version.setScopeValue(className.toUpperCase(Locale.ROOT));
+        version.setLevel(level);
+        version.setWorkType(workType);
+        version.setWorkDate(workDate);
+        version.setVersionNo(versionNo);
+        version.setActiveVersion(true);
+        version.setStatus("GENERATED");
+        version.setValidationMessage("Шаблон отчёта сгенерирован");
+        version.setSourceFileName(fileName);
+        version.setSourceFilePath(filePath.toString());
+        version.setCreatedAt(LocalDateTime.now());
+        reportVersionRepository.save(version);
+        return new PaDtos.ReportUploadResult(fileName, "ACCEPTED", "Шаблон отчёта сгенерирован", versionNo, subjectName, className, workType);
+    }
+
+    private PaSpecification resolveSpecificationForClass(String year, String subject, String className, PaLevel level, PaWorkType workType, LocalDate workDate) {
+        String classScope = className.toUpperCase(Locale.ROOT);
+        Integer parallel = parseParallel(className);
+        String parallelScope = parallel == null ? null : String.valueOf(parallel);
+        return specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(year).stream()
+                .filter(PaSpecification::isActiveVersion)
+                .filter(s -> normalize(s.getSubjectName()).equals(normalize(subject)))
+                .filter(s -> s.getLevel() == level)
+                .filter(s -> s.getWorkType() == workType)
+                .filter(s -> Objects.equals(s.getWorkDate(), workDate) || s.getWorkDate() == null || workDate == null)
+                .sorted((a, b) -> {
+                    boolean aClass = a.getScopeType() == PaScopeType.CLASS && normalizeClass(a.getScopeValue()).equals(normalizeClass(classScope));
+                    boolean bClass = b.getScopeType() == PaScopeType.CLASS && normalizeClass(b.getScopeValue()).equals(normalizeClass(classScope));
+                    if (aClass == bClass) return 0;
+                    return aClass ? -1 : 1;
+                })
+                .filter(s -> (s.getScopeType() == PaScopeType.CLASS && normalizeClass(s.getScopeValue()).equals(normalizeClass(classScope)))
+                        || (parallelScope != null && s.getScopeType() == PaScopeType.PARALLEL && normalizeClass(s.getScopeValue()).equals(normalizeClass(parallelScope))))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private void createInfoSheet(Workbook workbook, String year, String subject, String className, PaWorkType workType, LocalDate workDate) {
+        Sheet info = workbook.createSheet("Информация");
+        String[][] rows = {
+                {"Учитель", ""},
+                {"Дата написания работы", workDate == null ? "" : workDate.toString()},
+                {"Предмет", subject},
+                {"Класс", className},
+                {"Тип", workType == PaWorkType.ENTRY ? "Входная работа" : workType == PaWorkType.EXIT ? "Выходная работа" : "Промежуточная работа"},
+                {"Школа", "ГБОУ №7"},
+                {"Учебный год", year}
+        };
+        for (int i = 0; i < rows.length; i++) {
+            Row row = info.createRow(i);
+            row.createCell(0).setCellValue(rows[i][0]);
+            row.createCell(1).setCellValue(rows[i][1]);
+        }
+        info.setColumnWidth(0, 5500);
+        info.setColumnWidth(1, 9000);
+    }
+
+    private void createDataSheet(Workbook workbook, List<String> students, List<PaSpecificationTask> tasks) {
+        Sheet data = workbook.createSheet("Сбор информации");
+        Row head = data.createRow(0);
+        head.createCell(0).setCellValue("№");
+        head.createCell(1).setCellValue("ФИО ученика");
+        head.createCell(2).setCellValue("Присутствие");
+        head.createCell(3).setCellValue("Вариант");
+        int taskStart = 4;
+        for (int i = 0; i < tasks.size(); i++) {
+            head.createCell(taskStart + i).setCellValue("Задание " + tasks.get(i).getTaskNo());
+        }
+        head.createCell(taskStart + tasks.size()).setCellValue("Итог");
+        for (int i = 0; i < students.size(); i++) {
+            Row row = data.createRow(3 + i);
+            row.createCell(0).setCellValue(i + 1);
+            row.createCell(1).setCellValue(students.get(i));
+        }
+        data.setColumnWidth(0, 1400);
+        data.setColumnWidth(1, 9000);
+        for (int i = 2; i < taskStart + tasks.size() + 1; i++) {
+            data.setColumnWidth(i, 3200);
+        }
+    }
+
+    private String sanitizeFileName(String value) {
+        return String.valueOf(value == null ? "" : value).trim().replaceAll("[^\\p{L}\\p{N}_-]+", "_");
     }
 
     private PaDtos.ReportUploadResult saveRejectedReport(String academicYear,
