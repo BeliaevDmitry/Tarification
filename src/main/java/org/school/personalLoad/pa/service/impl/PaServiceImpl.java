@@ -44,8 +44,9 @@ public class PaServiceImpl implements PaService {
     private static final DataFormatter FORMATTER = new DataFormatter(Locale.forLanguageTag("ru"));
     private static final String PA_REPORT_STORAGE_DIR = "pa-reports";
     private static final String PA_SPEC_STORAGE_DIR = "pa-specifications";
-    private static final int TEMPLATE_MAX_STUDENTS = 500;
     private static final int TEMPLATE_VARIANTS_COUNT = 6;
+    private static final short PRESENCE_PRESENT_COLOR = IndexedColors.LIGHT_GREEN.getIndex();
+    private static final short PRESENCE_ABSENT_COLOR = IndexedColors.ROSE.getIndex();
 
     private final PaSpecificationRepository specificationRepository;
     private final PaSpecificationTaskRepository taskRepository;
@@ -56,6 +57,11 @@ public class PaServiceImpl implements PaService {
     private final ContingentSnapshotRepository contingentSnapshotRepository;
     private final ContingentStudentRepository contingentStudentRepository;
     private final ManualLoadEntryRepository manualLoadEntryRepository;
+
+    private record TemplateStyles(CellStyle header,
+                                  CellStyle subHeader,
+                                  CellStyle body,
+                                  CellStyle numericBody) {}
 
     @Override
     @Transactional
@@ -134,7 +140,7 @@ public class PaServiceImpl implements PaService {
             ) + 1);
             spec.setActiveVersion(true);
             PaSpecification saved = specificationRepository.save(spec);
-            List<PaSpecificationTask> tasks = parseTasks(sheet, subjectRow, subjectCol, blockEndCol, saved);
+            List<PaSpecificationTask> tasks = parseTasks(sheet, subjectRow, subjectCol, blockEndCol, saved, warnings);
             if (tasks.isEmpty()) {
                 specificationRepository.delete(saved);
                 warnings.add("Лист " + sheet.getSheetName() + ": спецификация '" + subjectName + "' не загружена — нет ни одной темы");
@@ -189,7 +195,12 @@ public class PaServiceImpl implements PaService {
         return spec;
     }
 
-    private List<PaSpecificationTask> parseTasks(Sheet sheet, int baseRow, int baseCol, int blockEndCol, PaSpecification specification) {
+    private List<PaSpecificationTask> parseTasks(Sheet sheet,
+                                                 int baseRow,
+                                                 int baseCol,
+                                                 int blockEndCol,
+                                                 PaSpecification specification,
+                                                 List<String> warnings) {
         int headerRow = -1;
         int headerCol = -1;
         int maxRow = Math.min(sheet.getLastRowNum(), baseRow + 200);
@@ -217,6 +228,10 @@ public class PaServiceImpl implements PaService {
             if (containsNormalized(value, "балл")) colMap.put("score", c);
         }
         if (!colMap.containsKey("task")) return List.of();
+        if (!colMap.containsKey("score")) {
+            warnings.add("Лист " + sheet.getSheetName() + ": не найдена колонка «Балл» для предмета '" + specification.getSubjectName() + "'");
+            return List.of();
+        }
 
         List<PaSpecificationTask> tasks = new ArrayList<>();
         int emptyStreak = 0;
@@ -487,8 +502,9 @@ public class PaServiceImpl implements PaService {
             Files.createDirectories(directory);
             try (Workbook workbook = new XSSFWorkbook();
                  OutputStream outputStream = Files.newOutputStream(filePath)) {
-                createInfoSheet(workbook, academicYear, subjectName, className, teacherFio, level, workType, workDate);
-                createDataSheet(workbook, students, tasks);
+                TemplateStyles styles = createTemplateStyles(workbook);
+                createInfoSheet(workbook, academicYear, subjectName, className, teacherFio, level, workType, workDate, styles);
+                createDataSheet(workbook, students, tasks, styles);
                 workbook.write(outputStream);
             }
         } catch (Exception e) {
@@ -669,7 +685,8 @@ public class PaServiceImpl implements PaService {
                                  String teacherFio,
                                  PaLevel level,
                                  PaWorkType workType,
-                                 LocalDate workDate) {
+                                 LocalDate workDate,
+                                 TemplateStyles styles) {
         Sheet info = workbook.createSheet("Информация");
         String[][] rows = {
                 {"Учитель", teacherFio == null ? "" : teacherFio},
@@ -683,8 +700,8 @@ public class PaServiceImpl implements PaService {
         };
         for (int i = 0; i < rows.length; i++) {
             Row row = info.createRow(i);
-            row.createCell(0).setCellValue(rows[i][0]);
-            row.createCell(1).setCellValue(rows[i][1]);
+            createStyledCell(row, 0, rows[i][0], styles.subHeader());
+            createStyledCell(row, 1, rows[i][1], styles.body());
         }
         info.setColumnWidth(0, 5500);
         info.setColumnWidth(1, 9000);
@@ -700,56 +717,57 @@ public class PaServiceImpl implements PaService {
         return teachers.size() == 1 ? teachers.iterator().next() : "";
     }
 
-    private void createDataSheet(Workbook workbook, List<String> students, List<PaSpecificationTask> tasks) {
+    private void createDataSheet(Workbook workbook,
+                                 List<String> students,
+                                 List<PaSpecificationTask> tasks,
+                                 TemplateStyles styles) {
         Sheet data = workbook.createSheet("Сбор информации");
         List<Integer> taskMaxScores = resolveTaskMaxScores(tasks);
         int firstTaskCol = 4;
         int firstStudentRow = 3;
         int studentCount = students.size();
-        int templateRowCount = Math.max(TEMPLATE_MAX_STUDENTS, studentCount);
+        int templateRowCount = studentCount;
 
         Row headerRow = data.createRow(0);
-        headerRow.createCell(0).setCellValue("№");
-        headerRow.createCell(1).setCellValue("ФИО ученика");
-        headerRow.createCell(2).setCellValue("Присутствие");
-        headerRow.createCell(3).setCellValue("Вариант");
-        headerRow.createCell(firstTaskCol).setCellValue("Баллы за задания");
+        createStyledCell(headerRow, 0, "№", styles.header());
+        createStyledCell(headerRow, 1, "ФИО ученика", styles.header());
+        createStyledCell(headerRow, 2, "Присутствие", styles.header());
+        createStyledCell(headerRow, 3, "Вариант", styles.header());
+        createStyledCell(headerRow, firstTaskCol, "Баллы за задания", styles.header());
         data.addMergedRegion(new CellRangeAddress(0, 0, firstTaskCol, firstTaskCol + tasks.size() - 1));
-        headerRow.createCell(firstTaskCol + tasks.size()).setCellValue("Итог");
+        applyMergedRegionStyle(data, new CellRangeAddress(0, 0, firstTaskCol, firstTaskCol + tasks.size() - 1), styles.header());
+        createStyledCell(headerRow, firstTaskCol + tasks.size(), "Итог", styles.header());
 
         Row taskNoRow = data.createRow(1);
-        for (int i = 0; i < 4; i++) taskNoRow.createCell(i).setCellValue("");
+        for (int i = 0; i < 4; i++) createStyledCell(taskNoRow, i, "", styles.subHeader());
         for (int i = 0; i < tasks.size(); i++) {
-            taskNoRow.createCell(firstTaskCol + i).setCellValue(tasks.get(i).getTaskNo() == null ? i + 1 : tasks.get(i).getTaskNo());
+            createStyledCell(taskNoRow, firstTaskCol + i, String.valueOf(tasks.get(i).getTaskNo() == null ? i + 1 : tasks.get(i).getTaskNo()), styles.subHeader());
         }
-        taskNoRow.createCell(firstTaskCol + tasks.size()).setCellValue("");
+        createStyledCell(taskNoRow, firstTaskCol + tasks.size(), "", styles.subHeader());
 
         Row maxScoresRow = data.createRow(2);
-        for (int i = 0; i < 4; i++) maxScoresRow.createCell(i).setCellValue("");
+        for (int i = 0; i < 4; i++) createStyledCell(maxScoresRow, i, "", styles.subHeader());
         for (int i = 0; i < taskMaxScores.size(); i++) {
-            maxScoresRow.createCell(firstTaskCol + i).setCellValue(taskMaxScores.get(i));
+            Cell cell = maxScoresRow.createCell(firstTaskCol + i);
+            cell.setCellValue(taskMaxScores.get(i));
+            cell.setCellStyle(styles.numericBody());
         }
-        maxScoresRow.createCell(firstTaskCol + tasks.size()).setCellValue("");
+        createStyledCell(maxScoresRow, firstTaskCol + tasks.size(), "", styles.subHeader());
 
         for (int i = 0; i < studentCount; i++) {
             Row row = data.createRow(firstStudentRow + i);
-            row.createCell(0).setCellValue(i + 1);
-            row.createCell(1).setCellValue(students.get(i));
-            row.createCell(2).setCellValue("");
-            row.createCell(3).setCellValue("");
+            Cell numberCell = row.createCell(0);
+            numberCell.setCellValue(i + 1);
+            numberCell.setCellStyle(styles.numericBody());
+            createStyledCell(row, 1, students.get(i), styles.body());
+            createStyledCell(row, 2, "", styles.body());
+            createStyledCell(row, 3, "", styles.body());
             for (int t = 0; t < tasks.size(); t++) {
-                row.createCell(firstTaskCol + t).setCellValue("");
+                createStyledCell(row, firstTaskCol + t, "", styles.numericBody());
             }
             Cell totalCell = row.createCell(firstTaskCol + tasks.size());
             totalCell.setCellFormula(createTotalFormula(firstTaskCol, firstStudentRow + i + 1, tasks.size()));
-        }
-
-        for (int i = studentCount; i < templateRowCount; i++) {
-            Row row = data.createRow(firstStudentRow + i);
-            row.createCell(0).setCellValue(i + 1);
-            for (int c = 1; c <= firstTaskCol + tasks.size(); c++) {
-                row.createCell(c).setCellValue("");
-            }
+            totalCell.setCellStyle(styles.numericBody());
         }
 
         setupTemplateValidation(data, firstStudentRow, studentCount, taskMaxScores, firstTaskCol);
@@ -762,6 +780,69 @@ public class PaServiceImpl implements PaService {
         for (int i = 0; i < tasks.size(); i++) data.setColumnWidth(firstTaskCol + i, 1500);
         data.setColumnWidth(firstTaskCol + tasks.size(), 2200);
         data.createFreezePane(0, 3);
+
+        if (templateRowCount > 0) {
+            data.setAutoFilter(new CellRangeAddress(0, firstStudentRow + templateRowCount - 1, 0, firstTaskCol + tasks.size()));
+        }
+    }
+
+    private TemplateStyles createTemplateStyles(Workbook workbook) {
+        Font headerFont = workbook.createFont();
+        headerFont.setBold(true);
+        headerFont.setFontHeightInPoints((short) 10);
+
+        Font bodyFont = workbook.createFont();
+        bodyFont.setFontHeightInPoints((short) 10);
+
+        CellStyle header = workbook.createCellStyle();
+        header.setFont(headerFont);
+        header.setAlignment(HorizontalAlignment.CENTER);
+        header.setVerticalAlignment(VerticalAlignment.CENTER);
+        header.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+        header.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        header.setWrapText(true);
+        header.setBorderTop(BorderStyle.THIN);
+        header.setBorderBottom(BorderStyle.THIN);
+        header.setBorderLeft(BorderStyle.THIN);
+        header.setBorderRight(BorderStyle.THIN);
+
+        CellStyle subHeader = workbook.createCellStyle();
+        subHeader.cloneStyleFrom(header);
+        subHeader.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+
+        CellStyle body = workbook.createCellStyle();
+        body.setFont(bodyFont);
+        body.setAlignment(HorizontalAlignment.LEFT);
+        body.setVerticalAlignment(VerticalAlignment.CENTER);
+        body.setBorderTop(BorderStyle.THIN);
+        body.setBorderBottom(BorderStyle.THIN);
+        body.setBorderLeft(BorderStyle.THIN);
+        body.setBorderRight(BorderStyle.THIN);
+
+        CellStyle numericBody = workbook.createCellStyle();
+        numericBody.cloneStyleFrom(body);
+        numericBody.setAlignment(HorizontalAlignment.CENTER);
+
+        return new TemplateStyles(header, subHeader, body, numericBody);
+    }
+
+    private Cell createStyledCell(Row row, int col, String value, CellStyle style) {
+        Cell cell = row.createCell(col);
+        cell.setCellValue(value == null ? "" : value);
+        cell.setCellStyle(style);
+        return cell;
+    }
+
+    private void applyMergedRegionStyle(Sheet sheet, CellRangeAddress mergedRegion, CellStyle style) {
+        for (int rowNum = mergedRegion.getFirstRow(); rowNum <= mergedRegion.getLastRow(); rowNum++) {
+            Row row = sheet.getRow(rowNum);
+            if (row == null) row = sheet.createRow(rowNum);
+            for (int colNum = mergedRegion.getFirstColumn(); colNum <= mergedRegion.getLastColumn(); colNum++) {
+                Cell cell = row.getCell(colNum);
+                if (cell == null) cell = row.createCell(colNum);
+                cell.setCellStyle(style);
+            }
+        }
     }
 
     private List<Integer> resolveTaskMaxScores(List<PaSpecificationTask> tasks) {
@@ -801,6 +882,8 @@ public class PaServiceImpl implements PaService {
             scoreValidation.setEmptyCellAllowed(true);
             sheet.addValidationData(scoreValidation);
         }
+        formula.append(")");
+        return formula.toString();
     }
 
     private void setupPresenceConditionalFormatting(Sheet sheet, int firstStudentRow, int studentCount, int presenceCol) {
@@ -810,12 +893,12 @@ public class PaServiceImpl implements PaService {
         String col = CellReference.convertNumToColString(presenceCol);
         ConditionalFormattingRule presentRule = scf.createConditionalFormattingRule("EXACT($" + col + excelFirstRow + ",\"Был\")");
         PatternFormatting presentPattern = presentRule.createPatternFormatting();
-        presentPattern.setFillBackgroundColor(IndexedColors.LIGHT_GREEN.getIndex());
+        presentPattern.setFillForegroundColor(PRESENCE_PRESENT_COLOR);
         presentPattern.setFillPattern(PatternFormatting.SOLID_FOREGROUND);
 
         ConditionalFormattingRule absentRule = scf.createConditionalFormattingRule("EXACT($" + col + excelFirstRow + ",\"Не был\")");
         PatternFormatting absentPattern = absentRule.createPatternFormatting();
-        absentPattern.setFillBackgroundColor(IndexedColors.RED.getIndex());
+        absentPattern.setFillForegroundColor(PRESENCE_ABSENT_COLOR);
         absentPattern.setFillPattern(PatternFormatting.SOLID_FOREGROUND);
 
         CellRangeAddress[] ranges = { new CellRangeAddress(firstStudentRow, firstStudentRow + studentCount - 1, presenceCol, presenceCol) };
@@ -1100,19 +1183,21 @@ public class PaServiceImpl implements PaService {
     private int detectBlockEndCol(Sheet sheet, int subjectRow, int subjectCol) {
         Row row = sheet.getRow(subjectRow);
         if (row == null) return subjectCol + 4;
-        int nextSubjectCol = -1;
-        for (Cell cell : row) {
-            int col = cell.getColumnIndex();
-            if (col <= subjectCol) continue;
-            if (sameLabel(cellValue(cell), "Предмет")) {
-                nextSubjectCol = col;
-                break;
-            }
-        }
+        int nextSubjectCol = findNextSubjectColOnRow(row, subjectCol);
         if (nextSubjectCol > subjectCol) {
             return nextSubjectCol - 1;
         }
         return Math.max(subjectCol + 4, row.getLastCellNum() - 1);
+    }
+
+    private int findNextSubjectColOnRow(Row row, int subjectCol) {
+        if (row == null) return -1;
+        for (Cell cell : row) {
+            int col = cell.getColumnIndex();
+            if (col <= subjectCol) continue;
+            if (sameLabel(cellValue(cell), "Предмет")) return col;
+        }
+        return -1;
     }
 
     private boolean sameLabel(String actual, String expected) {
