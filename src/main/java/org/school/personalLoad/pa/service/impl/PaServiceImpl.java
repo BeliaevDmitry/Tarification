@@ -915,6 +915,35 @@ public class PaServiceImpl implements PaService {
         return formula.toString();
     }
 
+    private void setupPresenceConditionalFormatting(Sheet sheet, int firstStudentRow, int studentCount, int presenceCol) {
+        if (studentCount <= 0) return;
+        SheetConditionalFormatting scf = sheet.getSheetConditionalFormatting();
+        int excelFirstRow = firstStudentRow + 1;
+        String col = CellReference.convertNumToColString(presenceCol);
+        ConditionalFormattingRule presentRule = scf.createConditionalFormattingRule("EXACT($" + col + excelFirstRow + ",\"Был\")");
+        PatternFormatting presentPattern = presentRule.createPatternFormatting();
+        presentPattern.setFillForegroundColor(PRESENCE_PRESENT_COLOR);
+        presentPattern.setFillPattern(PatternFormatting.SOLID_FOREGROUND);
+
+        ConditionalFormattingRule absentRule = scf.createConditionalFormattingRule("EXACT($" + col + excelFirstRow + ",\"Не был\")");
+        PatternFormatting absentPattern = absentRule.createPatternFormatting();
+        absentPattern.setFillForegroundColor(PRESENCE_ABSENT_COLOR);
+        absentPattern.setFillPattern(PatternFormatting.SOLID_FOREGROUND);
+
+        CellRangeAddress[] ranges = { new CellRangeAddress(firstStudentRow, firstStudentRow + studentCount - 1, presenceCol, presenceCol) };
+        scf.addConditionalFormatting(ranges, presentRule, absentRule);
+    }
+
+    private String createTotalFormula(int taskStartCol, int excelRowNum, int tasksCount) {
+        StringBuilder formula = new StringBuilder("SUM(");
+        for (int i = 0; i < tasksCount; i++) {
+            if (i > 0) formula.append(",");
+            formula.append(org.apache.poi.ss.util.CellReference.convertNumToColString(taskStartCol + i)).append(excelRowNum);
+        }
+        formula.append(")");
+        return formula.toString();
+    }
+
     private String sanitizeFileName(String value) {
         return String.valueOf(value == null ? "" : value).trim().replaceAll("[^\\p{L}\\p{N}_-]+", "_");
     }
