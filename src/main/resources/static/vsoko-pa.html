@@ -6,7 +6,8 @@
     <title>ВСОКО — ПА</title>
     <link rel="stylesheet" href="/styles.css">
     <style>
-        .sticky-head thead th { position: sticky; top: calc(var(--sticky-header-height, 140px) + 8px); background: #f1f1f1; z-index: 3; }
+        .sticky-head thead th { position: sticky; top: 0; background: #f1f1f1; z-index: 3; }
+        .pa-sticky-table-wrap { max-height: 70vh; overflow: auto; }
         .summary-status-btn.inactive { color: #8a8f98; }
         #pa-summary-status-dialog table { width: 100%; border-collapse: collapse; margin-top: 8px; }
         #pa-summary-status-dialog th, #pa-summary-status-dialog td { border: 1px solid #d8d8d8; padding: 6px 8px; text-align: left; }
@@ -41,7 +42,7 @@
         </div>
 
         <div id="pa-spec-summary-5-11-panel" class="tab-panel">
-            <div style="overflow:auto;">
+            <div class="pa-sticky-table-wrap">
                 <table class="sheet-table sticky-head">
                     <thead id="pa-matrix-head"></thead>
                     <tbody id="pa-matrix-body"></tbody>
@@ -50,7 +51,7 @@
         </div>
 
         <div id="pa-spec-summary-1-4-panel" class="tab-panel hidden">
-            <div style="overflow:auto;">
+            <div class="pa-sticky-table-wrap">
                 <table class="sheet-table sticky-head">
                     <thead id="pa-matrix-head-primary"></thead>
                     <tbody id="pa-matrix-body-primary"></tbody>
@@ -59,7 +60,7 @@
         </div>
 
         <div id="pa-spec-registry-panel" class="tab-panel hidden">
-            <div style="overflow:auto;">
+            <div class="pa-sticky-table-wrap">
                 <table class="sheet-table sticky-head">
                     <thead>
                     <tr>
@@ -72,7 +73,7 @@
         </div>
 
         <div id="pa-spec-upload-log-panel" class="tab-panel hidden">
-            <div style="overflow:auto;">
+            <div class="pa-sticky-table-wrap">
                 <table class="sheet-table sticky-head">
                     <thead>
                     <tr><th>Дата</th><th>Файл</th><th>Статус</th><th>Сообщение</th><th>Записей</th></tr>
