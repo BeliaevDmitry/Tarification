@@ -79,6 +79,13 @@ public class PaController {
         return ResponseEntity.ok(paService.reportVersions(year, subjectName, scopeType, scopeValue, level, workType, date));
     }
 
+    @GetMapping("/reports/folders")
+    public ResponseEntity<List<PaDtos.ReportFolderItem>> reportFolders(@RequestParam(required = false) String academicYear,
+                                                                       @RequestParam PaWorkType workType) {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        return ResponseEntity.ok(paService.reportFolderItems(year, workType));
+    }
+
     @PostMapping("/reports/upload")
     public ResponseEntity<List<PaDtos.ReportUploadResult>> uploadReports(@RequestParam("files") List<MultipartFile> files,
                                                                          @RequestParam(required = false) String academicYear) {

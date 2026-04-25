@@ -21,6 +21,7 @@ public interface PaService {
     PaDtos.ReportUploadResult generateReportTemplate(String academicYear, String subjectName, String className, PaLevel level, PaWorkType workType, LocalDate workDate);
     List<PaDtos.ReportUploadResult> generateReportTemplatesByParallel(String academicYear, String subjectName, String parallel, PaLevel level, PaWorkType workType, LocalDate workDate);
     List<PaDtos.ReportUploadResult> generateAllReportTemplates(String academicYear, String subjectName, PaLevel level, PaWorkType workType, LocalDate workDate);
+    List<PaDtos.ReportFolderItem> reportFolderItems(String academicYear, PaWorkType workType);
     byte[] loadReportFile(Long reportVersionId) throws IOException;
     byte[] loadSpecificationFile(String academicYear, Long specificationId) throws IOException;
 }
