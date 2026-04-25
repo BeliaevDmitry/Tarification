@@ -882,6 +882,8 @@ public class PaServiceImpl implements PaService {
             scoreValidation.setEmptyCellAllowed(true);
             sheet.addValidationData(scoreValidation);
         }
+        formula.append(")");
+        return formula.toString();
     }
 
     private void setupPresenceConditionalFormatting(Sheet sheet, int firstStudentRow, int studentCount, int presenceCol) {
