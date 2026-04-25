@@ -1179,13 +1179,34 @@ public class PaServiceImpl implements PaService {
     }
 
     private int detectBlockEndCol(Sheet sheet, int subjectRow, int subjectCol) {
-        Row row = sheet.getRow(subjectRow);
-        if (row == null) return subjectCol + 4;
-        int nextSubjectCol = findNextSubjectColOnRow(row, subjectCol);
+        Row subjectRowObj = sheet.getRow(subjectRow);
+        if (subjectRowObj == null) {
+            return subjectCol + 4;
+        }
+        int nextSubjectCol = findNextSubjectColOnRow(subjectRowObj, subjectCol);
         if (nextSubjectCol > subjectCol) {
             return nextSubjectCol - 1;
         }
-        return Math.max(subjectCol + 4, row.getLastCellNum() - 1);
+
+        int maxCol = subjectCol + 4;
+        int maxRow = Math.min(sheet.getLastRowNum(), subjectRow + 200);
+        for (int r = subjectRow; r <= maxRow; r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) {
+                continue;
+            }
+            for (Cell cell : row) {
+                int col = cell.getColumnIndex();
+                if (col < subjectCol) {
+                    continue;
+                }
+                String value = cellValue(cell);
+                if (!value.isBlank()) {
+                    maxCol = Math.max(maxCol, col);
+                }
+            }
+        }
+        return maxCol;
     }
 
     private int findNextSubjectColOnRow(Row row, int subjectCol) {
@@ -1215,16 +1236,23 @@ public class PaServiceImpl implements PaService {
 
     private String normalizeForSearch(String value) {
         return normalize(value)
-                .replaceAll("[\\s\\n\\r\\t]+", " ")
+                .replace('\u00A0', ' ')
+                .replaceAll("\\s+", " ")
                 .trim();
     }
 
     private Integer parseRepeatFromTaskNo(String value) {
         String raw = String.valueOf(value == null ? "" : value).trim();
-        if (raw.isBlank()) return null;
+        if (raw.isBlank()) {
+            return null;
+        }
+
         Integer direct = parseInt(raw);
-        if (direct != null) return direct;
-        Matcher matcher = Pattern.compile("(?i)(?:задани[ея]\\s*)?(\\d{1,2})").matcher(raw);
+        if (direct != null) {
+            return direct;
+        }
+
+        Matcher matcher = Pattern.compile("(?i)задани[ея]\\s*(\\d{1,2})").matcher(raw);
         if (matcher.find()) {
             try {
                 return Integer.parseInt(matcher.group(1));
