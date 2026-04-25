@@ -14,7 +14,9 @@ const paState = {
     }
 };
 const PA_SPEC_IMPORT_HISTORY_KEY = 'pa.spec.import.history';
+const PA_SUMMARY_STATUS_OVERRIDES_KEY = 'pa.summary.status.overrides';
 let summaryStatusSelection = null;
+let summaryStatusOverrides = {};
 
 function paApi(path, options = {}) {
     const scoped = typeof window.withAcademicYear === 'function' ? window.withAcademicYear(path) : path;
@@ -192,13 +194,11 @@ function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
                     : (scopeAsParallel !== null && participationMap.has(parallelParticipationKey)
                         ? participationMap.get(parallelParticipationKey)
                         : true);
-                const hints = [];
-                if (!entry) hints.push(`Входная не загружена: ${taughtClasses.join(', ')}`);
-                if (!exit) hints.push(`Выходная не загружена: ${taughtClasses.join(', ')}`);
-                if (participates === false) hints.push('Статус: не активное');
-                hints.push('Клик: открыть карточку статуса');
-                const title = hints.join(' | ').replace(/"/g, '&quot;');
-                html += `<td><button type="button" class="tab-btn summary-status-btn ${participates ? '' : 'inactive'}" data-summary-toggle-subject="${row.subjectName.replace(/"/g, '&quot;')}" data-summary-toggle-scope="${scope}" data-summary-toggle-level="${row.level}" data-summary-toggle-entry="${entry ? 'true' : 'false'}" data-summary-toggle-exit="${exit ? 'true' : 'false'}" data-summary-toggle-participates="${participates ? 'true' : 'false'}" title="${title}">${matrixCellSymbol({ entry, exit, participates })}</button></td>`;
+                const overrideKey = `${row.subjectName}|${scope}|${row.level}`;
+                const override = summaryStatusOverrides[overrideKey];
+                const effectiveEntry = typeof override?.entry === 'boolean' ? override.entry : entry;
+                const effectiveExit = typeof override?.exit === 'boolean' ? override.exit : exit;
+                html += `<td><button type="button" class="tab-btn summary-status-btn ${participates ? '' : 'inactive'}" data-summary-toggle-subject="${row.subjectName.replace(/"/g, '&quot;')}" data-summary-toggle-scope="${scope}" data-summary-toggle-level="${row.level}" data-summary-toggle-entry="${effectiveEntry ? 'true' : 'false'}" data-summary-toggle-exit="${effectiveExit ? 'true' : 'false'}" data-summary-toggle-classes="${taughtClasses.join(', ').replace(/"/g, '&quot;')}" data-summary-toggle-participates="${participates ? 'true' : 'false'}">${matrixCellSymbol({ entry: effectiveEntry, exit: effectiveExit, participates })}</button></td>`;
             });
             html += '</tr>';
         });
@@ -475,32 +475,42 @@ function openSummaryStatusDialog(data) {
 
     document.getElementById('pa-summary-status-title').textContent = subjectName;
     document.getElementById('pa-summary-status-scope').textContent = `Охват: ${scopeValue} · Уровень: ${level === 'ADVANCED' ? 'углублённый' : 'базовый'}`;
-    document.getElementById('pa-summary-status-entry').textContent = entry ? 'Да' : 'Нет';
-    document.getElementById('pa-summary-status-exit').textContent = exit ? 'Да' : 'Нет';
-    document.getElementById('pa-summary-status-toggle-btn').textContent = participates ? 'Сделать не активным' : 'Сделать активным';
+    document.getElementById('pa-summary-status-entry-check').checked = entry;
+    document.getElementById('pa-summary-status-exit-check').checked = exit;
+    document.getElementById('pa-summary-status-classes').textContent = data.summaryToggleClasses || '—';
     if (typeof dialog.showModal === 'function') dialog.showModal();
 }
 
-async function toggleSummaryParticipationFromDialog() {
-    if (!summaryStatusSelection) return;
-    const { subjectName, scopeValue, level, participates } = summaryStatusSelection;
+function saveSummaryStatusOverrides() {
     try {
-        await paApi('/api/pa/participation', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                subjectName,
-                scopeType: /^\d+$/.test(scopeValue) ? 'PARALLEL' : 'CLASS',
-                scopeValue,
-                level,
-                participates: !participates
-            })
-        });
+        localStorage.setItem(PA_SUMMARY_STATUS_OVERRIDES_KEY, JSON.stringify(summaryStatusOverrides));
+    } catch (_) {
+        // ignore
+    }
+}
+
+function loadSummaryStatusOverrides() {
+    try {
+        const raw = localStorage.getItem(PA_SUMMARY_STATUS_OVERRIDES_KEY);
+        summaryStatusOverrides = raw ? JSON.parse(raw) : {};
+    } catch (_) {
+        summaryStatusOverrides = {};
+    }
+}
+
+async function saveSummaryStatusFromDialog() {
+    if (!summaryStatusSelection) return;
+    const { subjectName, scopeValue, level } = summaryStatusSelection;
+    const entry = document.getElementById('pa-summary-status-entry-check').checked;
+    const exit = document.getElementById('pa-summary-status-exit-check').checked;
+    summaryStatusOverrides[`${subjectName}|${scopeValue}|${level}`] = { entry, exit };
+    saveSummaryStatusOverrides();
+    try {
         document.getElementById('pa-summary-status-dialog').close();
         summaryStatusSelection = null;
-        await reloadSummaryAndSpecs();
+        renderCompactMatrix();
     } catch (e) {
-        alert(`Ошибка обновления статуса участия: ${e.message}`);
+        alert(`Ошибка сохранения: ${e.message}`);
     }
 }
 
@@ -984,12 +994,13 @@ document.getElementById('pa-summary-status-close-btn').addEventListener('click',
     dialog.close();
     summaryStatusSelection = null;
 });
-document.getElementById('pa-summary-status-toggle-btn').addEventListener('click', () => {
-    toggleSummaryParticipationFromDialog().catch((e) => alert(`Ошибка: ${e.message}`));
+document.getElementById('pa-summary-status-save-btn').addEventListener('click', () => {
+    saveSummaryStatusFromDialog().catch((e) => alert(`Ошибка: ${e.message}`));
 });
 bindWorkflowControls('entry');
 bindWorkflowControls('exit');
 
+loadSummaryStatusOverrides();
 reloadSummaryAndSpecs().catch((e) => {
     appendSpecificationImportLog([{ fileName: '—', warnings: [`Ошибка: ${e.message}`], importedTasks: 0 }]);
 });
