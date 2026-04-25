@@ -52,9 +52,11 @@ function hasEditPermission(tab) {
 }
 
 function syncUploadButtonsAccess() {
-    const canImportGia = state.canViewUpload && hasEditPermission('OGE_GIA_UPLOAD');
-    const canImportWorks = hasViewPermission('OGE_WORK_UPLOAD') && hasEditPermission('OGE_WORK_UPLOAD');
-    const canImportExternalWorks = state.canViewExternalWorks && hasEditPermission('OGE_WORK_UPLOAD');
+    const user = window.tarificationAuth || {};
+    const canEditVsoko = Boolean(user.admin) || hasEditPermission('VSOKO_EDIT');
+    const canImportGia = state.canViewUpload && (hasEditPermission('OGE_GIA_UPLOAD') || canEditVsoko);
+    const canImportWorks = hasViewPermission('OGE_WORK_UPLOAD') && (hasEditPermission('OGE_WORK_UPLOAD') || canEditVsoko);
+    const canImportExternalWorks = state.canViewExternalWorks && (hasEditPermission('OGE_WORK_UPLOAD') || canEditVsoko);
 
     const giaFiles = document.getElementById('gia-files');
     const giaUploadBtn = document.getElementById('gia-upload-btn');
