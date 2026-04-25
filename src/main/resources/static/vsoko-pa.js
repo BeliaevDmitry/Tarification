@@ -204,6 +204,7 @@ function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
         });
     });
     body.innerHTML = html;
+    bindSummaryToggles();
 }
 
 function renderCompactMatrix() {
@@ -256,6 +257,7 @@ function renderSpecifications(rows) {
     fillSelectors('entry');
     fillSelectors('exit');
     renderCompactMatrix();
+    bindSummaryToggles();
 }
 
 function subjectAreaByName(subjectName) {
@@ -621,6 +623,63 @@ function loadSpecificationImportLogHistory() {
     } catch (_) {
         paState.importLogHistory = [];
     }
+}
+
+function loadSpecificationImportLogHistory() {
+    try {
+        const raw = localStorage.getItem(historyStorageKey());
+        if (!raw) {
+            paState.importLogHistory = [];
+            return;
+        }
+        const parsed = JSON.parse(raw);
+        paState.importLogHistory = Array.isArray(parsed) ? parsed
+            .filter((row) => row && typeof row === 'object')
+            .map((row) => ({
+                timestamp: row.timestamp || '',
+                fileName: row.fileName || '—',
+                status: row.status || '',
+                message: row.message || '',
+                records: Number.isFinite(row.records) ? row.records : 0
+            }))
+            : [];
+    } catch (_) {
+        paState.importLogHistory = [];
+    }
+}
+
+function appendSpecificationImportLog(result) {
+    const rows = Array.isArray(result) ? result : [result];
+    const timestamp = new Date().toLocaleString('ru-RU');
+    rows.forEach((row) => {
+        const warnings = Array.isArray(row?.warnings) ? row.warnings.filter(Boolean) : [];
+        const hasError = warnings.some((w) => String(w).toLowerCase().startsWith('ошибка'));
+        const status = hasError ? 'Ошибка' : 'Успешно';
+        const message = warnings.length ? warnings.join('; ') : 'Импорт выполнен';
+        const records = Number.isFinite(row?.importedTasks) ? row.importedTasks : 0;
+        paState.importLogHistory.unshift({
+            timestamp,
+            fileName: row?.fileName || '—',
+            status,
+            message,
+            records
+        });
+    });
+    renderSpecificationImportLog();
+}
+
+function renderSpecificationImportLog() {
+    const body = document.getElementById('pa-spec-import-log-body');
+    if (!body) return;
+    body.innerHTML = paState.importLogHistory.map((row) => `
+        <tr>
+            <td>${row.timestamp}</td>
+            <td>${row.fileName}</td>
+            <td>${row.status}</td>
+            <td>${row.message}</td>
+            <td>${row.records}</td>
+        </tr>
+    `).join('') || '<tr><td colspan="5" class="muted">История загрузок пуста</td></tr>';
 }
 
 async function uploadReports(prefix) {
