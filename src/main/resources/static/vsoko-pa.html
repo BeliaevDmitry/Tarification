@@ -7,6 +7,10 @@
     <link rel="stylesheet" href="/styles.css">
     <style>
         .sticky-head thead th { position: sticky; top: 0; background: #f1f1f1; z-index: 2; }
+        .summary-status-btn.inactive { color: #8a8f98; }
+        #pa-summary-status-dialog table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        #pa-summary-status-dialog th, #pa-summary-status-dialog td { border: 1px solid #d8d8d8; padding: 6px 8px; text-align: left; }
+        #pa-summary-status-dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 0 0; margin: 0; }
     </style>
 </head>
 <body>
@@ -56,7 +60,7 @@
 
         <div id="pa-spec-registry-panel" class="tab-panel hidden">
             <div style="overflow:auto;">
-                <table class="sheet-table">
+                <table class="sheet-table sticky-head">
                     <thead>
                     <tr>
                         <th>Предметная область</th><th>Предмет</th><th>Параллель</th><th>Уровень</th><th>Тип</th><th>Версия</th><th>Файл</th><th>Участвует</th>
@@ -69,7 +73,7 @@
 
         <div id="pa-spec-upload-log-panel" class="tab-panel hidden">
             <div style="overflow:auto;">
-                <table class="sheet-table">
+                <table class="sheet-table sticky-head">
                     <thead>
                     <tr><th>Дата</th><th>Файл</th><th>Статус</th><th>Сообщение</th><th>Записей</th></tr>
                     </thead>
@@ -194,6 +198,21 @@
         </div>
     </section>
 </main>
+<dialog id="pa-summary-status-dialog">
+    <h3 id="pa-summary-status-title">Статус спецификаций</h3>
+    <p id="pa-summary-status-scope" class="muted"></p>
+    <table>
+        <thead><tr><th>Тип работы</th><th>Статус</th></tr></thead>
+        <tbody>
+        <tr><td>Входная</td><td id="pa-summary-status-entry"></td></tr>
+        <tr><td>Выходная</td><td id="pa-summary-status-exit"></td></tr>
+        </tbody>
+    </table>
+    <menu>
+        <button id="pa-summary-status-toggle-btn" type="button">Сменить активность</button>
+        <button id="pa-summary-status-close-btn" type="button">Закрыть</button>
+    </menu>
+</dialog>
 <script src="/auth.js"></script>
 <script src="/vsoko-pa.js"></script>
 </body>

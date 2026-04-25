@@ -14,6 +14,7 @@ const paState = {
     }
 };
 const PA_SPEC_IMPORT_HISTORY_KEY = 'pa.spec.import.history';
+let summaryStatusSelection = null;
 
 function paApi(path, options = {}) {
     const scoped = typeof window.withAcademicYear === 'function' ? window.withAcademicYear(path) : path;
@@ -195,9 +196,9 @@ function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
                 if (!entry) hints.push(`Входная не загружена: ${taughtClasses.join(', ')}`);
                 if (!exit) hints.push(`Выходная не загружена: ${taughtClasses.join(', ')}`);
                 if (participates === false) hints.push('Статус: не активное');
-                hints.push(participates === false ? 'Клик: сделать активным' : 'Клик: сделать не активным');
+                hints.push('Клик: открыть карточку статуса');
                 const title = hints.join(' | ').replace(/"/g, '&quot;');
-                html += `<td><button type="button" class="tab-btn" data-summary-toggle-subject="${row.subjectName.replace(/"/g, '&quot;')}" data-summary-toggle-scope="${scope}" data-summary-toggle-level="${row.level}" data-summary-toggle-participates="${participates ? 'true' : 'false'}" title="${title}">${matrixCellSymbol({ entry, exit, participates })}</button></td>`;
+                html += `<td><button type="button" class="tab-btn summary-status-btn ${participates ? '' : 'inactive'}" data-summary-toggle-subject="${row.subjectName.replace(/"/g, '&quot;')}" data-summary-toggle-scope="${scope}" data-summary-toggle-level="${row.level}" data-summary-toggle-entry="${entry ? 'true' : 'false'}" data-summary-toggle-exit="${exit ? 'true' : 'false'}" data-summary-toggle-participates="${participates ? 'true' : 'false'}" title="${title}">${matrixCellSymbol({ entry, exit, participates })}</button></td>`;
             });
             html += '</tr>';
         });
@@ -209,6 +210,7 @@ function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
 function renderCompactMatrix() {
     renderSummaryRange('pa-matrix-head', 'pa-matrix-body', 5, 11);
     renderSummaryRange('pa-matrix-head-primary', 'pa-matrix-body-primary', 1, 4);
+    bindSummaryToggles();
 }
 
 function renderSpecifications(rows) {
@@ -452,36 +454,54 @@ function bindParticipationToggles() {
 
 function bindSummaryToggles() {
     document.querySelectorAll('[data-summary-toggle-subject]').forEach((btn) => {
+        if (btn.dataset.summaryToggleBound === '1') return;
+        btn.dataset.summaryToggleBound = '1';
         btn.addEventListener('click', async () => {
-            const subjectName = btn.dataset.summaryToggleSubject;
-            const scopeValue = btn.dataset.summaryToggleScope;
-            const level = btn.dataset.summaryToggleLevel || 'BASIC';
-            const currentlyParticipates = btn.dataset.summaryToggleParticipates !== 'false';
-            const participates = !currentlyParticipates;
-            const confirmed = window.confirm(
-                currentlyParticipates
-                    ? 'Сделать статус «не активное» для этого предмета/параллели?'
-                    : 'Сделать статус «активное» для этого предмета/параллели?'
-            );
-            if (!confirmed) return;
-            try {
-                await paApi('/api/pa/participation', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        subjectName,
-                        scopeType: /^\d+$/.test(scopeValue) ? 'PARALLEL' : 'CLASS',
-                        scopeValue,
-                        level,
-                        participates
-                    })
-                });
-                await reloadSummaryAndSpecs();
-            } catch (e) {
-                alert(`Ошибка обновления статуса участия: ${e.message}`);
-            }
+            openSummaryStatusDialog(btn.dataset);
         });
     });
+}
+
+function openSummaryStatusDialog(data) {
+    const dialog = document.getElementById('pa-summary-status-dialog');
+    if (!dialog) return;
+    const subjectName = data.summaryToggleSubject || '';
+    const scopeValue = data.summaryToggleScope || '';
+    const level = data.summaryToggleLevel || 'BASIC';
+    const entry = data.summaryToggleEntry === 'true';
+    const exit = data.summaryToggleExit === 'true';
+    const participates = data.summaryToggleParticipates !== 'false';
+    summaryStatusSelection = { subjectName, scopeValue, level, participates };
+
+    document.getElementById('pa-summary-status-title').textContent = subjectName;
+    document.getElementById('pa-summary-status-scope').textContent = `Охват: ${scopeValue} · Уровень: ${level === 'ADVANCED' ? 'углублённый' : 'базовый'}`;
+    document.getElementById('pa-summary-status-entry').textContent = entry ? 'Да' : 'Нет';
+    document.getElementById('pa-summary-status-exit').textContent = exit ? 'Да' : 'Нет';
+    document.getElementById('pa-summary-status-toggle-btn').textContent = participates ? 'Сделать не активным' : 'Сделать активным';
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+}
+
+async function toggleSummaryParticipationFromDialog() {
+    if (!summaryStatusSelection) return;
+    const { subjectName, scopeValue, level, participates } = summaryStatusSelection;
+    try {
+        await paApi('/api/pa/participation', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                subjectName,
+                scopeType: /^\d+$/.test(scopeValue) ? 'PARALLEL' : 'CLASS',
+                scopeValue,
+                level,
+                participates: !participates
+            })
+        });
+        document.getElementById('pa-summary-status-dialog').close();
+        summaryStatusSelection = null;
+        await reloadSummaryAndSpecs();
+    } catch (e) {
+        alert(`Ошибка обновления статуса участия: ${e.message}`);
+    }
 }
 
 function bindSpecificationVersions() {
@@ -570,6 +590,29 @@ function saveSpecificationImportLogHistory() {
         localStorage.setItem(historyStorageKey(), JSON.stringify(paState.importLogHistory));
     } catch (_) {
         // ignore storage errors
+    }
+}
+
+function loadSpecificationImportLogHistory() {
+    try {
+        const raw = localStorage.getItem(historyStorageKey());
+        if (!raw) {
+            paState.importLogHistory = [];
+            return;
+        }
+        const parsed = JSON.parse(raw);
+        paState.importLogHistory = Array.isArray(parsed) ? parsed
+            .filter((row) => row && typeof row === 'object')
+            .map((row) => ({
+                timestamp: row.timestamp || '',
+                fileName: row.fileName || '—',
+                status: row.status || '',
+                message: row.message || '',
+                records: Number.isFinite(row.records) ? row.records : 0
+            }))
+            : [];
+    } catch (_) {
+        paState.importLogHistory = [];
     }
 }
 
@@ -936,6 +979,14 @@ document.getElementById('pa-entry-level').addEventListener('change', async () =>
 document.getElementById('pa-exit-level').addEventListener('change', async () => { paState.workflowUi.exit.page = 1; fillSelectors('exit'); await renderWorkflow('exit'); });
 document.getElementById('pa-entry-scope').addEventListener('change', () => fillClassSelector('entry', document.getElementById('pa-entry-subject').value, document.getElementById('pa-entry-scope').value));
 document.getElementById('pa-exit-scope').addEventListener('change', () => fillClassSelector('exit', document.getElementById('pa-exit-subject').value, document.getElementById('pa-exit-scope').value));
+document.getElementById('pa-summary-status-close-btn').addEventListener('click', () => {
+    const dialog = document.getElementById('pa-summary-status-dialog');
+    dialog.close();
+    summaryStatusSelection = null;
+});
+document.getElementById('pa-summary-status-toggle-btn').addEventListener('click', () => {
+    toggleSummaryParticipationFromDialog().catch((e) => alert(`Ошибка: ${e.message}`));
+});
 bindWorkflowControls('entry');
 bindWorkflowControls('exit');
 
