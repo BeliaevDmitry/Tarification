@@ -3,7 +3,15 @@ const paState = {
     summary: { primary: [], secondary: [] },
     subjectAreas: [],
     curriculum: [],
-    importLogHistory: []
+    importLogHistory: [],
+    workflowVersionCache: {
+        entry: new Map(),
+        exit: new Map()
+    },
+    workflowUi: {
+        entry: { search: '', page: 1, pageSize: 20 },
+        exit: { search: '', page: 1, pageSize: 20 }
+    }
 };
 const PA_SPEC_IMPORT_HISTORY_KEY = 'pa.spec.import.history';
 
@@ -23,6 +31,12 @@ function setPaTab(tab) {
     document.getElementById('pa-tab-specs').classList.toggle('hidden', tab !== 'specs');
     document.getElementById('pa-tab-entry').classList.toggle('hidden', tab !== 'entry');
     document.getElementById('pa-tab-exit').classList.toggle('hidden', tab !== 'exit');
+    if (tab === 'entry' || tab === 'exit') {
+        renderWorkflow(tab).catch(() => {});
+    }
+    if (tab === 'exit' && !document.getElementById('pa-exit-folders-panel').classList.contains('hidden')) {
+        loadReportFolders('exit').catch(() => {});
+    }
 }
 
 function setSpecTab(tab) {
@@ -37,6 +51,11 @@ function setExitTab(tab) {
     document.querySelectorAll('#pa-exit-tabs [data-exit-tab]').forEach((btn) => btn.classList.toggle('active', btn.dataset.exitTab === tab));
     document.getElementById('pa-exit-summary-panel').classList.toggle('hidden', tab !== 'summary');
     document.getElementById('pa-exit-folders-panel').classList.toggle('hidden', tab !== 'folders');
+    if (tab === 'summary') {
+        renderWorkflow('exit').catch(() => {});
+    } else if (tab === 'folders') {
+        loadReportFolders('exit').catch(() => {});
+    }
 }
 
 function statusIcon(cell) {
@@ -60,6 +79,10 @@ function matrixCellSymbol(cell) {
 function parseParallel(scope) {
     const m = String(scope || '').match(/^(\d{1,2})/);
     return m ? Number(m[1]) : null;
+}
+
+function normalizeScopeValue(value) {
+    return String(value || '').trim().toUpperCase().replace(/\s+/g, '');
 }
 
 function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
@@ -97,6 +120,29 @@ function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
         body.innerHTML = '<tr><td colspan="12" class="muted">Нет данных</td></tr>';
         return;
     }
+
+    const classesBySubjectScope = new Map();
+    curriculumRows.forEach((row) => {
+        const subject = row.subjectName;
+        const className = String(row.className || '').trim();
+        if (!subject || !className) return;
+        const parallel = parseParallel(className);
+        if (parallel !== null) {
+            const parallelKey = `${subject}|${parallel}`;
+            if (!classesBySubjectScope.has(parallelKey)) classesBySubjectScope.set(parallelKey, new Set());
+            classesBySubjectScope.get(parallelKey).add(className);
+        }
+        const classKey = `${subject}|${normalizeScopeValue(className)}`;
+        if (!classesBySubjectScope.has(classKey)) classesBySubjectScope.set(classKey, new Set());
+        classesBySubjectScope.get(classKey).add(className);
+    });
+
+    const classesForCell = (subject, scope) => {
+        const parallel = parseParallel(scope);
+        const key = parallel !== null ? `${subject}|${parallel}` : `${subject}|${normalizeScopeValue(scope)}`;
+        return [...(classesBySubjectScope.get(key) || new Set())].sort((a, b) => a.localeCompare(b, 'ru'));
+    };
+
     let html = '';
     const areas = [...new Set(subjects.map((s) => subjectAreaByName(s)))].sort((a, b) => a.localeCompare(b, 'ru'));
     areas.forEach((area) => {
@@ -119,16 +165,24 @@ function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
             if (idx === 0) html += `<td rowspan="${areaRows.length}">${area}</td>`;
             html += `<td>${row.title}</td>`;
             columns.forEach((scope) => {
+                const taughtClasses = classesForCell(row.subjectName, scope);
+                if (!taughtClasses.length) {
+                    html += '<td></td>';
+                    return;
+                }
                 const specs = (paState.specifications || []).filter((s) =>
                     s.subjectName === row.subjectName
                     && s.level === row.level
-                    && String(s.scopeValue) === String(scope)
+                    && normalizeScopeValue(s.scopeValue) === normalizeScopeValue(scope)
                     && s.activeVersion
                 );
-                html += `<td>${matrixCellSymbol({
-                    entry: specs.some((s) => s.workType === 'ENTRY'),
-                    exit: specs.some((s) => s.workType === 'EXIT')
-                })}</td>`;
+                const entry = specs.some((s) => s.workType === 'ENTRY');
+                const exit = specs.some((s) => s.workType === 'EXIT');
+                const hints = [];
+                if (!entry) hints.push(`Входная не загружена: ${taughtClasses.join(', ')}`);
+                if (!exit) hints.push(`Выходная не загружена: ${taughtClasses.join(', ')}`);
+                const title = hints.length ? ` title="${hints.join(' | ').replace(/"/g, '&quot;')}"` : '';
+                html += `<td${title}>${matrixCellSymbol({ entry, exit })}</td>`;
             });
             html += '</tr>';
         });
@@ -343,10 +397,16 @@ async function reloadSummaryAndSpecs() {
     paState.summary = summary || { primary: [], secondary: [] };
     paState.subjectAreas = subjects || [];
     paState.curriculum = curriculum || [];
+    paState.workflowVersionCache.entry.clear();
+    paState.workflowVersionCache.exit.clear();
     renderSpecifications(specs || []);
-    await renderWorkflow('entry');
-    await renderWorkflow('exit');
-    await loadReportFolders('exit');
+    const activeMain = document.querySelector('#pa-main-tabs [data-tab].active')?.dataset.tab;
+    if (activeMain === 'entry' || activeMain === 'exit') {
+        await renderWorkflow(activeMain);
+    }
+    if (activeMain === 'exit' && !document.getElementById('pa-exit-folders-panel').classList.contains('hidden')) {
+        await loadReportFolders('exit');
+    }
 }
 
 function bindParticipationToggles() {
@@ -669,17 +729,25 @@ async function renderWorkflow(prefix, loadedVersions = null) {
 
     const versionMap = new Map();
     for (const item of subjectScopeMap.values()) {
-        const versions = loadedVersions
+        const cacheKey = `${item.subjectName}|${item.scopeValue}|${level}|${workType}`;
+        let versions;
+        if (loadedVersions
             && subject !== 'ALL'
-            && document.getElementById(`pa-${prefix}-scope`).value === item.scopeValue
-            ? loadedVersions
-            : await paApi(`/api/pa/reports/versions?${new URLSearchParams({
+            && document.getElementById(`pa-${prefix}-scope`).value === item.scopeValue) {
+            versions = loadedVersions;
+            paState.workflowVersionCache[prefix].set(cacheKey, loadedVersions || []);
+        } else if (paState.workflowVersionCache[prefix].has(cacheKey)) {
+            versions = paState.workflowVersionCache[prefix].get(cacheKey);
+        } else {
+            versions = await paApi(`/api/pa/reports/versions?${new URLSearchParams({
                 subjectName: item.subjectName,
                 scopeType: /^\d+$/.test(item.scopeValue) ? 'PARALLEL' : 'CLASS',
                 scopeValue: item.scopeValue,
                 level,
                 workType
             }).toString()}`);
+            paState.workflowVersionCache[prefix].set(cacheKey, versions || []);
+        }
         const hasGenerated = (versions || []).some((v) => v.status === 'GENERATED');
         const hasDownloaded = (versions || []).some((v) => v.downloadedAtLeastOnce);
         const hasUploaded = (versions || []).some((v) => v.status === 'ACCEPTED' && v.uploadedBackSuccess);
@@ -702,9 +770,36 @@ async function renderWorkflow(prefix, loadedVersions = null) {
     });
     const areas = [...grouped.keys()].sort((a, b) => a.localeCompare(b, 'ru'));
 
-    let html = '';
+    const ui = paState.workflowUi[prefix];
+    const searchInput = document.getElementById(`pa-${prefix}-workflow-filter`);
+    const pageSizeSelect = document.getElementById(`pa-${prefix}-workflow-page-size`);
+    if (searchInput) ui.search = String(searchInput.value || '').trim().toLowerCase();
+    if (pageSizeSelect) ui.pageSize = Math.max(5, Number(pageSizeSelect.value) || 20);
+
+    const subjectItems = [];
     areas.forEach((area) => {
-        const subjects = [...grouped.get(area)].sort((a, b) => a.localeCompare(b, 'ru'));
+        [...grouped.get(area)].sort((a, b) => a.localeCompare(b, 'ru')).forEach((subjectName) => {
+            subjectItems.push({ area, subjectName });
+        });
+    });
+    const filteredItems = ui.search
+        ? subjectItems.filter((item) =>
+            item.subjectName.toLowerCase().includes(ui.search)
+            || item.area.toLowerCase().includes(ui.search))
+        : subjectItems;
+    const totalPages = Math.max(1, Math.ceil(filteredItems.length / ui.pageSize));
+    ui.page = Math.min(Math.max(1, ui.page), totalPages);
+    const pageStart = (ui.page - 1) * ui.pageSize;
+    const pageItems = filteredItems.slice(pageStart, pageStart + ui.pageSize);
+    const groupedPage = new Map();
+    pageItems.forEach(({ area, subjectName }) => {
+        if (!groupedPage.has(area)) groupedPage.set(area, []);
+        groupedPage.get(area).push(subjectName);
+    });
+
+    let html = '';
+    [...groupedPage.keys()].forEach((area) => {
+        const subjects = groupedPage.get(area);
         subjects.forEach((subjectName, idx) => {
             const subjectRows = ['Спецификация', 'Сгенерирован', 'Скачан', 'Сдан'];
             subjectRows.forEach((rowName, rowIdx) => {
@@ -734,7 +829,44 @@ async function renderWorkflow(prefix, loadedVersions = null) {
         });
     });
     body.innerHTML = html;
+    const pageInfo = document.getElementById(`pa-${prefix}-workflow-page-info`);
+    if (pageInfo) pageInfo.textContent = `Страница ${ui.page} из ${totalPages} · записей: ${filteredItems.length}`;
+    const prevBtn = document.getElementById(`pa-${prefix}-workflow-page-prev`);
+    const nextBtn = document.getElementById(`pa-${prefix}-workflow-page-next`);
+    if (prevBtn) prevBtn.disabled = ui.page <= 1;
+    if (nextBtn) nextBtn.disabled = ui.page >= totalPages;
     bindReportDownloadButtons();
+}
+
+function bindWorkflowControls(prefix) {
+    const searchInput = document.getElementById(`pa-${prefix}-workflow-filter`);
+    const pageSizeSelect = document.getElementById(`pa-${prefix}-workflow-page-size`);
+    const prevBtn = document.getElementById(`pa-${prefix}-workflow-page-prev`);
+    const nextBtn = document.getElementById(`pa-${prefix}-workflow-page-next`);
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            paState.workflowUi[prefix].page = 1;
+            renderWorkflow(prefix).catch(() => {});
+        });
+    }
+    if (pageSizeSelect) {
+        pageSizeSelect.addEventListener('change', () => {
+            paState.workflowUi[prefix].page = 1;
+            renderWorkflow(prefix).catch(() => {});
+        });
+    }
+    if (prevBtn) {
+        prevBtn.addEventListener('click', () => {
+            paState.workflowUi[prefix].page = Math.max(1, paState.workflowUi[prefix].page - 1);
+            renderWorkflow(prefix).catch(() => {});
+        });
+    }
+    if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+            paState.workflowUi[prefix].page += 1;
+            renderWorkflow(prefix).catch(() => {});
+        });
+    }
 }
 
 function bindReportDownloadButtons() {
@@ -775,10 +907,14 @@ document.getElementById('pa-entry-generate-parallel-btn').addEventListener('clic
 document.getElementById('pa-exit-generate-parallel-btn').addEventListener('click', () => generateForParallel('exit'));
 document.getElementById('pa-entry-generate-all-btn').addEventListener('click', () => generateAll('entry'));
 document.getElementById('pa-exit-generate-all-btn').addEventListener('click', () => generateAll('exit'));
-document.getElementById('pa-entry-subject').addEventListener('change', async () => { fillSelectors('entry'); await renderWorkflow('entry'); });
-document.getElementById('pa-exit-subject').addEventListener('change', async () => { fillSelectors('exit'); await renderWorkflow('exit'); });
+document.getElementById('pa-entry-subject').addEventListener('change', async () => { paState.workflowUi.entry.page = 1; fillSelectors('entry'); await renderWorkflow('entry'); });
+document.getElementById('pa-exit-subject').addEventListener('change', async () => { paState.workflowUi.exit.page = 1; fillSelectors('exit'); await renderWorkflow('exit'); });
+document.getElementById('pa-entry-level').addEventListener('change', async () => { paState.workflowUi.entry.page = 1; fillSelectors('entry'); await renderWorkflow('entry'); });
+document.getElementById('pa-exit-level').addEventListener('change', async () => { paState.workflowUi.exit.page = 1; fillSelectors('exit'); await renderWorkflow('exit'); });
 document.getElementById('pa-entry-scope').addEventListener('change', () => fillClassSelector('entry', document.getElementById('pa-entry-subject').value, document.getElementById('pa-entry-scope').value));
 document.getElementById('pa-exit-scope').addEventListener('change', () => fillClassSelector('exit', document.getElementById('pa-exit-subject').value, document.getElementById('pa-exit-scope').value));
+bindWorkflowControls('entry');
+bindWorkflowControls('exit');
 
 reloadSummaryAndSpecs().catch((e) => {
     appendSpecificationImportLog([{ fileName: '—', warnings: [`Ошибка: ${e.message}`], importedTasks: 0 }]);

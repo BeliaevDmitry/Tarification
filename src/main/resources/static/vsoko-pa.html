@@ -97,6 +97,17 @@
             <button id="pa-entry-generate-btn" type="button" data-requires-edit>Сгенерировать для класса</button>
         </div>
         <div style="overflow:auto;">
+            <div class="row" style="margin-bottom:8px;">
+                <input id="pa-entry-workflow-filter" type="text" placeholder="Фильтр по предмету/области">
+                <select id="pa-entry-workflow-page-size">
+                    <option value="10">10</option>
+                    <option value="20" selected>20</option>
+                    <option value="50">50</option>
+                </select>
+                <button id="pa-entry-workflow-page-prev" type="button" data-allow-readonly="true">←</button>
+                <span id="pa-entry-workflow-page-info" class="muted">Страница 1 из 1</span>
+                <button id="pa-entry-workflow-page-next" type="button" data-allow-readonly="true">→</button>
+            </div>
             <table class="sheet-table">
                 <thead id="pa-entry-workflow-head"></thead>
                 <tbody id="pa-entry-workflow-body"></tbody>
@@ -144,6 +155,17 @@
 
         <div id="pa-exit-summary-panel" class="tab-panel">
             <div style="overflow:auto;">
+                <div class="row" style="margin-bottom:8px;">
+                    <input id="pa-exit-workflow-filter" type="text" placeholder="Фильтр по предмету/области">
+                    <select id="pa-exit-workflow-page-size">
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="50">50</option>
+                    </select>
+                    <button id="pa-exit-workflow-page-prev" type="button" data-allow-readonly="true">←</button>
+                    <span id="pa-exit-workflow-page-info" class="muted">Страница 1 из 1</span>
+                    <button id="pa-exit-workflow-page-next" type="button" data-allow-readonly="true">→</button>
+                </div>
                 <table class="sheet-table">
                     <thead id="pa-exit-workflow-head"></thead>
                     <tbody id="pa-exit-workflow-body"></tbody>
