@@ -642,173 +642,6 @@ function appendSpecificationImportLog(result) {
             records
         });
     });
-    paState.importLogHistory = paState.importLogHistory.slice(0, 200);
-    saveSpecificationImportLogHistory();
-    renderSpecificationImportLog();
-}
-
-function renderSpecificationImportLog() {
-    const body = document.getElementById('pa-spec-import-log-body');
-    if (!body) return;
-    body.innerHTML = paState.importLogHistory.map((row) => `
-        <tr>
-            <td>${row.timestamp}</td>
-            <td>${row.fileName}</td>
-            <td>${row.status}</td>
-            <td>${row.message}</td>
-            <td>${row.records}</td>
-        </tr>
-    `).join('') || '<tr><td colspan="5" class="muted">История загрузок пуста</td></tr>';
-}
-
-function historyStorageKey() {
-    const year = typeof window.getStoredAcademicYear === 'function' ? window.getStoredAcademicYear() : '';
-    return `${PA_SPEC_IMPORT_HISTORY_KEY}:${year || 'default'}`;
-}
-
-function saveSpecificationImportLogHistory() {
-    try {
-        localStorage.setItem(historyStorageKey(), JSON.stringify(paState.importLogHistory));
-    } catch (_) {
-        // ignore storage errors
-    }
-}
-
-function loadSpecificationImportLogHistory() {
-    try {
-        const raw = localStorage.getItem(historyStorageKey());
-        if (!raw) {
-            paState.importLogHistory = [];
-            return;
-        }
-        const parsed = JSON.parse(raw);
-        paState.importLogHistory = Array.isArray(parsed) ? parsed
-            .filter((row) => row && typeof row === 'object')
-            .map((row) => ({
-                timestamp: row.timestamp || '',
-                fileName: row.fileName || '—',
-                status: row.status || '',
-                message: row.message || '',
-                records: Number.isFinite(row.records) ? row.records : 0
-            }))
-            : [];
-    } catch (_) {
-        paState.importLogHistory = [];
-    }
-}
-
-function appendSpecificationImportLog(result) {
-    const rows = Array.isArray(result) ? result : [result];
-    const timestamp = new Date().toLocaleString('ru-RU');
-    rows.forEach((row) => {
-        const warnings = Array.isArray(row?.warnings) ? row.warnings.filter(Boolean) : [];
-        const hasError = warnings.some((w) => String(w).toLowerCase().startsWith('ошибка'));
-        const status = hasError ? 'Ошибка' : 'Успешно';
-        const message = warnings.length ? warnings.join('; ') : 'Импорт выполнен';
-        const records = Number.isFinite(row?.importedTasks) ? row.importedTasks : 0;
-        paState.importLogHistory.unshift({
-            timestamp,
-            fileName: row?.fileName || '—',
-            status,
-            message,
-            records
-        });
-    });
-    paState.importLogHistory = paState.importLogHistory.slice(0, 200);
-    saveSpecificationImportLogHistory();
-    renderSpecificationImportLog();
-}
-
-function renderSpecificationImportLog() {
-    const body = document.getElementById('pa-spec-import-log-body');
-    if (!body) return;
-    body.innerHTML = paState.importLogHistory.map((row) => `
-        <tr>
-            <td>${row.timestamp}</td>
-            <td>${row.fileName}</td>
-            <td>${row.status}</td>
-            <td>${row.message}</td>
-            <td>${row.records}</td>
-        </tr>
-    `).join('') || '<tr><td colspan="5" class="muted">История загрузок пуста</td></tr>';
-}
-
-function historyStorageKey() {
-    const year = typeof window.getStoredAcademicYear === 'function' ? window.getStoredAcademicYear() : '';
-    return `${PA_SPEC_IMPORT_HISTORY_KEY}:${year || 'default'}`;
-}
-
-function saveSpecificationImportLogHistory() {
-    try {
-        localStorage.setItem(historyStorageKey(), JSON.stringify(paState.importLogHistory));
-    } catch (_) {
-        // ignore storage errors
-    }
-}
-
-function loadSpecificationImportLogHistory() {
-    try {
-        const raw = localStorage.getItem(historyStorageKey());
-        if (!raw) {
-            paState.importLogHistory = [];
-            return;
-        }
-        const parsed = JSON.parse(raw);
-        paState.importLogHistory = Array.isArray(parsed) ? parsed
-            .filter((row) => row && typeof row === 'object')
-            .map((row) => ({
-                timestamp: row.timestamp || '',
-                fileName: row.fileName || '—',
-                status: row.status || '',
-                message: row.message || '',
-                records: Number.isFinite(row.records) ? row.records : 0
-            }))
-            : [];
-    } catch (_) {
-        paState.importLogHistory = [];
-    }
-}
-
-function loadSpecificationImportLogHistory() {
-    try {
-        const raw = localStorage.getItem(historyStorageKey());
-        if (!raw) {
-            paState.importLogHistory = [];
-            return;
-        }
-        const parsed = JSON.parse(raw);
-        paState.importLogHistory = Array.isArray(parsed) ? parsed
-            .filter((row) => row && typeof row === 'object')
-            .map((row) => ({
-                timestamp: row.timestamp || '',
-                fileName: row.fileName || '—',
-                status: row.status || '',
-                message: row.message || '',
-                records: Number.isFinite(row.records) ? row.records : 0
-            }))
-            : [];
-    } catch (_) {
-        paState.importLogHistory = [];
-    }
-}
-
-function appendSpecificationImportLog(result) {
-    const rows = Array.isArray(result) ? result : [result];
-    const timestamp = new Date().toLocaleString('ru-RU');
-    rows.forEach((row) => {
-        const warnings = Array.isArray(row?.warnings) ? row.warnings.filter(Boolean) : [];
-        const hasError = warnings.some((w) => String(w).toLowerCase().startsWith('ошибка'));
-        const status = hasError ? 'Ошибка' : 'Успешно';
-        const message = warnings.length ? warnings.join('; ') : 'Импорт выполнен';
-        const records = Number.isFinite(row?.importedTasks) ? row.importedTasks : 0;
-        paState.importLogHistory.unshift({
-            timestamp,
-            fileName: row?.fileName || '—',
-            status,
-            message,
-            records
-        });
-    });
     renderSpecificationImportLog();
 }
 
@@ -934,20 +767,25 @@ async function renderWorkflow(prefix, loadedVersions = null) {
         body.innerHTML = '<tr><td colspan="3" class="muted">Нет данных</td></tr>';
         return;
     }
-    const scopes = [...new Set(specs.map((s) => s.scopeValue).filter(Boolean))]
+    const curriculumRows = (paState.curriculum || []).filter((row) =>
+        row?.subjectName
+        && row?.className
+        && (subject === 'ALL' || row.subjectName === subject)
+    );
+    const classes = [...new Set(curriculumRows.map((r) => String(r.className).trim()).filter(Boolean))]
         .sort((a, b) => String(a).localeCompare(String(b), 'ru'));
-    head.innerHTML = `<tr><th>Предметная область</th><th>Предмет</th><th>Статус</th>${scopes.map((s) => `<th>${s}</th>`).join('')}</tr>`;
+    head.innerHTML = `<tr><th>Предметная область</th><th>Предмет</th><th>Статус</th>${classes.map((s) => `<th>${s}</th>`).join('')}</tr>`;
 
-    const subjectScopeMap = new Map();
-    specs.forEach((spec) => {
-        const key = `${spec.subjectName}|${spec.scopeValue}`;
-        if (!subjectScopeMap.has(key)) {
-            subjectScopeMap.set(key, { subjectName: spec.subjectName, scopeValue: spec.scopeValue });
+    const subjectClassMap = new Map();
+    curriculumRows.forEach((row) => {
+        const key = `${row.subjectName}|${row.className}`;
+        if (!subjectClassMap.has(key)) {
+            subjectClassMap.set(key, { subjectName: row.subjectName, scopeValue: String(row.className).trim() });
         }
     });
 
     const versionMap = new Map();
-    for (const item of subjectScopeMap.values()) {
+    for (const item of subjectClassMap.values()) {
         const cacheKey = `${item.subjectName}|${item.scopeValue}|${level}|${workType}`;
         let versions;
         if (loadedVersions
@@ -960,7 +798,7 @@ async function renderWorkflow(prefix, loadedVersions = null) {
         } else {
             versions = await paApi(`/api/pa/reports/versions?${new URLSearchParams({
                 subjectName: item.subjectName,
-                scopeType: /^\d+$/.test(item.scopeValue) ? 'PARALLEL' : 'CLASS',
+                scopeType: 'CLASS',
                 scopeValue: item.scopeValue,
                 level,
                 workType
@@ -972,7 +810,7 @@ async function renderWorkflow(prefix, loadedVersions = null) {
         const hasUploaded = (versions || []).some((v) => v.status === 'ACCEPTED' && v.uploadedBackSuccess);
         const latestGenerated = (versions || []).find((v) => v.status === 'GENERATED');
         const latestUploaded = (versions || []).find((v) => v.status === 'ACCEPTED' && v.uploadedBackSuccess);
-        versionMap.set(`${item.subjectName}|${item.scopeValue}`, {
+        versionMap.set(`${item.subjectName}|${normalizeScopeValue(item.scopeValue)}`, {
             hasGenerated,
             hasDownloaded,
             hasUploaded,
@@ -1030,9 +868,15 @@ async function renderWorkflow(prefix, loadedVersions = null) {
                     html += `<td rowspan="4">${subjectName}</td>`;
                 }
                 html += `<td>${rowName}</td>`;
-                scopes.forEach((scopeValue) => {
-                    const hasSpec = specs.some((s) => s.subjectName === subjectName && s.scopeValue === scopeValue);
-                    const state = versionMap.get(`${subjectName}|${scopeValue}`) || {};
+                classes.forEach((scopeValue) => {
+                    const classParallel = parseParallel(scopeValue);
+                    const hasSpec = specs.some((s) => {
+                        if (s.subjectName !== subjectName) return false;
+                        if (s.scopeType === 'CLASS') return normalizeScopeValue(s.scopeValue) === normalizeScopeValue(scopeValue);
+                        if (s.scopeType === 'PARALLEL' && classParallel !== null) return String(s.scopeValue).trim() === String(classParallel);
+                        return false;
+                    });
+                    const state = versionMap.get(`${subjectName}|${normalizeScopeValue(scopeValue)}`) || {};
                     if (rowName === 'Спецификация') {
                         html += `<td>${hasSpec ? '✅' : ''}</td>`;
                     } else if (rowName === 'Сгенерирован') {
