@@ -2,8 +2,18 @@ const paState = {
     specifications: [],
     summary: { primary: [], secondary: [] },
     subjectAreas: [],
-    curriculum: []
+    curriculum: [],
+    importLogHistory: [],
+    workflowVersionCache: {
+        entry: new Map(),
+        exit: new Map()
+    },
+    workflowUi: {
+        entry: { search: '', page: 1, pageSize: 20 },
+        exit: { search: '', page: 1, pageSize: 20 }
+    }
 };
+const PA_SPEC_IMPORT_HISTORY_KEY = 'pa.spec.import.history';
 
 function paApi(path, options = {}) {
     const scoped = typeof window.withAcademicYear === 'function' ? window.withAcademicYear(path) : path;
@@ -21,6 +31,12 @@ function setPaTab(tab) {
     document.getElementById('pa-tab-specs').classList.toggle('hidden', tab !== 'specs');
     document.getElementById('pa-tab-entry').classList.toggle('hidden', tab !== 'entry');
     document.getElementById('pa-tab-exit').classList.toggle('hidden', tab !== 'exit');
+    if (tab === 'entry' || tab === 'exit') {
+        renderWorkflow(tab).catch(() => {});
+    }
+    if (tab === 'exit' && !document.getElementById('pa-exit-folders-panel').classList.contains('hidden')) {
+        loadReportFolders('exit').catch(() => {});
+    }
 }
 
 function setSpecTab(tab) {
@@ -28,6 +44,18 @@ function setSpecTab(tab) {
     document.getElementById('pa-spec-summary-5-11-panel').classList.toggle('hidden', tab !== 'summary-5-11');
     document.getElementById('pa-spec-summary-1-4-panel').classList.toggle('hidden', tab !== 'summary-1-4');
     document.getElementById('pa-spec-registry-panel').classList.toggle('hidden', tab !== 'registry');
+    document.getElementById('pa-spec-upload-log-panel').classList.toggle('hidden', tab !== 'upload-log');
+}
+
+function setExitTab(tab) {
+    document.querySelectorAll('#pa-exit-tabs [data-exit-tab]').forEach((btn) => btn.classList.toggle('active', btn.dataset.exitTab === tab));
+    document.getElementById('pa-exit-summary-panel').classList.toggle('hidden', tab !== 'summary');
+    document.getElementById('pa-exit-folders-panel').classList.toggle('hidden', tab !== 'folders');
+    if (tab === 'summary') {
+        renderWorkflow('exit').catch(() => {});
+    } else if (tab === 'folders') {
+        loadReportFolders('exit').catch(() => {});
+    }
 }
 
 function statusIcon(cell) {
@@ -51,6 +79,10 @@ function matrixCellSymbol(cell) {
 function parseParallel(scope) {
     const m = String(scope || '').match(/^(\d{1,2})/);
     return m ? Number(m[1]) : null;
+}
+
+function normalizeScopeValue(value) {
+    return String(value || '').trim().toUpperCase().replace(/\s+/g, '');
 }
 
 function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
@@ -88,6 +120,29 @@ function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
         body.innerHTML = '<tr><td colspan="12" class="muted">Нет данных</td></tr>';
         return;
     }
+
+    const classesBySubjectScope = new Map();
+    curriculumRows.forEach((row) => {
+        const subject = row.subjectName;
+        const className = String(row.className || '').trim();
+        if (!subject || !className) return;
+        const parallel = parseParallel(className);
+        if (parallel !== null) {
+            const parallelKey = `${subject}|${parallel}`;
+            if (!classesBySubjectScope.has(parallelKey)) classesBySubjectScope.set(parallelKey, new Set());
+            classesBySubjectScope.get(parallelKey).add(className);
+        }
+        const classKey = `${subject}|${normalizeScopeValue(className)}`;
+        if (!classesBySubjectScope.has(classKey)) classesBySubjectScope.set(classKey, new Set());
+        classesBySubjectScope.get(classKey).add(className);
+    });
+
+    const classesForCell = (subject, scope) => {
+        const parallel = parseParallel(scope);
+        const key = parallel !== null ? `${subject}|${parallel}` : `${subject}|${normalizeScopeValue(scope)}`;
+        return [...(classesBySubjectScope.get(key) || new Set())].sort((a, b) => a.localeCompare(b, 'ru'));
+    };
+
     let html = '';
     const areas = [...new Set(subjects.map((s) => subjectAreaByName(s)))].sort((a, b) => a.localeCompare(b, 'ru'));
     areas.forEach((area) => {
@@ -110,16 +165,24 @@ function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
             if (idx === 0) html += `<td rowspan="${areaRows.length}">${area}</td>`;
             html += `<td>${row.title}</td>`;
             columns.forEach((scope) => {
+                const taughtClasses = classesForCell(row.subjectName, scope);
+                if (!taughtClasses.length) {
+                    html += '<td></td>';
+                    return;
+                }
                 const specs = (paState.specifications || []).filter((s) =>
                     s.subjectName === row.subjectName
                     && s.level === row.level
-                    && String(s.scopeValue) === String(scope)
+                    && normalizeScopeValue(s.scopeValue) === normalizeScopeValue(scope)
                     && s.activeVersion
                 );
-                html += `<td>${matrixCellSymbol({
-                    entry: specs.some((s) => s.workType === 'ENTRY'),
-                    exit: specs.some((s) => s.workType === 'EXIT')
-                })}</td>`;
+                const entry = specs.some((s) => s.workType === 'ENTRY');
+                const exit = specs.some((s) => s.workType === 'EXIT');
+                const hints = [];
+                if (!entry) hints.push(`Входная не загружена: ${taughtClasses.join(', ')}`);
+                if (!exit) hints.push(`Выходная не загружена: ${taughtClasses.join(', ')}`);
+                const title = hints.length ? ` title="${hints.join(' | ').replace(/"/g, '&quot;')}"` : '';
+                html += `<td${title}>${matrixCellSymbol({ entry, exit })}</td>`;
             });
             html += '</tr>';
         });
@@ -185,20 +248,30 @@ function subjectAreaByName(subjectName) {
 function fillSelectors(prefix) {
     const subjectSelect = document.getElementById(`pa-${prefix}-subject`);
     const scopeSelect = document.getElementById(`pa-${prefix}-scope`);
+    const classSelect = document.getElementById(`pa-${prefix}-class`);
+    const previousSubject = subjectSelect.value;
+    const previousScope = scopeSelect.value;
+    const previousClass = classSelect.value;
     const type = prefix === 'entry' ? 'ENTRY' : 'EXIT';
     const filtered = paState.specifications.filter((item) => item.workType === type);
     const subjects = [...new Set(filtered.map((item) => item.subjectName).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
     subjectSelect.innerHTML = ['<option value="ALL">Все предметы</option>', ...subjects.map((s) => `<option value="${s}">${s}</option>`)].join('');
+    if (previousSubject && [...subjects, 'ALL'].includes(previousSubject)) {
+        subjectSelect.value = previousSubject;
+    }
     const selectedSubject = subjectSelect.value || 'ALL';
     const scopedItems = selectedSubject === 'ALL'
         ? filtered
         : filtered.filter((item) => item.subjectName === selectedSubject);
     const scopes = [...new Set(scopedItems.map((item) => item.scopeValue).filter(Boolean))];
     scopeSelect.innerHTML = scopes.map((s) => `<option value="${s}">${s}</option>`).join('');
-    fillClassSelector(prefix, selectedSubject, scopeSelect.value || scopes[0]);
+    if (previousScope && scopes.includes(previousScope)) {
+        scopeSelect.value = previousScope;
+    }
+    fillClassSelector(prefix, selectedSubject, scopeSelect.value || scopes[0], previousClass);
 }
 
-function fillClassSelector(prefix, selectedSubject, selectedScope) {
+function fillClassSelector(prefix, selectedSubject, selectedScope, preferredClass = null) {
     const classSelect = document.getElementById(`pa-${prefix}-class`);
     const subjectFilter = selectedSubject === 'ALL' ? null : selectedSubject;
     const classes = [...new Set((paState.curriculum || [])
@@ -208,6 +281,9 @@ function fillClassSelector(prefix, selectedSubject, selectedScope) {
         .filter((className) => !selectedScope || String(className).startsWith(String(selectedScope)))
     )].sort((a, b) => String(a).localeCompare(String(b), 'ru'));
     classSelect.innerHTML = classes.map((c) => `<option value="${c}">${c}</option>`).join('');
+    if (preferredClass && classes.includes(preferredClass)) {
+        classSelect.value = preferredClass;
+    }
 }
 
 function renderUploadLog(prefix, rows) {
@@ -243,7 +319,14 @@ async function generateForClass(prefix) {
     const level = document.getElementById(`pa-${prefix}-level`).value;
     const workDate = document.getElementById(`pa-${prefix}-work-date`).value;
     const workType = prefix === 'entry' ? 'ENTRY' : 'EXIT';
-    if (!subject || subject === 'ALL' || !className) return;
+    if (!subject || subject === 'ALL') {
+        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: 'Выберите предмет для генерации', versionNo: null }]);
+        return;
+    }
+    if (!className) {
+        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: 'Выберите класс для генерации', versionNo: null }]);
+        return;
+    }
     const params = new URLSearchParams({ subjectName: subject, className, level, workType });
     if (workDate) params.set('workDate', workDate);
     try {
@@ -251,6 +334,7 @@ async function generateForClass(prefix) {
         renderUploadLog(prefix, [result]);
         await loadVersions(prefix);
         await renderWorkflow(prefix);
+        await loadReportFolders(prefix);
     } catch (e) {
         renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: `Генерация не выполнена: ${e.message}`, versionNo: null }]);
     }
@@ -262,13 +346,21 @@ async function generateForParallel(prefix) {
     const level = document.getElementById(`pa-${prefix}-level`).value;
     const workDate = document.getElementById(`pa-${prefix}-work-date`).value;
     const workType = prefix === 'entry' ? 'ENTRY' : 'EXIT';
-    if (!subject || subject === 'ALL' || !parallel) return;
+    if (!subject || subject === 'ALL') {
+        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: 'Выберите предмет для генерации по параллели', versionNo: null }]);
+        return;
+    }
+    if (!parallel) {
+        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: 'Выберите параллель для генерации', versionNo: null }]);
+        return;
+    }
     const params = new URLSearchParams({ subjectName: subject, parallel, level, workType });
     if (workDate) params.set('workDate', workDate);
     try {
         const result = await paApi(`/api/pa/reports/generate/parallel?${params.toString()}`, { method: 'POST' });
         renderUploadLog(prefix, result);
         await renderWorkflow(prefix);
+        await loadReportFolders(prefix);
     } catch (e) {
         renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: `Генерация параллели не выполнена: ${e.message}`, versionNo: null }]);
     }
@@ -279,13 +371,17 @@ async function generateAll(prefix) {
     const level = document.getElementById(`pa-${prefix}-level`).value;
     const workDate = document.getElementById(`pa-${prefix}-work-date`).value;
     const workType = prefix === 'entry' ? 'ENTRY' : 'EXIT';
-    if (!subject || subject === 'ALL') return;
+    if (!subject || subject === 'ALL') {
+        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: 'Выберите предмет для массовой генерации', versionNo: null }]);
+        return;
+    }
     const params = new URLSearchParams({ subjectName: subject, level, workType });
     if (workDate) params.set('workDate', workDate);
     try {
         const result = await paApi(`/api/pa/reports/generate/all?${params.toString()}`, { method: 'POST' });
         renderUploadLog(prefix, result);
         await renderWorkflow(prefix);
+        await loadReportFolders(prefix);
     } catch (e) {
         renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: `Массовая генерация не выполнена: ${e.message}`, versionNo: null }]);
     }
@@ -301,9 +397,16 @@ async function reloadSummaryAndSpecs() {
     paState.summary = summary || { primary: [], secondary: [] };
     paState.subjectAreas = subjects || [];
     paState.curriculum = curriculum || [];
+    paState.workflowVersionCache.entry.clear();
+    paState.workflowVersionCache.exit.clear();
     renderSpecifications(specs || []);
-    await renderWorkflow('entry');
-    await renderWorkflow('exit');
+    const activeMain = document.querySelector('#pa-main-tabs [data-tab].active')?.dataset.tab;
+    if (activeMain === 'entry' || activeMain === 'exit') {
+        await renderWorkflow(activeMain);
+    }
+    if (activeMain === 'exit' && !document.getElementById('pa-exit-folders-panel').classList.contains('hidden')) {
+        await loadReportFolders('exit');
+    }
 }
 
 function bindParticipationToggles() {
@@ -384,17 +487,89 @@ function bindSpecificationDownloadButtons() {
 
 async function uploadSpecifications() {
     const input = document.getElementById('pa-spec-files');
-    const log = document.getElementById('pa-spec-import-log');
     if (!input.files.length) return;
+    setSpecTab('upload-log');
     const form = new FormData();
     [...input.files].forEach((f) => form.append('files', f));
     try {
         const result = await paApi('/api/pa/specifications/import', { method: 'POST', body: form });
-        log.textContent = JSON.stringify(result, null, 2);
+        appendSpecificationImportLog(result);
         input.value = '';
         await reloadSummaryAndSpecs();
     } catch (e) {
-        log.textContent = JSON.stringify({ error: e.message }, null, 2);
+        appendSpecificationImportLog([{ fileName: [...input.files].map((f) => f.name).join(', '), warnings: [`Ошибка: ${e.message}`], importedTasks: 0 }]);
+    }
+}
+
+function appendSpecificationImportLog(result) {
+    const rows = Array.isArray(result) ? result : [result];
+    const timestamp = new Date().toLocaleString('ru-RU');
+    rows.forEach((row) => {
+        const warnings = Array.isArray(row?.warnings) ? row.warnings.filter(Boolean) : [];
+        const hasError = warnings.some((w) => String(w).toLowerCase().startsWith('ошибка'));
+        const status = hasError ? 'Ошибка' : 'Успешно';
+        const message = warnings.length ? warnings.join('; ') : 'Импорт выполнен';
+        const records = Number.isFinite(row?.importedTasks) ? row.importedTasks : 0;
+        paState.importLogHistory.unshift({
+            timestamp,
+            fileName: row?.fileName || '—',
+            status,
+            message,
+            records
+        });
+    });
+    paState.importLogHistory = paState.importLogHistory.slice(0, 200);
+    saveSpecificationImportLogHistory();
+    renderSpecificationImportLog();
+}
+
+function renderSpecificationImportLog() {
+    const body = document.getElementById('pa-spec-import-log-body');
+    if (!body) return;
+    body.innerHTML = paState.importLogHistory.map((row) => `
+        <tr>
+            <td>${row.timestamp}</td>
+            <td>${row.fileName}</td>
+            <td>${row.status}</td>
+            <td>${row.message}</td>
+            <td>${row.records}</td>
+        </tr>
+    `).join('') || '<tr><td colspan="5" class="muted">История загрузок пуста</td></tr>';
+}
+
+function historyStorageKey() {
+    const year = typeof window.getStoredAcademicYear === 'function' ? window.getStoredAcademicYear() : '';
+    return `${PA_SPEC_IMPORT_HISTORY_KEY}:${year || 'default'}`;
+}
+
+function saveSpecificationImportLogHistory() {
+    try {
+        localStorage.setItem(historyStorageKey(), JSON.stringify(paState.importLogHistory));
+    } catch (_) {
+        // ignore storage errors
+    }
+}
+
+function loadSpecificationImportLogHistory() {
+    try {
+        const raw = localStorage.getItem(historyStorageKey());
+        if (!raw) {
+            paState.importLogHistory = [];
+            return;
+        }
+        const parsed = JSON.parse(raw);
+        paState.importLogHistory = Array.isArray(parsed) ? parsed
+            .filter((row) => row && typeof row === 'object')
+            .map((row) => ({
+                timestamp: row.timestamp || '',
+                fileName: row.fileName || '—',
+                status: row.status || '',
+                message: row.message || '',
+                records: Number.isFinite(row.records) ? row.records : 0
+            }))
+            : [];
+    } catch (_) {
+        paState.importLogHistory = [];
     }
 }
 
@@ -408,9 +583,63 @@ async function uploadReports(prefix) {
         renderUploadLog(prefix, rows);
         input.value = '';
         await loadVersions(prefix);
+        await loadReportFolders(prefix);
     } catch (e) {
         renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: e.message, versionNo: null }]);
     }
+}
+
+async function loadReportFolders(prefix) {
+    if (prefix !== 'exit') return;
+    const workType = prefix === 'entry' ? 'ENTRY' : 'EXIT';
+    const rows = await paApi(`/api/pa/reports/folders?workType=${workType}`);
+    renderReportFolders(prefix, rows || []);
+}
+
+function renderReportFolders(prefix, rows) {
+    const container = document.getElementById(`pa-${prefix}-folders-tree`);
+    if (!container) return;
+    if (!rows.length) {
+        container.innerHTML = '<p class="muted">Нет сгенерированных шаблонов</p>';
+        return;
+    }
+    const bySubject = new Map();
+    rows.forEach((row) => {
+        if (!bySubject.has(row.subjectName)) bySubject.set(row.subjectName, new Map());
+        const byParallel = bySubject.get(row.subjectName);
+        const parallelKey = row.parallel || '—';
+        if (!byParallel.has(parallelKey)) byParallel.set(parallelKey, []);
+        byParallel.get(parallelKey).push(row);
+    });
+    let html = '';
+    [...bySubject.keys()].sort((a, b) => a.localeCompare(b, 'ru')).forEach((subject) => {
+        html += `<details open><summary><strong>${subject}</strong></summary>`;
+        const byParallel = bySubject.get(subject);
+        [...byParallel.keys()].sort((a, b) => Number(a) - Number(b)).forEach((parallel) => {
+            html += `<details style="margin-left:16px;" open><summary>Параллель ${parallel}</summary><ul>`;
+            byParallel.get(parallel)
+                .sort((a, b) => String(a.className).localeCompare(String(b.className), 'ru'))
+                .forEach((item) => {
+                    const created = item.createdAt ? new Date(item.createdAt).toLocaleString('ru-RU') : '';
+                    html += `<li><button type="button" class="tab-btn" data-folder-download-id="${item.reportVersionId}">${subject} — ${item.className}</button> <span class="muted">(${item.level === 'ADVANCED' ? 'углублённый' : 'базовый'}, ${created})</span></li>`;
+                });
+            html += '</ul></details>';
+        });
+        html += '</details>';
+    });
+    container.innerHTML = html;
+    bindFolderDownloadButtons(container);
+}
+
+function bindFolderDownloadButtons(container) {
+    container.querySelectorAll('[data-folder-download-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.folderDownloadId;
+            const raw = `/api/pa/reports/${id}/download`;
+            const url = typeof window.withAcademicYear === 'function' ? window.withAcademicYear(raw) : raw;
+            window.open(url, '_blank');
+        });
+    });
 }
 
 async function loadVersions(prefix) {
@@ -466,17 +695,25 @@ async function renderWorkflow(prefix, loadedVersions = null) {
 
     const versionMap = new Map();
     for (const item of subjectScopeMap.values()) {
-        const versions = loadedVersions
+        const cacheKey = `${item.subjectName}|${item.scopeValue}|${level}|${workType}`;
+        let versions;
+        if (loadedVersions
             && subject !== 'ALL'
-            && document.getElementById(`pa-${prefix}-scope`).value === item.scopeValue
-            ? loadedVersions
-            : await paApi(`/api/pa/reports/versions?${new URLSearchParams({
+            && document.getElementById(`pa-${prefix}-scope`).value === item.scopeValue) {
+            versions = loadedVersions;
+            paState.workflowVersionCache[prefix].set(cacheKey, loadedVersions || []);
+        } else if (paState.workflowVersionCache[prefix].has(cacheKey)) {
+            versions = paState.workflowVersionCache[prefix].get(cacheKey);
+        } else {
+            versions = await paApi(`/api/pa/reports/versions?${new URLSearchParams({
                 subjectName: item.subjectName,
                 scopeType: /^\d+$/.test(item.scopeValue) ? 'PARALLEL' : 'CLASS',
                 scopeValue: item.scopeValue,
                 level,
                 workType
             }).toString()}`);
+            paState.workflowVersionCache[prefix].set(cacheKey, versions || []);
+        }
         const hasGenerated = (versions || []).some((v) => v.status === 'GENERATED');
         const hasDownloaded = (versions || []).some((v) => v.downloadedAtLeastOnce);
         const hasUploaded = (versions || []).some((v) => v.status === 'ACCEPTED' && v.uploadedBackSuccess);
@@ -499,9 +736,36 @@ async function renderWorkflow(prefix, loadedVersions = null) {
     });
     const areas = [...grouped.keys()].sort((a, b) => a.localeCompare(b, 'ru'));
 
-    let html = '';
+    const ui = paState.workflowUi[prefix];
+    const searchInput = document.getElementById(`pa-${prefix}-workflow-filter`);
+    const pageSizeSelect = document.getElementById(`pa-${prefix}-workflow-page-size`);
+    if (searchInput) ui.search = String(searchInput.value || '').trim().toLowerCase();
+    if (pageSizeSelect) ui.pageSize = Math.max(5, Number(pageSizeSelect.value) || 20);
+
+    const subjectItems = [];
     areas.forEach((area) => {
-        const subjects = [...grouped.get(area)].sort((a, b) => a.localeCompare(b, 'ru'));
+        [...grouped.get(area)].sort((a, b) => a.localeCompare(b, 'ru')).forEach((subjectName) => {
+            subjectItems.push({ area, subjectName });
+        });
+    });
+    const filteredItems = ui.search
+        ? subjectItems.filter((item) =>
+            item.subjectName.toLowerCase().includes(ui.search)
+            || item.area.toLowerCase().includes(ui.search))
+        : subjectItems;
+    const totalPages = Math.max(1, Math.ceil(filteredItems.length / ui.pageSize));
+    ui.page = Math.min(Math.max(1, ui.page), totalPages);
+    const pageStart = (ui.page - 1) * ui.pageSize;
+    const pageItems = filteredItems.slice(pageStart, pageStart + ui.pageSize);
+    const groupedPage = new Map();
+    pageItems.forEach(({ area, subjectName }) => {
+        if (!groupedPage.has(area)) groupedPage.set(area, []);
+        groupedPage.get(area).push(subjectName);
+    });
+
+    let html = '';
+    [...groupedPage.keys()].forEach((area) => {
+        const subjects = groupedPage.get(area);
         subjects.forEach((subjectName, idx) => {
             const subjectRows = ['Спецификация', 'Сгенерирован', 'Скачан', 'Сдан'];
             subjectRows.forEach((rowName, rowIdx) => {
@@ -531,7 +795,44 @@ async function renderWorkflow(prefix, loadedVersions = null) {
         });
     });
     body.innerHTML = html;
+    const pageInfo = document.getElementById(`pa-${prefix}-workflow-page-info`);
+    if (pageInfo) pageInfo.textContent = `Страница ${ui.page} из ${totalPages} · записей: ${filteredItems.length}`;
+    const prevBtn = document.getElementById(`pa-${prefix}-workflow-page-prev`);
+    const nextBtn = document.getElementById(`pa-${prefix}-workflow-page-next`);
+    if (prevBtn) prevBtn.disabled = ui.page <= 1;
+    if (nextBtn) nextBtn.disabled = ui.page >= totalPages;
     bindReportDownloadButtons();
+}
+
+function bindWorkflowControls(prefix) {
+    const searchInput = document.getElementById(`pa-${prefix}-workflow-filter`);
+    const pageSizeSelect = document.getElementById(`pa-${prefix}-workflow-page-size`);
+    const prevBtn = document.getElementById(`pa-${prefix}-workflow-page-prev`);
+    const nextBtn = document.getElementById(`pa-${prefix}-workflow-page-next`);
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            paState.workflowUi[prefix].page = 1;
+            renderWorkflow(prefix).catch(() => {});
+        });
+    }
+    if (pageSizeSelect) {
+        pageSizeSelect.addEventListener('change', () => {
+            paState.workflowUi[prefix].page = 1;
+            renderWorkflow(prefix).catch(() => {});
+        });
+    }
+    if (prevBtn) {
+        prevBtn.addEventListener('click', () => {
+            paState.workflowUi[prefix].page = Math.max(1, paState.workflowUi[prefix].page - 1);
+            renderWorkflow(prefix).catch(() => {});
+        });
+    }
+    if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+            paState.workflowUi[prefix].page += 1;
+            renderWorkflow(prefix).catch(() => {});
+        });
+    }
 }
 
 function bindReportDownloadButtons() {
@@ -554,6 +855,12 @@ document.getElementById('pa-spec-tabs').addEventListener('click', (event) => {
     event.preventDefault();
     setSpecTab(btn.dataset.specTab);
 });
+document.getElementById('pa-exit-tabs').addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-exit-tab]');
+    if (!btn) return;
+    event.preventDefault();
+    setExitTab(btn.dataset.exitTab);
+});
 document.getElementById('pa-spec-import-btn').addEventListener('click', uploadSpecifications);
 document.getElementById('pa-spec-reload-btn').addEventListener('click', reloadSummaryAndSpecs);
 document.getElementById('pa-entry-upload-btn').addEventListener('click', () => uploadReports('entry'));
@@ -566,12 +873,19 @@ document.getElementById('pa-entry-generate-parallel-btn').addEventListener('clic
 document.getElementById('pa-exit-generate-parallel-btn').addEventListener('click', () => generateForParallel('exit'));
 document.getElementById('pa-entry-generate-all-btn').addEventListener('click', () => generateAll('entry'));
 document.getElementById('pa-exit-generate-all-btn').addEventListener('click', () => generateAll('exit'));
-document.getElementById('pa-entry-subject').addEventListener('change', async () => { fillSelectors('entry'); await renderWorkflow('entry'); });
-document.getElementById('pa-exit-subject').addEventListener('change', async () => { fillSelectors('exit'); await renderWorkflow('exit'); });
+document.getElementById('pa-entry-subject').addEventListener('change', async () => { paState.workflowUi.entry.page = 1; fillSelectors('entry'); await renderWorkflow('entry'); });
+document.getElementById('pa-exit-subject').addEventListener('change', async () => { paState.workflowUi.exit.page = 1; fillSelectors('exit'); await renderWorkflow('exit'); });
+document.getElementById('pa-entry-level').addEventListener('change', async () => { paState.workflowUi.entry.page = 1; fillSelectors('entry'); await renderWorkflow('entry'); });
+document.getElementById('pa-exit-level').addEventListener('change', async () => { paState.workflowUi.exit.page = 1; fillSelectors('exit'); await renderWorkflow('exit'); });
 document.getElementById('pa-entry-scope').addEventListener('change', () => fillClassSelector('entry', document.getElementById('pa-entry-subject').value, document.getElementById('pa-entry-scope').value));
 document.getElementById('pa-exit-scope').addEventListener('change', () => fillClassSelector('exit', document.getElementById('pa-exit-subject').value, document.getElementById('pa-exit-scope').value));
+bindWorkflowControls('entry');
+bindWorkflowControls('exit');
 
 reloadSummaryAndSpecs().catch((e) => {
-    document.getElementById('pa-spec-import-log').textContent = JSON.stringify({ error: e.message }, null, 2);
+    appendSpecificationImportLog([{ fileName: '—', warnings: [`Ошибка: ${e.message}`], importedTasks: 0 }]);
 });
+loadSpecificationImportLogHistory();
+renderSpecificationImportLog();
 setSpecTab('summary-5-11');
+setExitTab('summary');

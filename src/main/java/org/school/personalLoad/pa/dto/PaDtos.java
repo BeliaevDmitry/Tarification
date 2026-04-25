@@ -80,4 +80,13 @@ public final class PaDtos {
                                      String scopeValue,
                                      PaWorkType workType) {
     }
+
+    public record ReportFolderItem(Long reportVersionId,
+                                   String subjectName,
+                                   String parallel,
+                                   String className,
+                                   PaLevel level,
+                                   String fileName,
+                                   LocalDateTime createdAt) {
+    }
 }
