@@ -625,6 +625,29 @@ function loadSpecificationImportLogHistory() {
     }
 }
 
+function loadSpecificationImportLogHistory() {
+    try {
+        const raw = localStorage.getItem(historyStorageKey());
+        if (!raw) {
+            paState.importLogHistory = [];
+            return;
+        }
+        const parsed = JSON.parse(raw);
+        paState.importLogHistory = Array.isArray(parsed) ? parsed
+            .filter((row) => row && typeof row === 'object')
+            .map((row) => ({
+                timestamp: row.timestamp || '',
+                fileName: row.fileName || '—',
+                status: row.status || '',
+                message: row.message || '',
+                records: Number.isFinite(row.records) ? row.records : 0
+            }))
+            : [];
+    } catch (_) {
+        paState.importLogHistory = [];
+    }
+}
+
 function appendSpecificationImportLog(result) {
     const rows = Array.isArray(result) ? result : [result];
     const timestamp = new Date().toLocaleString('ru-RU');
@@ -691,28 +714,39 @@ function renderReportFolders(prefix, rows) {
     }
     const bySubject = new Map();
     rows.forEach((row) => {
-        if (!bySubject.has(row.subjectName)) bySubject.set(row.subjectName, new Map());
-        const byParallel = bySubject.get(row.subjectName);
-        const parallelKey = row.parallel || '—';
-        if (!byParallel.has(parallelKey)) byParallel.set(parallelKey, []);
-        byParallel.get(parallelKey).push(row);
+        const subject = row.subjectName || 'Без предмета';
+        const parallel = row.parallel || '—';
+        const className = row.className || '—';
+        if (!bySubject.has(subject)) bySubject.set(subject, new Map());
+        const byParallel = bySubject.get(subject);
+        if (!byParallel.has(parallel)) byParallel.set(parallel, new Map());
+        const byClass = byParallel.get(parallel);
+        if (!byClass.has(className)) byClass.set(className, []);
+        byClass.get(className).push(row);
     });
     let html = '';
+    html += '<details open><summary><strong>Выходные работы</strong></summary>';
     [...bySubject.keys()].sort((a, b) => a.localeCompare(b, 'ru')).forEach((subject) => {
-        html += `<details open><summary><strong>${subject}</strong></summary>`;
+        html += `<details style="margin-left:16px;"><summary><strong>${subject}</strong></summary>`;
         const byParallel = bySubject.get(subject);
         [...byParallel.keys()].sort((a, b) => Number(a) - Number(b)).forEach((parallel) => {
-            html += `<details style="margin-left:16px;" open><summary>Параллель ${parallel}</summary><ul>`;
-            byParallel.get(parallel)
-                .sort((a, b) => String(a.className).localeCompare(String(b.className), 'ru'))
-                .forEach((item) => {
-                    const created = item.createdAt ? new Date(item.createdAt).toLocaleString('ru-RU') : '';
-                    html += `<li><button type="button" class="tab-btn" data-folder-download-id="${item.reportVersionId}">${subject} — ${item.className}</button> <span class="muted">(${item.level === 'ADVANCED' ? 'углублённый' : 'базовый'}, ${created})</span></li>`;
-                });
-            html += '</ul></details>';
+            html += `<details style="margin-left:16px;"><summary>Параллель ${parallel}</summary>`;
+            const byClass = byParallel.get(parallel);
+            [...byClass.keys()].sort((a, b) => String(a).localeCompare(String(b), 'ru')).forEach((className) => {
+                html += `<details style="margin-left:16px;"><summary>Класс ${className}</summary><ul>`;
+                byClass.get(className)
+                    .sort((a, b) => String(a.sourceFileName || '').localeCompare(String(b.sourceFileName || ''), 'ru'))
+                    .forEach((item) => {
+                        const created = item.createdAt ? new Date(item.createdAt).toLocaleString('ru-RU') : '';
+                        html += `<li><button type="button" class="tab-btn" data-folder-download-id="${item.reportVersionId}">${item.sourceFileName || `${subject} — ${className}`}</button> <span class="muted">(${item.level === 'ADVANCED' ? 'углублённый' : 'базовый'}, ${created})</span></li>`;
+                    });
+                html += '</ul></details>';
+            });
+            html += '</details>';
         });
         html += '</details>';
     });
+    html += '</details>';
     container.innerHTML = html;
     bindFolderDownloadButtons(container);
 }
@@ -993,5 +1027,10 @@ reloadSummaryAndSpecs().catch((e) => {
 });
 loadSpecificationImportLogHistory();
 renderSpecificationImportLog();
-setSpecTab('summary-5-11');
-setExitTab('summary');
+const params = new URLSearchParams(window.location.search);
+const startMainTab = params.get('tab') || 'specs';
+const startSpecTab = params.get('specTab') || 'summary-5-11';
+const startExitTab = params.get('exitTab') || 'summary';
+setPaTab(startMainTab);
+setSpecTab(startSpecTab);
+setExitTab(startExitTab);
