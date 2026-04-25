@@ -702,6 +702,7 @@ public class PaServiceImpl implements PaService {
 
     private void createDataSheet(Workbook workbook, List<String> students, List<PaSpecificationTask> tasks) {
         Sheet data = workbook.createSheet("Сбор информации");
+        List<Integer> taskMaxScores = resolveTaskMaxScores(tasks);
         int firstTaskCol = 4;
         int firstStudentRow = 3;
         int studentCount = students.size();
@@ -725,9 +726,8 @@ public class PaServiceImpl implements PaService {
 
         Row maxScoresRow = data.createRow(2);
         for (int i = 0; i < 4; i++) maxScoresRow.createCell(i).setCellValue("");
-        for (int i = 0; i < tasks.size(); i++) {
-            Integer max = tasks.get(i).getMaxScore();
-            maxScoresRow.createCell(firstTaskCol + i).setCellValue(max == null ? 0 : max);
+        for (int i = 0; i < taskMaxScores.size(); i++) {
+            maxScoresRow.createCell(firstTaskCol + i).setCellValue(taskMaxScores.get(i));
         }
         maxScoresRow.createCell(firstTaskCol + tasks.size()).setCellValue("");
 
@@ -752,7 +752,7 @@ public class PaServiceImpl implements PaService {
             }
         }
 
-        setupTemplateValidation(data, firstStudentRow, studentCount, tasks, firstTaskCol);
+        setupTemplateValidation(data, firstStudentRow, studentCount, taskMaxScores, firstTaskCol);
         setupPresenceConditionalFormatting(data, firstStudentRow, studentCount, 2);
 
         data.setColumnWidth(0, 1200);
@@ -764,7 +764,14 @@ public class PaServiceImpl implements PaService {
         data.createFreezePane(0, 3);
     }
 
-    private void setupTemplateValidation(Sheet sheet, int firstStudentRow, int studentCount, List<PaSpecificationTask> tasks, int firstTaskCol) {
+    private List<Integer> resolveTaskMaxScores(List<PaSpecificationTask> tasks) {
+        return tasks.stream()
+                .map(PaSpecificationTask::getMaxScore)
+                .map(score -> score == null ? 0 : Math.max(0, score))
+                .toList();
+    }
+
+    private void setupTemplateValidation(Sheet sheet, int firstStudentRow, int studentCount, List<Integer> taskMaxScores, int firstTaskCol) {
         DataValidationHelper helper = sheet.getDataValidationHelper();
         if (studentCount <= 0) return;
         DataValidationConstraint presenceConstraint = helper.createExplicitListConstraint(new String[]{"Был", "Не был"});
@@ -783,8 +790,8 @@ public class PaServiceImpl implements PaService {
         variantValidation.setEmptyCellAllowed(true);
         sheet.addValidationData(variantValidation);
 
-        for (int i = 0; i < tasks.size(); i++) {
-            int max = tasks.get(i).getMaxScore() == null ? 0 : Math.max(0, tasks.get(i).getMaxScore());
+        for (int i = 0; i < taskMaxScores.size(); i++) {
+            int max = taskMaxScores.get(i);
             List<String> allowed = new ArrayList<>();
             for (int score = 0; score <= max; score++) allowed.add(String.valueOf(score));
             DataValidationConstraint scoreConstraint = helper.createExplicitListConstraint(allowed.toArray(new String[0]));
@@ -794,35 +801,6 @@ public class PaServiceImpl implements PaService {
             scoreValidation.setEmptyCellAllowed(true);
             sheet.addValidationData(scoreValidation);
         }
-    }
-
-    private void setupPresenceConditionalFormatting(Sheet sheet, int firstStudentRow, int studentCount, int presenceCol) {
-        if (studentCount <= 0) return;
-        SheetConditionalFormatting scf = sheet.getSheetConditionalFormatting();
-        int excelFirstRow = firstStudentRow + 1;
-        String col = CellReference.convertNumToColString(presenceCol);
-        ConditionalFormattingRule presentRule = scf.createConditionalFormattingRule("EXACT($" + col + excelFirstRow + ",\"Был\")");
-        PatternFormatting presentPattern = presentRule.createPatternFormatting();
-        presentPattern.setFillBackgroundColor(IndexedColors.LIGHT_GREEN.getIndex());
-        presentPattern.setFillPattern(PatternFormatting.SOLID_FOREGROUND);
-
-        ConditionalFormattingRule absentRule = scf.createConditionalFormattingRule("EXACT($" + col + excelFirstRow + ",\"Не был\")");
-        PatternFormatting absentPattern = absentRule.createPatternFormatting();
-        absentPattern.setFillBackgroundColor(IndexedColors.RED.getIndex());
-        absentPattern.setFillPattern(PatternFormatting.SOLID_FOREGROUND);
-
-        CellRangeAddress[] ranges = { new CellRangeAddress(firstStudentRow, firstStudentRow + studentCount - 1, presenceCol, presenceCol) };
-        scf.addConditionalFormatting(ranges, presentRule, absentRule);
-    }
-
-    private String createTotalFormula(int taskStartCol, int excelRowNum, int tasksCount) {
-        StringBuilder formula = new StringBuilder("SUM(");
-        for (int i = 0; i < tasksCount; i++) {
-            if (i > 0) formula.append(",");
-            formula.append(CellReference.convertNumToColString(taskStartCol + i)).append(excelRowNum);
-        }
-        formula.append(")");
-        return formula.toString();
     }
 
     private void setupPresenceConditionalFormatting(Sheet sheet, int firstStudentRow, int studentCount, int presenceCol) {
