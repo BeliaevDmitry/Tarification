@@ -73,9 +73,9 @@ function workTypeRu(workType) {
 }
 
 function matrixCellSymbol(cell) {
-    if (!cell || cell.participates === false) return '⚪/⚪';
-    const entry = cell.entry ? '🟢' : '🔴';
-    const exit = cell.exit ? '🟢' : '🔴';
+    if (!cell) return '❌/❌';
+    const entry = cell.entryParticipates === false ? '⚪' : (cell.entry ? '✅' : '❌');
+    const exit = cell.exitParticipates === false ? '⚪' : (cell.exit ? '✅' : '❌');
     return `${entry}/${exit}`;
 }
 
@@ -196,9 +196,9 @@ function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
                         : true);
                 const overrideKey = `${row.subjectName}|${scope}|${row.level}`;
                 const override = summaryStatusOverrides[overrideKey];
-                const effectiveEntry = typeof override?.entry === 'boolean' ? override.entry : entry;
-                const effectiveExit = typeof override?.exit === 'boolean' ? override.exit : exit;
-                html += `<td><button type="button" class="tab-btn summary-status-btn ${participates ? '' : 'inactive'}" data-summary-toggle-subject="${row.subjectName.replace(/"/g, '&quot;')}" data-summary-toggle-scope="${scope}" data-summary-toggle-level="${row.level}" data-summary-toggle-entry="${effectiveEntry ? 'true' : 'false'}" data-summary-toggle-exit="${effectiveExit ? 'true' : 'false'}" data-summary-toggle-classes="${taughtClasses.join(', ').replace(/"/g, '&quot;')}" data-summary-toggle-participates="${participates ? 'true' : 'false'}">${matrixCellSymbol({ entry: effectiveEntry, exit: effectiveExit, participates })}</button></td>`;
+                const entryParticipates = typeof override?.entryParticipates === 'boolean' ? override.entryParticipates : true;
+                const exitParticipates = typeof override?.exitParticipates === 'boolean' ? override.exitParticipates : true;
+                html += `<td><button type="button" class="tab-btn summary-status-btn ${participates ? '' : 'inactive'}" data-summary-toggle-subject="${row.subjectName.replace(/"/g, '&quot;')}" data-summary-toggle-scope="${scope}" data-summary-toggle-level="${row.level}" data-summary-toggle-entry-participates="${entryParticipates ? 'true' : 'false'}" data-summary-toggle-exit-participates="${exitParticipates ? 'true' : 'false'}" data-summary-toggle-classes="${taughtClasses.join(', ').replace(/"/g, '&quot;')}">${matrixCellSymbol({ entry, exit, entryParticipates, exitParticipates, participates })}</button></td>`;
             });
             html += '</tr>';
         });
@@ -468,15 +468,14 @@ function openSummaryStatusDialog(data) {
     const subjectName = data.summaryToggleSubject || '';
     const scopeValue = data.summaryToggleScope || '';
     const level = data.summaryToggleLevel || 'BASIC';
-    const entry = data.summaryToggleEntry === 'true';
-    const exit = data.summaryToggleExit === 'true';
-    const participates = data.summaryToggleParticipates !== 'false';
-    summaryStatusSelection = { subjectName, scopeValue, level, participates };
+    const entryParticipates = data.summaryToggleEntryParticipates !== 'false';
+    const exitParticipates = data.summaryToggleExitParticipates !== 'false';
+    summaryStatusSelection = { subjectName, scopeValue, level, entryParticipates, exitParticipates };
 
     document.getElementById('pa-summary-status-title').textContent = subjectName;
     document.getElementById('pa-summary-status-scope').textContent = `Охват: ${scopeValue} · Уровень: ${level === 'ADVANCED' ? 'углублённый' : 'базовый'}`;
-    document.getElementById('pa-summary-status-entry-check').checked = entry;
-    document.getElementById('pa-summary-status-exit-check').checked = exit;
+    document.getElementById('pa-summary-status-entry-check').checked = entryParticipates;
+    document.getElementById('pa-summary-status-exit-check').checked = exitParticipates;
     document.getElementById('pa-summary-status-classes').textContent = data.summaryToggleClasses || '—';
     if (typeof dialog.showModal === 'function') dialog.showModal();
 }
@@ -501,9 +500,9 @@ function loadSummaryStatusOverrides() {
 async function saveSummaryStatusFromDialog() {
     if (!summaryStatusSelection) return;
     const { subjectName, scopeValue, level } = summaryStatusSelection;
-    const entry = document.getElementById('pa-summary-status-entry-check').checked;
-    const exit = document.getElementById('pa-summary-status-exit-check').checked;
-    summaryStatusOverrides[`${subjectName}|${scopeValue}|${level}`] = { entry, exit };
+    const entryParticipates = document.getElementById('pa-summary-status-entry-check').checked;
+    const exitParticipates = document.getElementById('pa-summary-status-exit-check').checked;
+    summaryStatusOverrides[`${subjectName}|${scopeValue}|${level}`] = { entryParticipates, exitParticipates };
     saveSummaryStatusOverrides();
     try {
         document.getElementById('pa-summary-status-dialog').close();
@@ -551,6 +550,78 @@ async function uploadSpecifications() {
         await reloadSummaryAndSpecs();
     } catch (e) {
         appendSpecificationImportLog([{ fileName: [...input.files].map((f) => f.name).join(', '), warnings: [`Ошибка: ${e.message}`], importedTasks: 0 }]);
+    }
+}
+
+function appendSpecificationImportLog(result) {
+    const rows = Array.isArray(result) ? result : [result];
+    const timestamp = new Date().toLocaleString('ru-RU');
+    rows.forEach((row) => {
+        const warnings = Array.isArray(row?.warnings) ? row.warnings.filter(Boolean) : [];
+        const hasError = warnings.some((w) => String(w).toLowerCase().startsWith('ошибка'));
+        const status = hasError ? 'Ошибка' : 'Успешно';
+        const message = warnings.length ? warnings.join('; ') : 'Импорт выполнен';
+        const records = Number.isFinite(row?.importedTasks) ? row.importedTasks : 0;
+        paState.importLogHistory.unshift({
+            timestamp,
+            fileName: row?.fileName || '—',
+            status,
+            message,
+            records
+        });
+    });
+    paState.importLogHistory = paState.importLogHistory.slice(0, 200);
+    saveSpecificationImportLogHistory();
+    renderSpecificationImportLog();
+}
+
+function renderSpecificationImportLog() {
+    const body = document.getElementById('pa-spec-import-log-body');
+    if (!body) return;
+    body.innerHTML = paState.importLogHistory.map((row) => `
+        <tr>
+            <td>${row.timestamp}</td>
+            <td>${row.fileName}</td>
+            <td>${row.status}</td>
+            <td>${row.message}</td>
+            <td>${row.records}</td>
+        </tr>
+    `).join('') || '<tr><td colspan="5" class="muted">История загрузок пуста</td></tr>';
+}
+
+function historyStorageKey() {
+    const year = typeof window.getStoredAcademicYear === 'function' ? window.getStoredAcademicYear() : '';
+    return `${PA_SPEC_IMPORT_HISTORY_KEY}:${year || 'default'}`;
+}
+
+function saveSpecificationImportLogHistory() {
+    try {
+        localStorage.setItem(historyStorageKey(), JSON.stringify(paState.importLogHistory));
+    } catch (_) {
+        // ignore storage errors
+    }
+}
+
+function loadSpecificationImportLogHistory() {
+    try {
+        const raw = localStorage.getItem(historyStorageKey());
+        if (!raw) {
+            paState.importLogHistory = [];
+            return;
+        }
+        const parsed = JSON.parse(raw);
+        paState.importLogHistory = Array.isArray(parsed) ? parsed
+            .filter((row) => row && typeof row === 'object')
+            .map((row) => ({
+                timestamp: row.timestamp || '',
+                fileName: row.fileName || '—',
+                status: row.status || '',
+                message: row.message || '',
+                records: Number.isFinite(row.records) ? row.records : 0
+            }))
+            : [];
+    } catch (_) {
+        paState.importLogHistory = [];
     }
 }
 
