@@ -15,6 +15,7 @@ const paState = {
 };
 const PA_SPEC_IMPORT_HISTORY_KEY = 'pa.spec.import.history';
 const PA_SUMMARY_STATUS_OVERRIDES_KEY = 'pa.summary.status.overrides';
+const paQueryParams = new URLSearchParams(window.location.search);
 let summaryStatusSelection = null;
 let summaryStatusOverrides = {};
 
@@ -419,6 +420,13 @@ async function reloadSummaryAndSpecs() {
     paState.workflowVersionCache.entry.clear();
     paState.workflowVersionCache.exit.clear();
     renderSpecifications(specs || []);
+    if (paQueryParams.get('forceExitAll') === '1') {
+        const exitSubject = document.getElementById('pa-exit-subject');
+        if (exitSubject) {
+            exitSubject.value = 'ALL';
+            exitSubject.disabled = true;
+        }
+    }
     const activeMain = document.querySelector('#pa-main-tabs [data-tab].active')?.dataset.tab;
     if (activeMain === 'entry' || activeMain === 'exit') {
         await renderWorkflow(activeMain);
@@ -1027,10 +1035,9 @@ reloadSummaryAndSpecs().catch((e) => {
 });
 loadSpecificationImportLogHistory();
 renderSpecificationImportLog();
-const params = new URLSearchParams(window.location.search);
-const startMainTab = params.get('tab') || 'specs';
-const startSpecTab = params.get('specTab') || 'summary-5-11';
-const startExitTab = params.get('exitTab') || 'summary';
+const startMainTab = paQueryParams.get('tab') || 'specs';
+const startSpecTab = paQueryParams.get('specTab') || 'summary-5-11';
+const startExitTab = paQueryParams.get('exitTab') || 'summary';
 setPaTab(startMainTab);
 setSpecTab(startSpecTab);
 setExitTab(startExitTab);
