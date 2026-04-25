@@ -70,9 +70,9 @@ function workTypeRu(workType) {
 }
 
 function matrixCellSymbol(cell) {
-    if (!cell) return '❌/❌';
-    const entry = cell.entry ? '✅' : '❌';
-    const exit = cell.exit ? '✅' : '❌';
+    if (!cell || cell.participates === false) return '⚪/⚪';
+    const entry = cell.entry ? '🟢' : '🔴';
+    const exit = cell.exit ? '🟢' : '🔴';
     return `${entry}/${exit}`;
 }
 
@@ -143,6 +143,11 @@ function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
         return [...(classesBySubjectScope.get(key) || new Set())].sort((a, b) => a.localeCompare(b, 'ru'));
     };
 
+    const participationMap = new Map(
+        [...(paState.summary.primary || []), ...(paState.summary.secondary || [])]
+            .map((row) => [`${row.subjectName}|${row.scopeValue}|${row.level}`, row.participates !== false])
+    );
+
     let html = '';
     const areas = [...new Set(subjects.map((s) => subjectAreaByName(s)))].sort((a, b) => a.localeCompare(b, 'ru'));
     areas.forEach((area) => {
@@ -178,16 +183,27 @@ function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
                 );
                 const entry = specs.some((s) => s.workType === 'ENTRY');
                 const exit = specs.some((s) => s.workType === 'EXIT');
+                const scopeAsParallel = parseParallel(scope);
+                const directParticipationKey = `${row.subjectName}|${scope}|${row.level}`;
+                const parallelParticipationKey = `${row.subjectName}|${scopeAsParallel ?? ''}|${row.level}`;
+                const participates = participationMap.has(directParticipationKey)
+                    ? participationMap.get(directParticipationKey)
+                    : (scopeAsParallel !== null && participationMap.has(parallelParticipationKey)
+                        ? participationMap.get(parallelParticipationKey)
+                        : true);
                 const hints = [];
                 if (!entry) hints.push(`Входная не загружена: ${taughtClasses.join(', ')}`);
                 if (!exit) hints.push(`Выходная не загружена: ${taughtClasses.join(', ')}`);
-                const title = hints.length ? ` title="${hints.join(' | ').replace(/"/g, '&quot;')}"` : '';
-                html += `<td${title}>${matrixCellSymbol({ entry, exit })}</td>`;
+                if (participates === false) hints.push('Статус: не активное');
+                hints.push(participates === false ? 'Клик: сделать активным' : 'Клик: сделать не активным');
+                const title = hints.join(' | ').replace(/"/g, '&quot;');
+                html += `<td><button type="button" class="tab-btn" data-summary-toggle-subject="${row.subjectName.replace(/"/g, '&quot;')}" data-summary-toggle-scope="${scope}" data-summary-toggle-level="${row.level}" data-summary-toggle-participates="${participates ? 'true' : 'false'}" title="${title}">${matrixCellSymbol({ entry, exit, participates })}</button></td>`;
             });
             html += '</tr>';
         });
     });
     body.innerHTML = html;
+    bindSummaryToggles();
 }
 
 function renderCompactMatrix() {
@@ -239,6 +255,7 @@ function renderSpecifications(rows) {
     fillSelectors('entry');
     fillSelectors('exit');
     renderCompactMatrix();
+    bindSummaryToggles();
 }
 
 function subjectAreaByName(subjectName) {
@@ -439,8 +456,14 @@ function bindSummaryToggles() {
             const subjectName = btn.dataset.summaryToggleSubject;
             const scopeValue = btn.dataset.summaryToggleScope;
             const level = btn.dataset.summaryToggleLevel || 'BASIC';
-            const currentSymbol = btn.textContent.trim();
-            const participates = currentSymbol === '➖/➖';
+            const currentlyParticipates = btn.dataset.summaryToggleParticipates !== 'false';
+            const participates = !currentlyParticipates;
+            const confirmed = window.confirm(
+                currentlyParticipates
+                    ? 'Сделать статус «не активное» для этого предмета/параллели?'
+                    : 'Сделать статус «активное» для этого предмета/параллели?'
+            );
+            if (!confirmed) return;
             try {
                 await paApi('/api/pa/participation', {
                     method: 'PATCH',
