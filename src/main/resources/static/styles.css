@@ -258,6 +258,34 @@ hr {
     background: #fff;
 }
 
+.pa-hub-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.pa-hub-tile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 82px;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid #c7d2fe;
+    background: linear-gradient(180deg, #eef2ff 0%, #e0e7ff 100%);
+    text-decoration: none;
+    color: #1e3a8a;
+    font-weight: 700;
+    text-align: center;
+    transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+
+.pa-hub-tile:hover {
+    transform: translateY(-1px);
+    border-color: #93c5fd;
+    box-shadow: 0 10px 18px rgba(30, 58, 138, .12);
+}
+
 .sheet-table thead th {
     position: sticky;
     top: 0;
