@@ -143,7 +143,10 @@ public class PaServiceImpl implements PaService {
             List<PaSpecificationTask> tasks = parseTasks(sheet, subjectRow, subjectCol, blockEndCol, saved, warnings);
             if (tasks.isEmpty()) {
                 specificationRepository.delete(saved);
-                warnings.add("Лист " + sheet.getSheetName() + ": спецификация '" + subjectName + "' не загружена — нет ни одной темы");
+                String workTypeLabel = saved.getWorkType() == PaWorkType.ENTRY
+                        ? "Входной"
+                        : saved.getWorkType() == PaWorkType.EXIT ? "Выходной" : "Промежуточной";
+                warnings.add("Лист " + sheet.getSheetName() + ": спецификация '" + subjectName + "' для " + workTypeLabel + " работы не загружена — нет ни одной темы");
                 continue;
             }
             taskRepository.saveAll(tasks);
@@ -553,11 +556,17 @@ public class PaServiceImpl implements PaService {
                 .toList();
         List<PaDtos.ReportUploadResult> results = new ArrayList<>();
         for (String className : classes) {
+            if (resolveSpecificationForClass(academicYear, subjectName, className, level, workType, workDate) == null) {
+                continue;
+            }
             if (hasActiveGeneratedTemplate(academicYear, subjectName, className, level, workType, workDate)) {
                 results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Шаблон уже сгенерирован для класса", null, subjectName, className, workType));
                 continue;
             }
             results.add(generateReportTemplate(academicYear, subjectName, className, level, workType, workDate));
+        }
+        if (results.isEmpty()) {
+            results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Нет классов с доступной спецификацией для генерации", null, subjectName, "", workType));
         }
         return results;
     }
@@ -575,11 +584,17 @@ public class PaServiceImpl implements PaService {
                 .toList();
         List<PaDtos.ReportUploadResult> results = new ArrayList<>();
         for (String className : classes) {
+            if (resolveSpecificationForClass(academicYear, subjectName, className, level, workType, workDate) == null) {
+                continue;
+            }
             if (hasActiveGeneratedTemplate(academicYear, subjectName, className, level, workType, workDate)) {
                 results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Шаблон уже сгенерирован для класса", null, subjectName, className, workType));
                 continue;
             }
             results.add(generateReportTemplate(academicYear, subjectName, className, level, workType, workDate));
+        }
+        if (results.isEmpty()) {
+            results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Нет классов с доступной спецификацией для генерации", null, subjectName, "", workType));
         }
         return results;
     }
