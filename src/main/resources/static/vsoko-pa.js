@@ -330,6 +330,7 @@ function renderUploadLog(prefix, rows) {
 
 function renderVersions(prefix, rows) {
     const body = document.getElementById(`pa-${prefix}-versions-body`);
+    if (!body) return;
     body.innerHTML = (rows || []).map((row) => `
         <tr>
             <td>${row.versionNo ?? ''}</td>
@@ -649,63 +650,6 @@ function loadSpecificationImportLogHistory() {
     }
 }
 
-function loadSpecificationImportLogHistory() {
-    try {
-        const raw = localStorage.getItem(historyStorageKey());
-        if (!raw) {
-            paState.importLogHistory = [];
-            return;
-        }
-        const parsed = JSON.parse(raw);
-        paState.importLogHistory = Array.isArray(parsed) ? parsed
-            .filter((row) => row && typeof row === 'object')
-            .map((row) => ({
-                timestamp: row.timestamp || '',
-                fileName: row.fileName || '—',
-                status: row.status || '',
-                message: row.message || '',
-                records: Number.isFinite(row.records) ? row.records : 0
-            }))
-            : [];
-    } catch (_) {
-        paState.importLogHistory = [];
-    }
-}
-
-function appendSpecificationImportLog(result) {
-    const rows = Array.isArray(result) ? result : [result];
-    const timestamp = new Date().toLocaleString('ru-RU');
-    rows.forEach((row) => {
-        const warnings = Array.isArray(row?.warnings) ? row.warnings.filter(Boolean) : [];
-        const hasError = warnings.some((w) => String(w).toLowerCase().startsWith('ошибка'));
-        const status = hasError ? 'Ошибка' : 'Успешно';
-        const message = warnings.length ? warnings.join('; ') : 'Импорт выполнен';
-        const records = Number.isFinite(row?.importedTasks) ? row.importedTasks : 0;
-        paState.importLogHistory.unshift({
-            timestamp,
-            fileName: row?.fileName || '—',
-            status,
-            message,
-            records
-        });
-    });
-    renderSpecificationImportLog();
-}
-
-function renderSpecificationImportLog() {
-    const body = document.getElementById('pa-spec-import-log-body');
-    if (!body) return;
-    body.innerHTML = paState.importLogHistory.map((row) => `
-        <tr>
-            <td>${row.timestamp}</td>
-            <td>${row.fileName}</td>
-            <td>${row.status}</td>
-            <td>${row.message}</td>
-            <td>${row.records}</td>
-        </tr>
-    `).join('') || '<tr><td colspan="5" class="muted">История загрузок пуста</td></tr>';
-}
-
 async function uploadReports(prefix) {
     const input = document.getElementById(`pa-${prefix}-report-files`);
     if (!input.files.length) return;
@@ -1002,6 +946,17 @@ function bindReportDownloadButtons() {
     });
 }
 
+function applySharedPaPageNav() {
+    const search = window.location.search || '';
+    document.querySelectorAll('.page-nav .nav-link, #pa-hub-grid a[href^="/vsoko-pa-"]').forEach((link) => {
+        const href = link.getAttribute('href');
+        if (!href || href.startsWith('#')) return;
+        const url = new URL(href, window.location.origin);
+        url.search = search;
+        link.setAttribute('href', `${url.pathname}${url.search}`);
+    });
+}
+
 document.querySelectorAll('#pa-main-tabs [data-tab]').forEach((btn) => {
     btn.addEventListener('click', () => setPaTab(btn.dataset.tab));
 });
@@ -1059,6 +1014,7 @@ bindClick('pa-summary-status-save-btn', () => {
 });
 bindWorkflowControls('entry');
 bindWorkflowControls('exit');
+applySharedPaPageNav();
 
 loadSummaryStatusOverrides();
 reloadSummaryAndSpecs().catch((e) => {
@@ -1066,9 +1022,13 @@ reloadSummaryAndSpecs().catch((e) => {
 });
 loadSpecificationImportLogHistory();
 renderSpecificationImportLog();
-const startMainTab = paQueryParams.get('tab') || 'specs';
+const startMainTab = paQueryParams.get('tab')
+    || (window.location.pathname.includes('vsoko-pa-entry') ? 'entry'
+        : window.location.pathname.includes('vsoko-pa-exit') ? 'exit'
+            : 'specs');
 const startSpecTab = paQueryParams.get('specTab') || 'summary-5-11';
-const startExitTab = paQueryParams.get('exitTab') || 'summary';
+const startExitTab = paQueryParams.get('exitTab')
+    || (window.location.pathname.includes('vsoko-pa-folders') ? 'folders' : 'summary');
 setPaTab(startMainTab);
 setSpecTab(startSpecTab);
 setExitTab(startExitTab);

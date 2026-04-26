@@ -1,1 +1,67 @@
-<!doctype html><html lang="ru"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>ВСОКО / ПА — Выходные работы</title><link rel="stylesheet" href="/styles.css" /></head><body><main class="container"><section class="card"><h1>ВСОКО / ПА — Выходные работы</h1><p><a href="/vsoko-pa-spec.html">Спецификации</a> · <a href="/vsoko-pa-entry.html">Входные</a> · <a href="/vsoko-pa-folders.html">Отчёты по папкам</a> · <a href="/vsoko-pa-upload.html">Сдача ПА</a></p><div class="row"><select id="pa-exit-subject"></select><select id="pa-exit-scope"></select><select id="pa-exit-class"></select><select id="pa-exit-level"><option value="BASIC">Базовый</option><option value="ADVANCED">Углублённый</option></select><input id="pa-exit-work-date" type="date"><button id="pa-exit-load-versions-btn" type="button">Показать версии</button><button id="pa-exit-generate-all-btn" type="button">Сгенерировать все</button><button id="pa-exit-generate-parallel-btn" type="button">Сгенерировать параллель</button><button id="pa-exit-generate-btn" type="button">Сгенерировать для класса</button></div><div style="overflow:auto;"><table class="sheet-table"><thead id="pa-exit-workflow-head"></thead><tbody id="pa-exit-workflow-body"></tbody></table></div><div class="row"><input id="pa-exit-report-files" type="file" multiple accept=".xlsx"><button id="pa-exit-upload-btn" type="button">Сдать отчёт(ы)</button></div><div style="overflow:auto;"><table class="sheet-table"><thead><tr><th>Файл</th><th>Статус</th><th>Причина/сообщение</th><th>Версия</th></tr></thead><tbody id="pa-exit-upload-log-body"></tbody></table></div><div style="overflow:auto;"><table class="sheet-table"><thead><tr><th>Версия</th><th>Статус</th><th>Активна</th><th>Файл</th><th>Дата</th><th>Причина</th></tr></thead><tbody id="pa-exit-versions-body"></tbody></table></div></section></main><script src="/auth.js"></script><script>if(!window.location.search.includes("forceExitAll=1")){const u=new URL(window.location.href);u.searchParams.set("forceExitAll","1");history.replaceState({},"",u.toString());}</script><script src="/vsoko-pa.js"></script></body></html>
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ВСОКО / ПА — Выходные работы</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .sticky-head thead th { position: sticky; top: 0; background: #f1f1f1; z-index: 3; }
+    .pa-sticky-table-wrap { max-height: 70vh; overflow: auto; }
+  </style>
+</head>
+<body>
+<main class="container">
+  <header class="card app-shell-header">
+    <h1>ВСОКО / ПА — Выходные работы</h1>
+    <nav class="page-nav"></nav>
+  </header>
+
+  <section class="card" id="pa-tab-exit">
+    <h2>Выходные работы</h2>
+    <p class="muted">Генерация отчётов по спецификациям и контроль статусов.</p>
+    <div class="row">
+      <select id="pa-exit-subject"></select>
+      <select id="pa-exit-scope"></select>
+      <select id="pa-exit-class"></select>
+      <select id="pa-exit-level">
+        <option value="BASIC">Базовый</option>
+        <option value="ADVANCED">Углублённый</option>
+      </select>
+      <input id="pa-exit-work-date" type="date">
+      <button id="pa-exit-generate-all-btn" type="button" data-requires-edit>Сгенерировать все</button>
+      <button id="pa-exit-generate-parallel-btn" type="button" data-requires-edit>Сгенерировать параллель</button>
+      <button id="pa-exit-generate-btn" type="button" data-requires-edit>Сгенерировать для класса</button>
+    </div>
+
+    <div class="pa-sticky-table-wrap">
+      <div class="row" style="margin-bottom:8px;">
+        <input id="pa-exit-workflow-filter" type="text" placeholder="Фильтр по предмету/области">
+        <select id="pa-exit-workflow-page-size">
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="50">50</option>
+        </select>
+        <button id="pa-exit-workflow-page-prev" type="button" data-allow-readonly="true">←</button>
+        <span id="pa-exit-workflow-page-info" class="muted">Страница 1 из 1</span>
+        <button id="pa-exit-workflow-page-next" type="button" data-allow-readonly="true">→</button>
+      </div>
+      <table class="sheet-table sticky-head">
+        <thead id="pa-exit-workflow-head"></thead>
+        <tbody id="pa-exit-workflow-body"></tbody>
+      </table>
+    </div>
+
+    <h3>Результат генерации</h3>
+    <div class="pa-sticky-table-wrap">
+      <table class="sheet-table sticky-head">
+        <thead><tr><th>Файл</th><th>Статус</th><th>Причина/сообщение</th><th>Версия</th></tr></thead>
+        <tbody id="pa-exit-upload-log-body"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<script src="/auth.js"></script>
+<script src="/vsoko-pa.js"></script>
+</body>
+</html>
