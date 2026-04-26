@@ -4,9 +4,32 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ВСОКО / ПА — Спецификации</title>
-  <style>html,body{height:100%;margin:0}iframe{border:0;width:100%;height:100%}</style>
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-<iframe src="/vsoko-pa.html?tab=specs&specTab=summary-5-11" title="ВСОКО ПА Спецификации"></iframe>
+<main class="container">
+  <section class="card">
+    <h1>ВСОКО / ПА — Спецификации</h1>
+    <p><a href="/vsoko-pa-entry.html">Входные</a> · <a href="/vsoko-pa-exit.html">Выходные</a> · <a href="/vsoko-pa-folders.html">Отчёты по папкам</a> · <a href="/vsoko-pa-upload.html">Сдача ПА</a></p>
+    <div class="row" data-requires-edit>
+      <input id="pa-spec-files" type="file" multiple accept=".xlsx">
+      <button id="pa-spec-import-btn" type="button">Загрузить спецификации</button>
+      <button id="pa-spec-reload-btn" type="button" data-allow-readonly="true">Обновить свод</button>
+    </div>
+    <div class="tabs" id="pa-spec-tabs">
+      <button class="tab-btn active" type="button" data-spec-tab="summary-5-11">Свод 5-11</button>
+      <button class="tab-btn" type="button" data-spec-tab="summary-1-4">Свод 1-4</button>
+      <button class="tab-btn" type="button" data-spec-tab="registry">Спецификации</button>
+      <button class="tab-btn" type="button" data-spec-tab="upload-log">Результат загрузки файлов</button>
+    </div>
+    <div id="pa-spec-summary-5-11-panel" class="tab-panel"><div class="pa-sticky-table-wrap"><table class="sheet-table sticky-head"><thead id="pa-matrix-head"></thead><tbody id="pa-matrix-body"></tbody></table></div></div>
+    <div id="pa-spec-summary-1-4-panel" class="tab-panel hidden"><div class="pa-sticky-table-wrap"><table class="sheet-table sticky-head"><thead id="pa-matrix-head-primary"></thead><tbody id="pa-matrix-body-primary"></tbody></table></div></div>
+    <div id="pa-spec-registry-panel" class="tab-panel hidden"><div class="pa-sticky-table-wrap"><table class="sheet-table sticky-head"><thead><tr><th>Предметная область</th><th>Предмет</th><th>Параллель</th><th>Уровень</th><th>Тип</th><th>Версия</th><th>Файл</th><th>Участвует</th></tr></thead><tbody id="pa-specifications-body"></tbody></table></div></div>
+    <div id="pa-spec-upload-log-panel" class="tab-panel hidden"><div class="pa-sticky-table-wrap"><table class="sheet-table sticky-head"><thead><tr><th>Дата</th><th>Файл</th><th>Статус</th><th>Сообщение</th><th>Записей</th></tr></thead><tbody id="pa-spec-import-log-body"></tbody></table></div></div>
+  </section>
+</main>
+<dialog id="pa-summary-status-dialog"><h3 id="pa-summary-status-title"></h3><p id="pa-summary-status-scope" class="muted"></p><p><strong>Классы по УП:</strong> <span id="pa-summary-status-classes">—</span></p><table><thead><tr><th>Тип работы</th><th>Участвует в ВСОКО</th></tr></thead><tbody><tr><td>Входная</td><td><label><input id="pa-summary-status-entry-check" type="checkbox" checked> Да</label></td></tr><tr><td>Выходная</td><td><label><input id="pa-summary-status-exit-check" type="checkbox" checked> Да</label></td></tr></tbody></table><menu><button id="pa-summary-status-save-btn" type="button">Сохранить</button><button id="pa-summary-status-close-btn" type="button">Закрыть</button></menu></dialog>
+<script src="/auth.js"></script>
+<script src="/vsoko-pa.js"></script>
 </body>
 </html>

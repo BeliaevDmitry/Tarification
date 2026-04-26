@@ -32,9 +32,12 @@ function paApi(path, options = {}) {
 
 function setPaTab(tab) {
     document.querySelectorAll('#pa-main-tabs [data-tab]').forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === tab));
-    document.getElementById('pa-tab-specs').classList.toggle('hidden', tab !== 'specs');
-    document.getElementById('pa-tab-entry').classList.toggle('hidden', tab !== 'entry');
-    document.getElementById('pa-tab-exit').classList.toggle('hidden', tab !== 'exit');
+    const specsPanel = document.getElementById('pa-tab-specs');
+    const entryPanel = document.getElementById('pa-tab-entry');
+    const exitPanel = document.getElementById('pa-tab-exit');
+    if (specsPanel) specsPanel.classList.toggle('hidden', tab !== 'specs');
+    if (entryPanel) entryPanel.classList.toggle('hidden', tab !== 'entry');
+    if (exitPanel) exitPanel.classList.toggle('hidden', tab !== 'exit');
     if (tab === 'entry' || tab === 'exit') {
         renderWorkflow(tab).catch(() => {});
     }
@@ -45,10 +48,14 @@ function setPaTab(tab) {
 
 function setSpecTab(tab) {
     document.querySelectorAll('#pa-spec-tabs [data-spec-tab]').forEach((btn) => btn.classList.toggle('active', btn.dataset.specTab === tab));
-    document.getElementById('pa-spec-summary-5-11-panel').classList.toggle('hidden', tab !== 'summary-5-11');
-    document.getElementById('pa-spec-summary-1-4-panel').classList.toggle('hidden', tab !== 'summary-1-4');
-    document.getElementById('pa-spec-registry-panel').classList.toggle('hidden', tab !== 'registry');
-    document.getElementById('pa-spec-upload-log-panel').classList.toggle('hidden', tab !== 'upload-log');
+    const p511 = document.getElementById('pa-spec-summary-5-11-panel');
+    const p14 = document.getElementById('pa-spec-summary-1-4-panel');
+    const preg = document.getElementById('pa-spec-registry-panel');
+    const plog = document.getElementById('pa-spec-upload-log-panel');
+    if (p511) p511.classList.toggle('hidden', tab !== 'summary-5-11');
+    if (p14) p14.classList.toggle('hidden', tab !== 'summary-1-4');
+    if (preg) preg.classList.toggle('hidden', tab !== 'registry');
+    if (plog) plog.classList.toggle('hidden', tab !== 'upload-log');
 }
 
 function setExitTab(tab) {
@@ -92,6 +99,7 @@ function normalizeScopeValue(value) {
 function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
     const head = document.getElementById(headId);
     const body = document.getElementById(bodyId);
+    if (!head || !body) return;
     const curriculumRows = (paState.curriculum || []).filter((row) => {
         const p = parseParallel(row.className);
         return p !== null && p >= fromParallel && p <= toParallel && row.subjectName;
@@ -229,6 +237,7 @@ function renderSpecifications(rows) {
             .map((row) => [`${row.subjectName}|${row.scopeValue}|${row.level}`, Boolean(row.participates)])
     );
     const body = document.getElementById('pa-specifications-body');
+    if (!body) return;
     let currentArea = null;
     body.innerHTML = paState.specifications.map((row) => {
         const area = subjectAreaByName(row.subjectName);
@@ -269,6 +278,7 @@ function fillSelectors(prefix) {
     const subjectSelect = document.getElementById(`pa-${prefix}-subject`);
     const scopeSelect = document.getElementById(`pa-${prefix}-scope`);
     const classSelect = document.getElementById(`pa-${prefix}-class`);
+    if (!subjectSelect || !scopeSelect || !classSelect) return;
     const previousSubject = subjectSelect.value;
     const previousScope = scopeSelect.value;
     const previousClass = classSelect.value;
@@ -430,6 +440,12 @@ async function reloadSummaryAndSpecs() {
     const activeMain = document.querySelector('#pa-main-tabs [data-tab].active')?.dataset.tab;
     if (activeMain === 'entry' || activeMain === 'exit') {
         await renderWorkflow(activeMain);
+    } else if (document.getElementById('pa-entry-workflow-head')) {
+        fillSelectors('entry');
+        await renderWorkflow('entry');
+    } else if (document.getElementById('pa-exit-workflow-head')) {
+        fillSelectors('exit');
+        await renderWorkflow('exit');
     }
     if (activeMain === 'exit' && !document.getElementById('pa-exit-folders-panel').classList.contains('hidden')) {
         await loadReportFolders('exit');
@@ -799,6 +815,7 @@ async function renderWorkflow(prefix, loadedVersions = null) {
     const workType = prefix === 'entry' ? 'ENTRY' : 'EXIT';
     const head = document.getElementById(`pa-${prefix}-workflow-head`);
     const body = document.getElementById(`pa-${prefix}-workflow-body`);
+    if (!head || !body) return;
     const specs = paState.specifications.filter((s) =>
         s.level === level
         && s.workType === workType
@@ -988,42 +1005,56 @@ function bindReportDownloadButtons() {
 document.querySelectorAll('#pa-main-tabs [data-tab]').forEach((btn) => {
     btn.addEventListener('click', () => setPaTab(btn.dataset.tab));
 });
-document.getElementById('pa-spec-tabs').addEventListener('click', (event) => {
-    const btn = event.target.closest('[data-spec-tab]');
-    if (!btn) return;
-    event.preventDefault();
-    setSpecTab(btn.dataset.specTab);
-});
-document.getElementById('pa-exit-tabs').addEventListener('click', (event) => {
-    const btn = event.target.closest('[data-exit-tab]');
-    if (!btn) return;
-    event.preventDefault();
-    setExitTab(btn.dataset.exitTab);
-});
-document.getElementById('pa-spec-import-btn').addEventListener('click', uploadSpecifications);
-document.getElementById('pa-spec-reload-btn').addEventListener('click', reloadSummaryAndSpecs);
-document.getElementById('pa-entry-upload-btn').addEventListener('click', () => uploadReports('entry'));
-document.getElementById('pa-exit-upload-btn').addEventListener('click', () => uploadReports('exit'));
-document.getElementById('pa-entry-load-versions-btn').addEventListener('click', () => loadVersions('entry'));
-document.getElementById('pa-exit-load-versions-btn').addEventListener('click', () => loadVersions('exit'));
-document.getElementById('pa-entry-generate-btn').addEventListener('click', () => generateForClass('entry'));
-document.getElementById('pa-exit-generate-btn').addEventListener('click', () => generateForClass('exit'));
-document.getElementById('pa-entry-generate-parallel-btn').addEventListener('click', () => generateForParallel('entry'));
-document.getElementById('pa-exit-generate-parallel-btn').addEventListener('click', () => generateForParallel('exit'));
-document.getElementById('pa-entry-generate-all-btn').addEventListener('click', () => generateAll('entry'));
-document.getElementById('pa-exit-generate-all-btn').addEventListener('click', () => generateAll('exit'));
-document.getElementById('pa-entry-subject').addEventListener('change', async () => { paState.workflowUi.entry.page = 1; fillSelectors('entry'); await renderWorkflow('entry'); });
-document.getElementById('pa-exit-subject').addEventListener('change', async () => { paState.workflowUi.exit.page = 1; fillSelectors('exit'); await renderWorkflow('exit'); });
-document.getElementById('pa-entry-level').addEventListener('change', async () => { paState.workflowUi.entry.page = 1; fillSelectors('entry'); await renderWorkflow('entry'); });
-document.getElementById('pa-exit-level').addEventListener('change', async () => { paState.workflowUi.exit.page = 1; fillSelectors('exit'); await renderWorkflow('exit'); });
-document.getElementById('pa-entry-scope').addEventListener('change', () => fillClassSelector('entry', document.getElementById('pa-entry-subject').value, document.getElementById('pa-entry-scope').value));
-document.getElementById('pa-exit-scope').addEventListener('change', () => fillClassSelector('exit', document.getElementById('pa-exit-subject').value, document.getElementById('pa-exit-scope').value));
-document.getElementById('pa-summary-status-close-btn').addEventListener('click', () => {
+const specTabs = document.getElementById('pa-spec-tabs');
+if (specTabs) {
+    specTabs.addEventListener('click', (event) => {
+        const btn = event.target.closest('[data-spec-tab]');
+        if (!btn) return;
+        event.preventDefault();
+        setSpecTab(btn.dataset.specTab);
+    });
+}
+const exitTabs = document.getElementById('pa-exit-tabs');
+if (exitTabs) {
+    exitTabs.addEventListener('click', (event) => {
+        const btn = event.target.closest('[data-exit-tab]');
+        if (!btn) return;
+        event.preventDefault();
+        setExitTab(btn.dataset.exitTab);
+    });
+}
+const bindClick = (id, handler) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', handler);
+};
+const bindChange = (id, handler) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', handler);
+};
+bindClick('pa-spec-import-btn', uploadSpecifications);
+bindClick('pa-spec-reload-btn', reloadSummaryAndSpecs);
+bindClick('pa-entry-upload-btn', () => uploadReports('entry'));
+bindClick('pa-exit-upload-btn', () => uploadReports('exit'));
+bindClick('pa-entry-load-versions-btn', () => loadVersions('entry'));
+bindClick('pa-exit-load-versions-btn', () => loadVersions('exit'));
+bindClick('pa-entry-generate-btn', () => generateForClass('entry'));
+bindClick('pa-exit-generate-btn', () => generateForClass('exit'));
+bindClick('pa-entry-generate-parallel-btn', () => generateForParallel('entry'));
+bindClick('pa-exit-generate-parallel-btn', () => generateForParallel('exit'));
+bindClick('pa-entry-generate-all-btn', () => generateAll('entry'));
+bindClick('pa-exit-generate-all-btn', () => generateAll('exit'));
+bindChange('pa-entry-subject', async () => { paState.workflowUi.entry.page = 1; fillSelectors('entry'); await renderWorkflow('entry'); });
+bindChange('pa-exit-subject', async () => { paState.workflowUi.exit.page = 1; fillSelectors('exit'); await renderWorkflow('exit'); });
+bindChange('pa-entry-level', async () => { paState.workflowUi.entry.page = 1; fillSelectors('entry'); await renderWorkflow('entry'); });
+bindChange('pa-exit-level', async () => { paState.workflowUi.exit.page = 1; fillSelectors('exit'); await renderWorkflow('exit'); });
+bindChange('pa-entry-scope', () => fillClassSelector('entry', document.getElementById('pa-entry-subject')?.value, document.getElementById('pa-entry-scope')?.value));
+bindChange('pa-exit-scope', () => fillClassSelector('exit', document.getElementById('pa-exit-subject')?.value, document.getElementById('pa-exit-scope')?.value));
+bindClick('pa-summary-status-close-btn', () => {
     const dialog = document.getElementById('pa-summary-status-dialog');
-    dialog.close();
+    if (dialog) dialog.close();
     summaryStatusSelection = null;
 });
-document.getElementById('pa-summary-status-save-btn').addEventListener('click', () => {
+bindClick('pa-summary-status-save-btn', () => {
     saveSummaryStatusFromDialog().catch((e) => alert(`Ошибка: ${e.message}`));
 });
 bindWorkflowControls('entry');
