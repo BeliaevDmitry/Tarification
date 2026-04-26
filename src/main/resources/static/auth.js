@@ -54,6 +54,17 @@ function isPaSubPage(pathname) {
         || pathname === '/vsoko-pa-upload.html';
 }
 
+function isLoadModulePage(pathname) {
+    return pathname === '/buildings.html'
+        || pathname === '/classes.html'
+        || pathname === '/subjects.html'
+        || pathname === '/curriculum.html'
+        || pathname === '/load.html'
+        || pathname === '/service-notes.html'
+        || pathname === '/settings.html'
+        || pathname === '/subject-areas.html';
+}
+
 function navItemsForPath(pathname) {
     if (pathname === '/vsoko-pa.html') {
         return PA_HUB_NAV_ORDER;
@@ -64,7 +75,7 @@ function navItemsForPath(pathname) {
     if (pathname === '/teachers.html') {
         return NAV_ORDER.filter((tabDef) => tabDef.tab === 'SERVICE_NOTES');
     }
-    if (pathname === '/load.html') {
+    if (isLoadModulePage(pathname)) {
         return NAV_ORDER.filter((tabDef) => tabDef.tab !== 'VSOKO_VIEW');
     }
     return NAV_ORDER;
