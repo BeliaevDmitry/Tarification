@@ -19,7 +19,7 @@
 
   <section class="card" id="pa-tab-exit">
     <h2>Выходные работы</h2>
-    <p class="muted">Сдача отчётов, причины отказов и последние 10 версий.</p>
+    <p class="muted">Генерация отчётов по спецификациям и контроль статусов.</p>
     <div class="row">
       <select id="pa-exit-subject"></select>
       <select id="pa-exit-scope"></select>
@@ -29,7 +29,6 @@
         <option value="ADVANCED">Углублённый</option>
       </select>
       <input id="pa-exit-work-date" type="date">
-      <button id="pa-exit-load-versions-btn" type="button" data-allow-readonly="true">Показать версии</button>
       <button id="pa-exit-generate-all-btn" type="button" data-requires-edit>Сгенерировать все</button>
       <button id="pa-exit-generate-parallel-btn" type="button" data-requires-edit>Сгенерировать параллель</button>
       <button id="pa-exit-generate-btn" type="button" data-requires-edit>Сгенерировать для класса</button>
@@ -53,22 +52,11 @@
       </table>
     </div>
 
-    <div class="row" data-requires-edit>
-      <input id="pa-exit-report-files" type="file" multiple accept=".xlsx">
-      <button id="pa-exit-upload-btn" type="button">Сдать отчёт(ы)</button>
-    </div>
-
+    <h3>Результат генерации</h3>
     <div class="pa-sticky-table-wrap">
       <table class="sheet-table sticky-head">
         <thead><tr><th>Файл</th><th>Статус</th><th>Причина/сообщение</th><th>Версия</th></tr></thead>
         <tbody id="pa-exit-upload-log-body"></tbody>
-      </table>
-    </div>
-
-    <div class="pa-sticky-table-wrap">
-      <table class="sheet-table sticky-head">
-        <thead><tr><th>Версия</th><th>Статус</th><th>Активна</th><th>Файл</th><th>Дата</th><th>Причина</th></tr></thead>
-        <tbody id="pa-exit-versions-body"></tbody>
       </table>
     </div>
   </section>

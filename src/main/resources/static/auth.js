@@ -37,6 +37,7 @@ const NAV_ORDER = [
 
 const PA_NAV_ORDER = [
     { path: '/vsoko-pa.html', tab: 'VSOKO_VIEW', label: '← Вернуться к ПА' },
+    { path: '/vsoko-pa-spec.html', tab: 'VSOKO_VIEW', label: 'Спецификации работ' },
     { path: '/vsoko-pa-entry.html', tab: 'VSOKO_VIEW', label: 'Входные работы' },
     { path: '/vsoko-pa-exit.html', tab: 'VSOKO_VIEW', label: 'Выходные работы' },
     { path: '/vsoko-pa-folders.html', tab: 'VSOKO_VIEW', label: 'Отчёты по папкам' },

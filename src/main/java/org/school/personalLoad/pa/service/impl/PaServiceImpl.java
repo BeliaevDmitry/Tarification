@@ -553,11 +553,17 @@ public class PaServiceImpl implements PaService {
                 .toList();
         List<PaDtos.ReportUploadResult> results = new ArrayList<>();
         for (String className : classes) {
+            if (resolveSpecificationForClass(academicYear, subjectName, className, level, workType, workDate) == null) {
+                continue;
+            }
             if (hasActiveGeneratedTemplate(academicYear, subjectName, className, level, workType, workDate)) {
                 results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Шаблон уже сгенерирован для класса", null, subjectName, className, workType));
                 continue;
             }
             results.add(generateReportTemplate(academicYear, subjectName, className, level, workType, workDate));
+        }
+        if (results.isEmpty()) {
+            results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Нет классов с доступной спецификацией для генерации", null, subjectName, "", workType));
         }
         return results;
     }
@@ -575,11 +581,17 @@ public class PaServiceImpl implements PaService {
                 .toList();
         List<PaDtos.ReportUploadResult> results = new ArrayList<>();
         for (String className : classes) {
+            if (resolveSpecificationForClass(academicYear, subjectName, className, level, workType, workDate) == null) {
+                continue;
+            }
             if (hasActiveGeneratedTemplate(academicYear, subjectName, className, level, workType, workDate)) {
                 results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Шаблон уже сгенерирован для класса", null, subjectName, className, workType));
                 continue;
             }
             results.add(generateReportTemplate(academicYear, subjectName, className, level, workType, workDate));
+        }
+        if (results.isEmpty()) {
+            results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Нет классов с доступной спецификацией для генерации", null, subjectName, "", workType));
         }
         return results;
     }
