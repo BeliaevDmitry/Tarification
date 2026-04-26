@@ -1002,6 +1002,28 @@ function bindReportDownloadButtons() {
     });
 }
 
+function applySharedPaPageNav() {
+    const search = window.location.search || '';
+    document.querySelectorAll('#pa-sub-pages-nav .nav-link, #pa-hub-grid a[href^="/vsoko-pa-"]').forEach((link) => {
+        const href = link.getAttribute('href');
+        if (!href || href.startsWith('#')) return;
+        const url = new URL(href, window.location.origin);
+        url.search = search;
+        link.setAttribute('href', `${url.pathname}${url.search}`);
+    });
+    const path = window.location.pathname;
+    const pageKey = path.includes('vsoko-pa-spec') ? 'spec'
+        : path.includes('vsoko-pa-entry') ? 'entry'
+            : path.includes('vsoko-pa-exit') ? 'exit'
+                : path.includes('vsoko-pa-folders') ? 'folders'
+                    : path.includes('vsoko-pa-upload') ? 'upload'
+                        : null;
+    if (!pageKey) return;
+    document.querySelectorAll('#pa-sub-pages-nav [data-pa-page]').forEach((link) => {
+        link.classList.toggle('active', link.dataset.paPage === pageKey);
+    });
+}
+
 document.querySelectorAll('#pa-main-tabs [data-tab]').forEach((btn) => {
     btn.addEventListener('click', () => setPaTab(btn.dataset.tab));
 });
@@ -1059,6 +1081,7 @@ bindClick('pa-summary-status-save-btn', () => {
 });
 bindWorkflowControls('entry');
 bindWorkflowControls('exit');
+applySharedPaPageNav();
 
 loadSummaryStatusOverrides();
 reloadSummaryAndSpecs().catch((e) => {
@@ -1066,9 +1089,13 @@ reloadSummaryAndSpecs().catch((e) => {
 });
 loadSpecificationImportLogHistory();
 renderSpecificationImportLog();
-const startMainTab = paQueryParams.get('tab') || 'specs';
+const startMainTab = paQueryParams.get('tab')
+    || (window.location.pathname.includes('vsoko-pa-entry') ? 'entry'
+        : window.location.pathname.includes('vsoko-pa-exit') ? 'exit'
+            : 'specs');
 const startSpecTab = paQueryParams.get('specTab') || 'summary-5-11';
-const startExitTab = paQueryParams.get('exitTab') || 'summary';
+const startExitTab = paQueryParams.get('exitTab')
+    || (window.location.pathname.includes('vsoko-pa-folders') ? 'folders' : 'summary');
 setPaTab(startMainTab);
 setSpecTab(startSpecTab);
 setExitTab(startExitTab);
