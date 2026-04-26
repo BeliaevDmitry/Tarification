@@ -5,12 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ВСОКО / ПА — Спецификации</title>
   <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .sticky-head thead th { position: sticky; top: 0; background: #f1f1f1; z-index: 3; }
+    .pa-sticky-table-wrap { max-height: 70vh; overflow: auto; }
+    .summary-status-btn.inactive { color: #8a8f98; }
+    #pa-summary-status-dialog table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    #pa-summary-status-dialog th, #pa-summary-status-dialog td { border: 1px solid #d8d8d8; padding: 6px 8px; text-align: left; }
+    #pa-summary-status-dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 0 0; margin: 0; }
+  </style>
 </head>
 <body>
 <main class="container">
-  <section class="card">
-    <h1>ВСОКО / ПА — Спецификации</h1>
-    <p><a href="/vsoko-pa-entry.html">Входные</a> · <a href="/vsoko-pa-exit.html">Выходные</a> · <a href="/vsoko-pa-folders.html">Отчёты по папкам</a> · <a href="/vsoko-pa-upload.html">Сдача ПА</a></p>
+  <header class="card app-shell-header">
+    <div class="header-title-row">
+      <h1>ВСОКО / ПА — Спецификации</h1>
+      <div class="header-user-inline">
+        <a class="nav-link" href="/vsoko-pa.html">← Вернуться к ПА</a>
+      </div>
+    </div>
+    <nav class="page-nav" id="pa-sub-pages-nav">
+      <a class="nav-link" data-pa-page="spec" href="/vsoko-pa-spec.html">Спецификации</a>
+      <a class="nav-link" data-pa-page="entry" href="/vsoko-pa-entry.html">Входные работы</a>
+      <a class="nav-link" data-pa-page="exit" href="/vsoko-pa-exit.html">Выходные работы</a>
+      <a class="nav-link" data-pa-page="folders" href="/vsoko-pa-folders.html">Отчёты по папкам</a>
+      <a class="nav-link" data-pa-page="upload" href="/vsoko-pa-upload.html">Сдача ПА</a>
+    </nav>
+  </header>
+
+  <section class="card tab-panel" id="pa-tab-specs">
+    <h2>Спецификации работ</h2>
     <div class="row" data-requires-edit>
       <input id="pa-spec-files" type="file" multiple accept=".xlsx">
       <button id="pa-spec-import-btn" type="button">Загрузить спецификации</button>
@@ -22,13 +45,66 @@
       <button class="tab-btn" type="button" data-spec-tab="registry">Спецификации</button>
       <button class="tab-btn" type="button" data-spec-tab="upload-log">Результат загрузки файлов</button>
     </div>
-    <div id="pa-spec-summary-5-11-panel" class="tab-panel"><div class="pa-sticky-table-wrap"><table class="sheet-table sticky-head"><thead id="pa-matrix-head"></thead><tbody id="pa-matrix-body"></tbody></table></div></div>
-    <div id="pa-spec-summary-1-4-panel" class="tab-panel hidden"><div class="pa-sticky-table-wrap"><table class="sheet-table sticky-head"><thead id="pa-matrix-head-primary"></thead><tbody id="pa-matrix-body-primary"></tbody></table></div></div>
-    <div id="pa-spec-registry-panel" class="tab-panel hidden"><div class="pa-sticky-table-wrap"><table class="sheet-table sticky-head"><thead><tr><th>Предметная область</th><th>Предмет</th><th>Параллель</th><th>Уровень</th><th>Тип</th><th>Версия</th><th>Файл</th><th>Участвует</th></tr></thead><tbody id="pa-specifications-body"></tbody></table></div></div>
-    <div id="pa-spec-upload-log-panel" class="tab-panel hidden"><div class="pa-sticky-table-wrap"><table class="sheet-table sticky-head"><thead><tr><th>Дата</th><th>Файл</th><th>Статус</th><th>Сообщение</th><th>Записей</th></tr></thead><tbody id="pa-spec-import-log-body"></tbody></table></div></div>
+
+    <div id="pa-spec-summary-5-11-panel" class="tab-panel">
+      <div class="pa-sticky-table-wrap">
+        <table class="sheet-table sticky-head">
+          <thead id="pa-matrix-head"></thead>
+          <tbody id="pa-matrix-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="pa-spec-summary-1-4-panel" class="tab-panel hidden">
+      <div class="pa-sticky-table-wrap">
+        <table class="sheet-table sticky-head">
+          <thead id="pa-matrix-head-primary"></thead>
+          <tbody id="pa-matrix-body-primary"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="pa-spec-registry-panel" class="tab-panel hidden">
+      <div class="pa-sticky-table-wrap">
+        <table class="sheet-table sticky-head">
+          <thead>
+          <tr>
+            <th>Предметная область</th><th>Предмет</th><th>Параллель</th><th>Уровень</th><th>Тип</th><th>Версия</th><th>Файл</th><th>Участвует</th>
+          </tr>
+          </thead>
+          <tbody id="pa-specifications-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="pa-spec-upload-log-panel" class="tab-panel hidden">
+      <div class="pa-sticky-table-wrap">
+        <table class="sheet-table sticky-head">
+          <thead>
+          <tr><th>Дата</th><th>Файл</th><th>Статус</th><th>Сообщение</th><th>Записей</th></tr>
+          </thead>
+          <tbody id="pa-spec-import-log-body"></tbody>
+        </table>
+      </div>
+    </div>
   </section>
 </main>
-<dialog id="pa-summary-status-dialog"><h3 id="pa-summary-status-title"></h3><p id="pa-summary-status-scope" class="muted"></p><p><strong>Классы по УП:</strong> <span id="pa-summary-status-classes">—</span></p><table><thead><tr><th>Тип работы</th><th>Участвует в ВСОКО</th></tr></thead><tbody><tr><td>Входная</td><td><label><input id="pa-summary-status-entry-check" type="checkbox" checked> Да</label></td></tr><tr><td>Выходная</td><td><label><input id="pa-summary-status-exit-check" type="checkbox" checked> Да</label></td></tr></tbody></table><menu><button id="pa-summary-status-save-btn" type="button">Сохранить</button><button id="pa-summary-status-close-btn" type="button">Закрыть</button></menu></dialog>
+<dialog id="pa-summary-status-dialog">
+  <h3 id="pa-summary-status-title">Статус спецификаций</h3>
+  <p id="pa-summary-status-scope" class="muted"></p>
+  <p><strong>Классы по УП:</strong> <span id="pa-summary-status-classes">—</span></p>
+  <table>
+    <thead><tr><th>Тип работы</th><th>Участвует в ВСОКО</th></tr></thead>
+    <tbody>
+    <tr><td>Входная</td><td><label><input id="pa-summary-status-entry-check" type="checkbox" checked> Да</label></td></tr>
+    <tr><td>Выходная</td><td><label><input id="pa-summary-status-exit-check" type="checkbox" checked> Да</label></td></tr>
+    </tbody>
+  </table>
+  <menu>
+    <button id="pa-summary-status-save-btn" type="button">Сохранить</button>
+    <button id="pa-summary-status-close-btn" type="button">Закрыть</button>
+  </menu>
+</dialog>
 <script src="/auth.js"></script>
 <script src="/vsoko-pa.js"></script>
 </body>
