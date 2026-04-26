@@ -1004,23 +1004,12 @@ function bindReportDownloadButtons() {
 
 function applySharedPaPageNav() {
     const search = window.location.search || '';
-    document.querySelectorAll('#pa-sub-pages-nav .nav-link, #pa-hub-grid a[href^="/vsoko-pa-"]').forEach((link) => {
+    document.querySelectorAll('.page-nav .nav-link, #pa-hub-grid a[href^="/vsoko-pa-"]').forEach((link) => {
         const href = link.getAttribute('href');
         if (!href || href.startsWith('#')) return;
         const url = new URL(href, window.location.origin);
         url.search = search;
         link.setAttribute('href', `${url.pathname}${url.search}`);
-    });
-    const path = window.location.pathname;
-    const pageKey = path.includes('vsoko-pa-spec') ? 'spec'
-        : path.includes('vsoko-pa-entry') ? 'entry'
-            : path.includes('vsoko-pa-exit') ? 'exit'
-                : path.includes('vsoko-pa-folders') ? 'folders'
-                    : path.includes('vsoko-pa-upload') ? 'upload'
-                        : null;
-    if (!pageKey) return;
-    document.querySelectorAll('#pa-sub-pages-nav [data-pa-page]').forEach((link) => {
-        link.classList.toggle('active', link.dataset.paPage === pageKey);
     });
 }
 

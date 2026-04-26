@@ -9,12 +9,8 @@
 <body>
 <main class="container">
     <header class="card app-shell-header">
-        <div class="header-title-row">
-            <h1>ВСОКО / ПА</h1>
-            <div class="header-user-inline">
-                <a class="home-link" href="/vsoko.html" title="ВСОКО">←</a>
-            </div>
-        </div>
+        <h1>ВСОКО / ПА</h1>
+        <nav class="page-nav"></nav>
         <p class="muted">Выберите раздел ПА.</p>
     </header>
 
@@ -28,6 +24,7 @@
         </div>
     </section>
 </main>
+<script src="/auth.js"></script>
 <script>
 (() => {
     const search = window.location.search || '';
