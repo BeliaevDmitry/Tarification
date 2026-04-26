@@ -42,6 +42,9 @@ const PA_NAV_ORDER = [
     { path: '/vsoko-pa-folders.html', tab: 'VSOKO_VIEW', label: 'Отчёты по папкам' },
     { path: '/vsoko-pa-upload.html', tab: 'VSOKO_VIEW', label: 'Сдача ПА' }
 ];
+const PA_HUB_NAV_ORDER = [
+    { path: '/vsoko.html', tab: 'VSOKO_VIEW', label: '← Вернуться к ВСОКО' }
+];
 
 function isPaSubPage(pathname) {
     return pathname === '/vsoko-pa-spec.html'
@@ -52,6 +55,9 @@ function isPaSubPage(pathname) {
 }
 
 function navItemsForPath(pathname) {
+    if (pathname === '/vsoko-pa.html') {
+        return PA_HUB_NAV_ORDER;
+    }
     if (isPaSubPage(pathname)) {
         return PA_NAV_ORDER;
     }
