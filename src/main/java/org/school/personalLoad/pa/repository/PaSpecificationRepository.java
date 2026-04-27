@@ -15,12 +15,13 @@ public interface PaSpecificationRepository extends JpaRepository<PaSpecification
 
     List<PaSpecification> findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(String academicYear);
 
-    @Query("select coalesce(max(s.versionNo), 0) from PaSpecification s where s.academicYear = :academicYear and s.subjectName = :subjectName and s.scopeType = :scopeType and s.scopeValue = :scopeValue and s.level = :level and s.workType = :workType and ((s.workDate is null and :workDate is null) or s.workDate = :workDate)")
-    int findMaxVersion(@Param("academicYear") String academicYear,
-                       @Param("subjectName") String subjectName,
-                       @Param("scopeType") PaScopeType scopeType,
-                       @Param("scopeValue") String scopeValue,
-                       @Param("level") PaLevel level,
-                       @Param("workType") PaWorkType workType,
-                       @Param("workDate") LocalDate workDate);
+    @Query("select coalesce(max(s.versionNo), 0) from PaSpecification s where s.academicYear = :academicYear and s.subjectCatalogId = :subjectCatalogId and s.scopeType = :scopeType and s.schoolClassId = :schoolClassId and s.level = :level and s.workType = :workType and ((s.workDate is null and :workDate is null) or s.workDate = :workDate)")
+    int findMaxVersionByIds(@Param("academicYear") String academicYear,
+                            @Param("subjectCatalogId") Long subjectCatalogId,
+                            @Param("scopeType") PaScopeType scopeType,
+                            @Param("schoolClassId") Long schoolClassId,
+                            @Param("level") PaLevel level,
+                            @Param("workType") PaWorkType workType,
+                            @Param("workDate") LocalDate workDate);
+
 }

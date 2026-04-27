@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "pa_participation", uniqueConstraints = {
         @UniqueConstraint(name = "uk_pa_participation_scope", columnNames = {
-                "academic_year", "subject_name", "scope_type", "scope_value", "level_code"
+                "academic_year", "subject_catalog_id", "scope_type", "school_class_id", "level_code"
         })
 })
 @Getter
@@ -26,12 +26,18 @@ public class PaParticipation {
     @Column(name = "subject_name", nullable = false, length = 200)
     private String subjectName;
 
+    @Column(name = "subject_catalog_id", nullable = false)
+    private Long subjectCatalogId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "scope_type", nullable = false, length = 20)
     private PaScopeType scopeType = PaScopeType.PARALLEL;
 
     @Column(name = "scope_value", nullable = false, length = 30)
     private String scopeValue;
+
+    @Column(name = "school_class_id", nullable = false)
+    private Long schoolClassId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "level_code", nullable = false, length = 20)

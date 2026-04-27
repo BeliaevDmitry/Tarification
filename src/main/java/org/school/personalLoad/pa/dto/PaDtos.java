@@ -89,4 +89,13 @@ public final class PaDtos {
                                    String fileName,
                                    LocalDateTime createdAt) {
     }
+
+    public record ReportWorkflowSummaryItem(String subjectName,
+                                            String scopeValue,
+                                            boolean hasGenerated,
+                                            boolean hasDownloaded,
+                                            boolean hasUploaded,
+                                            Long latestGeneratedId,
+                                            Long latestUploadedId) {
+    }
 }

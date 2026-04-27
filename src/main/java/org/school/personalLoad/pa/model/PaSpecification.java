@@ -9,8 +9,8 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "pa_specification", indexes = {
-        @Index(name = "idx_pa_spec_year_subject", columnList = "academic_year, subject_name"),
-        @Index(name = "idx_pa_spec_scope", columnList = "scope_type, scope_value"),
+        @Index(name = "idx_pa_spec_year_subject_id", columnList = "academic_year, subject_catalog_id"),
+        @Index(name = "idx_pa_spec_scope_id", columnList = "scope_type, school_class_id"),
         @Index(name = "idx_pa_spec_pair", columnList = "pair_key")
 })
 @Getter
@@ -27,12 +27,18 @@ public class PaSpecification {
     @Column(name = "subject_name", nullable = false, length = 200)
     private String subjectName;
 
+    @Column(name = "subject_catalog_id", nullable = false)
+    private Long subjectCatalogId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "scope_type", nullable = false, length = 20)
     private PaScopeType scopeType = PaScopeType.PARALLEL;
 
     @Column(name = "scope_value", nullable = false, length = 30)
     private String scopeValue;
+
+    @Column(name = "school_class_id", nullable = false)
+    private Long schoolClassId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "level_code", nullable = false, length = 20)
