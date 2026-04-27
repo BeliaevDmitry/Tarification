@@ -143,7 +143,10 @@ public class PaServiceImpl implements PaService {
             List<PaSpecificationTask> tasks = parseTasks(sheet, subjectRow, subjectCol, blockEndCol, saved, warnings);
             if (tasks.isEmpty()) {
                 specificationRepository.delete(saved);
-                warnings.add("Лист " + sheet.getSheetName() + ": спецификация '" + subjectName + "' не загружена — нет ни одной темы");
+                String workTypeLabel = saved.getWorkType() == PaWorkType.ENTRY
+                        ? "Входной"
+                        : saved.getWorkType() == PaWorkType.EXIT ? "Выходной" : "Промежуточной";
+                warnings.add("Лист " + sheet.getSheetName() + ": спецификация '" + subjectName + "' для " + workTypeLabel + " работы не загружена — нет ни одной темы");
                 continue;
             }
             taskRepository.saveAll(tasks);

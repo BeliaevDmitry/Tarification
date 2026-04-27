@@ -8,6 +8,12 @@
   <style>
     .sticky-head thead th { position: sticky; top: 0; background: #f1f1f1; z-index: 3; }
     .pa-sticky-table-wrap { max-height: 70vh; overflow: auto; }
+    .pa-workflow-table .workflow-col-area,
+    .pa-workflow-table .workflow-col-subject,
+    .pa-workflow-table .workflow-col-status { position: sticky; background: #f8fafc; z-index: 2; }
+    .pa-workflow-table .workflow-col-area { left: 0; min-width: 180px; z-index: 4; }
+    .pa-workflow-table .workflow-col-subject { left: 180px; min-width: 180px; z-index: 4; }
+    .pa-workflow-table .workflow-col-status { left: 360px; min-width: 120px; z-index: 4; }
   </style>
 </head>
 <body>
@@ -34,6 +40,14 @@
       <button id="pa-exit-generate-btn" type="button" data-requires-edit>Сгенерировать для класса</button>
     </div>
 
+    <h3>Результат генерации</h3>
+    <div class="pa-sticky-table-wrap">
+      <table class="sheet-table sticky-head">
+        <thead><tr><th>Файл</th><th>Статус</th><th>Причина/сообщение</th><th>Версия</th></tr></thead>
+        <tbody id="pa-exit-upload-log-body"></tbody>
+      </table>
+    </div>
+
     <div class="pa-sticky-table-wrap">
       <div class="row" style="margin-bottom:8px;">
         <input id="pa-exit-workflow-filter" type="text" placeholder="Фильтр по предмету/области">
@@ -46,17 +60,9 @@
         <span id="pa-exit-workflow-page-info" class="muted">Страница 1 из 1</span>
         <button id="pa-exit-workflow-page-next" type="button" data-allow-readonly="true">→</button>
       </div>
-      <table class="sheet-table sticky-head">
+      <table class="sheet-table sticky-head pa-workflow-table">
         <thead id="pa-exit-workflow-head"></thead>
         <tbody id="pa-exit-workflow-body"></tbody>
-      </table>
-    </div>
-
-    <h3>Результат генерации</h3>
-    <div class="pa-sticky-table-wrap">
-      <table class="sheet-table sticky-head">
-        <thead><tr><th>Файл</th><th>Статус</th><th>Причина/сообщение</th><th>Версия</th></tr></thead>
-        <tbody id="pa-exit-upload-log-body"></tbody>
       </table>
     </div>
   </section>

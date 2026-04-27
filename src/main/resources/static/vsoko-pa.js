@@ -754,8 +754,10 @@ async function loadVersions(prefix) {
 }
 
 async function renderWorkflow(prefix, loadedVersions = null) {
-    const subject = document.getElementById(`pa-${prefix}-subject`).value;
-    const level = document.getElementById(`pa-${prefix}-level`).value;
+    const subjectSelect = document.getElementById(`pa-${prefix}-subject`);
+    const levelSelect = document.getElementById(`pa-${prefix}-level`);
+    const subject = prefix === 'exit' ? 'ALL' : (subjectSelect?.value || 'ALL');
+    const level = levelSelect?.value || 'BASIC';
     const workType = prefix === 'entry' ? 'ENTRY' : 'EXIT';
     const head = document.getElementById(`pa-${prefix}-workflow-head`);
     const body = document.getElementById(`pa-${prefix}-workflow-body`);
@@ -777,7 +779,7 @@ async function renderWorkflow(prefix, loadedVersions = null) {
     );
     const classes = [...new Set(curriculumRows.map((r) => String(r.className).trim()).filter(Boolean))]
         .sort((a, b) => String(a).localeCompare(String(b), 'ru'));
-    head.innerHTML = `<tr><th>Предметная область</th><th>Предмет</th><th>Статус</th>${classes.map((s) => `<th>${s}</th>`).join('')}</tr>`;
+    head.innerHTML = `<tr><th class="workflow-col-area">Предметная область</th><th class="workflow-col-subject">Предмет</th><th class="workflow-col-status">Статус</th>${classes.map((s) => `<th>${s}</th>`).join('')}</tr>`;
 
     const subjectClassMap = new Map();
     curriculumRows.forEach((row) => {
@@ -865,12 +867,12 @@ async function renderWorkflow(prefix, loadedVersions = null) {
             subjectRows.forEach((rowName, rowIdx) => {
                 html += '<tr>';
                 if (idx === 0 && rowIdx === 0) {
-                    html += `<td rowspan="${subjects.length * 4}">${area}</td>`;
+                    html += `<td rowspan="${subjects.length * 4}" class="workflow-col-area">${area}</td>`;
                 }
                 if (rowIdx === 0) {
-                    html += `<td rowspan="4">${subjectName}</td>`;
+                    html += `<td rowspan="4" class="workflow-col-subject">${subjectName}</td>`;
                 }
-                html += `<td>${rowName}</td>`;
+                html += `<td class="workflow-col-status">${rowName}</td>`;
                 classes.forEach((scopeValue) => {
                     const classParallel = parseParallel(scopeValue);
                     const hasSpec = specs.some((s) => {
