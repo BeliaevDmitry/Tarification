@@ -756,7 +756,7 @@ async function loadVersions(prefix) {
 async function renderWorkflow(prefix, loadedVersions = null) {
     const subjectSelect = document.getElementById(`pa-${prefix}-subject`);
     const levelSelect = document.getElementById(`pa-${prefix}-level`);
-    const subject = prefix === 'exit' ? 'ALL' : (subjectSelect?.value || 'ALL');
+    const subject = (prefix === 'entry' || prefix === 'exit') ? 'ALL' : (subjectSelect?.value || 'ALL');
     const level = levelSelect?.value || 'BASIC';
     const workType = prefix === 'entry' ? 'ENTRY' : 'EXIT';
     const head = document.getElementById(`pa-${prefix}-workflow-head`);
