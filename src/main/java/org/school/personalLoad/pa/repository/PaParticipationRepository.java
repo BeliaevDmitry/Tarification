@@ -10,6 +10,9 @@ import java.util.Optional;
 
 public interface PaParticipationRepository extends JpaRepository<PaParticipation, Long> {
     List<PaParticipation> findAllByAcademicYear(String academicYear);
+    Optional<PaParticipation> findFirstByAcademicYearAndSubjectCatalogIdAndScopeTypeAndSchoolClassIdAndLevel(
+            String academicYear, Long subjectCatalogId, PaScopeType scopeType, Long schoolClassId, PaLevel level
+    );
     Optional<PaParticipation> findFirstByAcademicYearAndSubjectNameAndScopeTypeAndScopeValueAndLevel(
             String academicYear, String subjectName, PaScopeType scopeType, String scopeValue, PaLevel level
     );

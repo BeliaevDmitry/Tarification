@@ -11,6 +11,10 @@ const paState = {
     workflowUi: {
         entry: { search: '', page: 1, pageSize: 20 },
         exit: { search: '', page: 1, pageSize: 20 }
+    },
+    workflowRange: {
+        entry: '5-11',
+        exit: '5-11'
     }
 };
 const PA_SPEC_IMPORT_HISTORY_KEY = 'pa.spec.import.history';
@@ -90,6 +94,46 @@ function matrixCellSymbol(cell) {
 function parseParallel(scope) {
     const m = String(scope || '').match(/^(\d{1,2})/);
     return m ? Number(m[1]) : null;
+}
+
+function workflowRangeStorageKey(prefix) {
+    return `pa.workflow.range.${prefix}`;
+}
+
+function getWorkflowRange(prefix) {
+    return paState.workflowRange[prefix] || '5-11';
+}
+
+function setWorkflowRange(prefix, range, syncQuery = true) {
+    const normalized = range === '1-4' ? '1-4' : '5-11';
+    paState.workflowRange[prefix] = normalized;
+    try {
+        localStorage.setItem(workflowRangeStorageKey(prefix), normalized);
+    } catch (_) {
+        // ignore
+    }
+    const tabs = document.getElementById(`pa-${prefix}-range-tabs`);
+    if (tabs) {
+        tabs.querySelectorAll('[data-workflow-range]').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.workflowRange === normalized);
+        });
+    }
+    if (syncQuery) {
+        const url = new URL(window.location.href);
+        url.searchParams.set(`${prefix}Range`, normalized);
+        history.replaceState({}, '', `${url.pathname}${url.search}`);
+    }
+}
+
+function initWorkflowRange(prefix) {
+    const fromQuery = paQueryParams.get(`${prefix}Range`);
+    let fromStorage = null;
+    try {
+        fromStorage = localStorage.getItem(workflowRangeStorageKey(prefix));
+    } catch (_) {
+        fromStorage = null;
+    }
+    setWorkflowRange(prefix, fromQuery || fromStorage || '5-11', false);
 }
 
 function normalizeScopeValue(value) {
@@ -330,6 +374,7 @@ function renderUploadLog(prefix, rows) {
 
 function renderVersions(prefix, rows) {
     const body = document.getElementById(`pa-${prefix}-versions-body`);
+    if (!body) return;
     body.innerHTML = (rows || []).map((row) => `
         <tr>
             <td>${row.versionNo ?? ''}</td>
@@ -649,63 +694,6 @@ function loadSpecificationImportLogHistory() {
     }
 }
 
-function loadSpecificationImportLogHistory() {
-    try {
-        const raw = localStorage.getItem(historyStorageKey());
-        if (!raw) {
-            paState.importLogHistory = [];
-            return;
-        }
-        const parsed = JSON.parse(raw);
-        paState.importLogHistory = Array.isArray(parsed) ? parsed
-            .filter((row) => row && typeof row === 'object')
-            .map((row) => ({
-                timestamp: row.timestamp || '',
-                fileName: row.fileName || '—',
-                status: row.status || '',
-                message: row.message || '',
-                records: Number.isFinite(row.records) ? row.records : 0
-            }))
-            : [];
-    } catch (_) {
-        paState.importLogHistory = [];
-    }
-}
-
-function appendSpecificationImportLog(result) {
-    const rows = Array.isArray(result) ? result : [result];
-    const timestamp = new Date().toLocaleString('ru-RU');
-    rows.forEach((row) => {
-        const warnings = Array.isArray(row?.warnings) ? row.warnings.filter(Boolean) : [];
-        const hasError = warnings.some((w) => String(w).toLowerCase().startsWith('ошибка'));
-        const status = hasError ? 'Ошибка' : 'Успешно';
-        const message = warnings.length ? warnings.join('; ') : 'Импорт выполнен';
-        const records = Number.isFinite(row?.importedTasks) ? row.importedTasks : 0;
-        paState.importLogHistory.unshift({
-            timestamp,
-            fileName: row?.fileName || '—',
-            status,
-            message,
-            records
-        });
-    });
-    renderSpecificationImportLog();
-}
-
-function renderSpecificationImportLog() {
-    const body = document.getElementById('pa-spec-import-log-body');
-    if (!body) return;
-    body.innerHTML = paState.importLogHistory.map((row) => `
-        <tr>
-            <td>${row.timestamp}</td>
-            <td>${row.fileName}</td>
-            <td>${row.status}</td>
-            <td>${row.message}</td>
-            <td>${row.records}</td>
-        </tr>
-    `).join('') || '<tr><td colspan="5" class="muted">История загрузок пуста</td></tr>';
-}
-
 async function uploadReports(prefix) {
     const input = document.getElementById(`pa-${prefix}-report-files`);
     if (!input.files.length) return;
@@ -810,8 +798,10 @@ async function loadVersions(prefix) {
 }
 
 async function renderWorkflow(prefix, loadedVersions = null) {
-    const subject = document.getElementById(`pa-${prefix}-subject`).value;
-    const level = document.getElementById(`pa-${prefix}-level`).value;
+    const subjectSelect = document.getElementById(`pa-${prefix}-subject`);
+    const levelSelect = document.getElementById(`pa-${prefix}-level`);
+    const subject = (prefix === 'entry' || prefix === 'exit') ? 'ALL' : (subjectSelect?.value || 'ALL');
+    const level = levelSelect?.value || 'BASIC';
     const workType = prefix === 'entry' ? 'ENTRY' : 'EXIT';
     const head = document.getElementById(`pa-${prefix}-workflow-head`);
     const body = document.getElementById(`pa-${prefix}-workflow-body`);
@@ -833,7 +823,18 @@ async function renderWorkflow(prefix, loadedVersions = null) {
     );
     const classes = [...new Set(curriculumRows.map((r) => String(r.className).trim()).filter(Boolean))]
         .sort((a, b) => String(a).localeCompare(String(b), 'ru'));
-    head.innerHTML = `<tr><th>Предметная область</th><th>Предмет</th><th>Статус</th>${classes.map((s) => `<th>${s}</th>`).join('')}</tr>`;
+    const range = getWorkflowRange(prefix);
+    const filteredClasses = classes.filter((className) => {
+        const p = parseParallel(className);
+        if (p === null) return false;
+        return range === '1-4' ? (p >= 1 && p <= 4) : (p >= 5 && p <= 11);
+    });
+    if (!filteredClasses.length) {
+        head.innerHTML = '<tr><th>Предметная область</th><th>Предмет</th><th>Статус</th></tr>';
+        body.innerHTML = '<tr><td colspan="3" class="muted">Нет данных для выбранного диапазона классов</td></tr>';
+        return;
+    }
+    head.innerHTML = `<tr><th class="workflow-col-area">Предметная область</th><th class="workflow-col-subject">Предмет</th><th class="workflow-col-status">Статус</th>${filteredClasses.map((s) => `<th>${s}</th>`).join('')}</tr>`;
 
     const subjectClassMap = new Map();
     curriculumRows.forEach((row) => {
@@ -844,39 +845,20 @@ async function renderWorkflow(prefix, loadedVersions = null) {
     });
 
     const versionMap = new Map();
-    for (const item of subjectClassMap.values()) {
-        const cacheKey = `${item.subjectName}|${item.scopeValue}|${level}|${workType}`;
-        let versions;
-        if (loadedVersions
-            && subject !== 'ALL'
-            && document.getElementById(`pa-${prefix}-scope`).value === item.scopeValue) {
-            versions = loadedVersions;
-            paState.workflowVersionCache[prefix].set(cacheKey, loadedVersions || []);
-        } else if (paState.workflowVersionCache[prefix].has(cacheKey)) {
-            versions = paState.workflowVersionCache[prefix].get(cacheKey);
-        } else {
-            versions = await paApi(`/api/pa/reports/versions?${new URLSearchParams({
-                subjectName: item.subjectName,
-                scopeType: 'CLASS',
-                scopeValue: item.scopeValue,
-                level,
-                workType
-            }).toString()}`);
-            paState.workflowVersionCache[prefix].set(cacheKey, versions || []);
-        }
-        const hasGenerated = (versions || []).some((v) => v.status === 'GENERATED');
-        const hasDownloaded = (versions || []).some((v) => v.downloadedAtLeastOnce);
-        const hasUploaded = (versions || []).some((v) => v.status === 'ACCEPTED' && v.uploadedBackSuccess);
-        const latestGenerated = (versions || []).find((v) => v.status === 'GENERATED');
-        const latestUploaded = (versions || []).find((v) => v.status === 'ACCEPTED' && v.uploadedBackSuccess);
-        versionMap.set(`${item.subjectName}|${normalizeScopeValue(item.scopeValue)}`, {
-            hasGenerated,
-            hasDownloaded,
-            hasUploaded,
-            latestGeneratedId: latestGenerated?.id,
-            latestUploadedId: latestUploaded?.id
+    const summaryRows = await paApi(`/api/pa/reports/workflow-summary?${new URLSearchParams({
+        level,
+        workType,
+        ...(subject !== 'ALL' ? { subjectName: subject } : {})
+    }).toString()}`);
+    (summaryRows || []).forEach((row) => {
+        versionMap.set(`${row.subjectName}|${normalizeScopeValue(row.scopeValue)}`, {
+            hasGenerated: Boolean(row.hasGenerated),
+            hasDownloaded: Boolean(row.hasDownloaded),
+            hasUploaded: Boolean(row.hasUploaded),
+            latestGeneratedId: row.latestGeneratedId,
+            latestUploadedId: row.latestUploadedId
         });
-    }
+    });
 
     const grouped = new Map();
     specs.forEach((spec) => {
@@ -921,13 +903,13 @@ async function renderWorkflow(prefix, loadedVersions = null) {
             subjectRows.forEach((rowName, rowIdx) => {
                 html += '<tr>';
                 if (idx === 0 && rowIdx === 0) {
-                    html += `<td rowspan="${subjects.length * 4}">${area}</td>`;
+                    html += `<td rowspan="${subjects.length * 4}" class="workflow-col-area">${area}</td>`;
                 }
                 if (rowIdx === 0) {
-                    html += `<td rowspan="4">${subjectName}</td>`;
+                    html += `<td rowspan="4" class="workflow-col-subject">${subjectName}</td>`;
                 }
-                html += `<td>${rowName}</td>`;
-                classes.forEach((scopeValue) => {
+                html += `<td class="workflow-col-status">${rowName}</td>`;
+                filteredClasses.forEach((scopeValue) => {
                     const classParallel = parseParallel(scopeValue);
                     const hasSpec = specs.some((s) => {
                         if (s.subjectName !== subjectName) return false;
@@ -991,6 +973,19 @@ function bindWorkflowControls(prefix) {
     }
 }
 
+function bindWorkflowRangeTabs(prefix) {
+    const tabs = document.getElementById(`pa-${prefix}-range-tabs`);
+    if (!tabs) return;
+    tabs.addEventListener('click', (event) => {
+        const btn = event.target.closest('[data-workflow-range]');
+        if (!btn) return;
+        event.preventDefault();
+        setWorkflowRange(prefix, btn.dataset.workflowRange);
+        paState.workflowUi[prefix].page = 1;
+        renderWorkflow(prefix).catch(() => {});
+    });
+}
+
 function bindReportDownloadButtons() {
     document.querySelectorAll('[data-download-report-id]').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -999,6 +994,17 @@ function bindReportDownloadButtons() {
             const url = typeof window.withAcademicYear === 'function' ? window.withAcademicYear(raw) : raw;
             window.open(url, '_blank');
         });
+    });
+}
+
+function applySharedPaPageNav() {
+    const search = window.location.search || '';
+    document.querySelectorAll('.page-nav .nav-link, #pa-hub-grid a[href^="/vsoko-pa-"]').forEach((link) => {
+        const href = link.getAttribute('href');
+        if (!href || href.startsWith('#')) return;
+        const url = new URL(href, window.location.origin);
+        url.search = search;
+        link.setAttribute('href', `${url.pathname}${url.search}`);
     });
 }
 
@@ -1059,6 +1065,11 @@ bindClick('pa-summary-status-save-btn', () => {
 });
 bindWorkflowControls('entry');
 bindWorkflowControls('exit');
+initWorkflowRange('entry');
+initWorkflowRange('exit');
+bindWorkflowRangeTabs('entry');
+bindWorkflowRangeTabs('exit');
+applySharedPaPageNav();
 
 loadSummaryStatusOverrides();
 reloadSummaryAndSpecs().catch((e) => {
@@ -1066,9 +1077,13 @@ reloadSummaryAndSpecs().catch((e) => {
 });
 loadSpecificationImportLogHistory();
 renderSpecificationImportLog();
-const startMainTab = paQueryParams.get('tab') || 'specs';
+const startMainTab = paQueryParams.get('tab')
+    || (window.location.pathname.includes('vsoko-pa-entry') ? 'entry'
+        : window.location.pathname.includes('vsoko-pa-exit') ? 'exit'
+            : 'specs');
 const startSpecTab = paQueryParams.get('specTab') || 'summary-5-11';
-const startExitTab = paQueryParams.get('exitTab') || 'summary';
+const startExitTab = paQueryParams.get('exitTab')
+    || (window.location.pathname.includes('vsoko-pa-folders') ? 'folders' : 'summary');
 setPaTab(startMainTab);
 setSpecTab(startSpecTab);
 setExitTab(startExitTab);

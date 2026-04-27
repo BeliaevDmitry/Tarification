@@ -1,1 +1,79 @@
-<!doctype html><html lang="ru"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>ВСОКО / ПА — Входные работы</title><link rel="stylesheet" href="/styles.css" /></head><body><main class="container"><section class="card"><h1>ВСОКО / ПА — Входные работы</h1><p><a href="/vsoko-pa-spec.html">Спецификации</a> · <a href="/vsoko-pa-exit.html">Выходные</a> · <a href="/vsoko-pa-folders.html">Отчёты по папкам</a> · <a href="/vsoko-pa-upload.html">Сдача ПА</a></p><div class="row"><select id="pa-entry-subject"></select><select id="pa-entry-scope"></select><select id="pa-entry-class"></select><select id="pa-entry-level"><option value="BASIC">Базовый</option><option value="ADVANCED">Углублённый</option></select><input id="pa-entry-work-date" type="date"><button id="pa-entry-load-versions-btn" type="button">Показать версии</button><button id="pa-entry-generate-all-btn" type="button">Сгенерировать все</button><button id="pa-entry-generate-parallel-btn" type="button">Сгенерировать параллель</button><button id="pa-entry-generate-btn" type="button">Сгенерировать для класса</button></div><div style="overflow:auto;"><table class="sheet-table"><thead id="pa-entry-workflow-head"></thead><tbody id="pa-entry-workflow-body"></tbody></table></div><div class="row"><input id="pa-entry-report-files" type="file" multiple accept=".xlsx"><button id="pa-entry-upload-btn" type="button">Сдать отчёт(ы)</button></div><div style="overflow:auto;"><table class="sheet-table"><thead><tr><th>Файл</th><th>Статус</th><th>Причина/сообщение</th><th>Версия</th></tr></thead><tbody id="pa-entry-upload-log-body"></tbody></table></div><div style="overflow:auto;"><table class="sheet-table"><thead><tr><th>Версия</th><th>Статус</th><th>Активна</th><th>Файл</th><th>Дата</th><th>Причина</th></tr></thead><tbody id="pa-entry-versions-body"></tbody></table></div></section></main><script src="/auth.js"></script><script src="/vsoko-pa.js"></script></body></html>
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ВСОКО / ПА — Входные работы</title>
+
+    <link rel="icon" type="image/svg+xml" href="/school-crest.svg">
+<link rel="stylesheet" href="/styles.css" />
+  <style>
+    .sticky-head thead th { position: sticky; top: 0; background: #f1f1f1; z-index: 3; }
+    .pa-sticky-table-wrap { max-height: 70vh; overflow: auto; }
+    .pa-workflow-table .workflow-col-area,
+    .pa-workflow-table .workflow-col-subject,
+    .pa-workflow-table .workflow-col-status { position: sticky; background: #f8fafc; z-index: 2; }
+    .pa-workflow-table .workflow-col-area { left: 0; min-width: 180px; z-index: 4; }
+    .pa-workflow-table .workflow-col-subject { left: 180px; min-width: 180px; z-index: 4; }
+    .pa-workflow-table .workflow-col-status { left: 360px; min-width: 120px; z-index: 4; }
+  </style>
+</head>
+<body>
+<main class="container">
+  <header class="card app-shell-header">
+    <h1>ВСОКО / ПА — Входные работы</h1>
+    <nav class="page-nav"></nav>
+  </header>
+
+  <section class="card" id="pa-tab-entry">
+    <h2>Входные работы</h2>
+    <p class="muted">Генерация отчётов по спецификациям и контроль статусов.</p>
+    <div class="row">
+      <select id="pa-entry-subject"></select>
+      <select id="pa-entry-scope"></select>
+      <select id="pa-entry-class"></select>
+      <select id="pa-entry-level">
+        <option value="BASIC">Базовый</option>
+        <option value="ADVANCED">Углублённый</option>
+      </select>
+      <input id="pa-entry-work-date" type="date">
+      <button id="pa-entry-generate-all-btn" type="button" data-requires-edit>Сгенерировать все</button>
+      <button id="pa-entry-generate-parallel-btn" type="button" data-requires-edit>Сгенерировать параллель</button>
+      <button id="pa-entry-generate-btn" type="button" data-requires-edit>Сгенерировать для класса</button>
+    </div>
+
+    <h3>Результат генерации</h3>
+    <div class="pa-sticky-table-wrap">
+      <table class="sheet-table sticky-head">
+        <thead><tr><th>Файл</th><th>Статус</th><th>Причина/сообщение</th><th>Версия</th></tr></thead>
+        <tbody id="pa-entry-upload-log-body"></tbody>
+      </table>
+    </div>
+
+    <div class="pa-sticky-table-wrap">
+      <div class="tabs" id="pa-entry-range-tabs">
+        <button class="tab-btn" type="button" data-workflow-range="1-4">1–4 классы</button>
+        <button class="tab-btn active" type="button" data-workflow-range="5-11">5–11 классы</button>
+      </div>
+      <div class="row" style="margin-bottom:8px;">
+        <input id="pa-entry-workflow-filter" type="text" placeholder="Фильтр по предмету/области">
+        <select id="pa-entry-workflow-page-size">
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="50">50</option>
+        </select>
+        <button id="pa-entry-workflow-page-prev" type="button" data-allow-readonly="true">←</button>
+        <span id="pa-entry-workflow-page-info" class="muted">Страница 1 из 1</span>
+        <button id="pa-entry-workflow-page-next" type="button" data-allow-readonly="true">→</button>
+      </div>
+      <table class="sheet-table sticky-head pa-workflow-table">
+        <thead id="pa-entry-workflow-head"></thead>
+        <tbody id="pa-entry-workflow-body"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<script src="/auth.js"></script>
+<script src="/vsoko-pa.js"></script>
+</body>
+</html>

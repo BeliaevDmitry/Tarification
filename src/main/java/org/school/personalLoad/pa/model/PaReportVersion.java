@@ -25,12 +25,18 @@ public class PaReportVersion {
     @Column(name = "subject_name", nullable = false, length = 200)
     private String subjectName;
 
+    @Column(name = "subject_catalog_id")
+    private Long subjectCatalogId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "scope_type", nullable = false, length = 20)
     private PaScopeType scopeType = PaScopeType.PARALLEL;
 
     @Column(name = "scope_value", nullable = false, length = 30)
     private String scopeValue;
+
+    @Column(name = "school_class_id")
+    private Long schoolClassId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "level_code", nullable = false, length = 20)
