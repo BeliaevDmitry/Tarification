@@ -81,6 +81,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         int imported = 0;
         int skipped = 0;
         Map<String, ClassroomLeadershipEntryRequest> merged = new LinkedHashMap<>();
+        Map<String, String> classToKey = new HashMap<>();
         findAll(academicYear).forEach(existing -> {
             ClassroomLeadershipEntryRequest req = new ClassroomLeadershipEntryRequest();
             req.setAcademicYear(academicYear);
@@ -89,7 +90,9 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             req.setClassDirection(existing.getClassDirection());
             req.setFioTeacher(existing.getFioTeacher());
             req.setCampusAddress(existing.getCampusAddress());
-            merged.put(existing.getNumberSchoolBuilding() + "|" + existing.getClassName(), req);
+            String key = existing.getNumberSchoolBuilding() + "|" + existing.getClassName();
+            merged.put(key, req);
+            classToKey.put(ClassNameNormalizer.normalize(existing.getClassName()), key);
         });
 
         try (InputStream inputStream = file.getInputStream(); Workbook workbook = WorkbookFactory.create(inputStream)) {
@@ -127,7 +130,13 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
                 req.setFioTeacher(teacher);
                 req.setCampusAddress(resolveCampusAddress(building, campusAddress));
                 req.setAcademicYear(academicYear);
-                merged.put(building + "|" + className, req);
+                String newKey = building + "|" + className;
+                String previousKey = classToKey.get(className);
+                if (previousKey != null && !previousKey.equals(newKey)) {
+                    merged.remove(previousKey);
+                }
+                merged.put(newKey, req);
+                classToKey.put(className, newKey);
                 imported++;
             }
 
