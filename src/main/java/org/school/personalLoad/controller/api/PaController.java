@@ -79,6 +79,15 @@ public class PaController {
         return ResponseEntity.ok(paService.reportVersions(year, subjectName, scopeType, scopeValue, level, workType, date));
     }
 
+    @GetMapping("/reports/workflow-summary")
+    public ResponseEntity<List<PaDtos.ReportWorkflowSummaryItem>> reportWorkflowSummary(@RequestParam(required = false) String academicYear,
+                                                                                         @RequestParam PaLevel level,
+                                                                                         @RequestParam PaWorkType workType,
+                                                                                         @RequestParam(required = false) String subjectName) {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        return ResponseEntity.ok(paService.reportWorkflowSummary(year, level, workType, subjectName));
+    }
+
     @GetMapping("/reports/folders")
     public ResponseEntity<List<PaDtos.ReportFolderItem>> reportFolders(@RequestParam(required = false) String academicYear,
                                                                        @RequestParam PaWorkType workType) {
