@@ -3,12 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tarification — Вход</title>
-    <link rel="stylesheet" href="/styles.css">
+    <title>ГБОУ школа 7 — Вход</title>
+
+    <link rel="icon" type="image/svg+xml" href="/school-crest.svg">
+<link rel="stylesheet" href="/styles.css">
 </head>
 <body class="login-page">
 <main class="container">
     <section class="card login-card">
+        <div class="login-crest-wrap">
+            <img src="/school-crest.svg" alt="Герб школы" class="login-crest">
+        </div>
         <h1>Вход в систему ГБОУ №7</h1>
         <p class="muted">Войдите под своей учетной записью. Пользователей создаёт администратор.</p>
         <form id="login-form" class="grid">
@@ -18,6 +23,10 @@
         </form>
         <pre id="login-result"></pre>
         <p class="muted">Если входите впервые, используйте временный пароль, который выдаст администратор.</p>
+        <div class="login-quick-links">
+            <a class="login-quick-tile" href="/request-exit.html">Подать заявку на выход</a>
+            <a class="login-quick-tile" href="/pa.html">ПА</a>
+        </div>
     </section>
 </main>
 <script src="/login.js"></script>

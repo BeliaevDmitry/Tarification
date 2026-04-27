@@ -29,6 +29,11 @@ public class AuthFilter extends OncePerRequestFilter {
     private static final Set<String> PUBLIC_PATHS = Set.of(
             "/login.html",
             "/login.js",
+            "/school-crest.svg",
+            "/request-exit.html",
+            "/open-forms.html",
+            "/pa.html",
+            "/pa-folders.js",
             "/styles.css",
             "/table-scroll.js",
             "/favicon.ico",
@@ -63,7 +68,19 @@ public class AuthFilter extends OncePerRequestFilter {
                 || path.startsWith("/css/")
                 || path.startsWith("/js/")
                 || PUBLIC_PATHS.contains(path)
+                || isPublicPaApiPath(request)
                 || "/api/auth/login".equals(path);
+    }
+
+    private boolean isPublicPaApiPath(HttpServletRequest request) {
+        if (!HttpMethod.GET.matches(request.getMethod())) {
+            return false;
+        }
+        String path = request.getRequestURI();
+        if ("/api/pa/reports/folders".equals(path)) {
+            return true;
+        }
+        return path.matches("^/api/pa/reports/\\d+/download$");
     }
 
     @Override
@@ -136,6 +153,7 @@ public class AuthFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/settings/")) return AppTab.SETTINGS;
         if (path.startsWith("/api/teachers")) return AppTab.TEACHERS;
         if (path.startsWith("/api/admin/users")) return AppTab.USERS;
+        if (path.startsWith("/api/pa")) return AppTab.VSOKO_EDIT;
         return null;
     }
 

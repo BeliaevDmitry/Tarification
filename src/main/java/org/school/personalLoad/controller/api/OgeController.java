@@ -120,7 +120,7 @@ public class OgeController {
                                                                       @RequestParam(required = false) String academicYear,
                                                                       HttpServletRequest request) {
         SessionUser user = AuthSessionUtils.requiredUser(request);
-        ensureCanViewTab(user, AppTab.VSOKO_EDIT, "ОГЭ / Внутренние работы");
+        ensureCanViewTab(user, AppTab.OGE_WORK_UPLOAD, "ОГЭ / Внутренние работы");
         ensureCanEditTab(user, AppTab.OGE_WORK_UPLOAD, "Загрузка работ ОГЭ");
         return ResponseEntity.ok(ogeService.importWorks(academicYearService.resolveRequestedOrDefault(academicYear), files, "INTERNAL"));
     }
@@ -139,7 +139,7 @@ public class OgeController {
     public ResponseEntity<OgeDtos.WorkDatasetResponse> workDataset(@RequestParam(required = false) String academicYear,
                                                                    @RequestParam(defaultValue = "INTERNAL") String source,
                                                                    HttpServletRequest request) {
-        AppTab viewTab = "EXTERNAL_TRYOUT".equalsIgnoreCase(source) ? AppTab.OGE_EXTERNAL_WORKS_VIEW : AppTab.VSOKO_EDIT;
+        AppTab viewTab = "EXTERNAL_TRYOUT".equalsIgnoreCase(source) ? AppTab.OGE_EXTERNAL_WORKS_VIEW : AppTab.OGE_WORK_UPLOAD;
         ensureCanViewTab(AuthSessionUtils.requiredUser(request), viewTab, "ОГЭ / Работы");
         return ResponseEntity.ok(ogeService.workDataset(academicYearService.resolveRequestedOrDefault(academicYear), source));
     }
@@ -148,7 +148,7 @@ public class OgeController {
     public ResponseEntity<List<OgeDtos.ImportLogRow>> importLogs(@RequestParam(required = false) String academicYear,
                                                                  @RequestParam(defaultValue = "INTERNAL") String source,
                                                                  HttpServletRequest request) {
-        AppTab viewTab = "EXTERNAL_TRYOUT".equalsIgnoreCase(source) ? AppTab.OGE_EXTERNAL_WORKS_VIEW : AppTab.VSOKO_EDIT;
+        AppTab viewTab = "EXTERNAL_TRYOUT".equalsIgnoreCase(source) ? AppTab.OGE_EXTERNAL_WORKS_VIEW : AppTab.OGE_WORK_UPLOAD;
         ensureCanViewTab(AuthSessionUtils.requiredUser(request), viewTab, "ОГЭ / Результат загрузки файлов");
         return ResponseEntity.ok(ogeService.importLogs(academicYearService.resolveRequestedOrDefault(academicYear), source));
     }
@@ -191,7 +191,7 @@ public class OgeController {
     public ResponseEntity<byte[]> exportWorks(@RequestParam(required = false) String academicYear,
                                               @RequestParam(defaultValue = "INTERNAL") String source,
                                               HttpServletRequest request) throws Exception {
-        AppTab viewTab = "EXTERNAL_TRYOUT".equalsIgnoreCase(source) ? AppTab.OGE_EXTERNAL_WORKS_VIEW : AppTab.VSOKO_EDIT;
+        AppTab viewTab = "EXTERNAL_TRYOUT".equalsIgnoreCase(source) ? AppTab.OGE_EXTERNAL_WORKS_VIEW : AppTab.OGE_WORK_UPLOAD;
         ensureCanViewTab(AuthSessionUtils.requiredUser(request), viewTab, "ОГЭ / Экспорт работ");
         byte[] body = ogeService.exportWorksWorkbook(academicYearService.resolveRequestedOrDefault(academicYear), source);
         String fileName = ("EXTERNAL_TRYOUT".equalsIgnoreCase(source) ? "ОГЭ_внешние_работы_" : "ОГЭ_внутренние_работы_") + LocalDate.now() + ".xlsx";

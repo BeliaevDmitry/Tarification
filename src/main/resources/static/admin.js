@@ -10,21 +10,51 @@ function applyAcademicYearScope(path) {
     }
     return resolver(path);
 }
-const TABS = [
-    { key: 'BUILDINGS', label: 'Корпуса' },
-    { key: 'CLASSES', label: 'Классы' },
-    { key: 'SUBJECTS', label: 'Предметы' },
-    { key: 'CURRICULUM', label: 'Учебный план' },
-    { key: 'LOAD', label: 'Нагрузка по корпусам' },
-    { key: 'LOAD_STATS', label: 'Нагрузка: статистика' },
-    { key: 'SERVICE_NOTES', label: 'Служебные записки' },
-    { key: 'SETTINGS', label: 'Настройки' },
-    { key: 'TEACHERS', label: 'Кадры' },
-    { key: 'CONTINGENT_IMPORT', label: 'Контингент: импорт' },
-    { key: 'CONTINGENT_STATS', label: 'Контингент: численность' },
-    { key: 'SUBJECT_AREAS', label: 'Предметные области' },
-    { key: 'USERS', label: 'Пользователи' }
+const TAB_GROUPS = [
+    {
+        key: 'MAIN',
+        label: 'Основные вкладки',
+        tabs: [
+            { key: 'BUILDINGS', label: 'Корпуса' },
+            { key: 'CLASSES', label: 'Классы' },
+            { key: 'SUBJECTS', label: 'Предметы' },
+            { key: 'CURRICULUM', label: 'Учебный план' },
+            { key: 'LOAD', label: 'Нагрузка по корпусам' },
+            { key: 'LOAD_STATS', label: 'Нагрузка: статистика' },
+            { key: 'SERVICE_NOTES', label: 'Служебные записки' },
+            { key: 'SETTINGS', label: 'Настройки' },
+            { key: 'TEACHERS', label: 'Кадры' },
+            { key: 'CONTINGENT_IMPORT', label: 'Контингент: импорт' },
+            { key: 'CONTINGENT_STATS', label: 'Контингент: численность' },
+            { key: 'SUBJECT_AREAS', label: 'Предметные области' }
+        ]
+    },
+    {
+        key: 'VSOKO',
+        label: 'ВСОКО / ОГЭ',
+        tabs: [
+            { key: 'VSOKO_VIEW', label: 'ВСОКО: просмотр' },
+            { key: 'VSOKO_EDIT', label: 'ВСОКО: редактирование' },
+            { key: 'OGE_UPLOAD_VIEW', label: 'ОГЭ: Выгрузка (просмотр)' },
+            { key: 'OGE_MISMATCH_VIEW', label: 'ОГЭ: Нестыковки (просмотр)' },
+            { key: 'OGE_EXTERNAL_WORKS_VIEW', label: 'ОГЭ: Внешние работы пробники (просмотр)' },
+            { key: 'OGE_TEACHER_BINDING_VIEW', label: 'ОГЭ: Привязка к педагогу (просмотр)' },
+            { key: 'OGE_SCORE_VIEW', label: 'ОГЭ: Баллы за задания (просмотр)' },
+            { key: 'OGE_EVALUATION_VIEW', label: 'ОГЭ: Оценивание (просмотр)' },
+            { key: 'OGE_GIA_UPLOAD', label: 'ОГЭ: Загрузка выгрузок ГИА' },
+            { key: 'OGE_WORK_UPLOAD', label: 'ОГЭ: Загрузка работ ОГЭ' }
+        ]
+    },
+    {
+        key: 'ADMINISTRATION',
+        label: 'Администрирование',
+        tabs: [
+            { key: 'USERS', label: 'Пользователи' }
+        ]
+    }
 ];
+
+const TABS = TAB_GROUPS.flatMap((group) => group.tabs);
 
 const LOAD_SCOPE_MODE = {
     NONE: 'NONE',
@@ -445,39 +475,115 @@ function setAllLoadBuildings(prefix, checked) {
 
 function renderPermissionMatrix(targetBody, selectedPermissions = [], prefix = 'create') {
     const byTab = permissionMap(selectedPermissions);
-    targetBody.innerHTML = TABS.map((tab) => {
-        const current = byTab[tab.key] || { canView: tab.key !== 'USERS', canEdit: false };
+    targetBody.innerHTML = TAB_GROUPS.map((group) => {
+        const groupRows = group.tabs.map((tab) => {
+            const current = byTab[tab.key] || { canView: tab.key !== 'USERS', canEdit: false };
+            return `
+                <tr data-tab-row="${tab.key}" data-tab-group="${group.key}">
+                    <td class="permission-tab-cell">${tab.label}</td>
+                    <td><input type="checkbox" data-tab-view="${tab.key}" data-tab-group="${group.key}" data-prefix="${prefix}" ${current.canView ? 'checked' : ''}></td>
+                    <td><input type="checkbox" data-tab-edit="${tab.key}" data-tab-group="${group.key}" data-prefix="${prefix}" ${current.canEdit ? 'checked' : ''}></td>
+                </tr>`;
+        }).join('');
         return `
-            <tr data-tab-row="${tab.key}">
-                <td>${tab.label}</td>
-                <td><input type="checkbox" data-tab-view="${tab.key}" data-prefix="${prefix}" ${current.canView ? 'checked' : ''}></td>
-                <td><input type="checkbox" data-tab-edit="${tab.key}" data-prefix="${prefix}" ${current.canEdit ? 'checked' : ''}></td>
-            </tr>`;
+            <tr class="permission-group-row" data-group-row="${group.key}">
+                <td><strong>${group.label}</strong></td>
+                <td><input type="checkbox" data-group-view="${group.key}" data-prefix="${prefix}"></td>
+                <td><input type="checkbox" data-group-edit="${group.key}" data-prefix="${prefix}"></td>
+            </tr>
+            ${groupRows}
+        `;
     }).join('');
     bindMatrixInteractions(targetBody);
     syncRoleSpecificFields(prefix);
+}
+
+function syncGroupCheckboxes(targetBody, groupKey) {
+    const viewTabs = Array.from(targetBody.querySelectorAll(`[data-tab-view][data-tab-group="${groupKey}"]`));
+    const editTabs = Array.from(targetBody.querySelectorAll(`[data-tab-edit][data-tab-group="${groupKey}"]`));
+    const groupView = targetBody.querySelector(`[data-group-view="${groupKey}"]`);
+    const groupEdit = targetBody.querySelector(`[data-group-edit="${groupKey}"]`);
+    if (!groupView || !groupEdit || !viewTabs.length) return;
+
+    const enabledViewTabs = viewTabs.filter((checkbox) => !checkbox.disabled);
+    const enabledEditTabs = editTabs.filter((checkbox) => !checkbox.disabled);
+    const totalView = enabledViewTabs.length;
+    const totalEdit = enabledEditTabs.length;
+    const checkedView = enabledViewTabs.filter((checkbox) => checkbox.checked).length;
+    const checkedEdit = enabledEditTabs.filter((checkbox) => checkbox.checked).length;
+    const hasEnabledTabs = totalView > 0;
+
+    groupView.disabled = !hasEnabledTabs;
+    groupEdit.disabled = !hasEnabledTabs;
+
+    groupView.checked = hasEnabledTabs && checkedView === totalView;
+    groupView.indeterminate = hasEnabledTabs && checkedView > 0 && checkedView < totalView;
+    groupEdit.checked = hasEnabledTabs && totalEdit > 0 && checkedEdit === totalEdit;
+    groupEdit.indeterminate = hasEnabledTabs && checkedEdit > 0 && checkedEdit < totalEdit;
+}
+
+function syncAllGroupCheckboxes(targetBody) {
+    TAB_GROUPS.forEach((group) => syncGroupCheckboxes(targetBody, group.key));
 }
 
 function bindMatrixInteractions(targetBody) {
     targetBody.querySelectorAll('[data-tab-view]').forEach((checkbox) => {
         checkbox.addEventListener('change', () => {
             const tab = checkbox.dataset.tabView;
+            const groupKey = checkbox.dataset.tabGroup;
             const editCheckbox = targetBody.querySelector(`[data-tab-edit="${tab}"]`);
             if (!checkbox.checked && editCheckbox) {
                 editCheckbox.checked = false;
             }
+            if (groupKey) syncGroupCheckboxes(targetBody, groupKey);
         });
     });
 
     targetBody.querySelectorAll('[data-tab-edit]').forEach((checkbox) => {
         checkbox.addEventListener('change', () => {
             const tab = checkbox.dataset.tabEdit;
+            const groupKey = checkbox.dataset.tabGroup;
             const viewCheckbox = targetBody.querySelector(`[data-tab-view="${tab}"]`);
             if (checkbox.checked && viewCheckbox) {
                 viewCheckbox.checked = true;
             }
+            if (groupKey) syncGroupCheckboxes(targetBody, groupKey);
         });
     });
+
+    targetBody.querySelectorAll('[data-group-view]').forEach((checkbox) => {
+        checkbox.addEventListener('change', () => {
+            const groupKey = checkbox.dataset.groupView;
+            targetBody.querySelectorAll(`[data-tab-view][data-tab-group="${groupKey}"]`).forEach((tabCheckbox) => {
+                if (tabCheckbox.disabled) return;
+                tabCheckbox.checked = checkbox.checked;
+                if (!checkbox.checked) {
+                    const tab = tabCheckbox.dataset.tabView;
+                    const editCheckbox = targetBody.querySelector(`[data-tab-edit="${tab}"]`);
+                    if (editCheckbox && !editCheckbox.disabled) editCheckbox.checked = false;
+                }
+            });
+            syncGroupCheckboxes(targetBody, groupKey);
+        });
+    });
+
+    targetBody.querySelectorAll('[data-group-edit]').forEach((checkbox) => {
+        checkbox.addEventListener('change', () => {
+            const groupKey = checkbox.dataset.groupEdit;
+            targetBody.querySelectorAll(`[data-tab-edit][data-tab-group="${groupKey}"]`).forEach((tabCheckbox) => {
+                if (tabCheckbox.disabled) return;
+                tabCheckbox.checked = checkbox.checked;
+                const tab = tabCheckbox.dataset.tabEdit;
+                const viewCheckbox = targetBody.querySelector(`[data-tab-view="${tab}"]`);
+                if (viewCheckbox && !viewCheckbox.disabled && checkbox.checked) {
+                    viewCheckbox.checked = true;
+                }
+            });
+            syncGroupCheckboxes(targetBody, groupKey);
+        });
+    });
+
+    syncAllGroupCheckboxes(targetBody);
 }
 
 function syncRoleSpecificFields(prefix) {
@@ -517,6 +623,7 @@ function syncRoleSpecificFields(prefix) {
         viewCheckbox.disabled = false;
         editCheckbox.disabled = false;
     });
+    syncAllGroupCheckboxes(targetBody);
 
     scopeInputs(prefix).forEach((input) => {
         const primaryMode = input.value === LOAD_SCOPE_MODE.PRIMARY;

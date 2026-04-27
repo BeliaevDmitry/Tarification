@@ -1,0 +1,15 @@
+<svg width="320" height="420" viewBox="0 0 320 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="320" height="420" rx="24" fill="#F8FAFC"/>
+  <path d="M160 32L218 54V162C218 212 192 252 160 274C128 252 102 212 102 162V54L160 32Z" fill="#0E3A7A" stroke="#0B2650" stroke-width="6"/>
+  <path d="M160 58L196 72V160C196 202 177 234 160 249C143 234 124 202 124 160V72L160 58Z" fill="#F0D27A"/>
+  <path d="M95 92L66 124L82 146L112 116L95 92Z" fill="#154B8B"/>
+  <path d="M225 92L254 124L238 146L208 116L225 92Z" fill="#154B8B"/>
+  <circle cx="160" cy="116" r="26" fill="#0E3A7A" stroke="#F0D27A" stroke-width="5"/>
+  <path d="M160 98L166 112H180L169 121L173 135L160 126L147 135L151 121L140 112H154L160 98Z" fill="#F0D27A"/>
+  <path d="M137 175H183V206H137V175Z" fill="#0E3A7A"/>
+  <path d="M145 183H175V198H145V183Z" fill="#F8FAFC"/>
+  <path d="M88 300C116 278 204 278 232 300V332H88V300Z" fill="#0E3A7A"/>
+  <text x="160" y="321" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#F0D27A">ГБОУ №7</text>
+  <path d="M64 350C95 372 225 372 256 350" stroke="#0E3A7A" stroke-width="8" stroke-linecap="round"/>
+  <text x="160" y="392" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#0E3A7A">PER ASPERA AD ASTRA</text>
+</svg>
