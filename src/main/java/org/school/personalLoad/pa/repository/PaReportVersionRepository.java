@@ -30,6 +30,8 @@ public interface PaReportVersionRepository extends JpaRepository<PaReportVersion
             LocalDate workDate
     );
 
+    List<PaReportVersion> findAllByAcademicYearAndLevelAndWorkType(String academicYear, PaLevel level, PaWorkType workType);
+
     @Query("select coalesce(max(r.versionNo), 0) from PaReportVersion r where r.academicYear = :academicYear and r.subjectName = :subjectName and r.scopeType = :scopeType and r.scopeValue = :scopeValue and r.level = :level and r.workType = :workType and ((r.workDate is null and :workDate is null) or r.workDate = :workDate)")
     int findMaxVersion(@Param("academicYear") String academicYear,
                        @Param("subjectName") String subjectName,
