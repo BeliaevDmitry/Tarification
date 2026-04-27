@@ -11,6 +11,10 @@ const paState = {
     workflowUi: {
         entry: { search: '', page: 1, pageSize: 20 },
         exit: { search: '', page: 1, pageSize: 20 }
+    },
+    workflowRange: {
+        entry: '5-11',
+        exit: '5-11'
     }
 };
 const PA_SPEC_IMPORT_HISTORY_KEY = 'pa.spec.import.history';
@@ -90,6 +94,46 @@ function matrixCellSymbol(cell) {
 function parseParallel(scope) {
     const m = String(scope || '').match(/^(\d{1,2})/);
     return m ? Number(m[1]) : null;
+}
+
+function workflowRangeStorageKey(prefix) {
+    return `pa.workflow.range.${prefix}`;
+}
+
+function getWorkflowRange(prefix) {
+    return paState.workflowRange[prefix] || '5-11';
+}
+
+function setWorkflowRange(prefix, range, syncQuery = true) {
+    const normalized = range === '1-4' ? '1-4' : '5-11';
+    paState.workflowRange[prefix] = normalized;
+    try {
+        localStorage.setItem(workflowRangeStorageKey(prefix), normalized);
+    } catch (_) {
+        // ignore
+    }
+    const tabs = document.getElementById(`pa-${prefix}-range-tabs`);
+    if (tabs) {
+        tabs.querySelectorAll('[data-workflow-range]').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.workflowRange === normalized);
+        });
+    }
+    if (syncQuery) {
+        const url = new URL(window.location.href);
+        url.searchParams.set(`${prefix}Range`, normalized);
+        history.replaceState({}, '', `${url.pathname}${url.search}`);
+    }
+}
+
+function initWorkflowRange(prefix) {
+    const fromQuery = paQueryParams.get(`${prefix}Range`);
+    let fromStorage = null;
+    try {
+        fromStorage = localStorage.getItem(workflowRangeStorageKey(prefix));
+    } catch (_) {
+        fromStorage = null;
+    }
+    setWorkflowRange(prefix, fromQuery || fromStorage || '5-11', false);
 }
 
 function normalizeScopeValue(value) {
@@ -779,7 +823,18 @@ async function renderWorkflow(prefix, loadedVersions = null) {
     );
     const classes = [...new Set(curriculumRows.map((r) => String(r.className).trim()).filter(Boolean))]
         .sort((a, b) => String(a).localeCompare(String(b), 'ru'));
-    head.innerHTML = `<tr><th class="workflow-col-area">Предметная область</th><th class="workflow-col-subject">Предмет</th><th class="workflow-col-status">Статус</th>${classes.map((s) => `<th>${s}</th>`).join('')}</tr>`;
+    const range = getWorkflowRange(prefix);
+    const filteredClasses = classes.filter((className) => {
+        const p = parseParallel(className);
+        if (p === null) return false;
+        return range === '1-4' ? (p >= 1 && p <= 4) : (p >= 5 && p <= 11);
+    });
+    if (!filteredClasses.length) {
+        head.innerHTML = '<tr><th>Предметная область</th><th>Предмет</th><th>Статус</th></tr>';
+        body.innerHTML = '<tr><td colspan="3" class="muted">Нет данных для выбранного диапазона классов</td></tr>';
+        return;
+    }
+    head.innerHTML = `<tr><th class="workflow-col-area">Предметная область</th><th class="workflow-col-subject">Предмет</th><th class="workflow-col-status">Статус</th>${filteredClasses.map((s) => `<th>${s}</th>`).join('')}</tr>`;
 
     const subjectClassMap = new Map();
     curriculumRows.forEach((row) => {
@@ -854,7 +909,7 @@ async function renderWorkflow(prefix, loadedVersions = null) {
                     html += `<td rowspan="4" class="workflow-col-subject">${subjectName}</td>`;
                 }
                 html += `<td class="workflow-col-status">${rowName}</td>`;
-                classes.forEach((scopeValue) => {
+                filteredClasses.forEach((scopeValue) => {
                     const classParallel = parseParallel(scopeValue);
                     const hasSpec = specs.some((s) => {
                         if (s.subjectName !== subjectName) return false;
@@ -916,6 +971,19 @@ function bindWorkflowControls(prefix) {
             renderWorkflow(prefix).catch(() => {});
         });
     }
+}
+
+function bindWorkflowRangeTabs(prefix) {
+    const tabs = document.getElementById(`pa-${prefix}-range-tabs`);
+    if (!tabs) return;
+    tabs.addEventListener('click', (event) => {
+        const btn = event.target.closest('[data-workflow-range]');
+        if (!btn) return;
+        event.preventDefault();
+        setWorkflowRange(prefix, btn.dataset.workflowRange);
+        paState.workflowUi[prefix].page = 1;
+        renderWorkflow(prefix).catch(() => {});
+    });
 }
 
 function bindReportDownloadButtons() {
@@ -997,6 +1065,10 @@ bindClick('pa-summary-status-save-btn', () => {
 });
 bindWorkflowControls('entry');
 bindWorkflowControls('exit');
+initWorkflowRange('entry');
+initWorkflowRange('exit');
+bindWorkflowRangeTabs('entry');
+bindWorkflowRangeTabs('exit');
 applySharedPaPageNav();
 
 loadSummaryStatusOverrides();
