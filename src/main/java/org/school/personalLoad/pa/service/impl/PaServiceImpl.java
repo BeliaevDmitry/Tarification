@@ -354,6 +354,41 @@ public class PaServiceImpl implements PaService {
     }
 
     @Override
+    public List<PaDtos.ReportWorkflowSummaryItem> reportWorkflowSummary(String academicYear, PaLevel level, PaWorkType workType, String subjectName) {
+        Map<String, List<PaReportVersion>> grouped = reportVersionRepository
+                .findAllByAcademicYearAndLevelAndWorkType(academicYear, level, workType)
+                .stream()
+                .filter(v -> v.getScopeType() == PaScopeType.CLASS)
+                .filter(v -> subjectName == null || subjectName.isBlank() || "ALL".equalsIgnoreCase(subjectName) || normalize(v.getSubjectName()).equals(normalize(subjectName)))
+                .collect(Collectors.groupingBy(v -> normalize(v.getSubjectName()) + "|" + normalizeClass(v.getScopeValue())));
+
+        List<PaDtos.ReportWorkflowSummaryItem> result = new ArrayList<>();
+        grouped.forEach((key, versions) -> {
+            PaReportVersion latestGenerated = versions.stream()
+                    .filter(v -> "GENERATED".equalsIgnoreCase(v.getStatus()))
+                    .sorted(Comparator.comparing(PaReportVersion::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
+                    .findFirst()
+                    .orElse(null);
+            PaReportVersion latestUploaded = versions.stream()
+                    .filter(v -> "ACCEPTED".equalsIgnoreCase(v.getStatus()) && v.isUploadedBackSuccess())
+                    .sorted(Comparator.comparing(PaReportVersion::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
+                    .findFirst()
+                    .orElse(null);
+            PaReportVersion sample = versions.get(0);
+            result.add(new PaDtos.ReportWorkflowSummaryItem(
+                    sample.getSubjectName(),
+                    sample.getScopeValue(),
+                    versions.stream().anyMatch(v -> "GENERATED".equalsIgnoreCase(v.getStatus())),
+                    versions.stream().anyMatch(PaReportVersion::isDownloadedAtLeastOnce),
+                    versions.stream().anyMatch(v -> "ACCEPTED".equalsIgnoreCase(v.getStatus()) && v.isUploadedBackSuccess()),
+                    latestGenerated == null ? null : latestGenerated.getId(),
+                    latestUploaded == null ? null : latestUploaded.getId()
+            ));
+        });
+        return result;
+    }
+
+    @Override
     @Transactional
     public List<PaDtos.ReportUploadResult> uploadReports(String academicYear, List<MultipartFile> files) {
         List<PaDtos.ReportUploadResult> results = new ArrayList<>();

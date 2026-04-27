@@ -790,39 +790,20 @@ async function renderWorkflow(prefix, loadedVersions = null) {
     });
 
     const versionMap = new Map();
-    for (const item of subjectClassMap.values()) {
-        const cacheKey = `${item.subjectName}|${item.scopeValue}|${level}|${workType}`;
-        let versions;
-        if (loadedVersions
-            && subject !== 'ALL'
-            && document.getElementById(`pa-${prefix}-scope`).value === item.scopeValue) {
-            versions = loadedVersions;
-            paState.workflowVersionCache[prefix].set(cacheKey, loadedVersions || []);
-        } else if (paState.workflowVersionCache[prefix].has(cacheKey)) {
-            versions = paState.workflowVersionCache[prefix].get(cacheKey);
-        } else {
-            versions = await paApi(`/api/pa/reports/versions?${new URLSearchParams({
-                subjectName: item.subjectName,
-                scopeType: 'CLASS',
-                scopeValue: item.scopeValue,
-                level,
-                workType
-            }).toString()}`);
-            paState.workflowVersionCache[prefix].set(cacheKey, versions || []);
-        }
-        const hasGenerated = (versions || []).some((v) => v.status === 'GENERATED');
-        const hasDownloaded = (versions || []).some((v) => v.downloadedAtLeastOnce);
-        const hasUploaded = (versions || []).some((v) => v.status === 'ACCEPTED' && v.uploadedBackSuccess);
-        const latestGenerated = (versions || []).find((v) => v.status === 'GENERATED');
-        const latestUploaded = (versions || []).find((v) => v.status === 'ACCEPTED' && v.uploadedBackSuccess);
-        versionMap.set(`${item.subjectName}|${normalizeScopeValue(item.scopeValue)}`, {
-            hasGenerated,
-            hasDownloaded,
-            hasUploaded,
-            latestGeneratedId: latestGenerated?.id,
-            latestUploadedId: latestUploaded?.id
+    const summaryRows = await paApi(`/api/pa/reports/workflow-summary?${new URLSearchParams({
+        level,
+        workType,
+        ...(subject !== 'ALL' ? { subjectName: subject } : {})
+    }).toString()}`);
+    (summaryRows || []).forEach((row) => {
+        versionMap.set(`${row.subjectName}|${normalizeScopeValue(row.scopeValue)}`, {
+            hasGenerated: Boolean(row.hasGenerated),
+            hasDownloaded: Boolean(row.hasDownloaded),
+            hasUploaded: Boolean(row.hasUploaded),
+            latestGeneratedId: row.latestGeneratedId,
+            latestUploadedId: row.latestUploadedId
         });
-    }
+    });
 
     const grouped = new Map();
     specs.forEach((spec) => {
