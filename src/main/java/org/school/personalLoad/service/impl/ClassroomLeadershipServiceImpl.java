@@ -53,7 +53,9 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             request.setClassName(className);
             request.setCampusAddress(campusAddress);
             request.setAcademicYear(academicYear);
-            normalized.put(building + "|" + className, request);
+            // В пределах одного учебного года класс должен быть уникален по названию,
+            // а корпус может меняться при повторном импорте/редактировании.
+            normalized.put(className, request);
         }
 
         classroomLeadershipRepository.findAllByAcademicYear(academicYear).forEach(classroomLeadershipRepository::delete);
