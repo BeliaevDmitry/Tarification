@@ -112,6 +112,37 @@ function canonicalBuildingCode(value) {
     return match ? normalizeBuildingCode(match.code) : normalized;
 }
 
+function addressesForBuildingCode(buildingCode) {
+    const normalizedCode = normalizeBuildingCode(buildingCode);
+    if (!normalizedCode) return [];
+
+    const addresses = [];
+    const pushUnique = (value) => {
+        const cleaned = String(value || "").trim();
+        if (!cleaned) return;
+        const key = cleaned.toLowerCase();
+        if (addresses.some((item) => item.toLowerCase() === key)) return;
+        addresses.push(cleaned);
+    };
+
+    const fromBuilding = (buildings || []).find((b) => normalizeBuildingCode(b?.code) === normalizedCode);
+    pushUnique(fromBuilding?.address);
+
+    (classroomRows || []).forEach((row) => {
+        if (normalizeBuildingCode(row?.numberSchoolBuilding) !== normalizedCode) return;
+        pushUnique(row?.campusAddress);
+    });
+
+    return addresses;
+}
+
+function buildingTabLabel(building) {
+    const base = String(building?.name || building?.code || "").trim();
+    const addresses = addressesForBuildingCode(building?.code);
+    if (!addresses.length) return base;
+    return `${base} — ${addresses.join(" / ")}`;
+}
+
 
 function normalizeClassName(value) {
     const v = String(value || "").trim().toUpperCase().replace(/[–—]/g, "-");
@@ -1187,9 +1218,11 @@ function renderBuildingTabs() {
         const button = document.createElement("button");
         button.type = "button";
         button.className = `parallel-tab ${building.code === selectedBuilding ? "active" : ""}`;
-        button.textContent = building.code === ARCHIVE_BUILDING_CODE
+        const tabLabel = building.code === ARCHIVE_BUILDING_CODE
             ? `🗂 ${building.name}`
-            : `${building.name}`;
+            : buildingTabLabel(building);
+        button.textContent = tabLabel;
+        button.title = tabLabel;
         button.addEventListener("click", () => {
             selectedBuilding = building.code;
             state.forceResort = true;
