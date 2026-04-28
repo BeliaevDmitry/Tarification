@@ -6,9 +6,11 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.ClassroomLeadershipEntryRequest;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.CurriculumPlanEntry;
+import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
+import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.service.ClassroomLeadershipService;
@@ -31,6 +33,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final SchoolBuildingRepository schoolBuildingRepository;
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
+    private final ManualLoadEntryRepository manualLoadEntryRepository;
 
     @Override
     public List<ClassroomLeadershipEntry> replaceAll(List<ClassroomLeadershipEntryRequest> requests) {
@@ -53,7 +56,9 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             request.setClassName(className);
             request.setCampusAddress(campusAddress);
             request.setAcademicYear(academicYear);
-            normalized.put(building + "|" + className, request);
+            // В пределах одного учебного года класс должен быть уникален по названию,
+            // а корпус может меняться при повторном импорте/редактировании.
+            normalized.put(className, request);
         }
 
         classroomLeadershipRepository.findAllByAcademicYear(academicYear).forEach(classroomLeadershipRepository::delete);
@@ -71,6 +76,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
 
         List<ClassroomLeadershipEntry> saved = classroomLeadershipRepository.saveAll(toSave);
         syncCurriculumBuildingByClass(academicYear, saved);
+        syncManualLoadBuildingByClass(academicYear, saved);
         return saved;
     }
 
@@ -81,6 +87,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         int imported = 0;
         int skipped = 0;
         Map<String, ClassroomLeadershipEntryRequest> merged = new LinkedHashMap<>();
+        Map<String, String> classToKey = new HashMap<>();
         findAll(academicYear).forEach(existing -> {
             ClassroomLeadershipEntryRequest req = new ClassroomLeadershipEntryRequest();
             req.setAcademicYear(academicYear);
@@ -89,7 +96,9 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             req.setClassDirection(existing.getClassDirection());
             req.setFioTeacher(existing.getFioTeacher());
             req.setCampusAddress(existing.getCampusAddress());
-            merged.put(existing.getNumberSchoolBuilding() + "|" + existing.getClassName(), req);
+            String key = existing.getNumberSchoolBuilding() + "|" + existing.getClassName();
+            merged.put(key, req);
+            classToKey.put(ClassNameNormalizer.normalize(existing.getClassName()), key);
         });
 
         try (InputStream inputStream = file.getInputStream(); Workbook workbook = WorkbookFactory.create(inputStream)) {
@@ -127,7 +136,13 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
                 req.setFioTeacher(teacher);
                 req.setCampusAddress(resolveCampusAddress(building, campusAddress));
                 req.setAcademicYear(academicYear);
-                merged.put(building + "|" + className, req);
+                String newKey = building + "|" + className;
+                String previousKey = classToKey.get(className);
+                if (previousKey != null && !previousKey.equals(newKey)) {
+                    merged.remove(previousKey);
+                }
+                merged.put(newKey, req);
+                classToKey.put(className, newKey);
                 imported++;
             }
 
@@ -239,6 +254,46 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
 
         if (changed) {
             curriculumPlanEntryRepository.saveAll(entries);
+        }
+    }
+
+    /**
+     * При переносе класса между корпусами синхронизируем ручную нагрузку,
+     * иначе записи остаются со старым корпусом и становятся "нераспределёнными".
+     */
+    private void syncManualLoadBuildingByClass(String academicYear, List<ClassroomLeadershipEntry> classes) {
+        if (classes == null || classes.isEmpty()) {
+            return;
+        }
+
+        Map<String, String> buildingByClass = new LinkedHashMap<>();
+        classes.forEach(c -> {
+            String className = ClassNameNormalizer.normalize(c.getClassName());
+            String building = normalizeBuildingCode(c.getNumberSchoolBuilding());
+            if (!className.isBlank() && !building.isBlank()) {
+                buildingByClass.put(className, building);
+            }
+        });
+        if (buildingByClass.isEmpty()) {
+            return;
+        }
+
+        List<ManualLoadEntry> entries = manualLoadEntryRepository.findAllByAcademicYear(academicYear);
+        boolean changed = false;
+        for (ManualLoadEntry entry : entries) {
+            String className = ClassNameNormalizer.normalize(entry.getClassName());
+            String targetBuilding = buildingByClass.get(className);
+            if (targetBuilding == null || targetBuilding.isBlank()) {
+                continue;
+            }
+            if (!targetBuilding.equalsIgnoreCase(String.valueOf(entry.getNumberSchoolBuilding()))) {
+                entry.setNumberSchoolBuilding(targetBuilding);
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            manualLoadEntryRepository.saveAll(entries);
         }
     }
 
