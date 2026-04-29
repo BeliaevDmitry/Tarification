@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 @Data
 @Entity
 @Table(name = "classroom_leadership_entry", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_classroom_leadership_class", columnNames = {"academicYear", "numberSchoolBuilding", "className"})
+        @UniqueConstraint(name = "uk_classroom_leadership_class", columnNames = {"academicYear", "className"})
 })
 public class ClassroomLeadershipEntry {
 
