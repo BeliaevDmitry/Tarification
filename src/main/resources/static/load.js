@@ -1572,14 +1572,30 @@ function renderStatsView() {
     const rows = [...rowsBySubject.values()]
         .sort((a, b) => (a.subjectArea || "").localeCompare(b.subjectArea || "", "ru") || a.subjectName.localeCompare(b.subjectName, "ru"));
 
+    const visibleBuildingRows = buildingRows.filter((building) =>
+        rows.some((row) => Number(row.perBuilding?.[building.code]?.planned || 0) > 0)
+    );
+
     const totalPlanned = rows.reduce((sum, row) => sum + row.totalPlanned, 0);
     const totalAssigned = rows.reduce((sum, row) => sum + row.totalAssigned, 0);
     ui.statsSummary.textContent = `Предметов: ${rows.length}. Плановых часов: ${totalPlanned}. Распределено: ${totalAssigned}. Нераспределено: ${totalPlanned - totalAssigned}.`;
 
-    const buildingHeader = buildingRows.map((building) =>
-        `<th colspan="3">${esc(building.code)}${building.name ? ` — ${esc(building.name)}` : ""}</th>`
+    const formatStatsBuildingLabel = (building) => {
+        const code = String(building?.code || "").trim();
+        const name = String(building?.name || "").trim();
+        if (!name) return code;
+        const normalizedCode = normalizeBuildingCode(code);
+        const normalizedName = normalizeBuildingCode(name);
+        if (normalizedName === normalizedCode || normalizedName.startsWith(`${normalizedCode}|`)) {
+            return name;
+        }
+        return `${code} — ${name}`;
+    };
+
+    const buildingHeader = visibleBuildingRows.map((building) =>
+        `<th colspan="3">${esc(formatStatsBuildingLabel(building))}</th>`
     ).join("");
-    const buildingSubHeader = buildingRows.map(() =>
+    const buildingSubHeader = visibleBuildingRows.map(() =>
         "<th>часы</th><th>распр.</th><th>не распр.</th>"
     ).join("");
 
@@ -1599,7 +1615,7 @@ function renderStatsView() {
 
     const tbody = rows.map((row) => {
         const totalUnassigned = row.totalPlanned - row.totalAssigned;
-        const perBuildingCols = buildingRows.map((building) => {
+        const perBuildingCols = visibleBuildingRows.map((building) => {
             const bucket = row.perBuilding[building.code] || { planned: 0, assigned: 0 };
             const buildingUnassigned = bucket.planned - bucket.assigned;
             return `<td>${esc(bucket.planned)}</td><td>${esc(bucket.assigned)}</td><td>${esc(buildingUnassigned)}</td>`;
