@@ -10,6 +10,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadPlanFactSummary;
 import org.school.personalLoad.dto.ManualLoadProcessResult;
+import org.school.personalLoad.dto.ManualLoadStatsResponse;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.ContinuityStatus;
 import org.school.personalLoad.model.EducationLevel;
@@ -19,6 +20,7 @@ import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.model.SubjectWithGroup;
 import org.school.personalLoad.model.TarifficationPerson;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.DatabaseService;
@@ -52,6 +54,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private final CurriculumPlanService curriculumPlanService;
     private final StudyPeriodSettingService studyPeriodSettingService;
     private final TeacherDirectoryRepository teacherDirectoryRepository;
+    private final SubjectCatalogRepository subjectCatalogRepository;
 
     @Override
     public ManualLoadEntry create(ManualLoadEntryRequest request) {
@@ -292,6 +295,113 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             log.warn("Импорт нагрузки выполнен частично: пропущено {} строк(и): {}", errors.size(), String.join(" | ", errors));
         }
         return createBulk(requests);
+    }
+
+    @Override
+    public ManualLoadStatsResponse buildStats(String academicYear, String numberSchoolBuilding, int page, int pageSize) {
+        List<CurriculumPlanEntry> curriculum = curriculumPlanService.findAll(academicYear, numberSchoolBuilding);
+        List<ManualLoadEntry> manual = findAll(academicYear, numberSchoolBuilding);
+
+        Map<String, String> subjectAreaByName = new HashMap<>();
+        subjectCatalogRepository.findAll().forEach(s ->
+                subjectAreaByName.put(normalizeToken(s.getSubjectName()), normalizeAreaName(s.getSubjectAreaName()))
+        );
+
+        Map<String, Integer> assignedByKey = new HashMap<>();
+        for (ManualLoadEntry row : manual) {
+            if (row.getFioTeacher() == null || row.getFioTeacher().isBlank()) continue;
+            String key = statsKey(row.getClassName(), row.getSubjectName(), row.getStudyPeriod(), row.getEducationLevel(), row.getGroupNameEducationalPlan());
+            assignedByKey.merge(key, Math.max(row.getGroupLoad() == null ? row.getLoad() : row.getGroupLoad(), 0), Integer::sum);
+        }
+
+        Map<String, ManualLoadStatsResponse.SubjectStat> bySubject = new HashMap<>();
+        for (CurriculumPlanEntry row : curriculum) {
+            List<CurriculumPlanEntry> expanded = expandForStats(row);
+            for (CurriculumPlanEntry item : expanded) {
+                String subjectName = normalizeValue(item.getSubjectName());
+                if (subjectName.isBlank()) continue;
+                String normalizedSubject = normalizeToken(subjectName);
+                String area = subjectAreaByName.getOrDefault(normalizedSubject, "Без области");
+                ManualLoadStatsResponse.SubjectStat stat = bySubject.computeIfAbsent(normalizedSubject,
+                        k -> new ManualLoadStatsResponse.SubjectStat(area, subjectName, 0, 0, 0));
+                int planned = Math.max(item.getPlannedHours() == null ? 0 : item.getPlannedHours(), 0);
+                String key = statsKey(item.getClassName(), item.getSubjectName(), item.getStudyPeriod(), item.getEducationLevel(), groupNameForStats(item));
+                int assigned = Math.min(planned, assignedByKey.getOrDefault(key, 0));
+                stat.setPlanned(stat.getPlanned() + planned);
+                stat.setAssigned(stat.getAssigned() + assigned);
+            }
+        }
+
+        List<ManualLoadStatsResponse.SubjectStat> rows = bySubject.values().stream()
+                .peek(r -> r.setUnassigned(Math.max(r.getPlanned() - r.getAssigned(), 0)))
+                .sorted(Comparator.comparing(ManualLoadStatsResponse.SubjectStat::getSubjectArea)
+                        .thenComparing(ManualLoadStatsResponse.SubjectStat::getSubjectName))
+                .toList();
+
+        int safePage = Math.max(page, 0);
+        int safePageSize = Math.min(Math.max(pageSize, 1), 500);
+        int totalRows = rows.size();
+        int from = Math.min(safePage * safePageSize, totalRows);
+        int to = Math.min(from + safePageSize, totalRows);
+        List<ManualLoadStatsResponse.SubjectStat> pagedRows = rows.subList(from, to);
+
+        int totalPlanned = rows.stream().mapToInt(ManualLoadStatsResponse.SubjectStat::getPlanned).sum();
+        int totalAssigned = rows.stream().mapToInt(ManualLoadStatsResponse.SubjectStat::getAssigned).sum();
+        return new ManualLoadStatsResponse(rows.size(), totalPlanned, totalAssigned, Math.max(totalPlanned - totalAssigned, 0), safePage, safePageSize, totalRows, pagedRows);
+    }
+
+    private String normalizeAreaName(String value) {
+        String normalized = normalizeValue(value);
+        return normalized.isBlank() ? "Без области" : normalized;
+    }
+
+    private String normalizeValue(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private String statsKey(String className, String subjectName, StudyPeriod period, EducationLevel level, String groupName) {
+        return String.join("|",
+                normalizeToken(ClassNameNormalizer.normalize(className)),
+                normalizeToken(subjectName),
+                String.valueOf(period == null ? StudyPeriod.YEAR : period),
+                String.valueOf(level == null ? EducationLevel.BASIC : level),
+                normalizeToken(groupName)
+        );
+    }
+
+    private String groupNameForStats(CurriculumPlanEntry row) {
+        if (row.getSubgroupRequired() && row.getSubgroupCount() != null && row.getSubgroupCount() > 0) {
+            return "Группа 1";
+        }
+        return "";
+    }
+
+    private List<CurriculumPlanEntry> expandForStats(CurriculumPlanEntry row) {
+        if (!Boolean.TRUE.equals(row.getSubgroupRequired()) || row.getSubgroupCount() == null || row.getSubgroupCount() < 2) {
+            return List.of(row);
+        }
+        List<CurriculumPlanEntry> result = new ArrayList<>();
+        CurriculumPlanEntry first = new CurriculumPlanEntry();
+        copyForStats(row, first);
+        first.setPlannedHours(row.getSubgroup1Hours() != null ? row.getSubgroup1Hours() : row.getPlannedHours());
+        first.setEducationLevel(row.getSubgroup1EducationLevel() != null ? row.getSubgroup1EducationLevel() : row.getEducationLevel());
+        result.add(first);
+        CurriculumPlanEntry second = new CurriculumPlanEntry();
+        copyForStats(row, second);
+        second.setPlannedHours(row.getSubgroup2Hours() != null ? row.getSubgroup2Hours() : row.getPlannedHours());
+        second.setEducationLevel(row.getSubgroup2EducationLevel() != null ? row.getSubgroup2EducationLevel() : row.getEducationLevel());
+        second.setClassName(row.getClassName() + "#G2");
+        result.add(second);
+        return result;
+    }
+
+    private void copyForStats(CurriculumPlanEntry from, CurriculumPlanEntry to) {
+        to.setClassName(from.getClassName());
+        to.setSubjectName(from.getSubjectName());
+        to.setStudyPeriod(from.getStudyPeriod());
+        to.setEducationLevel(from.getEducationLevel());
+        to.setPlannedHours(from.getPlannedHours());
+        to.setSubgroupRequired(from.getSubgroupRequired());
     }
 
     private List<ManualLoadTemplateRow> buildTemplateRows(String academicYear) {

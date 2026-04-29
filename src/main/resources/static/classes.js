@@ -56,6 +56,15 @@ function buildingLabel(code) {
     return b ? `${b.name} (${b.address})` : code;
 }
 
+function displayCampusAddress(entry) {
+    const rawCampus = norm(entry?.campusAddress);
+    if (!rawCampus) return "—";
+    const building = buildings.find((x) => normalizeBuildingCode(x.code) === normalizeBuildingCode(entry?.numberSchoolBuilding));
+    const buildingAddress = norm(building?.address);
+    if (!buildingAddress) return rawCampus;
+    return rawCampus.localeCompare(buildingAddress, "ru", { sensitivity: "accent" }) === 0 ? "—" : rawCampus;
+}
+
 function renderTeachers() {
     ui.teacherList.innerHTML = teachers.map((fio) => `<option value="${esc(fio)}"></option>`).join("");
 }
@@ -96,7 +105,7 @@ function renderClasses(rows) {
             <td>${esc(r.className)}</td>
             <td>${esc(r.classDirection)}</td>
             <td>${esc(r.fioTeacher)}</td>
-            <td>${esc(r.campusAddress || "")}</td>
+            <td>${esc(displayCampusAddress(r))}</td>
             <td><button type="button" class="inline-plus" title="Редактировать" data-edit-class="${esc(entryKey(r))}">✏️</button></td>
         `;
         ui.body.appendChild(tr);
