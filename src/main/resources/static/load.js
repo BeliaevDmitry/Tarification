@@ -1282,13 +1282,32 @@ function renderBuildingTabs() {
         button.addEventListener("click", () => {
             selectedBuilding = building.code;
             rememberSelectedBuilding(selectedBuilding);
-            state.forceResort = true;
-            renderBuildingTabs();
-            scheduleRenderTable();
-            updateLoadEditMode();
+            refreshSelectedBuildingData()
+                .then(() => {
+                    state.forceResort = true;
+                    renderBuildingTabs();
+                    scheduleRenderTable();
+                    updateLoadEditMode();
+                })
+                .catch((error) => print({ error: error.message }));
         });
         ui.buildingTabs.appendChild(button);
     });
+}
+
+async function refreshSelectedBuildingData() {
+    const encodedBuilding = selectedBuilding && selectedBuilding !== ARCHIVE_BUILDING_CODE
+        ? `?numberSchoolBuilding=${encodeURIComponent(selectedBuilding)}`
+        : "";
+    const [curriculum, manual] = await Promise.all([
+        api(`/api/curriculum${encodedBuilding}`),
+        api(`/api/manual-load${encodedBuilding}`)
+    ]);
+    curriculumRows = curriculum || [];
+    manualRows = manual || [];
+    sourceRevision += 1;
+    invalidateDerivedCache();
+    prefillFromManualLoad(currentDisplayDate());
 }
 
 function addTeacherRow(subjectKey, afterRowId = null) {
@@ -2039,14 +2058,50 @@ async function importLoadWorkbook(file) {
 }
 
 async function refreshSourceData() {
-    const [curriculum, manual, teachers, buildingRows, classRows, periodSettings, yearResolve] = await Promise.all([
-        api("/api/curriculum"),
-        api("/api/manual-load"),
+    const [teachers, buildingRows, classRows, periodSettings, yearResolve] = await Promise.all([
         api("/api/teachers"),
         api("/api/buildings"),
         api("/api/classroom-leadership"),
         api("/api/settings/study-periods"),
         api("/api/academic-years/active")
+    ]);
+
+    const buildingByCode = new Map();
+    (buildingRows || []).forEach((b) => {
+        const code = normalizeBuildingCode(b.code);
+        if (!code) return;
+        buildingByCode.set(code, {
+            ...b,
+            code,
+            name: String(b.name || "").trim() || code
+        });
+    });
+    (classRows || []).forEach((r) => {
+        const code = normalizeBuildingCode(r.numberSchoolBuilding);
+        if (!code || buildingByCode.has(code)) return;
+        buildingByCode.set(code, { code, name: code, address: "(из классов)" });
+    });
+    buildings = [...buildingByCode.values()].sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"));
+
+    const rememberedBuilding = restoreSelectedBuilding();
+    if (rememberedBuilding && buildings.some((row) => normalizeBuildingCode(row.code) === rememberedBuilding)) {
+        selectedBuilding = rememberedBuilding;
+    }
+    if (!selectedBuilding || !buildings.some((row) => row.code === selectedBuilding)) {
+        selectedBuilding = preferredBuildingCode(buildings);
+    }
+    if (selectedBuilding !== ARCHIVE_BUILDING_CODE && !canEditSelectedBuildingLoad()) {
+        const preferred = preferredBuildingCode(buildings);
+        if (preferred) selectedBuilding = preferred;
+    }
+    rememberSelectedBuilding(selectedBuilding);
+
+    const encodedBuilding = selectedBuilding && selectedBuilding !== ARCHIVE_BUILDING_CODE
+            ? `?numberSchoolBuilding=${encodeURIComponent(selectedBuilding)}`
+            : "";
+    const [curriculum, manual] = await Promise.all([
+        api(`/api/curriculum${encodedBuilding}`),
+        api(`/api/manual-load${encodedBuilding}`)
     ]);
 
     curriculumRows = curriculum || [];
@@ -2077,52 +2132,10 @@ async function refreshSourceData() {
         print({ warning: `Не удалось вычислить подсветку преемственности: ${error.message}` });
     }
 
-    const buildingByCode = new Map();
-    (buildingRows || []).forEach((b) => {
-        const code = normalizeBuildingCode(b.code);
-        if (!code) return;
-        buildingByCode.set(code, {
-            ...b,
-            code,
-            name: String(b.name || "").trim() || code
-        });
-    });
-    (classroomRows || []).forEach((r) => {
-        const code = normalizeBuildingCode(r.numberSchoolBuilding);
-        if (!code || buildingByCode.has(code)) return;
-        buildingByCode.set(code, { code, name: code, address: "(из классов)" });
-    });
-    (curriculumRows || []).forEach((r) => {
-        const code = normalizeBuildingCode(r.numberSchoolBuilding);
-        if (!code || buildingByCode.has(code)) return;
-        buildingByCode.set(code, { code, name: code, address: "(из УП)" });
-    });
-
-    buildings = [...buildingByCode.values()].sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"));
-
     prefillFromManualLoad(currentDisplayDate());
     state.forceResort = true;
     markDirty(false);
     updateViewModeControls();
-
-    const rememberedBuilding = restoreSelectedBuilding();
-    if (rememberedBuilding && buildings.some((row) => normalizeBuildingCode(row.code) === rememberedBuilding)) {
-        selectedBuilding = rememberedBuilding;
-    }
-
-    if (selectedBuilding !== ARCHIVE_BUILDING_CODE) {
-        const existsInTabs = buildings.some((row) => row.code === selectedBuilding);
-        if (!existsInTabs) {
-            selectedBuilding = preferredBuildingCode(buildings);
-        } else if (!canEditSelectedBuildingLoad()) {
-            const preferred = preferredBuildingCode(buildings);
-            if (preferred) {
-                selectedBuilding = preferred;
-            }
-        }
-    }
-
-    rememberSelectedBuilding(selectedBuilding);
 
     state.takeoverContext = null;
     renderBuildingTabs();
