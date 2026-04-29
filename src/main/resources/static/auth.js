@@ -6,6 +6,7 @@ const TAB_PATHS = {
     '/subjects.html': 'SUBJECTS',
     '/curriculum.html': 'CURRICULUM',
     '/load.html': 'LOAD',
+    '/load-statistics.html': 'LOAD_STATS',
     '/service-notes.html': 'SERVICE_NOTES',
     '/settings.html': 'SETTINGS',
     '/teachers.html': 'TEACHERS',
@@ -29,6 +30,7 @@ const NAV_ORDER = [
     { path: '/subjects.html', tab: 'SUBJECTS', label: 'Предметы' },
     { path: '/curriculum.html', tab: 'CURRICULUM', label: 'Учебный план' },
     { path: '/load.html', tab: 'LOAD', label: 'Нагрузка по корпусам' },
+    { path: '/load-statistics.html', tab: 'LOAD_STATS', label: 'Статистика нагрузки' },
     { path: '/service-notes.html', tab: 'SERVICE_NOTES', label: 'Служебные записки' },
     { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' },
     { path: '/subject-areas.html', tab: 'SUBJECT_AREAS', label: 'Предметные области' },
@@ -61,6 +63,7 @@ function isLoadModulePage(pathname) {
         || pathname === '/subjects.html'
         || pathname === '/curriculum.html'
         || pathname === '/load.html'
+        || pathname === '/load-statistics.html'
         || pathname === '/service-notes.html'
         || pathname === '/settings.html'
         || pathname === '/subject-areas.html';
@@ -157,7 +160,8 @@ function isContingentPage() {
 }
 
 function isLoadPage() {
-    return window.location.pathname === '/load.html';
+    return window.location.pathname === '/load.html'
+        || window.location.pathname === '/load-statistics.html';
 }
 
 function hasContingentAccess(currentUser) {
