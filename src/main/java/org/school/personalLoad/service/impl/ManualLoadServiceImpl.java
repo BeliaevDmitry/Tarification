@@ -324,7 +324,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 String area = subjectAreaByName.getOrDefault(normalizedSubject, "Без области");
                 ManualLoadStatsResponse.SubjectStat stat = bySubject.computeIfAbsent(normalizedSubject,
                         k -> new ManualLoadStatsResponse.SubjectStat(area, subjectName, 0, 0, 0));
-                int planned = Math.max(item.getPlannedHours() == null ? 0 : item.getPlannedHours(), 0);
+                int planned = Math.max(item.getPlannedHours() == null ? 0 : item.getPlannedHours().intValue(), 0);
                 String key = statsKey(item.getClassName(), item.getSubjectName(), item.getStudyPeriod(), item.getEducationLevel(), groupNameForStats(item));
                 int assigned = Math.min(planned, assignedByKey.getOrDefault(key, 0));
                 stat.setPlanned(stat.getPlanned() + planned);
