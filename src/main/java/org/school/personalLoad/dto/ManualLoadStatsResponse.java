@@ -12,6 +12,9 @@ public class ManualLoadStatsResponse {
     private int totalPlanned;
     private int totalAssigned;
     private int totalUnassigned;
+    private int page;
+    private int pageSize;
+    private int totalRows;
     private List<SubjectStat> rows;
 
     @Data

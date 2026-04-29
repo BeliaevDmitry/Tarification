@@ -28,5 +28,5 @@ public interface ManualLoadService {
 
     List<ManualLoadEntry> importWorkbook(String academicYear, MultipartFile file);
 
-    ManualLoadStatsResponse buildStats(String academicYear, String numberSchoolBuilding);
+    ManualLoadStatsResponse buildStats(String academicYear, String numberSchoolBuilding, int page, int pageSize);
 }

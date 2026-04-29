@@ -3,7 +3,10 @@ const ui = {
     exportBtn: document.getElementById('export-load-stats-btn'),
     summary: document.getElementById('load-stats-summary'),
     table: document.getElementById('load-stats-table'),
-    result: document.getElementById('load-stats-result')
+    result: document.getElementById('load-stats-result'),
+    building: document.getElementById('load-stats-building'),
+    page: document.getElementById('load-stats-page'),
+    pageSize: document.getElementById('load-stats-page-size')
 };
 
 let statsRows = [];
@@ -29,7 +32,7 @@ function renderStatsView(stats) {
         return;
     }
 
-    ui.summary.textContent = `Предметов: ${stats.subjects}. Плановых часов: ${stats.totalPlanned}. Распределено: ${stats.totalAssigned}. Нераспределено: ${stats.totalUnassigned}.`;
+    ui.summary.textContent = `Предметов: ${stats.subjects}. Плановых часов: ${stats.totalPlanned}. Распределено: ${stats.totalAssigned}. Нераспределено: ${stats.totalUnassigned}. Показано: ${stats.rows?.length || 0} из ${stats.totalRows ?? 0} (стр. ${stats.page ?? 0}, размер ${stats.pageSize ?? 0}).`;
 
     const thead = `
       <thead>
@@ -57,7 +60,12 @@ function renderStatsView(stats) {
 
 async function refreshStats() {
     try {
-        const stats = await api('/api/manual-load/stats');
+        const params = new URLSearchParams();
+        const building = String(ui.building?.value || '').trim();
+        if (building) params.set('building', building);
+        params.set('page', String(Math.max(Number(ui.page?.value || 0), 0)));
+        params.set('pageSize', String(Math.min(Math.max(Number(ui.pageSize?.value || 100), 1), 500)));
+        const stats = await api(`/api/manual-load/stats?${params.toString()}`);
         renderStatsView(stats || {});
         print({ status: 'ok', rows: (stats?.rows || []).length });
     } catch (error) {

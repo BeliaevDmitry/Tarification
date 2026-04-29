@@ -97,10 +97,14 @@ public class ManualLoadController {
 
     @GetMapping("/stats")
     public ResponseEntity<ManualLoadStatsResponse> stats(@RequestParam(required = false) String academicYear,
-                                                         @RequestParam(required = false) String building) {
+                                                         @RequestParam(required = false) String building,
+                                                         @RequestParam(defaultValue = "0") int page,
+                                                         @RequestParam(defaultValue = "100") int pageSize) {
         return ResponseEntity.ok(manualLoadService.buildStats(
                 academicYearService.resolveRequestedOrDefault(academicYear),
-                building
+                building,
+                page,
+                pageSize
         ));
     }
 

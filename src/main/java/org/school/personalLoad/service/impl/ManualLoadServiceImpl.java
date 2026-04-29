@@ -298,7 +298,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
     @Override
-    public ManualLoadStatsResponse buildStats(String academicYear, String numberSchoolBuilding) {
+    public ManualLoadStatsResponse buildStats(String academicYear, String numberSchoolBuilding, int page, int pageSize) {
         List<CurriculumPlanEntry> curriculum = curriculumPlanService.findAll(academicYear, numberSchoolBuilding);
         List<ManualLoadEntry> manual = findAll(academicYear, numberSchoolBuilding);
 
@@ -338,9 +338,16 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                         .thenComparing(ManualLoadStatsResponse.SubjectStat::getSubjectName))
                 .toList();
 
+        int safePage = Math.max(page, 0);
+        int safePageSize = Math.min(Math.max(pageSize, 1), 500);
+        int totalRows = rows.size();
+        int from = Math.min(safePage * safePageSize, totalRows);
+        int to = Math.min(from + safePageSize, totalRows);
+        List<ManualLoadStatsResponse.SubjectStat> pagedRows = rows.subList(from, to);
+
         int totalPlanned = rows.stream().mapToInt(ManualLoadStatsResponse.SubjectStat::getPlanned).sum();
         int totalAssigned = rows.stream().mapToInt(ManualLoadStatsResponse.SubjectStat::getAssigned).sum();
-        return new ManualLoadStatsResponse(rows.size(), totalPlanned, totalAssigned, Math.max(totalPlanned - totalAssigned, 0), rows);
+        return new ManualLoadStatsResponse(rows.size(), totalPlanned, totalAssigned, Math.max(totalPlanned - totalAssigned, 0), safePage, safePageSize, totalRows, pagedRows);
     }
 
     private String normalizeAreaName(String value) {

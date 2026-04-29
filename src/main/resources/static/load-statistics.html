@@ -26,6 +26,15 @@
 
     <section class="card">
         <div class="row controls-row">
+            <label>Корпус
+                <input id="load-stats-building" type="text" placeholder="например, 1">
+            </label>
+            <label>Страница
+                <input id="load-stats-page" type="number" min="0" value="0">
+            </label>
+            <label>Размер
+                <input id="load-stats-page-size" type="number" min="1" max="500" value="100">
+            </label>
             <button id="refresh-load-stats-btn" type="button">Обновить</button>
             <button id="export-load-stats-btn" type="button" data-allow-readonly="true">Скачать статистику (CSV)</button>
         </div>
