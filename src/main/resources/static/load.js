@@ -72,6 +72,32 @@ const derivedCache = {
     expandedRowsByBuildingValue: []
 };
 
+const buildingDataCache = new Map();
+const BUILDING_DATA_CACHE_TTL_MS = 2 * 60 * 1000;
+let teacherHourIndexesCacheKey = "";
+let teacherHourIndexesCacheValue = { buildingTeacherHours: {}, complexTeacherHours: {} };
+
+function currentAcademicYearKey() {
+    return String(sessionStorage.getItem("tarification.academicYear") || "").trim() || "active";
+}
+
+function buildingCacheKey(buildingCode) {
+    return `${currentAcademicYearKey()}|${normalizeBuildingCode(buildingCode) || "ALL"}`;
+}
+
+function invalidateBuildingDataCache(buildingCode = null) {
+    if (!buildingCode) {
+        buildingDataCache.clear();
+        return;
+    }
+    buildingDataCache.delete(buildingCacheKey(buildingCode));
+}
+
+function invalidateTeacherHourIndexesCache() {
+    teacherHourIndexesCacheKey = "";
+    teacherHourIndexesCacheValue = { buildingTeacherHours: {}, complexTeacherHours: {} };
+}
+
 function invalidateDerivedCache() {
     derivedCache.classBuildingMapRowsRef = null;
     derivedCache.classBuildingMapValue = new Map();
@@ -307,6 +333,7 @@ async function waitForAuthContext() {
 
 function markDirty(flag=true) {
     state.hasUnsavedChanges = flag;
+    invalidateTeacherHourIndexesCache();
     ui.saveBuildingBtn.classList.toggle("dirty-save", flag);
     ui.saveBuildingBtn.classList.toggle("clean-save", !flag);
 }
@@ -1020,6 +1047,16 @@ function teacherHoursInComplex(teacherName) {
 }
 
 function computeTeacherHourIndexes() {
+    const assignments = assignmentsForBuilding(selectedBuilding);
+    const assignmentSignature = Object.entries(assignments)
+        .map(([k, v]) => `${k}:${String(v || "").trim()}`)
+        .sort()
+        .join("||");
+    const cacheKey = `${sourceRevision}|${selectedBuilding}|${assignmentSignature}`;
+    if (teacherHourIndexesCacheKey === cacheKey) {
+        return teacherHourIndexesCacheValue;
+    }
+
     const buildingTeacherHours = {};
     const complexTeacherHours = {};
     const classMap = classBuildingMap();
@@ -1046,7 +1083,9 @@ function computeTeacherHourIndexes() {
         accumulateSplit(complexTeacherHours[assignedTeacher], row);
     });
 
-    return { buildingTeacherHours, complexTeacherHours };
+    teacherHourIndexesCacheKey = cacheKey;
+    teacherHourIndexesCacheValue = { buildingTeacherHours, complexTeacherHours };
+    return teacherHourIndexesCacheValue;
 }
 
 function buildPresentationRows() {
@@ -1295,18 +1334,28 @@ function renderBuildingTabs() {
     });
 }
 
-async function refreshSelectedBuildingData() {
-    const encodedBuilding = selectedBuilding && selectedBuilding !== ARCHIVE_BUILDING_CODE
-        ? `?numberSchoolBuilding=${encodeURIComponent(selectedBuilding)}`
-        : "";
-    const [curriculum, manual] = await Promise.all([
-        api(`/api/curriculum${encodedBuilding}`),
-        api(`/api/manual-load${encodedBuilding}`)
-    ]);
-    curriculumRows = curriculum || [];
-    manualRows = manual || [];
+async function refreshSelectedBuildingData(force = false) {
+    const cacheKey = buildingCacheKey(selectedBuilding);
+    const cached = buildingDataCache.get(cacheKey);
+    const now = Date.now();
+    if (!force && cached && (now - cached.ts) < BUILDING_DATA_CACHE_TTL_MS) {
+        curriculumRows = cached.curriculum;
+        manualRows = cached.manual;
+    } else {
+        const encodedBuilding = selectedBuilding && selectedBuilding !== ARCHIVE_BUILDING_CODE
+            ? `?numberSchoolBuilding=${encodeURIComponent(selectedBuilding)}`
+            : "";
+        const [curriculum, manual] = await Promise.all([
+            api(`/api/curriculum${encodedBuilding}`),
+            api(`/api/manual-load${encodedBuilding}`)
+        ]);
+        curriculumRows = curriculum || [];
+        manualRows = manual || [];
+        buildingDataCache.set(cacheKey, { ts: now, curriculum: curriculumRows, manual: manualRows });
+    }
     sourceRevision += 1;
     invalidateDerivedCache();
+    invalidateTeacherHourIndexesCache();
     prefillFromManualLoad(currentDisplayDate());
 }
 
@@ -1986,6 +2035,7 @@ async function saveBuildingLoad() {
         });
         print({ saved: result.length, uniqueRequested: finalPayload.length, building: selectedBuilding });
         state.futurePlansByBuilding[selectedBuilding] = {};
+        invalidateBuildingDataCache(selectedBuilding);
         markDirty(false);
     } catch (error) {
         print({ error: error.message });
@@ -2121,6 +2171,8 @@ async function refreshSourceData() {
 
     curriculumRows = curriculum || [];
     manualRows = manual || [];
+    invalidateBuildingDataCache();
+    buildingDataCache.set(buildingCacheKey(selectedBuilding), { ts: Date.now(), curriculum: curriculumRows, manual: manualRows });
     teacherDirectory = teachers || [];
     teacherNames = sortRu(Array.from(new Set(teacherDirectory.map((t) => String(t.fioTeacher || "").trim()).filter(Boolean))));
     teacherDirectoryByName = new Map(
@@ -2133,6 +2185,7 @@ async function refreshSourceData() {
     subjectCatalog = [];
     sourceRevision += 1;
     invalidateDerivedCache();
+    invalidateTeacherHourIndexesCache();
     state.continuityExpectedByKey = new Map();
 
     try {
