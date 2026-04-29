@@ -37,9 +37,11 @@ services:
       SMTP_DEFAULT_RECIPIENTS: ${SMTP_DEFAULT_RECIPIENTS:-recipient1@example.com,recipient2@example.com}
       SMTP_DEFAULT_SUBJECT: ${SMTP_DEFAULT_SUBJECT:-Тарификация - автоматическая отправка}
       LEGACY_MODE_ENABLED: ${LEGACY_MODE_ENABLED:-false}
+      JAVA_OPTS: ${JAVA_OPTS:--Xms512m -Xmx2048m -XX:+UseG1GC -XX:MaxGCPauseMillis=200}
     ports:
       - "8080:8080"
     restart: unless-stopped
+    command: ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]
 
 volumes:
   postgres_data:
