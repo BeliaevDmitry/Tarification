@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ГБОУ школа 7 — Статистика нагрузки</title>
+
+    <link rel="icon" type="image/png" href="/school-crest.png">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="load-page">
+<main class="container">
+    <header class="card">
+        <h1>Статистика нагрузки</h1>
+        <p class="muted compact-note">Отдельная лёгкая страница статистики без логики редактирования распределения.</p>
+        <nav class="page-nav">
+            <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
+            <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
+            <a class="nav-link" href="/subjects.html" data-tab="SUBJECTS">Предметы</a>
+            <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
+            <a class="nav-link" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
+            <a class="nav-link active" href="/load-statistics.html" data-tab="LOAD">Статистика нагрузки</a>
+            <a class="nav-link" href="/settings.html" data-tab="SETTINGS">Настройки</a>
+        </nav>
+    </header>
+
+    <section class="card">
+        <div class="row controls-row">
+            <button id="refresh-load-stats-btn" type="button">Обновить</button>
+            <button id="export-load-stats-btn" type="button" data-allow-readonly="true">Скачать статистику (CSV)</button>
+        </div>
+        <pre id="load-stats-result" class="result-box"></pre>
+        <div id="load-stats-summary" class="muted"></div>
+        <div class="sheet-wrap">
+            <table class="sheet-table" id="load-stats-table"></table>
+        </div>
+    </section>
+</main>
+
+<script src="/auth.js"></script>
+<script src="/table-scroll.js"></script>
+<script src="/load-statistics.js"></script>
+</body>
+</html>
