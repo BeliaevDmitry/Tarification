@@ -257,14 +257,11 @@ function scheduleRenderTable() {
 }
 
 function showLoadTab(name) {
-    activeLoadTab = name === "stats" ? "stats" : "distribution";
+    activeLoadTab = "distribution";
     ui.tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.loadTab === activeLoadTab));
     ui.panes.forEach((pane) => {
         pane.style.display = pane.dataset.loadPane === activeLoadTab ? "" : "none";
     });
-    if (activeLoadTab === "stats") {
-        renderStatsView();
-    }
 }
 
 function loadPermissions() {
@@ -279,19 +276,15 @@ function loadPermissions() {
 }
 
 function applyLoadTabAccess() {
-    const { canDistributionView, canStatsView } = loadPermissions();
+    const { canDistributionView } = loadPermissions();
     ui.tabs.forEach((tab) => {
-        const isStats = tab.dataset.loadTab === "stats";
-        tab.style.display = (isStats ? canStatsView : canDistributionView) ? "" : "none";
+        tab.style.display = canDistributionView ? "" : "none";
     });
     ui.panes.forEach((pane) => {
-        const isStats = pane.dataset.loadPane === "stats";
-        const allowed = isStats ? canStatsView : canDistributionView;
-        if (!allowed) pane.style.display = "none";
+        const isDistribution = pane.dataset.loadPane === "distribution";
+        if (!isDistribution || !canDistributionView) pane.style.display = "none";
     });
-    if (canDistributionView) return "distribution";
-    if (canStatsView) return "stats";
-    return null;
+    return canDistributionView ? "distribution" : null;
 }
 
 async function waitForAuthContext() {
@@ -1641,13 +1634,11 @@ function renderTable() {
 
     if (!selectedBuilding) {
         ui.tableBody.innerHTML = '<tr><td colspan="7">Добавьте корпуса, чтобы распределять нагрузку.</td></tr>';
-        renderStatsView();
         return;
     }
 
     if (selectedBuilding === ARCHIVE_BUILDING_CODE) {
         renderArchiveAsMainTable();
-        renderStatsView();
         return;
     }
 
@@ -2036,14 +2027,13 @@ async function importLoadWorkbook(file) {
 }
 
 async function refreshSourceData() {
-    const [curriculum, manual, teachers, buildingRows, classRows, periodSettings, subjects, yearResolve] = await Promise.all([
+    const [curriculum, manual, teachers, buildingRows, classRows, periodSettings, yearResolve] = await Promise.all([
         api("/api/curriculum"),
         api("/api/manual-load"),
         api("/api/teachers"),
         api("/api/buildings"),
         api("/api/classroom-leadership"),
         api("/api/settings/study-periods"),
-        api("/api/subjects"),
         api("/api/academic-years/active")
     ]);
 
@@ -2058,7 +2048,7 @@ async function refreshSourceData() {
     );
     classroomRows = classRows || [];
     studyPeriodSettings = periodSettings || [];
-    subjectCatalog = subjects || [];
+    subjectCatalog = [];
     sourceRevision += 1;
     invalidateDerivedCache();
     state.continuityExpectedByKey = new Map();
@@ -2210,7 +2200,6 @@ function bindEvents() {
     });
 
     ui.exportLoadBtn?.addEventListener("click", exportLoadWorkbook);
-    ui.exportStatsBtn?.addEventListener("click", exportLoadStatsCsv);
     ui.importLoadBtn?.addEventListener("click", () => ui.importLoadFile?.click());
     ui.importLoadFile?.addEventListener("change", async () => {
         const file = ui.importLoadFile.files?.[0];
@@ -2257,7 +2246,6 @@ function bindEvents() {
     });
 
     ui.nextErrorBtn.addEventListener("click", jumpToFirstError);
-    renderStatsView();
 }
 
 async function init() {
@@ -2265,13 +2253,7 @@ async function init() {
     bindEvents();
     const defaultTab = applyLoadTabAccess();
     if (!defaultTab) return;
-    const requestedTab = window.location.hash === "#stats" ? "stats" : "distribution";
-    if (requestedTab === "stats" && defaultTab !== "stats") {
-        showLoadTab(defaultTab);
-        window.location.hash = "";
-    } else {
-        showLoadTab(requestedTab === "distribution" && defaultTab === "stats" ? "stats" : requestedTab);
-    }
+    showLoadTab("distribution");
     state.viewDate = referencePlanningDate();
     if (ui.viewDateInput) {
         ui.viewDateInput.value = state.viewDate;
