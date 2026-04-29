@@ -370,25 +370,25 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
     private String groupNameForStats(CurriculumPlanEntry row) {
-        if (row.getSubgroupRequired() && row.getSubgroupCount() != null && row.getSubgroupCount() > 0) {
+        if (row.isSubgroupRequired() && row.getSubgroupCount() != null && row.getSubgroupCount() > 0) {
             return "Группа 1";
         }
         return "";
     }
 
     private List<CurriculumPlanEntry> expandForStats(CurriculumPlanEntry row) {
-        if (!Boolean.TRUE.equals(row.getSubgroupRequired()) || row.getSubgroupCount() == null || row.getSubgroupCount() < 2) {
+        if (!Boolean.TRUE.equals(row.isSubgroupRequired()) || row.getSubgroupCount() == null || row.getSubgroupCount() < 2) {
             return List.of(row);
         }
         List<CurriculumPlanEntry> result = new ArrayList<>();
         CurriculumPlanEntry first = new CurriculumPlanEntry();
         copyForStats(row, first);
-        first.setPlannedHours(row.getSubgroup1Hours() != null ? row.getSubgroup1Hours() : row.getPlannedHours());
+        first.setPlannedHours(row.getSubgroup1Hours() != null ? java.math.BigDecimal.valueOf(row.getSubgroup1Hours()) : row.getPlannedHours());
         first.setEducationLevel(row.getSubgroup1EducationLevel() != null ? row.getSubgroup1EducationLevel() : row.getEducationLevel());
         result.add(first);
         CurriculumPlanEntry second = new CurriculumPlanEntry();
         copyForStats(row, second);
-        second.setPlannedHours(row.getSubgroup2Hours() != null ? row.getSubgroup2Hours() : row.getPlannedHours());
+        second.setPlannedHours(row.getSubgroup2Hours() != null ? java.math.BigDecimal.valueOf(row.getSubgroup2Hours()) : row.getPlannedHours());
         second.setEducationLevel(row.getSubgroup2EducationLevel() != null ? row.getSubgroup2EducationLevel() : row.getEducationLevel());
         second.setClassName(row.getClassName() + "#G2");
         result.add(second);
@@ -401,7 +401,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         to.setStudyPeriod(from.getStudyPeriod());
         to.setEducationLevel(from.getEducationLevel());
         to.setPlannedHours(from.getPlannedHours());
-        to.setSubgroupRequired(from.getSubgroupRequired());
+        to.setSubgroupRequired(from.isSubgroupRequired());
     }
 
     private List<ManualLoadTemplateRow> buildTemplateRows(String academicYear) {
