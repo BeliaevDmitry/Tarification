@@ -94,7 +94,15 @@ function print(v) { ui.result.textContent = JSON.stringify(v, null, 2); }
 function norm(v) { return String(v || "").trim(); }
 function classToParallel(className) { const m = norm(className).match(/^(\d{1,2})/); return m ? Number(m[1]) : null; }
 function levelShort(v) { return v === "ADVANCED" ? "У" : "Б"; }
-function subjectTypeByPart(part) { return part === "EXTRACURRICULAR" ? "EXTRACURRICULAR" : "CORE_FORMABLE"; }
+function subjectTypeByPart(part) {
+    if (part === "EXTRACURRICULAR") return "EXTRACURRICULAR";
+    if (part === "FORMABLE") return "FORMABLE";
+    return "CORE";
+}
+function isSubjectTypeCompatible(actualType, expectedType) {
+    if (actualType === expectedType) return true;
+    return actualType === "CORE_FORMABLE" && (expectedType === "CORE" || expectedType === "FORMABLE");
+}
 function isHighSchoolParallel(parallel = selectedParallel) { return Number(parallel) >= 10; }
 function makeClassKey(numberSchoolBuilding, className) { return `${norm(numberSchoolBuilding)}|${norm(className)}`; }
 function normalizeStudyPeriod(className, studyPeriod) {
@@ -572,7 +580,7 @@ function renderSubjectOptions() {
     const expectedType = subjectTypeByPart(part);
     const selected = ui.formSubject.value;
     ui.formSubject.innerHTML = '<option value="">Выберите предмет</option>';
-    subjects.filter((s) => s.subjectType === expectedType)
+    subjects.filter((s) => isSubjectTypeCompatible(s.subjectType, expectedType))
         .sort((a,b)=>String(a.subjectName).localeCompare(String(b.subjectName),"ru"))
         .forEach((s) => { ui.formSubject.innerHTML += `<option value="${esc(s.subjectName)}">${esc(s.subjectName)}</option>`; });
     if (selected) ui.formSubject.value = selected;
