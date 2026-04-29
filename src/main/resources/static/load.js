@@ -2058,6 +2058,15 @@ async function importLoadWorkbook(file) {
 }
 
 async function refreshSourceData() {
+    const initialBuildingCandidate = normalizeBuildingCode(selectedBuilding) || restoreSelectedBuilding();
+    const initialEncodedBuilding = initialBuildingCandidate && initialBuildingCandidate !== ARCHIVE_BUILDING_CODE
+        ? `?numberSchoolBuilding=${encodeURIComponent(initialBuildingCandidate)}`
+        : "";
+    const initialScopedDataPromise = Promise.all([
+        api(`/api/curriculum${initialEncodedBuilding}`),
+        api(`/api/manual-load${initialEncodedBuilding}`)
+    ]);
+
     const [teachers, buildingRows, classRows, periodSettings, yearResolve] = await Promise.all([
         api("/api/teachers"),
         api("/api/buildings"),
@@ -2096,13 +2105,19 @@ async function refreshSourceData() {
     }
     rememberSelectedBuilding(selectedBuilding);
 
-    const encodedBuilding = selectedBuilding && selectedBuilding !== ARCHIVE_BUILDING_CODE
-            ? `?numberSchoolBuilding=${encodeURIComponent(selectedBuilding)}`
-            : "";
-    const [curriculum, manual] = await Promise.all([
-        api(`/api/curriculum${encodedBuilding}`),
-        api(`/api/manual-load${encodedBuilding}`)
-    ]);
+    let curriculum;
+    let manual;
+    const finalEncodedBuilding = selectedBuilding && selectedBuilding !== ARCHIVE_BUILDING_CODE
+        ? `?numberSchoolBuilding=${encodeURIComponent(selectedBuilding)}`
+        : "";
+    if (initialEncodedBuilding === finalEncodedBuilding) {
+        [curriculum, manual] = await initialScopedDataPromise;
+    } else {
+        [curriculum, manual] = await Promise.all([
+            api(`/api/curriculum${finalEncodedBuilding}`),
+            api(`/api/manual-load${finalEncodedBuilding}`)
+        ]);
+    }
 
     curriculumRows = curriculum || [];
     manualRows = manual || [];
