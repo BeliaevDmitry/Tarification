@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ГБОУ школа 7 — Классы</title>
 
-    <link rel="icon" type="image/svg+xml" href="/school-crest.svg">
+    <link rel="icon" type="image/png" href="/school-crest.png">
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -38,7 +38,7 @@
             <input name="className" placeholder="Класс (например 7А)" required>
             <label class="field-row"><span>Направление</span><input name="classDirection" placeholder="Направление класса" required></label>
             <input name="fioTeacher" id="class-teacher" list="teacher-list" placeholder="Классный руководитель" required>
-            <input name="campusAddress" placeholder="Адрес корпуса/площадки">
+            <input name="campusAddress" placeholder="Адрес площадки (если отличается)">
             <datalist id="teacher-list"></datalist>
             <button type="submit">Добавить / обновить класс</button>
         </form>
@@ -54,7 +54,7 @@
         <div class="sheet-wrap">
             <table class="sheet-table">
                 <thead>
-                <tr><th>Корпус</th><th>Класс</th><th>Направление</th><th>Классный руководитель</th><th>Адрес площадки</th><th></th></tr>
+                <tr><th>Корпус</th><th>Класс</th><th>Направление</th><th>Классный руководитель</th><th>Адрес площадки (если отличается)</th><th></th></tr>
                 </thead>
                 <tbody id="classes-body"></tbody>
             </table>
@@ -69,7 +69,7 @@
         <label class="field-row"><span>Класс</span><input name="className" placeholder="Класс" required></label>
         <label class="field-row"><span>Направление</span><input name="classDirection" placeholder="Направление класса" required></label>
         <label class="field-row"><span>Классный руководитель</span><input name="fioTeacher" id="class-edit-teacher" list="teacher-list" placeholder="Классный руководитель" required></label>
-        <label class="field-row"><span>Адрес площадки</span><input name="campusAddress" placeholder="Адрес корпуса/площадки"></label>
+        <label class="field-row"><span>Адрес площадки (если отличается)</span><input name="campusAddress" placeholder="Адрес площадки (если отличается)"></label>
         <div class="row">
             <button type="submit">Сохранить</button>
             <button type="button" id="class-edit-delete-btn" class="danger-btn">Удалить класс</button>

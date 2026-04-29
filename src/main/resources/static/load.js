@@ -40,6 +40,8 @@ let studyPeriodSettings = [];
 let subjectCatalog = [];
 let selectedBuilding = "";
 let activeLoadTab = "distribution";
+let sourceRevision = 0;
+let renderTableRaf = null;
 
 const ARCHIVE_BUILDING_CODE = "__ARCHIVE__";
 const ARCHIVE_BUILDING_LABEL = "Архив нагрузки";
@@ -59,6 +61,24 @@ const state = {
     takeoverContext: null,
     continuityExpectedByKey: new Map()
 };
+
+const derivedCache = {
+    classBuildingMapRowsRef: null,
+    classBuildingMapValue: new Map(),
+    rowsByBuildingKey: "",
+    rowsByBuildingValue: [],
+    expandedRowsByBuildingKey: "",
+    expandedRowsByBuildingValue: []
+};
+
+function invalidateDerivedCache() {
+    derivedCache.classBuildingMapRowsRef = null;
+    derivedCache.classBuildingMapValue = new Map();
+    derivedCache.rowsByBuildingKey = "";
+    derivedCache.rowsByBuildingValue = [];
+    derivedCache.expandedRowsByBuildingKey = "";
+    derivedCache.expandedRowsByBuildingValue = [];
+}
 
 
 async function api(path, options = {}) {
@@ -110,6 +130,37 @@ function canonicalBuildingCode(value) {
         return code === normalized || name === normalized;
     });
     return match ? normalizeBuildingCode(match.code) : normalized;
+}
+
+function addressesForBuildingCode(buildingCode) {
+    const normalizedCode = normalizeBuildingCode(buildingCode);
+    if (!normalizedCode) return [];
+
+    const addresses = [];
+    const pushUnique = (value) => {
+        const cleaned = String(value || "").trim();
+        if (!cleaned) return;
+        const key = cleaned.toLowerCase();
+        if (addresses.some((item) => item.toLowerCase() === key)) return;
+        addresses.push(cleaned);
+    };
+
+    const fromBuilding = (buildings || []).find((b) => normalizeBuildingCode(b?.code) === normalizedCode);
+    pushUnique(fromBuilding?.address);
+
+    (classroomRows || []).forEach((row) => {
+        if (normalizeBuildingCode(row?.numberSchoolBuilding) !== normalizedCode) return;
+        pushUnique(row?.campusAddress);
+    });
+
+    return addresses;
+}
+
+function buildingTabLabel(building) {
+    const base = String(building?.name || building?.code || "").trim();
+    const addresses = addressesForBuildingCode(building?.code);
+    if (!addresses.length) return base;
+    return `${base} — ${addresses.join(" / ")}`;
 }
 
 
@@ -175,12 +226,17 @@ function computeContinuityExpectedByKey(sourceManual, targetCurriculum) {
 }
 
 function classBuildingMap() {
+    if (derivedCache.classBuildingMapRowsRef === classroomRows) {
+        return derivedCache.classBuildingMapValue;
+    }
     const map = new Map();
     (classroomRows || []).forEach((r) => {
         const cls = normalizeClassName(r.className);
         const b = normalizeBuildingCode(r.numberSchoolBuilding);
         if (cls && b) map.set(cls, b);
     });
+    derivedCache.classBuildingMapRowsRef = classroomRows;
+    derivedCache.classBuildingMapValue = map;
     return map;
 }
 
@@ -190,6 +246,14 @@ function print(value) {
     } else {
         console.debug(value);
     }
+}
+
+function scheduleRenderTable() {
+    if (renderTableRaf !== null) return;
+    renderTableRaf = window.requestAnimationFrame(() => {
+        renderTableRaf = null;
+        renderTable();
+    });
 }
 
 function showLoadTab(name) {
@@ -361,7 +425,7 @@ function defaultPeriodForRows(rows) {
 
 function rowsToSyncForCurriculumRow(curriculumRow) {
     if (!highSchoolUnifiedSubject(curriculumRow)) return [curriculumRow];
-    return expandCurriculumRows(rowsForSelectedBuilding()).filter((row) =>
+    return expandedRowsForSelectedBuilding().filter((row) =>
         row.className === curriculumRow.className
         && row.subjectName === curriculumRow.subjectName
         && (row.curriculumPart || "CORE") === (curriculumRow.curriculumPart || "CORE")
@@ -407,13 +471,20 @@ function dayBefore(isoDate) {
 
 function rowsForSelectedBuilding() {
     if (selectedBuilding === ARCHIVE_BUILDING_CODE) return [];
+    const cacheKey = `${sourceRevision}|${canonicalBuildingCode(selectedBuilding)}`;
+    if (derivedCache.rowsByBuildingKey === cacheKey) {
+        return derivedCache.rowsByBuildingValue;
+    }
     const normalizedSelectedBuilding = canonicalBuildingCode(selectedBuilding);
     const map = classBuildingMap();
-    return curriculumRows.filter((row) => {
+    const filtered = curriculumRows.filter((row) => {
         const rowBuilding = canonicalBuildingCode(row.numberSchoolBuilding);
         const byClass = canonicalBuildingCode(map.get(normalizeClassName(row.className)));
         return rowBuilding === normalizedSelectedBuilding || byClass === normalizedSelectedBuilding;
     });
+    derivedCache.rowsByBuildingKey = cacheKey;
+    derivedCache.rowsByBuildingValue = filtered;
+    return filtered;
 }
 
 function expandCurriculumRows(rows) {
@@ -447,8 +518,20 @@ function expandCurriculumRows(rows) {
     return expanded;
 }
 
+function expandedRowsForSelectedBuilding() {
+    if (selectedBuilding === ARCHIVE_BUILDING_CODE) return [];
+    const cacheKey = `${sourceRevision}|${canonicalBuildingCode(selectedBuilding)}`;
+    if (derivedCache.expandedRowsByBuildingKey === cacheKey) {
+        return derivedCache.expandedRowsByBuildingValue;
+    }
+    const expanded = expandCurriculumRows(rowsForSelectedBuilding());
+    derivedCache.expandedRowsByBuildingKey = cacheKey;
+    derivedCache.expandedRowsByBuildingValue = expanded;
+    return expanded;
+}
+
 function classesForSelectedBuilding() {
-    return sortRu(Array.from(new Set(expandCurriculumRows(rowsForSelectedBuilding()).map((row) => row.className).filter(Boolean))));
+    return sortRu(Array.from(new Set(expandedRowsForSelectedBuilding().map((row) => row.className).filter(Boolean))));
 }
 
 function updateDatalistOptions(listEl, query = "") {
@@ -855,7 +938,7 @@ function prefillFromManualLoad(referenceDate = referencePlanningDate()) {
 }
 
 function ensureTeacherRowsForBuilding() {
-    const buildingRows = expandCurriculumRows(rowsForSelectedBuilding());
+    const buildingRows = expandedRowsForSelectedBuilding();
     const assignments = assignmentsForBuilding(selectedBuilding);
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
 
@@ -963,7 +1046,7 @@ function computeTeacherHourIndexes() {
 }
 
 function buildPresentationRows() {
-    const rows = expandCurriculumRows(rowsForSelectedBuilding());
+    const rows = expandedRowsForSelectedBuilding();
     const assignments = assignmentsForBuilding(selectedBuilding);
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
     const { buildingTeacherHours, complexTeacherHours } = computeTeacherHourIndexes();
@@ -1187,14 +1270,16 @@ function renderBuildingTabs() {
         const button = document.createElement("button");
         button.type = "button";
         button.className = `parallel-tab ${building.code === selectedBuilding ? "active" : ""}`;
-        button.textContent = building.code === ARCHIVE_BUILDING_CODE
+        const tabLabel = building.code === ARCHIVE_BUILDING_CODE
             ? `🗂 ${building.name}`
-            : `${building.name}`;
+            : buildingTabLabel(building);
+        button.textContent = tabLabel;
+        button.title = tabLabel;
         button.addEventListener("click", () => {
             selectedBuilding = building.code;
             state.forceResort = true;
             renderBuildingTabs();
-            renderTable();
+            scheduleRenderTable();
             updateLoadEditMode();
         });
         ui.buildingTabs.appendChild(button);
@@ -1205,7 +1290,7 @@ function addTeacherRow(subjectKey, afterRowId = null) {
     if (selectedBuilding === ARCHIVE_BUILDING_CODE || !canEditSelectedBuildingLoad()) return;
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
     if (!rowsMap[subjectKey]) rowsMap[subjectKey] = [];
-    const rows = expandCurriculumRows(rowsForSelectedBuilding()).filter((row) => subjectKeyOfRow(row) === subjectKey);
+    const rows = expandedRowsForSelectedBuilding().filter((row) => subjectKeyOfRow(row) === subjectKey);
     const period = defaultPeriodForRows(rows);
     const newRow = { id: rowId(), teacherName: "", studyPeriod: period.studyPeriod, loadFromDate: period.from, loadToDate: period.to };
     if (!afterRowId) {
@@ -1224,7 +1309,7 @@ function addTeacherRow(subjectKey, afterRowId = null) {
     state.rowOrderByBuilding[selectedBuilding] = Object.fromEntries(entries.map(([k], i) => [k, i]));
 
     markDirty();
-    renderTable();
+    scheduleRenderTable();
 }
 
 function setTeacherForRow(subjectKey, teacherRowId, value) {
@@ -1240,7 +1325,7 @@ function setTeacherForRow(subjectKey, teacherRowId, value) {
 
     if (!nextTeacher) {
         const assignments = assignmentsForBuilding(selectedBuilding);
-        expandCurriculumRows(rowsForSelectedBuilding())
+        expandedRowsForSelectedBuilding()
             .filter((curriculumRow) => subjectKeyOfRow(curriculumRow) === subjectKey)
             .forEach((curriculumRow) => {
                 const apiKey = apiKeyOfRow(curriculumRow);
@@ -1351,7 +1436,7 @@ function onClassCellClick(presentationRow, className) {
     if (!currentTeacher) {
         apiKeys.forEach((key) => { assignments[key] = targetTeacher; });
         markDirty();
-        renderTable();
+        scheduleRenderTable();
         return;
     }
 
@@ -1487,14 +1572,30 @@ function renderStatsView() {
     const rows = [...rowsBySubject.values()]
         .sort((a, b) => (a.subjectArea || "").localeCompare(b.subjectArea || "", "ru") || a.subjectName.localeCompare(b.subjectName, "ru"));
 
+    const visibleBuildingRows = buildingRows.filter((building) =>
+        rows.some((row) => Number(row.perBuilding?.[building.code]?.planned || 0) > 0)
+    );
+
     const totalPlanned = rows.reduce((sum, row) => sum + row.totalPlanned, 0);
     const totalAssigned = rows.reduce((sum, row) => sum + row.totalAssigned, 0);
     ui.statsSummary.textContent = `Предметов: ${rows.length}. Плановых часов: ${totalPlanned}. Распределено: ${totalAssigned}. Нераспределено: ${totalPlanned - totalAssigned}.`;
 
-    const buildingHeader = buildingRows.map((building) =>
-        `<th colspan="3">${esc(building.code)}${building.name ? ` — ${esc(building.name)}` : ""}</th>`
+    const formatStatsBuildingLabel = (building) => {
+        const code = String(building?.code || "").trim();
+        const name = String(building?.name || "").trim();
+        if (!name) return code;
+        const normalizedCode = normalizeBuildingCode(code);
+        const normalizedName = normalizeBuildingCode(name);
+        if (normalizedName === normalizedCode || normalizedName.startsWith(`${normalizedCode}|`)) {
+            return name;
+        }
+        return `${code} — ${name}`;
+    };
+
+    const buildingHeader = visibleBuildingRows.map((building) =>
+        `<th colspan="3">${esc(formatStatsBuildingLabel(building))}</th>`
     ).join("");
-    const buildingSubHeader = buildingRows.map(() =>
+    const buildingSubHeader = visibleBuildingRows.map(() =>
         "<th>часы</th><th>распр.</th><th>не распр.</th>"
     ).join("");
 
@@ -1514,7 +1615,7 @@ function renderStatsView() {
 
     const tbody = rows.map((row) => {
         const totalUnassigned = row.totalPlanned - row.totalAssigned;
-        const perBuildingCols = buildingRows.map((building) => {
+        const perBuildingCols = visibleBuildingRows.map((building) => {
             const bucket = row.perBuilding[building.code] || { planned: 0, assigned: 0 };
             const buildingUnassigned = bucket.planned - bucket.assigned;
             return `<td>${esc(bucket.planned)}</td><td>${esc(bucket.assigned)}</td><td>${esc(buildingUnassigned)}</td>`;
@@ -1687,7 +1788,7 @@ function renderTable() {
                 ui.sortField.value = "subject";
             }
             state.forceResort = true;
-            renderTable();
+            scheduleRenderTable();
         });
     });
 
@@ -1784,7 +1885,7 @@ async function saveBuildingLoad() {
     const assignments = assignmentsForBuilding(selectedBuilding);
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
     const plans = futurePlansForBuilding(selectedBuilding);
-    const payload = expandCurriculumRows(rowsForSelectedBuilding()).map((row) => {
+    const payload = expandedRowsForSelectedBuilding().map((row) => {
         const apiKey = apiKeyOfRow(row);
         const fioTeacher = String(assignments[apiKey] || "").trim();
         if (!fioTeacher) return null;
@@ -1816,7 +1917,7 @@ async function saveBuildingLoad() {
     }).filter(Boolean);
 
     Object.entries(plans).forEach(([apiKey, plan]) => {
-        const row = expandCurriculumRows(rowsForSelectedBuilding()).find((r) => apiKeyOfRow(r) === apiKey);
+        const row = expandedRowsForSelectedBuilding().find((r) => apiKeyOfRow(r) === apiKey);
         if (!row) return;
         payload.push({
             fioTeacher: plan.targetTeacher,
@@ -1958,6 +2059,8 @@ async function refreshSourceData() {
     classroomRows = classRows || [];
     studyPeriodSettings = periodSettings || [];
     subjectCatalog = subjects || [];
+    sourceRevision += 1;
+    invalidateDerivedCache();
     state.continuityExpectedByKey = new Map();
 
     try {
@@ -2014,7 +2117,7 @@ async function refreshSourceData() {
 
     state.takeoverContext = null;
     renderBuildingTabs();
-    renderTable();
+    scheduleRenderTable();
 }
 
 function bindEvents() {
@@ -2069,13 +2172,13 @@ function bindEvents() {
             state.takeoverContext = null;
             markDirty();
             ui.periodDialog.close();
-            renderTable();
+            scheduleRenderTable();
             return;
         }
 
         setPeriodForRow(subjectKey, rowId, fromDate, toDate);
         ui.periodDialog.close();
-        renderTable();
+        scheduleRenderTable();
     });
 
     ui.removeLoadBtn.addEventListener("click", () => {
@@ -2094,7 +2197,7 @@ function bindEvents() {
             markDirty();
         }
         ui.periodDialog.close();
-        renderTable();
+        scheduleRenderTable();
     });
 
     ui.cancelLoadBtn.addEventListener("click", () => { state.takeoverContext = null; ui.periodDialog.close(); });
@@ -2124,13 +2227,13 @@ function bindEvents() {
     ui.sortField.addEventListener("change", () => {
         state.sortField = ui.sortField.value;
         state.forceResort = true;
-        renderTable();
+        scheduleRenderTable();
     });
 
     ui.sortDirection.addEventListener("change", () => {
         state.sortDirection = ui.sortDirection.value;
         state.forceResort = true;
-        renderTable();
+        scheduleRenderTable();
     });
 
     ui.viewMode?.addEventListener("change", () => {
@@ -2142,7 +2245,7 @@ function bindEvents() {
         updateViewModeControls();
         prefillFromManualLoad(currentDisplayDate());
         state.forceResort = true;
-        renderTable();
+        scheduleRenderTable();
     });
 
     ui.viewDateInput?.addEventListener("change", () => {
@@ -2150,7 +2253,7 @@ function bindEvents() {
         if (state.viewMode !== "date") return;
         prefillFromManualLoad(currentDisplayDate());
         state.forceResort = true;
-        renderTable();
+        scheduleRenderTable();
     });
 
     ui.nextErrorBtn.addEventListener("click", jumpToFirstError);
