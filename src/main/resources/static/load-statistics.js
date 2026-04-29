@@ -192,8 +192,25 @@ async function refreshStats() {
 }
 
 function exportStatsCsv() {
-    const scopedPath = window.withAcademicYear ? window.withAcademicYear('/api/manual-load/stats/export') : '/api/manual-load/stats/export';
-    window.location.href = scopedPath;
+    const rows = Array.from(ui.table.querySelectorAll('tr'));
+    if (!rows.length) {
+        print({ warning: 'Нет данных для экспорта статистики' });
+        return;
+    }
+    const csvRows = rows.map((row) => {
+        const cells = Array.from(row.querySelectorAll('th,td'));
+        return cells.map((cell) => `\"${String(cell.textContent || '').replaceAll('\"', '\"\"').trim()}\"`).join(';');
+    });
+    const blob = new Blob(["\uFEFF" + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    const yearPart = String(sessionStorage.getItem('tarification.academicYear') || '').replace('/', '-');
+    link.download = `load-stats${yearPart ? `-${yearPart}` : ''}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+    print({ status: 'exported' });
 }
 
 ui.refreshBtn?.addEventListener('click', refreshStats);

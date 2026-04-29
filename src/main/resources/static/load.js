@@ -42,6 +42,7 @@ let selectedBuilding = "";
 let activeLoadTab = "distribution";
 let sourceRevision = 0;
 let renderTableRaf = null;
+const LOAD_SELECTED_BUILDING_KEY = "tarification.load.selectedBuilding";
 
 const ARCHIVE_BUILDING_CODE = "__ARCHIVE__";
 const ARCHIVE_BUILDING_LABEL = "Архив нагрузки";
@@ -130,6 +131,16 @@ function canonicalBuildingCode(value) {
         return code === normalized || name === normalized;
     });
     return match ? normalizeBuildingCode(match.code) : normalized;
+}
+
+function rememberSelectedBuilding(code) {
+    const normalized = normalizeBuildingCode(code);
+    if (!normalized || normalized === ARCHIVE_BUILDING_CODE) return;
+    sessionStorage.setItem(LOAD_SELECTED_BUILDING_KEY, normalized);
+}
+
+function restoreSelectedBuilding() {
+    return normalizeBuildingCode(sessionStorage.getItem(LOAD_SELECTED_BUILDING_KEY) || "");
 }
 
 function addressesForBuildingCode(buildingCode) {
@@ -1270,6 +1281,7 @@ function renderBuildingTabs() {
         button.title = tabLabel;
         button.addEventListener("click", () => {
             selectedBuilding = building.code;
+            rememberSelectedBuilding(selectedBuilding);
             state.forceResort = true;
             renderBuildingTabs();
             scheduleRenderTable();
@@ -2093,6 +2105,11 @@ async function refreshSourceData() {
     markDirty(false);
     updateViewModeControls();
 
+    const rememberedBuilding = restoreSelectedBuilding();
+    if (rememberedBuilding && buildings.some((row) => normalizeBuildingCode(row.code) === rememberedBuilding)) {
+        selectedBuilding = rememberedBuilding;
+    }
+
     if (selectedBuilding !== ARCHIVE_BUILDING_CODE) {
         const existsInTabs = buildings.some((row) => row.code === selectedBuilding);
         if (!existsInTabs) {
@@ -2104,6 +2121,8 @@ async function refreshSourceData() {
             }
         }
     }
+
+    rememberSelectedBuilding(selectedBuilding);
 
     state.takeoverContext = null;
     renderBuildingTabs();
