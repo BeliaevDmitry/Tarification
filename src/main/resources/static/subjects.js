@@ -31,7 +31,11 @@ async function api(path, options = {}) {
 
 const esc = (v) => String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 const print = (v) => { ui.result.textContent = JSON.stringify(v, null, 2); };
-const typeLabel = (v) => v === "EXTRACURRICULAR" ? "2 тип: внеурочная" : "1 тип: основная/формируемая";
+const typeLabel = (v) => {
+    if (v === "EXTRACURRICULAR") return "3 тип: внеурочная";
+    if (v === "FORMABLE") return "2 тип: формируемая";
+    return "1 тип: основная";
+};
 
 function render(rows) {
     ui.body.innerHTML = "";
@@ -51,7 +55,7 @@ function render(rows) {
 function openEdit(subject) {
     ui.editForm.elements.id.value = String(subject.id);
     ui.editForm.elements.subjectName.value = subject.subjectName;
-    ui.editForm.elements.subjectType.value = subject.subjectType;
+    ui.editForm.elements.subjectType.value = subject.subjectType === "CORE_FORMABLE" ? "CORE" : subject.subjectType;
     const areaName = subject.subjectAreaName || "Без области";
     if (![...ui.editForm.elements.subjectAreaName.options].some((opt) => opt.value === areaName)) {
         const customOption = document.createElement("option");
