@@ -162,7 +162,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             header.createCell(1).setCellValue("Класс");
             header.createCell(2).setCellValue("Направление класса");
             header.createCell(3).setCellValue("Классный руководитель");
-            header.createCell(4).setCellValue("Адрес корпуса/площадки");
+            header.createCell(4).setCellValue("Адрес площадки (если отличается)");
 
             List<ClassroomLeadershipEntry> rows = classroomLeadershipRepository.findAll();
             if (rows.isEmpty()) {
