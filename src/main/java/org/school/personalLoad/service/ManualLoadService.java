@@ -2,6 +2,7 @@ package org.school.personalLoad.service;
 
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadProcessResult;
+import org.school.personalLoad.dto.ManualLoadStatsResponse;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -26,4 +27,6 @@ public interface ManualLoadService {
     byte[] exportWorkbook(String academicYear) throws IOException;
 
     List<ManualLoadEntry> importWorkbook(String academicYear, MultipartFile file);
+
+    ManualLoadStatsResponse buildStats(String academicYear, String numberSchoolBuilding, int page, int pageSize);
 }
