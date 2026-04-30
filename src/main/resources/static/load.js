@@ -1792,8 +1792,9 @@ function renderTable() {
                 const persistedContinuityStates = classRows
                     .map((item) => String(item?.continuityStatus || "").trim().toUpperCase())
                     .filter(Boolean);
-                const hasPersistedContinuityOk = persistedContinuityStates.includes("OK");
-                const hasPersistedContinuityBroken = persistedContinuityStates.includes("BROKEN");
+                const continuityEnabled = state.continuityExpectedByKey.size > 0;
+                const hasPersistedContinuityOk = continuityEnabled && persistedContinuityStates.includes("OK");
+                const hasPersistedContinuityBroken = continuityEnabled && persistedContinuityStates.includes("BROKEN");
                 const hasContinuityExpectation = classRows.some((item) => state.continuityExpectedByKey.has(
                     continuityKey(item.className, item.subjectName, continuityGroupName(item))
                 ));
