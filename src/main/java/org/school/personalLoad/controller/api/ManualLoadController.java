@@ -6,6 +6,7 @@ import org.school.personalLoad.auth.AuthSessionUtils;
 import org.school.personalLoad.auth.SessionUser;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadProcessResult;
+import org.school.personalLoad.dto.ManualLoadStatsResponse;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.service.ManualLoadService;
 import org.school.personalLoad.service.AcademicYearService;
@@ -92,6 +93,19 @@ public class ManualLoadController {
         String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
         List<ManualLoadEntry> imported = manualLoadService.importWorkbook(effectiveYear, file);
         return ResponseEntity.ok(imported);
+    }
+
+    @GetMapping("/stats")
+    public ResponseEntity<ManualLoadStatsResponse> stats(@RequestParam(required = false) String academicYear,
+                                                         @RequestParam(required = false) String building,
+                                                         @RequestParam(defaultValue = "0") int page,
+                                                         @RequestParam(defaultValue = "100") int pageSize) {
+        return ResponseEntity.ok(manualLoadService.buildStats(
+                academicYearService.resolveRequestedOrDefault(academicYear),
+                building,
+                page,
+                pageSize
+        ));
     }
 
     private void validateLoadAccess(SessionUser user, List<ManualLoadEntryRequest> requests) {
