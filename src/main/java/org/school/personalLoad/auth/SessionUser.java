@@ -52,17 +52,23 @@ public class SessionUser implements Serializable {
         if (isAdmin() || loadEditAllBuildings) {
             return true;
         }
-        String normalizedRequested = normalizeBuildingCode(buildingCode);
+        String normalizedRequested = normalizeBuildingGroupCode(buildingCode);
         if (!loadEditableBuildingCodes.isEmpty()) {
-            return loadEditableBuildingCodes.stream().map(this::normalizeBuildingCode).anyMatch(normalizedRequested::equals);
+            return loadEditableBuildingCodes.stream().map(this::normalizeBuildingGroupCode).anyMatch(normalizedRequested::equals);
         }
         if (role == UserRole.BUILDING_HEAD) {
-            return normalizeBuildingCode(managedBuildingCode).equals(normalizedRequested);
+            return normalizeBuildingGroupCode(managedBuildingCode).equals(normalizedRequested);
         }
         return false;
     }
 
     private String normalizeBuildingCode(String value) {
         return String.valueOf(value == null ? "" : value).trim().toUpperCase().replace(" ", "");
+    }
+
+    private String normalizeBuildingGroupCode(String value) {
+        String normalized = normalizeBuildingCode(value);
+        int idx = normalized.indexOf("|");
+        return idx >= 0 ? normalized.substring(0, idx) : normalized;
     }
 }

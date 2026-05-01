@@ -14,6 +14,7 @@ public class UserResponse {
     String username;
     String fullName;
     String email;
+    String phone;
     String managedBuildingCode;
     boolean loadEditAllBuildings;
     List<String> loadEditableBuildingCodes;
