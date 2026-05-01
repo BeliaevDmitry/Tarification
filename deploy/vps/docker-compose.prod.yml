@@ -41,7 +41,7 @@ services:
       SERVER_FORWARD_HEADERS_STRATEGY: framework
       SERVER_SERVLET_SESSION_COOKIE_SECURE: ${SERVER_SERVLET_SESSION_COOKIE_SECURE:-true}
       SERVER_SERVLET_SESSION_COOKIE_SAME_SITE: lax
-      JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx1024m}
+      JAVA_OPTS: ${JAVA_OPTS:--Xms512m -Xmx2048m -XX:+UseG1GC -XX:MaxGCPauseMillis=200}
     expose:
       - "8080"
     restart: unless-stopped

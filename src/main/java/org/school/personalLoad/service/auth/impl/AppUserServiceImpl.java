@@ -8,6 +8,7 @@ import org.school.personalLoad.dto.auth.CreateUserRequest;
 import org.school.personalLoad.dto.auth.UpdateUserRequest;
 import org.school.personalLoad.dto.auth.UserTabPermissionRequest;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
+import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.auth.AppUserRepository;
 import org.school.personalLoad.repository.auth.AppUserTabPermissionRepository;
 import org.school.personalLoad.service.auth.AppUserService;
@@ -31,6 +32,7 @@ public class AppUserServiceImpl implements AppUserService {
 
     private final AppUserRepository appUserRepository;
     private final SchoolBuildingRepository schoolBuildingRepository;
+    private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final AppUserTabPermissionRepository tabPermissionRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -49,6 +51,7 @@ public class AppUserServiceImpl implements AppUserService {
         String normalizedUsername = normalizeUsername(username);
         AppUser user = appUserRepository.findByUsernameIgnoreCase(normalizedUsername)
                 .orElseThrow(() -> new UnauthorizedException("Неверный логин или пароль"));
+        user = syncUserWithTeacherDirectory(user);
 
         if (!user.isActive() || !user.isCanView()) {
             throw new UnauthorizedException("Доступ пользователя отключён администратором");
@@ -66,6 +69,7 @@ public class AppUserServiceImpl implements AppUserService {
         }
         AppUser user = appUserRepository.findById(userId)
                 .orElseThrow(() -> new UnauthorizedException("Пользователь не найден"));
+        user = syncUserWithTeacherDirectory(user);
         if (!user.isActive() || !user.isCanView()) {
             throw new UnauthorizedException("Доступ пользователя отключён администратором");
         }
@@ -76,6 +80,7 @@ public class AppUserServiceImpl implements AppUserService {
     @Transactional(readOnly = true)
     public List<AppUser> findAll() {
         return appUserRepository.findAll().stream()
+                .map(this::syncUserWithTeacherDirectory)
                 .sorted(Comparator.comparing(AppUser::getRole).thenComparing(AppUser::getFullName, String.CASE_INSENSITIVE_ORDER))
                 .toList();
     }
@@ -96,9 +101,11 @@ public class AppUserServiceImpl implements AppUserService {
 
         Set<String> knownBuildingCodes = loadKnownBuildingCodes();
 
+        String normalizedFio = normalizeTeacherFio(request.getFullName());
+        ensureUniqueTeacherFioUser(normalizedFio, null);
         AppUser user = new AppUser();
         user.setUsername(username);
-        user.setFullName(normalizeText(request.getFullName(), "ФИО пользователя обязательно"));
+        user.setFullName(normalizedFio);
         user.setEmail(normalizeOptional(request.getEmail()));
         user.setManagedBuildingCode(normalizeExistingBuildingCode(request.getManagedBuildingCode(), knownBuildingCodes, "Основной корпус"));
         user.setLoadEditAllBuildings(Boolean.TRUE.equals(request.getLoadEditAllBuildings()));
@@ -124,7 +131,9 @@ public class AppUserServiceImpl implements AppUserService {
         Set<String> knownBuildingCodes = loadKnownBuildingCodes();
 
         if (request.getFullName() != null) {
-            user.setFullName(normalizeText(request.getFullName(), "ФИО пользователя обязательно"));
+            String normalizedFio = normalizeTeacherFio(request.getFullName());
+            ensureUniqueTeacherFioUser(normalizedFio, user.getId());
+            user.setFullName(normalizedFio);
         }
         if (request.getEmail() != null) {
             user.setEmail(normalizeOptional(request.getEmail()));
@@ -331,14 +340,14 @@ public class AppUserServiceImpl implements AppUserService {
         if (user.getRole() != UserRole.BUILDING_HEAD || user.getManagedBuildingCode() == null) {
             return;
         }
-        String normalizedManagedBuildingCode = normalizeOptionalBuildingCode(user.getManagedBuildingCode());
+        String normalizedManagedBuildingCode = normalizeBuildingGroupCode(user.getManagedBuildingCode());
         if (normalizedManagedBuildingCode == null) {
             return;
         }
         appUserRepository.findAll().stream()
                 .filter(existing -> existing.getRole() == UserRole.BUILDING_HEAD)
                 .filter(existing -> !Objects.equals(existing.getId(), user.getId()))
-                .filter(existing -> Objects.equals(normalizeOptionalBuildingCode(existing.getManagedBuildingCode()), normalizedManagedBuildingCode))
+                .filter(existing -> Objects.equals(normalizeBuildingGroupCode(existing.getManagedBuildingCode()), normalizedManagedBuildingCode))
                 .findFirst()
                 .ifPresent(existing -> {
                     throw new IllegalStateException(
@@ -437,6 +446,46 @@ public class AppUserServiceImpl implements AppUserService {
     private String normalizeOptionalBuildingCode(String value) {
         String normalized = normalizeOptional(value);
         return normalized == null ? null : normalized.replace(" ", "").toUpperCase(Locale.ROOT);
+    }
+
+    private String normalizeBuildingGroupCode(String value) {
+        String normalized = normalizeOptionalBuildingCode(value);
+        if (normalized == null) return null;
+        int idx = normalized.indexOf("|");
+        return idx >= 0 ? normalized.substring(0, idx) : normalized;
+    }
+
+    private String normalizeTeacherFio(String fio) {
+        String normalized = normalizeText(fio, "ФИО пользователя обязательно");
+        return teacherDirectoryRepository.findByFioTeacherIgnoreCase(normalized)
+                .map(entry -> entry.getFioTeacher().trim())
+                .orElseThrow(() -> new IllegalArgumentException("ФИО должно быть выбрано из справочника «Кадры»"));
+    }
+
+    private void ensureUniqueTeacherFioUser(String fio, Long selfId) {
+        appUserRepository.findAll().stream()
+                .filter(user -> !Objects.equals(user.getId(), selfId))
+                .filter(user -> normalizeOptional(user.getFullName()) != null)
+                .filter(user -> normalizeOptional(user.getFullName()).equalsIgnoreCase(fio))
+                .findFirst()
+                .ifPresent(user -> {
+                    throw new IllegalStateException("Пользователь с этим ФИО уже существует: " + user.getUsername());
+                });
+    }
+
+    private AppUser syncUserWithTeacherDirectory(AppUser user) {
+        if (user == null || user.getRole() == UserRole.ADMIN) return user;
+        String fio = normalizeOptional(user.getFullName());
+        if (fio == null) return user;
+        org.school.personalLoad.model.TeacherDirectoryEntry teacher = teacherDirectoryRepository.findByFioTeacherIgnoreCase(fio).orElse(null);
+        boolean shouldDisable = teacher == null || teacher.getDismissalDate() != null;
+        if (shouldDisable && user.isActive()) {
+            user.setActive(false);
+            user.setCanView(false);
+            user.setCanEdit(false);
+            return appUserRepository.save(user);
+        }
+        return user;
     }
 
     private SessionUser toSessionUser(AppUser user) {
