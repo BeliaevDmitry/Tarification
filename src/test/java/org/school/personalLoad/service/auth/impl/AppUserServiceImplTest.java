@@ -11,6 +11,7 @@ import org.school.personalLoad.auth.UserRole;
 import org.school.personalLoad.dto.auth.UpdateUserRequest;
 import org.school.personalLoad.dto.auth.UserTabPermissionRequest;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
+import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.auth.AppUserRepository;
 import org.school.personalLoad.repository.auth.AppUserTabPermissionRepository;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -29,6 +30,8 @@ class AppUserServiceImplTest {
     @Mock
     private SchoolBuildingRepository schoolBuildingRepository;
     @Mock
+    private TeacherDirectoryRepository teacherDirectoryRepository;
+    @Mock
     private AppUserTabPermissionRepository tabPermissionRepository;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
@@ -38,6 +41,7 @@ class AppUserServiceImplTest {
         AppUserServiceImpl service = new AppUserServiceImpl(
                 appUserRepository,
                 schoolBuildingRepository,
+                teacherDirectoryRepository,
                 tabPermissionRepository,
                 passwordEncoder
         );
@@ -70,6 +74,7 @@ class AppUserServiceImplTest {
         AppUserServiceImpl service = new AppUserServiceImpl(
                 appUserRepository,
                 schoolBuildingRepository,
+                teacherDirectoryRepository,
                 tabPermissionRepository,
                 passwordEncoder
         );
@@ -90,6 +95,7 @@ class AppUserServiceImplTest {
         AppUserServiceImpl service = new AppUserServiceImpl(
                 appUserRepository,
                 schoolBuildingRepository,
+                teacherDirectoryRepository,
                 tabPermissionRepository,
                 passwordEncoder
         );
@@ -110,6 +116,7 @@ class AppUserServiceImplTest {
         AppUserServiceImpl service = new AppUserServiceImpl(
                 appUserRepository,
                 schoolBuildingRepository,
+                teacherDirectoryRepository,
                 tabPermissionRepository,
                 passwordEncoder
         );
@@ -130,6 +137,7 @@ class AppUserServiceImplTest {
         AppUserServiceImpl service = new AppUserServiceImpl(
                 appUserRepository,
                 schoolBuildingRepository,
+                teacherDirectoryRepository,
                 tabPermissionRepository,
                 passwordEncoder
         );
