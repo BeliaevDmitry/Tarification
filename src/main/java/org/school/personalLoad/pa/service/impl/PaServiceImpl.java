@@ -509,7 +509,7 @@ public class PaServiceImpl implements PaService {
 
     @Override
     @Transactional
-    public PaDtos.ReportUploadResult generateReportTemplate(String academicYear, String subjectName, String className, PaLevel level, PaWorkType workType, LocalDate workDate) {
+    public PaDtos.ReportUploadResult generateReportTemplate(String academicYear, String subjectName, String className, PaLevel level, PaWorkType workType, LocalDate workDate, boolean force) {
         PaSpecification spec = resolveSpecificationForClass(academicYear, subjectName, className, level, workType, workDate);
         if (spec == null) {
             return new PaDtos.ReportUploadResult("", "REJECTED", "Не найдена активная спецификация для генерации", null, subjectName, className, workType);
@@ -586,7 +586,7 @@ public class PaServiceImpl implements PaService {
 
     @Override
     @Transactional
-    public List<PaDtos.ReportUploadResult> generateReportTemplatesByParallel(String academicYear, String subjectName, String parallel, PaLevel level, PaWorkType workType, LocalDate workDate) {
+    public List<PaDtos.ReportUploadResult> generateReportTemplatesByParallel(String academicYear, String subjectName, String parallel, PaLevel level, PaWorkType workType, LocalDate workDate, boolean force) {
         List<String> classes = curriculumPlanEntryRepository.findAllByAcademicYear(academicYear).stream()
                 .map(CurriculumPlanEntry::getClassName)
                 .filter(Objects::nonNull)
@@ -604,11 +604,11 @@ public class PaServiceImpl implements PaService {
             if (resolveSpecificationForClass(academicYear, subjectName, className, level, workType, workDate) == null) {
                 continue;
             }
-            if (hasActiveGeneratedTemplate(academicYear, subjectName, className, level, workType, workDate)) {
+            if (!force && hasActiveGeneratedTemplate(academicYear, subjectName, className, level, workType, workDate)) {
                 results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Шаблон уже сгенерирован для класса", null, subjectName, className, workType));
                 continue;
             }
-            results.add(generateReportTemplate(academicYear, subjectName, className, level, workType, workDate));
+            results.add(generateReportTemplate(academicYear, subjectName, className, level, workType, workDate, force));
         }
         if (results.isEmpty()) {
             results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Нет классов с доступной спецификацией для генерации", null, subjectName, "", workType));
@@ -618,7 +618,7 @@ public class PaServiceImpl implements PaService {
 
     @Override
     @Transactional
-    public List<PaDtos.ReportUploadResult> generateAllReportTemplates(String academicYear, String subjectName, PaLevel level, PaWorkType workType, LocalDate workDate) {
+    public List<PaDtos.ReportUploadResult> generateAllReportTemplates(String academicYear, String subjectName, PaLevel level, PaWorkType workType, LocalDate workDate, boolean force) {
         List<String> classes = curriculumPlanEntryRepository.findAllByAcademicYear(academicYear).stream()
                 .map(CurriculumPlanEntry::getClassName)
                 .filter(Objects::nonNull)
@@ -632,16 +632,38 @@ public class PaServiceImpl implements PaService {
             if (resolveSpecificationForClass(academicYear, subjectName, className, level, workType, workDate) == null) {
                 continue;
             }
-            if (hasActiveGeneratedTemplate(academicYear, subjectName, className, level, workType, workDate)) {
+            if (!force && hasActiveGeneratedTemplate(academicYear, subjectName, className, level, workType, workDate)) {
                 results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Шаблон уже сгенерирован для класса", null, subjectName, className, workType));
                 continue;
             }
-            results.add(generateReportTemplate(academicYear, subjectName, className, level, workType, workDate));
+            results.add(generateReportTemplate(academicYear, subjectName, className, level, workType, workDate, force));
         }
         if (results.isEmpty()) {
             results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Нет классов с доступной спецификацией для генерации", null, subjectName, "", workType));
         }
         return results;
+    }
+
+    @Override
+    @Transactional
+    public int deleteGeneratedReports(String academicYear, String subjectName, String scopeValue, boolean byParallel, PaLevel level, PaWorkType workType, LocalDate workDate) {
+        String normalizedScope = normalizeClass(scopeValue);
+        List<PaReportVersion> candidates = reportVersionRepository.findAllByAcademicYearAndLevelAndWorkType(academicYear, level, workType).stream()
+                .filter(v -> "GENERATED".equalsIgnoreCase(v.getStatus()))
+                .filter(v -> byParallel ? parseParallel(v.getScopeValue()) != null && String.valueOf(parseParallel(v.getScopeValue())).equals(normalizedScope)
+                        : normalizeClass(v.getScopeValue()).equals(normalizedScope))
+                .filter(v -> "ALL".equalsIgnoreCase(subjectName) || normalize(v.getSubjectName()).equals(normalize(subjectName)))
+                .filter(v -> Objects.equals(v.getWorkDate(), workDate) || workDate == null)
+                .toList();
+        if (candidates.isEmpty()) return 0;
+        for (PaReportVersion version : candidates) {
+            try {
+                Path path = resolveReportFilePath(version);
+                Files.deleteIfExists(path);
+            } catch (Exception ignored) { }
+        }
+        reportVersionRepository.deleteAll(candidates);
+        return candidates.size();
     }
 
     private boolean hasActiveGeneratedTemplate(String academicYear,

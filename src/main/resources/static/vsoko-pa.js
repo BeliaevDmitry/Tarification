@@ -387,7 +387,7 @@ function renderVersions(prefix, rows) {
     bindReportDownloadButtons();
 }
 
-async function generateForClass(prefix) {
+async function generateForClass(prefix, force = false) {
     const subject = document.getElementById(`pa-${prefix}-subject`).value;
     const className = document.getElementById(`pa-${prefix}-class`).value || document.getElementById(`pa-${prefix}-scope`).value;
     const level = document.getElementById(`pa-${prefix}-level`).value;
@@ -404,6 +404,7 @@ async function generateForClass(prefix) {
     const params = new URLSearchParams({ subjectName: subject, className, level, workType });
     if (workDate) params.set('workDate', workDate);
     try {
+        if (force) params.set('force', 'true');
         const result = await paApi(`/api/pa/reports/generate?${params.toString()}`, { method: 'POST' });
         renderUploadLog(prefix, [result]);
         await loadVersions(prefix);
@@ -414,7 +415,7 @@ async function generateForClass(prefix) {
     }
 }
 
-async function generateForParallel(prefix) {
+async function generateForParallel(prefix, force = false) {
     const subject = document.getElementById(`pa-${prefix}-subject`).value;
     const parallel = document.getElementById(`pa-${prefix}-scope`).value;
     const level = document.getElementById(`pa-${prefix}-level`).value;
@@ -431,6 +432,7 @@ async function generateForParallel(prefix) {
     const params = new URLSearchParams({ subjectName: subject, parallel, level, workType });
     if (workDate) params.set('workDate', workDate);
     try {
+        if (force) params.set('force', 'true');
         const result = await paApi(`/api/pa/reports/generate/parallel?${params.toString()}`, { method: 'POST' });
         renderUploadLog(prefix, result);
         await renderWorkflow(prefix);
@@ -440,7 +442,7 @@ async function generateForParallel(prefix) {
     }
 }
 
-async function generateAll(prefix) {
+async function generateForAll(prefix, force = false) {
     const subject = document.getElementById(`pa-${prefix}-subject`).value;
     const level = document.getElementById(`pa-${prefix}-level`).value;
     const workDate = document.getElementById(`pa-${prefix}-work-date`).value;
@@ -452,6 +454,7 @@ async function generateAll(prefix) {
     const params = new URLSearchParams({ subjectName: subject, level, workType });
     if (workDate) params.set('workDate', workDate);
     try {
+        if (force) params.set('force', 'true');
         const result = await paApi(`/api/pa/reports/generate/all?${params.toString()}`, { method: 'POST' });
         renderUploadLog(prefix, result);
         await renderWorkflow(prefix);
@@ -461,6 +464,33 @@ async function generateAll(prefix) {
     }
 }
 
+
+
+async function deleteScopeGenerated(prefix) {
+    const subject = document.getElementById(`pa-${prefix}-subject`).value;
+    const className = document.getElementById(`pa-${prefix}-class`).value;
+    const parallel = document.getElementById(`pa-${prefix}-scope`).value;
+    const level = document.getElementById(`pa-${prefix}-level`).value;
+    const workDate = document.getElementById(`pa-${prefix}-work-date`).value;
+    const byParallel = !className && !!parallel;
+    const scopeValue = byParallel ? parallel : className;
+    if (!scopeValue) {
+        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: 'Выберите класс или параллель для удаления', versionNo: null }]);
+        return;
+    }
+    if (!confirm(`Удалить сгенерированные отчёты (${byParallel ? 'параллель' : 'класс'}: ${scopeValue})?`)) return;
+    const params = new URLSearchParams({ subjectName: subject || 'ALL', scopeValue, byParallel: String(byParallel), level, workType: prefix === 'entry' ? 'ENTRY' : 'EXIT' });
+    if (workDate) params.set('workDate', workDate);
+    try {
+        const result = await paApi(`/api/pa/reports/generated?${params.toString()}`, { method: 'DELETE' });
+        renderUploadLog(prefix, [{ fileName: '', status: 'ACCEPTED', message: `Удалено шаблонов: ${result.deleted ?? 0}`, versionNo: null }]);
+        await loadVersions(prefix);
+        await loadReportFolders(prefix);
+        await renderWorkflow(prefix);
+    } catch (e) {
+        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: `Удаление не выполнено: ${e.message}`, versionNo: null }]);
+    }
+}
 async function reloadSummaryAndSpecs() {
     const [summary, specs, subjects, curriculum] = await Promise.all([
         paApi('/api/pa/specifications/summary'),
@@ -1011,10 +1041,12 @@ bindClick('pa-entry-load-versions-btn', () => loadVersions('entry'));
 bindClick('pa-exit-load-versions-btn', () => loadVersions('exit'));
 bindClick('pa-entry-generate-btn', () => generateForClass('entry'));
 bindClick('pa-exit-generate-btn', () => generateForClass('exit'));
+bindClick('pa-exit-regenerate-all-btn', () => generateForAll('exit', true));
+bindClick('pa-exit-delete-scope-btn', () => deleteScopeGenerated('exit'));
 bindClick('pa-entry-generate-parallel-btn', () => generateForParallel('entry'));
 bindClick('pa-exit-generate-parallel-btn', () => generateForParallel('exit'));
-bindClick('pa-entry-generate-all-btn', () => generateAll('entry'));
-bindClick('pa-exit-generate-all-btn', () => generateAll('exit'));
+bindClick('pa-entry-generate-all-btn', () => generateForAll('entry'));
+bindClick('pa-exit-generate-all-btn', () => generateForAll('exit'));
 bindChange('pa-entry-subject', async () => { paState.workflowUi.entry.page = 1; fillSelectors('entry'); await renderWorkflow('entry'); });
 bindChange('pa-exit-subject', async () => { paState.workflowUi.exit.page = 1; fillSelectors('exit'); await renderWorkflow('exit'); });
 bindChange('pa-entry-level', async () => { paState.workflowUi.entry.page = 1; fillSelectors('entry'); await renderWorkflow('entry'); });
