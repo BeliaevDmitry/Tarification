@@ -324,9 +324,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     ensureClassroom(academicYear, row.numberSchoolBuilding(), row.className(), row.classDirection(), fallbackTeacher);
                     if (!existedClass) classesCreated++;
 
-                    SubjectType subjectType = row.curriculumPart() == CurriculumPart.EXTRACURRICULAR
-                            ? SubjectType.EXTRACURRICULAR
-                            : SubjectType.CORE_FORMABLE;
+                    SubjectType subjectType = resolveSubjectType(row.curriculumPart(), row.subjectName());
                     String normalizedSubject = normalizeSubject(row.subjectName());
                     String subjectKey = subjectKey(normalizedSubject, subjectType);
                     if (!normalizedSubject.isBlank() && !existingSubjects.containsKey(subjectKey)) {
@@ -920,14 +918,19 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     private record MarkerFlags(String value, boolean subgroupRequired, boolean metaGroup) {}
 
     private SubjectType resolveSubjectType(CurriculumImportRow row) {
-        if (row.getCurriculumPart() == CurriculumPart.EXTRACURRICULAR) {
-            return SubjectType.EXTRACURRICULAR;
-        }
-        String value = String.valueOf(row.getSubjectName() == null ? "" : row.getSubjectName()).trim().toLowerCase(Locale.ROOT);
+        return resolveSubjectType(row.getCurriculumPart(), row.getSubjectName());
+    }
+
+    private SubjectType resolveSubjectType(CurriculumPart curriculumPart, String subjectName) {
+        if (curriculumPart == CurriculumPart.CORE) return SubjectType.CORE;
+        if (curriculumPart == CurriculumPart.FORMABLE) return SubjectType.FORMABLE;
+        if (curriculumPart == CurriculumPart.EXTRACURRICULAR) return SubjectType.EXTRACURRICULAR;
+
+        String value = String.valueOf(subjectName == null ? "" : subjectName).trim().toLowerCase(Locale.ROOT);
         if (value.contains("внеур") || value.contains("разговоры о важном")) {
             return SubjectType.EXTRACURRICULAR;
         }
-        return SubjectType.CORE_FORMABLE;
+        return SubjectType.CORE;
     }
 
     private String normalizeSubject(String value) {

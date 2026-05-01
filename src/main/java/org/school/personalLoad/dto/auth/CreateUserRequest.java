@@ -10,6 +10,7 @@ public class CreateUserRequest {
     private String username;
     private String fullName;
     private String email;
+    private String phone;
     private String managedBuildingCode;
     private Boolean loadEditAllBuildings;
     private List<String> loadEditableBuildingCodes;

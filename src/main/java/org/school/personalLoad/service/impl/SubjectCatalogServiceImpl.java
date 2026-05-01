@@ -159,17 +159,23 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
                 ex1.createCell(3).setCellValue("1");
 
                 Row ex2 = sheet.createRow(2);
-                ex2.createCell(0).setCellValue("Разговоры о важном");
+                ex2.createCell(0).setCellValue("Физика");
                 ex2.createCell(1).setCellValue("2");
-                ex2.createCell(2).setCellValue("Без области");
+                ex2.createCell(2).setCellValue("Естественно-научные предметы");
                 ex2.createCell(3).setCellValue("1");
+
+                Row ex3 = sheet.createRow(3);
+                ex3.createCell(0).setCellValue("Разговоры о важном");
+                ex3.createCell(1).setCellValue("3");
+                ex3.createCell(2).setCellValue("Без области");
+                ex3.createCell(3).setCellValue("1");
             } else {
                 rows.sort(Comparator.comparing(SubjectCatalogEntry::getSubjectName, String.CASE_INSENSITIVE_ORDER));
                 int idx = 1;
                 for (SubjectCatalogEntry entry : rows) {
                     Row row = sheet.createRow(idx++);
                     row.createCell(0).setCellValue(entry.getSubjectName());
-                    row.createCell(1).setCellValue(entry.getSubjectType() == SubjectType.EXTRACURRICULAR ? "2" : "1");
+                    row.createCell(1).setCellValue(exportTypeCode(entry.getSubjectType()));
                     row.createCell(2).setCellValue(resolveAreaName(entry.getSubjectAreaName()));
                     row.createCell(3).setCellValue(resolveCoefficient(entry.getSubjectCoefficient()).toPlainString());
                 }
@@ -237,13 +243,21 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
 
     private SubjectType parseType(String value) {
         String v = String.valueOf(value == null ? "" : value).trim().toLowerCase();
-        if (v.isBlank()) return SubjectType.CORE_FORMABLE;
+        if (v.isBlank()) return SubjectType.CORE;
         if (v.contains("внеур")) return SubjectType.EXTRACURRICULAR;
-        if (v.contains("основ") || v.contains("формир") || v.contains("core") || v.contains("form")) {
-            return SubjectType.CORE_FORMABLE;
-        }
-        if (v.equals("1")) return SubjectType.CORE_FORMABLE;
-        if (v.equals("2")) return SubjectType.EXTRACURRICULAR;
+        if (v.contains("формир") || v.contains("formable")) return SubjectType.FORMABLE;
+        if (v.contains("основ") || v.contains("core")) return SubjectType.CORE;
+        if (v.equals("1")) return SubjectType.CORE;
+        if (v.equals("2")) return SubjectType.FORMABLE;
+        if (v.equals("3")) return SubjectType.EXTRACURRICULAR;
+        if (v.equals("core_formable")) return SubjectType.CORE;
         return null;
+    }
+
+    private String exportTypeCode(SubjectType type) {
+        if (type == SubjectType.EXTRACURRICULAR) return "3";
+        if (type == SubjectType.FORMABLE) return "2";
+        if (type == SubjectType.CORE || type == SubjectType.CORE_FORMABLE) return "1";
+        return "1";
     }
 }
