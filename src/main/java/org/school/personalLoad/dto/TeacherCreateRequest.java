@@ -6,4 +6,8 @@ import lombok.Data;
 public class TeacherCreateRequest {
     private String fioTeacher;
     private String fioTeacherDative;
+    private String initials;
+    private String initialsDative;
+    private String phone;
+    private String email;
 }
