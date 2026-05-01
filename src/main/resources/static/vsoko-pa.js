@@ -17,7 +17,6 @@ const paState = {
         exit: '5-11'
     }
 };
-const PA_SPEC_IMPORT_HISTORY_KEY = 'pa.spec.import.history';
 const PA_SUMMARY_STATUS_OVERRIDES_KEY = 'pa.summary.status.overrides';
 const paQueryParams = new URLSearchParams(window.location.search);
 let summaryStatusSelection = null;
@@ -474,6 +473,10 @@ async function reloadSummaryAndSpecs() {
     paState.curriculum = curriculum || [];
     paState.workflowVersionCache.entry.clear();
     paState.workflowVersionCache.exit.clear();
+    if (!Array.isArray(specs) || specs.length === 0) {
+        paState.importLogHistory = [];
+        renderSpecificationImportLog();
+    }
     renderSpecifications(specs || []);
     if (paQueryParams.get('forceExitAll') === '1') {
         const exitSubject = document.getElementById('pa-exit-subject');
@@ -640,7 +643,6 @@ function appendSpecificationImportLog(result) {
         });
     });
     paState.importLogHistory = paState.importLogHistory.slice(0, 200);
-    saveSpecificationImportLogHistory();
     renderSpecificationImportLog();
 }
 
@@ -656,42 +658,6 @@ function renderSpecificationImportLog() {
             <td>${row.records}</td>
         </tr>
     `).join('') || '<tr><td colspan="5" class="muted">История загрузок пуста</td></tr>';
-}
-
-function historyStorageKey() {
-    const year = typeof window.getStoredAcademicYear === 'function' ? window.getStoredAcademicYear() : '';
-    return `${PA_SPEC_IMPORT_HISTORY_KEY}:${year || 'default'}`;
-}
-
-function saveSpecificationImportLogHistory() {
-    try {
-        localStorage.setItem(historyStorageKey(), JSON.stringify(paState.importLogHistory));
-    } catch (_) {
-        // ignore storage errors
-    }
-}
-
-function loadSpecificationImportLogHistory() {
-    try {
-        const raw = localStorage.getItem(historyStorageKey());
-        if (!raw) {
-            paState.importLogHistory = [];
-            return;
-        }
-        const parsed = JSON.parse(raw);
-        paState.importLogHistory = Array.isArray(parsed) ? parsed
-            .filter((row) => row && typeof row === 'object')
-            .map((row) => ({
-                timestamp: row.timestamp || '',
-                fileName: row.fileName || '—',
-                status: row.status || '',
-                message: row.message || '',
-                records: Number.isFinite(row.records) ? row.records : 0
-            }))
-            : [];
-    } catch (_) {
-        paState.importLogHistory = [];
-    }
 }
 
 async function uploadReports(prefix) {
@@ -1075,7 +1041,6 @@ loadSummaryStatusOverrides();
 reloadSummaryAndSpecs().catch((e) => {
     appendSpecificationImportLog([{ fileName: '—', warnings: [`Ошибка: ${e.message}`], importedTasks: 0 }]);
 });
-loadSpecificationImportLogHistory();
 renderSpecificationImportLog();
 const startMainTab = paQueryParams.get('tab')
     || (window.location.pathname.includes('vsoko-pa-entry') ? 'entry'
