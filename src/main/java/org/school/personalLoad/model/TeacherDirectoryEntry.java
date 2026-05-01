@@ -21,6 +21,11 @@ public class TeacherDirectoryEntry {
     private String fioTeacher;
 
     private String fioTeacherDative;
+    private String initials;
+    private String initialsDative;
+    private String phone;
+    @Column(unique = true)
+    private String email;
 
     private LocalDate dismissalDate;
 

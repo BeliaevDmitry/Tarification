@@ -94,12 +94,17 @@ const ui = {
     academicYearForm: document.getElementById('academic-year-create-form'),
     academicYearCode: document.getElementById('academic-year-code'),
     academicYearFeedback: document.getElementById('academic-year-feedback'),
-    academicYearsBody: document.getElementById('academic-years-body')
+    academicYearsBody: document.getElementById('academic-years-body'),
+    createFullName: document.getElementById('create-full-name'),
+    editFullName: document.getElementById('edit-full-name'),
+    createTeacherDatalist: document.getElementById('teacher-fio-options-create'),
+    editTeacherDatalist: document.getElementById('teacher-fio-options-edit')
 };
 
 let buildings = [];
 let users = [];
 let editingUserId = null;
+let teacherFioOptions = [];
 
 async function api(path, options = {}) {
     const response = await fetch(applyAcademicYearScope(path), options);
@@ -116,6 +121,24 @@ async function api(path, options = {}) {
 
 function print(value) {
     ui.result.textContent = JSON.stringify(value, null, 2);
+}
+
+function renderTeacherFioDatalist(target, items) {
+    if (!target) return;
+    target.innerHTML = (items || []).map((fio) => `<option value="${esc(fio)}"></option>`).join('');
+}
+
+function filterTeacherFioOptions(query) {
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return teacherFioOptions.slice(0, 200);
+    return teacherFioOptions.filter((fio) => fio.toLowerCase().includes(q)).slice(0, 200);
+}
+
+function bindTeacherFioAutocomplete(input, datalist) {
+    if (!input || !datalist) return;
+    const render = () => renderTeacherFioDatalist(datalist, filterTeacherFioOptions(input.value));
+    input.addEventListener('focus', render);
+    input.addEventListener('input', render);
 }
 
 function setAdminTab(tab) {
@@ -743,12 +766,20 @@ function resetCreateForm() {
 }
 
 async function reload() {
-    const [userRows, buildingRows] = await Promise.all([
+    const [userRows, buildingRows, teacherRows] = await Promise.all([
         api('/api/admin/users'),
-        api('/api/buildings')
+        api('/api/buildings'),
+        api('/api/teachers')
     ]);
     users = userRows || [];
     buildings = (buildingRows || []).slice().sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), 'ru'));
+    teacherFioOptions = (teacherRows || [])
+        .map((row) => String(row.fioTeacher || '').trim())
+        .filter(Boolean)
+        .filter((fio, idx, arr) => arr.findIndex((x) => x.toLowerCase() === fio.toLowerCase()) === idx)
+        .sort((a, b) => a.localeCompare(b, 'ru'));
+    renderTeacherFioDatalist(ui.createTeacherDatalist, teacherFioOptions.slice(0, 200));
+    renderTeacherFioDatalist(ui.editTeacherDatalist, teacherFioOptions.slice(0, 200));
     renderBuildingSelect(ui.createManagedBuilding, ui.createManagedBuilding.value);
     renderLoadBuildings(ui.createLoadBuildings, selectedLoadBuildings('create'), 'create');
     renderUsers(users);
@@ -838,6 +869,8 @@ ui.resetPasswordBtn.addEventListener('click', async () => {
 });
 
 resetCreateForm();
+bindTeacherFioAutocomplete(ui.createFullName, ui.createTeacherDatalist);
+bindTeacherFioAutocomplete(ui.editFullName, ui.editTeacherDatalist);
 reload().then(renderAcademicYears).catch((error) => print({ error: error.message }));
 
 ui.adminTabUsersBtn?.addEventListener('click', () => setAdminTab('users'));
