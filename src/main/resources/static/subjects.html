@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ГБОУ школа 7 — Предметы</title>
 
-    <link rel="icon" type="image/svg+xml" href="/school-crest.svg">
+    <link rel="icon" type="image/png" href="/school-crest.png">
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -19,6 +19,7 @@
             <a class="nav-link active" href="/subjects.html" data-tab="SUBJECTS">Предметы</a>
             <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
             <a class="nav-link" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/load-statistics.html" data-tab="LOAD">Статистика нагрузки</a>
             <a class="nav-link" href="/settings.html" data-tab="SETTINGS">Настройки</a>
             <a class="nav-link" href="/teachers.html" data-tab="TEACHERS">Кадры</a>
         </nav>
@@ -35,8 +36,9 @@
         <form id="subject-form" class="row" data-requires-edit>
             <input id="subject-name" placeholder="Название предмета" required>
             <select id="subject-type" required>
-                <option value="CORE_FORMABLE">1 тип: основная/формируемая часть</option>
-                <option value="EXTRACURRICULAR">2 тип: внеурочная деятельность</option>
+                <option value="CORE">1 тип: основная часть</option>
+                <option value="FORMABLE">2 тип: формируемая часть</option>
+                <option value="EXTRACURRICULAR">3 тип: внеурочная деятельность</option>
             </select>
             <select id="subject-area">
                 <option value="Без области">Без области</option>
@@ -66,8 +68,9 @@
         <input type="hidden" name="id">
         <input name="subjectName" placeholder="Название предмета" required>
         <select name="subjectType" required>
-            <option value="CORE_FORMABLE">1 тип: основная/формируемая часть</option>
-            <option value="EXTRACURRICULAR">2 тип: внеурочная деятельность</option>
+            <option value="CORE">1 тип: основная часть</option>
+            <option value="FORMABLE">2 тип: формируемая часть</option>
+            <option value="EXTRACURRICULAR">3 тип: внеурочная деятельность</option>
         </select>
         <select name="subjectAreaName">
             <option value="Без области">Без области</option>
