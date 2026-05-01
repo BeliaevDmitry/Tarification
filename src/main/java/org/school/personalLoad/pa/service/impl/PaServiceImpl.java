@@ -189,9 +189,9 @@ public class PaServiceImpl implements PaService {
         spec.setSchoolName(findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "Школа"));
         spec.setTeacherFio(findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "Учитель"));
         spec.setTeacherFioNormalized(normalizeFio(spec.getTeacherFio()));
-        spec.setGrade5Percent(parsePercent(findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "5")));
-        spec.setGrade4Percent(parsePercent(findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "4")));
-        spec.setGrade3Percent(parsePercent(findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "3")));
+        spec.setGrade5Percent(resolveThresholdPercent(sheet, baseRow, baseCol, blockEndCol, "5"));
+        spec.setGrade4Percent(resolveThresholdPercent(sheet, baseRow, baseCol, blockEndCol, "4"));
+        spec.setGrade3Percent(resolveThresholdPercent(sheet, baseRow, baseCol, blockEndCol, "3"));
         spec.setSourceFileName(sourceFileName);
         spec.setPairKey(buildPairKey(academicYear, subject, scope, level, workType, sheet.getSheetName()));
         spec.setActiveVersion(true);
@@ -525,6 +525,10 @@ public class PaServiceImpl implements PaService {
         if (tasks.isEmpty()) {
             return new PaDtos.ReportUploadResult("", "REJECTED", "В спецификации нет заданий для генерации шаблона", null, subjectName, className, workType);
         }
+        String thresholdsError = validateThresholds(spec);
+        if (thresholdsError != null) {
+            return new PaDtos.ReportUploadResult("", "REJECTED", thresholdsError, null, subjectName, className, workType);
+        }
 
         String teacherFio = resolveSingleTeacherFio(academicYear, subjectName, className);
         String safeTeacher = sanitizeFileName((teacherFio == null || teacherFio.isBlank()) ? "без_педагога" : teacherFio);
@@ -542,7 +546,7 @@ public class PaServiceImpl implements PaService {
                  OutputStream outputStream = Files.newOutputStream(filePath)) {
                 TemplateStyles styles = createTemplateStyles(workbook);
                 createInfoSheet(workbook, academicYear, subjectName, className, teacherFio, level, workType, workDate, styles);
-                createDataSheet(workbook, students, tasks, styles);
+                createDataSheet(workbook, students, tasks, spec, styles);
                 workbook.write(outputStream);
             }
         } catch (Exception e) {
@@ -770,6 +774,7 @@ public class PaServiceImpl implements PaService {
     private void createDataSheet(Workbook workbook,
                                  List<String> students,
                                  List<PaSpecificationTask> tasks,
+                                 PaSpecification specification,
                                  TemplateStyles styles) {
         Sheet data = workbook.createSheet("Сбор информации");
         List<Integer> taskMaxScores = resolveTaskMaxScores(tasks);
@@ -786,14 +791,18 @@ public class PaServiceImpl implements PaService {
         createStyledCell(headerRow, firstTaskCol, "Баллы за задания", styles.header());
         data.addMergedRegion(new CellRangeAddress(0, 0, firstTaskCol, firstTaskCol + tasks.size() - 1));
         applyMergedRegionStyle(data, new CellRangeAddress(0, 0, firstTaskCol, firstTaskCol + tasks.size() - 1), styles.header());
-        createStyledCell(headerRow, firstTaskCol + tasks.size(), "Итог", styles.header());
+        int totalCol = firstTaskCol + tasks.size();
+        int gradeCol = totalCol + 1;
+        createStyledCell(headerRow, totalCol, "Итог", styles.header());
+        createStyledCell(headerRow, gradeCol, "Отметка", styles.header());
 
         Row taskNoRow = data.createRow(1);
         for (int i = 0; i < 4; i++) createStyledCell(taskNoRow, i, "", styles.subHeader());
         for (int i = 0; i < tasks.size(); i++) {
             createStyledCell(taskNoRow, firstTaskCol + i, String.valueOf(tasks.get(i).getTaskNo() == null ? i + 1 : tasks.get(i).getTaskNo()), styles.subHeader());
         }
-        createStyledCell(taskNoRow, firstTaskCol + tasks.size(), "", styles.subHeader());
+        createStyledCell(taskNoRow, totalCol, "", styles.subHeader());
+        createStyledCell(taskNoRow, gradeCol, "", styles.subHeader());
 
         Row maxScoresRow = data.createRow(2);
         for (int i = 0; i < 4; i++) createStyledCell(maxScoresRow, i, "", styles.subHeader());
@@ -802,7 +811,8 @@ public class PaServiceImpl implements PaService {
             cell.setCellValue(taskMaxScores.get(i));
             cell.setCellStyle(styles.numericBody());
         }
-        createStyledCell(maxScoresRow, firstTaskCol + tasks.size(), "", styles.subHeader());
+        createStyledCell(maxScoresRow, totalCol, "", styles.subHeader());
+        createStyledCell(maxScoresRow, gradeCol, "", styles.subHeader());
 
         for (int i = 0; i < studentCount; i++) {
             Row row = data.createRow(firstStudentRow + i);
@@ -815,9 +825,12 @@ public class PaServiceImpl implements PaService {
             for (int t = 0; t < tasks.size(); t++) {
                 createStyledCell(row, firstTaskCol + t, "", styles.numericBody());
             }
-            Cell totalCell = row.createCell(firstTaskCol + tasks.size());
+            Cell totalCell = row.createCell(totalCol);
             totalCell.setCellFormula(createTotalFormula(firstTaskCol, firstStudentRow + i + 1, tasks.size()));
             totalCell.setCellStyle(styles.numericBody());
+            Cell gradeCell = row.createCell(gradeCol);
+            gradeCell.setCellFormula(createGradeFormula(firstTaskCol, tasks.size(), firstStudentRow + i + 1, specification, totalCol));
+            gradeCell.setCellStyle(styles.numericBody());
         }
 
         setupTemplateValidation(data, firstStudentRow, studentCount, taskMaxScores, firstTaskCol);
@@ -828,12 +841,28 @@ public class PaServiceImpl implements PaService {
         data.setColumnWidth(2, 3200);
         data.setColumnWidth(3, 2600);
         for (int i = 0; i < tasks.size(); i++) data.setColumnWidth(firstTaskCol + i, 1500);
-        data.setColumnWidth(firstTaskCol + tasks.size(), 2200);
+        data.setColumnWidth(totalCol, 2200);
+        data.setColumnWidth(gradeCol, 2200);
         data.createFreezePane(0, 3);
 
         if (templateRowCount > 0) {
-            data.setAutoFilter(new CellRangeAddress(0, firstStudentRow + templateRowCount - 1, 0, firstTaskCol + tasks.size()));
+            data.setAutoFilter(new CellRangeAddress(0, firstStudentRow + templateRowCount - 1, 0, gradeCol));
         }
+    }
+
+    private String createGradeFormula(int firstTaskCol, int tasksSize, int excelRow, PaSpecification specification, int totalCol) {
+        String totalCell = new CellReference(excelRow - 1, totalCol).formatAsString();
+        String presenceCell = new CellReference(excelRow - 1, 2).formatAsString();
+        String variantCell = new CellReference(excelRow - 1, 3).formatAsString();
+        String maxRangeStart = new CellReference(2, firstTaskCol).formatAsString();
+        String maxRangeEnd = new CellReference(2, firstTaskCol + tasksSize - 1).formatAsString();
+        String maxSum = "SUM(" + maxRangeStart + ":" + maxRangeEnd + ")";
+        return String.format(Locale.ROOT,
+                "IF(OR(%s=\"\",%s=\"Не был\",AND(%s=\"\",%s=0)),\"\",IF(%s/%s*100>=%d,5,IF(%s/%s*100>=%d,4,IF(%s/%s*100>=%d,3,2))))",
+                totalCell, presenceCell, variantCell, totalCell,
+                totalCell, maxSum, specification.getGrade5Percent(),
+                totalCell, maxSum, specification.getGrade4Percent(),
+                totalCell, maxSum, specification.getGrade3Percent());
     }
 
     private TemplateStyles createTemplateStyles(Workbook workbook) {
@@ -961,6 +990,19 @@ public class PaServiceImpl implements PaService {
         }
         formula.append(")");
         return formula.toString();
+    }
+
+    private String validateThresholds(PaSpecification spec) {
+        if (spec.getGrade5Percent() == null || spec.getGrade4Percent() == null || spec.getGrade3Percent() == null) {
+            return "Пороги в спецификации биты: заполните проценты для оценок 5/4/3";
+        }
+        int g5 = spec.getGrade5Percent();
+        int g4 = spec.getGrade4Percent();
+        int g3 = spec.getGrade3Percent();
+        if (g5 < 0 || g5 > 100 || g4 < 0 || g4 > 100 || g3 < 0 || g3 > 100 || g5 < g4 || g4 < g3) {
+            return "Пороги в спецификации биты: ожидается диапазон 0..100 и порядок 5 ≥ 4 ≥ 3";
+        }
+        return null;
     }
 
     private String sanitizeFileName(String value) {
@@ -1175,6 +1217,25 @@ public class PaServiceImpl implements PaService {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private Integer resolveThresholdPercent(Sheet sheet, int startRow, int startCol, int blockEndCol, String label) {
+        Integer direct = parsePercent(findValueNearLabel(sheet, startRow, startCol, blockEndCol, label));
+        if (direct != null) return direct;
+        int maxRow = Math.min(sheet.getLastRowNum(), startRow + 25);
+        String normalizedLabel = normalizeLabel(label);
+        for (int r = startRow; r <= maxRow; r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) continue;
+            for (int c = Math.max(0, startCol - 1); c <= blockEndCol; c++) {
+                String cell = getCell(row, c);
+                String norm = normalizeLabel(cell);
+                if (!norm.startsWith(normalizedLabel)) continue;
+                Integer parsedInline = parsePercent(cell);
+                if (parsedInline != null) return parsedInline;
+            }
+        }
+        return null;
     }
 
     private PaWorkType parseWorkType(String raw) {
