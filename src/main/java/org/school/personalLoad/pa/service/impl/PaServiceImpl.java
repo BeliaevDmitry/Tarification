@@ -112,6 +112,12 @@ public class PaServiceImpl implements PaService {
             int blockEndCol = detectBlockEndCol(sheet, subjectRow, subjectCol);
             PaSpecification spec = parseBlock(academicYear, sourceFileName, sheet, subjectRow, subjectCol, blockEndCol, warnings);
             if (spec == null) continue;
+            String thresholdError = validateThresholds(spec);
+            if (thresholdError != null) {
+                warnings.add("Лист " + sheet.getSheetName() + ": спецификация '" + spec.getSubjectName()
+                        + "' (" + spec.getScopeValue() + ") не загружена — нет порогов или они не валидны");
+                continue;
+            }
             spec.setCreatedAt(LocalDateTime.now());
 
             List<PaSpecification> sameSpecs = specificationRepository
@@ -1220,21 +1226,56 @@ public class PaServiceImpl implements PaService {
     }
 
     private Integer resolveThresholdPercent(Sheet sheet, int startRow, int startCol, int blockEndCol, String label) {
-        Integer direct = parsePercent(findValueNearLabel(sheet, startRow, startCol, blockEndCol, label));
-        if (direct != null) return direct;
         int maxRow = Math.min(sheet.getLastRowNum(), startRow + 25);
-        String normalizedLabel = normalizeLabel(label);
+
+        int scaleRow = -1;
         for (int r = startRow; r <= maxRow; r++) {
             Row row = sheet.getRow(r);
             if (row == null) continue;
+
+            for (int c = Math.max(0, startCol - 1); c <= blockEndCol; c++) {
+                if (containsNormalized(getCell(row, c), "Шкала оценивания")) {
+                    scaleRow = r;
+                    break;
+                }
+            }
+
+            if (scaleRow >= 0) break;
+        }
+
+        if (scaleRow < 0) {
+            return null;
+        }
+
+        String normalizedLabel = normalizeLabel(label);
+
+        for (int r = scaleRow + 1; r <= Math.min(sheet.getLastRowNum(), scaleRow + 6); r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) continue;
+
             for (int c = Math.max(0, startCol - 1); c <= blockEndCol; c++) {
                 String cell = getCell(row, c);
                 String norm = normalizeLabel(cell);
-                if (!norm.startsWith(normalizedLabel)) continue;
-                Integer parsedInline = parsePercent(cell);
-                if (parsedInline != null) return parsedInline;
+
+                if (norm.equals(normalizedLabel)) {
+                    Integer valueFromRight = parsePercent(firstNonBlank(sheet, r, c + 1, blockEndCol));
+                    if (valueFromRight != null) {
+                        return valueFromRight;
+                    }
+                }
+
+                Matcher inline = Pattern.compile("^\\s*\"?" + Pattern.quote(label) + "\"?\\s*[:：]\\s*(.+)$")
+                        .matcher(cell);
+
+                if (inline.find()) {
+                    Integer inlineValue = parsePercent(inline.group(1));
+                    if (inlineValue != null) {
+                        return inlineValue;
+                    }
+                }
             }
         }
+
         return null;
     }
 
