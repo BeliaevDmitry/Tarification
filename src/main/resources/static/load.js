@@ -3,7 +3,7 @@ const jsonHeaders = { "Content-Type": "application/json" };
 const ui = {
     tabs: Array.from(document.querySelectorAll("[data-load-tab]")),
     panes: Array.from(document.querySelectorAll("[data-load-pane]")),
-    buildingTabs: document.getElementById("building-tabs"),
+    buildingSelect: document.getElementById("building-select"),
     refreshLoadBtn: document.getElementById("refresh-load-btn"),
     exportLoadBtn: document.getElementById("export-load-btn"),
     importLoadBtn: document.getElementById("import-load-btn"),
@@ -1306,32 +1306,44 @@ function getOrderedRows(presentationRows) {
 }
 
 function renderBuildingTabs() {
-    ui.buildingTabs.innerHTML = "";
-
+    if (!ui.buildingSelect) return;
+    ui.buildingSelect.innerHTML = "";
     const tabs = [...buildings, { code: ARCHIVE_BUILDING_CODE, name: ARCHIVE_BUILDING_LABEL }];
     tabs.forEach((building) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = `parallel-tab ${building.code === selectedBuilding ? "active" : ""}`;
+        const option = document.createElement("option");
+        option.value = building.code;
         const tabLabel = building.code === ARCHIVE_BUILDING_CODE
             ? `🗂 ${building.name}`
             : buildingTabLabel(building);
-        button.textContent = tabLabel;
-        button.title = tabLabel;
-        button.addEventListener("click", () => {
-            selectedBuilding = building.code;
-            rememberSelectedBuilding(selectedBuilding);
-            refreshSelectedBuildingData()
-                .then(() => {
-                    state.forceResort = true;
-                    renderBuildingTabs();
-                    scheduleRenderTable();
-                    updateLoadEditMode();
-                })
-                .catch((error) => print({ error: error.message }));
-        });
-        ui.buildingTabs.appendChild(button);
+        option.textContent = tabLabel;
+        ui.buildingSelect.appendChild(option);
     });
+    ui.buildingSelect.value = selectedBuilding;
+}
+
+async function refreshSelectedBuildingData(force = false) {
+    const cacheKey = buildingCacheKey(selectedBuilding);
+    const cached = buildingDataCache.get(cacheKey);
+    const now = Date.now();
+    if (!force && cached && (now - cached.ts) < BUILDING_DATA_CACHE_TTL_MS) {
+        curriculumRows = cached.curriculum;
+        manualRows = cached.manual;
+    } else {
+        const encodedBuilding = selectedBuilding && selectedBuilding !== ARCHIVE_BUILDING_CODE
+            ? `?numberSchoolBuilding=${encodeURIComponent(selectedBuilding)}`
+            : "";
+        const [curriculum, manual] = await Promise.all([
+            api(`/api/curriculum${encodedBuilding}`),
+            api(`/api/manual-load${encodedBuilding}`)
+        ]);
+        curriculumRows = curriculum || [];
+        manualRows = manual || [];
+        buildingDataCache.set(cacheKey, { ts: now, curriculum: curriculumRows, manual: manualRows });
+    }
+    sourceRevision += 1;
+    invalidateDerivedCache();
+    invalidateTeacherHourIndexesCache();
+    prefillFromManualLoad(currentDisplayDate());
 }
 
 async function refreshSelectedBuildingData(force = false) {
@@ -2254,6 +2266,19 @@ function bindEvents() {
     });
 
     ui.nextErrorBtn.addEventListener("click", jumpToFirstError);
+
+    ui.buildingSelect?.addEventListener("change", () => {
+        selectedBuilding = ui.buildingSelect.value;
+        rememberSelectedBuilding(selectedBuilding);
+        refreshSelectedBuildingData()
+            .then(() => {
+                state.forceResort = true;
+                renderBuildingTabs();
+                scheduleRenderTable();
+                updateLoadEditMode();
+            })
+            .catch((error) => print({ error: error.message }));
+    });
 }
 
 async function init() {
