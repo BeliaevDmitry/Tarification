@@ -788,6 +788,10 @@ dialog::backdrop {
 
 .load-page .container {
     max-width: 1760px;
+    height: calc(100vh - 20px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .class-sort-btn {
@@ -819,6 +823,7 @@ dialog::backdrop {
     position: static !important;
     top: auto;
     z-index: 0;
+    padding-bottom: 8px;
 }
 
 .load-page .load-toolbar .load-status-card {
@@ -829,7 +834,44 @@ dialog::backdrop {
 }
 
 .load-page .sheet-wrap {
-    max-height: calc(100vh - 230px);
+    max-height: none;
+    height: 100%;
+    min-height: 0;
+    overflow: auto;
+}
+
+.load-page .inline-load-stats {
+    margin-left: auto;
+    flex-wrap: nowrap;
+    font-size: 14px;
+    gap: 8px;
+}
+
+.load-page .compact-legend {
+    margin: 2px 0 4px;
+    font-size: 14px;
+}
+
+.load-page .card[data-load-pane="distribution"][data-load-edit-area="true"] {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    margin-top: 6px;
+    padding-top: 10px;
+}
+
+.load-page #load-result {
+    display: none;
+}
+
+.load-page .card[data-load-pane="distribution"][data-load-edit-area="true"] .sheet-wrap {
+    flex: 1 1 auto;
+}
+
+.building-select {
+    min-width: 320px;
+    max-width: 720px;
 }
 
 .load-page .sheet-table thead th {

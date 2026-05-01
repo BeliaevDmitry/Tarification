@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ГБОУ школа 7 — Нагрузка по корпусам</title>
 
-    <link rel="icon" type="image/svg+xml" href="/school-crest.svg">
+    <link rel="icon" type="image/png" href="/school-crest.png">
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body class="load-page">
@@ -19,19 +19,15 @@
             <a class="nav-link" href="/subjects.html" data-tab="SUBJECTS">Предметы</a>
             <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
             <a class="nav-link active" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/load-statistics.html" data-tab="LOAD">Статистика нагрузки</a>
             <a class="nav-link" href="/settings.html" data-tab="SETTINGS">Настройки</a>
         </nav>
     </header>
 
-    <section class="card">
-        <nav class="contingent-tabs">
-            <button type="button" class="nav-link active" data-load-tab="distribution">Распределение</button>
-            <button type="button" class="nav-link" data-load-tab="stats">Статистика</button>
-        </nav>
-    </section>
-
     <section class="card load-toolbar" data-load-pane="distribution">
-        <div class="row"><strong>Корпуса:</strong><div id="building-tabs" class="parallel-tabs"></div></div>
+        <div class="row"><strong>Корпуса:</strong>
+            <select id="building-select" class="building-select"></select>
+        </div>
         <div class="row controls-row">
             <label>Сортировка:
                 <select id="sort-field-select">
@@ -70,7 +66,7 @@
                 <button id="next-error-btn" type="button">Перейти к ошибке</button>
             </div>
         </div>
-        <div class="load-color-legend">
+        <div class="load-color-legend compact-legend">
             <span class="legend-title">Легенда:</span>
             <span class="legend-item"><span class="legend-swatch legend-swatch-blue"></span>Обычные часы (синий приоритет)</span>
             <span class="legend-item"><span class="legend-swatch legend-swatch-ok"></span>Преемственность выполнена</span>
@@ -82,7 +78,6 @@
     </section>
 
     <section class="card" data-load-pane="distribution" data-requires-edit data-load-edit-area="true">
-        <h2>Распределение педагогов</h2>
         <div class="sheet-wrap"><table class="sheet-table" id="building-load-table"><thead id="building-load-head"></thead><tbody id="building-load-body"></tbody></table></div>
     </section>
 

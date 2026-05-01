@@ -94,7 +94,15 @@ function print(v) { ui.result.textContent = JSON.stringify(v, null, 2); }
 function norm(v) { return String(v || "").trim(); }
 function classToParallel(className) { const m = norm(className).match(/^(\d{1,2})/); return m ? Number(m[1]) : null; }
 function levelShort(v) { return v === "ADVANCED" ? "У" : "Б"; }
-function subjectTypeByPart(part) { return part === "EXTRACURRICULAR" ? "EXTRACURRICULAR" : "CORE_FORMABLE"; }
+function subjectTypeByPart(part) {
+    if (part === "EXTRACURRICULAR") return "EXTRACURRICULAR";
+    if (part === "FORMABLE") return "FORMABLE";
+    return "CORE";
+}
+function isSubjectTypeCompatible(actualType, expectedType) {
+    if (actualType === expectedType) return true;
+    return actualType === "CORE_FORMABLE" && (expectedType === "CORE" || expectedType === "FORMABLE");
+}
 function isHighSchoolParallel(parallel = selectedParallel) { return Number(parallel) >= 10; }
 function makeClassKey(numberSchoolBuilding, className) { return `${norm(numberSchoolBuilding)}|${norm(className)}`; }
 function normalizeStudyPeriod(className, studyPeriod) {
@@ -464,8 +472,13 @@ function classCellMarkup(cellInfo, rowMeta, classMeta) {
 }
 
 function renderSummaryTable() {
-    const selectedClasses = classesForSelectedContext();
-    const selectedMetaGroups = metaGroupsForSelectedContext().map((m) => ({
+    const selectedClasses = classes
+        .filter((c) => classToParallel(c.className) === selectedParallel)
+        .sort((a, b) => `${a.numberSchoolBuilding}|${a.className}`.localeCompare(`${b.numberSchoolBuilding}|${b.className}`, "ru"));
+    const selectedMetaGroups = (metaGroups || [])
+        .filter((m) => Number(m.parallel) === Number(selectedParallel))
+        .sort((a, b) => `${a.numberSchoolBuilding}|${a.name}`.localeCompare(`${b.numberSchoolBuilding}|${b.name}`, "ru"))
+        .map((m) => ({
         numberSchoolBuilding: m.numberSchoolBuilding,
         className: `МГ:${m.name}`,
         classDirection: "Метагруппа"
@@ -473,7 +486,6 @@ function renderSummaryTable() {
     const knownMetaParallelByKey = new Map((metaGroups || []).map((m) => [makeClassKey(m.numberSchoolBuilding, `МГ:${m.name}`), Number(m.parallel)]));
     const metagroupsFromData = (curriculumRows || [])
         .filter((r) => norm(r.className).startsWith("МГ:"))
-        .filter((r) => !selectedBuilding || norm(r.numberSchoolBuilding) === selectedBuilding)
         .filter((r) => {
             const byKey = knownMetaParallelByKey.get(makeClassKey(r.numberSchoolBuilding, r.className));
             if (Number.isFinite(byKey)) return byKey === Number(selectedParallel);
@@ -499,12 +511,31 @@ function renderSummaryTable() {
     ui.summaryHead.innerHTML = "";
     ui.summaryBody.innerHTML = "";
 
+    const buildingRow = document.createElement("tr");
+    buildingRow.className = "summary-building-row";
+    const groupsByBuilding = [];
+    allColumns.forEach((col) => {
+        const last = groupsByBuilding[groupsByBuilding.length - 1];
+        if (last && last.code === col.numberSchoolBuilding) {
+            last.count += 1;
+        } else {
+            groupsByBuilding.push({ code: col.numberSchoolBuilding, count: 1 });
+        }
+    });
+    buildingRow.innerHTML = `<th rowspan="3">Блок / область</th><th rowspan="3">Предмет</th>${
+        groupsByBuilding.map((group) => {
+            const b = buildings.find((row) => row.code === group.code);
+            const label = b?.name ? `${group.code} — ${b.name}` : group.code;
+            return `<th colspan="${group.count}">${esc(label)}</th>`;
+        }).join("")
+    }`;
     const directionRow = document.createElement("tr");
     directionRow.className = "summary-direction-row";
-    directionRow.innerHTML = `<th rowspan="2">Блок / область</th><th rowspan="2">Предмет</th>${allColumns.map((c) => `<th>${esc(c.classDirection)}</th>`).join("")}`;
+    directionRow.innerHTML = allColumns.map((c) => `<th>${esc(c.classDirection)}</th>`).join("");
     const classRow = document.createElement("tr");
     classRow.className = "summary-class-row";
     classRow.innerHTML = allColumns.map((c) => `<th>${esc(c.className)}</th>`).join("");
+    ui.summaryHead.appendChild(buildingRow);
     ui.summaryHead.appendChild(directionRow);
     ui.summaryHead.appendChild(classRow);
 
@@ -572,7 +603,7 @@ function renderSubjectOptions() {
     const expectedType = subjectTypeByPart(part);
     const selected = ui.formSubject.value;
     ui.formSubject.innerHTML = '<option value="">Выберите предмет</option>';
-    subjects.filter((s) => s.subjectType === expectedType)
+    subjects.filter((s) => isSubjectTypeCompatible(s.subjectType, expectedType))
         .sort((a,b)=>String(a.subjectName).localeCompare(String(b.subjectName),"ru"))
         .forEach((s) => { ui.formSubject.innerHTML += `<option value="${esc(s.subjectName)}">${esc(s.subjectName)}</option>`; });
     if (selected) ui.formSubject.value = selected;
