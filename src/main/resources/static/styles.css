@@ -840,21 +840,16 @@ dialog::backdrop {
     overflow: auto;
 }
 
-.load-page .load-summary-row {
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px 16px;
-    margin: 2px 0 4px;
-}
-
-.load-page .load-summary-row .load-color-legend {
-    margin: 0;
-    flex: 1 1 auto;
-}
-
 .load-page .inline-load-stats {
     margin-left: auto;
     flex-wrap: nowrap;
+    font-size: 14px;
+    gap: 8px;
+}
+
+.load-page .compact-legend {
+    margin: 2px 0 4px;
+    font-size: 14px;
 }
 
 .load-page .card[data-load-pane="distribution"][data-load-edit-area="true"] {
@@ -864,6 +859,10 @@ dialog::backdrop {
     flex-direction: column;
     margin-top: 6px;
     padding-top: 10px;
+}
+
+.load-page #load-result {
+    display: none;
 }
 
 .load-page .card[data-load-pane="distribution"][data-load-edit-area="true"] .sheet-wrap {
