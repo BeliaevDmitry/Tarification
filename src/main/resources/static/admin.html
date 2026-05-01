@@ -36,8 +36,9 @@
             </label>
             <label class="field-stack">
                 <span>ФИО</span>
-                <input name="fullName" placeholder="ФИО" required>
+                <input name="fullName" id="create-full-name" list="teacher-fio-options-create" placeholder="ФИО" required>
             </label>
+            <datalist id="teacher-fio-options-create"></datalist>
             <label class="field-stack">
                 <span>Email</span>
                 <input name="email" placeholder="Email (необязательно)">
@@ -201,7 +202,8 @@
             </div>
         </div>
 
-        <label class="field-row"><span>ФИО</span><input name="fullName" required></label>
+        <label class="field-row"><span>ФИО</span><input name="fullName" id="edit-full-name" list="teacher-fio-options-edit" required></label>
+        <datalist id="teacher-fio-options-edit"></datalist>
         <label class="field-row"><span>Email</span><input name="email"></label>
         <label class="field-row"><span>Роль</span>
             <select name="role" id="edit-role" required>
