@@ -294,14 +294,11 @@ function scheduleRenderTable() {
 }
 
 function showLoadTab(name) {
-    activeLoadTab = name === "stats" ? "stats" : "distribution";
+    activeLoadTab = "distribution";
     ui.tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.loadTab === activeLoadTab));
     ui.panes.forEach((pane) => {
         pane.style.display = pane.dataset.loadPane === activeLoadTab ? "" : "none";
     });
-    if (activeLoadTab === "stats") {
-        renderStatsView();
-    }
 }
 
 function loadPermissions() {
