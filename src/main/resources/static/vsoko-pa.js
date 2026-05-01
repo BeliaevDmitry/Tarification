@@ -17,7 +17,6 @@ const paState = {
         exit: '5-11'
     }
 };
-const PA_SPEC_IMPORT_HISTORY_KEY = 'pa.spec.import.history';
 const PA_SUMMARY_STATUS_OVERRIDES_KEY = 'pa.summary.status.overrides';
 const paQueryParams = new URLSearchParams(window.location.search);
 let summaryStatusSelection = null;
@@ -388,7 +387,7 @@ function renderVersions(prefix, rows) {
     bindReportDownloadButtons();
 }
 
-async function generateForClass(prefix) {
+async function generateForClass(prefix, force = false) {
     const subject = document.getElementById(`pa-${prefix}-subject`).value;
     const className = document.getElementById(`pa-${prefix}-class`).value || document.getElementById(`pa-${prefix}-scope`).value;
     const level = document.getElementById(`pa-${prefix}-level`).value;
@@ -405,6 +404,7 @@ async function generateForClass(prefix) {
     const params = new URLSearchParams({ subjectName: subject, className, level, workType });
     if (workDate) params.set('workDate', workDate);
     try {
+        if (force) params.set('force', 'true');
         const result = await paApi(`/api/pa/reports/generate?${params.toString()}`, { method: 'POST' });
         renderUploadLog(prefix, [result]);
         await loadVersions(prefix);
@@ -415,7 +415,7 @@ async function generateForClass(prefix) {
     }
 }
 
-async function generateForParallel(prefix) {
+async function generateForParallel(prefix, force = false) {
     const subject = document.getElementById(`pa-${prefix}-subject`).value;
     const parallel = document.getElementById(`pa-${prefix}-scope`).value;
     const level = document.getElementById(`pa-${prefix}-level`).value;
@@ -432,6 +432,7 @@ async function generateForParallel(prefix) {
     const params = new URLSearchParams({ subjectName: subject, parallel, level, workType });
     if (workDate) params.set('workDate', workDate);
     try {
+        if (force) params.set('force', 'true');
         const result = await paApi(`/api/pa/reports/generate/parallel?${params.toString()}`, { method: 'POST' });
         renderUploadLog(prefix, result);
         await renderWorkflow(prefix);
@@ -441,7 +442,7 @@ async function generateForParallel(prefix) {
     }
 }
 
-async function generateAll(prefix) {
+async function generateForAll(prefix, force = false) {
     const subject = document.getElementById(`pa-${prefix}-subject`).value;
     const level = document.getElementById(`pa-${prefix}-level`).value;
     const workDate = document.getElementById(`pa-${prefix}-work-date`).value;
@@ -453,6 +454,7 @@ async function generateAll(prefix) {
     const params = new URLSearchParams({ subjectName: subject, level, workType });
     if (workDate) params.set('workDate', workDate);
     try {
+        if (force) params.set('force', 'true');
         const result = await paApi(`/api/pa/reports/generate/all?${params.toString()}`, { method: 'POST' });
         renderUploadLog(prefix, result);
         await renderWorkflow(prefix);
@@ -462,6 +464,33 @@ async function generateAll(prefix) {
     }
 }
 
+
+
+async function deleteScopeGenerated(prefix) {
+    const subject = document.getElementById(`pa-${prefix}-subject`).value;
+    const className = document.getElementById(`pa-${prefix}-class`).value;
+    const parallel = document.getElementById(`pa-${prefix}-scope`).value;
+    const level = document.getElementById(`pa-${prefix}-level`).value;
+    const workDate = document.getElementById(`pa-${prefix}-work-date`).value;
+    const byParallel = !className && !!parallel;
+    const scopeValue = byParallel ? parallel : className;
+    if (!scopeValue) {
+        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: 'Выберите класс или параллель для удаления', versionNo: null }]);
+        return;
+    }
+    if (!confirm(`Удалить сгенерированные отчёты (${byParallel ? 'параллель' : 'класс'}: ${scopeValue})?`)) return;
+    const params = new URLSearchParams({ subjectName: subject || 'ALL', scopeValue, byParallel: String(byParallel), level, workType: prefix === 'entry' ? 'ENTRY' : 'EXIT' });
+    if (workDate) params.set('workDate', workDate);
+    try {
+        const result = await paApi(`/api/pa/reports/generated?${params.toString()}`, { method: 'DELETE' });
+        renderUploadLog(prefix, [{ fileName: '', status: 'ACCEPTED', message: `Удалено шаблонов: ${result.deleted ?? 0}`, versionNo: null }]);
+        await loadVersions(prefix);
+        await loadReportFolders(prefix);
+        await renderWorkflow(prefix);
+    } catch (e) {
+        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: `Удаление не выполнено: ${e.message}`, versionNo: null }]);
+    }
+}
 async function reloadSummaryAndSpecs() {
     const [summary, specs, subjects, curriculum] = await Promise.all([
         paApi('/api/pa/specifications/summary'),
@@ -474,6 +503,10 @@ async function reloadSummaryAndSpecs() {
     paState.curriculum = curriculum || [];
     paState.workflowVersionCache.entry.clear();
     paState.workflowVersionCache.exit.clear();
+    if (!Array.isArray(specs) || specs.length === 0) {
+        paState.importLogHistory = [];
+        renderSpecificationImportLog();
+    }
     renderSpecifications(specs || []);
     if (paQueryParams.get('forceExitAll') === '1') {
         const exitSubject = document.getElementById('pa-exit-subject');
@@ -618,7 +651,7 @@ async function uploadSpecifications() {
         input.value = '';
         await reloadSummaryAndSpecs();
     } catch (e) {
-        appendSpecificationImportLog([{ fileName: [...input.files].map((f) => f.name).join(', '), warnings: [`Ошибка: ${e.message}`], importedTasks: 0 }]);
+        appendSpecificationImportLog([{ fileName: [...input.files].map((f) => f.name).join(', '), warnings: [`Ошибка: ${e.message}`], importedTasks: 0, subjects: [], parallels: [] }]);
     }
 }
 
@@ -627,20 +660,21 @@ function appendSpecificationImportLog(result) {
     const timestamp = new Date().toLocaleString('ru-RU');
     rows.forEach((row) => {
         const warnings = Array.isArray(row?.warnings) ? row.warnings.filter(Boolean) : [];
-        const hasError = warnings.some((w) => String(w).toLowerCase().startsWith('ошибка'));
-        const status = hasError ? 'Ошибка' : 'Успешно';
-        const message = warnings.length ? warnings.join('; ') : 'Импорт выполнен';
         const records = Number.isFinite(row?.importedTasks) ? row.importedTasks : 0;
+        const hasError = warnings.some((w) => String(w).toLowerCase().startsWith('ошибка')) || records <= 0;
+        const status = hasError ? 'Ошибка' : 'Успешно';
+        const message = warnings.length ? warnings.join('; ') : (records > 0 ? 'Импорт выполнен' : 'Нет загруженных записей');
         paState.importLogHistory.unshift({
             timestamp,
             fileName: row?.fileName || '—',
+            subject: Array.isArray(row?.subjects) && row.subjects.length ? row.subjects.join(', ') : '—',
+            parallel: Array.isArray(row?.parallels) && row.parallels.length ? row.parallels.join(', ') : '—',
             status,
             message,
             records
         });
     });
     paState.importLogHistory = paState.importLogHistory.slice(0, 200);
-    saveSpecificationImportLogHistory();
     renderSpecificationImportLog();
 }
 
@@ -651,47 +685,13 @@ function renderSpecificationImportLog() {
         <tr>
             <td>${row.timestamp}</td>
             <td>${row.fileName}</td>
+            <td>${row.subject}</td>
+            <td>${row.parallel}</td>
             <td>${row.status}</td>
             <td>${row.message}</td>
             <td>${row.records}</td>
         </tr>
-    `).join('') || '<tr><td colspan="5" class="muted">История загрузок пуста</td></tr>';
-}
-
-function historyStorageKey() {
-    const year = typeof window.getStoredAcademicYear === 'function' ? window.getStoredAcademicYear() : '';
-    return `${PA_SPEC_IMPORT_HISTORY_KEY}:${year || 'default'}`;
-}
-
-function saveSpecificationImportLogHistory() {
-    try {
-        localStorage.setItem(historyStorageKey(), JSON.stringify(paState.importLogHistory));
-    } catch (_) {
-        // ignore storage errors
-    }
-}
-
-function loadSpecificationImportLogHistory() {
-    try {
-        const raw = localStorage.getItem(historyStorageKey());
-        if (!raw) {
-            paState.importLogHistory = [];
-            return;
-        }
-        const parsed = JSON.parse(raw);
-        paState.importLogHistory = Array.isArray(parsed) ? parsed
-            .filter((row) => row && typeof row === 'object')
-            .map((row) => ({
-                timestamp: row.timestamp || '',
-                fileName: row.fileName || '—',
-                status: row.status || '',
-                message: row.message || '',
-                records: Number.isFinite(row.records) ? row.records : 0
-            }))
-            : [];
-    } catch (_) {
-        paState.importLogHistory = [];
-    }
+    `).join('') || '<tr><td colspan="7" class="muted">История загрузок пуста</td></tr>';
 }
 
 async function uploadReports(prefix) {
@@ -1045,10 +1045,12 @@ bindClick('pa-entry-load-versions-btn', () => loadVersions('entry'));
 bindClick('pa-exit-load-versions-btn', () => loadVersions('exit'));
 bindClick('pa-entry-generate-btn', () => generateForClass('entry'));
 bindClick('pa-exit-generate-btn', () => generateForClass('exit'));
+bindClick('pa-exit-regenerate-all-btn', () => generateForAll('exit', true));
+bindClick('pa-exit-delete-scope-btn', () => deleteScopeGenerated('exit'));
 bindClick('pa-entry-generate-parallel-btn', () => generateForParallel('entry'));
 bindClick('pa-exit-generate-parallel-btn', () => generateForParallel('exit'));
-bindClick('pa-entry-generate-all-btn', () => generateAll('entry'));
-bindClick('pa-exit-generate-all-btn', () => generateAll('exit'));
+bindClick('pa-entry-generate-all-btn', () => generateForAll('entry'));
+bindClick('pa-exit-generate-all-btn', () => generateForAll('exit'));
 bindChange('pa-entry-subject', async () => { paState.workflowUi.entry.page = 1; fillSelectors('entry'); await renderWorkflow('entry'); });
 bindChange('pa-exit-subject', async () => { paState.workflowUi.exit.page = 1; fillSelectors('exit'); await renderWorkflow('exit'); });
 bindChange('pa-entry-level', async () => { paState.workflowUi.entry.page = 1; fillSelectors('entry'); await renderWorkflow('entry'); });
@@ -1075,7 +1077,6 @@ loadSummaryStatusOverrides();
 reloadSummaryAndSpecs().catch((e) => {
     appendSpecificationImportLog([{ fileName: '—', warnings: [`Ошибка: ${e.message}`], importedTasks: 0 }]);
 });
-loadSpecificationImportLogHistory();
 renderSpecificationImportLog();
 const startMainTab = paQueryParams.get('tab')
     || (window.location.pathname.includes('vsoko-pa-entry') ? 'entry'
