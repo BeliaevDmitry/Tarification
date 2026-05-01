@@ -19,9 +19,10 @@ public interface PaService {
     List<PaDtos.ReportWorkflowSummaryItem> reportWorkflowSummary(String academicYear, PaLevel level, PaWorkType workType, String subjectName);
     List<PaDtos.ReportUploadResult> uploadReports(String academicYear, List<MultipartFile> files);
     void setParticipation(String academicYear, String subjectName, PaScopeType scopeType, String scopeValue, PaLevel level, boolean participates);
-    PaDtos.ReportUploadResult generateReportTemplate(String academicYear, String subjectName, String className, PaLevel level, PaWorkType workType, LocalDate workDate);
-    List<PaDtos.ReportUploadResult> generateReportTemplatesByParallel(String academicYear, String subjectName, String parallel, PaLevel level, PaWorkType workType, LocalDate workDate);
-    List<PaDtos.ReportUploadResult> generateAllReportTemplates(String academicYear, String subjectName, PaLevel level, PaWorkType workType, LocalDate workDate);
+    PaDtos.ReportUploadResult generateReportTemplate(String academicYear, String subjectName, String className, PaLevel level, PaWorkType workType, LocalDate workDate, boolean force);
+    List<PaDtos.ReportUploadResult> generateReportTemplatesByParallel(String academicYear, String subjectName, String parallel, PaLevel level, PaWorkType workType, LocalDate workDate, boolean force);
+    List<PaDtos.ReportUploadResult> generateAllReportTemplates(String academicYear, String subjectName, PaLevel level, PaWorkType workType, LocalDate workDate, boolean force);
+    int deleteGeneratedReports(String academicYear, String subjectName, String scopeValue, boolean byParallel, PaLevel level, PaWorkType workType, LocalDate workDate);
     List<PaDtos.ReportFolderItem> reportFolderItems(String academicYear, PaWorkType workType);
     byte[] loadReportFile(Long reportVersionId) throws IOException;
     byte[] loadSpecificationFile(String academicYear, Long specificationId) throws IOException;

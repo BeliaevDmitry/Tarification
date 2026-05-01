@@ -7,6 +7,9 @@ const ui = {
     refreshPendingBtn: document.getElementById('refresh-pending-btn'),
     selectAllPendingBtn: document.getElementById('select-all-pending-btn'),
     generateBtn: document.getElementById('generate-memos-btn'),
+    settingsTitle: document.getElementById('memo-director-title'),
+    settingsName: document.getElementById('memo-director-name'),
+    settingsSaveBtn: document.getElementById('memo-settings-save-btn'),
     result: document.getElementById('memo-result')
 };
 
@@ -191,17 +194,45 @@ async function generateMemos() {
     }
 }
 
+
+
+async function loadMemoSettings() {
+    const settings = await api('/api/service-memos/settings');
+    if (ui.settingsTitle) ui.settingsTitle.value = settings?.directorTitle || '';
+    if (ui.settingsName) ui.settingsName.value = settings?.directorName || '';
+}
+
+async function saveMemoSettings() {
+    const payload = {
+        directorTitle: ui.settingsTitle?.value || '',
+        directorName: ui.settingsName?.value || ''
+    };
+    const saved = await api('/api/service-memos/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    print({ message: 'Настройки служебок сохранены', settings: saved });
+}
+
 function bindEvents() {
     ui.tabs.forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.memoTab)));
     ui.refreshPendingBtn?.addEventListener('click', refreshPending);
     ui.selectAllPendingBtn?.addEventListener('click', () => setAllPending(true));
     ui.generateBtn?.addEventListener('click', generateMemos);
+    ui.settingsSaveBtn?.addEventListener('click', async () => {
+        try {
+            await saveMemoSettings();
+        } catch (error) {
+            print({ error: error.message });
+        }
+    });
 }
 
 async function init() {
     bindEvents();
     try {
-        await Promise.all([refreshPending(), refreshProcessed(), refreshArchived()]);
+        await Promise.all([refreshPending(), refreshProcessed(), refreshArchived(), loadMemoSettings()]);
     } catch (error) {
         print({ error: error.message });
     }

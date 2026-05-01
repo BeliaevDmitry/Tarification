@@ -73,7 +73,8 @@ public class PaController {
                                                                         @RequestParam String scopeValue,
                                                                         @RequestParam PaLevel level,
                                                                         @RequestParam PaWorkType workType,
-                                                                        @RequestParam(required = false) String workDate) {
+                                                                        @RequestParam(required = false) String workDate,
+                                                                    @RequestParam(defaultValue = "false") boolean force) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
         LocalDate date = (workDate == null || workDate.isBlank()) ? null : LocalDate.parse(workDate);
         return ResponseEntity.ok(paService.reportVersions(year, subjectName, scopeType, scopeValue, level, workType, date));
@@ -119,10 +120,11 @@ public class PaController {
                                                                     @RequestParam String className,
                                                                     @RequestParam PaLevel level,
                                                                     @RequestParam PaWorkType workType,
-                                                                    @RequestParam(required = false) String workDate) {
+                                                                    @RequestParam(required = false) String workDate,
+                                                                                       @RequestParam(defaultValue = "false") boolean force) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
         LocalDate date = (workDate == null || workDate.isBlank()) ? null : LocalDate.parse(workDate);
-        return ResponseEntity.ok(paService.generateReportTemplate(year, subjectName, className, level, workType, date));
+        return ResponseEntity.ok(paService.generateReportTemplate(year, subjectName, className, level, workType, date, force));
     }
 
     @PostMapping("/reports/generate/parallel")
@@ -131,10 +133,11 @@ public class PaController {
                                                                                        @RequestParam String parallel,
                                                                                        @RequestParam PaLevel level,
                                                                                        @RequestParam PaWorkType workType,
-                                                                                       @RequestParam(required = false) String workDate) {
+                                                                                       @RequestParam(required = false) String workDate,
+                                                                                  @RequestParam(defaultValue = "false") boolean force) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
         LocalDate date = (workDate == null || workDate.isBlank()) ? null : LocalDate.parse(workDate);
-        return ResponseEntity.ok(paService.generateReportTemplatesByParallel(year, subjectName, parallel, level, workType, date));
+        return ResponseEntity.ok(paService.generateReportTemplatesByParallel(year, subjectName, parallel, level, workType, date, force));
     }
 
     @PostMapping("/reports/generate/all")
@@ -142,10 +145,27 @@ public class PaController {
                                                                                   @RequestParam String subjectName,
                                                                                   @RequestParam PaLevel level,
                                                                                   @RequestParam PaWorkType workType,
-                                                                                  @RequestParam(required = false) String workDate) {
+                                                                                  @RequestParam(required = false) String workDate,
+                                                                                  @RequestParam(defaultValue = "false") boolean force) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
         LocalDate date = (workDate == null || workDate.isBlank()) ? null : LocalDate.parse(workDate);
-        return ResponseEntity.ok(paService.generateAllReportTemplates(year, subjectName, level, workType, date));
+        return ResponseEntity.ok(paService.generateAllReportTemplates(year, subjectName, level, workType, date, force));
+    }
+
+
+
+    @DeleteMapping("/reports/generated")
+    public ResponseEntity<java.util.Map<String, Object>> deleteGeneratedReports(@RequestParam(required = false) String academicYear,
+                                                                                 @RequestParam String subjectName,
+                                                                                 @RequestParam String scopeValue,
+                                                                                 @RequestParam(defaultValue = "false") boolean byParallel,
+                                                                                 @RequestParam PaLevel level,
+                                                                                 @RequestParam PaWorkType workType,
+                                                                                 @RequestParam(required = false) String workDate) {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        LocalDate date = (workDate == null || workDate.isBlank()) ? null : LocalDate.parse(workDate);
+        int removed = paService.deleteGeneratedReports(year, subjectName, scopeValue, byParallel, level, workType, date);
+        return ResponseEntity.ok(java.util.Map.of("deleted", removed));
     }
 
     @GetMapping("/reports/{reportVersionId}/download")

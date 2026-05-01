@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:13
-    container_name: tarification-postgres
+    container_name: ${STACK_NAME:-tarification}-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
@@ -19,7 +19,7 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
-    container_name: tarification-app
+    container_name: ${STACK_NAME:-tarification}-app
     depends_on:
       postgres:
         condition: service_healthy
@@ -49,7 +49,7 @@ services:
 
   caddy:
     image: caddy:2.8-alpine
-    container_name: tarification-caddy
+    container_name: ${STACK_NAME:-tarification}-caddy
     depends_on:
       - app
     ports:
