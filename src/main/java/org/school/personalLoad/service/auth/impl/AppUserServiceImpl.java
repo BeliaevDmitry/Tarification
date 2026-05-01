@@ -508,6 +508,7 @@ public class AppUserServiceImpl implements AppUserService {
                 user.getUsername(),
                 user.getFullName(),
                 user.getEmail(),
+                user.getPhone(),
                 user.getRole(),
                 user.isActive(),
                 user.isCanView(),

@@ -20,6 +20,7 @@ public class SessionUser implements Serializable {
     private String username;
     private String fullName;
     private String email;
+    private String phone;
     private UserRole role;
     private boolean active;
     private boolean canView;
