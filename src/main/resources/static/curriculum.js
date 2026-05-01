@@ -472,8 +472,13 @@ function classCellMarkup(cellInfo, rowMeta, classMeta) {
 }
 
 function renderSummaryTable() {
-    const selectedClasses = classesForSelectedContext();
-    const selectedMetaGroups = metaGroupsForSelectedContext().map((m) => ({
+    const selectedClasses = classes
+        .filter((c) => classToParallel(c.className) === selectedParallel)
+        .sort((a, b) => `${a.numberSchoolBuilding}|${a.className}`.localeCompare(`${b.numberSchoolBuilding}|${b.className}`, "ru"));
+    const selectedMetaGroups = (metaGroups || [])
+        .filter((m) => Number(m.parallel) === Number(selectedParallel))
+        .sort((a, b) => `${a.numberSchoolBuilding}|${a.name}`.localeCompare(`${b.numberSchoolBuilding}|${b.name}`, "ru"))
+        .map((m) => ({
         numberSchoolBuilding: m.numberSchoolBuilding,
         className: `МГ:${m.name}`,
         classDirection: "Метагруппа"
@@ -481,7 +486,6 @@ function renderSummaryTable() {
     const knownMetaParallelByKey = new Map((metaGroups || []).map((m) => [makeClassKey(m.numberSchoolBuilding, `МГ:${m.name}`), Number(m.parallel)]));
     const metagroupsFromData = (curriculumRows || [])
         .filter((r) => norm(r.className).startsWith("МГ:"))
-        .filter((r) => !selectedBuilding || norm(r.numberSchoolBuilding) === selectedBuilding)
         .filter((r) => {
             const byKey = knownMetaParallelByKey.get(makeClassKey(r.numberSchoolBuilding, r.className));
             if (Number.isFinite(byKey)) return byKey === Number(selectedParallel);
@@ -507,12 +511,31 @@ function renderSummaryTable() {
     ui.summaryHead.innerHTML = "";
     ui.summaryBody.innerHTML = "";
 
+    const buildingRow = document.createElement("tr");
+    buildingRow.className = "summary-building-row";
+    const groupsByBuilding = [];
+    allColumns.forEach((col) => {
+        const last = groupsByBuilding[groupsByBuilding.length - 1];
+        if (last && last.code === col.numberSchoolBuilding) {
+            last.count += 1;
+        } else {
+            groupsByBuilding.push({ code: col.numberSchoolBuilding, count: 1 });
+        }
+    });
+    buildingRow.innerHTML = `<th rowspan="3">Блок / область</th><th rowspan="3">Предмет</th>${
+        groupsByBuilding.map((group) => {
+            const b = buildings.find((row) => row.code === group.code);
+            const label = b?.name ? `${group.code} — ${b.name}` : group.code;
+            return `<th colspan="${group.count}">${esc(label)}</th>`;
+        }).join("")
+    }`;
     const directionRow = document.createElement("tr");
     directionRow.className = "summary-direction-row";
-    directionRow.innerHTML = `<th rowspan="2">Блок / область</th><th rowspan="2">Предмет</th>${allColumns.map((c) => `<th>${esc(c.classDirection)}</th>`).join("")}`;
+    directionRow.innerHTML = allColumns.map((c) => `<th>${esc(c.classDirection)}</th>`).join("");
     const classRow = document.createElement("tr");
     classRow.className = "summary-class-row";
     classRow.innerHTML = allColumns.map((c) => `<th>${esc(c.className)}</th>`).join("");
+    ui.summaryHead.appendChild(buildingRow);
     ui.summaryHead.appendChild(directionRow);
     ui.summaryHead.appendChild(classRow);
 
