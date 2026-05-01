@@ -1346,31 +1346,6 @@ async function refreshSelectedBuildingData(force = false) {
     prefillFromManualLoad(currentDisplayDate());
 }
 
-async function refreshSelectedBuildingData(force = false) {
-    const cacheKey = buildingCacheKey(selectedBuilding);
-    const cached = buildingDataCache.get(cacheKey);
-    const now = Date.now();
-    if (!force && cached && (now - cached.ts) < BUILDING_DATA_CACHE_TTL_MS) {
-        curriculumRows = cached.curriculum;
-        manualRows = cached.manual;
-    } else {
-        const encodedBuilding = selectedBuilding && selectedBuilding !== ARCHIVE_BUILDING_CODE
-            ? `?numberSchoolBuilding=${encodeURIComponent(selectedBuilding)}`
-            : "";
-        const [curriculum, manual] = await Promise.all([
-            api(`/api/curriculum${encodedBuilding}`),
-            api(`/api/manual-load${encodedBuilding}`)
-        ]);
-        curriculumRows = curriculum || [];
-        manualRows = manual || [];
-        buildingDataCache.set(cacheKey, { ts: now, curriculum: curriculumRows, manual: manualRows });
-    }
-    sourceRevision += 1;
-    invalidateDerivedCache();
-    invalidateTeacherHourIndexesCache();
-    prefillFromManualLoad(currentDisplayDate());
-}
-
 function addTeacherRow(subjectKey, afterRowId = null) {
     if (selectedBuilding === ARCHIVE_BUILDING_CODE || !canEditSelectedBuildingLoad()) return;
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
