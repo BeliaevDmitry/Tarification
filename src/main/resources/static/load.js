@@ -1587,125 +1587,40 @@ function jumpToFirstError() {
     setTimeout(() => target.classList.remove('error-row-highlight'), 1400);
 }
 
-function renderStatsView() {
+async function renderStatsView() {
     if (!ui.statsTable || !ui.statsSummary) return;
-    if (!(curriculumRows || []).length) {
-        ui.statsSummary.textContent = "Нет строк учебного плана для формирования статистики.";
-        ui.statsTable.innerHTML = "<tbody><tr><td>Нет данных.</td></tr></tbody>";
-        return;
+    try {
+        const params = new URLSearchParams();
+        params.set("page", "0");
+        params.set("pageSize", "500");
+        if (selectedBuilding && selectedBuilding !== ARCHIVE_BUILDING_CODE) {
+            params.set("building", selectedBuilding);
+        }
+        const stats = await api(`/api/manual-load/stats?${params.toString()}`);
+        const rows = stats?.rows || [];
+        if (!rows.length) {
+            ui.statsSummary.textContent = "Нет данных для статистики.";
+            ui.statsTable.innerHTML = "<tbody><tr><td>Нет данных.</td></tr></tbody>";
+            return;
+        }
+        ui.statsSummary.textContent = `Предметов: ${stats.subjects}. Плановых часов: ${stats.totalPlanned}. Распределено: ${stats.totalAssigned}. Нераспределено: ${stats.totalUnassigned}.`;
+        ui.statsTable.innerHTML = `
+            <thead><tr>
+                <th>Предметная область</th><th>Предмет</th><th>Часы по УП</th><th>Распределено</th><th>Не распределено</th>
+            </tr></thead>
+            <tbody>${rows.map((row) => `
+                <tr>
+                    <td>${esc(row.subjectArea || "Без области")}</td>
+                    <td>${esc(row.subjectName || "")}</td>
+                    <td>${esc(row.planned || 0)}</td>
+                    <td>${esc(row.assigned || 0)}</td>
+                    <td>${esc(row.unassigned || 0)}</td>
+                </tr>`).join("")}
+            </tbody>`;
+    } catch (error) {
+        ui.statsSummary.textContent = `Ошибка статистики: ${error.message}`;
+        ui.statsTable.innerHTML = "<tbody><tr><td>Ошибка загрузки.</td></tr></tbody>";
     }
-
-    const buildingRows = (buildings || []).filter((b) => b.code !== ARCHIVE_BUILDING_CODE);
-    const classToBuilding = classBuildingMap();
-    const subjectAreaByName = new Map(
-        (subjectCatalog || []).map((subject) => [String(subject.subjectName || "").trim().toLowerCase(), String(subject.subjectAreaName || "").trim() || "Без области"])
-    );
-
-    const rowsBySubject = new Map();
-    const getRow = (subjectName) => {
-        const key = String(subjectName || "").trim().toLowerCase();
-        if (!rowsBySubject.has(key)) {
-            rowsBySubject.set(key, {
-                subjectArea: subjectAreaByName.get(key) || "Без области",
-                subjectName: String(subjectName || "").trim(),
-                totalPlanned: 0,
-                totalAssigned: 0,
-                perBuilding: Object.fromEntries(buildingRows.map((b) => [b.code, { planned: 0, assigned: 0 }]))
-            });
-        }
-        return rowsBySubject.get(key);
-    };
-
-    expandCurriculumRows(curriculumRows || []).forEach((curriculumRow) => {
-        const subjectName = String(curriculumRow.subjectName || "").trim();
-        if (!subjectName) return;
-        const row = getRow(subjectName);
-        const planned = Number(curriculumRow.plannedHours || 0);
-        const fromClass = canonicalBuildingCode(classToBuilding.get(normalizeClassName(curriculumRow.className)));
-        const fromRow = canonicalBuildingCode(curriculumRow.numberSchoolBuilding);
-        const buildingCode = fromRow || fromClass;
-        const assignmentMap = assignmentsForBuilding(buildingCode);
-        const assignedTeacher = String(assignmentMap[apiKeyOfRow(curriculumRow)] || "").trim();
-        const assigned = (assignedTeacher && !isVacancyTeacherName(assignedTeacher)) ? planned : 0;
-
-        row.totalPlanned += planned;
-        row.totalAssigned += assigned;
-        if (row.perBuilding[buildingCode]) {
-            row.perBuilding[buildingCode].planned += planned;
-            row.perBuilding[buildingCode].assigned += assigned;
-        }
-    });
-
-    const areaTotals = new Map();
-    rowsBySubject.forEach((row) => {
-        const area = row.subjectArea || "Без области";
-        areaTotals.set(area, (areaTotals.get(area) || 0) + row.totalPlanned);
-    });
-
-    const rows = [...rowsBySubject.values()]
-        .sort((a, b) => (a.subjectArea || "").localeCompare(b.subjectArea || "", "ru") || a.subjectName.localeCompare(b.subjectName, "ru"));
-
-    const visibleBuildingRows = buildingRows.filter((building) =>
-        rows.some((row) => Number(row.perBuilding?.[building.code]?.planned || 0) > 0)
-    );
-
-    const totalPlanned = rows.reduce((sum, row) => sum + row.totalPlanned, 0);
-    const totalAssigned = rows.reduce((sum, row) => sum + row.totalAssigned, 0);
-    ui.statsSummary.textContent = `Предметов: ${rows.length}. Плановых часов: ${totalPlanned}. Распределено: ${totalAssigned}. Нераспределено: ${totalPlanned - totalAssigned}.`;
-
-    const formatStatsBuildingLabel = (building) => {
-        const code = String(building?.code || "").trim();
-        const name = String(building?.name || "").trim();
-        if (!name) return code;
-        const normalizedCode = normalizeBuildingCode(code);
-        const normalizedName = normalizeBuildingCode(name);
-        if (normalizedName === normalizedCode || normalizedName.startsWith(`${normalizedCode}|`)) {
-            return name;
-        }
-        return `${code} — ${name}`;
-    };
-
-    const buildingHeader = visibleBuildingRows.map((building) =>
-        `<th colspan="3">${esc(formatStatsBuildingLabel(building))}</th>`
-    ).join("");
-    const buildingSubHeader = visibleBuildingRows.map(() =>
-        "<th>часы</th><th>распр.</th><th>не распр.</th>"
-    ).join("");
-
-    const thead = `
-        <thead>
-            <tr>
-                <th rowspan="2">Предметная область</th>
-                <th rowspan="2">Предмет</th>
-                <th rowspan="2">Часы по УП</th>
-                <th rowspan="2">Распределено</th>
-                <th rowspan="2">Не распределено</th>
-                ${buildingHeader}
-                <th rowspan="2">Суммарно часов по предметной области</th>
-            </tr>
-            <tr>${buildingSubHeader}</tr>
-        </thead>`;
-
-    const tbody = rows.map((row) => {
-        const totalUnassigned = row.totalPlanned - row.totalAssigned;
-        const perBuildingCols = visibleBuildingRows.map((building) => {
-            const bucket = row.perBuilding[building.code] || { planned: 0, assigned: 0 };
-            const buildingUnassigned = bucket.planned - bucket.assigned;
-            return `<td>${esc(bucket.planned)}</td><td>${esc(bucket.assigned)}</td><td>${esc(buildingUnassigned)}</td>`;
-        }).join("");
-        return `
-            <tr>
-                <td>${esc(row.subjectArea || "Без области")}</td>
-                <td>${esc(row.subjectName)}</td>
-                <td>${esc(row.totalPlanned)}</td>
-                <td>${esc(row.totalAssigned)}</td>
-                <td>${esc(totalUnassigned)}</td>
-                ${perBuildingCols}
-                <td>${esc(areaTotals.get(row.subjectArea || "Без области") || 0)}</td>
-            </tr>`;
-    }).join("");
-
-    ui.statsTable.innerHTML = `${thead}<tbody>${tbody}</tbody>`;
 }
 
 function renderTable() {
@@ -2189,17 +2104,9 @@ async function refreshSourceData() {
     invalidateTeacherHourIndexesCache();
     state.continuityExpectedByKey = new Map();
 
-    try {
-        const requestedAcademicYear = String(sessionStorage.getItem("tarification.academicYear") || "").trim();
-        const activeAcademicYear = requestedAcademicYear || String(yearResolve?.active || "").trim();
-        const sourceAcademicYear = previousAcademicYearCode(activeAcademicYear);
-        if (sourceAcademicYear) {
-            const sourceManualRows = await apiUnscoped(`/api/manual-load?academicYear=${encodeURIComponent(sourceAcademicYear)}`);
-            state.continuityExpectedByKey = computeContinuityExpectedByKey(sourceManualRows || [], curriculumRows || []);
-        }
-    } catch (error) {
-        print({ warning: `Не удалось вычислить подсветку преемственности: ${error.message}` });
-    }
+    // Не подсвечиваем преемственность автоматически по прошлому году.
+    // Подсветка должна опираться только на явный запуск серверного расчёта/статуса.
+    state.continuityExpectedByKey = new Map();
 
     prefillFromManualLoad(currentDisplayDate());
     state.forceResort = true;
