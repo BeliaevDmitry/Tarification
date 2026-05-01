@@ -27,6 +27,9 @@ public class AppUser {
     @Column(length = 255)
     private String email;
 
+    @Column(length = 32)
+    private String phone;
+
     @Column(length = 50)
     private String managedBuildingCode;
 

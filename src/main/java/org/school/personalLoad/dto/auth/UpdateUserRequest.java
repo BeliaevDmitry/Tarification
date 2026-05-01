@@ -9,6 +9,7 @@ import java.util.List;
 public class UpdateUserRequest {
     private String fullName;
     private String email;
+    private String phone;
     private String managedBuildingCode;
     private Boolean loadEditAllBuildings;
     private List<String> loadEditableBuildingCodes;

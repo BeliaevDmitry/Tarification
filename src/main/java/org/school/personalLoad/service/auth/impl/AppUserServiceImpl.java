@@ -107,6 +107,7 @@ public class AppUserServiceImpl implements AppUserService {
         user.setUsername(username);
         user.setFullName(normalizedFio);
         user.setEmail(normalizeOptional(request.getEmail()));
+        user.setPhone(normalizePhone(request.getPhone()));
         user.setManagedBuildingCode(normalizeExistingBuildingCode(request.getManagedBuildingCode(), knownBuildingCodes, "Основной корпус"));
         user.setLoadEditAllBuildings(Boolean.TRUE.equals(request.getLoadEditAllBuildings()));
         user.setLoadEditableBuildingCodes(normalizeBuildingCodes(request.getLoadEditableBuildingCodes(), knownBuildingCodes));
@@ -137,6 +138,9 @@ public class AppUserServiceImpl implements AppUserService {
         }
         if (request.getEmail() != null) {
             user.setEmail(normalizeOptional(request.getEmail()));
+        }
+        if (request.getPhone() != null) {
+            user.setPhone(normalizePhone(request.getPhone()));
         }
         if (request.getManagedBuildingCode() != null) {
             user.setManagedBuildingCode(normalizeExistingBuildingCode(request.getManagedBuildingCode(), knownBuildingCodes, "Основной корпус"));
@@ -213,6 +217,7 @@ public class AppUserServiceImpl implements AppUserService {
         admin.setFullName(defaultAdminFullName);
         admin.setRole(UserRole.ADMIN);
         admin.setEmail(null);
+        admin.setPhone(null);
         admin.setManagedBuildingCode(null);
         admin.setActive(true);
         admin.setCanView(true);
@@ -393,6 +398,15 @@ public class AppUserServiceImpl implements AppUserService {
             throw new IllegalArgumentException(errorMessage);
         }
         return normalized;
+    }
+
+    private String normalizePhone(String value) {
+        String normalized = normalizeOptional(value);
+        if (normalized == null) return null;
+        String digits = normalized.replaceAll("[^0-9]", "");
+        if (digits.length() == 11 && digits.startsWith("8")) digits = "7" + digits.substring(1);
+        if (digits.length() != 11 || !digits.startsWith("7")) throw new IllegalArgumentException("Телефон должен быть в формате +7...");
+        return "+" + digits;
     }
 
     private String normalizeOptional(String value) {
