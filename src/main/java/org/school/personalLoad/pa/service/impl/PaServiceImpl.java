@@ -690,16 +690,26 @@ public class PaServiceImpl implements PaService {
     public byte[] loadReportFile(Long reportVersionId) throws IOException {
         PaReportVersion version = reportVersionRepository.findById(reportVersionId)
                 .orElseThrow(() -> new IllegalArgumentException("Версия отчёта не найдена"));
-        if (version.getSourceFilePath() == null || version.getSourceFilePath().isBlank()) {
-            throw new IllegalArgumentException("Для версии не сохранён путь к файлу");
-        }
-        Path path = Path.of(version.getSourceFilePath());
+        Path path = resolveReportFilePath(version);
         if (!Files.exists(path)) {
             throw new IllegalArgumentException("Файл версии не найден на диске");
+        }
+        if (version.getSourceFilePath() == null || version.getSourceFilePath().isBlank()) {
+            version.setSourceFilePath(path.toString());
         }
         version.setDownloadedAtLeastOnce(true);
         reportVersionRepository.save(version);
         return Files.readAllBytes(path);
+    }
+
+    private Path resolveReportFilePath(PaReportVersion version) {
+        if (version.getSourceFilePath() != null && !version.getSourceFilePath().isBlank()) {
+            return Path.of(version.getSourceFilePath());
+        }
+        if (version.getAcademicYear() != null && version.getSourceFileName() != null && !version.getSourceFileName().isBlank()) {
+            return Path.of(PA_REPORT_STORAGE_DIR, version.getAcademicYear().replace("/", "-"), version.getSourceFileName());
+        }
+        throw new IllegalArgumentException("Для версии не сохранён путь к файлу");
     }
 
     @Override
