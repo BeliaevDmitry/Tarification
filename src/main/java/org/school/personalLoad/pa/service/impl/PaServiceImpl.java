@@ -189,9 +189,9 @@ public class PaServiceImpl implements PaService {
         spec.setSchoolName(findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "Школа"));
         spec.setTeacherFio(findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "Учитель"));
         spec.setTeacherFioNormalized(normalizeFio(spec.getTeacherFio()));
-        spec.setGrade5Percent(parsePercent(findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "5")));
-        spec.setGrade4Percent(parsePercent(findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "4")));
-        spec.setGrade3Percent(parsePercent(findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "3")));
+        spec.setGrade5Percent(resolveThresholdPercent(sheet, baseRow, baseCol, blockEndCol, "5"));
+        spec.setGrade4Percent(resolveThresholdPercent(sheet, baseRow, baseCol, blockEndCol, "4"));
+        spec.setGrade3Percent(resolveThresholdPercent(sheet, baseRow, baseCol, blockEndCol, "3"));
         spec.setSourceFileName(sourceFileName);
         spec.setPairKey(buildPairKey(academicYear, subject, scope, level, workType, sheet.getSheetName()));
         spec.setActiveVersion(true);
@@ -853,12 +853,13 @@ public class PaServiceImpl implements PaService {
     private String createGradeFormula(int firstTaskCol, int tasksSize, int excelRow, PaSpecification specification, int totalCol) {
         String totalCell = new CellReference(excelRow - 1, totalCol).formatAsString();
         String presenceCell = new CellReference(excelRow - 1, 2).formatAsString();
+        String variantCell = new CellReference(excelRow - 1, 3).formatAsString();
         String maxRangeStart = new CellReference(2, firstTaskCol).formatAsString();
         String maxRangeEnd = new CellReference(2, firstTaskCol + tasksSize - 1).formatAsString();
         String maxSum = "SUM(" + maxRangeStart + ":" + maxRangeEnd + ")";
         return String.format(Locale.ROOT,
-                "IF(OR(%s=\"\",%s=\"Не был\"),\"\",IF(%s/%s*100>=%d,5,IF(%s/%s*100>=%d,4,IF(%s/%s*100>=%d,3,2))))",
-                totalCell, presenceCell,
+                "IF(OR(%s=\"\",%s=\"Не был\",AND(%s=\"\",%s=0)),\"\",IF(%s/%s*100>=%d,5,IF(%s/%s*100>=%d,4,IF(%s/%s*100>=%d,3,2))))",
+                totalCell, presenceCell, variantCell, totalCell,
                 totalCell, maxSum, specification.getGrade5Percent(),
                 totalCell, maxSum, specification.getGrade4Percent(),
                 totalCell, maxSum, specification.getGrade3Percent());
@@ -1216,6 +1217,25 @@ public class PaServiceImpl implements PaService {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private Integer resolveThresholdPercent(Sheet sheet, int startRow, int startCol, int blockEndCol, String label) {
+        Integer direct = parsePercent(findValueNearLabel(sheet, startRow, startCol, blockEndCol, label));
+        if (direct != null) return direct;
+        int maxRow = Math.min(sheet.getLastRowNum(), startRow + 25);
+        String normalizedLabel = normalizeLabel(label);
+        for (int r = startRow; r <= maxRow; r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) continue;
+            for (int c = Math.max(0, startCol - 1); c <= blockEndCol; c++) {
+                String cell = getCell(row, c);
+                String norm = normalizeLabel(cell);
+                if (!norm.startsWith(normalizedLabel)) continue;
+                Integer parsedInline = parsePercent(cell);
+                if (parsedInline != null) return parsedInline;
+            }
+        }
+        return null;
     }
 
     private PaWorkType parseWorkType(String raw) {
