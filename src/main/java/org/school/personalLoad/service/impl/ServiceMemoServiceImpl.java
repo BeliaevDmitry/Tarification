@@ -12,6 +12,7 @@ import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.ServiceMemoRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.ServiceMemoService;
+import org.school.personalLoad.service.ServiceMemoSettingsService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +42,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final ServiceMemoRepository serviceMemoRepository;
     private final StudyPeriodSettingService studyPeriodSettingService;
+    private final ServiceMemoSettingsService serviceMemoSettingsService;
 
     @Override
     @Transactional(readOnly = true)
@@ -750,8 +752,9 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     .filter(value -> !value.isBlank())
                     .orElse(fioTeacher);
 
-            paragraph(doc, "Директору ГБОУ Школы №7", false, ParagraphAlignment.RIGHT, 12, 0, 0, 0);
-            paragraph(doc, "Ждановой И.Д.", false, ParagraphAlignment.RIGHT, 12, 0, 160, 0);
+            var memoSettings = serviceMemoSettingsService.get();
+            paragraph(doc, memoSettings.directorTitle(), false, ParagraphAlignment.RIGHT, 12, 0, 0, 0);
+            paragraph(doc, memoSettings.directorName(), false, ParagraphAlignment.RIGHT, 12, 0, 160, 0);
             paragraph(doc, "от заместителя директора", false, ParagraphAlignment.RIGHT, 12, 0, 0, 0);
             paragraph(doc, createdBy, false, ParagraphAlignment.RIGHT, 12, 0, 220, 0);
 
