@@ -506,6 +506,7 @@ async function reloadSummaryAndSpecs() {
     if (!Array.isArray(specs) || specs.length === 0) {
         paState.importLogHistory = [];
         renderSpecificationImportLog();
+loadSpecificationImportLog().catch(() => {});
     }
     renderSpecifications(specs || []);
     if (paQueryParams.get('forceExitAll') === '1') {
@@ -650,8 +651,28 @@ async function uploadSpecifications() {
         appendSpecificationImportLog(result);
         input.value = '';
         await reloadSummaryAndSpecs();
+        await loadSpecificationImportLog();
     } catch (e) {
         appendSpecificationImportLog([{ fileName: [...input.files].map((f) => f.name).join(', '), warnings: [`Ошибка: ${e.message}`], importedTasks: 0, subjects: [], parallels: [] }]);
+    }
+}
+
+
+async function loadSpecificationImportLog() {
+    try {
+        const rows = await paApi('/api/pa/specifications/import-log');
+        paState.importLogHistory = (rows || []).map((row) => ({
+            timestamp: row.createdAt ? new Date(row.createdAt).toLocaleString('ru-RU') : '',
+            fileName: row.fileName || '—',
+            subject: row.subjects || '—',
+            parallel: row.parallels || '—',
+            status: row.status || '',
+            message: row.message || '',
+            records: Number.isFinite(row.records) ? row.records : 0
+        }));
+        renderSpecificationImportLog();
+    } catch (e) {
+        // keep local fallback
     }
 }
 

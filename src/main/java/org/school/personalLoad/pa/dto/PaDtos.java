@@ -43,6 +43,16 @@ public final class PaDtos {
                                        Integer maxScore) {
     }
 
+    public record ImportLogRow(String fileName,
+                               String subjects,
+                               String parallels,
+                               String status,
+                               String message,
+                               int records,
+                               String createdBy,
+                               LocalDateTime createdAt) {
+    }
+
     public record SummaryCell(String subjectName,
                               String scopeValue,
                               PaLevel level,

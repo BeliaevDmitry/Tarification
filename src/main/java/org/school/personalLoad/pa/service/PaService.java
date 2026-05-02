@@ -11,7 +11,8 @@ import java.time.LocalDate;
 import java.util.List;
 
 public interface PaService {
-    List<PaDtos.ImportResult> importSpecifications(String academicYear, List<MultipartFile> files);
+    List<PaDtos.ImportResult> importSpecifications(String academicYear, List<MultipartFile> files, String username);
+    List<PaDtos.ImportLogRow> specificationImportLog(String academicYear, String username, boolean admin);
     List<PaDtos.SpecificationRow> specifications(String academicYear);
     List<PaDtos.SpecificationTaskRow> specificationTasks(Long specificationId);
     PaDtos.SummaryResponse summary(String academicYear);

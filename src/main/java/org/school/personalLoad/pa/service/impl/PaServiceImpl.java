@@ -8,6 +8,7 @@ import org.school.personalLoad.pa.dto.PaDtos;
 import org.school.personalLoad.pa.model.*;
 import org.school.personalLoad.pa.repository.PaParticipationRepository;
 import org.school.personalLoad.pa.repository.PaReportVersionRepository;
+import org.school.personalLoad.pa.repository.PaSpecImportLogRepository;
 import org.school.personalLoad.pa.repository.PaSpecificationRepository;
 import org.school.personalLoad.pa.repository.PaSpecificationTaskRepository;
 import org.school.personalLoad.pa.service.PaService;
@@ -52,6 +53,7 @@ public class PaServiceImpl implements PaService {
     private final PaSpecificationTaskRepository taskRepository;
     private final PaParticipationRepository participationRepository;
     private final PaReportVersionRepository reportVersionRepository;
+    private final PaSpecImportLogRepository paSpecImportLogRepository;
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final ContingentSnapshotRepository contingentSnapshotRepository;
@@ -65,11 +67,13 @@ public class PaServiceImpl implements PaService {
 
     @Override
     @Transactional
-    public List<PaDtos.ImportResult> importSpecifications(String academicYear, List<MultipartFile> files) {
+    public List<PaDtos.ImportResult> importSpecifications(String academicYear, List<MultipartFile> files, String username) {
         List<PaDtos.ImportResult> results = new ArrayList<>();
         for (MultipartFile file : files) {
             if (file == null || file.isEmpty()) {
-                results.add(new PaDtos.ImportResult(file == null ? "unknown" : file.getOriginalFilename(), 0, 0, List.of(), List.of(), List.of("Файл пустой")));
+                PaDtos.ImportResult item = new PaDtos.ImportResult(file == null ? "unknown" : file.getOriginalFilename(), 0, 0, List.of(), List.of(), List.of("Файл пустой"));
+                results.add(item);
+                saveSpecImportLog(academicYear, username, item);
                 continue;
             }
             List<String> warnings = new ArrayList<>();
@@ -95,9 +99,40 @@ public class PaServiceImpl implements PaService {
             } catch (Exception e) {
                 warnings.add("Ошибка чтения файла: " + e.getMessage());
             }
-            results.add(new PaDtos.ImportResult(file.getOriginalFilename(), importedSpecs, importedTasks, new java.util.ArrayList<>(importedSubjects), new java.util.ArrayList<>(importedParallels), warnings));
+            PaDtos.ImportResult item = new PaDtos.ImportResult(file.getOriginalFilename(), importedSpecs, importedTasks, new java.util.ArrayList<>(importedSubjects), new java.util.ArrayList<>(importedParallels), warnings);
+            results.add(item);
+            saveSpecImportLog(academicYear, username, item);
         }
         return results;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PaDtos.ImportLogRow> specificationImportLog(String academicYear, String username, boolean admin) {
+        List<org.school.personalLoad.pa.model.PaSpecImportLog> rows = admin
+                ? paSpecImportLogRepository.findAllByAcademicYearOrderByCreatedAtDescIdDesc(academicYear)
+                : paSpecImportLogRepository.findAllByAcademicYearAndCreatedByOrderByCreatedAtDescIdDesc(academicYear, username);
+        return rows.stream().map(r -> new PaDtos.ImportLogRow(
+                r.getFileName(), r.getSubjects(), r.getParallels(), r.getStatus(), r.getMessage(),
+                r.getRecordsCount() == null ? 0 : r.getRecordsCount(), r.getCreatedBy(), r.getCreatedAt()
+        )).toList();
+    }
+
+    private void saveSpecImportLog(String academicYear, String username, PaDtos.ImportResult result) {
+        var row = new org.school.personalLoad.pa.model.PaSpecImportLog();
+        row.setAcademicYear(academicYear);
+        row.setFileName(result.fileName() == null ? "—" : result.fileName());
+        row.setSubjects((result.subjects() == null || result.subjects().isEmpty()) ? "—" : String.join(", ", result.subjects()));
+        row.setParallels((result.parallels() == null || result.parallels().isEmpty()) ? "—" : String.join(", ", result.parallels()));
+        int records = result.importedTasks();
+        boolean hasError = (result.warnings() != null && result.warnings().stream().anyMatch(w -> String.valueOf(w).toLowerCase(java.util.Locale.ROOT).startsWith("ошибка"))) || records <= 0;
+        row.setStatus(hasError ? "Ошибка" : "Успешно");
+        String message = (result.warnings() == null || result.warnings().isEmpty()) ? (records > 0 ? "Импорт выполнен" : "Нет загруженных записей") : String.join("; ", result.warnings());
+        row.setMessage(message);
+        row.setRecordsCount(records);
+        row.setCreatedBy(username == null || username.isBlank() ? "unknown" : username);
+        row.setCreatedAt(java.time.LocalDateTime.now());
+        paSpecImportLogRepository.save(row);
     }
 
     private SheetImportStats importSheet(String academicYear, String sourceFileName, Sheet sheet, List<String> warnings) {
