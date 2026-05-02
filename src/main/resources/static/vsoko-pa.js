@@ -447,11 +447,7 @@ async function generateForAll(prefix, force = false) {
     const level = document.getElementById(`pa-${prefix}-level`).value;
     const workDate = document.getElementById(`pa-${prefix}-work-date`).value;
     const workType = prefix === 'entry' ? 'ENTRY' : 'EXIT';
-    if (!subject || subject === 'ALL') {
-        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: 'Выберите предмет для массовой генерации', versionNo: null }]);
-        return;
-    }
-    const params = new URLSearchParams({ subjectName: subject, level, workType });
+    const params = new URLSearchParams({ subjectName: subject || 'ALL', level, workType });
     if (workDate) params.set('workDate', workDate);
     try {
         if (force) params.set('force', 'true');
@@ -466,31 +462,56 @@ async function generateForAll(prefix, force = false) {
 
 
 
-async function deleteScopeGenerated(prefix) {
+
+async function regenerateSelectedSubject(prefix) {
+    const subject = document.getElementById(`pa-${prefix}-subject`).value;
+    if (!subject || subject === 'ALL') {
+        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: 'Выберите предмет для перегенерации', versionNo: null }]);
+        return;
+    }
+    await generateForAll(prefix, true);
+}
+
+async function deleteGeneratedByClass(prefix) {
     const subject = document.getElementById(`pa-${prefix}-subject`).value;
     const className = document.getElementById(`pa-${prefix}-class`).value;
+    const level = document.getElementById(`pa-${prefix}-level`).value;
+    const workDate = document.getElementById(`pa-${prefix}-work-date`).value;
+    if (!subject || subject === 'ALL') {
+        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: 'Выберите предмет', versionNo: null }]);
+        return;
+    }
+    if (!className) {
+        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: 'Выберите класс', versionNo: null }]);
+        return;
+    }
+    const params = new URLSearchParams({ subjectName: subject, scopeValue: className, byParallel: 'false', level, workType: prefix === 'entry' ? 'ENTRY' : 'EXIT' });
+    if (workDate) params.set('workDate', workDate);
+    const result = await paApi(`/api/pa/reports/generated?${params.toString()}`, { method: 'DELETE' });
+    renderUploadLog(prefix, [{ fileName: '', status: 'ACCEPTED', message: `Удалено шаблонов: ${result.deleted ?? 0}`, versionNo: null }]);
+    await loadVersions(prefix); await loadReportFolders(prefix); await renderWorkflow(prefix);
+}
+
+async function deleteGeneratedByParallel(prefix) {
+    const subject = document.getElementById(`pa-${prefix}-subject`).value;
     const parallel = document.getElementById(`pa-${prefix}-scope`).value;
     const level = document.getElementById(`pa-${prefix}-level`).value;
     const workDate = document.getElementById(`pa-${prefix}-work-date`).value;
-    const byParallel = !className && !!parallel;
-    const scopeValue = byParallel ? parallel : className;
-    if (!scopeValue) {
-        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: 'Выберите класс или параллель для удаления', versionNo: null }]);
+    if (!subject || subject === 'ALL') {
+        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: 'Выберите предмет', versionNo: null }]);
         return;
     }
-    if (!confirm(`Удалить сгенерированные отчёты (${byParallel ? 'параллель' : 'класс'}: ${scopeValue})?`)) return;
-    const params = new URLSearchParams({ subjectName: subject || 'ALL', scopeValue, byParallel: String(byParallel), level, workType: prefix === 'entry' ? 'ENTRY' : 'EXIT' });
-    if (workDate) params.set('workDate', workDate);
-    try {
-        const result = await paApi(`/api/pa/reports/generated?${params.toString()}`, { method: 'DELETE' });
-        renderUploadLog(prefix, [{ fileName: '', status: 'ACCEPTED', message: `Удалено шаблонов: ${result.deleted ?? 0}`, versionNo: null }]);
-        await loadVersions(prefix);
-        await loadReportFolders(prefix);
-        await renderWorkflow(prefix);
-    } catch (e) {
-        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: `Удаление не выполнено: ${e.message}`, versionNo: null }]);
+    if (!parallel) {
+        renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: 'Выберите параллель', versionNo: null }]);
+        return;
     }
+    const params = new URLSearchParams({ subjectName: subject, scopeValue: parallel, byParallel: 'true', level, workType: prefix === 'entry' ? 'ENTRY' : 'EXIT' });
+    if (workDate) params.set('workDate', workDate);
+    const result = await paApi(`/api/pa/reports/generated?${params.toString()}`, { method: 'DELETE' });
+    renderUploadLog(prefix, [{ fileName: '', status: 'ACCEPTED', message: `Удалено шаблонов: ${result.deleted ?? 0}`, versionNo: null }]);
+    await loadVersions(prefix); await loadReportFolders(prefix); await renderWorkflow(prefix);
 }
+
 async function reloadSummaryAndSpecs() {
     const [summary, specs, subjects, curriculum] = await Promise.all([
         paApi('/api/pa/specifications/summary'),
@@ -1067,7 +1088,9 @@ bindClick('pa-exit-load-versions-btn', () => loadVersions('exit'));
 bindClick('pa-entry-generate-btn', () => generateForClass('entry'));
 bindClick('pa-exit-generate-btn', () => generateForClass('exit'));
 bindClick('pa-exit-regenerate-all-btn', () => generateForAll('exit', true));
-bindClick('pa-exit-delete-scope-btn', () => deleteScopeGenerated('exit'));
+bindClick('pa-exit-regenerate-subject-btn', () => regenerateSelectedSubject('exit'));
+bindClick('pa-exit-delete-class-btn', () => deleteGeneratedByClass('exit'));
+bindClick('pa-exit-delete-parallel-btn', () => deleteGeneratedByParallel('exit'));
 bindClick('pa-entry-generate-parallel-btn', () => generateForParallel('entry'));
 bindClick('pa-exit-generate-parallel-btn', () => generateForParallel('exit'));
 bindClick('pa-entry-generate-all-btn', () => generateForAll('entry'));

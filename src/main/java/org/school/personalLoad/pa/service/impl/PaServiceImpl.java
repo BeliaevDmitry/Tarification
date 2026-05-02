@@ -671,16 +671,33 @@ public class PaServiceImpl implements PaService {
                 .distinct()
                 .sorted()
                 .toList();
+        List<String> subjects = "ALL".equalsIgnoreCase(subjectName)
+                ? specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear).stream()
+                .filter(PaSpecification::isActiveVersion)
+                .filter(s -> s.getLevel() == level && s.getWorkType() == workType)
+                .map(PaSpecification::getSubjectName)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(v -> !v.isBlank())
+                .distinct()
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList()
+                : List.of(subjectName);
         List<PaDtos.ReportUploadResult> results = new ArrayList<>();
-        for (String className : classes) {
-            if (resolveSpecificationForClass(academicYear, subjectName, className, level, workType, workDate) == null) {
-                continue;
+        for (String subject : subjects) {
+            for (String className : classes) {
+                if (resolveSpecificationForClass(academicYear, subject, className, level, workType, workDate) == null) {
+                    continue;
+                }
+                boolean generatedExists = hasActiveGeneratedTemplate(academicYear, subject, className, level, workType, workDate);
+                if (!force && generatedExists) {
+                    continue;
+                }
+                if (force && "ALL".equalsIgnoreCase(subjectName) && !generatedExists) {
+                    continue;
+                }
+                results.add(generateReportTemplate(academicYear, subject, className, level, workType, workDate, true));
             }
-            if (!force && hasActiveGeneratedTemplate(academicYear, subjectName, className, level, workType, workDate)) {
-                results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Шаблон уже сгенерирован для класса", null, subjectName, className, workType));
-                continue;
-            }
-            results.add(generateReportTemplate(academicYear, subjectName, className, level, workType, workDate, force));
         }
         if (results.isEmpty()) {
             results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Нет классов с доступной спецификацией для генерации", null, subjectName, "", workType));
