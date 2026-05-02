@@ -651,7 +651,7 @@ async function uploadSpecifications() {
         input.value = '';
         await reloadSummaryAndSpecs();
     } catch (e) {
-        appendSpecificationImportLog([{ fileName: [...input.files].map((f) => f.name).join(', '), warnings: [`Ошибка: ${e.message}`], importedTasks: 0 }]);
+        appendSpecificationImportLog([{ fileName: [...input.files].map((f) => f.name).join(', '), warnings: [`Ошибка: ${e.message}`], importedTasks: 0, subjects: [], parallels: [] }]);
     }
 }
 
@@ -660,13 +660,15 @@ function appendSpecificationImportLog(result) {
     const timestamp = new Date().toLocaleString('ru-RU');
     rows.forEach((row) => {
         const warnings = Array.isArray(row?.warnings) ? row.warnings.filter(Boolean) : [];
-        const hasError = warnings.some((w) => String(w).toLowerCase().startsWith('ошибка'));
-        const status = hasError ? 'Ошибка' : 'Успешно';
-        const message = warnings.length ? warnings.join('; ') : 'Импорт выполнен';
         const records = Number.isFinite(row?.importedTasks) ? row.importedTasks : 0;
+        const hasError = warnings.some((w) => String(w).toLowerCase().startsWith('ошибка')) || records <= 0;
+        const status = hasError ? 'Ошибка' : 'Успешно';
+        const message = warnings.length ? warnings.join('; ') : (records > 0 ? 'Импорт выполнен' : 'Нет загруженных записей');
         paState.importLogHistory.unshift({
             timestamp,
             fileName: row?.fileName || '—',
+            subject: Array.isArray(row?.subjects) && row.subjects.length ? row.subjects.join(', ') : '—',
+            parallel: Array.isArray(row?.parallels) && row.parallels.length ? row.parallels.join(', ') : '—',
             status,
             message,
             records
@@ -683,11 +685,13 @@ function renderSpecificationImportLog() {
         <tr>
             <td>${row.timestamp}</td>
             <td>${row.fileName}</td>
+            <td>${row.subject}</td>
+            <td>${row.parallel}</td>
             <td>${row.status}</td>
             <td>${row.message}</td>
             <td>${row.records}</td>
         </tr>
-    `).join('') || '<tr><td colspan="5" class="muted">История загрузок пуста</td></tr>';
+    `).join('') || '<tr><td colspan="7" class="muted">История загрузок пуста</td></tr>';
 }
 
 async function uploadReports(prefix) {

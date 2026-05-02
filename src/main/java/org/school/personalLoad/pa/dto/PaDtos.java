@@ -14,7 +14,7 @@ public final class PaDtos {
     private PaDtos() {
     }
 
-    public record ImportResult(String fileName, int importedSpecs, int importedTasks, List<String> warnings) {
+    public record ImportResult(String fileName, int importedSpecs, int importedTasks, List<String> subjects, List<String> parallels, List<String> warnings) {
     }
 
     public record SpecificationRow(Long id,

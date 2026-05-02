@@ -38,7 +38,7 @@ import org.apache.poi.ss.util.CellReference;
 @Service
 @RequiredArgsConstructor
 public class PaServiceImpl implements PaService {
-    private record SheetImportStats(int specs, int tasks) {}
+    private record SheetImportStats(int specs, int tasks, java.util.Set<String> subjects, java.util.Set<String> parallels) {}
 
     private static final Pattern PARALLEL_PATTERN = Pattern.compile("^(\\d{1,2}).*");
     private static final DataFormatter FORMATTER = new DataFormatter(Locale.forLanguageTag("ru"));
@@ -69,12 +69,14 @@ public class PaServiceImpl implements PaService {
         List<PaDtos.ImportResult> results = new ArrayList<>();
         for (MultipartFile file : files) {
             if (file == null || file.isEmpty()) {
-                results.add(new PaDtos.ImportResult(file == null ? "unknown" : file.getOriginalFilename(), 0, 0, List.of("Файл пустой")));
+                results.add(new PaDtos.ImportResult(file == null ? "unknown" : file.getOriginalFilename(), 0, 0, List.of(), List.of(), List.of("Файл пустой")));
                 continue;
             }
             List<String> warnings = new ArrayList<>();
             int importedSpecs = 0;
             int importedTasks = 0;
+            java.util.Set<String> importedSubjects = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+            java.util.Set<String> importedParallels = new java.util.TreeSet<>();
             try (InputStream inputStream = file.getInputStream();
                  Workbook workbook = new XSSFWorkbook(inputStream)) {
                 Path specDir = Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-"));
@@ -87,11 +89,13 @@ public class PaServiceImpl implements PaService {
                     SheetImportStats stats = importSheet(academicYear, file.getOriginalFilename(), sheet, warnings);
                     importedSpecs += stats.specs();
                     importedTasks += stats.tasks();
+                    importedSubjects.addAll(stats.subjects());
+                    importedParallels.addAll(stats.parallels());
                 }
             } catch (Exception e) {
                 warnings.add("Ошибка чтения файла: " + e.getMessage());
             }
-            results.add(new PaDtos.ImportResult(file.getOriginalFilename(), importedSpecs, importedTasks, warnings));
+            results.add(new PaDtos.ImportResult(file.getOriginalFilename(), importedSpecs, importedTasks, new java.util.ArrayList<>(importedSubjects), new java.util.ArrayList<>(importedParallels), warnings));
         }
         return results;
     }
@@ -100,10 +104,12 @@ public class PaServiceImpl implements PaService {
         List<int[]> subjectCells = findCellsByValue(sheet, "Предмет");
         if (subjectCells.isEmpty()) {
             warnings.add("Лист " + sheet.getSheetName() + ": не найден блок 'Предмет'");
-            return new SheetImportStats(0, 0);
+            return new SheetImportStats(0, 0, java.util.Set.of(), java.util.Set.of());
         }
         int importedSpecs = 0;
         int importedTasks = 0;
+        java.util.Set<String> subjects = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        java.util.Set<String> parallels = new java.util.TreeSet<>();
         for (int[] cellPos : subjectCells) {
             int subjectRow = cellPos[0];
             int subjectCol = cellPos[1];
@@ -158,8 +164,11 @@ public class PaServiceImpl implements PaService {
             taskRepository.saveAll(tasks);
             importedSpecs += 1;
             importedTasks += tasks.size();
+            subjects.add(saved.getSubjectName());
+            Integer p = parseParallel(saved.getScopeValue());
+            if (p != null) parallels.add(String.valueOf(p));
         }
-        return new SheetImportStats(importedSpecs, importedTasks);
+        return new SheetImportStats(importedSpecs, importedTasks, subjects, parallels);
     }
 
     private PaSpecification parseBlock(String academicYear,
