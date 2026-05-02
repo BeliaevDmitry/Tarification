@@ -21,6 +21,7 @@
             <button type="button" class="tab-btn active" data-memo-tab="pending">Не отработанные</button>
             <button type="button" class="tab-btn" data-memo-tab="processed">Отработанные</button>
             <button type="button" class="tab-btn" data-memo-tab="archived">Архив</button>
+            <button type="button" class="tab-btn" data-memo-tab="settings" data-requires-edit>Настройка</button>
         </div>
     </section>
 
@@ -66,6 +67,24 @@
                 </thead>
                 <tbody id="archived-body"></tbody>
             </table>
+        </div>
+    </section>
+
+    
+
+    <section class="card" id="settings-panel" data-memo-panel="settings" style="display:none" data-requires-edit>
+        <h2>Настройка служебок</h2>
+        <p class="muted">Эти значения сохраняются в БД и используются при генерации DOCX.</p>
+        <div class="form-grid">
+            <label>Кому
+                <input id="memo-director-title" type="text" placeholder="Директору ГБОУ ...">
+            </label>
+            <label>ФИО адресата
+                <input id="memo-director-name" type="text" placeholder="Ивановой И.И.">
+            </label>
+        </div>
+        <div class="row">
+            <button id="memo-settings-save-btn" type="button">Сохранить настройки</button>
         </div>
     </section>
 

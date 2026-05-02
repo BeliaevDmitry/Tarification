@@ -14,7 +14,7 @@ public final class PaDtos {
     private PaDtos() {
     }
 
-    public record ImportResult(String fileName, int importedSpecs, int importedTasks, List<String> warnings) {
+    public record ImportResult(String fileName, int importedSpecs, int importedTasks, List<String> subjects, List<String> parallels, List<String> warnings) {
     }
 
     public record SpecificationRow(Long id,
@@ -41,6 +41,16 @@ public final class PaDtos {
                                        PaTaskKind taskKind,
                                        Integer repeatFromTaskNo,
                                        Integer maxScore) {
+    }
+
+    public record ImportLogRow(String fileName,
+                               String subjects,
+                               String parallels,
+                               String status,
+                               String message,
+                               int records,
+                               String createdBy,
+                               LocalDateTime createdAt) {
     }
 
     public record SummaryCell(String subjectName,
