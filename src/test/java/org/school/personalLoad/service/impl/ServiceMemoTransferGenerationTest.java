@@ -15,6 +15,7 @@ import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.ServiceMemoRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.StudyPeriodSettingService;
+import org.school.personalLoad.service.ServiceMemoSettingsService;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -42,6 +43,8 @@ class ServiceMemoTransferGenerationTest {
     private ServiceMemoRepository serviceMemoRepository;
     @Mock
     private StudyPeriodSettingService studyPeriodSettingService;
+    @Mock
+    private ServiceMemoSettingsService serviceMemoSettingsService;
 
     private ServiceMemoServiceImpl service;
 
@@ -52,7 +55,8 @@ class ServiceMemoTransferGenerationTest {
                 manualLoadEntryRepository,
                 teacherDirectoryRepository,
                 serviceMemoRepository,
-                studyPeriodSettingService
+                studyPeriodSettingService,
+                serviceMemoSettingsService
         );
 
         lenient().when(studyPeriodSettingService.rangesByKey()).thenReturn(Map.of(
@@ -62,6 +66,7 @@ class ServiceMemoTransferGenerationTest {
         lenient().when(teacherDirectoryRepository.findAll()).thenReturn(List.of());
         lenient().when(serviceMemoRepository.findAllByStatusInOrderByCreatedAtDesc(any())).thenReturn(List.of());
         lenient().when(changesDAO.findAll()).thenReturn(List.of());
+        lenient().when(serviceMemoSettingsService.get()).thenReturn(new org.school.personalLoad.dto.ServiceMemoSettingsDto("Директору", "И.И. Ивановой"));
     }
 
     @Test
