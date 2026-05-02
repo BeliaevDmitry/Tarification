@@ -18,9 +18,11 @@ const paState = {
     }
 };
 const PA_SUMMARY_STATUS_OVERRIDES_KEY = 'pa.summary.status.overrides';
+const PA_CLASS_LEVEL_ASSIGNMENTS_KEY = 'pa.class.level.assignments';
 const paQueryParams = new URLSearchParams(window.location.search);
 let summaryStatusSelection = null;
 let summaryStatusOverrides = {};
+let classLevelAssignments = {};
 
 function paApi(path, options = {}) {
     const scoped = typeof window.withAcademicYear === 'function' ? window.withAcademicYear(path) : path;
@@ -93,6 +95,25 @@ function matrixCellSymbol(cell) {
 function parseParallel(scope) {
     const m = String(scope || '').match(/^(\d{1,2})/);
     return m ? Number(m[1]) : null;
+}
+
+
+function normalizeLevel(level) { return level === 'ADVANCED' ? 'ADVANCED' : 'BASIC'; }
+function classLevelAssignmentKey(subjectName, className, workType) { return `${subjectName}|${normalizeScopeValue(className)}|${workType}`; }
+function getCurriculumClassLevel(subjectName, className) {
+    const row = (paState.curriculum || []).find((r) => r.subjectName === subjectName && normalizeScopeValue(r.className) === normalizeScopeValue(className));
+    return normalizeLevel(row?.educationLevel);
+}
+function getAssignedLevel(subjectName, className, workType) {
+    return normalizeLevel(classLevelAssignments[classLevelAssignmentKey(subjectName, className, workType)] || getCurriculumClassLevel(subjectName, className));
+}
+function setAssignedLevel(subjectName, className, workType, level) { classLevelAssignments[classLevelAssignmentKey(subjectName, className, workType)] = normalizeLevel(level); }
+function saveClassLevelAssignments() { try { localStorage.setItem(PA_CLASS_LEVEL_ASSIGNMENTS_KEY, JSON.stringify(classLevelAssignments)); } catch (_) {} }
+function loadClassLevelAssignments() { try { classLevelAssignments = JSON.parse(localStorage.getItem(PA_CLASS_LEVEL_ASSIGNMENTS_KEY) || '{}') || {}; } catch (_) { classLevelAssignments = {}; } }
+function hasSpecFor(subjectName, scope, level, workType) {
+    const norm = normalizeScopeValue(scope); const p = parseParallel(scope);
+    return (paState.specifications || []).some((s) => s.activeVersion && s.subjectName === subjectName && s.level === level && s.workType === workType
+        && (normalizeScopeValue(s.scopeValue) === norm || (p !== null && s.scopeType === 'PARALLEL' && String(s.scopeValue).trim() === String(p))));
 }
 
 function workflowRangeStorageKey(prefix) {
@@ -247,10 +268,11 @@ function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
                         ? participationMap.get(parallelParticipationKey)
                         : true);
                 const overrideKey = `${row.subjectName}|${scope}|${row.level}`;
+                const missingByClass = taughtClasses.some((className) => !hasSpecFor(row.subjectName, className, getAssignedLevel(row.subjectName, className, 'ENTRY'), 'ENTRY') || !hasSpecFor(row.subjectName, className, getAssignedLevel(row.subjectName, className, 'EXIT'), 'EXIT'));
                 const override = summaryStatusOverrides[overrideKey];
                 const entryParticipates = typeof override?.entryParticipates === 'boolean' ? override.entryParticipates : true;
                 const exitParticipates = typeof override?.exitParticipates === 'boolean' ? override.exitParticipates : true;
-                html += `<td><button type="button" class="tab-btn summary-status-btn ${participates ? '' : 'inactive'}" data-summary-toggle-subject="${row.subjectName.replace(/"/g, '&quot;')}" data-summary-toggle-scope="${scope}" data-summary-toggle-level="${row.level}" data-summary-toggle-entry-participates="${entryParticipates ? 'true' : 'false'}" data-summary-toggle-exit-participates="${exitParticipates ? 'true' : 'false'}" data-summary-toggle-classes="${taughtClasses.join(', ').replace(/"/g, '&quot;')}">${matrixCellSymbol({ entry, exit, entryParticipates, exitParticipates, participates })}</button></td>`;
+                html += `<td><button type="button" class="tab-btn summary-status-btn ${participates ? '' : 'inactive'} ${missingByClass ? 'conflict' : ''}" data-summary-toggle-subject="${row.subjectName.replace(/"/g, '&quot;')}" data-summary-toggle-scope="${scope}" data-summary-toggle-level="${row.level}" data-summary-toggle-entry-participates="${entryParticipates ? 'true' : 'false'}" data-summary-toggle-exit-participates="${exitParticipates ? 'true' : 'false'}" data-summary-toggle-classes="${taughtClasses.join(', ').replace(/"/g, '&quot;')}">${matrixCellSymbol({ entry, exit, entryParticipates, exitParticipates, participates })}</button></td>`;
             });
             html += '</tr>';
         });
@@ -310,6 +332,7 @@ function renderSpecifications(rows) {
     fillSelectors('entry');
     fillSelectors('exit');
     renderCompactMatrix();
+        updateProblemCounter();
     bindSummaryToggles();
 }
 
@@ -530,6 +553,7 @@ async function reloadSummaryAndSpecs() {
 loadSpecificationImportLog().catch(() => {});
     }
     renderSpecifications(specs || []);
+    updateProblemCounter();
     if (paQueryParams.get('forceExitAll') === '1') {
         const exitSubject = document.getElementById('pa-exit-subject');
         if (exitSubject) {
@@ -601,7 +625,30 @@ function openSummaryStatusDialog(data) {
     document.getElementById('pa-summary-status-entry-check').checked = entryParticipates;
     document.getElementById('pa-summary-status-exit-check').checked = exitParticipates;
     document.getElementById('pa-summary-status-classes').textContent = data.summaryToggleClasses || '—';
+    renderAssignmentsTable(subjectName, (data.summaryToggleClasses || '').split(',').map((v) => v.trim()).filter(Boolean));
     if (typeof dialog.showModal === 'function') dialog.showModal();
+}
+
+
+function renderAssignmentsTable(subjectName, classes) {
+    const body = document.getElementById('pa-summary-level-assignments-body');
+    if (!body) return;
+    body.innerHTML = classes.map((className) => {
+        const entryLevel = getAssignedLevel(subjectName, className, 'ENTRY');
+        const exitLevel = getAssignedLevel(subjectName, className, 'EXIT');
+        return `<tr><td>${className}</td>
+            <td><select data-assignment-subject="${subjectName}" data-assignment-class="${className}" data-assignment-work-type="ENTRY"><option value="BASIC" ${entryLevel === 'BASIC' ? 'selected' : ''}>Базовый</option><option value="ADVANCED" ${entryLevel === 'ADVANCED' ? 'selected' : ''}>Углублённый</option></select></td>
+            <td><select data-assignment-subject="${subjectName}" data-assignment-class="${className}" data-assignment-work-type="EXIT"><option value="BASIC" ${exitLevel === 'BASIC' ? 'selected' : ''}>Базовый</option><option value="ADVANCED" ${exitLevel === 'ADVANCED' ? 'selected' : ''}>Углублённый</option></select></td></tr>`;
+    }).join('') || '<tr><td colspan="3" class="muted">Нет классов</td></tr>';
+}
+function updateProblemCounter() {
+    const el = document.getElementById('pa-problem-counter'); if (!el) return;
+    const tab = document.querySelector('#pa-spec-tabs [data-spec-tab].active')?.dataset.specTab || 'summary-5-11';
+    const r = tab === 'summary-1-4' ? [1,4] : [5,11];
+    const count = (paState.curriculum || []).filter((row) => { const p=parseParallel(row.className); if (p===null||p<r[0]||p>r[1]) return false;
+        return !hasSpecFor(row.subjectName,row.className,getAssignedLevel(row.subjectName,row.className,'ENTRY'),'ENTRY') || !hasSpecFor(row.subjectName,row.className,getAssignedLevel(row.subjectName,row.className,'EXIT'),'EXIT');
+    }).length;
+    el.textContent = `Проблем: ${count}`;
 }
 
 function saveSummaryStatusOverrides() {
@@ -627,11 +674,14 @@ async function saveSummaryStatusFromDialog() {
     const entryParticipates = document.getElementById('pa-summary-status-entry-check').checked;
     const exitParticipates = document.getElementById('pa-summary-status-exit-check').checked;
     summaryStatusOverrides[`${subjectName}|${scopeValue}|${level}`] = { entryParticipates, exitParticipates };
+    document.querySelectorAll('[data-assignment-subject]').forEach((el) => setAssignedLevel(el.dataset.assignmentSubject, el.dataset.assignmentClass, el.dataset.assignmentWorkType, el.value));
     saveSummaryStatusOverrides();
+    saveClassLevelAssignments();
     try {
         document.getElementById('pa-summary-status-dialog').close();
         summaryStatusSelection = null;
         renderCompactMatrix();
+        updateProblemCounter();
     } catch (e) {
         alert(`Ошибка сохранения: ${e.message}`);
     }
@@ -849,8 +899,7 @@ async function renderWorkflow(prefix, loadedVersions = null) {
     const body = document.getElementById(`pa-${prefix}-workflow-body`);
     if (!head || !body) return;
     const specs = paState.specifications.filter((s) =>
-        s.level === level
-        && s.workType === workType
+        s.workType === workType
         && (subject === 'ALL' || s.subjectName === subject)
     );
     if (!specs.length) {
@@ -887,11 +936,19 @@ async function renderWorkflow(prefix, loadedVersions = null) {
     });
 
     const versionMap = new Map();
-    const summaryRows = await paApi(`/api/pa/reports/workflow-summary?${new URLSearchParams({
-        level,
-        workType,
-        ...(subject !== 'ALL' ? { subjectName: subject } : {})
-    }).toString()}`);
+    const summaryRowsByLevel = await Promise.all([
+        paApi(`/api/pa/reports/workflow-summary?${new URLSearchParams({
+            level: 'BASIC',
+            workType,
+            ...(subject !== 'ALL' ? { subjectName: subject } : {})
+        }).toString()}`),
+        paApi(`/api/pa/reports/workflow-summary?${new URLSearchParams({
+            level: 'ADVANCED',
+            workType,
+            ...(subject !== 'ALL' ? { subjectName: subject } : {})
+        }).toString()}`)
+    ]);
+    const summaryRows = [...(summaryRowsByLevel[0] || []), ...(summaryRowsByLevel[1] || [])];
     (summaryRows || []).forEach((row) => {
         versionMap.set(`${row.subjectName}|${normalizeScopeValue(row.scopeValue)}`, {
             hasGenerated: Boolean(row.hasGenerated),
@@ -1060,6 +1117,7 @@ if (specTabs) {
         if (!btn) return;
         event.preventDefault();
         setSpecTab(btn.dataset.specTab);
+        updateProblemCounter();
     });
 }
 const exitTabs = document.getElementById('pa-exit-tabs');
@@ -1118,6 +1176,7 @@ bindWorkflowRangeTabs('exit');
 applySharedPaPageNav();
 
 loadSummaryStatusOverrides();
+loadClassLevelAssignments();
 reloadSummaryAndSpecs().catch((e) => {
     appendSpecificationImportLog([{ fileName: '—', warnings: [`Ошибка: ${e.message}`], importedTasks: 0 }]);
 });
