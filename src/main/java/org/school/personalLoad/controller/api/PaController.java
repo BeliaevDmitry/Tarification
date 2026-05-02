@@ -1,6 +1,7 @@
 package org.school.personalLoad.controller.api;
 
 import lombok.RequiredArgsConstructor;
+import org.school.personalLoad.auth.SessionUser;
 import org.school.personalLoad.pa.dto.PaDtos;
 import org.school.personalLoad.pa.model.PaLevel;
 import org.school.personalLoad.pa.model.PaScopeType;
@@ -11,6 +12,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import javax.servlet.http.HttpSession;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
@@ -33,9 +36,22 @@ public class PaController {
 
     @PostMapping("/specifications/import")
     public ResponseEntity<List<PaDtos.ImportResult>> importSpecifications(@RequestParam("files") List<MultipartFile> files,
-                                                                          @RequestParam(required = false) String academicYear) {
+                                                                          @RequestParam(required = false) String academicYear,
+                                                                          HttpSession session) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
-        return ResponseEntity.ok(paService.importSpecifications(year, files));
+        SessionUser user = (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
+        String username = user == null ? "unknown" : user.getUsername();
+        return ResponseEntity.ok(paService.importSpecifications(year, files, username));
+    }
+
+    @GetMapping("/specifications/import-log")
+    public ResponseEntity<List<PaDtos.ImportLogRow>> specificationImportLog(@RequestParam(required = false) String academicYear,
+                                                                             HttpSession session) {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        SessionUser user = (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
+        String username = user == null ? "unknown" : user.getUsername();
+        boolean admin = user != null && user.isAdmin();
+        return ResponseEntity.ok(paService.specificationImportLog(year, username, admin));
     }
 
     @GetMapping("/specifications")
@@ -73,7 +89,8 @@ public class PaController {
                                                                         @RequestParam String scopeValue,
                                                                         @RequestParam PaLevel level,
                                                                         @RequestParam PaWorkType workType,
-                                                                        @RequestParam(required = false) String workDate) {
+                                                                        @RequestParam(required = false) String workDate,
+                                                                    @RequestParam(defaultValue = "false") boolean force) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
         LocalDate date = (workDate == null || workDate.isBlank()) ? null : LocalDate.parse(workDate);
         return ResponseEntity.ok(paService.reportVersions(year, subjectName, scopeType, scopeValue, level, workType, date));
@@ -119,10 +136,11 @@ public class PaController {
                                                                     @RequestParam String className,
                                                                     @RequestParam PaLevel level,
                                                                     @RequestParam PaWorkType workType,
-                                                                    @RequestParam(required = false) String workDate) {
+                                                                    @RequestParam(required = false) String workDate,
+                                                                                       @RequestParam(defaultValue = "false") boolean force) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
         LocalDate date = (workDate == null || workDate.isBlank()) ? null : LocalDate.parse(workDate);
-        return ResponseEntity.ok(paService.generateReportTemplate(year, subjectName, className, level, workType, date));
+        return ResponseEntity.ok(paService.generateReportTemplate(year, subjectName, className, level, workType, date, force));
     }
 
     @PostMapping("/reports/generate/parallel")
@@ -131,10 +149,11 @@ public class PaController {
                                                                                        @RequestParam String parallel,
                                                                                        @RequestParam PaLevel level,
                                                                                        @RequestParam PaWorkType workType,
-                                                                                       @RequestParam(required = false) String workDate) {
+                                                                                       @RequestParam(required = false) String workDate,
+                                                                                  @RequestParam(defaultValue = "false") boolean force) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
         LocalDate date = (workDate == null || workDate.isBlank()) ? null : LocalDate.parse(workDate);
-        return ResponseEntity.ok(paService.generateReportTemplatesByParallel(year, subjectName, parallel, level, workType, date));
+        return ResponseEntity.ok(paService.generateReportTemplatesByParallel(year, subjectName, parallel, level, workType, date, force));
     }
 
     @PostMapping("/reports/generate/all")
@@ -142,10 +161,27 @@ public class PaController {
                                                                                   @RequestParam String subjectName,
                                                                                   @RequestParam PaLevel level,
                                                                                   @RequestParam PaWorkType workType,
-                                                                                  @RequestParam(required = false) String workDate) {
+                                                                                  @RequestParam(required = false) String workDate,
+                                                                                  @RequestParam(defaultValue = "false") boolean force) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
         LocalDate date = (workDate == null || workDate.isBlank()) ? null : LocalDate.parse(workDate);
-        return ResponseEntity.ok(paService.generateAllReportTemplates(year, subjectName, level, workType, date));
+        return ResponseEntity.ok(paService.generateAllReportTemplates(year, subjectName, level, workType, date, force));
+    }
+
+
+
+    @DeleteMapping("/reports/generated")
+    public ResponseEntity<java.util.Map<String, Object>> deleteGeneratedReports(@RequestParam(required = false) String academicYear,
+                                                                                 @RequestParam String subjectName,
+                                                                                 @RequestParam String scopeValue,
+                                                                                 @RequestParam(defaultValue = "false") boolean byParallel,
+                                                                                 @RequestParam PaLevel level,
+                                                                                 @RequestParam PaWorkType workType,
+                                                                                 @RequestParam(required = false) String workDate) {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        LocalDate date = (workDate == null || workDate.isBlank()) ? null : LocalDate.parse(workDate);
+        int removed = paService.deleteGeneratedReports(year, subjectName, scopeValue, byParallel, level, workType, date);
+        return ResponseEntity.ok(java.util.Map.of("deleted", removed));
     }
 
     @GetMapping("/reports/{reportVersionId}/download")
