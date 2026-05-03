@@ -32,6 +32,9 @@ public class ContingentStudent {
     private String fullName;
 
     @Column(nullable = false)
+    private String shortName;
+
+    @Column(nullable = false)
     private String gender;
 
     @Column(nullable = false)

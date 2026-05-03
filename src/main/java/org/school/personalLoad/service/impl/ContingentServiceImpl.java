@@ -97,6 +97,7 @@ public class ContingentServiceImpl implements ContingentService {
                 student.setRecordNumber(recordNumber.isBlank() ? UUID.randomUUID().toString() : recordNumber);
                 student.setEnrollmentDate(getCellValueByMarker(row, indexByHeader, formatter, "заведено"));
                 student.setFullName(fullName);
+                student.setShortName(toShortName(fullName));
                 student.setGender(getCellValueByMarker(row, indexByHeader, formatter, "пол"));
                 student.setBirthDate(getCellValueByMarker(row, indexByHeader, formatter, "родился"));
                 student.setBirthCertificate(getCellValueByMarker(row, indexByHeader, formatter, "свидетельство о рождении"));
@@ -150,6 +151,17 @@ public class ContingentServiceImpl implements ContingentService {
         response.setSkippedRows(skipped);
         response.setProblems(getProblems(academicYear, savedSnapshot.getId()));
         return response;
+    }
+
+    private String toShortName(String fullName) {
+        String normalized = normalize(fullName);
+        if (normalized.isBlank()) return normalized;
+        String[] parts = normalized.split("\\s+");
+        if (parts.length == 1) return parts[0];
+        StringBuilder sb = new StringBuilder(parts[0]);
+        if (parts.length > 1 && !parts[1].isBlank()) sb.append(" ").append(parts[1].substring(0, 1).toUpperCase(Locale.ROOT)).append(".");
+        if (parts.length > 2 && !parts[2].isBlank()) sb.append(parts[2].substring(0, 1).toUpperCase(Locale.ROOT)).append(".");
+        return sb.toString();
     }
 
     @Override

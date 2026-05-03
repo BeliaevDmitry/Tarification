@@ -10,4 +10,5 @@ public class TeacherCreateRequest {
     private String initialsDative;
     private String phone;
     private String email;
+    private String additionalDuties;
 }
