@@ -1008,6 +1008,10 @@ public class PaServiceImpl implements PaService {
     @Override
     @Transactional
     public void deleteSpecification(String academicYear, Long specificationId) throws IOException {
+        deleteSpecificationInternal(academicYear, specificationId);
+    }
+
+    private void deleteSpecificationInternal(String academicYear, Long specificationId) throws IOException {
         PaSpecification specification = specificationRepository.findById(specificationId)
                 .orElseThrow(() -> new IllegalArgumentException("Спецификация не найдена"));
         taskRepository.deleteAllBySpecificationId(specificationId);
