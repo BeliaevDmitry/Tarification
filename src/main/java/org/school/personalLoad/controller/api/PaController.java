@@ -76,6 +76,14 @@ public class PaController {
                 .body(body);
     }
 
+    @DeleteMapping("/specifications/{specificationId}")
+    public ResponseEntity<Void> deleteSpecification(@PathVariable Long specificationId,
+                                                    @RequestParam(required = false) String academicYear) throws Exception {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        paService.deleteSpecification(year, specificationId);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/specifications/summary")
     public ResponseEntity<PaDtos.SummaryResponse> summary(@RequestParam(required = false) String academicYear) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
