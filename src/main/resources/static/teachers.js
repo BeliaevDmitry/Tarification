@@ -50,17 +50,18 @@ function renderTeachers(rows) {
             const tr = document.createElement("tr");
             if (row.dismissalDate) tr.classList.add("dismissal-row");
             tr.innerHTML = `
-                <td>${escapeHtml(row.fioTeacher)}</td>
+                <td><input class="teacher-fio-input" data-id="${row.id}" value="${escapeHtml(row.fioTeacher || "")}" placeholder="ФИО"></td>
+                <td><input class="teacher-initials-input" data-id="${row.id}" value="${escapeHtml(row.initials || "")}" placeholder="ФИО (инициалы)"></td>
                 <td>
-                    <div class="row">
-                        <input class="teacher-dative-input" data-id="${row.id}" value="${escapeHtml(row.fioTeacherDative || "")}" placeholder="Напр.: Иванову И.И.">
-                        <button type="button" class="save-dative-btn" data-id="${row.id}">Сохранить</button>
-                    </div>
+                    <input class="teacher-dative-input" data-id="${row.id}" value="${escapeHtml(row.fioTeacherDative || "")}" placeholder="Дательный падеж">
                 </td>
+                <td><input class="teacher-phone-input" data-id="${row.id}" value="${escapeHtml(row.phone || "")}" placeholder="+7 ..."></td>
+                <td><input class="teacher-email-input" data-id="${row.id}" value="${escapeHtml(row.email || "")}" placeholder="email"></td>
+                <td><input class="teacher-duties-input" data-id="${row.id}" value="${escapeHtml(row.additionalDuties || "")}" placeholder="Доп. обязанности"></td>
                 <td>${escapeHtml(statusLabel(row))}</td>
-                <td>${escapeHtml(row.createdAt)}</td>
                 <td>
                     <div class="row">
+                        <button type="button" class="save-teacher-btn" data-id="${row.id}">Сохранить</button>
                         <input type="date" class="dismiss-date-input" value="${escapeHtml(row.dismissalDate || "")}" data-id="${row.id}">
                         <button type="button" class="mark-dismiss-btn" data-id="${row.id}">На увольнение</button>
                         ${row.dismissalDate ? `<button type="button" class="restore-teacher-btn" data-id="${row.id}">Восстановить</button>` : ""}
@@ -70,16 +71,21 @@ function renderTeachers(rows) {
             ui.tbody.appendChild(tr);
         });
 
-    ui.tbody.querySelectorAll(".save-dative-btn").forEach((btn) => {
+    ui.tbody.querySelectorAll(".save-teacher-btn").forEach((btn) => {
         btn.addEventListener("click", async () => {
             const id = btn.dataset.id;
+            const fioTeacher = (ui.tbody.querySelector(`.teacher-fio-input[data-id="${id}"]`)?.value || "").trim();
+            const initials = (ui.tbody.querySelector(`.teacher-initials-input[data-id="${id}"]`)?.value || "").trim();
             const input = ui.tbody.querySelector(`.teacher-dative-input[data-id="${id}"]`);
             const fioTeacherDative = (input?.value || "").trim();
+            const phone = (ui.tbody.querySelector(`.teacher-phone-input[data-id="${id}"]`)?.value || "").trim();
+            const email = (ui.tbody.querySelector(`.teacher-email-input[data-id="${id}"]`)?.value || "").trim();
+            const additionalDuties = (ui.tbody.querySelector(`.teacher-duties-input[data-id="${id}"]`)?.value || "").trim();
             try {
                 const result = await api(`/api/teachers/${id}`, {
                     method: "PATCH",
                     headers: jsonHeaders,
-                    body: JSON.stringify({ fioTeacherDative })
+                    body: JSON.stringify({ fioTeacher, fioTeacherDative, initials, phone, email, additionalDuties })
                 });
                 print(result);
                 await loadTeachers();

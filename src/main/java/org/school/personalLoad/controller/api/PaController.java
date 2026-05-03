@@ -17,6 +17,8 @@ import javax.servlet.http.HttpSession;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @RestController
@@ -30,6 +32,7 @@ public class PaController {
                                        PaLevel level,
                                        Boolean participates) {
     }
+    public record ClassLevelAssignmentsRequest(List<PaDtos.ClassLevelAssignmentRow> rows) {}
 
     private final PaService paService;
     private final AcademicYearService academicYearService;
@@ -54,6 +57,31 @@ public class PaController {
         return ResponseEntity.ok(paService.specificationImportLog(year, username, admin));
     }
 
+    @GetMapping("/specifications/import-log/{importLogId}/download")
+    public ResponseEntity<byte[]> downloadSpecificationImportFile(@PathVariable Long importLogId,
+                                                                  @RequestParam(required = false) String academicYear) throws Exception {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        byte[] body = paService.loadSpecificationImportLogFile(year, importLogId);
+        String fileName = paService.specificationImportLogFileName(year, importLogId);
+        String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(body);
+    }
+
+    @GetMapping("/specifications/import-file/download")
+    public ResponseEntity<byte[]> downloadSpecificationImportFileByName(@RequestParam String fileName,
+                                                                        @RequestParam(required = false) String academicYear) throws Exception {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        byte[] body = paService.loadSpecificationImportFileByName(year, fileName);
+        String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(body);
+    }
+
     @GetMapping("/specifications")
     public ResponseEntity<List<PaDtos.SpecificationRow>> specifications(@RequestParam(required = false) String academicYear) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
@@ -70,16 +98,40 @@ public class PaController {
                                                         @RequestParam(required = false) String academicYear) throws Exception {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
         byte[] body = paService.loadSpecificationFile(year, specificationId);
+        String fileName = paService.specificationFileName(year, specificationId);
+        String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"pa-specification-" + specificationId + ".xlsx\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(body);
+    }
+
+    @DeleteMapping("/specifications/{specificationId}")
+    public ResponseEntity<Void> deleteSpecification(@PathVariable Long specificationId,
+                                                    @RequestParam(required = false) String academicYear) throws Exception {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        paService.deleteSpecification(year, specificationId);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/specifications/summary")
     public ResponseEntity<PaDtos.SummaryResponse> summary(@RequestParam(required = false) String academicYear) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
         return ResponseEntity.ok(paService.summary(year));
+    }
+
+    @GetMapping("/specifications/class-level-assignments")
+    public ResponseEntity<List<PaDtos.ClassLevelAssignmentRow>> classLevelAssignments(@RequestParam(required = false) String academicYear) {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        return ResponseEntity.ok(paService.classLevelAssignments(year));
+    }
+
+    @PutMapping("/specifications/class-level-assignments")
+    public ResponseEntity<Void> saveClassLevelAssignments(@RequestParam(required = false) String academicYear,
+                                                          @RequestBody ClassLevelAssignmentsRequest request) {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        paService.saveClassLevelAssignments(year, request == null ? List.of() : request.rows());
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/reports/versions")
@@ -187,8 +239,10 @@ public class PaController {
     @GetMapping("/reports/{reportVersionId}/download")
     public ResponseEntity<byte[]> downloadReport(@PathVariable Long reportVersionId) throws Exception {
         byte[] body = paService.loadReportFile(reportVersionId);
+        String fileName = paService.reportFileName(reportVersionId);
+        String encoded = java.net.URLEncoder.encode(fileName, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"pa-report-" + reportVersionId + ".xlsx\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encoded)
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(body);
     }
