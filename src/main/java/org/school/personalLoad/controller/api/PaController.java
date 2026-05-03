@@ -210,8 +210,10 @@ public class PaController {
     @GetMapping("/reports/{reportVersionId}/download")
     public ResponseEntity<byte[]> downloadReport(@PathVariable Long reportVersionId) throws Exception {
         byte[] body = paService.loadReportFile(reportVersionId);
+        String fileName = paService.reportFileName(reportVersionId);
+        String encoded = java.net.URLEncoder.encode(fileName, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"pa-report-" + reportVersionId + ".xlsx\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encoded)
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(body);
     }

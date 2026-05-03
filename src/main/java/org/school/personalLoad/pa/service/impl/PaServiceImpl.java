@@ -893,6 +893,14 @@ public class PaServiceImpl implements PaService {
         return Files.readAllBytes(path);
     }
 
+    @Override
+    public String reportFileName(Long reportVersionId) {
+        return reportVersionRepository.findById(reportVersionId)
+                .map(PaReportVersion::getSourceFileName)
+                .filter(name -> name != null && !name.isBlank())
+                .orElse("pa-report-" + reportVersionId + ".xlsx");
+    }
+
     private Path resolveReportFilePath(PaReportVersion version) {
         if (version.getSourceFilePath() != null && !version.getSourceFilePath().isBlank()) {
             return Path.of(version.getSourceFilePath());

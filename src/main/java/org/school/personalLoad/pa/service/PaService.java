@@ -29,5 +29,6 @@ public interface PaService {
     int deleteGeneratedReports(String academicYear, String subjectName, String scopeValue, boolean byParallel, PaLevel level, PaWorkType workType, LocalDate workDate);
     List<PaDtos.ReportFolderItem> reportFolderItems(String academicYear, PaWorkType workType);
     byte[] loadReportFile(Long reportVersionId) throws IOException;
+    String reportFileName(Long reportVersionId);
     byte[] loadSpecificationFile(String academicYear, Long specificationId) throws IOException;
 }
