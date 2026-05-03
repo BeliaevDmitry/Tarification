@@ -1196,7 +1196,21 @@ public class PaServiceImpl implements PaService {
     }
 
     private String normalizeClass(String value) {
-        return String.valueOf(value == null ? "" : value).trim().toUpperCase(Locale.ROOT).replaceAll("\\s+", "");
+        String raw = String.valueOf(value == null ? "" : value).trim().toUpperCase(Locale.ROOT)
+                .replaceAll("[\\s\\-–—_./\\\\]+", "");
+        return raw
+                .replace('A', 'А')
+                .replace('B', 'В')
+                .replace('C', 'С')
+                .replace('E', 'Е')
+                .replace('H', 'Н')
+                .replace('K', 'К')
+                .replace('M', 'М')
+                .replace('O', 'О')
+                .replace('P', 'Р')
+                .replace('T', 'Т')
+                .replace('X', 'Х')
+                .replace('Y', 'У');
     }
 
     private LocalDate parseLocalDate(String value) {

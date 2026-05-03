@@ -174,7 +174,10 @@ function initWorkflowRange(prefix) {
 }
 
 function normalizeScopeValue(value) {
-    return String(value || '').trim().toUpperCase().replace(/\s+/g, '');
+    const raw = String(value || '').trim().toUpperCase()
+        .replace(/[\s\-–—_./\\]+/g, '');
+    const latinToCyr = { A: 'А', B: 'В', C: 'С', E: 'Е', H: 'Н', K: 'К', M: 'М', O: 'О', P: 'Р', T: 'Т', X: 'Х', Y: 'У' };
+    return [...raw].map((ch) => latinToCyr[ch] || ch).join('');
 }
 
 function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
