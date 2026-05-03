@@ -239,11 +239,15 @@ function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
                     html += '<td></td>';
                     return;
                 }
-                const specs = (paState.specifications || []).filter((s) =>
-                    s.subjectName === row.subjectName
-                    && normalizeScopeValue(s.scopeValue) === normalizeScopeValue(scope)
-                    && s.activeVersion
-                );
+                const scopeParallel = parseParallel(scope);
+                const specs = (paState.specifications || []).filter((s) => {
+                    if (!s.activeVersion || s.subjectName !== row.subjectName) return false;
+                    if (normalizeScopeValue(s.scopeValue) === normalizeScopeValue(scope)) return true;
+                    if (scopeParallel !== null && s.scopeType === 'CLASS') {
+                        return parseParallel(s.scopeValue) === scopeParallel;
+                    }
+                    return false;
+                });
                 const entry = specs.some((s) => s.workType === 'ENTRY');
                 const exit = specs.some((s) => s.workType === 'EXIT');
                 const scopeAsParallel = parseParallel(scope);
@@ -628,10 +632,14 @@ function renderAssignmentsTable(subjectName, classes) {
     body.innerHTML = classes.map((className) => {
         const entryLevel = getAssignedLevel(subjectName, className, 'ENTRY');
         const exitLevel = getAssignedLevel(subjectName, className, 'EXIT');
+        const hasEntry = hasSpecFor(subjectName, className, entryLevel, 'ENTRY');
+        const hasExit = hasSpecFor(subjectName, className, exitLevel, 'EXIT');
         return `<tr><td>${className}</td>
             <td><select data-assignment-subject="${subjectName}" data-assignment-class="${className}" data-assignment-work-type="ENTRY"><option value="BASIC" ${entryLevel === 'BASIC' ? 'selected' : ''}>Базовый</option><option value="ADVANCED" ${entryLevel === 'ADVANCED' ? 'selected' : ''}>Углублённый</option></select></td>
-            <td><select data-assignment-subject="${subjectName}" data-assignment-class="${className}" data-assignment-work-type="EXIT"><option value="BASIC" ${exitLevel === 'BASIC' ? 'selected' : ''}>Базовый</option><option value="ADVANCED" ${exitLevel === 'ADVANCED' ? 'selected' : ''}>Углублённый</option></select></td></tr>`;
-    }).join('') || '<tr><td colspan="3" class="muted">Нет классов</td></tr>';
+            <td>${hasEntry ? '✅' : '❌'}</td>
+            <td><select data-assignment-subject="${subjectName}" data-assignment-class="${className}" data-assignment-work-type="EXIT"><option value="BASIC" ${exitLevel === 'BASIC' ? 'selected' : ''}>Базовый</option><option value="ADVANCED" ${exitLevel === 'ADVANCED' ? 'selected' : ''}>Углублённый</option></select></td>
+            <td>${hasExit ? '✅' : '❌'}</td></tr>`;
+    }).join('') || '<tr><td colspan="5" class="muted">Нет классов</td></tr>';
 }
 function updateProblemCounter() {
     const el = document.getElementById('pa-problem-counter'); if (!el) return;
