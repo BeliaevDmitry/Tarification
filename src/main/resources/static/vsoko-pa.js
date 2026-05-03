@@ -364,7 +364,7 @@ function renderSpecifications(rows) {
                 <td>${row.level === 'ADVANCED' ? 'Углублённый' : 'Базовый'}</td>
                 <td>${workTypeRu(row.workType)}</td>
                 <td><button type="button" class="tab-btn" data-spec-versions-key="${row.subjectName}|${row.scopeValue}|${row.level}|${row.workType}">v${row.versionNo || 1}</button></td>
-                <td>${row.sourceFileName ? `<button type="button" class="tab-btn" title="${row.sourceFileName.replace(/"/g, '&quot;')}" data-download-spec-id="${row.id}">⬇</button>` : ''}</td>
+                <td>${row.sourceFileName ? `<button type="button" class="tab-btn" style="font-size:22px;font-weight:900;line-height:1;" title="${row.sourceFileName.replace(/"/g, '&quot;')}" data-download-spec-id="${row.id}">⬇</button>` : ''}</td>
                 <td>
                     <label><input type="checkbox" data-participation-subject="${row.subjectName}" data-participation-scope-type="${row.scopeType}" data-participation-scope="${row.scopeValue}" data-participation-level="${row.level}" ${participationMap.get(`${row.subjectName}|${row.scopeValue}|${row.level}`) === false ? '' : 'checked'}> Да</label>
                 </td>
@@ -841,7 +841,7 @@ function renderSpecificationImportLog() {
     body.innerHTML = paState.importLogHistory.map((row) => `
         <tr>
             <td>${row.timestamp}</td>
-            <td>${row.id ? `<button type="button" class="tab-btn" data-download-import-log-id="${row.id}">${row.fileName}</button>` : row.fileName}</td>
+            <td>${row.id ? `<a class="tab-btn" href="${(typeof window.withAcademicYear === 'function' ? window.withAcademicYear(`/api/pa/specifications/import-log/${row.id}/download`) : `/api/pa/specifications/import-log/${row.id}/download`)}" download>${row.fileName}</a>` : row.fileName}</td>
             <td>${row.subject}</td>
             <td>${row.parallel}</td>
             <td>${row.status}</td>
