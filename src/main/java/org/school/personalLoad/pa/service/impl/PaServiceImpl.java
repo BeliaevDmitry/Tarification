@@ -487,6 +487,7 @@ public class PaServiceImpl implements PaService {
                 String typeRaw = info.getOrDefault("тип", "");
                 String yearInFile = info.getOrDefault("учебный год", "");
                 String dateRaw = info.getOrDefault("дата написания работы", "");
+                String levelRaw = info.getOrDefault("уровень", "");
 
                 if (teacher.isBlank() || subject.isBlank() || scopeValue.isBlank() || typeRaw.isBlank()) {
                     results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, "Не заполнены обязательные поля листа «Информация»"));
@@ -527,7 +528,10 @@ public class PaServiceImpl implements PaService {
                 }
 
                 PaScopeType scopeType = detectScopeType(scopeValue);
-                PaLevel level = PaLevel.BASIC;
+                PaLevel parsedLevel = parseLevel(levelRaw);
+                PaLevel level = parsedLevel != null
+                        ? parsedLevel
+                        : resolveAssignedLevel(academicYear, subject, scopeValue, workType, PaLevel.BASIC);
                 List<PaReportVersion> sameKey = reportVersionRepository.findAllByAcademicYearAndSubjectNameAndScopeTypeAndScopeValueAndLevelAndWorkTypeAndWorkDate(
                         academicYear, subject, scopeType, scopeValue.trim().toUpperCase(Locale.ROOT), level, workType, workDate
                 );
