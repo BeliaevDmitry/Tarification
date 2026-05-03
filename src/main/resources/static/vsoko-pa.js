@@ -21,6 +21,7 @@ const PA_SUMMARY_STATUS_OVERRIDES_KEY = 'pa.summary.status.overrides';
 const paQueryParams = new URLSearchParams(window.location.search);
 let summaryStatusSelection = null;
 let summaryStatusOverrides = {};
+let classLevelAssignments = {};
 
 function paApi(path, options = {}) {
     const scoped = typeof window.withAcademicYear === 'function' ? window.withAcademicYear(path) : path;
@@ -85,14 +86,71 @@ function workTypeRu(workType) {
 
 function matrixCellSymbol(cell) {
     if (!cell) return '❌/❌';
-    const entry = cell.entryParticipates === false ? '⚪' : (cell.entry ? '✅' : '❌');
-    const exit = cell.exitParticipates === false ? '⚪' : (cell.exit ? '✅' : '❌');
-    return `${entry}/${exit}`;
+    const toIcon = (status) => {
+        if (status === 'NONE') return '❌';
+        if (status === 'SPLIT') return '⚠✅';
+        if (status === 'PARTIAL') return '❗✅';
+        return '✅';
+    };
+    return `${toIcon(cell.entryStatus)}/${toIcon(cell.exitStatus)}`;
 }
 
 function parseParallel(scope) {
     const m = String(scope || '').match(/^(\d{1,2})/);
     return m ? Number(m[1]) : null;
+}
+
+
+function normalizeLevel(level) { return level === 'ADVANCED' ? 'ADVANCED' : 'BASIC'; }
+function classLevelAssignmentKey(subjectName, className, workType) { return `${subjectName}|${normalizeScopeValue(className)}|${workType}`; }
+function getAssignmentRecord(subjectName, className, workType) {
+    const raw = classLevelAssignments[classLevelAssignmentKey(subjectName, className, workType)];
+    if (!raw) return null;
+    if (typeof raw === 'string') return { level: normalizeLevel(raw), manual: true };
+    return { level: normalizeLevel(raw.level), manual: Boolean(raw.manual) };
+}
+function getCurriculumClassLevel(subjectName, className) {
+    const row = (paState.curriculum || []).find((r) => r.subjectName === subjectName && normalizeScopeValue(r.className) === normalizeScopeValue(className));
+    return normalizeLevel(row?.educationLevel);
+}
+function hasClassScopedAdvancedSpec(subjectName, className, workType) {
+    return (paState.specifications || []).some((s) =>
+        s.activeVersion
+        && s.subjectName === subjectName
+        && s.scopeType === 'CLASS'
+        && normalizeScopeValue(s.scopeValue) === normalizeScopeValue(className)
+        && s.level === 'ADVANCED'
+        && s.workType === workType);
+}
+function getAssignedLevel(subjectName, className, workType) {
+    const rec = getAssignmentRecord(subjectName, className, workType);
+    if (rec?.manual) return rec.level;
+    if (hasClassScopedAdvancedSpec(subjectName, className, workType)) return 'ADVANCED';
+    return rec?.level || getCurriculumClassLevel(subjectName, className);
+}
+function setAssignedLevel(subjectName, className, workType, level, manual = true) { classLevelAssignments[classLevelAssignmentKey(subjectName, className, workType)] = { level: normalizeLevel(level), manual }; }
+async function saveClassLevelAssignments() {
+    const rows = Object.entries(classLevelAssignments).map(([key, value]) => {
+        const [subjectName, className, workType] = key.split('|');
+        return { subjectName, className, workType, level: value.level, manual: value.manual !== false };
+    });
+    await paApi('/api/pa/specifications/class-level-assignments', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows })
+    });
+}
+async function loadClassLevelAssignments() {
+    const rows = await paApi('/api/pa/specifications/class-level-assignments');
+    classLevelAssignments = {};
+    (rows || []).forEach((row) => {
+        setAssignedLevel(row.subjectName, row.className, row.workType, row.level, row.manual !== false);
+    });
+}
+function hasSpecFor(subjectName, scope, level, workType) {
+    const norm = normalizeScopeValue(scope); const p = parseParallel(scope);
+    return (paState.specifications || []).some((s) => s.activeVersion && s.subjectName === subjectName && s.level === level && s.workType === workType
+        && (normalizeScopeValue(s.scopeValue) === norm || (p !== null && s.scopeType === 'PARALLEL' && String(s.scopeValue).trim() === String(p))));
 }
 
 function workflowRangeStorageKey(prefix) {
@@ -136,7 +194,10 @@ function initWorkflowRange(prefix) {
 }
 
 function normalizeScopeValue(value) {
-    return String(value || '').trim().toUpperCase().replace(/\s+/g, '');
+    const raw = String(value || '').trim().toUpperCase()
+        .replace(/[\s\-–—_./\\]+/g, '');
+    const latinToCyr = { A: 'А', B: 'В', C: 'С', E: 'Е', H: 'Н', K: 'К', M: 'М', O: 'О', P: 'Р', T: 'Т', X: 'Х', Y: 'У' };
+    return [...raw].map((ch) => latinToCyr[ch] || ch).join('');
 }
 
 function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
@@ -151,24 +212,7 @@ function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
         .sort((a, b) => a.localeCompare(b, 'ru'));
     const baseParallels = [...new Set(curriculumRows.map((row) => String(parseParallel(row.className)).trim()))]
         .sort((a, b) => Number(a) - Number(b));
-    const classScopes = [...new Set((paState.specifications || [])
-        .filter((s) => s.scopeType === 'CLASS')
-        .filter((s) => {
-            const p = parseParallel(s.scopeValue);
-            return p !== null && p >= fromParallel && p <= toParallel;
-        })
-        .map((s) => s.scopeValue)
-    )].sort((a, b) => {
-        const pa = parseParallel(a) || 0;
-        const pb = parseParallel(b) || 0;
-        if (pa !== pb) return pa - pb;
-        return String(a).localeCompare(String(b), 'ru');
-    });
-    const columns = [];
-    baseParallels.forEach((p) => {
-        columns.push(p);
-        classScopes.filter((scope) => String(parseParallel(scope)) === String(p)).forEach((scope) => columns.push(scope));
-    });
+    const columns = [...baseParallels];
 
     head.innerHTML = `<tr><th>Предметная область</th><th>Предмет</th>${columns.map((c) => `<th>${c}</th>`).join('')}</tr>`;
     if (!subjects.length || !columns.length) {
@@ -207,19 +251,7 @@ function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
     const areas = [...new Set(subjects.map((s) => subjectAreaByName(s)))].sort((a, b) => a.localeCompare(b, 'ru'));
     areas.forEach((area) => {
         const areaSubjects = subjects.filter((s) => subjectAreaByName(s) === area);
-        const areaRows = [];
-        areaSubjects.forEach((subject) => {
-            const hasAdvanced = (paState.specifications || []).some((s) =>
-                s.subjectName === subject
-                && s.level === 'ADVANCED'
-                && (() => {
-                    const p = parseParallel(s.scopeValue);
-                    return p !== null && p >= fromParallel && p <= toParallel;
-                })()
-            );
-            areaRows.push({ subjectName: subject, level: 'BASIC', title: subject });
-            if (hasAdvanced) areaRows.push({ subjectName: subject, level: 'ADVANCED', title: `${subject} (угл)` });
-        });
+        const areaRows = areaSubjects.map((subject) => ({ subjectName: subject, title: subject }));
         areaRows.forEach((row, idx) => {
             html += '<tr>';
             if (idx === 0) html += `<td rowspan="${areaRows.length}">${area}</td>`;
@@ -230,27 +262,61 @@ function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
                     html += '<td></td>';
                     return;
                 }
-                const specs = (paState.specifications || []).filter((s) =>
-                    s.subjectName === row.subjectName
-                    && s.level === row.level
-                    && normalizeScopeValue(s.scopeValue) === normalizeScopeValue(scope)
-                    && s.activeVersion
-                );
+                const scopeParallel = parseParallel(scope);
+                const specs = (paState.specifications || []).filter((s) => {
+                    if (!s.activeVersion || s.subjectName !== row.subjectName) return false;
+                    if (normalizeScopeValue(s.scopeValue) === normalizeScopeValue(scope)) return true;
+                    if (scopeParallel !== null && s.scopeType === 'CLASS') {
+                        return parseParallel(s.scopeValue) === scopeParallel;
+                    }
+                    return false;
+                });
                 const entry = specs.some((s) => s.workType === 'ENTRY');
                 const exit = specs.some((s) => s.workType === 'EXIT');
                 const scopeAsParallel = parseParallel(scope);
-                const directParticipationKey = `${row.subjectName}|${scope}|${row.level}`;
-                const parallelParticipationKey = `${row.subjectName}|${scopeAsParallel ?? ''}|${row.level}`;
+                const directParticipationKey = `${row.subjectName}|${scope}|BASIC`;
+                const parallelParticipationKey = `${row.subjectName}|${scopeAsParallel ?? ''}|BASIC`;
                 const participates = participationMap.has(directParticipationKey)
                     ? participationMap.get(directParticipationKey)
                     : (scopeAsParallel !== null && participationMap.has(parallelParticipationKey)
                         ? participationMap.get(parallelParticipationKey)
                         : true);
-                const overrideKey = `${row.subjectName}|${scope}|${row.level}`;
+                const overrideKey = `${row.subjectName}|${scope}|BASIC`;
+                const hasParallelBase = hasSpecFor(row.subjectName, scope, 'BASIC', 'ENTRY') || hasSpecFor(row.subjectName, scope, 'BASIC', 'EXIT');
+                const hasParallelAdvanced = hasSpecFor(row.subjectName, scope, 'ADVANCED', 'ENTRY') || hasSpecFor(row.subjectName, scope, 'ADVANCED', 'EXIT');
+                const missingByClass = taughtClasses.some((className) => !hasSpecFor(row.subjectName, className, getAssignedLevel(row.subjectName, className, 'ENTRY'), 'ENTRY') || !hasSpecFor(row.subjectName, className, getAssignedLevel(row.subjectName, className, 'EXIT'), 'EXIT'));
                 const override = summaryStatusOverrides[overrideKey];
                 const entryParticipates = typeof override?.entryParticipates === 'boolean' ? override.entryParticipates : true;
                 const exitParticipates = typeof override?.exitParticipates === 'boolean' ? override.exitParticipates : true;
-                html += `<td><button type="button" class="tab-btn summary-status-btn ${participates ? '' : 'inactive'}" data-summary-toggle-subject="${row.subjectName.replace(/"/g, '&quot;')}" data-summary-toggle-scope="${scope}" data-summary-toggle-level="${row.level}" data-summary-toggle-entry-participates="${entryParticipates ? 'true' : 'false'}" data-summary-toggle-exit-participates="${exitParticipates ? 'true' : 'false'}" data-summary-toggle-classes="${taughtClasses.join(', ').replace(/"/g, '&quot;')}">${matrixCellSymbol({ entry, exit, entryParticipates, exitParticipates, participates })}</button></td>`;
+                const statusByType = (workType) => {
+                    const hasAny = taughtClasses.some((className) =>
+                        hasSpecFor(row.subjectName, className, 'BASIC', workType) || hasSpecFor(row.subjectName, className, 'ADVANCED', workType));
+                    if (!hasAny) return 'NONE';
+                    const hasParallelBasic = (paState.specifications || []).some((s) =>
+                        s.activeVersion
+                        && s.subjectName === row.subjectName
+                        && s.scopeType === 'PARALLEL'
+                        && String(s.scopeValue).trim() === String(scope)
+                        && s.workType === workType
+                        && s.level === 'BASIC');
+                    const hasParallelAdvanced = (paState.specifications || []).some((s) =>
+                        s.activeVersion
+                        && s.subjectName === row.subjectName
+                        && s.scopeType === 'PARALLEL'
+                        && String(s.scopeValue).trim() === String(scope)
+                        && s.workType === workType
+                        && s.level === 'ADVANCED');
+                    const unresolved = hasParallelBasic && hasParallelAdvanced
+                        && taughtClasses.some((className) => !getAssignmentRecord(row.subjectName, className, workType)?.manual);
+                    if (unresolved) return 'SPLIT';
+                    const missing = taughtClasses.some((className) => !hasSpecFor(row.subjectName, className, getAssignedLevel(row.subjectName, className, workType), workType));
+                    if (missing) return 'PARTIAL';
+                    return 'FULL';
+                };
+                const entryStatus = statusByType('ENTRY');
+                const exitStatus = statusByType('EXIT');
+                const hasConflict = entryStatus === 'SPLIT' || exitStatus === 'SPLIT';
+                html += `<td><button type="button" class="tab-btn summary-status-btn ${participates ? '' : 'inactive'} ${hasConflict ? 'conflict' : ''}" data-summary-toggle-subject="${row.subjectName.replace(/"/g, '&quot;')}" data-summary-toggle-scope="${scope}" data-summary-toggle-level="BASIC" data-summary-toggle-entry-participates="${entryParticipates ? 'true' : 'false'}" data-summary-toggle-exit-participates="${exitParticipates ? 'true' : 'false'}" data-summary-toggle-classes="${taughtClasses.join(', ').replace(/"/g, '&quot;')}">${matrixCellSymbol({ entryStatus, exitStatus, participates, missingByClass, hasParallelBase, hasParallelAdvanced })}</button></td>`;
             });
             html += '</tr>';
         });
@@ -297,19 +363,22 @@ function renderSpecifications(rows) {
                 <td>${row.level === 'ADVANCED' ? 'Углублённый' : 'Базовый'}</td>
                 <td>${workTypeRu(row.workType)}</td>
                 <td><button type="button" class="tab-btn" data-spec-versions-key="${row.subjectName}|${row.scopeValue}|${row.level}|${row.workType}">v${row.versionNo || 1}</button></td>
-                <td>${row.sourceFileName ? `<button type="button" class="tab-btn" data-download-spec-id="${row.id}">${row.sourceFileName}</button>` : ''}</td>
+                <td>${row.sourceFileName ? `<button type="button" class="tab-btn" title="${row.sourceFileName.replace(/"/g, '&quot;')}" data-download-spec-id="${row.id}">⬇</button>` : ''}</td>
                 <td>
                     <label><input type="checkbox" data-participation-subject="${row.subjectName}" data-participation-scope-type="${row.scopeType}" data-participation-scope="${row.scopeValue}" data-participation-level="${row.level}" ${participationMap.get(`${row.subjectName}|${row.scopeValue}|${row.level}`) === false ? '' : 'checked'}> Да</label>
                 </td>
+                <td><button type="button" class="tab-btn" data-delete-spec-id="${row.id}">🗑</button></td>
             </tr>
         `;
-    }).join('') || '<tr><td colspan="8" class="muted">Спецификации не загружены</td></tr>';
+    }).join('') || '<tr><td colspan="9" class="muted">Спецификации не загружены</td></tr>';
     bindParticipationToggles();
     bindSpecificationVersions();
     bindSpecificationDownloadButtons();
+    bindSpecificationDeleteButtons();
     fillSelectors('entry');
     fillSelectors('exit');
     renderCompactMatrix();
+        updateProblemCounter();
     bindSummaryToggles();
 }
 
@@ -388,6 +457,7 @@ function renderVersions(prefix, rows) {
 }
 
 async function generateForClass(prefix, force = false) {
+    await saveClassLevelAssignments().catch(() => {});
     const subject = document.getElementById(`pa-${prefix}-subject`).value;
     const className = document.getElementById(`pa-${prefix}-class`).value || document.getElementById(`pa-${prefix}-scope`).value;
     const level = document.getElementById(`pa-${prefix}-level`).value;
@@ -416,6 +486,7 @@ async function generateForClass(prefix, force = false) {
 }
 
 async function generateForParallel(prefix, force = false) {
+    await saveClassLevelAssignments().catch(() => {});
     const subject = document.getElementById(`pa-${prefix}-subject`).value;
     const parallel = document.getElementById(`pa-${prefix}-scope`).value;
     const level = document.getElementById(`pa-${prefix}-level`).value;
@@ -443,6 +514,7 @@ async function generateForParallel(prefix, force = false) {
 }
 
 async function generateForAll(prefix, force = false) {
+    await saveClassLevelAssignments().catch(() => {});
     const subject = document.getElementById(`pa-${prefix}-subject`).value;
     const level = document.getElementById(`pa-${prefix}-level`).value;
     const workDate = document.getElementById(`pa-${prefix}-work-date`).value;
@@ -527,9 +599,10 @@ async function reloadSummaryAndSpecs() {
     if (!Array.isArray(specs) || specs.length === 0) {
         paState.importLogHistory = [];
         renderSpecificationImportLog();
-loadSpecificationImportLog().catch(() => {});
     }
+    loadSpecificationImportLog().catch(() => {});
     renderSpecifications(specs || []);
+    updateProblemCounter();
     if (paQueryParams.get('forceExitAll') === '1') {
         const exitSubject = document.getElementById('pa-exit-subject');
         if (exitSubject) {
@@ -601,7 +674,34 @@ function openSummaryStatusDialog(data) {
     document.getElementById('pa-summary-status-entry-check').checked = entryParticipates;
     document.getElementById('pa-summary-status-exit-check').checked = exitParticipates;
     document.getElementById('pa-summary-status-classes').textContent = data.summaryToggleClasses || '—';
+    renderAssignmentsTable(subjectName, (data.summaryToggleClasses || '').split(',').map((v) => v.trim()).filter(Boolean));
     if (typeof dialog.showModal === 'function') dialog.showModal();
+}
+
+
+function renderAssignmentsTable(subjectName, classes) {
+    const body = document.getElementById('pa-summary-level-assignments-body');
+    if (!body) return;
+    body.innerHTML = classes.map((className) => {
+        const entryLevel = getAssignedLevel(subjectName, className, 'ENTRY');
+        const exitLevel = getAssignedLevel(subjectName, className, 'EXIT');
+        const hasEntry = hasSpecFor(subjectName, className, entryLevel, 'ENTRY');
+        const hasExit = hasSpecFor(subjectName, className, exitLevel, 'EXIT');
+        return `<tr><td>${className}</td>
+            <td><select data-assignment-subject="${subjectName}" data-assignment-class="${className}" data-assignment-work-type="ENTRY"><option value="BASIC" ${entryLevel === 'BASIC' ? 'selected' : ''}>Базовый</option><option value="ADVANCED" ${entryLevel === 'ADVANCED' ? 'selected' : ''}>Углублённый</option></select></td>
+            <td>${hasEntry ? '✅' : '❌'}</td>
+            <td><select data-assignment-subject="${subjectName}" data-assignment-class="${className}" data-assignment-work-type="EXIT"><option value="BASIC" ${exitLevel === 'BASIC' ? 'selected' : ''}>Базовый</option><option value="ADVANCED" ${exitLevel === 'ADVANCED' ? 'selected' : ''}>Углублённый</option></select></td>
+            <td>${hasExit ? '✅' : '❌'}</td></tr>`;
+    }).join('') || '<tr><td colspan="5" class="muted">Нет классов</td></tr>';
+}
+function updateProblemCounter() {
+    const el = document.getElementById('pa-problem-counter'); if (!el) return;
+    const tab = document.querySelector('#pa-spec-tabs [data-spec-tab].active')?.dataset.specTab || 'summary-5-11';
+    const r = tab === 'summary-1-4' ? [1,4] : [5,11];
+    const count = (paState.curriculum || []).filter((row) => { const p=parseParallel(row.className); if (p===null||p<r[0]||p>r[1]) return false;
+        return !hasSpecFor(row.subjectName,row.className,getAssignedLevel(row.subjectName,row.className,'ENTRY'),'ENTRY') || !hasSpecFor(row.subjectName,row.className,getAssignedLevel(row.subjectName,row.className,'EXIT'),'EXIT');
+    }).length;
+    el.textContent = `Проблем: ${count}`;
 }
 
 function saveSummaryStatusOverrides() {
@@ -627,11 +727,14 @@ async function saveSummaryStatusFromDialog() {
     const entryParticipates = document.getElementById('pa-summary-status-entry-check').checked;
     const exitParticipates = document.getElementById('pa-summary-status-exit-check').checked;
     summaryStatusOverrides[`${subjectName}|${scopeValue}|${level}`] = { entryParticipates, exitParticipates };
+    document.querySelectorAll('[data-assignment-subject]').forEach((el) => setAssignedLevel(el.dataset.assignmentSubject, el.dataset.assignmentClass, el.dataset.assignmentWorkType, el.value));
     saveSummaryStatusOverrides();
+    await saveClassLevelAssignments();
     try {
         document.getElementById('pa-summary-status-dialog').close();
         summaryStatusSelection = null;
         renderCompactMatrix();
+        updateProblemCounter();
     } catch (e) {
         alert(`Ошибка сохранения: ${e.message}`);
     }
@@ -657,6 +760,16 @@ function bindSpecificationDownloadButtons() {
             const raw = `/api/pa/specifications/${id}/download`;
             const url = typeof window.withAcademicYear === 'function' ? window.withAcademicYear(raw) : raw;
             window.open(url, '_blank');
+        });
+    });
+}
+
+function bindSpecificationDeleteButtons() {
+    document.querySelectorAll('[data-delete-spec-id]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            if (!confirm('Удалить выбранную спецификацию?')) return;
+            await paApi(`/api/pa/specifications/${btn.dataset.deleteSpecId}`, { method: 'DELETE' });
+            await reloadSummaryAndSpecs();
         });
     });
 }
@@ -707,6 +820,7 @@ function appendSpecificationImportLog(result) {
         const status = hasError ? 'Ошибка' : 'Успешно';
         const message = warnings.length ? warnings.join('; ') : (records > 0 ? 'Импорт выполнен' : 'Нет загруженных записей');
         paState.importLogHistory.unshift({
+            id: row?.id || null,
             timestamp,
             fileName: row?.fileName || '—',
             subject: Array.isArray(row?.subjects) && row.subjects.length ? row.subjects.join(', ') : '—',
@@ -726,7 +840,7 @@ function renderSpecificationImportLog() {
     body.innerHTML = paState.importLogHistory.map((row) => `
         <tr>
             <td>${row.timestamp}</td>
-            <td>${row.fileName}</td>
+            <td>${row.id ? `<button type="button" class="tab-btn" data-download-import-log-id="${row.id}">${row.fileName}</button>` : row.fileName}</td>
             <td>${row.subject}</td>
             <td>${row.parallel}</td>
             <td>${row.status}</td>
@@ -734,6 +848,12 @@ function renderSpecificationImportLog() {
             <td>${row.records}</td>
         </tr>
     `).join('') || '<tr><td colspan="7" class="muted">История загрузок пуста</td></tr>';
+    document.querySelectorAll('[data-download-import-log-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.downloadImportLogId;
+            window.open((typeof window.withAcademicYear === 'function' ? window.withAcademicYear(`/api/pa/specifications/import-log/${id}/download`) : `/api/pa/specifications/import-log/${id}/download`), '_blank');
+        });
+    });
 }
 
 async function uploadReports(prefix) {
@@ -849,8 +969,7 @@ async function renderWorkflow(prefix, loadedVersions = null) {
     const body = document.getElementById(`pa-${prefix}-workflow-body`);
     if (!head || !body) return;
     const specs = paState.specifications.filter((s) =>
-        s.level === level
-        && s.workType === workType
+        s.workType === workType
         && (subject === 'ALL' || s.subjectName === subject)
     );
     if (!specs.length) {
@@ -887,11 +1006,19 @@ async function renderWorkflow(prefix, loadedVersions = null) {
     });
 
     const versionMap = new Map();
-    const summaryRows = await paApi(`/api/pa/reports/workflow-summary?${new URLSearchParams({
-        level,
-        workType,
-        ...(subject !== 'ALL' ? { subjectName: subject } : {})
-    }).toString()}`);
+    const summaryRowsByLevel = await Promise.all([
+        paApi(`/api/pa/reports/workflow-summary?${new URLSearchParams({
+            level: 'BASIC',
+            workType,
+            ...(subject !== 'ALL' ? { subjectName: subject } : {})
+        }).toString()}`),
+        paApi(`/api/pa/reports/workflow-summary?${new URLSearchParams({
+            level: 'ADVANCED',
+            workType,
+            ...(subject !== 'ALL' ? { subjectName: subject } : {})
+        }).toString()}`)
+    ]);
+    const summaryRows = [...(summaryRowsByLevel[0] || []), ...(summaryRowsByLevel[1] || [])];
     (summaryRows || []).forEach((row) => {
         versionMap.set(`${row.subjectName}|${normalizeScopeValue(row.scopeValue)}`, {
             hasGenerated: Boolean(row.hasGenerated),
@@ -1060,6 +1187,7 @@ if (specTabs) {
         if (!btn) return;
         event.preventDefault();
         setSpecTab(btn.dataset.specTab);
+        updateProblemCounter();
     });
 }
 const exitTabs = document.getElementById('pa-exit-tabs');
@@ -1118,9 +1246,12 @@ bindWorkflowRangeTabs('exit');
 applySharedPaPageNav();
 
 loadSummaryStatusOverrides();
+(async () => {
+try { await loadClassLevelAssignments(); } catch (_) { classLevelAssignments = {}; }
 reloadSummaryAndSpecs().catch((e) => {
     appendSpecificationImportLog([{ fileName: '—', warnings: [`Ошибка: ${e.message}`], importedTasks: 0 }]);
 });
+})();
 renderSpecificationImportLog();
 const startMainTab = paQueryParams.get('tab')
     || (window.location.pathname.includes('vsoko-pa-entry') ? 'entry'
