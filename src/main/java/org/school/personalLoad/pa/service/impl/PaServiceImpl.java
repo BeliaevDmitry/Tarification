@@ -130,6 +130,14 @@ public class PaServiceImpl implements PaService {
     }
 
     @Override
+    public byte[] loadSpecificationImportFileByName(String academicYear, String fileName) throws IOException {
+        if (fileName == null || fileName.isBlank()) throw new IllegalArgumentException("Имя файла не указано");
+        Path path = Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-"), fileName);
+        if (!Files.exists(path)) throw new IllegalArgumentException("Файл импорта не найден на диске");
+        return Files.readAllBytes(path);
+    }
+
+    @Override
     public String specificationImportLogFileName(String academicYear, Long importLogId) {
         return paSpecImportLogRepository.findById(importLogId)
                 .map(org.school.personalLoad.pa.model.PaSpecImportLog::getFileName)
@@ -968,10 +976,14 @@ public class PaServiceImpl implements PaService {
         put(sheet, 3, startCol, "Школа"); put(sheet, 3, startCol + 1, Optional.ofNullable(school).orElse(""));
         put(sheet, 4, startCol, "Учебный год"); put(sheet, 4, startCol + 1, Optional.ofNullable(year).orElse(""));
         put(sheet, 5, startCol, "Уровень"); put(sheet, 5, startCol + 1, level == PaLevel.ADVANCED ? "Углублённый" : "Базовый");
-        put(sheet, 7, startCol, "№ задания"); put(sheet, 7, startCol + 1, "Тема задания"); put(sheet, 7, startCol + 2, "Навык");
-        put(sheet, 7, startCol + 3, "Тип задания"); put(sheet, 7, startCol + 4, "Если повторение, то какое"); put(sheet, 7, startCol + 5, "Балл за задание");
+        put(sheet, 6, startCol, "Шкала оценивания ПА (от %):");
+        put(sheet, 7, startCol, "\"5\":"); put(sheet, 7, startCol + 1, Optional.ofNullable(spec != null ? spec.getGrade5Percent() : base.getGrade5Percent()).map(v -> v + "%").orElse("85%"));
+        put(sheet, 8, startCol, "\"4\":"); put(sheet, 8, startCol + 1, Optional.ofNullable(spec != null ? spec.getGrade4Percent() : base.getGrade4Percent()).map(v -> v + "%").orElse("61%"));
+        put(sheet, 9, startCol, "\"3\":"); put(sheet, 9, startCol + 1, Optional.ofNullable(spec != null ? spec.getGrade3Percent() : base.getGrade3Percent()).map(v -> v + "%").orElse("35%"));
+        put(sheet, 11, startCol, "№ задания"); put(sheet, 11, startCol + 1, "Тема задания"); put(sheet, 11, startCol + 2, "Навык");
+        put(sheet, 11, startCol + 3, "Тип задания"); put(sheet, 11, startCol + 4, "Если повторение, то какое"); put(sheet, 11, startCol + 5, "Балл за задание");
         List<PaSpecificationTask> tasks = spec == null ? List.of() : taskRepository.findAllBySpecificationIdOrderByTaskNoAsc(spec.getId());
-        int rowIdx = 8;
+        int rowIdx = 12;
         for (PaSpecificationTask t : tasks) {
             put(sheet, rowIdx, startCol, Optional.ofNullable(t.getTaskNo()).map(String::valueOf).orElse(""));
             put(sheet, rowIdx, startCol + 1, Optional.ofNullable(t.getTopic()).orElse(""));

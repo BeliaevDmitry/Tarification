@@ -841,7 +841,15 @@ function renderSpecificationImportLog() {
     body.innerHTML = paState.importLogHistory.map((row) => `
         <tr>
             <td>${row.timestamp}</td>
-            <td>${row.id ? `<a class="tab-btn" href="${(typeof window.withAcademicYear === 'function' ? window.withAcademicYear(`/api/pa/specifications/import-log/${row.id}/download`) : `/api/pa/specifications/import-log/${row.id}/download`)}" download>${row.fileName}</a>` : row.fileName}</td>
+            <td>${row.fileName && row.fileName !== '—'
+                ? `<a class="tab-btn" href="${(typeof window.withAcademicYear === 'function'
+                    ? (row.id
+                        ? window.withAcademicYear(`/api/pa/specifications/import-log/${row.id}/download`)
+                        : window.withAcademicYear(`/api/pa/specifications/import-file/download?fileName=${encodeURIComponent(row.fileName)}`))
+                    : (row.id
+                        ? `/api/pa/specifications/import-log/${row.id}/download`
+                        : `/api/pa/specifications/import-file/download?fileName=${encodeURIComponent(row.fileName)}`))}" download>${row.fileName}</a>`
+                : row.fileName}</td>
             <td>${row.subject}</td>
             <td>${row.parallel}</td>
             <td>${row.status}</td>

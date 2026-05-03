@@ -70,6 +70,18 @@ public class PaController {
                 .body(body);
     }
 
+    @GetMapping("/specifications/import-file/download")
+    public ResponseEntity<byte[]> downloadSpecificationImportFileByName(@RequestParam String fileName,
+                                                                        @RequestParam(required = false) String academicYear) throws Exception {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        byte[] body = paService.loadSpecificationImportFileByName(year, fileName);
+        String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(body);
+    }
+
     @GetMapping("/specifications")
     public ResponseEntity<List<PaDtos.SpecificationRow>> specifications(@RequestParam(required = false) String academicYear) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);

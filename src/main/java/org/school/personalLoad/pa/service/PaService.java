@@ -14,6 +14,7 @@ public interface PaService {
     List<PaDtos.ImportResult> importSpecifications(String academicYear, List<MultipartFile> files, String username);
     List<PaDtos.ImportLogRow> specificationImportLog(String academicYear, String username, boolean admin);
     byte[] loadSpecificationImportLogFile(String academicYear, Long importLogId) throws IOException;
+    byte[] loadSpecificationImportFileByName(String academicYear, String fileName) throws IOException;
     String specificationImportLogFileName(String academicYear, Long importLogId);
     List<PaDtos.SpecificationRow> specifications(String academicYear);
     List<PaDtos.SpecificationTaskRow> specificationTasks(Long specificationId);
