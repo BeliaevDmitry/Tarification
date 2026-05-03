@@ -458,6 +458,7 @@ function renderVersions(prefix, rows) {
 }
 
 async function generateForClass(prefix, force = false) {
+    await saveClassLevelAssignments().catch(() => {});
     const subject = document.getElementById(`pa-${prefix}-subject`).value;
     const className = document.getElementById(`pa-${prefix}-class`).value || document.getElementById(`pa-${prefix}-scope`).value;
     const level = document.getElementById(`pa-${prefix}-level`).value;
@@ -486,6 +487,7 @@ async function generateForClass(prefix, force = false) {
 }
 
 async function generateForParallel(prefix, force = false) {
+    await saveClassLevelAssignments().catch(() => {});
     const subject = document.getElementById(`pa-${prefix}-subject`).value;
     const parallel = document.getElementById(`pa-${prefix}-scope`).value;
     const level = document.getElementById(`pa-${prefix}-level`).value;
@@ -513,6 +515,7 @@ async function generateForParallel(prefix, force = false) {
 }
 
 async function generateForAll(prefix, force = false) {
+    await saveClassLevelAssignments().catch(() => {});
     const subject = document.getElementById(`pa-${prefix}-subject`).value;
     const level = document.getElementById(`pa-${prefix}-level`).value;
     const workDate = document.getElementById(`pa-${prefix}-work-date`).value;
