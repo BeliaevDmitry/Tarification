@@ -17,6 +17,8 @@ import javax.servlet.http.HttpSession;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @RestController
@@ -55,6 +57,19 @@ public class PaController {
         return ResponseEntity.ok(paService.specificationImportLog(year, username, admin));
     }
 
+    @GetMapping("/specifications/import-log/{importLogId}/download")
+    public ResponseEntity<byte[]> downloadSpecificationImportFile(@PathVariable Long importLogId,
+                                                                  @RequestParam(required = false) String academicYear) throws Exception {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        byte[] body = paService.loadSpecificationImportLogFile(year, importLogId);
+        String fileName = paService.specificationImportLogFileName(year, importLogId);
+        String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(body);
+    }
+
     @GetMapping("/specifications")
     public ResponseEntity<List<PaDtos.SpecificationRow>> specifications(@RequestParam(required = false) String academicYear) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
@@ -71,8 +86,10 @@ public class PaController {
                                                         @RequestParam(required = false) String academicYear) throws Exception {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
         byte[] body = paService.loadSpecificationFile(year, specificationId);
+        String fileName = paService.specificationFileName(year, specificationId);
+        String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"pa-specification-" + specificationId + ".xlsx\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(body);
     }

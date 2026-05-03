@@ -43,7 +43,8 @@ public final class PaDtos {
                                        Integer maxScore) {
     }
 
-    public record ImportLogRow(String fileName,
+    public record ImportLogRow(Long id,
+                               String fileName,
                                String subjects,
                                String parallels,
                                String status,
