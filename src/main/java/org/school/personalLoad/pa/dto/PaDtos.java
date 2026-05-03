@@ -108,4 +108,11 @@ public final class PaDtos {
                                             Long latestGeneratedId,
                                             Long latestUploadedId) {
     }
+
+    public record ClassLevelAssignmentRow(String subjectName,
+                                          String className,
+                                          PaWorkType workType,
+                                          PaLevel level,
+                                          boolean manual) {
+    }
 }
