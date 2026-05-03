@@ -18,6 +18,7 @@ const paState = {
     }
 };
 const PA_SUMMARY_STATUS_OVERRIDES_KEY = 'pa.summary.status.overrides';
+const PA_CLASS_LEVEL_ASSIGNMENTS_KEY = 'pa.class.level.assignments';
 const paQueryParams = new URLSearchParams(window.location.search);
 let summaryStatusSelection = null;
 let summaryStatusOverrides = {};
