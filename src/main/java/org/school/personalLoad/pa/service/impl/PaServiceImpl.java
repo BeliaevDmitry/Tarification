@@ -218,8 +218,22 @@ public class PaServiceImpl implements PaService {
         String subject = firstNonBlank(sheet, baseRow, baseCol + 1, blockEndCol);
         String scope = findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "Параллель/Класс");
         String workTypeRaw = findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "Тип");
-        if (subject.isBlank() || scope.isBlank() || workTypeRaw.isBlank()) {
-            warnings.add("Лист " + sheet.getSheetName() + ": пропущены обязательные поля (предмет/параллель/тип)");
+        if (subject.isBlank()) {
+            warnings.add("Лист " + sheet.getSheetName() + ": не указан предмет");
+            return null;
+        }
+        boolean subjectInCurriculum = curriculumPlanEntryRepository.findAllByAcademicYear(academicYear).stream()
+                .anyMatch(r -> normalize(r.getSubjectName()).equals(normalize(subject)));
+        if (!subjectInCurriculum) {
+            warnings.add("Лист " + sheet.getSheetName() + ": предмет '" + subject + "' отсутствует в учебном плане");
+            return null;
+        }
+        if (scope.isBlank()) {
+            warnings.add("Лист " + sheet.getSheetName() + ": не заполнено поле «Параллель/Класс»");
+            return null;
+        }
+        if (workTypeRaw.isBlank()) {
+            warnings.add("Лист " + sheet.getSheetName() + ": не заполнено поле «Тип»");
             return null;
         }
         PaWorkType workType = parseWorkType(workTypeRaw);
@@ -283,6 +297,10 @@ public class PaServiceImpl implements PaService {
             if (containsNormalized(value, "балл")) colMap.put("score", c);
         }
         if (!colMap.containsKey("task")) return List.of();
+        if (!colMap.containsKey("topic")) {
+            warnings.add("Лист " + sheet.getSheetName() + ": не найдена колонка «Тема задания» для предмета '" + specification.getSubjectName() + "'");
+            return List.of();
+        }
         if (!colMap.containsKey("score")) {
             warnings.add("Лист " + sheet.getSheetName() + ": не найдена колонка «Балл» для предмета '" + specification.getSubjectName() + "'");
             return List.of();
@@ -326,6 +344,12 @@ public class PaServiceImpl implements PaService {
         }
         boolean hasAtLeastOneTopic = tasks.stream().anyMatch(task -> task.getTopic() != null && !task.getTopic().isBlank());
         if (!hasAtLeastOneTopic) {
+            warnings.add("Лист " + sheet.getSheetName() + ": не заполнена «Тема задания» для предмета '" + specification.getSubjectName() + "'");
+            return List.of();
+        }
+        boolean hasAtLeastOneScore = tasks.stream().anyMatch(task -> task.getMaxScore() != null);
+        if (!hasAtLeastOneScore) {
+            warnings.add("Лист " + sheet.getSheetName() + ": не заполнены баллы за задания для предмета '" + specification.getSubjectName() + "'");
             return List.of();
         }
         return tasks;
