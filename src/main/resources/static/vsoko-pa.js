@@ -86,9 +86,14 @@ function workTypeRu(workType) {
 }
 
 function matrixCellSymbol(cell) {
-    if (!cell || !cell.hasAnySpec) return '❌';
-    if (cell.hasMissing) return '🟡✅';
-    return '✅';
+    if (!cell) return '❌/❌';
+    const toIcon = (status) => {
+        if (status === 'NONE') return '❌';
+        if (status === 'SPLIT') return '⚠✅';
+        if (status === 'PARTIAL') return '❗✅';
+        return '✅';
+    };
+    return `${toIcon(cell.entryStatus)}/${toIcon(cell.exitStatus)}`;
 }
 
 function parseParallel(scope) {
@@ -264,12 +269,26 @@ function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
                 const overrideKey = `${row.subjectName}|${scope}|BASIC`;
                 const hasParallelBase = hasSpecFor(row.subjectName, scope, 'BASIC', 'ENTRY') || hasSpecFor(row.subjectName, scope, 'BASIC', 'EXIT');
                 const hasParallelAdvanced = hasSpecFor(row.subjectName, scope, 'ADVANCED', 'ENTRY') || hasSpecFor(row.subjectName, scope, 'ADVANCED', 'EXIT');
-                const unresolvedSplit = hasParallelBase && hasParallelAdvanced && taughtClasses.some((className) => !getAssignmentRecord(row.subjectName, className, 'ENTRY')?.manual && !getAssignmentRecord(row.subjectName, className, 'EXIT')?.manual);
                 const missingByClass = taughtClasses.some((className) => !hasSpecFor(row.subjectName, className, getAssignedLevel(row.subjectName, className, 'ENTRY'), 'ENTRY') || !hasSpecFor(row.subjectName, className, getAssignedLevel(row.subjectName, className, 'EXIT'), 'EXIT'));
                 const override = summaryStatusOverrides[overrideKey];
                 const entryParticipates = typeof override?.entryParticipates === 'boolean' ? override.entryParticipates : true;
                 const exitParticipates = typeof override?.exitParticipates === 'boolean' ? override.exitParticipates : true;
-                html += `<td><button type="button" class="tab-btn summary-status-btn ${participates ? '' : 'inactive'} ${unresolvedSplit ? 'conflict' : ''}" data-summary-toggle-subject="${row.subjectName.replace(/"/g, '&quot;')}" data-summary-toggle-scope="${scope}" data-summary-toggle-level="BASIC" data-summary-toggle-entry-participates="${entryParticipates ? 'true' : 'false'}" data-summary-toggle-exit-participates="${exitParticipates ? 'true' : 'false'}" data-summary-toggle-classes="${taughtClasses.join(', ').replace(/"/g, '&quot;')}">${matrixCellSymbol({ hasAnySpec: entry || exit, hasMissing: missingByClass, participates })}</button></td>`;
+                const statusByType = (workType) => {
+                    const hasAny = taughtClasses.some((className) =>
+                        hasSpecFor(row.subjectName, className, 'BASIC', workType) || hasSpecFor(row.subjectName, className, 'ADVANCED', workType));
+                    if (!hasAny) return 'NONE';
+                    const hasBothLevels = taughtClasses.some((className) => hasSpecFor(row.subjectName, className, 'BASIC', workType))
+                        && taughtClasses.some((className) => hasSpecFor(row.subjectName, className, 'ADVANCED', workType));
+                    const unresolved = hasBothLevels && taughtClasses.some((className) => !getAssignmentRecord(row.subjectName, className, workType)?.manual);
+                    if (unresolved) return 'SPLIT';
+                    const missing = taughtClasses.some((className) => !hasSpecFor(row.subjectName, className, getAssignedLevel(row.subjectName, className, workType), workType));
+                    if (missing) return 'PARTIAL';
+                    return 'FULL';
+                };
+                const entryStatus = statusByType('ENTRY');
+                const exitStatus = statusByType('EXIT');
+                const hasConflict = entryStatus === 'SPLIT' || exitStatus === 'SPLIT';
+                html += `<td><button type="button" class="tab-btn summary-status-btn ${participates ? '' : 'inactive'} ${hasConflict ? 'conflict' : ''}" data-summary-toggle-subject="${row.subjectName.replace(/"/g, '&quot;')}" data-summary-toggle-scope="${scope}" data-summary-toggle-level="BASIC" data-summary-toggle-entry-participates="${entryParticipates ? 'true' : 'false'}" data-summary-toggle-exit-participates="${exitParticipates ? 'true' : 'false'}" data-summary-toggle-classes="${taughtClasses.join(', ').replace(/"/g, '&quot;')}">${matrixCellSymbol({ entryStatus, exitStatus, participates, missingByClass, hasParallelBase, hasParallelAdvanced })}</button></td>`;
             });
             html += '</tr>';
         });
