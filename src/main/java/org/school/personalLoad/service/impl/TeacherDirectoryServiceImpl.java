@@ -60,8 +60,15 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 String fio = getCellStringValue(row.getCell(0));
                 String initials = normalizeOptional(getCellStringValue(row.getCell(1)));
                 String fioDative = normalizeOptional(getCellStringValue(row.getCell(2)));
-                String phone = normalizePhone(getCellStringValue(row.getCell(3)));
-                String email = normalizeEmail(getCellStringValue(row.getCell(4)));
+                String phone;
+                String email;
+                try {
+                    phone = normalizePhone(getCellStringValue(row.getCell(3)));
+                    email = normalizeEmail(getCellStringValue(row.getCell(4)));
+                } catch (IllegalArgumentException ex) {
+                    skipped++;
+                    continue;
+                }
                 String additionalDuties = normalizeOptional(getCellStringValue(row.getCell(5)));
                 if (fio.isBlank()) {
                     skipped++;
@@ -69,7 +76,9 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 }
 
                 String normalized = fio.trim();
-                if (normalized.equalsIgnoreCase("фио") || normalized.equalsIgnoreCase("педагог")) {
+                if (normalized.equalsIgnoreCase("фио")
+                        || normalized.equalsIgnoreCase("педагог")
+                        || normalized.equalsIgnoreCase("сотрудник")) {
                     skipped++;
                     continue;
                 }
