@@ -728,9 +728,6 @@ public class PaServiceImpl implements PaService {
                 if (!force && generatedExists) {
                     continue;
                 }
-                if (force && "ALL".equalsIgnoreCase(subjectName) && !generatedExists) {
-                    continue;
-                }
                 results.add(generateReportTemplate(academicYear, subject, className, assignedLevel, workType, workDate, true));
             }
         }
