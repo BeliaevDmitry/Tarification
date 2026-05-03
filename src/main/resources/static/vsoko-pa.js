@@ -293,9 +293,22 @@ function renderSummaryRange(headId, bodyId, fromParallel, toParallel) {
                     const hasAny = taughtClasses.some((className) =>
                         hasSpecFor(row.subjectName, className, 'BASIC', workType) || hasSpecFor(row.subjectName, className, 'ADVANCED', workType));
                     if (!hasAny) return 'NONE';
-                    const hasBothLevels = taughtClasses.some((className) => hasSpecFor(row.subjectName, className, 'BASIC', workType))
-                        && taughtClasses.some((className) => hasSpecFor(row.subjectName, className, 'ADVANCED', workType));
-                    const unresolved = hasBothLevels && taughtClasses.some((className) => !getAssignmentRecord(row.subjectName, className, workType)?.manual);
+                    const hasParallelBasic = (paState.specifications || []).some((s) =>
+                        s.activeVersion
+                        && s.subjectName === row.subjectName
+                        && s.scopeType === 'PARALLEL'
+                        && String(s.scopeValue).trim() === String(scope)
+                        && s.workType === workType
+                        && s.level === 'BASIC');
+                    const hasParallelAdvanced = (paState.specifications || []).some((s) =>
+                        s.activeVersion
+                        && s.subjectName === row.subjectName
+                        && s.scopeType === 'PARALLEL'
+                        && String(s.scopeValue).trim() === String(scope)
+                        && s.workType === workType
+                        && s.level === 'ADVANCED');
+                    const unresolved = hasParallelBasic && hasParallelAdvanced
+                        && taughtClasses.some((className) => !getAssignmentRecord(row.subjectName, className, workType)?.manual);
                     if (unresolved) return 'SPLIT';
                     const missing = taughtClasses.some((className) => !hasSpecFor(row.subjectName, className, getAssignedLevel(row.subjectName, className, workType), workType));
                     if (missing) return 'PARTIAL';
