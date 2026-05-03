@@ -40,8 +40,13 @@ services:
       JAVA_OPTS: ${JAVA_OPTS:--Xms512m -Xmx2048m -XX:+UseG1GC -XX:MaxGCPauseMillis=200}
     ports:
       - "8080:8080"
+    volumes:
+      - pa_reports_data:/app/pa-reports
+      - pa_specs_data:/app/pa-specifications
     restart: unless-stopped
     command: ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]
 
 volumes:
   postgres_data:
+  pa_reports_data:
+  pa_specs_data:
