@@ -7,6 +7,7 @@ import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.pa.dto.PaDtos;
 import org.school.personalLoad.pa.model.*;
 import org.school.personalLoad.pa.repository.PaParticipationRepository;
+import org.school.personalLoad.pa.repository.PaClassLevelAssignmentRepository;
 import org.school.personalLoad.pa.repository.PaReportVersionRepository;
 import org.school.personalLoad.pa.repository.PaSpecImportLogRepository;
 import org.school.personalLoad.pa.repository.PaSpecificationRepository;
@@ -52,6 +53,7 @@ public class PaServiceImpl implements PaService {
     private final PaSpecificationRepository specificationRepository;
     private final PaSpecificationTaskRepository taskRepository;
     private final PaParticipationRepository participationRepository;
+    private final PaClassLevelAssignmentRepository classLevelAssignmentRepository;
     private final PaReportVersionRepository reportVersionRepository;
     private final PaSpecImportLogRepository paSpecImportLogRepository;
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
@@ -388,6 +390,33 @@ public class PaServiceImpl implements PaService {
         List<PaDtos.SummaryCell> primary = buildSummaryCells(primarySubjects, specs, participationMap, 1, 4);
         List<PaDtos.SummaryCell> secondary = buildSummaryCells(secondarySubjects, specs, participationMap, 5, 11);
         return new PaDtos.SummaryResponse(primary, secondary);
+    }
+
+    @Override
+    public List<PaDtos.ClassLevelAssignmentRow> classLevelAssignments(String academicYear) {
+        return classLevelAssignmentRepository.findAllByAcademicYear(academicYear).stream()
+                .map(r -> new PaDtos.ClassLevelAssignmentRow(r.getSubjectName(), r.getClassName(), r.getWorkType(), r.getLevel(), r.isManual()))
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public void saveClassLevelAssignments(String academicYear, List<PaDtos.ClassLevelAssignmentRow> rows) {
+        if (rows == null) return;
+        for (PaDtos.ClassLevelAssignmentRow row : rows) {
+            if (row == null || row.subjectName() == null || row.className() == null || row.workType() == null || row.level() == null) continue;
+            PaClassLevelAssignment entity = classLevelAssignmentRepository
+                    .findByAcademicYearAndSubjectNameAndClassNameAndWorkType(academicYear, row.subjectName(), row.className(), row.workType())
+                    .orElseGet(PaClassLevelAssignment::new);
+            entity.setAcademicYear(academicYear);
+            entity.setSubjectName(row.subjectName());
+            entity.setClassName(row.className());
+            entity.setWorkType(row.workType());
+            entity.setLevel(row.level());
+            entity.setManual(row.manual());
+            entity.setUpdatedAt(LocalDateTime.now());
+            classLevelAssignmentRepository.save(entity);
+        }
     }
 
     @Override
@@ -809,6 +838,19 @@ public class PaServiceImpl implements PaService {
         return Files.readAllBytes(path);
     }
 
+    @Override
+    @Transactional
+    public void deleteSpecification(String academicYear, Long specificationId) throws IOException {
+        PaSpecification specification = specificationRepository.findById(specificationId)
+                .orElseThrow(() -> new IllegalArgumentException("Спецификация не найдена"));
+        taskRepository.deleteAllBySpecificationId(specificationId);
+        specificationRepository.delete(specification);
+        if (specification.getSourceFileName() != null && !specification.getSourceFileName().isBlank()) {
+            Path path = Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-"), specification.getSourceFileName());
+            Files.deleteIfExists(path);
+        }
+    }
+
     private PaSpecification resolveSpecificationForClass(String year, String subject, String className, PaLevel level, PaWorkType workType, LocalDate workDate) {
         String classScope = className.toUpperCase(Locale.ROOT);
         Integer parallel = parseParallel(className);
@@ -1183,7 +1225,21 @@ public class PaServiceImpl implements PaService {
     }
 
     private String normalizeClass(String value) {
-        return String.valueOf(value == null ? "" : value).trim().toUpperCase(Locale.ROOT).replaceAll("\\s+", "");
+        String raw = String.valueOf(value == null ? "" : value).trim().toUpperCase(Locale.ROOT)
+                .replaceAll("[\\s\\-–—_./\\\\]+", "");
+        return raw
+                .replace('A', 'А')
+                .replace('B', 'В')
+                .replace('C', 'С')
+                .replace('E', 'Е')
+                .replace('H', 'Н')
+                .replace('K', 'К')
+                .replace('M', 'М')
+                .replace('O', 'О')
+                .replace('P', 'Р')
+                .replace('T', 'Т')
+                .replace('X', 'Х')
+                .replace('Y', 'У');
     }
 
     private LocalDate parseLocalDate(String value) {
