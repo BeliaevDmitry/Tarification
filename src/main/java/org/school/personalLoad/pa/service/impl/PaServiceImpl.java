@@ -157,8 +157,8 @@ public class PaServiceImpl implements PaService {
             if (spec == null) continue;
             String thresholdError = validateThresholds(spec);
             if (thresholdError != null) {
-                warnings.add("Лист " + sheet.getSheetName() + ": спецификация '" + spec.getSubjectName()
-                        + "' (" + spec.getScopeValue() + ") не загружена — нет порогов или они не валидны");
+                warnings.add("Лист " + sheet.getSheetName() + ":\n"
+                        + workTypeLabel(spec.getWorkType()) + ": не принята — нет порогов или они не валидны");
                 continue;
             }
             spec.setCreatedAt(LocalDateTime.now());
@@ -192,13 +192,12 @@ public class PaServiceImpl implements PaService {
             List<PaSpecificationTask> tasks = parseTasks(sheet, subjectRow, subjectCol, blockEndCol, saved, warnings);
             if (tasks.isEmpty()) {
                 specificationRepository.delete(saved);
-                String workTypeLabel = saved.getWorkType() == PaWorkType.ENTRY
-                        ? "Входной"
-                        : saved.getWorkType() == PaWorkType.EXIT ? "Выходной" : "Промежуточной";
-                warnings.add("Лист " + sheet.getSheetName() + ": спецификация '" + subjectName + "' для " + workTypeLabel + " работы не загружена — нет ни одной темы");
+                warnings.add("Лист " + sheet.getSheetName() + ":\n"
+                        + workTypeLabel(saved.getWorkType()) + ": не принята — нет ни одной темы");
                 continue;
             }
             taskRepository.saveAll(tasks);
+            warnings.add("Лист " + sheet.getSheetName() + ":\n" + workTypeLabel(saved.getWorkType()) + ": принята");
             importedSpecs += 1;
             importedTasks += tasks.size();
             subjects.add(saved.getSubjectName());
@@ -206,6 +205,12 @@ public class PaServiceImpl implements PaService {
             if (p != null) parallels.add(String.valueOf(p));
         }
         return new SheetImportStats(importedSpecs, importedTasks, subjects, parallels);
+    }
+
+    private String workTypeLabel(PaWorkType workType) {
+        if (workType == PaWorkType.ENTRY) return "Входная работа";
+        if (workType == PaWorkType.EXIT) return "Выходная работа";
+        return "Промежуточная работа";
     }
 
     private PaSpecification parseBlock(String academicYear,
