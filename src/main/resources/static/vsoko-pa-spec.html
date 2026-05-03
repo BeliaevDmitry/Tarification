@@ -11,6 +11,7 @@
     .sticky-head thead th { position: sticky; top: 0; background: #f1f1f1; z-index: 3; }
     .pa-sticky-table-wrap { max-height: 70vh; overflow: auto; }
     .summary-status-btn.inactive { color: #8a8f98; }
+    .summary-status-btn.conflict { background: #ffe3e3; border-color: #dc2626; }
     #pa-summary-status-dialog table { width: 100%; border-collapse: collapse; margin-top: 8px; }
     #pa-summary-status-dialog th, #pa-summary-status-dialog td { border: 1px solid #d8d8d8; padding: 6px 8px; text-align: left; }
     #pa-summary-status-dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 0 0; margin: 0; }
@@ -29,6 +30,7 @@
       <input id="pa-spec-files" type="file" multiple accept=".xlsx">
       <button id="pa-spec-import-btn" type="button">Загрузить спецификации</button>
       <button id="pa-spec-reload-btn" type="button" data-allow-readonly="true">Обновить свод</button>
+      <span id="pa-problem-counter" class="muted">Проблем: 0</span>
     </div>
     <div class="tabs" id="pa-spec-tabs">
       <button class="tab-btn active" type="button" data-spec-tab="summary-5-11">Свод 5-11</button>
@@ -60,7 +62,7 @@
         <table class="sheet-table sticky-head">
           <thead>
           <tr>
-            <th>Предметная область</th><th>Предмет</th><th>Параллель</th><th>Уровень</th><th>Тип</th><th>Версия</th><th>Файл</th><th>Участвует</th>
+            <th>Предметная область</th><th>Предмет</th><th>Параллель</th><th>Уровень</th><th>Тип</th><th>Версия</th><th>Файл</th><th>Участвует</th><th>Удалить</th>
           </tr>
           </thead>
           <tbody id="pa-specifications-body"></tbody>
@@ -90,6 +92,10 @@
     <tr><td>Входная</td><td><label><input id="pa-summary-status-entry-check" type="checkbox" checked> Да</label></td></tr>
     <tr><td>Выходная</td><td><label><input id="pa-summary-status-exit-check" type="checkbox" checked> Да</label></td></tr>
     </tbody>
+  </table>
+  <table>
+    <thead><tr><th>Класс</th><th>Уровень входной</th><th>Статус входной</th><th>Уровень выходной</th><th>Статус выходной</th></tr></thead>
+    <tbody id="pa-summary-level-assignments-body"></tbody>
   </table>
   <menu>
     <button id="pa-summary-status-save-btn" type="button">Сохранить</button>
