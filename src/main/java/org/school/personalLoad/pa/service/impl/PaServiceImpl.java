@@ -809,6 +809,19 @@ public class PaServiceImpl implements PaService {
         return Files.readAllBytes(path);
     }
 
+    @Override
+    @Transactional
+    public void deleteSpecification(String academicYear, Long specificationId) throws IOException {
+        PaSpecification specification = specificationRepository.findById(specificationId)
+                .orElseThrow(() -> new IllegalArgumentException("Спецификация не найдена"));
+        taskRepository.deleteAllBySpecificationId(specificationId);
+        specificationRepository.delete(specification);
+        if (specification.getSourceFileName() != null && !specification.getSourceFileName().isBlank()) {
+            Path path = Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-"), specification.getSourceFileName());
+            Files.deleteIfExists(path);
+        }
+    }
+
     private PaSpecification resolveSpecificationForClass(String year, String subject, String className, PaLevel level, PaWorkType workType, LocalDate workDate) {
         String classScope = className.toUpperCase(Locale.ROOT);
         Integer parallel = parseParallel(className);
