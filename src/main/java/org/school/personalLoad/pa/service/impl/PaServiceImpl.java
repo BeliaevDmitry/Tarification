@@ -725,8 +725,15 @@ public class PaServiceImpl implements PaService {
                     continue;
                 }
                 boolean generatedExists = hasActiveGeneratedTemplate(academicYear, subject, className, assignedLevel, workType, workDate);
+                boolean anyGeneratedExists = hasAnyActiveGeneratedTemplate(academicYear, subject, className, workType, workDate);
                 if (!force && generatedExists) {
                     continue;
+                }
+                if (force && "ALL".equalsIgnoreCase(subjectName) && !anyGeneratedExists) {
+                    continue;
+                }
+                if (force && "ALL".equalsIgnoreCase(subjectName) && anyGeneratedExists) {
+                    deleteActiveGeneratedTemplatesAllLevels(academicYear, subject, className, workType, workDate);
                 }
                 results.add(generateReportTemplate(academicYear, subject, className, assignedLevel, workType, workDate, true));
             }
@@ -775,6 +782,42 @@ public class PaServiceImpl implements PaService {
                         workDate)
                 .stream()
                 .anyMatch(v -> v.isActiveVersion() && "GENERATED".equalsIgnoreCase(v.getStatus()));
+    }
+
+    private boolean hasAnyActiveGeneratedTemplate(String academicYear,
+                                                  String subjectName,
+                                                  String className,
+                                                  PaWorkType workType,
+                                                  LocalDate workDate) {
+        return reportVersionRepository.findAll().stream()
+                .filter(v -> Objects.equals(v.getAcademicYear(), academicYear))
+                .filter(v -> v.getScopeType() == PaScopeType.CLASS)
+                .filter(v -> normalize(v.getSubjectName()).equals(normalize(subjectName)))
+                .filter(v -> normalizeClass(v.getScopeValue()).equals(normalizeClass(className)))
+                .filter(v -> v.getWorkType() == workType)
+                .filter(v -> Objects.equals(v.getWorkDate(), workDate) || workDate == null)
+                .anyMatch(v -> v.isActiveVersion() && "GENERATED".equalsIgnoreCase(v.getStatus()));
+    }
+
+    private void deleteActiveGeneratedTemplatesAllLevels(String academicYear,
+                                                         String subjectName,
+                                                         String className,
+                                                         PaWorkType workType,
+                                                         LocalDate workDate) {
+        List<PaReportVersion> candidates = reportVersionRepository.findAll().stream()
+                .filter(v -> Objects.equals(v.getAcademicYear(), academicYear))
+                .filter(v -> v.getScopeType() == PaScopeType.CLASS)
+                .filter(v -> normalize(v.getSubjectName()).equals(normalize(subjectName)))
+                .filter(v -> normalizeClass(v.getScopeValue()).equals(normalizeClass(className)))
+                .filter(v -> v.getWorkType() == workType)
+                .filter(v -> Objects.equals(v.getWorkDate(), workDate) || workDate == null)
+                .filter(v -> v.isActiveVersion() && "GENERATED".equalsIgnoreCase(v.getStatus()))
+                .toList();
+        if (candidates.isEmpty()) return;
+        for (PaReportVersion version : candidates) {
+            try { Files.deleteIfExists(resolveReportFilePath(version)); } catch (Exception ignored) { }
+        }
+        reportVersionRepository.deleteAll(candidates);
     }
 
     @Override
@@ -1258,6 +1301,22 @@ public class PaServiceImpl implements PaService {
                 .orElse(defaultLevel);
 
         Integer parallel = parseParallel(className);
+        boolean hasClassBasicSpec = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear).stream()
+                .filter(PaSpecification::isActiveVersion)
+                .filter(s -> normalize(s.getSubjectName()).equals(normalize(subjectName)))
+                .filter(s -> s.getWorkType() == workType)
+                .filter(s -> s.getScopeType() == PaScopeType.CLASS)
+                .filter(s -> normalizeClass(s.getScopeValue()).equals(normalizeClass(className)))
+                .anyMatch(s -> s.getLevel() == PaLevel.BASIC);
+        boolean hasClassAdvancedSpec = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear).stream()
+                .filter(PaSpecification::isActiveVersion)
+                .filter(s -> normalize(s.getSubjectName()).equals(normalize(subjectName)))
+                .filter(s -> s.getWorkType() == workType)
+                .filter(s -> s.getScopeType() == PaScopeType.CLASS)
+                .filter(s -> normalizeClass(s.getScopeValue()).equals(normalizeClass(className)))
+                .anyMatch(s -> s.getLevel() == PaLevel.ADVANCED);
+        if (hasClassAdvancedSpec && !hasClassBasicSpec) return PaLevel.ADVANCED;
+        if (hasClassBasicSpec && !hasClassAdvancedSpec) return PaLevel.BASIC;
         boolean hasBasicSpec = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear).stream()
                 .filter(PaSpecification::isActiveVersion)
                 .filter(s -> normalize(s.getSubjectName()).equals(normalize(subjectName)))
