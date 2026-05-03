@@ -15,6 +15,9 @@ public interface PaService {
     List<PaDtos.ImportLogRow> specificationImportLog(String academicYear, String username, boolean admin);
     List<PaDtos.SpecificationRow> specifications(String academicYear);
     List<PaDtos.SpecificationTaskRow> specificationTasks(Long specificationId);
+    void deleteSpecification(String academicYear, Long specificationId) throws IOException;
+    List<PaDtos.ClassLevelAssignmentRow> classLevelAssignments(String academicYear);
+    void saveClassLevelAssignments(String academicYear, List<PaDtos.ClassLevelAssignmentRow> rows);
     PaDtos.SummaryResponse summary(String academicYear);
     List<PaDtos.ReportVersionRow> reportVersions(String academicYear, String subjectName, PaScopeType scopeType, String scopeValue, PaLevel level, PaWorkType workType, LocalDate workDate);
     List<PaDtos.ReportWorkflowSummaryItem> reportWorkflowSummary(String academicYear, PaLevel level, PaWorkType workType, String subjectName);
@@ -26,5 +29,6 @@ public interface PaService {
     int deleteGeneratedReports(String academicYear, String subjectName, String scopeValue, boolean byParallel, PaLevel level, PaWorkType workType, LocalDate workDate);
     List<PaDtos.ReportFolderItem> reportFolderItems(String academicYear, PaWorkType workType);
     byte[] loadReportFile(Long reportVersionId) throws IOException;
+    String reportFileName(Long reportVersionId);
     byte[] loadSpecificationFile(String academicYear, Long specificationId) throws IOException;
 }
