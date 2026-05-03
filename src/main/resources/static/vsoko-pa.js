@@ -364,7 +364,7 @@ function renderSpecifications(rows) {
                 <td>${row.level === 'ADVANCED' ? 'Углублённый' : 'Базовый'}</td>
                 <td>${workTypeRu(row.workType)}</td>
                 <td><button type="button" class="tab-btn" data-spec-versions-key="${row.subjectName}|${row.scopeValue}|${row.level}|${row.workType}">v${row.versionNo || 1}</button></td>
-                <td>${row.sourceFileName ? `<button type="button" class="tab-btn" data-download-spec-id="${row.id}">${row.sourceFileName}</button>` : ''}</td>
+                <td>${row.sourceFileName ? `<button type="button" class="tab-btn" title="${row.sourceFileName.replace(/"/g, '&quot;')}" data-download-spec-id="${row.id}">⬇</button>` : ''}</td>
                 <td>
                     <label><input type="checkbox" data-participation-subject="${row.subjectName}" data-participation-scope-type="${row.scopeType}" data-participation-scope="${row.scopeValue}" data-participation-level="${row.level}" ${participationMap.get(`${row.subjectName}|${row.scopeValue}|${row.level}`) === false ? '' : 'checked'}> Да</label>
                 </td>
