@@ -930,42 +930,64 @@ public class PaServiceImpl implements PaService {
 
     @Override
     public byte[] loadSpecificationFile(String academicYear, Long specificationId) throws IOException {
-        PaSpecification specification = specificationRepository.findById(specificationId)
+        PaSpecification base = specificationRepository.findById(specificationId)
                 .orElseThrow(() -> new IllegalArgumentException("Спецификация не найдена"));
-        List<PaSpecificationTask> tasks = taskRepository.findAllBySpecificationIdOrderByTaskNoAsc(specificationId);
+        List<PaSpecification> specs = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear);
+        PaSpecification entry = specs.stream().filter(s -> s.isActiveVersion()
+                        && Objects.equals(s.getSubjectName(), base.getSubjectName())
+                        && Objects.equals(s.getScopeValue(), base.getScopeValue())
+                        && s.getScopeType() == base.getScopeType()
+                        && s.getLevel() == base.getLevel()
+                        && s.getWorkType() == PaWorkType.ENTRY)
+                .max(Comparator.comparing(PaSpecification::getVersionNo)).orElse(null);
+        PaSpecification exit = specs.stream().filter(s -> s.isActiveVersion()
+                        && Objects.equals(s.getSubjectName(), base.getSubjectName())
+                        && Objects.equals(s.getScopeValue(), base.getScopeValue())
+                        && s.getScopeType() == base.getScopeType()
+                        && s.getLevel() == base.getLevel()
+                        && s.getWorkType() == PaWorkType.EXIT)
+                .max(Comparator.comparing(PaSpecification::getVersionNo)).orElse(null);
         try (Workbook workbook = new XSSFWorkbook(); java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
             Sheet sheet = workbook.createSheet("Спецификация");
-            sheet.createRow(0).createCell(0).setCellValue("Предмет");
-            sheet.getRow(0).createCell(1).setCellValue(specification.getSubjectName());
-            sheet.createRow(1).createCell(0).setCellValue("Параллель/Класс");
-            sheet.getRow(1).createCell(1).setCellValue(specification.getScopeValue());
-            sheet.createRow(2).createCell(0).setCellValue("Тип");
-            sheet.getRow(2).createCell(1).setCellValue(specification.getWorkType() == PaWorkType.ENTRY ? "Входная работа" : "Выходная работа");
-            sheet.createRow(3).createCell(0).setCellValue("Школа");
-            sheet.getRow(3).createCell(1).setCellValue(Optional.ofNullable(specification.getSchoolName()).orElse(""));
-            sheet.createRow(4).createCell(0).setCellValue("Учебный год");
-            sheet.getRow(4).createCell(1).setCellValue(Optional.ofNullable(specification.getAcademicYear()).orElse(""));
-            sheet.createRow(5).createCell(0).setCellValue("Уровень");
-            sheet.getRow(5).createCell(1).setCellValue(specification.getLevel() == PaLevel.ADVANCED ? "Углублённый" : "Базовый");
-            sheet.createRow(7).createCell(0).setCellValue("№ задания");
-            sheet.getRow(7).createCell(1).setCellValue("Тема задания");
-            sheet.getRow(7).createCell(2).setCellValue("Навык");
-            sheet.getRow(7).createCell(3).setCellValue("Тип задания");
-            sheet.getRow(7).createCell(4).setCellValue("Если повторение, то какое");
-            sheet.getRow(7).createCell(5).setCellValue("Балл за задание");
-            int rowIdx = 8;
-            for (PaSpecificationTask t : tasks) {
-                Row r = sheet.createRow(rowIdx++);
-                r.createCell(0).setCellValue(Optional.ofNullable(t.getTaskNo()).orElse(0));
-                r.createCell(1).setCellValue(Optional.ofNullable(t.getTopic()).orElse(""));
-                r.createCell(2).setCellValue(Optional.ofNullable(t.getSkill()).orElse(""));
-                r.createCell(3).setCellValue(t.getTaskKind() == PaTaskKind.REPEAT ? "повторение" : "новое");
-                r.createCell(4).setCellValue(Optional.ofNullable(t.getRepeatFromTaskNo()).map(String::valueOf).orElse(""));
-                r.createCell(5).setCellValue(Optional.ofNullable(t.getMaxScore()).orElse(0));
-            }
+            writeSpecificationBlock(sheet, 0, entry, base, "Входная работа");
+            writeSpecificationBlock(sheet, 6, exit, base, "Выходная работа");
             workbook.write(out);
             return out.toByteArray();
         }
+    }
+
+    private void writeSpecificationBlock(Sheet sheet, int startCol, PaSpecification spec, PaSpecification base, String workTypeLabel) {
+        String subject = spec != null ? spec.getSubjectName() : base.getSubjectName();
+        String scope = spec != null ? spec.getScopeValue() : base.getScopeValue();
+        String school = spec != null ? spec.getSchoolName() : base.getSchoolName();
+        String year = spec != null ? spec.getAcademicYear() : base.getAcademicYear();
+        PaLevel level = spec != null ? spec.getLevel() : base.getLevel();
+        put(sheet, 0, startCol, "Предмет"); put(sheet, 0, startCol + 1, Optional.ofNullable(subject).orElse(""));
+        put(sheet, 1, startCol, "Параллель/Класс"); put(sheet, 1, startCol + 1, Optional.ofNullable(scope).orElse(""));
+        put(sheet, 2, startCol, "Тип"); put(sheet, 2, startCol + 1, workTypeLabel);
+        put(sheet, 3, startCol, "Школа"); put(sheet, 3, startCol + 1, Optional.ofNullable(school).orElse(""));
+        put(sheet, 4, startCol, "Учебный год"); put(sheet, 4, startCol + 1, Optional.ofNullable(year).orElse(""));
+        put(sheet, 5, startCol, "Уровень"); put(sheet, 5, startCol + 1, level == PaLevel.ADVANCED ? "Углублённый" : "Базовый");
+        put(sheet, 7, startCol, "№ задания"); put(sheet, 7, startCol + 1, "Тема задания"); put(sheet, 7, startCol + 2, "Навык");
+        put(sheet, 7, startCol + 3, "Тип задания"); put(sheet, 7, startCol + 4, "Если повторение, то какое"); put(sheet, 7, startCol + 5, "Балл за задание");
+        List<PaSpecificationTask> tasks = spec == null ? List.of() : taskRepository.findAllBySpecificationIdOrderByTaskNoAsc(spec.getId());
+        int rowIdx = 8;
+        for (PaSpecificationTask t : tasks) {
+            put(sheet, rowIdx, startCol, Optional.ofNullable(t.getTaskNo()).map(String::valueOf).orElse(""));
+            put(sheet, rowIdx, startCol + 1, Optional.ofNullable(t.getTopic()).orElse(""));
+            put(sheet, rowIdx, startCol + 2, Optional.ofNullable(t.getSkill()).orElse(""));
+            put(sheet, rowIdx, startCol + 3, t.getTaskKind() == PaTaskKind.REPEAT ? "повторение" : "новое");
+            put(sheet, rowIdx, startCol + 4, Optional.ofNullable(t.getRepeatFromTaskNo()).map(String::valueOf).orElse(""));
+            put(sheet, rowIdx++, startCol + 5, Optional.ofNullable(t.getMaxScore()).map(String::valueOf).orElse(""));
+        }
+    }
+
+    private void put(Sheet sheet, int rowIdx, int colIdx, String value) {
+        Row row = sheet.getRow(rowIdx);
+        if (row == null) row = sheet.createRow(rowIdx);
+        Cell cell = row.getCell(colIdx);
+        if (cell == null) cell = row.createCell(colIdx);
+        cell.setCellValue(value);
     }
 
     @Override
@@ -981,19 +1003,6 @@ public class PaServiceImpl implements PaService {
                 })
                 .filter(name -> name != null && !name.isBlank())
                 .orElse("pa-specification-" + specificationId + ".xlsx");
-    }
-
-    @Override
-    @Transactional
-    public void deleteSpecification(String academicYear, Long specificationId) throws IOException {
-        PaSpecification specification = specificationRepository.findById(specificationId)
-                .orElseThrow(() -> new IllegalArgumentException("Спецификация не найдена"));
-        taskRepository.deleteAllBySpecificationId(specificationId);
-        specificationRepository.delete(specification);
-        if (specification.getSourceFileName() != null && !specification.getSourceFileName().isBlank()) {
-            Path path = Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-"), specification.getSourceFileName());
-            Files.deleteIfExists(path);
-        }
     }
 
     @Override
