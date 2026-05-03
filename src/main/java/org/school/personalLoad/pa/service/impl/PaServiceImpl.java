@@ -1249,7 +1249,7 @@ public class PaServiceImpl implements PaService {
     }
 
     private PaLevel resolveAssignedLevel(String academicYear, String subjectName, String className, PaWorkType workType, PaLevel defaultLevel) {
-        return classLevelAssignmentRepository.findAllByAcademicYear(academicYear).stream()
+        PaLevel fromAssignment = classLevelAssignmentRepository.findAllByAcademicYear(academicYear).stream()
                 .filter(r -> normalize(r.getSubjectName()).equals(normalize(subjectName)))
                 .filter(r -> r.getWorkType() == workType)
                 .filter(r -> normalizeClass(r.getClassName()).equals(normalizeClass(className)))
@@ -1259,6 +1259,25 @@ public class PaServiceImpl implements PaService {
                 .map(PaClassLevelAssignment::getLevel)
                 .findFirst()
                 .orElse(defaultLevel);
+
+        Integer parallel = parseParallel(className);
+        boolean hasBasicSpec = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear).stream()
+                .filter(PaSpecification::isActiveVersion)
+                .filter(s -> normalize(s.getSubjectName()).equals(normalize(subjectName)))
+                .filter(s -> s.getWorkType() == workType)
+                .filter(s -> s.getLevel() == PaLevel.BASIC)
+                .anyMatch(s -> (s.getScopeType() == PaScopeType.CLASS && normalizeClass(s.getScopeValue()).equals(normalizeClass(className)))
+                        || (parallel != null && s.getScopeType() == PaScopeType.PARALLEL && normalizeClass(s.getScopeValue()).equals(normalizeClass(String.valueOf(parallel)))));
+        boolean hasAdvancedSpec = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear).stream()
+                .filter(PaSpecification::isActiveVersion)
+                .filter(s -> normalize(s.getSubjectName()).equals(normalize(subjectName)))
+                .filter(s -> s.getWorkType() == workType)
+                .filter(s -> s.getLevel() == PaLevel.ADVANCED)
+                .anyMatch(s -> (s.getScopeType() == PaScopeType.CLASS && normalizeClass(s.getScopeValue()).equals(normalizeClass(className)))
+                        || (parallel != null && s.getScopeType() == PaScopeType.PARALLEL && normalizeClass(s.getScopeValue()).equals(normalizeClass(String.valueOf(parallel)))));
+        if (hasAdvancedSpec && !hasBasicSpec) return PaLevel.ADVANCED;
+        if (hasBasicSpec && !hasAdvancedSpec) return PaLevel.BASIC;
+        return fromAssignment;
     }
 
     private LocalDate parseLocalDate(String value) {
