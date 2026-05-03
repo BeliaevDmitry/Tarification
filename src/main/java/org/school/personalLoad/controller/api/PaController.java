@@ -30,6 +30,7 @@ public class PaController {
                                        PaLevel level,
                                        Boolean participates) {
     }
+    public record ClassLevelAssignmentsRequest(List<PaDtos.ClassLevelAssignmentRow> rows) {}
 
     private final PaService paService;
     private final AcademicYearService academicYearService;
@@ -76,10 +77,32 @@ public class PaController {
                 .body(body);
     }
 
+    @DeleteMapping("/specifications/{specificationId}")
+    public ResponseEntity<Void> deleteSpecification(@PathVariable Long specificationId,
+                                                    @RequestParam(required = false) String academicYear) throws Exception {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        paService.deleteSpecification(year, specificationId);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/specifications/summary")
     public ResponseEntity<PaDtos.SummaryResponse> summary(@RequestParam(required = false) String academicYear) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
         return ResponseEntity.ok(paService.summary(year));
+    }
+
+    @GetMapping("/specifications/class-level-assignments")
+    public ResponseEntity<List<PaDtos.ClassLevelAssignmentRow>> classLevelAssignments(@RequestParam(required = false) String academicYear) {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        return ResponseEntity.ok(paService.classLevelAssignments(year));
+    }
+
+    @PutMapping("/specifications/class-level-assignments")
+    public ResponseEntity<Void> saveClassLevelAssignments(@RequestParam(required = false) String academicYear,
+                                                          @RequestBody ClassLevelAssignmentsRequest request) {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        paService.saveClassLevelAssignments(year, request == null ? List.of() : request.rows());
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/reports/versions")
