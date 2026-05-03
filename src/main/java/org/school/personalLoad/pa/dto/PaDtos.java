@@ -43,7 +43,8 @@ public final class PaDtos {
                                        Integer maxScore) {
     }
 
-    public record ImportLogRow(String fileName,
+    public record ImportLogRow(Long id,
+                               String fileName,
                                String subjects,
                                String parallels,
                                String status,
@@ -107,5 +108,12 @@ public final class PaDtos {
                                             boolean hasUploaded,
                                             Long latestGeneratedId,
                                             Long latestUploadedId) {
+    }
+
+    public record ClassLevelAssignmentRow(String subjectName,
+                                          String className,
+                                          PaWorkType workType,
+                                          PaLevel level,
+                                          boolean manual) {
     }
 }
