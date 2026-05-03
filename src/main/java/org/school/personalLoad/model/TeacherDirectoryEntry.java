@@ -26,6 +26,7 @@ public class TeacherDirectoryEntry {
     private String phone;
     @Column(unique = true)
     private String email;
+    private String additionalDuties;
 
     private LocalDate dismissalDate;
 

@@ -7,6 +7,7 @@ import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.pa.dto.PaDtos;
 import org.school.personalLoad.pa.model.*;
 import org.school.personalLoad.pa.repository.PaParticipationRepository;
+import org.school.personalLoad.pa.repository.PaClassLevelAssignmentRepository;
 import org.school.personalLoad.pa.repository.PaReportVersionRepository;
 import org.school.personalLoad.pa.repository.PaSpecImportLogRepository;
 import org.school.personalLoad.pa.repository.PaSpecificationRepository;
@@ -52,6 +53,7 @@ public class PaServiceImpl implements PaService {
     private final PaSpecificationRepository specificationRepository;
     private final PaSpecificationTaskRepository taskRepository;
     private final PaParticipationRepository participationRepository;
+    private final PaClassLevelAssignmentRepository classLevelAssignmentRepository;
     private final PaReportVersionRepository reportVersionRepository;
     private final PaSpecImportLogRepository paSpecImportLogRepository;
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
@@ -113,9 +115,34 @@ public class PaServiceImpl implements PaService {
                 ? paSpecImportLogRepository.findAllByAcademicYearOrderByCreatedAtDescIdDesc(academicYear)
                 : paSpecImportLogRepository.findAllByAcademicYearAndCreatedByOrderByCreatedAtDescIdDesc(academicYear, username);
         return rows.stream().map(r -> new PaDtos.ImportLogRow(
-                r.getFileName(), r.getSubjects(), r.getParallels(), r.getStatus(), r.getMessage(),
+                r.getId(), r.getFileName(), r.getSubjects(), r.getParallels(), r.getStatus(), r.getMessage(),
                 r.getRecordsCount() == null ? 0 : r.getRecordsCount(), r.getCreatedBy(), r.getCreatedAt()
         )).toList();
+    }
+
+    @Override
+    public byte[] loadSpecificationImportLogFile(String academicYear, Long importLogId) throws IOException {
+        var row = paSpecImportLogRepository.findById(importLogId)
+                .orElseThrow(() -> new IllegalArgumentException("Запись журнала импорта не найдена"));
+        Path path = Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-"), row.getFileName());
+        if (!Files.exists(path)) throw new IllegalArgumentException("Файл импорта не найден на диске");
+        return Files.readAllBytes(path);
+    }
+
+    @Override
+    public byte[] loadSpecificationImportFileByName(String academicYear, String fileName) throws IOException {
+        if (fileName == null || fileName.isBlank()) throw new IllegalArgumentException("Имя файла не указано");
+        Path path = Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-"), fileName);
+        if (!Files.exists(path)) throw new IllegalArgumentException("Файл импорта не найден на диске");
+        return Files.readAllBytes(path);
+    }
+
+    @Override
+    public String specificationImportLogFileName(String academicYear, Long importLogId) {
+        return paSpecImportLogRepository.findById(importLogId)
+                .map(org.school.personalLoad.pa.model.PaSpecImportLog::getFileName)
+                .filter(name -> name != null && !name.isBlank())
+                .orElse("pa-spec-import-" + importLogId + ".xlsx");
     }
 
     private void saveSpecImportLog(String academicYear, String username, PaDtos.ImportResult result) {
@@ -155,8 +182,8 @@ public class PaServiceImpl implements PaService {
             if (spec == null) continue;
             String thresholdError = validateThresholds(spec);
             if (thresholdError != null) {
-                warnings.add("Лист " + sheet.getSheetName() + ": спецификация '" + spec.getSubjectName()
-                        + "' (" + spec.getScopeValue() + ") не загружена — нет порогов или они не валидны");
+                warnings.add("Лист " + sheet.getSheetName() + ":\n"
+                        + workTypeLabel(spec.getWorkType()) + ": не принята — нет порогов или они не валидны");
                 continue;
             }
             spec.setCreatedAt(LocalDateTime.now());
@@ -190,13 +217,12 @@ public class PaServiceImpl implements PaService {
             List<PaSpecificationTask> tasks = parseTasks(sheet, subjectRow, subjectCol, blockEndCol, saved, warnings);
             if (tasks.isEmpty()) {
                 specificationRepository.delete(saved);
-                String workTypeLabel = saved.getWorkType() == PaWorkType.ENTRY
-                        ? "Входной"
-                        : saved.getWorkType() == PaWorkType.EXIT ? "Выходной" : "Промежуточной";
-                warnings.add("Лист " + sheet.getSheetName() + ": спецификация '" + subjectName + "' для " + workTypeLabel + " работы не загружена — нет ни одной темы");
+                warnings.add("Лист " + sheet.getSheetName() + ":\n"
+                        + workTypeLabel(saved.getWorkType()) + ": не принята — нет ни одной темы");
                 continue;
             }
             taskRepository.saveAll(tasks);
+            warnings.add("Лист " + sheet.getSheetName() + ":\n" + workTypeLabel(saved.getWorkType()) + ": принята");
             importedSpecs += 1;
             importedTasks += tasks.size();
             subjects.add(saved.getSubjectName());
@@ -204,6 +230,12 @@ public class PaServiceImpl implements PaService {
             if (p != null) parallels.add(String.valueOf(p));
         }
         return new SheetImportStats(importedSpecs, importedTasks, subjects, parallels);
+    }
+
+    private String workTypeLabel(PaWorkType workType) {
+        if (workType == PaWorkType.ENTRY) return "Входная работа";
+        if (workType == PaWorkType.EXIT) return "Выходная работа";
+        return "Промежуточная работа";
     }
 
     private PaSpecification parseBlock(String academicYear,
@@ -216,8 +248,22 @@ public class PaServiceImpl implements PaService {
         String subject = firstNonBlank(sheet, baseRow, baseCol + 1, blockEndCol);
         String scope = findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "Параллель/Класс");
         String workTypeRaw = findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "Тип");
-        if (subject.isBlank() || scope.isBlank() || workTypeRaw.isBlank()) {
-            warnings.add("Лист " + sheet.getSheetName() + ": пропущены обязательные поля (предмет/параллель/тип)");
+        if (subject.isBlank()) {
+            warnings.add("Лист " + sheet.getSheetName() + ": не указан предмет");
+            return null;
+        }
+        boolean subjectInCurriculum = curriculumPlanEntryRepository.findAllByAcademicYear(academicYear).stream()
+                .anyMatch(r -> normalize(r.getSubjectName()).equals(normalize(subject)));
+        if (!subjectInCurriculum) {
+            warnings.add("Лист " + sheet.getSheetName() + ": предмет '" + subject + "' отсутствует в учебном плане");
+            return null;
+        }
+        if (scope.isBlank()) {
+            warnings.add("Лист " + sheet.getSheetName() + ": не заполнено поле «Параллель/Класс»");
+            return null;
+        }
+        if (workTypeRaw.isBlank()) {
+            warnings.add("Лист " + sheet.getSheetName() + ": не заполнено поле «Тип»");
             return null;
         }
         PaWorkType workType = parseWorkType(workTypeRaw);
@@ -281,6 +327,10 @@ public class PaServiceImpl implements PaService {
             if (containsNormalized(value, "балл")) colMap.put("score", c);
         }
         if (!colMap.containsKey("task")) return List.of();
+        if (!colMap.containsKey("topic")) {
+            warnings.add("Лист " + sheet.getSheetName() + ": не найдена колонка «Тема задания» для предмета '" + specification.getSubjectName() + "'");
+            return List.of();
+        }
         if (!colMap.containsKey("score")) {
             warnings.add("Лист " + sheet.getSheetName() + ": не найдена колонка «Балл» для предмета '" + specification.getSubjectName() + "'");
             return List.of();
@@ -324,6 +374,12 @@ public class PaServiceImpl implements PaService {
         }
         boolean hasAtLeastOneTopic = tasks.stream().anyMatch(task -> task.getTopic() != null && !task.getTopic().isBlank());
         if (!hasAtLeastOneTopic) {
+            warnings.add("Лист " + sheet.getSheetName() + ": не заполнена «Тема задания» для предмета '" + specification.getSubjectName() + "'");
+            return List.of();
+        }
+        boolean hasAtLeastOneScore = tasks.stream().anyMatch(task -> task.getMaxScore() != null);
+        if (!hasAtLeastOneScore) {
+            warnings.add("Лист " + sheet.getSheetName() + ": не заполнены баллы за задания для предмета '" + specification.getSubjectName() + "'");
             return List.of();
         }
         return tasks;
@@ -391,6 +447,36 @@ public class PaServiceImpl implements PaService {
     }
 
     @Override
+    public List<PaDtos.ClassLevelAssignmentRow> classLevelAssignments(String academicYear) {
+        return classLevelAssignmentRepository.findAllByAcademicYear(academicYear).stream()
+                .map(r -> new PaDtos.ClassLevelAssignmentRow(r.getSubjectName(), r.getClassName(), r.getWorkType(), r.getLevel(), r.isManual()))
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public void saveClassLevelAssignments(String academicYear, List<PaDtos.ClassLevelAssignmentRow> rows) {
+        if (rows == null) return;
+        for (PaDtos.ClassLevelAssignmentRow row : rows) {
+            if (row == null || row.subjectName() == null || row.className() == null || row.workType() == null || row.level() == null) continue;
+            PaClassLevelAssignment entity = classLevelAssignmentRepository.findAllByAcademicYear(academicYear).stream()
+                    .filter(r -> normalize(r.getSubjectName()).equals(normalize(row.subjectName())))
+                    .filter(r -> r.getWorkType() == row.workType())
+                    .filter(r -> normalizeClass(r.getClassName()).equals(normalizeClass(row.className())))
+                    .findFirst()
+                    .orElseGet(PaClassLevelAssignment::new);
+            entity.setAcademicYear(academicYear);
+            entity.setSubjectName(row.subjectName());
+            entity.setClassName(row.className());
+            entity.setWorkType(row.workType());
+            entity.setLevel(row.level());
+            entity.setManual(row.manual());
+            entity.setUpdatedAt(LocalDateTime.now());
+            classLevelAssignmentRepository.save(entity);
+        }
+    }
+
+    @Override
     public List<PaDtos.ReportVersionRow> reportVersions(String academicYear, String subjectName, PaScopeType scopeType, String scopeValue, PaLevel level, PaWorkType workType, LocalDate workDate) {
         return reportVersionRepository.findTop10ByAcademicYearAndSubjectNameAndScopeTypeAndScopeValueAndLevelAndWorkTypeAndWorkDateOrderByCreatedAtDesc(
                         academicYear, subjectName, scopeType, scopeValue, level, workType, workDate)
@@ -455,6 +541,7 @@ public class PaServiceImpl implements PaService {
                 String typeRaw = info.getOrDefault("тип", "");
                 String yearInFile = info.getOrDefault("учебный год", "");
                 String dateRaw = info.getOrDefault("дата написания работы", "");
+                String levelRaw = info.getOrDefault("уровень", "");
 
                 if (teacher.isBlank() || subject.isBlank() || scopeValue.isBlank() || typeRaw.isBlank()) {
                     results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, "Не заполнены обязательные поля листа «Информация»"));
@@ -495,7 +582,10 @@ public class PaServiceImpl implements PaService {
                 }
 
                 PaScopeType scopeType = detectScopeType(scopeValue);
-                PaLevel level = PaLevel.BASIC;
+                PaLevel parsedLevel = parseLevel(levelRaw);
+                PaLevel level = parsedLevel != null
+                        ? parsedLevel
+                        : resolveAssignedLevel(academicYear, subject, scopeValue, workType, PaLevel.BASIC);
                 List<PaReportVersion> sameKey = reportVersionRepository.findAllByAcademicYearAndSubjectNameAndScopeTypeAndScopeValueAndLevelAndWorkTypeAndWorkDate(
                         academicYear, subject, scopeType, scopeValue.trim().toUpperCase(Locale.ROOT), level, workType, workDate
                 );
@@ -554,7 +644,8 @@ public class PaServiceImpl implements PaService {
     @Override
     @Transactional
     public PaDtos.ReportUploadResult generateReportTemplate(String academicYear, String subjectName, String className, PaLevel level, PaWorkType workType, LocalDate workDate, boolean force) {
-        PaSpecification spec = resolveSpecificationForClass(academicYear, subjectName, className, level, workType, workDate);
+        PaLevel assignedLevel = resolveAssignedLevel(academicYear, subjectName, className, workType, level);
+        PaSpecification spec = resolveSpecificationForClass(academicYear, subjectName, className, assignedLevel, workType, workDate);
         if (spec == null) {
             return new PaDtos.ReportUploadResult("", "REJECTED", "Не найдена активная спецификация для генерации", null, subjectName, className, workType);
         }
@@ -595,7 +686,7 @@ public class PaServiceImpl implements PaService {
             try (Workbook workbook = new XSSFWorkbook();
                  OutputStream outputStream = Files.newOutputStream(filePath)) {
                 TemplateStyles styles = createTemplateStyles(workbook);
-                createInfoSheet(workbook, academicYear, subjectName, className, teacherFio, level, workType, workDate, styles);
+                createInfoSheet(workbook, academicYear, subjectName, className, teacherFio, assignedLevel, workType, workDate, styles);
                 createDataSheet(workbook, students, tasks, spec, styles);
                 workbook.write(outputStream);
             }
@@ -604,17 +695,17 @@ public class PaServiceImpl implements PaService {
         }
 
         List<PaReportVersion> sameKey = reportVersionRepository.findAllByAcademicYearAndSubjectNameAndScopeTypeAndScopeValueAndLevelAndWorkTypeAndWorkDate(
-                academicYear, subjectName, PaScopeType.CLASS, className.toUpperCase(Locale.ROOT), level, workType, workDate
+                academicYear, subjectName, PaScopeType.CLASS, className.toUpperCase(Locale.ROOT), assignedLevel, workType, workDate
         );
         sameKey.forEach(v -> v.setActiveVersion(false));
         if (!sameKey.isEmpty()) reportVersionRepository.saveAll(sameKey);
-        int versionNo = reportVersionRepository.findMaxVersion(academicYear, subjectName, PaScopeType.CLASS, className.toUpperCase(Locale.ROOT), level, workType, workDate) + 1;
+        int versionNo = reportVersionRepository.findMaxVersion(academicYear, subjectName, PaScopeType.CLASS, className.toUpperCase(Locale.ROOT), assignedLevel, workType, workDate) + 1;
         PaReportVersion version = new PaReportVersion();
         version.setAcademicYear(academicYear);
         version.setSubjectName(subjectName);
         version.setScopeType(PaScopeType.CLASS);
         version.setScopeValue(className.toUpperCase(Locale.ROOT));
-        version.setLevel(level);
+        version.setLevel(assignedLevel);
         version.setWorkType(workType);
         version.setWorkDate(workDate);
         version.setVersionNo(versionNo);
@@ -645,14 +736,15 @@ public class PaServiceImpl implements PaService {
                 .toList();
         List<PaDtos.ReportUploadResult> results = new ArrayList<>();
         for (String className : classes) {
-            if (resolveSpecificationForClass(academicYear, subjectName, className, level, workType, workDate) == null) {
+            PaLevel assignedLevel = resolveAssignedLevel(academicYear, subjectName, className, workType, level);
+            if (resolveSpecificationForClass(academicYear, subjectName, className, assignedLevel, workType, workDate) == null) {
                 continue;
             }
-            if (!force && hasActiveGeneratedTemplate(academicYear, subjectName, className, level, workType, workDate)) {
+            if (!force && hasActiveGeneratedTemplate(academicYear, subjectName, className, assignedLevel, workType, workDate)) {
                 results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Шаблон уже сгенерирован для класса", null, subjectName, className, workType));
                 continue;
             }
-            results.add(generateReportTemplate(academicYear, subjectName, className, level, workType, workDate, force));
+            results.add(generateReportTemplate(academicYear, subjectName, className, assignedLevel, workType, workDate, force));
         }
         if (results.isEmpty()) {
             results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Нет классов с доступной спецификацией для генерации", null, subjectName, "", workType));
@@ -686,17 +778,22 @@ public class PaServiceImpl implements PaService {
         List<PaDtos.ReportUploadResult> results = new ArrayList<>();
         for (String subject : subjects) {
             for (String className : classes) {
-                if (resolveSpecificationForClass(academicYear, subject, className, level, workType, workDate) == null) {
+                PaLevel assignedLevel = resolveAssignedLevel(academicYear, subject, className, workType, level);
+                if (resolveSpecificationForClass(academicYear, subject, className, assignedLevel, workType, workDate) == null) {
                     continue;
                 }
-                boolean generatedExists = hasActiveGeneratedTemplate(academicYear, subject, className, level, workType, workDate);
+                boolean generatedExists = hasActiveGeneratedTemplate(academicYear, subject, className, assignedLevel, workType, workDate);
+                boolean anyGeneratedExists = hasAnyActiveGeneratedTemplate(academicYear, subject, className, workType, workDate);
                 if (!force && generatedExists) {
                     continue;
                 }
-                if (force && "ALL".equalsIgnoreCase(subjectName) && !generatedExists) {
+                if (force && "ALL".equalsIgnoreCase(subjectName) && !anyGeneratedExists) {
                     continue;
                 }
-                results.add(generateReportTemplate(academicYear, subject, className, level, workType, workDate, true));
+                if (force && "ALL".equalsIgnoreCase(subjectName) && anyGeneratedExists) {
+                    deleteActiveGeneratedTemplatesAllLevels(academicYear, subject, className, workType, workDate);
+                }
+                results.add(generateReportTemplate(academicYear, subject, className, assignedLevel, workType, workDate, true));
             }
         }
         if (results.isEmpty()) {
@@ -745,6 +842,42 @@ public class PaServiceImpl implements PaService {
                 .anyMatch(v -> v.isActiveVersion() && "GENERATED".equalsIgnoreCase(v.getStatus()));
     }
 
+    private boolean hasAnyActiveGeneratedTemplate(String academicYear,
+                                                  String subjectName,
+                                                  String className,
+                                                  PaWorkType workType,
+                                                  LocalDate workDate) {
+        return reportVersionRepository.findAll().stream()
+                .filter(v -> Objects.equals(v.getAcademicYear(), academicYear))
+                .filter(v -> v.getScopeType() == PaScopeType.CLASS)
+                .filter(v -> normalize(v.getSubjectName()).equals(normalize(subjectName)))
+                .filter(v -> normalizeClass(v.getScopeValue()).equals(normalizeClass(className)))
+                .filter(v -> v.getWorkType() == workType)
+                .filter(v -> Objects.equals(v.getWorkDate(), workDate) || workDate == null)
+                .anyMatch(v -> v.isActiveVersion() && "GENERATED".equalsIgnoreCase(v.getStatus()));
+    }
+
+    private void deleteActiveGeneratedTemplatesAllLevels(String academicYear,
+                                                         String subjectName,
+                                                         String className,
+                                                         PaWorkType workType,
+                                                         LocalDate workDate) {
+        List<PaReportVersion> candidates = reportVersionRepository.findAll().stream()
+                .filter(v -> Objects.equals(v.getAcademicYear(), academicYear))
+                .filter(v -> v.getScopeType() == PaScopeType.CLASS)
+                .filter(v -> normalize(v.getSubjectName()).equals(normalize(subjectName)))
+                .filter(v -> normalizeClass(v.getScopeValue()).equals(normalizeClass(className)))
+                .filter(v -> v.getWorkType() == workType)
+                .filter(v -> Objects.equals(v.getWorkDate(), workDate) || workDate == null)
+                .filter(v -> v.isActiveVersion() && "GENERATED".equalsIgnoreCase(v.getStatus()))
+                .toList();
+        if (candidates.isEmpty()) return;
+        for (PaReportVersion version : candidates) {
+            try { Files.deleteIfExists(resolveReportFilePath(version)); } catch (Exception ignored) { }
+        }
+        reportVersionRepository.deleteAll(candidates);
+    }
+
     @Override
     public List<PaDtos.ReportFolderItem> reportFolderItems(String academicYear, PaWorkType workType) {
         return reportVersionRepository.findAll().stream()
@@ -785,6 +918,14 @@ public class PaServiceImpl implements PaService {
         return Files.readAllBytes(path);
     }
 
+    @Override
+    public String reportFileName(Long reportVersionId) {
+        return reportVersionRepository.findById(reportVersionId)
+                .map(PaReportVersion::getSourceFileName)
+                .filter(name -> name != null && !name.isBlank())
+                .orElse("pa-report-" + reportVersionId + ".xlsx");
+    }
+
     private Path resolveReportFilePath(PaReportVersion version) {
         if (version.getSourceFilePath() != null && !version.getSourceFilePath().isBlank()) {
             return Path.of(version.getSourceFilePath());
@@ -797,16 +938,100 @@ public class PaServiceImpl implements PaService {
 
     @Override
     public byte[] loadSpecificationFile(String academicYear, Long specificationId) throws IOException {
+        PaSpecification base = specificationRepository.findById(specificationId)
+                .orElseThrow(() -> new IllegalArgumentException("Спецификация не найдена"));
+        List<PaSpecification> specs = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear);
+        PaSpecification entry = specs.stream().filter(s -> s.isActiveVersion()
+                        && Objects.equals(s.getSubjectName(), base.getSubjectName())
+                        && Objects.equals(s.getScopeValue(), base.getScopeValue())
+                        && s.getScopeType() == base.getScopeType()
+                        && s.getLevel() == base.getLevel()
+                        && s.getWorkType() == PaWorkType.ENTRY)
+                .max(Comparator.comparing(PaSpecification::getVersionNo)).orElse(null);
+        PaSpecification exit = specs.stream().filter(s -> s.isActiveVersion()
+                        && Objects.equals(s.getSubjectName(), base.getSubjectName())
+                        && Objects.equals(s.getScopeValue(), base.getScopeValue())
+                        && s.getScopeType() == base.getScopeType()
+                        && s.getLevel() == base.getLevel()
+                        && s.getWorkType() == PaWorkType.EXIT)
+                .max(Comparator.comparing(PaSpecification::getVersionNo)).orElse(null);
+        try (Workbook workbook = new XSSFWorkbook(); java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("Спецификация");
+            writeSpecificationBlock(sheet, 0, entry, base, "Входная работа");
+            writeSpecificationBlock(sheet, 6, exit, base, "Выходная работа");
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private void writeSpecificationBlock(Sheet sheet, int startCol, PaSpecification spec, PaSpecification base, String workTypeLabel) {
+        String subject = spec != null ? spec.getSubjectName() : base.getSubjectName();
+        String scope = spec != null ? spec.getScopeValue() : base.getScopeValue();
+        String school = spec != null ? spec.getSchoolName() : base.getSchoolName();
+        String year = spec != null ? spec.getAcademicYear() : base.getAcademicYear();
+        PaLevel level = spec != null ? spec.getLevel() : base.getLevel();
+        put(sheet, 0, startCol, "Предмет"); put(sheet, 0, startCol + 1, Optional.ofNullable(subject).orElse(""));
+        put(sheet, 1, startCol, "Параллель/Класс"); put(sheet, 1, startCol + 1, Optional.ofNullable(scope).orElse(""));
+        put(sheet, 2, startCol, "Тип"); put(sheet, 2, startCol + 1, workTypeLabel);
+        put(sheet, 3, startCol, "Школа"); put(sheet, 3, startCol + 1, Optional.ofNullable(school).orElse(""));
+        put(sheet, 4, startCol, "Учебный год"); put(sheet, 4, startCol + 1, Optional.ofNullable(year).orElse(""));
+        put(sheet, 5, startCol, "Уровень"); put(sheet, 5, startCol + 1, level == PaLevel.ADVANCED ? "Углублённый" : "Базовый");
+        put(sheet, 6, startCol, "Шкала оценивания ПА (от %):");
+        put(sheet, 7, startCol, "\"5\":"); put(sheet, 7, startCol + 1, Optional.ofNullable(spec != null ? spec.getGrade5Percent() : base.getGrade5Percent()).map(v -> v + "%").orElse("85%"));
+        put(sheet, 8, startCol, "\"4\":"); put(sheet, 8, startCol + 1, Optional.ofNullable(spec != null ? spec.getGrade4Percent() : base.getGrade4Percent()).map(v -> v + "%").orElse("61%"));
+        put(sheet, 9, startCol, "\"3\":"); put(sheet, 9, startCol + 1, Optional.ofNullable(spec != null ? spec.getGrade3Percent() : base.getGrade3Percent()).map(v -> v + "%").orElse("35%"));
+        put(sheet, 11, startCol, "№ задания"); put(sheet, 11, startCol + 1, "Тема задания"); put(sheet, 11, startCol + 2, "Навык");
+        put(sheet, 11, startCol + 3, "Тип задания"); put(sheet, 11, startCol + 4, "Если повторение, то какое"); put(sheet, 11, startCol + 5, "Балл за задание");
+        List<PaSpecificationTask> tasks = spec == null ? List.of() : taskRepository.findAllBySpecificationIdOrderByTaskNoAsc(spec.getId());
+        int rowIdx = 12;
+        for (PaSpecificationTask t : tasks) {
+            put(sheet, rowIdx, startCol, Optional.ofNullable(t.getTaskNo()).map(String::valueOf).orElse(""));
+            put(sheet, rowIdx, startCol + 1, Optional.ofNullable(t.getTopic()).orElse(""));
+            put(sheet, rowIdx, startCol + 2, Optional.ofNullable(t.getSkill()).orElse(""));
+            put(sheet, rowIdx, startCol + 3, t.getTaskKind() == PaTaskKind.REPEAT ? "повторение" : "новое");
+            put(sheet, rowIdx, startCol + 4, Optional.ofNullable(t.getRepeatFromTaskNo()).map(String::valueOf).orElse(""));
+            put(sheet, rowIdx++, startCol + 5, Optional.ofNullable(t.getMaxScore()).map(String::valueOf).orElse(""));
+        }
+    }
+
+    private void put(Sheet sheet, int rowIdx, int colIdx, String value) {
+        Row row = sheet.getRow(rowIdx);
+        if (row == null) row = sheet.createRow(rowIdx);
+        Cell cell = row.getCell(colIdx);
+        if (cell == null) cell = row.createCell(colIdx);
+        cell.setCellValue(value);
+    }
+
+    @Override
+    public String specificationFileName(String academicYear, Long specificationId) {
+        return specificationRepository.findById(specificationId)
+                .map(spec -> {
+                    String subject = sanitizeFileNamePart(spec.getSubjectName());
+                    String scope = sanitizeFileNamePart(spec.getScopeValue());
+                    if (subject.isBlank() || scope.isBlank()) {
+                        return spec.getSourceFileName();
+                    }
+                    return subject + "_" + scope + ".xlsx";
+                })
+                .filter(name -> name != null && !name.isBlank())
+                .orElse("pa-specification-" + specificationId + ".xlsx");
+    }
+
+    @Override
+    @Transactional
+    public void deleteSpecification(String academicYear, Long specificationId) throws IOException {
+        deleteSpecificationInternal(academicYear, specificationId);
+    }
+
+    private void deleteSpecificationInternal(String academicYear, Long specificationId) throws IOException {
         PaSpecification specification = specificationRepository.findById(specificationId)
                 .orElseThrow(() -> new IllegalArgumentException("Спецификация не найдена"));
-        if (specification.getSourceFileName() == null || specification.getSourceFileName().isBlank()) {
-            throw new IllegalArgumentException("У спецификации не указан исходный файл");
+        taskRepository.deleteAllBySpecificationId(specificationId);
+        specificationRepository.delete(specification);
+        if (specification.getSourceFileName() != null && !specification.getSourceFileName().isBlank()) {
+            Path path = Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-"), specification.getSourceFileName());
+            Files.deleteIfExists(path);
         }
-        Path path = Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-"), specification.getSourceFileName());
-        if (!Files.exists(path)) {
-            throw new IllegalArgumentException("Файл спецификации не найден на диске");
-        }
-        return Files.readAllBytes(path);
     }
 
     private PaSpecification resolveSpecificationForClass(String year, String subject, String className, PaLevel level, PaWorkType workType, LocalDate workDate) {
@@ -1183,7 +1408,69 @@ public class PaServiceImpl implements PaService {
     }
 
     private String normalizeClass(String value) {
-        return String.valueOf(value == null ? "" : value).trim().toUpperCase(Locale.ROOT).replaceAll("\\s+", "");
+        String raw = String.valueOf(value == null ? "" : value).trim().toUpperCase(Locale.ROOT)
+                .replaceAll("[\\s\\-–—_./\\\\]+", "");
+        return raw
+                .replace('A', 'А')
+                .replace('B', 'В')
+                .replace('C', 'С')
+                .replace('E', 'Е')
+                .replace('H', 'Н')
+                .replace('K', 'К')
+                .replace('M', 'М')
+                .replace('O', 'О')
+                .replace('P', 'Р')
+                .replace('T', 'Т')
+                .replace('X', 'Х')
+                .replace('Y', 'У');
+    }
+
+    private PaLevel resolveAssignedLevel(String academicYear, String subjectName, String className, PaWorkType workType, PaLevel defaultLevel) {
+        PaLevel fromAssignment = classLevelAssignmentRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(r -> normalize(r.getSubjectName()).equals(normalize(subjectName)))
+                .filter(r -> r.getWorkType() == workType)
+                .filter(r -> normalizeClass(r.getClassName()).equals(normalizeClass(className)))
+                .sorted(Comparator
+                        .comparing(PaClassLevelAssignment::isManual, Comparator.reverseOrder())
+                        .thenComparing(PaClassLevelAssignment::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                .map(PaClassLevelAssignment::getLevel)
+                .findFirst()
+                .orElse(defaultLevel);
+
+        Integer parallel = parseParallel(className);
+        boolean hasClassBasicSpec = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear).stream()
+                .filter(PaSpecification::isActiveVersion)
+                .filter(s -> normalize(s.getSubjectName()).equals(normalize(subjectName)))
+                .filter(s -> s.getWorkType() == workType)
+                .filter(s -> s.getScopeType() == PaScopeType.CLASS)
+                .filter(s -> normalizeClass(s.getScopeValue()).equals(normalizeClass(className)))
+                .anyMatch(s -> s.getLevel() == PaLevel.BASIC);
+        boolean hasClassAdvancedSpec = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear).stream()
+                .filter(PaSpecification::isActiveVersion)
+                .filter(s -> normalize(s.getSubjectName()).equals(normalize(subjectName)))
+                .filter(s -> s.getWorkType() == workType)
+                .filter(s -> s.getScopeType() == PaScopeType.CLASS)
+                .filter(s -> normalizeClass(s.getScopeValue()).equals(normalizeClass(className)))
+                .anyMatch(s -> s.getLevel() == PaLevel.ADVANCED);
+        if (hasClassAdvancedSpec && !hasClassBasicSpec) return PaLevel.ADVANCED;
+        if (hasClassBasicSpec && !hasClassAdvancedSpec) return PaLevel.BASIC;
+        boolean hasBasicSpec = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear).stream()
+                .filter(PaSpecification::isActiveVersion)
+                .filter(s -> normalize(s.getSubjectName()).equals(normalize(subjectName)))
+                .filter(s -> s.getWorkType() == workType)
+                .filter(s -> s.getLevel() == PaLevel.BASIC)
+                .anyMatch(s -> (s.getScopeType() == PaScopeType.CLASS && normalizeClass(s.getScopeValue()).equals(normalizeClass(className)))
+                        || (parallel != null && s.getScopeType() == PaScopeType.PARALLEL && normalizeClass(s.getScopeValue()).equals(normalizeClass(String.valueOf(parallel)))));
+        boolean hasAdvancedSpec = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear).stream()
+                .filter(PaSpecification::isActiveVersion)
+                .filter(s -> normalize(s.getSubjectName()).equals(normalize(subjectName)))
+                .filter(s -> s.getWorkType() == workType)
+                .filter(s -> s.getLevel() == PaLevel.ADVANCED)
+                .anyMatch(s -> (s.getScopeType() == PaScopeType.CLASS && normalizeClass(s.getScopeValue()).equals(normalizeClass(className)))
+                        || (parallel != null && s.getScopeType() == PaScopeType.PARALLEL && normalizeClass(s.getScopeValue()).equals(normalizeClass(String.valueOf(parallel)))));
+        if (hasAdvancedSpec && !hasBasicSpec) return PaLevel.ADVANCED;
+        if (hasBasicSpec && !hasAdvancedSpec) return PaLevel.BASIC;
+        return fromAssignment;
     }
 
     private LocalDate parseLocalDate(String value) {
@@ -1370,6 +1657,13 @@ public class PaServiceImpl implements PaService {
         }
 
         return null;
+    }
+
+    private String sanitizeFileNamePart(String value) {
+        if (value == null) return "";
+        return value.replaceAll("[\\\\/:*?\"<>|]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
     }
 
     private PaWorkType parseWorkType(String raw) {

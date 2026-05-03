@@ -58,18 +58,27 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 }
 
                 String fio = getCellStringValue(row.getCell(0));
-                String fioDative = normalizeOptional(getCellStringValue(row.getCell(1)));
-                String initials = normalizeOptional(getCellStringValue(row.getCell(2)));
-                String initialsDative = normalizeOptional(getCellStringValue(row.getCell(3)));
-                String phone = normalizePhone(getCellStringValue(row.getCell(4)));
-                String email = normalizeEmail(getCellStringValue(row.getCell(5)));
+                String initials = normalizeOptional(getCellStringValue(row.getCell(1)));
+                String fioDative = normalizeOptional(getCellStringValue(row.getCell(2)));
+                String phone;
+                String email;
+                try {
+                    phone = normalizePhone(getCellStringValue(row.getCell(3)));
+                    email = normalizeEmail(getCellStringValue(row.getCell(4)));
+                } catch (IllegalArgumentException ex) {
+                    skipped++;
+                    continue;
+                }
+                String additionalDuties = normalizeOptional(getCellStringValue(row.getCell(5)));
                 if (fio.isBlank()) {
                     skipped++;
                     continue;
                 }
 
                 String normalized = fio.trim();
-                if (normalized.equalsIgnoreCase("фио") || normalized.equalsIgnoreCase("педагог")) {
+                if (normalized.equalsIgnoreCase("фио")
+                        || normalized.equalsIgnoreCase("педагог")
+                        || normalized.equalsIgnoreCase("сотрудник")) {
                     skipped++;
                     continue;
                 }
@@ -85,9 +94,9 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                     boolean changed = false;
                     if (!Objects.equals(fioDative, teacher.getFioTeacherDative())) { teacher.setFioTeacherDative(fioDative); changed = true; }
                     if (!Objects.equals(initials, teacher.getInitials())) { teacher.setInitials(initials); changed = true; }
-                    if (!Objects.equals(initialsDative, teacher.getInitialsDative())) { teacher.setInitialsDative(initialsDative); changed = true; }
                     if (!Objects.equals(phone, teacher.getPhone())) { teacher.setPhone(phone); changed = true; }
                     if (!Objects.equals(email, teacher.getEmail())) { ensureUniqueTeacherEmail(email, teacher.getId()); teacher.setEmail(email); changed = true; }
+                    if (!Objects.equals(additionalDuties, teacher.getAdditionalDuties())) { teacher.setAdditionalDuties(additionalDuties); changed = true; }
                     if (changed) { teacherDirectoryRepository.save(teacher); updated++; } else { skipped++; }
                     continue;
                 }
@@ -96,10 +105,10 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 entry.setFioTeacher(normalized);
                 entry.setFioTeacherDative(fioDative);
                 entry.setInitials(initials);
-                entry.setInitialsDative(initialsDative);
                 entry.setPhone(phone);
                 ensureUniqueTeacherEmail(email, null);
                 entry.setEmail(email);
+                entry.setAdditionalDuties(additionalDuties);
                 teacherDirectoryRepository.save(entry);
                 imported++;
             }
@@ -124,32 +133,32 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
             Sheet sheet = workbook.createSheet("Педагоги");
             Row header = sheet.createRow(0);
             header.createCell(0).setCellValue("ФИО");
-            header.createCell(1).setCellValue("Дательный падеж");
-            header.createCell(2).setCellValue("ФИО (инициалы)");
-            header.createCell(3).setCellValue("Инициалы в дательном падеже");
-            header.createCell(4).setCellValue("Телефон");
-            header.createCell(5).setCellValue("Email");
+            header.createCell(1).setCellValue("ФИО (инициалы)");
+            header.createCell(2).setCellValue("Дательный падеж");
+            header.createCell(3).setCellValue("Телефон");
+            header.createCell(4).setCellValue("Email");
+            header.createCell(5).setCellValue("Дополнительные обязанности");
 
             List<TeacherDirectoryEntry> rows = teacherDirectoryRepository.findAll();
             if (rows.isEmpty()) {
                 Row example = sheet.createRow(1);
                 example.createCell(0).setCellValue("Иванов Иван Иванович");
-                example.createCell(1).setCellValue("Иванову И.И.");
-                example.createCell(2).setCellValue("Иванов И.И.");
-                example.createCell(3).setCellValue("Иванову И.И.");
-                example.createCell(4).setCellValue("+79991234567");
-                example.createCell(5).setCellValue("teacher@example.com");
+                example.createCell(1).setCellValue("Иванов И.И.");
+                example.createCell(2).setCellValue("Иванову И.И.");
+                example.createCell(3).setCellValue("+7 900 000-00-00");
+                example.createCell(4).setCellValue("teacher@example.com");
+                example.createCell(5).setCellValue("Классное руководство");
             } else {
                 rows.sort(Comparator.comparing(TeacherDirectoryEntry::getFioTeacher, String.CASE_INSENSITIVE_ORDER));
                 int rowIndex = 1;
                 for (TeacherDirectoryEntry entry : rows) {
                     Row row = sheet.createRow(rowIndex++);
                     row.createCell(0).setCellValue(entry.getFioTeacher());
-                    row.createCell(1).setCellValue(Objects.toString(entry.getFioTeacherDative(), ""));
-                    row.createCell(2).setCellValue(Objects.toString(entry.getInitials(), ""));
-                    row.createCell(3).setCellValue(Objects.toString(entry.getInitialsDative(), ""));
-                    row.createCell(4).setCellValue(Objects.toString(entry.getPhone(), ""));
-                    row.createCell(5).setCellValue(Objects.toString(entry.getEmail(), ""));
+                    row.createCell(1).setCellValue(Objects.toString(entry.getInitials(), ""));
+                    row.createCell(2).setCellValue(Objects.toString(entry.getFioTeacherDative(), ""));
+                    row.createCell(3).setCellValue(Objects.toString(entry.getPhone(), ""));
+                    row.createCell(4).setCellValue(Objects.toString(entry.getEmail(), ""));
+                    row.createCell(5).setCellValue(Objects.toString(entry.getAdditionalDuties(), ""));
                 }
             }
 
@@ -175,19 +184,19 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         String normalized = request.getFioTeacher().trim();
         String dative = normalizeOptional(request.getFioTeacherDative());
         String initials = normalizeOptional(request.getInitials());
-        String initialsDative = normalizeOptional(request.getInitialsDative());
         String phone = normalizePhone(request.getPhone());
         String email = normalizeEmail(request.getEmail());
+        String additionalDuties = normalizeOptional(request.getAdditionalDuties());
         return teacherDirectoryRepository.findByFioTeacherIgnoreCase(normalized)
                 .orElseGet(() -> {
                     TeacherDirectoryEntry entry = new TeacherDirectoryEntry();
                     entry.setFioTeacher(normalized);
                     entry.setFioTeacherDative(dative);
                     entry.setInitials(initials);
-                    entry.setInitialsDative(initialsDative);
                     entry.setPhone(phone);
                     ensureUniqueTeacherEmail(email, null);
                     entry.setEmail(email);
+                    entry.setAdditionalDuties(additionalDuties);
                     return teacherDirectoryRepository.save(entry);
                 });
     }
@@ -198,13 +207,16 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
                 .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
         if (request != null) {
+            if (request.getFioTeacher() != null && !request.getFioTeacher().isBlank()) {
+                entry.setFioTeacher(request.getFioTeacher().trim());
+            }
             entry.setFioTeacherDative(normalizeOptional(request.getFioTeacherDative()));
             entry.setInitials(normalizeOptional(request.getInitials()));
-            entry.setInitialsDative(normalizeOptional(request.getInitialsDative()));
             entry.setPhone(normalizePhone(request.getPhone()));
             String email = normalizeEmail(request.getEmail());
             ensureUniqueTeacherEmail(email, teacherId);
             entry.setEmail(email);
+            entry.setAdditionalDuties(normalizeOptional(request.getAdditionalDuties()));
         }
         return teacherDirectoryRepository.save(entry);
     }
