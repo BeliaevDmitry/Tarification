@@ -18,6 +18,7 @@ const paState = {
     }
 };
 const PA_SUMMARY_STATUS_OVERRIDES_KEY = 'pa.summary.status.overrides';
+const PA_CLASS_LEVEL_ASSIGNMENTS_KEY = 'pa.class.level.assignments';
 const paQueryParams = new URLSearchParams(window.location.search);
 let summaryStatusSelection = null;
 let summaryStatusOverrides = {};
@@ -856,6 +857,12 @@ function renderSpecificationImportLog() {
             <td>${row.records}</td>
         </tr>
     `).join('') || '<tr><td colspan="7" class="muted">История загрузок пуста</td></tr>';
+    document.querySelectorAll('[data-download-import-log-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.downloadImportLogId;
+            window.open((typeof window.withAcademicYear === 'function' ? window.withAcademicYear(`/api/pa/specifications/import-log/${id}/download`) : `/api/pa/specifications/import-log/${id}/download`), '_blank');
+        });
+    });
 }
 
 async function uploadReports(prefix) {
