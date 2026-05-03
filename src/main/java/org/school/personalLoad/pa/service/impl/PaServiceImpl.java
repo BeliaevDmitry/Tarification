@@ -7,6 +7,7 @@ import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.pa.dto.PaDtos;
 import org.school.personalLoad.pa.model.*;
 import org.school.personalLoad.pa.repository.PaParticipationRepository;
+import org.school.personalLoad.pa.repository.PaClassLevelAssignmentRepository;
 import org.school.personalLoad.pa.repository.PaReportVersionRepository;
 import org.school.personalLoad.pa.repository.PaSpecImportLogRepository;
 import org.school.personalLoad.pa.repository.PaSpecificationRepository;
@@ -52,6 +53,7 @@ public class PaServiceImpl implements PaService {
     private final PaSpecificationRepository specificationRepository;
     private final PaSpecificationTaskRepository taskRepository;
     private final PaParticipationRepository participationRepository;
+    private final PaClassLevelAssignmentRepository classLevelAssignmentRepository;
     private final PaReportVersionRepository reportVersionRepository;
     private final PaSpecImportLogRepository paSpecImportLogRepository;
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
@@ -391,6 +393,36 @@ public class PaServiceImpl implements PaService {
     }
 
     @Override
+    public List<PaDtos.ClassLevelAssignmentRow> classLevelAssignments(String academicYear) {
+        return classLevelAssignmentRepository.findAllByAcademicYear(academicYear).stream()
+                .map(r -> new PaDtos.ClassLevelAssignmentRow(r.getSubjectName(), r.getClassName(), r.getWorkType(), r.getLevel(), r.isManual()))
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public void saveClassLevelAssignments(String academicYear, List<PaDtos.ClassLevelAssignmentRow> rows) {
+        if (rows == null) return;
+        for (PaDtos.ClassLevelAssignmentRow row : rows) {
+            if (row == null || row.subjectName() == null || row.className() == null || row.workType() == null || row.level() == null) continue;
+            PaClassLevelAssignment entity = classLevelAssignmentRepository.findAllByAcademicYear(academicYear).stream()
+                    .filter(r -> normalize(r.getSubjectName()).equals(normalize(row.subjectName())))
+                    .filter(r -> r.getWorkType() == row.workType())
+                    .filter(r -> normalizeClass(r.getClassName()).equals(normalizeClass(row.className())))
+                    .findFirst()
+                    .orElseGet(PaClassLevelAssignment::new);
+            entity.setAcademicYear(academicYear);
+            entity.setSubjectName(row.subjectName());
+            entity.setClassName(row.className());
+            entity.setWorkType(row.workType());
+            entity.setLevel(row.level());
+            entity.setManual(row.manual());
+            entity.setUpdatedAt(LocalDateTime.now());
+            classLevelAssignmentRepository.save(entity);
+        }
+    }
+
+    @Override
     public List<PaDtos.ReportVersionRow> reportVersions(String academicYear, String subjectName, PaScopeType scopeType, String scopeValue, PaLevel level, PaWorkType workType, LocalDate workDate) {
         return reportVersionRepository.findTop10ByAcademicYearAndSubjectNameAndScopeTypeAndScopeValueAndLevelAndWorkTypeAndWorkDateOrderByCreatedAtDesc(
                         academicYear, subjectName, scopeType, scopeValue, level, workType, workDate)
@@ -554,7 +586,8 @@ public class PaServiceImpl implements PaService {
     @Override
     @Transactional
     public PaDtos.ReportUploadResult generateReportTemplate(String academicYear, String subjectName, String className, PaLevel level, PaWorkType workType, LocalDate workDate, boolean force) {
-        PaSpecification spec = resolveSpecificationForClass(academicYear, subjectName, className, level, workType, workDate);
+        PaLevel assignedLevel = resolveAssignedLevel(academicYear, subjectName, className, workType, level);
+        PaSpecification spec = resolveSpecificationForClass(academicYear, subjectName, className, assignedLevel, workType, workDate);
         if (spec == null) {
             return new PaDtos.ReportUploadResult("", "REJECTED", "Не найдена активная спецификация для генерации", null, subjectName, className, workType);
         }
@@ -595,7 +628,7 @@ public class PaServiceImpl implements PaService {
             try (Workbook workbook = new XSSFWorkbook();
                  OutputStream outputStream = Files.newOutputStream(filePath)) {
                 TemplateStyles styles = createTemplateStyles(workbook);
-                createInfoSheet(workbook, academicYear, subjectName, className, teacherFio, level, workType, workDate, styles);
+                createInfoSheet(workbook, academicYear, subjectName, className, teacherFio, assignedLevel, workType, workDate, styles);
                 createDataSheet(workbook, students, tasks, spec, styles);
                 workbook.write(outputStream);
             }
@@ -604,17 +637,17 @@ public class PaServiceImpl implements PaService {
         }
 
         List<PaReportVersion> sameKey = reportVersionRepository.findAllByAcademicYearAndSubjectNameAndScopeTypeAndScopeValueAndLevelAndWorkTypeAndWorkDate(
-                academicYear, subjectName, PaScopeType.CLASS, className.toUpperCase(Locale.ROOT), level, workType, workDate
+                academicYear, subjectName, PaScopeType.CLASS, className.toUpperCase(Locale.ROOT), assignedLevel, workType, workDate
         );
         sameKey.forEach(v -> v.setActiveVersion(false));
         if (!sameKey.isEmpty()) reportVersionRepository.saveAll(sameKey);
-        int versionNo = reportVersionRepository.findMaxVersion(academicYear, subjectName, PaScopeType.CLASS, className.toUpperCase(Locale.ROOT), level, workType, workDate) + 1;
+        int versionNo = reportVersionRepository.findMaxVersion(academicYear, subjectName, PaScopeType.CLASS, className.toUpperCase(Locale.ROOT), assignedLevel, workType, workDate) + 1;
         PaReportVersion version = new PaReportVersion();
         version.setAcademicYear(academicYear);
         version.setSubjectName(subjectName);
         version.setScopeType(PaScopeType.CLASS);
         version.setScopeValue(className.toUpperCase(Locale.ROOT));
-        version.setLevel(level);
+        version.setLevel(assignedLevel);
         version.setWorkType(workType);
         version.setWorkDate(workDate);
         version.setVersionNo(versionNo);
@@ -645,14 +678,15 @@ public class PaServiceImpl implements PaService {
                 .toList();
         List<PaDtos.ReportUploadResult> results = new ArrayList<>();
         for (String className : classes) {
-            if (resolveSpecificationForClass(academicYear, subjectName, className, level, workType, workDate) == null) {
+            PaLevel assignedLevel = resolveAssignedLevel(academicYear, subjectName, className, workType, level);
+            if (resolveSpecificationForClass(academicYear, subjectName, className, assignedLevel, workType, workDate) == null) {
                 continue;
             }
-            if (!force && hasActiveGeneratedTemplate(academicYear, subjectName, className, level, workType, workDate)) {
+            if (!force && hasActiveGeneratedTemplate(academicYear, subjectName, className, assignedLevel, workType, workDate)) {
                 results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Шаблон уже сгенерирован для класса", null, subjectName, className, workType));
                 continue;
             }
-            results.add(generateReportTemplate(academicYear, subjectName, className, level, workType, workDate, force));
+            results.add(generateReportTemplate(academicYear, subjectName, className, assignedLevel, workType, workDate, force));
         }
         if (results.isEmpty()) {
             results.add(new PaDtos.ReportUploadResult("", "SKIPPED", "Нет классов с доступной спецификацией для генерации", null, subjectName, "", workType));
@@ -686,17 +720,22 @@ public class PaServiceImpl implements PaService {
         List<PaDtos.ReportUploadResult> results = new ArrayList<>();
         for (String subject : subjects) {
             for (String className : classes) {
-                if (resolveSpecificationForClass(academicYear, subject, className, level, workType, workDate) == null) {
+                PaLevel assignedLevel = resolveAssignedLevel(academicYear, subject, className, workType, level);
+                if (resolveSpecificationForClass(academicYear, subject, className, assignedLevel, workType, workDate) == null) {
                     continue;
                 }
-                boolean generatedExists = hasActiveGeneratedTemplate(academicYear, subject, className, level, workType, workDate);
+                boolean generatedExists = hasActiveGeneratedTemplate(academicYear, subject, className, assignedLevel, workType, workDate);
+                boolean anyGeneratedExists = hasAnyActiveGeneratedTemplate(academicYear, subject, className, workType, workDate);
                 if (!force && generatedExists) {
                     continue;
                 }
-                if (force && "ALL".equalsIgnoreCase(subjectName) && !generatedExists) {
+                if (force && "ALL".equalsIgnoreCase(subjectName) && !anyGeneratedExists) {
                     continue;
                 }
-                results.add(generateReportTemplate(academicYear, subject, className, level, workType, workDate, true));
+                if (force && "ALL".equalsIgnoreCase(subjectName) && anyGeneratedExists) {
+                    deleteActiveGeneratedTemplatesAllLevels(academicYear, subject, className, workType, workDate);
+                }
+                results.add(generateReportTemplate(academicYear, subject, className, assignedLevel, workType, workDate, true));
             }
         }
         if (results.isEmpty()) {
@@ -743,6 +782,42 @@ public class PaServiceImpl implements PaService {
                         workDate)
                 .stream()
                 .anyMatch(v -> v.isActiveVersion() && "GENERATED".equalsIgnoreCase(v.getStatus()));
+    }
+
+    private boolean hasAnyActiveGeneratedTemplate(String academicYear,
+                                                  String subjectName,
+                                                  String className,
+                                                  PaWorkType workType,
+                                                  LocalDate workDate) {
+        return reportVersionRepository.findAll().stream()
+                .filter(v -> Objects.equals(v.getAcademicYear(), academicYear))
+                .filter(v -> v.getScopeType() == PaScopeType.CLASS)
+                .filter(v -> normalize(v.getSubjectName()).equals(normalize(subjectName)))
+                .filter(v -> normalizeClass(v.getScopeValue()).equals(normalizeClass(className)))
+                .filter(v -> v.getWorkType() == workType)
+                .filter(v -> Objects.equals(v.getWorkDate(), workDate) || workDate == null)
+                .anyMatch(v -> v.isActiveVersion() && "GENERATED".equalsIgnoreCase(v.getStatus()));
+    }
+
+    private void deleteActiveGeneratedTemplatesAllLevels(String academicYear,
+                                                         String subjectName,
+                                                         String className,
+                                                         PaWorkType workType,
+                                                         LocalDate workDate) {
+        List<PaReportVersion> candidates = reportVersionRepository.findAll().stream()
+                .filter(v -> Objects.equals(v.getAcademicYear(), academicYear))
+                .filter(v -> v.getScopeType() == PaScopeType.CLASS)
+                .filter(v -> normalize(v.getSubjectName()).equals(normalize(subjectName)))
+                .filter(v -> normalizeClass(v.getScopeValue()).equals(normalizeClass(className)))
+                .filter(v -> v.getWorkType() == workType)
+                .filter(v -> Objects.equals(v.getWorkDate(), workDate) || workDate == null)
+                .filter(v -> v.isActiveVersion() && "GENERATED".equalsIgnoreCase(v.getStatus()))
+                .toList();
+        if (candidates.isEmpty()) return;
+        for (PaReportVersion version : candidates) {
+            try { Files.deleteIfExists(resolveReportFilePath(version)); } catch (Exception ignored) { }
+        }
+        reportVersionRepository.deleteAll(candidates);
     }
 
     @Override
@@ -807,6 +882,19 @@ public class PaServiceImpl implements PaService {
             throw new IllegalArgumentException("Файл спецификации не найден на диске");
         }
         return Files.readAllBytes(path);
+    }
+
+    @Override
+    @Transactional
+    public void deleteSpecification(String academicYear, Long specificationId) throws IOException {
+        PaSpecification specification = specificationRepository.findById(specificationId)
+                .orElseThrow(() -> new IllegalArgumentException("Спецификация не найдена"));
+        taskRepository.deleteAllBySpecificationId(specificationId);
+        specificationRepository.delete(specification);
+        if (specification.getSourceFileName() != null && !specification.getSourceFileName().isBlank()) {
+            Path path = Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-"), specification.getSourceFileName());
+            Files.deleteIfExists(path);
+        }
     }
 
     private PaSpecification resolveSpecificationForClass(String year, String subject, String className, PaLevel level, PaWorkType workType, LocalDate workDate) {
@@ -1183,7 +1271,69 @@ public class PaServiceImpl implements PaService {
     }
 
     private String normalizeClass(String value) {
-        return String.valueOf(value == null ? "" : value).trim().toUpperCase(Locale.ROOT).replaceAll("\\s+", "");
+        String raw = String.valueOf(value == null ? "" : value).trim().toUpperCase(Locale.ROOT)
+                .replaceAll("[\\s\\-–—_./\\\\]+", "");
+        return raw
+                .replace('A', 'А')
+                .replace('B', 'В')
+                .replace('C', 'С')
+                .replace('E', 'Е')
+                .replace('H', 'Н')
+                .replace('K', 'К')
+                .replace('M', 'М')
+                .replace('O', 'О')
+                .replace('P', 'Р')
+                .replace('T', 'Т')
+                .replace('X', 'Х')
+                .replace('Y', 'У');
+    }
+
+    private PaLevel resolveAssignedLevel(String academicYear, String subjectName, String className, PaWorkType workType, PaLevel defaultLevel) {
+        PaLevel fromAssignment = classLevelAssignmentRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(r -> normalize(r.getSubjectName()).equals(normalize(subjectName)))
+                .filter(r -> r.getWorkType() == workType)
+                .filter(r -> normalizeClass(r.getClassName()).equals(normalizeClass(className)))
+                .sorted(Comparator
+                        .comparing(PaClassLevelAssignment::isManual, Comparator.reverseOrder())
+                        .thenComparing(PaClassLevelAssignment::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                .map(PaClassLevelAssignment::getLevel)
+                .findFirst()
+                .orElse(defaultLevel);
+
+        Integer parallel = parseParallel(className);
+        boolean hasClassBasicSpec = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear).stream()
+                .filter(PaSpecification::isActiveVersion)
+                .filter(s -> normalize(s.getSubjectName()).equals(normalize(subjectName)))
+                .filter(s -> s.getWorkType() == workType)
+                .filter(s -> s.getScopeType() == PaScopeType.CLASS)
+                .filter(s -> normalizeClass(s.getScopeValue()).equals(normalizeClass(className)))
+                .anyMatch(s -> s.getLevel() == PaLevel.BASIC);
+        boolean hasClassAdvancedSpec = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear).stream()
+                .filter(PaSpecification::isActiveVersion)
+                .filter(s -> normalize(s.getSubjectName()).equals(normalize(subjectName)))
+                .filter(s -> s.getWorkType() == workType)
+                .filter(s -> s.getScopeType() == PaScopeType.CLASS)
+                .filter(s -> normalizeClass(s.getScopeValue()).equals(normalizeClass(className)))
+                .anyMatch(s -> s.getLevel() == PaLevel.ADVANCED);
+        if (hasClassAdvancedSpec && !hasClassBasicSpec) return PaLevel.ADVANCED;
+        if (hasClassBasicSpec && !hasClassAdvancedSpec) return PaLevel.BASIC;
+        boolean hasBasicSpec = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear).stream()
+                .filter(PaSpecification::isActiveVersion)
+                .filter(s -> normalize(s.getSubjectName()).equals(normalize(subjectName)))
+                .filter(s -> s.getWorkType() == workType)
+                .filter(s -> s.getLevel() == PaLevel.BASIC)
+                .anyMatch(s -> (s.getScopeType() == PaScopeType.CLASS && normalizeClass(s.getScopeValue()).equals(normalizeClass(className)))
+                        || (parallel != null && s.getScopeType() == PaScopeType.PARALLEL && normalizeClass(s.getScopeValue()).equals(normalizeClass(String.valueOf(parallel)))));
+        boolean hasAdvancedSpec = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear).stream()
+                .filter(PaSpecification::isActiveVersion)
+                .filter(s -> normalize(s.getSubjectName()).equals(normalize(subjectName)))
+                .filter(s -> s.getWorkType() == workType)
+                .filter(s -> s.getLevel() == PaLevel.ADVANCED)
+                .anyMatch(s -> (s.getScopeType() == PaScopeType.CLASS && normalizeClass(s.getScopeValue()).equals(normalizeClass(className)))
+                        || (parallel != null && s.getScopeType() == PaScopeType.PARALLEL && normalizeClass(s.getScopeValue()).equals(normalizeClass(String.valueOf(parallel)))));
+        if (hasAdvancedSpec && !hasBasicSpec) return PaLevel.ADVANCED;
+        if (hasBasicSpec && !hasAdvancedSpec) return PaLevel.BASIC;
+        return fromAssignment;
     }
 
     private LocalDate parseLocalDate(String value) {
