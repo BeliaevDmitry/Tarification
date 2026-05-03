@@ -30,6 +30,7 @@ public class PaController {
                                        PaLevel level,
                                        Boolean participates) {
     }
+    public record ClassLevelAssignmentsRequest(List<PaDtos.ClassLevelAssignmentRow> rows) {}
 
     private final PaService paService;
     private final AcademicYearService academicYearService;
@@ -88,6 +89,20 @@ public class PaController {
     public ResponseEntity<PaDtos.SummaryResponse> summary(@RequestParam(required = false) String academicYear) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
         return ResponseEntity.ok(paService.summary(year));
+    }
+
+    @GetMapping("/specifications/class-level-assignments")
+    public ResponseEntity<List<PaDtos.ClassLevelAssignmentRow>> classLevelAssignments(@RequestParam(required = false) String academicYear) {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        return ResponseEntity.ok(paService.classLevelAssignments(year));
+    }
+
+    @PutMapping("/specifications/class-level-assignments")
+    public ResponseEntity<Void> saveClassLevelAssignments(@RequestParam(required = false) String academicYear,
+                                                          @RequestBody ClassLevelAssignmentsRequest request) {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        paService.saveClassLevelAssignments(year, request == null ? List.of() : request.rows());
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/reports/versions")

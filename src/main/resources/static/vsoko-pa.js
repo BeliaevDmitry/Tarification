@@ -130,8 +130,24 @@ function getAssignedLevel(subjectName, className, workType) {
     return rec?.level || getCurriculumClassLevel(subjectName, className);
 }
 function setAssignedLevel(subjectName, className, workType, level, manual = true) { classLevelAssignments[classLevelAssignmentKey(subjectName, className, workType)] = { level: normalizeLevel(level), manual }; }
-function saveClassLevelAssignments() { try { localStorage.setItem(PA_CLASS_LEVEL_ASSIGNMENTS_KEY, JSON.stringify(classLevelAssignments)); } catch (_) {} }
-function loadClassLevelAssignments() { try { classLevelAssignments = JSON.parse(localStorage.getItem(PA_CLASS_LEVEL_ASSIGNMENTS_KEY) || '{}') || {}; } catch (_) { classLevelAssignments = {}; } }
+async function saveClassLevelAssignments() {
+    const rows = Object.entries(classLevelAssignments).map(([key, value]) => {
+        const [subjectName, className, workType] = key.split('|');
+        return { subjectName, className, workType, level: value.level, manual: value.manual !== false };
+    });
+    await paApi('/api/pa/specifications/class-level-assignments', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows })
+    });
+}
+async function loadClassLevelAssignments() {
+    const rows = await paApi('/api/pa/specifications/class-level-assignments');
+    classLevelAssignments = {};
+    (rows || []).forEach((row) => {
+        setAssignedLevel(row.subjectName, row.className, row.workType, row.level, row.manual !== false);
+    });
+}
 function hasSpecFor(subjectName, scope, level, workType) {
     const norm = normalizeScopeValue(scope); const p = parseParallel(scope);
     return (paState.specifications || []).some((s) => s.activeVersion && s.subjectName === subjectName && s.level === level && s.workType === workType
@@ -568,8 +584,8 @@ async function reloadSummaryAndSpecs() {
     if (!Array.isArray(specs) || specs.length === 0) {
         paState.importLogHistory = [];
         renderSpecificationImportLog();
-loadSpecificationImportLog().catch(() => {});
     }
+    loadSpecificationImportLog().catch(() => {});
     renderSpecifications(specs || []);
     updateProblemCounter();
     if (paQueryParams.get('forceExitAll') === '1') {
@@ -698,7 +714,7 @@ async function saveSummaryStatusFromDialog() {
     summaryStatusOverrides[`${subjectName}|${scopeValue}|${level}`] = { entryParticipates, exitParticipates };
     document.querySelectorAll('[data-assignment-subject]').forEach((el) => setAssignedLevel(el.dataset.assignmentSubject, el.dataset.assignmentClass, el.dataset.assignmentWorkType, el.value));
     saveSummaryStatusOverrides();
-    saveClassLevelAssignments();
+    await saveClassLevelAssignments();
     try {
         document.getElementById('pa-summary-status-dialog').close();
         summaryStatusSelection = null;
@@ -1208,10 +1224,12 @@ bindWorkflowRangeTabs('exit');
 applySharedPaPageNav();
 
 loadSummaryStatusOverrides();
-loadClassLevelAssignments();
+(async () => {
+try { await loadClassLevelAssignments(); } catch (_) { classLevelAssignments = {}; }
 reloadSummaryAndSpecs().catch((e) => {
     appendSpecificationImportLog([{ fileName: '—', warnings: [`Ошибка: ${e.message}`], importedTasks: 0 }]);
 });
+})();
 renderSpecificationImportLog();
 const startMainTab = paQueryParams.get('tab')
     || (window.location.pathname.includes('vsoko-pa-entry') ? 'entry'
