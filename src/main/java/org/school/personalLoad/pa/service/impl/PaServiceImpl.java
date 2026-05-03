@@ -115,9 +115,26 @@ public class PaServiceImpl implements PaService {
                 ? paSpecImportLogRepository.findAllByAcademicYearOrderByCreatedAtDescIdDesc(academicYear)
                 : paSpecImportLogRepository.findAllByAcademicYearAndCreatedByOrderByCreatedAtDescIdDesc(academicYear, username);
         return rows.stream().map(r -> new PaDtos.ImportLogRow(
-                r.getFileName(), r.getSubjects(), r.getParallels(), r.getStatus(), r.getMessage(),
+                r.getId(), r.getFileName(), r.getSubjects(), r.getParallels(), r.getStatus(), r.getMessage(),
                 r.getRecordsCount() == null ? 0 : r.getRecordsCount(), r.getCreatedBy(), r.getCreatedAt()
         )).toList();
+    }
+
+    @Override
+    public byte[] loadSpecificationImportLogFile(String academicYear, Long importLogId) throws IOException {
+        var row = paSpecImportLogRepository.findById(importLogId)
+                .orElseThrow(() -> new IllegalArgumentException("Запись журнала импорта не найдена"));
+        Path path = Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-"), row.getFileName());
+        if (!Files.exists(path)) throw new IllegalArgumentException("Файл импорта не найден на диске");
+        return Files.readAllBytes(path);
+    }
+
+    @Override
+    public String specificationImportLogFileName(String academicYear, Long importLogId) {
+        return paSpecImportLogRepository.findById(importLogId)
+                .map(org.school.personalLoad.pa.model.PaSpecImportLog::getFileName)
+                .filter(name -> name != null && !name.isBlank())
+                .orElse("pa-spec-import-" + importLogId + ".xlsx");
     }
 
     private void saveSpecImportLog(String academicYear, String username, PaDtos.ImportResult result) {
@@ -157,8 +174,8 @@ public class PaServiceImpl implements PaService {
             if (spec == null) continue;
             String thresholdError = validateThresholds(spec);
             if (thresholdError != null) {
-                warnings.add("Лист " + sheet.getSheetName() + ": спецификация '" + spec.getSubjectName()
-                        + "' (" + spec.getScopeValue() + ") не загружена — нет порогов или они не валидны");
+                warnings.add("Лист " + sheet.getSheetName() + ":\n"
+                        + workTypeLabel(spec.getWorkType()) + ": не принята — нет порогов или они не валидны");
                 continue;
             }
             spec.setCreatedAt(LocalDateTime.now());
@@ -192,13 +209,12 @@ public class PaServiceImpl implements PaService {
             List<PaSpecificationTask> tasks = parseTasks(sheet, subjectRow, subjectCol, blockEndCol, saved, warnings);
             if (tasks.isEmpty()) {
                 specificationRepository.delete(saved);
-                String workTypeLabel = saved.getWorkType() == PaWorkType.ENTRY
-                        ? "Входной"
-                        : saved.getWorkType() == PaWorkType.EXIT ? "Выходной" : "Промежуточной";
-                warnings.add("Лист " + sheet.getSheetName() + ": спецификация '" + subjectName + "' для " + workTypeLabel + " работы не загружена — нет ни одной темы");
+                warnings.add("Лист " + sheet.getSheetName() + ":\n"
+                        + workTypeLabel(saved.getWorkType()) + ": не принята — нет ни одной темы");
                 continue;
             }
             taskRepository.saveAll(tasks);
+            warnings.add("Лист " + sheet.getSheetName() + ":\n" + workTypeLabel(saved.getWorkType()) + ": принята");
             importedSpecs += 1;
             importedTasks += tasks.size();
             subjects.add(saved.getSubjectName());
@@ -206,6 +222,12 @@ public class PaServiceImpl implements PaService {
             if (p != null) parallels.add(String.valueOf(p));
         }
         return new SheetImportStats(importedSpecs, importedTasks, subjects, parallels);
+    }
+
+    private String workTypeLabel(PaWorkType workType) {
+        if (workType == PaWorkType.ENTRY) return "Входная работа";
+        if (workType == PaWorkType.EXIT) return "Выходная работа";
+        return "Промежуточная работа";
     }
 
     private PaSpecification parseBlock(String academicYear,
@@ -888,6 +910,14 @@ public class PaServiceImpl implements PaService {
         return Files.readAllBytes(path);
     }
 
+    @Override
+    public String reportFileName(Long reportVersionId) {
+        return reportVersionRepository.findById(reportVersionId)
+                .map(PaReportVersion::getSourceFileName)
+                .filter(name -> name != null && !name.isBlank())
+                .orElse("pa-report-" + reportVersionId + ".xlsx");
+    }
+
     private Path resolveReportFilePath(PaReportVersion version) {
         if (version.getSourceFilePath() != null && !version.getSourceFilePath().isBlank()) {
             return Path.of(version.getSourceFilePath());
@@ -902,14 +932,68 @@ public class PaServiceImpl implements PaService {
     public byte[] loadSpecificationFile(String academicYear, Long specificationId) throws IOException {
         PaSpecification specification = specificationRepository.findById(specificationId)
                 .orElseThrow(() -> new IllegalArgumentException("Спецификация не найдена"));
-        if (specification.getSourceFileName() == null || specification.getSourceFileName().isBlank()) {
-            throw new IllegalArgumentException("У спецификации не указан исходный файл");
+        List<PaSpecificationTask> tasks = taskRepository.findAllBySpecificationIdOrderByTaskNoAsc(specificationId);
+        try (Workbook workbook = new XSSFWorkbook(); java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("Спецификация");
+            sheet.createRow(0).createCell(0).setCellValue("Предмет");
+            sheet.getRow(0).createCell(1).setCellValue(specification.getSubjectName());
+            sheet.createRow(1).createCell(0).setCellValue("Параллель/Класс");
+            sheet.getRow(1).createCell(1).setCellValue(specification.getScopeValue());
+            sheet.createRow(2).createCell(0).setCellValue("Тип");
+            sheet.getRow(2).createCell(1).setCellValue(specification.getWorkType() == PaWorkType.ENTRY ? "Входная работа" : "Выходная работа");
+            sheet.createRow(3).createCell(0).setCellValue("Школа");
+            sheet.getRow(3).createCell(1).setCellValue(Optional.ofNullable(specification.getSchoolName()).orElse(""));
+            sheet.createRow(4).createCell(0).setCellValue("Учебный год");
+            sheet.getRow(4).createCell(1).setCellValue(Optional.ofNullable(specification.getAcademicYear()).orElse(""));
+            sheet.createRow(5).createCell(0).setCellValue("Уровень");
+            sheet.getRow(5).createCell(1).setCellValue(specification.getLevel() == PaLevel.ADVANCED ? "Углублённый" : "Базовый");
+            sheet.createRow(7).createCell(0).setCellValue("№ задания");
+            sheet.getRow(7).createCell(1).setCellValue("Тема задания");
+            sheet.getRow(7).createCell(2).setCellValue("Навык");
+            sheet.getRow(7).createCell(3).setCellValue("Тип задания");
+            sheet.getRow(7).createCell(4).setCellValue("Если повторение, то какое");
+            sheet.getRow(7).createCell(5).setCellValue("Балл за задание");
+            int rowIdx = 8;
+            for (PaSpecificationTask t : tasks) {
+                Row r = sheet.createRow(rowIdx++);
+                r.createCell(0).setCellValue(Optional.ofNullable(t.getTaskNo()).orElse(0));
+                r.createCell(1).setCellValue(Optional.ofNullable(t.getTopic()).orElse(""));
+                r.createCell(2).setCellValue(Optional.ofNullable(t.getSkill()).orElse(""));
+                r.createCell(3).setCellValue(t.getTaskKind() == PaTaskKind.REPEAT ? "повторение" : "новое");
+                r.createCell(4).setCellValue(Optional.ofNullable(t.getRepeatFromTaskNo()).map(String::valueOf).orElse(""));
+                r.createCell(5).setCellValue(Optional.ofNullable(t.getMaxScore()).orElse(0));
+            }
+            workbook.write(out);
+            return out.toByteArray();
         }
-        Path path = Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-"), specification.getSourceFileName());
-        if (!Files.exists(path)) {
-            throw new IllegalArgumentException("Файл спецификации не найден на диске");
+    }
+
+    @Override
+    public String specificationFileName(String academicYear, Long specificationId) {
+        return specificationRepository.findById(specificationId)
+                .map(spec -> {
+                    String subject = sanitizeFileNamePart(spec.getSubjectName());
+                    String scope = sanitizeFileNamePart(spec.getScopeValue());
+                    if (subject.isBlank() || scope.isBlank()) {
+                        return spec.getSourceFileName();
+                    }
+                    return subject + "_" + scope + ".xlsx";
+                })
+                .filter(name -> name != null && !name.isBlank())
+                .orElse("pa-specification-" + specificationId + ".xlsx");
+    }
+
+    @Override
+    @Transactional
+    public void deleteSpecification(String academicYear, Long specificationId) throws IOException {
+        PaSpecification specification = specificationRepository.findById(specificationId)
+                .orElseThrow(() -> new IllegalArgumentException("Спецификация не найдена"));
+        taskRepository.deleteAllBySpecificationId(specificationId);
+        specificationRepository.delete(specification);
+        if (specification.getSourceFileName() != null && !specification.getSourceFileName().isBlank()) {
+            Path path = Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-"), specification.getSourceFileName());
+            Files.deleteIfExists(path);
         }
-        return Files.readAllBytes(path);
     }
 
     @Override
@@ -1548,6 +1632,13 @@ public class PaServiceImpl implements PaService {
         }
 
         return null;
+    }
+
+    private String sanitizeFileNamePart(String value) {
+        if (value == null) return "";
+        return value.replaceAll("[\\\\/:*?\"<>|]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
     }
 
     private PaWorkType parseWorkType(String raw) {

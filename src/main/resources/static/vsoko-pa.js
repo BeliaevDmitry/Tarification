@@ -821,6 +821,7 @@ function appendSpecificationImportLog(result) {
         const status = hasError ? 'Ошибка' : 'Успешно';
         const message = warnings.length ? warnings.join('; ') : (records > 0 ? 'Импорт выполнен' : 'Нет загруженных записей');
         paState.importLogHistory.unshift({
+            id: row?.id || null,
             timestamp,
             fileName: row?.fileName || '—',
             subject: Array.isArray(row?.subjects) && row.subjects.length ? row.subjects.join(', ') : '—',
@@ -840,7 +841,7 @@ function renderSpecificationImportLog() {
     body.innerHTML = paState.importLogHistory.map((row) => `
         <tr>
             <td>${row.timestamp}</td>
-            <td>${row.fileName}</td>
+            <td>${row.id ? `<button type="button" class="tab-btn" data-download-import-log-id="${row.id}">${row.fileName}</button>` : row.fileName}</td>
             <td>${row.subject}</td>
             <td>${row.parallel}</td>
             <td>${row.status}</td>
@@ -848,6 +849,12 @@ function renderSpecificationImportLog() {
             <td>${row.records}</td>
         </tr>
     `).join('') || '<tr><td colspan="7" class="muted">История загрузок пуста</td></tr>';
+    document.querySelectorAll('[data-download-import-log-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.downloadImportLogId;
+            window.open((typeof window.withAcademicYear === 'function' ? window.withAcademicYear(`/api/pa/specifications/import-log/${id}/download`) : `/api/pa/specifications/import-log/${id}/download`), '_blank');
+        });
+    });
 }
 
 async function uploadReports(prefix) {

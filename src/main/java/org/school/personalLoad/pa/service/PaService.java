@@ -13,6 +13,8 @@ import java.util.List;
 public interface PaService {
     List<PaDtos.ImportResult> importSpecifications(String academicYear, List<MultipartFile> files, String username);
     List<PaDtos.ImportLogRow> specificationImportLog(String academicYear, String username, boolean admin);
+    byte[] loadSpecificationImportLogFile(String academicYear, Long importLogId) throws IOException;
+    String specificationImportLogFileName(String academicYear, Long importLogId);
     List<PaDtos.SpecificationRow> specifications(String academicYear);
     List<PaDtos.SpecificationTaskRow> specificationTasks(Long specificationId);
     void deleteSpecification(String academicYear, Long specificationId) throws IOException;
@@ -29,5 +31,7 @@ public interface PaService {
     int deleteGeneratedReports(String academicYear, String subjectName, String scopeValue, boolean byParallel, PaLevel level, PaWorkType workType, LocalDate workDate);
     List<PaDtos.ReportFolderItem> reportFolderItems(String academicYear, PaWorkType workType);
     byte[] loadReportFile(Long reportVersionId) throws IOException;
+    String reportFileName(Long reportVersionId);
     byte[] loadSpecificationFile(String academicYear, Long specificationId) throws IOException;
+    String specificationFileName(String academicYear, Long specificationId);
 }
