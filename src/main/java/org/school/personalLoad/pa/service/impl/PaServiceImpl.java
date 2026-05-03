@@ -1253,8 +1253,9 @@ public class PaServiceImpl implements PaService {
                 .filter(r -> normalize(r.getSubjectName()).equals(normalize(subjectName)))
                 .filter(r -> r.getWorkType() == workType)
                 .filter(r -> normalizeClass(r.getClassName()).equals(normalizeClass(className)))
-                .sorted(Comparator.comparing(PaClassLevelAssignment::isManual).reversed()
-                        .thenComparing(PaClassLevelAssignment::getUpdatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
+                .sorted(Comparator
+                        .comparing(PaClassLevelAssignment::isManual, Comparator.reverseOrder())
+                        .thenComparing(PaClassLevelAssignment::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .map(PaClassLevelAssignment::getLevel)
                 .findFirst()
                 .orElse(defaultLevel);
