@@ -405,8 +405,11 @@ public class PaServiceImpl implements PaService {
         if (rows == null) return;
         for (PaDtos.ClassLevelAssignmentRow row : rows) {
             if (row == null || row.subjectName() == null || row.className() == null || row.workType() == null || row.level() == null) continue;
-            PaClassLevelAssignment entity = classLevelAssignmentRepository
-                    .findByAcademicYearAndSubjectNameAndClassNameAndWorkType(academicYear, row.subjectName(), row.className(), row.workType())
+            PaClassLevelAssignment entity = classLevelAssignmentRepository.findAllByAcademicYear(academicYear).stream()
+                    .filter(r -> normalize(r.getSubjectName()).equals(normalize(row.subjectName())))
+                    .filter(r -> r.getWorkType() == row.workType())
+                    .filter(r -> normalizeClass(r.getClassName()).equals(normalizeClass(row.className())))
+                    .findFirst()
                     .orElseGet(PaClassLevelAssignment::new);
             entity.setAcademicYear(academicYear);
             entity.setSubjectName(row.subjectName());
@@ -1250,7 +1253,8 @@ public class PaServiceImpl implements PaService {
                 .filter(r -> normalize(r.getSubjectName()).equals(normalize(subjectName)))
                 .filter(r -> r.getWorkType() == workType)
                 .filter(r -> normalizeClass(r.getClassName()).equals(normalizeClass(className)))
-                .sorted(Comparator.comparing(PaClassLevelAssignment::isManual).reversed())
+                .sorted(Comparator.comparing(PaClassLevelAssignment::isManual).reversed()
+                        .thenComparing(PaClassLevelAssignment::getUpdatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
                 .map(PaClassLevelAssignment::getLevel)
                 .findFirst()
                 .orElse(defaultLevel);
