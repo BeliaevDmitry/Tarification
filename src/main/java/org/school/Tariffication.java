@@ -7,12 +7,14 @@ import org.school.personalLoad.config.EnvFileLoader;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 
 @Slf4j
 @SpringBootApplication
+@EnableScheduling
 @RequiredArgsConstructor
 public class Tariffication implements CommandLineRunner {
 
