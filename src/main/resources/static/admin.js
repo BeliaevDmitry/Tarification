@@ -89,6 +89,7 @@ const ui = {
     adminTabUsersBtn: document.getElementById('admin-tab-users-btn'),
     adminTabYearsBtn: document.getElementById('admin-tab-years-btn'),
     adminTabOptionsBtn: document.getElementById('admin-tab-options-btn'),
+    adminAuditLinkBtn: document.getElementById('admin-audit-link-btn'),
     debugModeInputs: Array.from(document.querySelectorAll('input[name="admin-debug-mode"]')),
     optionsFeedback: document.getElementById('admin-options-feedback'),
     academicYearForm: document.getElementById('academic-year-create-form'),
@@ -876,6 +877,7 @@ reload().then(renderAcademicYears).catch((error) => print({ error: error.message
 ui.adminTabUsersBtn?.addEventListener('click', () => setAdminTab('users'));
 ui.adminTabYearsBtn?.addEventListener('click', () => setAdminTab('years'));
 ui.adminTabOptionsBtn?.addEventListener('click', () => setAdminTab('options'));
+ui.adminAuditLinkBtn?.addEventListener('click', () => { window.location.href = '/audit-logs.html'; });
 ui.debugModeInputs.forEach((input) => {
     input.addEventListener('change', () => {
         const enabled = input.value === 'yes';

@@ -35,8 +35,10 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
 
     @Override
-    public byte[] exportEditableWorkbook() throws IOException {
-        List<CurriculumPlanEntry> entries = new ArrayList<>(curriculumRepository.findAll().stream().filter(e -> !e.isDeprecated()).toList());
+    public byte[] exportEditableWorkbook(String academicYear) throws IOException {
+        List<CurriculumPlanEntry> entries = new ArrayList<>(curriculumRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(e -> !e.isDeprecated())
+                .toList());
         entries.sort(Comparator
                 .comparing((CurriculumPlanEntry e) -> String.valueOf(e.getNumberSchoolBuilding()), String.CASE_INSENSITIVE_ORDER)
                 .thenComparing(e -> String.valueOf(e.getClassName()), String.CASE_INSENSITIVE_ORDER)
@@ -280,15 +282,24 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             subjectCatalogRepository.findAll().forEach(s -> existingSubjects.put(subjectKey(s.getSubjectName(), s.getSubjectType()), s));
 
             String fallbackTeacher = teacherRepository.findAll().stream().findFirst().map(TeacherDirectoryEntry::getFioTeacher).orElse("Не назначен");
+            Map<String, String> buildingByNormalizedClass = classroomRepository.findAllByAcademicYear(academicYear).stream()
+                    .collect(java.util.stream.Collectors.toMap(
+                            c -> ClassNameNormalizer.normalize(c.getClassName()),
+                            c -> normalizeSubject(c.getNumberSchoolBuilding()),
+                            (left, right) -> left,
+                            LinkedHashMap::new
+                    ));
 
             if (!editableRows.isEmpty()) {
                 for (EditableImportRow row : editableRows) {
+                    String normalizedClassName = ClassNameNormalizer.normalize(row.className());
+                    String resolvedBuilding = resolveBuildingForClass(row.numberSchoolBuilding(), normalizedClassName, buildingByNormalizedClass);
                     StudyPeriodSetting resolvedEditableRule = studyPeriodSettingService.resolveRuleForClassAndPeriod(academicYear, row.className(), row.studyPeriod());
                     CurriculumPlanEntry entry = curriculumRepository
                             .findByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriodAndStudyPeriodSettingId(
                                     academicYear,
-                                    row.numberSchoolBuilding(),
-                                    row.className(),
+                                    resolvedBuilding,
+                                    normalizedClassName,
                                     row.subjectName(),
                                     row.educationLevel(),
                                     row.curriculumPart(),
@@ -299,8 +310,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     boolean isNew = entry.getId() == null;
                     entry.setAcademicYear(academicYear);
                     entry.setStage(entry.getStage() == null ? CurriculumStage.NOO : entry.getStage());
-                    entry.setNumberSchoolBuilding(row.numberSchoolBuilding());
-                    entry.setClassName(row.className());
+                    entry.setNumberSchoolBuilding(resolvedBuilding);
+                    entry.setClassName(normalizedClassName);
                     entry.setSubjectName(row.subjectName());
                     entry.setCurriculumPart(row.curriculumPart());
                     entry.setEducationLevel(row.educationLevel());
@@ -320,8 +331,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     importedIds.add(saved.getId());
                     if (isNew) created++; else updated++;
 
-                    boolean existedClass = classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, row.numberSchoolBuilding(), row.className());
-                    ensureClassroom(academicYear, row.numberSchoolBuilding(), row.className(), row.classDirection(), fallbackTeacher);
+                    boolean existedClass = classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, resolvedBuilding, normalizedClassName);
+                    ensureClassroom(academicYear, resolvedBuilding, normalizedClassName, row.classDirection(), fallbackTeacher);
+                    buildingByNormalizedClass.putIfAbsent(normalizedClassName, resolvedBuilding);
                     if (!existedClass) classesCreated++;
 
                     SubjectType subjectType = resolveSubjectType(row.curriculumPart(), row.subjectName());
@@ -339,15 +351,17 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             } else {
                 for (CurriculumImportRow row : parsed) {
                     row.setAcademicYear(academicYear);
+                    String normalizedClassName = ClassNameNormalizer.normalize(row.getClassName());
+                    String resolvedBuilding = resolveBuildingForClass(null, normalizedClassName, buildingByNormalizedClass);
                     CurriculumPlanEntry entry = curriculumRepository
                             .findFirstByAcademicYearAndStageAndClassNameAndSubjectNameAndStudyPeriod(
-                                    row.getAcademicYear(), row.getStage(), row.getClassName(), row.getSubjectName(), row.getStudyPeriod())
+                                    row.getAcademicYear(), row.getStage(), normalizedClassName, row.getSubjectName(), row.getStudyPeriod())
                             .orElseGet(CurriculumPlanEntry::new);
 
                     boolean isNew = entry.getId() == null;
                     entry.setAcademicYear(row.getAcademicYear());
                     entry.setStage(row.getStage());
-                    entry.setClassName(row.getClassName());
+                    entry.setClassName(normalizedClassName);
                     entry.setSubjectName(row.getSubjectName());
                     StudyPeriodSetting resolvedRule = studyPeriodSettingService.resolveRuleForClassAndPeriod(academicYear, row.getClassName(), row.getStudyPeriod());
                     entry.setStudyPeriod(resolvedRule.getStudyPeriod());
@@ -371,30 +385,29 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         entry.setSubgroup2EducationLevel(null);
                     }
                     if (isNew) {
-                        entry.setNumberSchoolBuilding("СП0");
+                        entry.setNumberSchoolBuilding(resolvedBuilding);
                         entry.setEducationLevel(EducationLevel.BASIC);
                     }
 
                     if (entry.getEducationLevel() != EducationLevel.ADVANCED) {
                         entry.setEducationLevel(EducationLevel.BASIC);
                     }
-                    if ("СП0".equalsIgnoreCase(entry.getNumberSchoolBuilding()) || entry.getNumberSchoolBuilding() == null || entry.getNumberSchoolBuilding().isBlank()) {
-                        entry.setNumberSchoolBuilding("СП0");
-                    }
+                    entry.setNumberSchoolBuilding(resolveBuildingForClass(entry.getNumberSchoolBuilding(), normalizedClassName, buildingByNormalizedClass));
 
                     CurriculumPlanEntry saved = curriculumRepository.save(entry);
                     importedIds.add(saved.getId());
                     if (isNew) created++; else updated++;
 
-                    if (!classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, "СП0", row.getClassName())) {
+                    if (!classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, entry.getNumberSchoolBuilding(), normalizedClassName)) {
                         ClassroomLeadershipEntry cls = new ClassroomLeadershipEntry();
                         cls.setAcademicYear(academicYear);
-                        cls.setNumberSchoolBuilding("СП0");
-                        cls.setClassName(row.getClassName());
+                        cls.setNumberSchoolBuilding(entry.getNumberSchoolBuilding());
+                        cls.setClassName(normalizedClassName);
                         cls.setClassDirection(row.getClassDirection() == null || row.getClassDirection().isBlank() ? "Не указана" : row.getClassDirection());
                         cls.setFioTeacher(fallbackTeacher);
                         cls.setCampusAddress("Не указан");
                         classroomRepository.save(cls);
+                        buildingByNormalizedClass.putIfAbsent(normalizedClassName, entry.getNumberSchoolBuilding());
                         classesCreated++;
                     }
 
@@ -468,6 +481,15 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         cls.setFioTeacher(fallbackTeacher);
         cls.setCampusAddress("Не указан");
         classroomRepository.save(cls);
+    }
+
+    private String resolveBuildingForClass(String requestedBuilding, String normalizedClassName, Map<String, String> buildingByNormalizedClass) {
+        String existingBuilding = buildingByNormalizedClass.get(ClassNameNormalizer.normalize(normalizedClassName));
+        if (existingBuilding != null && !existingBuilding.isBlank()) {
+            return existingBuilding;
+        }
+        String normalizedRequested = normalizeSubject(requestedBuilding);
+        return normalizedRequested.isBlank() ? "СП0" : normalizedRequested;
     }
 
     private String currentAcademicYear() {
