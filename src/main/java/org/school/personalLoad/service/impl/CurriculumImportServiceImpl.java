@@ -35,8 +35,10 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
 
     @Override
-    public byte[] exportEditableWorkbook() throws IOException {
-        List<CurriculumPlanEntry> entries = new ArrayList<>(curriculumRepository.findAll().stream().filter(e -> !e.isDeprecated()).toList());
+    public byte[] exportEditableWorkbook(String academicYear) throws IOException {
+        List<CurriculumPlanEntry> entries = new ArrayList<>(curriculumRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(e -> !e.isDeprecated())
+                .toList());
         entries.sort(Comparator
                 .comparing((CurriculumPlanEntry e) -> String.valueOf(e.getNumberSchoolBuilding()), String.CASE_INSENSITIVE_ORDER)
                 .thenComparing(e -> String.valueOf(e.getClassName()), String.CASE_INSENSITIVE_ORDER)
