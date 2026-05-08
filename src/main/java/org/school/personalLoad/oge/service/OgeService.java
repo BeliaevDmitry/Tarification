@@ -249,21 +249,7 @@ public class OgeService {
     }
 
     private String detectLanguageMismatch(Map<Integer, Integer> flags) {
-        List<String> issues = new ArrayList<>();
-        checkPair(flags, 9, 29, "Английский язык", issues);
-        checkPair(flags, 10, 30, "Немецкий язык", issues);
-        checkPair(flags, 11, 31, "Французский язык", issues);
-        checkPair(flags, 13, 33, "Испанский язык", issues);
-        return String.join("; ", issues);
-    }
-
-    private void checkPair(Map<Integer, Integer> flags, int writtenCode, int oralCode, String subject, List<String> issues) {
-        int written = flags.getOrDefault(writtenCode, 0);
-        int oral = flags.getOrDefault(oralCode, 0);
-        if (written != oral) {
-            if (written == 1) issues.add(subject + ": выбрана письменная часть без устной");
-            if (oral == 1) issues.add(subject + ": выбрана устная часть без письменной");
-        }
+        return "";
     }
 
     @Transactional
