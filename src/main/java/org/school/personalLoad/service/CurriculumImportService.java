@@ -8,5 +8,5 @@ import java.io.IOException;
 public interface CurriculumImportService {
     CurriculumImportResult importFile(MultipartFile file, String academicYear);
 
-    byte[] exportEditableWorkbook() throws IOException;
+    byte[] exportEditableWorkbook(String academicYear) throws IOException;
 }
