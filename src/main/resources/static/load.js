@@ -1628,7 +1628,33 @@ function renderTable() {
 
     const classes = classesForSelectedBuilding();
     const referenceDate = currentDisplayDate();
-    const presentationRows = filterPresentationRowsByViewMode(buildPresentationRows());
+    let presentationRows = filterPresentationRowsByViewMode(buildPresentationRows());
+    const classSortMatch = /^classHours:(.+)$/.exec(state.sortField || "");
+    if (classSortMatch) {
+        const targetClass = classSortMatch[1];
+        const assignments = assignmentsForBuilding(selectedBuilding);
+        presentationRows = presentationRows
+            .filter((row) => (row.rowsByClassAll?.[targetClass] || []).length > 0)
+            .sort((a, b) => {
+                const aRows = a.rowsByClassAll?.[targetClass] || [];
+                const bRows = b.rowsByClassAll?.[targetClass] || [];
+                const aTeacher = String(a.teacherName || "").trim();
+                const bTeacher = String(b.teacherName || "").trim();
+                const aAssignedTeachers = aRows.map((r) => String(assignments[apiKeyOfRow(r)] || "").trim()).filter(Boolean);
+                const bAssignedTeachers = bRows.map((r) => String(assignments[apiKeyOfRow(r)] || "").trim()).filter(Boolean);
+                const aActive = aTeacher && aAssignedTeachers.includes(aTeacher);
+                const bActive = bTeacher && bAssignedTeachers.includes(bTeacher);
+                const aUnassigned = aAssignedTeachers.length === 0;
+                const bUnassigned = bAssignedTeachers.length === 0;
+
+                const rank = (active, unassigned) => (active ? 0 : (unassigned ? 1 : 2));
+                const rankDiff = rank(aActive, aUnassigned) - rank(bActive, bUnassigned);
+                if (rankDiff !== 0) return rankDiff;
+
+                return String(a.subjectName || "").localeCompare(String(b.subjectName || ""), "ru")
+                    || String(a.teacherName || "").localeCompare(String(b.teacherName || ""), "ru");
+            });
+    }
     const { errorCount } = collectLoadIssues(presentationRows, classes);
 
     const headMain = document.createElement("tr");
@@ -1753,8 +1779,10 @@ function renderTable() {
             const className = button.dataset.classSort;
             const next = `classHours:${className}`;
             if (state.sortField === next) {
-                state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc";
-                ui.sortDirection.value = state.sortDirection;
+                state.sortField = "subject";
+                state.sortDirection = "asc";
+                ui.sortField.value = "subject";
+                ui.sortDirection.value = "asc";
             } else {
                 state.sortField = next;
                 state.sortDirection = "desc";
