@@ -1779,8 +1779,10 @@ function renderTable() {
             const className = button.dataset.classSort;
             const next = `classHours:${className}`;
             if (state.sortField === next) {
-                state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc";
-                ui.sortDirection.value = state.sortDirection;
+                state.sortField = "subject";
+                state.sortDirection = "asc";
+                ui.sortField.value = "subject";
+                ui.sortDirection.value = "asc";
             } else {
                 state.sortField = next;
                 state.sortDirection = "desc";
