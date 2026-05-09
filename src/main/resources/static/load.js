@@ -1647,7 +1647,7 @@ function renderTable() {
                 const aUnassigned = aAssignedTeachers.length === 0;
                 const bUnassigned = bAssignedTeachers.length === 0;
 
-                const rank = (active, unassigned) => (active ? 0 : (unassigned ? 2 : 1));
+                const rank = (active, unassigned) => (active ? 0 : (unassigned ? 1 : 2));
                 const rankDiff = rank(aActive, aUnassigned) - rank(bActive, bUnassigned);
                 if (rankDiff !== 0) return rankDiff;
 
