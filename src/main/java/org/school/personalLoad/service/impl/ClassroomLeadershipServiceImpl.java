@@ -154,7 +154,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     }
 
     @Override
-    public Resource buildImportTemplate() {
+    public Resource buildImportTemplate(String academicYear) {
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = workbook.createSheet("Классы");
             Row header = sheet.createRow(0);
@@ -164,7 +164,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             header.createCell(3).setCellValue("Классный руководитель");
             header.createCell(4).setCellValue("Адрес площадки (если отличается)");
 
-            List<ClassroomLeadershipEntry> rows = classroomLeadershipRepository.findAll();
+            List<ClassroomLeadershipEntry> rows = findAll(academicYear);
             if (rows.isEmpty()) {
                 Row ex = sheet.createRow(1);
                 ex.createCell(0).setCellValue("СП1");
@@ -193,8 +193,71 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     }
 
     @Override
+    @Transactional
     public List<ClassroomLeadershipEntry> findAll(String academicYear) {
-        return classroomLeadershipRepository.findAllByAcademicYear(academicYear);
+        List<ClassroomLeadershipEntry> rows = classroomLeadershipRepository.findAllByAcademicYear(academicYear);
+        if (!rows.isEmpty()) {
+            return rows;
+        }
+        List<ClassroomLeadershipEntry> promoted = promoteFromPreviousYear(academicYear);
+        if (promoted.isEmpty()) {
+            return List.of();
+        }
+        return classroomLeadershipRepository.saveAll(promoted);
+    }
+
+    private List<ClassroomLeadershipEntry> promoteFromPreviousYear(String academicYear) {
+        String previousYear = previousAcademicYear(academicYear);
+        if (previousYear.isBlank()) {
+            return List.of();
+        }
+        List<ClassroomLeadershipEntry> previousRows = classroomLeadershipRepository.findAllByAcademicYear(previousYear);
+        if (previousRows.isEmpty()) {
+            return List.of();
+        }
+        List<ClassroomLeadershipEntry> promoted = new ArrayList<>();
+        for (ClassroomLeadershipEntry previous : previousRows) {
+            String nextClass = nextClassName(previous.getClassName());
+            if (nextClass == null || nextClass.isBlank()) {
+                continue;
+            }
+            ClassroomLeadershipEntry entry = new ClassroomLeadershipEntry();
+            entry.setAcademicYear(academicYear);
+            entry.setNumberSchoolBuilding(normalizeBuildingCode(previous.getNumberSchoolBuilding()));
+            entry.setClassName(nextClass);
+            entry.setClassDirection(normalize(previous.getClassDirection()));
+            entry.setFioTeacher(normalize(previous.getFioTeacher()));
+            entry.setCampusAddress(resolveCampusAddress(entry.getNumberSchoolBuilding(), previous.getCampusAddress()));
+            promoted.add(entry);
+        }
+        Map<String, ClassroomLeadershipEntry> uniqueByClass = new LinkedHashMap<>();
+        promoted.forEach(item -> uniqueByClass.put(ClassNameNormalizer.normalize(item.getClassName()), item));
+        return new ArrayList<>(uniqueByClass.values());
+    }
+
+    private String previousAcademicYear(String academicYear) {
+        String value = normalize(academicYear).replace('\\', '/');
+        if (!value.matches("\\d{4}/\\d{4}")) {
+            return "";
+        }
+        int from = Integer.parseInt(value.substring(0, 4));
+        return (from - 1) + "/" + from;
+    }
+
+    private String nextClassName(String className) {
+        String normalized = ClassNameNormalizer.normalize(className).toUpperCase(Locale.ROOT).replace('–', '-').replace('—', '-');
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("^(\\d{1,2})-([А-ЯA-Z])$").matcher(normalized);
+        if (!matcher.matches()) {
+            return null;
+        }
+        int parallel = Integer.parseInt(matcher.group(1));
+        if (parallel == 4 || parallel == 9 || parallel == 11) {
+            return null;
+        }
+        if (parallel >= 11) {
+            return null;
+        }
+        return (parallel + 1) + "-" + matcher.group(2);
     }
 
     @Override
