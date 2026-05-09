@@ -50,9 +50,9 @@ public class CurriculumPlanController {
 
     @GetMapping("/export")
     public ResponseEntity<byte[]> exportCurriculum(@RequestParam(required = false) String academicYear) throws Exception {
-        byte[] body = curriculumImportService.exportEditableWorkbook();
-        String date = LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"));
         String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        byte[] body = curriculumImportService.exportEditableWorkbook(effectiveYear);
+        String date = LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"));
         String fileName = "УП ГБОУ 7 " + effectiveYear + " от " + date + ".xlsx";
         String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()

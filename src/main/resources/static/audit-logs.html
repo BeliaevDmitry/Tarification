@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Журнал действий</title>
+  <link rel="icon" type="image/png" href="/school-crest.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="admin-page">
+<main class="container">
+  <header class="card">
+    <h1>Пользователи системы</h1>
+    <p class="muted">Только администратор может создавать пользователей, сбрасывать им пароль, задавать видимость вкладок, права на редактирование и гибко ограничивать редактирование нагрузки по корпусам.</p>
+    <div class="row">
+      <button type="button" onclick="window.location.href='/admin.html'">Создание пользователя</button>
+      <button type="button" onclick="window.location.href='/admin.html'">Учебные года</button>
+      <button type="button" onclick="window.location.href='/admin.html'">Опции</button>
+      <button type="button" disabled>Журнал действий</button>
+    </div>
+  </header>
+  <section class="card">
+    <h1>Журнал действий пользователей</h1>
+    <p class="muted">Доступно только администратору. Хранение логов: 360 дней.</p>
+    <form id="filters" class="row">
+      <input name="user" placeholder="Пользователь">
+      <select name="action">
+        <option value="">Все действия</option>
+        <option value="LOGIN">LOGIN</option>
+        <option value="LOGOUT">LOGOUT</option>
+        <option value="CREATE">CREATE</option>
+        <option value="UPDATE">UPDATE</option>
+        <option value="DELETE">DELETE</option>
+      </select>
+      <button type="submit">Фильтровать</button>
+      <button type="button" id="export">Экспорт CSV</button>
+    </form>
+    <div class="sheet-wrap">
+      <table class="sheet-table">
+        <thead><tr><th>Когда</th><th>Пользователь</th><th>Действие</th><th>Сущность</th><th>IP</th><th>Статус</th><th>UA</th></tr></thead>
+        <tbody id="logs-body"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<script src="/auth.js"></script>
+<script src="/audit-logs.js"></script>
+</body>
+</html>
