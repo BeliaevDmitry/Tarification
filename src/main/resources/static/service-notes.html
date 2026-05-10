@@ -90,8 +90,8 @@
 
     <section class="card">
         <h3>Шаблон текста</h3>
-        <p class="muted">DOCX формируется автоматически шрифтом Times New Roman, 14. Текст можно скачать, отредактировать и загрузить обратно во вкладке «Отработанные».</p>
-        <p class="muted">Файл шаблона в проекте: <code>src/main/resources/templates/service-memo-template.txt</code>.</p>
+        <p class="muted">Можно использовать шаблон DOCX по коду школы (как в уведомлениях). Если файл не найден, применяется встроенный формат по умолчанию.</p>
+        <p class="muted">Шаблоны для Word: <code>src/main/resources/templates/service-memo/memo-*.txt</code> → сохраните как <code>memo-*.docx</code>. Плейсхолдеры: {DIRECTOR_TITLE}, {DIRECTOR_NAME}, {AUTHOR}, {FIO}, {START_DATE}, {TABLE}, {TOTAL_HOURS}, {CREATED_DATE}.</p>
         <pre id="memo-result"></pre>
     </section>
 </main>
