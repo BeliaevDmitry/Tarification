@@ -455,14 +455,14 @@ function defaultPeriodForRows(rows) {
 }
 
 function rowsToSyncForCurriculumRow(curriculumRow) {
-    if (!highSchoolUnifiedSubject(curriculumRow)) return [curriculumRow];
-    return expandedRowsForSelectedBuilding().filter((row) =>
+    const matched = expandedRowsForSelectedBuilding().filter((row) =>
         row.className === curriculumRow.className
         && row.subjectName === curriculumRow.subjectName
         && (row.curriculumPart || "CORE") === (curriculumRow.curriculumPart || "CORE")
         && row.educationLevel === curriculumRow.educationLevel
         && groupSuffix(row) === groupSuffix(curriculumRow)
     );
+    return matched.length ? matched : [curriculumRow];
 }
 
 function rowId() {
