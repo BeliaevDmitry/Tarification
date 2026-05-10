@@ -19,6 +19,9 @@ import org.springframework.web.bind.annotation.*;
 import javax.servlet.http.HttpServletRequest;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.math.BigInteger;
+
+import org.apache.xmlbeans.XmlCursor;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -34,6 +37,9 @@ public class TeacherNotificationsController {
     private static final String PLACEHOLDER_TEACHER = "${TEACHER}";
     private static final String PLACEHOLDER_DATE = "${DATE}";
     private static final String PLACEHOLDER_YEAR = "${ACADEMIC_YEAR}";
+    private static final String PLACEHOLDER_TOTAL_LOAD = "${TOTAL_LOAD}";
+    private static final String PLACEHOLDER_DATE_CITY_LINE = "${DATE_CITY_LINE}";
+    private static final String PLACEHOLDER_LOAD_TABLE = "${LOAD_TABLE}";
 
     private final ManualLoadEntryRepository manualLoadEntryRepository;
     private final TeacherNotificationRecordRepository recordRepository;
@@ -90,8 +96,8 @@ public class TeacherNotificationsController {
         try (InputStream in = templateOrFallback(templatePath);
              XWPFDocument doc = in != null ? new XWPFDocument(in) : new XWPFDocument();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            replacePlaceholders(doc, fio, d, year);
-            appendLoadTable(doc, fio, rows);
+            replacePlaceholders(doc, fio, d, year, rows);
+            insertLoadTable(doc, fio, rows);
             doc.write(out);
             return out.toByteArray();
         }
@@ -103,27 +109,47 @@ public class TeacherNotificationsController {
         return getClass().getClassLoader().getResourceAsStream(DEFAULT_TEMPLATE_DOCX);
     }
 
-    private void replacePlaceholders(XWPFDocument doc, String fio, LocalDate date, String year) {
+    private void replacePlaceholders(XWPFDocument doc, String fio, LocalDate date, String year, List<ManualLoadEntry> rows) {
         for (XWPFParagraph paragraph : doc.getParagraphs()) {
-            replaceInParagraph(paragraph, fio, date, year);
+            replaceInParagraph(doc, paragraph, fio, date, year, rows);
         }
         for (XWPFTable table : doc.getTables()) {
             for (XWPFTableRow row : table.getRows()) {
                 for (XWPFTableCell cell : row.getTableCells()) {
                     for (XWPFParagraph paragraph : cell.getParagraphs()) {
-                        replaceInParagraph(paragraph, fio, date, year);
+                        replaceInParagraph(doc, paragraph, fio, date, year, rows);
                     }
                 }
             }
         }
     }
 
-    private void replaceInParagraph(XWPFParagraph p, String fio, LocalDate date, String year) {
+    private void replaceInParagraph(XWPFDocument doc, XWPFParagraph p, String fio, LocalDate date, String year, List<ManualLoadEntry> rows) {
         String text = p.getText();
         if (text == null || text.isBlank()) return;
+        int totalLoad = rows.stream().map(ManualLoadEntry::getLoad).filter(Objects::nonNull).mapToInt(Integer::intValue).sum();
+        String dateRu = String.format("%02d.%02d.%04d", date.getDayOfMonth(), date.getMonthValue(), date.getYear());
         String replaced = text.replace(PLACEHOLDER_TEACHER, fio)
                 .replace(PLACEHOLDER_DATE, String.valueOf(date))
-                .replace(PLACEHOLDER_YEAR, year);
+                .replace(PLACEHOLDER_YEAR, year)
+                .replace(PLACEHOLDER_TOTAL_LOAD, String.valueOf(totalLoad));
+
+        if (replaced.contains(PLACEHOLDER_DATE_CITY_LINE)) {
+            while (p.getRuns().size() > 0) p.removeRun(0);
+            CTPPr pPr = p.getCTP().isSetPPr() ? p.getCTP().getPPr() : p.getCTP().addNewPPr();
+            CTTabs tabs = pPr.isSetTabs() ? pPr.getTabs() : pPr.addNewTabs();
+            tabs.addNewTab().setVal(STTabJc.RIGHT);
+            tabs.getTabArray(tabs.sizeOfTabArray() - 1).setPos(BigInteger.valueOf(9000));
+            p.setAlignment(ParagraphAlignment.BOTH);
+            XWPFRun run = p.createRun();
+            run.setFontFamily("Times New Roman");
+            run.setFontSize(12);
+            run.setText(dateRu);
+            run.addTab();
+            run.setText("г. Москва");
+            return;
+        }
+
         if (!replaced.equals(text)) {
             while (p.getRuns().size() > 0) p.removeRun(0);
             XWPFRun run = p.createRun();
@@ -133,14 +159,30 @@ public class TeacherNotificationsController {
         }
     }
 
-    private void appendLoadTable(XWPFDocument doc, String fio, List<ManualLoadEntry> rows) {
-        doc.createParagraph().createRun().setText(" ");
-        XWPFTable table = doc.createTable(rows.size() + 1, 3);
-        styleRow(table.getRow(0), Arrays.asList("ФИО", "Класс", "Часы"), true);
-        for (int i = 0; i < rows.size(); i++) {
-            ManualLoadEntry row = rows.get(i);
-            styleRow(table.getRow(i + 1), Arrays.asList(fio, row.getClassName(), String.valueOf(row.getLoad())), false);
+    private void insertLoadTable(XWPFDocument doc, String fio, List<ManualLoadEntry> rows) {
+        XWPFParagraph markerParagraph = null;
+        for (XWPFParagraph paragraph : doc.getParagraphs()) {
+            if ((paragraph.getText() != null) && paragraph.getText().contains(PLACEHOLDER_LOAD_TABLE)) {
+                markerParagraph = paragraph;
+                break;
+            }
         }
+
+        int totalLoad = rows.stream().map(ManualLoadEntry::getLoad).filter(Objects::nonNull).mapToInt(Integer::intValue).sum();
+
+        if (markerParagraph == null) {
+            markerParagraph = doc.createParagraph();
+        }
+        while (markerParagraph.getRuns().size() > 0) markerParagraph.removeRun(0);
+
+        XmlCursor cursor = markerParagraph.getCTP().newCursor();
+        XWPFTable table = doc.insertNewTbl(cursor);
+        styleRow(table.createRow(), Arrays.asList("ФИО", "Класс", "Часы"), true);
+        table.removeRow(0);
+        for (ManualLoadEntry row : rows) {
+            styleRow(table.createRow(), Arrays.asList(fio, row.getClassName(), String.valueOf(row.getLoad())), false);
+        }
+        styleRow(table.createRow(), Arrays.asList("Итого", "", String.valueOf(totalLoad)), true);
         table.setTableAlignment(TableRowAlign.CENTER);
     }
 

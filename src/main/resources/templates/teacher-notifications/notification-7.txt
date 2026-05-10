@@ -2,9 +2,10 @@
 # Скопируйте этот текст в Word и сохраните как DOCX с именем notification-7.docx
 УВЕДОМЛЕНИЕ о педагогической нагрузке
 ГБОУ Школа №7
-Дата: ${DATE}
+${DATE_CITY_LINE}
 Педагог: ${TEACHER}
 Учебный год: ${ACADEMIC_YEAR}
 Подписант: ${SIGNER}
+Суммарная нагрузка: ${TOTAL_LOAD}
 
 ${LOAD_TABLE}
