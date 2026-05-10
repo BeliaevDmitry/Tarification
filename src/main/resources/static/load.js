@@ -1895,8 +1895,8 @@ async function saveBuildingLoad() {
         const teacherRow = (rowsMap[subjectKeyOfRow(row)] || []).find((r) => String(r.teacherName || "").trim() === fioTeacher);
         const period = defaultLoadPeriod(row.className, rowStudyPeriod(row));
         const manualPeriod = findManualPeriodForClassTeacher(row, fioTeacher);
-        const rowLoadFromDate = manualPeriod?.from || teacherRow?.loadFromDate || period.from;
-        let rowLoadToDate = manualPeriod?.to || teacherRow?.loadToDate || period.to;
+        const rowLoadFromDate = manualPeriod?.from || period.from || teacherRow?.loadFromDate;
+        let rowLoadToDate = manualPeriod?.to || period.to || teacherRow?.loadToDate;
         const plan = plans[apiKey];
         if (plan && plan.previousTeacher === fioTeacher) {
             const cut = dayBefore(plan.fromDate);
