@@ -24,6 +24,8 @@ const TAB_GROUPS = [
             { key: 'SERVICE_NOTES', label: 'Служебные записки' },
             { key: 'SETTINGS', label: 'Настройки' },
             { key: 'TEACHERS', label: 'Кадры' },
+            { key: 'HR_NOTIFICATIONS_VIEW', label: 'Кадры: уведомления (просмотр)' },
+            { key: 'HR_NOTIFICATIONS_EDIT', label: 'Кадры: уведомления' },
             { key: 'CONTINGENT_IMPORT', label: 'Контингент: импорт' },
             { key: 'CONTINGENT_STATS', label: 'Контингент: численность' },
             { key: 'SUBJECT_AREAS', label: 'Предметные области' }
