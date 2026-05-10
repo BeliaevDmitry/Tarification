@@ -10,6 +10,7 @@ const TAB_PATHS = {
     '/service-notes.html': 'SERVICE_NOTES',
     '/settings.html': 'SETTINGS',
     '/teachers.html': 'TEACHERS',
+    '/teachers-notification.html': 'HR_NOTIFICATIONS_VIEW',
     '/contingent.html': 'CONTINGENT_STATS',
     '/vsoko.html': 'VSOKO_VIEW',
     '/vsoko-oge.html': 'VSOKO_VIEW',
@@ -64,7 +65,6 @@ function isLoadModulePage(pathname) {
         || pathname === '/curriculum.html'
         || pathname === '/load.html'
         || pathname === '/load-statistics.html'
-        || pathname === '/service-notes.html'
         || pathname === '/settings.html'
         || pathname === '/subject-areas.html';
 }
@@ -76,8 +76,12 @@ function navItemsForPath(pathname) {
     if (isPaSubPage(pathname)) {
         return PA_NAV_ORDER;
     }
-    if (pathname === '/teachers.html') {
-        return NAV_ORDER.filter((tabDef) => tabDef.tab === 'SERVICE_NOTES');
+    if (pathname === '/teachers.html' || pathname === '/teachers-notification.html' || pathname === '/service-notes.html') {
+        return [
+            { path: '/teachers.html', tab: 'TEACHERS', label: 'Персонал' },
+            { path: '/service-notes.html', tab: 'SERVICE_NOTES', label: 'Служебные записки' },
+            { path: '/teachers-notification.html', tab: 'HR_NOTIFICATIONS_VIEW', label: 'Уведомления' }
+        ];
     }
     if (isLoadModulePage(pathname)) {
         return NAV_ORDER.filter((tabDef) => tabDef.tab !== 'VSOKO_VIEW');
