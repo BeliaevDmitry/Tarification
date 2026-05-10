@@ -1,0 +1,8 @@
+const tb=document.getElementById("tb"); const d=document.getElementById("d");
+function ay(){return window.getStoredAcademicYear?window.getStoredAcademicYear():""}
+async function api(u,o={}){const r=await fetch(u,o); if(!r.ok) throw new Error(await r.text()); return r;}
+function status(r){return r.generated?(r.changed?"✅ !":"✅"):"❌"}
+async function load(){const r=await (await api(`/api/teachers-notification?academicYear=${encodeURIComponent(ay())}&date=${d.value}`)).json(); tb.innerHTML=""; r.forEach(x=>{const tr=document.createElement('tr'); tr.innerHTML=`<td>${x.fio}</td><td>${status(x)}</td><td><button data-fio="${x.fio}">Скачать</button></td>`; tb.appendChild(tr);}); tb.querySelectorAll('button[data-fio]').forEach(b=>b.onclick=()=>downloadOne(b.dataset.fio));}
+async function downloadOne(fio){const r=await api(`/api/teachers-notification/download/${encodeURIComponent(fio)}?academicYear=${encodeURIComponent(ay())}&date=${d.value}`,{method:'POST'}); const blob=await r.blob(); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`Уведомление_${fio}.docx`; a.click(); await load();}
+document.getElementById('all').onclick=async()=>{const r=await api(`/api/teachers-notification/download-all?academicYear=${encodeURIComponent(ay())}&date=${d.value}`,{method:'POST'}); const blob=await r.blob(); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='notifications.zip'; a.click(); await load();};
+d.addEventListener('change',load); load();
