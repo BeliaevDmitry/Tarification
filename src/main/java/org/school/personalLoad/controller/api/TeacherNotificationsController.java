@@ -261,7 +261,6 @@ public class TeacherNotificationsController {
 
     private List<ManualLoadEntry> activeRows(String year, LocalDate d) {
         return manualLoadEntryRepository.findAllByAcademicYear(year).stream().filter(r -> r.getLoad() != null && r.getLoad() > 0)
-                .filter(r -> r.getLoadFromDate() == null || !r.getLoadFromDate().isAfter(d))
                 .filter(r -> r.getLoadToDate() == null || !r.getLoadToDate().isBefore(d)).collect(Collectors.toList());
     }
 
