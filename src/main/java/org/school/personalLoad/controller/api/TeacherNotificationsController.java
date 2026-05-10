@@ -127,6 +127,7 @@ public class TeacherNotificationsController {
     private void replaceInParagraph(XWPFDocument doc, XWPFParagraph p, String fio, LocalDate date, String year, List<ManualLoadEntry> rows) {
         String text = p.getText();
         if (text == null || text.isBlank()) return;
+        text = text.replace("\\${", "${");
         int totalLoad = rows.stream().map(ManualLoadEntry::getLoad).filter(Objects::nonNull).mapToInt(Integer::intValue).sum();
         String dateRu = String.format("%02d.%02d.%04d", date.getDayOfMonth(), date.getMonthValue(), date.getYear());
         String replaced = text.replace(PLACEHOLDER_TEACHER, fio)
@@ -162,7 +163,7 @@ public class TeacherNotificationsController {
     private void insertLoadTable(XWPFDocument doc, String fio, List<ManualLoadEntry> rows) {
         XWPFParagraph markerParagraph = null;
         for (XWPFParagraph paragraph : doc.getParagraphs()) {
-            if ((paragraph.getText() != null) && paragraph.getText().contains(PLACEHOLDER_LOAD_TABLE)) {
+            if ((paragraph.getText() != null) && paragraph.getText().replace("\\${", "${").contains(PLACEHOLDER_LOAD_TABLE)) {
                 markerParagraph = paragraph;
                 break;
             }
@@ -189,6 +190,9 @@ public class TeacherNotificationsController {
     private void styleRow(XWPFTableRow row, List<String> values, boolean header) {
         for (int i = 0; i < values.size(); i++) {
             XWPFTableCell cell = row.getCell(i);
+            if (cell == null) {
+                cell = row.addNewTableCell();
+            }
             CTTc cttc = cell.getCTTc();
             CTTcPr tcPr = cttc.isSetTcPr() ? cttc.getTcPr() : cttc.addNewTcPr();
             CTVerticalJc vAlign = tcPr.isSetVAlign() ? tcPr.getVAlign() : tcPr.addNewVAlign();
