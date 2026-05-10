@@ -1,0 +1,11 @@
+# Пример шаблона notification-1811.docx
+# Скопируйте этот текст в Word и сохраните как DOCX с именем notification-1811.docx
+УВЕДОМЛЕНИЕ о педагогической нагрузке
+ГБОУ Школа №1811
+${DATE_CITY_LINE}
+Педагог: ${TEACHER}
+Учебный год: ${ACADEMIC_YEAR}
+Подписант: ${SIGNER}
+Суммарная нагрузка: ${TOTAL_LOAD}
+
+${LOAD_TABLE}

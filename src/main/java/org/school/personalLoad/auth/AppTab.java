@@ -11,6 +11,8 @@ public enum AppTab {
     LOAD("Нагрузка по корпусам", "/load.html"),
     LOAD_STATS("Нагрузка: статистика", "/load.html#stats"),
     SERVICE_NOTES("Служебные записки", "/service-notes.html"),
+    HR_NOTIFICATIONS_VIEW("Кадры: уведомления (просмотр)", "/teachers-notification.html"),
+    HR_NOTIFICATIONS_EDIT("Кадры: уведомления", "/teachers-notification.html"),
     SETTINGS("Настройки", "/settings.html"),
     TEACHERS("Педагоги", "/teachers.html"),
     CONTINGENT_IMPORT("Контингент: импорт", "/contingent.html#import"),
@@ -45,6 +47,6 @@ public enum AppTab {
     }
 
     public static List<AppTab> navigableTabs() {
-        return Arrays.asList(BUILDINGS, CLASSES, SUBJECTS, CURRICULUM, LOAD, LOAD_STATS, SERVICE_NOTES, SETTINGS, TEACHERS, CONTINGENT_IMPORT, CONTINGENT_STATS, SUBJECT_AREAS, VSOKO_VIEW, VSOKO_EDIT, OGE_UPLOAD_VIEW, OGE_MISMATCH_VIEW, OGE_EXTERNAL_WORKS_VIEW, OGE_TEACHER_BINDING_VIEW, OGE_SCORE_VIEW, OGE_EVALUATION_VIEW, OGE_GIA_UPLOAD, OGE_WORK_UPLOAD, USERS);
+        return Arrays.asList(BUILDINGS, CLASSES, SUBJECTS, CURRICULUM, LOAD, LOAD_STATS, SERVICE_NOTES, HR_NOTIFICATIONS_VIEW, HR_NOTIFICATIONS_EDIT, SETTINGS, TEACHERS, CONTINGENT_IMPORT, CONTINGENT_STATS, SUBJECT_AREAS, VSOKO_VIEW, VSOKO_EDIT, OGE_UPLOAD_VIEW, OGE_MISMATCH_VIEW, OGE_EXTERNAL_WORKS_VIEW, OGE_TEACHER_BINDING_VIEW, OGE_SCORE_VIEW, OGE_EVALUATION_VIEW, OGE_GIA_UPLOAD, OGE_WORK_UPLOAD, USERS);
     }
 }
