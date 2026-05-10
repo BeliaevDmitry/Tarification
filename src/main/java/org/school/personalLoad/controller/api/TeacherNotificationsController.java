@@ -45,8 +45,8 @@ public class TeacherNotificationsController {
     private final TeacherNotificationRecordRepository recordRepository;
 
     @GetMapping
-    public List<Row> list(@RequestParam String academicYear, @RequestParam(required = false) String date) {
-        LocalDate d = date == null || date.isBlank() ? LocalDate.of(2026, 9, 1) : LocalDate.parse(date);
+    public List<Row> list(@RequestParam String academicYear, @RequestParam(required = false) String loadDate) {
+        LocalDate d = defaultLoadDate(academicYear, loadDate);
         Map<String, List<ManualLoadEntry>> byTeacher = activeRows(academicYear, d).stream().collect(Collectors.groupingBy(ManualLoadEntry::getFioTeacher));
         Map<String, TeacherNotificationRecord> records = recordRepository.findAllByAcademicYear(academicYear).stream().collect(Collectors.toMap(TeacherNotificationRecord::getFioTeacher, r -> r, (a, b) -> a));
         return byTeacher.keySet().stream().sorted().map(fio -> {
@@ -59,34 +59,37 @@ public class TeacherNotificationsController {
     }
 
     @PostMapping("/download/{fio}")
-    public ResponseEntity<byte[]> downloadOne(@PathVariable String fio, @RequestParam String academicYear, @RequestParam String date, HttpServletRequest request) throws Exception {
+    public ResponseEntity<byte[]> downloadOne(@PathVariable String fio, @RequestParam String academicYear, @RequestParam String loadDate, @RequestParam String notificationDate, HttpServletRequest request) throws Exception {
         SessionUser user = AuthSessionUtils.requiredUser(request);
-        LocalDate d = LocalDate.parse(date);
-        byte[] doc = generateDoc(fio, academicYear, d);
-        upsert(fio, academicYear, d, user.getUsername());
+        LocalDate targetLoadDate = defaultLoadDate(academicYear, loadDate);
+        LocalDate generatedDate = LocalDate.parse(notificationDate);
+        byte[] doc = generateDoc(fio, academicYear, targetLoadDate, generatedDate);
+        upsert(fio, academicYear, targetLoadDate, user.getUsername());
         return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + fio + ".docx").contentType(MediaType.APPLICATION_OCTET_STREAM).body(doc);
     }
 
     @PostMapping("/download-all")
-    public ResponseEntity<byte[]> downloadAll(@RequestParam String academicYear, @RequestParam String date, HttpServletRequest request) throws Exception {
+    public ResponseEntity<byte[]> downloadAll(@RequestParam String academicYear, @RequestParam String loadDate, @RequestParam String notificationDate, HttpServletRequest request) throws Exception {
         SessionUser user = AuthSessionUtils.requiredUser(request);
-        LocalDate d = LocalDate.parse(date);
+        LocalDate d = defaultLoadDate(academicYear, loadDate);
+        LocalDate generatedDate = LocalDate.parse(notificationDate);
         Map<String, List<ManualLoadEntry>> byTeacher = activeRows(academicYear, d).stream().collect(Collectors.groupingBy(ManualLoadEntry::getFioTeacher));
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         try (ZipOutputStream zos = new ZipOutputStream(bos)) {
             for (String fio : byTeacher.keySet()) {
-                byte[] doc = generateDoc(fio, academicYear, d);
+                byte[] doc = generateDoc(fio, academicYear, d, generatedDate);
                 upsert(fio, academicYear, d, user.getUsername());
-                zos.putNextEntry(new ZipEntry((fio + "_" + academicYear + ".docx").replace(' ', '_')));
+                zos.putNextEntry(new ZipEntry(("Уведомление_" + fio + ".docx").replace(' ', '_')));
                 zos.write(doc);
                 zos.closeEntry();
             }
         }
-        return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=notifications.zip").contentType(MediaType.APPLICATION_OCTET_STREAM).body(bos.toByteArray());
+        String zipName = "Уведомления на " + d;
+        return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + zipName + ".zip").contentType(MediaType.APPLICATION_OCTET_STREAM).body(bos.toByteArray());
     }
 
-    private byte[] generateDoc(String fio, String year, LocalDate d) throws Exception {
-        List<ManualLoadEntry> rows = activeRows(year, d).stream()
+    private byte[] generateDoc(String fio, String year, LocalDate loadDate, LocalDate notificationDate) throws Exception {
+        List<ManualLoadEntry> rows = activeRows(year, loadDate).stream()
                 .filter(r -> fio.equalsIgnoreCase(r.getFioTeacher()))
                 .sorted(Comparator.comparing(ManualLoadEntry::getClassName))
                 .collect(Collectors.toList());
@@ -96,8 +99,8 @@ public class TeacherNotificationsController {
         try (InputStream in = templateOrFallback(templatePath);
              XWPFDocument doc = in != null ? new XWPFDocument(in) : new XWPFDocument();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            replacePlaceholders(doc, fio, d, year, rows);
-            insertLoadTable(doc, fio, rows);
+            replacePlaceholders(doc, fio, notificationDate, year, rows);
+            insertLoadTable(doc, rows);
             doc.write(out);
             return out.toByteArray();
         }
@@ -160,7 +163,7 @@ public class TeacherNotificationsController {
         }
     }
 
-    private void insertLoadTable(XWPFDocument doc, String fio, List<ManualLoadEntry> rows) {
+    private void insertLoadTable(XWPFDocument doc, List<ManualLoadEntry> rows) {
         XWPFParagraph markerParagraph = null;
         for (XWPFParagraph paragraph : doc.getParagraphs()) {
             if ((paragraph.getText() != null) && paragraph.getText().replace("\\${", "${").contains(PLACEHOLDER_LOAD_TABLE)) {
@@ -169,7 +172,7 @@ public class TeacherNotificationsController {
             }
         }
 
-        int totalLoad = rows.stream().map(ManualLoadEntry::getLoad).filter(Objects::nonNull).mapToInt(Integer::intValue).sum();
+        List<SubjectLoad> subjectLoads = aggregateSubjectLoads(rows);
 
         if (markerParagraph == null) {
             markerParagraph = doc.createParagraph();
@@ -178,13 +181,61 @@ public class TeacherNotificationsController {
 
         XmlCursor cursor = markerParagraph.getCTP().newCursor();
         XWPFTable table = doc.insertNewTbl(cursor);
-        styleRow(table.createRow(), Arrays.asList("ФИО", "Класс", "Часы"), true);
+        styleRow(table.createRow(), Arrays.asList("Предмет", "Класс", "Часы"), true);
         table.removeRow(0);
-        for (ManualLoadEntry row : rows) {
-            styleRow(table.createRow(), Arrays.asList(fio, row.getClassName(), String.valueOf(row.getLoad())), false);
+        for (SubjectLoad row : subjectLoads) {
+            styleRow(table.createRow(), Arrays.asList(row.subjectName, row.className, row.hoursDisplay), false);
         }
-        styleRow(table.createRow(), Arrays.asList("Итого", "", String.valueOf(totalLoad)), true);
+        styleRow(table.createRow(), Arrays.asList("Итого", "", totalDisplay(subjectLoads)), true);
         table.setTableAlignment(TableRowAlign.CENTER);
+    }
+
+    private List<SubjectLoad> aggregateSubjectLoads(List<ManualLoadEntry> rows) {
+        Map<String, SubjectLoad> map = new LinkedHashMap<>();
+        for (ManualLoadEntry row : rows) {
+            String key = row.getSubjectName() + "|" + row.getClassName();
+            SubjectLoad sl = map.computeIfAbsent(key, k -> new SubjectLoad(row.getSubjectName(), row.getClassName()));
+            int hours = Optional.ofNullable(row.getLoad()).orElse(0);
+            if (row.getStudyPeriod() == org.school.personalLoad.model.StudyPeriod.H1) sl.h1 += hours;
+            else if (row.getStudyPeriod() == org.school.personalLoad.model.StudyPeriod.H2) sl.h2 += hours;
+            else { sl.h1 += hours; sl.h2 += hours; }
+        }
+        map.values().forEach(SubjectLoad::finalizeDisplay);
+        return new ArrayList<>(map.values());
+    }
+
+    private String totalDisplay(List<SubjectLoad> rows) {
+        int totalH1 = rows.stream().mapToInt(r -> r.h1).sum();
+        int totalH2 = rows.stream().mapToInt(r -> r.h2).sum();
+        if (totalH1 == totalH2) return String.valueOf(totalH1);
+        return totalH1 + "/" + totalH2;
+    }
+
+    private LocalDate defaultLoadDate(String academicYear, String loadDate) {
+        if (loadDate != null && !loadDate.isBlank()) return LocalDate.parse(loadDate);
+        String[] parts = String.valueOf(academicYear).split("/");
+        int year = Integer.parseInt(parts[0]);
+        return LocalDate.of(year, 9, 1);
+    }
+
+    private static class SubjectLoad {
+        String subjectName;
+        String className;
+        int h1;
+        int h2;
+        int year;
+        String hoursDisplay;
+
+        SubjectLoad(String subjectName, String className) { this.subjectName = subjectName; this.className = className; }
+        void finalizeDisplay() {
+            if (h1 == 0 && h2 == 0) {
+                hoursDisplay = String.valueOf(year);
+            } else if (h1 == h2) {
+                hoursDisplay = String.valueOf(h1);
+            } else {
+                hoursDisplay = h1 + "/" + h2;
+            }
+        }
     }
 
     private void styleRow(XWPFTableRow row, List<String> values, boolean header) {
