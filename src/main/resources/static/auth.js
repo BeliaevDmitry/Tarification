@@ -32,7 +32,6 @@ const NAV_ORDER = [
     { path: '/curriculum.html', tab: 'CURRICULUM', label: 'Учебный план' },
     { path: '/load.html', tab: 'LOAD', label: 'Нагрузка по корпусам' },
     { path: '/load-statistics.html', tab: 'LOAD_STATS', label: 'Статистика нагрузки' },
-    { path: '/service-notes.html', tab: 'SERVICE_NOTES', label: 'Служебные записки' },
     { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' },
     { path: '/subject-areas.html', tab: 'SUBJECT_AREAS', label: 'Предметные области' },
     { path: '/vsoko.html', tab: 'VSOKO_VIEW', label: 'ВСОКО' }
