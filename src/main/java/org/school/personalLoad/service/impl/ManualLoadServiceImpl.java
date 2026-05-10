@@ -410,13 +410,15 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 .toList();
         Map<String, ManualLoadEntry> existingByKey = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
                 .collect(java.util.stream.Collectors.toMap(this::manualRowKey, java.util.function.Function.identity(), (a, b) -> a));
+        Map<String, ManualLoadEntry> existingBySoftKey = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
+                .collect(java.util.stream.Collectors.toMap(this::manualRowSoftKey, java.util.function.Function.identity(), (a, b) -> a));
         List<ManualLoadTemplateRow> result = new ArrayList<>();
         for (CurriculumPlanEntry row : curriculum) {
             if (row.isSubgroupRequired()) {
-                result.add(toTemplateRow(academicYear, row, 1, existingByKey));
-                result.add(toTemplateRow(academicYear, row, 2, existingByKey));
+                result.add(toTemplateRow(academicYear, row, 1, existingByKey, existingBySoftKey));
+                result.add(toTemplateRow(academicYear, row, 2, existingByKey, existingBySoftKey));
             } else {
-                result.add(toTemplateRow(academicYear, row, null, existingByKey));
+                result.add(toTemplateRow(academicYear, row, null, existingByKey, existingBySoftKey));
             }
         }
         result.sort(Comparator.comparing(ManualLoadTemplateRow::numberSchoolBuilding)
@@ -429,7 +431,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private ManualLoadTemplateRow toTemplateRow(String academicYear,
                                                 CurriculumPlanEntry curriculum,
                                                 Integer groupIndex,
-                                                Map<String, ManualLoadEntry> existingByKey) {
+                                                Map<String, ManualLoadEntry> existingByKey,
+                                                Map<String, ManualLoadEntry> existingBySoftKey) {
         StudyPeriod studyPeriod = curriculum.getStudyPeriod() == null ? StudyPeriod.YEAR : curriculum.getStudyPeriod();
         StudyPeriodSettingService.DateRange range = studyPeriodSettingService.resolveDateRange(academicYear, curriculum.getClassName(), studyPeriod);
         String groupName = groupIndex == null ? null : ("Группа " + groupIndex);
@@ -458,6 +461,17 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 exportRowKey(academicYear, curriculum.getNumberSchoolBuilding(), curriculum.getClassName(), curriculum.getSubjectName(), groupName, studyPeriod, range.startDate(), range.endDate(), level)
         );
         ManualLoadEntry existing = existingByKey.get(template.rowKey());
+        if (existing == null) {
+            existing = existingBySoftKey.get(exportRowSoftKey(
+                    template.academicYear(),
+                    template.numberSchoolBuilding(),
+                    template.className(),
+                    template.subjectName(),
+                    template.groupNameEducationalPlan(),
+                    template.studyPeriod(),
+                    template.educationLevel()
+            ));
+        }
         if (existing != null) {
             return new ManualLoadTemplateRow(
                     template.academicYear(),
@@ -489,6 +503,35 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 row.getLoadToDate(),
                 row.getEducationLevel()
         );
+    }
+
+    private String manualRowSoftKey(ManualLoadEntry row) {
+        return exportRowSoftKey(
+                row.getAcademicYear(),
+                row.getNumberSchoolBuilding(),
+                row.getClassName(),
+                row.getSubjectName(),
+                row.getGroupNameEducationalPlan(),
+                row.getStudyPeriod() == null ? StudyPeriod.YEAR : row.getStudyPeriod(),
+                row.getEducationLevel()
+        );
+    }
+
+    private String exportRowSoftKey(String year,
+                                    String building,
+                                    String className,
+                                    String subject,
+                                    String group,
+                                    StudyPeriod studyPeriod,
+                                    EducationLevel level) {
+        return String.join("|",
+                normalizeToken(year),
+                normalizeToken(building),
+                normalizeToken(ClassNameNormalizer.normalize(className)),
+                normalizeToken(subject),
+                normalizeToken(group),
+                normalizeToken(studyPeriod == null ? StudyPeriod.YEAR.name() : studyPeriod.name()),
+                normalizeToken(level == null ? EducationLevel.BASIC.name() : level.name()));
     }
 
     private String exportRowKey(String year,
