@@ -1,17 +1,32 @@
 # Multi-site deploy commands
 
-## Подготовка env-файлов
-Скопируйте пресет и задайте реальные пароли/SMTP:
+## Где лежат env-файлы
+Актуальные пресеты лежат **в репозитории** здесь:
+- `deploy/vps/env-presets/schadmin7.env`
+- `deploy/vps/env-presets/schadmindemo.env`
+- `deploy/vps/env-presets/schadmin1811.env`
+
+Рекомендуемый вариант: скопировать их в приватные файлы рядом (не коммитить), например:
 ```bash
 cp deploy/vps/env-presets/schadmin7.env deploy/vps/.env.schadmin7
 cp deploy/vps/env-presets/schadmindemo.env deploy/vps/.env.schadmindemo
 cp deploy/vps/env-presets/schadmin1811.env deploy/vps/.env.schadmin1811
 ```
 
+После копирования обязательно проверьте/обновите минимум:
+- `APP_DOMAIN`
+- `SCHOOL_CODE`
+- `POSTGRES_PASSWORD`
+- `DB_PASSWORD`
+- `SMTP_*`
+
+> Можно запускать и напрямую из `env-presets/*`, но это шаблоны. Для продакшена лучше использовать собственные `.env.*` файлы.
 
 ## Важно
-- Для каждого сайта используйте отдельный project name (`-p`), чтобы контейнеры/volume/сети не пересекались.
-- Перед запуском проверьте DNS на нужный VPS.
+- Для каждого сайта используйте отдельный project name (`-p`), чтобы контейнеры/volumes/сети не пересекались.
+- На **одном сервере с несколькими сайтами** нельзя публиковать `80:80`/`443:443` в каждом стеке одновременно.
+  - Либо запускайте только один `caddy` с портами наружу.
+  - Либо используйте внешний reverse-proxy и поднимайте `app` без локального `caddy`.
 
 ## 1) Schadmin (школа 7)
 Полный деплой (с удалением БД):
@@ -95,4 +110,12 @@ docker compose -p schadmin1811 \
   --env-file deploy/vps/.env.schadmin1811 \
   -f deploy/vps/docker-compose.prod.yml \
   up -d --build --no-deps app
+```
+
+## Проверка, что взялся нужный SCHOOL_CODE
+```bash
+docker compose -p schadmin7 \
+  --env-file deploy/vps/.env.schadmin7 \
+  -f deploy/vps/docker-compose.prod.yml \
+  exec app printenv SCHOOL_CODE
 ```
