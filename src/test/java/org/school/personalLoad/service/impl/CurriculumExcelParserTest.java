@@ -196,6 +196,31 @@ class CurriculumExcelParserTest {
     }
 
 
+
+    @Test
+    void parseSooWhenH1ClassCellBlankUsesPairedH2ClassName() throws Exception {
+        Workbook wb = new XSSFWorkbook();
+        Sheet soo = wb.createSheet("СОО");
+
+        row(soo, 0).createCell(0).setCellValue("Учебный год 2025-2026");
+        row(soo, 1).createCell(0).setCellValue("Период обучения");
+        row(soo, 1).createCell(2).setCellValue("1П");
+        row(soo, 1).createCell(3).setCellValue("2П");
+        row(soo, 2).createCell(0).setCellValue("Направленность класса");
+        row(soo, 2).createCell(2).setCellValue("Общеобразовательный");
+        row(soo, 3).createCell(0).setCellValue("Класс");
+        row(soo, 3).createCell(2).setCellValue("");
+        row(soo, 3).createCell(3).setCellValue("5Е");
+        row(soo, 4).createCell(0).setCellValue("Обязательная часть");
+        row(soo, 5).createCell(1).setCellValue("Русский язык");
+        row(soo, 5).createCell(2).setCellValue(5);
+        row(soo, 5).createCell(3).setCellValue(5);
+
+        List<CurriculumImportRow> rows = parseWorkbook(wb);
+        assertTrue(rows.stream().anyMatch(r -> r.getClassName().equals("5-Е") && r.getStudyPeriod() == StudyPeriod.H1));
+        assertTrue(rows.stream().anyMatch(r -> r.getClassName().equals("5-Е") && r.getStudyPeriod() == StudyPeriod.H2));
+    }
+
     @Test
     void parseOooH2ColumnUsesSameClassAsPreviousH1() throws Exception {
         Workbook wb = new XSSFWorkbook();
