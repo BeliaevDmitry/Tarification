@@ -166,9 +166,39 @@ public class PaController {
 
     @PostMapping("/reports/upload")
     public ResponseEntity<List<PaDtos.ReportUploadResult>> uploadReports(@RequestParam("files") List<MultipartFile> files,
-                                                                         @RequestParam(required = false) String academicYear) {
+                                                                         @RequestParam(required = false) String academicYear,
+                                                                         HttpSession session) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
-        return ResponseEntity.ok(paService.uploadReports(year, files));
+        SessionUser user = session == null ? null : (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
+        String username = user == null ? "anonymous" : user.getUsername();
+        String fullName = user == null || user.getFullName() == null || user.getFullName().isBlank() ? "Аноним" : user.getFullName();
+        return ResponseEntity.ok(paService.uploadReports(year, files, username, fullName));
+    }
+
+    @GetMapping("/reports/upload-log")
+    public ResponseEntity<List<PaDtos.ReportUploadLogRow>> reportUploadLog(@RequestParam(required = false) String academicYear,
+                                                                            HttpSession session) {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        SessionUser user = session == null ? null : (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
+        String username = user == null ? "anonymous" : user.getUsername();
+        boolean admin = user != null && user.isAdmin();
+        return ResponseEntity.ok(paService.reportUploadLog(year, username, admin));
+    }
+
+    @GetMapping("/reports/upload-log/download")
+    public ResponseEntity<byte[]> downloadReportUploadLog(@RequestParam(required = false) String academicYear,
+                                                          HttpSession session) throws Exception {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        SessionUser user = session == null ? null : (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
+        String username = user == null ? "anonymous" : user.getUsername();
+        boolean admin = user != null && user.isAdmin();
+        byte[] body = paService.downloadReportUploadLogExcel(year, username, admin);
+        String fileName = "Сдача_ПА_история_" + year.replace("/", "-") + ".xlsx";
+        String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(body);
     }
 
     @PatchMapping("/participation")
