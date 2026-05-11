@@ -436,10 +436,15 @@ function renderUploadLog(prefix, rows) {
     if (!isUploadHistory) {
         body.innerHTML = (rows || []).map((row) => `
         <tr>
-            <td>${row.fileName || ''}</td>
-            <td>${row.status || ''}</td>
-            <td>${row.message || ''}</td>
-            <td>${row.versionNo ?? '—'}</td>
+            <td>${row.createdAt ? new Date(row.createdAt).toLocaleString('ru-RU') : new Date().toLocaleString('ru-RU')}</td>
+            <td>${row.reportVersionId ? `<button type="button" class="tab-btn" data-download-report-id="${row.reportVersionId}">${row.fileName || ''}</button>` : (row.fileName || '')}</td>
+            <td>${row.subjectName || '—'}</td>
+            <td>${row.scopeValue || '—'}</td>
+            <td>${toStatus(row.status)}</td>
+            <td>${messageHtml(row.message)}</td>
+            <td>${row.recordsSummary || '—'}</td>
+            <td>${row.checkReport || 'Нет'}</td>
+            <td>${row.uploadedByFio || row.createdBy || 'Аноним'}</td>
         </tr>
     `).join('') || '<tr><td colspan="4" class="muted">Нет операций</td></tr>';
         return;
