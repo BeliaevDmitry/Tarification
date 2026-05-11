@@ -878,24 +878,16 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             setCellText(ensureCell(table.getRow(0), i), header.get(i), true);
         }
 
-        LinkedHashMap<String, DisplayRow> displayRows = new LinkedHashMap<>();
+        LinkedHashMap<String, DisplayRow> rowsForDisplay = new LinkedHashMap<>();
         for (ManualLoadEntry row : Optional.ofNullable(rows).orElseGet(List::of)) {
             if (row == null) continue;
             String status = resolveStatus(aggregate, row);
             String key = String.join("|", safe(row.getSubjectName()), safe(row.getClassName()), String.valueOf(row.getLoad() == null ? 0 : row.getLoad()), safe(status));
-            displayRows.putIfAbsent(key, new DisplayRow(safeDocText(row.getSubjectName()), safeDocText(row.getClassName()), row.getLoad() == null ? 0 : row.getLoad(), status));
-        }
-
-        LinkedHashMap<String, DisplayRow> displayRows = new LinkedHashMap<>();
-        for (ManualLoadEntry row : Optional.ofNullable(rows).orElseGet(List::of)) {
-            if (row == null) continue;
-            String status = resolveStatus(aggregate, row);
-            String key = String.join("|", safe(row.getSubjectName()), safe(row.getClassName()), String.valueOf(row.getLoad() == null ? 0 : row.getLoad()), safe(status));
-            displayRows.putIfAbsent(key, new DisplayRow(safeDocText(row.getSubjectName()), safeDocText(row.getClassName()), row.getLoad() == null ? 0 : row.getLoad(), status));
+            rowsForDisplay.putIfAbsent(key, new DisplayRow(safeDocText(row.getSubjectName()), safeDocText(row.getClassName()), row.getLoad() == null ? 0 : row.getLoad(), status));
         }
 
         int totalRemainingHours = 0;
-        for (DisplayRow row : displayRows.values()) {
+        for (DisplayRow row : rowsForDisplay.values()) {
             XWPFTableRow tr = table.createRow();
             setCellText(ensureCell(tr, 0), row.subjectName(), false);
             setCellText(ensureCell(tr, 1), row.className(), false);
