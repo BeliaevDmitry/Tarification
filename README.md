@@ -65,6 +65,7 @@ cp deploy/vps/.env.production.example deploy/vps/.env.production
 
 Обязательно задайте:
 - `APP_DOMAIN` — домен для HTTPS
+- `SCHOOL_CODE` — код школы для брендирования (например: `7`, `1811`, `demo`)
 - `POSTGRES_PASSWORD`
 - `DB_PASSWORD`
 - `APP_ADMIN_PASSWORD` (на первом запуске по умолчанию `admin`)
