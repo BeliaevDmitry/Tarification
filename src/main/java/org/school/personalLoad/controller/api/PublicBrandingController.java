@@ -2,11 +2,11 @@ package org.school.personalLoad.controller.api;
 
 import lombok.Builder;
 import lombok.Data;
+import org.school.personalLoad.config.SchoolCodeResolver;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Locale;
 
 @RestController
 @RequestMapping("/api/public/branding")
@@ -14,7 +14,7 @@ public class PublicBrandingController {
 
     @GetMapping
     public BrandingResponse get() {
-        String schoolCode = System.getenv().getOrDefault("SCHOOL_CODE", "demo").toLowerCase(Locale.ROOT);
+        String schoolCode = SchoolCodeResolver.resolve();
         String crestUrl = "/school-crests/crest-" + schoolCode + ".png";
         String appTitle = "ГБОУ школа " + schoolCode;
         String loginTitle = "Вход в систему ГБОУ №" + schoolCode;
