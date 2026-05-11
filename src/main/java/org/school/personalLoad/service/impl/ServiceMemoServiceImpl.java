@@ -875,7 +875,15 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 ? List.of("Предмет", "Класс", "Количество часов")
                 : List.of("Предмет", "Класс", "Количество часов", "Статус");
         for (int i = 0; i < header.size(); i++) {
-            setCellText(table.getRow(0).getCell(i), header.get(i), true);
+            setCellText(ensureCell(table.getRow(0), i), header.get(i), true);
+        }
+
+        LinkedHashMap<String, DisplayRow> displayRows = new LinkedHashMap<>();
+        for (ManualLoadEntry row : Optional.ofNullable(rows).orElseGet(List::of)) {
+            if (row == null) continue;
+            String status = resolveStatus(aggregate, row);
+            String key = String.join("|", safe(row.getSubjectName()), safe(row.getClassName()), String.valueOf(row.getLoad() == null ? 0 : row.getLoad()), safe(status));
+            displayRows.putIfAbsent(key, new DisplayRow(safeDocText(row.getSubjectName()), safeDocText(row.getClassName()), row.getLoad() == null ? 0 : row.getLoad(), status));
         }
 
         LinkedHashMap<String, DisplayRow> displayRows = new LinkedHashMap<>();
@@ -889,13 +897,20 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         int totalRemainingHours = 0;
         for (DisplayRow row : displayRows.values()) {
             XWPFTableRow tr = table.createRow();
-            setCellText(tr.getCell(0), row.subjectName(), false);
-            setCellText(tr.getCell(1), row.className(), false);
-            setCellText(tr.getCell(2), String.valueOf(row.load()), false);
+            setCellText(ensureCell(tr, 0), row.subjectName(), false);
+            setCellText(ensureCell(tr, 1), row.className(), false);
+            setCellText(ensureCell(tr, 2), String.valueOf(row.load()), false);
             if (!"Снять".equalsIgnoreCase(row.status())) totalRemainingHours += row.load();
-            if (!newEmployeeMode) setCellText(tr.getCell(3), row.status(), false);
+            if (!newEmployeeMode) setCellText(ensureCell(tr, 3), row.status(), false);
         }
         return totalRemainingHours;
+    }
+
+    private XWPFTableCell ensureCell(XWPFTableRow row, int index) {
+        while (row.getTableCells().size() <= index) {
+            row.addNewTableCell();
+        }
+        return row.getCell(index);
     }
 
     private List<XWPFParagraph> allDocumentParagraphs(XWPFDocument doc) {
