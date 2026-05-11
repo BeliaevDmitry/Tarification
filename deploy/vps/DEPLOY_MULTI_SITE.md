@@ -148,6 +148,19 @@ docker compose -p schadmin7 \
 docker ps -a --format "table {{.Names}}\t{{.Status}}" | grep -E "schadmin|tarification"
 ```
 
+Если конфликт по `tarification-app` при обновлении legacy-стека:
+```bash
+# удаляем только контейнер приложения (данные БД в volume не трогаем)
+docker rm -f tarification-app
+
+# поднимаем заново app в том же стеке
+docker compose -p tarification \
+  --env-file deploy/vps/env/schadmin7.env \
+  -f deploy/vps/docker-compose.prod.yml \
+  up -d --build --no-deps app
+```
+
+
 
 ## Проверка branding API (какой код школы реально отдает приложение)
 В production compose сервис `app` не публикует `8080` на host, поэтому `curl http://localhost:8080` на VPS не сработает.
@@ -155,6 +168,15 @@ docker ps -a --format "table {{.Names}}\t{{.Status}}" | grep -E "schadmin|tarifi
 Проверяйте через домен (через `caddy`):
 ```bash
 curl -k -sS https://schadmin.ru/api/public/branding | sed -n "1,120p"
+```
+Если ответ пустой, проверьте запрос в verbose-режиме:
+```bash
+curl -k -v https://schadmin.ru/api/public/branding
+```
+и статус сервисов:
+```bash
+docker compose -p tarification --env-file deploy/vps/env/schadmin7.env -f deploy/vps/docker-compose.prod.yml ps
+docker compose -p tarification --env-file deploy/vps/env/schadmin7.env -f deploy/vps/docker-compose.prod.yml logs --tail=200 caddy
 ```
 
 Если `app` уходит в restart, сначала смотрите логи:
