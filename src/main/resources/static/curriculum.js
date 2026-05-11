@@ -123,7 +123,7 @@ function hasSemesterSplitForClass(classRow) {
     const classRows = curriculumRows.filter((r) => r.className === classRow.className && r.numberSchoolBuilding === classRow.numberSchoolBuilding);
     const grouped = new Map();
     classRows.forEach((r) => {
-        const key = `${r.subjectName}|${r.educationLevel}|${r.curriculumPart || "CORE"}`;
+        const key = `${r.subjectName}|${r.curriculumPart || "CORE"}`;
         if (!grouped.has(key)) grouped.set(key, []);
         grouped.get(key).push(r);
     });
@@ -296,19 +296,20 @@ function buildSummaryRows(selectedClasses) {
         const groupedBySubject = new Map();
         byPart[part].forEach((r) => {
             const area = subjectAreaForRow(r);
-            const gk = `${r.subjectName}|${r.educationLevel}|${area}`;
+            const gk = `${r.subjectName}|${area}`;
             if (!groupedBySubject.has(gk)) groupedBySubject.set(gk, []);
             groupedBySubject.get(gk).push(r);
         });
 
         const items = Array.from(groupedBySubject.entries()).map(([key, values]) => {
-            const [subjectName, educationLevel, subjectArea] = key.split("|");
+            const [subjectName, subjectArea] = key.split("|");
             const perClass = {};
             values.forEach((v) => {
                 const classKey = makeClassKey(v.numberSchoolBuilding, v.className);
                 if (!perClass[classKey]) perClass[classKey] = { year: null, h1: null, h2: null };
                 const item = {
                     hours: Number(v.plannedHours || 0),
+                    educationLevel: v.educationLevel || "BASIC",
                     subgroupRequired: Boolean(v.subgroupRequired),
                     subgroupCount: Number(v.subgroupCount || 0),
                     id: v.id,
@@ -319,7 +320,7 @@ function buildSummaryRows(selectedClasses) {
                 else if (v.studyPeriod === "H2") perClass[classKey].h2 = item;
                 else perClass[classKey].year = item;
             });
-            return { type: "subject", part, subjectName, educationLevel, subjectArea, perClass };
+            return { type: "subject", part, educationLevel: "BASIC", subjectName, subjectArea, perClass };
         }).sort((a, b) => a.subjectName.localeCompare(b.subjectName, "ru"));
 
         const preparedSubjects = [];
@@ -454,7 +455,7 @@ function classCellMarkup(cellInfo, rowMeta, classMeta) {
     const split = Boolean(classMeta.split || h1 || h2);
 
     if (year) {
-        const cls = `${rowMeta.educationLevel === "ADVANCED" ? "advanced-cell" : ""} ${year.metaGroup ? "meta-group-cell" : ""}`;
+        const cls = `${(year.educationLevel || rowMeta.educationLevel) === "ADVANCED" ? "advanced-cell" : ""} ${year.metaGroup ? "meta-group-cell" : ""}`;
         return `<button class="hours-cell ${cls}" data-id="${esc(year.id)}">${hoursLabelMarkup(year)}</button>`;
     }
 
@@ -463,10 +464,10 @@ function classCellMarkup(cellInfo, rowMeta, classMeta) {
     }
 
     const left = h1
-        ? `<button class="hours-cell ${h1.metaGroup ? "meta-group-cell" : ""}" data-id="${esc(h1.id)}">${hoursLabelMarkup(h1)}</button>`
+        ? `<button class="hours-cell ${(h1.educationLevel === "ADVANCED" ? "advanced-cell" : "")} ${h1.metaGroup ? "meta-group-cell" : ""}" data-id="${esc(h1.id)}">${hoursLabelMarkup(h1)}</button>`
         : emptyBtn("H1");
     const right = h2
-        ? `<button class="hours-cell ${h2.metaGroup ? "meta-group-cell" : ""}" data-id="${esc(h2.id)}">${hoursLabelMarkup(h2)}</button>`
+        ? `<button class="hours-cell ${(h2.educationLevel === "ADVANCED" ? "advanced-cell" : "")} ${h2.metaGroup ? "meta-group-cell" : ""}" data-id="${esc(h2.id)}">${hoursLabelMarkup(h2)}</button>`
         : emptyBtn("H2");
     return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0"><div style="padding-right:4px">${left}</div><div style="border-left:1px solid #cbd5e1;padding-left:4px">${right}</div></div>`;
 }
