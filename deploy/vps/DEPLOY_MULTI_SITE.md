@@ -125,5 +125,18 @@ docker compose -p schadmin7 \
 
 Проверить занятые имена:
 ```bash
-docker ps -a --format "table {{.Names}}\t{{.Status}}" | rg "schadmin|tarification"
+docker ps -a --format "table {{.Names}}\t{{.Status}}" | grep -E "schadmin|tarification"
+```
+
+
+## Проверка branding API (какой код школы реально отдает приложение)
+```bash
+curl -sS http://localhost:8080/api/public/branding | sed -n "1,120p"
+```
+Если в ответе `schoolCode` не `7`, проверьте env внутри контейнера:
+```bash
+docker compose -p schadmin7 \
+  --env-file deploy/vps/env-presets/schadmin7.env \
+  -f deploy/vps/docker-compose.prod.yml \
+  exec app sh -lc "echo SCHOOL_CODE=$SCHOOL_CODE APP_DOMAIN=$APP_DOMAIN STACK_NAME=$STACK_NAME"
 ```
