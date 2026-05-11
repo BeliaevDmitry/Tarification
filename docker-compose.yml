@@ -30,6 +30,7 @@ services:
       APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:-admin}
       APP_ADMIN_FULL_NAME: ${APP_ADMIN_FULL_NAME:-Главный администратор}
       SCHOOL_CODE: ${SCHOOL_CODE:-}
+      APP_DOMAIN: ${APP_DOMAIN:-}
       SMTP_USERNAME: ${SMTP_USERNAME:?SMTP_USERNAME is required}
       SMTP_PASSWORD: ${SMTP_PASSWORD:?SMTP_PASSWORD is required}
       SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
