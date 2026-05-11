@@ -195,6 +195,7 @@ class CurriculumExcelParserTest {
         assertTrue(rows.stream().anyMatch(r -> r.getClassName().equals("11-Б") && r.getStudyPeriod() == StudyPeriod.H1));
     }
 
+
     @Test
     void parseOooH2ColumnUsesSameClassAsPreviousH1() throws Exception {
         Workbook wb = new XSSFWorkbook();
