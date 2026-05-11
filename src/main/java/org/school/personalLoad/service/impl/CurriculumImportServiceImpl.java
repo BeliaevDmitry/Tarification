@@ -20,6 +20,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -94,14 +95,19 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         sumStyle.cloneStyleFrom(headerStyle);
         sumStyle.setFillForegroundColor(IndexedColors.LIGHT_YELLOW.getIndex());
         sumStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        CellStyle advancedHoursStyle = workbook.createCellStyle();
+        advancedHoursStyle.setFillForegroundColor(IndexedColors.LIGHT_ORANGE.getIndex());
+        advancedHoursStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
 
         Row titleRow = sheet.createRow(0);
         titleRow.createCell(0).setCellValue(sheetName + " (классы " + parallelFrom + "–" + parallelTo + ")");
 
         Row buildingRow = sheet.createRow(1);
         Row classRow = sheet.createRow(2);
-        classRow.createCell(0).setCellValue("Блок / предмет / часы");
+        classRow.createCell(0).setCellValue("Блок / область");
+        classRow.createCell(1).setCellValue("Предмет");
         classRow.getCell(0).setCellStyle(headerStyle);
+        classRow.getCell(1).setCellStyle(headerStyle);
 
         String prevBuilding = null;
         int buildingStart = 1;
@@ -109,7 +115,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             String[] parts = classes.get(i).split("\\|", 2);
             String building = parts.length > 1 ? parts[0] : "СП0";
             String className = parts.length > 1 ? parts[1] : classes.get(i);
-            int col = i + 1;
+            int col = i + 2;
             buildingRow.createCell(col).setCellValue(building);
             classRow.createCell(col).setCellValue(className);
             classRow.getCell(col).setCellStyle(headerStyle);
@@ -137,16 +143,28 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             partRow.createCell(0).setCellValue(part == CurriculumPart.CORE ? "Основная часть"
                     : (part == CurriculumPart.FORMABLE ? "Формируемая часть" : "Внеурочная деятельность"));
             partRow.getCell(0).setCellStyle(partStyle);
+            partRow.createCell(1).setCellValue("");
+            partRow.getCell(1).setCellStyle(partStyle);
+            sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(partRow.getRowNum(), partRow.getRowNum(), 0, 1));
 
             List<Map.Entry<String, List<CurriculumPlanEntry>>> subjects = byPartSubject.entrySet().stream()
                     .filter(e -> e.getKey().startsWith(part.name() + "|"))
                     .sorted(Map.Entry.comparingByKey())
                     .toList();
+            Map<String, String> coreAreas = subjectCatalogRepository.findAll().stream()
+                    .collect(Collectors.toMap(s -> normalizeSubject(s.getSubjectName()), s -> normalizeSubject(s.getSubjectAreaName()), (a, b) -> a));
 
             for (Map.Entry<String, List<CurriculumPlanEntry>> subjectEntry : subjects) {
                 String subjectName = subjectEntry.getKey().substring(subjectEntry.getKey().indexOf('|') + 1);
                 Row row = sheet.createRow(rowNum++);
-                row.createCell(0).setCellValue(subjectName);
+                if (part == CurriculumPart.CORE) {
+                    row.createCell(0).setCellValue(coreAreas.getOrDefault(normalizeSubject(subjectName), ""));
+                    row.createCell(1).setCellValue(subjectName);
+                } else {
+                    row.createCell(0).setCellValue(subjectName);
+                    row.createCell(1).setCellValue("");
+                    sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(row.getRowNum(), row.getRowNum(), 0, 1));
+                }
                 for (int i = 0; i < classes.size(); i++) {
                     String classKey = classes.get(i);
                     List<CurriculumPlanEntry> classValues = subjectEntry.getValue().stream()
@@ -171,7 +189,11 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     } else {
                         rendered = "";
                     }
-                    row.createCell(i + 1).setCellValue(rendered);
+                    Cell cell = row.createCell(i + 2);
+                    cell.setCellValue(rendered);
+                    if (!rendered.isBlank() && classValues.stream().anyMatch(v -> v.getEducationLevel() == EducationLevel.ADVANCED)) {
+                        cell.setCellStyle(advancedHoursStyle);
+                    }
                 }
             }
         }
@@ -197,9 +219,28 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             rowNum++;
         }
 
-        sheet.setColumnWidth(0, 12000);
-        for (int i = 1; i <= classes.size(); i++) {
-            sheet.setColumnWidth(i, 3200);
+        CellStyle baseStyle = workbook.createCellStyle();
+        baseStyle.setWrapText(true);
+        baseStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        baseStyle.setBorderBottom(BorderStyle.THIN);
+        baseStyle.setBorderTop(BorderStyle.THIN);
+        baseStyle.setBorderLeft(BorderStyle.THIN);
+        baseStyle.setBorderRight(BorderStyle.THIN);
+        for (int r = 2; r <= rowNum; r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) continue;
+            for (int c = 0; c < classes.size() + 2; c++) {
+                Cell cell = row.getCell(c);
+                if (cell == null) cell = row.createCell(c);
+                if (cell.getCellStyle() == null || cell.getCellStyle().getIndex() == 0) {
+                    cell.setCellStyle(baseStyle);
+                }
+            }
+        }
+        sheet.setColumnWidth(0, 7000);
+        sheet.setColumnWidth(1, 9000);
+        for (int i = 2; i <= classes.size() + 1; i++) {
+            sheet.setColumnWidth(i, 2600);
         }
         return rowNum;
     }
@@ -228,7 +269,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     : (h1.compareTo(BigDecimal.ZERO) > 0 || h2.compareTo(BigDecimal.ZERO) > 0
                     ? h1.stripTrailingZeros().toPlainString() + "/" + h2.stripTrailingZeros().toPlainString()
                     : "");
-            sumRow.createCell(i + 1).setCellValue(rendered);
+            sumRow.createCell(i + 2).setCellValue(rendered);
         }
         return rowNum;
     }
@@ -257,8 +298,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     : (h1.compareTo(BigDecimal.ZERO) > 0 || h2.compareTo(BigDecimal.ZERO) > 0
                     ? h1.stripTrailingZeros().toPlainString() + "/" + h2.stripTrailingZeros().toPlainString()
                     : "");
-            sumRow.createCell(i + 1).setCellValue(rendered);
-            sumRow.getCell(i + 1).setCellStyle(style);
+            sumRow.createCell(i + 2).setCellValue(rendered);
+            sumRow.getCell(i + 2).setCellStyle(style);
         }
         return rowNum;
     }
@@ -566,7 +607,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             if (header == null) return new VisualParseResult(List.of(), Map.of());
 
             List<ClassHeaderMeta> classColumns = new ArrayList<>();
-            for (int col = 1; col < header.getLastCellNum(); col++) {
+            int classStartCol = normalizeSubject(readCell(header.getCell(1))).toLowerCase(Locale.ROOT).contains("предмет") ? 2 : 1;
+            for (int col = classStartCol; col < header.getLastCellNum(); col++) {
                 String raw = normalizeSubject(readCell(header.getCell(col)));
                 if (raw.isBlank()) continue;
                 String[] parts = raw.split("\\|", 2);
@@ -584,7 +626,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             for (int rowIdx = 1; rowIdx <= sheet.getLastRowNum(); rowIdx++) {
                 Row row = sheet.getRow(rowIdx);
                 if (row == null) continue;
-                String title = normalizeSubject(readCell(row.getCell(0)));
+                String title = normalizeSubject(readCell(row.getCell(1)));
+                if (title.isBlank()) title = normalizeSubject(readCell(row.getCell(0)));
                 if (title.isBlank()) continue;
                 String lower = title.toLowerCase(Locale.ROOT);
 
@@ -627,21 +670,23 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         boolean meta = markerFlags.metaGroup() || h1Flags.metaGroup() || h2Flags.metaGroup();
                         BigDecimal h1 = parseDecimal(h1Flags.value());
                         BigDecimal h2 = parseDecimal(h2Flags.value());
-                        if (h1 != null && h1.compareTo(BigDecimal.ZERO) > 0) {
-                            result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title,
-                                    EducationLevel.BASIC, StudyPeriod.H1, h1, subgroup, h1.intValue(), EducationLevel.BASIC, h1.intValue(), EducationLevel.BASIC, meta));
-                        }
-                        if (h2 != null && h2.compareTo(BigDecimal.ZERO) > 0) {
-                            result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title,
-                                    EducationLevel.BASIC, StudyPeriod.H2, h2, subgroup, h2.intValue(), EducationLevel.BASIC, h2.intValue(), EducationLevel.BASIC, meta));
-                        }
-                        continue;
+                    EducationLevel detectedLevel = isAdvancedMarked(row.getCell(classMeta.colIndex)) ? EducationLevel.ADVANCED : EducationLevel.BASIC;
+                    if (h1 != null && h1.compareTo(BigDecimal.ZERO) > 0) {
+                        result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title,
+                                detectedLevel, StudyPeriod.H1, h1, subgroup, h1.intValue(), detectedLevel, h1.intValue(), detectedLevel, meta));
                     }
-                    BigDecimal year = parseDecimal(rawHours);
-                    if (year == null || year.compareTo(BigDecimal.ZERO) <= 0) continue;
-                    result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title,
-                            EducationLevel.BASIC, StudyPeriod.YEAR, year, markerFlags.subgroupRequired(), year.intValue(), EducationLevel.BASIC, year.intValue(), EducationLevel.BASIC, markerFlags.metaGroup()));
+                    if (h2 != null && h2.compareTo(BigDecimal.ZERO) > 0) {
+                        result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title,
+                                detectedLevel, StudyPeriod.H2, h2, subgroup, h2.intValue(), detectedLevel, h2.intValue(), detectedLevel, meta));
+                    }
+                    continue;
                 }
+                BigDecimal year = parseDecimal(rawHours);
+                if (year == null || year.compareTo(BigDecimal.ZERO) <= 0) continue;
+                EducationLevel detectedLevel = isAdvancedMarked(row.getCell(classMeta.colIndex)) ? EducationLevel.ADVANCED : EducationLevel.BASIC;
+                result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title,
+                        detectedLevel, StudyPeriod.YEAR, year, markerFlags.subgroupRequired(), year.intValue(), detectedLevel, year.intValue(), detectedLevel, markerFlags.metaGroup()));
+            }
             }
             return new VisualParseResult(result, expectedSums);
         } catch (Exception e) {
@@ -674,7 +719,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             return new VisualParseResult(List.of(), Map.of());
         }
         List<ClassHeaderMeta> classColumns = new ArrayList<>();
-        for (int col = 1; col < header.getLastCellNum(); col++) {
+        int classStartCol = normalizeSubject(readCell(header.getCell(1))).toLowerCase(Locale.ROOT).contains("предмет") ? 2 : 1;
+        for (int col = classStartCol; col < header.getLastCellNum(); col++) {
             String raw = normalizeSubject(readCell(header.getCell(col)));
             if (raw.isBlank()) continue;
             String[] parts = raw.split("\\|", 2);
@@ -691,7 +737,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         for (int rowIdx = headerRowIndex + 1; rowIdx <= sheet.getLastRowNum(); rowIdx++) {
             Row row = sheet.getRow(rowIdx);
             if (row == null) continue;
-            String title = normalizeSubject(readCell(row.getCell(0)));
+            String title = normalizeSubject(readCell(row.getCell(1)));
+            if (title.isBlank()) title = normalizeSubject(readCell(row.getCell(0)));
             if (title.isBlank()) continue;
             String lower = title.toLowerCase(Locale.ROOT);
             if (lower.contains("основная часть")) { currentPart = CurriculumPart.CORE; continue; }
@@ -714,6 +761,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 String rawHours = markerFlags.value();
                 if (rawHours.isBlank() || "0".equals(rawHours)) continue;
                 if (rawHours.contains("/")) {
+                    EducationLevel detectedLevel = isAdvancedMarked(row.getCell(classMeta.colIndex)) ? EducationLevel.ADVANCED : EducationLevel.BASIC;
                     String[] halves = rawHours.split("/", -1);
                     MarkerFlags h1Flags = parseMarkerFlags(halves.length > 0 ? halves[0] : "");
                     MarkerFlags h2Flags = parseMarkerFlags(halves.length > 1 ? halves[1] : "");
@@ -721,15 +769,22 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     boolean meta = markerFlags.metaGroup() || h1Flags.metaGroup() || h2Flags.metaGroup();
                     BigDecimal h1 = parseDecimal(h1Flags.value());
                     BigDecimal h2 = parseDecimal(h2Flags.value());
-                    if (h1 != null && h1.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.H1, h1, subgroup, h1.intValue(), EducationLevel.BASIC, h1.intValue(), EducationLevel.BASIC, meta));
-                    if (h2 != null && h2.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.H2, h2, subgroup, h2.intValue(), EducationLevel.BASIC, h2.intValue(), EducationLevel.BASIC, meta));
+                    if (h1 != null && h1.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, detectedLevel, StudyPeriod.H1, h1, subgroup, h1.intValue(), detectedLevel, h1.intValue(), detectedLevel, meta));
+                    if (h2 != null && h2.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, detectedLevel, StudyPeriod.H2, h2, subgroup, h2.intValue(), detectedLevel, h2.intValue(), detectedLevel, meta));
                 } else {
                     BigDecimal year = parseDecimal(rawHours);
-                    if (year != null && year.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, EducationLevel.BASIC, StudyPeriod.YEAR, year, markerFlags.subgroupRequired(), year.intValue(), EducationLevel.BASIC, year.intValue(), EducationLevel.BASIC, markerFlags.metaGroup()));
+                    EducationLevel detectedLevel = isAdvancedMarked(row.getCell(classMeta.colIndex)) ? EducationLevel.ADVANCED : EducationLevel.BASIC;
+                    if (year != null && year.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, detectedLevel, StudyPeriod.YEAR, year, markerFlags.subgroupRequired(), year.intValue(), detectedLevel, year.intValue(), detectedLevel, markerFlags.metaGroup()));
                 }
             }
         }
         return new VisualParseResult(result, expectedSums);
+    }
+
+    private boolean isAdvancedMarked(Cell cell) {
+        if (cell == null || cell.getCellStyle() == null) return false;
+        short fg = cell.getCellStyle().getFillForegroundColor();
+        return fg == IndexedColors.LIGHT_ORANGE.getIndex() || fg == IndexedColors.ORANGE.getIndex();
     }
 
     private List<CurriculumImportResult.SumMismatch> compareVisualSums(Map<String, Map<String, SumPair>> expected,

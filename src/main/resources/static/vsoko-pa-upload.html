@@ -21,32 +21,19 @@
 
   <section class="card">
     <h2>Сдача ПА</h2>
-    <div class="row">
-      <select id="pa-exit-subject"></select>
-      <select id="pa-exit-scope"></select>
-      <select id="pa-exit-class"></select>
-      <select id="pa-exit-level"><option value="BASIC">Базовый</option><option value="ADVANCED">Углублённый</option></select>
-      <input id="pa-exit-work-date" type="date">
-      <button id="pa-exit-load-versions-btn" type="button" data-allow-readonly="true">Показать версии</button>
-    </div>
     <div class="row" data-requires-edit>
       <input id="pa-exit-report-files" type="file" multiple accept=".xlsx">
       <button id="pa-exit-upload-btn" type="button">Сдать отчёт(ы)</button>
+      <button id="pa-exit-download-upload-log-btn" type="button" data-allow-readonly="true">Скачать отчёт сдачи ПА (Excel)</button>
     </div>
 
     <div class="pa-sticky-table-wrap">
       <table class="sheet-table sticky-head">
-        <thead><tr><th>Файл</th><th>Статус</th><th>Причина/сообщение</th><th>Версия</th></tr></thead>
-        <tbody id="pa-exit-upload-log-body"></tbody>
+        <thead><tr><th>Дата</th><th>Файл</th><th>Предмет</th><th>Параллель/класс</th><th>Статус</th><th>Сообщение</th><th>Записей</th><th>Проверить отчёт</th><th>ФИО подгрузившего</th></tr></thead>
+        <tbody id="pa-exit-upload-log-body" data-upload-history="true"></tbody>
       </table>
     </div>
 
-    <div class="pa-sticky-table-wrap">
-      <table class="sheet-table sticky-head">
-        <thead><tr><th>Версия</th><th>Статус</th><th>Активна</th><th>Файл</th><th>Дата</th><th>Причина</th></tr></thead>
-        <tbody id="pa-exit-versions-body"></tbody>
-      </table>
-    </div>
   </section>
 </main>
 <script src="/auth.js"></script>
