@@ -195,6 +195,35 @@ class CurriculumExcelParserTest {
         assertTrue(rows.stream().anyMatch(r -> r.getClassName().equals("11-Б") && r.getStudyPeriod() == StudyPeriod.H1));
     }
 
+
+    @Test
+    void parseSooH2WithExplicitDifferentClassDoesNotInheritPrevious() throws Exception {
+        Workbook wb = new XSSFWorkbook();
+        Sheet soo = wb.createSheet("СОО");
+
+        row(soo, 0).createCell(0).setCellValue("Учебный год 2025-2026");
+        row(soo, 1).createCell(0).setCellValue("Период обучения");
+        row(soo, 1).createCell(2).setCellValue("1П");
+        row(soo, 1).createCell(3).setCellValue("2П");
+        row(soo, 1).createCell(4).setCellValue("1П");
+        row(soo, 2).createCell(0).setCellValue("Направленность класса");
+        row(soo, 2).createCell(2).setCellValue("Предпринимательский класс СП17");
+        row(soo, 3).createCell(0).setCellValue("Класс");
+        row(soo, 3).createCell(2).setCellValue("10Д");
+        row(soo, 3).createCell(3).setCellValue("10Е");
+        row(soo, 3).createCell(4).setCellValue("11И");
+        row(soo, 4).createCell(0).setCellValue("Обязательная часть");
+        row(soo, 5).createCell(1).setCellValue("Литература");
+        row(soo, 5).createCell(2).setCellValue(3);
+        row(soo, 5).createCell(3).setCellValue(5);
+
+        List<CurriculumImportRow> rows = parseWorkbook(wb);
+
+        assertTrue(rows.stream().anyMatch(r -> r.getClassName().equals("10-Д") && r.getStudyPeriod() == StudyPeriod.H1));
+        assertTrue(rows.stream().anyMatch(r -> r.getClassName().equals("10-Е") && r.getStudyPeriod() == StudyPeriod.H2));
+        assertFalse(rows.stream().anyMatch(r -> r.getClassName().equals("10-Д") && r.getStudyPeriod() == StudyPeriod.H2));
+    }
+
     @Test
     void parseOooH2ColumnUsesSameClassAsPreviousH1() throws Exception {
         Workbook wb = new XSSFWorkbook();
