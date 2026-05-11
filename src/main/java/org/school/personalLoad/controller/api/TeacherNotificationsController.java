@@ -2,6 +2,7 @@ package org.school.personalLoad.controller.api;
 
 import lombok.Builder;
 import lombok.Data;
+import org.school.personalLoad.config.SchoolCodeResolver;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.xwpf.usermodel.*;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.*;
@@ -93,7 +94,7 @@ public class TeacherNotificationsController {
                 .filter(r -> fio.equalsIgnoreCase(r.getFioTeacher()))
                 .sorted(Comparator.comparing(ManualLoadEntry::getClassName))
                 .collect(Collectors.toList());
-        String schoolCode = System.getenv().getOrDefault("SCHOOL_CODE", "demo").toLowerCase(Locale.ROOT);
+        String schoolCode = SchoolCodeResolver.resolve();
         String templatePath = String.format("templates/teacher-notifications/notification-%s.docx", schoolCode);
 
         try (InputStream in = templateOrFallback(templatePath);
