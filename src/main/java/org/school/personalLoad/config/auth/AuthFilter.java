@@ -30,6 +30,8 @@ public class AuthFilter extends OncePerRequestFilter {
             "/login.html",
             "/login.js",
             "/school-crest.png",
+            "/branding.js",
+            "/api/public/branding",
             "/request-exit.html",
             "/open-forms.html",
             "/pa.html",
@@ -68,6 +70,7 @@ public class AuthFilter extends OncePerRequestFilter {
                 || path.startsWith("/images/")
                 || path.startsWith("/css/")
                 || path.startsWith("/js/")
+                || path.startsWith("/school-crests/")
                 || PUBLIC_PATHS.contains(path)
                 || isPublicPaApiPath(request)
                 || "/api/auth/login".equals(path);

@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.xwpf.usermodel.*;
 import org.school.personalLoad.dto.ServiceMemoDtos;
+import org.school.personalLoad.dto.ServiceMemoSettingsDto;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.ServiceMemo;
 import org.school.personalLoad.model.StudyPeriodSettingKey;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -26,6 +28,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import org.apache.xmlbeans.XmlCursor;
 import java.util.stream.Collectors;
 
 @Service
@@ -36,6 +39,16 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
 
     private static final DateTimeFormatter RU_DATE = DateTimeFormatter.ofPattern("dd.MM.yyyy");
     private static final String SELECTION_SEPARATOR = "::";
+    private static final String DEFAULT_MEMO_TEMPLATE_DOCX = "templates/service-memo/memo-demo.docx";
+    private static final String PLACEHOLDER_DIRECTOR_TITLE = "{DIRECTOR_TITLE}";
+    private static final String PLACEHOLDER_DIRECTOR_NAME = "{DIRECTOR_NAME}";
+    private static final String PLACEHOLDER_AUTHOR = "{AUTHOR}";
+    private static final String PLACEHOLDER_FIO = "{FIO}";
+    private static final String PLACEHOLDER_START_DATE = "{START_DATE}";
+    private static final String PLACEHOLDER_TOTAL_HOURS = "{TOTAL_HOURS}";
+    private static final String PLACEHOLDER_CREATED_DATE = "{CREATED_DATE}";
+    private static final String PLACEHOLDER_TABLE = "{TABLE}";
+    private static final String PLACEHOLDER_RATIONALE = "{RATIONALE}";
 
     private final org.school.personalLoad.dao.TarifficationChangesDAO changesDAO;
     private final ManualLoadEntryRepository manualLoadEntryRepository;
@@ -747,11 +760,24 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                              TeacherChangeAggregate aggregate,
                              String createdBy,
                              Map<String, String> teacherDativeByFio) {
-        try (XWPFDocument doc = new XWPFDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            String teacherDative = Optional.ofNullable(teacherDativeByFio.get(normalize(fioTeacher)))
-                    .filter(value -> !value.isBlank())
-                    .orElse(fioTeacher);
+        String teacherDative = Optional.ofNullable(teacherDativeByFio.get(normalize(fioTeacher)))
+                .filter(value -> !value.isBlank())
+                .orElse(fioTeacher);
+        String schoolCode = System.getenv().getOrDefault("SCHOOL_CODE", "demo").toLowerCase(Locale.ROOT);
+        String templatePath = String.format("templates/service-memo/memo-%s.docx", schoolCode);
+        InputStream in = templateOrFallback(templatePath);
+        if (in != null) {
+            try (InputStream template = in; XWPFDocument doc = new XWPFDocument(template); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            var memoSettings = serviceMemoSettingsService.get();
+            replaceMemoTemplateAndInsertTable(doc, aggregate, createdBy, teacherDative, memoSettings);
+            doc.write(out);
+            return out.toByteArray();
+        } catch (IOException e) {
+            log.warn("Не удалось применить шаблон служебки {}: {}. Используется встроенный шаблон.", templatePath, e.getMessage());
+        }
+        }
 
+        try (XWPFDocument doc = new XWPFDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             var memoSettings = serviceMemoSettingsService.get();
             paragraph(doc, memoSettings.directorTitle(), false, ParagraphAlignment.RIGHT, 12, 0, 0, 0);
             paragraph(doc, memoSettings.directorName(), false, ParagraphAlignment.RIGHT, 12, 0, 160, 0);
@@ -759,32 +785,14 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             paragraph(doc, createdBy, false, ParagraphAlignment.RIGHT, 12, 0, 220, 0);
 
             paragraph(doc, "СЛУЖЕБНАЯ ЗАПИСКА", true, ParagraphAlignment.CENTER, 14, 0, 220, 0);
-
-            paragraph(doc,
-                    "В связи с производственной необходимостью направляю на утверждение изменение учебной нагрузки.",
-                    false, ParagraphAlignment.BOTH, 12, 0, 120, 420);
-
-            if (aggregate.onlyAdditions()) {
-                paragraph(doc,
-                        "С " + RU_DATE.format(aggregate.startDate())
-                                + " установить учебную нагрузку на учебный год сотруднику "
-                                + teacherDative + " в следующем объеме:",
-                        false, ParagraphAlignment.BOTH, 12, 0, 120, 420);
-            } else {
-                paragraph(doc,
-                        "С " + RU_DATE.format(aggregate.startDate())
-                                + " считать актуальной следующую учебную нагрузку "
-                                + teacherDative + ":",
-                        false, ParagraphAlignment.BOTH, 12, 0, 120, 420);
-            }
+            paragraph(doc, "В связи с производственной необходимостью направляю на утверждение изменение учебной нагрузки.", false, ParagraphAlignment.BOTH, 12, 0, 120, 420);
+            paragraph(doc, "С " + RU_DATE.format(aggregate.startDate()) + (aggregate.onlyAdditions() ? " установить учебную нагрузку на учебный год сотруднику " : " считать актуальной следующую учебную нагрузку ") + teacherDative + (aggregate.onlyAdditions() ? " в следующем объеме:" : ":"), false, ParagraphAlignment.BOTH, 12, 0, 120, 420);
 
             int totalRemainingHours = appendTable(doc, aggregate.rows(), aggregate, aggregate.onlyAdditions());
-
             paragraph(doc, "", false, ParagraphAlignment.LEFT, 12, 120, 0, 0);
             paragraph(doc, "Итого: " + totalRemainingHours + " ч.", true, ParagraphAlignment.LEFT, 12, 0, 160, 0);
             paragraph(doc, createdBy, false, ParagraphAlignment.RIGHT, 12, 220, 0, 0);
             paragraph(doc, RU_DATE.format(LocalDate.now()), false, ParagraphAlignment.RIGHT, 12, 0, 0, 0);
-
             doc.write(out);
             return out.toByteArray();
         } catch (IOException e) {
@@ -792,33 +800,73 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         }
     }
 
-    private int appendTable(XWPFDocument doc, List<ManualLoadEntry> rows, TeacherChangeAggregate aggregate, boolean newEmployeeMode) {
-        List<ManualLoadEntry> safeRows = rows == null ? List.of() : rows;
 
-        LinkedHashMap<String, DisplayRow> displayRows = new LinkedHashMap<>();
-        for (ManualLoadEntry row : safeRows) {
-            if (row == null) {
-                continue;
-            }
+    private InputStream templateOrFallback(String templatePath) {
+        InputStream in = getClass().getClassLoader().getResourceAsStream(templatePath);
+        if (in != null) return in;
+        return getClass().getClassLoader().getResourceAsStream(DEFAULT_MEMO_TEMPLATE_DOCX);
+    }
 
-            String status = resolveStatus(aggregate, row);
-            String key = String.join("|",
-                    safe(row.getSubjectName()),
-                    safe(row.getClassName()),
-                    String.valueOf(row.getLoad() == null ? 0 : row.getLoad()),
-                    safe(status));
-
-            displayRows.putIfAbsent(key, new DisplayRow(
-                    safeDocText(row.getSubjectName()),
-                    safeDocText(row.getClassName()),
-                    row.getLoad() == null ? 0 : row.getLoad(),
-                    status
-            ));
+    private int replaceMemoTemplateAndInsertTable(XWPFDocument doc,
+                                                  TeacherChangeAggregate aggregate,
+                                                  String createdBy,
+                                                  String teacherDative,
+                                                  ServiceMemoSettingsDto memoSettings) {
+        int totalHours = aggregate.rows().stream()
+                .filter(Objects::nonNull)
+                .map(row -> resolveStatus(aggregate, row).equalsIgnoreCase("Снять") ? 0 : Optional.ofNullable(row.getLoad()).orElse(0))
+                .mapToInt(Integer::intValue)
+                .sum();
+        Map<String, String> placeholders = Map.of(
+                PLACEHOLDER_DIRECTOR_TITLE, Optional.ofNullable(memoSettings.directorTitle()).orElse(""),
+                PLACEHOLDER_DIRECTOR_NAME, Optional.ofNullable(memoSettings.directorName()).orElse(""),
+                PLACEHOLDER_AUTHOR, Optional.ofNullable(createdBy).orElse(""),
+                PLACEHOLDER_FIO, Optional.ofNullable(teacherDative).orElse(""),
+                PLACEHOLDER_START_DATE, RU_DATE.format(aggregate.startDate()),
+                PLACEHOLDER_TOTAL_HOURS, String.valueOf(totalHours),
+                PLACEHOLDER_CREATED_DATE, RU_DATE.format(LocalDate.now()),
+                PLACEHOLDER_RATIONALE, buildRationaleText(aggregate, teacherDative)
+        );
+        for (XWPFParagraph paragraph : allDocumentParagraphs(doc)) {
+            replaceMemoParagraph(paragraph, placeholders);
         }
+        insertMemoTable(doc, aggregate);
+        return totalHours;
+    }
 
-        log.debug("displayRows for memo={}", displayRows.values());
+    private void replaceMemoParagraph(XWPFParagraph paragraph, Map<String, String> placeholders) {
+        String text = paragraph.getText();
+        if (text == null || text.isBlank()) return;
+        String replaced = text;
+        for (Map.Entry<String, String> entry : placeholders.entrySet()) {
+            replaced = replaced.replace(entry.getKey(), entry.getValue());
+        }
+        if (!Objects.equals(text, replaced)) {
+            while (paragraph.getRuns().size() > 0) paragraph.removeRun(0);
+            XWPFRun run = paragraph.createRun();
+            run.setText(replaced);
+            run.setFontFamily("Times New Roman");
+            run.setFontSize(12);
+        }
+    }
 
+    private void insertMemoTable(XWPFDocument doc, TeacherChangeAggregate aggregate) {
+        XWPFParagraph marker = allDocumentParagraphs(doc).stream()
+                .filter(p -> p.getText() != null && p.getText().contains(PLACEHOLDER_TABLE))
+                .findFirst()
+                .orElseGet(doc::createParagraph);
+        while (marker.getRuns().size() > 0) marker.removeRun(0);
+        XmlCursor cursor = marker.getCTP().newCursor();
+        XWPFTable table = doc.insertNewTbl(cursor);
+        appendTableToExisting(table, aggregate.rows(), aggregate, aggregate.onlyAdditions());
+    }
+
+    private int appendTable(XWPFDocument doc, List<ManualLoadEntry> rows, TeacherChangeAggregate aggregate, boolean newEmployeeMode) {
         XWPFTable table = doc.createTable(1, newEmployeeMode ? 3 : 4);
+        return appendTableToExisting(table, rows, aggregate, newEmployeeMode);
+    }
+
+    private int appendTableToExisting(XWPFTable table, List<ManualLoadEntry> rows, TeacherChangeAggregate aggregate, boolean newEmployeeMode) {
         table.setWidthType(TableWidthType.PCT);
         table.setWidth("100%");
         table.setTableAlignment(TableRowAlign.CENTER);
@@ -826,9 +874,16 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         List<String> header = newEmployeeMode
                 ? List.of("Предмет", "Класс", "Количество часов")
                 : List.of("Предмет", "Класс", "Количество часов", "Статус");
-
         for (int i = 0; i < header.size(); i++) {
             setCellText(table.getRow(0).getCell(i), header.get(i), true);
+        }
+
+        LinkedHashMap<String, DisplayRow> displayRows = new LinkedHashMap<>();
+        for (ManualLoadEntry row : Optional.ofNullable(rows).orElseGet(List::of)) {
+            if (row == null) continue;
+            String status = resolveStatus(aggregate, row);
+            String key = String.join("|", safe(row.getSubjectName()), safe(row.getClassName()), String.valueOf(row.getLoad() == null ? 0 : row.getLoad()), safe(status));
+            displayRows.putIfAbsent(key, new DisplayRow(safeDocText(row.getSubjectName()), safeDocText(row.getClassName()), row.getLoad() == null ? 0 : row.getLoad(), status));
         }
 
         int totalRemainingHours = 0;
@@ -837,17 +892,30 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             setCellText(tr.getCell(0), row.subjectName(), false);
             setCellText(tr.getCell(1), row.className(), false);
             setCellText(tr.getCell(2), String.valueOf(row.load()), false);
+            if (!"Снять".equalsIgnoreCase(row.status())) totalRemainingHours += row.load();
+            if (!newEmployeeMode) setCellText(tr.getCell(3), row.status(), false);
+        }
+        return totalRemainingHours;
+    }
 
-            if (!"Снять".equalsIgnoreCase(row.status())) {
-                totalRemainingHours += row.load();
-            }
-
-            if (!newEmployeeMode) {
-                setCellText(tr.getCell(3), row.status(), false);
+    private List<XWPFParagraph> allDocumentParagraphs(XWPFDocument doc) {
+        List<XWPFParagraph> paragraphs = new ArrayList<>(doc.getParagraphs());
+        for (XWPFTable table : doc.getTables()) {
+            for (XWPFTableRow row : table.getRows()) {
+                for (XWPFTableCell cell : row.getTableCells()) {
+                    paragraphs.addAll(cell.getParagraphs());
+                }
             }
         }
+        return paragraphs;
+    }
 
-        return totalRemainingHours;
+    private String buildRationaleText(TeacherChangeAggregate aggregate, String teacherDative) {
+        String date = RU_DATE.format(aggregate.startDate());
+        if (aggregate.onlyAdditions()) {
+            return "С " + date + " установить учебную нагрузку на учебный год сотруднику " + teacherDative + " в следующем объеме:";
+        }
+        return "С " + date + " считать актуальной следующую учебную нагрузку " + teacherDative + ":";
     }
 
     private void setCellText(XWPFTableCell cell, String text, boolean bold) {
