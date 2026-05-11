@@ -288,6 +288,14 @@ public class PaServiceImpl implements PaService {
         spec.setGrade5Percent(resolveThresholdPercent(sheet, baseRow, baseCol, blockEndCol, "5"));
         spec.setGrade4Percent(resolveThresholdPercent(sheet, baseRow, baseCol, blockEndCol, "4"));
         spec.setGrade3Percent(resolveThresholdPercent(sheet, baseRow, baseCol, blockEndCol, "3"));
+        Integer passPercent = resolveThresholdPercent(sheet, baseRow, baseCol, blockEndCol, "Зачёт");
+        if (passPercent == null) passPercent = resolveThresholdPercent(sheet, baseRow, baseCol, blockEndCol, "Зачет");
+        if (passPercent != null) {
+            spec.setGradingScale(PaGradingScale.PASS_FAIL);
+            spec.setPassPercent(passPercent);
+        } else {
+            spec.setGradingScale(PaGradingScale.FIVE_POINT);
+        }
         spec.setSourceFileName(sourceFileName);
         spec.setPairKey(buildPairKey(academicYear, subject, scope, level, workType, sheet.getSheetName()));
         spec.setActiveVersion(true);
@@ -1225,7 +1233,7 @@ public class PaServiceImpl implements PaService {
         int totalCol = firstTaskCol + tasks.size();
         int gradeCol = totalCol + 1;
         createStyledCell(headerRow, totalCol, "Итог", styles.header());
-        createStyledCell(headerRow, gradeCol, "Отметка", styles.header());
+        createStyledCell(headerRow, gradeCol, specification.getGradingScale() == PaGradingScale.PASS_FAIL ? "Зачёт/незачёт" : "Отметка", styles.header());
 
         Row taskNoRow = data.createRow(1);
         for (int i = 0; i < 4; i++) createStyledCell(taskNoRow, i, "", styles.subHeader());
@@ -1288,6 +1296,13 @@ public class PaServiceImpl implements PaService {
         String maxRangeStart = new CellReference(2, firstTaskCol).formatAsString();
         String maxRangeEnd = new CellReference(2, firstTaskCol + tasksSize - 1).formatAsString();
         String maxSum = "SUM(" + maxRangeStart + ":" + maxRangeEnd + ")";
+        if (specification.getGradingScale() == PaGradingScale.PASS_FAIL) {
+            int passPercent = specification.getPassPercent() == null ? 50 : specification.getPassPercent();
+            return String.format(Locale.ROOT,
+                    "IF(OR(%s=\"\",%s=\"Не был\",AND(%s=\"\",%s=0)),\"\",IF(%s/%s*100>=%d,\"Зачёт\",\"Незачёт\"))",
+                    totalCell, presenceCell, variantCell, totalCell,
+                    totalCell, maxSum, passPercent);
+        }
         return String.format(Locale.ROOT,
                 "IF(OR(%s=\"\",%s=\"Не был\",AND(%s=\"\",%s=0)),\"\",IF(%s/%s*100>=%d,5,IF(%s/%s*100>=%d,4,IF(%s/%s*100>=%d,3,2))))",
                 totalCell, presenceCell, variantCell, totalCell,
@@ -1424,6 +1439,12 @@ public class PaServiceImpl implements PaService {
     }
 
     private String validateThresholds(PaSpecification spec) {
+        if (spec.getGradingScale() == PaGradingScale.PASS_FAIL) {
+            if (spec.getPassPercent() == null || spec.getPassPercent() < 0 || spec.getPassPercent() > 100) {
+                return "Порог зачёта в спецификации невалиден: ожидается 0..100";
+            }
+            return null;
+        }
         if (spec.getGrade5Percent() == null || spec.getGrade4Percent() == null || spec.getGrade3Percent() == null) {
             return "Пороги в спецификации биты: заполните проценты для оценок 5/4/3";
         }
