@@ -30,6 +30,8 @@ public class AuthFilter extends OncePerRequestFilter {
             "/login.html",
             "/login.js",
             "/school-crest.png",
+            "/branding.js",
+            "/api/public/branding",
             "/request-exit.html",
             "/open-forms.html",
             "/pa.html",
@@ -49,6 +51,7 @@ public class AuthFilter extends OncePerRequestFilter {
             Map.entry("/service-notes.html", AppTab.SERVICE_NOTES),
             Map.entry("/settings.html", AppTab.SETTINGS),
             Map.entry("/teachers.html", AppTab.TEACHERS),
+            Map.entry("/teachers-notification.html", AppTab.HR_NOTIFICATIONS_VIEW),
             Map.entry("/vsoko.html", AppTab.VSOKO_VIEW),
             Map.entry("/vsoko-oge.html", AppTab.VSOKO_VIEW),
             Map.entry("/vsoko-ege.html", AppTab.VSOKO_VIEW),
@@ -67,6 +70,7 @@ public class AuthFilter extends OncePerRequestFilter {
                 || path.startsWith("/images/")
                 || path.startsWith("/css/")
                 || path.startsWith("/js/")
+                || path.startsWith("/school-crests/")
                 || PUBLIC_PATHS.contains(path)
                 || isPublicPaApiPath(request)
                 || "/api/auth/login".equals(path);
@@ -151,6 +155,7 @@ public class AuthFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/manual-load")) return AppTab.LOAD;
         if (path.startsWith("/api/service-memos")) return AppTab.SERVICE_NOTES;
         if (path.startsWith("/api/settings/")) return AppTab.SETTINGS;
+        if (path.startsWith("/api/teachers-notification")) return AppTab.HR_NOTIFICATIONS_EDIT;
         if (path.startsWith("/api/teachers")) return AppTab.TEACHERS;
         if (path.startsWith("/api/admin/users")) return AppTab.USERS;
         if (path.startsWith("/api/pa")) return AppTab.VSOKO_EDIT;
