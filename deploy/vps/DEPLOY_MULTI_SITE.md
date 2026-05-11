@@ -10,6 +10,7 @@
 
 Перед запуском обязательно проверьте/обновите минимум:
 - `APP_DOMAIN`
+- `STACK_NAME` (должен быть уникальным для каждого сайта)
 - `SCHOOL_CODE`
 - `POSTGRES_PASSWORD`
 - `DB_PASSWORD`
@@ -111,4 +112,18 @@ docker compose -p schadmin7 \
   --env-file deploy/vps/env-presets/schadmin7.env \
   -f deploy/vps/docker-compose.prod.yml \
   exec app printenv SCHOOL_CODE
+```
+
+
+## Если получили ошибку `Conflict. The container name ... is already in use`
+Это значит, что совпал `STACK_NAME` (или остались старые контейнеры с таким именем).
+
+Проверьте `STACK_NAME` в используемом `--env-file` и задайте уникальные значения:
+- `schadmin7`
+- `schadmindemo`
+- `schadmin1811`
+
+Проверить занятые имена:
+```bash
+docker ps -a --format "table {{.Names}}\t{{.Status}}" | rg "schadmin|tarification"
 ```
