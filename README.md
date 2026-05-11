@@ -12,6 +12,7 @@ cp .env.example .env
 ```
 
 2. Заполните как минимум:
+- `SCHOOL_CODE` (например: `7`, `1811`, `demo`)
 - `POSTGRES_PASSWORD`
 - `DB_PASSWORD`
 - `SMTP_PASSWORD`
