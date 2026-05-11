@@ -441,10 +441,11 @@ function renderUploadLog(prefix, rows) {
             <td>${row.scopeValue || '—'}</td>
             <td>${toStatus(row.status)}</td>
             <td>${messageHtml(row.message)}</td>
-            <td>${row.recordsCount ?? '—'}</td>
+            <td>${row.recordsSummary || '—'}</td>
+            <td>${row.checkReport || 'Нет'}</td>
             <td>${row.uploadedByFio || row.createdBy || 'Аноним'}</td>
         </tr>
-    `).join('') || '<tr><td colspan="8" class="muted">Нет операций</td></tr>';
+    `).join('') || '<tr><td colspan="9" class="muted">Нет операций</td></tr>';
     bindReportDownloadButtons();
 }
 
@@ -893,6 +894,12 @@ async function loadReportUploadLog(prefix) {
     renderUploadLog(prefix, rows || []);
 }
 
+function downloadReportUploadLogExcel() {
+    const raw = '/api/pa/reports/upload-log/download';
+    const url = typeof window.withAcademicYear === 'function' ? window.withAcademicYear(raw) : raw;
+    window.open(url, '_blank');
+}
+
 async function loadReportFolders(prefix) {
     if (prefix !== 'exit') return;
     const workType = prefix === 'entry' ? 'ENTRY' : 'EXIT';
@@ -1232,6 +1239,7 @@ bindClick('pa-spec-import-btn', uploadSpecifications);
 bindClick('pa-spec-reload-btn', reloadSummaryAndSpecs);
 bindClick('pa-entry-upload-btn', () => uploadReports('entry'));
 bindClick('pa-exit-upload-btn', () => uploadReports('exit'));
+bindClick('pa-exit-download-upload-log-btn', downloadReportUploadLogExcel);
 bindClick('pa-entry-load-versions-btn', () => loadVersions('entry'));
 bindClick('pa-exit-load-versions-btn', () => loadVersions('exit'));
 bindClick('pa-entry-generate-btn', () => generateForClass('entry'));

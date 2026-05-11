@@ -73,6 +73,15 @@ public class PaReportVersion {
     @Column(name = "uploaded_by_fio", length = 500)
     private String uploadedByFio;
 
+    @Column(name = "reported_students_count")
+    private Integer reportedStudentsCount;
+
+    @Column(name = "class_size_count")
+    private Integer classSizeCount;
+
+    @Column(name = "accepted_results_count")
+    private Integer acceptedResultsCount;
+
     @Column(name = "downloaded_at_least_once", nullable = false)
     private boolean downloadedAtLeastOnce = false;
 

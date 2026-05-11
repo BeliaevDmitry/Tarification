@@ -99,6 +99,8 @@ public final class PaDtos {
                                      String scopeValue,
                                      String status,
                                      String message,
+                                     String recordsSummary,
+                                     String checkReport,
                                      String uploadedByFio) {
     }
 

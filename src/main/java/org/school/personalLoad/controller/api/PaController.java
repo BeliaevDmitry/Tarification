@@ -185,6 +185,22 @@ public class PaController {
         return ResponseEntity.ok(paService.reportUploadLog(year, username, admin));
     }
 
+    @GetMapping("/reports/upload-log/download")
+    public ResponseEntity<byte[]> downloadReportUploadLog(@RequestParam(required = false) String academicYear,
+                                                          HttpSession session) throws Exception {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        SessionUser user = session == null ? null : (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
+        String username = user == null ? "anonymous" : user.getUsername();
+        boolean admin = user != null && user.isAdmin();
+        byte[] body = paService.downloadReportUploadLogExcel(year, username, admin);
+        String fileName = "Сдача_ПА_история_" + year.replace("/", "-") + ".xlsx";
+        String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(body);
+    }
+
     @PatchMapping("/participation")
     public ResponseEntity<Void> setParticipation(@RequestParam(required = false) String academicYear,
                                                  @RequestBody ParticipationRequest request) {

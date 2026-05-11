@@ -26,6 +26,7 @@ public interface PaService {
     List<PaDtos.ReportWorkflowSummaryItem> reportWorkflowSummary(String academicYear, PaLevel level, PaWorkType workType, String subjectName);
     List<PaDtos.ReportUploadResult> uploadReports(String academicYear, List<MultipartFile> files, String uploaderUsername, String uploaderFio);
     List<PaDtos.ReportUploadLogRow> reportUploadLog(String academicYear, String uploaderUsername, boolean admin);
+    byte[] downloadReportUploadLogExcel(String academicYear, String uploaderUsername, boolean admin) throws IOException;
     void setParticipation(String academicYear, String subjectName, PaScopeType scopeType, String scopeValue, PaLevel level, boolean participates);
     PaDtos.ReportUploadResult generateReportTemplate(String academicYear, String subjectName, String className, PaLevel level, PaWorkType workType, LocalDate workDate, boolean force);
     List<PaDtos.ReportUploadResult> generateReportTemplatesByParallel(String academicYear, String subjectName, String parallel, PaLevel level, PaWorkType workType, LocalDate workDate, boolean force);

@@ -589,6 +589,9 @@ public class PaServiceImpl implements PaService {
                     results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, studentsProblem, uploaderUsername, uploaderFio));
                     continue;
                 }
+                int reportFioCount = countReportFio(wb.getSheet("Сбор информации"));
+                int acceptedResultsCount = countAcceptedResults(wb.getSheet("Сбор информации"));
+                int classSizeCount = classSizeByContingent(academicYear, scopeValue);
 
                 PaScopeType scopeType = detectScopeType(scopeValue);
                 PaLevel parsedLevel = parseLevel(levelRaw);
@@ -602,6 +605,7 @@ public class PaServiceImpl implements PaService {
                 if (!sameKey.isEmpty()) {
                     reportVersionRepository.saveAll(sameKey);
                 }
+                boolean replaced = !sameKey.isEmpty();
                 int nextVersion = reportVersionRepository.findMaxVersion(academicYear, subject, scopeType, scopeValue.trim().toUpperCase(Locale.ROOT), level, workType, workDate) + 1;
                 PaReportVersion version = new PaReportVersion();
                 version.setAcademicYear(academicYear);
@@ -614,7 +618,7 @@ public class PaServiceImpl implements PaService {
                 version.setVersionNo(nextVersion);
                 version.setActiveVersion(true);
                 version.setStatus("ACCEPTED");
-                version.setValidationMessage("Отчёт принят");
+                version.setValidationMessage(replaced ? "Отчёт заменен" : "Отчёт принят");
                 version.setSourceFileName(file.getOriginalFilename());
                 Path directory = Path.of(PA_REPORT_STORAGE_DIR, academicYear.replace("/", "-"), "uploaded");
                 Files.createDirectories(directory);
@@ -625,10 +629,13 @@ public class PaServiceImpl implements PaService {
                 version.setTeacherFioNormalized(normalizedTeacher);
                 version.setUploadedByUsername(uploaderUsername == null || uploaderUsername.isBlank() ? "anonymous" : uploaderUsername.trim());
                 version.setUploadedByFio(uploaderFio == null || uploaderFio.isBlank() ? "Аноним" : uploaderFio.trim());
+                version.setReportedStudentsCount(reportFioCount);
+                version.setClassSizeCount(classSizeCount);
+                version.setAcceptedResultsCount(acceptedResultsCount);
                 version.setUploadedBackSuccess(true);
                 version.setCreatedAt(LocalDateTime.now());
                 reportVersionRepository.save(version);
-                results.add(new PaDtos.ReportUploadResult(file.getOriginalFilename(), "ACCEPTED", "Отчёт принят", nextVersion, subject.trim(), scopeValue.trim(), workType));
+                results.add(new PaDtos.ReportUploadResult(file.getOriginalFilename(), "ACCEPTED", replaced ? "Отчёт заменен" : "Отчёт принят", nextVersion, subject.trim(), scopeValue.trim(), workType));
             } catch (Exception e) {
                 results.add(new PaDtos.ReportUploadResult(file.getOriginalFilename(), "REJECTED", "Ошибка чтения файла: " + e.getMessage(), null, null, null, null));
             }
@@ -653,9 +660,76 @@ public class PaServiceImpl implements PaService {
                         v.getScopeValue(),
                         v.getStatus(),
                         v.getValidationMessage(),
+                        (v.getAcceptedResultsCount() == null ? 0 : v.getAcceptedResultsCount()) + "/" + (v.getReportedStudentsCount() == null ? 0 : v.getReportedStudentsCount()) + "/" + (v.getClassSizeCount() == null ? 0 : v.getClassSizeCount()),
+                        ((v.getAcceptedResultsCount() == null ? 0 : v.getAcceptedResultsCount()) == (v.getReportedStudentsCount() == null ? 0 : v.getReportedStudentsCount())
+                                && (v.getReportedStudentsCount() == null ? 0 : v.getReportedStudentsCount()) == (v.getClassSizeCount() == null ? 0 : v.getClassSizeCount()))
+                                ? "Нет" : "Да",
                         (v.getUploadedByFio() == null || v.getUploadedByFio().isBlank()) ? "Аноним" : v.getUploadedByFio()
                 ))
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] downloadReportUploadLogExcel(String academicYear, String uploaderUsername, boolean admin) throws IOException {
+        List<PaDtos.ReportUploadLogRow> rows = reportUploadLog(academicYear, uploaderUsername, admin);
+        try (Workbook workbook = new XSSFWorkbook(); java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("Сдача ПА");
+            Row header = sheet.createRow(0);
+            String[] headers = {"Дата", "Файл", "Предмет", "Параллель/класс", "Статус", "Сообщение", "Записей", "Проверить отчёт", "ФИО подгрузившего"};
+            for (int i = 0; i < headers.length; i++) header.createCell(i).setCellValue(headers[i]);
+            int rowNum = 1;
+            for (PaDtos.ReportUploadLogRow row : rows) {
+                Row x = sheet.createRow(rowNum++);
+                x.createCell(0).setCellValue(row.createdAt() == null ? "" : row.createdAt().toString());
+                x.createCell(1).setCellValue(row.fileName() == null ? "" : row.fileName());
+                x.createCell(2).setCellValue(row.subjectName() == null ? "" : row.subjectName());
+                x.createCell(3).setCellValue(row.scopeValue() == null ? "" : row.scopeValue());
+                x.createCell(4).setCellValue(row.status() == null ? "" : row.status());
+                x.createCell(5).setCellValue(row.message() == null ? "" : row.message());
+                x.createCell(6).setCellValue(row.recordsSummary() == null ? "" : row.recordsSummary());
+                x.createCell(7).setCellValue(row.checkReport() == null ? "" : row.checkReport());
+                x.createCell(8).setCellValue(row.uploadedByFio() == null ? "" : row.uploadedByFio());
+            }
+            for (int i = 0; i < headers.length; i++) sheet.autoSizeColumn(i);
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private int classSizeByContingent(String academicYear, String className) {
+        var snapshot = contingentSnapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear).orElse(null);
+        if (snapshot == null) return 0;
+        return (int) contingentStudentRepository.findAllBySnapshotId(snapshot.getId()).stream()
+                .filter(s -> normalizeClass(s.getClassName()).equals(normalizeClass(className)))
+                .map(s -> s.getFullName() == null ? "" : s.getFullName().trim())
+                .filter(v -> !v.isBlank())
+                .count();
+    }
+
+    private int countReportFio(Sheet dataSheet) {
+        if (dataSheet == null) return 0;
+        int count = 0;
+        for (int r = 1; r <= dataSheet.getLastRowNum(); r++) {
+            Row row = dataSheet.getRow(r);
+            if (row == null) continue;
+            String fio = getCell(row, 1).trim();
+            if (!fio.isBlank()) count++;
+        }
+        return count;
+    }
+
+    private int countAcceptedResults(Sheet dataSheet) {
+        if (dataSheet == null) return 0;
+        int count = 0;
+        for (int r = 1; r <= dataSheet.getLastRowNum(); r++) {
+            Row row = dataSheet.getRow(r);
+            if (row == null) continue;
+            String fio = getCell(row, 1).trim();
+            String presence = getCell(row, 2).trim();
+            if (!fio.isBlank() && normalize(presence).equals("был")) count++;
+        }
+        return count;
     }
 
     @Override
