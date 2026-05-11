@@ -159,6 +159,27 @@ public class CurriculumExcelParser {
         return result;
     }
 
+
+    private boolean shouldCarryClassFromPrevious(Sheet sheet,
+                                                 int classRow,
+                                                 int periodRow,
+                                                 int currentCol,
+                                                 String currentClassName,
+                                                 String previousClassName) {
+        String current = ClassNameNormalizer.normalize(currentClassName);
+        String previous = ClassNameNormalizer.normalize(previousClassName);
+        if (current.isBlank() || current.equals(previous)) {
+            return true;
+        }
+
+        int nextCol = currentCol + 1;
+        String nextClass = ClassNameNormalizer.normalize(resolveClassName(sheet, CurriculumStage.SOO, classRow, nextCol));
+        String nextPeriodRaw = readCell(sheet.getRow(periodRow) == null ? null : sheet.getRow(periodRow).getCell(nextCol));
+        StudyPeriod nextPeriod = mapPeriod(nextPeriodRaw.isBlank() ? readMergedCell(sheet, periodRow, nextCol) : nextPeriodRaw);
+
+        return current.equals(nextClass) && nextPeriod == StudyPeriod.H1;
+    }
+
     private String extractAcademicYear(Sheet sheet) {
         for (int row = 0; row <= Math.min(sheet.getLastRowNum(), 20); row++) {
             for (int col = 0; col <= 8; col++) {
