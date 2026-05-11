@@ -886,6 +886,14 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             displayRows.putIfAbsent(key, new DisplayRow(safeDocText(row.getSubjectName()), safeDocText(row.getClassName()), row.getLoad() == null ? 0 : row.getLoad(), status));
         }
 
+        LinkedHashMap<String, DisplayRow> displayRows = new LinkedHashMap<>();
+        for (ManualLoadEntry row : Optional.ofNullable(rows).orElseGet(List::of)) {
+            if (row == null) continue;
+            String status = resolveStatus(aggregate, row);
+            String key = String.join("|", safe(row.getSubjectName()), safe(row.getClassName()), String.valueOf(row.getLoad() == null ? 0 : row.getLoad()), safe(status));
+            displayRows.putIfAbsent(key, new DisplayRow(safeDocText(row.getSubjectName()), safeDocText(row.getClassName()), row.getLoad() == null ? 0 : row.getLoad(), status));
+        }
+
         int totalRemainingHours = 0;
         for (DisplayRow row : displayRows.values()) {
             XWPFTableRow tr = table.createRow();
