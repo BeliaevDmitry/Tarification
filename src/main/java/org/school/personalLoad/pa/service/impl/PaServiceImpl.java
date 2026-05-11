@@ -542,9 +542,18 @@ public class PaServiceImpl implements PaService {
                 String yearInFile = info.getOrDefault("учебный год", "");
                 String dateRaw = info.getOrDefault("дата написания работы", "");
                 String levelRaw = info.getOrDefault("уровень", "");
-
-                if (teacher.isBlank() || subject.isBlank() || scopeValue.isBlank() || typeRaw.isBlank()) {
-                    results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, "Не заполнены обязательные поля листа «Информация»"));
+                String schoolRaw = info.getOrDefault("школа", "");
+                List<String> validationErrors = new ArrayList<>();
+                if (teacher.isBlank()) validationErrors.add("ФИО преподавателя отсутствует");
+                if (dateRaw.isBlank()) validationErrors.add("Дата работы отсутствует");
+                if (subject.isBlank()) validationErrors.add("Предмет нет в УП/отсутствует");
+                if (scopeValue.isBlank()) validationErrors.add("Класс отсутствует");
+                if (typeRaw.isBlank()) validationErrors.add("Тип отсутствует");
+                if (levelRaw.isBlank()) validationErrors.add("Уровень отсутствует");
+                if (schoolRaw.isBlank()) validationErrors.add("Школа отсутствует");
+                if (yearInFile.isBlank()) validationErrors.add("Учебный год отсутствует");
+                if (!validationErrors.isEmpty()) {
+                    results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, String.join("\n", validationErrors)));
                     continue;
                 }
                 if (!yearInFile.isBlank() && !normalize(yearInFile).equals(normalize(academicYear))) {

@@ -431,14 +431,20 @@ function fillClassSelector(prefix, selectedSubject, selectedScope, preferredClas
 
 function renderUploadLog(prefix, rows) {
     const body = document.getElementById(`pa-${prefix}-upload-log-body`);
+    const toStatus = (status) => String(status || '').toUpperCase() === 'ACCEPTED' ? '✅' : '❌';
+    const messageHtml = (message) => String(message || '').replace(/\n/g, '<br>');
     body.innerHTML = (rows || []).map((row) => `
         <tr>
+            <td>${new Date().toLocaleString('ru-RU')}</td>
             <td>${row.fileName || ''}</td>
-            <td>${row.status || ''}</td>
-            <td>${row.message || ''}</td>
-            <td>${row.versionNo ?? '—'}</td>
+            <td>${row.subjectName || '—'}</td>
+            <td>${row.scopeValue || '—'}</td>
+            <td>${toStatus(row.status)}</td>
+            <td>${messageHtml(row.message)}</td>
+            <td>${row.records ?? '—'}</td>
+            <td>${row.createdBy || '—'}</td>
         </tr>
-    `).join('') || '<tr><td colspan="4" class="muted">Нет операций</td></tr>';
+    `).join('') || '<tr><td colspan="8" class="muted">Нет операций</td></tr>';
 }
 
 function renderVersions(prefix, rows) {
