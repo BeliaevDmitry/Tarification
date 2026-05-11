@@ -431,7 +431,10 @@ function fillClassSelector(prefix, selectedSubject, selectedScope, preferredClas
 
 function renderUploadLog(prefix, rows) {
     const body = document.getElementById(`pa-${prefix}-upload-log-body`);
-    body.innerHTML = (rows || []).map((row) => `
+    if (!body) return;
+    const isUploadHistory = body.dataset.uploadHistory === 'true';
+    if (!isUploadHistory) {
+        body.innerHTML = (rows || []).map((row) => `
         <tr>
             <td>${row.fileName || ''}</td>
             <td>${row.status || ''}</td>
@@ -439,6 +442,24 @@ function renderUploadLog(prefix, rows) {
             <td>${row.versionNo ?? '—'}</td>
         </tr>
     `).join('') || '<tr><td colspan="4" class="muted">Нет операций</td></tr>';
+        return;
+    }
+    const toStatus = (status) => String(status || '').toUpperCase() === 'ACCEPTED' ? '✅' : '❌';
+    const messageHtml = (message) => String(message || '').replace(/\n/g, '<br>');
+    body.innerHTML = (rows || []).map((row) => `
+        <tr>
+            <td>${row.createdAt ? new Date(row.createdAt).toLocaleString('ru-RU') : new Date().toLocaleString('ru-RU')}</td>
+            <td>${row.reportVersionId ? `<button type="button" class="tab-btn" data-download-report-id="${row.reportVersionId}">${row.fileName || ''}</button>` : (row.fileName || '')}</td>
+            <td>${row.subjectName || '—'}</td>
+            <td>${row.scopeValue || '—'}</td>
+            <td>${toStatus(row.status)}</td>
+            <td>${messageHtml(row.message)}</td>
+            <td>${row.recordsSummary || '—'}</td>
+            <td>${row.checkReport || 'Нет'}</td>
+            <td>${row.uploadedByFio || row.createdBy || 'Аноним'}</td>
+        </tr>
+    `).join('') || '<tr><td colspan="9" class="muted">Нет операций</td></tr>';
+    bindReportDownloadButtons();
 }
 
 function renderVersions(prefix, rows) {
@@ -871,14 +892,29 @@ async function uploadReports(prefix) {
     const form = new FormData();
     [...input.files].forEach((f) => form.append('files', f));
     try {
-        const rows = await paApi('/api/pa/reports/upload', { method: 'POST', body: form });
-        renderUploadLog(prefix, rows);
+        await paApi('/api/pa/reports/upload', { method: 'POST', body: form });
+        if (document.getElementById(`pa-${prefix}-upload-log-body`)?.dataset.uploadHistory === 'true') {
+            await loadReportUploadLog(prefix);
+        }
         input.value = '';
-        await loadVersions(prefix);
-        await loadReportFolders(prefix);
+        if (document.getElementById(`pa-${prefix}-subject`)) {
+            await loadVersions(prefix);
+            await loadReportFolders(prefix);
+        }
     } catch (e) {
         renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: e.message, versionNo: null }]);
     }
+}
+
+async function loadReportUploadLog(prefix) {
+    const rows = await paApi('/api/pa/reports/upload-log');
+    renderUploadLog(prefix, rows || []);
+}
+
+function downloadReportUploadLogExcel() {
+    const raw = '/api/pa/reports/upload-log/download';
+    const url = typeof window.withAcademicYear === 'function' ? window.withAcademicYear(raw) : raw;
+    window.open(url, '_blank');
 }
 
 async function loadReportFolders(prefix) {
@@ -1220,6 +1256,7 @@ bindClick('pa-spec-import-btn', uploadSpecifications);
 bindClick('pa-spec-reload-btn', reloadSummaryAndSpecs);
 bindClick('pa-entry-upload-btn', () => uploadReports('entry'));
 bindClick('pa-exit-upload-btn', () => uploadReports('exit'));
+bindClick('pa-exit-download-upload-log-btn', downloadReportUploadLogExcel);
 bindClick('pa-entry-load-versions-btn', () => loadVersions('entry'));
 bindClick('pa-exit-load-versions-btn', () => loadVersions('exit'));
 bindClick('pa-entry-generate-btn', () => generateForClass('entry'));
@@ -1260,6 +1297,8 @@ try { await loadClassLevelAssignments(); } catch (_) { classLevelAssignments = {
 reloadSummaryAndSpecs().catch((e) => {
     appendSpecificationImportLog([{ fileName: '—', warnings: [`Ошибка: ${e.message}`], importedTasks: 0 }]);
 });
+if (document.getElementById('pa-entry-upload-log-body')?.dataset.uploadHistory === 'true') loadReportUploadLog('entry').catch(() => {});
+if (document.getElementById('pa-exit-upload-log-body')?.dataset.uploadHistory === 'true') loadReportUploadLog('exit').catch(() => {});
 })();
 renderSpecificationImportLog();
 const startMainTab = paQueryParams.get('tab')

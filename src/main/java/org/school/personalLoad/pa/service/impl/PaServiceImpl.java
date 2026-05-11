@@ -288,6 +288,14 @@ public class PaServiceImpl implements PaService {
         spec.setGrade5Percent(resolveThresholdPercent(sheet, baseRow, baseCol, blockEndCol, "5"));
         spec.setGrade4Percent(resolveThresholdPercent(sheet, baseRow, baseCol, blockEndCol, "4"));
         spec.setGrade3Percent(resolveThresholdPercent(sheet, baseRow, baseCol, blockEndCol, "3"));
+        Integer passPercent = resolveThresholdPercent(sheet, baseRow, baseCol, blockEndCol, "Зачёт");
+        if (passPercent == null) passPercent = resolveThresholdPercent(sheet, baseRow, baseCol, blockEndCol, "Зачет");
+        if (passPercent != null) {
+            spec.setGradingScale(PaGradingScale.PASS_FAIL);
+            spec.setPassPercent(passPercent);
+        } else {
+            spec.setGradingScale(PaGradingScale.FIVE_POINT);
+        }
         spec.setSourceFileName(sourceFileName);
         spec.setPairKey(buildPairKey(academicYear, subject, scope, level, workType, sheet.getSheetName()));
         spec.setActiveVersion(true);
@@ -526,7 +534,7 @@ public class PaServiceImpl implements PaService {
 
     @Override
     @Transactional
-    public List<PaDtos.ReportUploadResult> uploadReports(String academicYear, List<MultipartFile> files) {
+    public List<PaDtos.ReportUploadResult> uploadReports(String academicYear, List<MultipartFile> files, String uploaderUsername, String uploaderFio) {
         List<PaDtos.ReportUploadResult> results = new ArrayList<>();
         for (MultipartFile file : files) {
             if (file == null || file.isEmpty()) {
@@ -542,18 +550,27 @@ public class PaServiceImpl implements PaService {
                 String yearInFile = info.getOrDefault("учебный год", "");
                 String dateRaw = info.getOrDefault("дата написания работы", "");
                 String levelRaw = info.getOrDefault("уровень", "");
-
-                if (teacher.isBlank() || subject.isBlank() || scopeValue.isBlank() || typeRaw.isBlank()) {
-                    results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, "Не заполнены обязательные поля листа «Информация»"));
+                String schoolRaw = info.getOrDefault("школа", "");
+                List<String> validationErrors = new ArrayList<>();
+                if (teacher.isBlank()) validationErrors.add("ФИО преподавателя отсутствует");
+                if (dateRaw.isBlank()) validationErrors.add("Дата работы отсутствует");
+                if (subject.isBlank()) validationErrors.add("Предмет нет в УП/отсутствует");
+                if (scopeValue.isBlank()) validationErrors.add("Класс отсутствует");
+                if (typeRaw.isBlank()) validationErrors.add("Тип отсутствует");
+                if (levelRaw.isBlank()) validationErrors.add("Уровень отсутствует");
+                if (schoolRaw.isBlank()) validationErrors.add("Школа отсутствует");
+                if (yearInFile.isBlank()) validationErrors.add("Учебный год отсутствует");
+                if (!validationErrors.isEmpty()) {
+                    results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, String.join("\n", validationErrors), uploaderUsername, uploaderFio));
                     continue;
                 }
                 if (!yearInFile.isBlank() && !normalize(yearInFile).equals(normalize(academicYear))) {
-                    results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, "Учебный год в файле не совпадает с текущим"));
+                    results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, "Учебный год в файле не совпадает с текущим", uploaderUsername, uploaderFio));
                     continue;
                 }
                 PaWorkType workType = parseWorkType(typeRaw);
                 if (workType == null) {
-                    results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, "Недопустимый тип работы"));
+                    results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, "Недопустимый тип работы", uploaderUsername, uploaderFio));
                     continue;
                 }
                 LocalDate workDate = parseLocalDate(dateRaw);
@@ -563,23 +580,26 @@ public class PaServiceImpl implements PaService {
                         .findFirst()
                         .orElse(null);
                 if (teacherEntry == null) {
-                    results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, "Педагог не найден в кадрах"));
+                    results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, "Педагог не найден в кадрах", uploaderUsername, uploaderFio));
                     continue;
                 }
                 if (teacherEntry.getDismissalDate() != null && !teacherEntry.getDismissalDate().isAfter(LocalDate.now())) {
-                    results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, "Педагог уволен, отчёт не принят"));
+                    results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, "Педагог уволен, отчёт не принят", uploaderUsername, uploaderFio));
                     continue;
                 }
                 String structureProblem = validateDataSheetStructure(wb.getSheet("Сбор информации"));
                 if (structureProblem != null) {
-                    results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, structureProblem));
+                    results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, structureProblem, uploaderUsername, uploaderFio));
                     continue;
                 }
                 String studentsProblem = validateStudentsAgainstContingent(academicYear, scopeValue, wb.getSheet("Сбор информации"));
                 if (studentsProblem != null) {
-                    results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, studentsProblem));
+                    results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, studentsProblem, uploaderUsername, uploaderFio));
                     continue;
                 }
+                int reportFioCount = countReportFio(wb.getSheet("Сбор информации"));
+                int acceptedResultsCount = countAcceptedResults(wb.getSheet("Сбор информации"));
+                int classSizeCount = classSizeByContingent(academicYear, scopeValue);
 
                 PaScopeType scopeType = detectScopeType(scopeValue);
                 PaLevel parsedLevel = parseLevel(levelRaw);
@@ -593,6 +613,7 @@ public class PaServiceImpl implements PaService {
                 if (!sameKey.isEmpty()) {
                     reportVersionRepository.saveAll(sameKey);
                 }
+                boolean replaced = !sameKey.isEmpty();
                 int nextVersion = reportVersionRepository.findMaxVersion(academicYear, subject, scopeType, scopeValue.trim().toUpperCase(Locale.ROOT), level, workType, workDate) + 1;
                 PaReportVersion version = new PaReportVersion();
                 version.setAcademicYear(academicYear);
@@ -605,7 +626,7 @@ public class PaServiceImpl implements PaService {
                 version.setVersionNo(nextVersion);
                 version.setActiveVersion(true);
                 version.setStatus("ACCEPTED");
-                version.setValidationMessage("Отчёт принят");
+                version.setValidationMessage(replaced ? "Отчёт заменен" : "Отчёт принят");
                 version.setSourceFileName(file.getOriginalFilename());
                 Path directory = Path.of(PA_REPORT_STORAGE_DIR, academicYear.replace("/", "-"), "uploaded");
                 Files.createDirectories(directory);
@@ -614,15 +635,109 @@ public class PaServiceImpl implements PaService {
                 version.setSourceFilePath(stored.toString());
                 version.setTeacherFio(teacher.trim());
                 version.setTeacherFioNormalized(normalizedTeacher);
+                version.setUploadedByUsername(uploaderUsername == null || uploaderUsername.isBlank() ? "anonymous" : uploaderUsername.trim());
+                version.setUploadedByFio(uploaderFio == null || uploaderFio.isBlank() ? "Аноним" : uploaderFio.trim());
+                version.setReportedStudentsCount(reportFioCount);
+                version.setClassSizeCount(classSizeCount);
+                version.setAcceptedResultsCount(acceptedResultsCount);
                 version.setUploadedBackSuccess(true);
                 version.setCreatedAt(LocalDateTime.now());
                 reportVersionRepository.save(version);
-                results.add(new PaDtos.ReportUploadResult(file.getOriginalFilename(), "ACCEPTED", "Отчёт принят", nextVersion, subject.trim(), scopeValue.trim(), workType));
+                results.add(new PaDtos.ReportUploadResult(file.getOriginalFilename(), "ACCEPTED", replaced ? "Отчёт заменен" : "Отчёт принят", nextVersion, subject.trim(), scopeValue.trim(), workType));
             } catch (Exception e) {
                 results.add(new PaDtos.ReportUploadResult(file.getOriginalFilename(), "REJECTED", "Ошибка чтения файла: " + e.getMessage(), null, null, null, null));
             }
         }
         return results;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PaDtos.ReportUploadLogRow> reportUploadLog(String academicYear, String uploaderUsername, boolean admin) {
+        return reportVersionRepository.findAll().stream()
+                .filter(v -> academicYear.equals(v.getAcademicYear()))
+                .filter(v -> "ACCEPTED".equalsIgnoreCase(v.getStatus()) || "REJECTED".equalsIgnoreCase(v.getStatus()))
+                .filter(v -> admin || normalize(v.getUploadedByUsername()).equals(normalize(uploaderUsername)))
+                .sorted(Comparator.comparing(PaReportVersion::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
+                .limit(500)
+                .map(v -> new PaDtos.ReportUploadLogRow(
+                        v.getId(),
+                        v.getCreatedAt(),
+                        v.getSourceFileName(),
+                        v.getSubjectName(),
+                        v.getScopeValue(),
+                        v.getStatus(),
+                        v.getValidationMessage(),
+                        (v.getAcceptedResultsCount() == null ? 0 : v.getAcceptedResultsCount()) + "/" + (v.getReportedStudentsCount() == null ? 0 : v.getReportedStudentsCount()) + "/" + (v.getClassSizeCount() == null ? 0 : v.getClassSizeCount()),
+                        ((v.getAcceptedResultsCount() == null ? 0 : v.getAcceptedResultsCount()) == (v.getReportedStudentsCount() == null ? 0 : v.getReportedStudentsCount())
+                                && (v.getReportedStudentsCount() == null ? 0 : v.getReportedStudentsCount()) == (v.getClassSizeCount() == null ? 0 : v.getClassSizeCount()))
+                                ? "Нет" : "Да",
+                        (v.getUploadedByFio() == null || v.getUploadedByFio().isBlank()) ? "Аноним" : v.getUploadedByFio()
+                ))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] downloadReportUploadLogExcel(String academicYear, String uploaderUsername, boolean admin) throws IOException {
+        List<PaDtos.ReportUploadLogRow> rows = reportUploadLog(academicYear, uploaderUsername, admin);
+        try (Workbook workbook = new XSSFWorkbook(); java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("Сдача ПА");
+            Row header = sheet.createRow(0);
+            String[] headers = {"Дата", "Файл", "Предмет", "Параллель/класс", "Статус", "Сообщение", "Записей", "Проверить отчёт", "ФИО подгрузившего"};
+            for (int i = 0; i < headers.length; i++) header.createCell(i).setCellValue(headers[i]);
+            int rowNum = 1;
+            for (PaDtos.ReportUploadLogRow row : rows) {
+                Row x = sheet.createRow(rowNum++);
+                x.createCell(0).setCellValue(row.createdAt() == null ? "" : row.createdAt().toString());
+                x.createCell(1).setCellValue(row.fileName() == null ? "" : row.fileName());
+                x.createCell(2).setCellValue(row.subjectName() == null ? "" : row.subjectName());
+                x.createCell(3).setCellValue(row.scopeValue() == null ? "" : row.scopeValue());
+                x.createCell(4).setCellValue(row.status() == null ? "" : row.status());
+                x.createCell(5).setCellValue(row.message() == null ? "" : row.message());
+                x.createCell(6).setCellValue(row.recordsSummary() == null ? "" : row.recordsSummary());
+                x.createCell(7).setCellValue(row.checkReport() == null ? "" : row.checkReport());
+                x.createCell(8).setCellValue(row.uploadedByFio() == null ? "" : row.uploadedByFio());
+            }
+            for (int i = 0; i < headers.length; i++) sheet.autoSizeColumn(i);
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private int classSizeByContingent(String academicYear, String className) {
+        var snapshot = contingentSnapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear).orElse(null);
+        if (snapshot == null) return 0;
+        return (int) contingentStudentRepository.findAllBySnapshotId(snapshot.getId()).stream()
+                .filter(s -> normalizeClass(s.getClassName()).equals(normalizeClass(className)))
+                .map(s -> s.getFullName() == null ? "" : s.getFullName().trim())
+                .filter(v -> !v.isBlank())
+                .count();
+    }
+
+    private int countReportFio(Sheet dataSheet) {
+        if (dataSheet == null) return 0;
+        int count = 0;
+        for (int r = 1; r <= dataSheet.getLastRowNum(); r++) {
+            Row row = dataSheet.getRow(r);
+            if (row == null) continue;
+            String fio = getCell(row, 1).trim();
+            if (!fio.isBlank()) count++;
+        }
+        return count;
+    }
+
+    private int countAcceptedResults(Sheet dataSheet) {
+        if (dataSheet == null) return 0;
+        int count = 0;
+        for (int r = 1; r <= dataSheet.getLastRowNum(); r++) {
+            Row row = dataSheet.getRow(r);
+            if (row == null) continue;
+            String fio = getCell(row, 1).trim();
+            String presence = getCell(row, 2).trim();
+            if (!fio.isBlank() && normalize(presence).equals("был")) count++;
+        }
+        return count;
     }
 
     @Override
@@ -1118,7 +1233,7 @@ public class PaServiceImpl implements PaService {
         int totalCol = firstTaskCol + tasks.size();
         int gradeCol = totalCol + 1;
         createStyledCell(headerRow, totalCol, "Итог", styles.header());
-        createStyledCell(headerRow, gradeCol, "Отметка", styles.header());
+        createStyledCell(headerRow, gradeCol, specification.getGradingScale() == PaGradingScale.PASS_FAIL ? "Зачёт/незачёт" : "Отметка", styles.header());
 
         Row taskNoRow = data.createRow(1);
         for (int i = 0; i < 4; i++) createStyledCell(taskNoRow, i, "", styles.subHeader());
@@ -1181,6 +1296,13 @@ public class PaServiceImpl implements PaService {
         String maxRangeStart = new CellReference(2, firstTaskCol).formatAsString();
         String maxRangeEnd = new CellReference(2, firstTaskCol + tasksSize - 1).formatAsString();
         String maxSum = "SUM(" + maxRangeStart + ":" + maxRangeEnd + ")";
+        if (specification.getGradingScale() == PaGradingScale.PASS_FAIL) {
+            int passPercent = specification.getPassPercent() == null ? 50 : specification.getPassPercent();
+            return String.format(Locale.ROOT,
+                    "IF(OR(%s=\"\",%s=\"Не был\",AND(%s=\"\",%s=0)),\"\",IF(%s/%s*100>=%d,\"Зачёт\",\"Незачёт\"))",
+                    totalCell, presenceCell, variantCell, totalCell,
+                    totalCell, maxSum, passPercent);
+        }
         return String.format(Locale.ROOT,
                 "IF(OR(%s=\"\",%s=\"Не был\",AND(%s=\"\",%s=0)),\"\",IF(%s/%s*100>=%d,5,IF(%s/%s*100>=%d,4,IF(%s/%s*100>=%d,3,2))))",
                 totalCell, presenceCell, variantCell, totalCell,
@@ -1317,6 +1439,12 @@ public class PaServiceImpl implements PaService {
     }
 
     private String validateThresholds(PaSpecification spec) {
+        if (spec.getGradingScale() == PaGradingScale.PASS_FAIL) {
+            if (spec.getPassPercent() == null || spec.getPassPercent() < 0 || spec.getPassPercent() > 100) {
+                return "Порог зачёта в спецификации невалиден: ожидается 0..100";
+            }
+            return null;
+        }
         if (spec.getGrade5Percent() == null || spec.getGrade4Percent() == null || spec.getGrade3Percent() == null) {
             return "Пороги в спецификации биты: заполните проценты для оценок 5/4/3";
         }
@@ -1338,7 +1466,9 @@ public class PaServiceImpl implements PaService {
                                                          String subject,
                                                          String scopeValue,
                                                          String typeRaw,
-                                                         String message) {
+                                                         String message,
+                                                         String uploaderUsername,
+                                                         String uploaderFio) {
         PaWorkType workType = parseWorkType(typeRaw);
         PaReportVersion version = new PaReportVersion();
         version.setAcademicYear(academicYear);
@@ -1352,6 +1482,8 @@ public class PaServiceImpl implements PaService {
         version.setStatus("REJECTED");
         version.setValidationMessage(message);
         version.setSourceFileName(fileName);
+        version.setUploadedByUsername(uploaderUsername == null || uploaderUsername.isBlank() ? "anonymous" : uploaderUsername.trim());
+        version.setUploadedByFio(uploaderFio == null || uploaderFio.isBlank() ? "Аноним" : uploaderFio.trim());
         version.setCreatedAt(LocalDateTime.now());
         reportVersionRepository.save(version);
         return new PaDtos.ReportUploadResult(fileName, "REJECTED", message, null, version.getSubjectName(), version.getScopeValue(), version.getWorkType());

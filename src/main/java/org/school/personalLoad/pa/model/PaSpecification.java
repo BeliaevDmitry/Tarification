@@ -63,6 +63,13 @@ public class PaSpecification {
     @Column(name = "grade3_percent")
     private Integer grade3Percent;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "grading_scale", nullable = false, length = 20)
+    private PaGradingScale gradingScale = PaGradingScale.FIVE_POINT;
+
+    @Column(name = "pass_percent")
+    private Integer passPercent;
+
     @Column(name = "pair_key", length = 150)
     private String pairKey;
 
