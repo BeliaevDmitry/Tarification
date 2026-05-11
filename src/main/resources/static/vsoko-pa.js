@@ -431,6 +431,24 @@ function fillClassSelector(prefix, selectedSubject, selectedScope, preferredClas
 
 function renderUploadLog(prefix, rows) {
     const body = document.getElementById(`pa-${prefix}-upload-log-body`);
+    if (!body) return;
+    const isUploadHistory = body.dataset.uploadHistory === 'true';
+    if (!isUploadHistory) {
+        body.innerHTML = (rows || []).map((row) => `
+        <tr>
+            <td>${row.createdAt ? new Date(row.createdAt).toLocaleString('ru-RU') : new Date().toLocaleString('ru-RU')}</td>
+            <td>${row.reportVersionId ? `<button type="button" class="tab-btn" data-download-report-id="${row.reportVersionId}">${row.fileName || ''}</button>` : (row.fileName || '')}</td>
+            <td>${row.subjectName || '—'}</td>
+            <td>${row.scopeValue || '—'}</td>
+            <td>${toStatus(row.status)}</td>
+            <td>${messageHtml(row.message)}</td>
+            <td>${row.recordsSummary || '—'}</td>
+            <td>${row.checkReport || 'Нет'}</td>
+            <td>${row.uploadedByFio || row.createdBy || 'Аноним'}</td>
+        </tr>
+    `).join('') || '<tr><td colspan="4" class="muted">Нет операций</td></tr>';
+        return;
+    }
     const toStatus = (status) => String(status || '').toUpperCase() === 'ACCEPTED' ? '✅' : '❌';
     const messageHtml = (message) => String(message || '').replace(/\n/g, '<br>');
     body.innerHTML = (rows || []).map((row) => `
@@ -880,10 +898,14 @@ async function uploadReports(prefix) {
     [...input.files].forEach((f) => form.append('files', f));
     try {
         await paApi('/api/pa/reports/upload', { method: 'POST', body: form });
-        await loadReportUploadLog(prefix);
+        if (document.getElementById(`pa-${prefix}-upload-log-body`)?.dataset.uploadHistory === 'true') {
+            await loadReportUploadLog(prefix);
+        }
         input.value = '';
-        await loadVersions(prefix);
-        await loadReportFolders(prefix);
+        if (document.getElementById(`pa-${prefix}-subject`)) {
+            await loadVersions(prefix);
+            await loadReportFolders(prefix);
+        }
     } catch (e) {
         renderUploadLog(prefix, [{ fileName: '', status: 'REJECTED', message: e.message, versionNo: null }]);
     }
@@ -1280,8 +1302,8 @@ try { await loadClassLevelAssignments(); } catch (_) { classLevelAssignments = {
 reloadSummaryAndSpecs().catch((e) => {
     appendSpecificationImportLog([{ fileName: '—', warnings: [`Ошибка: ${e.message}`], importedTasks: 0 }]);
 });
-loadReportUploadLog('entry').catch(() => {});
-loadReportUploadLog('exit').catch(() => {});
+if (document.getElementById('pa-entry-upload-log-body')?.dataset.uploadHistory === 'true') loadReportUploadLog('entry').catch(() => {});
+if (document.getElementById('pa-exit-upload-log-body')?.dataset.uploadHistory === 'true') loadReportUploadLog('exit').catch(() => {});
 })();
 renderSpecificationImportLog();
 const startMainTab = paQueryParams.get('tab')
