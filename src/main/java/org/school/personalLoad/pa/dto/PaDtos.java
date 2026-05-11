@@ -92,6 +92,16 @@ public final class PaDtos {
                                      PaWorkType workType) {
     }
 
+    public record ReportUploadLogRow(Long reportVersionId,
+                                     LocalDateTime createdAt,
+                                     String fileName,
+                                     String subjectName,
+                                     String scopeValue,
+                                     String status,
+                                     String message,
+                                     String uploadedByFio) {
+    }
+
     public record ReportFolderItem(Long reportVersionId,
                                    String subjectName,
                                    String parallel,
