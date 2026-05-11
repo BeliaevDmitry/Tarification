@@ -118,12 +118,23 @@ public class CurriculumExcelParser {
             String periodRawDirect = readCell(sheet.getRow(periodRow) == null ? null : sheet.getRow(periodRow).getCell(col));
             StudyPeriod period = mapPeriod(periodRawDirect.isBlank() ? readMergedCell(sheet, periodRow, col) : periodRawDirect);
             className = resolveAmbiguousSooClassName(stage, className, period, prev);
-            if (period == StudyPeriod.H2 && prev != null && prev.studyPeriod == StudyPeriod.H1) {
-                className = prev.className;
+
+            if (stage != CurriculumStage.NOO) {
+                if (period == StudyPeriod.H2 && prev != null && prev.studyPeriod == StudyPeriod.H1) {
+                    className = prev.className;
+                }
+                if (period == StudyPeriod.H1 && className.isBlank()) {
+                    String nextClassName = ClassNameNormalizer.normalize(resolveClassName(sheet, stage, classRow, col + 1));
+                    String nextPeriodRaw = readCell(sheet.getRow(periodRow) == null ? null : sheet.getRow(periodRow).getCell(col + 1));
+                    StudyPeriod nextPeriod = mapPeriod(nextPeriodRaw.isBlank() ? readMergedCell(sheet, periodRow, col + 1) : nextPeriodRaw);
+                    if (nextPeriod == StudyPeriod.H2 && !nextClassName.isBlank()) {
+                        className = nextClassName;
+                    }
+                }
             }
 
             // Для СОО в паре колонок (1П/2П) во второй колонке значения могут быть пустыми — наследуем слева.
-            if (stage == CurriculumStage.SOO && prev != null) {
+            if (stage != CurriculumStage.NOO && prev != null) {
                 if (className.isBlank()) className = prev.className;
                 if (classDirection.isBlank()) classDirection = prev.classDirection;
                 if (teacherName.isBlank()) teacherName = prev.teacherName;

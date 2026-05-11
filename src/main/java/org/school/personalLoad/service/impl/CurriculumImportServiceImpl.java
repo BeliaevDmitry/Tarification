@@ -372,10 +372,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     importedIds.add(saved.getId());
                     if (isNew) created++; else updated++;
 
-                    boolean existedClass = classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, resolvedBuilding, normalizedClassName);
-                    ensureClassroom(academicYear, resolvedBuilding, normalizedClassName, row.classDirection(), fallbackTeacher);
+                    boolean createdClass = ensureClassroom(academicYear, resolvedBuilding, normalizedClassName, row.classDirection(), fallbackTeacher);
                     buildingByNormalizedClass.putIfAbsent(normalizedClassName, resolvedBuilding);
-                    if (!existedClass) classesCreated++;
+                    if (createdClass) classesCreated++;
 
                     SubjectType subjectType = resolveSubjectType(row.curriculumPart(), row.subjectName());
                     String normalizedSubject = normalizeSubject(row.subjectName());
@@ -439,18 +438,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     importedIds.add(saved.getId());
                     if (isNew) created++; else updated++;
 
-                    if (!classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, entry.getNumberSchoolBuilding(), normalizedClassName)) {
-                        ClassroomLeadershipEntry cls = new ClassroomLeadershipEntry();
-                        cls.setAcademicYear(academicYear);
-                        cls.setNumberSchoolBuilding(entry.getNumberSchoolBuilding());
-                        cls.setClassName(normalizedClassName);
-                        cls.setClassDirection(row.getClassDirection() == null || row.getClassDirection().isBlank() ? "Не указана" : row.getClassDirection());
-                        cls.setFioTeacher(fallbackTeacher);
-                        cls.setCampusAddress("Не указан");
-                        classroomRepository.save(cls);
-                        buildingByNormalizedClass.putIfAbsent(normalizedClassName, entry.getNumberSchoolBuilding());
-                        classesCreated++;
-                    }
+                    boolean createdClass = ensureClassroom(academicYear, entry.getNumberSchoolBuilding(), normalizedClassName, row.getClassDirection(), fallbackTeacher);
+                    buildingByNormalizedClass.putIfAbsent(normalizedClassName, entry.getNumberSchoolBuilding());
+                    if (createdClass) classesCreated++;
 
                     SubjectType subjectType = resolveSubjectType(row);
                     String normalizedSubject = normalizeSubject(row.getSubjectName());
@@ -512,16 +502,27 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         }
     }
 
-    private void ensureClassroom(String academicYear, String building, String className, String classDirection, String fallbackTeacher) {
-        if (classroomRepository.existsByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, className)) return;
+    private boolean ensureClassroom(String academicYear, String building, String className, String classDirection, String fallbackTeacher) {
+        String resolvedDirection = classDirection == null || classDirection.isBlank() ? "Не указана" : classDirection;
+        Optional<ClassroomLeadershipEntry> existing = classroomRepository
+                .findByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, className);
+        if (existing.isPresent()) {
+            ClassroomLeadershipEntry entry = existing.get();
+            if (!resolvedDirection.isBlank() && !resolvedDirection.equals(entry.getClassDirection())) {
+                entry.setClassDirection(resolvedDirection);
+                classroomRepository.save(entry);
+            }
+            return false;
+        }
         ClassroomLeadershipEntry cls = new ClassroomLeadershipEntry();
         cls.setAcademicYear(academicYear);
         cls.setNumberSchoolBuilding(building);
         cls.setClassName(className);
-        cls.setClassDirection(classDirection == null || classDirection.isBlank() ? "Не указана" : classDirection);
+        cls.setClassDirection(resolvedDirection);
         cls.setFioTeacher(fallbackTeacher);
         cls.setCampusAddress("Не указан");
         classroomRepository.save(cls);
+        return true;
     }
 
     private String resolveBuildingForClass(String requestedBuilding, String normalizedClassName, Map<String, String> buildingByNormalizedClass) {
