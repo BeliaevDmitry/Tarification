@@ -406,17 +406,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 }
 
                 String displayName = displayByTeacher.getOrDefault(teacherKey, rowsForMemo.get(0).getFioTeacher());
-                boolean firstLoadAppearance = rowsBeforeDate.isEmpty()
-                        && !rowsOnDate.isEmpty()
-                        && teacherRows.stream()
-                        .filter(Objects::nonNull)
-                        .map(ManualLoadEntry::getLoadFromDate)
-                        .filter(Objects::nonNull)
-                        .noneMatch(fromDate -> fromDate.isBefore(changeDate));
-                boolean newEmploymentByDirectory = Optional.ofNullable(teacherDirectoryCreatedDate.get(teacherKey))
-                        .map(createdDate -> !createdDate.isBefore(changeDate))
-                        .orElse(true);
-                boolean newEmployment = firstLoadAppearance && newEmploymentByDirectory;
+                boolean newEmployment = rowsBeforeDate.isEmpty() && !rowsOnDate.isEmpty();
 
                 result.put(new TeacherDateKey(teacherKey, changeDate), new TeacherChangeAggregate(
                         displayName,
