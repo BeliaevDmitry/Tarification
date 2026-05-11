@@ -28,6 +28,18 @@
   - Либо используйте внешний reverse-proxy и поднимайте `app` без локального `caddy`.
 
 ## 1) Schadmin (школа 7)
+> Если у вас уже рабочий legacy-стек с именем `tarification` и нужно просто "перекрасить" его в школу 7 без миграции данных,
+> в `deploy/vps/env/schadmin7.env` оставьте `STACK_NAME=tarification`.
+
+
+Для legacy-стека `tarification` используйте `-p tarification` (а не `-p schadmin7`):
+```bash
+docker compose -p tarification \
+  --env-file deploy/vps/env/schadmin7.env \
+  -f deploy/vps/docker-compose.prod.yml \
+  up -d --build --no-deps app
+```
+
 Полный деплой (с удалением БД):
 ```bash
 cd ~/Tarification
