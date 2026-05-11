@@ -166,9 +166,23 @@ public class PaController {
 
     @PostMapping("/reports/upload")
     public ResponseEntity<List<PaDtos.ReportUploadResult>> uploadReports(@RequestParam("files") List<MultipartFile> files,
-                                                                         @RequestParam(required = false) String academicYear) {
+                                                                         @RequestParam(required = false) String academicYear,
+                                                                         HttpSession session) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
-        return ResponseEntity.ok(paService.uploadReports(year, files));
+        SessionUser user = session == null ? null : (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
+        String username = user == null ? "anonymous" : user.getUsername();
+        String fullName = user == null || user.getFullName() == null || user.getFullName().isBlank() ? "Аноним" : user.getFullName();
+        return ResponseEntity.ok(paService.uploadReports(year, files, username, fullName));
+    }
+
+    @GetMapping("/reports/upload-log")
+    public ResponseEntity<List<PaDtos.ReportUploadLogRow>> reportUploadLog(@RequestParam(required = false) String academicYear,
+                                                                            HttpSession session) {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        SessionUser user = session == null ? null : (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
+        String username = user == null ? "anonymous" : user.getUsername();
+        boolean admin = user != null && user.isAdmin();
+        return ResponseEntity.ok(paService.reportUploadLog(year, username, admin));
     }
 
     @PatchMapping("/participation")
