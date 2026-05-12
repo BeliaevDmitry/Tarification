@@ -89,7 +89,7 @@ public class AcademicYearServiceImpl implements AcademicYearService {
     public String currentByDate() {
         LocalDate now = LocalDate.now();
         int startYear = now.getMonthValue() >= 7 ? now.getYear() : now.getYear() - 1;
-        return startYear + "/" + (startYear + 1);
+        return startYear + "-" + (startYear + 1);
     }
 
     @Override
@@ -170,9 +170,9 @@ public class AcademicYearServiceImpl implements AcademicYearService {
     }
 
     private String previousAcademicYear(String academicYearCode) {
-        int slash = academicYearCode.indexOf('/');
-        int from = Integer.parseInt(academicYearCode.substring(0, slash));
-        return (from - 1) + "/" + from;
+        String normalized = normalizeCode(academicYearCode);
+        int from = Integer.parseInt(normalized.substring(0, 4));
+        return (from - 1) + "-" + from;
     }
 
     private String continuityKey(ManualLoadEntry entry) {
@@ -296,16 +296,16 @@ public class AcademicYearServiceImpl implements AcademicYearService {
         String normalized = code.trim().replace('\\', '/');
         if (normalized.matches("\\d{4}")) {
             int from = Integer.parseInt(normalized);
-            return from + "/" + (from + 1);
+            return from + "-" + (from + 1);
         }
-        if (!normalized.matches("\\d{4}/\\d{4}")) {
-            throw new IllegalArgumentException("Формат учебного года должен быть YYYY или YYYY/YYYY");
+        if (!normalized.matches("\\d{4}[-/]\\d{4}")) {
+            throw new IllegalArgumentException("Формат учебного года должен быть YYYY или YYYY-YYYY");
         }
         int from = Integer.parseInt(normalized.substring(0, 4));
         int to = Integer.parseInt(normalized.substring(5));
         if (to != from + 1) {
-            throw new IllegalArgumentException("Учебный год должен быть последовательным, например 2026/2027");
+            throw new IllegalArgumentException("Учебный год должен быть последовательным, например 2026-2027");
         }
-        return normalized;
+        return from + "-" + to;
     }
 }

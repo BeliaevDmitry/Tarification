@@ -138,7 +138,12 @@ public class CurriculumExcelParser {
                 if (className.isBlank()) className = prev.className;
                 if (classDirection.isBlank()) classDirection = prev.classDirection;
                 if (teacherName.isBlank()) teacherName = prev.teacherName;
-                if (period == null || (period == prev.studyPeriod && className.equals(prev.className))) {
+                if (period == null) {
+                    period = prev.studyPeriod;
+                } else if (isHalfYear(period)
+                        && isHalfYear(prev.studyPeriod)
+                        && period == prev.studyPeriod
+                        && className.equals(prev.className)) {
                     period = prev.studyPeriod == StudyPeriod.H1 ? StudyPeriod.H2 : StudyPeriod.H1;
                 }
             }
@@ -336,6 +341,10 @@ public class CurriculumExcelParser {
         if (value.contains("1П")) return StudyPeriod.H1;
         if (value.contains("2П")) return StudyPeriod.H2;
         return StudyPeriod.YEAR;
+    }
+
+    private boolean isHalfYear(StudyPeriod period) {
+        return period == StudyPeriod.H1 || period == StudyPeriod.H2;
     }
 
     private ParsedHours parseHoursWithMarkers(String raw) {
