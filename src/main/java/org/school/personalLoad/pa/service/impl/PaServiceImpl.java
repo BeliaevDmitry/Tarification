@@ -406,7 +406,8 @@ public class PaServiceImpl implements PaService {
 
     @Override
     public List<PaDtos.SpecificationRow> specifications(String academicYear) {
-        return specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear).stream()
+        String normalizedAcademicYear = normalizeAcademicYearValue(academicYear);
+        return specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(normalizedAcademicYear).stream()
                 .map(s -> new PaDtos.SpecificationRow(
                         s.getId(),
                         s.getAcademicYear(),
@@ -437,17 +438,18 @@ public class PaServiceImpl implements PaService {
 
     @Override
     public PaDtos.SummaryResponse summary(String academicYear) {
+        String normalizedAcademicYear = normalizeAcademicYearValue(academicYear);
         Set<String> primarySubjects = new TreeSet<>();
         Set<String> secondarySubjects = new TreeSet<>();
-        for (CurriculumPlanEntry entry : curriculumPlanEntryRepository.findAllByAcademicYear(academicYear)) {
+        for (CurriculumPlanEntry entry : curriculumPlanEntryRepository.findAllByAcademicYear(normalizedAcademicYear)) {
             if (entry.isDeprecated()) continue;
             Integer parallel = parseParallel(entry.getClassName());
             if (parallel == null) continue;
             if (parallel <= 4) primarySubjects.add(entry.getSubjectName());
             else secondarySubjects.add(entry.getSubjectName());
         }
-        List<PaSpecification> specs = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear);
-        Map<String, PaParticipation> participationMap = participationRepository.findAllByAcademicYear(academicYear).stream()
+        List<PaSpecification> specs = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(normalizeAcademicYearValue(academicYear));
+        Map<String, PaParticipation> participationMap = participationRepository.findAllByAcademicYear(normalizedAcademicYear).stream()
                 .collect(Collectors.toMap(this::participationKey, p -> p, (a, b) -> b));
         List<PaDtos.SummaryCell> primary = buildSummaryCells(primarySubjects, specs, participationMap, 1, 4);
         List<PaDtos.SummaryCell> secondary = buildSummaryCells(secondarySubjects, specs, participationMap, 5, 11);
@@ -456,7 +458,8 @@ public class PaServiceImpl implements PaService {
 
     @Override
     public List<PaDtos.ClassLevelAssignmentRow> classLevelAssignments(String academicYear) {
-        return classLevelAssignmentRepository.findAllByAcademicYear(academicYear).stream()
+        String normalizedAcademicYear = normalizeAcademicYearValue(academicYear);
+        return classLevelAssignmentRepository.findAllByAcademicYear(normalizedAcademicYear).stream()
                 .map(r -> new PaDtos.ClassLevelAssignmentRow(r.getSubjectName(), r.getClassName(), r.getWorkType(), r.getLevel(), r.isManual()))
                 .toList();
     }
@@ -703,6 +706,11 @@ public class PaServiceImpl implements PaService {
             workbook.write(out);
             return out.toByteArray();
         }
+    }
+
+    private String normalizeAcademicYearValue(String academicYear) {
+        if (academicYear == null) return null;
+        return academicYear.trim().replace('-', '/');
     }
 
     private int classSizeByContingent(String academicYear, String className) {
@@ -1055,7 +1063,7 @@ public class PaServiceImpl implements PaService {
     public byte[] loadSpecificationFile(String academicYear, Long specificationId) throws IOException {
         PaSpecification base = specificationRepository.findById(specificationId)
                 .orElseThrow(() -> new IllegalArgumentException("Спецификация не найдена"));
-        List<PaSpecification> specs = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear);
+        List<PaSpecification> specs = specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(normalizeAcademicYearValue(academicYear));
         PaSpecification entry = specs.stream().filter(s -> s.isActiveVersion()
                         && Objects.equals(s.getSubjectName(), base.getSubjectName())
                         && Objects.equals(s.getScopeValue(), base.getScopeValue())
