@@ -1,98 +1,91 @@
 # Multi-site deploy commands
 
-## Подготовка env-файлов
-Скопируйте пресет и задайте реальные пароли/SMTP:
-```bash
-cp deploy/vps/env-presets/schadmin7.env deploy/vps/.env.schadmin7
-cp deploy/vps/env-presets/schadmindemo.env deploy/vps/.env.schadmindemo
-cp deploy/vps/env-presets/schadmin1811.env deploy/vps/.env.schadmin1811
-```
+Ниже только базовые сценарии запуска для каждой школы:
+1) запуск с нуля (новый стек);
+2) запуск/обновление с сохранением текущей БД (existing stack).
 
+## Где env-файлы
+Используйте готовые env-файлы:
+- `deploy/vps/env/schadmin7.env`
+- `deploy/vps/env/schadmindemo.env`
+- `deploy/vps/env/schadmin1811.env`
 
-## Важно
-- Для каждого сайта используйте отдельный project name (`-p`), чтобы контейнеры/volume/сети не пересекались.
-- Перед запуском проверьте DNS на нужный VPS.
+Перед запуском проверьте в выбранном env-файле минимум:
+- `APP_DOMAIN`
+- `STACK_NAME`
+- `SCHOOL_CODE`
+- `POSTGRES_PASSWORD`
+- `DB_PASSWORD`
+- `SMTP_*`
+
+---
 
 ## 1) Schadmin (школа 7)
-Полный деплой (с удалением БД):
+
+### С нуля (новый стек)
 ```bash
 cd ~/Tarification
-
+git pull
 docker compose -p schadmin7 \
-  --env-file deploy/vps/.env.schadmin7 \
-  -f deploy/vps/docker-compose.prod.yml \
-  down -v
-
-docker compose -p schadmin7 \
-  --env-file deploy/vps/.env.schadmin7 \
+  --env-file deploy/vps/env/schadmin7.env \
   -f deploy/vps/docker-compose.prod.yml \
   up -d --build
 ```
 
-Деплой с сохранением БД:
+### С сохранением БД (legacy стек `tarification`)
 ```bash
 cd ~/Tarification
-
 git pull
-
-docker compose -p schadmin7 \
-  --env-file deploy/vps/.env.schadmin7 \
+docker compose -p tarification \
+  --env-file deploy/vps/env/schadmin7.env \
   -f deploy/vps/docker-compose.prod.yml \
   up -d --build --no-deps app
 ```
+
+---
 
 ## 2) Schadmin demo
-Полный деплой (с удалением БД):
+
+### С нуля (новый стек)
 ```bash
 cd ~/Tarification
-
+git pull
 docker compose -p schadmindemo \
-  --env-file deploy/vps/.env.schadmindemo \
-  -f deploy/vps/docker-compose.prod.yml \
-  down -v
-
-docker compose -p schadmindemo \
-  --env-file deploy/vps/.env.schadmindemo \
+  --env-file deploy/vps/env/schadmindemo.env \
   -f deploy/vps/docker-compose.prod.yml \
   up -d --build
 ```
 
-Деплой с сохранением БД:
+### С сохранением БД (уже развернутый стек `schadmindemo`)
 ```bash
 cd ~/Tarification
-
 git pull
-
 docker compose -p schadmindemo \
-  --env-file deploy/vps/.env.schadmindemo \
+  --env-file deploy/vps/env/schadmindemo.env \
   -f deploy/vps/docker-compose.prod.yml \
   up -d --build --no-deps app
 ```
 
+---
+
 ## 3) Schadmin 1811
-Полный деплой (с удалением БД):
+
+### С нуля (новый стек)
 ```bash
 cd ~/Tarification
-
+git pull
 docker compose -p schadmin1811 \
-  --env-file deploy/vps/.env.schadmin1811 \
-  -f deploy/vps/docker-compose.prod.yml \
-  down -v
-
-docker compose -p schadmin1811 \
-  --env-file deploy/vps/.env.schadmin1811 \
+  --env-file deploy/vps/env/schadmin1811.env \
   -f deploy/vps/docker-compose.prod.yml \
   up -d --build
 ```
 
-Деплой с сохранением БД:
+### С сохранением БД (уже развернутый стек `schadmin1811`)
 ```bash
 cd ~/Tarification
-
 git pull
-
 docker compose -p schadmin1811 \
-  --env-file deploy/vps/.env.schadmin1811 \
+  --env-file deploy/vps/env/schadmin1811.env \
   -f deploy/vps/docker-compose.prod.yml \
   up -d --build --no-deps app
 ```
