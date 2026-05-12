@@ -7,14 +7,18 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import javax.servlet.http.HttpServletRequest;
+
 
 @RestController
 @RequestMapping("/api/public/branding")
 public class PublicBrandingController {
 
     @GetMapping
-    public BrandingResponse get() {
-        String schoolCode = SchoolCodeResolver.resolve();
+    public BrandingResponse get(HttpServletRequest request) {
+        String forwardedHost = request.getHeader("X-Forwarded-Host");
+        String host = (forwardedHost == null || forwardedHost.isBlank()) ? request.getServerName() : forwardedHost;
+        String schoolCode = SchoolCodeResolver.resolve(host);
         String crestUrl = "/school-crests/crest-" + schoolCode + ".png";
         String appTitle = "ГБОУ школа " + schoolCode;
         String loginTitle = "Вход в систему ГБОУ №" + schoolCode;
