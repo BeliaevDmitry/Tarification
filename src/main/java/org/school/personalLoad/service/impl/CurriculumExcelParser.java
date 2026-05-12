@@ -367,21 +367,16 @@ public class CurriculumExcelParser {
 
     // Универсальное чтение merged cells: если ячейка пуста, берём верхнюю-левую ячейку merge-диапазона.
     private String readMergedCell(Sheet sheet, int rowIndex, int colIndex) {
-        Row row = sheet.getRow(rowIndex);
-        Cell cell = row == null ? null : row.getCell(colIndex);
-        String direct = readCell(cell);
-        if (!direct.isBlank()) {
-            return direct;
+        CellRangeAddress range = mergedRangeForCell(sheet, rowIndex, colIndex);
+        if (range != null) {
+            Row firstRow = sheet.getRow(range.getFirstRow());
+            Cell firstCell = firstRow == null ? null : firstRow.getCell(range.getFirstColumn());
+            return readCell(firstCell);
         }
 
-        for (CellRangeAddress range : sheet.getMergedRegions()) {
-            if (range.isInRange(new CellAddress(rowIndex, colIndex))) {
-                Row firstRow = sheet.getRow(range.getFirstRow());
-                Cell firstCell = firstRow == null ? null : firstRow.getCell(range.getFirstColumn());
-                return readCell(firstCell);
-            }
-        }
-        return "";
+        Row row = sheet.getRow(rowIndex);
+        Cell cell = row == null ? null : row.getCell(colIndex);
+        return readCell(cell);
     }
 
     private boolean isMergedCell(Sheet sheet, int rowIndex, int colIndex) {
