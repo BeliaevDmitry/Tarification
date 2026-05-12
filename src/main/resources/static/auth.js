@@ -25,6 +25,48 @@ const TAB_PATHS = {
     '/admin.html': 'USERS'
 };
 
+
+
+const BRANDING_DEFAULTS = {
+    appTitle: 'ГБОУ школа',
+    loginTitle: 'Вход в систему',
+    welcomeText: 'Выберите рабочий контур системы.',
+    crestUrl: '/school-crest.png',
+    fallbackCrestUrl: '/school-crest.png'
+};
+
+let brandingCache = null;
+
+async function loadBranding() {
+    if (brandingCache) return brandingCache;
+    try {
+        const response = await fetch('/api/public/branding');
+        if (!response.ok) {
+            brandingCache = BRANDING_DEFAULTS;
+            return brandingCache;
+        }
+        const data = await response.json();
+        brandingCache = { ...BRANDING_DEFAULTS, ...(data || {}) };
+        return brandingCache;
+    } catch {
+        brandingCache = BRANDING_DEFAULTS;
+        return brandingCache;
+    }
+}
+
+function applyBrandingToDocument(branding) {
+    const appTitle = branding?.appTitle || BRANDING_DEFAULTS.appTitle;
+    const titleParts = String(document.title || '').split(' — ');
+    document.title = titleParts.length > 1
+        ? `${appTitle} — ${titleParts.slice(1).join(' — ')}`
+        : appTitle;
+
+    const favicon = document.querySelector('link[rel="icon"]');
+    if (favicon) {
+        favicon.href = branding?.crestUrl || BRANDING_DEFAULTS.crestUrl;
+    }
+}
+
 const NAV_ORDER = [
     { path: '/buildings.html', tab: 'BUILDINGS', label: 'Корпуса' },
     { path: '/classes.html', tab: 'CLASSES', label: 'Классы' },
@@ -445,6 +487,8 @@ function enrichMainMenu(currentUser) {
 (async function initAuth() {
     try {
         const currentUser = await tarificationApi('/api/auth/me');
+        const branding = await loadBranding();
+        applyBrandingToDocument(branding);
         window.tarificationAuth = currentUser;
         window.tarificationTabPermissions = tabPermissionMap(currentUser);
         if (isAdminPage() && !currentUser.admin) {
