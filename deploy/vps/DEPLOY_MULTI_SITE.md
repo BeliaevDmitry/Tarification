@@ -1,23 +1,32 @@
 # Multi-site deploy commands
 
-## TL;DR — безопасное обновление существующего сервера (legacy `tarification`)
-Если сервер уже работает на контейнерах `tarification-*`, используйте **только этот сценарий**:
+Ниже только базовые сценарии запуска для каждой школы:
+1) запуск с нуля (новый стек);
+2) запуск/обновление с сохранением текущей БД (existing stack).
 
+## Где env-файлы
+Используйте готовые env-файлы:
+- `deploy/vps/env/schadmin7.env`
+- `deploy/vps/env/schadmindemo.env`
+- `deploy/vps/env/schadmin1811.env`
+
+Перед запуском проверьте в выбранном env-файле минимум:
+- `APP_DOMAIN`
+- `STACK_NAME`
+- `SCHOOL_CODE`
+- `POSTGRES_PASSWORD`
+- `DB_PASSWORD`
+- `SMTP_*`
+
+---
+
+## 1) Schadmin (школа 7)
+
+### С нуля (новый стек)
 ```bash
 cd ~/Tarification
 git pull
-
-# 1) обновить только app (без попытки пересоздать postgres/caddy)
-docker compose -p tarification \
-  --env-file deploy/vps/env/schadmin7.env \
-  -f deploy/vps/docker-compose.prod.yml \
-  up -d --build --no-deps app
-
-# 2) если app не видит postgres по DNS, подключить alias в сеть проекта
-# (выполняется один раз)
-docker network connect --alias postgres tarification_default tarification-postgres || true
-
-docker compose -p tarification \
+docker compose -p schadmin7 \
   --env-file deploy/vps/env/schadmin7.env \
   -f deploy/vps/docker-compose.prod.yml \
   up -d --build --no-deps app
@@ -26,151 +35,62 @@ docker compose -p tarification \
 curl -k -sS https://schadmin.ru/api/public/branding
 ```
 
-> Почему так: `up ... app` без `--no-deps` часто пытается пересоздать `postgres`/`caddy` и дает конфликт имен контейнеров.
-
----
-
-## Где лежат env-файлы
-Шаблоны:
-- `deploy/vps/env-presets/schadmin7.env`
-- `deploy/vps/env-presets/schadmindemo.env`
-- `deploy/vps/env-presets/schadmin1811.env`
-
-Рабочие файлы (используйте в `--env-file`):
-- `deploy/vps/env/schadmin7.env`
-- `deploy/vps/env/schadmindemo.env`
-- `deploy/vps/env/schadmin1811.env`
-
-Перед запуском проверьте минимум:
-- `APP_DOMAIN`
-- `STACK_NAME`
-- `SCHOOL_CODE`
-- `POSTGRES_PASSWORD`
-- `DB_PASSWORD`
-- `SMTP_*`
-
-## 1) Schadmin (школа 7)
-### A) Если это уже существующий legacy-стек `tarification` (рекомендуется)
-В `deploy/vps/env/schadmin7.env`:
-- `STACK_NAME=tarification`
-- `SCHOOL_CODE=7`
-- `APP_DOMAIN=schadmin.ru`
-
-Обновление приложения:
+### С сохранением БД (legacy стек `tarification`)
 ```bash
 cd ~/Tarification
 git pull
 docker compose -p tarification \
   --env-file deploy/vps/env/schadmin7.env \
   -f deploy/vps/docker-compose.prod.yml \
-  up -d --build --no-deps app
-```
-
-### B) Новый отдельный стек `schadmin7` (с нуля)
-```bash
-cd ~/Tarification
-docker compose -p schadmin7 \
-  --env-file deploy/vps/env/schadmin7.env \
-  -f deploy/vps/docker-compose.prod.yml \
   up -d --build
 ```
 
+---
+
 ## 2) Schadmin demo
+
+### С нуля (новый стек)
 ```bash
 cd ~/Tarification
+git pull
 docker compose -p schadmindemo \
   --env-file deploy/vps/env/schadmindemo.env \
   -f deploy/vps/docker-compose.prod.yml \
   up -d --build
 ```
 
-## 3) Schadmin 1811
+### С сохранением БД (уже развернутый стек `schadmindemo`)
 ```bash
 cd ~/Tarification
-docker compose -p schadmin1811 \
-  --env-file deploy/vps/env/schadmin1811.env \
-  -f deploy/vps/docker-compose.prod.yml \
-  up -d --build
-```
-
-## Диагностика
-Все команды ниже выполняйте из каталога репозитория:
-```bash
-cd ~/Tarification
-```
-
-Проверка env внутри app:
-```bash
-docker compose -p tarification \
-  --env-file deploy/vps/env/schadmin7.env \
-  -f deploy/vps/docker-compose.prod.yml \
-  exec app sh -lc 'echo SCHOOL_CODE=$SCHOOL_CODE APP_DOMAIN=$APP_DOMAIN STACK_NAME=$STACK_NAME'
-```
-
-Проверка статуса сервисов:
-```bash
-docker compose -p tarification \
-  --env-file deploy/vps/env/schadmin7.env \
+git pull
+docker compose -p schadmindemo \
+  --env-file deploy/vps/env/schadmindemo.env \
   -f deploy/vps/docker-compose.prod.yml \
   ps
 ```
 
-### Ошибка: `Conflict. The container name ... is already in use`
-```bash
-docker ps -a --format "table {{.Names}}\t{{.Status}}" | grep tarification
-```
+---
 
-Если конфликт по `tarification-app`, пересоздайте только app-контейнер:
+## 3) Schadmin 1811
+
+### С нуля (новый стек)
 ```bash
-docker rm -f tarification-app || true
-docker compose -p tarification \
-  --env-file deploy/vps/env/schadmin7.env \
+cd ~/Tarification
+git pull
+docker compose -p schadmin1811 \
+  --env-file deploy/vps/env/schadmin1811.env \
   -f deploy/vps/docker-compose.prod.yml \
   up -d --build --no-deps app
 ```
 
-### Ошибка: `UnknownHostException: postgres`
+### С сохранением БД (уже развернутый стек `schadmin1811`)
 ```bash
-docker network connect --alias postgres tarification_default tarification-postgres || true
-docker compose -p tarification \
-  --env-file deploy/vps/env/schadmin7.env \
+cd ~/Tarification
+git pull
+docker compose -p schadmin1811 \
+  --env-file deploy/vps/env/schadmin1811.env \
   -f deploy/vps/docker-compose.prod.yml \
   up -d --build --no-deps app
-```
-
-### Ошибка: `HTTP 502` на `/api/public/branding`
-Проверьте, что caddy жив и смотрит в нужный app:
-```bash
-docker compose -p tarification --env-file deploy/vps/env/schadmin7.env -f deploy/vps/docker-compose.prod.yml ps
-docker compose -p tarification --env-file deploy/vps/env/schadmin7.env -f deploy/vps/docker-compose.prod.yml logs --tail=200 caddy
-curl -k -v https://schadmin.ru/api/public/branding
-```
-
-
-### Если "пропала" часть базы данных
-Обычно данные не удалены, а приложение подключилось к другой БД/другому docker-volume.
-
-Проверьте, к какому контейнеру postgres подключен app:
-```bash
-docker compose -p tarification --env-file deploy/vps/env/schadmin7.env -f deploy/vps/docker-compose.prod.yml exec app sh -lc 'echo DB_URL=$DB_URL DB_USERNAME=$DB_USERNAME'
-```
-
-Проверьте все postgres-контейнеры и их volume:
-```bash
-docker ps -a --format "table {{.Names}}	{{.Status}}" | grep -E "postgres|tarification|schadmin"
-docker inspect tarification-postgres --format '{{json .Mounts}}'
-```
-
-
-Сравнить данные между `tarification-postgres` и `schadmin7-postgres` (чтобы понять, где "полная" БД):
-```bash
-for c in tarification-postgres schadmin7-postgres; do
-  echo "==== $c ===="
-  docker exec "$c" psql -U tarif_user -d tariffication_db -c "\dt" || true
-  docker exec "$c" psql -U tarif_user -d tariffication_db -Atc "select count(*) from app_user" | sed "s/^/app_user=/" || true
-  docker exec "$c" psql -U tarif_user -d tariffication_db -Atc "select count(*) from manual_load_entry" | sed "s/^/manual_load_entry=/" || true
-  docker exec "$c" psql -U tarif_user -d tariffication_db -Atc "select count(*) from teacher_directory_entry" | sed "s/^/teacher_directory_entry=/" || true
-done
 ```
 
 Если нашли "старую" БД в другом контейнере/volume, сделайте backup перед любыми действиями:
