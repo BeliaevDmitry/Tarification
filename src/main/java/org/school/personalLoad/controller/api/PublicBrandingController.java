@@ -16,9 +16,11 @@ public class PublicBrandingController {
 
     @GetMapping
     public BrandingResponse get(HttpServletRequest request) {
-        String forwardedHost = request.getHeader("X-Forwarded-Host");
-        String host = (forwardedHost == null || forwardedHost.isBlank()) ? request.getServerName() : forwardedHost;
-        String schoolCode = SchoolCodeResolver.resolve(host);
+        String schoolCode = SchoolCodeResolver.resolve(String.join(",",
+                headerOrBlank(request, "X-Forwarded-Host"),
+                headerOrBlank(request, "X-Original-Host"),
+                headerOrBlank(request, "Host"),
+                request.getServerName()));
         String crestUrl = "/school-crests/crest-" + schoolCode + ".png";
         String appTitle = "ГБОУ школа " + schoolCode;
         String loginTitle = "Вход в систему ГБОУ №" + schoolCode;
@@ -31,6 +33,11 @@ public class PublicBrandingController {
                 .loginTitle(loginTitle)
                 .welcomeText(welcome)
                 .build();
+    }
+
+    private String headerOrBlank(HttpServletRequest request, String name) {
+        String value = request.getHeader(name);
+        return value == null ? "" : value;
     }
 
     @Data
