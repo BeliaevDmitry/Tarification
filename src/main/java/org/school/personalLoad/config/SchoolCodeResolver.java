@@ -18,11 +18,13 @@ public final class SchoolCodeResolver {
     }
 
     public static String resolve(String host) {
-        String normalizedHost = normalizeHost(host);
-        if (!normalizedHost.isBlank()) {
-            String byHost = DOMAIN_TO_CODE.get(normalizedHost);
-            if (byHost != null && !byHost.isBlank()) {
-                return byHost;
+        for (String candidate : splitHosts(host)) {
+            String normalizedHost = normalizeHost(candidate);
+            if (!normalizedHost.isBlank()) {
+                String byHost = DOMAIN_TO_CODE.get(normalizedHost);
+                if (byHost != null && !byHost.isBlank()) {
+                    return byHost;
+                }
             }
         }
         return resolve();
@@ -52,14 +54,17 @@ public final class SchoolCodeResolver {
             return "";
         }
         String normalized = host.trim().toLowerCase(Locale.ROOT);
-        int comma = normalized.indexOf(',');
-        if (comma >= 0) {
-            normalized = normalized.substring(0, comma).trim();
-        }
         int colon = normalized.indexOf(':');
         if (colon >= 0) {
             normalized = normalized.substring(0, colon);
         }
         return normalized;
+    }
+
+    private static String[] splitHosts(String host) {
+        if (host == null || host.isBlank()) {
+            return new String[0];
+        }
+        return host.split(",");
     }
 }
