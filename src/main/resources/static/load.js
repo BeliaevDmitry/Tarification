@@ -26,7 +26,15 @@ const ui = {
     nextErrorBtn: document.getElementById("next-error-btn"),
     statsSummary: document.getElementById("load-stats-summary"),
     statsTable: document.getElementById("load-stats-table"),
-    exportStatsBtn: document.getElementById("export-load-stats-btn")
+    exportStatsBtn: document.getElementById("export-load-stats-btn"),
+    subgroupPanel: document.getElementById("subgroup-panel"),
+    subgroupPanelTitle: document.getElementById("subgroup-panel-title"),
+    subgroupPlanHours: document.getElementById("subgroup-plan-hours"),
+    subgroupAssignedHours: document.getElementById("subgroup-assigned-hours"),
+    subgroupPanelErrors: document.getElementById("subgroup-panel-errors"),
+    subgroupList: document.getElementById("subgroup-list"),
+    subgroupSaveBtn: document.getElementById("subgroup-save-btn"),
+    subgroupCloseBtn: document.getElementById("subgroup-panel-close")
 };
 
 let curriculumRows = [];
@@ -60,7 +68,8 @@ const state = {
     classSort: "",
     futurePlansByBuilding: {},
     takeoverContext: null,
-    continuityExpectedByKey: new Map()
+    continuityExpectedByKey: new Map(),
+    subgroupPanelContext: null
 };
 
 const derivedCache = {
@@ -1473,6 +1482,40 @@ function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
     };
 }
 
+function closeSubgroupPanel() {
+    state.subgroupPanelContext = null;
+    if (!ui.subgroupPanel) return;
+    ui.subgroupPanel.hidden = true;
+    ui.subgroupList.innerHTML = "";
+    ui.subgroupPanelErrors.textContent = "";
+}
+
+function openSubgroupPanel(curriculumRow) {
+    const className = curriculumRow.className;
+    const subjectName = curriculumRow.subjectName;
+    const subgroupRows = expandedRowsForSelectedBuilding().filter((row) =>
+        normalizeClassName(row.className) === normalizeClassName(className)
+        && String(row.subjectName || "").trim() === String(subjectName || "").trim()
+        && (row.subgroupRequired || Number(row.__groupCount || 0) > 0)
+    ).sort((a, b) => Number(a.__groupIndex || 0) - Number(b.__groupIndex || 0));
+
+    if (!subgroupRows.length) return;
+    state.subgroupPanelContext = { subgroupRows };
+    ui.subgroupPanelTitle.textContent = `${subjectName} — ${className}`;
+    const total = subgroupRows.reduce((sum, row) => sum + Number(row.plannedHours || 0), 0);
+    ui.subgroupPlanHours.textContent = `Всего по учебному плану: ${total} ч`;
+
+    ui.subgroupList.innerHTML = subgroupRows.map((row, idx) => {
+        const key = apiKeyOfRow(row);
+        const assignedTeacher = String(assignmentsForBuilding(selectedBuilding)[key] || "").trim();
+        return `<div class="card" style="margin-bottom:8px;"><strong>Подгруппа ${idx + 1}</strong><label>Педагог<select data-subgroup-teacher="${esc(key)}"><option value="">—</option>${teacherNames.map((t)=>`<option value="${esc(t)}" ${assignedTeacher===t?"selected":""}>${esc(t)}</option>`).join("")}</select></label><label>Часы<input type="number" value="${esc(Number(row.plannedHours||0))}" readonly></label><div class="muted">Часы подгруппы задаются в учебном плане.</div></div>`;
+    }).join("");
+    const assigned = subgroupRows.filter((row) => String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(row)] || "").trim()).length;
+    ui.subgroupAssignedHours.textContent = `Назначено подгрупп: ${assigned}/${subgroupRows.length}`;
+    ui.subgroupPanelErrors.textContent = "";
+    ui.subgroupPanel.hidden = false;
+}
+
 function onClassCellClick(presentationRow, className) {
     if (!canEditSelectedBuildingLoad()) {
         print({ warning: loadReadOnlyReason() || "Редактирование этой нагрузки недоступно" });
@@ -1492,9 +1535,23 @@ function onClassCellClick(presentationRow, className) {
     const syncRows = rowsToSyncForCurriculumRow(curriculumRow);
     const apiKeys = syncRows.map((row) => apiKeyOfRow(row));
     const currentTeacher = String(assignments[apiKeys.find((key) => String(assignments[key] || "").trim())] || "").trim();
+    const hasSubgroups = Boolean(curriculumRow.subgroupRequired || Number(curriculumRow.__groupCount || 0) > 0);
 
-    if (!currentTeacher) {
+    if (hasSubgroups) {
+        openSubgroupPanel(curriculumRow);
+        return;
+    }
+
+    if (!hasSubgroups && !currentTeacher) {
         apiKeys.forEach((key) => { assignments[key] = targetTeacher; });
+        markDirty();
+        scheduleRenderTable();
+        return;
+    }
+
+    if (!hasSubgroups && currentTeacher === targetTeacher) {
+        apiKeys.forEach((key) => { assignments[key] = ""; });
+        state.takeoverContext = null;
         markDirty();
         scheduleRenderTable();
         return;
@@ -2214,6 +2271,20 @@ function bindEvents() {
     });
 
     ui.cancelLoadBtn.addEventListener("click", () => { state.takeoverContext = null; ui.periodDialog.close(); });
+    ui.subgroupCloseBtn?.addEventListener("click", closeSubgroupPanel);
+    ui.subgroupSaveBtn?.addEventListener("click", () => {
+        const ctx = state.subgroupPanelContext;
+        if (!ctx) return;
+        const assignments = assignmentsForBuilding(selectedBuilding);
+        ctx.subgroupRows.forEach((row) => {
+            const key = apiKeyOfRow(row);
+            const select = ui.subgroupList.querySelector(`[data-subgroup-teacher="${key}"]`);
+            assignments[key] = String(select?.value || "").trim();
+        });
+        markDirty();
+        scheduleRenderTable();
+        closeSubgroupPanel();
+    });
 
 
     ui.refreshLoadBtn.addEventListener("click", () => {
