@@ -1676,3 +1676,16 @@ dialog::backdrop {
     .card { box-shadow: none; border: 1px solid #000; page-break-inside: avoid; }
     #contingent-stats-table { font-size: 11px; }
 }
+
+.load-distribution-layout {
+  display: flex;
+  gap: 12px;
+}
+.subgroup-panel {
+  width: 360px;
+  min-width: 360px;
+  border-left: 1px solid #e2e8f0;
+  padding-left: 12px;
+  overflow: auto;
+}
+.subgroup-panel-head {display:flex;justify-content:space-between;align-items:center;}
