@@ -26,7 +26,14 @@
   }
 
   const b = await loadBranding();
-  document.title = (document.body.classList.contains('login-page') ? b.loginTitle : b.appTitle) || document.title;
+  if (document.body.classList.contains('login-page')) {
+    document.title = b.loginTitle || document.title;
+  } else {
+    const titleParts = String(document.title || '').split(' — ');
+    document.title = titleParts.length > 1
+      ? `${b.appTitle} — ${titleParts.slice(1).join(' — ')}`
+      : (b.appTitle || document.title);
+  }
   setFavicon(b.crestUrl);
 
   const crestImg = document.querySelector('.login-crest');
