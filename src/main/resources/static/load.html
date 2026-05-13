@@ -77,8 +77,21 @@
         <pre id="load-result" class="result-box"></pre>
     </section>
 
-    <section class="card" data-load-pane="distribution" data-requires-edit data-load-edit-area="true">
+    <section class="card load-distribution-layout" data-load-pane="distribution" data-requires-edit data-load-edit-area="true">
         <div class="sheet-wrap"><table class="sheet-table" id="building-load-table"><thead id="building-load-head"></thead><tbody id="building-load-body"></tbody></table></div>
+        <aside id="subgroup-panel" class="subgroup-panel" hidden>
+            <div class="subgroup-panel-head">
+                <h3 id="subgroup-panel-title">Распределение нагрузки</h3>
+                <button type="button" id="subgroup-panel-close">✕</button>
+            </div>
+            <p class="muted" id="subgroup-plan-hours"></p>
+            <p class="muted" id="subgroup-assigned-hours"></p>
+            <div id="subgroup-panel-errors" class="dismissal-note"></div>
+            <div id="subgroup-list"></div>
+            <div class="row">
+                <button type="button" id="subgroup-save-btn" class="clean-save">Сохранить изменения</button>
+            </div>
+        </aside>
     </section>
 
     <section class="card" data-load-pane="stats" style="display:none;">
