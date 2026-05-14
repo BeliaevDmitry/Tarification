@@ -2285,7 +2285,6 @@ function bindEvents() {
         scheduleRenderTable();
         closeSubgroupPanel();
     });
-    });
 
 
     ui.refreshLoadBtn.addEventListener("click", () => {
