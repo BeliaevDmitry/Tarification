@@ -1596,6 +1596,11 @@ function onClassCellClick(presentationRow, className) {
     }
     const curriculumRow = presentationRow.rowsByClass[className];
     if (!curriculumRow) return;
+    const hasSubgroups = Boolean(curriculumRow.subgroupRequired || Number(curriculumRow.__groupCount || 0) > 0);
+    if (hasSubgroups) {
+        openSubgroupPanel(presentationRow, className);
+        return;
+    }
 
     const assignments = assignmentsForBuilding(selectedBuilding);
     const rowMeta = findTeacherRowMeta(presentationRow.subjectKey, presentationRow.teacherRowId);
@@ -1608,12 +1613,6 @@ function onClassCellClick(presentationRow, className) {
     const syncRows = rowsToSyncForCurriculumRow(curriculumRow);
     const apiKeys = syncRows.map((row) => apiKeyOfRow(row));
     const currentTeacher = String(assignments[apiKeys.find((key) => String(assignments[key] || "").trim())] || "").trim();
-    const hasSubgroups = Boolean(curriculumRow.subgroupRequired || Number(curriculumRow.__groupCount || 0) > 0);
-
-    if (hasSubgroups) {
-        openSubgroupPanel(presentationRow, className);
-        return;
-    }
 
     if (!hasSubgroups && !currentTeacher) {
         apiKeys.forEach((key) => { assignments[key] = targetTeacher; });
