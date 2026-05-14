@@ -1683,16 +1683,17 @@ dialog::backdrop {
 }
 .subgroup-panel {
   position: fixed;
-  top: 0;
+  top: 50%;
   right: 0;
-  height: 100vh;
+  height: min(860px, calc(100vh - 48px));
   width: min(420px, 92vw);
   background: #fff;
   border-left: 1px solid #e2e8f0;
+  border-radius: 12px 0 0 12px;
   box-shadow: -8px 0 24px rgba(15, 23, 42, 0.12);
   padding: 16px;
   overflow: auto;
-  z-index: 40;
+  z-index: 60;
 }
 .subgroup-panel-head {display:flex;justify-content:space-between;align-items:center;}
 
@@ -1706,7 +1707,11 @@ dialog::backdrop {
 }
 .subgroup-panel-backdrop.open { opacity: 1; }
 .subgroup-panel {
-  transform: translateX(100%);
+  transform: translate(100%, -50%);
   transition: transform .22s ease;
 }
-.subgroup-panel.open { transform: translateX(0); }
+.subgroup-panel.open { transform: translate(0, -50%); }
+
+.subgroup-item { padding: 12px; }
+.subgroup-title { font-weight: 700; margin-bottom: 8px; }
+.subgroup-line { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }

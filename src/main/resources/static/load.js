@@ -1517,7 +1517,16 @@ function openSubgroupPanel(curriculumRow) {
     ui.subgroupList.innerHTML = subgroupRows.map((row, idx) => {
         const key = apiKeyOfRow(row);
         const assignedTeacher = String(assignmentsForBuilding(selectedBuilding)[key] || "").trim();
-        return `<div class="card" style="margin-bottom:8px;"><strong>Подгруппа ${idx + 1}</strong><label>Педагог<select data-subgroup-teacher="${esc(key)}"><option value="">—</option>${teacherNames.map((t)=>`<option value="${esc(t)}" ${assignedTeacher===t?"selected":""}>${esc(t)}</option>`).join("")}</select></label><label>Часы<input type="number" value="${esc(Number(row.plannedHours||0))}" readonly></label><div class="muted">Часы подгруппы задаются в учебном плане.</div></div>`;
+        return `<div class="card subgroup-item" style="margin-bottom:8px;">
+            <div class="subgroup-title">Подгруппа ${idx + 1}</div>
+            <label class="subgroup-line">Часов в подгруппе
+                <input type="number" value="${esc(Number(row.plannedHours||0))}" readonly>
+            </label>
+            <label class="subgroup-line">Педагог
+                <select data-subgroup-teacher="${esc(key)}"><option value="">—</option>${teacherNames.map((t)=>`<option value="${esc(t)}" ${assignedTeacher===t?"selected":""}>${esc(t)}</option>`).join("")}</select>
+            </label>
+            <div class="muted">Часы подгруппы задаются в учебном плане.</div>
+        </div>`;
     }).join("");
     const assigned = subgroupRows.filter((row) => String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(row)] || "").trim()).length;
     ui.subgroupAssignedHours.textContent = `Назначено подгрупп: ${assigned}/${subgroupRows.length}`;
