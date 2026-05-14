@@ -30,6 +30,7 @@ const ui = {
     subgroupPanel: document.getElementById("subgroup-panel"),
     subgroupPanelBackdrop: document.getElementById("subgroup-panel-backdrop"),
     subgroupPanelTitle: document.getElementById("subgroup-panel-title"),
+    subgroupAcademicYear: document.getElementById("subgroup-academic-year"),
     subgroupPlanHours: document.getElementById("subgroup-plan-hours"),
     subgroupAssignedHours: document.getElementById("subgroup-assigned-hours"),
     subgroupPanelErrors: document.getElementById("subgroup-panel-errors"),
@@ -1444,6 +1445,26 @@ function setPeriodForRow(subjectKey, teacherRowId, fromDate, toDate) {
     markDirty();
 }
 
+function ensureTeacherRowForAssignment(subjectKey, teacherName, fromDate, toDate, studyPeriod = "YEAR") {
+    const rowsMap = teacherRowsForBuilding(selectedBuilding);
+    if (!rowsMap[subjectKey]) rowsMap[subjectKey] = [];
+    const normalized = String(teacherName || "").trim().toLowerCase();
+    if (!normalized) return null;
+    let row = rowsMap[subjectKey].find((entry) => String(entry.teacherName || "").trim().toLowerCase() === normalized);
+    if (!row) {
+        row = rowsMap[subjectKey].find((entry) => !String(entry.teacherName || "").trim());
+    }
+    if (!row) {
+        row = { id: rowId(), teacherName: "", studyPeriod, loadFromDate: fromDate, loadToDate: toDate };
+        rowsMap[subjectKey].push(row);
+    }
+    row.teacherName = teacherName;
+    row.studyPeriod = row.studyPeriod || studyPeriod;
+    row.loadFromDate = fromDate || row.loadFromDate;
+    row.loadToDate = toDate || row.loadToDate;
+    return row;
+}
+
 function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
     const teacher = String(teacherName || "").trim().toLowerCase();
     if (!curriculumRow || !teacher) return null;
@@ -1499,8 +1520,9 @@ function closeSubgroupPanel() {
     }, 220);
 }
 
-function openSubgroupPanel(curriculumRow) {
-    const className = curriculumRow.className;
+function openSubgroupPanel(presentationRow, className) {
+    const curriculumRow = presentationRow?.rowsByClass?.[className];
+    if (!curriculumRow) return;
     const subjectName = curriculumRow.subjectName;
     const subgroupRows = expandedRowsForSelectedBuilding().filter((row) =>
         normalizeClassName(row.className) === normalizeClassName(className)
@@ -1509,14 +1531,19 @@ function openSubgroupPanel(curriculumRow) {
     ).sort((a, b) => Number(a.__groupIndex || 0) - Number(b.__groupIndex || 0));
 
     if (!subgroupRows.length) return;
-    state.subgroupPanelContext = { subgroupRows };
+    const period = defaultPeriodForRows([curriculumRow]);
+    state.subgroupPanelContext = { subgroupRows, subjectKey: presentationRow.subjectKey, rowId: presentationRow.teacherRowId, className, curriculumRow };
     ui.subgroupPanelTitle.textContent = `${subjectName} — ${className}`;
+    ui.subgroupAcademicYear.textContent = `Учебный год: ${currentAcademicYearKey()}`;
     const total = subgroupRows.reduce((sum, row) => sum + Number(row.plannedHours || 0), 0);
     ui.subgroupPlanHours.textContent = `Всего по учебному плану: ${total} ч`;
 
     ui.subgroupList.innerHTML = subgroupRows.map((row, idx) => {
         const key = apiKeyOfRow(row);
         const assignedTeacher = String(assignmentsForBuilding(selectedBuilding)[key] || "").trim();
+        const teacherPeriod = assignedTeacher ? findManualPeriodForClassTeacher(row, assignedTeacher) : null;
+        const from = teacherPeriod?.from || period.from;
+        const to = teacherPeriod?.to || period.to;
         return `<div class="card subgroup-item" style="margin-bottom:8px;">
             <div class="subgroup-title">Подгруппа ${idx + 1}</div>
             <label class="subgroup-line">Часов в подгруппе
@@ -1525,9 +1552,27 @@ function openSubgroupPanel(curriculumRow) {
             <label class="subgroup-line">Педагог
                 <select data-subgroup-teacher="${esc(key)}"><option value="">—</option>${teacherNames.map((t)=>`<option value="${esc(t)}" ${assignedTeacher===t?"selected":""}>${esc(t)}</option>`).join("")}</select>
             </label>
+            <div class="grid">
+                <label>Период с<input type="date" data-subgroup-from="${esc(key)}" value="${esc(from)}"></label>
+                <label>Период по<input type="date" data-subgroup-to="${esc(key)}" value="${esc(to)}"></label>
+            </div>
             <div class="muted">Часы подгруппы задаются в учебном плане.</div>
         </div>`;
     }).join("");
+    ui.subgroupList.querySelectorAll("select[data-subgroup-teacher]").forEach((selectEl) => {
+        selectEl.addEventListener("change", () => {
+            const key = String(selectEl.getAttribute("data-subgroup-teacher") || "");
+            const fromInput = ui.subgroupList.querySelector(`[data-subgroup-from="${key}"]`);
+            const toInput = ui.subgroupList.querySelector(`[data-subgroup-to="${key}"]`);
+            const subgroupRow = subgroupRows.find((row) => apiKeyOfRow(row) === key);
+            if (!fromInput || !toInput || !subgroupRow) return;
+            const teacherName = String(selectEl.value || "").trim();
+            const fallback = defaultPeriodForRows([subgroupRow]);
+            const teacherPeriod = teacherName ? findManualPeriodForClassTeacher(subgroupRow, teacherName) : null;
+            fromInput.value = teacherPeriod?.from || fallback.from;
+            toInput.value = teacherPeriod?.to || fallback.to;
+        });
+    });
     const assigned = subgroupRows.filter((row) => String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(row)] || "").trim()).length;
     ui.subgroupAssignedHours.textContent = `Назначено подгрупп: ${assigned}/${subgroupRows.length}`;
     ui.subgroupPanelErrors.textContent = "";
@@ -1562,7 +1607,7 @@ function onClassCellClick(presentationRow, className) {
     const hasSubgroups = Boolean(curriculumRow.subgroupRequired || Number(curriculumRow.__groupCount || 0) > 0);
 
     if (hasSubgroups) {
-        openSubgroupPanel(curriculumRow);
+        openSubgroupPanel(presentationRow, className);
         return;
     }
 
@@ -2302,10 +2347,45 @@ function bindEvents() {
         const ctx = state.subgroupPanelContext;
         if (!ctx) return;
         const assignments = assignmentsForBuilding(selectedBuilding);
-        ctx.subgroupRows.forEach((row) => {
+        const plans = futurePlansForBuilding(selectedBuilding);
+        const referenceDate = currentDisplayDate();
+        const periodUpdates = new Map();
+        for (const row of ctx.subgroupRows) {
             const key = apiKeyOfRow(row);
             const select = ui.subgroupList.querySelector(`[data-subgroup-teacher="${key}"]`);
-            assignments[key] = String(select?.value || "").trim();
+            const fromInput = ui.subgroupList.querySelector(`[data-subgroup-from="${key}"]`);
+            const toInput = ui.subgroupList.querySelector(`[data-subgroup-to="${key}"]`);
+            const targetTeacher = String(select?.value || "").trim();
+            const fromDate = String(fromInput?.value || "");
+            const toDate = String(toInput?.value || "");
+            if (!fromDate || !toDate || fromDate > toDate) {
+                ui.subgroupPanelErrors.textContent = "Проверьте период в каждой подгруппе";
+                return;
+            }
+            const previousTeacher = String(assignments[key] || "").trim();
+            if (fromDate > referenceDate && previousTeacher && previousTeacher !== targetTeacher) {
+                plans[key] = {
+                    targetTeacher,
+                    previousTeacher,
+                    fromDate,
+                    toDate,
+                    subjectKey: ctx.subjectKey,
+                    plannedHours: Number(row.plannedHours || 0),
+                    className: ctx.className,
+                    educationLevel: row.educationLevel,
+                    subjectName: row.subjectName
+                };
+            } else {
+                assignments[key] = targetTeacher;
+                delete plans[key];
+            }
+            if (targetTeacher) {
+                const rowMeta = ensureTeacherRowForAssignment(ctx.subjectKey, targetTeacher, fromDate, toDate, rowStudyPeriod(row));
+                if (rowMeta) periodUpdates.set(rowMeta.id, { fromDate, toDate });
+            }
+        }
+        periodUpdates.forEach((period, rowIdValue) => {
+            setPeriodForRow(ctx.subjectKey, rowIdValue, period.fromDate, period.toDate);
         });
         markDirty();
         scheduleRenderTable();
