@@ -1682,10 +1682,31 @@ dialog::backdrop {
   gap: 12px;
 }
 .subgroup-panel {
-  width: 360px;
-  min-width: 360px;
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: min(420px, 92vw);
+  background: #fff;
   border-left: 1px solid #e2e8f0;
-  padding-left: 12px;
+  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.12);
+  padding: 16px;
   overflow: auto;
+  z-index: 40;
 }
 .subgroup-panel-head {display:flex;justify-content:space-between;align-items:center;}
+
+.subgroup-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.28);
+  opacity: 0;
+  transition: opacity .2s ease;
+  z-index: 35;
+}
+.subgroup-panel-backdrop.open { opacity: 1; }
+.subgroup-panel {
+  transform: translateX(100%);
+  transition: transform .22s ease;
+}
+.subgroup-panel.open { transform: translateX(0); }

@@ -28,6 +28,7 @@ const ui = {
     statsTable: document.getElementById("load-stats-table"),
     exportStatsBtn: document.getElementById("export-load-stats-btn"),
     subgroupPanel: document.getElementById("subgroup-panel"),
+    subgroupPanelBackdrop: document.getElementById("subgroup-panel-backdrop"),
     subgroupPanelTitle: document.getElementById("subgroup-panel-title"),
     subgroupPlanHours: document.getElementById("subgroup-plan-hours"),
     subgroupAssignedHours: document.getElementById("subgroup-assigned-hours"),
@@ -1150,7 +1151,7 @@ function buildPresentationRows() {
 
             const subjectRowsFlat = Object.values(info.rowsByClassAll).flat();
             const periodTotals = classPeriodHours(subjectRowsFlat);
-            let displayName = info.groupIndex ? `${info.subjectName} ${info.groupIndex}Г` : info.subjectName;
+            let displayName = info.subjectName;
             if (periodTotals.year <= 0 && periodTotals.h1 > 0 && periodTotals.h2 <= 0) displayName = `${displayName} (1П)`;
             else if (periodTotals.year <= 0 && periodTotals.h2 > 0 && periodTotals.h1 <= 0) displayName = `${displayName} (2П)`;
 
@@ -1485,9 +1486,17 @@ function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
 function closeSubgroupPanel() {
     state.subgroupPanelContext = null;
     if (!ui.subgroupPanel) return;
-    ui.subgroupPanel.hidden = true;
-    ui.subgroupList.innerHTML = "";
-    ui.subgroupPanelErrors.textContent = "";
+    ui.subgroupPanel.classList.remove("open");
+    ui.subgroupPanel.setAttribute("aria-hidden", "true");
+    ui.subgroupPanelBackdrop?.classList.remove("open");
+    setTimeout(() => {
+        if (!ui.subgroupPanel.classList.contains("open")) {
+            ui.subgroupPanel.hidden = true;
+            if (ui.subgroupPanelBackdrop) ui.subgroupPanelBackdrop.hidden = true;
+            ui.subgroupList.innerHTML = "";
+            ui.subgroupPanelErrors.textContent = "";
+        }
+    }, 220);
 }
 
 function openSubgroupPanel(curriculumRow) {
@@ -1514,6 +1523,12 @@ function openSubgroupPanel(curriculumRow) {
     ui.subgroupAssignedHours.textContent = `Назначено подгрупп: ${assigned}/${subgroupRows.length}`;
     ui.subgroupPanelErrors.textContent = "";
     ui.subgroupPanel.hidden = false;
+    if (ui.subgroupPanelBackdrop) ui.subgroupPanelBackdrop.hidden = false;
+    requestAnimationFrame(() => {
+        ui.subgroupPanel.classList.add("open");
+        ui.subgroupPanel.setAttribute("aria-hidden", "false");
+        ui.subgroupPanelBackdrop?.classList.add("open");
+    });
 }
 
 function onClassCellClick(presentationRow, className) {
@@ -2272,6 +2287,8 @@ function bindEvents() {
 
     ui.cancelLoadBtn.addEventListener("click", () => { state.takeoverContext = null; ui.periodDialog.close(); });
     ui.subgroupCloseBtn?.addEventListener("click", closeSubgroupPanel);
+    ui.subgroupPanelBackdrop?.addEventListener("click", closeSubgroupPanel);
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape" && state.subgroupPanelContext) closeSubgroupPanel(); });
     ui.subgroupSaveBtn?.addEventListener("click", () => {
         const ctx = state.subgroupPanelContext;
         if (!ctx) return;
