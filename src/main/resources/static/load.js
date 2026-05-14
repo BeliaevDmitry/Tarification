@@ -33,6 +33,8 @@ const ui = {
     subgroupAcademicYear: document.getElementById("subgroup-academic-year"),
     subgroupPlanHours: document.getElementById("subgroup-plan-hours"),
     subgroupAssignedHours: document.getElementById("subgroup-assigned-hours"),
+    subgroupLoadFromDate: document.getElementById("subgroup-load-from-date"),
+    subgroupLoadToDate: document.getElementById("subgroup-load-to-date"),
     subgroupPanelErrors: document.getElementById("subgroup-panel-errors"),
     subgroupList: document.getElementById("subgroup-list"),
     subgroupSaveBtn: document.getElementById("subgroup-save-btn"),
@@ -1575,6 +1577,8 @@ function openSubgroupPanel(presentationRow, className) {
     });
     const assigned = subgroupRows.filter((row) => String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(row)] || "").trim()).length;
     ui.subgroupAssignedHours.textContent = `Назначено подгрупп: ${assigned}/${subgroupRows.length}`;
+    ui.subgroupLoadFromDate.value = classTeacherPeriod?.from || rowMeta?.loadFromDate || period.from;
+    ui.subgroupLoadToDate.value = classTeacherPeriod?.to || rowMeta?.loadToDate || period.to;
     ui.subgroupPanelErrors.textContent = "";
     ui.subgroupPanel.hidden = false;
     if (ui.subgroupPanelBackdrop) ui.subgroupPanelBackdrop.hidden = false;
@@ -2346,6 +2350,12 @@ function bindEvents() {
     ui.subgroupSaveBtn?.addEventListener("click", () => {
         const ctx = state.subgroupPanelContext;
         if (!ctx) return;
+        const fromDate = String(ui.subgroupLoadFromDate?.value || "");
+        const toDate = String(ui.subgroupLoadToDate?.value || "");
+        if (!fromDate || !toDate || fromDate > toDate) {
+            ui.subgroupPanelErrors.textContent = "Период задан некорректно";
+            return;
+        }
         const assignments = assignmentsForBuilding(selectedBuilding);
         const plans = futurePlansForBuilding(selectedBuilding);
         const referenceDate = currentDisplayDate();
@@ -2387,6 +2397,7 @@ function bindEvents() {
         periodUpdates.forEach((period, rowIdValue) => {
             setPeriodForRow(ctx.subjectKey, rowIdValue, period.fromDate, period.toDate);
         });
+        setPeriodForRow(ctx.subjectKey, ctx.rowId, fromDate, toDate);
         markDirty();
         scheduleRenderTable();
         closeSubgroupPanel();
