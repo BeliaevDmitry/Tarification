@@ -1676,3 +1676,42 @@ dialog::backdrop {
     .card { box-shadow: none; border: 1px solid #000; page-break-inside: avoid; }
     #contingent-stats-table { font-size: 11px; }
 }
+
+.load-distribution-layout {
+  display: flex;
+  gap: 12px;
+}
+.subgroup-panel {
+  position: fixed;
+  top: 50%;
+  right: 0;
+  height: min(860px, calc(100vh - 48px));
+  width: min(420px, 92vw);
+  background: #fff;
+  border-left: 1px solid #e2e8f0;
+  border-radius: 12px 0 0 12px;
+  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.12);
+  padding: 16px;
+  overflow: auto;
+  z-index: 60;
+}
+.subgroup-panel-head {display:flex;justify-content:space-between;align-items:center;}
+
+.subgroup-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.28);
+  opacity: 0;
+  transition: opacity .2s ease;
+  z-index: 35;
+}
+.subgroup-panel-backdrop.open { opacity: 1; }
+.subgroup-panel {
+  transform: translate(100%, -50%);
+  transition: transform .22s ease;
+}
+.subgroup-panel.open { transform: translate(0, -50%); }
+
+.subgroup-item { padding: 12px; }
+.subgroup-title { font-weight: 700; margin-bottom: 8px; }
+.subgroup-line { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
