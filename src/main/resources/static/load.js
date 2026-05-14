@@ -32,6 +32,8 @@ const ui = {
     subgroupPanelTitle: document.getElementById("subgroup-panel-title"),
     subgroupPlanHours: document.getElementById("subgroup-plan-hours"),
     subgroupAssignedHours: document.getElementById("subgroup-assigned-hours"),
+    subgroupLoadFromDate: document.getElementById("subgroup-load-from-date"),
+    subgroupLoadToDate: document.getElementById("subgroup-load-to-date"),
     subgroupPanelErrors: document.getElementById("subgroup-panel-errors"),
     subgroupList: document.getElementById("subgroup-list"),
     subgroupSaveBtn: document.getElementById("subgroup-save-btn"),
@@ -1499,8 +1501,9 @@ function closeSubgroupPanel() {
     }, 220);
 }
 
-function openSubgroupPanel(curriculumRow) {
-    const className = curriculumRow.className;
+function openSubgroupPanel(presentationRow, className) {
+    const curriculumRow = presentationRow?.rowsByClass?.[className];
+    if (!curriculumRow) return;
     const subjectName = curriculumRow.subjectName;
     const subgroupRows = expandedRowsForSelectedBuilding().filter((row) =>
         normalizeClassName(row.className) === normalizeClassName(className)
@@ -1509,7 +1512,11 @@ function openSubgroupPanel(curriculumRow) {
     ).sort((a, b) => Number(a.__groupIndex || 0) - Number(b.__groupIndex || 0));
 
     if (!subgroupRows.length) return;
-    state.subgroupPanelContext = { subgroupRows };
+    const rowMeta = findTeacherRowMeta(presentationRow.subjectKey, presentationRow.teacherRowId);
+    const period = defaultPeriodForRows([curriculumRow]);
+    const rowTeacher = String(rowMeta?.teacherName || presentationRow.teacherName || "").trim();
+    const classTeacherPeriod = rowTeacher ? findManualPeriodForClassTeacher(curriculumRow, rowTeacher) : null;
+    state.subgroupPanelContext = { subgroupRows, subjectKey: presentationRow.subjectKey, rowId: presentationRow.teacherRowId, className, curriculumRow };
     ui.subgroupPanelTitle.textContent = `${subjectName} — ${className}`;
     const total = subgroupRows.reduce((sum, row) => sum + Number(row.plannedHours || 0), 0);
     ui.subgroupPlanHours.textContent = `Всего по учебному плану: ${total} ч`;
@@ -1530,6 +1537,8 @@ function openSubgroupPanel(curriculumRow) {
     }).join("");
     const assigned = subgroupRows.filter((row) => String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(row)] || "").trim()).length;
     ui.subgroupAssignedHours.textContent = `Назначено подгрупп: ${assigned}/${subgroupRows.length}`;
+    ui.subgroupLoadFromDate.value = classTeacherPeriod?.from || rowMeta?.loadFromDate || period.from;
+    ui.subgroupLoadToDate.value = classTeacherPeriod?.to || rowMeta?.loadToDate || period.to;
     ui.subgroupPanelErrors.textContent = "";
     ui.subgroupPanel.hidden = false;
     if (ui.subgroupPanelBackdrop) ui.subgroupPanelBackdrop.hidden = false;
@@ -1562,7 +1571,7 @@ function onClassCellClick(presentationRow, className) {
     const hasSubgroups = Boolean(curriculumRow.subgroupRequired || Number(curriculumRow.__groupCount || 0) > 0);
 
     if (hasSubgroups) {
-        openSubgroupPanel(curriculumRow);
+        openSubgroupPanel(presentationRow, className);
         return;
     }
 
@@ -2301,12 +2310,38 @@ function bindEvents() {
     ui.subgroupSaveBtn?.addEventListener("click", () => {
         const ctx = state.subgroupPanelContext;
         if (!ctx) return;
+        const fromDate = String(ui.subgroupLoadFromDate?.value || "");
+        const toDate = String(ui.subgroupLoadToDate?.value || "");
+        if (!fromDate || !toDate || fromDate > toDate) {
+            ui.subgroupPanelErrors.textContent = "Период задан некорректно";
+            return;
+        }
         const assignments = assignmentsForBuilding(selectedBuilding);
+        const plans = futurePlansForBuilding(selectedBuilding);
+        const referenceDate = currentDisplayDate();
         ctx.subgroupRows.forEach((row) => {
             const key = apiKeyOfRow(row);
             const select = ui.subgroupList.querySelector(`[data-subgroup-teacher="${key}"]`);
-            assignments[key] = String(select?.value || "").trim();
+            const targetTeacher = String(select?.value || "").trim();
+            const previousTeacher = String(assignments[key] || "").trim();
+            if (fromDate > referenceDate && previousTeacher && previousTeacher !== targetTeacher) {
+                plans[key] = {
+                    targetTeacher,
+                    previousTeacher,
+                    fromDate,
+                    toDate,
+                    subjectKey: ctx.subjectKey,
+                    plannedHours: Number(row.plannedHours || 0),
+                    className: ctx.className,
+                    educationLevel: row.educationLevel,
+                    subjectName: row.subjectName
+                };
+            } else {
+                assignments[key] = targetTeacher;
+                delete plans[key];
+            }
         });
+        setPeriodForRow(ctx.subjectKey, ctx.rowId, fromDate, toDate);
         markDirty();
         scheduleRenderTable();
         closeSubgroupPanel();
