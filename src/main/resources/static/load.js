@@ -1552,15 +1552,16 @@ function openSubgroupPanel(presentationRow, className) {
         row.subgroupRequired || Number(row.__groupCount || 0) > 0 || Number(row.__groupIndex || 0) > 0
     ) : candidateRows).sort((a, b) => Number(a.__groupIndex || 0) - Number(b.__groupIndex || 0));
 
-    if (!subgroupRows.length) return;
+    const effectiveSubgroupRows = subgroupRows.length ? subgroupRows : classRows;
+    if (!effectiveSubgroupRows.length) return;
     const period = defaultPeriodForRows([curriculumRow]);
-    state.subgroupPanelContext = { subgroupRows, subjectKey: presentationRow.subjectKey, rowId: presentationRow.teacherRowId, className, curriculumRow };
+    state.subgroupPanelContext = { subgroupRows: effectiveSubgroupRows, subjectKey: presentationRow.subjectKey, rowId: presentationRow.teacherRowId, className, curriculumRow };
     ui.subgroupPanelTitle.textContent = `${subjectName} — ${className}`;
     ui.subgroupAcademicYear.textContent = `Учебный год: ${currentAcademicYearKey()}`;
-    const total = subgroupRows.reduce((sum, row) => sum + Number(row.plannedHours || 0), 0);
+    const total = effectiveSubgroupRows.reduce((sum, row) => sum + Number(row.plannedHours || 0), 0);
     ui.subgroupPlanHours.textContent = `Всего по учебному плану: ${total} ч`;
 
-    ui.subgroupList.innerHTML = subgroupRows.map((row, idx) => {
+    ui.subgroupList.innerHTML = effectiveSubgroupRows.map((row, idx) => {
         const key = apiKeyOfRow(row);
         const assignedTeacher = String(assignmentsForBuilding(selectedBuilding)[key] || "").trim();
         const teacherPeriod = assignedTeacher ? findManualPeriodForClassTeacher(row, assignedTeacher) : null;
@@ -1586,7 +1587,7 @@ function openSubgroupPanel(presentationRow, className) {
             const key = String(selectEl.getAttribute("data-subgroup-teacher") || "");
             const fromInput = ui.subgroupList.querySelector(`[data-subgroup-from="${key}"]`);
             const toInput = ui.subgroupList.querySelector(`[data-subgroup-to="${key}"]`);
-            const subgroupRow = subgroupRows.find((row) => apiKeyOfRow(row) === key);
+            const subgroupRow = effectiveSubgroupRows.find((row) => apiKeyOfRow(row) === key);
             if (!fromInput || !toInput || !subgroupRow) return;
             const teacherName = String(selectEl.value || "").trim();
             const fallback = defaultPeriodForRows([subgroupRow]);
@@ -1595,10 +1596,8 @@ function openSubgroupPanel(presentationRow, className) {
             toInput.value = teacherPeriod?.to || fallback.to;
         });
     });
-    const assigned = subgroupRows.filter((row) => String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(row)] || "").trim()).length;
-    ui.subgroupAssignedHours.textContent = `Назначено подгрупп: ${assigned}/${subgroupRows.length}`;
-    ui.subgroupLoadFromDate.value = classTeacherPeriod?.from || rowMeta?.loadFromDate || period.from;
-    ui.subgroupLoadToDate.value = classTeacherPeriod?.to || rowMeta?.loadToDate || period.to;
+    const assigned = effectiveSubgroupRows.filter((row) => String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(row)] || "").trim()).length;
+    ui.subgroupAssignedHours.textContent = `Назначено подгрупп: ${assigned}/${effectiveSubgroupRows.length}`;
     ui.subgroupPanelErrors.textContent = "";
     ui.subgroupPanel.hidden = false;
     if (ui.subgroupPanelBackdrop) ui.subgroupPanelBackdrop.hidden = false;
@@ -1973,8 +1972,13 @@ function renderTable() {
             const rowIdValue = button.dataset.rowId;
             const className = button.dataset.className;
             const row = presentationRows.find((entry) => entry.subjectKey === subjectKey && entry.teacherRowId === rowIdValue);
-            if (!row) return;
-            onClassCellClick(row, className);
+            if (row) {
+                onClassCellClick(row, className);
+                return;
+            }
+            const fallbackRow = presentationRows.find((entry) => entry.subjectKey === subjectKey);
+            if (!fallbackRow) return;
+            onClassCellClick(fallbackRow, className);
         });
     });
 
