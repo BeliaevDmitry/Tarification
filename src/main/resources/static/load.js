@@ -1504,14 +1504,14 @@ function openSubgroupDrawer(presentationRow, className, classRows) {
         const teacher = String(assignments[apiKey] || '').trim();
         const period = defaultPeriodForRows([item]);
         const manualPeriod = findManualPeriodForClassTeacher(item, teacher);
-        return `<div class="subgroup-line"><strong>${esc(subgroupName)}</strong> · ${esc(Number(item.plannedHours || 0))} ч
-<label>Педагог</label><input type="text" list="teacher-list-shared" data-subgroup-api-key="${esc(apiKey)}" value="${esc(teacher)}" placeholder="ФИО педагога">
-<div class="subgroup-period-grid"><label>С</label><input type="date" data-subgroup-from="1" data-subgroup-api-key="${esc(apiKey)}" value="${esc(manualPeriod?.from || period.from || '')}"><label>По</label><input type="date" data-subgroup-to="1" data-subgroup-api-key="${esc(apiKey)}" value="${esc(manualPeriod?.to || period.to || '')}"></div></div>`;
+        return `<div class="subgroup-line" data-subgroup-idx="${idx}"><strong>${esc(subgroupName)}</strong> · ${esc(Number(item.plannedHours || 0))} ч
+<label>Педагог</label><input type="text" list="teacher-list-shared" data-subgroup-teacher="1" value="${esc(teacher)}" placeholder="ФИО педагога">
+<div class="subgroup-period-grid"><label>С</label><input type="date" data-subgroup-from="1" value="${esc(manualPeriod?.from || period.from || '')}"><label>По</label><input type="date" data-subgroup-to="1" value="${esc(manualPeriod?.to || period.to || '')}"></div></div>`;
     }).join('') + '<datalist id="teacher-list-shared"></datalist>';
     const sharedList = ui.subgroupDrawerBody.querySelector('#teacher-list-shared');
     if (sharedList) {
         updateDatalistOptions(sharedList, '');
-        ui.subgroupDrawerBody.querySelectorAll('[data-subgroup-api-key]').forEach((input) => {
+        ui.subgroupDrawerBody.querySelectorAll('[data-subgroup-teacher]').forEach((input) => {
             input.addEventListener('input', () => updateDatalistOptions(sharedList, input.value || ''));
         });
     }
@@ -1532,13 +1532,17 @@ function applySubgroupDrawerAssignments() {
     const assignments = assignmentsForBuilding(selectedBuilding);
     const plans = futurePlansForBuilding(selectedBuilding);
     const referenceDate = currentDisplayDate();
-    const inputs = Array.from(ui.subgroupDrawerBody.querySelectorAll('input[type="text"][data-subgroup-api-key]'));
+    const lines = Array.from(ui.subgroupDrawerBody.querySelectorAll('.subgroup-line[data-subgroup-idx]'));
     const appliedByApiKey = new Map();
-    for (const input of inputs) {
-        const raw = String(input.value || '').trim();
-        const apiKey = input.dataset.subgroupApiKey;
-        const fromInput = ui.subgroupDrawerBody.querySelector(`[data-subgroup-from][data-subgroup-api-key="${cssEscape(apiKey)}"]`);
-        const toInput = ui.subgroupDrawerBody.querySelector(`[data-subgroup-to][data-subgroup-api-key="${cssEscape(apiKey)}"]`);
+    for (const line of lines) {
+        const idx = Number(line.dataset.subgroupIdx || -1);
+        const row = (ctx.rows || [])[idx];
+        if (!row) continue;
+        const apiKey = apiKeyOfRow(row);
+        const input = line.querySelector('input[type="text"][data-subgroup-teacher]');
+        const raw = String(input?.value || '').trim();
+        const fromInput = line.querySelector('[data-subgroup-from]');
+        const toInput = line.querySelector('[data-subgroup-to]');
         const fromDate = String(fromInput?.value || '');
         const toDate = String(toInput?.value || '');
         if ((fromDate && toDate) && fromDate > toDate) { print({ warning: 'Период задан некорректно' }); return; }
@@ -1616,8 +1620,16 @@ function subgroupRowsForClass(presentationRow, className) {
         const hasGroup = Number(row.__groupCount || 0) > 0 || Number(row.__groupIndex || 0) > 0;
         return hasGroup;
     });
-    if (classRows.length > direct.length) return classRows;
-    return direct;
+    const ordered = (classRows.length > direct.length ? classRows : direct)
+        .slice()
+        .sort((a, b) => Number(a.__groupIndex || 0) - Number(b.__groupIndex || 0));
+    const seen = new Set();
+    return ordered.filter((row) => {
+        const key = apiKeyOfRow(row);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
 }
 
 function onClassCellClick(presentationRow, className) {
