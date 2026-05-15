@@ -1584,6 +1584,15 @@ function applySubgroupDrawerAssignments() {
         if (!teachersBySubject.has(subjectKey)) teachersBySubject.set(subjectKey, new Set());
         teachersBySubject.get(subjectKey).add(teacher);
     });
+    ctxSubjectRows.forEach((row) => {
+        const apiKey = apiKeyOfRow(row);
+        const subjectKey = subjectKeyOfRow(row);
+        const plan = plans[apiKey];
+        if (!plan) return;
+        if (!teachersBySubject.has(subjectKey)) teachersBySubject.set(subjectKey, new Set());
+        if (plan.previousTeacher) teachersBySubject.get(subjectKey).add(String(plan.previousTeacher).trim());
+        if (plan.targetTeacher) teachersBySubject.get(subjectKey).add(String(plan.targetTeacher).trim());
+    });
     teachersBySubject.forEach((teachers, subjectKey) => {
         if (!rowsMap[subjectKey]) rowsMap[subjectKey] = [];
         const subjectRows = ctxSubjectRows.filter((r) => subjectKeyOfRow(r) === subjectKey);
