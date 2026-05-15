@@ -872,11 +872,13 @@ function prefillFromManualLoad(referenceDate = referencePlanningDate()) {
     const allApiRows = expandCurriculumRows(curriculumRows);
 
     const matchByManual = (entry) => {
+        const entryGroup = String(entry.groupNameEducationalPlan || "").trim().toUpperCase();
         const candidates = allApiRows.filter((row) =>
             normalizeBuildingCode(row.numberSchoolBuilding) === normalizeBuildingCode(entry.numberSchoolBuilding)
             && row.className === entry.className
             && row.subjectName === entry.subjectName
             && row.educationLevel === entry.educationLevel
+            && String(row.__groupIndex ? `ГРУППА ${row.__groupIndex}` : "").trim().toUpperCase() === entryGroup
         );
         if (!candidates.length) return null;
         const effectivePeriod = manualEntryStudyPeriod(entry);
