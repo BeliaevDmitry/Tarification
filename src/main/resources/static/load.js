@@ -2055,8 +2055,8 @@ async function saveBuildingLoad() {
         const teacherRow = (rowsMap[subjectKeyOfRow(row)] || []).find((r) => String(r.teacherName || "").trim() === fioTeacher);
         const period = defaultLoadPeriod(row.className, rowStudyPeriod(row));
         const manualPeriod = findManualPeriodForClassTeacher(row, fioTeacher);
-        const rowLoadFromDate = manualPeriod?.from || period.from || teacherRow?.loadFromDate;
-        let rowLoadToDate = manualPeriod?.to || period.to || teacherRow?.loadToDate;
+        const rowLoadFromDate = teacherRow?.loadFromDate || manualPeriod?.from || period.from;
+        let rowLoadToDate = teacherRow?.loadToDate || manualPeriod?.to || period.to;
         const plan = plans[apiKey];
         if (plan && plan.previousTeacher === fioTeacher) {
             const cut = dayBefore(plan.fromDate);
@@ -2390,6 +2390,7 @@ function bindEvents() {
         const plans = futurePlansForBuilding(selectedBuilding);
         const referenceDate = currentDisplayDate();
         const periodUpdates = new Map();
+        const selectedEntries = [];
         for (const row of ctx.subgroupRows) {
             const key = apiKeyOfRow(row);
             const select = ui.subgroupList.querySelector(`[data-subgroup-teacher="${key}"]`);
@@ -2402,26 +2403,55 @@ function bindEvents() {
                 ui.subgroupPanelErrors.textContent = "Проверьте период в каждой подгруппе";
                 return;
             }
-            const previousTeacher = String(assignments[key] || "").trim();
-            if (fromDate > referenceDate && previousTeacher && previousTeacher !== targetTeacher) {
-                plans[key] = {
-                    targetTeacher,
-                    previousTeacher,
-                    fromDate,
-                    toDate,
-                    subjectKey: ctx.subjectKey,
-                    plannedHours: Number(row.plannedHours || 0),
-                    className: ctx.className,
-                    educationLevel: row.educationLevel,
-                    subjectName: row.subjectName
-                };
-            } else {
-                assignments[key] = targetTeacher;
-                delete plans[key];
+            selectedEntries.push({ row, key, targetTeacher, fromDate, toDate });
+        }
+
+        const nonEmptyTeachers = Array.from(new Set(selectedEntries.map((entry) => entry.targetTeacher).filter(Boolean)));
+        const singleTeacherForAll = nonEmptyTeachers.length === 1 && selectedEntries.every((entry) => !entry.targetTeacher || entry.targetTeacher === nonEmptyTeachers[0]);
+
+        if (singleTeacherForAll && nonEmptyTeachers.length === 1) {
+            const teacherName = nonEmptyTeachers[0];
+            selectedEntries.forEach((entry) => {
+                assignments[entry.key] = teacherName;
+                delete plans[entry.key];
+            });
+            const teacherRowMeta = ensureTeacherRowForAssignment(
+                ctx.subjectKey,
+                teacherName,
+                selectedEntries[0].fromDate,
+                selectedEntries[0].toDate,
+                rowStudyPeriod(selectedEntries[0].row)
+            );
+            if (teacherRowMeta) {
+                periodUpdates.set(teacherRowMeta.id, {
+                    fromDate: selectedEntries[0].fromDate,
+                    toDate: selectedEntries[0].toDate
+                });
             }
-            if (targetTeacher) {
-                const rowMeta = ensureTeacherRowForAssignment(ctx.subjectKey, targetTeacher, fromDate, toDate, rowStudyPeriod(row));
-                if (rowMeta) periodUpdates.set(rowMeta.id, { fromDate, toDate });
+        } else {
+            for (const entry of selectedEntries) {
+                const { row, key, targetTeacher, fromDate, toDate } = entry;
+                const previousTeacher = String(assignments[key] || "").trim();
+                if (fromDate > referenceDate && previousTeacher && previousTeacher !== targetTeacher) {
+                    plans[key] = {
+                        targetTeacher,
+                        previousTeacher,
+                        fromDate,
+                        toDate,
+                        subjectKey: ctx.subjectKey,
+                        plannedHours: Number(row.plannedHours || 0),
+                        className: ctx.className,
+                        educationLevel: row.educationLevel,
+                        subjectName: row.subjectName
+                    };
+                } else {
+                    assignments[key] = targetTeacher;
+                    delete plans[key];
+                }
+                if (targetTeacher) {
+                    const rowMeta = ensureTeacherRowForAssignment(ctx.subjectKey, targetTeacher, fromDate, toDate, rowStudyPeriod(row));
+                    if (rowMeta) periodUpdates.set(rowMeta.id, { fromDate, toDate });
+                }
             }
         }
         periodUpdates.forEach((period, rowIdValue) => {
