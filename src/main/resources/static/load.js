@@ -26,7 +26,13 @@ const ui = {
     nextErrorBtn: document.getElementById("next-error-btn"),
     statsSummary: document.getElementById("load-stats-summary"),
     statsTable: document.getElementById("load-stats-table"),
-    exportStatsBtn: document.getElementById("export-load-stats-btn")
+    exportStatsBtn: document.getElementById("export-load-stats-btn"),
+    subgroupDrawer: document.getElementById("subgroup-drawer"),
+    subgroupDrawerBackdrop: document.getElementById("subgroup-drawer-backdrop"),
+    subgroupDrawerTitle: document.getElementById("subgroup-drawer-title"),
+    subgroupDrawerBody: document.getElementById("subgroup-drawer-body"),
+    subgroupDrawerClose: document.getElementById("subgroup-drawer-close"),
+    subgroupDrawerApply: document.getElementById("subgroup-drawer-apply")
 };
 
 let curriculumRows = [];
@@ -60,7 +66,8 @@ const state = {
     classSort: "",
     futurePlansByBuilding: {},
     takeoverContext: null,
-    continuityExpectedByKey: new Map()
+    continuityExpectedByKey: new Map(),
+    subgroupDrawerContext: null
 };
 
 const derivedCache = {
@@ -338,6 +345,10 @@ function markDirty(flag=true) {
     ui.saveBuildingBtn.classList.toggle("clean-save", !flag);
 }
 
+
+function escAttr(value) {
+    return String(value || "").replace(/\"/g, "&quot;");
+}
 function esc(value) {
     return String(value ?? "")
         .replaceAll("&", "&amp;")
@@ -1473,6 +1484,82 @@ function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
     };
 }
 
+
+function openSubgroupDrawer(presentationRow, className, classRows) {
+    if (!ui.subgroupDrawer || !ui.subgroupDrawerBody) return;
+    const assignments = assignmentsForBuilding(selectedBuilding);
+    state.subgroupDrawerContext = { subjectKey: presentationRow.subjectKey, className, rows: classRows, subjectName: presentationRow.subjectName };
+    if (ui.subgroupDrawerTitle) ui.subgroupDrawerTitle.textContent = `${className} — ${presentationRow.subjectName}`;
+    ui.subgroupDrawerBody.innerHTML = classRows.map((item) => {
+        const apiKey = apiKeyOfRow(item);
+        const subgroupName = item.__groupIndex ? `Подгруппа ${item.__groupIndex}` : 'Группа';
+        const teacher = String(assignments[apiKey] || '').trim();
+        const period = defaultPeriodForRows([item]);
+        const manualPeriod = findManualPeriodForClassTeacher(item, teacher);
+        return `<div class="subgroup-line"><strong>${esc(subgroupName)}</strong> · ${esc(Number(item.plannedHours || 0))} ч
+<label>Педагог</label><input type="text" list="teacher-list-shared" data-subgroup-api-key="${esc(apiKey)}" value="${esc(teacher)}" placeholder="ФИО педагога">
+<div class="subgroup-period-grid"><label>С</label><input type="date" data-subgroup-from="1" data-subgroup-key="${escAttr(apiKey)}" value="${esc(manualPeriod?.from || period.from || '')}"><label>По</label><input type="date" data-subgroup-to="1" data-subgroup-key="${escAttr(apiKey)}" value="${esc(manualPeriod?.to || period.to || '')}"></div></div>`;
+    }).join('') + '<datalist id="teacher-list-shared"></datalist>';
+    const sharedList = ui.subgroupDrawerBody.querySelector('#teacher-list-shared');
+    updateDatalistOptions(sharedList, '');
+    ui.subgroupDrawerBody.querySelectorAll('[data-subgroup-api-key]').forEach((input) => {
+        input.addEventListener('input', () => updateDatalistOptions(sharedList, input.value || ''));
+    });
+    ui.subgroupDrawerBackdrop.hidden = false;
+    ui.subgroupDrawer.setAttribute('aria-hidden', 'false');
+    ui.subgroupDrawer.classList.add('open');
+}
+function closeSubgroupDrawer() {
+    if (!ui.subgroupDrawer) return;
+    ui.subgroupDrawer.classList.remove('open');
+    ui.subgroupDrawer.setAttribute('aria-hidden', 'true');
+    if (ui.subgroupDrawerBackdrop) ui.subgroupDrawerBackdrop.hidden = true;
+    state.subgroupDrawerContext = null;
+}
+function applySubgroupDrawerAssignments() {
+    const ctx = state.subgroupDrawerContext;
+    if (!ctx) return;
+    const assignments = assignmentsForBuilding(selectedBuilding);
+    const plans = futurePlansForBuilding(selectedBuilding);
+    const referenceDate = currentDisplayDate();
+    const inputs = Array.from(ui.subgroupDrawerBody.querySelectorAll('[data-subgroup-api-key]'));
+    for (const input of inputs) {
+        const raw = String(input.value || '').trim();
+        const apiKey = input.dataset.subgroupApiKey;
+        const fromInput = ui.subgroupDrawerBody.querySelector(`[data-subgroup-from][data-subgroup-key="${escAttr(apiKey)}"]`) || ui.subgroupDrawerBody.querySelector(`[data-subgroup-from]`);
+        const toInput = ui.subgroupDrawerBody.querySelector(`[data-subgroup-to][data-subgroup-key="${escAttr(apiKey)}"]`) || ui.subgroupDrawerBody.querySelector(`[data-subgroup-to]`);
+        const fromDate = String(fromInput?.value || '');
+        const toDate = String(toInput?.value || '');
+        if ((fromDate && toDate) && fromDate > toDate) { print({ warning: 'Период задан некорректно' }); return; }
+
+        const currentTeacher = String(assignments[apiKey] || '').trim();
+        if (!raw) { assignments[apiKey] = ''; delete plans[apiKey]; continue; }
+        const exact = teacherNames.find((name) => name.toLowerCase() === raw.toLowerCase());
+        if (!exact) { print({ warning: `Педагог «${raw}» не найден` }); return; }
+
+        if (!currentTeacher || currentTeacher.toLowerCase() === exact.toLowerCase() || !fromDate || fromDate <= referenceDate) {
+            assignments[apiKey] = exact;
+            delete plans[apiKey];
+        } else {
+            const row = (ctx.rows || []).find((r) => apiKeyOfRow(r) === apiKey);
+            plans[apiKey] = {
+                targetTeacher: exact,
+                previousTeacher: currentTeacher,
+                fromDate,
+                toDate,
+                subjectKey: ctx.subjectKey,
+                plannedHours: Number(row?.plannedHours || 0),
+                className: ctx.className,
+                educationLevel: row?.educationLevel,
+                subjectName: ctx.subjectName
+            };
+        }
+    }
+    markDirty();
+    closeSubgroupDrawer();
+    scheduleRenderTable();
+}
+
 function onClassCellClick(presentationRow, className) {
     if (!canEditSelectedBuildingLoad()) {
         print({ warning: loadReadOnlyReason() || "Редактирование этой нагрузки недоступно" });
@@ -1483,6 +1570,12 @@ function onClassCellClick(presentationRow, className) {
 
     const assignments = assignmentsForBuilding(selectedBuilding);
     const rowMeta = findTeacherRowMeta(presentationRow.subjectKey, presentationRow.teacherRowId);
+    const classRows = presentationRow.rowsByClassAll?.[className] || [curriculumRow];
+    if (classRows.some((item) => Number(item.__groupCount || 0) > 0 || item.__groupIndex)) {
+        openSubgroupDrawer(presentationRow, className, classRows);
+        return;
+    }
+
     const targetTeacher = String(rowMeta?.teacherName || presentationRow.teacherName || "").trim();
     if (!targetTeacher) {
         print({ warning: "Сначала заполните ФИО педагога в строке" });
@@ -2214,6 +2307,9 @@ function bindEvents() {
     });
 
     ui.cancelLoadBtn.addEventListener("click", () => { state.takeoverContext = null; ui.periodDialog.close(); });
+    ui.subgroupDrawerClose?.addEventListener("click", closeSubgroupDrawer);
+    ui.subgroupDrawerBackdrop?.addEventListener("click", closeSubgroupDrawer);
+    ui.subgroupDrawerApply?.addEventListener("click", applySubgroupDrawerAssignments);
 
 
     ui.refreshLoadBtn.addEventListener("click", () => {
