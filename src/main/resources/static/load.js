@@ -1570,9 +1570,9 @@ function onClassCellClick(presentationRow, className) {
 
     const assignments = assignmentsForBuilding(selectedBuilding);
     const rowMeta = findTeacherRowMeta(presentationRow.subjectKey, presentationRow.teacherRowId);
-    const classRows = presentationRow.rowsByClassAll?.[className] || [curriculumRow];
-    if (classRows.some((item) => Number(item.__groupCount || 0) > 0 || item.__groupIndex)) {
-        openSubgroupDrawer(presentationRow, className, classRows);
+    const classRowsForCell = presentationRow.rowsByClassAll?.[className] || [curriculumRow];
+    if (classRowsForCell.some((item) => Number(item.__groupCount || 0) > 0 || item.__groupIndex)) {
+        openSubgroupDrawer(presentationRow, className, classRowsForCell);
         return;
     }
 
