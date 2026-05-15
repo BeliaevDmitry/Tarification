@@ -1533,6 +1533,7 @@ function applySubgroupDrawerAssignments() {
     const plans = futurePlansForBuilding(selectedBuilding);
     const referenceDate = currentDisplayDate();
     const inputs = Array.from(ui.subgroupDrawerBody.querySelectorAll('input[type="text"][data-subgroup-api-key]'));
+    const appliedByApiKey = new Map();
     for (const input of inputs) {
         const raw = String(input.value || '').trim();
         const apiKey = input.dataset.subgroupApiKey;
@@ -1564,6 +1565,7 @@ function applySubgroupDrawerAssignments() {
                 subjectName: ctx.subjectName
             };
         }
+        appliedByApiKey.set(apiKey, { teacherName: exact, fromDate, toDate });
     }
 
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
@@ -1578,11 +1580,23 @@ function applySubgroupDrawerAssignments() {
     });
     teachersBySubject.forEach((teachers, subjectKey) => {
         if (!rowsMap[subjectKey]) rowsMap[subjectKey] = [];
-        const period = defaultPeriodForRows(ctxSubjectRows.filter((r) => subjectKeyOfRow(r) === subjectKey));
+        const subjectRows = ctxSubjectRows.filter((r) => subjectKeyOfRow(r) === subjectKey);
+        const period = defaultPeriodForRows(subjectRows);
         teachers.forEach((teacherName) => {
-            const exists = rowsMap[subjectKey].some((row) => String(row.teacherName || '').trim().toLowerCase() === teacherName.toLowerCase());
-            if (!exists) {
-                rowsMap[subjectKey].push({ id: rowId(), teacherName, studyPeriod: period.studyPeriod, loadFromDate: period.from, loadToDate: period.to });
+            const firstRow = subjectRows.find((r) => {
+                const apiKey = apiKeyOfRow(r);
+                return String(appliedByApiKey.get(apiKey)?.teacherName || '').trim().toLowerCase() === teacherName.toLowerCase();
+            });
+            const apiKey = firstRow ? apiKeyOfRow(firstRow) : null;
+            const applied = apiKey ? appliedByApiKey.get(apiKey) : null;
+            const fromDate = applied?.fromDate || period.from;
+            const toDate = applied?.toDate || period.to;
+            const existingRow = rowsMap[subjectKey].find((row) => String(row.teacherName || '').trim().toLowerCase() === teacherName.toLowerCase());
+            if (!existingRow) {
+                rowsMap[subjectKey].push({ id: rowId(), teacherName, studyPeriod: period.studyPeriod, loadFromDate: fromDate, loadToDate: toDate });
+            } else {
+                existingRow.loadFromDate = fromDate || existingRow.loadFromDate;
+                existingRow.loadToDate = toDate || existingRow.loadToDate;
             }
         });
     });
