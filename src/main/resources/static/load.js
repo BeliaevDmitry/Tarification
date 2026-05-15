@@ -26,7 +26,13 @@ const ui = {
     nextErrorBtn: document.getElementById("next-error-btn"),
     statsSummary: document.getElementById("load-stats-summary"),
     statsTable: document.getElementById("load-stats-table"),
-    exportStatsBtn: document.getElementById("export-load-stats-btn")
+    exportStatsBtn: document.getElementById("export-load-stats-btn"),
+    subgroupDrawer: document.getElementById("subgroup-drawer"),
+    subgroupDrawerBackdrop: document.getElementById("subgroup-drawer-backdrop"),
+    subgroupDrawerTitle: document.getElementById("subgroup-drawer-title"),
+    subgroupDrawerBody: document.getElementById("subgroup-drawer-body"),
+    subgroupDrawerClose: document.getElementById("subgroup-drawer-close"),
+    subgroupDrawerApply: document.getElementById("subgroup-drawer-apply")
 };
 
 let curriculumRows = [];
@@ -60,7 +66,8 @@ const state = {
     classSort: "",
     futurePlansByBuilding: {},
     takeoverContext: null,
-    continuityExpectedByKey: new Map()
+    continuityExpectedByKey: new Map(),
+    subgroupDrawerContext: null
 };
 
 const derivedCache = {
@@ -336,6 +343,13 @@ function markDirty(flag=true) {
     invalidateTeacherHourIndexesCache();
     ui.saveBuildingBtn.classList.toggle("dirty-save", flag);
     ui.saveBuildingBtn.classList.toggle("clean-save", !flag);
+}
+
+
+
+function cssEscape(value) {
+    if (window.CSS && typeof window.CSS.escape === "function") return window.CSS.escape(String(value || ""));
+    return String(value || "").replace(/[\"']/g, "\\$&");
 }
 
 function esc(value) {
@@ -858,11 +872,13 @@ function prefillFromManualLoad(referenceDate = referencePlanningDate()) {
     const allApiRows = expandCurriculumRows(curriculumRows);
 
     const matchByManual = (entry) => {
+        const entryGroup = String(entry.groupNameEducationalPlan || "").trim().toUpperCase();
         const candidates = allApiRows.filter((row) =>
             normalizeBuildingCode(row.numberSchoolBuilding) === normalizeBuildingCode(entry.numberSchoolBuilding)
             && row.className === entry.className
             && row.subjectName === entry.subjectName
             && row.educationLevel === entry.educationLevel
+            && String(row.__groupIndex ? `ГРУППА ${row.__groupIndex}` : "").trim().toUpperCase() === entryGroup
         );
         if (!candidates.length) return null;
         const effectivePeriod = manualEntryStudyPeriod(entry);
@@ -1473,6 +1489,151 @@ function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
     };
 }
 
+
+function openSubgroupDrawer(presentationRow, className, classRows) {
+    if (!ui.subgroupDrawer || !ui.subgroupDrawerBody) return;
+    const assignments = assignmentsForBuilding(selectedBuilding);
+    state.subgroupDrawerContext = {
+        subjectKey: presentationRow.subjectKey,
+        className,
+        rows: classRows,
+        subjectName: presentationRow.subjectName
+    };
+    if (ui.subgroupDrawerTitle) ui.subgroupDrawerTitle.textContent = `${className} — ${presentationRow.subjectName}`;
+    ui.subgroupDrawerBody.innerHTML = classRows.map((item, idx) => {
+        const apiKey = apiKeyOfRow(item);
+        const subgroupName = item.__groupIndex ? `Подгруппа ${item.__groupIndex}` : `Подгруппа ${idx + 1}`;
+        const teacher = String(assignments[apiKey] || '').trim();
+        const period = defaultPeriodForRows([item]);
+        const manualPeriod = findManualPeriodForClassTeacher(item, teacher);
+        return `<div class="subgroup-line" data-subgroup-idx="${idx}"><strong>${esc(subgroupName)}</strong> · ${esc(Number(item.plannedHours || 0))} ч
+<label>Педагог</label><input type="text" list="teacher-list-shared" data-subgroup-teacher="1" value="${esc(teacher)}" placeholder="ФИО педагога">
+<div class="subgroup-period-grid"><label>С</label><input type="date" data-subgroup-from="1" value="${esc(manualPeriod?.from || period.from || '')}"><label>По</label><input type="date" data-subgroup-to="1" value="${esc(manualPeriod?.to || period.to || '')}"></div></div>`;
+    }).join('') + '<datalist id="teacher-list-shared"></datalist>';
+    const sharedList = ui.subgroupDrawerBody.querySelector('#teacher-list-shared');
+    if (sharedList) {
+        updateDatalistOptions(sharedList, '');
+        ui.subgroupDrawerBody.querySelectorAll('[data-subgroup-teacher]').forEach((input) => {
+            input.addEventListener('input', () => updateDatalistOptions(sharedList, input.value || ''));
+        });
+    }
+    if (ui.subgroupDrawerBackdrop) ui.subgroupDrawerBackdrop.hidden = false;
+    ui.subgroupDrawer.setAttribute('aria-hidden', 'false');
+    ui.subgroupDrawer.classList.add('open');
+}
+function closeSubgroupDrawer() {
+    if (!ui.subgroupDrawer) return;
+    ui.subgroupDrawer.classList.remove('open');
+    ui.subgroupDrawer.setAttribute('aria-hidden', 'true');
+    if (ui.subgroupDrawerBackdrop) ui.subgroupDrawerBackdrop.hidden = true;
+    state.subgroupDrawerContext = null;
+}
+function applySubgroupDrawerAssignments() {
+    const ctx = state.subgroupDrawerContext;
+    if (!ctx) return;
+    const assignments = assignmentsForBuilding(selectedBuilding);
+    const plans = futurePlansForBuilding(selectedBuilding);
+    const referenceDate = currentDisplayDate();
+    const lines = Array.from(ui.subgroupDrawerBody.querySelectorAll('.subgroup-line[data-subgroup-idx]'));
+    const appliedByApiKey = new Map();
+    for (const line of lines) {
+        const idx = Number(line.dataset.subgroupIdx || -1);
+        const row = (ctx.rows || [])[idx];
+        if (!row) continue;
+        const apiKey = apiKeyOfRow(row);
+        const input = line.querySelector('input[type="text"][data-subgroup-teacher]');
+        const raw = String(input?.value || '').trim();
+        const fromInput = line.querySelector('[data-subgroup-from]');
+        const toInput = line.querySelector('[data-subgroup-to]');
+        const fromDate = String(fromInput?.value || '');
+        const toDate = String(toInput?.value || '');
+        if ((fromDate && toDate) && fromDate > toDate) { print({ warning: 'Период задан некорректно' }); return; }
+
+        const currentTeacher = String(assignments[apiKey] || '').trim();
+        if (!raw) { assignments[apiKey] = ''; delete plans[apiKey]; continue; }
+        const exact = teacherNames.find((name) => name.toLowerCase() === raw.toLowerCase());
+        if (!exact) { print({ warning: `Педагог «${raw}» не найден` }); return; }
+
+        if (!currentTeacher || currentTeacher.toLowerCase() === exact.toLowerCase() || !fromDate || fromDate <= referenceDate) {
+            assignments[apiKey] = exact;
+            delete plans[apiKey];
+        } else {
+            const row = (ctx.rows || []).find((r) => apiKeyOfRow(r) === apiKey);
+            plans[apiKey] = {
+                targetTeacher: exact,
+                previousTeacher: currentTeacher,
+                fromDate,
+                toDate,
+                subjectKey: ctx.subjectKey,
+                plannedHours: Number(row?.plannedHours || 0),
+                className: ctx.className,
+                educationLevel: row?.educationLevel,
+                subjectName: ctx.subjectName
+            };
+        }
+        appliedByApiKey.set(apiKey, { teacherName: exact, fromDate, toDate });
+    }
+
+    const rowsMap = teacherRowsForBuilding(selectedBuilding);
+    const ctxSubjectRows = ctx.rows || [];
+    const teachersBySubject = new Map();
+    ctxSubjectRows.forEach((row) => {
+        const subjectKey = subjectKeyOfRow(row);
+        const teacher = String(assignments[apiKeyOfRow(row)] || '').trim();
+        if (!teacher) return;
+        if (!teachersBySubject.has(subjectKey)) teachersBySubject.set(subjectKey, new Set());
+        teachersBySubject.get(subjectKey).add(teacher);
+    });
+    teachersBySubject.forEach((teachers, subjectKey) => {
+        if (!rowsMap[subjectKey]) rowsMap[subjectKey] = [];
+        const subjectRows = ctxSubjectRows.filter((r) => subjectKeyOfRow(r) === subjectKey);
+        const period = defaultPeriodForRows(subjectRows);
+        teachers.forEach((teacherName) => {
+            const firstRow = subjectRows.find((r) => {
+                const apiKey = apiKeyOfRow(r);
+                return String(appliedByApiKey.get(apiKey)?.teacherName || '').trim().toLowerCase() === teacherName.toLowerCase();
+            });
+            const apiKey = firstRow ? apiKeyOfRow(firstRow) : null;
+            const applied = apiKey ? appliedByApiKey.get(apiKey) : null;
+            const fromDate = applied?.fromDate || period.from;
+            const toDate = applied?.toDate || period.to;
+            const existingRow = rowsMap[subjectKey].find((row) => String(row.teacherName || '').trim().toLowerCase() === teacherName.toLowerCase());
+            if (!existingRow) {
+                rowsMap[subjectKey].push({ id: rowId(), teacherName, studyPeriod: period.studyPeriod, loadFromDate: fromDate, loadToDate: toDate });
+            } else {
+                existingRow.loadFromDate = fromDate || existingRow.loadFromDate;
+                existingRow.loadToDate = toDate || existingRow.loadToDate;
+            }
+        });
+    });
+
+    markDirty();
+    closeSubgroupDrawer();
+    scheduleRenderTable();
+}
+
+
+function subgroupRowsForClass(presentationRow, className) {
+    const direct = presentationRow.rowsByClassAll?.[className] || [];
+    const classRows = expandedRowsForSelectedBuilding().filter((row) => {
+        if (normalizeClassName(row.className) !== normalizeClassName(className)) return false;
+        if (String(row.subjectName || '').trim() !== String(presentationRow.subjectName || '').trim()) return false;
+        if (String(row.curriculumPart || '') !== String(presentationRow.curriculumPart || '')) return false;
+        const hasGroup = Number(row.__groupCount || 0) > 0 || Number(row.__groupIndex || 0) > 0;
+        return hasGroup;
+    });
+    const ordered = (classRows.length > direct.length ? classRows : direct)
+        .slice()
+        .sort((a, b) => Number(a.__groupIndex || 0) - Number(b.__groupIndex || 0));
+    const seen = new Set();
+    return ordered.filter((row) => {
+        const key = apiKeyOfRow(row);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
 function onClassCellClick(presentationRow, className) {
     if (!canEditSelectedBuildingLoad()) {
         print({ warning: loadReadOnlyReason() || "Редактирование этой нагрузки недоступно" });
@@ -1483,9 +1644,21 @@ function onClassCellClick(presentationRow, className) {
 
     const assignments = assignmentsForBuilding(selectedBuilding);
     const rowMeta = findTeacherRowMeta(presentationRow.subjectKey, presentationRow.teacherRowId);
+    const classRowsForCell = subgroupRowsForClass(presentationRow, className);
+    if (classRowsForCell.some((item) => Number(item.__groupCount || 0) > 0 || item.__groupIndex)) {
+        openSubgroupDrawer(presentationRow, className, classRowsForCell);
+        return;
+    }
+
     const targetTeacher = String(rowMeta?.teacherName || presentationRow.teacherName || "").trim();
     if (!targetTeacher) {
         print({ warning: "Сначала заполните ФИО педагога в строке" });
+        return;
+    }
+
+    const classRows = presentationRow.rowsByClassAll?.[className] || [curriculumRow];
+    if (classRows.some((item) => Number(item.__groupCount || 0) > 0 || item.__groupIndex)) {
+        openSubgroupDrawer(presentationRow, className, classRows);
         return;
     }
 
@@ -2214,6 +2387,9 @@ function bindEvents() {
     });
 
     ui.cancelLoadBtn.addEventListener("click", () => { state.takeoverContext = null; ui.periodDialog.close(); });
+    ui.subgroupDrawerClose?.addEventListener("click", closeSubgroupDrawer);
+    ui.subgroupDrawerBackdrop?.addEventListener("click", closeSubgroupDrawer);
+    ui.subgroupDrawerApply?.addEventListener("click", applySubgroupDrawerAssignments);
 
 
     ui.refreshLoadBtn.addEventListener("click", () => {
