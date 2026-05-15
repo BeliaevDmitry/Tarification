@@ -445,11 +445,11 @@ function classAssignedUnassignedText(rows = [], rowTeacher = "", buildingCode = 
         }
     });
     if (!teacherNormalized) {
-        return unassigned > 0 ? `нераспр: ${unassigned}` : "0";
+        return unassigned > 0 ? `${unassigned}` : "0";
     }
     if (assigned <= 0 && unassigned <= 0) return "0";
     if (unassigned <= 0) return `${assigned}`;
-    return `${assigned} / нераспр: ${unassigned}`;
+    return `${assigned} / ${unassigned}`;
 }
 
 function formatSplitHours(pair) {
