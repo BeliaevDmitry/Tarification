@@ -1467,6 +1467,21 @@ function ensureTeacherRowForAssignment(subjectKey, teacherName, fromDate, toDate
     return row;
 }
 
+function trimRedundantEmptyTeacherRows(subjectKey) {
+    const rowsMap = teacherRowsForBuilding(selectedBuilding);
+    const rows = rowsMap[subjectKey] || [];
+    const filledCount = rows.filter((entry) => String(entry.teacherName || "").trim()).length;
+    if (filledCount <= 0) return;
+    const emptyIndexes = rows
+        .map((entry, idx) => ({ idx, empty: !String(entry.teacherName || "").trim() }))
+        .filter((entry) => entry.empty)
+        .map((entry) => entry.idx);
+    if (!emptyIndexes.length) return;
+    for (let i = emptyIndexes.length - 1; i >= 0; i -= 1) {
+        rows.splice(emptyIndexes[i], 1);
+    }
+}
+
 function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
     const teacher = String(teacherName || "").trim().toLowerCase();
     if (!curriculumRow || !teacher) return null;
@@ -1529,7 +1544,7 @@ function openSubgroupPanel(presentationRow, className) {
     const subgroupRows = expandedRowsForSelectedBuilding().filter((row) =>
         normalizeClassName(row.className) === normalizeClassName(className)
         && String(row.subjectName || "").trim() === String(subjectName || "").trim()
-        && (row.subgroupRequired || Number(row.__groupCount || 0) > 0)
+        && (row.subgroupRequired || Number(row.__groupCount || 0) > 0 || Number(row.__groupIndex || 0) > 0)
     ).sort((a, b) => Number(a.__groupIndex || 0) - Number(b.__groupIndex || 0));
 
     if (!subgroupRows.length) return;
@@ -1596,7 +1611,10 @@ function onClassCellClick(presentationRow, className) {
     }
     const curriculumRow = presentationRow.rowsByClass[className];
     if (!curriculumRow) return;
-    const hasSubgroups = Boolean(curriculumRow.subgroupRequired || Number(curriculumRow.__groupCount || 0) > 0);
+    const classRows = presentationRow.rowsByClassAll?.[className] || [curriculumRow];
+    const hasSubgroups = classRows.some((row) =>
+        Boolean(row?.subgroupRequired || Number(row?.__groupCount || 0) > 0 || Number(row?.__groupIndex || 0) > 0)
+    );
     if (hasSubgroups) {
         openSubgroupPanel(presentationRow, className);
         return;
@@ -2396,7 +2414,7 @@ function bindEvents() {
         periodUpdates.forEach((period, rowIdValue) => {
             setPeriodForRow(ctx.subjectKey, rowIdValue, period.fromDate, period.toDate);
         });
-        setPeriodForRow(ctx.subjectKey, ctx.rowId, fromDate, toDate);
+        trimRedundantEmptyTeacherRows(ctx.subjectKey);
         markDirty();
         scheduleRenderTable();
         closeSubgroupPanel();
