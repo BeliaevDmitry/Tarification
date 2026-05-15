@@ -1532,7 +1532,7 @@ function applySubgroupDrawerAssignments() {
     const assignments = assignmentsForBuilding(selectedBuilding);
     const plans = futurePlansForBuilding(selectedBuilding);
     const referenceDate = currentDisplayDate();
-    const inputs = Array.from(ui.subgroupDrawerBody.querySelectorAll('[data-subgroup-api-key]'));
+    const inputs = Array.from(ui.subgroupDrawerBody.querySelectorAll('input[type="text"][data-subgroup-api-key]'));
     for (const input of inputs) {
         const raw = String(input.value || '').trim();
         const apiKey = input.dataset.subgroupApiKey;
@@ -1565,6 +1565,28 @@ function applySubgroupDrawerAssignments() {
             };
         }
     }
+
+    const rowsMap = teacherRowsForBuilding(selectedBuilding);
+    const ctxSubjectRows = ctx.rows || [];
+    const teachersBySubject = new Map();
+    ctxSubjectRows.forEach((row) => {
+        const subjectKey = subjectKeyOfRow(row);
+        const teacher = String(assignments[apiKeyOfRow(row)] || '').trim();
+        if (!teacher) return;
+        if (!teachersBySubject.has(subjectKey)) teachersBySubject.set(subjectKey, new Set());
+        teachersBySubject.get(subjectKey).add(teacher);
+    });
+    teachersBySubject.forEach((teachers, subjectKey) => {
+        if (!rowsMap[subjectKey]) rowsMap[subjectKey] = [];
+        const period = defaultPeriodForRows(ctxSubjectRows.filter((r) => subjectKeyOfRow(r) === subjectKey));
+        teachers.forEach((teacherName) => {
+            const exists = rowsMap[subjectKey].some((row) => String(row.teacherName || '').trim().toLowerCase() === teacherName.toLowerCase());
+            if (!exists) {
+                rowsMap[subjectKey].push({ id: rowId(), teacherName, studyPeriod: period.studyPeriod, loadFromDate: period.from, loadToDate: period.to });
+            }
+        });
+    });
+
     markDirty();
     closeSubgroupDrawer();
     scheduleRenderTable();
