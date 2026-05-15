@@ -1554,7 +1554,10 @@ function openSubgroupPanel(presentationRow, className) {
 
     const effectiveSubgroupRows = subgroupRows.length ? subgroupRows : classRows;
     if (!effectiveSubgroupRows.length) return;
+    const rowMeta = findTeacherRowMeta(presentationRow.subjectKey, presentationRow.teacherRowId);
     const period = defaultPeriodForRows([curriculumRow]);
+    const defaultFrom = rowMeta?.loadFromDate || period.from;
+    const defaultTo = rowMeta?.loadToDate || period.to;
     state.subgroupPanelContext = { subgroupRows: effectiveSubgroupRows, subjectKey: presentationRow.subjectKey, rowId: presentationRow.teacherRowId, className, curriculumRow };
     ui.subgroupPanelTitle.textContent = `${subjectName} — ${className}`;
     ui.subgroupAcademicYear.textContent = `Учебный год: ${currentAcademicYearKey()}`;
@@ -1564,9 +1567,8 @@ function openSubgroupPanel(presentationRow, className) {
     ui.subgroupList.innerHTML = effectiveSubgroupRows.map((row, idx) => {
         const key = apiKeyOfRow(row);
         const assignedTeacher = String(assignmentsForBuilding(selectedBuilding)[key] || "").trim();
-        const teacherPeriod = assignedTeacher ? findManualPeriodForClassTeacher(row, assignedTeacher) : null;
-        const from = teacherPeriod?.from || period.from;
-        const to = teacherPeriod?.to || period.to;
+        const from = defaultFrom;
+        const to = defaultTo;
         return `<div class="card subgroup-item" style="margin-bottom:8px;">
             <div class="subgroup-title">Подгруппа ${idx + 1}</div>
             <label class="subgroup-line">Часов в подгруппе
@@ -1591,9 +1593,10 @@ function openSubgroupPanel(presentationRow, className) {
             if (!fromInput || !toInput || !subgroupRow) return;
             const teacherName = String(selectEl.value || "").trim();
             const fallback = defaultPeriodForRows([subgroupRow]);
-            const teacherPeriod = teacherName ? findManualPeriodForClassTeacher(subgroupRow, teacherName) : null;
-            fromInput.value = teacherPeriod?.from || fallback.from;
-            toInput.value = teacherPeriod?.to || fallback.to;
+            if (!teacherName) {
+                fromInput.value = defaultFrom || fallback.from;
+                toInput.value = defaultTo || fallback.to;
+            }
         });
     });
     const assigned = effectiveSubgroupRows.filter((row) => String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(row)] || "").trim()).length;
