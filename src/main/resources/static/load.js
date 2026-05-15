@@ -1592,6 +1592,20 @@ function applySubgroupDrawerAssignments() {
     scheduleRenderTable();
 }
 
+
+function subgroupRowsForClass(presentationRow, className) {
+    const direct = presentationRow.rowsByClassAll?.[className] || [];
+    const classRows = expandedRowsForSelectedBuilding().filter((row) => {
+        if (normalizeClassName(row.className) !== normalizeClassName(className)) return false;
+        if (String(row.subjectName || '').trim() !== String(presentationRow.subjectName || '').trim()) return false;
+        if (String(row.curriculumPart || '') !== String(presentationRow.curriculumPart || '')) return false;
+        const hasGroup = Number(row.__groupCount || 0) > 0 || Number(row.__groupIndex || 0) > 0;
+        return hasGroup;
+    });
+    if (classRows.length > direct.length) return classRows;
+    return direct;
+}
+
 function onClassCellClick(presentationRow, className) {
     if (!canEditSelectedBuildingLoad()) {
         print({ warning: loadReadOnlyReason() || "Редактирование этой нагрузки недоступно" });
@@ -1602,7 +1616,7 @@ function onClassCellClick(presentationRow, className) {
 
     const assignments = assignmentsForBuilding(selectedBuilding);
     const rowMeta = findTeacherRowMeta(presentationRow.subjectKey, presentationRow.teacherRowId);
-    const classRowsForCell = presentationRow.rowsByClassAll?.[className] || [curriculumRow];
+    const classRowsForCell = subgroupRowsForClass(presentationRow, className);
     if (classRowsForCell.some((item) => Number(item.__groupCount || 0) > 0 || item.__groupIndex)) {
         openSubgroupDrawer(presentationRow, className, classRowsForCell);
         return;
