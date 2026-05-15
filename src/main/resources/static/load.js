@@ -30,6 +30,7 @@ const ui = {
     subgroupPanel: document.getElementById("subgroup-panel"),
     subgroupPanelBackdrop: document.getElementById("subgroup-panel-backdrop"),
     subgroupPanelTitle: document.getElementById("subgroup-panel-title"),
+    subgroupAcademicYear: document.getElementById("subgroup-academic-year"),
     subgroupPlanHours: document.getElementById("subgroup-plan-hours"),
     subgroupAssignedHours: document.getElementById("subgroup-assigned-hours"),
     subgroupPanelErrors: document.getElementById("subgroup-panel-errors"),
@@ -1444,6 +1445,41 @@ function setPeriodForRow(subjectKey, teacherRowId, fromDate, toDate) {
     markDirty();
 }
 
+function ensureTeacherRowForAssignment(subjectKey, teacherName, fromDate, toDate, studyPeriod = "YEAR") {
+    const rowsMap = teacherRowsForBuilding(selectedBuilding);
+    if (!rowsMap[subjectKey]) rowsMap[subjectKey] = [];
+    const normalized = String(teacherName || "").trim().toLowerCase();
+    if (!normalized) return null;
+    let row = rowsMap[subjectKey].find((entry) => String(entry.teacherName || "").trim().toLowerCase() === normalized);
+    if (!row) {
+        row = rowsMap[subjectKey].find((entry) => !String(entry.teacherName || "").trim());
+    }
+    if (!row) {
+        row = { id: rowId(), teacherName: "", studyPeriod, loadFromDate: fromDate, loadToDate: toDate };
+        rowsMap[subjectKey].push(row);
+    }
+    row.teacherName = teacherName;
+    row.studyPeriod = row.studyPeriod || studyPeriod;
+    row.loadFromDate = fromDate || row.loadFromDate;
+    row.loadToDate = toDate || row.loadToDate;
+    return row;
+}
+
+function trimRedundantEmptyTeacherRows(subjectKey) {
+    const rowsMap = teacherRowsForBuilding(selectedBuilding);
+    const rows = rowsMap[subjectKey] || [];
+    const filledCount = rows.filter((entry) => String(entry.teacherName || "").trim()).length;
+    if (filledCount <= 0) return;
+    const emptyIndexes = rows
+        .map((entry, idx) => ({ idx, empty: !String(entry.teacherName || "").trim() }))
+        .filter((entry) => entry.empty)
+        .map((entry) => entry.idx);
+    if (!emptyIndexes.length) return;
+    for (let i = emptyIndexes.length - 1; i >= 0; i -= 1) {
+        rows.splice(emptyIndexes[i], 1);
+    }
+}
+
 function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
     const teacher = String(teacherName || "").trim().toLowerCase();
     if (!curriculumRow || !teacher) return null;
@@ -1499,24 +1535,48 @@ function closeSubgroupPanel() {
     }, 220);
 }
 
-function openSubgroupPanel(curriculumRow) {
-    const className = curriculumRow.className;
+function openSubgroupPanel(presentationRow, className) {
+    const curriculumRow = presentationRow?.rowsByClass?.[className];
+    if (!curriculumRow) return;
     const subjectName = curriculumRow.subjectName;
-    const subgroupRows = expandedRowsForSelectedBuilding().filter((row) =>
+    const classRows = presentationRow?.rowsByClassAll?.[className] || [curriculumRow];
+    const candidateRows = expandedRowsForSelectedBuilding().filter((row) =>
         normalizeClassName(row.className) === normalizeClassName(className)
         && String(row.subjectName || "").trim() === String(subjectName || "").trim()
-        && (row.subgroupRequired || Number(row.__groupCount || 0) > 0)
-    ).sort((a, b) => Number(a.__groupIndex || 0) - Number(b.__groupIndex || 0));
-
-    if (!subgroupRows.length) return;
-    state.subgroupPanelContext = { subgroupRows };
+    );
+    const subgroupRows = (classRows.length > 1 ? classRows : candidateRows.filter((row) =>
+        row.subgroupRequired || Number(row.__groupCount || 0) > 0 || Number(row.__groupIndex || 0) > 0
+    ).length ? candidateRows.filter((row) =>
+        row.subgroupRequired || Number(row.__groupCount || 0) > 0 || Number(row.__groupIndex || 0) > 0
+    ) : candidateRows).sort((a, b) => Number(a.__groupIndex || 0) - Number(b.__groupIndex || 0));
+    const explicitGroupRows = subgroupRows.filter((row) => Number(row.__groupIndex || 0) > 0);
+    const uniqueByGroupIndex = new Map();
+    explicitGroupRows.forEach((row) => {
+        const groupIndex = Number(row.__groupIndex || 0);
+        if (groupIndex > 0 && !uniqueByGroupIndex.has(groupIndex)) uniqueByGroupIndex.set(groupIndex, row);
+    });
+    const normalizedSubgroupRows = uniqueByGroupIndex.size
+        ? Array.from(uniqueByGroupIndex.values()).sort((a, b) => Number(a.__groupIndex || 0) - Number(b.__groupIndex || 0))
+        : subgroupRows;
+    const effectiveSubgroupRows = (normalizedSubgroupRows.length ? normalizedSubgroupRows : classRows)
+        .filter((row) => Number(row.__groupIndex || 0) > 0 || Boolean(row.subgroupRequired || Number(row.__groupCount || 0) > 0))
+        .slice(0, 2);
+    if (!effectiveSubgroupRows.length) return;
+    const rowMeta = findTeacherRowMeta(presentationRow.subjectKey, presentationRow.teacherRowId);
+    const period = defaultPeriodForRows([curriculumRow]);
+    const defaultFrom = rowMeta?.loadFromDate || period.from;
+    const defaultTo = rowMeta?.loadToDate || period.to;
+    state.subgroupPanelContext = { subgroupRows: effectiveSubgroupRows, subjectKey: presentationRow.subjectKey, rowId: presentationRow.teacherRowId, className, curriculumRow };
     ui.subgroupPanelTitle.textContent = `${subjectName} — ${className}`;
-    const total = subgroupRows.reduce((sum, row) => sum + Number(row.plannedHours || 0), 0);
+    ui.subgroupAcademicYear.textContent = `Учебный год: ${currentAcademicYearKey()}`;
+    const total = effectiveSubgroupRows.reduce((sum, row) => sum + Number(row.plannedHours || 0), 0);
     ui.subgroupPlanHours.textContent = `Всего по учебному плану: ${total} ч`;
 
-    ui.subgroupList.innerHTML = subgroupRows.map((row, idx) => {
+    ui.subgroupList.innerHTML = effectiveSubgroupRows.map((row, idx) => {
         const key = apiKeyOfRow(row);
         const assignedTeacher = String(assignmentsForBuilding(selectedBuilding)[key] || "").trim();
+        const from = defaultFrom;
+        const to = defaultTo;
         return `<div class="card subgroup-item" style="margin-bottom:8px;">
             <div class="subgroup-title">Подгруппа ${idx + 1}</div>
             <label class="subgroup-line">Часов в подгруппе
@@ -1525,11 +1585,30 @@ function openSubgroupPanel(curriculumRow) {
             <label class="subgroup-line">Педагог
                 <select data-subgroup-teacher="${esc(key)}"><option value="">—</option>${teacherNames.map((t)=>`<option value="${esc(t)}" ${assignedTeacher===t?"selected":""}>${esc(t)}</option>`).join("")}</select>
             </label>
+            <div class="grid">
+                <label>Период с<input type="date" data-subgroup-from="${esc(key)}" value="${esc(from)}"></label>
+                <label>Период по<input type="date" data-subgroup-to="${esc(key)}" value="${esc(to)}"></label>
+            </div>
             <div class="muted">Часы подгруппы задаются в учебном плане.</div>
         </div>`;
     }).join("");
-    const assigned = subgroupRows.filter((row) => String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(row)] || "").trim()).length;
-    ui.subgroupAssignedHours.textContent = `Назначено подгрупп: ${assigned}/${subgroupRows.length}`;
+    ui.subgroupList.querySelectorAll("select[data-subgroup-teacher]").forEach((selectEl) => {
+        selectEl.addEventListener("change", () => {
+            const key = String(selectEl.getAttribute("data-subgroup-teacher") || "");
+            const fromInput = ui.subgroupList.querySelector(`[data-subgroup-from="${key}"]`);
+            const toInput = ui.subgroupList.querySelector(`[data-subgroup-to="${key}"]`);
+            const subgroupRow = effectiveSubgroupRows.find((row) => apiKeyOfRow(row) === key);
+            if (!fromInput || !toInput || !subgroupRow) return;
+            const teacherName = String(selectEl.value || "").trim();
+            const fallback = defaultPeriodForRows([subgroupRow]);
+            if (!teacherName) {
+                fromInput.value = defaultFrom || fallback.from;
+                toInput.value = defaultTo || fallback.to;
+            }
+        });
+    });
+    const assigned = effectiveSubgroupRows.filter((row) => String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(row)] || "").trim()).length;
+    ui.subgroupAssignedHours.textContent = `Назначено подгрупп: ${assigned}/${effectiveSubgroupRows.length}`;
     ui.subgroupPanelErrors.textContent = "";
     ui.subgroupPanel.hidden = false;
     if (ui.subgroupPanelBackdrop) ui.subgroupPanelBackdrop.hidden = false;
@@ -1547,6 +1626,18 @@ function onClassCellClick(presentationRow, className) {
     }
     const curriculumRow = presentationRow.rowsByClass[className];
     if (!curriculumRow) return;
+    const classRows = presentationRow.rowsByClassAll?.[className] || [curriculumRow];
+    const candidateRows = expandedRowsForSelectedBuilding().filter((row) =>
+        normalizeClassName(row.className) === normalizeClassName(className)
+        && String(row.subjectName || "").trim() === String(curriculumRow.subjectName || "").trim()
+    );
+    const hasSubgroups = classRows.length > 1 || candidateRows.length > 1 || classRows.some((row) =>
+        Boolean(row?.subgroupRequired || Number(row?.__groupCount || 0) > 0 || Number(row?.__groupIndex || 0) > 0)
+    ) || candidateRows.some((row) => Boolean(row?.subgroupRequired || Number(row?.__groupCount || 0) > 0 || Number(row?.__groupIndex || 0) > 0));
+    if (hasSubgroups) {
+        openSubgroupPanel(presentationRow, className);
+        return;
+    }
 
     const assignments = assignmentsForBuilding(selectedBuilding);
     const rowMeta = findTeacherRowMeta(presentationRow.subjectKey, presentationRow.teacherRowId);
@@ -1559,12 +1650,6 @@ function onClassCellClick(presentationRow, className) {
     const syncRows = rowsToSyncForCurriculumRow(curriculumRow);
     const apiKeys = syncRows.map((row) => apiKeyOfRow(row));
     const currentTeacher = String(assignments[apiKeys.find((key) => String(assignments[key] || "").trim())] || "").trim();
-    const hasSubgroups = Boolean(curriculumRow.subgroupRequired || Number(curriculumRow.__groupCount || 0) > 0);
-
-    if (hasSubgroups) {
-        openSubgroupPanel(curriculumRow);
-        return;
-    }
 
     if (!hasSubgroups && !currentTeacher) {
         apiKeys.forEach((key) => { assignments[key] = targetTeacher; });
@@ -1898,8 +1983,13 @@ function renderTable() {
             const rowIdValue = button.dataset.rowId;
             const className = button.dataset.className;
             const row = presentationRows.find((entry) => entry.subjectKey === subjectKey && entry.teacherRowId === rowIdValue);
-            if (!row) return;
-            onClassCellClick(row, className);
+            if (row) {
+                onClassCellClick(row, className);
+                return;
+            }
+            const fallbackRow = presentationRows.find((entry) => entry.subjectKey === subjectKey);
+            if (!fallbackRow) return;
+            onClassCellClick(fallbackRow, className);
         });
     });
 
@@ -1976,8 +2066,8 @@ async function saveBuildingLoad() {
         const teacherRow = (rowsMap[subjectKeyOfRow(row)] || []).find((r) => String(r.teacherName || "").trim() === fioTeacher);
         const period = defaultLoadPeriod(row.className, rowStudyPeriod(row));
         const manualPeriod = findManualPeriodForClassTeacher(row, fioTeacher);
-        const rowLoadFromDate = manualPeriod?.from || period.from || teacherRow?.loadFromDate;
-        let rowLoadToDate = manualPeriod?.to || period.to || teacherRow?.loadToDate;
+        const rowLoadFromDate = teacherRow?.loadFromDate || manualPeriod?.from || period.from;
+        let rowLoadToDate = teacherRow?.loadToDate || manualPeriod?.to || period.to;
         const plan = plans[apiKey];
         if (plan && plan.previousTeacher === fioTeacher) {
             const cut = dayBefore(plan.fromDate);
@@ -2302,11 +2392,77 @@ function bindEvents() {
         const ctx = state.subgroupPanelContext;
         if (!ctx) return;
         const assignments = assignmentsForBuilding(selectedBuilding);
-        ctx.subgroupRows.forEach((row) => {
+        const plans = futurePlansForBuilding(selectedBuilding);
+        const referenceDate = currentDisplayDate();
+        const periodUpdates = new Map();
+        const selectedEntries = [];
+        for (const row of ctx.subgroupRows) {
             const key = apiKeyOfRow(row);
             const select = ui.subgroupList.querySelector(`[data-subgroup-teacher="${key}"]`);
-            assignments[key] = String(select?.value || "").trim();
+            const fromInput = ui.subgroupList.querySelector(`[data-subgroup-from="${key}"]`);
+            const toInput = ui.subgroupList.querySelector(`[data-subgroup-to="${key}"]`);
+            const targetTeacher = String(select?.value || "").trim();
+            const fromDate = String(fromInput?.value || "");
+            const toDate = String(toInput?.value || "");
+            if (!fromDate || !toDate || fromDate > toDate) {
+                ui.subgroupPanelErrors.textContent = "Проверьте период в каждой подгруппе";
+                return;
+            }
+            selectedEntries.push({ row, key, targetTeacher, fromDate, toDate });
+        }
+
+        const nonEmptyTeachers = Array.from(new Set(selectedEntries.map((entry) => entry.targetTeacher).filter(Boolean)));
+        const singleTeacherForAll = nonEmptyTeachers.length === 1 && selectedEntries.every((entry) => !entry.targetTeacher || entry.targetTeacher === nonEmptyTeachers[0]);
+
+        if (singleTeacherForAll && nonEmptyTeachers.length === 1) {
+            const teacherName = nonEmptyTeachers[0];
+            selectedEntries.forEach((entry) => {
+                assignments[entry.key] = teacherName;
+                delete plans[entry.key];
+            });
+            const teacherRowMeta = ensureTeacherRowForAssignment(
+                ctx.subjectKey,
+                teacherName,
+                selectedEntries[0].fromDate,
+                selectedEntries[0].toDate,
+                rowStudyPeriod(selectedEntries[0].row)
+            );
+            if (teacherRowMeta) {
+                periodUpdates.set(teacherRowMeta.id, {
+                    fromDate: selectedEntries[0].fromDate,
+                    toDate: selectedEntries[0].toDate
+                });
+            }
+        } else {
+            for (const entry of selectedEntries) {
+                const { row, key, targetTeacher, fromDate, toDate } = entry;
+                const previousTeacher = String(assignments[key] || "").trim();
+                if (fromDate > referenceDate && previousTeacher && previousTeacher !== targetTeacher) {
+                    plans[key] = {
+                        targetTeacher,
+                        previousTeacher,
+                        fromDate,
+                        toDate,
+                        subjectKey: ctx.subjectKey,
+                        plannedHours: Number(row.plannedHours || 0),
+                        className: ctx.className,
+                        educationLevel: row.educationLevel,
+                        subjectName: row.subjectName
+                    };
+                } else {
+                    assignments[key] = targetTeacher;
+                    delete plans[key];
+                }
+                if (targetTeacher) {
+                    const rowMeta = ensureTeacherRowForAssignment(ctx.subjectKey, targetTeacher, fromDate, toDate, rowStudyPeriod(row));
+                    if (rowMeta) periodUpdates.set(rowMeta.id, { fromDate, toDate });
+                }
+            }
+        }
+        periodUpdates.forEach((period, rowIdValue) => {
+            setPeriodForRow(ctx.subjectKey, rowIdValue, period.fromDate, period.toDate);
         });
+        trimRedundantEmptyTeacherRows(ctx.subjectKey);
         markDirty();
         scheduleRenderTable();
         closeSubgroupPanel();
