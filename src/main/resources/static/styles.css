@@ -1676,3 +1676,34 @@ dialog::backdrop {
     .card { box-shadow: none; border: 1px solid #000; page-break-inside: avoid; }
     #contingent-stats-table { font-size: 11px; }
 }
+
+.subgroup-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  z-index: 120;
+}
+.subgroup-drawer {
+  position: fixed;
+  top: 0;
+  right: -460px;
+  width: 440px;
+  max-width: calc(100vw - 24px);
+  height: 100vh;
+  background: #fff;
+  border-left: 1px solid #dbe2ea;
+  box-shadow: -10px 0 30px rgba(15, 23, 42, 0.2);
+  z-index: 121;
+  transition: right .2s ease;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+}
+.subgroup-drawer.open { right: 0; }
+.subgroup-drawer-head { display:flex; justify-content:space-between; align-items:center; }
+.subgroup-line { border:1px solid #e2e8f0; border-radius:10px; padding:10px; margin-bottom:8px; }
+.subgroup-drawer-actions { margin-top:auto; padding-top:8px; }
+.subgroup-line label { display:block; font-size:12px; color:#475569; margin-bottom:4px; }
+.subgroup-line input { width:100%; }
+
+.subgroup-period-grid { display:grid; grid-template-columns:40px 1fr 40px 1fr; gap:6px; margin-top:8px; align-items:center; }
