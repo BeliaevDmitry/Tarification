@@ -1688,6 +1688,12 @@ function onClassCellClick(presentationRow, className) {
         return;
     }
 
+    const classRows = presentationRow.rowsByClassAll?.[className] || [curriculumRow];
+    if (classRows.some((item) => Number(item.__groupCount || 0) > 0 || item.__groupIndex)) {
+        openSubgroupDrawer(presentationRow, className, classRows);
+        return;
+    }
+
     const syncRows = rowsToSyncForCurriculumRow(curriculumRow);
     const apiKeys = syncRows.map((row) => apiKeyOfRow(row));
     const currentTeacher = String(assignments[apiKeys.find((key) => String(assignments[key] || "").trim())] || "").trim();
