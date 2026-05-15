@@ -346,9 +346,12 @@ function markDirty(flag=true) {
 }
 
 
-function escAttr(value) {
-    return String(value || "").replace(/\"/g, "&quot;");
+
+function cssEscape(value) {
+    if (window.CSS && typeof window.CSS.escape === "function") return window.CSS.escape(String(value || ""));
+    return String(value || "").replace(/[\"']/g, "\\$&");
 }
+
 function esc(value) {
     return String(value ?? "")
         .replaceAll("&", "&amp;")
@@ -1488,24 +1491,31 @@ function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
 function openSubgroupDrawer(presentationRow, className, classRows) {
     if (!ui.subgroupDrawer || !ui.subgroupDrawerBody) return;
     const assignments = assignmentsForBuilding(selectedBuilding);
-    state.subgroupDrawerContext = { subjectKey: presentationRow.subjectKey, className, rows: classRows, subjectName: presentationRow.subjectName };
+    state.subgroupDrawerContext = {
+        subjectKey: presentationRow.subjectKey,
+        className,
+        rows: classRows,
+        subjectName: presentationRow.subjectName
+    };
     if (ui.subgroupDrawerTitle) ui.subgroupDrawerTitle.textContent = `${className} — ${presentationRow.subjectName}`;
-    ui.subgroupDrawerBody.innerHTML = classRows.map((item) => {
+    ui.subgroupDrawerBody.innerHTML = classRows.map((item, idx) => {
         const apiKey = apiKeyOfRow(item);
-        const subgroupName = item.__groupIndex ? `Подгруппа ${item.__groupIndex}` : 'Группа';
+        const subgroupName = item.__groupIndex ? `Подгруппа ${item.__groupIndex}` : `Подгруппа ${idx + 1}`;
         const teacher = String(assignments[apiKey] || '').trim();
         const period = defaultPeriodForRows([item]);
         const manualPeriod = findManualPeriodForClassTeacher(item, teacher);
         return `<div class="subgroup-line"><strong>${esc(subgroupName)}</strong> · ${esc(Number(item.plannedHours || 0))} ч
 <label>Педагог</label><input type="text" list="teacher-list-shared" data-subgroup-api-key="${esc(apiKey)}" value="${esc(teacher)}" placeholder="ФИО педагога">
-<div class="subgroup-period-grid"><label>С</label><input type="date" data-subgroup-from="1" data-subgroup-key="${escAttr(apiKey)}" value="${esc(manualPeriod?.from || period.from || '')}"><label>По</label><input type="date" data-subgroup-to="1" data-subgroup-key="${escAttr(apiKey)}" value="${esc(manualPeriod?.to || period.to || '')}"></div></div>`;
+<div class="subgroup-period-grid"><label>С</label><input type="date" data-subgroup-from="1" data-subgroup-api-key="${esc(apiKey)}" value="${esc(manualPeriod?.from || period.from || '')}"><label>По</label><input type="date" data-subgroup-to="1" data-subgroup-api-key="${esc(apiKey)}" value="${esc(manualPeriod?.to || period.to || '')}"></div></div>`;
     }).join('') + '<datalist id="teacher-list-shared"></datalist>';
     const sharedList = ui.subgroupDrawerBody.querySelector('#teacher-list-shared');
-    updateDatalistOptions(sharedList, '');
-    ui.subgroupDrawerBody.querySelectorAll('[data-subgroup-api-key]').forEach((input) => {
-        input.addEventListener('input', () => updateDatalistOptions(sharedList, input.value || ''));
-    });
-    ui.subgroupDrawerBackdrop.hidden = false;
+    if (sharedList) {
+        updateDatalistOptions(sharedList, '');
+        ui.subgroupDrawerBody.querySelectorAll('[data-subgroup-api-key]').forEach((input) => {
+            input.addEventListener('input', () => updateDatalistOptions(sharedList, input.value || ''));
+        });
+    }
+    if (ui.subgroupDrawerBackdrop) ui.subgroupDrawerBackdrop.hidden = false;
     ui.subgroupDrawer.setAttribute('aria-hidden', 'false');
     ui.subgroupDrawer.classList.add('open');
 }
@@ -1526,8 +1536,8 @@ function applySubgroupDrawerAssignments() {
     for (const input of inputs) {
         const raw = String(input.value || '').trim();
         const apiKey = input.dataset.subgroupApiKey;
-        const fromInput = ui.subgroupDrawerBody.querySelector(`[data-subgroup-from][data-subgroup-key="${escAttr(apiKey)}"]`) || ui.subgroupDrawerBody.querySelector(`[data-subgroup-from]`);
-        const toInput = ui.subgroupDrawerBody.querySelector(`[data-subgroup-to][data-subgroup-key="${escAttr(apiKey)}"]`) || ui.subgroupDrawerBody.querySelector(`[data-subgroup-to]`);
+        const fromInput = ui.subgroupDrawerBody.querySelector(`[data-subgroup-from][data-subgroup-api-key="${cssEscape(apiKey)}"]`);
+        const toInput = ui.subgroupDrawerBody.querySelector(`[data-subgroup-to][data-subgroup-api-key="${cssEscape(apiKey)}"]`);
         const fromDate = String(fromInput?.value || '');
         const toDate = String(toInput?.value || '');
         if ((fromDate && toDate) && fromDate > toDate) { print({ warning: 'Период задан некорректно' }); return; }
