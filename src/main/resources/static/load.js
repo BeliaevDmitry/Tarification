@@ -1542,11 +1542,15 @@ function openSubgroupPanel(presentationRow, className) {
     if (!curriculumRow) return;
     const subjectName = curriculumRow.subjectName;
     const classRows = presentationRow?.rowsByClassAll?.[className] || [curriculumRow];
-    const subgroupRows = (classRows.length > 1 ? classRows : expandedRowsForSelectedBuilding().filter((row) =>
+    const candidateRows = expandedRowsForSelectedBuilding().filter((row) =>
         normalizeClassName(row.className) === normalizeClassName(className)
         && String(row.subjectName || "").trim() === String(subjectName || "").trim()
-        && (row.subgroupRequired || Number(row.__groupCount || 0) > 0 || Number(row.__groupIndex || 0) > 0)
-    )).sort((a, b) => Number(a.__groupIndex || 0) - Number(b.__groupIndex || 0));
+    );
+    const subgroupRows = (classRows.length > 1 ? classRows : candidateRows.filter((row) =>
+        row.subgroupRequired || Number(row.__groupCount || 0) > 0 || Number(row.__groupIndex || 0) > 0
+    ).length ? candidateRows.filter((row) =>
+        row.subgroupRequired || Number(row.__groupCount || 0) > 0 || Number(row.__groupIndex || 0) > 0
+    ) : candidateRows).sort((a, b) => Number(a.__groupIndex || 0) - Number(b.__groupIndex || 0));
 
     if (!subgroupRows.length) return;
     const period = defaultPeriodForRows([curriculumRow]);
@@ -1613,9 +1617,13 @@ function onClassCellClick(presentationRow, className) {
     const curriculumRow = presentationRow.rowsByClass[className];
     if (!curriculumRow) return;
     const classRows = presentationRow.rowsByClassAll?.[className] || [curriculumRow];
-    const hasSubgroups = classRows.length > 1 || classRows.some((row) =>
-        Boolean(row?.subgroupRequired || Number(row?.__groupCount || 0) > 0 || Number(row?.__groupIndex || 0) > 0)
+    const candidateRows = expandedRowsForSelectedBuilding().filter((row) =>
+        normalizeClassName(row.className) === normalizeClassName(className)
+        && String(row.subjectName || "").trim() === String(curriculumRow.subjectName || "").trim()
     );
+    const hasSubgroups = classRows.length > 1 || candidateRows.length > 1 || classRows.some((row) =>
+        Boolean(row?.subgroupRequired || Number(row?.__groupCount || 0) > 0 || Number(row?.__groupIndex || 0) > 0)
+    ) || candidateRows.some((row) => Boolean(row?.subgroupRequired || Number(row?.__groupCount || 0) > 0 || Number(row?.__groupIndex || 0) > 0));
     if (hasSubgroups) {
         openSubgroupPanel(presentationRow, className);
         return;
