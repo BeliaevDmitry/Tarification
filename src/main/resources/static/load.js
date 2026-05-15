@@ -429,6 +429,29 @@ function classPeriodText(rows = []) {
     return "";
 }
 
+function classAssignedUnassignedText(rows = [], rowTeacher = "", buildingCode = selectedBuilding) {
+    const teacherNormalized = String(rowTeacher || "").trim().toLowerCase();
+    let assigned = 0;
+    let unassigned = 0;
+    rows.forEach((row) => {
+        const hours = Number(row?.plannedHours || 0);
+        const assignedTeacher = String(assignmentsForBuilding(buildingCode)[apiKeyOfRow(row)] || "").trim().toLowerCase();
+        if (!assignedTeacher) {
+            unassigned += hours;
+            return;
+        }
+        if (teacherNormalized && assignedTeacher === teacherNormalized) {
+            assigned += hours;
+        }
+    });
+    if (!teacherNormalized) {
+        return unassigned > 0 ? `${unassigned}` : "0";
+    }
+    if (assigned <= 0 && unassigned <= 0) return "0";
+    if (unassigned <= 0) return `${assigned}`;
+    return `${assigned} / ${unassigned}`;
+}
+
 function formatSplitHours(pair) {
     return `${pair.h1}/${pair.h2}`;
 }
@@ -1888,7 +1911,7 @@ function renderTable() {
                 const curriculumRow = row.rowsByClass[className];
                 if (!curriculumRow) return "<td></td>";
                 const classRows = row.rowsByClassAll?.[className] || [curriculumRow];
-                const hoursTotal = classPeriodText(classRows);
+                const hoursTotal = classAssignedUnassignedText(classRows, row.teacherName, selectedBuilding);
                 const assignedTeachers = classRows.map((item) => String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(item)] || "").trim()).filter(Boolean);
                 const rowTeacher = String(row.teacherName || "").trim();
                 const hasAnyAssigned = assignedTeachers.length > 0;
