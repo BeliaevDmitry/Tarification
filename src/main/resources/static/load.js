@@ -1634,6 +1634,7 @@ function applySubgroupDrawerAssignments() {
                 return String(appliedByApiKey.get(apiKey)?.teacherName || '').trim().toLowerCase() === teacherName.toLowerCase();
             });
             const apiKey = firstRow ? apiKeyOfRow(firstRow) : null;
+            const plan = apiKey ? plans[apiKey] : null;
             const applied = apiKey ? appliedByApiKey.get(apiKey) : null;
             const fromDate = applied?.fromDate || period.from;
             const toDate = applied?.toDate || period.to;
