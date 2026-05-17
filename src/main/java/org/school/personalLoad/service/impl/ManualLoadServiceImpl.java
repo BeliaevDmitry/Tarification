@@ -107,8 +107,21 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
     @Override
+    @Transactional
     public void clearAll(String academicYear) {
         manualLoadEntryRepository.deleteAllByAcademicYear(academicYear);
+    }
+
+    @Override
+    @Transactional
+    public void clearByBuilding(String academicYear, String numberSchoolBuilding) {
+        if (numberSchoolBuilding == null || numberSchoolBuilding.isBlank()) {
+            throw new IllegalArgumentException("building is required");
+        }
+        manualLoadEntryRepository.deleteByAcademicYearAndBuildingCodes(
+                academicYear,
+                java.util.List.of(numberSchoolBuilding.trim().toLowerCase(java.util.Locale.ROOT))
+        );
     }
 
     @Override
@@ -619,7 +632,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         entity.setStudyPeriod(resolveStudyPeriod(effectiveAcademicYear, request.getClassName(), request.getStudyPeriod(), request.getLoadFromDate(), request.getLoadToDate()));
         entity.setLoadFromDate(request.getLoadFromDate());
         entity.setLoadToDate(request.getLoadToDate());
-        entity.setContinuityStatus(ContinuityStatus.UNKNOWN);
+        entity.setContinuityStatus(request.getContinuityStatus() == null ? ContinuityStatus.UNKNOWN : request.getContinuityStatus());
         return entity;
     }
 

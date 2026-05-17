@@ -9,6 +9,7 @@ const ui = {
     importLoadBtn: document.getElementById("import-load-btn"),
     importLoadFile: document.getElementById("import-load-file"),
     saveBuildingBtn: document.getElementById("save-building-btn"),
+    clearBuildingLoadBtn: document.getElementById("clear-building-load-btn"),
     loadResult: document.getElementById("load-result"),
     tableHead: document.getElementById("building-load-head"),
     tableBody: document.getElementById("building-load-body"),
@@ -48,6 +49,7 @@ let selectedBuilding = "";
 let activeLoadTab = "distribution";
 let sourceRevision = 0;
 let renderTableRaf = null;
+let latestPresentationRows = [];
 const LOAD_SELECTED_BUILDING_KEY = "tarification.load.selectedBuilding";
 
 const ARCHIVE_BUILDING_CODE = "__ARCHIVE__";
@@ -66,7 +68,6 @@ const state = {
     classSort: "",
     futurePlansByBuilding: {},
     takeoverContext: null,
-    continuityExpectedByKey: new Map(),
     subgroupDrawerContext: null
 };
 
@@ -214,59 +215,11 @@ function normalizeClassName(value) {
     return m ? `${m[1]}-${m[2]}` : v;
 }
 
-function previousClassForContinuity(targetClass) {
-    const normalized = normalizeClassName(targetClass);
-    const match = normalized.match(/^(\d{1,2})-([А-ЯA-Z])$/);
-    if (!match) return null;
-    const parallel = Number(match[1]);
-    if (!Number.isFinite(parallel) || parallel <= 1) return null;
-    if (parallel === 5 || parallel === 10) return null;
-    return `${parallel - 1}-${match[2]}`;
-}
-
-function previousAcademicYearCode(yearCode) {
-    const [fromYear] = String(yearCode || "").split("/");
-    const year = Number(fromYear);
-    if (!Number.isFinite(year) || year <= 0) return null;
-    return `${year - 1}/${year}`;
-}
-
 function continuityGroupName(row) {
     if (row?.groupNameEducationalPlan) return String(row.groupNameEducationalPlan).trim();
     if (row?.__groupIndex) return `Группа ${row.__groupIndex}`;
     if (row?.subgroupRequired) return "Группа 1";
     return "";
-}
-
-function continuityKey(className, subjectName, groupName) {
-    return [
-        normalizeClassName(className),
-        String(subjectName || "").trim().toLowerCase(),
-        String(groupName || "").trim().toLowerCase()
-    ].join("|");
-}
-
-function computeContinuityExpectedByKey(sourceManual, targetCurriculum) {
-    const sourceByKey = new Map();
-    (sourceManual || []).forEach((row) => {
-        const teacher = String(row.fioTeacher || "").trim();
-        if (!teacher || isVacancyTeacherName(teacher)) return;
-        sourceByKey.set(
-            continuityKey(row.className, row.subjectName, row.groupNameEducationalPlan),
-            teacher.toLowerCase()
-        );
-    });
-
-    const expectedByTarget = new Map();
-    (targetCurriculum || []).forEach((row) => {
-        const prevClass = previousClassForContinuity(row.className);
-        if (!prevClass) return;
-        const groupName = continuityGroupName(row);
-        const expectedTeacher = sourceByKey.get(continuityKey(prevClass, row.subjectName, groupName));
-        if (!expectedTeacher) return;
-        expectedByTarget.set(continuityKey(row.className, row.subjectName, groupName), expectedTeacher);
-    });
-    return expectedByTarget;
 }
 
 function classBuildingMap() {
@@ -819,6 +772,11 @@ function updateLoadEditMode() {
     }
 }
 
+function updateAdminOnlyActions() {
+    if (!ui.clearBuildingLoadBtn) return;
+    ui.clearBuildingLoadBtn.style.display = currentAuthUser()?.admin ? "" : "none";
+}
+
 function dateInRange(isoDate, fromDate, toDate) {
     if (!isoDate || !fromDate || !toDate) return true;
     return fromDate <= isoDate && isoDate <= toDate;
@@ -1011,6 +969,41 @@ function prefillFromManualLoad(referenceDate = referencePlanningDate()) {
             }
         });
     });
+}
+
+function continuityStatusKey(buildingCode, className, subjectName, educationLevel, groupName, teacherName) {
+    return [
+        normalizeBuildingCode(buildingCode),
+        normalizeClassName(className),
+        String(subjectName || "").trim().toLowerCase(),
+        String(educationLevel || "").trim().toUpperCase(),
+        String(groupName || "").trim().toLowerCase(),
+        String(teacherName || "").trim().toLowerCase()
+    ].join("|");
+}
+
+function buildContinuityStatusIndex(referenceDate) {
+    const periodRef = String(referenceDate || referencePlanningDate());
+    const selectedBuildingCode = normalizeBuildingCode(selectedBuilding);
+    const index = new Map();
+    (manualRows || []).forEach((entry) => {
+        if (normalizeBuildingCode(entry.numberSchoolBuilding) !== selectedBuildingCode) return;
+        const from = String(entry.loadFromDate || "");
+        const to = String(entry.loadToDate || "");
+        if (!from || !to || !(from <= periodRef && periodRef <= to)) return;
+        const status = String(entry.continuityStatus || "").trim().toUpperCase();
+        if (!status) return;
+        const key = continuityStatusKey(
+            entry.numberSchoolBuilding,
+            entry.className,
+            entry.subjectName,
+            entry.educationLevel,
+            entry.groupNameEducationalPlan,
+            entry.fioTeacher
+        );
+        index.set(key, status);
+    });
+    return index;
 }
 
 function ensureTeacherRowsForBuilding() {
@@ -1514,7 +1507,8 @@ function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
 
     return {
         from: String(source.loadFromDate || ""),
-        to: String(source.loadToDate || "")
+        to: String(source.loadToDate || ""),
+        continuityStatus: String(source.continuityStatus || "").trim().toUpperCase()
     };
 }
 
@@ -1910,6 +1904,10 @@ function renderTable() {
         : `<th>—</th>`;
     ui.tableHead.appendChild(headClasses);
 
+    const continuityStatusIndex = buildContinuityStatusIndex(referenceDate);
+    const buildingAssignments = assignmentsForBuilding(selectedBuilding);
+    const buildingPlans = futurePlansForBuilding(selectedBuilding);
+    latestPresentationRows = presentationRows;
     presentationRows.forEach((row, index) => {
         const tr = document.createElement("tr");
         if (rowHasPlannedLoadChange(row, referenceDate)) {
@@ -1932,33 +1930,28 @@ function renderTable() {
                 if (!curriculumRow) return "<td></td>";
                 const classRows = row.rowsByClassAll?.[className] || [curriculumRow];
                 const hoursTotal = classPeriodText(classRows);
-                const assignedTeachers = classRows.map((item) => String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(item)] || "").trim()).filter(Boolean);
+                const assignedTeachers = classRows.map((item) => String(buildingAssignments[apiKeyOfRow(item)] || "").trim()).filter(Boolean);
                 const rowTeacher = String(row.teacherName || "").trim();
                 const hasAnyAssigned = assignedTeachers.length > 0;
                 const hasRowTeacherAssigned = rowTeacher ? assignedTeachers.includes(rowTeacher) : false;
-                const plans = classRows.map((item) => futurePlansForBuilding(selectedBuilding)[apiKeyOfRow(item)]).filter(Boolean);
+                const plans = classRows.map((item) => buildingPlans[apiKeyOfRow(item)]).filter(Boolean);
                 const isPlanned = plans.some((plan) => plan.targetTeacher === rowTeacher && plan.fromDate > referenceDate);
                 const isTransferOut = plans.some((plan) => plan.previousTeacher === rowTeacher && plan.fromDate > referenceDate);
                 const isActive = hasRowTeacherAssigned;
                 const isMuted = rowTeacher !== "" && !hasRowTeacherAssigned && !isPlanned && !isTransferOut;
                 const isUnassigned = !hasAnyAssigned && !isPlanned;
                 const persistedContinuityStates = classRows
-                    .map((item) => String(item?.continuityStatus || "").trim().toUpperCase())
+                    .map((item) => continuityStatusIndex.get(continuityStatusKey(
+                        item.numberSchoolBuilding,
+                        item.className,
+                        item.subjectName,
+                        item.educationLevel,
+                        continuityGroupName(item),
+                        rowTeacher
+                    )) || "")
                     .filter(Boolean);
-                const continuityEnabled = state.continuityExpectedByKey.size > 0;
-                const hasPersistedContinuityOk = continuityEnabled && persistedContinuityStates.includes("OK");
-                const hasPersistedContinuityBroken = continuityEnabled && persistedContinuityStates.includes("BROKEN");
-                const hasContinuityExpectation = classRows.some((item) => state.continuityExpectedByKey.has(
-                    continuityKey(item.className, item.subjectName, continuityGroupName(item))
-                ));
-                const expectationMatchesActiveTeacher = hasContinuityExpectation && classRows.some((item) => {
-                    const expectedTeacher = state.continuityExpectedByKey.get(
-                        continuityKey(item.className, item.subjectName, continuityGroupName(item))
-                    );
-                    return Boolean(expectedTeacher) && expectedTeacher === rowTeacher.toLowerCase();
-                });
-                const hasContinuityOk = isActive && (hasPersistedContinuityOk || expectationMatchesActiveTeacher);
-                const hasContinuityBroken = isActive && (hasPersistedContinuityBroken || (!hasPersistedContinuityOk && hasContinuityExpectation && !expectationMatchesActiveTeacher));
+                const hasPersistedContinuityOk = persistedContinuityStates.includes("OK");
+                const hasContinuityOk = isActive && hasPersistedContinuityOk;
                 const classesForCell = [
                     "hour-pill",
                     isActive ? "active" : "",
@@ -1966,8 +1959,7 @@ function renderTable() {
                     isUnassigned ? "unassigned" : "",
                     isPlanned ? "planned" : "",
                     isTransferOut ? "transfer-out" : "",
-                    !isPlanned && !isTransferOut && hasContinuityOk ? "continuity-ok" : "",
-                    !isPlanned && !isTransferOut && hasContinuityBroken ? "continuity-broken" : ""
+                    !isPlanned && !isTransferOut && hasContinuityOk ? "continuity-ok" : ""
                 ].filter(Boolean).join(" ");
                 return `<td><button type="button" class="${classesForCell}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(hoursTotal)}</button></td>`;
             }).join("")}
@@ -1978,73 +1970,6 @@ function renderTable() {
         const teacherInput = tr.querySelector(".teacher-input");
         const listEl = tr.querySelector("datalist");
         updateDatalistOptions(listEl, teacherInput.value || "");
-
-        teacherInput.addEventListener("input", () => {
-            updateDatalistOptions(listEl, teacherInput.value || "");
-        });
-
-        teacherInput.addEventListener("blur", () => {
-            applyTeacherSelection(row.subjectKey, row.teacherRowId, teacherInput);
-        });
-
-        teacherInput.addEventListener("change", () => {
-            applyTeacherSelection(row.subjectKey, row.teacherRowId, teacherInput);
-        });
-
-        teacherInput.addEventListener("keydown", (event) => {
-            if (event.key !== "Enter") return;
-            event.preventDefault();
-            applyTeacherSelection(row.subjectKey, row.teacherRowId, teacherInput);
-        });
-    });
-
-
-    ui.tableHead.querySelectorAll("button[data-class-sort]").forEach((button) => {
-        button.addEventListener("click", () => {
-            const className = button.dataset.classSort;
-            const next = `classHours:${className}`;
-            if (state.sortField === next) {
-                state.sortField = "subject";
-                state.sortDirection = "asc";
-                ui.sortField.value = "subject";
-                ui.sortDirection.value = "asc";
-            } else {
-                state.sortField = next;
-                state.sortDirection = "desc";
-                ui.sortDirection.value = "desc";
-                ui.sortField.value = "subject";
-            }
-            state.forceResort = true;
-            scheduleRenderTable();
-        });
-    });
-
-
-    ui.tableBody.querySelectorAll(".period-input").forEach((input) => {
-        input.addEventListener("change", () => {
-            const subjectKey = input.dataset.subjectKey;
-            const rowIdValue = input.dataset.rowId;
-            const rowElFrom = ui.tableBody.querySelector(`.period-from[data-subject-key="${subjectKey}"][data-row-id="${rowIdValue}"]`);
-            const rowElTo = ui.tableBody.querySelector(`.period-to[data-subject-key="${subjectKey}"][data-row-id="${rowIdValue}"]`);
-            const fromDate = rowElFrom?.value || "";
-            const toDate = rowElTo?.value || "";
-            setPeriodForRow(subjectKey, rowIdValue, fromDate, toDate);
-        });
-    });
-
-    ui.tableBody.querySelectorAll("button[data-plus-subject]").forEach((button) => {
-        button.addEventListener("click", () => addTeacherRow(button.dataset.plusSubject, button.dataset.plusAfter));
-    });
-
-    ui.tableBody.querySelectorAll("button[data-class-cell]").forEach((button) => {
-        button.addEventListener("click", () => {
-            const subjectKey = button.dataset.subjectKey;
-            const rowIdValue = button.dataset.rowId;
-            const className = button.dataset.className;
-            const row = presentationRows.find((entry) => entry.subjectKey === subjectKey && entry.teacherRowId === rowIdValue);
-            if (!row) return;
-            onClassCellClick(row, className);
-        });
     });
 
     updateLoadEditMode();
@@ -2139,7 +2064,8 @@ async function saveBuildingLoad() {
             educationLevel: row.educationLevel,
             studyPeriod: rowStudyPeriod(row),
             loadFromDate: rowLoadFromDate,
-            loadToDate: rowLoadToDate
+            loadToDate: rowLoadToDate,
+            continuityStatus: manualPeriod?.continuityStatus || null
         };
     }).filter(Boolean);
 
@@ -2342,12 +2268,6 @@ async function refreshSourceData() {
     sourceRevision += 1;
     invalidateDerivedCache();
     invalidateTeacherHourIndexesCache();
-    state.continuityExpectedByKey = new Map();
-
-    // Не подсвечиваем преемственность автоматически по прошлому году.
-    // Подсветка должна опираться только на явный запуск серверного расчёта/статуса.
-    state.continuityExpectedByKey = new Map();
-
     prefillFromManualLoad(currentDisplayDate());
     state.forceResort = true;
     markDirty(false);
@@ -2367,6 +2287,22 @@ function bindEvents() {
         });
     });
     ui.saveBuildingBtn.addEventListener("click", saveBuildingLoad);
+    ui.clearBuildingLoadBtn?.addEventListener("click", async () => {
+        if (!currentAuthUser()?.admin) return;
+        if (!selectedBuilding || selectedBuilding === ARCHIVE_BUILDING_CODE) {
+            print({ error: "Выберите корпус с активной нагрузкой." });
+            return;
+        }
+        const confirmed = confirm(`Удалить всю нагрузку корпуса ${selectedBuilding} в текущем учебном году?`);
+        if (!confirmed) return;
+        try {
+            await api(`/api/manual-load?building=${encodeURIComponent(selectedBuilding)}`, { method: "DELETE" });
+            await refreshSourceData();
+            print({ status: `Нагрузка корпуса ${selectedBuilding} удалена.` });
+        } catch (error) {
+            print({ error: error.message });
+        }
+    });
     ui.periodForm.addEventListener("submit", (e) => {
         e.preventDefault();
         const subjectKey = ui.periodForm.elements.subjectKey.value;
@@ -2499,6 +2435,77 @@ function bindEvents() {
 
     ui.nextErrorBtn.addEventListener("click", jumpToFirstError);
 
+    ui.tableHead?.addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-class-sort]");
+        if (!button) return;
+        const className = button.dataset.classSort;
+        const next = `classHours:${className}`;
+        if (state.sortField === next) {
+            state.sortField = "subject";
+            state.sortDirection = "asc";
+            ui.sortField.value = "subject";
+            ui.sortDirection.value = "asc";
+        } else {
+            state.sortField = next;
+            state.sortDirection = "desc";
+            ui.sortDirection.value = "desc";
+            ui.sortField.value = "subject";
+        }
+        state.forceResort = true;
+        scheduleRenderTable();
+    });
+
+    ui.tableBody?.addEventListener("input", (event) => {
+        const teacherInput = event.target.closest(".teacher-input");
+        if (!teacherInput) return;
+        const tr = teacherInput.closest("tr");
+        const listEl = tr?.querySelector("datalist");
+        if (listEl) updateDatalistOptions(listEl, teacherInput.value || "");
+    });
+
+    ui.tableBody?.addEventListener("change", (event) => {
+        const target = event.target;
+        const periodInput = target.closest(".period-input");
+        if (periodInput) {
+            const subjectKey = periodInput.dataset.subjectKey;
+            const rowIdValue = periodInput.dataset.rowId;
+            const rowElFrom = ui.tableBody.querySelector(`.period-from[data-subject-key="${subjectKey}"][data-row-id="${rowIdValue}"]`);
+            const rowElTo = ui.tableBody.querySelector(`.period-to[data-subject-key="${subjectKey}"][data-row-id="${rowIdValue}"]`);
+            setPeriodForRow(subjectKey, rowIdValue, rowElFrom?.value || "", rowElTo?.value || "");
+            return;
+        }
+        const teacherInput = target.closest(".teacher-input");
+        if (teacherInput) {
+            applyTeacherSelection(teacherInput.dataset.subjectKey, teacherInput.dataset.rowId, teacherInput);
+        }
+    });
+
+    ui.tableBody?.addEventListener("blur", (event) => {
+        const teacherInput = event.target.closest(".teacher-input");
+        if (!teacherInput) return;
+        applyTeacherSelection(teacherInput.dataset.subjectKey, teacherInput.dataset.rowId, teacherInput);
+    }, true);
+
+    ui.tableBody?.addEventListener("keydown", (event) => {
+        const teacherInput = event.target.closest(".teacher-input");
+        if (!teacherInput || event.key !== "Enter") return;
+        event.preventDefault();
+        applyTeacherSelection(teacherInput.dataset.subjectKey, teacherInput.dataset.rowId, teacherInput);
+    });
+
+    ui.tableBody?.addEventListener("click", (event) => {
+        const plusButton = event.target.closest("button[data-plus-subject]");
+        if (plusButton) {
+            addTeacherRow(plusButton.dataset.plusSubject, plusButton.dataset.plusAfter);
+            return;
+        }
+        const classButton = event.target.closest("button[data-class-cell]");
+        if (!classButton) return;
+        const row = latestPresentationRows.find((entry) => entry.subjectKey === classButton.dataset.subjectKey && entry.teacherRowId === classButton.dataset.rowId);
+        if (!row) return;
+        onClassCellClick(row, classButton.dataset.className);
+    });
+
     ui.buildingSelect?.addEventListener("change", () => {
         selectedBuilding = ui.buildingSelect.value;
         rememberSelectedBuilding(selectedBuilding);
@@ -2516,6 +2523,7 @@ function bindEvents() {
 async function init() {
     await waitForAuthContext();
     bindEvents();
+    updateAdminOnlyActions();
     const defaultTab = applyLoadTabAccess();
     if (!defaultTab) return;
     showLoadTab("distribution");
