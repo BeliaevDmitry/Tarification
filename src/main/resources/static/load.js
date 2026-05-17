@@ -418,8 +418,11 @@ function classPeriodHours(rows = []) {
 }
 
 function classPeriodText(rows = []) {
-    const total = (rows || []).reduce((sum, row) => sum + Number(row?.plannedHours || 0), 0);
-    return total > 0 ? String(total) : "";
+    const totals = classPeriodHours(rows);
+    if (totals.h1 === 0 && totals.h2 === 0) {
+        return totals.year > 0 ? String(totals.year) : "0";
+    }
+    return formatSplitHours(totals);
 }
 
 function classAssignedUnassignedText(rows = [], rowTeacher = "", buildingCode = selectedBuilding) {
@@ -455,8 +458,8 @@ function classAssignedUnassignedText(rows = [], rowTeacher = "", buildingCode = 
 function formatSplitHours(pair) {
     const h1 = Number(pair?.h1 || 0);
     const h2 = Number(pair?.h2 || 0);
-    if (h1 > 0 && h2 > 0 && h1 !== h2) return String(h1 + h2);
-    return String(Math.max(h1, h2, 0));
+    if (h1 === h2) return String(h1);
+    return `${h1}/${h2}`;
 }
 
 function accumulateSplit(pair, row) {
@@ -1598,7 +1601,6 @@ function applySubgroupDrawerAssignments() {
                 educationLevel: row?.educationLevel,
                 subjectName: ctx.subjectName
             };
-            assignments[apiKey] = exact;
         }
         appliedByApiKey.set(apiKey, { teacherName: exact, fromDate, toDate });
     }
@@ -1917,7 +1919,7 @@ function renderTable() {
                 const curriculumRow = row.rowsByClass[className];
                 if (!curriculumRow) return "<td></td>";
                 const classRows = row.rowsByClassAll?.[className] || [curriculumRow];
-                const hoursTotal = classAssignedUnassignedText(classRows, row.teacherName, selectedBuilding);
+                const hoursTotal = classPeriodText(classRows);
                 const assignedTeachers = classRows.map((item) => String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(item)] || "").trim()).filter(Boolean);
                 const rowTeacher = String(row.teacherName || "").trim();
                 const hasAnyAssigned = assignedTeachers.length > 0;
@@ -2106,8 +2108,8 @@ async function saveBuildingLoad() {
         const teacherRow = (rowsMap[subjectKeyOfRow(row)] || []).find((r) => String(r.teacherName || "").trim() === fioTeacher);
         const period = defaultLoadPeriod(row.className, rowStudyPeriod(row));
         const manualPeriod = findManualPeriodForClassTeacher(row, fioTeacher);
-        const rowLoadFromDate = manualPeriod?.from || period.from || teacherRow?.loadFromDate;
-        let rowLoadToDate = manualPeriod?.to || period.to || teacherRow?.loadToDate;
+        const rowLoadFromDate = manualPeriod?.from || teacherRow?.loadFromDate || period.from;
+        let rowLoadToDate = manualPeriod?.to || teacherRow?.loadToDate || period.to;
         const plan = plans[apiKey];
         if (plan && plan.previousTeacher === fioTeacher) {
             const cut = dayBefore(plan.fromDate);
