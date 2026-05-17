@@ -9,6 +9,7 @@ const ui = {
     importLoadBtn: document.getElementById("import-load-btn"),
     importLoadFile: document.getElementById("import-load-file"),
     saveBuildingBtn: document.getElementById("save-building-btn"),
+    clearBuildingLoadBtn: document.getElementById("clear-building-load-btn"),
     loadResult: document.getElementById("load-result"),
     tableHead: document.getElementById("building-load-head"),
     tableBody: document.getElementById("building-load-body"),
@@ -819,6 +820,11 @@ function updateLoadEditMode() {
     }
 }
 
+function updateAdminOnlyActions() {
+    if (!ui.clearBuildingLoadBtn) return;
+    ui.clearBuildingLoadBtn.style.display = currentAuthUser()?.admin ? "" : "none";
+}
+
 function dateInRange(isoDate, fromDate, toDate) {
     if (!isoDate || !fromDate || !toDate) return true;
     return fromDate <= isoDate && isoDate <= toDate;
@@ -1011,6 +1017,30 @@ function prefillFromManualLoad(referenceDate = referencePlanningDate()) {
             }
         });
     });
+}
+
+function persistedContinuityStatusForRow(apiRow, rowTeacher, referenceDate) {
+    const teacher = String(rowTeacher || "").trim().toLowerCase();
+    if (!teacher || !apiRow) return "";
+    const rowBuilding = normalizeBuildingCode(apiRow.numberSchoolBuilding);
+    const rowClass = normalizeClassName(apiRow.className);
+    const rowSubject = String(apiRow.subjectName || "").trim().toLowerCase();
+    const rowEducation = String(apiRow.educationLevel || "").trim().toUpperCase();
+    const rowGroup = String(continuityGroupName(apiRow) || "").trim().toLowerCase();
+    const periodRef = String(referenceDate || referencePlanningDate());
+    const matched = (manualRows || []).find((entry) => {
+        const entryTeacher = String(entry.fioTeacher || "").trim().toLowerCase();
+        if (entryTeacher !== teacher) return false;
+        if (normalizeBuildingCode(entry.numberSchoolBuilding) !== rowBuilding) return false;
+        if (normalizeClassName(entry.className) !== rowClass) return false;
+        if (String(entry.subjectName || "").trim().toLowerCase() !== rowSubject) return false;
+        if (String(entry.educationLevel || "").trim().toUpperCase() !== rowEducation) return false;
+        if (String(entry.groupNameEducationalPlan || "").trim().toLowerCase() !== rowGroup) return false;
+        const from = String(entry.loadFromDate || "");
+        const to = String(entry.loadToDate || "");
+        return from && to && from <= periodRef && periodRef <= to;
+    });
+    return String(matched?.continuityStatus || "").trim().toUpperCase();
 }
 
 function ensureTeacherRowsForBuilding() {
@@ -1514,7 +1544,8 @@ function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
 
     return {
         from: String(source.loadFromDate || ""),
-        to: String(source.loadToDate || "")
+        to: String(source.loadToDate || ""),
+        continuityStatus: String(source.continuityStatus || "").trim().toUpperCase()
     };
 }
 
@@ -1943,11 +1974,10 @@ function renderTable() {
                 const isMuted = rowTeacher !== "" && !hasRowTeacherAssigned && !isPlanned && !isTransferOut;
                 const isUnassigned = !hasAnyAssigned && !isPlanned;
                 const persistedContinuityStates = classRows
-                    .map((item) => String(item?.continuityStatus || "").trim().toUpperCase())
+                    .map((item) => persistedContinuityStatusForRow(item, rowTeacher, referenceDate))
                     .filter(Boolean);
-                const continuityEnabled = state.continuityExpectedByKey.size > 0;
-                const hasPersistedContinuityOk = continuityEnabled && persistedContinuityStates.includes("OK");
-                const hasPersistedContinuityBroken = continuityEnabled && persistedContinuityStates.includes("BROKEN");
+                const hasPersistedContinuityOk = persistedContinuityStates.includes("OK");
+                const hasPersistedContinuityBroken = persistedContinuityStates.includes("BROKEN");
                 const hasContinuityExpectation = classRows.some((item) => state.continuityExpectedByKey.has(
                     continuityKey(item.className, item.subjectName, continuityGroupName(item))
                 ));
@@ -2139,7 +2169,8 @@ async function saveBuildingLoad() {
             educationLevel: row.educationLevel,
             studyPeriod: rowStudyPeriod(row),
             loadFromDate: rowLoadFromDate,
-            loadToDate: rowLoadToDate
+            loadToDate: rowLoadToDate,
+            continuityStatus: manualPeriod?.continuityStatus || null
         };
     }).filter(Boolean);
 
@@ -2342,8 +2373,6 @@ async function refreshSourceData() {
     sourceRevision += 1;
     invalidateDerivedCache();
     invalidateTeacherHourIndexesCache();
-    state.continuityExpectedByKey = new Map();
-
     // Не подсвечиваем преемственность автоматически по прошлому году.
     // Подсветка должна опираться только на явный запуск серверного расчёта/статуса.
     state.continuityExpectedByKey = new Map();
@@ -2367,6 +2396,22 @@ function bindEvents() {
         });
     });
     ui.saveBuildingBtn.addEventListener("click", saveBuildingLoad);
+    ui.clearBuildingLoadBtn?.addEventListener("click", async () => {
+        if (!currentAuthUser()?.admin) return;
+        if (!selectedBuilding || selectedBuilding === ARCHIVE_BUILDING_CODE) {
+            print({ error: "Выберите корпус с активной нагрузкой." });
+            return;
+        }
+        const confirmed = confirm(`Удалить всю нагрузку корпуса ${selectedBuilding} в текущем учебном году?`);
+        if (!confirmed) return;
+        try {
+            await api(`/api/manual-load?building=${encodeURIComponent(selectedBuilding)}`, { method: "DELETE" });
+            await refreshSourceData();
+            print({ status: `Нагрузка корпуса ${selectedBuilding} удалена.` });
+        } catch (error) {
+            print({ error: error.message });
+        }
+    });
     ui.periodForm.addEventListener("submit", (e) => {
         e.preventDefault();
         const subjectKey = ui.periodForm.elements.subjectKey.value;
@@ -2516,6 +2561,7 @@ function bindEvents() {
 async function init() {
     await waitForAuthContext();
     bindEvents();
+    updateAdminOnlyActions();
     const defaultTab = applyLoadTabAccess();
     if (!defaultTab) return;
     showLoadTab("distribution");

@@ -298,6 +298,7 @@ async function renderAcademicYears() {
                 <button type="button" data-year-continuity="${esc(row.code)}">
                     Запустить преемственность
                 </button>
+                <button type="button" data-year-clear-load="${esc(row.code)}">Удалить нагрузку</button>
                 <button type="button" data-year-delete="${esc(row.id)}">Удалить</button>
             </td>
         </tr>
@@ -324,6 +325,22 @@ async function renderAcademicYears() {
                 await api(`/api/academic-years/${btn.dataset.yearDelete}`, { method: 'DELETE' });
                 await renderAcademicYears();
             } catch (error) {
+                print({ error: error.message });
+            }
+        });
+    });
+    ui.academicYearsBody.querySelectorAll('[data-year-clear-load]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            try {
+                await api(`/api/manual-load?academicYear=${encodeURIComponent(btn.dataset.yearClearLoad)}`, { method: 'DELETE' });
+                if (ui.academicYearFeedback) {
+                    ui.academicYearFeedback.textContent = `Нагрузка удалена для ${btn.dataset.yearClearLoad}.`;
+                }
+                await renderAcademicYears();
+            } catch (error) {
+                if (ui.academicYearFeedback) {
+                    ui.academicYearFeedback.textContent = `Ошибка удаления нагрузки: ${error.message}`;
+                }
                 print({ error: error.message });
             }
         });
