@@ -632,7 +632,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         entity.setStudyPeriod(resolveStudyPeriod(effectiveAcademicYear, request.getClassName(), request.getStudyPeriod(), request.getLoadFromDate(), request.getLoadToDate()));
         entity.setLoadFromDate(request.getLoadFromDate());
         entity.setLoadToDate(request.getLoadToDate());
-        entity.setContinuityStatus(ContinuityStatus.UNKNOWN);
+        entity.setContinuityStatus(request.getContinuityStatus() == null ? ContinuityStatus.UNKNOWN : request.getContinuityStatus());
         return entity;
     }
 

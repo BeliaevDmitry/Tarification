@@ -1544,7 +1544,8 @@ function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
 
     return {
         from: String(source.loadFromDate || ""),
-        to: String(source.loadToDate || "")
+        to: String(source.loadToDate || ""),
+        continuityStatus: String(source.continuityStatus || "").trim().toUpperCase()
     };
 }
 
@@ -2168,7 +2169,8 @@ async function saveBuildingLoad() {
             educationLevel: row.educationLevel,
             studyPeriod: rowStudyPeriod(row),
             loadFromDate: rowLoadFromDate,
-            loadToDate: rowLoadToDate
+            loadToDate: rowLoadToDate,
+            continuityStatus: manualPeriod?.continuityStatus || null
         };
     }).filter(Boolean);
 
