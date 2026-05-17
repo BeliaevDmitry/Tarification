@@ -9,6 +9,7 @@ const ui = {
     importLoadBtn: document.getElementById("import-load-btn"),
     importLoadFile: document.getElementById("import-load-file"),
     saveBuildingBtn: document.getElementById("save-building-btn"),
+    clearBuildingLoadBtn: document.getElementById("clear-building-load-btn"),
     loadResult: document.getElementById("load-result"),
     tableHead: document.getElementById("building-load-head"),
     tableBody: document.getElementById("building-load-body"),
@@ -817,6 +818,11 @@ function updateLoadEditMode() {
     if (ui.saveBuildingBtn) {
         ui.saveBuildingBtn.title = allowed ? '' : reason;
     }
+}
+
+function updateAdminOnlyActions() {
+    if (!ui.clearBuildingLoadBtn) return;
+    ui.clearBuildingLoadBtn.style.display = currentAuthUser()?.admin ? "" : "none";
 }
 
 function dateInRange(isoDate, fromDate, toDate) {
@@ -2364,6 +2370,22 @@ function bindEvents() {
         });
     });
     ui.saveBuildingBtn.addEventListener("click", saveBuildingLoad);
+    ui.clearBuildingLoadBtn?.addEventListener("click", async () => {
+        if (!currentAuthUser()?.admin) return;
+        if (!selectedBuilding || selectedBuilding === ARCHIVE_BUILDING_CODE) {
+            print({ error: "Выберите корпус с активной нагрузкой." });
+            return;
+        }
+        const confirmed = confirm(`Удалить всю нагрузку корпуса ${selectedBuilding} в текущем учебном году?`);
+        if (!confirmed) return;
+        try {
+            await api(`/api/manual-load?building=${encodeURIComponent(selectedBuilding)}`, { method: "DELETE" });
+            await refreshSourceData();
+            print({ status: `Нагрузка корпуса ${selectedBuilding} удалена.` });
+        } catch (error) {
+            print({ error: error.message });
+        }
+    });
     ui.periodForm.addEventListener("submit", (e) => {
         e.preventDefault();
         const subjectKey = ui.periodForm.elements.subjectKey.value;
@@ -2513,6 +2535,7 @@ function bindEvents() {
 async function init() {
     await waitForAuthContext();
     bindEvents();
+    updateAdminOnlyActions();
     const defaultTab = applyLoadTabAccess();
     if (!defaultTab) return;
     showLoadTab("distribution");
