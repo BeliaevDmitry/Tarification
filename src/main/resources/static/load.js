@@ -1601,7 +1601,6 @@ function applySubgroupDrawerAssignments() {
                 educationLevel: row?.educationLevel,
                 subjectName: ctx.subjectName
             };
-            assignments[apiKey] = exact;
         }
         appliedByApiKey.set(apiKey, { teacherName: exact, fromDate, toDate });
     }
@@ -1635,6 +1634,7 @@ function applySubgroupDrawerAssignments() {
                 return String(appliedByApiKey.get(apiKey)?.teacherName || '').trim().toLowerCase() === teacherName.toLowerCase();
             });
             const apiKey = firstRow ? apiKeyOfRow(firstRow) : null;
+            const plan = apiKey ? plans[apiKey] : null;
             const applied = apiKey ? appliedByApiKey.get(apiKey) : null;
             const fromDate = applied?.fromDate || period.from;
             const toDate = applied?.toDate || period.to;
@@ -1642,8 +1642,19 @@ function applySubgroupDrawerAssignments() {
             if (!existingRow) {
                 rowsMap[subjectKey].push({ id: rowId(), teacherName, studyPeriod: period.studyPeriod, loadFromDate: fromDate, loadToDate: toDate });
             } else {
-                existingRow.loadFromDate = fromDate || existingRow.loadFromDate;
-                existingRow.loadToDate = toDate || existingRow.loadToDate;
+                if (fromDate) existingRow.loadFromDate = fromDate;
+                if (toDate) existingRow.loadToDate = toDate;
+            }
+
+            if (plan?.previousTeacher && plan?.fromDate) {
+                const donorName = String(plan.previousTeacher).trim().toLowerCase();
+                const donorRow = rowsMap[subjectKey].find((row) => String(row.teacherName || '').trim().toLowerCase() === donorName);
+                if (donorRow) {
+                    const donorEndDate = dayBefore(plan.fromDate);
+                    if (donorEndDate) {
+                        donorRow.loadToDate = donorEndDate;
+                    }
+                }
             }
         });
     });
@@ -2109,8 +2120,8 @@ async function saveBuildingLoad() {
         const teacherRow = (rowsMap[subjectKeyOfRow(row)] || []).find((r) => String(r.teacherName || "").trim() === fioTeacher);
         const period = defaultLoadPeriod(row.className, rowStudyPeriod(row));
         const manualPeriod = findManualPeriodForClassTeacher(row, fioTeacher);
-        const rowLoadFromDate = manualPeriod?.from || period.from || teacherRow?.loadFromDate;
-        let rowLoadToDate = manualPeriod?.to || period.to || teacherRow?.loadToDate;
+        const rowLoadFromDate = manualPeriod?.from || teacherRow?.loadFromDate || period.from;
+        let rowLoadToDate = manualPeriod?.to || teacherRow?.loadToDate || period.to;
         const plan = plans[apiKey];
         if (plan && plan.previousTeacher === fioTeacher) {
             const cut = dayBefore(plan.fromDate);
@@ -2388,6 +2399,7 @@ function bindEvents() {
                         educationLevel: takeover.educationLevel,
                         subjectName: takeover.curriculumRow.subjectName
                     };
+                    assignments[apiKey] = takeover.previousTeacher;
                 });
             } else {
                 takeover.apiKeys.forEach((apiKey) => {
