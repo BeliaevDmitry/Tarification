@@ -1019,6 +1019,30 @@ function prefillFromManualLoad(referenceDate = referencePlanningDate()) {
     });
 }
 
+function persistedContinuityStatusForRow(apiRow, rowTeacher, referenceDate) {
+    const teacher = String(rowTeacher || "").trim().toLowerCase();
+    if (!teacher || !apiRow) return "";
+    const rowBuilding = normalizeBuildingCode(apiRow.numberSchoolBuilding);
+    const rowClass = normalizeClassName(apiRow.className);
+    const rowSubject = String(apiRow.subjectName || "").trim().toLowerCase();
+    const rowEducation = String(apiRow.educationLevel || "").trim().toUpperCase();
+    const rowGroup = String(continuityGroupName(apiRow) || "").trim().toLowerCase();
+    const periodRef = String(referenceDate || referencePlanningDate());
+    const matched = (manualRows || []).find((entry) => {
+        const entryTeacher = String(entry.fioTeacher || "").trim().toLowerCase();
+        if (entryTeacher !== teacher) return false;
+        if (normalizeBuildingCode(entry.numberSchoolBuilding) !== rowBuilding) return false;
+        if (normalizeClassName(entry.className) !== rowClass) return false;
+        if (String(entry.subjectName || "").trim().toLowerCase() !== rowSubject) return false;
+        if (String(entry.educationLevel || "").trim().toUpperCase() !== rowEducation) return false;
+        if (String(entry.groupNameEducationalPlan || "").trim().toLowerCase() !== rowGroup) return false;
+        const from = String(entry.loadFromDate || "");
+        const to = String(entry.loadToDate || "");
+        return from && to && from <= periodRef && periodRef <= to;
+    });
+    return String(matched?.continuityStatus || "").trim().toUpperCase();
+}
+
 function ensureTeacherRowsForBuilding() {
     const buildingRows = expandedRowsForSelectedBuilding();
     const assignments = assignmentsForBuilding(selectedBuilding);
@@ -1949,7 +1973,7 @@ function renderTable() {
                 const isMuted = rowTeacher !== "" && !hasRowTeacherAssigned && !isPlanned && !isTransferOut;
                 const isUnassigned = !hasAnyAssigned && !isPlanned;
                 const persistedContinuityStates = classRows
-                    .map((item) => String(item?.continuityStatus || "").trim().toUpperCase())
+                    .map((item) => persistedContinuityStatusForRow(item, rowTeacher, referenceDate))
                     .filter(Boolean);
                 const hasPersistedContinuityOk = persistedContinuityStates.includes("OK");
                 const hasPersistedContinuityBroken = persistedContinuityStates.includes("BROKEN");
