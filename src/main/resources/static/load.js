@@ -1538,6 +1538,8 @@ function openSubgroupDrawer(presentationRow, className, classRows) {
         updateDatalistOptions(sharedList, '');
         ui.subgroupDrawerBody.querySelectorAll('[data-subgroup-teacher]').forEach((input) => {
             input.addEventListener('input', () => updateDatalistOptions(sharedList, input.value || ''));
+            input.addEventListener('focus', () => updateDatalistOptions(sharedList, ''));
+            input.addEventListener('click', () => updateDatalistOptions(sharedList, ''));
         });
     }
     if (ui.subgroupDrawerBackdrop) ui.subgroupDrawerBackdrop.hidden = false;
