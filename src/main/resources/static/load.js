@@ -419,6 +419,9 @@ function classPeriodHours(rows = []) {
 
 function classPeriodText(rows = []) {
     const totals = classPeriodHours(rows);
+    if (totals.h1 === 0 && totals.h2 === 0) {
+        return totals.year > 0 ? String(totals.year) : "0";
+    }
     return formatSplitHours(totals);
 }
 
