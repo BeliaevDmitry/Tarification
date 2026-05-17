@@ -107,6 +107,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
     @Override
+    @Transactional
     public void clearAll(String academicYear) {
         manualLoadEntryRepository.deleteAllByAcademicYear(academicYear);
     }
