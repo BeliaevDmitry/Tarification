@@ -22,6 +22,10 @@ public interface ManualLoadService {
 
     void clearAll(String academicYear);
 
+    default void clearByBuilding(String academicYear, String numberSchoolBuilding) {
+        throw new UnsupportedOperationException("clearByBuilding is not implemented");
+    }
+
     ManualLoadProcessResult processCurrentManualLoad(String academicYear);
 
     byte[] exportWorkbook(String academicYear) throws IOException;
