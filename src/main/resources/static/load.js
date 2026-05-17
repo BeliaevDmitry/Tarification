@@ -435,9 +435,16 @@ function classAssignedUnassignedText(rows = [], rowTeacher = "", buildingCode = 
     let unassigned = 0;
     rows.forEach((row) => {
         const hours = Number(row?.plannedHours || 0);
-        const assignedTeacher = String(assignmentsForBuilding(buildingCode)[apiKeyOfRow(row)] || "").trim().toLowerCase();
+        const apiKey = apiKeyOfRow(row);
+        const assignedTeacher = String(assignmentsForBuilding(buildingCode)[apiKey] || "").trim().toLowerCase();
+        const plannedTransfer = futurePlansForBuilding(buildingCode)[apiKey] || null;
+        const plannedTeacher = String(plannedTransfer?.targetTeacher || "").trim().toLowerCase();
         if (!assignedTeacher) {
             unassigned += hours;
+            return;
+        }
+        if (teacherNormalized && plannedTeacher && plannedTeacher === teacherNormalized) {
+            assigned += hours;
             return;
         }
         if (teacherNormalized && assignedTeacher === teacherNormalized) {
