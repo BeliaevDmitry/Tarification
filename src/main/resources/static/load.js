@@ -418,15 +418,38 @@ function classPeriodHours(rows = []) {
 }
 
 function classPeriodText(rows = []) {
-    const p = classPeriodHours(rows);
-    if (p.year > 0) return String(p.year);
-    if (p.h1 > 0 && p.h2 > 0) {
-        if (p.h1 === p.h2) return String(p.h1);
-        return `${p.h1}/${p.h2}`;
+    const total = (rows || []).reduce((sum, row) => sum + Number(row?.plannedHours || 0), 0);
+    return total > 0 ? String(total) : "";
+}
+
+function classAssignedUnassignedText(rows = [], rowTeacher = "", buildingCode = selectedBuilding) {
+    const teacherNormalized = String(rowTeacher || "").trim().toLowerCase();
+    let assigned = 0;
+    let unassigned = 0;
+    rows.forEach((row) => {
+        const hours = Number(row?.plannedHours || 0);
+        const apiKey = apiKeyOfRow(row);
+        const assignedTeacher = String(assignmentsForBuilding(buildingCode)[apiKey] || "").trim().toLowerCase();
+        const plannedTransfer = futurePlansForBuilding(buildingCode)[apiKey] || null;
+        const plannedTeacher = String(plannedTransfer?.targetTeacher || "").trim().toLowerCase();
+        if (!assignedTeacher) {
+            unassigned += hours;
+            return;
+        }
+        if (teacherNormalized && plannedTeacher && plannedTeacher === teacherNormalized) {
+            assigned += hours;
+            return;
+        }
+        if (teacherNormalized && assignedTeacher === teacherNormalized) {
+            assigned += hours;
+        }
+    });
+    if (!teacherNormalized) {
+        return unassigned > 0 ? `${unassigned}` : "0";
     }
-    if (p.h1 > 0) return `${p.h1} (1П)`;
-    if (p.h2 > 0) return `${p.h2} (2П)`;
-    return "";
+    if (assigned <= 0 && unassigned <= 0) return "0";
+    if (unassigned <= 0) return `${assigned}`;
+    return `${assigned} / ${unassigned}`;
 }
 
 function classAssignedUnassignedText(rows = [], rowTeacher = "", buildingCode = selectedBuilding) {
@@ -1602,6 +1625,7 @@ function applySubgroupDrawerAssignments() {
                 educationLevel: row?.educationLevel,
                 subjectName: ctx.subjectName
             };
+            assignments[apiKey] = exact;
         }
         appliedByApiKey.set(apiKey, { teacherName: exact, fromDate, toDate });
     }
