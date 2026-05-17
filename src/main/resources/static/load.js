@@ -418,8 +418,8 @@ function classPeriodHours(rows = []) {
 }
 
 function classPeriodText(rows = []) {
-    const total = (rows || []).reduce((sum, row) => sum + Number(row?.plannedHours || 0), 0);
-    return total > 0 ? String(total) : "";
+    const totals = classPeriodHours(rows);
+    return formatSplitHours(totals);
 }
 
 function classAssignedUnassignedText(rows = [], rowTeacher = "", buildingCode = selectedBuilding) {
@@ -455,8 +455,8 @@ function classAssignedUnassignedText(rows = [], rowTeacher = "", buildingCode = 
 function formatSplitHours(pair) {
     const h1 = Number(pair?.h1 || 0);
     const h2 = Number(pair?.h2 || 0);
-    if (h1 > 0 && h2 > 0 && h1 !== h2) return String(h1 + h2);
-    return String(Math.max(h1, h2, 0));
+    if (h1 === h2) return String(h1);
+    return `${h1}/${h2}`;
 }
 
 function accumulateSplit(pair, row) {
@@ -1917,7 +1917,7 @@ function renderTable() {
                 const curriculumRow = row.rowsByClass[className];
                 if (!curriculumRow) return "<td></td>";
                 const classRows = row.rowsByClassAll?.[className] || [curriculumRow];
-                const hoursTotal = classAssignedUnassignedText(classRows, row.teacherName, selectedBuilding);
+                const hoursTotal = classPeriodText(classRows);
                 const assignedTeachers = classRows.map((item) => String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(item)] || "").trim()).filter(Boolean);
                 const rowTeacher = String(row.teacherName || "").trim();
                 const hasAnyAssigned = assignedTeachers.length > 0;
