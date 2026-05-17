@@ -9,6 +9,7 @@ const ui = {
     importLoadBtn: document.getElementById("import-load-btn"),
     importLoadFile: document.getElementById("import-load-file"),
     saveBuildingBtn: document.getElementById("save-building-btn"),
+    clearBuildingLoadBtn: document.getElementById("clear-building-load-btn"),
     loadResult: document.getElementById("load-result"),
     tableHead: document.getElementById("building-load-head"),
     tableBody: document.getElementById("building-load-body"),
@@ -66,7 +67,6 @@ const state = {
     classSort: "",
     futurePlansByBuilding: {},
     takeoverContext: null,
-    continuityExpectedByKey: new Map(),
     subgroupDrawerContext: null
 };
 
@@ -214,59 +214,11 @@ function normalizeClassName(value) {
     return m ? `${m[1]}-${m[2]}` : v;
 }
 
-function previousClassForContinuity(targetClass) {
-    const normalized = normalizeClassName(targetClass);
-    const match = normalized.match(/^(\d{1,2})-([А-ЯA-Z])$/);
-    if (!match) return null;
-    const parallel = Number(match[1]);
-    if (!Number.isFinite(parallel) || parallel <= 1) return null;
-    if (parallel === 5 || parallel === 10) return null;
-    return `${parallel - 1}-${match[2]}`;
-}
-
-function previousAcademicYearCode(yearCode) {
-    const [fromYear] = String(yearCode || "").split("/");
-    const year = Number(fromYear);
-    if (!Number.isFinite(year) || year <= 0) return null;
-    return `${year - 1}/${year}`;
-}
-
 function continuityGroupName(row) {
     if (row?.groupNameEducationalPlan) return String(row.groupNameEducationalPlan).trim();
     if (row?.__groupIndex) return `Группа ${row.__groupIndex}`;
     if (row?.subgroupRequired) return "Группа 1";
     return "";
-}
-
-function continuityKey(className, subjectName, groupName) {
-    return [
-        normalizeClassName(className),
-        String(subjectName || "").trim().toLowerCase(),
-        String(groupName || "").trim().toLowerCase()
-    ].join("|");
-}
-
-function computeContinuityExpectedByKey(sourceManual, targetCurriculum) {
-    const sourceByKey = new Map();
-    (sourceManual || []).forEach((row) => {
-        const teacher = String(row.fioTeacher || "").trim();
-        if (!teacher || isVacancyTeacherName(teacher)) return;
-        sourceByKey.set(
-            continuityKey(row.className, row.subjectName, row.groupNameEducationalPlan),
-            teacher.toLowerCase()
-        );
-    });
-
-    const expectedByTarget = new Map();
-    (targetCurriculum || []).forEach((row) => {
-        const prevClass = previousClassForContinuity(row.className);
-        if (!prevClass) return;
-        const groupName = continuityGroupName(row);
-        const expectedTeacher = sourceByKey.get(continuityKey(prevClass, row.subjectName, groupName));
-        if (!expectedTeacher) return;
-        expectedByTarget.set(continuityKey(row.className, row.subjectName, groupName), expectedTeacher);
-    });
-    return expectedByTarget;
 }
 
 function classBuildingMap() {
@@ -819,6 +771,11 @@ function updateLoadEditMode() {
     }
 }
 
+function updateAdminOnlyActions() {
+    if (!ui.clearBuildingLoadBtn) return;
+    ui.clearBuildingLoadBtn.style.display = currentAuthUser()?.admin ? "" : "none";
+}
+
 function dateInRange(isoDate, fromDate, toDate) {
     if (!isoDate || !fromDate || !toDate) return true;
     return fromDate <= isoDate && isoDate <= toDate;
@@ -1011,6 +968,30 @@ function prefillFromManualLoad(referenceDate = referencePlanningDate()) {
             }
         });
     });
+}
+
+function persistedContinuityStatusForRow(apiRow, rowTeacher, referenceDate) {
+    const teacher = String(rowTeacher || "").trim().toLowerCase();
+    if (!teacher || !apiRow) return "";
+    const rowBuilding = normalizeBuildingCode(apiRow.numberSchoolBuilding);
+    const rowClass = normalizeClassName(apiRow.className);
+    const rowSubject = String(apiRow.subjectName || "").trim().toLowerCase();
+    const rowEducation = String(apiRow.educationLevel || "").trim().toUpperCase();
+    const rowGroup = String(continuityGroupName(apiRow) || "").trim().toLowerCase();
+    const periodRef = String(referenceDate || referencePlanningDate());
+    const matched = (manualRows || []).find((entry) => {
+        const entryTeacher = String(entry.fioTeacher || "").trim().toLowerCase();
+        if (entryTeacher !== teacher) return false;
+        if (normalizeBuildingCode(entry.numberSchoolBuilding) !== rowBuilding) return false;
+        if (normalizeClassName(entry.className) !== rowClass) return false;
+        if (String(entry.subjectName || "").trim().toLowerCase() !== rowSubject) return false;
+        if (String(entry.educationLevel || "").trim().toUpperCase() !== rowEducation) return false;
+        if (String(entry.groupNameEducationalPlan || "").trim().toLowerCase() !== rowGroup) return false;
+        const from = String(entry.loadFromDate || "");
+        const to = String(entry.loadToDate || "");
+        return from && to && from <= periodRef && periodRef <= to;
+    });
+    return String(matched?.continuityStatus || "").trim().toUpperCase();
 }
 
 function ensureTeacherRowsForBuilding() {
@@ -1514,7 +1495,8 @@ function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
 
     return {
         from: String(source.loadFromDate || ""),
-        to: String(source.loadToDate || "")
+        to: String(source.loadToDate || ""),
+        continuityStatus: String(source.continuityStatus || "").trim().toUpperCase()
     };
 }
 
@@ -1943,22 +1925,10 @@ function renderTable() {
                 const isMuted = rowTeacher !== "" && !hasRowTeacherAssigned && !isPlanned && !isTransferOut;
                 const isUnassigned = !hasAnyAssigned && !isPlanned;
                 const persistedContinuityStates = classRows
-                    .map((item) => String(item?.continuityStatus || "").trim().toUpperCase())
+                    .map((item) => persistedContinuityStatusForRow(item, rowTeacher, referenceDate))
                     .filter(Boolean);
-                const continuityEnabled = state.continuityExpectedByKey.size > 0;
-                const hasPersistedContinuityOk = continuityEnabled && persistedContinuityStates.includes("OK");
-                const hasPersistedContinuityBroken = continuityEnabled && persistedContinuityStates.includes("BROKEN");
-                const hasContinuityExpectation = classRows.some((item) => state.continuityExpectedByKey.has(
-                    continuityKey(item.className, item.subjectName, continuityGroupName(item))
-                ));
-                const expectationMatchesActiveTeacher = hasContinuityExpectation && classRows.some((item) => {
-                    const expectedTeacher = state.continuityExpectedByKey.get(
-                        continuityKey(item.className, item.subjectName, continuityGroupName(item))
-                    );
-                    return Boolean(expectedTeacher) && expectedTeacher === rowTeacher.toLowerCase();
-                });
-                const hasContinuityOk = isActive && (hasPersistedContinuityOk || expectationMatchesActiveTeacher);
-                const hasContinuityBroken = isActive && (hasPersistedContinuityBroken || (!hasPersistedContinuityOk && hasContinuityExpectation && !expectationMatchesActiveTeacher));
+                const hasPersistedContinuityOk = persistedContinuityStates.includes("OK");
+                const hasContinuityOk = isActive && hasPersistedContinuityOk;
                 const classesForCell = [
                     "hour-pill",
                     isActive ? "active" : "",
@@ -1966,8 +1936,7 @@ function renderTable() {
                     isUnassigned ? "unassigned" : "",
                     isPlanned ? "planned" : "",
                     isTransferOut ? "transfer-out" : "",
-                    !isPlanned && !isTransferOut && hasContinuityOk ? "continuity-ok" : "",
-                    !isPlanned && !isTransferOut && hasContinuityBroken ? "continuity-broken" : ""
+                    !isPlanned && !isTransferOut && hasContinuityOk ? "continuity-ok" : ""
                 ].filter(Boolean).join(" ");
                 return `<td><button type="button" class="${classesForCell}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(hoursTotal)}</button></td>`;
             }).join("")}
@@ -2139,7 +2108,8 @@ async function saveBuildingLoad() {
             educationLevel: row.educationLevel,
             studyPeriod: rowStudyPeriod(row),
             loadFromDate: rowLoadFromDate,
-            loadToDate: rowLoadToDate
+            loadToDate: rowLoadToDate,
+            continuityStatus: manualPeriod?.continuityStatus || null
         };
     }).filter(Boolean);
 
@@ -2342,12 +2312,6 @@ async function refreshSourceData() {
     sourceRevision += 1;
     invalidateDerivedCache();
     invalidateTeacherHourIndexesCache();
-    state.continuityExpectedByKey = new Map();
-
-    // Не подсвечиваем преемственность автоматически по прошлому году.
-    // Подсветка должна опираться только на явный запуск серверного расчёта/статуса.
-    state.continuityExpectedByKey = new Map();
-
     prefillFromManualLoad(currentDisplayDate());
     state.forceResort = true;
     markDirty(false);
@@ -2367,6 +2331,22 @@ function bindEvents() {
         });
     });
     ui.saveBuildingBtn.addEventListener("click", saveBuildingLoad);
+    ui.clearBuildingLoadBtn?.addEventListener("click", async () => {
+        if (!currentAuthUser()?.admin) return;
+        if (!selectedBuilding || selectedBuilding === ARCHIVE_BUILDING_CODE) {
+            print({ error: "Выберите корпус с активной нагрузкой." });
+            return;
+        }
+        const confirmed = confirm(`Удалить всю нагрузку корпуса ${selectedBuilding} в текущем учебном году?`);
+        if (!confirmed) return;
+        try {
+            await api(`/api/manual-load?building=${encodeURIComponent(selectedBuilding)}`, { method: "DELETE" });
+            await refreshSourceData();
+            print({ status: `Нагрузка корпуса ${selectedBuilding} удалена.` });
+        } catch (error) {
+            print({ error: error.message });
+        }
+    });
     ui.periodForm.addEventListener("submit", (e) => {
         e.preventDefault();
         const subjectKey = ui.periodForm.elements.subjectKey.value;
@@ -2516,6 +2496,7 @@ function bindEvents() {
 async function init() {
     await waitForAuthContext();
     bindEvents();
+    updateAdminOnlyActions();
     const defaultTab = applyLoadTabAccess();
     if (!defaultTab) return;
     showLoadTab("distribution");
