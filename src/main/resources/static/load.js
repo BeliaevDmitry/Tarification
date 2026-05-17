@@ -49,6 +49,7 @@ let selectedBuilding = "";
 let activeLoadTab = "distribution";
 let sourceRevision = 0;
 let renderTableRaf = null;
+let latestPresentationRows = [];
 const LOAD_SELECTED_BUILDING_KEY = "tarification.load.selectedBuilding";
 
 const ARCHIVE_BUILDING_CODE = "__ARCHIVE__";
@@ -983,8 +984,10 @@ function continuityStatusKey(buildingCode, className, subjectName, educationLeve
 
 function buildContinuityStatusIndex(referenceDate) {
     const periodRef = String(referenceDate || referencePlanningDate());
+    const selectedBuildingCode = normalizeBuildingCode(selectedBuilding);
     const index = new Map();
     (manualRows || []).forEach((entry) => {
+        if (normalizeBuildingCode(entry.numberSchoolBuilding) !== selectedBuildingCode) return;
         const from = String(entry.loadFromDate || "");
         const to = String(entry.loadToDate || "");
         if (!from || !to || !(from <= periodRef && periodRef <= to)) return;
@@ -1902,6 +1905,9 @@ function renderTable() {
     ui.tableHead.appendChild(headClasses);
 
     const continuityStatusIndex = buildContinuityStatusIndex(referenceDate);
+    const buildingAssignments = assignmentsForBuilding(selectedBuilding);
+    const buildingPlans = futurePlansForBuilding(selectedBuilding);
+    latestPresentationRows = presentationRows;
     presentationRows.forEach((row, index) => {
         const tr = document.createElement("tr");
         if (rowHasPlannedLoadChange(row, referenceDate)) {
@@ -1924,11 +1930,11 @@ function renderTable() {
                 if (!curriculumRow) return "<td></td>";
                 const classRows = row.rowsByClassAll?.[className] || [curriculumRow];
                 const hoursTotal = classPeriodText(classRows);
-                const assignedTeachers = classRows.map((item) => String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(item)] || "").trim()).filter(Boolean);
+                const assignedTeachers = classRows.map((item) => String(buildingAssignments[apiKeyOfRow(item)] || "").trim()).filter(Boolean);
                 const rowTeacher = String(row.teacherName || "").trim();
                 const hasAnyAssigned = assignedTeachers.length > 0;
                 const hasRowTeacherAssigned = rowTeacher ? assignedTeachers.includes(rowTeacher) : false;
-                const plans = classRows.map((item) => futurePlansForBuilding(selectedBuilding)[apiKeyOfRow(item)]).filter(Boolean);
+                const plans = classRows.map((item) => buildingPlans[apiKeyOfRow(item)]).filter(Boolean);
                 const isPlanned = plans.some((plan) => plan.targetTeacher === rowTeacher && plan.fromDate > referenceDate);
                 const isTransferOut = plans.some((plan) => plan.previousTeacher === rowTeacher && plan.fromDate > referenceDate);
                 const isActive = hasRowTeacherAssigned;
@@ -1964,73 +1970,6 @@ function renderTable() {
         const teacherInput = tr.querySelector(".teacher-input");
         const listEl = tr.querySelector("datalist");
         updateDatalistOptions(listEl, teacherInput.value || "");
-
-        teacherInput.addEventListener("input", () => {
-            updateDatalistOptions(listEl, teacherInput.value || "");
-        });
-
-        teacherInput.addEventListener("blur", () => {
-            applyTeacherSelection(row.subjectKey, row.teacherRowId, teacherInput);
-        });
-
-        teacherInput.addEventListener("change", () => {
-            applyTeacherSelection(row.subjectKey, row.teacherRowId, teacherInput);
-        });
-
-        teacherInput.addEventListener("keydown", (event) => {
-            if (event.key !== "Enter") return;
-            event.preventDefault();
-            applyTeacherSelection(row.subjectKey, row.teacherRowId, teacherInput);
-        });
-    });
-
-
-    ui.tableHead.querySelectorAll("button[data-class-sort]").forEach((button) => {
-        button.addEventListener("click", () => {
-            const className = button.dataset.classSort;
-            const next = `classHours:${className}`;
-            if (state.sortField === next) {
-                state.sortField = "subject";
-                state.sortDirection = "asc";
-                ui.sortField.value = "subject";
-                ui.sortDirection.value = "asc";
-            } else {
-                state.sortField = next;
-                state.sortDirection = "desc";
-                ui.sortDirection.value = "desc";
-                ui.sortField.value = "subject";
-            }
-            state.forceResort = true;
-            scheduleRenderTable();
-        });
-    });
-
-
-    ui.tableBody.querySelectorAll(".period-input").forEach((input) => {
-        input.addEventListener("change", () => {
-            const subjectKey = input.dataset.subjectKey;
-            const rowIdValue = input.dataset.rowId;
-            const rowElFrom = ui.tableBody.querySelector(`.period-from[data-subject-key="${subjectKey}"][data-row-id="${rowIdValue}"]`);
-            const rowElTo = ui.tableBody.querySelector(`.period-to[data-subject-key="${subjectKey}"][data-row-id="${rowIdValue}"]`);
-            const fromDate = rowElFrom?.value || "";
-            const toDate = rowElTo?.value || "";
-            setPeriodForRow(subjectKey, rowIdValue, fromDate, toDate);
-        });
-    });
-
-    ui.tableBody.querySelectorAll("button[data-plus-subject]").forEach((button) => {
-        button.addEventListener("click", () => addTeacherRow(button.dataset.plusSubject, button.dataset.plusAfter));
-    });
-
-    ui.tableBody.querySelectorAll("button[data-class-cell]").forEach((button) => {
-        button.addEventListener("click", () => {
-            const subjectKey = button.dataset.subjectKey;
-            const rowIdValue = button.dataset.rowId;
-            const className = button.dataset.className;
-            const row = presentationRows.find((entry) => entry.subjectKey === subjectKey && entry.teacherRowId === rowIdValue);
-            if (!row) return;
-            onClassCellClick(row, className);
-        });
     });
 
     updateLoadEditMode();
@@ -2495,6 +2434,77 @@ function bindEvents() {
     });
 
     ui.nextErrorBtn.addEventListener("click", jumpToFirstError);
+
+    ui.tableHead?.addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-class-sort]");
+        if (!button) return;
+        const className = button.dataset.classSort;
+        const next = `classHours:${className}`;
+        if (state.sortField === next) {
+            state.sortField = "subject";
+            state.sortDirection = "asc";
+            ui.sortField.value = "subject";
+            ui.sortDirection.value = "asc";
+        } else {
+            state.sortField = next;
+            state.sortDirection = "desc";
+            ui.sortDirection.value = "desc";
+            ui.sortField.value = "subject";
+        }
+        state.forceResort = true;
+        scheduleRenderTable();
+    });
+
+    ui.tableBody?.addEventListener("input", (event) => {
+        const teacherInput = event.target.closest(".teacher-input");
+        if (!teacherInput) return;
+        const tr = teacherInput.closest("tr");
+        const listEl = tr?.querySelector("datalist");
+        if (listEl) updateDatalistOptions(listEl, teacherInput.value || "");
+    });
+
+    ui.tableBody?.addEventListener("change", (event) => {
+        const target = event.target;
+        const periodInput = target.closest(".period-input");
+        if (periodInput) {
+            const subjectKey = periodInput.dataset.subjectKey;
+            const rowIdValue = periodInput.dataset.rowId;
+            const rowElFrom = ui.tableBody.querySelector(`.period-from[data-subject-key="${subjectKey}"][data-row-id="${rowIdValue}"]`);
+            const rowElTo = ui.tableBody.querySelector(`.period-to[data-subject-key="${subjectKey}"][data-row-id="${rowIdValue}"]`);
+            setPeriodForRow(subjectKey, rowIdValue, rowElFrom?.value || "", rowElTo?.value || "");
+            return;
+        }
+        const teacherInput = target.closest(".teacher-input");
+        if (teacherInput) {
+            applyTeacherSelection(teacherInput.dataset.subjectKey, teacherInput.dataset.rowId, teacherInput);
+        }
+    });
+
+    ui.tableBody?.addEventListener("blur", (event) => {
+        const teacherInput = event.target.closest(".teacher-input");
+        if (!teacherInput) return;
+        applyTeacherSelection(teacherInput.dataset.subjectKey, teacherInput.dataset.rowId, teacherInput);
+    }, true);
+
+    ui.tableBody?.addEventListener("keydown", (event) => {
+        const teacherInput = event.target.closest(".teacher-input");
+        if (!teacherInput || event.key !== "Enter") return;
+        event.preventDefault();
+        applyTeacherSelection(teacherInput.dataset.subjectKey, teacherInput.dataset.rowId, teacherInput);
+    });
+
+    ui.tableBody?.addEventListener("click", (event) => {
+        const plusButton = event.target.closest("button[data-plus-subject]");
+        if (plusButton) {
+            addTeacherRow(plusButton.dataset.plusSubject, plusButton.dataset.plusAfter);
+            return;
+        }
+        const classButton = event.target.closest("button[data-class-cell]");
+        if (!classButton) return;
+        const row = latestPresentationRows.find((entry) => entry.subjectKey === classButton.dataset.subjectKey && entry.teacherRowId === classButton.dataset.rowId);
+        if (!row) return;
+        onClassCellClick(row, classButton.dataset.className);
+    });
 
     ui.buildingSelect?.addEventListener("change", () => {
         selectedBuilding = ui.buildingSelect.value;
