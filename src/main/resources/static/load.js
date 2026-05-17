@@ -1945,9 +1945,8 @@ function renderTable() {
                 const persistedContinuityStates = classRows
                     .map((item) => String(item?.continuityStatus || "").trim().toUpperCase())
                     .filter(Boolean);
-                const continuityEnabled = state.continuityExpectedByKey.size > 0;
-                const hasPersistedContinuityOk = continuityEnabled && persistedContinuityStates.includes("OK");
-                const hasPersistedContinuityBroken = continuityEnabled && persistedContinuityStates.includes("BROKEN");
+                const hasPersistedContinuityOk = persistedContinuityStates.includes("OK");
+                const hasPersistedContinuityBroken = persistedContinuityStates.includes("BROKEN");
                 const hasContinuityExpectation = classRows.some((item) => state.continuityExpectedByKey.has(
                     continuityKey(item.className, item.subjectName, continuityGroupName(item))
                 ));
@@ -2342,8 +2341,6 @@ async function refreshSourceData() {
     sourceRevision += 1;
     invalidateDerivedCache();
     invalidateTeacherHourIndexesCache();
-    state.continuityExpectedByKey = new Map();
-
     // Не подсвечиваем преемственность автоматически по прошлому году.
     // Подсветка должна опираться только на явный запуск серверного расчёта/статуса.
     state.continuityExpectedByKey = new Map();
