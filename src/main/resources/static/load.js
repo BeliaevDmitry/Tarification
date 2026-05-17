@@ -970,28 +970,37 @@ function prefillFromManualLoad(referenceDate = referencePlanningDate()) {
     });
 }
 
-function persistedContinuityStatusForRow(apiRow, rowTeacher, referenceDate) {
-    const teacher = String(rowTeacher || "").trim().toLowerCase();
-    if (!teacher || !apiRow) return "";
-    const rowBuilding = normalizeBuildingCode(apiRow.numberSchoolBuilding);
-    const rowClass = normalizeClassName(apiRow.className);
-    const rowSubject = String(apiRow.subjectName || "").trim().toLowerCase();
-    const rowEducation = String(apiRow.educationLevel || "").trim().toUpperCase();
-    const rowGroup = String(continuityGroupName(apiRow) || "").trim().toLowerCase();
+function continuityStatusKey(buildingCode, className, subjectName, educationLevel, groupName, teacherName) {
+    return [
+        normalizeBuildingCode(buildingCode),
+        normalizeClassName(className),
+        String(subjectName || "").trim().toLowerCase(),
+        String(educationLevel || "").trim().toUpperCase(),
+        String(groupName || "").trim().toLowerCase(),
+        String(teacherName || "").trim().toLowerCase()
+    ].join("|");
+}
+
+function buildContinuityStatusIndex(referenceDate) {
     const periodRef = String(referenceDate || referencePlanningDate());
-    const matched = (manualRows || []).find((entry) => {
-        const entryTeacher = String(entry.fioTeacher || "").trim().toLowerCase();
-        if (entryTeacher !== teacher) return false;
-        if (normalizeBuildingCode(entry.numberSchoolBuilding) !== rowBuilding) return false;
-        if (normalizeClassName(entry.className) !== rowClass) return false;
-        if (String(entry.subjectName || "").trim().toLowerCase() !== rowSubject) return false;
-        if (String(entry.educationLevel || "").trim().toUpperCase() !== rowEducation) return false;
-        if (String(entry.groupNameEducationalPlan || "").trim().toLowerCase() !== rowGroup) return false;
+    const index = new Map();
+    (manualRows || []).forEach((entry) => {
         const from = String(entry.loadFromDate || "");
         const to = String(entry.loadToDate || "");
-        return from && to && from <= periodRef && periodRef <= to;
+        if (!from || !to || !(from <= periodRef && periodRef <= to)) return;
+        const status = String(entry.continuityStatus || "").trim().toUpperCase();
+        if (!status) return;
+        const key = continuityStatusKey(
+            entry.numberSchoolBuilding,
+            entry.className,
+            entry.subjectName,
+            entry.educationLevel,
+            entry.groupNameEducationalPlan,
+            entry.fioTeacher
+        );
+        index.set(key, status);
     });
-    return String(matched?.continuityStatus || "").trim().toUpperCase();
+    return index;
 }
 
 function ensureTeacherRowsForBuilding() {
@@ -1892,6 +1901,7 @@ function renderTable() {
         : `<th>—</th>`;
     ui.tableHead.appendChild(headClasses);
 
+    const continuityStatusIndex = buildContinuityStatusIndex(referenceDate);
     presentationRows.forEach((row, index) => {
         const tr = document.createElement("tr");
         if (rowHasPlannedLoadChange(row, referenceDate)) {
@@ -1925,7 +1935,14 @@ function renderTable() {
                 const isMuted = rowTeacher !== "" && !hasRowTeacherAssigned && !isPlanned && !isTransferOut;
                 const isUnassigned = !hasAnyAssigned && !isPlanned;
                 const persistedContinuityStates = classRows
-                    .map((item) => persistedContinuityStatusForRow(item, rowTeacher, referenceDate))
+                    .map((item) => continuityStatusIndex.get(continuityStatusKey(
+                        item.numberSchoolBuilding,
+                        item.className,
+                        item.subjectName,
+                        item.educationLevel,
+                        continuityGroupName(item),
+                        rowTeacher
+                    )) || "")
                     .filter(Boolean);
                 const hasPersistedContinuityOk = persistedContinuityStates.includes("OK");
                 const hasContinuityOk = isActive && hasPersistedContinuityOk;
