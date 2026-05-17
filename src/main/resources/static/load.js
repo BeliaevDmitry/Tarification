@@ -452,38 +452,11 @@ function classAssignedUnassignedText(rows = [], rowTeacher = "", buildingCode = 
     return `${assigned} / ${unassigned}`;
 }
 
-function classAssignedUnassignedText(rows = [], rowTeacher = "", buildingCode = selectedBuilding) {
-    const teacherNormalized = String(rowTeacher || "").trim().toLowerCase();
-    let assigned = 0;
-    let unassigned = 0;
-    rows.forEach((row) => {
-        const hours = Number(row?.plannedHours || 0);
-        const apiKey = apiKeyOfRow(row);
-        const assignedTeacher = String(assignmentsForBuilding(buildingCode)[apiKey] || "").trim().toLowerCase();
-        const plannedTransfer = futurePlansForBuilding(buildingCode)[apiKey] || null;
-        const plannedTeacher = String(plannedTransfer?.targetTeacher || "").trim().toLowerCase();
-        if (!assignedTeacher) {
-            unassigned += hours;
-            return;
-        }
-        if (teacherNormalized && plannedTeacher && plannedTeacher === teacherNormalized) {
-            assigned += hours;
-            return;
-        }
-        if (teacherNormalized && assignedTeacher === teacherNormalized) {
-            assigned += hours;
-        }
-    });
-    if (!teacherNormalized) {
-        return unassigned > 0 ? `${unassigned}` : "0";
-    }
-    if (assigned <= 0 && unassigned <= 0) return "0";
-    if (unassigned <= 0) return `${assigned}`;
-    return `${assigned} / ${unassigned}`;
-}
-
 function formatSplitHours(pair) {
-    return `${pair.h1}/${pair.h2}`;
+    const h1 = Number(pair?.h1 || 0);
+    const h2 = Number(pair?.h2 || 0);
+    if (h1 > 0 && h2 > 0 && h1 !== h2) return String(h1 + h2);
+    return String(Math.max(h1, h2, 0));
 }
 
 function accumulateSplit(pair, row) {
