@@ -67,7 +67,6 @@ const state = {
     classSort: "",
     futurePlansByBuilding: {},
     takeoverContext: null,
-    continuityExpectedByKey: new Map(),
     subgroupDrawerContext: null
 };
 
@@ -215,59 +214,11 @@ function normalizeClassName(value) {
     return m ? `${m[1]}-${m[2]}` : v;
 }
 
-function previousClassForContinuity(targetClass) {
-    const normalized = normalizeClassName(targetClass);
-    const match = normalized.match(/^(\d{1,2})-([А-ЯA-Z])$/);
-    if (!match) return null;
-    const parallel = Number(match[1]);
-    if (!Number.isFinite(parallel) || parallel <= 1) return null;
-    if (parallel === 5 || parallel === 10) return null;
-    return `${parallel - 1}-${match[2]}`;
-}
-
-function previousAcademicYearCode(yearCode) {
-    const [fromYear] = String(yearCode || "").split("/");
-    const year = Number(fromYear);
-    if (!Number.isFinite(year) || year <= 0) return null;
-    return `${year - 1}/${year}`;
-}
-
 function continuityGroupName(row) {
     if (row?.groupNameEducationalPlan) return String(row.groupNameEducationalPlan).trim();
     if (row?.__groupIndex) return `Группа ${row.__groupIndex}`;
     if (row?.subgroupRequired) return "Группа 1";
     return "";
-}
-
-function continuityKey(className, subjectName, groupName) {
-    return [
-        normalizeClassName(className),
-        String(subjectName || "").trim().toLowerCase(),
-        String(groupName || "").trim().toLowerCase()
-    ].join("|");
-}
-
-function computeContinuityExpectedByKey(sourceManual, targetCurriculum) {
-    const sourceByKey = new Map();
-    (sourceManual || []).forEach((row) => {
-        const teacher = String(row.fioTeacher || "").trim();
-        if (!teacher || isVacancyTeacherName(teacher)) return;
-        sourceByKey.set(
-            continuityKey(row.className, row.subjectName, row.groupNameEducationalPlan),
-            teacher.toLowerCase()
-        );
-    });
-
-    const expectedByTarget = new Map();
-    (targetCurriculum || []).forEach((row) => {
-        const prevClass = previousClassForContinuity(row.className);
-        if (!prevClass) return;
-        const groupName = continuityGroupName(row);
-        const expectedTeacher = sourceByKey.get(continuityKey(prevClass, row.subjectName, groupName));
-        if (!expectedTeacher) return;
-        expectedByTarget.set(continuityKey(row.className, row.subjectName, groupName), expectedTeacher);
-    });
-    return expectedByTarget;
 }
 
 function classBuildingMap() {
@@ -1977,18 +1928,7 @@ function renderTable() {
                     .map((item) => persistedContinuityStatusForRow(item, rowTeacher, referenceDate))
                     .filter(Boolean);
                 const hasPersistedContinuityOk = persistedContinuityStates.includes("OK");
-                const hasPersistedContinuityBroken = persistedContinuityStates.includes("BROKEN");
-                const hasContinuityExpectation = classRows.some((item) => state.continuityExpectedByKey.has(
-                    continuityKey(item.className, item.subjectName, continuityGroupName(item))
-                ));
-                const expectationMatchesActiveTeacher = hasContinuityExpectation && classRows.some((item) => {
-                    const expectedTeacher = state.continuityExpectedByKey.get(
-                        continuityKey(item.className, item.subjectName, continuityGroupName(item))
-                    );
-                    return Boolean(expectedTeacher) && expectedTeacher === rowTeacher.toLowerCase();
-                });
-                const hasContinuityOk = isActive && (hasPersistedContinuityOk || expectationMatchesActiveTeacher);
-                const hasContinuityBroken = isActive && (hasPersistedContinuityBroken || (!hasPersistedContinuityOk && hasContinuityExpectation && !expectationMatchesActiveTeacher));
+                const hasContinuityOk = isActive && hasPersistedContinuityOk;
                 const classesForCell = [
                     "hour-pill",
                     isActive ? "active" : "",
@@ -1996,8 +1936,7 @@ function renderTable() {
                     isUnassigned ? "unassigned" : "",
                     isPlanned ? "planned" : "",
                     isTransferOut ? "transfer-out" : "",
-                    !isPlanned && !isTransferOut && hasContinuityOk ? "continuity-ok" : "",
-                    !isPlanned && !isTransferOut && hasContinuityBroken ? "continuity-broken" : ""
+                    !isPlanned && !isTransferOut && hasContinuityOk ? "continuity-ok" : ""
                 ].filter(Boolean).join(" ");
                 return `<td><button type="button" class="${classesForCell}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(hoursTotal)}</button></td>`;
             }).join("")}
@@ -2373,10 +2312,6 @@ async function refreshSourceData() {
     sourceRevision += 1;
     invalidateDerivedCache();
     invalidateTeacherHourIndexesCache();
-    // Не подсвечиваем преемственность автоматически по прошлому году.
-    // Подсветка должна опираться только на явный запуск серверного расчёта/статуса.
-    state.continuityExpectedByKey = new Map();
-
     prefillFromManualLoad(currentDisplayDate());
     state.forceResort = true;
     markDirty(false);
