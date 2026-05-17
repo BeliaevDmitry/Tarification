@@ -6,6 +6,7 @@ import org.school.personalLoad.auth.AuthSessionUtils;
 import org.school.personalLoad.auth.SessionUser;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadProcessResult;
+import org.school.personalLoad.dto.ManualLoadHealthResponse;
 import org.school.personalLoad.dto.ManualLoadStatsResponse;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.service.ManualLoadService;
@@ -59,9 +60,24 @@ public class ManualLoadController {
     }
 
     @DeleteMapping
-    public ResponseEntity<Void> clear(@RequestParam(required = false) String academicYear, HttpServletRequest httpServletRequest) {
-        validateGlobalLoadOperation(AuthSessionUtils.requiredUser(httpServletRequest));
-        manualLoadService.clearAll(academicYearService.resolveRequestedOrDefault(academicYear));
+    public ResponseEntity<Void> clear(@RequestParam(required = false) String academicYear,
+                                      @RequestParam(required = false) String building,
+                                      HttpServletRequest httpServletRequest) {
+        SessionUser user = AuthSessionUtils.requiredUser(httpServletRequest);
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        if (building != null && !building.isBlank()) {
+            if (!user.isAdmin()) {
+                throw new ForbiddenException("Операция доступна только администратору");
+            }
+            String currentYear = academicYearService.currentByDate();
+            if (!currentYear.equals(effectiveYear)) {
+                throw new IllegalArgumentException("Удаление нагрузки корпуса доступно только для текущего учебного года: " + currentYear);
+            }
+            manualLoadService.clearByBuilding(effectiveYear, building);
+            return ResponseEntity.noContent().build();
+        }
+        validateGlobalLoadOperation(user);
+        manualLoadService.clearAll(effectiveYear);
         return ResponseEntity.noContent().build();
     }
 
@@ -105,6 +121,15 @@ public class ManualLoadController {
                 building,
                 page,
                 pageSize
+        ));
+    }
+
+    @GetMapping("/health")
+    public ResponseEntity<ManualLoadHealthResponse> health(@RequestParam(required = false) String academicYear,
+                                                           @RequestParam(required = false) String building) {
+        return ResponseEntity.ok(manualLoadService.buildHealth(
+                academicYearService.resolveRequestedOrDefault(academicYear),
+                building
         ));
     }
 
