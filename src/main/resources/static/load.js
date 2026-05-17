@@ -1697,6 +1697,12 @@ function onClassCellClick(presentationRow, className) {
         return;
     }
 
+    const classRows = presentationRow.rowsByClassAll?.[className] || [curriculumRow];
+    if (classRows.some((item) => Number(item.__groupCount || 0) > 0 || item.__groupIndex)) {
+        openSubgroupDrawer(presentationRow, className, classRows);
+        return;
+    }
+
     const syncRows = rowsToSyncForCurriculumRow(curriculumRow);
     const apiKeys = syncRows.map((row) => apiKeyOfRow(row));
     const currentTeacher = String(assignments[apiKeys.find((key) => String(assignments[key] || "").trim())] || "").trim();
@@ -1914,7 +1920,7 @@ function renderTable() {
                 const curriculumRow = row.rowsByClass[className];
                 if (!curriculumRow) return "<td></td>";
                 const classRows = row.rowsByClassAll?.[className] || [curriculumRow];
-                const hoursTotal = classPeriodText(classRows);
+                const hoursTotal = classAssignedUnassignedText(classRows, row.teacherName, selectedBuilding);
                 const assignedTeachers = classRows.map((item) => String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(item)] || "").trim()).filter(Boolean);
                 const rowTeacher = String(row.teacherName || "").trim();
                 const hasAnyAssigned = assignedTeachers.length > 0;
