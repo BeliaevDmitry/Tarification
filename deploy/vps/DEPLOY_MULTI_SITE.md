@@ -15,6 +15,64 @@
 
 ---
 
+
+## Универсальная схема деплоя для школ `7`, `1811` и `demo` (бэкап → проверка PR → залитие)
+
+Ниже команды для любого из трёх сайтов. Меняйте переменную `SITE` на `7`, `1811` или `demo`.
+
+```bash
+cd ~/Tarification
+
+# 0) Выбрать сайт
+SITE=7            # варианты: 7 | 1811 | demo
+STACK="schadmin${SITE}"
+ENV_FILE="deploy/vps/env-presets/${STACK}.env"
+
+# 1) Бэкап БД + файлов перед обновлением
+BACKUP_DIR=~/db_backups/${STACK}_$(date +%F_%H-%M-%S)
+mkdir -p "$BACKUP_DIR"
+
+# БД
+POSTGRES_CONTAINER="${STACK}-postgres"
+docker exec "$POSTGRES_CONTAINER" pg_dump -U tarif_user tariffication_db   > "$BACKUP_DIR/${STACK}_postgres.sql"
+
+# Файлы (reports/specs)
+docker run --rm   -v "${STACK}_pa_reports_data:/data:ro"   -v "$BACKUP_DIR:/backup"   alpine sh -c "cd /data && tar czf /backup/${STACK}_pa_reports_data.tar.gz ."
+
+docker run --rm   -v "${STACK}_pa_specs_data:/data:ro"   -v "$BACKUP_DIR:/backup"   alpine sh -c "cd /data && tar czf /backup/${STACK}_pa_specs_data.tar.gz ."
+
+ls -lh "$BACKUP_DIR"
+
+# 2) Обновить код и проверить номер PR, который поедет на сервер
+# (ожидаем merge-коммит с текстом вида "Merge pull request #123 ...")
+git pull
+LAST_MERGE=$(git log -1 --merges --pretty=format:'%h %s')
+echo "Последний merge-коммит: $LAST_MERGE"
+echo "$LAST_MERGE" | grep -E 'Merge pull request #[0-9]+'
+
+# Дополнительно: последние 5 merge-коммитов с PR-номерами
+# git log --merges -n 5 --pretty=format:'%h %s'
+
+# 3) Залить обновление
+# Для app не используем --no-deps, чтобы штатно подтягивался postgres.
+docker compose -p "$STACK"   --env-file "$ENV_FILE"   -f deploy/vps/docker-compose.prod.yml   up -d --build app
+
+# 4) Быстрая проверка после залития
+docker ps --format "table {{.Names}}	{{.Status}}	{{.Networks}}" | grep "$STACK" || true
+docker exec "${STACK}-app" printenv | grep -E '^(DB_URL|DB_USERNAME|SCHOOL_CODE)='
+docker logs --tail=120 "${STACK}-app"
+```
+
+Примеры запуска:
+
+```bash
+SITE=7
+SITE=1811
+SITE=demo
+```
+
+---
+
 ## Безопасное обновление `schadmin7` с бэкапом БД и файлов
 
 Используйте этот сценарий для обычного обновления приложения на сервере.
