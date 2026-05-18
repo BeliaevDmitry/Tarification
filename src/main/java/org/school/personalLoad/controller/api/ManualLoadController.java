@@ -69,10 +69,6 @@ public class ManualLoadController {
             if (!user.isAdmin()) {
                 throw new ForbiddenException("Операция доступна только администратору");
             }
-            String currentYear = academicYearService.currentByDate();
-            if (!currentYear.equals(effectiveYear)) {
-                throw new IllegalArgumentException("Удаление нагрузки корпуса доступно только для текущего учебного года: " + currentYear);
-            }
             manualLoadService.clearByBuilding(effectiveYear, building);
             return ResponseEntity.noContent().build();
         }

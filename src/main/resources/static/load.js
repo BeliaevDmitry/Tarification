@@ -2608,3 +2608,20 @@ async function init() {
 }
 
 init();
+
+document.addEventListener('DOMContentLoaded', () => {
+    const toggleBtn = document.getElementById('toggle-load-controls-btn');
+    const extraControls = document.getElementById('load-extra-controls');
+
+    if (!toggleBtn || !extraControls) {
+        return;
+    }
+
+    toggleBtn.addEventListener('click', () => {
+        const willOpen = extraControls.hidden;
+
+        extraControls.hidden = !willOpen;
+        toggleBtn.setAttribute('aria-expanded', String(willOpen));
+        toggleBtn.textContent = willOpen ? 'Скрыть настройки' : 'Показать настройки';
+    });
+});

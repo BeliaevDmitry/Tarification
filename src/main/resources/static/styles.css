@@ -1707,3 +1707,122 @@ dialog::backdrop {
 .subgroup-line input { width:100%; }
 
 .subgroup-period-grid { display:grid; grid-template-columns:40px 1fr 40px 1fr; gap:6px; margin-top:8px; align-items:center; }
+
+/* ===== Компактная страница нагрузки ===== */
+
+.load-page .container {
+    padding-top: 6px;
+}
+
+/* Верхняя карточка с заголовком и меню */
+.load-page header.card {
+    padding: 8px 12px;
+    margin-bottom: 6px;
+}
+
+.load-page header.card h1 {
+    margin: 0 0 4px;
+    font-size: 20px;
+    line-height: 1.15;
+}
+
+/* Скрываем длинное описание под заголовком */
+.load-page .compact-note {
+    display: none;
+}
+
+/* Меню страниц компактнее */
+.load-page .page-nav {
+    gap: 4px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+
+.load-page .page-nav .nav-link {
+    padding: 4px 8px;
+    font-size: 13px;
+    line-height: 1.1;
+}
+
+/* Панель с корпусом и кнопками */
+.load-page .load-toolbar {
+    padding: 8px 12px;
+    margin-bottom: 6px;
+}
+
+/* Основная строка: Корпуса + Сохранить + Показать настройки */
+.load-main-row {
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 0;
+}
+
+.load-main-row .building-select {
+    min-width: 300px;
+}
+
+/* Поднимаем кнопку сохранения вправо */
+.load-main-row #save-building-btn {
+    margin-left: auto;
+}
+
+/* Кнопка показать/скрыть настройки */
+.secondary-btn {
+    background: #eef2ff;
+    border: 1px solid #c7d2fe;
+    color: #1e3a8a;
+    border-radius: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+}
+
+.secondary-btn:hover {
+    background: #e0e7ff;
+}
+
+/* Скрываемый блок настроек */
+.load-extra-controls {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #e5e7eb;
+}
+
+/* Делаем элементы управления ниже и компактнее */
+.load-page .load-toolbar .row {
+    margin-bottom: 4px;
+}
+
+.load-page .load-main-row select,
+.load-page .load-main-row button,
+.load-page .controls-row select,
+.load-page .controls-row button,
+.load-page .controls-row input {
+    height: 30px;
+    padding-top: 3px;
+    padding-bottom: 3px;
+    font-size: 13px;
+}
+
+/* Легенда компактнее */
+.load-page .compact-legend {
+    margin-top: 6px;
+    gap: 6px;
+    font-size: 12px;
+}
+
+/* Если сообщений нет — не занимаем место */
+.load-page #load-result:empty {
+    display: none;
+}
+
+/* Карточка с таблицей ближе к верху */
+.load-page section.card[data-load-edit-area="true"] {
+    padding: 6px 8px;
+    margin-top: 0;
+}
+
+/* Таблица занимает больше высоты экрана */
+.load-page .sheet-wrap {
+    max-height: calc(100vh - 150px);
+}
