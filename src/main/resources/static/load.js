@@ -1792,6 +1792,17 @@ function collectLoadIssues(presentationRows, classes) {
     return { errors, errorCount };
 }
 
+async function refreshHealthCounters() {
+    if (!selectedBuilding || selectedBuilding === ARCHIVE_BUILDING_CODE) return;
+    try {
+        const health = await api(`/api/manual-load/health?building=${encodeURIComponent(selectedBuilding)}`);
+        ui.unassignedHours.textContent = String(health?.unassignedHours || 0);
+        ui.errorCount.textContent = String(health?.errorCount || 0);
+    } catch {
+        // fallback оставляем за локальным расчетом
+    }
+}
+
 function jumpToFirstError() {
     const missingTeacher = ui.tableBody.querySelector('.dismissal-note');
     const unassigned = ui.tableBody.querySelector('.hour-pill.unassigned');
@@ -1899,6 +1910,7 @@ function renderTable() {
             });
     }
     const { errorCount } = collectLoadIssues(presentationRows, classes);
+    refreshHealthCounters();
 
     const headMain = document.createElement("tr");
     headMain.className = "load-main-head";

@@ -8,6 +8,7 @@ import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
+import org.school.personalLoad.dto.ManualLoadHealthResponse;
 import org.school.personalLoad.dto.ManualLoadPlanFactSummary;
 import org.school.personalLoad.dto.ManualLoadProcessResult;
 import org.school.personalLoad.dto.ManualLoadStatsResponse;
@@ -361,6 +362,45 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         int totalPlanned = rows.stream().mapToInt(ManualLoadStatsResponse.SubjectStat::getPlanned).sum();
         int totalAssigned = rows.stream().mapToInt(ManualLoadStatsResponse.SubjectStat::getAssigned).sum();
         return new ManualLoadStatsResponse(rows.size(), totalPlanned, totalAssigned, Math.max(totalPlanned - totalAssigned, 0), safePage, safePageSize, totalRows, pagedRows);
+    }
+
+    @Override
+    public ManualLoadHealthResponse buildHealth(String academicYear, String numberSchoolBuilding) {
+        List<CurriculumPlanEntry> curriculum = curriculumPlanService.findAll(academicYear, numberSchoolBuilding);
+        List<ManualLoadEntry> manual = findAll(academicYear, numberSchoolBuilding);
+        java.util.Set<String> assignedKeys = manual.stream()
+                .map(this::healthSoftKey)
+                .collect(java.util.stream.Collectors.toSet());
+        int unassignedHours = curriculum.stream()
+                .filter(row -> !assignedKeys.contains(healthSoftKey(row)))
+                .mapToInt(row -> row.getPlannedHours() == null ? 0 : row.getPlannedHours().intValue())
+                .sum();
+        int orphanedCount = (int) manual.stream().filter(ManualLoadEntry::isOrphaned).count();
+        return new ManualLoadHealthResponse(unassignedHours, orphanedCount);
+    }
+
+    private String healthSoftKey(ManualLoadEntry row) {
+        return exportRowSoftKey(
+                row.getAcademicYear(),
+                row.getNumberSchoolBuilding(),
+                row.getClassName(),
+                row.getSubjectName(),
+                row.getGroupNameEducationalPlan(),
+                row.getStudyPeriod() == null ? StudyPeriod.YEAR : row.getStudyPeriod(),
+                row.getEducationLevel()
+        );
+    }
+
+    private String healthSoftKey(CurriculumPlanEntry row) {
+        return exportRowSoftKey(
+                row.getAcademicYear(),
+                row.getNumberSchoolBuilding(),
+                row.getClassName(),
+                row.getSubjectName(),
+                row.isSubgroupRequired() ? "Группа 1" : "",
+                row.getStudyPeriod() == null ? StudyPeriod.YEAR : row.getStudyPeriod(),
+                row.getEducationLevel()
+        );
     }
 
     private String normalizeAreaName(String value) {
