@@ -25,55 +25,100 @@
     </header>
 
     <section class="card load-toolbar" data-load-pane="distribution">
-        <div class="row"><strong>Корпуса:</strong>
+        <div class="row load-main-row">
+            <strong>Корпуса:</strong>
             <select id="building-select" class="building-select"></select>
+
+            <button id="save-building-btn"
+                    type="button"
+                    class="clean-save"
+                    data-requires-edit
+                    data-load-edit-control="true">
+                Сохранить нагрузку корпуса
+            </button>
+
+            <button id="toggle-load-controls-btn"
+                    type="button"
+                    class="secondary-btn"
+                    aria-expanded="false"
+                    aria-controls="load-extra-controls">
+                Показать настройки
+            </button>
         </div>
-        <div class="row controls-row">
-            <label>Сортировка:
-                <select id="sort-field-select">
-                    <option value="subject">по предмету</option>
-                    <option value="teacher">по педагогу</option>
-                    <option value="buildingHours">по часам в корпусе</option>
-                    <option value="complexHours">по часам в комплексе</option>
-                    <option value="classCount">по числу классов</option>
-                </select>
-            </label>
-            <label>Порядок:
-                <select id="sort-direction-select">
-                    <option value="asc">по возрастанию</option>
-                    <option value="desc">по убыванию</option>
-                </select>
-            </label>
-            <label>Режим отображения:
-                <select id="load-view-mode-select">
-                    <option value="all">вся нагрузка</option>
-                    <option value="date">на конкретную дату</option>
-                    <option value="h1">1 полугодие</option>
-                    <option value="h2">2 полугодие</option>
-                </select>
-            </label>
-            <label id="load-view-date-label" style="display:none;">Дата:
-                <input type="date" id="load-view-date-input">
-            </label>
-            <button id="refresh-load-btn" type="button">Обновить из учебного плана</button>
-            <button id="export-load-btn" type="button" data-allow-readonly="true">Экспорт нагрузки</button>
-            <input id="import-load-file" type="file" accept=".xlsx,.xls" style="display:none;">
-            <button id="import-load-btn" type="button" data-requires-edit>Импорт нагрузки</button>
-            <button id="save-building-btn" type="button" class="clean-save" data-requires-edit data-load-edit-control="true">Сохранить нагрузку корпуса</button>
+
+        <div id="load-extra-controls" class="load-extra-controls" hidden>
+            <div class="row controls-row">
+                <label>Сортировка:
+                    <select id="sort-field-select">
+                        <option value="subject">по предмету</option>
+                        <option value="teacher">по педагогу</option>
+                        <option value="buildingHours">по часам в корпусе</option>
+                        <option value="complexHours">по часам в комплексе</option>
+                        <option value="classCount">по числу классов</option>
+                    </select>
+                </label>
+
+                <label>Порядок:
+                    <select id="sort-direction-select">
+                        <option value="asc">по возрастанию</option>
+                        <option value="desc">по убыванию</option>
+                    </select>
+                </label>
+
+                <label>Режим отображения:
+                    <select id="load-view-mode-select">
+                        <option value="all">вся нагрузка</option>
+                        <option value="date">на конкретную дату</option>
+                        <option value="h1">1 полугодие</option>
+                        <option value="h2">2 полугодие</option>
+                    </select>
+                </label>
+
+                <label id="load-view-date-label" style="display:none;">Дата:
+                    <input type="date" id="load-view-date-input">
+                </label>
+
+                <button id="refresh-load-btn" type="button">Обновить из учебного плана</button>
+                <button id="export-load-btn" type="button" data-allow-readonly="true">Экспорт нагрузки</button>
+
+                <input id="import-load-file" type="file" accept=".xlsx,.xls" style="display:none;">
+                <button id="import-load-btn" type="button" data-requires-edit>Импорт нагрузки</button>
+
+                <button id="clear-building-load-btn"
+                        type="button"
+                        class="danger-btn"
+                        style="display:none;">
+                    Очистить нагрузку корпуса
+                </button>
+            </div>
+
+            <div class="load-color-legend compact-legend">
+                <span class="legend-title">Легенда:</span>
+                <span class="legend-item">
+                    <span class="legend-swatch legend-swatch-blue"></span>
+                    Обычные часы (синий приоритет)
+                </span>
+                <span class="legend-item">
+                    <span class="legend-swatch legend-swatch-ok"></span>
+                    Преемственность выполнена
+                </span>
+                <span class="legend-item">
+                    <span class="legend-swatch legend-swatch-transfer-in"></span>
+                    Передача часов: кому передали
+                </span>
+                <span class="legend-item">
+                    <span class="legend-swatch legend-swatch-transfer-out"></span>
+                    Передача часов: от кого передали
+                </span>
+            </div>
         </div>
-        <div class="load-color-legend compact-legend">
-            <span class="legend-title">Легенда:</span>
-            <span class="legend-item"><span class="legend-swatch legend-swatch-blue"></span>Обычные часы (синий приоритет)</span>
-            <span class="legend-item"><span class="legend-swatch legend-swatch-ok"></span>Преемственность выполнена</span>
-            <span class="legend-item"><span class="legend-swatch legend-swatch-broken"></span>Преемственность нарушена</span>
-            <span class="legend-item"><span class="legend-swatch legend-swatch-transfer-in"></span>Передача часов: кому передали</span>
-            <span class="legend-item"><span class="legend-swatch legend-swatch-transfer-out"></span>Передача часов: от кого передали</span>
-        </div>
+
         <div style="display:none">
             <span id="unassigned-hours">0</span>
             <span id="error-count">0</span>
             <button id="next-error-btn" type="button">Перейти к ошибке</button>
         </div>
+
         <pre id="load-result" class="result-box"></pre>
     </section>
 
@@ -124,7 +169,6 @@
 </aside>
 
 <script src="/auth.js"></script>
-<script src="/table-scroll.js"></script>
 <script src="/load.js"></script>
 <script src="/branding.js"></script>
 </body>
