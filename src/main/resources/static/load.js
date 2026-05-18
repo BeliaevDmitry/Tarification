@@ -1680,7 +1680,7 @@ function subgroupRowsForClass(presentationRow, className) {
     });
 }
 
-function onClassCellClick(presentationRow, className) {
+function onClassCellClick(presentationRow, className, cellButton = null) {
     if (!canEditSelectedBuildingLoad()) {
         print({ warning: loadReadOnlyReason() || "Редактирование этой нагрузки недоступно" });
         return;
@@ -1713,9 +1713,18 @@ function onClassCellClick(presentationRow, className) {
     const currentTeacher = String(assignments[apiKeys.find((key) => String(assignments[key] || "").trim())] || "").trim();
 
     if (!currentTeacher) {
-        apiKeys.forEach((key) => { assignments[key] = targetTeacher; });
+        let newlyAssignedCount = 0;
+        let newlyAssignedHours = 0;
+        apiKeys.forEach((key, idx) => {
+            const hadAssignment = Boolean(String(assignments[key] || "").trim());
+            assignments[key] = targetTeacher;
+            if (!hadAssignment) {
+                newlyAssignedCount += 1;
+                newlyAssignedHours += Number(syncRows[idx]?.plannedHours || 0);
+            }
+        });
+        applyFastAssignmentUIUpdate(cellButton, newlyAssignedCount, newlyAssignedHours);
         markDirty();
-        scheduleRenderTable();
         return;
     }
 
@@ -1791,6 +1800,21 @@ function jumpToFirstError() {
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     target.classList.add('error-row-highlight');
     setTimeout(() => target.classList.remove('error-row-highlight'), 1400);
+}
+
+function applyFastAssignmentUIUpdate(cellButton, assignedCount, assignedHours) {
+    if (cellButton) {
+        cellButton.classList.add("active");
+        cellButton.classList.remove("unassigned", "muted");
+    }
+    if (assignedCount > 0 && ui.errorCount) {
+        const currentErrors = Number(ui.errorCount.textContent || "0");
+        ui.errorCount.textContent = String(Math.max(0, currentErrors - assignedCount));
+    }
+    if (assignedHours > 0 && ui.unassignedHours) {
+        const currentUnassigned = Number(ui.unassignedHours.textContent || "0");
+        ui.unassignedHours.textContent = String(Math.max(0, currentUnassigned - assignedHours));
+    }
 }
 
 async function renderStatsView() {
@@ -2503,7 +2527,7 @@ function bindEvents() {
         if (!classButton) return;
         const row = latestPresentationRows.find((entry) => entry.subjectKey === classButton.dataset.subjectKey && entry.teacherRowId === classButton.dataset.rowId);
         if (!row) return;
-        onClassCellClick(row, classButton.dataset.className);
+        onClassCellClick(row, classButton.dataset.className, classButton);
     });
 
     ui.buildingSelect?.addEventListener("change", () => {
