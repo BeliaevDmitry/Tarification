@@ -1,6 +1,7 @@
 package org.school.personalLoad.dto;
 
 import lombok.Data;
+import org.school.personalLoad.model.ContinuityStatus;
 import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.StudyPeriod;
 
@@ -20,4 +21,5 @@ public class ManualLoadEntryRequest {
     private StudyPeriod studyPeriod;
     private LocalDate loadFromDate;
     private LocalDate loadToDate;
+    private ContinuityStatus continuityStatus;
 }

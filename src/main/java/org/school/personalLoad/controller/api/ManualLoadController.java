@@ -6,6 +6,7 @@ import org.school.personalLoad.auth.AuthSessionUtils;
 import org.school.personalLoad.auth.SessionUser;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadProcessResult;
+import org.school.personalLoad.dto.ManualLoadHealthResponse;
 import org.school.personalLoad.dto.ManualLoadStatsResponse;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.service.ManualLoadService;
@@ -120,6 +121,15 @@ public class ManualLoadController {
                 building,
                 page,
                 pageSize
+        ));
+    }
+
+    @GetMapping("/health")
+    public ResponseEntity<ManualLoadHealthResponse> health(@RequestParam(required = false) String academicYear,
+                                                           @RequestParam(required = false) String building) {
+        return ResponseEntity.ok(manualLoadService.buildHealth(
+                academicYearService.resolveRequestedOrDefault(academicYear),
+                building
         ));
     }
 

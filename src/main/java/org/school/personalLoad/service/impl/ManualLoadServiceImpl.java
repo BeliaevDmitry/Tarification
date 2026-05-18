@@ -8,6 +8,7 @@ import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
+import org.school.personalLoad.dto.ManualLoadHealthResponse;
 import org.school.personalLoad.dto.ManualLoadPlanFactSummary;
 import org.school.personalLoad.dto.ManualLoadProcessResult;
 import org.school.personalLoad.dto.ManualLoadStatsResponse;
@@ -363,6 +364,45 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         return new ManualLoadStatsResponse(rows.size(), totalPlanned, totalAssigned, Math.max(totalPlanned - totalAssigned, 0), safePage, safePageSize, totalRows, pagedRows);
     }
 
+    @Override
+    public ManualLoadHealthResponse buildHealth(String academicYear, String numberSchoolBuilding) {
+        List<CurriculumPlanEntry> curriculum = curriculumPlanService.findAll(academicYear, numberSchoolBuilding);
+        List<ManualLoadEntry> manual = findAll(academicYear, numberSchoolBuilding);
+        java.util.Set<String> assignedKeys = manual.stream()
+                .map(this::healthSoftKey)
+                .collect(java.util.stream.Collectors.toSet());
+        int unassignedHours = curriculum.stream()
+                .filter(row -> !assignedKeys.contains(healthSoftKey(row)))
+                .mapToInt(row -> row.getPlannedHours() == null ? 0 : row.getPlannedHours().intValue())
+                .sum();
+        int orphanedCount = (int) manual.stream().filter(ManualLoadEntry::isOrphaned).count();
+        return new ManualLoadHealthResponse(unassignedHours, orphanedCount);
+    }
+
+    private String healthSoftKey(ManualLoadEntry row) {
+        return exportRowSoftKey(
+                row.getAcademicYear(),
+                row.getNumberSchoolBuilding(),
+                row.getClassName(),
+                row.getSubjectName(),
+                row.getGroupNameEducationalPlan(),
+                row.getStudyPeriod() == null ? StudyPeriod.YEAR : row.getStudyPeriod(),
+                row.getEducationLevel()
+        );
+    }
+
+    private String healthSoftKey(CurriculumPlanEntry row) {
+        return exportRowSoftKey(
+                row.getAcademicYear(),
+                row.getNumberSchoolBuilding(),
+                row.getClassName(),
+                row.getSubjectName(),
+                row.isSubgroupRequired() ? "Группа 1" : "",
+                row.getStudyPeriod() == null ? StudyPeriod.YEAR : row.getStudyPeriod(),
+                row.getEducationLevel()
+        );
+    }
+
     private String normalizeAreaName(String value) {
         String normalized = normalizeValue(value);
         return normalized.isBlank() ? "Без области" : normalized;
@@ -632,7 +672,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         entity.setStudyPeriod(resolveStudyPeriod(effectiveAcademicYear, request.getClassName(), request.getStudyPeriod(), request.getLoadFromDate(), request.getLoadToDate()));
         entity.setLoadFromDate(request.getLoadFromDate());
         entity.setLoadToDate(request.getLoadToDate());
-        entity.setContinuityStatus(ContinuityStatus.UNKNOWN);
+        entity.setContinuityStatus(request.getContinuityStatus() == null ? ContinuityStatus.UNKNOWN : request.getContinuityStatus());
         return entity;
     }
 

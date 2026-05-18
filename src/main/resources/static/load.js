@@ -49,6 +49,7 @@ let selectedBuilding = "";
 let activeLoadTab = "distribution";
 let sourceRevision = 0;
 let renderTableRaf = null;
+let latestPresentationRows = [];
 const LOAD_SELECTED_BUILDING_KEY = "tarification.load.selectedBuilding";
 
 const ARCHIVE_BUILDING_CODE = "__ARCHIVE__";
@@ -67,7 +68,6 @@ const state = {
     classSort: "",
     futurePlansByBuilding: {},
     takeoverContext: null,
-    continuityExpectedByKey: new Map(),
     subgroupDrawerContext: null
 };
 
@@ -215,59 +215,11 @@ function normalizeClassName(value) {
     return m ? `${m[1]}-${m[2]}` : v;
 }
 
-function previousClassForContinuity(targetClass) {
-    const normalized = normalizeClassName(targetClass);
-    const match = normalized.match(/^(\d{1,2})-([А-ЯA-Z])$/);
-    if (!match) return null;
-    const parallel = Number(match[1]);
-    if (!Number.isFinite(parallel) || parallel <= 1) return null;
-    if (parallel === 5 || parallel === 10) return null;
-    return `${parallel - 1}-${match[2]}`;
-}
-
-function previousAcademicYearCode(yearCode) {
-    const [fromYear] = String(yearCode || "").split("/");
-    const year = Number(fromYear);
-    if (!Number.isFinite(year) || year <= 0) return null;
-    return `${year - 1}/${year}`;
-}
-
 function continuityGroupName(row) {
     if (row?.groupNameEducationalPlan) return String(row.groupNameEducationalPlan).trim();
     if (row?.__groupIndex) return `Группа ${row.__groupIndex}`;
     if (row?.subgroupRequired) return "Группа 1";
     return "";
-}
-
-function continuityKey(className, subjectName, groupName) {
-    return [
-        normalizeClassName(className),
-        String(subjectName || "").trim().toLowerCase(),
-        String(groupName || "").trim().toLowerCase()
-    ].join("|");
-}
-
-function computeContinuityExpectedByKey(sourceManual, targetCurriculum) {
-    const sourceByKey = new Map();
-    (sourceManual || []).forEach((row) => {
-        const teacher = String(row.fioTeacher || "").trim();
-        if (!teacher || isVacancyTeacherName(teacher)) return;
-        sourceByKey.set(
-            continuityKey(row.className, row.subjectName, row.groupNameEducationalPlan),
-            teacher.toLowerCase()
-        );
-    });
-
-    const expectedByTarget = new Map();
-    (targetCurriculum || []).forEach((row) => {
-        const prevClass = previousClassForContinuity(row.className);
-        if (!prevClass) return;
-        const groupName = continuityGroupName(row);
-        const expectedTeacher = sourceByKey.get(continuityKey(prevClass, row.subjectName, groupName));
-        if (!expectedTeacher) return;
-        expectedByTarget.set(continuityKey(row.className, row.subjectName, groupName), expectedTeacher);
-    });
-    return expectedByTarget;
 }
 
 function classBuildingMap() {
@@ -1019,6 +971,41 @@ function prefillFromManualLoad(referenceDate = referencePlanningDate()) {
     });
 }
 
+function continuityStatusKey(buildingCode, className, subjectName, educationLevel, groupName, teacherName) {
+    return [
+        normalizeBuildingCode(buildingCode),
+        normalizeClassName(className),
+        String(subjectName || "").trim().toLowerCase(),
+        String(educationLevel || "").trim().toUpperCase(),
+        String(groupName || "").trim().toLowerCase(),
+        String(teacherName || "").trim().toLowerCase()
+    ].join("|");
+}
+
+function buildContinuityStatusIndex(referenceDate) {
+    const periodRef = String(referenceDate || referencePlanningDate());
+    const selectedBuildingCode = normalizeBuildingCode(selectedBuilding);
+    const index = new Map();
+    (manualRows || []).forEach((entry) => {
+        if (normalizeBuildingCode(entry.numberSchoolBuilding) !== selectedBuildingCode) return;
+        const from = String(entry.loadFromDate || "");
+        const to = String(entry.loadToDate || "");
+        if (!from || !to || !(from <= periodRef && periodRef <= to)) return;
+        const status = String(entry.continuityStatus || "").trim().toUpperCase();
+        if (!status) return;
+        const key = continuityStatusKey(
+            entry.numberSchoolBuilding,
+            entry.className,
+            entry.subjectName,
+            entry.educationLevel,
+            entry.groupNameEducationalPlan,
+            entry.fioTeacher
+        );
+        index.set(key, status);
+    });
+    return index;
+}
+
 function ensureTeacherRowsForBuilding() {
     const buildingRows = expandedRowsForSelectedBuilding();
     const assignments = assignmentsForBuilding(selectedBuilding);
@@ -1520,7 +1507,8 @@ function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
 
     return {
         from: String(source.loadFromDate || ""),
-        to: String(source.loadToDate || "")
+        to: String(source.loadToDate || ""),
+        continuityStatus: String(source.continuityStatus || "").trim().toUpperCase()
     };
 }
 
@@ -1692,7 +1680,7 @@ function subgroupRowsForClass(presentationRow, className) {
     });
 }
 
-function onClassCellClick(presentationRow, className) {
+function onClassCellClick(presentationRow, className, cellButton = null) {
     if (!canEditSelectedBuildingLoad()) {
         print({ warning: loadReadOnlyReason() || "Редактирование этой нагрузки недоступно" });
         return;
@@ -1725,9 +1713,18 @@ function onClassCellClick(presentationRow, className) {
     const currentTeacher = String(assignments[apiKeys.find((key) => String(assignments[key] || "").trim())] || "").trim();
 
     if (!currentTeacher) {
-        apiKeys.forEach((key) => { assignments[key] = targetTeacher; });
+        let newlyAssignedCount = 0;
+        let newlyAssignedHours = 0;
+        apiKeys.forEach((key, idx) => {
+            const hadAssignment = Boolean(String(assignments[key] || "").trim());
+            assignments[key] = targetTeacher;
+            if (!hadAssignment) {
+                newlyAssignedCount += 1;
+                newlyAssignedHours += Number(syncRows[idx]?.plannedHours || 0);
+            }
+        });
+        applyFastAssignmentUIUpdate(cellButton, newlyAssignedCount, newlyAssignedHours);
         markDirty();
-        scheduleRenderTable();
         return;
     }
 
@@ -1795,6 +1792,17 @@ function collectLoadIssues(presentationRows, classes) {
     return { errors, errorCount };
 }
 
+async function refreshHealthCounters() {
+    if (!selectedBuilding || selectedBuilding === ARCHIVE_BUILDING_CODE) return;
+    try {
+        const health = await api(`/api/manual-load/health?building=${encodeURIComponent(selectedBuilding)}`);
+        ui.unassignedHours.textContent = String(health?.unassignedHours || 0);
+        ui.errorCount.textContent = String(health?.errorCount || 0);
+    } catch {
+        // fallback оставляем за локальным расчетом
+    }
+}
+
 function jumpToFirstError() {
     const missingTeacher = ui.tableBody.querySelector('.dismissal-note');
     const unassigned = ui.tableBody.querySelector('.hour-pill.unassigned');
@@ -1803,6 +1811,21 @@ function jumpToFirstError() {
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     target.classList.add('error-row-highlight');
     setTimeout(() => target.classList.remove('error-row-highlight'), 1400);
+}
+
+function applyFastAssignmentUIUpdate(cellButton, assignedCount, assignedHours) {
+    if (cellButton) {
+        cellButton.classList.add("active");
+        cellButton.classList.remove("unassigned", "muted");
+    }
+    if (assignedCount > 0 && ui.errorCount) {
+        const currentErrors = Number(ui.errorCount.textContent || "0");
+        ui.errorCount.textContent = String(Math.max(0, currentErrors - assignedCount));
+    }
+    if (assignedHours > 0 && ui.unassignedHours) {
+        const currentUnassigned = Number(ui.unassignedHours.textContent || "0");
+        ui.unassignedHours.textContent = String(Math.max(0, currentUnassigned - assignedHours));
+    }
 }
 
 async function renderStatsView() {
@@ -1887,6 +1910,7 @@ function renderTable() {
             });
     }
     const { errorCount } = collectLoadIssues(presentationRows, classes);
+    refreshHealthCounters();
 
     const headMain = document.createElement("tr");
     headMain.className = "load-main-head";
@@ -1916,6 +1940,10 @@ function renderTable() {
         : `<th>—</th>`;
     ui.tableHead.appendChild(headClasses);
 
+    const continuityStatusIndex = buildContinuityStatusIndex(referenceDate);
+    const buildingAssignments = assignmentsForBuilding(selectedBuilding);
+    const buildingPlans = futurePlansForBuilding(selectedBuilding);
+    latestPresentationRows = presentationRows;
     presentationRows.forEach((row, index) => {
         const tr = document.createElement("tr");
         if (rowHasPlannedLoadChange(row, referenceDate)) {
@@ -1938,32 +1966,28 @@ function renderTable() {
                 if (!curriculumRow) return "<td></td>";
                 const classRows = row.rowsByClassAll?.[className] || [curriculumRow];
                 const hoursTotal = classPeriodText(classRows);
-                const assignedTeachers = classRows.map((item) => String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(item)] || "").trim()).filter(Boolean);
+                const assignedTeachers = classRows.map((item) => String(buildingAssignments[apiKeyOfRow(item)] || "").trim()).filter(Boolean);
                 const rowTeacher = String(row.teacherName || "").trim();
                 const hasAnyAssigned = assignedTeachers.length > 0;
                 const hasRowTeacherAssigned = rowTeacher ? assignedTeachers.includes(rowTeacher) : false;
-                const plans = classRows.map((item) => futurePlansForBuilding(selectedBuilding)[apiKeyOfRow(item)]).filter(Boolean);
+                const plans = classRows.map((item) => buildingPlans[apiKeyOfRow(item)]).filter(Boolean);
                 const isPlanned = plans.some((plan) => plan.targetTeacher === rowTeacher && plan.fromDate > referenceDate);
                 const isTransferOut = plans.some((plan) => plan.previousTeacher === rowTeacher && plan.fromDate > referenceDate);
                 const isActive = hasRowTeacherAssigned;
                 const isMuted = rowTeacher !== "" && !hasRowTeacherAssigned && !isPlanned && !isTransferOut;
                 const isUnassigned = !hasAnyAssigned && !isPlanned;
                 const persistedContinuityStates = classRows
-                    .map((item) => String(item?.continuityStatus || "").trim().toUpperCase())
+                    .map((item) => continuityStatusIndex.get(continuityStatusKey(
+                        item.numberSchoolBuilding,
+                        item.className,
+                        item.subjectName,
+                        item.educationLevel,
+                        continuityGroupName(item),
+                        rowTeacher
+                    )) || "")
                     .filter(Boolean);
                 const hasPersistedContinuityOk = persistedContinuityStates.includes("OK");
-                const hasPersistedContinuityBroken = persistedContinuityStates.includes("BROKEN");
-                const hasContinuityExpectation = classRows.some((item) => state.continuityExpectedByKey.has(
-                    continuityKey(item.className, item.subjectName, continuityGroupName(item))
-                ));
-                const expectationMatchesActiveTeacher = hasContinuityExpectation && classRows.some((item) => {
-                    const expectedTeacher = state.continuityExpectedByKey.get(
-                        continuityKey(item.className, item.subjectName, continuityGroupName(item))
-                    );
-                    return Boolean(expectedTeacher) && expectedTeacher === rowTeacher.toLowerCase();
-                });
-                const hasContinuityOk = isActive && (hasPersistedContinuityOk || expectationMatchesActiveTeacher);
-                const hasContinuityBroken = isActive && (hasPersistedContinuityBroken || (!hasPersistedContinuityOk && hasContinuityExpectation && !expectationMatchesActiveTeacher));
+                const hasContinuityOk = isActive && hasPersistedContinuityOk;
                 const classesForCell = [
                     "hour-pill",
                     isActive ? "active" : "",
@@ -1971,8 +1995,7 @@ function renderTable() {
                     isUnassigned ? "unassigned" : "",
                     isPlanned ? "planned" : "",
                     isTransferOut ? "transfer-out" : "",
-                    !isPlanned && !isTransferOut && hasContinuityOk ? "continuity-ok" : "",
-                    !isPlanned && !isTransferOut && hasContinuityBroken ? "continuity-broken" : ""
+                    !isPlanned && !isTransferOut && hasContinuityOk ? "continuity-ok" : ""
                 ].filter(Boolean).join(" ");
                 return `<td><button type="button" class="${classesForCell}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(hoursTotal)}</button></td>`;
             }).join("")}
@@ -1983,73 +2006,6 @@ function renderTable() {
         const teacherInput = tr.querySelector(".teacher-input");
         const listEl = tr.querySelector("datalist");
         updateDatalistOptions(listEl, teacherInput.value || "");
-
-        teacherInput.addEventListener("input", () => {
-            updateDatalistOptions(listEl, teacherInput.value || "");
-        });
-
-        teacherInput.addEventListener("blur", () => {
-            applyTeacherSelection(row.subjectKey, row.teacherRowId, teacherInput);
-        });
-
-        teacherInput.addEventListener("change", () => {
-            applyTeacherSelection(row.subjectKey, row.teacherRowId, teacherInput);
-        });
-
-        teacherInput.addEventListener("keydown", (event) => {
-            if (event.key !== "Enter") return;
-            event.preventDefault();
-            applyTeacherSelection(row.subjectKey, row.teacherRowId, teacherInput);
-        });
-    });
-
-
-    ui.tableHead.querySelectorAll("button[data-class-sort]").forEach((button) => {
-        button.addEventListener("click", () => {
-            const className = button.dataset.classSort;
-            const next = `classHours:${className}`;
-            if (state.sortField === next) {
-                state.sortField = "subject";
-                state.sortDirection = "asc";
-                ui.sortField.value = "subject";
-                ui.sortDirection.value = "asc";
-            } else {
-                state.sortField = next;
-                state.sortDirection = "desc";
-                ui.sortDirection.value = "desc";
-                ui.sortField.value = "subject";
-            }
-            state.forceResort = true;
-            scheduleRenderTable();
-        });
-    });
-
-
-    ui.tableBody.querySelectorAll(".period-input").forEach((input) => {
-        input.addEventListener("change", () => {
-            const subjectKey = input.dataset.subjectKey;
-            const rowIdValue = input.dataset.rowId;
-            const rowElFrom = ui.tableBody.querySelector(`.period-from[data-subject-key="${subjectKey}"][data-row-id="${rowIdValue}"]`);
-            const rowElTo = ui.tableBody.querySelector(`.period-to[data-subject-key="${subjectKey}"][data-row-id="${rowIdValue}"]`);
-            const fromDate = rowElFrom?.value || "";
-            const toDate = rowElTo?.value || "";
-            setPeriodForRow(subjectKey, rowIdValue, fromDate, toDate);
-        });
-    });
-
-    ui.tableBody.querySelectorAll("button[data-plus-subject]").forEach((button) => {
-        button.addEventListener("click", () => addTeacherRow(button.dataset.plusSubject, button.dataset.plusAfter));
-    });
-
-    ui.tableBody.querySelectorAll("button[data-class-cell]").forEach((button) => {
-        button.addEventListener("click", () => {
-            const subjectKey = button.dataset.subjectKey;
-            const rowIdValue = button.dataset.rowId;
-            const className = button.dataset.className;
-            const row = presentationRows.find((entry) => entry.subjectKey === subjectKey && entry.teacherRowId === rowIdValue);
-            if (!row) return;
-            onClassCellClick(row, className);
-        });
     });
 
     updateLoadEditMode();
@@ -2144,7 +2100,8 @@ async function saveBuildingLoad() {
             educationLevel: row.educationLevel,
             studyPeriod: rowStudyPeriod(row),
             loadFromDate: rowLoadFromDate,
-            loadToDate: rowLoadToDate
+            loadToDate: rowLoadToDate,
+            continuityStatus: manualPeriod?.continuityStatus || null
         };
     }).filter(Boolean);
 
@@ -2347,10 +2304,6 @@ async function refreshSourceData() {
     sourceRevision += 1;
     invalidateDerivedCache();
     invalidateTeacherHourIndexesCache();
-    // Не подсвечиваем преемственность автоматически по прошлому году.
-    // Подсветка должна опираться только на явный запуск серверного расчёта/статуса.
-    state.continuityExpectedByKey = new Map();
-
     prefillFromManualLoad(currentDisplayDate());
     state.forceResort = true;
     markDirty(false);
@@ -2517,6 +2470,77 @@ function bindEvents() {
     });
 
     ui.nextErrorBtn.addEventListener("click", jumpToFirstError);
+
+    ui.tableHead?.addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-class-sort]");
+        if (!button) return;
+        const className = button.dataset.classSort;
+        const next = `classHours:${className}`;
+        if (state.sortField === next) {
+            state.sortField = "subject";
+            state.sortDirection = "asc";
+            ui.sortField.value = "subject";
+            ui.sortDirection.value = "asc";
+        } else {
+            state.sortField = next;
+            state.sortDirection = "desc";
+            ui.sortDirection.value = "desc";
+            ui.sortField.value = "subject";
+        }
+        state.forceResort = true;
+        scheduleRenderTable();
+    });
+
+    ui.tableBody?.addEventListener("input", (event) => {
+        const teacherInput = event.target.closest(".teacher-input");
+        if (!teacherInput) return;
+        const tr = teacherInput.closest("tr");
+        const listEl = tr?.querySelector("datalist");
+        if (listEl) updateDatalistOptions(listEl, teacherInput.value || "");
+    });
+
+    ui.tableBody?.addEventListener("change", (event) => {
+        const target = event.target;
+        const periodInput = target.closest(".period-input");
+        if (periodInput) {
+            const subjectKey = periodInput.dataset.subjectKey;
+            const rowIdValue = periodInput.dataset.rowId;
+            const rowElFrom = ui.tableBody.querySelector(`.period-from[data-subject-key="${subjectKey}"][data-row-id="${rowIdValue}"]`);
+            const rowElTo = ui.tableBody.querySelector(`.period-to[data-subject-key="${subjectKey}"][data-row-id="${rowIdValue}"]`);
+            setPeriodForRow(subjectKey, rowIdValue, rowElFrom?.value || "", rowElTo?.value || "");
+            return;
+        }
+        const teacherInput = target.closest(".teacher-input");
+        if (teacherInput) {
+            applyTeacherSelection(teacherInput.dataset.subjectKey, teacherInput.dataset.rowId, teacherInput);
+        }
+    });
+
+    ui.tableBody?.addEventListener("blur", (event) => {
+        const teacherInput = event.target.closest(".teacher-input");
+        if (!teacherInput) return;
+        applyTeacherSelection(teacherInput.dataset.subjectKey, teacherInput.dataset.rowId, teacherInput);
+    }, true);
+
+    ui.tableBody?.addEventListener("keydown", (event) => {
+        const teacherInput = event.target.closest(".teacher-input");
+        if (!teacherInput || event.key !== "Enter") return;
+        event.preventDefault();
+        applyTeacherSelection(teacherInput.dataset.subjectKey, teacherInput.dataset.rowId, teacherInput);
+    });
+
+    ui.tableBody?.addEventListener("click", (event) => {
+        const plusButton = event.target.closest("button[data-plus-subject]");
+        if (plusButton) {
+            addTeacherRow(plusButton.dataset.plusSubject, plusButton.dataset.plusAfter);
+            return;
+        }
+        const classButton = event.target.closest("button[data-class-cell]");
+        if (!classButton) return;
+        const row = latestPresentationRows.find((entry) => entry.subjectKey === classButton.dataset.subjectKey && entry.teacherRowId === classButton.dataset.rowId);
+        if (!row) return;
+        onClassCellClick(row, classButton.dataset.className, classButton);
+    });
 
     ui.buildingSelect?.addEventListener("change", () => {
         selectedBuilding = ui.buildingSelect.value;
