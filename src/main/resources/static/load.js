@@ -1724,6 +1724,7 @@ function onClassCellClick(presentationRow, className, cellButton = null) {
             }
         });
         applyFastAssignmentUIUpdate(cellButton, newlyAssignedCount, newlyAssignedHours);
+        patchSiblingCellsForSubjectClass(presentationRow.subjectKey, className);
         markDirty();
         return;
     }
@@ -1826,6 +1827,35 @@ function applyFastAssignmentUIUpdate(cellButton, assignedCount, assignedHours) {
         const currentUnassigned = Number(ui.unassignedHours.textContent || "0");
         ui.unassignedHours.textContent = String(Math.max(0, currentUnassigned - assignedHours));
     }
+}
+
+function patchSiblingCellsForSubjectClass(subjectKey, className) {
+    const rowById = new Map(latestPresentationRows.map((row) => [String(row.teacherRowId), row]));
+    const selector = `button[data-class-cell="1"][data-subject-key="${CSS.escape(String(subjectKey || ""))}"][data-class-name="${CSS.escape(String(className || ""))}"]`;
+    const buttons = ui.tableBody?.querySelectorAll(selector) || [];
+    const assignments = assignmentsForBuilding(selectedBuilding);
+    const plansMap = futurePlansForBuilding(selectedBuilding);
+    const referenceDate = currentDisplayDate();
+    buttons.forEach((button) => {
+        const row = rowById.get(String(button.dataset.rowId || ""));
+        if (!row) return;
+        const curriculumRow = row.rowsByClass?.[className];
+        if (!curriculumRow) return;
+        const classRows = row.rowsByClassAll?.[className] || [curriculumRow];
+        const assignedTeachers = classRows.map((item) => String(assignments[apiKeyOfRow(item)] || "").trim()).filter(Boolean);
+        const rowTeacher = String(row.teacherName || "").trim();
+        const hasAnyAssigned = assignedTeachers.length > 0;
+        const hasRowTeacherAssigned = rowTeacher ? assignedTeachers.includes(rowTeacher) : false;
+        const plans = classRows.map((item) => plansMap[apiKeyOfRow(item)]).filter(Boolean);
+        const isPlanned = plans.some((plan) => plan.targetTeacher === rowTeacher && plan.fromDate > referenceDate);
+        const isTransferOut = plans.some((plan) => plan.previousTeacher === rowTeacher && plan.fromDate > referenceDate);
+        const isActive = hasRowTeacherAssigned;
+        const isMuted = rowTeacher !== "" && !hasRowTeacherAssigned && !isPlanned && !isTransferOut;
+        const isUnassigned = !hasAnyAssigned && !isPlanned;
+        button.classList.toggle("active", isActive);
+        button.classList.toggle("muted", isMuted);
+        button.classList.toggle("unassigned", isUnassigned);
+    });
 }
 
 async function renderStatsView() {
