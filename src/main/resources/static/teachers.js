@@ -8,9 +8,16 @@ const ui = {
     fioInput: document.getElementById("teacher-fio"),
     refreshBtn: document.getElementById("refresh-teachers-btn"),
     clearBtn: document.getElementById("clear-teachers-btn"),
+    initialsCreate: document.getElementById("teacher-initials-create"),
+    dativeCreate: document.getElementById("teacher-dative-create"),
+    phoneCreate: document.getElementById("teacher-phone-create"),
+    emailCreate: document.getElementById("teacher-email-create"),
+    dutiesCreate: document.getElementById("teacher-duties-create"),
+    buildingCreate: document.getElementById("teacher-building-create"),
     result: document.getElementById("teachers-result"),
     tbody: document.getElementById("teachers-table-body")
 };
+let buildings = [];
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -37,6 +44,18 @@ function statusLabel(row) {
     return `На увольнение с ${row.dismissalDate}`;
 }
 
+function renderBuildingOptions(selected = "") {
+    const selectedNorm = String(selected || "").trim().toUpperCase();
+    const options = ['<option value="">Корпус не указан</option>'];
+    buildings.forEach((b) => {
+        const code = String(b.code || "").trim();
+        const label = `${code}${b.name ? ` — ${b.name}` : ""}`;
+        const selectedAttr = code.toUpperCase() === selectedNorm ? "selected" : "";
+        options.push(`<option value="${escapeHtml(code)}" ${selectedAttr}>${escapeHtml(label)}</option>`);
+    });
+    return options.join("");
+}
+
 function renderTeachers(rows) {
     ui.tbody.innerHTML = "";
     rows
@@ -58,6 +77,7 @@ function renderTeachers(rows) {
                 <td><input class="teacher-phone-input" data-id="${row.id}" value="${escapeHtml(row.phone || "")}" placeholder="+7 ..."></td>
                 <td><input class="teacher-email-input" data-id="${row.id}" value="${escapeHtml(row.email || "")}" placeholder="email"></td>
                 <td><input class="teacher-duties-input" data-id="${row.id}" value="${escapeHtml(row.additionalDuties || "")}" placeholder="Доп. обязанности"></td>
+                <td><select class="teacher-building-input" data-id="${row.id}">${renderBuildingOptions(row.numberSchoolBuilding)}</select></td>
                 <td>${escapeHtml(statusLabel(row))}</td>
                 <td>
                     <div class="row">
@@ -81,11 +101,12 @@ function renderTeachers(rows) {
             const phone = (ui.tbody.querySelector(`.teacher-phone-input[data-id="${id}"]`)?.value || "").trim();
             const email = (ui.tbody.querySelector(`.teacher-email-input[data-id="${id}"]`)?.value || "").trim();
             const additionalDuties = (ui.tbody.querySelector(`.teacher-duties-input[data-id="${id}"]`)?.value || "").trim();
+            const numberSchoolBuilding = (ui.tbody.querySelector(`.teacher-building-input[data-id="${id}"]`)?.value || "").trim();
             try {
                 const result = await api(`/api/teachers/${id}`, {
                     method: "PATCH",
                     headers: jsonHeaders,
-                    body: JSON.stringify({ fioTeacher, fioTeacherDative, initials, phone, email, additionalDuties })
+                    body: JSON.stringify({ fioTeacher, fioTeacherDative, initials, phone, email, additionalDuties, numberSchoolBuilding })
                 });
                 print(result);
                 await loadTeachers();
@@ -152,6 +173,14 @@ async function loadTeachers() {
     return rows;
 }
 
+async function loadBuildings() {
+    const rows = await api('/api/buildings');
+    buildings = (rows || []).slice().sort((a, b) => String(a.code || "").localeCompare(String(b.code || ""), "ru"));
+    if (ui.buildingCreate) {
+        ui.buildingCreate.innerHTML = renderBuildingOptions("");
+    }
+}
+
 async function importTeachers() {
     const file = ui.fileInput.files?.[0];
     if (!file) {
@@ -178,13 +207,19 @@ function downloadTeachers() {
 async function createTeacher(e) {
     e.preventDefault();
     const fioTeacher = (ui.fioInput.value || '').trim();
+    const initials = (ui.initialsCreate.value || '').trim();
+    const fioTeacherDative = (ui.dativeCreate.value || '').trim();
+    const phone = (ui.phoneCreate.value || '').trim();
+    const email = (ui.emailCreate.value || '').trim();
+    const additionalDuties = (ui.dutiesCreate.value || '').trim();
+    const numberSchoolBuilding = (ui.buildingCreate.value || '').trim();
     if (!fioTeacher) return;
 
     try {
         const result = await api('/api/teachers', {
             method: 'POST',
             headers: jsonHeaders,
-            body: JSON.stringify({ fioTeacher, fioTeacherDative: null })
+            body: JSON.stringify({ fioTeacher, fioTeacherDative, initials, phone, email, additionalDuties, numberSchoolBuilding })
         });
         print(result);
         ui.createForm.reset();
@@ -215,6 +250,7 @@ function bindEvents() {
 async function init() {
     bindEvents();
     try {
+        await loadBuildings();
         await loadTeachers();
     } catch (error) {
         print({ error: error.message });

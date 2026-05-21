@@ -64,6 +64,8 @@ public final class AdminUserMapper {
                         .tabDisplayName(permission.getTabDisplayName())
                         .canView(permission.isCanView())
                         .canEdit(permission.isCanEdit())
+                        .canImport(permission.isCanImport())
+                        .canExport(permission.isCanExport())
                         .build())
                 .toList();
     }

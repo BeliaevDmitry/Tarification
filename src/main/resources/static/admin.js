@@ -88,6 +88,8 @@ const ui = {
     editCloseBtn: document.getElementById('user-edit-close-btn'),
     resetPasswordBtn: document.getElementById('reset-password-btn'),
     editSaveBtn: document.getElementById('save-user-btn'),
+    applyBaseValuesCreateBtn: document.getElementById('apply-base-values-create-btn'),
+    applyBaseValuesEditBtn: document.getElementById('apply-base-values-edit-btn'),
     adminTabUsersBtn: document.getElementById('admin-tab-users-btn'),
     adminTabYearsBtn: document.getElementById('admin-tab-years-btn'),
     adminTabOptionsBtn: document.getElementById('admin-tab-options-btn'),
@@ -520,12 +522,14 @@ function renderPermissionMatrix(targetBody, selectedPermissions = [], prefix = '
     const byTab = permissionMap(selectedPermissions);
     targetBody.innerHTML = TAB_GROUPS.map((group) => {
         const groupRows = group.tabs.map((tab) => {
-            const current = byTab[tab.key] || { canView: tab.key !== 'USERS', canEdit: false };
+            const current = byTab[tab.key] || { canView: tab.key !== 'USERS', canEdit: false, canImport: false, canExport: true };
             return `
                 <tr data-tab-row="${tab.key}" data-tab-group="${group.key}">
                     <td class="permission-tab-cell">${tab.label}</td>
                     <td><input type="checkbox" data-tab-view="${tab.key}" data-tab-group="${group.key}" data-prefix="${prefix}" ${current.canView ? 'checked' : ''}></td>
                     <td><input type="checkbox" data-tab-edit="${tab.key}" data-tab-group="${group.key}" data-prefix="${prefix}" ${current.canEdit ? 'checked' : ''}></td>
+                    <td><input type="checkbox" data-tab-import="${tab.key}" data-tab-group="${group.key}" data-prefix="${prefix}" ${current.canImport ? 'checked' : ''}></td>
+                    <td><input type="checkbox" data-tab-export="${tab.key}" data-tab-group="${group.key}" data-prefix="${prefix}" ${current.canExport ? 'checked' : ''}></td>
                 </tr>`;
         }).join('');
         return `
@@ -533,6 +537,8 @@ function renderPermissionMatrix(targetBody, selectedPermissions = [], prefix = '
                 <td><strong>${group.label}</strong></td>
                 <td><input type="checkbox" data-group-view="${group.key}" data-prefix="${prefix}"></td>
                 <td><input type="checkbox" data-group-edit="${group.key}" data-prefix="${prefix}"></td>
+                <td><input type="checkbox" data-group-import="${group.key}" data-prefix="${prefix}"></td>
+                <td><input type="checkbox" data-group-export="${group.key}" data-prefix="${prefix}"></td>
             </tr>
             ${groupRows}
         `;
@@ -544,25 +550,39 @@ function renderPermissionMatrix(targetBody, selectedPermissions = [], prefix = '
 function syncGroupCheckboxes(targetBody, groupKey) {
     const viewTabs = Array.from(targetBody.querySelectorAll(`[data-tab-view][data-tab-group="${groupKey}"]`));
     const editTabs = Array.from(targetBody.querySelectorAll(`[data-tab-edit][data-tab-group="${groupKey}"]`));
+    const importTabs = Array.from(targetBody.querySelectorAll(`[data-tab-import][data-tab-group="${groupKey}"]`));
+    const exportTabs = Array.from(targetBody.querySelectorAll(`[data-tab-export][data-tab-group="${groupKey}"]`));
     const groupView = targetBody.querySelector(`[data-group-view="${groupKey}"]`);
     const groupEdit = targetBody.querySelector(`[data-group-edit="${groupKey}"]`);
-    if (!groupView || !groupEdit || !viewTabs.length) return;
+    const groupImport = targetBody.querySelector(`[data-group-import="${groupKey}"]`);
+    const groupExport = targetBody.querySelector(`[data-group-export="${groupKey}"]`);
+    if (!groupView || !groupEdit || !groupImport || !groupExport || !viewTabs.length) return;
 
     const enabledViewTabs = viewTabs.filter((checkbox) => !checkbox.disabled);
     const enabledEditTabs = editTabs.filter((checkbox) => !checkbox.disabled);
+    const enabledImportTabs = importTabs.filter((checkbox) => !checkbox.disabled);
+    const enabledExportTabs = exportTabs.filter((checkbox) => !checkbox.disabled);
     const totalView = enabledViewTabs.length;
     const totalEdit = enabledEditTabs.length;
     const checkedView = enabledViewTabs.filter((checkbox) => checkbox.checked).length;
     const checkedEdit = enabledEditTabs.filter((checkbox) => checkbox.checked).length;
+    const checkedImport = enabledImportTabs.filter((checkbox) => checkbox.checked).length;
+    const checkedExport = enabledExportTabs.filter((checkbox) => checkbox.checked).length;
     const hasEnabledTabs = totalView > 0;
 
     groupView.disabled = !hasEnabledTabs;
     groupEdit.disabled = !hasEnabledTabs;
+    groupImport.disabled = !hasEnabledTabs;
+    groupExport.disabled = !hasEnabledTabs;
 
     groupView.checked = hasEnabledTabs && checkedView === totalView;
     groupView.indeterminate = hasEnabledTabs && checkedView > 0 && checkedView < totalView;
     groupEdit.checked = hasEnabledTabs && totalEdit > 0 && checkedEdit === totalEdit;
     groupEdit.indeterminate = hasEnabledTabs && checkedEdit > 0 && checkedEdit < totalEdit;
+    groupImport.checked = hasEnabledTabs && enabledImportTabs.length > 0 && checkedImport === enabledImportTabs.length;
+    groupImport.indeterminate = hasEnabledTabs && checkedImport > 0 && checkedImport < enabledImportTabs.length;
+    groupExport.checked = hasEnabledTabs && enabledExportTabs.length > 0 && checkedExport === enabledExportTabs.length;
+    groupExport.indeterminate = hasEnabledTabs && checkedExport > 0 && checkedExport < enabledExportTabs.length;
 }
 
 function syncAllGroupCheckboxes(targetBody) {
@@ -577,6 +597,12 @@ function bindMatrixInteractions(targetBody) {
             const editCheckbox = targetBody.querySelector(`[data-tab-edit="${tab}"]`);
             if (!checkbox.checked && editCheckbox) {
                 editCheckbox.checked = false;
+            }
+            if (!checkbox.checked) {
+                const importCheckbox = targetBody.querySelector(`[data-tab-import="${tab}"]`);
+                const exportCheckbox = targetBody.querySelector(`[data-tab-export="${tab}"]`);
+                if (importCheckbox) importCheckbox.checked = false;
+                if (exportCheckbox) exportCheckbox.checked = false;
             }
             if (groupKey) syncGroupCheckboxes(targetBody, groupKey);
         });
@@ -593,6 +619,15 @@ function bindMatrixInteractions(targetBody) {
             if (groupKey) syncGroupCheckboxes(targetBody, groupKey);
         });
     });
+    targetBody.querySelectorAll('[data-tab-import],[data-tab-export]').forEach((checkbox) => {
+        checkbox.addEventListener('change', () => {
+            const tab = checkbox.dataset.tabImport || checkbox.dataset.tabExport;
+            const groupKey = checkbox.dataset.tabGroup;
+            const viewCheckbox = targetBody.querySelector(`[data-tab-view="${tab}"]`);
+            if (checkbox.checked && viewCheckbox) viewCheckbox.checked = true;
+            if (groupKey) syncGroupCheckboxes(targetBody, groupKey);
+        });
+    });
 
     targetBody.querySelectorAll('[data-group-view]').forEach((checkbox) => {
         checkbox.addEventListener('change', () => {
@@ -604,6 +639,10 @@ function bindMatrixInteractions(targetBody) {
                     const tab = tabCheckbox.dataset.tabView;
                     const editCheckbox = targetBody.querySelector(`[data-tab-edit="${tab}"]`);
                     if (editCheckbox && !editCheckbox.disabled) editCheckbox.checked = false;
+                    const importCheckbox = targetBody.querySelector(`[data-tab-import="${tab}"]`);
+                    const exportCheckbox = targetBody.querySelector(`[data-tab-export="${tab}"]`);
+                    if (importCheckbox && !importCheckbox.disabled) importCheckbox.checked = false;
+                    if (exportCheckbox && !exportCheckbox.disabled) exportCheckbox.checked = false;
                 }
             });
             syncGroupCheckboxes(targetBody, groupKey);
@@ -620,6 +659,22 @@ function bindMatrixInteractions(targetBody) {
                 const viewCheckbox = targetBody.querySelector(`[data-tab-view="${tab}"]`);
                 if (viewCheckbox && !viewCheckbox.disabled && checkbox.checked) {
                     viewCheckbox.checked = true;
+                }
+            });
+            syncGroupCheckboxes(targetBody, groupKey);
+        });
+    });
+    targetBody.querySelectorAll('[data-group-import],[data-group-export]').forEach((checkbox) => {
+        checkbox.addEventListener('change', () => {
+            const groupKey = checkbox.dataset.groupImport || checkbox.dataset.groupExport;
+            const selector = checkbox.dataset.groupImport ? 'data-tab-import' : 'data-tab-export';
+            targetBody.querySelectorAll(`[${selector}][data-tab-group="${groupKey}"]`).forEach((tabCheckbox) => {
+                if (tabCheckbox.disabled) return;
+                tabCheckbox.checked = checkbox.checked;
+                if (checkbox.checked) {
+                    const tab = tabCheckbox.dataset.tabImport || tabCheckbox.dataset.tabExport;
+                    const viewCheckbox = targetBody.querySelector(`[data-tab-view="${tab}"]`);
+                    if (viewCheckbox && !viewCheckbox.disabled) viewCheckbox.checked = true;
                 }
             });
             syncGroupCheckboxes(targetBody, groupKey);
@@ -645,26 +700,38 @@ function syncRoleSpecificFields(prefix) {
     TABS.forEach((tab) => {
         const viewCheckbox = targetBody.querySelector(`[data-tab-view="${tab.key}"]`);
         const editCheckbox = targetBody.querySelector(`[data-tab-edit="${tab.key}"]`);
-        if (!viewCheckbox || !editCheckbox) return;
+        const importCheckbox = targetBody.querySelector(`[data-tab-import="${tab.key}"]`);
+        const exportCheckbox = targetBody.querySelector(`[data-tab-export="${tab.key}"]`);
+        if (!viewCheckbox || !editCheckbox || !importCheckbox || !exportCheckbox) return;
 
         if (isAdmin) {
             viewCheckbox.checked = true;
             editCheckbox.checked = true;
+            importCheckbox.checked = true;
+            exportCheckbox.checked = true;
             viewCheckbox.disabled = true;
             editCheckbox.disabled = true;
+            importCheckbox.disabled = true;
+            exportCheckbox.disabled = true;
             return;
         }
 
         if (tab.key === 'USERS') {
             viewCheckbox.checked = false;
             editCheckbox.checked = false;
+            importCheckbox.checked = false;
+            exportCheckbox.checked = false;
             viewCheckbox.disabled = true;
             editCheckbox.disabled = true;
+            importCheckbox.disabled = true;
+            exportCheckbox.disabled = true;
             return;
         }
 
         viewCheckbox.disabled = false;
         editCheckbox.disabled = false;
+        importCheckbox.disabled = false;
+        exportCheckbox.disabled = false;
     });
     syncAllGroupCheckboxes(targetBody);
 
@@ -687,8 +754,28 @@ function collectPermissions(targetBody) {
     return TABS.map((tab) => ({
         tab: tab.key,
         canView: Boolean(targetBody.querySelector(`[data-tab-view="${tab.key}"]`)?.checked),
-        canEdit: Boolean(targetBody.querySelector(`[data-tab-edit="${tab.key}"]`)?.checked)
+        canEdit: Boolean(targetBody.querySelector(`[data-tab-edit="${tab.key}"]`)?.checked),
+        canImport: Boolean(targetBody.querySelector(`[data-tab-import="${tab.key}"]`)?.checked),
+        canExport: Boolean(targetBody.querySelector(`[data-tab-export="${tab.key}"]`)?.checked)
     }));
+}
+
+function applyRoleBaseValues(prefix) {
+    const role = prefix === 'create' ? ui.createRole.value : ui.editRole.value;
+    const targetBody = prefix === 'create' ? ui.createPermissionsBody : ui.editPermissionsBody;
+    const allowEdit = role === 'ADMIN' || role === 'DIRECTOR' || role === 'DEPUTY_DIRECTOR' || role === 'METHODIST';
+    TABS.forEach((tab) => {
+        const view = targetBody.querySelector(`[data-tab-view="${tab.key}"]`);
+        const edit = targetBody.querySelector(`[data-tab-edit="${tab.key}"]`);
+        const imp = targetBody.querySelector(`[data-tab-import="${tab.key}"]`);
+        const exp = targetBody.querySelector(`[data-tab-export="${tab.key}"]`);
+        if (!view || !edit || !imp || !exp || view.disabled) return;
+        view.checked = true;
+        edit.checked = allowEdit;
+        imp.checked = allowEdit;
+        exp.checked = true;
+    });
+    syncAllGroupCheckboxes(targetBody);
 }
 
 function loadScopeState(prefix) {
@@ -816,6 +903,8 @@ ui.createLoadSelectAll.addEventListener('click', () => setAllLoadBuildings('crea
 ui.createLoadClear.addEventListener('click', () => setAllLoadBuildings('create', false));
 ui.editLoadSelectAll.addEventListener('click', () => setAllLoadBuildings('edit', true));
 ui.editLoadClear.addEventListener('click', () => setAllLoadBuildings('edit', false));
+ui.applyBaseValuesCreateBtn?.addEventListener('click', () => applyRoleBaseValues('create'));
+ui.applyBaseValuesEditBtn?.addEventListener('click', () => applyRoleBaseValues('edit'));
 scopeInputs('create').forEach((input) => input.addEventListener('change', () => syncRoleSpecificFields('create')));
 scopeInputs('edit').forEach((input) => input.addEventListener('change', () => syncRoleSpecificFields('edit')));
 

@@ -70,6 +70,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                     continue;
                 }
                 String additionalDuties = normalizeOptional(getCellStringValue(row.getCell(5)));
+                String building = normalizeOptional(getCellStringValue(row.getCell(6)));
                 if (fio.isBlank()) {
                     skipped++;
                     continue;
@@ -97,6 +98,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                     if (!Objects.equals(phone, teacher.getPhone())) { teacher.setPhone(phone); changed = true; }
                     if (!Objects.equals(email, teacher.getEmail())) { ensureUniqueTeacherEmail(email, teacher.getId()); teacher.setEmail(email); changed = true; }
                     if (!Objects.equals(additionalDuties, teacher.getAdditionalDuties())) { teacher.setAdditionalDuties(additionalDuties); changed = true; }
+                    if (!Objects.equals(building, teacher.getNumberSchoolBuilding())) { teacher.setNumberSchoolBuilding(building); changed = true; }
                     if (changed) { teacherDirectoryRepository.save(teacher); updated++; } else { skipped++; }
                     continue;
                 }
@@ -109,6 +111,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 ensureUniqueTeacherEmail(email, null);
                 entry.setEmail(email);
                 entry.setAdditionalDuties(additionalDuties);
+                entry.setNumberSchoolBuilding(building);
                 teacherDirectoryRepository.save(entry);
                 imported++;
             }
@@ -138,6 +141,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
             header.createCell(3).setCellValue("Телефон");
             header.createCell(4).setCellValue("Email");
             header.createCell(5).setCellValue("Дополнительные обязанности");
+            header.createCell(6).setCellValue("Корпус");
 
             List<TeacherDirectoryEntry> rows = teacherDirectoryRepository.findAll();
             if (rows.isEmpty()) {
@@ -148,6 +152,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 example.createCell(3).setCellValue("+7 900 000-00-00");
                 example.createCell(4).setCellValue("teacher@example.com");
                 example.createCell(5).setCellValue("Классное руководство");
+                example.createCell(6).setCellValue("СП1");
             } else {
                 rows.sort(Comparator.comparing(TeacherDirectoryEntry::getFioTeacher, String.CASE_INSENSITIVE_ORDER));
                 int rowIndex = 1;
@@ -159,6 +164,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                     row.createCell(3).setCellValue(Objects.toString(entry.getPhone(), ""));
                     row.createCell(4).setCellValue(Objects.toString(entry.getEmail(), ""));
                     row.createCell(5).setCellValue(Objects.toString(entry.getAdditionalDuties(), ""));
+                    row.createCell(6).setCellValue(Objects.toString(entry.getNumberSchoolBuilding(), ""));
                 }
             }
 
@@ -168,6 +174,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
             sheet.autoSizeColumn(3);
             sheet.autoSizeColumn(4);
             sheet.autoSizeColumn(5);
+            sheet.autoSizeColumn(6);
             workbook.write(out);
             return new ByteArrayResource(out.toByteArray());
         } catch (Exception e) {
@@ -187,6 +194,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         String phone = normalizePhone(request.getPhone());
         String email = normalizeEmail(request.getEmail());
         String additionalDuties = normalizeOptional(request.getAdditionalDuties());
+        String building = normalizeOptional(request.getNumberSchoolBuilding());
         return teacherDirectoryRepository.findByFioTeacherIgnoreCase(normalized)
                 .orElseGet(() -> {
                     TeacherDirectoryEntry entry = new TeacherDirectoryEntry();
@@ -197,6 +205,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                     ensureUniqueTeacherEmail(email, null);
                     entry.setEmail(email);
                     entry.setAdditionalDuties(additionalDuties);
+                    entry.setNumberSchoolBuilding(building);
                     return teacherDirectoryRepository.save(entry);
                 });
     }
@@ -217,6 +226,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
             ensureUniqueTeacherEmail(email, teacherId);
             entry.setEmail(email);
             entry.setAdditionalDuties(normalizeOptional(request.getAdditionalDuties()));
+            entry.setNumberSchoolBuilding(normalizeOptional(request.getNumberSchoolBuilding()));
         }
         return teacherDirectoryRepository.save(entry);
     }
