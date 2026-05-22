@@ -2528,6 +2528,20 @@ function bindEvents() {
         const listEl = tr?.querySelector("datalist");
         if (listEl) updateDatalistOptions(listEl, teacherInput.value || "");
     });
+    ui.tableBody?.addEventListener("focusin", (event) => {
+        const teacherInput = event.target.closest(".teacher-input");
+        if (!teacherInput) return;
+        const tr = teacherInput.closest("tr");
+        const listEl = tr?.querySelector("datalist");
+        if (listEl) updateDatalistOptions(listEl, "");
+    });
+    ui.tableBody?.addEventListener("click", (event) => {
+        const teacherInput = event.target.closest(".teacher-input");
+        if (!teacherInput) return;
+        const tr = teacherInput.closest("tr");
+        const listEl = tr?.querySelector("datalist");
+        if (listEl) updateDatalistOptions(listEl, "");
+    });
 
     ui.tableBody?.addEventListener("change", (event) => {
         const target = event.target;
