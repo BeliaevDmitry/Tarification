@@ -62,6 +62,18 @@ function renderBuildingOptions(selected = "") {
     return options.join("");
 }
 
+function renderBuildingOptions(selected = "") {
+    const selectedNorm = String(selected || "").trim().toUpperCase();
+    const options = ['<option value="">Корпус не указан</option>'];
+    buildings.forEach((b) => {
+        const code = String(b.code || "").trim();
+        const label = `${code}${b.name ? ` — ${b.name}` : ""}`;
+        const selectedAttr = code.toUpperCase() === selectedNorm ? "selected" : "";
+        options.push(`<option value="${escapeHtml(code)}" ${selectedAttr}>${escapeHtml(label)}</option>`);
+    });
+    return options.join("");
+}
+
 function renderTeachers(rows) {
     ui.tbody.innerHTML = "";
     rows
