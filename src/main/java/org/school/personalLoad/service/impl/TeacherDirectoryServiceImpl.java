@@ -277,6 +277,20 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         return teacherDirectoryRepository.save(entry);
     }
 
+    @Override
+    @Transactional
+    public TeacherDirectoryEntry markPlannedDismissal(Long teacherId, LocalDate plannedDismissalDate, String comment, String markedBy) {
+        if (plannedDismissalDate == null) {
+            throw new IllegalArgumentException("plannedDismissalDate is required");
+        }
+        TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
+                .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
+        entry.setPlannedDismissalDate(plannedDismissalDate);
+        entry.setPlannedDismissalComment(normalizeOptional(comment));
+        entry.setPlannedDismissalMarkedBy(normalizeOptional(markedBy));
+        return teacherDirectoryRepository.save(entry);
+    }
+
 
     @Override
     @Transactional
@@ -295,6 +309,9 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         });
 
         entry.setDismissalDate(null);
+        entry.setPlannedDismissalDate(null);
+        entry.setPlannedDismissalComment(null);
+        entry.setPlannedDismissalMarkedBy(null);
         return teacherDirectoryRepository.save(entry);
     }
 

@@ -14,6 +14,11 @@ const ui = {
     emailCreate: document.getElementById("teacher-email-create"),
     dutiesCreate: document.getElementById("teacher-duties-create"),
     buildingCreate: document.getElementById("teacher-building-create"),
+    tabMainBtn: document.getElementById("teachers-tab-main-btn"),
+    tabDismissalsBtn: document.getElementById("teachers-tab-dismissals-btn"),
+    mainPanel: document.getElementById("teachers-main-panel"),
+    dismissalsPanel: document.getElementById("teachers-dismissals-panel"),
+    dismissalsBody: document.getElementById("teachers-dismissals-body"),
     result: document.getElementById("teachers-result"),
     tbody: document.getElementById("teachers-table-body")
 };
@@ -40,8 +45,21 @@ function escapeHtml(value) {
 }
 
 function statusLabel(row) {
-    if (!row.dismissalDate) return "Активен";
-    return `На увольнение с ${row.dismissalDate}`;
+    if (row.dismissalDate) return `На увольнение с ${row.dismissalDate}`;
+    if (row.plannedDismissalDate) return `Планирует увольнение: ${row.plannedDismissalDate}`;
+    return "Активен";
+}
+
+function renderBuildingOptions(selected = "") {
+    const selectedNorm = String(selected || "").trim().toUpperCase();
+    const options = ['<option value="">Корпус не указан</option>'];
+    buildings.forEach((b) => {
+        const code = String(b.code || "").trim();
+        const label = `${code}${b.name ? ` — ${b.name}` : ""}`;
+        const selectedAttr = code.toUpperCase() === selectedNorm ? "selected" : "";
+        options.push(`<option value="${escapeHtml(code)}" ${selectedAttr}>${escapeHtml(label)}</option>`);
+    });
+    return options.join("");
 }
 
 function renderBuildingOptions(selected = "") {
@@ -84,6 +102,9 @@ function renderTeachers(rows) {
                         <button type="button" class="save-teacher-btn" data-id="${row.id}">Сохранить</button>
                         <input type="date" class="dismiss-date-input" value="${escapeHtml(row.dismissalDate || "")}" data-id="${row.id}">
                         <button type="button" class="mark-dismiss-btn" data-id="${row.id}">На увольнение</button>
+                        <input type="date" class="plan-dismiss-date-input" value="${escapeHtml(row.plannedDismissalDate || "")}" data-id="${row.id}">
+                        <input type="text" class="plan-dismiss-comment-input" value="${escapeHtml(row.plannedDismissalComment || "")}" data-id="${row.id}" placeholder="Комментарий">
+                        <button type="button" class="mark-plan-dismiss-btn" data-id="${row.id}">Планирует уволиться</button>
                         ${row.dismissalDate ? `<button type="button" class="restore-teacher-btn" data-id="${row.id}">Восстановить</button>` : ""}
                         <button type="button" class="danger-btn delete-teacher-btn" data-id="${row.id}">Удалить</button>
                     </div>
@@ -138,6 +159,30 @@ function renderTeachers(rows) {
             }
         });
     });
+    ui.tbody.querySelectorAll(".mark-plan-dismiss-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+            const id = btn.dataset.id;
+            const dateInput = ui.tbody.querySelector(`.plan-dismiss-date-input[data-id="${id}"]`);
+            const commentInput = ui.tbody.querySelector(`.plan-dismiss-comment-input[data-id="${id}"]`);
+            const plannedDismissalDate = dateInput?.value;
+            const comment = (commentInput?.value || "").trim();
+            if (!plannedDismissalDate) {
+                print({ error: "Укажите планируемую дату увольнения" });
+                return;
+            }
+            try {
+                const result = await api(`/api/teachers/${id}/plan-dismiss`, {
+                    method: "PATCH",
+                    headers: jsonHeaders,
+                    body: JSON.stringify({ plannedDismissalDate, comment })
+                });
+                print(result);
+                await loadTeachers();
+            } catch (error) {
+                print({ error: error.message });
+            }
+        });
+    });
 
 
     ui.tbody.querySelectorAll(".restore-teacher-btn").forEach((btn) => {
@@ -170,7 +215,26 @@ function renderTeachers(rows) {
 async function loadTeachers() {
     const rows = await api('/api/teachers');
     renderTeachers(rows || []);
+    renderDismissals(rows || []);
     return rows;
+}
+
+function renderDismissals(rows) {
+    const dismissalRows = (rows || []).filter((r) => r.dismissalDate || r.plannedDismissalDate);
+    if (!ui.dismissalsBody) return;
+    if (!dismissalRows.length) {
+        ui.dismissalsBody.innerHTML = `<tr><td colspan="5">Записей нет</td></tr>`;
+        return;
+    }
+    ui.dismissalsBody.innerHTML = dismissalRows.map((r) => `
+        <tr>
+            <td>${escapeHtml(r.fioTeacher || "")}</td>
+            <td>${escapeHtml(r.dismissalDate || "")}</td>
+            <td>${escapeHtml(r.plannedDismissalDate || "")}</td>
+            <td>${escapeHtml(r.plannedDismissalComment || "")}</td>
+            <td>${escapeHtml(r.plannedDismissalMarkedBy || "")}</td>
+        </tr>
+    `).join("");
 }
 
 async function loadBuildings() {
@@ -245,6 +309,14 @@ function bindEvents() {
     ui.createForm.addEventListener('submit', createTeacher);
     ui.refreshBtn.addEventListener('click', () => loadTeachers().catch((e) => print({ error: e.message })));
     ui.clearBtn.addEventListener('click', clearTeachers);
+    ui.tabMainBtn?.addEventListener("click", () => {
+        ui.mainPanel.style.display = "";
+        ui.dismissalsPanel.style.display = "none";
+    });
+    ui.tabDismissalsBtn?.addEventListener("click", () => {
+        ui.mainPanel.style.display = "none";
+        ui.dismissalsPanel.style.display = "";
+    });
 }
 
 async function init() {

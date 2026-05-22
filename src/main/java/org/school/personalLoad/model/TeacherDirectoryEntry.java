@@ -30,6 +30,9 @@ public class TeacherDirectoryEntry {
     private String numberSchoolBuilding;
 
     private LocalDate dismissalDate;
+    private LocalDate plannedDismissalDate;
+    private String plannedDismissalComment;
+    private String plannedDismissalMarkedBy;
 
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
