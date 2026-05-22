@@ -31,6 +31,14 @@
         <h2>Ручное добавление</h2>
         <form id="teacher-create-form" class="row" data-requires-edit>
             <input id="teacher-fio" name="fioTeacher" placeholder="ФИО педагога" required>
+            <input id="teacher-initials-create" name="initials" placeholder="ФИО (инициалы)">
+            <input id="teacher-dative-create" name="fioTeacherDative" placeholder="Дательный падеж">
+            <input id="teacher-phone-create" name="phone" placeholder="+7 ...">
+            <input id="teacher-email-create" name="email" placeholder="email">
+            <input id="teacher-duties-create" name="additionalDuties" placeholder="Доп. обязанности">
+            <select id="teacher-building-create" name="numberSchoolBuilding">
+                <option value="">Корпус не указан</option>
+            </select>
             <button type="submit">Добавить педагога</button>
             <button id="refresh-teachers-btn" type="button" data-allow-readonly="true">Обновить список</button>
             <button id="clear-teachers-btn" type="button">Очистить справочник</button>
@@ -51,6 +59,7 @@
                     <th>Телефон</th>
                     <th>Email</th>
                     <th>Дополнительные обязанности</th>
+                    <th>Корпус</th>
                     <th>Статус</th>
                     <th>Действия</th>
                 </tr>
