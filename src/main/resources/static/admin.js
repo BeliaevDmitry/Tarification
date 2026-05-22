@@ -12,31 +12,55 @@ function applyAcademicYearScope(path) {
 }
 const TAB_GROUPS = [
     {
-        key: 'MAIN',
-        label: 'Основные вкладки',
+        key: 'CORE',
+        label: 'Базовые справочники',
         tabs: [
             { key: 'BUILDINGS', label: 'Корпуса' },
             { key: 'CLASSES', label: 'Классы' },
             { key: 'SUBJECTS', label: 'Предметы' },
-            { key: 'CURRICULUM', label: 'Учебный план' },
-            { key: 'LOAD', label: 'Нагрузка по корпусам' },
-            { key: 'LOAD_STATS', label: 'Нагрузка: статистика' },
-            { key: 'SERVICE_NOTES', label: 'Служебные записки' },
-            { key: 'SETTINGS', label: 'Настройки' },
-            { key: 'TEACHERS', label: 'Кадры' },
-            { key: 'HR_NOTIFICATIONS_VIEW', label: 'Кадры: уведомления (просмотр)' },
-            { key: 'HR_NOTIFICATIONS_EDIT', label: 'Кадры: уведомления' },
-            { key: 'CONTINGENT_IMPORT', label: 'Контингент: импорт' },
-            { key: 'CONTINGENT_STATS', label: 'Контингент: численность' },
             { key: 'SUBJECT_AREAS', label: 'Предметные области' }
         ]
     },
     {
-        key: 'VSOKO',
-        label: 'ВСОКО / ОГЭ',
+        key: 'PLANNING',
+        label: 'Планирование и нагрузка',
         tabs: [
-            { key: 'VSOKO_VIEW', label: 'ВСОКО: просмотр' },
-            { key: 'VSOKO_EDIT', label: 'ВСОКО: редактирование' },
+            { key: 'CURRICULUM', label: 'Учебный план' },
+            { key: 'LOAD', label: 'Нагрузка по корпусам' },
+            { key: 'LOAD_STATS', label: 'Нагрузка: статистика' }
+        ]
+    },
+    {
+        key: 'HR',
+        label: 'Кадры и документы',
+        tabs: [
+            { key: 'TEACHERS', label: 'Кадры' },
+            { key: 'HR_NOTIFICATIONS_VIEW', label: 'Кадры: уведомления (просмотр)' },
+            { key: 'HR_NOTIFICATIONS_EDIT', label: 'Кадры: уведомления' },
+            { key: 'SERVICE_NOTES', label: 'Служебные записки' }
+        ]
+    },
+    {
+        key: 'CONTINGENT',
+        label: 'Контингент',
+        tabs: [
+            { key: 'CONTINGENT_IMPORT', label: 'Контингент: импорт' },
+            { key: 'CONTINGENT_STATS', label: 'Контингент: численность' }
+        ]
+    },
+    {
+        key: 'SETTINGS',
+        label: 'Настройки',
+        tabs: [
+            { key: 'SETTINGS', label: 'Настройки' }
+        ]
+    },
+    {
+        key: 'VSOKO',
+        label: 'ВСОКО / ОГЭ / ПА',
+        tabs: [
+            { key: 'VSOKO_VIEW', label: 'ВСОКО/ПА: просмотр' },
+            { key: 'VSOKO_EDIT', label: 'ВСОКО/ПА: редактирование' },
             { key: 'OGE_UPLOAD_VIEW', label: 'ОГЭ: Выгрузка (просмотр)' },
             { key: 'OGE_MISMATCH_VIEW', label: 'ОГЭ: Нестыковки (просмотр)' },
             { key: 'OGE_EXTERNAL_WORKS_VIEW', label: 'ОГЭ: Внешние работы пробники (просмотр)' },

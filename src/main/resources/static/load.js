@@ -2560,11 +2560,9 @@ function bindEvents() {
         }
     });
 
-    ui.tableBody?.addEventListener("blur", (event) => {
-        const teacherInput = event.target.closest(".teacher-input");
-        if (!teacherInput) return;
-        applyTeacherSelection(teacherInput.dataset.subjectKey, teacherInput.dataset.rowId, teacherInput);
-    }, true);
+    // Не фиксируем значение на blur: при выборе из datalist некоторые браузеры
+    // сначала ставят выбранное значение, а затем присылают промежуточный blur,
+    // из-за чего ФИО может тут же очищаться. Фиксация остаётся на change/Enter.
 
     ui.tableBody?.addEventListener("keydown", (event) => {
         const teacherInput = event.target.closest(".teacher-input");
