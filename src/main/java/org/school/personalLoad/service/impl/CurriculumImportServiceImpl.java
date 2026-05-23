@@ -182,6 +182,18 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     String rendered;
                     if (year.compareTo(BigDecimal.ZERO) > 0) {
                         rendered = year.stripTrailingZeros().toPlainString() + marker;
+                    } else if (subgroup) {
+                        Integer subgroup1 = classValues.stream()
+                                .map(CurriculumPlanEntry::getSubgroup1Hours)
+                                .filter(Objects::nonNull)
+                                .findFirst()
+                                .orElse(null);
+                        Integer subgroup2 = classValues.stream()
+                                .map(CurriculumPlanEntry::getSubgroup2Hours)
+                                .filter(Objects::nonNull)
+                                .findFirst()
+                                .orElse(null);
+                        rendered = (subgroup1 == null ? "" : subgroup1) + "//" + (subgroup2 == null ? "" : subgroup2) + marker;
                     } else if (h1.compareTo(BigDecimal.ZERO) > 0 || h2.compareTo(BigDecimal.ZERO) > 0) {
                         String left = h1.compareTo(BigDecimal.ZERO) > 0 ? h1.stripTrailingZeros().toPlainString() : "";
                         String right = h2.compareTo(BigDecimal.ZERO) > 0 ? h2.stripTrailingZeros().toPlainString() : "";
@@ -663,7 +675,25 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     MarkerFlags markerFlags = parseMarkerFlags(cellRaw);
                     String rawHours = markerFlags.value();
                     if (rawHours.isBlank() || "0".equals(rawHours)) continue;
-                    if (rawHours.contains("/")) {
+                    if (rawHours.contains("//")) {
+                        String[] halves = rawHours.split("//", -1);
+                        MarkerFlags h1Flags = parseMarkerFlags(halves.length > 0 ? halves[0] : "");
+                        MarkerFlags h2Flags = parseMarkerFlags(halves.length > 1 ? halves[1] : "");
+                        boolean subgroup = true;
+                        boolean meta = markerFlags.metaGroup() || h1Flags.metaGroup() || h2Flags.metaGroup();
+                        BigDecimal h1 = parseDecimal(h1Flags.value());
+                        BigDecimal h2 = parseDecimal(h2Flags.value());
+                        EducationLevel detectedLevel = isAdvancedMarked(row.getCell(classMeta.colIndex)) ? EducationLevel.ADVANCED : EducationLevel.BASIC;
+                        if (h1 != null && h1.compareTo(BigDecimal.ZERO) > 0) {
+                            result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title,
+                                    detectedLevel, StudyPeriod.H1, h1, subgroup, h1.intValue(), detectedLevel, h2 == null ? null : h2.intValue(), detectedLevel, meta));
+                        }
+                        if (h2 != null && h2.compareTo(BigDecimal.ZERO) > 0) {
+                            result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title,
+                                    detectedLevel, StudyPeriod.H2, h2, subgroup, h1 == null ? null : h1.intValue(), detectedLevel, h2.intValue(), detectedLevel, meta));
+                        }
+                        continue;
+                    } else if (rawHours.contains("/")) {
                         String[] halves = rawHours.split("/", -1);
                         MarkerFlags h1Flags = parseMarkerFlags(halves.length > 0 ? halves[0] : "");
                         MarkerFlags h2Flags = parseMarkerFlags(halves.length > 1 ? halves[1] : "");
@@ -761,7 +791,18 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 MarkerFlags markerFlags = parseMarkerFlags(cellRaw);
                 String rawHours = markerFlags.value();
                 if (rawHours.isBlank() || "0".equals(rawHours)) continue;
-                if (rawHours.contains("/")) {
+                if (rawHours.contains("//")) {
+                    EducationLevel detectedLevel = isAdvancedMarked(row.getCell(classMeta.colIndex)) ? EducationLevel.ADVANCED : EducationLevel.BASIC;
+                    String[] halves = rawHours.split("//", -1);
+                    MarkerFlags h1Flags = parseMarkerFlags(halves.length > 0 ? halves[0] : "");
+                    MarkerFlags h2Flags = parseMarkerFlags(halves.length > 1 ? halves[1] : "");
+                    boolean subgroup = true;
+                    boolean meta = markerFlags.metaGroup() || h1Flags.metaGroup() || h2Flags.metaGroup();
+                    BigDecimal h1 = parseDecimal(h1Flags.value());
+                    BigDecimal h2 = parseDecimal(h2Flags.value());
+                    if (h1 != null && h1.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, detectedLevel, StudyPeriod.H1, h1, subgroup, h1.intValue(), detectedLevel, h2 == null ? null : h2.intValue(), detectedLevel, meta));
+                    if (h2 != null && h2.compareTo(BigDecimal.ZERO) > 0) result.add(new EditableImportRow(classMeta.building, classMeta.className, "", currentPart, title, detectedLevel, StudyPeriod.H2, h2, subgroup, h1 == null ? null : h1.intValue(), detectedLevel, h2.intValue(), detectedLevel, meta));
+                } else if (rawHours.contains("/")) {
                     EducationLevel detectedLevel = isAdvancedMarked(row.getCell(classMeta.colIndex)) ? EducationLevel.ADVANCED : EducationLevel.BASIC;
                     String[] halves = rawHours.split("/", -1);
                     MarkerFlags h1Flags = parseMarkerFlags(halves.length > 0 ? halves[0] : "");
