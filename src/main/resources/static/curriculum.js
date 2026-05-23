@@ -460,7 +460,10 @@ function classCellMarkup(cellInfo, rowMeta, classMeta) {
             ? `<sup class="hours-index">${markers.join("")}</sup>`
             : "";
         if (cell.subgroupRequired && Number.isFinite(Number(cell.subgroup1Hours)) && Number.isFinite(Number(cell.subgroup2Hours))) {
-            return `${esc(`${cell.subgroup1Hours}//${cell.subgroup2Hours}`)}${markersHtml}`;
+            const g1 = Number(cell.subgroup1Hours);
+            const g2 = Number(cell.subgroup2Hours);
+            const subgroupLabel = g1 === g2 ? String(g1) : `${g1}//${g2}`;
+            return `${esc(subgroupLabel)}${markersHtml}`;
         }
         return `${esc(cell.hours)}${markersHtml}`;
     };
@@ -595,6 +598,10 @@ function renderSummaryTable() {
                             const g2 = Number(info.year.subgroup2Hours ?? info.year.hours ?? 0);
                             h1g1 += g1; h1g2 += g2;
                             h2g1 += g1; h2g2 += g2;
+                        } else {
+                            const base = Number(info.year.hours || 0);
+                            h1g1 += base; h1g2 += base;
+                            h2g1 += base; h2g2 += base;
                         }
                     } else {
                         h1 += Number(info.h1?.hours || 0);
@@ -608,6 +615,13 @@ function renderSummaryTable() {
                             hasSubgroups = true;
                             h2g1 += Number(info.h2.subgroup1Hours ?? info.h2.hours ?? 0);
                             h2g2 += Number(info.h2.subgroup2Hours ?? info.h2.hours ?? 0);
+                        } else if (info.h2) {
+                            const base = Number(info.h2.hours || 0);
+                            h2g1 += base; h2g2 += base;
+                        }
+                        if (info.h1 && !info.h1.subgroupRequired) {
+                            const base = Number(info.h1.hours || 0);
+                            h1g1 += base; h1g2 += base;
                         }
                     }
                 });
@@ -617,8 +631,8 @@ function renderSummaryTable() {
                     if (!(h1 || h2)) return "";
                     if (!hasSubgroups) return h1 === h2 ? String(h1) : `${h1}/${h2}`;
                     const fmtGroup = (g1, g2) => g1 === g2 ? String(g1) : `${g1}//${g2}`;
-                    const left = `${h1}(${fmtGroup(h1g1, h1g2)})`;
-                    const right = `${h2}(${fmtGroup(h2g1, h2g2)})`;
+                    const left = fmtGroup(h1g1, h1g2);
+                    const right = fmtGroup(h2g1, h2g2);
                     return left === right ? left : `${left}/${right}`;
                 })();
                 return `<td class="summary-value ${mismatch ? "conflict-row" : ""}">${display}</td>`;
