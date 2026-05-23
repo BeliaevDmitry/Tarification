@@ -689,7 +689,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 ", subject=" + entry.getSubjectName() + ", level=" + entry.getEducationLevel() + ", period=" + effectiveStudyPeriod));
 
         int effectiveLoad = entry.getGroupLoad() != null ? entry.getGroupLoad() : entry.getLoad();
-        if (BigDecimal.valueOf(effectiveLoad).compareTo(rule.getPlannedHours()) > 0) {
+        BigDecimal allowedHours = resolveAllowedHours(rule, entry.getGroupNameEducationalPlan());
+        if (BigDecimal.valueOf(effectiveLoad).compareTo(allowedHours) > 0) {
             throw new IllegalArgumentException("Load exceeds planned hours for curriculum rule");
         }
 
@@ -700,6 +701,20 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         }
 
         return rule;
+    }
+
+    private BigDecimal resolveAllowedHours(CurriculumPlanEntry rule, String groupNameEducationalPlan) {
+        if (!Boolean.TRUE.equals(rule.isSubgroupRequired())) {
+            return rule.getPlannedHours() == null ? BigDecimal.ZERO : rule.getPlannedHours();
+        }
+        String group = String.valueOf(groupNameEducationalPlan == null ? "" : groupNameEducationalPlan).toLowerCase(java.util.Locale.ROOT);
+        if (group.contains("1")) {
+            return rule.getSubgroup1Hours() == null ? (rule.getPlannedHours() == null ? BigDecimal.ZERO : rule.getPlannedHours()) : BigDecimal.valueOf(rule.getSubgroup1Hours());
+        }
+        if (group.contains("2")) {
+            return rule.getSubgroup2Hours() == null ? (rule.getPlannedHours() == null ? BigDecimal.ZERO : rule.getPlannedHours()) : BigDecimal.valueOf(rule.getSubgroup2Hours());
+        }
+        return rule.getPlannedHours() == null ? BigDecimal.ZERO : rule.getPlannedHours();
     }
 
 

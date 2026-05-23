@@ -159,6 +159,26 @@ function toggleSubgroupConfig(container, requiredValue) {
     const required = String(requiredValue) === "true";
     if (!container) return;
     container.classList.toggle("hidden", !required);
+
+    const form = container.closest("form");
+    if (!form) return;
+
+    const plannedHours = form.elements.plannedHours;
+    const subgroup1Hours = form.elements.subgroup1Hours;
+    const subgroup2Hours = form.elements.subgroup2Hours;
+    const subgroup1EducationLevel = form.elements.subgroup1EducationLevel;
+    const subgroup2EducationLevel = form.elements.subgroup2EducationLevel;
+
+    if (plannedHours) {
+        plannedHours.disabled = required;
+        plannedHours.required = !required;
+    }
+
+    [subgroup1Hours, subgroup2Hours, subgroup1EducationLevel, subgroup2EducationLevel].forEach((input) => {
+        if (!input) return;
+        input.disabled = !required;
+        input.required = required;
+    });
 }
 
 function classesForSelectedContext() {
@@ -569,7 +589,11 @@ function renderSummaryTable() {
                 });
                 const sumLabel = row.type === "sum12" ? "sum_of" : (row.part === "CORE" ? "sum_core" : (row.part === "FORMABLE" ? "sum_formable" : "sum_extracurricular"));
                 const mismatch = sumMismatchKeys.has(`${col.classKey}|${sumLabel}`);
-                return `<td class="summary-value ${mismatch ? "conflict-row" : ""}">${h1 || h2 ? `${h1}/${h2}` : ""}</td>`;
+                const display = (() => {
+                    if (!(h1 || h2)) return "";
+                    return h1 === h2 ? String(h1) : `${h1}/${h2}`;
+                })();
+                return `<td class="summary-value ${mismatch ? "conflict-row" : ""}">${display}</td>`;
             }).join("");
             tr.className = "summary-sum-row";
             tr.innerHTML = `<td>${esc(row.title)}</td><td></td>${calc}`;

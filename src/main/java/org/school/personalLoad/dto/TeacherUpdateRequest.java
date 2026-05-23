@@ -10,4 +10,5 @@ public class TeacherUpdateRequest {
     private String phone;
     private String email;
     private String additionalDuties;
+    private String numberSchoolBuilding;
 }

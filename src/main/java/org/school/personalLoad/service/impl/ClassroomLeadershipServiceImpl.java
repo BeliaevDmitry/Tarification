@@ -268,6 +268,8 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         if (building.isBlank() || normalizedClassName.isBlank()) {
             throw new IllegalArgumentException("numberSchoolBuilding and className are required");
         }
+        curriculumPlanEntryRepository.deleteByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, normalizedClassName);
+        manualLoadEntryRepository.deleteByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, normalizedClassName);
         classroomLeadershipRepository.deleteByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, normalizedClassName);
     }
 
