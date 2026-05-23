@@ -332,6 +332,8 @@ function buildSummaryRows(selectedClasses) {
                     educationLevel: v.educationLevel || "BASIC",
                     subgroupRequired: Boolean(v.subgroupRequired),
                     subgroupCount: Number(v.subgroupCount || 0),
+                    subgroup1Hours: v.subgroup1Hours,
+                    subgroup2Hours: v.subgroup2Hours,
                     id: v.id,
                     studyPeriod: v.studyPeriod,
                     metaGroup: Boolean(v.metaGroup)
@@ -457,6 +459,9 @@ function classCellMarkup(cellInfo, rowMeta, classMeta) {
         const markersHtml = markers.length
             ? `<sup class="hours-index">${markers.join("")}</sup>`
             : "";
+        if (cell.subgroupRequired && Number.isFinite(Number(cell.subgroup1Hours)) && Number.isFinite(Number(cell.subgroup2Hours))) {
+            return `${esc(`${cell.subgroup1Hours}//${cell.subgroup2Hours}`)}${markersHtml}`;
+        }
         return `${esc(cell.hours)}${markersHtml}`;
     };
     const createAttrs = (studyPeriod) => {
