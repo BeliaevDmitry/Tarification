@@ -31,6 +31,14 @@
         <h2>Ручное добавление</h2>
         <form id="teacher-create-form" class="row" data-requires-edit>
             <input id="teacher-fio" name="fioTeacher" placeholder="ФИО педагога" required>
+            <input id="teacher-initials-create" name="initials" placeholder="ФИО (инициалы)">
+            <input id="teacher-dative-create" name="fioTeacherDative" placeholder="Дательный падеж">
+            <input id="teacher-phone-create" name="phone" placeholder="+7 ...">
+            <input id="teacher-email-create" name="email" placeholder="email">
+            <input id="teacher-duties-create" name="additionalDuties" placeholder="Доп. обязанности">
+            <select id="teacher-building-create" name="numberSchoolBuilding">
+                <option value="">Корпус не указан</option>
+            </select>
             <button type="submit">Добавить педагога</button>
             <button id="refresh-teachers-btn" type="button" data-allow-readonly="true">Обновить список</button>
             <button id="clear-teachers-btn" type="button">Очистить справочник</button>
@@ -40,8 +48,12 @@
 
     <section class="card" data-requires-edit>
         <h2>Список педагогов</h2>
+        <div class="row">
+            <button type="button" id="teachers-tab-main-btn">Кадры</button>
+            <button type="button" id="teachers-tab-dismissals-btn">Увольнения</button>
+        </div>
         <p class="muted">Если педагог назначен на нагрузку, удаление будет запрещено — сначала снимите назначение в разделе «Нагрузка по корпусам».</p>
-        <div class="sheet-wrap">
+        <div class="sheet-wrap" id="teachers-main-panel">
             <table class="sheet-table">
                 <thead>
                 <tr>
@@ -51,11 +63,26 @@
                     <th>Телефон</th>
                     <th>Email</th>
                     <th>Дополнительные обязанности</th>
+                    <th>Корпус</th>
                     <th>Статус</th>
                     <th>Действия</th>
                 </tr>
                 </thead>
                 <tbody id="teachers-table-body"></tbody>
+            </table>
+        </div>
+        <div class="sheet-wrap" id="teachers-dismissals-panel" style="display:none;">
+            <table class="sheet-table">
+                <thead>
+                <tr>
+                    <th>ФИО</th>
+                    <th>Дата увольнения</th>
+                    <th>Планируемая дата</th>
+                    <th>Комментарий</th>
+                    <th>Кто отметил</th>
+                </tr>
+                </thead>
+                <tbody id="teachers-dismissals-body"></tbody>
             </table>
         </div>
     </section>
