@@ -580,6 +580,8 @@ function renderSummaryTable() {
         } else {
             const calc = classDescriptors.map((col) => {
                 let h1 = 0, h2 = 0;
+                let h1g1 = 0, h1g2 = 0, h2g1 = 0, h2g2 = 0;
+                let hasSubgroups = false;
                 const sourceRows = rows.filter((r) => r.type === "subject" && (row.type === "sum" ? r.part === row.part : (r.part === "CORE" || r.part === "FORMABLE")));
                 sourceRows.forEach((s) => {
                     const info = s.perClass[col.classKey];
@@ -587,16 +589,37 @@ function renderSummaryTable() {
                     if (info.year) {
                         h1 += Number(info.year.hours || 0);
                         h2 += Number(info.year.hours || 0);
+                        if (info.year.subgroupRequired) {
+                            hasSubgroups = true;
+                            const g1 = Number(info.year.subgroup1Hours ?? info.year.hours ?? 0);
+                            const g2 = Number(info.year.subgroup2Hours ?? info.year.hours ?? 0);
+                            h1g1 += g1; h1g2 += g2;
+                            h2g1 += g1; h2g2 += g2;
+                        }
                     } else {
                         h1 += Number(info.h1?.hours || 0);
                         h2 += Number(info.h2?.hours || 0);
+                        if (info.h1?.subgroupRequired) {
+                            hasSubgroups = true;
+                            h1g1 += Number(info.h1.subgroup1Hours ?? info.h1.hours ?? 0);
+                            h1g2 += Number(info.h1.subgroup2Hours ?? info.h1.hours ?? 0);
+                        }
+                        if (info.h2?.subgroupRequired) {
+                            hasSubgroups = true;
+                            h2g1 += Number(info.h2.subgroup1Hours ?? info.h2.hours ?? 0);
+                            h2g2 += Number(info.h2.subgroup2Hours ?? info.h2.hours ?? 0);
+                        }
                     }
                 });
                 const sumLabel = row.type === "sum12" ? "sum_of" : (row.part === "CORE" ? "sum_core" : (row.part === "FORMABLE" ? "sum_formable" : "sum_extracurricular"));
                 const mismatch = sumMismatchKeys.has(`${col.classKey}|${sumLabel}`);
                 const display = (() => {
                     if (!(h1 || h2)) return "";
-                    return h1 === h2 ? String(h1) : `${h1}/${h2}`;
+                    if (!hasSubgroups) return h1 === h2 ? String(h1) : `${h1}/${h2}`;
+                    const fmtGroup = (g1, g2) => g1 === g2 ? String(g1) : `${g1}//${g2}`;
+                    const left = `${h1}(${fmtGroup(h1g1, h1g2)})`;
+                    const right = `${h2}(${fmtGroup(h2g1, h2g2)})`;
+                    return left === right ? left : `${left}/${right}`;
                 })();
                 return `<td class="summary-value ${mismatch ? "conflict-row" : ""}">${display}</td>`;
             }).join("");
