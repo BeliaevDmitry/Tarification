@@ -113,6 +113,16 @@ function normalizeStudyPeriod(className, studyPeriod) {
     return studyPeriod || (isHighSchoolParallel(classToParallel(className)) ? "H1" : "YEAR");
 }
 
+function resolveParallelForClassName(className, building = "") {
+    const direct = classToParallel(className);
+    if (Number.isFinite(direct)) return direct;
+    if (!norm(className).startsWith("МГ:")) return 1;
+    const hit = (metaGroups || []).find((m) =>
+        `МГ:${m.name}` === norm(className) && (!building || norm(m.numberSchoolBuilding) === norm(building))
+    );
+    return Number.isFinite(Number(hit?.parallel)) ? Number(hit.parallel) : 1;
+}
+
 function settingsForParallel(parallel = selectedParallel) {
     return (studyPeriodSettings || []).filter((x) => Number(x.parallelFrom) <= Number(parallel) && Number(x.parallelTo) >= Number(parallel));
 }
@@ -376,7 +386,10 @@ function syncStudyPeriodControls() {
     ui.formStudyPeriod.value = options.some((o) => String(o.id) === preferred) ? preferred : String(options[0]?.id || '');
 
     if (ui.editForm?.elements.studyPeriod) {
-        const classParallel = classToParallel(ui.editForm.elements.className?.value) || selectedParallel;
+        const classParallel = resolveParallelForClassName(
+            ui.editForm.elements.className?.value,
+            ui.formBuilding?.value || selectedBuilding
+        );
         const dialogOptions = settingsForParallel(classParallel);
         const editSelect = ui.editForm.elements.studyPeriod;
         const current = editSelect.value;
@@ -532,7 +545,7 @@ function openCreateByCell(cellCtx) {
     syncStudyPeriodControls();
     const options = Array.from(ui.editForm.elements.studyPeriod.options || []);
     const preferredById = options.find((opt) => String(opt.value) === String(cellCtx.studyPeriodSettingId || ""));
-    const classParallel = classToParallel(cellCtx.className) || selectedParallel;
+    const classParallel = resolveParallelForClassName(cellCtx.className, cellCtx.numberSchoolBuilding);
     const periodSetting = settingsForParallel(classParallel).find((s) => s.studyPeriod === cellCtx.studyPeriod);
     const preferred = preferredById || options.find((opt) => String(opt.value) === String(periodSetting?.id || ""));
     if (preferred) {
@@ -563,9 +576,9 @@ function classCellMarkup(cellInfo, rowMeta, classMeta) {
     const createAttrs = (studyPeriod) => {
         const candidateSettings = columnsForClass({ className: classMeta.className, numberSchoolBuilding: classMeta.numberSchoolBuilding });
         const setting = candidateSettings.find((x) => x.studyPeriod === studyPeriod)
-            || settingsForParallel(classToParallel(classMeta.className) || selectedParallel).find((x) => x.studyPeriod === studyPeriod)
+            || settingsForParallel(resolveParallelForClassName(classMeta.className, classMeta.numberSchoolBuilding)).find((x) => x.studyPeriod === studyPeriod)
             || candidateSettings[0]
-            || settingsForParallel(classToParallel(classMeta.className) || selectedParallel)[0];
+            || settingsForParallel(resolveParallelForClassName(classMeta.className, classMeta.numberSchoolBuilding))[0];
         return `data-create="1" data-building="${esc(classMeta.numberSchoolBuilding)}" data-class-name="${esc(classMeta.className)}" data-subject-name="${esc(rowMeta.subjectName)}" data-curriculum-part="${esc(rowMeta.part)}" data-education-level="${esc(rowMeta.educationLevel)}" data-study-period="${esc(studyPeriod)}" data-study-period-setting-id="${esc(setting?.id || "")}"`;
     };
     const emptyBtn = (studyPeriod) => `<button type="button" class="hours-cell empty-hours-cell" ${createAttrs(studyPeriod)}></button>`;
