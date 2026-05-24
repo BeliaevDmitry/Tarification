@@ -262,35 +262,45 @@ public class AppUserServiceImpl implements AppUserService {
             boolean defaultCanEdit = user.isCanView() && user.isCanEdit();
             boolean canView = requested != null ? Boolean.TRUE.equals(requested.getCanView()) : defaultCanView;
             boolean canEdit = requested != null ? Boolean.TRUE.equals(requested.getCanEdit()) : defaultCanEdit;
+            boolean canImport = requested != null ? Boolean.TRUE.equals(requested.getCanImport()) : defaultCanEdit;
+            boolean canExport = requested != null ? Boolean.TRUE.equals(requested.getCanExport()) : defaultCanView;
             if (tab == AppTab.USERS) {
                 canView = false;
                 canEdit = false;
+                canImport = false;
+                canExport = false;
             }
             if (!canView) {
                 canEdit = false;
+                canImport = false;
+                canExport = false;
             }
-            permissions.add(buildPermission(user, tab, canView, canEdit));
+            permissions.add(buildPermission(user, tab, canView, canEdit, canImport, canExport));
         }
         tabPermissionRepository.saveAll(permissions);
     }
 
     private void saveDefaultPermissions(AppUser user, boolean canView, boolean canEdit) {
         List<AppUserTabPermission> permissions = AppTab.navigableTabs().stream()
-                .map(tab -> buildPermission(user, tab, canView, canEdit))
+                .map(tab -> buildPermission(user, tab, canView, canEdit, canEdit, canView))
                 .toList();
         tabPermissionRepository.saveAll(permissions);
     }
 
-    private AppUserTabPermission buildPermission(AppUser user, AppTab tab, boolean canView, boolean canEdit) {
+    private AppUserTabPermission buildPermission(AppUser user, AppTab tab, boolean canView, boolean canEdit, boolean canImport, boolean canExport) {
         if (user.getRole() != UserRole.ADMIN && tab == AppTab.USERS) {
             canView = false;
             canEdit = false;
+            canImport = false;
+            canExport = false;
         }
         AppUserTabPermission permission = new AppUserTabPermission();
         permission.setUser(user);
         permission.setTab(tab);
         permission.setCanView(canView);
         permission.setCanEdit(canView && canEdit);
+        permission.setCanImport(canView && canImport);
+        permission.setCanExport(canView && canExport);
         return permission;
     }
 
@@ -312,7 +322,7 @@ public class AppUserServiceImpl implements AppUserService {
             }
             boolean canView = user.getRole() == UserRole.ADMIN ? true : user.isCanView();
             boolean canEdit = user.getRole() == UserRole.ADMIN ? true : (user.isCanView() && user.isCanEdit());
-            missing.add(buildPermission(user, tab, canView, canEdit));
+            missing.add(buildPermission(user, tab, canView, canEdit, canEdit, canView));
         }
         if (!missing.isEmpty()) {
             tabPermissionRepository.saveAll(missing);
@@ -323,7 +333,13 @@ public class AppUserServiceImpl implements AppUserService {
         ensureTabPermissions(user);
         List<AppUserTabPermission> permissions = tabPermissionRepository.findAllByUserIdOrderByTabAsc(user.getId());
         return permissions.stream()
-                .map(permission -> new TabPermissionSnapshot(permission.getTab(), permission.isCanView(), permission.isCanEdit()))
+                .map(permission -> new TabPermissionSnapshot(
+                        permission.getTab(),
+                        permission.isCanView(),
+                        permission.isCanEdit(),
+                        permission.isCanImport(),
+                        permission.isCanExport()
+                ))
                 .toList();
     }
 
