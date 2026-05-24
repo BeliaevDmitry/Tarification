@@ -61,6 +61,7 @@ const ui = {
 };
 
 let selectedParallel = 1;
+const AOOP_TAB_KEY = "AOOP_UO";
 let selectedBuilding = "";
 let buildings = [];
 let classes = [];
@@ -159,17 +160,40 @@ function toggleSubgroupConfig(container, requiredValue) {
     const required = String(requiredValue) === "true";
     if (!container) return;
     container.classList.toggle("hidden", !required);
+
+    const form = container.closest("form");
+    if (!form) return;
+
+    const plannedHours = form.elements.plannedHours;
+    const subgroup1Hours = form.elements.subgroup1Hours;
+    const subgroup2Hours = form.elements.subgroup2Hours;
+    const subgroup1EducationLevel = form.elements.subgroup1EducationLevel;
+    const subgroup2EducationLevel = form.elements.subgroup2EducationLevel;
+
+    if (plannedHours) {
+        plannedHours.disabled = required;
+        plannedHours.required = !required;
+    }
+
+    [subgroup1Hours, subgroup2Hours, subgroup1EducationLevel, subgroup2EducationLevel].forEach((input) => {
+        if (!input) return;
+        input.disabled = !required;
+        input.required = required;
+    });
 }
 
 function classesForSelectedContext() {
     return classes
-        .filter((c) => classToParallel(c.className) === selectedParallel)
+        .filter((c) => selectedParallel === AOOP_TAB_KEY
+            ? (c.classType || "NORMAL") === "AOOP_UO"
+            : classToParallel(c.className) === selectedParallel && (c.classType || "NORMAL") !== "AOOP_UO")
         .filter((c) => !selectedBuilding || c.numberSchoolBuilding === selectedBuilding)
         .sort((a, b) => `${a.numberSchoolBuilding}|${a.className}`.localeCompare(`${b.numberSchoolBuilding}|${b.className}`, "ru"));
 }
 
 
 function metaGroupsForSelectedContext() {
+    if (selectedParallel === AOOP_TAB_KEY) return [];
     return (metaGroups || [])
         .filter((m) => Number(m.parallel) === Number(selectedParallel))
         .filter((m) => !selectedBuilding || norm(m.numberSchoolBuilding) === selectedBuilding)
@@ -207,11 +231,27 @@ function renderParallelTabs() {
         });
         ui.parallelTabs.appendChild(btn);
     }
+    const aoopBtn = document.createElement("button");
+    aoopBtn.type = "button";
+    aoopBtn.className = `parallel-tab ${selectedParallel === AOOP_TAB_KEY ? "active" : ""}`;
+    aoopBtn.textContent = "АООП УО";
+    aoopBtn.addEventListener("click", () => {
+        selectedParallel = AOOP_TAB_KEY;
+        syncSelectedBuilding();
+        renderParallelTabs();
+        renderBuildingFilter();
+        renderClassOptions();
+        syncStudyPeriodControls();
+        renderSummaryTable();
+    });
+    ui.parallelTabs.appendChild(aoopBtn);
 }
 
 function syncSelectedBuilding() {
     const available = classes
-        .filter((c) => classToParallel(c.className) === selectedParallel)
+        .filter((c) => selectedParallel === AOOP_TAB_KEY
+            ? (c.classType || "NORMAL") === "AOOP_UO"
+            : classToParallel(c.className) === selectedParallel && (c.classType || "NORMAL") !== "AOOP_UO")
         .map((c) => c.numberSchoolBuilding);
     if (!available.includes(selectedBuilding)) {
         selectedBuilding = available[0] || "";
@@ -220,7 +260,9 @@ function syncSelectedBuilding() {
 
 function renderBuildingFilter() {
     const available = Array.from(new Set(classes
-        .filter((c) => classToParallel(c.className) === selectedParallel)
+        .filter((c) => selectedParallel === AOOP_TAB_KEY
+            ? (c.classType || "NORMAL") === "AOOP_UO"
+            : classToParallel(c.className) === selectedParallel && (c.classType || "NORMAL") !== "AOOP_UO")
         .map((c) => c.numberSchoolBuilding))).sort((a, b) => String(a).localeCompare(String(b), "ru"));
 
     ui.buildingFilter.innerHTML = "<option value=''>Все корпуса</option>";
@@ -241,7 +283,9 @@ function renderBuildingFilter() {
 function renderClassOptions() {
     const building = norm(ui.formBuilding.value) || selectedBuilding;
     const items = classes
-        .filter((c) => classToParallel(c.className) === selectedParallel)
+        .filter((c) => selectedParallel === AOOP_TAB_KEY
+            ? (c.classType || "NORMAL") === "AOOP_UO"
+            : classToParallel(c.className) === selectedParallel && (c.classType || "NORMAL") !== "AOOP_UO")
         .filter((c) => !building || c.numberSchoolBuilding === building)
         .sort((a, b) => String(a.className).localeCompare(String(b.className), "ru"));
 
@@ -256,7 +300,7 @@ function renderClassOptions() {
 }
 
 function syncStudyPeriodControls() {
-    const parallel = classToParallel(ui.formClass.value) || selectedParallel;
+    const parallel = classToParallel(ui.formClass.value) || (selectedParallel === AOOP_TAB_KEY ? 1 : selectedParallel);
     const options = settingsForParallel(parallel);
     const selected = ui.formStudyPeriod.value;
     ui.formStudyPeriod.innerHTML = options.map((o) => `<option value="${esc(o.id)}">${esc(o.displayName)}</option>`).join('');
@@ -312,6 +356,8 @@ function buildSummaryRows(selectedClasses) {
                     educationLevel: v.educationLevel || "BASIC",
                     subgroupRequired: Boolean(v.subgroupRequired),
                     subgroupCount: Number(v.subgroupCount || 0),
+                    subgroup1Hours: v.subgroup1Hours,
+                    subgroup2Hours: v.subgroup2Hours,
                     id: v.id,
                     studyPeriod: v.studyPeriod,
                     metaGroup: Boolean(v.metaGroup)
@@ -437,6 +483,12 @@ function classCellMarkup(cellInfo, rowMeta, classMeta) {
         const markersHtml = markers.length
             ? `<sup class="hours-index">${markers.join("")}</sup>`
             : "";
+        if (cell.subgroupRequired && Number.isFinite(Number(cell.subgroup1Hours)) && Number.isFinite(Number(cell.subgroup2Hours))) {
+            const g1 = Number(cell.subgroup1Hours);
+            const g2 = Number(cell.subgroup2Hours);
+            const subgroupLabel = g1 === g2 ? String(g1) : `${g1}//${g2}`;
+            return `${esc(subgroupLabel)}${markersHtml}`;
+        }
         return `${esc(cell.hours)}${markersHtml}`;
     };
     const createAttrs = (studyPeriod) => {
@@ -474,9 +526,11 @@ function classCellMarkup(cellInfo, rowMeta, classMeta) {
 
 function renderSummaryTable() {
     const selectedClasses = classes
-        .filter((c) => classToParallel(c.className) === selectedParallel)
+        .filter((c) => selectedParallel === AOOP_TAB_KEY
+            ? (c.classType || "NORMAL") === "AOOP_UO"
+            : classToParallel(c.className) === selectedParallel && (c.classType || "NORMAL") !== "AOOP_UO")
         .sort((a, b) => `${a.numberSchoolBuilding}|${a.className}`.localeCompare(`${b.numberSchoolBuilding}|${b.className}`, "ru"));
-    const selectedMetaGroups = (metaGroups || [])
+    const selectedMetaGroups = (selectedParallel === AOOP_TAB_KEY ? [] : (metaGroups || []))
         .filter((m) => Number(m.parallel) === Number(selectedParallel))
         .sort((a, b) => `${a.numberSchoolBuilding}|${a.name}`.localeCompare(`${b.numberSchoolBuilding}|${b.name}`, "ru"))
         .map((m) => ({
@@ -555,6 +609,8 @@ function renderSummaryTable() {
         } else {
             const calc = classDescriptors.map((col) => {
                 let h1 = 0, h2 = 0;
+                let h1g1 = 0, h1g2 = 0, h2g1 = 0, h2g2 = 0;
+                let hasSubgroups = false;
                 const sourceRows = rows.filter((r) => r.type === "subject" && (row.type === "sum" ? r.part === row.part : (r.part === "CORE" || r.part === "FORMABLE")));
                 sourceRows.forEach((s) => {
                     const info = s.perClass[col.classKey];
@@ -562,14 +618,50 @@ function renderSummaryTable() {
                     if (info.year) {
                         h1 += Number(info.year.hours || 0);
                         h2 += Number(info.year.hours || 0);
+                        if (info.year.subgroupRequired) {
+                            hasSubgroups = true;
+                            const g1 = Number(info.year.subgroup1Hours ?? info.year.hours ?? 0);
+                            const g2 = Number(info.year.subgroup2Hours ?? info.year.hours ?? 0);
+                            h1g1 += g1; h1g2 += g2;
+                            h2g1 += g1; h2g2 += g2;
+                        } else {
+                            const base = Number(info.year.hours || 0);
+                            h1g1 += base; h1g2 += base;
+                            h2g1 += base; h2g2 += base;
+                        }
                     } else {
                         h1 += Number(info.h1?.hours || 0);
                         h2 += Number(info.h2?.hours || 0);
+                        if (info.h1?.subgroupRequired) {
+                            hasSubgroups = true;
+                            h1g1 += Number(info.h1.subgroup1Hours ?? info.h1.hours ?? 0);
+                            h1g2 += Number(info.h1.subgroup2Hours ?? info.h1.hours ?? 0);
+                        }
+                        if (info.h2?.subgroupRequired) {
+                            hasSubgroups = true;
+                            h2g1 += Number(info.h2.subgroup1Hours ?? info.h2.hours ?? 0);
+                            h2g2 += Number(info.h2.subgroup2Hours ?? info.h2.hours ?? 0);
+                        } else if (info.h2) {
+                            const base = Number(info.h2.hours || 0);
+                            h2g1 += base; h2g2 += base;
+                        }
+                        if (info.h1 && !info.h1.subgroupRequired) {
+                            const base = Number(info.h1.hours || 0);
+                            h1g1 += base; h1g2 += base;
+                        }
                     }
                 });
                 const sumLabel = row.type === "sum12" ? "sum_of" : (row.part === "CORE" ? "sum_core" : (row.part === "FORMABLE" ? "sum_formable" : "sum_extracurricular"));
                 const mismatch = sumMismatchKeys.has(`${col.classKey}|${sumLabel}`);
-                return `<td class="summary-value ${mismatch ? "conflict-row" : ""}">${h1 || h2 ? `${h1}/${h2}` : ""}</td>`;
+                const display = (() => {
+                    if (!(h1 || h2)) return "";
+                    if (!hasSubgroups) return h1 === h2 ? String(h1) : `${h1}/${h2}`;
+                    const fmtGroup = (g1, g2) => g1 === g2 ? String(g1) : `${g1}//${g2}`;
+                    const left = fmtGroup(h1g1, h1g2);
+                    const right = fmtGroup(h2g1, h2g2);
+                    return left === right ? left : `${left}/${right}`;
+                })();
+                return `<td class="summary-value ${mismatch ? "conflict-row" : ""}">${display}</td>`;
             }).join("");
             tr.className = "summary-sum-row";
             tr.innerHTML = `<td>${esc(row.title)}</td><td></td>${calc}`;
@@ -690,7 +782,8 @@ async function reload() {
     classes = (classRows || []).map((r) => ({
         numberSchoolBuilding: norm(r.numberSchoolBuilding),
         className: norm(r.className),
-        classDirection: norm(r.classDirection)
+        classDirection: norm(r.classDirection),
+        classType: norm(r.classType) || "NORMAL"
     })).filter((r) => r.numberSchoolBuilding && r.className);
 
     buildings = (buildingRows || []).sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"));
