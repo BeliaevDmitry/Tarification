@@ -542,12 +542,22 @@ function renderSummaryTable() {
         className: `МГ:${m.name}`,
         classDirection: "Метагруппа"
     }));
-    const knownMetaParallelByKey = new Map((metaGroups || []).map((m) => [makeClassKey(m.numberSchoolBuilding, `МГ:${m.name}`), Number(m.parallel)]));
+    const knownMetaByKey = new Map((metaGroups || []).map((m) => [makeClassKey(m.numberSchoolBuilding, `МГ:${m.name}`), {
+        parallel: Number(m.parallel),
+        classType: norm(m.classType) || "NORMAL"
+    }]));
+    const classTypeByClassKey = new Map((classes || []).map((c) => [makeClassKey(c.numberSchoolBuilding, c.className), norm(c.classType) || "NORMAL"]));
     const metagroupsFromData = (curriculumRows || [])
         .filter((r) => norm(r.className).startsWith("МГ:"))
         .filter((r) => {
-            const byKey = knownMetaParallelByKey.get(makeClassKey(r.numberSchoolBuilding, r.className));
-            if (Number.isFinite(byKey)) return byKey === Number(selectedParallel);
+            const byKey = knownMetaByKey.get(makeClassKey(r.numberSchoolBuilding, r.className));
+            if (byKey) {
+                if (selectedParallel === AOOP_TAB_KEY) return byKey.classType === AOOP_TAB_KEY;
+                return byKey.parallel === Number(selectedParallel) && byKey.classType !== AOOP_TAB_KEY;
+            }
+            const guessedType = classTypeByClassKey.get(makeClassKey(r.numberSchoolBuilding, r.className));
+            if (selectedParallel === AOOP_TAB_KEY) return guessedType === AOOP_TAB_KEY;
+            if (guessedType === AOOP_TAB_KEY) return false;
             return true;
         })
         .map((r) => ({

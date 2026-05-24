@@ -98,7 +98,7 @@ public class MetaGroupController {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("name is required");
         }
-        String name = value.trim();
+        String name = value.trim().replace('\u00A0', ' ').replaceAll("\\s+", " ").toUpperCase();
         String prefix = parallel + " ";
         if (name.startsWith(prefix)) {
             return name;
