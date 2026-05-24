@@ -509,17 +509,7 @@ function rowsForSelectedBuilding() {
         const byClass = canonicalBuildingCode(map.get(normalizeClassName(row.className)));
         return rowBuilding === normalizedSelectedBuilding || byClass === normalizedSelectedBuilding;
     });
-    const metaKeys = new Set(
-        scoped
-            .filter((row) => Boolean(row.metaGroup))
-            .map((row) => `${row.className}|${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}|${rowStudyPeriod(row)}`)
-    );
-    const filtered = scoped.filter((row) => {
-        const key = `${row.className}|${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}|${rowStudyPeriod(row)}`;
-        if (Boolean(row.metaGroup)) return true;
-        if (!metaKeys.has(key)) return true;
-        return false;
-    });
+    const filtered = scoped.filter((row) => !Boolean(row.metaGroup));
     derivedCache.rowsByBuildingKey = cacheKey;
     derivedCache.rowsByBuildingValue = filtered;
     return filtered;
