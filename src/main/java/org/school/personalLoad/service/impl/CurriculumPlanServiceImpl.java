@@ -218,11 +218,14 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
             throw new IllegalArgumentException("educationLevel is required");
         }
         if (request.isSubgroupRequired()) {
-            if (request.getSubgroup1Hours() == null || request.getSubgroup1Hours() <= 0) {
-                throw new IllegalArgumentException("subgroup1Hours must be > 0 when subgroupRequired=true");
+            if (request.getSubgroup1Hours() == null || request.getSubgroup1Hours() < 0) {
+                throw new IllegalArgumentException("subgroup1Hours must be >= 0 when subgroupRequired=true");
             }
-            if (request.getSubgroup2Hours() == null || request.getSubgroup2Hours() <= 0) {
-                throw new IllegalArgumentException("subgroup2Hours must be > 0 when subgroupRequired=true");
+            if (request.getSubgroup2Hours() == null || request.getSubgroup2Hours() < 0) {
+                throw new IllegalArgumentException("subgroup2Hours must be >= 0 when subgroupRequired=true");
+            }
+            if (request.getSubgroup1Hours() == 0 && request.getSubgroup2Hours() == 0) {
+                throw new IllegalArgumentException("at least one subgroup must have hours > 0 when subgroupRequired=true");
             }
             if (request.getSubgroup1EducationLevel() == null || request.getSubgroup2EducationLevel() == null) {
                 throw new IllegalArgumentException("subgroup levels are required when subgroupRequired=true");
