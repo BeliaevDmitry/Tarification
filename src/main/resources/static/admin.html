@@ -75,7 +75,7 @@
                 </div>
                 <div class="sheet-wrap permission-matrix-wrap">
                     <table class="sheet-table permission-matrix-table">
-                        <thead><tr><th>Вкладка</th><th>Видеть</th><th>Редактировать</th></tr></thead>
+                        <thead><tr><th>Вкладка</th><th>Видеть</th><th>Редактировать</th><th>Импорт</th><th>Экспорт</th></tr></thead>
                         <tbody id="create-permissions-body"></tbody>
                     </table>
                 </div>
@@ -123,6 +123,7 @@
             </section>
 
             <div class="row full-span dialog-actions inline-actions">
+                <button type="button" id="apply-base-values-create-btn">Применить базовые значения роли</button>
                 <button type="submit">Создать пользователя</button>
             </div>
         </form>
@@ -237,7 +238,7 @@
             </div>
             <div class="sheet-wrap permission-matrix-wrap">
                 <table class="sheet-table permission-matrix-table">
-                    <thead><tr><th>Вкладка</th><th>Видеть</th><th>Редактировать</th></tr></thead>
+                    <thead><tr><th>Вкладка</th><th>Видеть</th><th>Редактировать</th><th>Импорт</th><th>Экспорт</th></tr></thead>
                     <tbody id="edit-permissions-body"></tbody>
                 </table>
             </div>
@@ -285,6 +286,7 @@
         </section>
 
         <div class="row full-span dialog-actions sticky-dialog-actions">
+            <button type="button" id="apply-base-values-edit-btn">Применить базовые значения роли</button>
             <button type="button" id="save-user-btn">Сохранить</button>
             <button type="button" id="reset-password-btn">Сбросить пароль</button>
             <button type="button" id="user-edit-close-btn">Отмена</button>

@@ -89,6 +89,7 @@ function openEditDialog(entry) {
     const matchingBuilding = buildings.find((b) => normalizeBuildingCode(b.code) === normalizedEntryCode);
     ui.editForm.elements.numberSchoolBuilding.value = matchingBuilding?.code || entry.numberSchoolBuilding || "";
     ui.editForm.elements.className.value = entry.className || "";
+    ui.editForm.elements.classType.value = entry.classType || "NORMAL";
     ui.editForm.elements.classDirection.value = entry.classDirection || "";
     ui.editForm.elements.fioTeacher.value = entry.fioTeacher || "";
     ui.editForm.elements.campusAddress.value = entry.campusAddress || "";
@@ -103,6 +104,7 @@ function renderClasses(rows) {
         tr.innerHTML = `
             <td>${esc(buildingLabel(r.numberSchoolBuilding))}</td>
             <td>${esc(r.className)}</td>
+            <td>${esc((r.classType || "NORMAL") === "AOOP_UO" ? "АООП УО" : "Норма")}</td>
             <td>${esc(r.classDirection)}</td>
             <td>${esc(r.fioTeacher)}</td>
             <td>${esc(displayCampusAddress(r))}</td>
@@ -153,6 +155,7 @@ ui.form.addEventListener("submit", async (e) => {
         classDirection: norm(form.get("classDirection")),
         fioTeacher: norm(form.get("fioTeacher")),
         campusAddress: norm(form.get("campusAddress"))
+        ,classType: norm(form.get("classType")) || "NORMAL"
     };
 
     if (!entry.numberSchoolBuilding || !entry.className || !entry.classDirection || !entry.fioTeacher) {
@@ -179,6 +182,7 @@ ui.editForm.addEventListener('submit', async (e) => {
         classDirection: norm(form.get("classDirection")),
         fioTeacher: norm(form.get("fioTeacher")),
         campusAddress: norm(form.get("campusAddress"))
+        ,classType: norm(form.get("classType")) || "NORMAL"
     };
 
     if (!entry.numberSchoolBuilding || !entry.className || !entry.classDirection || !entry.fioTeacher) {

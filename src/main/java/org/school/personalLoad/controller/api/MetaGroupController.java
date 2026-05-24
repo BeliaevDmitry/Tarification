@@ -30,14 +30,16 @@ public class MetaGroupController {
         String building = normalizeBuilding(request.getNumberSchoolBuilding());
         Integer parallel = normalizeParallel(request.getParallel());
         String name = normalizeName(parallel, request.getName());
+        String classType = normalizeClassType(request.getClassType());
 
-        if (repository.existsByNumberSchoolBuildingAndParallelAndNameIgnoreCase(building, parallel, name)) {
+        if (repository.existsByNumberSchoolBuildingAndParallelAndNameIgnoreCaseAndClassType(building, parallel, name, classType)) {
             throw new IllegalArgumentException("Метагруппа уже существует");
         }
         MetaGroup entity = new MetaGroup();
         entity.setNumberSchoolBuilding(building);
         entity.setParallel(parallel);
         entity.setName(name);
+        entity.setClassType(classType);
         return ResponseEntity.ok(repository.save(entity));
     }
 
@@ -48,9 +50,10 @@ public class MetaGroupController {
                 .orElseThrow(() -> new IllegalArgumentException("Метагруппа не найдена"));
         Integer parallel = existing.getParallel();
         String building = existing.getNumberSchoolBuilding();
+        String classType = normalizeClassType(existing.getClassType());
         String newName = normalizeName(parallel, request.getName());
         if (!existing.getName().equalsIgnoreCase(newName)
-                && repository.existsByNumberSchoolBuildingAndParallelAndNameIgnoreCase(building, parallel, newName)) {
+                && repository.existsByNumberSchoolBuildingAndParallelAndNameIgnoreCaseAndClassType(building, parallel, newName, classType)) {
             throw new IllegalArgumentException("Метагруппа уже существует");
         }
 
@@ -107,11 +110,19 @@ public class MetaGroupController {
         return "МГ:" + name;
     }
 
+    private String normalizeClassType(String value) {
+        if (value == null || value.isBlank()) return "NORMAL";
+        String normalized = value.trim().toUpperCase().replace('Ё', 'Е');
+        if (normalized.contains("АООП") || normalized.contains("УО") || normalized.contains("AOOP")) return "AOOP_UO";
+        return "NORMAL";
+    }
+
     @Value
     public static class CreateMetaGroupRequest {
         String numberSchoolBuilding;
         Integer parallel;
         String name;
+        String classType;
     }
 
     @Value
