@@ -64,7 +64,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     private int buildVisualSheet(Workbook workbook, String sheetName, List<CurriculumPlanEntry> allEntries, int parallelFrom, int parallelTo) {
         List<CurriculumPlanEntry> entries = allEntries.stream()
                 .filter(e -> {
-                    Integer p = ClassNameNormalizer.extractParallel(e.getClassName());
+                    Integer p = extractParallelForExportClass(e.getClassName());
                     return p != null && p >= parallelFrom && p <= parallelTo;
                 })
                 .toList();
