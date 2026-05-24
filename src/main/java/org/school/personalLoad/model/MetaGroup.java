@@ -26,4 +26,6 @@ public class MetaGroup {
 
     @Column(nullable = false)
     private String classType = "NORMAL";
+
+    private Long studyPeriodSettingId;
 }

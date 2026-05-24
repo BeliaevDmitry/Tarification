@@ -37,8 +37,7 @@ const ui = {
     parallelTabs: document.getElementById("parallel-tabs"),
     buildingFilter: document.getElementById("parallel-building-filter"),
     createMetaGroupBtn: document.getElementById("create-meta-group-btn"),
-    renameMetaGroupBtn: document.getElementById("rename-meta-group-btn"),
-    deleteMetaGroupBtn: document.getElementById("delete-meta-group-btn"),
+    manageMetaGroupBtn: document.getElementById("manage-meta-group-btn"),
     refreshBtn: document.getElementById("refresh-btn"),
     clearBtn: document.getElementById("clear-curriculum-btn"),
     result: document.getElementById("curriculum-result"),
@@ -58,6 +57,10 @@ const ui = {
     editForm: document.getElementById("curriculum-edit-form"),
     deleteItemBtn: document.getElementById("delete-curriculum-item"),
     closeDialogBtn: document.getElementById("close-curriculum-dialog")
+    ,metaGroupCreateDialog: document.getElementById("meta-group-create-dialog")
+    ,metaGroupCreateForm: document.getElementById("meta-group-create-form")
+    ,metaGroupManageDialog: document.getElementById("meta-group-manage-dialog")
+    ,metaGroupManageBody: document.getElementById("meta-group-manage-body")
 };
 
 let selectedParallel = 1;
@@ -215,6 +218,64 @@ ${promptText}`);
     return list[idx];
 }
 
+function renderMetaGroupCreateForm() {
+    const form = ui.metaGroupCreateForm;
+    if (!form) return;
+    const buildingSelect = form.elements.numberSchoolBuilding;
+    buildingSelect.innerHTML = "";
+    const allBuildings = Array.from(new Set(classes.map((c) => c.numberSchoolBuilding))).sort((a,b)=>String(a).localeCompare(String(b),"ru"));
+    allBuildings.forEach((b)=> buildingSelect.innerHTML += `<option value="${esc(b)}">${esc(b)}</option>`);
+    buildingSelect.value = selectedBuilding || allBuildings[0] || "";
+
+    const parallelSelect = form.elements.parallel;
+    parallelSelect.innerHTML = "";
+    for (let p=1;p<=11;p++) parallelSelect.innerHTML += `<option value="${p}">${p}</option>`;
+    parallelSelect.value = selectedParallel === AOOP_TAB_KEY ? "1" : String(selectedParallel);
+
+    const studySelect = form.elements.studyPeriodSettingId;
+    const options = settingsForParallel(Number(parallelSelect.value));
+    studySelect.innerHTML = options.map((o)=>`<option value="${esc(o.id)}">${esc(o.displayName)}</option>`).join("");
+    parallelSelect.onchange = () => {
+        const opts = settingsForParallel(Number(parallelSelect.value));
+        studySelect.innerHTML = opts.map((o)=>`<option value="${esc(o.id)}">${esc(o.displayName)}</option>`).join("");
+    };
+}
+
+function renderMetaGroupManageTable() {
+    const rows = (metaGroups || []).slice().sort((a,b)=>`${a.numberSchoolBuilding}|${a.name}`.localeCompare(`${b.numberSchoolBuilding}|${b.name}`,"ru"));
+    ui.metaGroupManageBody.innerHTML = rows.map((m) => {
+        const period = (studyPeriodSettings || []).find((s) => Number(s.id) === Number(m.studyPeriodSettingId));
+        return `<tr>
+            <td>${esc(m.numberSchoolBuilding)}</td>
+            <td>${esc((m.classType || "NORMAL")==="AOOP_UO" ? "АООП УО" : "Норма")}</td>
+            <td>${esc(m.parallel)}</td>
+            <td>${esc(m.name)}</td>
+            <td>${esc(period?.displayName || "—")}</td>
+            <td><button type="button" data-edit-meta-id="${esc(m.id)}">Редактировать</button></td>
+        </tr>`;
+    }).join("");
+    ui.metaGroupManageBody.querySelectorAll("button[data-edit-meta-id]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+            const id = Number(btn.dataset.editMetaId);
+            const m = rows.find((x) => Number(x.id) === id);
+            if (!m) return;
+            const name = prompt("Название", m.name);
+            if (!name) return;
+            const parallel = Number(prompt("Параллель", String(m.parallel)) || m.parallel);
+            const periodId = Number(prompt("ID периода обучения", String(m.studyPeriodSettingId || "")) || m.studyPeriodSettingId || 0) || null;
+            await api(`/api/meta-groups/${id}`, { method: "PATCH", headers: jsonHeaders, body: JSON.stringify({
+                numberSchoolBuilding: m.numberSchoolBuilding,
+                classType: m.classType || "NORMAL",
+                name,
+                parallel,
+                studyPeriodSettingId: periodId
+            })});
+            await reload();
+            renderMetaGroupManageTable();
+        });
+    });
+}
+
 function renderParallelTabs() {
     ui.parallelTabs.innerHTML = "";
     for (let p = 1; p <= 11; p++) {
@@ -306,7 +367,13 @@ function syncStudyPeriodControls() {
     const options = settingsForParallel(parallel);
     const selected = ui.formStudyPeriod.value;
     ui.formStudyPeriod.innerHTML = options.map((o) => `<option value="${esc(o.id)}">${esc(o.displayName)}</option>`).join('');
-    ui.formStudyPeriod.value = options.some((o) => String(o.id) === selected) ? selected : String(options[0]?.id || '');
+    let preferred = selected;
+    const classValue = norm(ui.formClass.value);
+    if (classValue.startsWith("МГ:")) {
+        const m = (metaGroups || []).find((x) => `МГ:${x.name}` === classValue && (!selectedBuilding || norm(x.numberSchoolBuilding) === norm(ui.formBuilding.value || selectedBuilding)));
+        if (m?.studyPeriodSettingId) preferred = String(m.studyPeriodSettingId);
+    }
+    ui.formStudyPeriod.value = options.some((o) => String(o.id) === preferred) ? preferred : String(options[0]?.id || '');
 
     if (ui.editForm?.elements.studyPeriod) {
         const classParallel = classToParallel(ui.editForm.elements.className?.value) || selectedParallel;
@@ -844,64 +911,36 @@ function bindEvents() {
 
 
     ui.createMetaGroupBtn?.addEventListener("click", async () => {
+        renderMetaGroupCreateForm();
+        ui.metaGroupCreateDialog?.showModal();
+    });
+
+    ui.manageMetaGroupBtn?.addEventListener("click", async () => {
+        renderMetaGroupManageTable();
+        ui.metaGroupManageDialog?.showModal();
+    });
+
+    ui.metaGroupCreateForm?.addEventListener("submit", async (e) => {
+        e.preventDefault();
         try {
-            const name = prompt("Название метагруппы");
-            if (!name || !name.trim()) return;
-            const building = norm(selectedBuilding || ui.buildingFilter.value);
-            if (!building) throw new Error("Выберите корпус для метагруппы");
-            const parsedParallel = Number((name.trim().match(/^(\d{1,2})/) || [])[1]);
-            const parallel = selectedParallel === AOOP_TAB_KEY ? parsedParallel : selectedParallel;
-            if (!Number.isFinite(parallel) || parallel < 1 || parallel > 11) {
-                throw new Error("Для метагруппы АООП укажите в начале названия номер параллели, например: 8 Р");
-            }
+            const form = new FormData(ui.metaGroupCreateForm);
             await api("/api/meta-groups", {
                 method: "POST",
                 headers: jsonHeaders,
                 body: JSON.stringify({
-                    numberSchoolBuilding: building,
-                    parallel,
-                    name: name.trim(),
-                    classType: selectedParallel === AOOP_TAB_KEY ? AOOP_TAB_KEY : "NORMAL"
+                    numberSchoolBuilding: norm(form.get("numberSchoolBuilding")),
+                    parallel: Number(form.get("parallel")),
+                    name: norm(form.get("name")),
+                    classType: selectedParallel === AOOP_TAB_KEY ? AOOP_TAB_KEY : "NORMAL",
+                    studyPeriodSettingId: Number(form.get("studyPeriodSettingId")) || null
                 })
             });
+            ui.metaGroupCreateDialog?.close();
             await reload();
-            print({ status: "meta-group-created", name: name.trim(), building, parallel: selectedParallel });
-        } catch (error) {
-            print({ error: error.message });
-        }
+        } catch (error) { print({ error: error.message }); }
     });
-
-
-    ui.renameMetaGroupBtn?.addEventListener("click", async () => {
-        try {
-            const selected = chooseMetaGroupInContext();
-            if (!selected) return;
-            const name = prompt("Новое название метагруппы", selected.name);
-            if (!name || !name.trim()) return;
-            await api(`/api/meta-groups/${selected.id}`, {
-                method: "PATCH",
-                headers: jsonHeaders,
-                body: JSON.stringify({ name: name.trim() })
-            });
-            await reload();
-            print({ status: "meta-group-renamed", id: selected.id, name: name.trim() });
-        } catch (error) {
-            print({ error: error.message });
-        }
-    });
-
-    ui.deleteMetaGroupBtn?.addEventListener("click", async () => {
-        try {
-            const selected = chooseMetaGroupInContext();
-            if (!selected) return;
-            if (!confirm(`Удалить метагруппу '${selected.name}'? Все записи УП этой метагруппы будут удалены.`)) return;
-            await api(`/api/meta-groups/${selected.id}`, { method: "DELETE" });
-            await reload();
-            print({ status: "meta-group-deleted", id: selected.id, name: selected.name });
-        } catch (error) {
-            print({ error: error.message });
-        }
-    });
+    document.getElementById("close-meta-group-create")?.addEventListener("click", () => ui.metaGroupCreateDialog?.close());
+    document.getElementById("close-meta-group-manage")?.addEventListener("click", () => ui.metaGroupManageDialog?.close());
 
     ui.refreshBtn.addEventListener("click", () => reload().catch((error) => print({ error: error.message })));
     ui.importBtn?.addEventListener("click", importCurriculumFile);

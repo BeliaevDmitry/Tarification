@@ -40,18 +40,19 @@ public class MetaGroupController {
         entity.setParallel(parallel);
         entity.setName(name);
         entity.setClassType(classType);
+        entity.setStudyPeriodSettingId(request.getStudyPeriodSettingId());
         return ResponseEntity.ok(repository.save(entity));
     }
 
     @PatchMapping("/{id}")
     @Transactional
-    public ResponseEntity<MetaGroup> rename(@PathVariable Long id, @RequestBody RenameMetaGroupRequest request) {
+    public ResponseEntity<MetaGroup> update(@PathVariable Long id, @RequestBody UpdateMetaGroupRequest request) {
         MetaGroup existing = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Метагруппа не найдена"));
-        Integer parallel = existing.getParallel();
-        String building = existing.getNumberSchoolBuilding();
-        String classType = normalizeClassType(existing.getClassType());
-        String newName = normalizeName(parallel, request.getName());
+        Integer parallel = normalizeParallel(request.getParallel() == null ? existing.getParallel() : request.getParallel());
+        String building = normalizeBuilding(request.getNumberSchoolBuilding() == null ? existing.getNumberSchoolBuilding() : request.getNumberSchoolBuilding());
+        String classType = normalizeClassType(request.getClassType() == null ? existing.getClassType() : request.getClassType());
+        String newName = normalizeName(parallel, request.getName() == null ? existing.getName() : request.getName());
         if (!existing.getName().equalsIgnoreCase(newName)
                 && repository.existsByNumberSchoolBuildingAndParallelAndNameIgnoreCaseAndClassType(building, parallel, newName, classType)) {
             throw new IllegalArgumentException("Метагруппа уже существует");
@@ -63,10 +64,15 @@ public class MetaGroupController {
                 .findAllByNumberSchoolBuildingAndClassName(building, oldClassName);
         for (CurriculumPlanEntry entry : entries) {
             entry.setClassName(newClassName);
+            entry.setStudyPeriodSettingId(request.getStudyPeriodSettingId() != null ? request.getStudyPeriodSettingId() : existing.getStudyPeriodSettingId());
         }
         curriculumPlanEntryRepository.saveAll(entries);
 
+        existing.setNumberSchoolBuilding(building);
+        existing.setParallel(parallel);
         existing.setName(newName);
+        existing.setClassType(classType);
+        if (request.getStudyPeriodSettingId() != null) existing.setStudyPeriodSettingId(request.getStudyPeriodSettingId());
         return ResponseEntity.ok(repository.save(existing));
     }
 
@@ -123,10 +129,15 @@ public class MetaGroupController {
         Integer parallel;
         String name;
         String classType;
+        Long studyPeriodSettingId;
     }
 
     @Value
-    public static class RenameMetaGroupRequest {
+    public static class UpdateMetaGroupRequest {
+        String numberSchoolBuilding;
+        Integer parallel;
         String name;
+        String classType;
+        Long studyPeriodSettingId;
     }
 }
