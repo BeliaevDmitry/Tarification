@@ -61,6 +61,7 @@ const ui = {
 };
 
 let selectedParallel = 1;
+const AOOP_TAB_KEY = "AOOP_UO";
 let selectedBuilding = "";
 let buildings = [];
 let classes = [];
@@ -183,13 +184,16 @@ function toggleSubgroupConfig(container, requiredValue) {
 
 function classesForSelectedContext() {
     return classes
-        .filter((c) => classToParallel(c.className) === selectedParallel)
+        .filter((c) => selectedParallel === AOOP_TAB_KEY
+            ? (c.classType || "NORMAL") === "AOOP_UO"
+            : classToParallel(c.className) === selectedParallel && (c.classType || "NORMAL") !== "AOOP_UO")
         .filter((c) => !selectedBuilding || c.numberSchoolBuilding === selectedBuilding)
         .sort((a, b) => `${a.numberSchoolBuilding}|${a.className}`.localeCompare(`${b.numberSchoolBuilding}|${b.className}`, "ru"));
 }
 
 
 function metaGroupsForSelectedContext() {
+    if (selectedParallel === AOOP_TAB_KEY) return [];
     return (metaGroups || [])
         .filter((m) => Number(m.parallel) === Number(selectedParallel))
         .filter((m) => !selectedBuilding || norm(m.numberSchoolBuilding) === selectedBuilding)
@@ -227,11 +231,27 @@ function renderParallelTabs() {
         });
         ui.parallelTabs.appendChild(btn);
     }
+    const aoopBtn = document.createElement("button");
+    aoopBtn.type = "button";
+    aoopBtn.className = `parallel-tab ${selectedParallel === AOOP_TAB_KEY ? "active" : ""}`;
+    aoopBtn.textContent = "АООП УО";
+    aoopBtn.addEventListener("click", () => {
+        selectedParallel = AOOP_TAB_KEY;
+        syncSelectedBuilding();
+        renderParallelTabs();
+        renderBuildingFilter();
+        renderClassOptions();
+        syncStudyPeriodControls();
+        renderSummaryTable();
+    });
+    ui.parallelTabs.appendChild(aoopBtn);
 }
 
 function syncSelectedBuilding() {
     const available = classes
-        .filter((c) => classToParallel(c.className) === selectedParallel)
+        .filter((c) => selectedParallel === AOOP_TAB_KEY
+            ? (c.classType || "NORMAL") === "AOOP_UO"
+            : classToParallel(c.className) === selectedParallel && (c.classType || "NORMAL") !== "AOOP_UO")
         .map((c) => c.numberSchoolBuilding);
     if (!available.includes(selectedBuilding)) {
         selectedBuilding = available[0] || "";
@@ -240,7 +260,9 @@ function syncSelectedBuilding() {
 
 function renderBuildingFilter() {
     const available = Array.from(new Set(classes
-        .filter((c) => classToParallel(c.className) === selectedParallel)
+        .filter((c) => selectedParallel === AOOP_TAB_KEY
+            ? (c.classType || "NORMAL") === "AOOP_UO"
+            : classToParallel(c.className) === selectedParallel && (c.classType || "NORMAL") !== "AOOP_UO")
         .map((c) => c.numberSchoolBuilding))).sort((a, b) => String(a).localeCompare(String(b), "ru"));
 
     ui.buildingFilter.innerHTML = "<option value=''>Все корпуса</option>";
@@ -261,7 +283,9 @@ function renderBuildingFilter() {
 function renderClassOptions() {
     const building = norm(ui.formBuilding.value) || selectedBuilding;
     const items = classes
-        .filter((c) => classToParallel(c.className) === selectedParallel)
+        .filter((c) => selectedParallel === AOOP_TAB_KEY
+            ? (c.classType || "NORMAL") === "AOOP_UO"
+            : classToParallel(c.className) === selectedParallel && (c.classType || "NORMAL") !== "AOOP_UO")
         .filter((c) => !building || c.numberSchoolBuilding === building)
         .sort((a, b) => String(a.className).localeCompare(String(b.className), "ru"));
 
@@ -276,7 +300,7 @@ function renderClassOptions() {
 }
 
 function syncStudyPeriodControls() {
-    const parallel = classToParallel(ui.formClass.value) || selectedParallel;
+    const parallel = classToParallel(ui.formClass.value) || (selectedParallel === AOOP_TAB_KEY ? 1 : selectedParallel);
     const options = settingsForParallel(parallel);
     const selected = ui.formStudyPeriod.value;
     ui.formStudyPeriod.innerHTML = options.map((o) => `<option value="${esc(o.id)}">${esc(o.displayName)}</option>`).join('');
@@ -502,9 +526,11 @@ function classCellMarkup(cellInfo, rowMeta, classMeta) {
 
 function renderSummaryTable() {
     const selectedClasses = classes
-        .filter((c) => classToParallel(c.className) === selectedParallel)
+        .filter((c) => selectedParallel === AOOP_TAB_KEY
+            ? (c.classType || "NORMAL") === "AOOP_UO"
+            : classToParallel(c.className) === selectedParallel && (c.classType || "NORMAL") !== "AOOP_UO")
         .sort((a, b) => `${a.numberSchoolBuilding}|${a.className}`.localeCompare(`${b.numberSchoolBuilding}|${b.className}`, "ru"));
-    const selectedMetaGroups = (metaGroups || [])
+    const selectedMetaGroups = (selectedParallel === AOOP_TAB_KEY ? [] : (metaGroups || []))
         .filter((m) => Number(m.parallel) === Number(selectedParallel))
         .sort((a, b) => `${a.numberSchoolBuilding}|${a.name}`.localeCompare(`${b.numberSchoolBuilding}|${b.name}`, "ru"))
         .map((m) => ({
@@ -756,7 +782,8 @@ async function reload() {
     classes = (classRows || []).map((r) => ({
         numberSchoolBuilding: norm(r.numberSchoolBuilding),
         className: norm(r.className),
-        classDirection: norm(r.classDirection)
+        classDirection: norm(r.classDirection),
+        classType: norm(r.classType) || "NORMAL"
     })).filter((r) => r.numberSchoolBuilding && r.className);
 
     buildings = (buildingRows || []).sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"));
