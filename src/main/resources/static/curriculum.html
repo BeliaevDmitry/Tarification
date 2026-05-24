@@ -59,9 +59,9 @@
                 <option value="EXTRACURRICULAR">3) Внеурочная деятельность</option>
             </select>
             <select name="subjectName" id="subject-name" required><option value="">Выберите предмет</option></select>
-            <label>Метагруппа<select name="metaGroup" id="subject-meta-group" required>
-                <option value="false">Нет</option>
-                <option value="true">Да (не переносить в нагрузку)</option>
+            <label>Переносить в нагрузку<select name="metaGroup" id="subject-meta-group" required>
+                <option value="false">Да</option>
+                <option value="true">Нет (метагруппа)</option>
             </select></label>
             <label>Период<select name="studyPeriod" id="subject-study-period" required></select></label>
             <input name="plannedHours" type="number" min="0.1" step="0.1" placeholder="Всего часов" required>
@@ -106,9 +106,9 @@
         <input type="hidden" name="id">
         <input type="hidden" name="className">
         <label>Период<select name="studyPeriod" required></select></label>
-        <label>Метагруппа<select name="metaGroup" required>
-            <option value="false">Нет</option>
-            <option value="true">Да (не переносить в нагрузку)</option>
+        <label>Переносить в нагрузку<select name="metaGroup" required>
+            <option value="false">Да</option>
+            <option value="true">Нет (метагруппа)</option>
         </select></label>
         <input name="plannedHours" type="number" min="0.1" step="0.1" placeholder="Всего часов" required>
         <label>Уровень<select name="educationLevel" required>

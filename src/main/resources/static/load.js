@@ -504,10 +504,21 @@ function rowsForSelectedBuilding() {
     }
     const normalizedSelectedBuilding = canonicalBuildingCode(selectedBuilding);
     const map = classBuildingMap();
-    const filtered = curriculumRows.filter((row) => {
+    const scoped = curriculumRows.filter((row) => {
         const rowBuilding = canonicalBuildingCode(row.numberSchoolBuilding);
         const byClass = canonicalBuildingCode(map.get(normalizeClassName(row.className)));
         return rowBuilding === normalizedSelectedBuilding || byClass === normalizedSelectedBuilding;
+    });
+    const metaKeys = new Set(
+        scoped
+            .filter((row) => Boolean(row.metaGroup))
+            .map((row) => `${row.className}|${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}|${rowStudyPeriod(row)}`)
+    );
+    const filtered = scoped.filter((row) => {
+        const key = `${row.className}|${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}|${rowStudyPeriod(row)}`;
+        if (Boolean(row.metaGroup)) return true;
+        if (!metaKeys.has(key)) return true;
+        return false;
     });
     derivedCache.rowsByBuildingKey = cacheKey;
     derivedCache.rowsByBuildingValue = filtered;
