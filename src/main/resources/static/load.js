@@ -6,6 +6,7 @@ const ui = {
     buildingSelect: document.getElementById("building-select"),
     refreshLoadBtn: document.getElementById("refresh-load-btn"),
     exportLoadBtn: document.getElementById("export-load-btn"),
+    exportFullLoadBtn: document.getElementById("export-full-load-btn"),
     importLoadBtn: document.getElementById("import-load-btn"),
     importLoadFile: document.getElementById("import-load-file"),
     saveBuildingBtn: document.getElementById("save-building-btn"),
@@ -2216,6 +2217,31 @@ async function exportLoadWorkbook() {
     }
 }
 
+async function exportFullLoadWorkbook() {
+    try {
+        const scopedPath = window.withAcademicYear ? window.withAcademicYear("/api/manual-load/export-full") : "/api/manual-load/export-full";
+        const response = await fetch(scopedPath);
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || `HTTP ${response.status}`);
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const disposition = response.headers.get("Content-Disposition") || "";
+        const match = disposition.match(/filename\\*=UTF-8''([^;]+)/);
+        a.href = url;
+        a.download = match ? decodeURIComponent(match[1]) : "full-load-export.xlsx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        print({ status: "full-exported" });
+    } catch (error) {
+        print({ error: error.message });
+    }
+}
+
 function exportLoadStatsCsv() {
     if (!ui.statsTable) return;
     const rows = Array.from(ui.statsTable.querySelectorAll("tr"));
@@ -2455,6 +2481,7 @@ function bindEvents() {
     });
 
     ui.exportLoadBtn?.addEventListener("click", exportLoadWorkbook);
+    ui.exportFullLoadBtn?.addEventListener("click", exportFullLoadWorkbook);
     ui.importLoadBtn?.addEventListener("click", () => ui.importLoadFile?.click());
     ui.importLoadFile?.addEventListener("change", async () => {
         const file = ui.importLoadFile.files?.[0];
