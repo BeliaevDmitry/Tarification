@@ -30,6 +30,7 @@ public interface ManualLoadService {
     ManualLoadProcessResult processCurrentManualLoad(String academicYear);
 
     byte[] exportWorkbook(String academicYear) throws IOException;
+    byte[] exportFullWorkbook(String academicYear) throws IOException;
 
     List<ManualLoadEntry> importWorkbook(String academicYear, MultipartFile file);
 

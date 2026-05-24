@@ -8,4 +8,6 @@ public class UserTabPermissionRequest {
     private AppTab tab;
     private Boolean canView;
     private Boolean canEdit;
+    private Boolean canImport;
+    private Boolean canExport;
 }

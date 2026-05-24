@@ -28,4 +28,10 @@ public class AppUserTabPermission {
 
     @Column(nullable = false)
     private boolean canEdit;
+
+    @Column(nullable = false)
+    private boolean canImport;
+
+    @Column(nullable = false)
+    private boolean canExport;
 }
