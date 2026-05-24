@@ -504,11 +504,12 @@ function rowsForSelectedBuilding() {
     }
     const normalizedSelectedBuilding = canonicalBuildingCode(selectedBuilding);
     const map = classBuildingMap();
-    const filtered = curriculumRows.filter((row) => {
+    const scoped = curriculumRows.filter((row) => {
         const rowBuilding = canonicalBuildingCode(row.numberSchoolBuilding);
         const byClass = canonicalBuildingCode(map.get(normalizeClassName(row.className)));
         return rowBuilding === normalizedSelectedBuilding || byClass === normalizedSelectedBuilding;
     });
+    const filtered = scoped.filter((row) => !Boolean(row.metaGroup));
     derivedCache.rowsByBuildingKey = cacheKey;
     derivedCache.rowsByBuildingValue = filtered;
     return filtered;

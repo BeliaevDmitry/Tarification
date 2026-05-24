@@ -64,7 +64,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     private int buildVisualSheet(Workbook workbook, String sheetName, List<CurriculumPlanEntry> allEntries, int parallelFrom, int parallelTo) {
         List<CurriculumPlanEntry> entries = allEntries.stream()
                 .filter(e -> {
-                    Integer p = ClassNameNormalizer.extractParallel(e.getClassName());
+                    Integer p = extractParallelForExportClass(e.getClassName());
                     return p != null && p >= parallelFrom && p <= parallelTo;
                 })
                 .toList();
@@ -76,7 +76,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         List<String> classes = entries.stream()
                 .map(e -> normalizeSubject(e.getNumberSchoolBuilding()) + "|" + ClassNameNormalizer.normalize(e.getClassName()))
                 .distinct()
-                .sorted(String::compareTo)
+                .sorted(this::compareClassKeysForExport)
                 .toList();
 
         CellStyle headerStyle = workbook.createCellStyle();
@@ -1100,6 +1100,36 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     private int parseIntSafe(String raw) {
         BigDecimal v = parseDecimal(raw);
         return v == null ? 0 : v.intValue();
+    }
+
+    private int compareClassKeysForExport(String left, String right) {
+        String[] l = String.valueOf(left).split("\\|", 2);
+        String[] r = String.valueOf(right).split("\\|", 2);
+        String lb = l.length > 0 ? l[0] : "";
+        String rb = r.length > 0 ? r[0] : "";
+        int buildingCmp = lb.compareToIgnoreCase(rb);
+        if (buildingCmp != 0) return buildingCmp;
+
+        String lc = l.length > 1 ? l[1] : "";
+        String rc = r.length > 1 ? r[1] : "";
+        Integer lp = extractParallelForExportClass(lc);
+        Integer rp = extractParallelForExportClass(rc);
+        int pCmp = Integer.compare(lp == null ? Integer.MAX_VALUE : lp, rp == null ? Integer.MAX_VALUE : rp);
+        if (pCmp != 0) return pCmp;
+
+        boolean lMeta = lc.startsWith("МГ:");
+        boolean rMeta = rc.startsWith("МГ:");
+        if (lMeta != rMeta) return lMeta ? 1 : -1; // метагруппа после обычных классов своей параллели
+
+        return lc.compareToIgnoreCase(rc);
+    }
+
+    private Integer extractParallelForExportClass(String className) {
+        String normalized = normalizeSubject(className);
+        if (normalized.startsWith("МГ:")) {
+            normalized = normalized.substring(3).trim();
+        }
+        return ClassNameNormalizer.extractParallel(normalized);
     }
 
     private String subjectKey(String name, SubjectType type) {
