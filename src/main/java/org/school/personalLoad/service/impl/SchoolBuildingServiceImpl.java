@@ -50,14 +50,20 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
 
     @Override
     public List<SchoolBuilding> findAll() {
-        Map<String, String> buildingHeadByCode = new LinkedHashMap<>();
+        Map<String, String> buildingHeadByGroupCode = new LinkedHashMap<>();
         appUserRepository.findAll().stream()
                 .filter(user -> user.getRole() == UserRole.BUILDING_HEAD)
                 .filter(user -> !normalize(user.getManagedBuildingCode()).isBlank())
-                .forEach(user -> buildingHeadByCode.put(normalize(user.getManagedBuildingCode()), normalize(user.getFullName())));
+                .forEach(user -> buildingHeadByGroupCode.put(
+                        normalizeBuildingGroupCode(user.getManagedBuildingCode()),
+                        normalize(user.getFullName())
+                ));
 
         return repository.findAll().stream()
-                .map(entity -> withDisplayManager(entity, buildingHeadByCode.get(normalize(entity.getCode()))))
+                .map(entity -> withDisplayManager(
+                        entity,
+                        buildingHeadByGroupCode.get(normalizeBuildingGroupCode(entity.getCode()))
+                ))
                 .toList();
     }
 
@@ -163,5 +169,11 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
 
     private String normalize(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private String normalizeBuildingGroupCode(String value) {
+        String normalized = normalize(value).replace(" ", "").toUpperCase();
+        int idx = normalized.indexOf("|");
+        return idx >= 0 ? normalized.substring(0, idx) : normalized;
     }
 }

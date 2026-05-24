@@ -27,8 +27,12 @@ public class TeacherDirectoryEntry {
     @Column(unique = true)
     private String email;
     private String additionalDuties;
+    private String numberSchoolBuilding;
 
     private LocalDate dismissalDate;
+    private LocalDate plannedDismissalDate;
+    private String plannedDismissalComment;
+    private String plannedDismissalMarkedBy;
 
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
