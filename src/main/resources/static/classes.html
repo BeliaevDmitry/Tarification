@@ -38,6 +38,7 @@
             <select name="numberSchoolBuilding" id="class-building" required></select>
             <input name="className" placeholder="Класс (например 7А)" required>
             <label class="field-row"><span>Направление</span><input name="classDirection" placeholder="Направление класса" required></label>
+            <label class="field-row"><span>Тип класса</span><select name="classType"><option value="NORMAL" selected>Норма</option><option value="AOOP_UO">АООП УО</option></select></label>
             <input name="fioTeacher" id="class-teacher" list="teacher-list" placeholder="Классный руководитель" required>
             <input name="campusAddress" placeholder="Адрес площадки (если отличается)">
             <datalist id="teacher-list"></datalist>
@@ -55,7 +56,7 @@
         <div class="sheet-wrap">
             <table class="sheet-table">
                 <thead>
-                <tr><th>Корпус</th><th>Класс</th><th>Направление</th><th>Классный руководитель</th><th>Адрес площадки (если отличается)</th><th></th></tr>
+                <tr><th>Корпус</th><th>Класс</th><th>Тип</th><th>Направление</th><th>Классный руководитель</th><th>Адрес площадки (если отличается)</th><th></th></tr>
                 </thead>
                 <tbody id="classes-body"></tbody>
             </table>
@@ -68,6 +69,7 @@
         <h3>Редактирование класса</h3>
         <label class="field-row"><span>Корпус</span><select name="numberSchoolBuilding" id="class-edit-building" required></select></label>
         <label class="field-row"><span>Класс</span><input name="className" placeholder="Класс" required></label>
+        <label class="field-row"><span>Тип класса</span><select name="classType"><option value="NORMAL" selected>Норма</option><option value="AOOP_UO">АООП УО</option></select></label>
         <label class="field-row"><span>Направление</span><input name="classDirection" placeholder="Направление класса" required></label>
         <label class="field-row"><span>Классный руководитель</span><input name="fioTeacher" id="class-edit-teacher" list="teacher-list" placeholder="Классный руководитель" required></label>
         <label class="field-row"><span>Адрес площадки (если отличается)</span><input name="campusAddress" placeholder="Адрес площадки (если отличается)"></label>

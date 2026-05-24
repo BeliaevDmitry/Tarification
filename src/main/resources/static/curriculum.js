@@ -37,8 +37,7 @@ const ui = {
     parallelTabs: document.getElementById("parallel-tabs"),
     buildingFilter: document.getElementById("parallel-building-filter"),
     createMetaGroupBtn: document.getElementById("create-meta-group-btn"),
-    renameMetaGroupBtn: document.getElementById("rename-meta-group-btn"),
-    deleteMetaGroupBtn: document.getElementById("delete-meta-group-btn"),
+    manageMetaGroupBtn: document.getElementById("manage-meta-group-btn"),
     refreshBtn: document.getElementById("refresh-btn"),
     clearBtn: document.getElementById("clear-curriculum-btn"),
     result: document.getElementById("curriculum-result"),
@@ -58,9 +57,14 @@ const ui = {
     editForm: document.getElementById("curriculum-edit-form"),
     deleteItemBtn: document.getElementById("delete-curriculum-item"),
     closeDialogBtn: document.getElementById("close-curriculum-dialog")
+    ,metaGroupCreateDialog: document.getElementById("meta-group-create-dialog")
+    ,metaGroupCreateForm: document.getElementById("meta-group-create-form")
+    ,metaGroupManageDialog: document.getElementById("meta-group-manage-dialog")
+    ,metaGroupManageBody: document.getElementById("meta-group-manage-body")
 };
 
 let selectedParallel = 1;
+const AOOP_TAB_KEY = "AOOP_UO";
 let selectedBuilding = "";
 let buildings = [];
 let classes = [];
@@ -107,6 +111,16 @@ function isHighSchoolParallel(parallel = selectedParallel) { return Number(paral
 function makeClassKey(numberSchoolBuilding, className) { return `${norm(numberSchoolBuilding)}|${norm(className)}`; }
 function normalizeStudyPeriod(className, studyPeriod) {
     return studyPeriod || (isHighSchoolParallel(classToParallel(className)) ? "H1" : "YEAR");
+}
+
+function resolveParallelForClassName(className, building = "") {
+    const direct = classToParallel(className);
+    if (Number.isFinite(direct)) return direct;
+    if (!norm(className).startsWith("МГ:")) return 1;
+    const hit = (metaGroups || []).find((m) =>
+        `МГ:${m.name}` === norm(className) && (!building || norm(m.numberSchoolBuilding) === norm(building))
+    );
+    return Number.isFinite(Number(hit?.parallel)) ? Number(hit.parallel) : 1;
 }
 
 function settingsForParallel(parallel = selectedParallel) {
@@ -183,15 +197,20 @@ function toggleSubgroupConfig(container, requiredValue) {
 
 function classesForSelectedContext() {
     return classes
-        .filter((c) => classToParallel(c.className) === selectedParallel)
+        .filter((c) => selectedParallel === AOOP_TAB_KEY
+            ? (c.classType || "NORMAL") === "AOOP_UO"
+            : classToParallel(c.className) === selectedParallel && (c.classType || "NORMAL") !== "AOOP_UO")
         .filter((c) => !selectedBuilding || c.numberSchoolBuilding === selectedBuilding)
         .sort((a, b) => `${a.numberSchoolBuilding}|${a.className}`.localeCompare(`${b.numberSchoolBuilding}|${b.className}`, "ru"));
 }
 
 
 function metaGroupsForSelectedContext() {
+    if (selectedParallel === AOOP_TAB_KEY) return [];
     return (metaGroups || [])
-        .filter((m) => Number(m.parallel) === Number(selectedParallel))
+        .filter((m) => selectedParallel === AOOP_TAB_KEY
+            ? (norm(m.classType) || "NORMAL") === AOOP_TAB_KEY
+            : Number(m.parallel) === Number(selectedParallel) && (norm(m.classType) || "NORMAL") !== AOOP_TAB_KEY)
         .filter((m) => !selectedBuilding || norm(m.numberSchoolBuilding) === selectedBuilding)
         .sort((a, b) => String(a.name).localeCompare(String(b.name), "ru"));
 }
@@ -207,6 +226,64 @@ ${promptText}`);
     const idx = Number(raw) - 1;
     if (!Number.isInteger(idx) || idx < 0 || idx >= list.length) throw new Error("Некорректный номер метагруппы");
     return list[idx];
+}
+
+function renderMetaGroupCreateForm() {
+    const form = ui.metaGroupCreateForm;
+    if (!form) return;
+    const buildingSelect = form.elements.numberSchoolBuilding;
+    buildingSelect.innerHTML = "";
+    const allBuildings = Array.from(new Set(classes.map((c) => c.numberSchoolBuilding))).sort((a,b)=>String(a).localeCompare(String(b),"ru"));
+    allBuildings.forEach((b)=> buildingSelect.innerHTML += `<option value="${esc(b)}">${esc(b)}</option>`);
+    buildingSelect.value = selectedBuilding || allBuildings[0] || "";
+
+    const parallelSelect = form.elements.parallel;
+    parallelSelect.innerHTML = "";
+    for (let p=1;p<=11;p++) parallelSelect.innerHTML += `<option value="${p}">${p}</option>`;
+    parallelSelect.value = selectedParallel === AOOP_TAB_KEY ? "1" : String(selectedParallel);
+
+    const studySelect = form.elements.studyPeriodSettingId;
+    const options = settingsForParallel(Number(parallelSelect.value));
+    studySelect.innerHTML = options.map((o)=>`<option value="${esc(o.id)}">${esc(o.displayName)}</option>`).join("");
+    parallelSelect.onchange = () => {
+        const opts = settingsForParallel(Number(parallelSelect.value));
+        studySelect.innerHTML = opts.map((o)=>`<option value="${esc(o.id)}">${esc(o.displayName)}</option>`).join("");
+    };
+}
+
+function renderMetaGroupManageTable() {
+    const rows = (metaGroups || []).slice().sort((a,b)=>`${a.numberSchoolBuilding}|${a.name}`.localeCompare(`${b.numberSchoolBuilding}|${b.name}`,"ru"));
+    ui.metaGroupManageBody.innerHTML = rows.map((m) => {
+        const period = (studyPeriodSettings || []).find((s) => Number(s.id) === Number(m.studyPeriodSettingId));
+        return `<tr>
+            <td>${esc(m.numberSchoolBuilding)}</td>
+            <td>${esc((m.classType || "NORMAL")==="AOOP_UO" ? "АООП УО" : "Норма")}</td>
+            <td>${esc(m.parallel)}</td>
+            <td>${esc(m.name)}</td>
+            <td>${esc(period?.displayName || "—")}</td>
+            <td><button type="button" data-edit-meta-id="${esc(m.id)}">Редактировать</button></td>
+        </tr>`;
+    }).join("");
+    ui.metaGroupManageBody.querySelectorAll("button[data-edit-meta-id]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+            const id = Number(btn.dataset.editMetaId);
+            const m = rows.find((x) => Number(x.id) === id);
+            if (!m) return;
+            const name = prompt("Название", m.name);
+            if (!name) return;
+            const parallel = Number(prompt("Параллель", String(m.parallel)) || m.parallel);
+            const periodId = Number(prompt("ID периода обучения", String(m.studyPeriodSettingId || "")) || m.studyPeriodSettingId || 0) || null;
+            await api(`/api/meta-groups/${id}`, { method: "PATCH", headers: jsonHeaders, body: JSON.stringify({
+                numberSchoolBuilding: m.numberSchoolBuilding,
+                classType: m.classType || "NORMAL",
+                name,
+                parallel,
+                studyPeriodSettingId: periodId
+            })});
+            await reload();
+            renderMetaGroupManageTable();
+        });
+    });
 }
 
 function renderParallelTabs() {
@@ -227,11 +304,27 @@ function renderParallelTabs() {
         });
         ui.parallelTabs.appendChild(btn);
     }
+    const aoopBtn = document.createElement("button");
+    aoopBtn.type = "button";
+    aoopBtn.className = `parallel-tab ${selectedParallel === AOOP_TAB_KEY ? "active" : ""}`;
+    aoopBtn.textContent = "АООП УО";
+    aoopBtn.addEventListener("click", () => {
+        selectedParallel = AOOP_TAB_KEY;
+        syncSelectedBuilding();
+        renderParallelTabs();
+        renderBuildingFilter();
+        renderClassOptions();
+        syncStudyPeriodControls();
+        renderSummaryTable();
+    });
+    ui.parallelTabs.appendChild(aoopBtn);
 }
 
 function syncSelectedBuilding() {
     const available = classes
-        .filter((c) => classToParallel(c.className) === selectedParallel)
+        .filter((c) => selectedParallel === AOOP_TAB_KEY
+            ? (c.classType || "NORMAL") === "AOOP_UO"
+            : classToParallel(c.className) === selectedParallel && (c.classType || "NORMAL") !== "AOOP_UO")
         .map((c) => c.numberSchoolBuilding);
     if (!available.includes(selectedBuilding)) {
         selectedBuilding = available[0] || "";
@@ -240,7 +333,9 @@ function syncSelectedBuilding() {
 
 function renderBuildingFilter() {
     const available = Array.from(new Set(classes
-        .filter((c) => classToParallel(c.className) === selectedParallel)
+        .filter((c) => selectedParallel === AOOP_TAB_KEY
+            ? (c.classType || "NORMAL") === "AOOP_UO"
+            : classToParallel(c.className) === selectedParallel && (c.classType || "NORMAL") !== "AOOP_UO")
         .map((c) => c.numberSchoolBuilding))).sort((a, b) => String(a).localeCompare(String(b), "ru"));
 
     ui.buildingFilter.innerHTML = "<option value=''>Все корпуса</option>";
@@ -261,7 +356,9 @@ function renderBuildingFilter() {
 function renderClassOptions() {
     const building = norm(ui.formBuilding.value) || selectedBuilding;
     const items = classes
-        .filter((c) => classToParallel(c.className) === selectedParallel)
+        .filter((c) => selectedParallel === AOOP_TAB_KEY
+            ? (c.classType || "NORMAL") === "AOOP_UO"
+            : classToParallel(c.className) === selectedParallel && (c.classType || "NORMAL") !== "AOOP_UO")
         .filter((c) => !building || c.numberSchoolBuilding === building)
         .sort((a, b) => String(a.className).localeCompare(String(b.className), "ru"));
 
@@ -276,14 +373,23 @@ function renderClassOptions() {
 }
 
 function syncStudyPeriodControls() {
-    const parallel = classToParallel(ui.formClass.value) || selectedParallel;
+    const parallel = classToParallel(ui.formClass.value) || (selectedParallel === AOOP_TAB_KEY ? 1 : selectedParallel);
     const options = settingsForParallel(parallel);
     const selected = ui.formStudyPeriod.value;
     ui.formStudyPeriod.innerHTML = options.map((o) => `<option value="${esc(o.id)}">${esc(o.displayName)}</option>`).join('');
-    ui.formStudyPeriod.value = options.some((o) => String(o.id) === selected) ? selected : String(options[0]?.id || '');
+    let preferred = selected;
+    const classValue = norm(ui.formClass.value);
+    if (classValue.startsWith("МГ:")) {
+        const m = (metaGroups || []).find((x) => `МГ:${x.name}` === classValue && (!selectedBuilding || norm(x.numberSchoolBuilding) === norm(ui.formBuilding.value || selectedBuilding)));
+        if (m?.studyPeriodSettingId) preferred = String(m.studyPeriodSettingId);
+    }
+    ui.formStudyPeriod.value = options.some((o) => String(o.id) === preferred) ? preferred : String(options[0]?.id || '');
 
     if (ui.editForm?.elements.studyPeriod) {
-        const classParallel = classToParallel(ui.editForm.elements.className?.value) || selectedParallel;
+        const classParallel = resolveParallelForClassName(
+            ui.editForm.elements.className?.value,
+            ui.formBuilding?.value || selectedBuilding
+        );
         const dialogOptions = settingsForParallel(classParallel);
         const editSelect = ui.editForm.elements.studyPeriod;
         const current = editSelect.value;
@@ -439,7 +545,7 @@ function openCreateByCell(cellCtx) {
     syncStudyPeriodControls();
     const options = Array.from(ui.editForm.elements.studyPeriod.options || []);
     const preferredById = options.find((opt) => String(opt.value) === String(cellCtx.studyPeriodSettingId || ""));
-    const classParallel = classToParallel(cellCtx.className) || selectedParallel;
+    const classParallel = resolveParallelForClassName(cellCtx.className, cellCtx.numberSchoolBuilding);
     const periodSetting = settingsForParallel(classParallel).find((s) => s.studyPeriod === cellCtx.studyPeriod);
     const preferred = preferredById || options.find((opt) => String(opt.value) === String(periodSetting?.id || ""));
     if (preferred) {
@@ -470,9 +576,9 @@ function classCellMarkup(cellInfo, rowMeta, classMeta) {
     const createAttrs = (studyPeriod) => {
         const candidateSettings = columnsForClass({ className: classMeta.className, numberSchoolBuilding: classMeta.numberSchoolBuilding });
         const setting = candidateSettings.find((x) => x.studyPeriod === studyPeriod)
-            || settingsForParallel(classToParallel(classMeta.className) || selectedParallel).find((x) => x.studyPeriod === studyPeriod)
+            || settingsForParallel(resolveParallelForClassName(classMeta.className, classMeta.numberSchoolBuilding)).find((x) => x.studyPeriod === studyPeriod)
             || candidateSettings[0]
-            || settingsForParallel(classToParallel(classMeta.className) || selectedParallel)[0];
+            || settingsForParallel(resolveParallelForClassName(classMeta.className, classMeta.numberSchoolBuilding))[0];
         return `data-create="1" data-building="${esc(classMeta.numberSchoolBuilding)}" data-class-name="${esc(classMeta.className)}" data-subject-name="${esc(rowMeta.subjectName)}" data-curriculum-part="${esc(rowMeta.part)}" data-education-level="${esc(rowMeta.educationLevel)}" data-study-period="${esc(studyPeriod)}" data-study-period-setting-id="${esc(setting?.id || "")}"`;
     };
     const emptyBtn = (studyPeriod) => `<button type="button" class="hours-cell empty-hours-cell" ${createAttrs(studyPeriod)}></button>`;
@@ -502,22 +608,36 @@ function classCellMarkup(cellInfo, rowMeta, classMeta) {
 
 function renderSummaryTable() {
     const selectedClasses = classes
-        .filter((c) => classToParallel(c.className) === selectedParallel)
+        .filter((c) => selectedParallel === AOOP_TAB_KEY
+            ? (c.classType || "NORMAL") === "AOOP_UO"
+            : classToParallel(c.className) === selectedParallel && (c.classType || "NORMAL") !== "AOOP_UO")
         .sort((a, b) => `${a.numberSchoolBuilding}|${a.className}`.localeCompare(`${b.numberSchoolBuilding}|${b.className}`, "ru"));
     const selectedMetaGroups = (metaGroups || [])
-        .filter((m) => Number(m.parallel) === Number(selectedParallel))
+        .filter((m) => selectedParallel === AOOP_TAB_KEY
+            ? (norm(m.classType) || "NORMAL") === AOOP_TAB_KEY
+            : Number(m.parallel) === Number(selectedParallel) && (norm(m.classType) || "NORMAL") !== AOOP_TAB_KEY)
         .sort((a, b) => `${a.numberSchoolBuilding}|${a.name}`.localeCompare(`${b.numberSchoolBuilding}|${b.name}`, "ru"))
         .map((m) => ({
         numberSchoolBuilding: m.numberSchoolBuilding,
         className: `МГ:${m.name}`,
         classDirection: "Метагруппа"
     }));
-    const knownMetaParallelByKey = new Map((metaGroups || []).map((m) => [makeClassKey(m.numberSchoolBuilding, `МГ:${m.name}`), Number(m.parallel)]));
+    const knownMetaByKey = new Map((metaGroups || []).map((m) => [makeClassKey(m.numberSchoolBuilding, `МГ:${m.name}`), {
+        parallel: Number(m.parallel),
+        classType: norm(m.classType) || "NORMAL"
+    }]));
+    const classTypeByClassKey = new Map((classes || []).map((c) => [makeClassKey(c.numberSchoolBuilding, c.className), norm(c.classType) || "NORMAL"]));
     const metagroupsFromData = (curriculumRows || [])
         .filter((r) => norm(r.className).startsWith("МГ:"))
         .filter((r) => {
-            const byKey = knownMetaParallelByKey.get(makeClassKey(r.numberSchoolBuilding, r.className));
-            if (Number.isFinite(byKey)) return byKey === Number(selectedParallel);
+            const byKey = knownMetaByKey.get(makeClassKey(r.numberSchoolBuilding, r.className));
+            if (byKey) {
+                if (selectedParallel === AOOP_TAB_KEY) return byKey.classType === AOOP_TAB_KEY;
+                return byKey.parallel === Number(selectedParallel) && byKey.classType !== AOOP_TAB_KEY;
+            }
+            const guessedType = classTypeByClassKey.get(makeClassKey(r.numberSchoolBuilding, r.className));
+            if (selectedParallel === AOOP_TAB_KEY) return guessedType === AOOP_TAB_KEY;
+            if (guessedType === AOOP_TAB_KEY) return false;
             return true;
         })
         .map((r) => ({
@@ -756,7 +876,8 @@ async function reload() {
     classes = (classRows || []).map((r) => ({
         numberSchoolBuilding: norm(r.numberSchoolBuilding),
         className: norm(r.className),
-        classDirection: norm(r.classDirection)
+        classDirection: norm(r.classDirection),
+        classType: norm(r.classType) || "NORMAL"
     })).filter((r) => r.numberSchoolBuilding && r.className);
 
     buildings = (buildingRows || []).sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"));
@@ -803,54 +924,36 @@ function bindEvents() {
 
 
     ui.createMetaGroupBtn?.addEventListener("click", async () => {
+        renderMetaGroupCreateForm();
+        ui.metaGroupCreateDialog?.showModal();
+    });
+
+    ui.manageMetaGroupBtn?.addEventListener("click", async () => {
+        renderMetaGroupManageTable();
+        ui.metaGroupManageDialog?.showModal();
+    });
+
+    ui.metaGroupCreateForm?.addEventListener("submit", async (e) => {
+        e.preventDefault();
         try {
-            const name = prompt("Название метагруппы");
-            if (!name || !name.trim()) return;
-            const building = norm(selectedBuilding || ui.buildingFilter.value);
-            if (!building) throw new Error("Выберите корпус для метагруппы");
+            const form = new FormData(ui.metaGroupCreateForm);
             await api("/api/meta-groups", {
                 method: "POST",
                 headers: jsonHeaders,
-                body: JSON.stringify({ numberSchoolBuilding: building, parallel: selectedParallel, name: name.trim() })
+                body: JSON.stringify({
+                    numberSchoolBuilding: norm(form.get("numberSchoolBuilding")),
+                    parallel: Number(form.get("parallel")),
+                    name: norm(form.get("name")),
+                    classType: selectedParallel === AOOP_TAB_KEY ? AOOP_TAB_KEY : "NORMAL",
+                    studyPeriodSettingId: Number(form.get("studyPeriodSettingId")) || null
+                })
             });
+            ui.metaGroupCreateDialog?.close();
             await reload();
-            print({ status: "meta-group-created", name: name.trim(), building, parallel: selectedParallel });
-        } catch (error) {
-            print({ error: error.message });
-        }
+        } catch (error) { print({ error: error.message }); }
     });
-
-
-    ui.renameMetaGroupBtn?.addEventListener("click", async () => {
-        try {
-            const selected = chooseMetaGroupInContext();
-            if (!selected) return;
-            const name = prompt("Новое название метагруппы", selected.name);
-            if (!name || !name.trim()) return;
-            await api(`/api/meta-groups/${selected.id}`, {
-                method: "PATCH",
-                headers: jsonHeaders,
-                body: JSON.stringify({ name: name.trim() })
-            });
-            await reload();
-            print({ status: "meta-group-renamed", id: selected.id, name: name.trim() });
-        } catch (error) {
-            print({ error: error.message });
-        }
-    });
-
-    ui.deleteMetaGroupBtn?.addEventListener("click", async () => {
-        try {
-            const selected = chooseMetaGroupInContext();
-            if (!selected) return;
-            if (!confirm(`Удалить метагруппу '${selected.name}'? Все записи УП этой метагруппы будут удалены.`)) return;
-            await api(`/api/meta-groups/${selected.id}`, { method: "DELETE" });
-            await reload();
-            print({ status: "meta-group-deleted", id: selected.id, name: selected.name });
-        } catch (error) {
-            print({ error: error.message });
-        }
-    });
+    document.getElementById("close-meta-group-create")?.addEventListener("click", () => ui.metaGroupCreateDialog?.close());
+    document.getElementById("close-meta-group-manage")?.addEventListener("click", () => ui.metaGroupManageDialog?.close());
 
     ui.refreshBtn.addEventListener("click", () => reload().catch((error) => print({ error: error.message })));
     ui.importBtn?.addEventListener("click", importCurriculumFile);
