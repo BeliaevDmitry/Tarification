@@ -799,17 +799,23 @@ function renderSubjectOptions() {
 function normalizeForm() {
     const f = new FormData(ui.form);
     const className = norm(f.get("className"));
+    const subgroupRequired = String(f.get("subgroupRequired")) === "true";
+    const subgroup1Hours = Number(f.get("subgroup1Hours") || 0);
+    const subgroup2Hours = Number(f.get("subgroup2Hours") || 0);
+    const plannedHours = subgroupRequired
+        ? Math.max(subgroup1Hours, subgroup2Hours, 0)
+        : Number(f.get("plannedHours") || 0);
     return {
         numberSchoolBuilding: norm(f.get("numberSchoolBuilding")),
         className,
         subjectName: norm(f.get("subjectName")),
-        plannedHours: Number(f.get("plannedHours") || 0),
+        plannedHours,
         educationLevel: f.get("educationLevel"),
-        subgroupRequired: String(f.get("subgroupRequired")) === "true",
+        subgroupRequired,
         subgroupCount: 2,
-        subgroup1Hours: Number(f.get("subgroup1Hours") || 0) || null,
+        subgroup1Hours: subgroupRequired ? subgroup1Hours : null,
         subgroup1EducationLevel: f.get("subgroup1EducationLevel") || null,
-        subgroup2Hours: Number(f.get("subgroup2Hours") || 0) || null,
+        subgroup2Hours: subgroupRequired ? subgroup2Hours : null,
         subgroup2EducationLevel: f.get("subgroup2EducationLevel") || null,
         curriculumPart: f.get("curriculumPart"),
         studyPeriodSettingId: Number(f.get("studyPeriod") || 0) || null,
@@ -991,19 +997,24 @@ function bindEvents() {
         const existing = curriculumRows.find((r) => r.id === id);
 
         const subgroupRequired = ui.editForm.elements.subgroupRequired.value === "true";
+        const subgroup1Hours = Number(ui.editForm.elements.subgroup1Hours.value || 0);
+        const subgroup2Hours = Number(ui.editForm.elements.subgroup2Hours.value || 0);
+        const plannedHours = subgroupRequired
+            ? Math.max(subgroup1Hours, subgroup2Hours, 0)
+            : Number(ui.editForm.elements.plannedHours.value || 0);
         const payload = {
             numberSchoolBuilding: existing?.numberSchoolBuilding || pendingCreateContext?.numberSchoolBuilding,
             className: existing?.className || pendingCreateContext?.className,
             subjectName: existing?.subjectName || pendingCreateContext?.subjectName,
             curriculumPart: existing?.curriculumPart || pendingCreateContext?.curriculumPart,
-            plannedHours: Number(ui.editForm.elements.plannedHours.value || 0),
+            plannedHours,
             educationLevel: ui.editForm.elements.educationLevel.value || existing?.educationLevel || pendingCreateContext?.educationLevel || "BASIC",
             subgroupRequired,
             subgroupCount: 2,
             studyPeriodSettingId: Number(ui.editForm.elements.studyPeriod.value || 0) || null,
             metaGroup: ui.editForm.elements.metaGroup.value === "true",
-            subgroup1Hours: subgroupRequired ? Number(ui.editForm.elements.subgroup1Hours.value || 0) : null,
-            subgroup2Hours: subgroupRequired ? Number(ui.editForm.elements.subgroup2Hours.value || 0) : null,
+            subgroup1Hours: subgroupRequired ? subgroup1Hours : null,
+            subgroup2Hours: subgroupRequired ? subgroup2Hours : null,
             subgroup1EducationLevel: subgroupRequired ? ui.editForm.elements.subgroup1EducationLevel.value : null,
             subgroup2EducationLevel: subgroupRequired ? ui.editForm.elements.subgroup2EducationLevel.value : null
         };
