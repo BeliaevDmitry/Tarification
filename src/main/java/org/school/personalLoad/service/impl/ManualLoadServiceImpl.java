@@ -275,7 +275,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 sheet.getPrintSetup().setFitHeight((short) 0);
 
                 Row h = sheet.createRow(0);
-                String[] cols = {"ФИО", "Предмет", "Класс", "Группа", "Часы по предмету", "Часы в корпусе/всего", "Дополнительные сведения"};
+                String[] cols = {"ФИО", "Предмет", "Класс", "Группа", "Часы по предмету", "Период нагрузки", "Часы в корпусе/всего", "Дополнительные сведения"};
                 for (int i = 0; i < cols.length; i++) { h.createCell(i).setCellValue(cols[i]); h.getCell(i).setCellStyle(header); }
                 sheet.createFreezePane(0, 1);
                 sheet.setAutoFilter(new CellRangeAddress(0, 0, 0, cols.length - 1));
@@ -283,9 +283,24 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 Map<String, int[]> totalsByTeacher = new HashMap<>();
                 rows.forEach(r -> {
                     String k = String.valueOf(r.getFioTeacher()).trim().toLowerCase(Locale.ROOT);
-                    int[] t = totalsByTeacher.computeIfAbsent(k, x -> new int[]{0,0});
-                    t[1] += r.getLoad() == null ? 0 : r.getLoad();
-                    if (building.equals(r.getNumberSchoolBuilding())) t[0] += r.getLoad() == null ? 0 : r.getLoad();
+                    int[] t = totalsByTeacher.computeIfAbsent(k, x -> new int[]{0, 0, 0, 0}); // bH1,bH2,aH1,aH2
+                    int load = r.getLoad() == null ? 0 : r.getLoad();
+                    boolean isBuilding = building.equals(r.getNumberSchoolBuilding());
+                    StudyPeriod period = r.getStudyPeriod() == null ? StudyPeriod.YEAR : r.getStudyPeriod();
+                    if (period == StudyPeriod.H1) {
+                        t[2] += load;
+                        if (isBuilding) t[0] += load;
+                    } else if (period == StudyPeriod.H2) {
+                        t[3] += load;
+                        if (isBuilding) t[1] += load;
+                    } else {
+                        t[2] += load;
+                        t[3] += load;
+                        if (isBuilding) {
+                            t[0] += load;
+                            t[1] += load;
+                        }
+                    }
                 });
 
                 List<ManualLoadEntry> buildingRows = byBuilding.getOrDefault(building, List.of());
@@ -314,18 +329,23 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     if (!Objects.equals(currentTeacher, key)) {
                         if (currentTeacher != null && rowNum - 1 > teacherStart) {
                             sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 0, 0));
-                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 5, 5));
                             sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 6, 6));
+                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 7, 7));
                         }
                         currentTeacher = key;
                         teacherStart = rowNum;
                     }
 
-                    int subjectHours = buildingRows.stream()
-                            .filter(x -> key.equals(String.valueOf(x.getFioTeacher() == null ? "" : x.getFioTeacher()).trim().toLowerCase(Locale.ROOT)))
-                            .filter(x -> String.valueOf(x.getSubjectName() == null ? "" : x.getSubjectName()).trim().equalsIgnoreCase(String.valueOf(e.getSubjectName() == null ? "" : e.getSubjectName()).trim()))
-                            .mapToInt(x -> x.getLoad() == null ? 0 : x.getLoad())
-                            .sum();
+                    int subjectHours = e.getGroupLoad() != null ? e.getGroupLoad() : (e.getLoad() == null ? 0 : e.getLoad());
+                    String periodLabel = e.getStudyPeriod() == StudyPeriod.H1 ? "1 полугодие"
+                            : e.getStudyPeriod() == StudyPeriod.H2 ? "2 полугодие" : "год";
+                    String hoursSummary;
+                    if (t[0] == t[1] && t[2] == t[3]) {
+                        hoursSummary = t[0] + "/" + t[2];
+                    } else {
+                        hoursSummary = "1 полугодие: " + t[0] + "/" + t[2] + "\n"
+                                + "2 полугодие: " + t[1] + "/" + t[3];
+                    }
 
                     Row r = sheet.createRow(rowNum++);
                     r.createCell(0).setCellValue(fio);
@@ -333,13 +353,14 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     r.createCell(2).setCellValue(String.valueOf(e.getClassName() == null ? "" : e.getClassName()));
                     r.createCell(3).setCellValue(String.valueOf(e.getGroupNameEducationalPlan() == null ? "" : e.getGroupNameEducationalPlan()));
                     r.createCell(4).setCellValue(subjectHours);
-                    r.createCell(5).setCellValue(t[0] + "/" + t[1]);
-                    r.createCell(6).setCellValue(extra);
-                    for (int c = 0; c <= 6; c++) r.getCell(c).setCellStyle(wrap);
+                    r.createCell(5).setCellValue(periodLabel);
+                    r.createCell(6).setCellValue(hoursSummary);
+                    r.createCell(7).setCellValue(extra);
+                    for (int c = 0; c <= 7; c++) r.getCell(c).setCellStyle(wrap);
                     if (i == buildingRows.size() - 1 && rowNum - 1 > teacherStart) {
                         sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 0, 0));
-                        sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 5, 5));
                         sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 6, 6));
+                        sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 7, 7));
                     }
                 }
                 sheet.setColumnWidth(0, 20 * 256);
@@ -348,7 +369,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 sheet.setColumnWidth(3, 16 * 256);
                 sheet.setColumnWidth(4, 14 * 256);
                 sheet.setColumnWidth(5, 16 * 256);
-                sheet.setColumnWidth(6, 45 * 256);
+                sheet.setColumnWidth(6, 24 * 256);
+                sheet.setColumnWidth(7, 45 * 256);
             }
             workbook.write(out);
             return out.toByteArray();
