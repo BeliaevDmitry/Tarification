@@ -48,6 +48,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             String classDirection = normalize(request.getClassDirection());
             String fioTeacher = normalize(request.getFioTeacher());
             String campusAddress = resolveCampusAddress(building, request.getCampusAddress());
+            String classType = normalizeClassType(request.getClassType());
             if (building.isBlank() || className.isBlank() || classDirection.isBlank() || fioTeacher.isBlank()) continue;
 
             // Не блокируем сохранение: при отсутствии педагога создаём его автоматически.
@@ -55,6 +56,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
 
             request.setClassName(className);
             request.setCampusAddress(campusAddress);
+            request.setClassType(classType);
             request.setAcademicYear(academicYear);
             // В пределах одного учебного года класс должен быть уникален по названию,
             // а корпус может меняться при повторном импорте/редактировании.
@@ -71,6 +73,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             entry.setClassDirection(normalize(request.getClassDirection()));
             entry.setFioTeacher(normalize(request.getFioTeacher()));
             entry.setCampusAddress(resolveCampusAddress(entry.getNumberSchoolBuilding(), request.getCampusAddress()));
+            entry.setClassType(normalizeClassType(request.getClassType()));
             toSave.add(entry);
         });
 
@@ -96,6 +99,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             req.setClassDirection(existing.getClassDirection());
             req.setFioTeacher(existing.getFioTeacher());
             req.setCampusAddress(existing.getCampusAddress());
+            req.setClassType(normalizeClassType(existing.getClassType()));
             String key = existing.getNumberSchoolBuilding() + "|" + existing.getClassName();
             merged.put(key, req);
             classToKey.put(ClassNameNormalizer.normalize(existing.getClassName()), key);
@@ -114,6 +118,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
                 String direction = normalize(cellValue(row.getCell(2)));
                 String teacher = normalize(cellValue(row.getCell(3)));
                 String campusAddress = normalize(cellValue(row.getCell(4)));
+                String classType = normalizeClassType(cellValue(row.getCell(5)));
 
                 if (building.equalsIgnoreCase("КОРПУС") || className.equalsIgnoreCase("КЛАСС")) {
                     skipped++;
@@ -135,6 +140,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
                 req.setClassDirection(direction);
                 req.setFioTeacher(teacher);
                 req.setCampusAddress(resolveCampusAddress(building, campusAddress));
+                req.setClassType(classType);
                 req.setAcademicYear(academicYear);
                 String newKey = building + "|" + className;
                 String previousKey = classToKey.get(className);
@@ -163,6 +169,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             header.createCell(2).setCellValue("Направление класса");
             header.createCell(3).setCellValue("Классный руководитель");
             header.createCell(4).setCellValue("Адрес площадки (если отличается)");
+            header.createCell(5).setCellValue("Тип класса (Норма/АООП УО)");
 
             List<ClassroomLeadershipEntry> rows = findAll(academicYear);
             if (rows.isEmpty()) {
@@ -172,6 +179,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
                 ex.createCell(2).setCellValue("Универсальный");
                 ex.createCell(3).setCellValue("Иванов И.И.");
                 ex.createCell(4).setCellValue("ул. Крупской, д. 13");
+                ex.createCell(5).setCellValue("Норма");
             } else {
                 int index = 1;
                 for (ClassroomLeadershipEntry entry : rows) {
@@ -181,10 +189,11 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
                     row.createCell(2).setCellValue(entry.getClassDirection());
                     row.createCell(3).setCellValue(entry.getFioTeacher());
                     row.createCell(4).setCellValue(entry.getCampusAddress());
+                    row.createCell(5).setCellValue("AOOP_UO".equalsIgnoreCase(normalize(entry.getClassType())) ? "АООП УО" : "Норма");
                 }
             }
 
-            for (int i = 0; i < 5; i++) sheet.autoSizeColumn(i);
+            for (int i = 0; i < 6; i++) sheet.autoSizeColumn(i);
             workbook.write(out);
             return new ByteArrayResource(out.toByteArray());
         } catch (Exception e) {
@@ -228,6 +237,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             entry.setClassDirection(normalize(previous.getClassDirection()));
             entry.setFioTeacher(normalize(previous.getFioTeacher()));
             entry.setCampusAddress(resolveCampusAddress(entry.getNumberSchoolBuilding(), previous.getCampusAddress()));
+            entry.setClassType(normalizeClassType(previous.getClassType()));
             promoted.add(entry);
         }
         Map<String, ClassroomLeadershipEntry> uniqueByClass = new LinkedHashMap<>();
@@ -268,6 +278,8 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         if (building.isBlank() || normalizedClassName.isBlank()) {
             throw new IllegalArgumentException("numberSchoolBuilding and className are required");
         }
+        curriculumPlanEntryRepository.deleteByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, normalizedClassName);
+        manualLoadEntryRepository.deleteByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, normalizedClassName);
         classroomLeadershipRepository.deleteByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, normalizedClassName);
     }
 
@@ -396,6 +408,14 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
 
     private String normalize(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private String normalizeClassType(String value) {
+        String normalized = normalize(value).toUpperCase(Locale.ROOT).replace('Ё', 'Е');
+        if (normalized.contains("АООП") || normalized.contains("УО") || normalized.contains("AOOP")) {
+            return "AOOP_UO";
+        }
+        return "NORMAL";
     }
 
     private String cellValue(Cell cell) {

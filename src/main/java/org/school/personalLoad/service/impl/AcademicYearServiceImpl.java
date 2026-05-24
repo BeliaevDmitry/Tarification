@@ -237,14 +237,27 @@ public class AcademicYearServiceImpl implements AcademicYearService {
         if (parallel >= 11) {
             return null;
         }
-        if (parallel == 4 || parallel == 9) {
+        if (parallel == 4 || parallel == 6 || parallel == 9 || parallel == 11) {
             return null;
         }
         return (parallel + 1) + "-" + matcher.group(2);
     }
 
+    private boolean isExcludedGraduationParallel(String className) {
+        String normalized = ClassNameNormalizer.normalize(className);
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("^(\\d{1,2})-([А-ЯA-Z])$").matcher(normalized);
+        if (!matcher.matches()) {
+            return false;
+        }
+        int parallel = Integer.parseInt(matcher.group(1));
+        return parallel == 4 || parallel == 6 || parallel == 9 || parallel == 11;
+    }
+
     private List<String> continuityClassCandidates(String sourceClassName) {
         String normalizedSource = ClassNameNormalizer.normalize(sourceClassName);
+        if (isExcludedGraduationParallel(normalizedSource)) {
+            return List.of();
+        }
         String nextClass = nextClassForContinuity(normalizedSource);
         if (nextClass == null || nextClass.equals(normalizedSource)) {
             return List.of(normalizedSource);

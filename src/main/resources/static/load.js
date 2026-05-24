@@ -504,11 +504,12 @@ function rowsForSelectedBuilding() {
     }
     const normalizedSelectedBuilding = canonicalBuildingCode(selectedBuilding);
     const map = classBuildingMap();
-    const filtered = curriculumRows.filter((row) => {
+    const scoped = curriculumRows.filter((row) => {
         const rowBuilding = canonicalBuildingCode(row.numberSchoolBuilding);
         const byClass = canonicalBuildingCode(map.get(normalizeClassName(row.className)));
         return rowBuilding === normalizedSelectedBuilding || byClass === normalizedSelectedBuilding;
     });
+    const filtered = scoped.filter((row) => !Boolean(row.metaGroup));
     derivedCache.rowsByBuildingKey = cacheKey;
     derivedCache.rowsByBuildingValue = filtered;
     return filtered;
@@ -2528,6 +2529,13 @@ function bindEvents() {
         const listEl = tr?.querySelector("datalist");
         if (listEl) updateDatalistOptions(listEl, teacherInput.value || "");
     });
+    ui.tableBody?.addEventListener("focusin", (event) => {
+        const teacherInput = event.target.closest(".teacher-input");
+        if (!teacherInput) return;
+        const tr = teacherInput.closest("tr");
+        const listEl = tr?.querySelector("datalist");
+        if (listEl) updateDatalistOptions(listEl, "");
+    });
 
     ui.tableBody?.addEventListener("change", (event) => {
         const target = event.target;
@@ -2546,11 +2554,9 @@ function bindEvents() {
         }
     });
 
-    ui.tableBody?.addEventListener("blur", (event) => {
-        const teacherInput = event.target.closest(".teacher-input");
-        if (!teacherInput) return;
-        applyTeacherSelection(teacherInput.dataset.subjectKey, teacherInput.dataset.rowId, teacherInput);
-    }, true);
+    // Не фиксируем значение на blur: при выборе из datalist некоторые браузеры
+    // сначала ставят выбранное значение, а затем присылают промежуточный blur,
+    // из-за чего ФИО может тут же очищаться. Фиксация остаётся на change/Enter.
 
     ui.tableBody?.addEventListener("keydown", (event) => {
         const teacherInput = event.target.closest(".teacher-input");
