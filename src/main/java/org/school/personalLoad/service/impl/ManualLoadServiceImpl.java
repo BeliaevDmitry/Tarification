@@ -4,8 +4,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.HorizontalAlignment;
+import org.apache.poi.ss.usermodel.VerticalAlignment;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadHealthResponse;
@@ -21,6 +26,7 @@ import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.model.SubjectWithGroup;
 import org.school.personalLoad.model.TarifficationPerson;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.CurriculumPlanService;
@@ -56,6 +62,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private final StudyPeriodSettingService studyPeriodSettingService;
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final SubjectCatalogRepository subjectCatalogRepository;
+    private final ClassroomLeadershipRepository classroomLeadershipRepository;
 
     @Override
     public ManualLoadEntry create(ManualLoadEntryRequest request) {
@@ -225,6 +232,145 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
             for (int i = 0; i <= 11; i++) {
                 sheet.autoSizeColumn(i);
+            }
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    @Override
+    public byte[] exportFullWorkbook(String academicYear) throws IOException {
+        List<ManualLoadEntry> rows = manualLoadEntryRepository.findAllByAcademicYear(academicYear);
+        Map<String, TeacherDirectoryEntry> teacherByFio = teacherDirectoryRepository.findAll().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        t -> String.valueOf(t.getFioTeacher()).trim().toLowerCase(Locale.ROOT),
+                        t -> t,
+                        (a, b) -> a
+                ));
+        Map<String, List<String>> classLeadershipByTeacher = new HashMap<>();
+        classroomLeadershipRepository.findAllByAcademicYear(academicYear).forEach(c -> {
+            String key = String.valueOf(c.getFioTeacher()).trim().toLowerCase(Locale.ROOT);
+            classLeadershipByTeacher.computeIfAbsent(key, k -> new ArrayList<>()).add(c.getClassName());
+        });
+
+        Map<String, List<ManualLoadEntry>> byBuilding = rows.stream().collect(java.util.stream.Collectors.groupingBy(
+                r -> r.getNumberSchoolBuilding() == null || r.getNumberSchoolBuilding().isBlank() ? "Не закреплены" : r.getNumberSchoolBuilding(),
+                java.util.LinkedHashMap::new,
+                java.util.stream.Collectors.toList()
+        ));
+
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            CellStyle header = workbook.createCellStyle();
+            Font bold = workbook.createFont(); bold.setBold(true); header.setFont(bold);
+            header.setWrapText(true);
+            CellStyle wrap = workbook.createCellStyle(); wrap.setWrapText(true); wrap.setVerticalAlignment(org.apache.poi.ss.usermodel.VerticalAlignment.TOP);
+
+            List<String> sheetOrder = new ArrayList<>(byBuilding.keySet());
+            sheetOrder.sort(String::compareToIgnoreCase);
+            for (String building : sheetOrder) {
+                Sheet sheet = workbook.createSheet(building.length() > 31 ? building.substring(0, 31) : building);
+                sheet.getPrintSetup().setLandscape(true);
+                sheet.setFitToPage(true);
+                sheet.getPrintSetup().setFitWidth((short) 1);
+                sheet.getPrintSetup().setFitHeight((short) 0);
+
+                Row h = sheet.createRow(0);
+                String[] cols = {"ФИО", "Предмет", "Класс", "Группа", "Часы по предмету", "Период нагрузки", "Часы в корпусе/всего", "Дополнительные сведения"};
+                for (int i = 0; i < cols.length; i++) { h.createCell(i).setCellValue(cols[i]); h.getCell(i).setCellStyle(header); }
+                sheet.createFreezePane(0, 1);
+                sheet.setAutoFilter(new CellRangeAddress(0, 0, 0, cols.length - 1));
+
+                Map<String, int[]> totalsByTeacher = new HashMap<>();
+                rows.forEach(r -> {
+                    String k = String.valueOf(r.getFioTeacher()).trim().toLowerCase(Locale.ROOT);
+                    int[] t = totalsByTeacher.computeIfAbsent(k, x -> new int[]{0, 0, 0, 0}); // bH1,bH2,aH1,aH2
+                    int load = r.getLoad() == null ? 0 : r.getLoad();
+                    boolean isBuilding = building.equals(r.getNumberSchoolBuilding());
+                    StudyPeriod period = r.getStudyPeriod() == null ? StudyPeriod.YEAR : r.getStudyPeriod();
+                    if (period == StudyPeriod.H1) {
+                        t[2] += load;
+                        if (isBuilding) t[0] += load;
+                    } else if (period == StudyPeriod.H2) {
+                        t[3] += load;
+                        if (isBuilding) t[1] += load;
+                    } else {
+                        t[2] += load;
+                        t[3] += load;
+                        if (isBuilding) {
+                            t[0] += load;
+                            t[1] += load;
+                        }
+                    }
+                });
+
+                List<ManualLoadEntry> buildingRows = byBuilding.getOrDefault(building, List.of());
+                buildingRows.sort(
+                        Comparator.comparing(ManualLoadEntry::getFioTeacher, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                                .thenComparing(ManualLoadEntry::getSubjectName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                                .thenComparing(ManualLoadEntry::getClassName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                );
+                int rowNum = 1;
+                int teacherStart = rowNum;
+                String currentTeacher = null;
+                for (int i = 0; i < buildingRows.size(); i++) {
+                    ManualLoadEntry e = buildingRows.get(i);
+                    String fio = String.valueOf(e.getFioTeacher() == null ? "" : e.getFioTeacher()).trim();
+                    String key = fio.toLowerCase(Locale.ROOT);
+                    int[] t = totalsByTeacher.getOrDefault(key, new int[]{0,0});
+                    TeacherDirectoryEntry td = teacherByFio.get(key);
+                    String allBuildings = rows.stream().filter(x -> key.equals(String.valueOf(x.getFioTeacher()).trim().toLowerCase(Locale.ROOT)))
+                            .map(ManualLoadEntry::getNumberSchoolBuilding).filter(Objects::nonNull).distinct().sorted().collect(java.util.stream.Collectors.joining(", "));
+                    String classLeadership = String.join(", ", classLeadershipByTeacher.getOrDefault(key, List.of()));
+                    String extra = "";
+                    if (!allBuildings.isBlank()) extra += "Корпуса: " + allBuildings;
+                    if (!classLeadership.isBlank()) extra += (extra.isBlank() ? "" : "\n") + "Классное руководство: " + classLeadership;
+                    if (td != null && td.getAdditionalDuties() != null && !td.getAdditionalDuties().isBlank()) extra += (extra.isBlank() ? "" : "\n") + "Доп. обязанности: " + td.getAdditionalDuties();
+
+                    if (!Objects.equals(currentTeacher, key)) {
+                        if (currentTeacher != null && rowNum - 1 > teacherStart) {
+                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 0, 0));
+                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 6, 6));
+                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 7, 7));
+                        }
+                        currentTeacher = key;
+                        teacherStart = rowNum;
+                    }
+
+                    int subjectHours = e.getGroupLoad() != null ? e.getGroupLoad() : (e.getLoad() == null ? 0 : e.getLoad());
+                    String periodLabel = e.getStudyPeriod() == StudyPeriod.H1 ? "1 полугодие"
+                            : e.getStudyPeriod() == StudyPeriod.H2 ? "2 полугодие" : "год";
+                    String hoursSummary;
+                    if (t[0] == t[1] && t[2] == t[3]) {
+                        hoursSummary = t[0] + "/" + t[2];
+                    } else {
+                        hoursSummary = "1 полугодие: " + t[0] + "/" + t[2] + "\n"
+                                + "2 полугодие: " + t[1] + "/" + t[3];
+                    }
+
+                    Row r = sheet.createRow(rowNum++);
+                    r.createCell(0).setCellValue(fio);
+                    r.createCell(1).setCellValue(String.valueOf(e.getSubjectName() == null ? "" : e.getSubjectName()));
+                    r.createCell(2).setCellValue(String.valueOf(e.getClassName() == null ? "" : e.getClassName()));
+                    r.createCell(3).setCellValue(String.valueOf(e.getGroupNameEducationalPlan() == null ? "" : e.getGroupNameEducationalPlan()));
+                    r.createCell(4).setCellValue(subjectHours);
+                    r.createCell(5).setCellValue(periodLabel);
+                    r.createCell(6).setCellValue(hoursSummary);
+                    r.createCell(7).setCellValue(extra);
+                    for (int c = 0; c <= 7; c++) r.getCell(c).setCellStyle(wrap);
+                    if (i == buildingRows.size() - 1 && rowNum - 1 > teacherStart) {
+                        sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 0, 0));
+                        sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 6, 6));
+                        sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 7, 7));
+                    }
+                }
+                sheet.setColumnWidth(0, 20 * 256);
+                sheet.setColumnWidth(1, 22 * 256);
+                sheet.setColumnWidth(2, 12 * 256);
+                sheet.setColumnWidth(3, 16 * 256);
+                sheet.setColumnWidth(4, 14 * 256);
+                sheet.setColumnWidth(5, 16 * 256);
+                sheet.setColumnWidth(6, 24 * 256);
+                sheet.setColumnWidth(7, 45 * 256);
             }
             workbook.write(out);
             return out.toByteArray();
@@ -689,7 +835,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 ", subject=" + entry.getSubjectName() + ", level=" + entry.getEducationLevel() + ", period=" + effectiveStudyPeriod));
 
         int effectiveLoad = entry.getGroupLoad() != null ? entry.getGroupLoad() : entry.getLoad();
-        if (BigDecimal.valueOf(effectiveLoad).compareTo(rule.getPlannedHours()) > 0) {
+        BigDecimal allowedHours = resolveAllowedHours(rule, entry.getGroupNameEducationalPlan());
+        if (BigDecimal.valueOf(effectiveLoad).compareTo(allowedHours) > 0) {
             throw new IllegalArgumentException("Load exceeds planned hours for curriculum rule");
         }
 
@@ -700,6 +847,20 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         }
 
         return rule;
+    }
+
+    private BigDecimal resolveAllowedHours(CurriculumPlanEntry rule, String groupNameEducationalPlan) {
+        if (!Boolean.TRUE.equals(rule.isSubgroupRequired())) {
+            return rule.getPlannedHours() == null ? BigDecimal.ZERO : rule.getPlannedHours();
+        }
+        String group = String.valueOf(groupNameEducationalPlan == null ? "" : groupNameEducationalPlan).toLowerCase(java.util.Locale.ROOT);
+        if (group.contains("1")) {
+            return rule.getSubgroup1Hours() == null ? (rule.getPlannedHours() == null ? BigDecimal.ZERO : rule.getPlannedHours()) : BigDecimal.valueOf(rule.getSubgroup1Hours());
+        }
+        if (group.contains("2")) {
+            return rule.getSubgroup2Hours() == null ? (rule.getPlannedHours() == null ? BigDecimal.ZERO : rule.getPlannedHours()) : BigDecimal.valueOf(rule.getSubgroup2Hours());
+        }
+        return rule.getPlannedHours() == null ? BigDecimal.ZERO : rule.getPlannedHours();
     }
 
 
