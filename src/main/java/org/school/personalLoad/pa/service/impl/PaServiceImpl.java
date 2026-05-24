@@ -546,7 +546,6 @@ public class PaServiceImpl implements PaService {
     }
 
     @Override
-    @Transactional
     public List<PaDtos.ReportUploadResult> uploadReports(String academicYear, List<MultipartFile> files, String uploaderUsername, String uploaderFio) {
         List<PaDtos.ReportUploadResult> results = new ArrayList<>();
         for (MultipartFile file : files) {
@@ -627,7 +626,7 @@ public class PaServiceImpl implements PaService {
                     reportVersionRepository.saveAll(sameKey);
                 }
                 boolean replaced = !sameKey.isEmpty();
-                int nextVersion = reportVersionRepository.findMaxVersion(academicYear, subject, scopeType, scopeValue.trim().toUpperCase(Locale.ROOT), level, workType, workDate) + 1;
+                int nextVersion = resolveNextReportVersion(academicYear, subject, scopeType, scopeValue.trim().toUpperCase(Locale.ROOT), level, workType, workDate);
                 PaReportVersion version = new PaReportVersion();
                 version.setAcademicYear(academicYear);
                 version.setSubjectName(subject.trim());
@@ -658,7 +657,19 @@ public class PaServiceImpl implements PaService {
                 reportVersionRepository.save(version);
                 results.add(new PaDtos.ReportUploadResult(file.getOriginalFilename(), "ACCEPTED", replaced ? "Отчёт заменен" : "Отчёт принят", nextVersion, subject.trim(), scopeValue.trim(), workType));
             } catch (Exception e) {
-                results.add(new PaDtos.ReportUploadResult(file.getOriginalFilename(), "REJECTED", "Ошибка чтения файла: " + e.getMessage(), null, null, null, null));
+                String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                if (message.length() > 500) {
+                    message = message.substring(0, 500) + "...";
+                }
+                results.add(new PaDtos.ReportUploadResult(
+                        file.getOriginalFilename(),
+                        "REJECTED",
+                        "Отчёт не принят: " + message,
+                        null,
+                        null,
+                        null,
+                        null
+                ));
             }
         }
         return results;
@@ -840,7 +851,7 @@ public class PaServiceImpl implements PaService {
         );
         sameKey.forEach(v -> v.setActiveVersion(false));
         if (!sameKey.isEmpty()) reportVersionRepository.saveAll(sameKey);
-        int versionNo = reportVersionRepository.findMaxVersion(academicYear, subjectName, PaScopeType.CLASS, className.toUpperCase(Locale.ROOT), assignedLevel, workType, workDate) + 1;
+        int versionNo = resolveNextReportVersion(academicYear, subjectName, PaScopeType.CLASS, className.toUpperCase(Locale.ROOT), assignedLevel, workType, workDate);
         PaReportVersion version = new PaReportVersion();
         version.setAcademicYear(academicYear);
         version.setSubjectName(subjectName);
@@ -1075,6 +1086,23 @@ public class PaServiceImpl implements PaService {
             return Path.of(PA_REPORT_STORAGE_DIR, version.getAcademicYear().replace("/", "-"), version.getSourceFileName());
         }
         throw new IllegalArgumentException("Для версии не сохранён путь к файлу");
+    }
+
+    private int resolveNextReportVersion(String academicYear,
+                                         String subjectName,
+                                         PaScopeType scopeType,
+                                         String scopeValue,
+                                         PaLevel level,
+                                         PaWorkType workType,
+                                         LocalDate workDate) {
+        PaReportVersion latestVersion = workDate == null
+                ? reportVersionRepository.findTopByAcademicYearAndSubjectNameAndScopeTypeAndScopeValueAndLevelAndWorkTypeAndWorkDateIsNullOrderByVersionNoDesc(
+                academicYear, subjectName, scopeType, scopeValue, level, workType
+        )
+                : reportVersionRepository.findTopByAcademicYearAndSubjectNameAndScopeTypeAndScopeValueAndLevelAndWorkTypeAndWorkDateOrderByVersionNoDesc(
+                academicYear, subjectName, scopeType, scopeValue, level, workType, workDate
+        );
+        return (latestVersion == null ? 0 : latestVersion.getVersionNo()) + 1;
     }
 
     @Override
