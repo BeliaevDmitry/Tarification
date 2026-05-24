@@ -97,6 +97,19 @@ public class ManualLoadController {
                 .body(body);
     }
 
+    @GetMapping("/export-full")
+    public ResponseEntity<byte[]> exportFullWorkbook(@RequestParam(required = false) String academicYear) throws Exception {
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        byte[] body = manualLoadService.exportFullWorkbook(effectiveYear);
+        String date = LocalDate.now().toString();
+        String fileName = "Полная нагрузка " + effectiveYear + " " + date + ".xlsx";
+        String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(body);
+    }
+
     @PostMapping("/import")
     public ResponseEntity<List<ManualLoadEntry>> importWorkbook(@RequestParam(required = false) String academicYear,
                                                                 @RequestParam("file") MultipartFile file,
