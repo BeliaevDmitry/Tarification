@@ -10,6 +10,7 @@ import org.apache.poi.ss.usermodel.HorizontalAlignment;
 import org.apache.poi.ss.usermodel.VerticalAlignment;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadHealthResponse;
@@ -274,8 +275,10 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 sheet.getPrintSetup().setFitHeight((short) 0);
 
                 Row h = sheet.createRow(0);
-                String[] cols = {"ФИО", "Предмет", "Группа", "Часы в корпусе/всего", "Дополнительные сведения"};
+                String[] cols = {"ФИО", "Предмет", "Класс", "Группа", "Часы по предмету", "Часы в корпусе/всего", "Дополнительные сведения"};
                 for (int i = 0; i < cols.length; i++) { h.createCell(i).setCellValue(cols[i]); h.getCell(i).setCellStyle(header); }
+                sheet.createFreezePane(0, 1);
+                sheet.setAutoFilter(new CellRangeAddress(0, 0, 0, cols.length - 1));
 
                 Map<String, int[]> totalsByTeacher = new HashMap<>();
                 rows.forEach(r -> {
@@ -286,9 +289,16 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 });
 
                 List<ManualLoadEntry> buildingRows = byBuilding.getOrDefault(building, List.of());
-                buildingRows.sort(Comparator.comparing(ManualLoadEntry::getFioTeacher, String.CASE_INSENSITIVE_ORDER).thenComparing(ManualLoadEntry::getSubjectName, String.CASE_INSENSITIVE_ORDER));
+                buildingRows.sort(
+                        Comparator.comparing(ManualLoadEntry::getFioTeacher, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                                .thenComparing(ManualLoadEntry::getSubjectName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                                .thenComparing(ManualLoadEntry::getClassName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                );
                 int rowNum = 1;
-                for (ManualLoadEntry e : buildingRows) {
+                int teacherStart = rowNum;
+                String currentTeacher = null;
+                for (int i = 0; i < buildingRows.size(); i++) {
+                    ManualLoadEntry e = buildingRows.get(i);
                     String fio = String.valueOf(e.getFioTeacher() == null ? "" : e.getFioTeacher()).trim();
                     String key = fio.toLowerCase(Locale.ROOT);
                     int[] t = totalsByTeacher.getOrDefault(key, new int[]{0,0});
@@ -301,19 +311,44 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     if (!classLeadership.isBlank()) extra += (extra.isBlank() ? "" : "\n") + "Классное руководство: " + classLeadership;
                     if (td != null && td.getAdditionalDuties() != null && !td.getAdditionalDuties().isBlank()) extra += (extra.isBlank() ? "" : "\n") + "Доп. обязанности: " + td.getAdditionalDuties();
 
+                    if (!Objects.equals(currentTeacher, key)) {
+                        if (currentTeacher != null && rowNum - 1 > teacherStart) {
+                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 0, 0));
+                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 5, 5));
+                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 6, 6));
+                        }
+                        currentTeacher = key;
+                        teacherStart = rowNum;
+                    }
+
+                    int subjectHours = buildingRows.stream()
+                            .filter(x -> key.equals(String.valueOf(x.getFioTeacher() == null ? "" : x.getFioTeacher()).trim().toLowerCase(Locale.ROOT)))
+                            .filter(x -> String.valueOf(x.getSubjectName() == null ? "" : x.getSubjectName()).trim().equalsIgnoreCase(String.valueOf(e.getSubjectName() == null ? "" : e.getSubjectName()).trim()))
+                            .mapToInt(x -> x.getLoad() == null ? 0 : x.getLoad())
+                            .sum();
+
                     Row r = sheet.createRow(rowNum++);
                     r.createCell(0).setCellValue(fio);
                     r.createCell(1).setCellValue(String.valueOf(e.getSubjectName() == null ? "" : e.getSubjectName()));
-                    r.createCell(2).setCellValue(String.valueOf(e.getGroupNameEducationalPlan() == null ? "" : e.getGroupNameEducationalPlan()));
-                    r.createCell(3).setCellValue(t[0] + "/" + t[1]);
-                    r.createCell(4).setCellValue(extra);
-                    for (int c = 0; c <= 4; c++) r.getCell(c).setCellStyle(wrap);
+                    r.createCell(2).setCellValue(String.valueOf(e.getClassName() == null ? "" : e.getClassName()));
+                    r.createCell(3).setCellValue(String.valueOf(e.getGroupNameEducationalPlan() == null ? "" : e.getGroupNameEducationalPlan()));
+                    r.createCell(4).setCellValue(subjectHours);
+                    r.createCell(5).setCellValue(t[0] + "/" + t[1]);
+                    r.createCell(6).setCellValue(extra);
+                    for (int c = 0; c <= 6; c++) r.getCell(c).setCellStyle(wrap);
+                    if (i == buildingRows.size() - 1 && rowNum - 1 > teacherStart) {
+                        sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 0, 0));
+                        sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 5, 5));
+                        sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 6, 6));
+                    }
                 }
                 sheet.setColumnWidth(0, 20 * 256);
                 sheet.setColumnWidth(1, 22 * 256);
-                sheet.setColumnWidth(2, 16 * 256);
-                sheet.setColumnWidth(3, 14 * 256);
-                sheet.setColumnWidth(4, 45 * 256);
+                sheet.setColumnWidth(2, 12 * 256);
+                sheet.setColumnWidth(3, 16 * 256);
+                sheet.setColumnWidth(4, 14 * 256);
+                sheet.setColumnWidth(5, 16 * 256);
+                sheet.setColumnWidth(6, 45 * 256);
             }
             workbook.write(out);
             return out.toByteArray();
