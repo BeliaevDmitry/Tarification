@@ -195,7 +195,9 @@ function classesForSelectedContext() {
 function metaGroupsForSelectedContext() {
     if (selectedParallel === AOOP_TAB_KEY) return [];
     return (metaGroups || [])
-        .filter((m) => Number(m.parallel) === Number(selectedParallel))
+        .filter((m) => selectedParallel === AOOP_TAB_KEY
+            ? (norm(m.classType) || "NORMAL") === AOOP_TAB_KEY
+            : Number(m.parallel) === Number(selectedParallel) && (norm(m.classType) || "NORMAL") !== AOOP_TAB_KEY)
         .filter((m) => !selectedBuilding || norm(m.numberSchoolBuilding) === selectedBuilding)
         .sort((a, b) => String(a.name).localeCompare(String(b.name), "ru"));
 }
@@ -530,8 +532,10 @@ function renderSummaryTable() {
             ? (c.classType || "NORMAL") === "AOOP_UO"
             : classToParallel(c.className) === selectedParallel && (c.classType || "NORMAL") !== "AOOP_UO")
         .sort((a, b) => `${a.numberSchoolBuilding}|${a.className}`.localeCompare(`${b.numberSchoolBuilding}|${b.className}`, "ru"));
-    const selectedMetaGroups = (selectedParallel === AOOP_TAB_KEY ? [] : (metaGroups || []))
-        .filter((m) => Number(m.parallel) === Number(selectedParallel))
+    const selectedMetaGroups = (metaGroups || [])
+        .filter((m) => selectedParallel === AOOP_TAB_KEY
+            ? (norm(m.classType) || "NORMAL") === AOOP_TAB_KEY
+            : Number(m.parallel) === Number(selectedParallel) && (norm(m.classType) || "NORMAL") !== AOOP_TAB_KEY)
         .sort((a, b) => `${a.numberSchoolBuilding}|${a.name}`.localeCompare(`${b.numberSchoolBuilding}|${b.name}`, "ru"))
         .map((m) => ({
         numberSchoolBuilding: m.numberSchoolBuilding,
@@ -835,10 +839,20 @@ function bindEvents() {
             if (!name || !name.trim()) return;
             const building = norm(selectedBuilding || ui.buildingFilter.value);
             if (!building) throw new Error("Выберите корпус для метагруппы");
+            const parsedParallel = Number((name.trim().match(/^(\d{1,2})/) || [])[1]);
+            const parallel = selectedParallel === AOOP_TAB_KEY ? parsedParallel : selectedParallel;
+            if (!Number.isFinite(parallel) || parallel < 1 || parallel > 11) {
+                throw new Error("Для метагруппы АООП укажите в начале названия номер параллели, например: 8 Р");
+            }
             await api("/api/meta-groups", {
                 method: "POST",
                 headers: jsonHeaders,
-                body: JSON.stringify({ numberSchoolBuilding: building, parallel: selectedParallel, name: name.trim() })
+                body: JSON.stringify({
+                    numberSchoolBuilding: building,
+                    parallel,
+                    name: name.trim(),
+                    classType: selectedParallel === AOOP_TAB_KEY ? AOOP_TAB_KEY : "NORMAL"
+                })
             });
             await reload();
             print({ status: "meta-group-created", name: name.trim(), building, parallel: selectedParallel });
