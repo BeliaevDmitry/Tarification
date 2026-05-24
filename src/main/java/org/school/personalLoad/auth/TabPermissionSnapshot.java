@@ -13,6 +13,8 @@ public class TabPermissionSnapshot implements Serializable {
     private AppTab tab;
     private boolean canView;
     private boolean canEdit;
+    private boolean canImport;
+    private boolean canExport;
 
     public String getTabDisplayName() {
         return tab != null ? tab.getDisplayName() : "";
