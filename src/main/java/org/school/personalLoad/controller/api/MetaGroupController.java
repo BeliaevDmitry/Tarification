@@ -30,27 +30,31 @@ public class MetaGroupController {
         String building = normalizeBuilding(request.getNumberSchoolBuilding());
         Integer parallel = normalizeParallel(request.getParallel());
         String name = normalizeName(parallel, request.getName());
+        String classType = normalizeClassType(request.getClassType());
 
-        if (repository.existsByNumberSchoolBuildingAndParallelAndNameIgnoreCase(building, parallel, name)) {
+        if (repository.existsByNumberSchoolBuildingAndParallelAndNameIgnoreCaseAndClassType(building, parallel, name, classType)) {
             throw new IllegalArgumentException("Метагруппа уже существует");
         }
         MetaGroup entity = new MetaGroup();
         entity.setNumberSchoolBuilding(building);
         entity.setParallel(parallel);
         entity.setName(name);
+        entity.setClassType(classType);
+        entity.setStudyPeriodSettingId(request.getStudyPeriodSettingId());
         return ResponseEntity.ok(repository.save(entity));
     }
 
     @PatchMapping("/{id}")
     @Transactional
-    public ResponseEntity<MetaGroup> rename(@PathVariable Long id, @RequestBody RenameMetaGroupRequest request) {
+    public ResponseEntity<MetaGroup> update(@PathVariable Long id, @RequestBody UpdateMetaGroupRequest request) {
         MetaGroup existing = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Метагруппа не найдена"));
-        Integer parallel = existing.getParallel();
-        String building = existing.getNumberSchoolBuilding();
-        String newName = normalizeName(parallel, request.getName());
+        Integer parallel = normalizeParallel(request.getParallel() == null ? existing.getParallel() : request.getParallel());
+        String building = normalizeBuilding(request.getNumberSchoolBuilding() == null ? existing.getNumberSchoolBuilding() : request.getNumberSchoolBuilding());
+        String classType = normalizeClassType(request.getClassType() == null ? existing.getClassType() : request.getClassType());
+        String newName = normalizeName(parallel, request.getName() == null ? existing.getName() : request.getName());
         if (!existing.getName().equalsIgnoreCase(newName)
-                && repository.existsByNumberSchoolBuildingAndParallelAndNameIgnoreCase(building, parallel, newName)) {
+                && repository.existsByNumberSchoolBuildingAndParallelAndNameIgnoreCaseAndClassType(building, parallel, newName, classType)) {
             throw new IllegalArgumentException("Метагруппа уже существует");
         }
 
@@ -60,10 +64,15 @@ public class MetaGroupController {
                 .findAllByNumberSchoolBuildingAndClassName(building, oldClassName);
         for (CurriculumPlanEntry entry : entries) {
             entry.setClassName(newClassName);
+            entry.setStudyPeriodSettingId(request.getStudyPeriodSettingId() != null ? request.getStudyPeriodSettingId() : existing.getStudyPeriodSettingId());
         }
         curriculumPlanEntryRepository.saveAll(entries);
 
+        existing.setNumberSchoolBuilding(building);
+        existing.setParallel(parallel);
         existing.setName(newName);
+        existing.setClassType(classType);
+        if (request.getStudyPeriodSettingId() != null) existing.setStudyPeriodSettingId(request.getStudyPeriodSettingId());
         return ResponseEntity.ok(repository.save(existing));
     }
 
@@ -95,7 +104,7 @@ public class MetaGroupController {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("name is required");
         }
-        String name = value.trim();
+        String name = value.trim().replace('\u00A0', ' ').replaceAll("\\s+", " ").toUpperCase();
         String prefix = parallel + " ";
         if (name.startsWith(prefix)) {
             return name;
@@ -107,15 +116,28 @@ public class MetaGroupController {
         return "МГ:" + name;
     }
 
+    private String normalizeClassType(String value) {
+        if (value == null || value.isBlank()) return "NORMAL";
+        String normalized = value.trim().toUpperCase().replace('Ё', 'Е');
+        if (normalized.contains("АООП") || normalized.contains("УО") || normalized.contains("AOOP")) return "AOOP_UO";
+        return "NORMAL";
+    }
+
     @Value
     public static class CreateMetaGroupRequest {
         String numberSchoolBuilding;
         Integer parallel;
         String name;
+        String classType;
+        Long studyPeriodSettingId;
     }
 
     @Value
-    public static class RenameMetaGroupRequest {
+    public static class UpdateMetaGroupRequest {
+        String numberSchoolBuilding;
+        Integer parallel;
         String name;
+        String classType;
+        Long studyPeriodSettingId;
     }
 }

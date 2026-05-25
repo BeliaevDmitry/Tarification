@@ -7,7 +7,7 @@ import javax.persistence.*;
 @Data
 @Entity
 @Table(name = "meta_group", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_meta_group_scope", columnNames = {"numberSchoolBuilding", "parallel", "name"})
+        @UniqueConstraint(name = "uk_meta_group_scope", columnNames = {"numberSchoolBuilding", "parallel", "name", "classType"})
 })
 public class MetaGroup {
 
@@ -23,4 +23,9 @@ public class MetaGroup {
 
     @Column(nullable = false)
     private String name;
+
+    @Column(nullable = false)
+    private String classType = "NORMAL";
+
+    private Long studyPeriodSettingId;
 }

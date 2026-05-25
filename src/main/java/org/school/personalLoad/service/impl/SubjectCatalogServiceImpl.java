@@ -6,11 +6,15 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.SubjectCreateRequest;
 import org.school.personalLoad.model.SubjectCatalogEntry;
 import org.school.personalLoad.model.SubjectType;
+import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
+import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.service.SubjectCatalogService;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
@@ -22,6 +26,8 @@ import java.util.*;
 public class SubjectCatalogServiceImpl implements SubjectCatalogService {
 
     private final SubjectCatalogRepository repository;
+    private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
+    private final ManualLoadEntryRepository manualLoadEntryRepository;
 
     @Override
     public SubjectCatalogEntry create(SubjectCreateRequest request) {
@@ -40,6 +46,7 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
     }
 
     @Override
+    @Transactional
     public SubjectCatalogEntry update(Long id, SubjectCreateRequest request) {
         String name = validateName(request);
         SubjectType type = validateType(request);
@@ -53,11 +60,17 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
                     throw new IllegalArgumentException("Предмет с таким названием и типом уже существует");
                 });
 
+        String oldName = existing.getSubjectName();
         existing.setSubjectName(name);
         existing.setSubjectType(type);
         existing.setSubjectAreaName(resolveAreaName(request.getSubjectAreaName()));
         existing.setSubjectCoefficient(resolveCoefficient(request.getSubjectCoefficient()));
-        return repository.save(existing);
+        SubjectCatalogEntry saved = repository.save(existing);
+        if (!oldName.equalsIgnoreCase(name)) {
+            curriculumPlanEntryRepository.renameSubjectEverywhere(oldName, name);
+            manualLoadEntryRepository.renameSubjectEverywhere(oldName, name);
+        }
+        return saved;
     }
 
     @Override
@@ -65,7 +78,11 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
         if (!repository.existsById(id)) {
             throw new IllegalArgumentException("Subject not found");
         }
-        repository.deleteById(id);
+        try {
+            repository.deleteById(id);
+        } catch (DataIntegrityViolationException e) {
+            throw new IllegalArgumentException("Нельзя удалить предмет: он используется в учебном плане/нагрузке");
+        }
     }
 
     @Override
