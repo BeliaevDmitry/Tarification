@@ -5,10 +5,12 @@ import org.school.personalLoad.dto.CurriculumPlanEntryRequest;
 import org.school.personalLoad.model.CurriculumPart;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.EducationLevel;
+import org.school.personalLoad.model.SubjectCatalogEntry;
 import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.StudyPeriodSetting;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.StudyPeriodSettingRepository;
+import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.springframework.stereotype.Service;
@@ -24,6 +26,7 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
     private final CurriculumPlanEntryRepository repository;
     private final StudyPeriodSettingRepository studyPeriodSettingRepository;
     private final StudyPeriodSettingService studyPeriodSettingService;
+    private final SubjectCatalogRepository subjectCatalogRepository;
 
     @Override
     public CurriculumPlanEntry upsert(CurriculumPlanEntryRequest request) {
@@ -183,7 +186,12 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         entity.setAcademicYear(request.getAcademicYear());
         entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
         entity.setClassName(ClassNameNormalizer.normalize(request.getClassName()));
-        entity.setSubjectName(request.getSubjectName().trim());
+        SubjectCatalogEntry subject = subjectCatalogRepository.findAll().stream()
+                .filter(s -> s.getSubjectName().equalsIgnoreCase(request.getSubjectName().trim()))
+                .findFirst()
+                .orElse(null);
+        entity.setSubject(subject);
+        entity.setSubjectName(subject == null ? request.getSubjectName().trim() : subject.getSubjectName());
         entity.setPlannedHours(request.getPlannedHours());
         entity.setSubgroupRequired(request.isSubgroupRequired());
         entity.setSubgroupCount(request.isSubgroupRequired() ? 2 : 0);
@@ -218,11 +226,14 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
             throw new IllegalArgumentException("educationLevel is required");
         }
         if (request.isSubgroupRequired()) {
-            if (request.getSubgroup1Hours() == null || request.getSubgroup1Hours() <= 0) {
-                throw new IllegalArgumentException("subgroup1Hours must be > 0 when subgroupRequired=true");
+            if (request.getSubgroup1Hours() == null || request.getSubgroup1Hours() < 0) {
+                throw new IllegalArgumentException("subgroup1Hours must be >= 0 when subgroupRequired=true");
             }
-            if (request.getSubgroup2Hours() == null || request.getSubgroup2Hours() <= 0) {
-                throw new IllegalArgumentException("subgroup2Hours must be > 0 when subgroupRequired=true");
+            if (request.getSubgroup2Hours() == null || request.getSubgroup2Hours() < 0) {
+                throw new IllegalArgumentException("subgroup2Hours must be >= 0 when subgroupRequired=true");
+            }
+            if (request.getSubgroup1Hours() == 0 && request.getSubgroup2Hours() == 0) {
+                throw new IllegalArgumentException("at least one subgroup must have hours > 0 when subgroupRequired=true");
             }
             if (request.getSubgroup1EducationLevel() == null || request.getSubgroup2EducationLevel() == null) {
                 throw new IllegalArgumentException("subgroup levels are required when subgroupRequired=true");
