@@ -41,6 +41,10 @@ public class CurriculumPlanEntry {
     @Column(nullable = false)
     private String subjectName;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "subject_id")
+    private SubjectCatalogEntry subject;
+
     @Column(nullable = false)
     private java.math.BigDecimal plannedHours;
 

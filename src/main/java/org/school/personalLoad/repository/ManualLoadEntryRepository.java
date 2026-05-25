@@ -27,4 +27,8 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
     @Modifying
     @Query("delete from ManualLoadEntry m where lower(m.numberSchoolBuilding) in :codes")
     void deleteByBuildingCodes(@Param("codes") java.util.Collection<String> codes);
+
+    @Modifying
+    @Query("update ManualLoadEntry m set m.subjectName = :newName where lower(m.subjectName) = lower(:oldName)")
+    int renameSubjectEverywhere(@Param("oldName") String oldName, @Param("newName") String newName);
 }
