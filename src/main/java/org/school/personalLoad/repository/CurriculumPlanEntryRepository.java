@@ -2,6 +2,9 @@ package org.school.personalLoad.repository;
 
 import org.school.personalLoad.model.*;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -47,4 +50,8 @@ public interface CurriculumPlanEntryRepository extends JpaRepository<CurriculumP
     void deleteByNumberSchoolBuildingAndClassName(String numberSchoolBuilding, String className);
     void deleteByAcademicYearAndNumberSchoolBuildingAndClassName(String academicYear, String numberSchoolBuilding, String className);
     void deleteAllByAcademicYear(String academicYear);
+
+    @Modifying
+    @Query("update CurriculumPlanEntry c set c.subjectName = :newName where lower(c.subjectName) = lower(:oldName)")
+    int renameSubjectEverywhere(@Param("oldName") String oldName, @Param("newName") String newName);
 }

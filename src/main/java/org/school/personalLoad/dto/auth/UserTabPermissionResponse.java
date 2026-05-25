@@ -11,4 +11,6 @@ public class UserTabPermissionResponse {
     String tabDisplayName;
     boolean canView;
     boolean canEdit;
+    boolean canImport;
+    boolean canExport;
 }
