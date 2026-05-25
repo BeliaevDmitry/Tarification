@@ -1,6 +1,7 @@
 package org.school.personalLoad.model;
 
 import lombok.Data;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import javax.persistence.*;
 import java.time.LocalDateTime;
@@ -43,6 +44,7 @@ public class CurriculumPlanEntry {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "subject_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private SubjectCatalogEntry subject;
 
     @Column(nullable = false)
