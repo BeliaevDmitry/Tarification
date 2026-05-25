@@ -1,5 +1,6 @@
 package org.school.personalLoad.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 
 import javax.persistence.*;
@@ -29,6 +30,7 @@ public class ManualLoadEntry {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "subject_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private SubjectCatalogEntry subject;
 
     @Column(nullable = false)
