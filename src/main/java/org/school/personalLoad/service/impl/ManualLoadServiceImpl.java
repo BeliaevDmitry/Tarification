@@ -25,6 +25,7 @@ import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.model.SubjectWithGroup;
 import org.school.personalLoad.model.TarifficationPerson;
+import org.school.personalLoad.model.SubjectCatalogEntry;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
@@ -809,7 +810,12 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         entity.setAcademicYear(effectiveAcademicYear);
         entity.setFioTeacher(request.getFioTeacher().trim());
         entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
-        entity.setSubjectName(request.getSubjectName().trim());
+        SubjectCatalogEntry subject = subjectCatalogRepository.findAll().stream()
+                .filter(s -> s.getSubjectName().equalsIgnoreCase(request.getSubjectName().trim()))
+                .findFirst()
+                .orElse(null);
+        entity.setSubject(subject);
+        entity.setSubjectName(subject == null ? request.getSubjectName().trim() : subject.getSubjectName());
         entity.setClassName(ClassNameNormalizer.normalize(request.getClassName()));
         entity.setLoad(request.getLoad());
         entity.setGroupNameEducationalPlan(request.getGroupNameEducationalPlan());
