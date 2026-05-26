@@ -65,22 +65,9 @@ public class TeacherDirectoryController {
     }
 
     @PatchMapping("/{teacherId}/plan-dismiss")
-    public ResponseEntity<TeacherDirectoryEntry> markPlannedDismissal(@PathVariable Long teacherId,
-                                                                       @RequestBody TeacherPlannedDismissRequest request,
-                                                                       HttpServletRequest httpServletRequest) {
-        SessionUser user = AuthSessionUtils.requiredUser(httpServletRequest);
-        return ResponseEntity.ok(teacherDirectoryService.markPlannedDismissal(
-                teacherId,
-                request.getPlannedDismissalDate(),
-                request.getComment(),
-                user.getFullName()
-        ));
-    }
-
-    @PatchMapping("/{teacherId}/plan-dismiss")
-    public ResponseEntity<TeacherDirectoryEntry> markPlannedDismissal(@PathVariable Long teacherId,
-                                                                       @RequestBody TeacherPlannedDismissRequest request,
-                                                                       HttpServletRequest httpServletRequest) {
+    public ResponseEntity<TeacherDirectoryEntry> markTeacherPlannedDismissal(@PathVariable Long teacherId,
+                                                                              @RequestBody TeacherPlannedDismissRequest request,
+                                                                              HttpServletRequest httpServletRequest) {
         SessionUser user = AuthSessionUtils.requiredUser(httpServletRequest);
         return ResponseEntity.ok(teacherDirectoryService.markPlannedDismissal(
                 teacherId,
