@@ -233,7 +233,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
 
     @Override
     @Transactional
-    public TeacherDirectoryEntry markForDismissal(Long teacherId, LocalDate dismissalDate) {
+    public TeacherDirectoryEntry markForDismissal(Long teacherId, LocalDate dismissalDate, String markedBy) {
         if (dismissalDate == null) {
             throw new IllegalArgumentException("dismissalDate is required");
         }
@@ -242,6 +242,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
 
         entry.setDismissalDate(dismissalDate);
+        entry.setPlannedDismissalMarkedBy(normalizeOptional(markedBy));
 
         TeacherDirectoryEntry vacancyTeacher = ensureVacancyTeacher();
         manualLoadEntryRepository.findByFioTeacherIgnoreCase(entry.getFioTeacher()).forEach(loadEntry -> {

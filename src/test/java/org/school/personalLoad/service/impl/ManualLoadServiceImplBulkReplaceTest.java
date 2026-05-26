@@ -10,6 +10,8 @@ import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
+import org.school.personalLoad.repository.ContingentSnapshotRepository;
+import org.school.personalLoad.repository.ContingentStudentRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.service.CurriculumPlanService;
@@ -45,6 +47,10 @@ class ManualLoadServiceImplBulkReplaceTest {
     private SubjectCatalogRepository subjectCatalogRepository;
     @Mock
     private ClassroomLeadershipRepository classroomLeadershipRepository;
+    @Mock
+    private ContingentSnapshotRepository contingentSnapshotRepository;
+    @Mock
+    private ContingentStudentRepository contingentStudentRepository;
 
     private ManualLoadServiceImpl service;
 
@@ -58,7 +64,9 @@ class ManualLoadServiceImplBulkReplaceTest {
                 studyPeriodSettingService,
                 teacherDirectoryRepository,
                 subjectCatalogRepository,
-                classroomLeadershipRepository
+                classroomLeadershipRepository,
+                contingentSnapshotRepository,
+                contingentStudentRepository
         );
         when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
