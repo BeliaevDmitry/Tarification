@@ -206,6 +206,7 @@ function classesForSelectedContext() {
 
 
 function metaGroupsForSelectedContext() {
+    if (selectedParallel === AOOP_TAB_KEY) return [];
     return (metaGroups || [])
         .filter((m) => selectedParallel === AOOP_TAB_KEY
             ? (norm(m.classType) || "NORMAL") === AOOP_TAB_KEY
