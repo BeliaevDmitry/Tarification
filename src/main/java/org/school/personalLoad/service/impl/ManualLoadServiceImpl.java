@@ -28,6 +28,8 @@ import org.school.personalLoad.model.TarifficationPerson;
 import org.school.personalLoad.model.SubjectCatalogEntry;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
+import org.school.personalLoad.repository.ContingentSnapshotRepository;
+import org.school.personalLoad.repository.ContingentStudentRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.CurriculumPlanService;
@@ -64,6 +66,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final SubjectCatalogRepository subjectCatalogRepository;
     private final ClassroomLeadershipRepository classroomLeadershipRepository;
+    private final ContingentSnapshotRepository contingentSnapshotRepository;
+    private final ContingentStudentRepository contingentStudentRepository;
 
     @Override
     public ManualLoadEntry create(ManualLoadEntryRequest request) {
@@ -253,6 +257,14 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             String key = String.valueOf(c.getFioTeacher()).trim().toLowerCase(Locale.ROOT);
             classLeadershipByTeacher.computeIfAbsent(key, k -> new ArrayList<>()).add(c.getClassName());
         });
+        Map<String, Integer> classSizeByClass = contingentSnapshotRepository
+                .findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear)
+                .map(snapshot -> contingentStudentRepository.findAllBySnapshotId(snapshot.getId()).stream()
+                        .collect(java.util.stream.Collectors.groupingBy(
+                                s -> normalizeToken(s.getClassName()),
+                                java.util.stream.Collectors.summingInt(x -> 1)
+                        )))
+                .orElseGet(HashMap::new);
 
         Map<String, List<ManualLoadEntry>> byBuilding = rows.stream().collect(java.util.stream.Collectors.groupingBy(
                 r -> r.getNumberSchoolBuilding() == null || r.getNumberSchoolBuilding().isBlank() ? "Не закреплены" : r.getNumberSchoolBuilding(),
@@ -264,7 +276,12 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             CellStyle header = workbook.createCellStyle();
             Font bold = workbook.createFont(); bold.setBold(true); header.setFont(bold);
             header.setWrapText(true);
-            CellStyle wrap = workbook.createCellStyle(); wrap.setWrapText(true); wrap.setVerticalAlignment(org.apache.poi.ss.usermodel.VerticalAlignment.TOP);
+            header.setAlignment(HorizontalAlignment.CENTER);
+            header.setVerticalAlignment(VerticalAlignment.CENTER);
+            CellStyle wrap = workbook.createCellStyle();
+            wrap.setWrapText(true);
+            wrap.setVerticalAlignment(VerticalAlignment.CENTER);
+            wrap.setAlignment(HorizontalAlignment.CENTER);
 
             List<String> sheetOrder = new ArrayList<>(byBuilding.keySet());
             sheetOrder.sort(String::compareToIgnoreCase);
@@ -276,7 +293,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 sheet.getPrintSetup().setFitHeight((short) 0);
 
                 Row h = sheet.createRow(0);
-                String[] cols = {"ФИО", "Предмет", "Класс", "Группа", "Часы по предмету", "Период нагрузки", "Часы в корпусе/всего", "Дополнительные сведения"};
+                String[] cols = {"ФИО", "Предмет", "Класс", "Группа", "Количество детей", "Часы по предмету", "Период нагрузки", "Часы в корпусе/всего", "Дополнительные сведения"};
                 for (int i = 0; i < cols.length; i++) { h.createCell(i).setCellValue(cols[i]); h.getCell(i).setCellStyle(header); }
                 sheet.createFreezePane(0, 1);
                 sheet.setAutoFilter(new CellRangeAddress(0, 0, 0, cols.length - 1));
@@ -330,8 +347,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     if (!Objects.equals(currentTeacher, key)) {
                         if (currentTeacher != null && rowNum - 1 > teacherStart) {
                             sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 0, 0));
-                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 6, 6));
                             sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 7, 7));
+                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 8, 8));
                         }
                         currentTeacher = key;
                         teacherStart = rowNum;
@@ -347,21 +364,34 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                         hoursSummary = "1 полугодие: " + t[0] + "/" + t[2] + "\n"
                                 + "2 полугодие: " + t[1] + "/" + t[3];
                     }
+                    int classSize = classSizeByClass.getOrDefault(normalizeToken(e.getClassName()), 25);
+                    String group = String.valueOf(e.getGroupNameEducationalPlan() == null ? "" : e.getGroupNameEducationalPlan()).toLowerCase(Locale.ROOT);
+                    int firstGroupSize = (classSize + 1) / 2;
+                    int secondGroupSize = classSize - firstGroupSize;
+                    int childrenCount = classSize;
+                    if (!group.isBlank()) {
+                        if (group.contains("2")) {
+                            childrenCount = secondGroupSize;
+                        } else if (group.contains("1")) {
+                            childrenCount = firstGroupSize;
+                        }
+                    }
 
                     Row r = sheet.createRow(rowNum++);
                     r.createCell(0).setCellValue(fio);
                     r.createCell(1).setCellValue(String.valueOf(e.getSubjectName() == null ? "" : e.getSubjectName()));
                     r.createCell(2).setCellValue(String.valueOf(e.getClassName() == null ? "" : e.getClassName()));
                     r.createCell(3).setCellValue(String.valueOf(e.getGroupNameEducationalPlan() == null ? "" : e.getGroupNameEducationalPlan()));
-                    r.createCell(4).setCellValue(subjectHours);
-                    r.createCell(5).setCellValue(periodLabel);
-                    r.createCell(6).setCellValue(hoursSummary);
-                    r.createCell(7).setCellValue(extra);
-                    for (int c = 0; c <= 7; c++) r.getCell(c).setCellStyle(wrap);
+                    r.createCell(4).setCellValue(childrenCount);
+                    r.createCell(5).setCellValue(subjectHours);
+                    r.createCell(6).setCellValue(periodLabel);
+                    r.createCell(7).setCellValue(hoursSummary);
+                    r.createCell(8).setCellValue(extra);
+                    for (int c = 0; c <= 8; c++) r.getCell(c).setCellStyle(wrap);
                     if (i == buildingRows.size() - 1 && rowNum - 1 > teacherStart) {
                         sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 0, 0));
-                        sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 6, 6));
                         sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 7, 7));
+                        sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 8, 8));
                     }
                 }
                 sheet.setColumnWidth(0, 20 * 256);
@@ -369,9 +399,10 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 sheet.setColumnWidth(2, 12 * 256);
                 sheet.setColumnWidth(3, 16 * 256);
                 sheet.setColumnWidth(4, 14 * 256);
-                sheet.setColumnWidth(5, 16 * 256);
-                sheet.setColumnWidth(6, 24 * 256);
-                sheet.setColumnWidth(7, 45 * 256);
+                sheet.setColumnWidth(5, 14 * 256);
+                sheet.setColumnWidth(6, 16 * 256);
+                sheet.setColumnWidth(7, 24 * 256);
+                sheet.setColumnWidth(8, 45 * 256);
             }
             workbook.write(out);
             return out.toByteArray();

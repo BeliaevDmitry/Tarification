@@ -23,6 +23,13 @@ const ui = {
     tbody: document.getElementById("teachers-table-body")
 };
 let buildings = [];
+const currentUser = window.tarificationAuth || null;
+
+function canEditTeachers() {
+    if (currentUser?.admin) return true;
+    const permissions = window.tarificationTabPermissions || {};
+    return Boolean(permissions.TEACHERS?.canEdit);
+}
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -89,7 +96,7 @@ function renderTeachers(rows) {
                     <div class="row">
                         <button type="button" class="save-teacher-btn" data-id="${row.id}">Сохранить</button>
                         <input type="date" class="dismiss-date-input" value="${escapeHtml(row.dismissalDate || "")}" data-id="${row.id}">
-                        <button type="button" class="mark-dismiss-btn" data-id="${row.id}">На увольнение</button>
+                        <button type="button" class="mark-dismiss-btn" data-id="${row.id}" ${canEditTeachers() ? "" : "disabled title=\"Требуется право редактирования кадров\""}>На увольнение</button>
                         <input type="date" class="plan-dismiss-date-input" value="${escapeHtml(row.plannedDismissalDate || "")}" data-id="${row.id}">
                         <input type="text" class="plan-dismiss-comment-input" value="${escapeHtml(row.plannedDismissalComment || "")}" data-id="${row.id}" placeholder="Комментарий">
                         <button type="button" class="mark-plan-dismiss-btn" data-id="${row.id}">Планирует уволиться</button>
@@ -127,6 +134,10 @@ function renderTeachers(rows) {
 
     ui.tbody.querySelectorAll(".mark-dismiss-btn").forEach((btn) => {
         btn.addEventListener("click", async () => {
+            if (!canEditTeachers()) {
+                print({ error: "Недостаточно прав: кнопка «На увольнение» доступна только с правом редактирования кадров" });
+                return;
+            }
             const id = btn.dataset.id;
             const input = ui.tbody.querySelector(`.dismiss-date-input[data-id="${id}"]`);
             const dismissalDate = input?.value;
