@@ -1355,6 +1355,29 @@ dialog::backdrop {
     vertical-align: top;
 }
 
+.teachers-table {
+    table-layout: fixed;
+    font-size: 13px;
+}
+
+.teachers-table th,
+.teachers-table td {
+    padding: 6px 8px;
+    vertical-align: middle;
+}
+
+.teachers-table th:nth-child(7),
+.teachers-table td:nth-child(7) {
+    width: 74px;
+    min-width: 74px;
+    max-width: 74px;
+}
+
+.teachers-table .teacher-building-input {
+    max-width: 70px;
+    width: 70px;
+}
+
 .table-badge {
     display: inline-flex;
     align-items: center;
