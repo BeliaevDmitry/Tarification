@@ -10,6 +10,7 @@ import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.service.SubjectCatalogService;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -77,7 +78,11 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
         if (!repository.existsById(id)) {
             throw new IllegalArgumentException("Subject not found");
         }
-        repository.deleteById(id);
+        try {
+            repository.deleteById(id);
+        } catch (DataIntegrityViolationException e) {
+            throw new IllegalArgumentException("Нельзя удалить предмет: он используется в учебном плане/нагрузке");
+        }
     }
 
     @Override
