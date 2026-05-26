@@ -1,8 +1,11 @@
 package org.school.personalLoad.controller.api;
 
 import lombok.RequiredArgsConstructor;
+import org.school.personalLoad.auth.AuthSessionUtils;
+import org.school.personalLoad.auth.SessionUser;
 import org.school.personalLoad.dto.TeacherCreateRequest;
 import org.school.personalLoad.dto.TeacherDismissRequest;
+import org.school.personalLoad.dto.TeacherPlannedDismissRequest;
 import org.school.personalLoad.dto.TeacherUpdateRequest;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.service.TeacherDirectoryService;
@@ -13,6 +16,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Map;
 
@@ -50,8 +54,27 @@ public class TeacherDirectoryController {
 
     @PatchMapping("/{teacherId}/dismiss")
     public ResponseEntity<TeacherDirectoryEntry> markForDismissal(@PathVariable Long teacherId,
-                                                                  @RequestBody TeacherDismissRequest request) {
-        return ResponseEntity.ok(teacherDirectoryService.markForDismissal(teacherId, request.getDismissalDate()));
+                                                                  @RequestBody TeacherDismissRequest request,
+                                                                  HttpServletRequest httpServletRequest) {
+        SessionUser user = AuthSessionUtils.requiredUser(httpServletRequest);
+        return ResponseEntity.ok(teacherDirectoryService.markForDismissal(
+                teacherId,
+                request.getDismissalDate(),
+                user.getFullName()
+        ));
+    }
+
+    @PatchMapping("/{teacherId}/plan-dismiss")
+    public ResponseEntity<TeacherDirectoryEntry> markTeacherPlannedDismissal(@PathVariable Long teacherId,
+                                                                              @RequestBody TeacherPlannedDismissRequest request,
+                                                                              HttpServletRequest httpServletRequest) {
+        SessionUser user = AuthSessionUtils.requiredUser(httpServletRequest);
+        return ResponseEntity.ok(teacherDirectoryService.markPlannedDismissal(
+                teacherId,
+                request.getPlannedDismissalDate(),
+                request.getComment(),
+                user.getFullName()
+        ));
     }
 
 
