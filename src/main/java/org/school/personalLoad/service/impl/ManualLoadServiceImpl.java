@@ -500,10 +500,15 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         );
 
         Map<String, Integer> assignedByKey = new HashMap<>();
+        Map<String, Integer> vacancyByKey = new HashMap<>();
         for (ManualLoadEntry row : manual) {
             if (row.getFioTeacher() == null || row.getFioTeacher().isBlank()) continue;
             String key = statsKey(row.getClassName(), row.getSubjectName(), row.getStudyPeriod(), row.getEducationLevel(), row.getGroupNameEducationalPlan());
-            assignedByKey.merge(key, Math.max(row.getGroupLoad() == null ? row.getLoad() : row.getGroupLoad(), 0), Integer::sum);
+            int loadValue = Math.max(row.getGroupLoad() == null ? row.getLoad() : row.getGroupLoad(), 0);
+            assignedByKey.merge(key, loadValue, Integer::sum);
+            if ("Вакансия".equalsIgnoreCase(normalizeValue(row.getFioTeacher()))) {
+                vacancyByKey.merge(key, loadValue, Integer::sum);
+            }
         }
 
         Map<String, ManualLoadStatsResponse.SubjectStat> bySubject = new HashMap<>();
@@ -515,12 +520,14 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 String normalizedSubject = normalizeToken(subjectName);
                 String area = subjectAreaByName.getOrDefault(normalizedSubject, "Без области");
                 ManualLoadStatsResponse.SubjectStat stat = bySubject.computeIfAbsent(normalizedSubject,
-                        k -> new ManualLoadStatsResponse.SubjectStat(area, subjectName, 0, 0, 0));
+                        k -> new ManualLoadStatsResponse.SubjectStat(area, subjectName, 0, 0, 0, 0));
                 int planned = Math.max(item.getPlannedHours() == null ? 0 : item.getPlannedHours().intValue(), 0);
                 String key = statsKey(item.getClassName(), item.getSubjectName(), item.getStudyPeriod(), item.getEducationLevel(), groupNameForStats(item));
                 int assigned = Math.min(planned, assignedByKey.getOrDefault(key, 0));
+                int vacancy = Math.min(planned, vacancyByKey.getOrDefault(key, 0));
                 stat.setPlanned(stat.getPlanned() + planned);
                 stat.setAssigned(stat.getAssigned() + assigned);
+                stat.setVacancy(stat.getVacancy() + Math.min(vacancy, assigned));
             }
         }
 
