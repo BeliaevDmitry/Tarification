@@ -1,6 +1,7 @@
 (function () {
     function enhanceSheetWrap(wrap) {
         if (!wrap || wrap.dataset.scrollEnhanced === "1") return;
+        if ((wrap.dataset.scrollControls || "").toLowerCase() === "off") return;
         wrap.dataset.scrollEnhanced = "1";
 
         const controls = document.createElement("div");
