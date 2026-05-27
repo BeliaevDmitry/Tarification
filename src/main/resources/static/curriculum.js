@@ -61,6 +61,10 @@ const ui = {
     ,metaGroupCreateForm: document.getElementById("meta-group-create-form")
     ,metaGroupManageDialog: document.getElementById("meta-group-manage-dialog")
     ,metaGroupManageBody: document.getElementById("meta-group-manage-body")
+    ,metaGroupEditDialog: document.getElementById("meta-group-edit-dialog")
+    ,metaGroupEditForm: document.getElementById("meta-group-edit-form")
+    ,metaGroupDeleteBtn: document.getElementById("meta-group-delete-btn")
+    ,metaGroupEditCloseBtn: document.getElementById("meta-group-edit-close-btn")
 };
 
 let selectedParallel = 1;
@@ -269,21 +273,45 @@ function renderMetaGroupManageTable() {
             const id = Number(btn.dataset.editMetaId);
             const m = rows.find((x) => Number(x.id) === id);
             if (!m) return;
-            const name = prompt("Название", m.name);
-            if (!name) return;
-            const parallel = Number(prompt("Параллель", String(m.parallel)) || m.parallel);
-            const periodId = Number(prompt("ID периода обучения", String(m.studyPeriodSettingId || "")) || m.studyPeriodSettingId || 0) || null;
-            await api(`/api/meta-groups/${id}`, { method: "PATCH", headers: jsonHeaders, body: JSON.stringify({
-                numberSchoolBuilding: m.numberSchoolBuilding,
-                classType: m.classType || "NORMAL",
-                name,
-                parallel,
-                studyPeriodSettingId: periodId
-            })});
-            await reload();
-            renderMetaGroupManageTable();
+            openMetaGroupEditDialog(m);
         });
     });
+}
+
+function renderMetaGroupFormBuildingOptions(selectEl, selectedValue = "") {
+    if (!selectEl) return;
+    const allBuildings = Array.from(new Set(classes.map((c) => c.numberSchoolBuilding))).sort((a,b)=>String(a).localeCompare(String(b),"ru"));
+    selectEl.innerHTML = allBuildings.map((b) => `<option value="${esc(b)}">${esc(b)}</option>`).join("");
+    if (selectedValue) selectEl.value = selectedValue;
+}
+
+function renderMetaGroupFormParallelOptions(selectEl, selectedValue = 1) {
+    if (!selectEl) return;
+    selectEl.innerHTML = "";
+    for (let p=1;p<=11;p++) selectEl.innerHTML += `<option value="${p}">${p}</option>`;
+    selectEl.value = String(selectedValue || 1);
+}
+
+function renderMetaGroupFormPeriodOptions(formEl, selectedValue = "") {
+    if (!formEl) return;
+    const parallel = Number(formEl.elements.parallel.value) || 1;
+    const options = settingsForParallel(parallel);
+    const selectEl = formEl.elements.studyPeriodSettingId;
+    selectEl.innerHTML = options.map((o)=>`<option value="${esc(o.id)}">${esc(o.displayName)}</option>`).join("");
+    if (selectedValue) selectEl.value = String(selectedValue);
+}
+
+function openMetaGroupEditDialog(metaGroup) {
+    if (!ui.metaGroupEditForm || !ui.metaGroupEditDialog) return;
+    const form = ui.metaGroupEditForm;
+    form.elements.id.value = String(metaGroup.id || "");
+    renderMetaGroupFormBuildingOptions(form.elements.numberSchoolBuilding, metaGroup.numberSchoolBuilding);
+    form.elements.classType.value = metaGroup.classType || "NORMAL";
+    renderMetaGroupFormParallelOptions(form.elements.parallel, Number(metaGroup.parallel) || 1);
+    form.elements.name.value = metaGroup.name || "";
+    renderMetaGroupFormPeriodOptions(form, metaGroup.studyPeriodSettingId ? String(metaGroup.studyPeriodSettingId) : "");
+    form.elements.parallel.onchange = () => renderMetaGroupFormPeriodOptions(form, "");
+    ui.metaGroupEditDialog.showModal();
 }
 
 function renderParallelTabs() {
@@ -960,6 +988,41 @@ function bindEvents() {
     });
     document.getElementById("close-meta-group-create")?.addEventListener("click", () => ui.metaGroupCreateDialog?.close());
     document.getElementById("close-meta-group-manage")?.addEventListener("click", () => ui.metaGroupManageDialog?.close());
+    ui.metaGroupEditCloseBtn?.addEventListener("click", () => ui.metaGroupEditDialog?.close());
+
+    ui.metaGroupEditForm?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+            const form = new FormData(ui.metaGroupEditForm);
+            const id = Number(form.get("id"));
+            await api(`/api/meta-groups/${id}`, {
+                method: "PATCH",
+                headers: jsonHeaders,
+                body: JSON.stringify({
+                    numberSchoolBuilding: norm(form.get("numberSchoolBuilding")),
+                    classType: norm(form.get("classType")) || "NORMAL",
+                    parallel: Number(form.get("parallel")),
+                    name: norm(form.get("name")),
+                    studyPeriodSettingId: Number(form.get("studyPeriodSettingId")) || null
+                })
+            });
+            ui.metaGroupEditDialog?.close();
+            await reload();
+            renderMetaGroupManageTable();
+        } catch (error) { print({ error: error.message }); }
+    });
+
+    ui.metaGroupDeleteBtn?.addEventListener("click", async () => {
+        const id = Number(ui.metaGroupEditForm?.elements?.id?.value || 0);
+        if (!id) return;
+        if (!window.confirm("Удалить метагруппу?")) return;
+        try {
+            await api(`/api/meta-groups/${id}`, { method: "DELETE" });
+            ui.metaGroupEditDialog?.close();
+            await reload();
+            renderMetaGroupManageTable();
+        } catch (error) { print({ error: error.message }); }
+    });
 
     ui.refreshBtn.addEventListener("click", () => reload().catch((error) => print({ error: error.message })));
     ui.importBtn?.addEventListener("click", importCurriculumFile);
