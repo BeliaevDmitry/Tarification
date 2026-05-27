@@ -5,6 +5,11 @@ import org.school.personalLoad.auth.UserRole;
 import org.school.personalLoad.dto.SchoolBuildingRequest;
 import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
+import org.school.personalLoad.repository.ClassroomLeadershipRepository;
+import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
+import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.MetaGroupRepository;
+import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.auth.AppUserRepository;
 import org.school.personalLoad.service.SchoolBuildingService;
 import org.apache.poi.ss.usermodel.*;
@@ -26,6 +31,11 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
 
     private final SchoolBuildingRepository repository;
     private final AppUserRepository appUserRepository;
+    private final ClassroomLeadershipRepository classroomLeadershipRepository;
+    private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
+    private final ManualLoadEntryRepository manualLoadEntryRepository;
+    private final MetaGroupRepository metaGroupRepository;
+    private final TeacherDirectoryRepository teacherDirectoryRepository;
 
     @Override
     public SchoolBuilding upsert(SchoolBuildingRequest request) {
@@ -72,6 +82,12 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
     public void deleteById(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("id is required");
+        }
+        SchoolBuilding entity = repository.findById(id).orElseThrow(() -> new IllegalArgumentException("Корпус не найден"));
+        String code = normalizeBuildingGroupCode(entity.getCode());
+        long sameCodeCount = repository.findAllByCodeIgnoreCase(code).size();
+        if (sameCodeCount <= 1 && isBuildingCodeReferenced(code)) {
+            throw new IllegalStateException("Нельзя удалить последний адрес корпуса " + code + ": код используется в связанных разделах");
         }
         repository.deleteById(id);
     }
@@ -174,5 +190,20 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
         String normalized = normalize(value).replace(" ", "").toUpperCase();
         int idx = normalized.indexOf("|");
         return idx >= 0 ? normalized.substring(0, idx) : normalized;
+    }
+
+    private boolean isBuildingCodeReferenced(String code) {
+        if (classroomLeadershipRepository.existsByNumberSchoolBuildingIgnoreCase(code)) return true;
+        if (curriculumPlanEntryRepository.existsByNumberSchoolBuildingIgnoreCase(code)) return true;
+        if (manualLoadEntryRepository.existsByNumberSchoolBuildingIgnoreCase(code)) return true;
+        if (metaGroupRepository.existsByNumberSchoolBuildingIgnoreCase(code)) return true;
+        if (teacherDirectoryRepository.existsByNumberSchoolBuildingIgnoreCase(code)) return true;
+        return appUserRepository.findAll().stream().anyMatch(user -> {
+            String managedCode = normalizeBuildingGroupCode(user.getManagedBuildingCode());
+            if (managedCode.equalsIgnoreCase(code)) return true;
+            return user.getLoadEditableBuildingCodes().stream()
+                    .map(this::normalizeBuildingGroupCode)
+                    .anyMatch(c -> c.equalsIgnoreCase(code));
+        });
     }
 }
