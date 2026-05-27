@@ -1985,7 +1985,10 @@ function renderTable() {
 
         tr.innerHTML = `
             <td>
-                <div class="subject-cell">${esc(row.displaySubjectName || row.subjectName)} ${index === 0 || presentationRows[index - 1].subjectKey !== row.subjectKey ? `<button class="inline-plus" type="button" data-plus-subject="${esc(row.subjectKey)}" data-plus-after="${esc(row.teacherRowId)}" title="Добавить строку педагога">+</button>` : ""}</div>
+                <div class="subject-cell">
+                    <span class="subject-cell-name">${esc(row.displaySubjectName || row.subjectName)}</span>
+                    ${index === 0 || presentationRows[index - 1].subjectKey !== row.subjectKey ? `<button class="inline-plus" type="button" data-plus-subject="${esc(row.subjectKey)}" data-plus-after="${esc(row.teacherRowId)}" title="Добавить строку педагога">+</button>` : ""}
+                </div>
             </td>            <td class="${isDismissedTeacher(row.teacherName) ? "dismissal-row" : ""}">
                 <input type="text" class="teacher-input" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" list="${listId}" value="${esc(row.teacherName)}" placeholder="ФИО педагога">
                 <datalist id="${listId}"></datalist>
