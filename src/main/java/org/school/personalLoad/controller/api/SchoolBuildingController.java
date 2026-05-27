@@ -48,8 +48,8 @@ public class SchoolBuildingController {
         return ResponseEntity.ok(schoolBuildingService.importFromExcel(file));
     }
     @DeleteMapping("/one")
-    public ResponseEntity<Void> deleteOne(@RequestParam String code) {
-        schoolBuildingService.deleteByCode(code);
+    public ResponseEntity<Void> deleteOne(@RequestParam Long id) {
+        schoolBuildingService.deleteById(id);
         return ResponseEntity.noContent().build();
     }
 
