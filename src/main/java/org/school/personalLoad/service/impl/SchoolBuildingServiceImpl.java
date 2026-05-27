@@ -35,12 +35,12 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
         if (name.isBlank()) throw new IllegalArgumentException("name is required");
         if (address.isBlank()) throw new IllegalArgumentException("address is required");
 
-        String code = normalize(request.getCode());
-        if (code.isBlank()) {
-            code = (name + "|" + address).toLowerCase();
-        }
-
-        SchoolBuilding entity = repository.findByCode(code).orElseGet(SchoolBuilding::new);
+        String code = normalizeBuildingGroupCode(request.getCode());
+        if (code.isBlank()) code = normalizeBuildingGroupCode(name);
+        if (code.isBlank()) throw new IllegalArgumentException("code is required");
+        SchoolBuilding entity = request.getId() == null
+                ? new SchoolBuilding()
+                : repository.findById(request.getId()).orElseGet(SchoolBuilding::new);
         entity.setCode(code);
         entity.setName(name);
         entity.setManagerFio(normalize(entity.getManagerFio()));
@@ -69,12 +69,11 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
 
     @Override
     @Transactional
-    public void deleteByCode(String code) {
-        String normalizedCode = normalize(code);
-        if (normalizedCode.isBlank()) {
-            throw new IllegalArgumentException("code is required");
+    public void deleteById(Long id) {
+        if (id == null) {
+            throw new IllegalArgumentException("id is required");
         }
-        repository.deleteByCode(normalizedCode);
+        repository.deleteById(id);
     }
 
 
@@ -154,7 +153,7 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
                 }
 
                 SchoolBuildingRequest request = new SchoolBuildingRequest();
-                request.setCode(code);
+                request.setCode(code.isBlank() ? name : code);
                 request.setName(name);
                 request.setAddress(address);
                 upsert(request);
