@@ -541,8 +541,9 @@ hr {
 
 .hour-pill {
     min-width: 70px;
-    background: #f8fafc;
-    border: 1px solid #cbd5e1;
+    background: #f5f7fa;
+    border: 1px solid #d5dde7;
+    color: #5b6678;
 }
 
 .load-page {
