@@ -3,7 +3,8 @@ const jsonHeaders = { "Content-Type": "application/json" };
 const PART_META = {
     CORE: { label: "Основная часть", short: "основная", order: 1 },
     FORMABLE: { label: "Формируемая часть", short: "формируемая", order: 2 },
-    EXTRACURRICULAR: { label: "Внеурочная деятельность", short: "внеурочная", order: 3 }
+    EXTRACURRICULAR: { label: "Внеурочная деятельность", short: "внеурочная", order: 3 },
+    CORRECTIONAL: { label: "Коррекционная область", short: "коррекционная", order: 4 }
 };
 
 const PERIOD_META = {
@@ -105,6 +106,7 @@ function levelShort(v) { return v === "ADVANCED" ? "У" : "Б"; }
 function subjectTypeByPart(part) {
     if (part === "EXTRACURRICULAR") return "EXTRACURRICULAR";
     if (part === "FORMABLE") return "FORMABLE";
+    if (part === "CORRECTIONAL") return "FORMABLE";
     return "CORE";
 }
 function isSubjectTypeCompatible(actualType, expectedType) {
@@ -436,7 +438,7 @@ function subjectAreaForRow(row) {
 }
 
 function buildSummaryRows(selectedClasses) {
-    const byPart = { CORE: [], FORMABLE: [], EXTRACURRICULAR: [] };
+    const byPart = { CORE: [], FORMABLE: [], EXTRACURRICULAR: [], CORRECTIONAL: [] };
     const classSet = new Set(selectedClasses.map((c) => makeClassKey(c.numberSchoolBuilding, c.className)));
 
     curriculumRows.forEach((r) => {
@@ -446,7 +448,7 @@ function buildSummaryRows(selectedClasses) {
     });
 
     const rows = [];
-    ["CORE", "FORMABLE", "EXTRACURRICULAR"].forEach((part) => {
+    ["CORE", "FORMABLE", "EXTRACURRICULAR", "CORRECTIONAL"].forEach((part) => {
         const groupedBySubject = new Map();
         byPart[part].forEach((r) => {
             const area = subjectAreaForRow(r);
@@ -521,6 +523,10 @@ function buildSummaryRows(selectedClasses) {
 
             noArea.sort((a, b) => a.subjectName.localeCompare(b.subjectName, "ru"))
                 .forEach((item) => preparedSubjects.push({ ...item, subjectColspan: 2, areaRowspan: 0 }));
+        }
+
+        if (part === "CORRECTIONAL" && preparedSubjects.length === 0) {
+            return;
         }
 
         rows.push({ type: "part", part, title: PART_META[part].label });
@@ -773,7 +779,13 @@ function renderSummaryTable() {
                         }
                     }
                 });
-                const sumLabel = row.type === "sum12" ? "sum_of" : (row.part === "CORE" ? "sum_core" : (row.part === "FORMABLE" ? "sum_formable" : "sum_extracurricular"));
+                const sumLabel = row.type === "sum12"
+                    ? "sum_of"
+                    : (row.part === "CORE"
+                        ? "sum_core"
+                        : (row.part === "FORMABLE"
+                            ? "sum_formable"
+                            : (row.part === "EXTRACURRICULAR" ? "sum_extracurricular" : "sum_correctional")));
                 const mismatch = sumMismatchKeys.has(`${col.classKey}|${sumLabel}`);
                 const display = (() => {
                     if (!(h1 || h2)) return "";

@@ -969,6 +969,16 @@ dialog::backdrop {
     border-radius: 8px;
 }
 
+.error-count-btn {
+    border: none;
+    background: transparent;
+    color: #b91c1c;
+    font-weight: 800;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0 2px;
+}
+
 .load-page .compact-note {
     margin: 6px 0 0;
 }

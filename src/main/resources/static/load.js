@@ -85,6 +85,8 @@ const buildingDataCache = new Map();
 const BUILDING_DATA_CACHE_TTL_MS = 2 * 60 * 1000;
 let teacherHourIndexesCacheKey = "";
 let teacherHourIndexesCacheValue = { buildingTeacherHours: {}, complexTeacherHours: {} };
+let currentErrorList = [];
+let currentErrorIndex = -1;
 
 function currentAcademicYearKey() {
     return String(sessionStorage.getItem("tarification.academicYear") || "").trim() || "active";
@@ -318,6 +320,7 @@ function esc(value) {
 function partLabel(part) {
     if (part === "FORMABLE") return "Формируемая";
     if (part === "EXTRACURRICULAR") return "Внеурочная";
+    if (part === "CORRECTIONAL") return "Коррекционная";
     return "Основная";
 }
 
@@ -1767,6 +1770,10 @@ function collectLoadIssues(presentationRows, classes) {
     presentationRows.forEach((row) => {
         if (row.teacherName && !teacherExists(row.teacherName)) {
             errorCount += 1;
+            errors.push({
+                rowKey: rowStableKey(row),
+                message: `Педагог «${row.teacherName}» отсутствует в справочнике педагогов.`
+            });
         }
         classes.forEach((className) => {
             const classRows = row.rowsByClassAll?.[className] || [];
@@ -1775,6 +1782,10 @@ function collectLoadIssues(presentationRows, classes) {
                 if (!assignedTeacher) {
                     unassignedHours += Number(curriculumRow.plannedHours || 0);
                     errorCount += 1;
+                    errors.push({
+                        rowKey: rowStableKey(row),
+                        message: `Не назначен педагог: ${curriculumRow.className}, предмет «${curriculumRow.subjectName}».`
+                    });
                 }
             });
         });
@@ -1782,11 +1793,12 @@ function collectLoadIssues(presentationRows, classes) {
 
     const conflicts = detectManualLoadConflicts();
     errorCount += conflicts.size;
+    conflicts.forEach((id) => errors.push({ rowKey: `manual:${id}`, message: "Конфликт периодов в ручной нагрузке." }));
 
     (manualRows || []).filter((r) => normalizeBuildingCode(r.numberSchoolBuilding) === selectedBuilding).forEach((r)=>{
         if (r.orphaned) {
             errorCount += 1;
-            errors.push(`orphan-${r.id}`);
+            errors.push({ rowKey: `manual:${r.id}`, message: "Сиротская строка нагрузки: в учебном плане нет соответствующей позиции." });
         }
     });
 
@@ -1807,13 +1819,24 @@ async function refreshHealthCounters() {
 }
 
 function jumpToFirstError() {
-    const missingTeacher = ui.tableBody.querySelector('.dismissal-note');
-    const unassigned = ui.tableBody.querySelector('.hour-pill.unassigned');
-    const target = missingTeacher ? missingTeacher.closest('tr') : (unassigned ? unassigned.closest('tr') : null);
+    if (!currentErrorList.length) return;
+    currentErrorIndex = (currentErrorIndex + 1) % currentErrorList.length;
+    const current = currentErrorList[currentErrorIndex];
+    const target = ui.tableBody.querySelector(`tr[data-row-key="${CSS.escape(String(current.rowKey || ""))}"]`);
     if (!target) return;
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     target.classList.add('error-row-highlight');
     setTimeout(() => target.classList.remove('error-row-highlight'), 1400);
+}
+
+function showErrorsPopup() {
+    if (!currentErrorList.length) {
+        alert("Ошибок нет.");
+        return;
+    }
+    const lines = currentErrorList.slice(0, 30).map((e, idx) => `${idx + 1}) ${e.message}`);
+    const suffix = currentErrorList.length > 30 ? `\n...и ещё ${currentErrorList.length - 30}` : "";
+    alert(`Найдено ошибок: ${currentErrorList.length}\n\n${lines.join("\n")}${suffix}`);
 }
 
 function applyFastAssignmentUIUpdate(cellButton, assignedCount, assignedHours) {
@@ -1941,7 +1964,9 @@ function renderTable() {
                     || String(a.teacherName || "").localeCompare(String(b.teacherName || ""), "ru");
             });
     }
-    const { errorCount } = collectLoadIssues(presentationRows, classes);
+    const { errorCount, errors } = collectLoadIssues(presentationRows, classes);
+    currentErrorList = errors;
+    currentErrorIndex = -1;
     refreshHealthCounters();
 
     const headMain = document.createElement("tr");
@@ -1953,7 +1978,7 @@ function renderTable() {
         <th rowspan="2">Всего часов в комплексе</th>
         <th colspan="${Math.max(classes.length, 1)}">
             <div class="load-head-actions">
-                <span><strong>Ошибки: ${errorCount}</strong></span>
+                <span><strong>Ошибки: <button type="button" class="error-count-btn" data-head-error-info="1">${errorCount}</button></strong></span>
                 <button type="button" class="head-action-btn" data-head-save="1">Сохранить нагрузку корпуса</button>
                 <button type="button" class="head-action-btn" data-head-next-error="1">Перейти к ошибке</button>
             </div>
@@ -1962,8 +1987,10 @@ function renderTable() {
     ui.tableHead.appendChild(headMain);
     const headSaveBtn = headMain.querySelector('[data-head-save="1"]');
     const headNextErrorBtn = headMain.querySelector('[data-head-next-error="1"]');
+    const headErrorInfoBtn = headMain.querySelector('[data-head-error-info="1"]');
     headSaveBtn?.addEventListener("click", () => ui.saveBuildingBtn?.click());
     headNextErrorBtn?.addEventListener("click", () => ui.nextErrorBtn?.click());
+    headErrorInfoBtn?.addEventListener("click", showErrorsPopup);
 
     const headClasses = document.createElement("tr");
     headClasses.className = "load-class-head";
@@ -1978,6 +2005,7 @@ function renderTable() {
     latestPresentationRows = presentationRows;
     presentationRows.forEach((row, index) => {
         const tr = document.createElement("tr");
+        tr.dataset.rowKey = rowStableKey(row);
         if (rowHasPlannedLoadChange(row, referenceDate)) {
             tr.classList.add("load-change-row");
         }
