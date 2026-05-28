@@ -43,6 +43,7 @@ public interface CurriculumPlanEntryRepository extends JpaRepository<CurriculumP
     List<CurriculumPlanEntry> findAllByAcademicYearAndStage(String academicYear, CurriculumStage stage);
     List<CurriculumPlanEntry> findAllByAcademicYear(String academicYear);
     List<CurriculumPlanEntry> findAllByAcademicYearAndNumberSchoolBuildingIgnoreCase(String academicYear, String numberSchoolBuilding);
+    boolean existsByNumberSchoolBuildingIgnoreCase(String numberSchoolBuilding);
 
     List<CurriculumPlanEntry> findAllByNumberSchoolBuildingAndClassName(String numberSchoolBuilding, String className);
     List<CurriculumPlanEntry> findAllByAcademicYearAndNumberSchoolBuildingAndClassName(String academicYear, String numberSchoolBuilding, String className);
