@@ -539,7 +539,7 @@ function renderLoadBuildings(target, selectedCodes = [], prefix = 'create') {
         </label>
     `).join('');
     target.querySelectorAll('[data-load-building]').forEach((checkbox) => {
-        checkbox.addEventListener('change', () => syncLoadBuildingScope(prefix));
+        checkbox.addEventListener('change', () => syncLoadBuildingScope(prefix, checkbox));
     });
     syncLoadBuildingScope(prefix);
 }
@@ -578,10 +578,26 @@ function loadScopeSummary(prefix) {
     return 'Пользователь сможет только просматривать вкладку нагрузки без редактирования корпусов.';
 }
 
-function syncLoadBuildingScope(prefix) {
+function syncChildAddressCheckboxes(container, changedCheckbox) {
+    if (!changedCheckbox?.checked) return;
+    const groupValue = buildingGroupCode(changedCheckbox.dataset.loadBuilding);
+    if (!groupValue || changedCheckbox.dataset.loadBuilding !== groupValue) return;
+    container.querySelectorAll('[data-load-building]').forEach((checkbox) => {
+        if (checkbox === changedCheckbox) return;
+        if (buildingGroupCode(checkbox.dataset.loadBuilding) === groupValue) {
+            checkbox.checked = true;
+        }
+    });
+}
+
+function syncLoadBuildingScope(prefix, changedCheckbox = null) {
     const mode = selectedScopeMode(prefix);
     const container = loadBuildingsContainer(prefix);
     const allowManualSelection = mode === LOAD_SCOPE_MODE.SELECTED;
+
+    if (allowManualSelection) {
+        syncChildAddressCheckboxes(container, changedCheckbox);
+    }
 
     container.classList.toggle('is-disabled', !allowManualSelection);
     container.querySelectorAll('[data-load-building]').forEach((checkbox) => {

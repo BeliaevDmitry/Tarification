@@ -93,7 +93,7 @@ function currentAcademicYearKey() {
 }
 
 function buildingCacheKey(buildingCode) {
-    return `${currentAcademicYearKey()}|${normalizeBuildingCode(buildingCode) || "ALL"}`;
+    return `${currentAcademicYearKey()}|${normalizeBuildingAccessCode(buildingCode) || "ALL"}`;
 }
 
 function invalidateBuildingDataCache(buildingCode = null) {
@@ -173,14 +173,58 @@ function canonicalBuildingCode(value) {
     return match ? normalizeBuildingCode(match.code) : normalized;
 }
 
+function normalizeBuildingAccessCode(value) {
+    return String(value || "")
+        .trim()
+        .toUpperCase()
+        .replace(/[–—]/g, "-")
+        .replace(/[CС][ПPР]/g, "СП")
+        .replace(/\s*\|\s*/g, "|")
+        .replace(/\s+/g, "");
+}
+
+function buildingGroupCode(value) {
+    const normalized = normalizeBuildingAccessCode(value);
+    const separatorIndex = normalized.indexOf("|");
+    return separatorIndex >= 0 ? normalized.slice(0, separatorIndex) : normalized;
+}
+
+function buildingAddressToken(value) {
+    const normalized = normalizeBuildingAccessCode(value);
+    const separatorIndex = normalized.indexOf("|");
+    return separatorIndex >= 0 ? normalized.slice(separatorIndex + 1) : "";
+}
+
+function isAddressScopedBuilding(value) {
+    return Boolean(buildingAddressToken(value));
+}
+
+function rowAddressToken(row) {
+    const classAddress = String(row?.campusAddress || "").trim();
+    if (classAddress) return normalizeBuildingAccessCode(classAddress);
+    const groupCode = buildingGroupCode(row?.numberSchoolBuilding);
+    const building = (buildings || []).find((item) => buildingGroupCode(item?.code) === groupCode);
+    return normalizeBuildingAccessCode(building?.address);
+}
+
+function rowMatchesBuildingAccess(row, accessCode) {
+    if (accessCode === ARCHIVE_BUILDING_CODE) return false;
+    const groupCode = buildingGroupCode(accessCode);
+    if (!groupCode) return false;
+    if (buildingGroupCode(row?.numberSchoolBuilding) !== groupCode) return false;
+    const address = buildingAddressToken(accessCode);
+    return !address || rowAddressToken(row) === address;
+}
+
 function rememberSelectedBuilding(code) {
-    const normalized = normalizeBuildingCode(code);
-    if (!normalized || normalized === ARCHIVE_BUILDING_CODE) return;
+    const normalized = code === ARCHIVE_BUILDING_CODE ? ARCHIVE_BUILDING_CODE : normalizeBuildingAccessCode(code);
+    if (!normalized) return;
     sessionStorage.setItem(LOAD_SELECTED_BUILDING_KEY, normalized);
 }
 
 function restoreSelectedBuilding() {
-    return normalizeBuildingCode(sessionStorage.getItem(LOAD_SELECTED_BUILDING_KEY) || "");
+    const restored = String(sessionStorage.getItem(LOAD_SELECTED_BUILDING_KEY) || "").trim();
+    return restored === ARCHIVE_BUILDING_CODE ? ARCHIVE_BUILDING_CODE : normalizeBuildingAccessCode(restored);
 }
 
 function addressesForBuildingCode(buildingCode) {
@@ -213,9 +257,12 @@ function addressesForBuildingCode(buildingCode) {
 
 function buildingTabLabel(building) {
     const base = String(building?.name || building?.code || "").trim();
+    if (building?.scope === "address") {
+        return `${base} — ${building.address || "адрес не указан"}`;
+    }
     const addresses = addressesForBuildingCode(building?.code);
-    if (!addresses.length) return base;
-    return `${base} — ${addresses.join(" / ")}`;
+    if (!addresses.length) return `${base} — все адреса`;
+    return `${base} — все адреса (${addresses.length})`;
 }
 
 
@@ -509,16 +556,14 @@ function dayBefore(isoDate) {
 
 function rowsForSelectedBuilding() {
     if (selectedBuilding === ARCHIVE_BUILDING_CODE) return [];
-    const cacheKey = `${sourceRevision}|${canonicalBuildingCode(selectedBuilding)}`;
+    const cacheKey = `${sourceRevision}|${normalizeBuildingAccessCode(selectedBuilding)}`;
     if (derivedCache.rowsByBuildingKey === cacheKey) {
         return derivedCache.rowsByBuildingValue;
     }
-    const normalizedSelectedBuilding = canonicalBuildingCode(selectedBuilding);
     const map = classBuildingMap();
     const scoped = curriculumRows.filter((row) => {
-        const rowBuilding = canonicalBuildingCode(row.numberSchoolBuilding);
-        const byClass = canonicalBuildingCode(map.get(normalizeClassName(row.className)));
-        return rowBuilding === normalizedSelectedBuilding || byClass === normalizedSelectedBuilding;
+        const rowSource = { ...row, numberSchoolBuilding: row.numberSchoolBuilding || map.get(normalizeClassName(row.className)) };
+        return rowMatchesBuildingAccess(rowSource, selectedBuilding);
     });
     const filtered = scoped.filter((row) => !Boolean(row.metaGroup));
     derivedCache.rowsByBuildingKey = cacheKey;
@@ -559,7 +604,7 @@ function expandCurriculumRows(rows) {
 
 function expandedRowsForSelectedBuilding() {
     if (selectedBuilding === ARCHIVE_BUILDING_CODE) return [];
-    const cacheKey = `${sourceRevision}|${canonicalBuildingCode(selectedBuilding)}`;
+    const cacheKey = `${sourceRevision}|${normalizeBuildingAccessCode(selectedBuilding)}`;
     if (derivedCache.expandedRowsByBuildingKey === cacheKey) {
         return derivedCache.expandedRowsByBuildingValue;
     }
@@ -685,49 +730,57 @@ function currentAuthUser() {
 }
 
 function hasCurriculumRowsForBuilding(buildingCode) {
-    const normalizedBuilding = canonicalBuildingCode(buildingCode);
-    if (!normalizedBuilding) return false;
+    if (!buildingGroupCode(buildingCode)) return false;
     const classMap = classBuildingMap();
     return (curriculumRows || []).some((row) => {
-        const rowBuilding = canonicalBuildingCode(row.numberSchoolBuilding);
-        const classBuilding = canonicalBuildingCode(classMap.get(normalizeClassName(row.className)));
-        return rowBuilding === normalizedBuilding || classBuilding === normalizedBuilding;
+        const rowSource = { ...row, numberSchoolBuilding: row.numberSchoolBuilding || classMap.get(normalizeClassName(row.className)) };
+        return rowMatchesBuildingAccess(rowSource, buildingCode);
     });
+}
+
+function buildingOptionValue(option) {
+    return option?.value || option?.code || "";
+}
+
+function buildingPermissionMatchesOption(permissionCode, optionValue) {
+    const permission = normalizeBuildingAccessCode(permissionCode);
+    const option = normalizeBuildingAccessCode(optionValue);
+    if (!permission || !option) return false;
+    if (permission === option) return true;
+    return !permission.includes("|") && buildingGroupCode(permission) === buildingGroupCode(option);
 }
 
 function preferredBuildingCode(availableBuildings) {
     if (!Array.isArray(availableBuildings) || !availableBuildings.length) return "";
     const user = currentAuthUser();
-    const byCode = new Map(availableBuildings.map((b) => [normalizeBuildingCode(b.code), b.code]));
-    const allOrderedCodes = availableBuildings.map((b) => normalizeBuildingCode(b.code)).filter(Boolean);
+    const allOptions = availableBuildings.map(buildingOptionValue).filter(Boolean);
     const editableCodes = [];
 
     if (!user || user.admin || user.loadEditAllBuildings) {
-        editableCodes.push(...allOrderedCodes);
+        editableCodes.push(...allOptions);
     } else {
         editableCodes.push(...(user.loadEditableBuildingCodes || [])
-            .map((code) => normalizeBuildingCode(code))
+            .map((code) => normalizeBuildingAccessCode(code))
             .filter(Boolean));
-        const managedCode = normalizeBuildingCode(user.managedBuildingCode);
+        const managedCode = buildingGroupCode(user.managedBuildingCode);
         if (managedCode) editableCodes.push(managedCode);
         if (!editableCodes.length) {
-            editableCodes.push(...allOrderedCodes);
+            editableCodes.push(...allOptions);
         }
     }
 
-    const uniqueEditableCodes = [...new Set(editableCodes)];
-    for (const code of uniqueEditableCodes) {
-        if (byCode.has(code) && hasCurriculumRowsForBuilding(code)) {
-            return byCode.get(code);
+    const candidateOptions = allOptions.filter((option) =>
+        editableCodes.some((permission) => buildingPermissionMatchesOption(permission, option))
+    );
+    const orderedCandidates = candidateOptions.length ? candidateOptions : allOptions;
+    for (const option of orderedCandidates) {
+        if (hasCurriculumRowsForBuilding(option)) {
+            return option;
         }
     }
-    for (const code of uniqueEditableCodes) {
-        if (byCode.has(code)) {
-            return byCode.get(code);
-        }
-    }
-    return availableBuildings[0].code;
+    return orderedCandidates[0] || availableBuildings[0].code;
 }
+
 
 function canEditSelectedBuildingLoad() {
     const user = currentAuthUser();
@@ -736,12 +789,12 @@ function canEditSelectedBuildingLoad() {
     const loadPermission = window.tarificationTabPermissions?.LOAD;
     if (!loadPermission?.canEdit) return false;
     if (user.loadEditAllBuildings) return true;
-    const allowedBuildings = (user.loadEditableBuildingCodes || []).map((code) => normalizeBuildingCode(code));
+    const allowedBuildings = (user.loadEditableBuildingCodes || []);
     if (allowedBuildings.length) {
-        return allowedBuildings.includes(normalizeBuildingCode(selectedBuilding));
+        return allowedBuildings.some((code) => buildingPermissionMatchesOption(code, selectedBuilding));
     }
     if (user.role !== "BUILDING_HEAD") return false;
-    return normalizeBuildingCode(user.managedBuildingCode) === normalizeBuildingCode(selectedBuilding);
+    return buildingGroupCode(user.managedBuildingCode) === buildingGroupCode(selectedBuilding);
 }
 
 function loadReadOnlyReason() {
@@ -755,10 +808,10 @@ function loadReadOnlyReason() {
         return "";
     }
     const allowedBuildings = (user.loadEditableBuildingCodes || []).filter(Boolean);
-    if (allowedBuildings.length && !allowedBuildings.map((code) => normalizeBuildingCode(code)).includes(normalizeBuildingCode(selectedBuilding))) {
-        return `Редактирование разрешено только для корпусов: ${allowedBuildings.join(", ")}.`;
+    if (allowedBuildings.length && !allowedBuildings.some((code) => buildingPermissionMatchesOption(code, selectedBuilding))) {
+        return `Редактирование разрешено только для зон: ${allowedBuildings.join(", ")}.`;
     }
-    if (user.role === "BUILDING_HEAD" && normalizeBuildingCode(user.managedBuildingCode) !== normalizeBuildingCode(selectedBuilding)) {
+    if (user.role === "BUILDING_HEAD" && buildingGroupCode(user.managedBuildingCode) !== buildingGroupCode(selectedBuilding)) {
         return `Руководитель корпуса может редактировать только корпус ${user.managedBuildingCode || "—"}.`;
     }
     return "Администратор ещё не назначил вам корпуса для редактирования нагрузки.";
@@ -833,7 +886,7 @@ function subjectConflictKey(row) {
 
 function detectManualLoadConflicts() {
     const rows = (manualRows || [])
-        .filter((r) => normalizeBuildingCode(r.numberSchoolBuilding) === selectedBuilding)
+        .filter((r) => rowMatchesBuildingAccess(r, selectedBuilding))
         .filter((r) => !r.orphaned);
 
     const byKey = new Map();
@@ -996,10 +1049,10 @@ function continuityStatusKey(buildingCode, className, subjectName, educationLeve
 
 function buildContinuityStatusIndex(referenceDate) {
     const periodRef = String(referenceDate || referencePlanningDate());
-    const selectedBuildingCode = normalizeBuildingCode(selectedBuilding);
+    const selectedBuildingCode = selectedBuilding;
     const index = new Map();
     (manualRows || []).forEach((entry) => {
-        if (normalizeBuildingCode(entry.numberSchoolBuilding) !== selectedBuildingCode) return;
+        if (!rowMatchesBuildingAccess(entry, selectedBuildingCode)) return;
         const from = String(entry.loadFromDate || "");
         const to = String(entry.loadToDate || "");
         if (!from || !to || !(from <= periodRef && periodRef <= to)) return;
@@ -1358,12 +1411,12 @@ function getOrderedRows(presentationRows) {
 function renderBuildingTabs() {
     if (!ui.buildingSelect) return;
     ui.buildingSelect.innerHTML = "";
-    const tabs = [...buildings, { code: ARCHIVE_BUILDING_CODE, name: ARCHIVE_BUILDING_LABEL }];
+    const tabs = [...buildings, { value: ARCHIVE_BUILDING_CODE, code: ARCHIVE_BUILDING_CODE, name: ARCHIVE_BUILDING_LABEL, label: `🗂 ${ARCHIVE_BUILDING_LABEL}` }];
     tabs.forEach((building) => {
         const option = document.createElement("option");
-        option.value = building.code;
+        option.value = building.value || building.code;
         const tabLabel = building.code === ARCHIVE_BUILDING_CODE
-            ? `🗂 ${building.name}`
+            ? building.label
             : buildingTabLabel(building);
         option.textContent = tabLabel;
         ui.buildingSelect.appendChild(option);
@@ -1380,7 +1433,7 @@ async function refreshSelectedBuildingData(force = false) {
         manualRows = cached.manual;
     } else {
         const encodedBuilding = selectedBuilding && selectedBuilding !== ARCHIVE_BUILDING_CODE
-            ? `?numberSchoolBuilding=${encodeURIComponent(selectedBuilding)}`
+            ? `?numberSchoolBuilding=${encodeURIComponent(buildingGroupCode(selectedBuilding))}`
             : "";
         const [curriculum, manual] = await Promise.all([
             api(`/api/curriculum${encodedBuilding}`),
@@ -1488,7 +1541,7 @@ function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
     const teacher = String(teacherName || "").trim().toLowerCase();
     if (!curriculumRow || !teacher) return null;
 
-    const buildingCode = normalizeBuildingCode(selectedBuilding);
+    const buildingCode = selectedBuilding;
     const targetPeriod = rowStudyPeriod(curriculumRow);
     const targetGroup = curriculumRow.__groupIndex ? `ГРУППА ${curriculumRow.__groupIndex}` : "";
     const referenceDate = currentDisplayDate();
@@ -1496,7 +1549,7 @@ function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
     const matched = (manualRows || []).filter((entry) => {
         const entryTeacher = String(entry.fioTeacher || "").trim().toLowerCase();
         if (!entryTeacher || entryTeacher !== teacher) return false;
-        if (normalizeBuildingCode(entry.numberSchoolBuilding) !== buildingCode) return false;
+        if (!rowMatchesBuildingAccess(entry, buildingCode)) return false;
         if (normalizeClassName(entry.className) !== normalizeClassName(curriculumRow.className)) return false;
         if (String(entry.subjectName || "").trim() !== String(curriculumRow.subjectName || "").trim()) return false;
         if (String(entry.educationLevel || "") !== String(curriculumRow.educationLevel || "")) return false;
@@ -1802,7 +1855,7 @@ function collectLoadIssues(presentationRows, classes) {
     errorCount += conflicts.size;
     conflicts.forEach((id) => errors.push({ rowKey: `manual:${id}`, message: "Конфликт периодов в ручной нагрузке." }));
 
-    (manualRows || []).filter((r) => normalizeBuildingCode(r.numberSchoolBuilding) === selectedBuilding).forEach((r)=>{
+    (manualRows || []).filter((r) => rowMatchesBuildingAccess(r, selectedBuilding)).forEach((r)=>{
         if (r.orphaned) {
             errorCount += 1;
             errors.push({ rowKey: `manual:${r.id}`, message: "Сиротская строка нагрузки: в учебном плане нет соответствующей позиции." });
@@ -1817,7 +1870,7 @@ function collectLoadIssues(presentationRows, classes) {
 async function refreshHealthCounters() {
     if (!selectedBuilding || selectedBuilding === ARCHIVE_BUILDING_CODE) return;
     try {
-        const health = await api(`/api/manual-load/health?building=${encodeURIComponent(selectedBuilding)}`);
+        const health = await api(`/api/manual-load/health?building=${encodeURIComponent(buildingGroupCode(selectedBuilding))}`);
         ui.unassignedHours.textContent = String(health?.unassignedHours || 0);
         ui.errorCount.textContent = String(health?.errorCount || 0);
     } catch {
@@ -1897,7 +1950,7 @@ async function renderStatsView() {
         params.set("page", "0");
         params.set("pageSize", "500");
         if (selectedBuilding && selectedBuilding !== ARCHIVE_BUILDING_CODE) {
-            params.set("building", selectedBuilding);
+            params.set("building", buildingGroupCode(selectedBuilding));
         }
         const stats = await api(`/api/manual-load/stats?${params.toString()}`);
         const rows = stats?.rows || [];
@@ -2161,7 +2214,7 @@ async function saveBuildingLoad() {
 
         return {
             fioTeacher,
-            numberSchoolBuilding: selectedBuilding,
+            numberSchoolBuilding: buildingGroupCode(selectedBuilding),
             subjectName: row.subjectName,
             className: row.className,
             load: Number(row.plannedHours || 0),
@@ -2180,7 +2233,7 @@ async function saveBuildingLoad() {
         if (!row) return;
         payload.push({
             fioTeacher: plan.targetTeacher,
-            numberSchoolBuilding: selectedBuilding,
+            numberSchoolBuilding: buildingGroupCode(selectedBuilding),
             subjectName: row.subjectName,
             className: row.className,
             load: Number(row.plannedHours || 0),
@@ -2321,9 +2374,9 @@ async function importLoadWorkbook(file) {
 }
 
 async function refreshSourceData() {
-    const initialBuildingCandidate = normalizeBuildingCode(selectedBuilding) || restoreSelectedBuilding();
+    const initialBuildingCandidate = normalizeBuildingAccessCode(selectedBuilding) || restoreSelectedBuilding();
     const initialEncodedBuilding = initialBuildingCandidate && initialBuildingCandidate !== ARCHIVE_BUILDING_CODE
-        ? `?numberSchoolBuilding=${encodeURIComponent(initialBuildingCandidate)}`
+        ? `?numberSchoolBuilding=${encodeURIComponent(buildingGroupCode(initialBuildingCandidate))}`
         : "";
     const initialScopedDataPromise = Promise.all([
         api(`/api/curriculum${initialEncodedBuilding}`),
@@ -2338,44 +2391,60 @@ async function refreshSourceData() {
         api("/api/academic-years/active")
     ]);
 
-    const buildingByCode = new Map();
+    const buildingGroups = new Map();
     const appendAddress = (entry, value) => {
         const cleaned = String(value || "").trim();
         if (!cleaned) return;
-        const key = cleaned.toLowerCase();
-        if (entry.addresses.some((item) => item.toLowerCase() === key)) return;
+        const key = normalizeBuildingAccessCode(cleaned);
+        if (entry.addresses.some((item) => normalizeBuildingAccessCode(item) === key)) return;
         entry.addresses.push(cleaned);
     };
     (buildingRows || []).forEach((b) => {
         const code = normalizeBuildingCode(b.code || b.name);
         if (!code) return;
-        const existing = buildingByCode.get(code) || { ...b, code, name: String(b.name || "").trim() || code, addresses: [] };
+        const existing = buildingGroups.get(code) || { code, name: String(b.name || "").trim() || code, addresses: [], addressRows: [] };
         existing.name = String(existing.name || b.name || "").trim() || code;
         appendAddress(existing, b.address);
-        existing.address = existing.addresses[0] || "";
-        buildingByCode.set(code, existing);
+        existing.addressRows.push(b);
+        buildingGroups.set(code, existing);
     });
     (classRows || []).forEach((r) => {
         const code = normalizeBuildingCode(r.numberSchoolBuilding);
         if (!code) return;
-        const existing = buildingByCode.get(code);
-        if (existing) {
-            appendAddress(existing, r.campusAddress);
-            existing.address = existing.addresses[0] || existing.address || "";
-            return;
-        }
-        const fallback = { code, name: `${code} (из классов)`, address: "", addresses: [] };
-        appendAddress(fallback, r.campusAddress);
-        fallback.address = fallback.addresses[0] || "";
-        buildingByCode.set(code, fallback);
+        const existing = buildingGroups.get(code) || { code, name: `${code} (из классов)`, addresses: [], addressRows: [] };
+        appendAddress(existing, r.campusAddress);
+        buildingGroups.set(code, existing);
     });
-    buildings = [...buildingByCode.values()].sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"));
+    buildings = [];
+    [...buildingGroups.values()]
+        .sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"))
+        .forEach((group) => {
+            const firstAddress = group.addresses[0] || "";
+            buildings.push({
+                code: group.code,
+                value: group.code,
+                name: group.name,
+                address: firstAddress,
+                addresses: group.addresses,
+                scope: "group"
+            });
+            group.addresses.forEach((address) => {
+                buildings.push({
+                    code: group.code,
+                    value: `${group.code}|${normalizeBuildingAccessCode(address)}`,
+                    name: group.name,
+                    address,
+                    addresses: [address],
+                    scope: "address"
+                });
+            });
+        });
 
     const rememberedBuilding = restoreSelectedBuilding();
-    if (rememberedBuilding && buildings.some((row) => normalizeBuildingCode(row.code) === rememberedBuilding)) {
+    if (rememberedBuilding && buildings.some((row) => (row.value || row.code) === rememberedBuilding)) {
         selectedBuilding = rememberedBuilding;
     }
-    if (!selectedBuilding || !buildings.some((row) => row.code === selectedBuilding)) {
+    if (!selectedBuilding || !buildings.some((row) => (row.value || row.code) === selectedBuilding)) {
         selectedBuilding = preferredBuildingCode(buildings);
     }
     if (selectedBuilding !== ARCHIVE_BUILDING_CODE && !canEditSelectedBuildingLoad()) {
@@ -2387,7 +2456,7 @@ async function refreshSourceData() {
     let curriculum;
     let manual;
     const finalEncodedBuilding = selectedBuilding && selectedBuilding !== ARCHIVE_BUILDING_CODE
-        ? `?numberSchoolBuilding=${encodeURIComponent(selectedBuilding)}`
+        ? `?numberSchoolBuilding=${encodeURIComponent(buildingGroupCode(selectedBuilding))}`
         : "";
     if (initialEncodedBuilding === finalEncodedBuilding) {
         [curriculum, manual] = await initialScopedDataPromise;
@@ -2443,7 +2512,7 @@ function bindEvents() {
         const confirmed = confirm(`Удалить всю нагрузку корпуса ${selectedBuilding} в текущем учебном году?`);
         if (!confirmed) return;
         try {
-            await api(`/api/manual-load?building=${encodeURIComponent(selectedBuilding)}`, { method: "DELETE" });
+            await api(`/api/manual-load?building=${encodeURIComponent(buildingGroupCode(selectedBuilding))}`, { method: "DELETE" });
             await refreshSourceData();
             print({ status: `Нагрузка корпуса ${selectedBuilding} удалена.` });
         } catch (error) {
