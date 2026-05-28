@@ -10,4 +10,5 @@ import java.util.Optional;
 public interface TeacherDirectoryRepository extends JpaRepository<TeacherDirectoryEntry, Long> {
     Optional<TeacherDirectoryEntry> findByFioTeacher(String fioTeacher);
     Optional<TeacherDirectoryEntry> findByFioTeacherIgnoreCase(String fioTeacher);
+    boolean existsByNumberSchoolBuildingIgnoreCase(String numberSchoolBuilding);
 }

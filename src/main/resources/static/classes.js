@@ -56,6 +56,26 @@ function buildingLabel(code) {
     return b ? `${b.name} (${b.address})` : code;
 }
 
+function buildingChoices() {
+    const map = new Map();
+    (buildings || []).forEach((b) => {
+        const code = normalizeBuildingCode(b.code);
+        const address = norm(b.address);
+        if (!code || !address) return;
+        map.set(`${code}|${address.toLowerCase()}`, { code, name: norm(b.name) || code, address });
+    });
+    (classRows || []).forEach((row) => {
+        const code = normalizeBuildingCode(row.numberSchoolBuilding);
+        const address = norm(row.campusAddress);
+        if (!code || !address) return;
+        if (!map.has(`${code}|${address.toLowerCase()}`)) {
+            const known = (buildings || []).find((b) => normalizeBuildingCode(b.code) === code);
+            map.set(`${code}|${address.toLowerCase()}`, { code, name: norm(known?.name) || code, address });
+        }
+    });
+    return Array.from(map.values()).sort((a, b) => (`${a.name}|${a.address}`).localeCompare(`${b.name}|${b.address}`, "ru"));
+}
+
 function displayCampusAddress(entry) {
     const rawCampus = norm(entry?.campusAddress);
     if (!rawCampus) return "—";
@@ -71,7 +91,7 @@ function renderTeachers() {
 
 function fillBuildingOptions(selectEl, selectedValue = "") {
     selectEl.innerHTML = `<option value="">Выберите корпус</option>`;
-    buildings.sort((a, b) => String(a.name).localeCompare(String(b.name), "ru")).forEach((b) => {
+    buildingChoices().forEach((b) => {
         selectEl.innerHTML += `<option value="${esc(b.code)}">${esc(b.name)} — ${esc(b.address)}</option>`;
     });
     if (selectedValue) selectEl.value = selectedValue;

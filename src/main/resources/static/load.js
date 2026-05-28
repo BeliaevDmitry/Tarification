@@ -85,6 +85,8 @@ const buildingDataCache = new Map();
 const BUILDING_DATA_CACHE_TTL_MS = 2 * 60 * 1000;
 let teacherHourIndexesCacheKey = "";
 let teacherHourIndexesCacheValue = { buildingTeacherHours: {}, complexTeacherHours: {} };
+let currentErrorList = [];
+let currentErrorIndex = -1;
 
 function currentAcademicYearKey() {
     return String(sessionStorage.getItem("tarification.academicYear") || "").trim() || "active";
@@ -149,12 +151,15 @@ function sortRu(values) {
 }
 
 function normalizeBuildingCode(value) {
-    return String(value || "")
+    const normalized = String(value || "")
         .trim()
         .toUpperCase()
         .replace(/[–—]/g, "-")
+        .replace(/[CС][ПPР]/g, "СП")
         .replace(/\s*\|\s*/g, "|")
         .replace(/\s+/g, "");
+    const separatorIndex = normalized.indexOf("|");
+    return separatorIndex >= 0 ? normalized.slice(0, separatorIndex) : normalized;
 }
 
 function canonicalBuildingCode(value) {
@@ -191,8 +196,12 @@ function addressesForBuildingCode(buildingCode) {
         addresses.push(cleaned);
     };
 
-    const fromBuilding = (buildings || []).find((b) => normalizeBuildingCode(b?.code) === normalizedCode);
-    pushUnique(fromBuilding?.address);
+    (buildings || [])
+        .filter((b) => normalizeBuildingCode(b?.code) === normalizedCode)
+        .forEach((b) => {
+            (b.addresses || []).forEach(pushUnique);
+            pushUnique(b.address);
+        });
 
     (classroomRows || []).forEach((row) => {
         if (normalizeBuildingCode(row?.numberSchoolBuilding) !== normalizedCode) return;
@@ -318,6 +327,7 @@ function esc(value) {
 function partLabel(part) {
     if (part === "FORMABLE") return "Формируемая";
     if (part === "EXTRACURRICULAR") return "Внеурочная";
+    if (part === "CORRECTIONAL") return "Коррекционная";
     return "Основная";
 }
 
@@ -1767,6 +1777,10 @@ function collectLoadIssues(presentationRows, classes) {
     presentationRows.forEach((row) => {
         if (row.teacherName && !teacherExists(row.teacherName)) {
             errorCount += 1;
+            errors.push({
+                rowKey: rowStableKey(row),
+                message: `Педагог «${row.teacherName}» отсутствует в справочнике педагогов.`
+            });
         }
         classes.forEach((className) => {
             const classRows = row.rowsByClassAll?.[className] || [];
@@ -1775,6 +1789,10 @@ function collectLoadIssues(presentationRows, classes) {
                 if (!assignedTeacher) {
                     unassignedHours += Number(curriculumRow.plannedHours || 0);
                     errorCount += 1;
+                    errors.push({
+                        rowKey: rowStableKey(row),
+                        message: `Не назначен педагог: ${curriculumRow.className}, предмет «${curriculumRow.subjectName}».`
+                    });
                 }
             });
         });
@@ -1782,11 +1800,12 @@ function collectLoadIssues(presentationRows, classes) {
 
     const conflicts = detectManualLoadConflicts();
     errorCount += conflicts.size;
+    conflicts.forEach((id) => errors.push({ rowKey: `manual:${id}`, message: "Конфликт периодов в ручной нагрузке." }));
 
     (manualRows || []).filter((r) => normalizeBuildingCode(r.numberSchoolBuilding) === selectedBuilding).forEach((r)=>{
         if (r.orphaned) {
             errorCount += 1;
-            errors.push(`orphan-${r.id}`);
+            errors.push({ rowKey: `manual:${r.id}`, message: "Сиротская строка нагрузки: в учебном плане нет соответствующей позиции." });
         }
     });
 
@@ -1807,13 +1826,24 @@ async function refreshHealthCounters() {
 }
 
 function jumpToFirstError() {
-    const missingTeacher = ui.tableBody.querySelector('.dismissal-note');
-    const unassigned = ui.tableBody.querySelector('.hour-pill.unassigned');
-    const target = missingTeacher ? missingTeacher.closest('tr') : (unassigned ? unassigned.closest('tr') : null);
+    if (!currentErrorList.length) return;
+    currentErrorIndex = (currentErrorIndex + 1) % currentErrorList.length;
+    const current = currentErrorList[currentErrorIndex];
+    const target = ui.tableBody.querySelector(`tr[data-row-key="${CSS.escape(String(current.rowKey || ""))}"]`);
     if (!target) return;
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     target.classList.add('error-row-highlight');
     setTimeout(() => target.classList.remove('error-row-highlight'), 1400);
+}
+
+function showErrorsPopup() {
+    if (!currentErrorList.length) {
+        alert("Ошибок нет.");
+        return;
+    }
+    const lines = currentErrorList.slice(0, 30).map((e, idx) => `${idx + 1}) ${e.message}`);
+    const suffix = currentErrorList.length > 30 ? `\n...и ещё ${currentErrorList.length - 30}` : "";
+    alert(`Найдено ошибок: ${currentErrorList.length}\n\n${lines.join("\n")}${suffix}`);
 }
 
 function applyFastAssignmentUIUpdate(cellButton, assignedCount, assignedHours) {
@@ -1941,7 +1971,9 @@ function renderTable() {
                     || String(a.teacherName || "").localeCompare(String(b.teacherName || ""), "ru");
             });
     }
-    const { errorCount } = collectLoadIssues(presentationRows, classes);
+    const { errorCount, errors } = collectLoadIssues(presentationRows, classes);
+    currentErrorList = errors;
+    currentErrorIndex = -1;
     refreshHealthCounters();
 
     const headMain = document.createElement("tr");
@@ -1953,7 +1985,7 @@ function renderTable() {
         <th rowspan="2">Всего часов в комплексе</th>
         <th colspan="${Math.max(classes.length, 1)}">
             <div class="load-head-actions">
-                <span><strong>Ошибки: ${errorCount}</strong></span>
+                <span><strong>Ошибки: <button type="button" class="error-count-btn" data-head-error-info="1">${errorCount}</button></strong></span>
                 <button type="button" class="head-action-btn" data-head-save="1">Сохранить нагрузку корпуса</button>
                 <button type="button" class="head-action-btn" data-head-next-error="1">Перейти к ошибке</button>
             </div>
@@ -1962,8 +1994,10 @@ function renderTable() {
     ui.tableHead.appendChild(headMain);
     const headSaveBtn = headMain.querySelector('[data-head-save="1"]');
     const headNextErrorBtn = headMain.querySelector('[data-head-next-error="1"]');
+    const headErrorInfoBtn = headMain.querySelector('[data-head-error-info="1"]');
     headSaveBtn?.addEventListener("click", () => ui.saveBuildingBtn?.click());
     headNextErrorBtn?.addEventListener("click", () => ui.nextErrorBtn?.click());
+    headErrorInfoBtn?.addEventListener("click", showErrorsPopup);
 
     const headClasses = document.createElement("tr");
     headClasses.className = "load-class-head";
@@ -1978,6 +2012,7 @@ function renderTable() {
     latestPresentationRows = presentationRows;
     presentationRows.forEach((row, index) => {
         const tr = document.createElement("tr");
+        tr.dataset.rowKey = rowStableKey(row);
         if (rowHasPlannedLoadChange(row, referenceDate)) {
             tr.classList.add("load-change-row");
         }
@@ -1985,7 +2020,10 @@ function renderTable() {
 
         tr.innerHTML = `
             <td>
-                <div class="subject-cell">${esc(row.displaySubjectName || row.subjectName)} ${index === 0 || presentationRows[index - 1].subjectKey !== row.subjectKey ? `<button class="inline-plus" type="button" data-plus-subject="${esc(row.subjectKey)}" data-plus-after="${esc(row.teacherRowId)}" title="Добавить строку педагога">+</button>` : ""}</div>
+                <div class="subject-cell">
+                    <span class="subject-cell-name">${esc(row.displaySubjectName || row.subjectName)}</span>
+                    ${index === 0 || presentationRows[index - 1].subjectKey !== row.subjectKey ? `<button class="inline-plus" type="button" data-plus-subject="${esc(row.subjectKey)}" data-plus-after="${esc(row.teacherRowId)}" title="Добавить строку педагога">+</button>` : ""}
+                </div>
             </td>            <td class="${isDismissedTeacher(row.teacherName) ? "dismissal-row" : ""}">
                 <input type="text" class="teacher-input" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" list="${listId}" value="${esc(row.teacherName)}" placeholder="ФИО педагога">
                 <datalist id="${listId}"></datalist>
@@ -2301,19 +2339,35 @@ async function refreshSourceData() {
     ]);
 
     const buildingByCode = new Map();
+    const appendAddress = (entry, value) => {
+        const cleaned = String(value || "").trim();
+        if (!cleaned) return;
+        const key = cleaned.toLowerCase();
+        if (entry.addresses.some((item) => item.toLowerCase() === key)) return;
+        entry.addresses.push(cleaned);
+    };
     (buildingRows || []).forEach((b) => {
-        const code = normalizeBuildingCode(b.code);
+        const code = normalizeBuildingCode(b.code || b.name);
         if (!code) return;
-        buildingByCode.set(code, {
-            ...b,
-            code,
-            name: String(b.name || "").trim() || code
-        });
+        const existing = buildingByCode.get(code) || { ...b, code, name: String(b.name || "").trim() || code, addresses: [] };
+        existing.name = String(existing.name || b.name || "").trim() || code;
+        appendAddress(existing, b.address);
+        existing.address = existing.addresses[0] || "";
+        buildingByCode.set(code, existing);
     });
     (classRows || []).forEach((r) => {
         const code = normalizeBuildingCode(r.numberSchoolBuilding);
-        if (!code || buildingByCode.has(code)) return;
-        buildingByCode.set(code, { code, name: code, address: "(из классов)" });
+        if (!code) return;
+        const existing = buildingByCode.get(code);
+        if (existing) {
+            appendAddress(existing, r.campusAddress);
+            existing.address = existing.addresses[0] || existing.address || "";
+            return;
+        }
+        const fallback = { code, name: `${code} (из классов)`, address: "", addresses: [] };
+        appendAddress(fallback, r.campusAddress);
+        fallback.address = fallback.addresses[0] || "";
+        buildingByCode.set(code, fallback);
     });
     buildings = [...buildingByCode.values()].sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"));
 

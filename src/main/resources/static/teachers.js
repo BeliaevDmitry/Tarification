@@ -97,9 +97,9 @@ function renderTeachers(rows) {
                         <button type="button" class="save-teacher-btn" data-id="${row.id}">Сохранить</button>
                         <input type="date" class="dismiss-date-input" value="${escapeHtml(row.dismissalDate || "")}" data-id="${row.id}">
                         <button type="button" class="mark-dismiss-btn" data-id="${row.id}" ${canEditTeachers() ? "" : "disabled title=\"Требуется право редактирования кадров\""}>На увольнение</button>
-                        <input type="date" class="plan-dismiss-date-input" value="${escapeHtml(row.plannedDismissalDate || "")}" data-id="${row.id}">
-                        <input type="text" class="plan-dismiss-comment-input" value="${escapeHtml(row.plannedDismissalComment || "")}" data-id="${row.id}" placeholder="Комментарий">
-                        <button type="button" class="mark-plan-dismiss-btn" data-id="${row.id}">Планирует уволиться</button>
+                        <input type="date" class="plan-dismiss-date-input" value="${escapeHtml(row.plannedDismissalDate || "")}" data-id="${row.id}" data-allow-readonly="true">
+                        <input type="text" class="plan-dismiss-comment-input" value="${escapeHtml(row.plannedDismissalComment || "")}" data-id="${row.id}" placeholder="Комментарий" data-allow-readonly="true">
+                        <button type="button" class="mark-plan-dismiss-btn" data-id="${row.id}" data-allow-readonly="true">Планирует уволиться</button>
                         ${row.dismissalDate ? `<button type="button" class="restore-teacher-btn" data-id="${row.id}">Восстановить</button>` : ""}
                         <button type="button" class="danger-btn delete-teacher-btn" data-id="${row.id}">Удалить</button>
                     </div>
