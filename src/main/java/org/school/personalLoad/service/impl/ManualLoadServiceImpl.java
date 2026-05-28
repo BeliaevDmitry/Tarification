@@ -11,6 +11,7 @@ import org.apache.poi.ss.usermodel.VerticalAlignment;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.ss.util.WorkbookUtil;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadHealthResponse;
@@ -285,8 +286,15 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
             List<String> sheetOrder = new ArrayList<>(byBuilding.keySet());
             sheetOrder.sort(String::compareToIgnoreCase);
+            if (sheetOrder.isEmpty()) {
+                Sheet sheet = workbook.createSheet("Нет данных");
+                Row emptyHeader = sheet.createRow(0);
+                emptyHeader.createCell(0).setCellValue("Нет данных по полной нагрузке за " + academicYear);
+                emptyHeader.getCell(0).setCellStyle(header);
+                sheet.setColumnWidth(0, 45 * 256);
+            }
             for (String building : sheetOrder) {
-                Sheet sheet = workbook.createSheet(building.length() > 31 ? building.substring(0, 31) : building);
+                Sheet sheet = workbook.createSheet(uniqueSheetName(workbook, building));
                 sheet.getPrintSetup().setLandscape(true);
                 sheet.setFitToPage(true);
                 sheet.getPrintSetup().setFitWidth((short) 1);
@@ -407,6 +415,29 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             workbook.write(out);
             return out.toByteArray();
         }
+    }
+
+    private String uniqueSheetName(Workbook workbook, String rawName) {
+        String base = rawName == null || rawName.isBlank() ? "Не закреплены" : rawName.trim();
+        base = WorkbookUtil.createSafeSheetName(base);
+        if (base.isBlank()) {
+            base = "Лист";
+        }
+        base = truncateSheetName(base, 31);
+        String candidate = base;
+        int counter = 2;
+        while (workbook.getSheetIndex(candidate) >= 0) {
+            String suffix = " (" + counter++ + ")";
+            candidate = truncateSheetName(base, 31 - suffix.length()) + suffix;
+        }
+        return candidate;
+    }
+
+    private String truncateSheetName(String value, int maxLength) {
+        if (value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, Math.max(1, maxLength));
     }
 
     @Override
