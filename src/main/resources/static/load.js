@@ -151,12 +151,15 @@ function sortRu(values) {
 }
 
 function normalizeBuildingCode(value) {
-    return String(value || "")
+    const normalized = String(value || "")
         .trim()
         .toUpperCase()
         .replace(/[–—]/g, "-")
+        .replace(/[CС][ПPР]/g, "СП")
         .replace(/\s*\|\s*/g, "|")
         .replace(/\s+/g, "");
+    const separatorIndex = normalized.indexOf("|");
+    return separatorIndex >= 0 ? normalized.slice(0, separatorIndex) : normalized;
 }
 
 function canonicalBuildingCode(value) {
@@ -193,8 +196,12 @@ function addressesForBuildingCode(buildingCode) {
         addresses.push(cleaned);
     };
 
-    const fromBuilding = (buildings || []).find((b) => normalizeBuildingCode(b?.code) === normalizedCode);
-    pushUnique(fromBuilding?.address);
+    (buildings || [])
+        .filter((b) => normalizeBuildingCode(b?.code) === normalizedCode)
+        .forEach((b) => {
+            (b.addresses || []).forEach(pushUnique);
+            pushUnique(b.address);
+        });
 
     (classroomRows || []).forEach((row) => {
         if (normalizeBuildingCode(row?.numberSchoolBuilding) !== normalizedCode) return;
@@ -2332,19 +2339,35 @@ async function refreshSourceData() {
     ]);
 
     const buildingByCode = new Map();
+    const appendAddress = (entry, value) => {
+        const cleaned = String(value || "").trim();
+        if (!cleaned) return;
+        const key = cleaned.toLowerCase();
+        if (entry.addresses.some((item) => item.toLowerCase() === key)) return;
+        entry.addresses.push(cleaned);
+    };
     (buildingRows || []).forEach((b) => {
-        const code = normalizeBuildingCode(b.code);
+        const code = normalizeBuildingCode(b.code || b.name);
         if (!code) return;
-        buildingByCode.set(code, {
-            ...b,
-            code,
-            name: String(b.name || "").trim() || code
-        });
+        const existing = buildingByCode.get(code) || { ...b, code, name: String(b.name || "").trim() || code, addresses: [] };
+        existing.name = String(existing.name || b.name || "").trim() || code;
+        appendAddress(existing, b.address);
+        existing.address = existing.addresses[0] || "";
+        buildingByCode.set(code, existing);
     });
     (classRows || []).forEach((r) => {
         const code = normalizeBuildingCode(r.numberSchoolBuilding);
-        if (!code || buildingByCode.has(code)) return;
-        buildingByCode.set(code, { code, name: code, address: "(из классов)" });
+        if (!code) return;
+        const existing = buildingByCode.get(code);
+        if (existing) {
+            appendAddress(existing, r.campusAddress);
+            existing.address = existing.addresses[0] || existing.address || "";
+            return;
+        }
+        const fallback = { code, name: `${code} (из классов)`, address: "", addresses: [] };
+        appendAddress(fallback, r.campusAddress);
+        fallback.address = fallback.addresses[0] || "";
+        buildingByCode.set(code, fallback);
     });
     buildings = [...buildingByCode.values()].sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"));
 
