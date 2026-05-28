@@ -11,6 +11,7 @@ import org.apache.poi.ss.usermodel.VerticalAlignment;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.ss.util.WorkbookUtil;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadHealthResponse;
@@ -285,8 +286,15 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
             List<String> sheetOrder = new ArrayList<>(byBuilding.keySet());
             sheetOrder.sort(String::compareToIgnoreCase);
+            if (sheetOrder.isEmpty()) {
+                Sheet sheet = workbook.createSheet("Нет данных");
+                Row emptyHeader = sheet.createRow(0);
+                emptyHeader.createCell(0).setCellValue("Нет данных по полной нагрузке за " + academicYear);
+                emptyHeader.getCell(0).setCellStyle(header);
+                sheet.setColumnWidth(0, 45 * 256);
+            }
             for (String building : sheetOrder) {
-                Sheet sheet = workbook.createSheet(building.length() > 31 ? building.substring(0, 31) : building);
+                Sheet sheet = workbook.createSheet(uniqueSheetName(workbook, building));
                 sheet.getPrintSetup().setLandscape(true);
                 sheet.setFitToPage(true);
                 sheet.getPrintSetup().setFitWidth((short) 1);
@@ -409,6 +417,29 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         }
     }
 
+    private String uniqueSheetName(Workbook workbook, String rawName) {
+        String base = rawName == null || rawName.isBlank() ? "Не закреплены" : rawName.trim();
+        base = WorkbookUtil.createSafeSheetName(base);
+        if (base.isBlank()) {
+            base = "Лист";
+        }
+        base = truncateSheetName(base, 31);
+        String candidate = base;
+        int counter = 2;
+        while (workbook.getSheetIndex(candidate) >= 0) {
+            String suffix = " (" + counter++ + ")";
+            candidate = truncateSheetName(base, 31 - suffix.length()) + suffix;
+        }
+        return candidate;
+    }
+
+    private String truncateSheetName(String value, int maxLength) {
+        if (value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, Math.max(1, maxLength));
+    }
+
     @Override
     @Transactional
     public List<ManualLoadEntry> importWorkbook(String academicYear, MultipartFile file) {
@@ -500,10 +531,15 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         );
 
         Map<String, Integer> assignedByKey = new HashMap<>();
+        Map<String, Integer> vacancyByKey = new HashMap<>();
         for (ManualLoadEntry row : manual) {
             if (row.getFioTeacher() == null || row.getFioTeacher().isBlank()) continue;
             String key = statsKey(row.getClassName(), row.getSubjectName(), row.getStudyPeriod(), row.getEducationLevel(), row.getGroupNameEducationalPlan());
-            assignedByKey.merge(key, Math.max(row.getGroupLoad() == null ? row.getLoad() : row.getGroupLoad(), 0), Integer::sum);
+            int loadValue = Math.max(row.getGroupLoad() == null ? row.getLoad() : row.getGroupLoad(), 0);
+            assignedByKey.merge(key, loadValue, Integer::sum);
+            if ("Вакансия".equalsIgnoreCase(normalizeValue(row.getFioTeacher()))) {
+                vacancyByKey.merge(key, loadValue, Integer::sum);
+            }
         }
 
         Map<String, ManualLoadStatsResponse.SubjectStat> bySubject = new HashMap<>();
@@ -515,12 +551,14 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 String normalizedSubject = normalizeToken(subjectName);
                 String area = subjectAreaByName.getOrDefault(normalizedSubject, "Без области");
                 ManualLoadStatsResponse.SubjectStat stat = bySubject.computeIfAbsent(normalizedSubject,
-                        k -> new ManualLoadStatsResponse.SubjectStat(area, subjectName, 0, 0, 0));
+                        k -> new ManualLoadStatsResponse.SubjectStat(area, subjectName, 0, 0, 0, 0));
                 int planned = Math.max(item.getPlannedHours() == null ? 0 : item.getPlannedHours().intValue(), 0);
                 String key = statsKey(item.getClassName(), item.getSubjectName(), item.getStudyPeriod(), item.getEducationLevel(), groupNameForStats(item));
                 int assigned = Math.min(planned, assignedByKey.getOrDefault(key, 0));
+                int vacancy = Math.min(planned, vacancyByKey.getOrDefault(key, 0));
                 stat.setPlanned(stat.getPlanned() + planned);
                 stat.setAssigned(stat.getAssigned() + assigned);
+                stat.setVacancy(stat.getVacancy() + Math.min(vacancy, assigned));
             }
         }
 
