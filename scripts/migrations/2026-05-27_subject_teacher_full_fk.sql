@@ -223,19 +223,31 @@ FROM teacher_directory_entry t
 WHERE lower(trim(m."fioTeacher")) = lower(trim(t."fioTeacher"))
   AND m.teacher_id IS NULL;
 
--- Создаём отсутствующих педагогов по факту встречаемых ФИО
-INSERT INTO teacher_directory_entry("fioTeacher", "createdAt")
-SELECT DISTINCT trim(c."fioTeacher"), now()
+-- Создаём отсутствующих педагогов по факту встречаемых ФИО.
+-- numberSchoolBuilding обязательно передаём, потому что после building_group FK
+-- teacher_directory_entry синхронизирует и проверяет building_group_id через триггер.
+INSERT INTO teacher_directory_entry("fioTeacher", "numberSchoolBuilding", "createdAt")
+SELECT DISTINCT ON (lower(trim(c."fioTeacher")))
+       trim(c."fioTeacher"),
+       c."numberSchoolBuilding",
+       now()
 FROM classroom_leadership_entry c
 WHERE c.teacher_id IS NULL
   AND coalesce(trim(c."fioTeacher"), '') <> ''
+  AND coalesce(trim(c."numberSchoolBuilding"), '') <> ''
+ORDER BY lower(trim(c."fioTeacher")), c.id
 ON CONFLICT ("fioTeacher") DO NOTHING;
 
-INSERT INTO teacher_directory_entry("fioTeacher", "createdAt")
-SELECT DISTINCT trim(m."fioTeacher"), now()
+INSERT INTO teacher_directory_entry("fioTeacher", "numberSchoolBuilding", "createdAt")
+SELECT DISTINCT ON (lower(trim(m."fioTeacher")))
+       trim(m."fioTeacher"),
+       m."numberSchoolBuilding",
+       now()
 FROM manual_load_entry m
 WHERE m.teacher_id IS NULL
   AND coalesce(trim(m."fioTeacher"), '') <> ''
+  AND coalesce(trim(m."numberSchoolBuilding"), '') <> ''
+ORDER BY lower(trim(m."fioTeacher")), m.id
 ON CONFLICT ("fioTeacher") DO NOTHING;
 
 -- Повторный backfill
@@ -280,8 +292,8 @@ BEGIN
         ORDER BY id
         LIMIT 1;
         IF tid IS NULL THEN
-            INSERT INTO teacher_directory_entry("fioTeacher", "createdAt")
-            VALUES (trim(NEW."fioTeacher"), now())
+            INSERT INTO teacher_directory_entry("fioTeacher", "numberSchoolBuilding", "createdAt")
+            VALUES (trim(NEW."fioTeacher"), NEW."numberSchoolBuilding", now())
             RETURNING id, "fioTeacher" INTO tid, tfio;
         END IF;
         NEW.teacher_id := tid;
