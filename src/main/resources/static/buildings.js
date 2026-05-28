@@ -38,6 +38,7 @@ function displayManagerFio(item) {
 }
 
 function openEdit(item) {
+    ui.editForm.elements.id.value = item.id || "";
     ui.editForm.elements.code.value = item.code;
     ui.editForm.elements.name.value = item.name;
     ui.editForm.elements.address.value = item.address;
@@ -50,13 +51,13 @@ function render(rows) {
     buildings = rows || [];
     buildings.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ru")).forEach((r) => {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${escapeHtml(r.name)}</td><td>${escapeHtml(displayManagerFio(r))}</td><td>${escapeHtml(r.address)}</td><td><button type="button" class="inline-plus" data-edit-code="${escapeHtml(r.code)}" title="Редактировать">✏️</button></td>`;
+        tr.innerHTML = `<td>${escapeHtml(r.name)}</td><td>${escapeHtml(displayManagerFio(r))}</td><td>${escapeHtml(r.address)}</td><td><button type="button" class="inline-plus" data-edit-id="${escapeHtml(r.id)}" title="Редактировать">✏️</button></td>`;
         ui.body.appendChild(tr);
     });
 
-    ui.body.querySelectorAll('button[data-edit-code]').forEach((btn) => {
+    ui.body.querySelectorAll('button[data-edit-id]').forEach((btn) => {
         btn.addEventListener('click', () => {
-            const found = buildings.find((b) => b.code === btn.dataset.editCode);
+            const found = buildings.find((b) => String(b.id) === String(btn.dataset.editId));
             if (found) openEdit(found);
         });
     });
@@ -74,7 +75,7 @@ ui.form.addEventListener("submit", async (e) => {
         name: String(form.get("name") || "").trim(),
         address: String(form.get("address") || "").trim()
     };
-    payload.code = `${payload.name}|${payload.address}`.toLowerCase();
+    payload.code = payload.name;
 
     try {
         const saved = await api("/api/buildings", { method: "POST", headers: jsonHeaders, body: JSON.stringify(payload) });
@@ -87,6 +88,7 @@ ui.form.addEventListener("submit", async (e) => {
 ui.editForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const payload = {
+        id: Number(ui.editForm.elements.id.value || 0) || null,
         code: String(ui.editForm.elements.code.value || '').trim(),
         name: String(ui.editForm.elements.name.value || '').trim(),
         address: String(ui.editForm.elements.address.value || '').trim()
@@ -104,16 +106,16 @@ ui.editForm.addEventListener('submit', async (e) => {
 
 ui.closeBtn.addEventListener('click', () => ui.editDialog.close());
 ui.deleteBtn?.addEventListener('click', async () => {
-    const code = String(ui.editForm.elements.code.value || "").trim();
-    if (!code) {
-        print({ error: "Код корпуса не найден" });
+    const id = Number(ui.editForm.elements.id.value || 0) || null;
+    if (!id) {
+        print({ error: "ID корпуса не найден" });
         return;
     }
     if (!window.confirm("Удалить корпус? Действие необратимо.")) return;
     try {
-        await api(`/api/buildings/one?code=${encodeURIComponent(code)}`, { method: "DELETE" });
+        await api(`/api/buildings/one?id=${encodeURIComponent(id)}`, { method: "DELETE" });
         ui.editDialog.close();
-        print({ status: "deleted", code });
+        print({ status: "deleted", id });
         await reload();
     } catch (error) {
         print({ error: error.message });
