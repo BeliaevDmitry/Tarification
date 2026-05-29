@@ -1922,3 +1922,30 @@ dialog::backdrop {
 .load-page .sheet-wrap {
     max-height: calc(100vh - 150px);
 }
+
+.people-load-wrap {
+    max-height: 68vh;
+    overflow: auto;
+}
+
+.people-load-table th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.people-load-table td,
+.people-load-table th {
+    vertical-align: top;
+}
+
+.people-load-fio,
+.people-load-hours {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.people-load-extra {
+    min-width: 260px;
+    white-space: pre-line;
+}
