@@ -75,6 +75,8 @@ const state = {
 const derivedCache = {
     classBuildingMapRowsRef: null,
     classBuildingMapValue: new Map(),
+    classAddressMapRowsRef: null,
+    classAddressMapValue: new Map(),
     rowsByBuildingKey: "",
     rowsByBuildingValue: [],
     expandedRowsByBuildingKey: "",
@@ -112,6 +114,8 @@ function invalidateTeacherHourIndexesCache() {
 function invalidateDerivedCache() {
     derivedCache.classBuildingMapRowsRef = null;
     derivedCache.classBuildingMapValue = new Map();
+    derivedCache.classAddressMapRowsRef = null;
+    derivedCache.classAddressMapValue = new Map();
     derivedCache.rowsByBuildingKey = "";
     derivedCache.rowsByBuildingValue = [];
     derivedCache.expandedRowsByBuildingKey = "";
@@ -202,9 +206,18 @@ function isAddressScopedBuilding(value) {
 function rowAddressToken(row) {
     const classAddress = String(row?.campusAddress || "").trim();
     if (classAddress) return normalizeBuildingAccessCode(classAddress);
+
+    const className = normalizeClassName(row?.className);
     const groupCode = buildingGroupCode(row?.numberSchoolBuilding);
-    const building = (buildings || []).find((item) => buildingGroupCode(item?.code) === groupCode);
-    return normalizeBuildingAccessCode(building?.address);
+    if (className) {
+        const addressMap = classAddressMap();
+        const scopedAddress = addressMap.get(`${groupCode}|${className}`);
+        if (scopedAddress) return scopedAddress;
+        const byClassOnly = addressMap.get(className);
+        if (byClassOnly) return byClassOnly;
+    }
+
+    return "";
 }
 
 function rowMatchesBuildingAccess(row, accessCode) {
@@ -277,6 +290,25 @@ function continuityGroupName(row) {
     if (row?.__groupIndex) return `Группа ${row.__groupIndex}`;
     if (row?.subgroupRequired) return "Группа 1";
     return "";
+}
+
+
+function classAddressMap() {
+    if (derivedCache.classAddressMapRowsRef === classroomRows) {
+        return derivedCache.classAddressMapValue;
+    }
+    const map = new Map();
+    (classroomRows || []).forEach((r) => {
+        const cls = normalizeClassName(r.className);
+        const b = buildingGroupCode(r.numberSchoolBuilding);
+        const address = normalizeBuildingAccessCode(r.campusAddress);
+        if (!cls || !address) return;
+        if (b) map.set(`${b}|${cls}`, address);
+        if (!map.has(cls)) map.set(cls, address);
+    });
+    derivedCache.classAddressMapRowsRef = classroomRows;
+    derivedCache.classAddressMapValue = map;
+    return map;
 }
 
 function classBuildingMap() {
