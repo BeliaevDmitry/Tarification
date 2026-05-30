@@ -41,6 +41,7 @@ function renderStatsView(stats) {
           <th>Предмет</th>
           <th>Часы по УП</th>
           <th>Распределено</th>
+          <th>Вакансии</th>
           <th>Не распределено</th>
         </tr>
       </thead>`;
@@ -51,6 +52,7 @@ function renderStatsView(stats) {
         <td>${esc(row.subjectName)}</td>
         <td>${esc(row.planned)}</td>
         <td>${esc(row.assigned)}</td>
+        <td>${esc(row.vacancy ?? 0)}</td>
         <td>${esc(row.unassigned)}</td>
       </tr>
     `).join('');

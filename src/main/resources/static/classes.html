@@ -12,13 +12,14 @@
 <main class="container">
     <header class="card">
         <h1>Классы</h1>
-        <p class="muted">Выбор корпуса по названию и адресу.</p>
+        <p class="muted">Корпус выбирается из справочника «Корпуса»; адрес площадки заполняется адресом выбранного корпуса и может быть уточнён вручную.</p>
         <nav class="page-nav">
             <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
             <a class="nav-link active" href="/classes.html" data-tab="CLASSES">Классы</a>
             <a class="nav-link" href="/subjects.html" data-tab="SUBJECTS">Предметы</a>
             <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
             <a class="nav-link" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/people-load.html" data-tab="LOAD">Нагрузка по людям</a>
             <a class="nav-link" href="/load-statistics.html" data-tab="LOAD">Статистика нагрузки</a>
             <a class="nav-link" href="/settings.html" data-tab="SETTINGS">Настройки</a>
             <a class="nav-link" href="/teachers.html" data-tab="TEACHERS">Кадры</a>
@@ -40,7 +41,7 @@
             <label class="field-row"><span>Направление</span><input name="classDirection" placeholder="Направление класса" required></label>
             <label class="field-row"><span>Тип класса</span><select name="classType"><option value="NORMAL" selected>Норма</option><option value="AOOP_UO">АООП УО</option></select></label>
             <input name="fioTeacher" id="class-teacher" list="teacher-list" placeholder="Классный руководитель" required>
-            <input name="campusAddress" placeholder="Адрес площадки (если отличается)">
+            <input name="campusAddress" id="class-campus-address" placeholder="Заполнится адресом выбранного корпуса; можно изменить">
             <datalist id="teacher-list"></datalist>
             <button type="submit">Добавить / обновить класс</button>
         </form>
@@ -56,7 +57,7 @@
         <div class="sheet-wrap">
             <table class="sheet-table">
                 <thead>
-                <tr><th>Корпус</th><th>Класс</th><th>Тип</th><th>Направление</th><th>Классный руководитель</th><th>Адрес площадки (если отличается)</th><th></th></tr>
+                <tr><th>Корпус</th><th>Класс</th><th>Тип</th><th>Направление</th><th>Классный руководитель</th><th>Адрес площадки</th><th></th></tr>
                 </thead>
                 <tbody id="classes-body"></tbody>
             </table>
@@ -72,7 +73,7 @@
         <label class="field-row"><span>Тип класса</span><select name="classType"><option value="NORMAL" selected>Норма</option><option value="AOOP_UO">АООП УО</option></select></label>
         <label class="field-row"><span>Направление</span><input name="classDirection" placeholder="Направление класса" required></label>
         <label class="field-row"><span>Классный руководитель</span><input name="fioTeacher" id="class-edit-teacher" list="teacher-list" placeholder="Классный руководитель" required></label>
-        <label class="field-row"><span>Адрес площадки (если отличается)</span><input name="campusAddress" placeholder="Адрес площадки (если отличается)"></label>
+        <label class="field-row"><span>Адрес площадки (если отличается)</span><input name="campusAddress" id="class-edit-campus-address" placeholder="Заполнится адресом выбранного корпуса; можно изменить"></label>
         <div class="row">
             <button type="submit">Сохранить</button>
             <button type="button" id="class-edit-delete-btn" class="danger-btn">Удалить класс</button>
