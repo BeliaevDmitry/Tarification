@@ -53,18 +53,28 @@ public class SessionUser implements Serializable {
         if (isAdmin() || loadEditAllBuildings) {
             return true;
         }
-        String normalizedRequested = normalizeBuildingGroupCode(buildingCode);
+        String requestedAccessCode = normalizeBuildingCode(buildingCode);
+        String requestedGroupCode = normalizeBuildingGroupCode(buildingCode);
         if (!loadEditableBuildingCodes.isEmpty()) {
-            return loadEditableBuildingCodes.stream().map(this::normalizeBuildingGroupCode).anyMatch(normalizedRequested::equals);
+            return loadEditableBuildingCodes.stream().anyMatch(permissionCode -> {
+                String normalizedPermission = normalizeBuildingCode(permissionCode);
+                if (normalizedPermission.isBlank()) return false;
+                if (normalizedPermission.equals(requestedAccessCode)) return true;
+                boolean groupWidePermission = !normalizedPermission.contains("|");
+                return groupWidePermission && normalizeBuildingGroupCode(normalizedPermission).equals(requestedGroupCode);
+            });
         }
         if (role == UserRole.BUILDING_HEAD) {
-            return normalizeBuildingGroupCode(managedBuildingCode).equals(normalizedRequested);
+            return normalizeBuildingGroupCode(managedBuildingCode).equals(requestedGroupCode);
         }
         return false;
     }
 
     private String normalizeBuildingCode(String value) {
-        return String.valueOf(value == null ? "" : value).trim().toUpperCase().replace(" ", "");
+        return String.valueOf(value == null ? "" : value)
+                .trim()
+                .toUpperCase()
+                .replace(" ", "");
     }
 
     private String normalizeBuildingGroupCode(String value) {
