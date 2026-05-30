@@ -52,9 +52,35 @@ function entryKey(entry) {
     return `${normalizeBuildingCode(entry.numberSchoolBuilding)}|${normalizeClassName(entry.className)}`;
 }
 
-function buildingLabel(code) {
-    const b = buildings.find((x) => x.code === code);
-    return b ? `${b.name} (${b.address})` : code;
+function buildingAddressKey(address) {
+    return norm(address).toLowerCase();
+}
+
+function buildingChoiceKey(code, address) {
+    return `${normalizeBuildingCode(code)}|${buildingAddressKey(address)}`;
+}
+
+function findBuildingChoice(code, address = "") {
+    const normalizedCode = normalizeBuildingCode(code);
+    const normalizedAddress = buildingAddressKey(address);
+    return buildingChoices().find((b) => normalizeBuildingCode(b.code) === normalizedCode && (!normalizedAddress || buildingAddressKey(b.address) === normalizedAddress))
+        || buildingChoices().find((b) => normalizeBuildingCode(b.code) === normalizedCode);
+}
+
+function buildingLabel(code, address = "") {
+    const b = findBuildingChoice(code, address);
+    return b ? `${b.name} — ${b.address}` : code;
+}
+
+function buildingChoices() {
+    const map = new Map();
+    (buildings || []).forEach((b) => {
+        const code = normalizeBuildingCode(b.code);
+        const address = norm(b.address);
+        if (!code || !address) return;
+        map.set(buildingChoiceKey(code, address), { code, name: norm(b.name) || code, address });
+    });
+    return Array.from(map.values()).sort((a, b) => (`${a.name}|${a.address}`).localeCompare(`${b.name}|${b.address}`, "ru"));
 }
 
 function buildingChoices() {
@@ -78,42 +104,66 @@ function buildingChoices() {
 }
 
 function displayCampusAddress(entry) {
-    const rawCampus = norm(entry?.campusAddress);
-    if (!rawCampus) return "—";
-    const building = buildings.find((x) => normalizeBuildingCode(x.code) === normalizeBuildingCode(entry?.numberSchoolBuilding));
-    const buildingAddress = norm(building?.address);
-    if (!buildingAddress) return rawCampus;
-    return rawCampus.localeCompare(buildingAddress, "ru", { sensitivity: "accent" }) === 0 ? "—" : rawCampus;
+    return norm(entry?.campusAddress) || norm(findBuildingChoice(entry?.numberSchoolBuilding)?.address) || "—";
+}
+
+function selectedBuildingChoice(selectEl) {
+    const option = selectEl?.selectedOptions?.[0];
+    if (!option) return null;
+    return {
+        code: option.value,
+        address: option.dataset.address || "",
+        name: option.dataset.name || option.textContent || option.value
+    };
+}
+
+function applyBuildingAddress(selectEl, addressInput, force = false) {
+    const choice = selectedBuildingChoice(selectEl);
+    if (!choice || !addressInput) return;
+    if (force || !norm(addressInput.value)) {
+        addressInput.value = choice.address || "";
+    }
 }
 
 function renderTeachers() {
     ui.teacherList.innerHTML = teachers.map((fio) => `<option value="${esc(fio)}"></option>`).join("");
 }
 
-function fillBuildingOptions(selectEl, selectedValue = "") {
+function fillBuildingOptions(selectEl, selectedValue = "", selectedAddress = "") {
     selectEl.innerHTML = `<option value="">Выберите корпус</option>`;
     buildingChoices().forEach((b) => {
-        selectEl.innerHTML += `<option value="${esc(b.code)}">${esc(b.name)} — ${esc(b.address)}</option>`;
+        const option = document.createElement("option");
+        option.value = b.code;
+        option.dataset.address = b.address;
+        option.dataset.name = b.name;
+        option.dataset.choiceKey = buildingChoiceKey(b.code, b.address);
+        option.textContent = `${b.name} — ${b.address}`;
+        selectEl.appendChild(option);
     });
-    if (selectedValue) selectEl.value = selectedValue;
+    if (!selectedValue) return;
+    const selectedKey = buildingChoiceKey(selectedValue, selectedAddress);
+    const option = Array.from(selectEl.options).find((opt) => opt.dataset.choiceKey === selectedKey)
+        || Array.from(selectEl.options).find((opt) => normalizeBuildingCode(opt.value) === normalizeBuildingCode(selectedValue));
+    if (option) selectEl.selectedIndex = option.index;
 }
 
 function renderBuildings() {
-    fillBuildingOptions(ui.building, ui.building.value);
-    fillBuildingOptions(ui.editBuilding, ui.editBuilding.value);
+    const currentBuildingAddress = ui.form?.elements?.campusAddress?.value || "";
+    const currentEditAddress = ui.editForm?.elements?.campusAddress?.value || "";
+    fillBuildingOptions(ui.building, ui.building.value, currentBuildingAddress);
+    fillBuildingOptions(ui.editBuilding, ui.editBuilding.value, currentEditAddress);
 }
 
 function openEditDialog(entry) {
     editingOriginalKey = entryKey(entry);
     editingOriginalEntry = { ...entry };
     const normalizedEntryCode = normalizeBuildingCode(entry.numberSchoolBuilding);
-    const matchingBuilding = buildings.find((b) => normalizeBuildingCode(b.code) === normalizedEntryCode);
-    ui.editForm.elements.numberSchoolBuilding.value = matchingBuilding?.code || entry.numberSchoolBuilding || "";
+    fillBuildingOptions(ui.editBuilding, normalizedEntryCode || entry.numberSchoolBuilding || "", entry.campusAddress || "");
     ui.editForm.elements.className.value = entry.className || "";
     ui.editForm.elements.classType.value = entry.classType || "NORMAL";
     ui.editForm.elements.classDirection.value = entry.classDirection || "";
     ui.editForm.elements.fioTeacher.value = entry.fioTeacher || "";
-    ui.editForm.elements.campusAddress.value = entry.campusAddress || "";
+    ui.editForm.elements.campusAddress.value = entry.campusAddress || norm(selectedBuildingChoice(ui.editBuilding)?.address) || "";
     ui.editDialog.showModal();
 }
 
@@ -123,7 +173,7 @@ function renderClasses(rows) {
     classRows.forEach((r) => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
-            <td>${esc(buildingLabel(r.numberSchoolBuilding))}</td>
+            <td>${esc(buildingLabel(r.numberSchoolBuilding, r.campusAddress))}</td>
             <td>${esc(r.className)}</td>
             <td>${esc((r.classType || "NORMAL") === "AOOP_UO" ? "АООП УО" : "Норма")}</td>
             <td>${esc(r.classDirection)}</td>
@@ -153,6 +203,7 @@ async function reload() {
     teachers = (teacherRows || []).map((r) => norm(r.fioTeacher)).filter(Boolean);
     renderTeachers();
     renderBuildings();
+    applyBuildingAddress(ui.building, ui.form.elements.campusAddress);
     renderClasses(classRows);
 }
 
@@ -167,16 +218,20 @@ async function upsertEntry(entry, originalKey = null) {
     return api("/api/classroom-leadership", { method: "PUT", headers: jsonHeaders, body: JSON.stringify(filtered) });
 }
 
+ui.building?.addEventListener("change", () => applyBuildingAddress(ui.building, ui.form.elements.campusAddress, true));
+ui.editBuilding?.addEventListener("change", () => applyBuildingAddress(ui.editBuilding, ui.editForm.elements.campusAddress, true));
+
 ui.form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    applyBuildingAddress(ui.building, ui.form.elements.campusAddress);
     const form = new FormData(ui.form);
     const entry = {
         numberSchoolBuilding: normalizeBuildingCode(form.get("numberSchoolBuilding")),
         className: normalizeClassName(form.get("className")),
         classDirection: norm(form.get("classDirection")),
         fioTeacher: norm(form.get("fioTeacher")),
-        campusAddress: norm(form.get("campusAddress"))
-        ,classType: norm(form.get("classType")) || "NORMAL"
+        campusAddress: norm(form.get("campusAddress")),
+        classType: norm(form.get("classType")) || "NORMAL"
     };
 
     if (!entry.numberSchoolBuilding || !entry.className || !entry.classDirection || !entry.fioTeacher) {
@@ -196,6 +251,7 @@ ui.form.addEventListener("submit", async (e) => {
 
 ui.editForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+    applyBuildingAddress(ui.editBuilding, ui.editForm.elements.campusAddress);
     const form = new FormData(ui.editForm);
     const entry = {
         id: editingOriginalEntry?.id || null,
@@ -203,8 +259,8 @@ ui.editForm.addEventListener('submit', async (e) => {
         className: normalizeClassName(form.get("className")),
         classDirection: norm(form.get("classDirection")),
         fioTeacher: norm(form.get("fioTeacher")),
-        campusAddress: norm(form.get("campusAddress"))
-        ,classType: norm(form.get("classType")) || "NORMAL"
+        campusAddress: norm(form.get("campusAddress")),
+        classType: norm(form.get("classType")) || "NORMAL"
     };
 
     if (!entry.numberSchoolBuilding || !entry.className || !entry.classDirection || !entry.fioTeacher) {
