@@ -455,7 +455,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         return schoolBuildingRepository.findByCode(buildingCode)
                 .map(org.school.personalLoad.model.SchoolBuilding::getAddress)
                 .map(this::normalize)
-                .orElse("Не указан");
+                .orElse("");
     }
 
     private String normalizeBuildingCode(String value) {
