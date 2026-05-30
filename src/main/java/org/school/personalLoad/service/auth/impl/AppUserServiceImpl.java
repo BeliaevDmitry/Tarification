@@ -99,7 +99,8 @@ public class AppUserServiceImpl implements AppUserService {
             throw new IllegalStateException("Пользователь с таким логином уже существует");
         }
 
-        Set<String> knownBuildingCodes = loadKnownBuildingCodes();
+        Set<String> knownBuildingGroupCodes = loadKnownBuildingGroupCodes();
+        Set<String> knownBuildingAccessCodes = loadKnownBuildingAccessCodes();
 
         String normalizedFio = normalizeTeacherFio(request.getFullName());
         ensureUniqueTeacherFioUser(normalizedFio, null);
@@ -108,9 +109,9 @@ public class AppUserServiceImpl implements AppUserService {
         user.setFullName(normalizedFio);
         user.setEmail(normalizeOptional(request.getEmail()));
         user.setPhone(normalizePhone(request.getPhone()));
-        user.setManagedBuildingCode(normalizeExistingBuildingCode(request.getManagedBuildingCode(), knownBuildingCodes, "Основной корпус"));
+        user.setManagedBuildingCode(normalizeExistingBuildingCode(request.getManagedBuildingCode(), knownBuildingGroupCodes, "Основной корпус"));
         user.setLoadEditAllBuildings(Boolean.TRUE.equals(request.getLoadEditAllBuildings()));
-        user.setLoadEditableBuildingCodes(normalizeBuildingCodes(request.getLoadEditableBuildingCodes(), knownBuildingCodes));
+        user.setLoadEditableBuildingCodes(normalizeBuildingCodes(request.getLoadEditableBuildingCodes(), knownBuildingAccessCodes));
         user.setRole(Objects.requireNonNull(request.getRole(), "Роль обязательна"));
         user.setActive(true);
         user.setCanView(request.getCanView() == null || request.getCanView());
@@ -129,7 +130,8 @@ public class AppUserServiceImpl implements AppUserService {
         AppUser user = appUserRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Пользователь не найден"));
 
-        Set<String> knownBuildingCodes = loadKnownBuildingCodes();
+        Set<String> knownBuildingGroupCodes = loadKnownBuildingGroupCodes();
+        Set<String> knownBuildingAccessCodes = loadKnownBuildingAccessCodes();
 
         if (request.getFullName() != null) {
             String normalizedFio = normalizeTeacherFio(request.getFullName());
@@ -143,13 +145,13 @@ public class AppUserServiceImpl implements AppUserService {
             user.setPhone(normalizePhone(request.getPhone()));
         }
         if (request.getManagedBuildingCode() != null) {
-            user.setManagedBuildingCode(normalizeExistingBuildingCode(request.getManagedBuildingCode(), knownBuildingCodes, "Основной корпус"));
+            user.setManagedBuildingCode(normalizeExistingBuildingCode(request.getManagedBuildingCode(), knownBuildingGroupCodes, "Основной корпус"));
         }
         if (request.getLoadEditAllBuildings() != null) {
             user.setLoadEditAllBuildings(request.getLoadEditAllBuildings());
         }
         if (request.getLoadEditableBuildingCodes() != null) {
-            user.setLoadEditableBuildingCodes(normalizeBuildingCodes(request.getLoadEditableBuildingCodes(), knownBuildingCodes));
+            user.setLoadEditableBuildingCodes(normalizeBuildingCodes(request.getLoadEditableBuildingCodes(), knownBuildingAccessCodes));
         }
         if (request.getRole() != null) {
             user.setRole(request.getRole());
@@ -455,11 +457,27 @@ public class AppUserServiceImpl implements AppUserService {
         return normalized;
     }
 
-    private Set<String> loadKnownBuildingCodes() {
+    private Set<String> loadKnownBuildingGroupCodes() {
         return schoolBuildingRepository.findAll().stream()
                 .map(building -> normalizeOptionalBuildingCode(building.getCode()))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private Set<String> loadKnownBuildingAccessCodes() {
+        LinkedHashSet<String> codes = new LinkedHashSet<>();
+        schoolBuildingRepository.findAll().forEach(building -> {
+            String groupCode = normalizeOptionalBuildingCode(building.getCode());
+            if (groupCode == null) {
+                return;
+            }
+            codes.add(groupCode);
+            String address = normalizeOptionalBuildingCode(building.getAddress());
+            if (address != null) {
+                codes.add(groupCode + "|" + address);
+            }
+        });
+        return codes;
     }
 
     private String normalizeExistingBuildingCode(String value, Set<String> knownBuildingCodes, String fieldName) {

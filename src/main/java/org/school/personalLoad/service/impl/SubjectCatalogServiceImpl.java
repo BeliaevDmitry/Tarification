@@ -5,6 +5,7 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.SubjectCreateRequest;
 import org.school.personalLoad.model.SubjectCatalogEntry;
+import org.school.personalLoad.model.SubjectAreaNames;
 import org.school.personalLoad.model.SubjectType;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
@@ -184,7 +185,7 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
                 Row ex3 = sheet.createRow(3);
                 ex3.createCell(0).setCellValue("Разговоры о важном");
                 ex3.createCell(1).setCellValue("3");
-                ex3.createCell(2).setCellValue("Без области");
+                ex3.createCell(2).setCellValue("Общественно-научные предметы");
                 ex3.createCell(3).setCellValue("1");
             } else {
                 rows.sort(Comparator.comparing(SubjectCatalogEntry::getSubjectName, String.CASE_INSENSITIVE_ORDER));
@@ -193,7 +194,7 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
                     Row row = sheet.createRow(idx++);
                     row.createCell(0).setCellValue(entry.getSubjectName());
                     row.createCell(1).setCellValue(exportTypeCode(entry.getSubjectType()));
-                    row.createCell(2).setCellValue(resolveAreaName(entry.getSubjectAreaName()));
+                    row.createCell(2).setCellValue(resolveAreaNameForExport(entry.getSubjectAreaName()));
                     row.createCell(3).setCellValue(resolveCoefficient(entry.getSubjectCoefficient()).toPlainString());
                 }
             }
@@ -224,8 +225,15 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
     }
 
     private String resolveAreaName(String value) {
-        String normalized = value == null ? "" : value.trim();
-        return normalized.isBlank() ? "Без области" : normalized;
+        return SubjectAreaNames.resolveBaseArea(value);
+    }
+
+    private String resolveAreaNameForExport(String value) {
+        try {
+            return SubjectAreaNames.resolveBaseArea(value);
+        } catch (IllegalArgumentException ex) {
+            return SubjectAreaNames.defaultArea();
+        }
     }
 
     private java.math.BigDecimal resolveCoefficient(java.math.BigDecimal value) {

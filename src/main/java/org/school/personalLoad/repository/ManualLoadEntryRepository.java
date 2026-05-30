@@ -20,6 +20,7 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
 
     java.util.List<ManualLoadEntry> findAllByAcademicYear(String academicYear);
     java.util.List<ManualLoadEntry> findAllByAcademicYearAndNumberSchoolBuildingIgnoreCase(String academicYear, String numberSchoolBuilding);
+    boolean existsByNumberSchoolBuildingIgnoreCase(String numberSchoolBuilding);
     void deleteByAcademicYearAndNumberSchoolBuildingAndClassName(String academicYear, String numberSchoolBuilding, String className);
 
     void deleteAllByAcademicYear(String academicYear);
@@ -31,4 +32,18 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
     @Modifying
     @Query("update ManualLoadEntry m set m.subjectName = :newName where lower(m.subjectName) = lower(:oldName)")
     int renameSubjectEverywhere(@Param("oldName") String oldName, @Param("newName") String newName);
+
+    @Modifying
+    @Query("""
+            update ManualLoadEntry m
+               set m.className = :newClassName,
+                   m.numberSchoolBuilding = :newBuilding
+             where m.academicYear = :academicYear
+               and lower(trim(m.className)) = lower(trim(:oldClassName))
+            """)
+    int renameClassEverywhere(@Param("academicYear") String academicYear,
+                              @Param("oldClassName") String oldClassName,
+                              @Param("newClassName") String newClassName,
+                              @Param("newBuilding") String newBuilding);
+
 }

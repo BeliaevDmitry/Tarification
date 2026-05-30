@@ -36,9 +36,24 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     private final ManualLoadEntryRepository manualLoadEntryRepository;
 
     @Override
+    @Transactional
     public List<ClassroomLeadershipEntry> replaceAll(List<ClassroomLeadershipEntryRequest> requests) {
-        List<ClassroomLeadershipEntryRequest> safeRequests = requests == null ? List.of() : requests;
-        String academicYear = safeRequests.stream().map(ClassroomLeadershipEntryRequest::getAcademicYear).filter(java.util.Objects::nonNull).findFirst().orElseThrow(() -> new IllegalArgumentException("academicYear is required"));
+        List<ClassroomLeadershipEntryRequest> safeRequests = requests == null ? List.of() : new ArrayList<>(requests);
+        String academicYear = safeRequests.stream()
+                .map(ClassroomLeadershipEntryRequest::getAcademicYear)
+                .filter(java.util.Objects::nonNull)
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("academicYear is required"));
+
+        List<ClassroomLeadershipEntry> existingRows = classroomLeadershipRepository.findAllByAcademicYear(academicYear);
+        Map<Long, ClassroomLeadershipEntry> existingById = new LinkedHashMap<>();
+        Map<String, ClassroomLeadershipEntry> existingByBuildingAndClassName = new LinkedHashMap<>();
+        for (ClassroomLeadershipEntry existing : existingRows) {
+            if (existing.getId() != null) {
+                existingById.put(existing.getId(), existing);
+            }
+            existingByBuildingAndClassName.put(classScopeKey(existing.getNumberSchoolBuilding(), existing.getClassName()), existing);
+        }
 
         Map<String, ClassroomLeadershipEntryRequest> normalized = new LinkedHashMap<>();
         for (ClassroomLeadershipEntryRequest request : safeRequests) {
@@ -51,23 +66,35 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             String classType = normalizeClassType(request.getClassType());
             if (building.isBlank() || className.isBlank() || classDirection.isBlank() || fioTeacher.isBlank()) continue;
 
-            // Не блокируем сохранение: при отсутствии педагога создаём его автоматически.
             ensureTeacherExists(fioTeacher);
 
+            request.setNumberSchoolBuilding(building);
             request.setClassName(className);
+            request.setClassDirection(classDirection);
+            request.setFioTeacher(fioTeacher);
             request.setCampusAddress(campusAddress);
             request.setClassType(classType);
             request.setAcademicYear(academicYear);
-            // В пределах одного учебного года класс должен быть уникален по названию,
-            // а корпус может меняться при повторном импорте/редактировании.
-            normalized.put(className, request);
+
+            String key = request.getId() != null ? "id:" + request.getId() : "class:" + classScopeKey(building, className);
+            normalized.put(key, request);
         }
 
-        classroomLeadershipRepository.findAllByAcademicYear(academicYear).forEach(classroomLeadershipRepository::delete);
         List<ClassroomLeadershipEntry> toSave = new ArrayList<>();
-        normalized.values().forEach((request) -> {
-            ClassroomLeadershipEntry entry = new ClassroomLeadershipEntry();
-            entry.setAcademicYear(academicYear);
+        Set<Long> touchedIds = new LinkedHashSet<>();
+        for (ClassroomLeadershipEntryRequest request : normalized.values()) {
+            ClassroomLeadershipEntry entry = request.getId() == null ? null : existingById.get(request.getId());
+            if (entry == null) {
+                entry = existingByBuildingAndClassName.get(classScopeKey(request.getNumberSchoolBuilding(), request.getClassName()));
+            }
+            if (entry == null) {
+                entry = new ClassroomLeadershipEntry();
+                entry.setAcademicYear(academicYear);
+            }
+
+            String oldClassName = ClassNameNormalizer.normalize(entry.getClassName());
+            String oldBuilding = normalizeBuildingCode(entry.getNumberSchoolBuilding());
+
             entry.setNumberSchoolBuilding(normalizeBuildingCode(request.getNumberSchoolBuilding()));
             entry.setClassName(ClassNameNormalizer.normalize(request.getClassName()));
             entry.setClassDirection(normalize(request.getClassDirection()));
@@ -75,13 +102,27 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             entry.setCampusAddress(resolveCampusAddress(entry.getNumberSchoolBuilding(), request.getCampusAddress()));
             entry.setClassType(normalizeClassType(request.getClassType()));
             toSave.add(entry);
-        });
+
+            if (entry.getId() != null) {
+                touchedIds.add(entry.getId());
+                propagateClassRename(academicYear, oldClassName, oldBuilding, entry.getClassName(), entry.getNumberSchoolBuilding());
+            }
+        }
 
         List<ClassroomLeadershipEntry> saved = classroomLeadershipRepository.saveAll(toSave);
+        saved.stream().map(ClassroomLeadershipEntry::getId).filter(java.util.Objects::nonNull).forEach(touchedIds::add);
+
+        for (ClassroomLeadershipEntry existing : existingRows) {
+            if (existing.getId() != null && !touchedIds.contains(existing.getId())) {
+                classroomLeadershipRepository.delete(existing);
+            }
+        }
+
         syncCurriculumBuildingByClass(academicYear, saved);
         syncManualLoadBuildingByClass(academicYear, saved);
         return saved;
     }
+
 
     @Override
     public Map<String, Object> importFromExcel(String academicYear, MultipartFile file) {
@@ -102,7 +143,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             req.setClassType(normalizeClassType(existing.getClassType()));
             String key = existing.getNumberSchoolBuilding() + "|" + existing.getClassName();
             merged.put(key, req);
-            classToKey.put(ClassNameNormalizer.normalize(existing.getClassName()), key);
+            classToKey.put(classScopeKey(existing.getNumberSchoolBuilding(), existing.getClassName()), key);
         });
 
         try (InputStream inputStream = file.getInputStream(); Workbook workbook = WorkbookFactory.create(inputStream)) {
@@ -143,12 +184,13 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
                 req.setClassType(classType);
                 req.setAcademicYear(academicYear);
                 String newKey = building + "|" + className;
-                String previousKey = classToKey.get(className);
+                String scopedClassKey = classScopeKey(building, className);
+                String previousKey = classToKey.get(scopedClassKey);
                 if (previousKey != null && !previousKey.equals(newKey)) {
                     merged.remove(previousKey);
                 }
                 merged.put(newKey, req);
-                classToKey.put(className, newKey);
+                classToKey.put(scopedClassKey, newKey);
                 imported++;
             }
 
@@ -290,6 +332,20 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
 
 
 
+    private void propagateClassRename(String academicYear, String oldClassName, String oldBuilding, String newClassName, String newBuilding) {
+        if (oldClassName == null || oldClassName.isBlank()) {
+            return;
+        }
+        boolean classChanged = !oldClassName.equalsIgnoreCase(String.valueOf(newClassName));
+        boolean buildingChanged = !String.valueOf(oldBuilding).equalsIgnoreCase(String.valueOf(newBuilding));
+        if (!classChanged && !buildingChanged) {
+            return;
+        }
+        curriculumPlanEntryRepository.renameClassEverywhere(academicYear, oldClassName, newClassName, newBuilding);
+        manualLoadEntryRepository.renameClassEverywhere(academicYear, oldClassName, newClassName, newBuilding);
+    }
+
+
     /**
      * Ключевая синхронизация: если класс перенесли из СП0 в реальный корпус,
      * обновляем numberSchoolBuilding в учебном плане для этого className.
@@ -305,7 +361,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             String className = ClassNameNormalizer.normalize(c.getClassName());
             String building = normalizeBuildingCode(c.getNumberSchoolBuilding());
             if (!className.isBlank() && !building.isBlank()) {
-                buildingByClass.put(className, building);
+                buildingByClass.put(classScopeKey(building, className), building);
             }
         });
 
@@ -317,7 +373,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         boolean changed = false;
         for (CurriculumPlanEntry entry : entries) {
             String className = ClassNameNormalizer.normalize(entry.getClassName());
-            String targetBuilding = buildingByClass.get(className);
+            String targetBuilding = buildingByClass.get(classScopeKey(entry.getNumberSchoolBuilding(), className));
             if (targetBuilding == null || targetBuilding.isBlank()) {
                 continue;
             }
@@ -346,7 +402,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             String className = ClassNameNormalizer.normalize(c.getClassName());
             String building = normalizeBuildingCode(c.getNumberSchoolBuilding());
             if (!className.isBlank() && !building.isBlank()) {
-                buildingByClass.put(className, building);
+                buildingByClass.put(classScopeKey(building, className), building);
             }
         });
         if (buildingByClass.isEmpty()) {
@@ -357,7 +413,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         boolean changed = false;
         for (ManualLoadEntry entry : entries) {
             String className = ClassNameNormalizer.normalize(entry.getClassName());
-            String targetBuilding = buildingByClass.get(className);
+            String targetBuilding = buildingByClass.get(classScopeKey(entry.getNumberSchoolBuilding(), className));
             if (targetBuilding == null || targetBuilding.isBlank()) {
                 continue;
             }
@@ -404,6 +460,10 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
 
     private String normalizeBuildingCode(String value) {
         return normalize(value).replace(" ", "").toUpperCase(Locale.ROOT);
+    }
+
+    private String classScopeKey(String building, String className) {
+        return normalizeBuildingCode(building) + "|" + ClassNameNormalizer.normalize(className);
     }
 
     private String normalize(String value) {

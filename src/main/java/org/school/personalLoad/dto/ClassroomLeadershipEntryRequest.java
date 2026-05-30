@@ -4,6 +4,7 @@ import lombok.Data;
 
 @Data
 public class ClassroomLeadershipEntryRequest {
+    private Long id;
     private String academicYear;
     private String numberSchoolBuilding;
     private String className;

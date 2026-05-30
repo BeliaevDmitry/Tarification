@@ -1,4 +1,6 @@
 const jsonHeaders = { "Content-Type": "application/json" };
+const DEFAULT_SUBJECT_AREA = "Русский язык и литература";
+
 const ui = {
     fileInput: document.getElementById("subject-file"),
     importBtn: document.getElementById("import-subjects-btn"),
@@ -44,7 +46,7 @@ function render(rows) {
         tr.innerHTML = `
             <td>${esc(r.subjectName)}</td>
             <td>${esc(typeLabel(r.subjectType))}</td>
-            <td>${esc(r.subjectAreaName || "Без области")}</td>
+            <td>${esc(r.subjectAreaName || DEFAULT_SUBJECT_AREA)}</td>
             <td>${esc(formatCoefficient(r.subjectCoefficient))}</td>
         `;
         tr.addEventListener('click', () => openEdit(r));
@@ -56,7 +58,7 @@ function openEdit(subject) {
     ui.editForm.elements.id.value = String(subject.id);
     ui.editForm.elements.subjectName.value = subject.subjectName;
     ui.editForm.elements.subjectType.value = subject.subjectType === "CORE_FORMABLE" ? "CORE" : subject.subjectType;
-    const areaName = subject.subjectAreaName || "Без области";
+    const areaName = subject.subjectAreaName || DEFAULT_SUBJECT_AREA;
     if (![...ui.editForm.elements.subjectAreaName.options].some((opt) => opt.value === areaName)) {
         const customOption = document.createElement("option");
         customOption.value = areaName;
@@ -70,7 +72,7 @@ function openEdit(subject) {
 
 function normalizeAreaName(value) {
     const normalized = String(value || "").trim();
-    return normalized || "Без области";
+    return normalized || DEFAULT_SUBJECT_AREA;
 }
 
 function parseCoefficient(value) {
@@ -88,7 +90,7 @@ function formatCoefficient(value) {
 }
 
 function applySubjectAreaOptions() {
-    const areaNames = ["Без области", ...subjectAreas.map((row) => String(row.name || "").trim()).filter(Boolean)];
+    const areaNames = subjectAreas.map((row) => String(row.name || "").trim()).filter(Boolean);
     const unique = [...new Set(areaNames)];
     const formOptions = unique.map((name) => `<option value="${esc(name)}">${esc(name)}</option>`).join("");
     ui.area.innerHTML = formOptions;
@@ -131,7 +133,7 @@ ui.form.addEventListener('submit', async (e) => {
         });
         print(result);
         ui.form.reset();
-        ui.area.value = "Без области";
+        ui.area.value = DEFAULT_SUBJECT_AREA;
         ui.coefficient.value = "1";
         await reload();
     } catch (e) { print({ error: e.message }); }
