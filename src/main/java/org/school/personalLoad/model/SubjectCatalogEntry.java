@@ -3,6 +3,8 @@ package org.school.personalLoad.model;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 
 import javax.persistence.*;
 import java.time.LocalDateTime;
@@ -32,6 +34,8 @@ public class SubjectCatalogEntry {
     @JoinColumn(name = "subject_area_id")
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     @JsonProperty("subjectArea")
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     private SubjectArea subjectAreaRef;
 
     @Column(nullable = false)
