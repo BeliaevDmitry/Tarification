@@ -1949,3 +1949,19 @@ dialog::backdrop {
     min-width: 260px;
     white-space: pre-line;
 }
+
+.link-button {
+    border: none;
+    background: none;
+    color: #1d4ed8;
+    cursor: pointer;
+    padding: 0;
+    text-align: left;
+    text-decoration: underline;
+}
+
+.row-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
