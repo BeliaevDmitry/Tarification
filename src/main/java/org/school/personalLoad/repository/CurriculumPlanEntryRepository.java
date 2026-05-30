@@ -55,4 +55,18 @@ public interface CurriculumPlanEntryRepository extends JpaRepository<CurriculumP
     @Modifying
     @Query("update CurriculumPlanEntry c set c.subjectName = :newName where lower(c.subjectName) = lower(:oldName)")
     int renameSubjectEverywhere(@Param("oldName") String oldName, @Param("newName") String newName);
+
+    @Modifying
+    @Query("""
+            update CurriculumPlanEntry c
+               set c.className = :newClassName,
+                   c.numberSchoolBuilding = :newBuilding
+             where c.academicYear = :academicYear
+               and lower(trim(c.className)) = lower(trim(:oldClassName))
+            """)
+    int renameClassEverywhere(@Param("academicYear") String academicYear,
+                              @Param("oldClassName") String oldClassName,
+                              @Param("newClassName") String newClassName,
+                              @Param("newBuilding") String newBuilding);
+
 }

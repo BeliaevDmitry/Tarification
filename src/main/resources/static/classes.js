@@ -48,6 +48,7 @@ function normalizeBuildingCode(value) {
 }
 
 function entryKey(entry) {
+    if (entry?.id) return `id:${entry.id}`;
     return `${normalizeBuildingCode(entry.numberSchoolBuilding)}|${normalizeClassName(entry.className)}`;
 }
 
@@ -197,6 +198,7 @@ ui.editForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const form = new FormData(ui.editForm);
     const entry = {
+        id: editingOriginalEntry?.id || null,
         numberSchoolBuilding: normalizeBuildingCode(form.get("numberSchoolBuilding")),
         className: normalizeClassName(form.get("className")),
         classDirection: norm(form.get("classDirection")),
