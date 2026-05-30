@@ -1965,3 +1965,75 @@ dialog::backdrop {
     gap: 8px;
     flex-wrap: wrap;
 }
+
+/* Нагрузка по корпусам: компактные закреплённые колонки слева. */
+#building-load-table {
+    --load-subject-col-width: 180px;
+    --load-teacher-col-width: 220px;
+    --load-subject-hours-col-width: 76px;
+    --load-building-hours-col-width: 84px;
+    --load-complex-hours-col-width: 96px;
+}
+
+#building-load-table tbody td:nth-child(1),
+#building-load-table thead tr.load-main-head th:nth-child(1) {
+    position: sticky;
+    left: 0;
+    z-index: 9;
+    background: #fff;
+    width: var(--load-subject-col-width);
+    min-width: var(--load-subject-col-width);
+    max-width: var(--load-subject-col-width);
+}
+
+#building-load-table tbody td:nth-child(2),
+#building-load-table thead tr.load-main-head th:nth-child(2) {
+    position: sticky;
+    left: var(--load-subject-col-width);
+    z-index: 9;
+    background: #fff;
+    width: var(--load-teacher-col-width);
+    min-width: var(--load-teacher-col-width);
+    max-width: var(--load-teacher-col-width);
+}
+
+#building-load-table tbody td:nth-child(3),
+#building-load-table thead tr.load-main-head th:nth-child(3) {
+    position: sticky;
+    left: calc(var(--load-subject-col-width) + var(--load-teacher-col-width));
+    z-index: 9;
+    background: #fff;
+    width: var(--load-subject-hours-col-width);
+    min-width: var(--load-subject-hours-col-width);
+    max-width: var(--load-subject-hours-col-width);
+    text-align: center;
+}
+
+#building-load-table tbody td:nth-child(4),
+#building-load-table thead tr.load-main-head th:nth-child(4) {
+    position: sticky;
+    left: calc(var(--load-subject-col-width) + var(--load-teacher-col-width) + var(--load-subject-hours-col-width));
+    z-index: 9;
+    background: #fff;
+    width: var(--load-building-hours-col-width);
+    min-width: var(--load-building-hours-col-width);
+    max-width: var(--load-building-hours-col-width);
+    text-align: center;
+}
+
+#building-load-table tbody td:nth-child(5),
+#building-load-table thead tr.load-main-head th:nth-child(5) {
+    position: sticky;
+    left: calc(var(--load-subject-col-width) + var(--load-teacher-col-width) + var(--load-subject-hours-col-width) + var(--load-building-hours-col-width));
+    z-index: 9;
+    background: #fff;
+    width: var(--load-complex-hours-col-width);
+    min-width: var(--load-complex-hours-col-width);
+    max-width: var(--load-complex-hours-col-width);
+    text-align: center;
+}
+
+#building-load-table thead tr.load-main-head th:nth-child(-n+5) {
+    z-index: 12;
+    background: #f8fafc;
+}

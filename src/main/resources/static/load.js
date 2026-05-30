@@ -60,7 +60,7 @@ const state = {
     assignmentsByBuilding: {},
     subjectTeacherRowsByBuilding: {},
     rowOrderByBuilding: {},
-    sortField: "subject",
+    sortField: "subjectArea",
     sortDirection: "asc",
     viewMode: "all",
     viewDate: "",
@@ -410,6 +410,41 @@ function partLabel(part) {
     return "Основная";
 }
 
+function subjectTypeByPart(part) {
+    if (part === "EXTRACURRICULAR") return "EXTRACURRICULAR";
+    if (part === "FORMABLE" || part === "CORRECTIONAL") return "FORMABLE";
+    return "CORE";
+}
+
+function subjectCatalogKey(subjectName, subjectType = "") {
+    return `${String(subjectName || "").trim().toLowerCase()}|${String(subjectType || "").trim().toUpperCase()}`;
+}
+
+function buildSubjectAreaIndex() {
+    const byNameAndType = new Map();
+    const byName = new Map();
+    (subjectCatalog || []).forEach((subject) => {
+        const subjectName = String(subject.subjectName || "").trim();
+        const areaName = String(subject.subjectAreaName || subject.subjectArea?.name || "Без области").trim() || "Без области";
+        const subjectType = String(subject.subjectType || "").trim().toUpperCase();
+        if (!subjectName) return;
+        byNameAndType.set(subjectCatalogKey(subjectName, subjectType), areaName);
+        const nameKey = subjectName.toLowerCase();
+        if (!byName.has(nameKey)) byName.set(nameKey, areaName);
+    });
+    return { byNameAndType, byName };
+}
+
+function subjectAreaForRow(row, index = buildSubjectAreaIndex()) {
+    const expectedType = subjectTypeByPart(row?.curriculumPart || "CORE");
+    const subjectName = String(row?.subjectName || "").trim();
+    return index.byNameAndType.get(subjectCatalogKey(subjectName, expectedType))
+        || (expectedType === "CORE" ? index.byNameAndType.get(subjectCatalogKey(subjectName, "CORE_FORMABLE")) : "")
+        || (expectedType === "FORMABLE" ? index.byNameAndType.get(subjectCatalogKey(subjectName, "CORE_FORMABLE")) : "")
+        || index.byName.get(subjectName.toLowerCase())
+        || "Без области";
+}
+
 function educationLevelLabel(value) {
     if (value === "BASIC") return "Базовый";
     if (value === "ADVANCED") return "Углублённый";
@@ -503,6 +538,12 @@ function formatSplitHours(pair) {
     const h2 = Number(pair?.h2 || 0);
     if (h1 === h2) return String(h1);
     return `${h1}/${h2}`;
+}
+
+function splitHoursSortValue(pair) {
+    const h1 = Number(pair?.h1 || 0);
+    const h2 = Number(pair?.h2 || 0);
+    return h1 === h2 ? h1 : (h1 + h2);
 }
 
 function accumulateSplit(pair, row) {
@@ -1225,6 +1266,7 @@ function computeTeacherHourIndexes() {
 
 function buildPresentationRows() {
     const rows = expandedRowsForSelectedBuilding();
+    const subjectAreaIndex = buildSubjectAreaIndex();
     const assignments = assignmentsForBuilding(selectedBuilding);
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
     const { buildingTeacherHours, complexTeacherHours } = computeTeacherHourIndexes();
@@ -1236,6 +1278,7 @@ function buildPresentationRows() {
             subjectInfo.set(subjectKey, {
                 subjectKey,
                 subjectName: row.subjectName,
+                subjectAreaName: subjectAreaForRow(row, subjectAreaIndex),
                 displaySubjectName: row.subjectName,
                 curriculumPart: row.curriculumPart,
                 educationLevel: row.educationLevel,
@@ -1280,10 +1323,13 @@ function buildPresentationRows() {
             if (periodTotals.year <= 0 && periodTotals.h1 > 0 && periodTotals.h2 <= 0) displayName = `${displayName} (1П)`;
             else if (periodTotals.year <= 0 && periodTotals.h2 > 0 && periodTotals.h1 <= 0) displayName = `${displayName} (2П)`;
 
+            const buildingHoursPair = buildingTeacherHours[selectedBuilding]?.[teacherRow.teacherName || ""] || { h1: 0, h2: 0 };
+            const complexHoursPair = complexTeacherHours[teacherRow.teacherName || ""] || { h1: 0, h2: 0 };
             result.push({
                 subjectKey: info.subjectKey,
                 teacherRowId: teacherRow.id,
                 subjectName: info.subjectName,
+                subjectAreaName: info.subjectAreaName || "Без области",
                 displaySubjectName: displayName,
                 curriculumPart: info.curriculumPart,
                 educationLevel: info.educationLevel,
@@ -1296,10 +1342,10 @@ function buildPresentationRows() {
                 rowsByClassAll: info.rowsByClassAll,
                 classCount,
                 subjectHours: totalHours,
-                buildingHours: formatSplitHours(
-                    buildingTeacherHours[selectedBuilding]?.[teacherRow.teacherName || ""] || { h1: 0, h2: 0 }
-                ),
-                complexHours: formatSplitHours(complexTeacherHours[teacherRow.teacherName || ""] || { h1: 0, h2: 0 })
+                buildingHours: formatSplitHours(buildingHoursPair),
+                buildingHoursSort: splitHoursSortValue(buildingHoursPair),
+                complexHours: formatSplitHours(complexHoursPair),
+                complexHoursSort: splitHoursSortValue(complexHoursPair)
             });
         });
     });
@@ -1348,9 +1394,12 @@ function filterPresentationRowsByViewMode(rows) {
             teacherName: "",
             loadFromDate: state.viewDate,
             loadToDate: state.viewDate,
+            subjectAreaName: template.subjectAreaName || "Без области",
             subjectHours: 0,
             buildingHours: "0/0",
+            buildingHoursSort: 0,
             complexHours: "0/0",
+            complexHoursSort: 0,
             classCount: 0
         });
     });
@@ -1388,6 +1437,9 @@ function applySorting(presentationRows) {
             const bVal = bRows.length ? bRows.reduce((sum, row) => sum + Number(row.plannedHours || 0), 0) : -1;
             result = aVal - bVal;
         } else switch (state.sortField) {
+            case "subjectArea":
+                result = cmp(a.subjectAreaName || "Без области", b.subjectAreaName || "Без области") || cmp(a.subjectName, b.subjectName);
+                break;
             case "teacher":
                 result = cmp(a.teacherName || "", b.teacherName || "");
                 break;
@@ -1398,10 +1450,10 @@ function applySorting(presentationRows) {
                 result = (a.subjectHours - b.subjectHours);
                 break;
             case "buildingHours":
-                result = (a.buildingHours - b.buildingHours);
+                result = (a.buildingHoursSort - b.buildingHoursSort);
                 break;
             case "complexHours":
-                result = (a.complexHours - b.complexHours);
+                result = (a.complexHoursSort - b.complexHoursSort);
                 break;
             case "classCount":
                 result = (a.classCount - b.classCount);
@@ -1436,7 +1488,8 @@ function getOrderedRows(presentationRows) {
         const aOrder = orderMap[rowStableKey(a)] ?? (fallbackStart + 1);
         const bOrder = orderMap[rowStableKey(b)] ?? (fallbackStart + 1);
         if (aOrder !== bOrder) return aOrder - bOrder;
-        return String(a.subjectName).localeCompare(String(b.subjectName), 'ru');
+        return String(a.subjectAreaName || "Без области").localeCompare(String(b.subjectAreaName || "Без области"), 'ru')
+            || String(a.subjectName).localeCompare(String(b.subjectName), 'ru');
     });
 }
 
@@ -2066,6 +2119,7 @@ function renderTable() {
     headMain.innerHTML = `
         <th rowspan="2">Предмет</th>
         <th rowspan="2">Педагог</th>
+        <th rowspan="2">Часы по предмету</th>
         <th rowspan="2">Часов в корпусе</th>
         <th rowspan="2">Всего часов в комплексе</th>
         <th colspan="${Math.max(classes.length, 1)}">
@@ -2109,11 +2163,13 @@ function renderTable() {
                     <span class="subject-cell-name">${esc(row.displaySubjectName || row.subjectName)}</span>
                     ${index === 0 || presentationRows[index - 1].subjectKey !== row.subjectKey ? `<button class="inline-plus" type="button" data-plus-subject="${esc(row.subjectKey)}" data-plus-after="${esc(row.teacherRowId)}" title="Добавить строку педагога">+</button>` : ""}
                 </div>
-            </td>            <td class="${isDismissedTeacher(row.teacherName) ? "dismissal-row" : ""}">
+            </td>
+            <td class="${isDismissedTeacher(row.teacherName) ? "dismissal-row" : ""}">
                 <input type="text" class="teacher-input" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" list="${listId}" value="${esc(row.teacherName)}" placeholder="ФИО педагога">
                 <datalist id="${listId}"></datalist>
                 ${isDismissedTeacher(row.teacherName) ? `<div class="dismissal-note">Увольнение с ${esc(dismissalDateOfTeacher(row.teacherName))}</div>` : ""}${(!teacherExists(row.teacherName) && row.teacherName) ? `<div class="dismissal-note">Ошибка: педагог отсутствует в справочнике</div>` : ""}
             </td>
+            <td><strong>${esc(row.subjectHours || 0)} ч</strong></td>
             <td><strong>${esc(row.buildingHours)} ч</strong></td>
             <td><strong>${esc(row.complexHours || 0)} ч</strong></td>
             ${classes.map((className) => {
@@ -2415,12 +2471,13 @@ async function refreshSourceData() {
         api(`/api/manual-load${initialEncodedBuilding}`)
     ]);
 
-    const [teachers, buildingRows, classRows, periodSettings, yearResolve] = await Promise.all([
+    const [teachers, buildingRows, classRows, periodSettings, yearResolve, subjectRows] = await Promise.all([
         api("/api/teachers"),
         api("/api/buildings"),
         api("/api/classroom-leadership"),
         api("/api/settings/study-periods"),
-        api("/api/academic-years/active")
+        api("/api/academic-years/active"),
+        api("/api/subjects")
     ]);
 
     const buildingGroups = new Map();
@@ -2512,7 +2569,7 @@ async function refreshSourceData() {
     );
     classroomRows = classRows || [];
     studyPeriodSettings = periodSettings || [];
-    subjectCatalog = [];
+    subjectCatalog = subjectRows || [];
     sourceRevision += 1;
     invalidateDerivedCache();
     invalidateTeacherHourIndexesCache();
@@ -2690,9 +2747,9 @@ function bindEvents() {
         const className = button.dataset.classSort;
         const next = `classHours:${className}`;
         if (state.sortField === next) {
-            state.sortField = "subject";
+            state.sortField = "subjectArea";
             state.sortDirection = "asc";
-            ui.sortField.value = "subject";
+            ui.sortField.value = "subjectArea";
             ui.sortDirection.value = "asc";
         } else {
             state.sortField = next;
