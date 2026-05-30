@@ -1,6 +1,7 @@
 package org.school.personalLoad.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import javax.persistence.*;
@@ -30,12 +31,8 @@ public class SubjectCatalogEntry {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "subject_area_id")
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-    private SubjectArea subjectArea;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "subject_area_id")
-    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-    private SubjectArea subjectArea;
+    @JsonProperty("subjectArea")
+    private SubjectArea subjectAreaRef;
 
     @Column(nullable = false)
     private java.math.BigDecimal subjectCoefficient = java.math.BigDecimal.ONE;

@@ -19,7 +19,6 @@ import java.util.Objects;
 public class SubjectAreaController {
 
     private final SubjectAreaRepository repository;
-    private final SubjectCatalogRepository subjectCatalogRepository;
 
     @GetMapping
     public ResponseEntity<List<SubjectArea>> findAll() {
