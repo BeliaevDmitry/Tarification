@@ -32,6 +32,11 @@ public class SubjectCatalogEntry {
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private SubjectArea subjectArea;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "subject_area_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private SubjectArea subjectArea;
+
     @Column(nullable = false)
     private java.math.BigDecimal subjectCoefficient = java.math.BigDecimal.ONE;
 
