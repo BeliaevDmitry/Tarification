@@ -83,6 +83,26 @@ function buildingChoices() {
     return Array.from(map.values()).sort((a, b) => (`${a.name}|${a.address}`).localeCompare(`${b.name}|${b.address}`, "ru"));
 }
 
+function buildingChoices() {
+    const map = new Map();
+    (buildings || []).forEach((b) => {
+        const code = normalizeBuildingCode(b.code);
+        const address = norm(b.address);
+        if (!code || !address) return;
+        map.set(`${code}|${address.toLowerCase()}`, { code, name: norm(b.name) || code, address });
+    });
+    (classRows || []).forEach((row) => {
+        const code = normalizeBuildingCode(row.numberSchoolBuilding);
+        const address = norm(row.campusAddress);
+        if (!code || !address) return;
+        if (!map.has(`${code}|${address.toLowerCase()}`)) {
+            const known = (buildings || []).find((b) => normalizeBuildingCode(b.code) === code);
+            map.set(`${code}|${address.toLowerCase()}`, { code, name: norm(known?.name) || code, address });
+        }
+    });
+    return Array.from(map.values()).sort((a, b) => (`${a.name}|${a.address}`).localeCompare(`${b.name}|${b.address}`, "ru"));
+}
+
 function displayCampusAddress(entry) {
     return norm(entry?.campusAddress) || norm(findBuildingChoice(entry?.numberSchoolBuilding)?.address) || "—";
 }
