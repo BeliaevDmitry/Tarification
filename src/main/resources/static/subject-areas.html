@@ -12,38 +12,22 @@
 <main class="container">
     <header class="card">
         <h1>Предметные области</h1>
-        <p class="muted">Справочник предметных областей для предметов и статистики нагрузки.</p>
+        <p class="muted">Фиксированный справочник из 9 базовых предметных областей. Создание, переименование и удаление областей отключены.</p>
         <nav class="page-nav"></nav>
     </header>
 
     <section class="card">
-        <form id="subject-area-form" class="row" data-requires-edit>
-            <input id="subject-area-name" placeholder="Название предметной области" required>
-            <button type="submit">Добавить область</button>
+        <div class="row">
             <button type="button" id="subject-area-refresh" data-allow-readonly="true">Обновить</button>
-        </form>
+        </div>
         <pre id="subject-area-result"></pre>
     </section>
 
-    <dialog id="subject-area-edit-dialog">
-        <form id="subject-area-edit-form" method="dialog" class="dialog-form">
-            <h3>Редактирование предметной области</h3>
-            <input type="hidden" name="id">
-            <label>Название
-                <input name="name" required>
-            </label>
-            <div class="row">
-                <button type="submit">Сохранить</button>
-                <button type="button" id="subject-area-edit-cancel">Отмена</button>
-            </div>
-        </form>
-    </dialog>
-
-    <section class="card" data-requires-edit>
+    <section class="card">
         <h2>Список областей</h2>
         <div class="sheet-wrap">
             <table class="sheet-table">
-                <thead><tr><th>Название</th><th></th></tr></thead>
+                <thead><tr><th>Название</th></tr></thead>
                 <tbody id="subject-area-body"></tbody>
             </table>
         </div>
