@@ -48,6 +48,7 @@ public class AuthFilter extends OncePerRequestFilter {
             Map.entry("/subjects.html", AppTab.SUBJECTS),
             Map.entry("/curriculum.html", AppTab.CURRICULUM),
             Map.entry("/load.html", AppTab.LOAD),
+            Map.entry("/people-load.html", AppTab.LOAD),
             Map.entry("/service-notes.html", AppTab.SERVICE_NOTES),
             Map.entry("/settings.html", AppTab.SETTINGS),
             Map.entry("/teachers.html", AppTab.TEACHERS),
@@ -113,7 +114,7 @@ public class AuthFilter extends OncePerRequestFilter {
             return;
         }
 
-        if ("/load.html".equals(path)
+        if (("/load.html".equals(path) || "/people-load.html".equals(path))
                 && !currentUser.canViewTab(AppTab.LOAD)
                 && !currentUser.canViewTab(AppTab.LOAD_STATS)) {
             rejectForbidden(request, response, "У пользователя нет прав на просмотр раздела нагрузки");
@@ -156,6 +157,7 @@ public class AuthFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/service-memos")) return AppTab.SERVICE_NOTES;
         if (path.startsWith("/api/settings/")) return AppTab.SETTINGS;
         if (path.startsWith("/api/teachers-notification")) return AppTab.HR_NOTIFICATIONS_EDIT;
+        if (path.matches("^/api/teachers/\\d+/plan-dismiss$")) return AppTab.HR_NOTIFICATIONS_EDIT;
         if (path.startsWith("/api/teachers")) return AppTab.TEACHERS;
         if (path.startsWith("/api/admin/users")) return AppTab.USERS;
         if (path.startsWith("/api/pa")) return AppTab.VSOKO_EDIT;

@@ -3,6 +3,7 @@ package org.school.personalLoad.service.impl;
 import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.dto.CurriculumImportResult;
 import org.school.personalLoad.dto.CurriculumImportRow;
+import org.school.personalLoad.model.SubjectAreaNames;
 import org.school.personalLoad.model.*;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
@@ -395,7 +396,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         SubjectCatalogEntry subjectCatalogEntry = new SubjectCatalogEntry();
                         subjectCatalogEntry.setSubjectName(normalizedSubject);
                         subjectCatalogEntry.setSubjectType(subjectType);
-                        subjectCatalogEntry.setSubjectAreaName("Без области");
+                        subjectCatalogEntry.setSubjectAreaName(SubjectAreaNames.defaultArea());
                         existingSubjects.put(subjectKey, subjectCatalogRepository.save(subjectCatalogEntry));
                         subjectsImported++;
                     }
@@ -463,7 +464,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         subjectCatalogEntry.setSubjectType(subjectType);
                         subjectCatalogEntry.setSubjectAreaName(
                                 row.getSubjectAreaName() == null || row.getSubjectAreaName().isBlank()
-                                        ? "Без области"
+                                        ? SubjectAreaNames.defaultArea()
                                         : row.getSubjectAreaName().trim()
                         );
                         existingSubjects.put(subjectKey, subjectCatalogRepository.save(subjectCatalogEntry));
