@@ -6,6 +6,7 @@ const TAB_PATHS = {
     '/subjects.html': 'SUBJECTS',
     '/curriculum.html': 'CURRICULUM',
     '/load.html': 'LOAD',
+    '/people-load.html': 'LOAD',
     '/load-statistics.html': 'LOAD_STATS',
     '/service-notes.html': 'SERVICE_NOTES',
     '/settings.html': 'SETTINGS',
@@ -73,6 +74,7 @@ const NAV_ORDER = [
     { path: '/subjects.html', tab: 'SUBJECTS', label: 'Предметы' },
     { path: '/curriculum.html', tab: 'CURRICULUM', label: 'Учебный план' },
     { path: '/load.html', tab: 'LOAD', label: 'Нагрузка по корпусам' },
+    { path: '/people-load.html', tab: 'LOAD', label: 'Нагрузка по людям' },
     { path: '/load-statistics.html', tab: 'LOAD_STATS', label: 'Статистика нагрузки' },
     { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' },
     { path: '/subject-areas.html', tab: 'SUBJECT_AREAS', label: 'Предметные области' },
@@ -105,6 +107,7 @@ function isLoadModulePage(pathname) {
         || pathname === '/subjects.html'
         || pathname === '/curriculum.html'
         || pathname === '/load.html'
+        || pathname === '/people-load.html'
         || pathname === '/load-statistics.html'
         || pathname === '/settings.html'
         || pathname === '/subject-areas.html';
@@ -183,7 +186,7 @@ function tabPermissionMap(currentUser) {
 }
 
 function currentTab() {
-    if (window.location.pathname === '/load.html') {
+    if (window.location.pathname === '/load.html' || window.location.pathname === '/people-load.html') {
         const hash = String(window.location.hash || '').toLowerCase();
         if (hash === '#stats') return 'LOAD_STATS';
         return 'LOAD';
@@ -206,6 +209,7 @@ function isContingentPage() {
 
 function isLoadPage() {
     return window.location.pathname === '/load.html'
+        || window.location.pathname === '/people-load.html'
         || window.location.pathname === '/load-statistics.html';
 }
 

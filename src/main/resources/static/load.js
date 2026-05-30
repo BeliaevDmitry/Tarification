@@ -75,6 +75,8 @@ const state = {
 const derivedCache = {
     classBuildingMapRowsRef: null,
     classBuildingMapValue: new Map(),
+    classAddressMapRowsRef: null,
+    classAddressMapValue: new Map(),
     rowsByBuildingKey: "",
     rowsByBuildingValue: [],
     expandedRowsByBuildingKey: "",
@@ -85,13 +87,15 @@ const buildingDataCache = new Map();
 const BUILDING_DATA_CACHE_TTL_MS = 2 * 60 * 1000;
 let teacherHourIndexesCacheKey = "";
 let teacherHourIndexesCacheValue = { buildingTeacherHours: {}, complexTeacherHours: {} };
+let currentErrorList = [];
+let currentErrorIndex = -1;
 
 function currentAcademicYearKey() {
     return String(sessionStorage.getItem("tarification.academicYear") || "").trim() || "active";
 }
 
 function buildingCacheKey(buildingCode) {
-    return `${currentAcademicYearKey()}|${normalizeBuildingCode(buildingCode) || "ALL"}`;
+    return `${currentAcademicYearKey()}|${normalizeBuildingAccessCode(buildingCode) || "ALL"}`;
 }
 
 function invalidateBuildingDataCache(buildingCode = null) {
@@ -110,6 +114,8 @@ function invalidateTeacherHourIndexesCache() {
 function invalidateDerivedCache() {
     derivedCache.classBuildingMapRowsRef = null;
     derivedCache.classBuildingMapValue = new Map();
+    derivedCache.classAddressMapRowsRef = null;
+    derivedCache.classAddressMapValue = new Map();
     derivedCache.rowsByBuildingKey = "";
     derivedCache.rowsByBuildingValue = [];
     derivedCache.expandedRowsByBuildingKey = "";
@@ -149,12 +155,15 @@ function sortRu(values) {
 }
 
 function normalizeBuildingCode(value) {
-    return String(value || "")
+    const normalized = String(value || "")
         .trim()
         .toUpperCase()
         .replace(/[–—]/g, "-")
+        .replace(/[CС][ПPР]/g, "СП")
         .replace(/\s*\|\s*/g, "|")
         .replace(/\s+/g, "");
+    const separatorIndex = normalized.indexOf("|");
+    return separatorIndex >= 0 ? normalized.slice(0, separatorIndex) : normalized;
 }
 
 function canonicalBuildingCode(value) {
@@ -168,14 +177,67 @@ function canonicalBuildingCode(value) {
     return match ? normalizeBuildingCode(match.code) : normalized;
 }
 
+function normalizeBuildingAccessCode(value) {
+    return String(value || "")
+        .trim()
+        .toUpperCase()
+        .replace(/[–—]/g, "-")
+        .replace(/[CС][ПPР]/g, "СП")
+        .replace(/\s*\|\s*/g, "|")
+        .replace(/\s+/g, "");
+}
+
+function buildingGroupCode(value) {
+    const normalized = normalizeBuildingAccessCode(value);
+    const separatorIndex = normalized.indexOf("|");
+    return separatorIndex >= 0 ? normalized.slice(0, separatorIndex) : normalized;
+}
+
+function buildingAddressToken(value) {
+    const normalized = normalizeBuildingAccessCode(value);
+    const separatorIndex = normalized.indexOf("|");
+    return separatorIndex >= 0 ? normalized.slice(separatorIndex + 1) : "";
+}
+
+function isAddressScopedBuilding(value) {
+    return Boolean(buildingAddressToken(value));
+}
+
+function rowAddressToken(row) {
+    const classAddress = String(row?.campusAddress || "").trim();
+    if (classAddress) return normalizeBuildingAccessCode(classAddress);
+
+    const className = normalizeClassName(row?.className);
+    const groupCode = buildingGroupCode(row?.numberSchoolBuilding);
+    if (className) {
+        const addressMap = classAddressMap();
+        const scopedAddress = addressMap.get(`${groupCode}|${className}`);
+        if (scopedAddress) return scopedAddress;
+        const byClassOnly = addressMap.get(className);
+        if (byClassOnly) return byClassOnly;
+    }
+
+    return "";
+}
+
+function rowMatchesBuildingAccess(row, accessCode) {
+    if (accessCode === ARCHIVE_BUILDING_CODE) return false;
+    const groupCode = buildingGroupCode(accessCode);
+    if (!groupCode) return false;
+    if (buildingGroupCode(row?.numberSchoolBuilding) !== groupCode) return false;
+    const address = buildingAddressToken(accessCode);
+    return !address || rowAddressToken(row) === address;
+}
+
 function rememberSelectedBuilding(code) {
-    const normalized = normalizeBuildingCode(code);
-    if (!normalized || normalized === ARCHIVE_BUILDING_CODE) return;
+    const normalized = code === ARCHIVE_BUILDING_CODE ? ARCHIVE_BUILDING_CODE : normalizeBuildingAccessCode(code);
+    if (!normalized) return;
     sessionStorage.setItem(LOAD_SELECTED_BUILDING_KEY, normalized);
 }
 
 function restoreSelectedBuilding() {
-    return normalizeBuildingCode(sessionStorage.getItem(LOAD_SELECTED_BUILDING_KEY) || "");
+    const restored = String(sessionStorage.getItem(LOAD_SELECTED_BUILDING_KEY) || "").trim();
+    return restored === ARCHIVE_BUILDING_CODE ? ARCHIVE_BUILDING_CODE : normalizeBuildingAccessCode(restored);
 }
 
 function addressesForBuildingCode(buildingCode) {
@@ -191,8 +253,12 @@ function addressesForBuildingCode(buildingCode) {
         addresses.push(cleaned);
     };
 
-    const fromBuilding = (buildings || []).find((b) => normalizeBuildingCode(b?.code) === normalizedCode);
-    pushUnique(fromBuilding?.address);
+    (buildings || [])
+        .filter((b) => normalizeBuildingCode(b?.code) === normalizedCode)
+        .forEach((b) => {
+            (b.addresses || []).forEach(pushUnique);
+            pushUnique(b.address);
+        });
 
     (classroomRows || []).forEach((row) => {
         if (normalizeBuildingCode(row?.numberSchoolBuilding) !== normalizedCode) return;
@@ -204,9 +270,12 @@ function addressesForBuildingCode(buildingCode) {
 
 function buildingTabLabel(building) {
     const base = String(building?.name || building?.code || "").trim();
+    if (building?.scope === "address") {
+        return `${base} — ${building.address || "адрес не указан"}`;
+    }
     const addresses = addressesForBuildingCode(building?.code);
-    if (!addresses.length) return base;
-    return `${base} — ${addresses.join(" / ")}`;
+    if (!addresses.length) return `${base} — все адреса`;
+    return `${base} — все адреса (${addresses.length})`;
 }
 
 
@@ -221,6 +290,25 @@ function continuityGroupName(row) {
     if (row?.__groupIndex) return `Группа ${row.__groupIndex}`;
     if (row?.subgroupRequired) return "Группа 1";
     return "";
+}
+
+
+function classAddressMap() {
+    if (derivedCache.classAddressMapRowsRef === classroomRows) {
+        return derivedCache.classAddressMapValue;
+    }
+    const map = new Map();
+    (classroomRows || []).forEach((r) => {
+        const cls = normalizeClassName(r.className);
+        const b = buildingGroupCode(r.numberSchoolBuilding);
+        const address = normalizeBuildingAccessCode(r.campusAddress);
+        if (!cls || !address) return;
+        if (b) map.set(`${b}|${cls}`, address);
+        if (!map.has(cls)) map.set(cls, address);
+    });
+    derivedCache.classAddressMapRowsRef = classroomRows;
+    derivedCache.classAddressMapValue = map;
+    return map;
 }
 
 function classBuildingMap() {
@@ -318,6 +406,7 @@ function esc(value) {
 function partLabel(part) {
     if (part === "FORMABLE") return "Формируемая";
     if (part === "EXTRACURRICULAR") return "Внеурочная";
+    if (part === "CORRECTIONAL") return "Коррекционная";
     return "Основная";
 }
 
@@ -499,16 +588,14 @@ function dayBefore(isoDate) {
 
 function rowsForSelectedBuilding() {
     if (selectedBuilding === ARCHIVE_BUILDING_CODE) return [];
-    const cacheKey = `${sourceRevision}|${canonicalBuildingCode(selectedBuilding)}`;
+    const cacheKey = `${sourceRevision}|${normalizeBuildingAccessCode(selectedBuilding)}`;
     if (derivedCache.rowsByBuildingKey === cacheKey) {
         return derivedCache.rowsByBuildingValue;
     }
-    const normalizedSelectedBuilding = canonicalBuildingCode(selectedBuilding);
     const map = classBuildingMap();
     const scoped = curriculumRows.filter((row) => {
-        const rowBuilding = canonicalBuildingCode(row.numberSchoolBuilding);
-        const byClass = canonicalBuildingCode(map.get(normalizeClassName(row.className)));
-        return rowBuilding === normalizedSelectedBuilding || byClass === normalizedSelectedBuilding;
+        const rowSource = { ...row, numberSchoolBuilding: row.numberSchoolBuilding || map.get(normalizeClassName(row.className)) };
+        return rowMatchesBuildingAccess(rowSource, selectedBuilding);
     });
     const filtered = scoped.filter((row) => !Boolean(row.metaGroup));
     derivedCache.rowsByBuildingKey = cacheKey;
@@ -549,7 +636,7 @@ function expandCurriculumRows(rows) {
 
 function expandedRowsForSelectedBuilding() {
     if (selectedBuilding === ARCHIVE_BUILDING_CODE) return [];
-    const cacheKey = `${sourceRevision}|${canonicalBuildingCode(selectedBuilding)}`;
+    const cacheKey = `${sourceRevision}|${normalizeBuildingAccessCode(selectedBuilding)}`;
     if (derivedCache.expandedRowsByBuildingKey === cacheKey) {
         return derivedCache.expandedRowsByBuildingValue;
     }
@@ -675,49 +762,57 @@ function currentAuthUser() {
 }
 
 function hasCurriculumRowsForBuilding(buildingCode) {
-    const normalizedBuilding = canonicalBuildingCode(buildingCode);
-    if (!normalizedBuilding) return false;
+    if (!buildingGroupCode(buildingCode)) return false;
     const classMap = classBuildingMap();
     return (curriculumRows || []).some((row) => {
-        const rowBuilding = canonicalBuildingCode(row.numberSchoolBuilding);
-        const classBuilding = canonicalBuildingCode(classMap.get(normalizeClassName(row.className)));
-        return rowBuilding === normalizedBuilding || classBuilding === normalizedBuilding;
+        const rowSource = { ...row, numberSchoolBuilding: row.numberSchoolBuilding || classMap.get(normalizeClassName(row.className)) };
+        return rowMatchesBuildingAccess(rowSource, buildingCode);
     });
+}
+
+function buildingOptionValue(option) {
+    return option?.value || option?.code || "";
+}
+
+function buildingPermissionMatchesOption(permissionCode, optionValue) {
+    const permission = normalizeBuildingAccessCode(permissionCode);
+    const option = normalizeBuildingAccessCode(optionValue);
+    if (!permission || !option) return false;
+    if (permission === option) return true;
+    return !permission.includes("|") && buildingGroupCode(permission) === buildingGroupCode(option);
 }
 
 function preferredBuildingCode(availableBuildings) {
     if (!Array.isArray(availableBuildings) || !availableBuildings.length) return "";
     const user = currentAuthUser();
-    const byCode = new Map(availableBuildings.map((b) => [normalizeBuildingCode(b.code), b.code]));
-    const allOrderedCodes = availableBuildings.map((b) => normalizeBuildingCode(b.code)).filter(Boolean);
+    const allOptions = availableBuildings.map(buildingOptionValue).filter(Boolean);
     const editableCodes = [];
 
     if (!user || user.admin || user.loadEditAllBuildings) {
-        editableCodes.push(...allOrderedCodes);
+        editableCodes.push(...allOptions);
     } else {
         editableCodes.push(...(user.loadEditableBuildingCodes || [])
-            .map((code) => normalizeBuildingCode(code))
+            .map((code) => normalizeBuildingAccessCode(code))
             .filter(Boolean));
-        const managedCode = normalizeBuildingCode(user.managedBuildingCode);
+        const managedCode = buildingGroupCode(user.managedBuildingCode);
         if (managedCode) editableCodes.push(managedCode);
         if (!editableCodes.length) {
-            editableCodes.push(...allOrderedCodes);
+            editableCodes.push(...allOptions);
         }
     }
 
-    const uniqueEditableCodes = [...new Set(editableCodes)];
-    for (const code of uniqueEditableCodes) {
-        if (byCode.has(code) && hasCurriculumRowsForBuilding(code)) {
-            return byCode.get(code);
+    const candidateOptions = allOptions.filter((option) =>
+        editableCodes.some((permission) => buildingPermissionMatchesOption(permission, option))
+    );
+    const orderedCandidates = candidateOptions.length ? candidateOptions : allOptions;
+    for (const option of orderedCandidates) {
+        if (hasCurriculumRowsForBuilding(option)) {
+            return option;
         }
     }
-    for (const code of uniqueEditableCodes) {
-        if (byCode.has(code)) {
-            return byCode.get(code);
-        }
-    }
-    return availableBuildings[0].code;
+    return orderedCandidates[0] || availableBuildings[0].code;
 }
+
 
 function canEditSelectedBuildingLoad() {
     const user = currentAuthUser();
@@ -726,12 +821,12 @@ function canEditSelectedBuildingLoad() {
     const loadPermission = window.tarificationTabPermissions?.LOAD;
     if (!loadPermission?.canEdit) return false;
     if (user.loadEditAllBuildings) return true;
-    const allowedBuildings = (user.loadEditableBuildingCodes || []).map((code) => normalizeBuildingCode(code));
+    const allowedBuildings = (user.loadEditableBuildingCodes || []);
     if (allowedBuildings.length) {
-        return allowedBuildings.includes(normalizeBuildingCode(selectedBuilding));
+        return allowedBuildings.some((code) => buildingPermissionMatchesOption(code, selectedBuilding));
     }
     if (user.role !== "BUILDING_HEAD") return false;
-    return normalizeBuildingCode(user.managedBuildingCode) === normalizeBuildingCode(selectedBuilding);
+    return buildingGroupCode(user.managedBuildingCode) === buildingGroupCode(selectedBuilding);
 }
 
 function loadReadOnlyReason() {
@@ -745,10 +840,10 @@ function loadReadOnlyReason() {
         return "";
     }
     const allowedBuildings = (user.loadEditableBuildingCodes || []).filter(Boolean);
-    if (allowedBuildings.length && !allowedBuildings.map((code) => normalizeBuildingCode(code)).includes(normalizeBuildingCode(selectedBuilding))) {
-        return `Редактирование разрешено только для корпусов: ${allowedBuildings.join(", ")}.`;
+    if (allowedBuildings.length && !allowedBuildings.some((code) => buildingPermissionMatchesOption(code, selectedBuilding))) {
+        return `Редактирование разрешено только для зон: ${allowedBuildings.join(", ")}.`;
     }
-    if (user.role === "BUILDING_HEAD" && normalizeBuildingCode(user.managedBuildingCode) !== normalizeBuildingCode(selectedBuilding)) {
+    if (user.role === "BUILDING_HEAD" && buildingGroupCode(user.managedBuildingCode) !== buildingGroupCode(selectedBuilding)) {
         return `Руководитель корпуса может редактировать только корпус ${user.managedBuildingCode || "—"}.`;
     }
     return "Администратор ещё не назначил вам корпуса для редактирования нагрузки.";
@@ -823,7 +918,7 @@ function subjectConflictKey(row) {
 
 function detectManualLoadConflicts() {
     const rows = (manualRows || [])
-        .filter((r) => normalizeBuildingCode(r.numberSchoolBuilding) === selectedBuilding)
+        .filter((r) => rowMatchesBuildingAccess(r, selectedBuilding))
         .filter((r) => !r.orphaned);
 
     const byKey = new Map();
@@ -986,10 +1081,10 @@ function continuityStatusKey(buildingCode, className, subjectName, educationLeve
 
 function buildContinuityStatusIndex(referenceDate) {
     const periodRef = String(referenceDate || referencePlanningDate());
-    const selectedBuildingCode = normalizeBuildingCode(selectedBuilding);
+    const selectedBuildingCode = selectedBuilding;
     const index = new Map();
     (manualRows || []).forEach((entry) => {
-        if (normalizeBuildingCode(entry.numberSchoolBuilding) !== selectedBuildingCode) return;
+        if (!rowMatchesBuildingAccess(entry, selectedBuildingCode)) return;
         const from = String(entry.loadFromDate || "");
         const to = String(entry.loadToDate || "");
         if (!from || !to || !(from <= periodRef && periodRef <= to)) return;
@@ -1348,12 +1443,12 @@ function getOrderedRows(presentationRows) {
 function renderBuildingTabs() {
     if (!ui.buildingSelect) return;
     ui.buildingSelect.innerHTML = "";
-    const tabs = [...buildings, { code: ARCHIVE_BUILDING_CODE, name: ARCHIVE_BUILDING_LABEL }];
+    const tabs = [...buildings, { value: ARCHIVE_BUILDING_CODE, code: ARCHIVE_BUILDING_CODE, name: ARCHIVE_BUILDING_LABEL, label: `🗂 ${ARCHIVE_BUILDING_LABEL}` }];
     tabs.forEach((building) => {
         const option = document.createElement("option");
-        option.value = building.code;
+        option.value = building.value || building.code;
         const tabLabel = building.code === ARCHIVE_BUILDING_CODE
-            ? `🗂 ${building.name}`
+            ? building.label
             : buildingTabLabel(building);
         option.textContent = tabLabel;
         ui.buildingSelect.appendChild(option);
@@ -1370,7 +1465,7 @@ async function refreshSelectedBuildingData(force = false) {
         manualRows = cached.manual;
     } else {
         const encodedBuilding = selectedBuilding && selectedBuilding !== ARCHIVE_BUILDING_CODE
-            ? `?numberSchoolBuilding=${encodeURIComponent(selectedBuilding)}`
+            ? `?numberSchoolBuilding=${encodeURIComponent(buildingGroupCode(selectedBuilding))}`
             : "";
         const [curriculum, manual] = await Promise.all([
             api(`/api/curriculum${encodedBuilding}`),
@@ -1478,7 +1573,7 @@ function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
     const teacher = String(teacherName || "").trim().toLowerCase();
     if (!curriculumRow || !teacher) return null;
 
-    const buildingCode = normalizeBuildingCode(selectedBuilding);
+    const buildingCode = selectedBuilding;
     const targetPeriod = rowStudyPeriod(curriculumRow);
     const targetGroup = curriculumRow.__groupIndex ? `ГРУППА ${curriculumRow.__groupIndex}` : "";
     const referenceDate = currentDisplayDate();
@@ -1486,7 +1581,7 @@ function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
     const matched = (manualRows || []).filter((entry) => {
         const entryTeacher = String(entry.fioTeacher || "").trim().toLowerCase();
         if (!entryTeacher || entryTeacher !== teacher) return false;
-        if (normalizeBuildingCode(entry.numberSchoolBuilding) !== buildingCode) return false;
+        if (!rowMatchesBuildingAccess(entry, buildingCode)) return false;
         if (normalizeClassName(entry.className) !== normalizeClassName(curriculumRow.className)) return false;
         if (String(entry.subjectName || "").trim() !== String(curriculumRow.subjectName || "").trim()) return false;
         if (String(entry.educationLevel || "") !== String(curriculumRow.educationLevel || "")) return false;
@@ -1767,6 +1862,10 @@ function collectLoadIssues(presentationRows, classes) {
     presentationRows.forEach((row) => {
         if (row.teacherName && !teacherExists(row.teacherName)) {
             errorCount += 1;
+            errors.push({
+                rowKey: rowStableKey(row),
+                message: `Педагог «${row.teacherName}» отсутствует в справочнике педагогов.`
+            });
         }
         classes.forEach((className) => {
             const classRows = row.rowsByClassAll?.[className] || [];
@@ -1775,6 +1874,10 @@ function collectLoadIssues(presentationRows, classes) {
                 if (!assignedTeacher) {
                     unassignedHours += Number(curriculumRow.plannedHours || 0);
                     errorCount += 1;
+                    errors.push({
+                        rowKey: rowStableKey(row),
+                        message: `Не назначен педагог: ${curriculumRow.className}, предмет «${curriculumRow.subjectName}».`
+                    });
                 }
             });
         });
@@ -1782,11 +1885,12 @@ function collectLoadIssues(presentationRows, classes) {
 
     const conflicts = detectManualLoadConflicts();
     errorCount += conflicts.size;
+    conflicts.forEach((id) => errors.push({ rowKey: `manual:${id}`, message: "Конфликт периодов в ручной нагрузке." }));
 
-    (manualRows || []).filter((r) => normalizeBuildingCode(r.numberSchoolBuilding) === selectedBuilding).forEach((r)=>{
+    (manualRows || []).filter((r) => rowMatchesBuildingAccess(r, selectedBuilding)).forEach((r)=>{
         if (r.orphaned) {
             errorCount += 1;
-            errors.push(`orphan-${r.id}`);
+            errors.push({ rowKey: `manual:${r.id}`, message: "Сиротская строка нагрузки: в учебном плане нет соответствующей позиции." });
         }
     });
 
@@ -1798,7 +1902,7 @@ function collectLoadIssues(presentationRows, classes) {
 async function refreshHealthCounters() {
     if (!selectedBuilding || selectedBuilding === ARCHIVE_BUILDING_CODE) return;
     try {
-        const health = await api(`/api/manual-load/health?building=${encodeURIComponent(selectedBuilding)}`);
+        const health = await api(`/api/manual-load/health?building=${encodeURIComponent(buildingGroupCode(selectedBuilding))}`);
         ui.unassignedHours.textContent = String(health?.unassignedHours || 0);
         ui.errorCount.textContent = String(health?.errorCount || 0);
     } catch {
@@ -1807,13 +1911,24 @@ async function refreshHealthCounters() {
 }
 
 function jumpToFirstError() {
-    const missingTeacher = ui.tableBody.querySelector('.dismissal-note');
-    const unassigned = ui.tableBody.querySelector('.hour-pill.unassigned');
-    const target = missingTeacher ? missingTeacher.closest('tr') : (unassigned ? unassigned.closest('tr') : null);
+    if (!currentErrorList.length) return;
+    currentErrorIndex = (currentErrorIndex + 1) % currentErrorList.length;
+    const current = currentErrorList[currentErrorIndex];
+    const target = ui.tableBody.querySelector(`tr[data-row-key="${CSS.escape(String(current.rowKey || ""))}"]`);
     if (!target) return;
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     target.classList.add('error-row-highlight');
     setTimeout(() => target.classList.remove('error-row-highlight'), 1400);
+}
+
+function showErrorsPopup() {
+    if (!currentErrorList.length) {
+        alert("Ошибок нет.");
+        return;
+    }
+    const lines = currentErrorList.slice(0, 30).map((e, idx) => `${idx + 1}) ${e.message}`);
+    const suffix = currentErrorList.length > 30 ? `\n...и ещё ${currentErrorList.length - 30}` : "";
+    alert(`Найдено ошибок: ${currentErrorList.length}\n\n${lines.join("\n")}${suffix}`);
 }
 
 function applyFastAssignmentUIUpdate(cellButton, assignedCount, assignedHours) {
@@ -1867,7 +1982,7 @@ async function renderStatsView() {
         params.set("page", "0");
         params.set("pageSize", "500");
         if (selectedBuilding && selectedBuilding !== ARCHIVE_BUILDING_CODE) {
-            params.set("building", selectedBuilding);
+            params.set("building", buildingGroupCode(selectedBuilding));
         }
         const stats = await api(`/api/manual-load/stats?${params.toString()}`);
         const rows = stats?.rows || [];
@@ -1941,7 +2056,9 @@ function renderTable() {
                     || String(a.teacherName || "").localeCompare(String(b.teacherName || ""), "ru");
             });
     }
-    const { errorCount } = collectLoadIssues(presentationRows, classes);
+    const { errorCount, errors } = collectLoadIssues(presentationRows, classes);
+    currentErrorList = errors;
+    currentErrorIndex = -1;
     refreshHealthCounters();
 
     const headMain = document.createElement("tr");
@@ -1953,7 +2070,7 @@ function renderTable() {
         <th rowspan="2">Всего часов в комплексе</th>
         <th colspan="${Math.max(classes.length, 1)}">
             <div class="load-head-actions">
-                <span><strong>Ошибки: ${errorCount}</strong></span>
+                <span><strong>Ошибки: <button type="button" class="error-count-btn" data-head-error-info="1">${errorCount}</button></strong></span>
                 <button type="button" class="head-action-btn" data-head-save="1">Сохранить нагрузку корпуса</button>
                 <button type="button" class="head-action-btn" data-head-next-error="1">Перейти к ошибке</button>
             </div>
@@ -1962,8 +2079,10 @@ function renderTable() {
     ui.tableHead.appendChild(headMain);
     const headSaveBtn = headMain.querySelector('[data-head-save="1"]');
     const headNextErrorBtn = headMain.querySelector('[data-head-next-error="1"]');
+    const headErrorInfoBtn = headMain.querySelector('[data-head-error-info="1"]');
     headSaveBtn?.addEventListener("click", () => ui.saveBuildingBtn?.click());
     headNextErrorBtn?.addEventListener("click", () => ui.nextErrorBtn?.click());
+    headErrorInfoBtn?.addEventListener("click", showErrorsPopup);
 
     const headClasses = document.createElement("tr");
     headClasses.className = "load-class-head";
@@ -1978,6 +2097,7 @@ function renderTable() {
     latestPresentationRows = presentationRows;
     presentationRows.forEach((row, index) => {
         const tr = document.createElement("tr");
+        tr.dataset.rowKey = rowStableKey(row);
         if (rowHasPlannedLoadChange(row, referenceDate)) {
             tr.classList.add("load-change-row");
         }
@@ -1985,7 +2105,10 @@ function renderTable() {
 
         tr.innerHTML = `
             <td>
-                <div class="subject-cell">${esc(row.displaySubjectName || row.subjectName)} ${index === 0 || presentationRows[index - 1].subjectKey !== row.subjectKey ? `<button class="inline-plus" type="button" data-plus-subject="${esc(row.subjectKey)}" data-plus-after="${esc(row.teacherRowId)}" title="Добавить строку педагога">+</button>` : ""}</div>
+                <div class="subject-cell">
+                    <span class="subject-cell-name">${esc(row.displaySubjectName || row.subjectName)}</span>
+                    ${index === 0 || presentationRows[index - 1].subjectKey !== row.subjectKey ? `<button class="inline-plus" type="button" data-plus-subject="${esc(row.subjectKey)}" data-plus-after="${esc(row.teacherRowId)}" title="Добавить строку педагога">+</button>` : ""}
+                </div>
             </td>            <td class="${isDismissedTeacher(row.teacherName) ? "dismissal-row" : ""}">
                 <input type="text" class="teacher-input" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" list="${listId}" value="${esc(row.teacherName)}" placeholder="ФИО педагога">
                 <datalist id="${listId}"></datalist>
@@ -2123,7 +2246,7 @@ async function saveBuildingLoad() {
 
         return {
             fioTeacher,
-            numberSchoolBuilding: selectedBuilding,
+            numberSchoolBuilding: buildingGroupCode(selectedBuilding),
             subjectName: row.subjectName,
             className: row.className,
             load: Number(row.plannedHours || 0),
@@ -2142,7 +2265,7 @@ async function saveBuildingLoad() {
         if (!row) return;
         payload.push({
             fioTeacher: plan.targetTeacher,
-            numberSchoolBuilding: selectedBuilding,
+            numberSchoolBuilding: buildingGroupCode(selectedBuilding),
             subjectName: row.subjectName,
             className: row.className,
             load: Number(row.plannedHours || 0),
@@ -2283,9 +2406,9 @@ async function importLoadWorkbook(file) {
 }
 
 async function refreshSourceData() {
-    const initialBuildingCandidate = normalizeBuildingCode(selectedBuilding) || restoreSelectedBuilding();
+    const initialBuildingCandidate = normalizeBuildingAccessCode(selectedBuilding) || restoreSelectedBuilding();
     const initialEncodedBuilding = initialBuildingCandidate && initialBuildingCandidate !== ARCHIVE_BUILDING_CODE
-        ? `?numberSchoolBuilding=${encodeURIComponent(initialBuildingCandidate)}`
+        ? `?numberSchoolBuilding=${encodeURIComponent(buildingGroupCode(initialBuildingCandidate))}`
         : "";
     const initialScopedDataPromise = Promise.all([
         api(`/api/curriculum${initialEncodedBuilding}`),
@@ -2300,28 +2423,60 @@ async function refreshSourceData() {
         api("/api/academic-years/active")
     ]);
 
-    const buildingByCode = new Map();
+    const buildingGroups = new Map();
+    const appendAddress = (entry, value) => {
+        const cleaned = String(value || "").trim();
+        if (!cleaned) return;
+        const key = normalizeBuildingAccessCode(cleaned);
+        if (entry.addresses.some((item) => normalizeBuildingAccessCode(item) === key)) return;
+        entry.addresses.push(cleaned);
+    };
     (buildingRows || []).forEach((b) => {
-        const code = normalizeBuildingCode(b.code);
+        const code = normalizeBuildingCode(b.code || b.name);
         if (!code) return;
-        buildingByCode.set(code, {
-            ...b,
-            code,
-            name: String(b.name || "").trim() || code
-        });
+        const existing = buildingGroups.get(code) || { code, name: String(b.name || "").trim() || code, addresses: [], addressRows: [] };
+        existing.name = String(existing.name || b.name || "").trim() || code;
+        appendAddress(existing, b.address);
+        existing.addressRows.push(b);
+        buildingGroups.set(code, existing);
     });
     (classRows || []).forEach((r) => {
         const code = normalizeBuildingCode(r.numberSchoolBuilding);
-        if (!code || buildingByCode.has(code)) return;
-        buildingByCode.set(code, { code, name: code, address: "(из классов)" });
+        if (!code) return;
+        const existing = buildingGroups.get(code) || { code, name: `${code} (из классов)`, addresses: [], addressRows: [] };
+        appendAddress(existing, r.campusAddress);
+        buildingGroups.set(code, existing);
     });
-    buildings = [...buildingByCode.values()].sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"));
+    buildings = [];
+    [...buildingGroups.values()]
+        .sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"))
+        .forEach((group) => {
+            const firstAddress = group.addresses[0] || "";
+            buildings.push({
+                code: group.code,
+                value: group.code,
+                name: group.name,
+                address: firstAddress,
+                addresses: group.addresses,
+                scope: "group"
+            });
+            group.addresses.forEach((address) => {
+                buildings.push({
+                    code: group.code,
+                    value: `${group.code}|${normalizeBuildingAccessCode(address)}`,
+                    name: group.name,
+                    address,
+                    addresses: [address],
+                    scope: "address"
+                });
+            });
+        });
 
     const rememberedBuilding = restoreSelectedBuilding();
-    if (rememberedBuilding && buildings.some((row) => normalizeBuildingCode(row.code) === rememberedBuilding)) {
+    if (rememberedBuilding && buildings.some((row) => (row.value || row.code) === rememberedBuilding)) {
         selectedBuilding = rememberedBuilding;
     }
-    if (!selectedBuilding || !buildings.some((row) => row.code === selectedBuilding)) {
+    if (!selectedBuilding || !buildings.some((row) => (row.value || row.code) === selectedBuilding)) {
         selectedBuilding = preferredBuildingCode(buildings);
     }
     if (selectedBuilding !== ARCHIVE_BUILDING_CODE && !canEditSelectedBuildingLoad()) {
@@ -2333,7 +2488,7 @@ async function refreshSourceData() {
     let curriculum;
     let manual;
     const finalEncodedBuilding = selectedBuilding && selectedBuilding !== ARCHIVE_BUILDING_CODE
-        ? `?numberSchoolBuilding=${encodeURIComponent(selectedBuilding)}`
+        ? `?numberSchoolBuilding=${encodeURIComponent(buildingGroupCode(selectedBuilding))}`
         : "";
     if (initialEncodedBuilding === finalEncodedBuilding) {
         [curriculum, manual] = await initialScopedDataPromise;
@@ -2389,7 +2544,7 @@ function bindEvents() {
         const confirmed = confirm(`Удалить всю нагрузку корпуса ${selectedBuilding} в текущем учебном году?`);
         if (!confirmed) return;
         try {
-            await api(`/api/manual-load?building=${encodeURIComponent(selectedBuilding)}`, { method: "DELETE" });
+            await api(`/api/manual-load?building=${encodeURIComponent(buildingGroupCode(selectedBuilding))}`, { method: "DELETE" });
             await refreshSourceData();
             print({ status: `Нагрузка корпуса ${selectedBuilding} удалена.` });
         } catch (error) {
