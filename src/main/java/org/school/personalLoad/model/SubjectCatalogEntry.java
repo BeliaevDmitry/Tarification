@@ -25,7 +25,12 @@ public class SubjectCatalogEntry {
     private SubjectType subjectType;
 
     @Column(nullable = false)
-    private String subjectAreaName = "Без области";
+    private String subjectAreaName = SubjectAreaNames.defaultArea();
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "subject_area_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private SubjectArea subjectArea;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "subject_area_id")

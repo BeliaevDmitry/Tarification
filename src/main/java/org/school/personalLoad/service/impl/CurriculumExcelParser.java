@@ -4,6 +4,7 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellAddress;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.school.personalLoad.dto.CurriculumImportRow;
+import org.school.personalLoad.model.SubjectAreaNames;
 import org.school.personalLoad.model.CurriculumPart;
 import org.school.personalLoad.model.CurriculumStage;
 import org.school.personalLoad.model.StudyPeriod;
@@ -56,7 +57,7 @@ public class CurriculumExcelParser {
 
         // 3) После "Обязательная часть" идут строки предметов и часы по классам.
         CurriculumPart currentPart = CurriculumPart.CORE;
-        String currentSubjectArea = "Без области";
+        String currentSubjectArea = SubjectAreaNames.defaultArea();
         for (int rowIndex = requiredPartRow + 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
             String areaCell = normalizeText(readMergedCell(sheet, rowIndex, 0));
             String subjectCell = normalizeText(readMergedCell(sheet, rowIndex, 1));

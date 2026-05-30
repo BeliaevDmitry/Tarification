@@ -18,6 +18,7 @@ import org.school.personalLoad.dto.ManualLoadHealthResponse;
 import org.school.personalLoad.dto.ManualLoadPlanFactSummary;
 import org.school.personalLoad.dto.ManualLoadProcessResult;
 import org.school.personalLoad.dto.ManualLoadStatsResponse;
+import org.school.personalLoad.model.SubjectAreaNames;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.ContinuityStatus;
 import org.school.personalLoad.model.EducationLevel;
@@ -549,7 +550,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 String subjectName = normalizeValue(item.getSubjectName());
                 if (subjectName.isBlank()) continue;
                 String normalizedSubject = normalizeToken(subjectName);
-                String area = subjectAreaByName.getOrDefault(normalizedSubject, "Без области");
+                String area = subjectAreaByName.getOrDefault(normalizedSubject, SubjectAreaNames.defaultArea());
                 ManualLoadStatsResponse.SubjectStat stat = bySubject.computeIfAbsent(normalizedSubject,
                         k -> new ManualLoadStatsResponse.SubjectStat(area, subjectName, 0, 0, 0, 0));
                 int planned = Math.max(item.getPlannedHours() == null ? 0 : item.getPlannedHours().intValue(), 0);
@@ -621,7 +622,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
     private String normalizeAreaName(String value) {
         String normalized = normalizeValue(value);
-        return normalized.isBlank() ? "Без области" : normalized;
+        return normalized.isBlank() ? SubjectAreaNames.defaultArea() : normalized;
     }
 
     private String normalizeValue(String value) {
