@@ -2,6 +2,7 @@ const ui = {
     buildingSelect: document.getElementById("people-load-building-select"),
     refreshBtn: document.getElementById("people-load-refresh-btn"),
     exportFullLoadBtn: document.getElementById("export-full-load-btn"),
+    exportFullLoadSalaryBtn: document.getElementById("export-full-load-salary-btn"),
     summary: document.getElementById("people-load-summary"),
     table: document.getElementById("people-load-table")
 };
@@ -10,7 +11,9 @@ const state = {
     buildings: [],
     manualRows: [],
     classes: [],
-    teachers: []
+    teachers: [],
+    subjects: [],
+    studentHourRate: 37
 };
 
 function withYear(path) {
@@ -64,11 +67,13 @@ function rowClassEntry(row) {
 }
 
 function rowAddressToken(row) {
+    const address = rowAddressLabel(row);
+    return address ? normalizeBuildingAccessCode(address) : "";
+}
+
+function rowAddressLabel(row) {
     const classEntry = rowClassEntry(row);
-    if (classEntry?.campusAddress) {
-        return normalizeBuildingAccessCode(classEntry.campusAddress);
-    }
-    return "";
+    return normalizeText(classEntry?.campusAddress || "");
 }
 
 function rowMatchesBuildingAccess(row, accessCode) {
@@ -211,15 +216,71 @@ function childrenCount(row) {
     return 25;
 }
 
+function salaryPermission() {
+    const user = window.tarificationAuth || {};
+    const permissions = window.tarificationTabPermissions || {};
+    const privilegedRole = user.role === "DIRECTOR" || user.role === "DEPUTY_DIRECTOR";
+    return {
+        canView: Boolean(user.admin || privilegedRole || permissions.LOAD_SALARY?.canView),
+        canExport: Boolean(user.admin || privilegedRole || permissions.LOAD_SALARY?.canExport)
+    };
+}
+
+function subjectCoefficient(subjectName) {
+    return state.subjectCoefficientByName?.get(normalizeKey(subjectName)) || 1;
+}
+
+function rowSalary(row) {
+    const children = Math.max(childrenCount(row), 1);
+    const hours = Math.max(loadValue(row), 0);
+    const coefficient = subjectCoefficient(row.subjectName);
+    let value = state.studentHourRate * children * hours * 2.8333333 * coefficient;
+    if (normalizeText(row.groupNameEducationalPlan || "")) {
+        value *= 25 / children;
+    }
+    return value;
+}
+
+function classEntryMatchesAccess(entry, accessCode) {
+    const selectedGroup = buildingGroupCode(accessCode);
+    if (!selectedGroup || buildingGroupCode(entry.numberSchoolBuilding) !== selectedGroup) {
+        return false;
+    }
+    const selectedAddress = buildingAddressToken(accessCode);
+    return !selectedAddress || normalizeBuildingAccessCode(entry.campusAddress || "") === selectedAddress;
+}
+
+function classLeadershipSalary(fio, accessCode) {
+    const key = fioKey(fio);
+    return (state.leadershipByTeacher?.get(key) || [])
+        .filter((entry) => classEntryMatchesAccess(entry, accessCode))
+        .reduce((sum, entry) => sum + 500 * 25 + 5000, 0);
+}
+
+function teacherSalary(fio, rows, accessCode) {
+    const hours = rows.reduce((sum, row) => sum + rowSalary(row), 0);
+    const leadership = classLeadershipSalary(fio, accessCode);
+    return { hours, leadership, total: hours + leadership };
+}
+
+function formatMoney(value) {
+    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value || 0);
+}
+
 function teacherExtra(fio, teacherRows) {
     const key = fioKey(fio);
     const teacher = state.teacherByFio?.get(key);
+    const teacherAddresses = Array.from(new Set(teacherRows.map(rowAddressLabel).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ru"));
     const teacherBuildings = Array.from(new Set(teacherRows.map((row) => buildingGroupCode(row.numberSchoolBuilding)).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ru"));
     const leadership = (state.leadershipByTeacher?.get(key) || [])
         .map((entry) => `${entry.className} (${entry.numberSchoolBuilding}${entry.campusAddress ? `, ${entry.campusAddress}` : ""})`)
         .join("; ");
     const extra = [];
-    if (teacherBuildings.length) extra.push(`Корпуса: ${teacherBuildings.join(", ")}`);
+    if (teacherAddresses.length) {
+        extra.push(`Адреса: ${teacherAddresses.join(", ")}`);
+    } else if (teacherBuildings.length) {
+        extra.push(`Корпуса: ${teacherBuildings.join(", ")}`);
+    }
     if (leadership) extra.push(`Классное руководство: ${leadership}`);
     if (normalizeText(teacher?.additionalDuties)) extra.push(`Доп. обязанности: ${teacher.additionalDuties}`);
     return extra.join("\n");
@@ -257,7 +318,11 @@ function renderTable() {
         addHours(allTotals.get(key), row);
     });
 
+    const showSalary = salaryPermission().canView;
     const headers = ["ФИО", "Предмет", "Класс", "Группа", "Количество детей", "Часы по предмету", "Период нагрузки", "Часы в корпусе/всего", "Дополнительные сведения"];
+    if (showSalary) {
+        headers.push("За часы", "Классное руководство", "Итого");
+    }
     let html = `<thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>`;
 
     if (!selectedRows.length) {
@@ -275,6 +340,7 @@ function renderTable() {
             const total = allTotals.get(key) || { year: 0, h1: 0, h2: 0 };
             const hours = `${formatHours(scoped)} / ${formatHours(total)}`;
             const extra = teacherExtra(fio, allRowsByTeacher.get(key) || rows);
+            const salary = showSalary ? teacherSalary(fio, rows, selected) : null;
             rows.forEach((row, index) => {
                 html += "<tr>";
                 if (index === 0) {
@@ -289,6 +355,11 @@ function renderTable() {
                 if (index === 0) {
                     html += `<td rowspan="${rows.length}" class="people-load-hours">${escapeHtml(hours)}</td>`;
                     html += `<td rowspan="${rows.length}" class="people-load-extra">${escapeHtml(extra)}</td>`;
+                    if (showSalary) {
+                        html += `<td rowspan="${rows.length}" class="people-load-money">${escapeHtml(formatMoney(salary.hours))}</td>`;
+                        html += `<td rowspan="${rows.length}" class="people-load-money people-load-money-leadership">${escapeHtml(formatMoney(salary.leadership))}</td>`;
+                        html += `<td rowspan="${rows.length}" class="people-load-money">${escapeHtml(formatMoney(salary.total))}</td>`;
+                    }
                 }
                 html += "</tr>";
             });
@@ -301,8 +372,8 @@ function renderTable() {
     ui.summary.textContent = `Показано строк: ${selectedRows.length}. Выбрано: ${buildingLabel(label) || "корпус не выбран"}.`;
 }
 
-async function exportFullLoadWorkbook() {
-    const response = await fetch(withYear("/api/manual-load/export-full"));
+async function exportFullLoadWorkbook(withSalary = false) {
+    const response = await fetch(withYear(withSalary ? "/api/manual-load/export-full-salary" : "/api/manual-load/export-full"));
     if (!response.ok) {
         const text = await response.text();
         throw new Error(text || `HTTP ${response.status}`);
@@ -313,7 +384,7 @@ async function exportFullLoadWorkbook() {
     const disposition = response.headers.get("Content-Disposition") || "";
     const match = disposition.match(/filename\*=UTF-8''([^;]+)/);
     a.href = url;
-    a.download = match ? decodeURIComponent(match[1]) : "full-load-export.xlsx";
+    a.download = match ? decodeURIComponent(match[1]) : (withSalary ? "full-load-salary-export.xlsx" : "full-load-export.xlsx");
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -338,20 +409,32 @@ function rebuildIndexes() {
         if (!state.leadershipByTeacher.has(key)) state.leadershipByTeacher.set(key, []);
         state.leadershipByTeacher.get(key).push(entry);
     });
+
+    state.subjectCoefficientByName = new Map();
+    state.subjects.forEach((subject) => {
+        const coefficient = Number(subject.subjectCoefficient ?? 1);
+        state.subjectCoefficientByName.set(normalizeKey(subject.subjectName), Number.isFinite(coefficient) && coefficient > 0 ? coefficient : 1);
+    });
 }
 
 async function loadData() {
     ui.summary.textContent = "Загрузка данных…";
-    const [buildings, manualRows, classes, teachers] = await Promise.all([
+    const salaryAccess = salaryPermission().canView;
+    const [buildings, manualRows, classes, teachers, subjects, salarySettings] = await Promise.all([
         api("/api/buildings"),
         api("/api/manual-load"),
         api("/api/classroom-leadership"),
-        api("/api/teachers")
+        api("/api/teachers"),
+        api("/api/subjects"),
+        salaryAccess ? api("/api/salary-settings") : Promise.resolve(null)
     ]);
     state.buildings = buildBuildingOptions(buildings);
     state.manualRows = manualRows || [];
     state.classes = classes || [];
     state.teachers = teachers || [];
+    state.subjects = subjects || [];
+    const rate = Number(salarySettings?.studentHourRate ?? 37);
+    state.studentHourRate = Number.isFinite(rate) && rate > 0 ? rate : 37;
     rebuildIndexes();
     fillBuildingSelect();
     renderTable();
@@ -362,11 +445,32 @@ function showError(error) {
     ui.table.innerHTML = "";
 }
 
-function init() {
+function waitForAuth() {
+    if (window.tarificationAuth) return Promise.resolve();
+    return new Promise((resolve) => {
+        let attempts = 0;
+        const timer = setInterval(() => {
+            attempts += 1;
+            if (window.tarificationAuth || attempts >= 50) {
+                clearInterval(timer);
+                resolve();
+            }
+        }, 50);
+    });
+}
+
+async function init() {
     ui.buildingSelect?.addEventListener("change", renderTable);
     ui.refreshBtn?.addEventListener("click", () => loadData().catch(showError));
     ui.exportFullLoadBtn?.addEventListener("click", () => exportFullLoadWorkbook().catch((error) => alert(`Не удалось скачать полную нагрузку: ${error.message}`)));
+    if (ui.exportFullLoadSalaryBtn) {
+        ui.exportFullLoadSalaryBtn.addEventListener("click", () => exportFullLoadWorkbook(true).catch((error) => alert(`Не удалось скачать полную нагрузку с ЗП: ${error.message}`)));
+    }
+    await waitForAuth();
+    if (ui.exportFullLoadSalaryBtn) {
+        ui.exportFullLoadSalaryBtn.style.display = salaryPermission().canExport ? "" : "none";
+    }
     loadData().catch(showError);
 }
 
-init();
+init().catch(showError);

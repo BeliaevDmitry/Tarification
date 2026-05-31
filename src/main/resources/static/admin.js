@@ -27,7 +27,8 @@ const TAB_GROUPS = [
         tabs: [
             { key: 'CURRICULUM', label: 'Учебный план' },
             { key: 'LOAD', label: 'Нагрузка по корпусам' },
-            { key: 'LOAD_STATS', label: 'Нагрузка: статистика' }
+            { key: 'LOAD_STATS', label: 'Нагрузка: статистика' },
+            { key: 'LOAD_SALARY', label: 'Нагрузка: расчёт денег (ЗП)' }
         ]
     },
     {
@@ -632,7 +633,7 @@ function renderPermissionMatrix(targetBody, selectedPermissions = [], prefix = '
     const byTab = permissionMap(selectedPermissions);
     targetBody.innerHTML = TAB_GROUPS.map((group) => {
         const groupRows = group.tabs.map((tab) => {
-            const current = byTab[tab.key] || { canView: tab.key !== 'USERS', canEdit: false, canImport: false, canExport: true };
+            const current = byTab[tab.key] || { canView: tab.key !== 'USERS' && tab.key !== 'LOAD_SALARY', canEdit: false, canImport: false, canExport: tab.key !== 'LOAD_SALARY' };
             return `
                 <tr data-tab-row="${tab.key}" data-tab-group="${group.key}">
                     <td class="permission-tab-cell">${tab.label}</td>

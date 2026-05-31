@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ГБОУ школа — Воспитательная работа</title>
+  <link rel="icon" type="image/png" href="/school-crest.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container">
+  <header class="card">
+    <h1>Воспитательная работа</h1>
+    <p class="muted">Загрузка отчётов классных руководителей и сводные таблицы распарсенных данных по классам.</p>
+    <nav class="page-nav"></nav>
+  </header>
+
+  <section class="card educational-work-module-card">
+    <h2>Итоговый отчёт</h2>
+    <div class="tabs educational-work-tabs">
+      <button type="button" class="tab-button active" data-panel="ew-summary-panel">Свод</button>
+      <button type="button" class="tab-button" data-panel="ew-reports-panel">Отчёты</button>
+      <button type="button" class="tab-button" data-panel="ew-performance-panel">Успеваемость</button>
+      <button type="button" class="tab-button" data-panel="ew-activity-panel">Активность и ДО</button>
+      <button type="button" class="tab-button" data-panel="ew-achievements-panel">Достижения</button>
+      <button type="button" class="tab-button" data-panel="ew-projects-panel">Проекты</button>
+      <button type="button" class="tab-button" data-panel="ew-staff-panel">Педагоги и диагностики</button>
+      <button type="button" class="tab-button" data-panel="ew-upload-panel">Приём отчёта</button>
+    </div>
+
+    <section id="ew-summary-panel">
+      <div class="educational-work-actions">
+        <button type="button" id="educational-work-export-btn">Экспорт показателей в Excel</button>
+      </div>
+      <div id="educational-work-metrics" class="stat-grid"></div>
+      <p class="muted">Компактная сводка по каждому СП: зелёная галочка — отчёт сдан, красный крестик — отчёт не сдан, пустая ячейка — такого класса нет.</p>
+      <div id="educational-work-building-summaries" class="building-summary-grid"></div>
+    </section>
+
+    <section id="ew-reports-panel" hidden>
+      <div class="table-wrapper"><table class="data-table"><thead><tr><th>№</th><th>Класс</th><th>ФИО классного</th><th>Отчёт</th><th>Скачать отчёт</th></tr></thead><tbody id="educational-work-submissions"></tbody></table></div>
+    </section>
+
+    <section id="ew-performance-panel" hidden>
+      <h3>Успеваемость</h3>
+      <div class="table-wrapper"><table class="data-table"><thead><tr><th>Класс</th><th>Классный руководитель</th><th>Учащихся</th><th>5</th><th>4/5</th><th>Одна 3</th><th>3/4</th><th>Неуспевающие</th></tr></thead><tbody id="ew-performance"></tbody></table></div>
+      <h3>Академические задолженности</h3>
+      <div class="table-wrapper"><table class="data-table"><thead><tr><th>Класс</th><th>ФИО обучающегося</th><th>1 триместр</th><th>2 триместр</th><th>3 триместр</th><th>Итог</th></tr></thead><tbody id="ew-debts"></tbody></table></div>
+    </section>
+
+    <section id="ew-activity-panel" hidden>
+      <h3>Дополнительное образование</h3>
+      <div class="table-wrapper"><table class="data-table"><thead><tr><th>Класс</th><th>ДО внутри, чел.</th><th>ДО внутри, %</th><th>ДО вне, чел.</th><th>ДО вне, %</th><th>Не посещают ДО</th></tr></thead><tbody id="ew-additional"></tbody></table></div>
+      <h3>Активность</h3>
+      <div class="table-wrapper"><table class="data-table"><thead><tr><th>Класс</th><th>ГТО</th><th>Движение Первых</th><th>Волонтёры</th><th>Совет обучающихся</th></tr></thead><tbody id="ew-activity"></tbody></table></div>
+    </section>
+
+    <section id="ew-achievements-panel" hidden>
+      <div class="table-wrapper"><table class="data-table"><thead><tr><th>Класс</th><th>Уровень</th><th>Проект</th><th>Номинация</th><th>Ответственный</th><th>Участники</th><th>Призёры</th><th>Победители</th></tr></thead><tbody id="ew-achievements"></tbody></table></div>
+    </section>
+
+    <section id="ew-projects-panel" hidden>
+      <div class="table-wrapper"><table class="data-table"><thead><tr><th>Класс</th><th>Проект</th><th>Классный руководитель</th><th>Номинация/формат</th><th>Участники</th><th>Результат</th></tr></thead><tbody id="ew-projects"></tbody></table></div>
+    </section>
+
+
+    <section id="ew-staff-panel" hidden>
+      <h3>Портфолио классного руководителя</h3>
+      <div class="table-wrapper"><table class="data-table"><thead><tr><th>Класс</th><th>Конкурсы</th><th>Трансляция опыта</th><th>Публикации</th><th>Повышение квалификации</th></tr></thead><tbody id="ew-portfolio"></tbody></table></div>
+      <h3>Педагогические работники</h3>
+      <div class="table-wrapper"><table class="data-table"><thead><tr><th>Класс</th><th>ФИО</th><th>Категория</th><th>Награды</th></tr></thead><tbody id="ew-recognitions"></tbody></table></div>
+      <h3>Диагностики МЦКО</h3>
+      <div class="table-wrapper"><table class="data-table"><thead><tr><th>Класс</th><th>Название</th><th>Результат</th><th>Дата</th><th>Опубликовано</th></tr></thead><tbody id="ew-diagnostics"></tbody></table></div>
+    </section>
+
+    <section id="ew-upload-panel" data-requires-edit hidden>
+      <h3>Приём отчёта</h3>
+      <p class="muted">Загрузите DOCX-отчёт. Класс и ФИО классного руководителя проверяются по справочнику классов выбранного учебного года.</p>
+      <form id="educational-work-upload-form" class="toolbar-form">
+        <label>Отчёт классного руководителя (.docx)
+          <input id="educational-work-file" type="file" accept=".docx" required>
+        </label>
+        <button type="submit">Проверить и принять</button>
+      </form>
+      <div id="educational-work-upload-result" class="result-block"></div>
+    </section>
+
+  </section>
+</main>
+<script src="/branding.js"></script>
+<script src="/auth.js"></script>
+<script src="/educational-work.js"></script>
+</body>
+</html>

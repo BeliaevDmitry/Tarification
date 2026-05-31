@@ -13,6 +13,7 @@ const TAB_PATHS = {
     '/teachers.html': 'TEACHERS',
     '/teachers-notification.html': 'HR_NOTIFICATIONS_VIEW',
     '/contingent.html': 'CONTINGENT_STATS',
+    '/educational-work.html': 'EDUCATIONAL_WORK',
     '/vsoko.html': 'VSOKO_VIEW',
     '/vsoko-oge.html': 'VSOKO_VIEW',
     '/vsoko-ege.html': 'VSOKO_VIEW',
@@ -78,6 +79,7 @@ const NAV_ORDER = [
     { path: '/load-statistics.html', tab: 'LOAD_STATS', label: 'Статистика нагрузки' },
     { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' },
     { path: '/subject-areas.html', tab: 'SUBJECT_AREAS', label: 'Предметные области' },
+    { path: '/educational-work.html', tab: 'EDUCATIONAL_WORK', label: 'Воспитательная работа' },
     { path: '/vsoko.html', tab: 'VSOKO_VIEW', label: 'ВСОКО' }
 ];
 
@@ -114,6 +116,9 @@ function isLoadModulePage(pathname) {
 }
 
 function navItemsForPath(pathname) {
+    if (pathname === '/educational-work.html') {
+        return [];
+    }
     if (pathname === '/vsoko-pa.html') {
         return PA_HUB_NAV_ORDER;
     }
@@ -123,6 +128,8 @@ function navItemsForPath(pathname) {
     if (pathname === '/teachers.html' || pathname === '/teachers-notification.html' || pathname === '/service-notes.html') {
         return [
             { path: '/teachers.html', tab: 'TEACHERS', label: 'Персонал' },
+            { path: '/teachers.html#dismissals', tab: 'TEACHERS', label: 'Увольнения' },
+            { path: '/teachers.html#settings', tab: 'LOAD_SALARY', label: 'Настройки' },
             { path: '/service-notes.html', tab: 'SERVICE_NOTES', label: 'Служебные записки' },
             { path: '/teachers-notification.html', tab: 'HR_NOTIFICATIONS_VIEW', label: 'Уведомления' }
         ];
@@ -213,6 +220,10 @@ function isLoadPage() {
         || window.location.pathname === '/load-statistics.html';
 }
 
+function isEducationalWorkPage() {
+    return window.location.pathname === '/educational-work.html';
+}
+
 function hasContingentAccess(currentUser) {
     if (currentUser.admin) return true;
     const permissions = tabPermissionMap(currentUser);
@@ -223,6 +234,11 @@ function hasLoadAccess(currentUser) {
     if (currentUser.admin) return true;
     const permissions = tabPermissionMap(currentUser);
     return Boolean(permissions.LOAD?.canView || permissions.LOAD_STATS?.canView);
+}
+
+function hasEducationalWorkAccess(currentUser) {
+    if (currentUser.admin) return true;
+    return Boolean(tabPermissionMap(currentUser).EDUCATIONAL_WORK?.canView);
 }
 
 function showAccessDenied(sectionTitle = 'раздела') {
@@ -468,7 +484,12 @@ function enrichNavigation(currentUser) {
             link.href = tabDef.path;
             link.dataset.tab = tabDef.tab;
             link.textContent = tabDef.label;
-            if (window.location.pathname === tabDef.path) {
+            const currentPathWithHash = `${window.location.pathname}${window.location.hash || ''}`;
+            const tabPath = tabDef.path;
+            const active = tabPath.includes('#')
+                ? currentPathWithHash === tabPath
+                : window.location.pathname === tabPath && (!window.location.hash || window.location.hash === '#main');
+            if (active) {
                 link.classList.add('active');
             }
             nav.appendChild(link);
@@ -485,6 +506,11 @@ function enrichMainMenu(currentUser) {
     const contingentCard = document.querySelector('[data-contingent-card]');
     if (contingentCard) {
         contingentCard.style.display = hasContingentAccess(currentUser) ? '' : 'none';
+    }
+
+    const educationalWorkCard = document.querySelector('[data-educational-work-card]');
+    if (educationalWorkCard) {
+        educationalWorkCard.style.display = hasEducationalWorkAccess(currentUser) ? '' : 'none';
     }
 }
 
@@ -508,6 +534,11 @@ function enrichMainMenu(currentUser) {
         if (isLoadPage() && !hasLoadAccess(currentUser)) {
             mountHeaderUser(currentUser);
             showAccessDenied('разделу «Нагрузка»');
+            return;
+        }
+        if (isEducationalWorkPage() && !hasEducationalWorkAccess(currentUser)) {
+            mountHeaderUser(currentUser);
+            showAccessDenied('разделу «Воспитательная работа»');
             return;
         }
         enrichNavigation(currentUser);

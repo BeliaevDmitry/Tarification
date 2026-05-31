@@ -47,6 +47,18 @@ public class SessionUser implements Serializable {
         return tabPermissions.stream().anyMatch(permission -> permission.getTab() == tab && permission.isCanEdit());
     }
 
+    public boolean canViewSalary() {
+        if (isAdmin() || role == UserRole.DIRECTOR || role == UserRole.DEPUTY_DIRECTOR) return true;
+        if (!canView) return false;
+        return tabPermissions.stream().anyMatch(permission -> permission.getTab() == AppTab.LOAD_SALARY && permission.isCanView());
+    }
+
+    public boolean canExportSalary() {
+        if (isAdmin() || role == UserRole.DIRECTOR || role == UserRole.DEPUTY_DIRECTOR) return true;
+        if (!canView) return false;
+        return tabPermissions.stream().anyMatch(permission -> permission.getTab() == AppTab.LOAD_SALARY && permission.isCanExport());
+    }
+
     public boolean canEditLoadBuilding(String buildingCode) {
         if (!canEditTab(AppTab.LOAD)) {
             return false;

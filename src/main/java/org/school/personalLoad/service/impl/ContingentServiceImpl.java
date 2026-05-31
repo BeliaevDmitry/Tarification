@@ -192,12 +192,23 @@ public class ContingentServiceImpl implements ContingentService {
             placementByClass.put(className, new ClassPlacement(buildingCode, buildingName, address));
         });
 
+        Map<String, Integer> importedCountByClass = new TreeMap<>();
+        for (String rawClassName : classNames) {
+            String className = ClassNameNormalizer.normalize(rawClassName);
+            if (extractParallel(className) >= 0) {
+                importedCountByClass.merge(className, 1, Integer::sum);
+            }
+        }
+
+        Set<String> allClassNames = new TreeSet<>(this::compareClassNames);
+        allClassNames.addAll(placementByClass.keySet());
+        allClassNames.addAll(importedCountByClass.keySet());
+
         Map<Integer, Integer> totalByParallel = new TreeMap<>();
         Map<String, Integer> totalByAddress = new LinkedHashMap<>();
         Map<String, List<ContingentDtos.ClassTotal>> classesByAddress = new LinkedHashMap<>();
 
-        for (String rawClassName : classNames) {
-            String className = ClassNameNormalizer.normalize(rawClassName);
+        for (String className : allClassNames) {
             int parallel = extractParallel(className);
             if (parallel < 0) {
                 continue;
@@ -205,24 +216,17 @@ public class ContingentServiceImpl implements ContingentService {
 
             ClassPlacement placement = placementByClass.getOrDefault(className, new ClassPlacement("НЕОПР", "НЕОПР", "Адрес не указан"));
             String addressKey = placement.buildingCode + "|" + placement.buildingName + "|" + placement.address;
+            int students = importedCountByClass.getOrDefault(className, 30);
 
             List<ContingentDtos.ClassTotal> classTotals = classesByAddress.computeIfAbsent(addressKey, k -> new ArrayList<>());
-            ContingentDtos.ClassTotal existing = classTotals.stream()
-                    .filter(item -> Objects.equals(item.getClassName(), className) && Objects.equals(item.getParallel(), parallel))
-                    .findFirst()
-                    .orElse(null);
-            if (existing == null) {
-                ContingentDtos.ClassTotal created = new ContingentDtos.ClassTotal();
-                created.setParallel(parallel);
-                created.setClassName(className);
-                created.setStudents(1);
-                classTotals.add(created);
-            } else {
-                existing.setStudents(existing.getStudents() + 1);
-            }
+            ContingentDtos.ClassTotal created = new ContingentDtos.ClassTotal();
+            created.setParallel(parallel);
+            created.setClassName(className);
+            created.setStudents(students);
+            classTotals.add(created);
 
-            totalByParallel.merge(parallel, 1, Integer::sum);
-            totalByAddress.merge(addressKey, 1, Integer::sum);
+            totalByParallel.merge(parallel, students, Integer::sum);
+            totalByAddress.merge(addressKey, students, Integer::sum);
         }
 
         List<String> sortedAddressKeys = new ArrayList<>(classesByAddress.keySet());
@@ -274,11 +278,19 @@ public class ContingentServiceImpl implements ContingentService {
         ContingentDtos.StatsResponse response = new ContingentDtos.StatsResponse();
         response.setSnapshotId(snapshot.getId());
         response.setSnapshotDate(snapshot.getSnapshotDate());
-        response.setTotalStudents(classNames.size());
+        response.setTotalStudents(totalByParallel.values().stream().mapToInt(Integer::intValue).sum());
         response.setParallels(new ArrayList<>(totalByParallel.keySet()));
         response.setColumns(columns);
         response.setParallelTotals(parallelTotals);
         return response;
+    }
+
+
+    private int compareClassNames(String first, String second) {
+        int firstParallel = extractParallel(first);
+        int secondParallel = extractParallel(second);
+        int parallelCompare = Integer.compare(firstParallel, secondParallel);
+        return parallelCompare != 0 ? parallelCompare : String.valueOf(first).compareTo(String.valueOf(second));
     }
 
 
