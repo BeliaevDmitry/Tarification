@@ -3,6 +3,7 @@ const ewUi = {
     file: document.getElementById('educational-work-file'),
     result: document.getElementById('educational-work-upload-result'),
     metrics: document.getElementById('educational-work-metrics'),
+    exportBtn: document.getElementById('educational-work-export-btn'),
     buildingSummaries: document.getElementById('educational-work-building-summaries'),
     submissions: document.getElementById('educational-work-submissions')
 };
@@ -40,17 +41,46 @@ async function ewApi(path, options = {}) {
     return body;
 }
 
+const EDUCATIONAL_WORK_HASH_TO_PANEL = {
+    summary: 'ew-summary-panel',
+    reports: 'ew-reports-panel',
+    performance: 'ew-performance-panel',
+    activity: 'ew-activity-panel',
+    achievements: 'ew-achievements-panel',
+    projects: 'ew-projects-panel',
+    staff: 'ew-staff-panel',
+    upload: 'ew-upload-panel'
+};
+
+const EDUCATIONAL_WORK_PANEL_TO_HASH = Object.fromEntries(
+    Object.entries(EDUCATIONAL_WORK_HASH_TO_PANEL).map(([hash, panel]) => [panel, hash])
+);
+
+function activateEducationalWorkPanel(panelId, updateHash = false) {
+    const target = document.getElementById(panelId) ? panelId : 'ew-summary-panel';
+    document.querySelectorAll('.educational-work-tabs .tab-button').forEach((button) => {
+        button.classList.toggle('active', button.dataset.panel === target);
+    });
+    document.querySelectorAll('[id^="ew-"][id$="-panel"]').forEach((panel) => {
+        panel.hidden = panel.id !== target;
+    });
+    if (updateHash) {
+        const hash = EDUCATIONAL_WORK_PANEL_TO_HASH[target] || 'summary';
+        history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${hash}`);
+    }
+}
+
+function activateEducationalWorkHash() {
+    const hash = String(window.location.hash || '#summary').replace('#', '') || 'summary';
+    activateEducationalWorkPanel(EDUCATIONAL_WORK_HASH_TO_PANEL[hash] || 'ew-summary-panel');
+}
+
 function bindEducationalWorkTabs() {
     document.querySelectorAll('.educational-work-tabs .tab-button').forEach((button) => {
-        button.addEventListener('click', () => {
-            document.querySelectorAll('.educational-work-tabs .tab-button').forEach((item) => item.classList.remove('active'));
-            button.classList.add('active');
-            const target = button.dataset.panel;
-            document.querySelectorAll('[id^="ew-"][id$="-panel"]').forEach((panel) => {
-                panel.hidden = panel.id !== target;
-            });
-        });
+        button.addEventListener('click', () => activateEducationalWorkPanel(button.dataset.panel, true));
     });
+    window.addEventListener('hashchange', activateEducationalWorkHash);
+    activateEducationalWorkHash();
 }
 
 function renderUploadResult(result) {
@@ -163,6 +193,11 @@ async function loadEducationalWorkSummary() {
     }
 }
 
+function exportEducationalWorkIndicators() {
+    window.location.href = ewApiPath('/api/educational-work/indicators/export');
+}
+
 bindEducationalWorkTabs();
 ewUi.form?.addEventListener('submit', submitEducationalWorkReport);
+ewUi.exportBtn?.addEventListener('click', exportEducationalWorkIndicators);
 loadEducationalWorkSummary();

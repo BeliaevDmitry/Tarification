@@ -2180,3 +2180,10 @@ dialog::backdrop {
     background: #11598f;
     color: #fff;
 }
+
+.educational-work-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-bottom: 12px;
+}

@@ -116,6 +116,9 @@ function isLoadModulePage(pathname) {
 }
 
 function navItemsForPath(pathname) {
+    if (pathname === '/educational-work.html') {
+        return [];
+    }
     if (pathname === '/vsoko-pa.html') {
         return PA_HUB_NAV_ORDER;
     }

@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
 @RestController
@@ -42,6 +43,18 @@ public class EducationalWorkReportController {
     @GetMapping("/summary")
     public EducationalWorkDtos.SchoolSummary summary(@RequestParam(required = false) String academicYear) {
         return service.summary(academicYearService.resolveRequestedOrDefault(academicYear));
+    }
+
+    @GetMapping("/indicators/export")
+    public ResponseEntity<byte[]> exportIndicators(@RequestParam(required = false) String academicYear) throws IOException {
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        byte[] body = service.exportIndicators(effectiveYear);
+        String fileName = "Воспитательная_работа_" + effectiveYear + ".xlsx";
+        String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(body);
     }
 
     @GetMapping("/reports/{academicYear}/{schoolClass}/file")
