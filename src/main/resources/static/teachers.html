@@ -49,8 +49,9 @@
     <section class="card" data-requires-edit>
         <h2>Список педагогов</h2>
         <div class="row">
-            <button type="button" id="teachers-tab-main-btn">Кадры</button>
-            <button type="button" id="teachers-tab-dismissals-btn">Увольнения</button>
+            <button type="button" id="teachers-tab-main-btn" data-allow-readonly="true">Кадры</button>
+            <button type="button" id="teachers-tab-dismissals-btn" data-allow-readonly="true">Увольнения</button>
+            <button type="button" id="teachers-tab-settings-btn" data-allow-readonly="true" style="display:none;">Настройки</button>
         </div>
         <p class="muted">Если педагог назначен на нагрузку, удаление будет запрещено — сначала снимите назначение в разделе «Нагрузка по корпусам».</p>
         <div class="sheet-wrap" id="teachers-main-panel">
@@ -84,6 +85,17 @@
                 </thead>
                 <tbody id="teachers-dismissals-body"></tbody>
             </table>
+        </div>
+        <div id="teachers-settings-panel" style="display:none;">
+            <h3>Настройки расчёта зарплаты</h3>
+            <p class="muted">Значение «человеко-час» используется в экспорте полной нагрузки с ЗП и в расчёте колонки «За часы».</p>
+            <form id="salary-settings-form" class="row">
+                <label>Человеко-час, руб.
+                    <input id="salary-student-hour-rate" name="studentHourRate" type="number" min="0.01" step="0.01" value="37" data-allow-readonly="true">
+                </label>
+                <button id="save-salary-settings-btn" type="submit" data-allow-readonly="true">Сохранить</button>
+            </form>
+            <p id="salary-settings-status" class="muted"></p>
         </div>
     </section>
 </main>
