@@ -21,6 +21,8 @@ import javax.servlet.http.HttpServletRequest;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.math.BigInteger;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 import org.apache.xmlbeans.XmlCursor;
 import java.time.LocalDate;
@@ -66,7 +68,10 @@ public class TeacherNotificationsController {
         LocalDate generatedDate = LocalDate.parse(notificationDate);
         byte[] doc = generateDoc(fio, academicYear, targetLoadDate, generatedDate);
         upsert(fio, academicYear, targetLoadDate, user.getUsername());
-        return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + fio + ".docx").contentType(MediaType.APPLICATION_OCTET_STREAM).body(doc);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, contentDispositionFileName(fio + ".docx"))
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(doc);
     }
 
     @PostMapping("/download-all")
@@ -86,7 +91,15 @@ public class TeacherNotificationsController {
             }
         }
         String zipName = "Уведомления на " + d;
-        return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + zipName + ".zip").contentType(MediaType.APPLICATION_OCTET_STREAM).body(bos.toByteArray());
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, contentDispositionFileName(zipName + ".zip"))
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(bos.toByteArray());
+    }
+
+    private String contentDispositionFileName(String fileName) {
+        String encoded = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        return "attachment; filename*=UTF-8''" + encoded;
     }
 
     private byte[] generateDoc(String fio, String year, LocalDate loadDate, LocalDate notificationDate) throws Exception {

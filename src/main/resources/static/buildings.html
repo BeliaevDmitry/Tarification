@@ -19,6 +19,7 @@
             <a class="nav-link" href="/subjects.html" data-tab="SUBJECTS">Предметы</a>
             <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
             <a class="nav-link" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/people-load.html" data-tab="LOAD">Нагрузка по людям</a>
             <a class="nav-link" href="/load-statistics.html" data-tab="LOAD">Статистика нагрузки</a>
             <a class="nav-link" href="/settings.html" data-tab="SETTINGS">Настройки</a>
             <a class="nav-link" href="/teachers.html" data-tab="TEACHERS">Кадры</a>
@@ -60,6 +61,7 @@
 <dialog id="building-edit-dialog">
     <form method="dialog" id="building-edit-form" class="grid labeled-grid" data-requires-edit>
         <h3>Редактирование корпуса</h3>
+        <input type="hidden" name="id">
         <input type="hidden" name="code">
         <label class="field-row"><span>Название</span><input name="name" placeholder="Название корпуса" required></label>
         <label class="field-row"><span>Адрес</span><input name="address" placeholder="Адрес корпуса" required></label>
