@@ -24,6 +24,7 @@ public class ManualLoadStatsResponse {
         private String subjectName;
         private int planned;
         private int assigned;
+        private int vacancy;
         private int unassigned;
     }
 }

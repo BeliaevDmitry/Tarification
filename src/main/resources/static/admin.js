@@ -397,37 +397,107 @@ function permissionMap(permissionList = []) {
     return Object.fromEntries(permissionList.map((permission) => [permission.tab, permission]));
 }
 
+function normalizeBuildingAccessCode(value) {
+    const normalized = String(value || '')
+        .trim()
+        .toUpperCase()
+        .replace(/[–—]/g, '-')
+        .replace(/[CС][ПPР]/g, 'СП')
+        .replace(/\s*\|\s*/g, '|')
+        .replace(/\s+/g, '');
+    const separatorIndex = normalized.indexOf('|');
+    const normalizeGroup = (group) => group.replace(/^СП-(\d+)$/, 'СП$1');
+    return separatorIndex >= 0
+        ? `${normalizeGroup(normalized.slice(0, separatorIndex))}${normalized.slice(separatorIndex)}`
+        : normalizeGroup(normalized);
+}
+
+function buildingGroupCode(value) {
+    const normalized = normalizeBuildingAccessCode(value);
+    const separatorIndex = normalized.indexOf('|');
+    return separatorIndex >= 0 ? normalized.slice(0, separatorIndex) : normalized;
+}
+
+function buildingDisplayName(building) {
+    const code = buildingGroupCode(building?.code || building?.name);
+    return String(building?.name || code || '').trim() || code;
+}
+
+function buildingAddressLabel(building) {
+    return String(building?.address || '').trim();
+}
+
+function buildingAccessValue(building) {
+    const code = buildingGroupCode(building?.code || building?.name);
+    const address = normalizeBuildingAccessCode(buildingAddressLabel(building));
+    return address ? `${code}|${address}` : code;
+}
+
+function buildingGroupOptions() {
+    const byCode = new Map();
+    (buildings || []).forEach((building) => {
+        const code = buildingGroupCode(building?.code || building?.name);
+        if (!code || byCode.has(code)) return;
+        byCode.set(code, { value: code, label: `${buildingDisplayName(building)} — все адреса` });
+    });
+    return [...byCode.values()].sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+}
+
+function buildingAccessOptions() {
+    const options = [];
+    const seen = new Set();
+    buildingGroupOptions().forEach((group) => {
+        options.push({ ...group, groupWide: true });
+        seen.add(group.value);
+    });
+    (buildings || []).forEach((building) => {
+        const value = buildingAccessValue(building);
+        const address = buildingAddressLabel(building);
+        if (!value || !address || seen.has(value)) return;
+        seen.add(value);
+        options.push({
+            value,
+            groupWide: false,
+            label: `${buildingDisplayName(building)} — ${address}`
+        });
+    });
+    return options.sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+}
+
 function buildingByCode(code) {
-    return buildings.find((building) => building.code === code) || null;
+    const normalized = normalizeBuildingAccessCode(code);
+    return buildingAccessOptions().find((building) => building.value === normalized) || null;
 }
 
 function formatBuilding(code) {
     if (!code) return '—';
     const building = buildingByCode(code);
-    return building ? building.name : code;
+    return building ? building.label : code;
 }
 
 function loadScopeLabel(user) {
     if (user.loadEditAllBuildings) return 'Все корпуса';
     const codes = (user.loadEditableBuildingCodes || []).filter(Boolean);
     if (codes.length) {
-        return codes.length === 1
-            ? `1 корпус: ${codes[0]}`
-            : `${codes.length} корп.: ${codes.join(', ')}`;
+        const labels = codes.map(formatBuilding);
+        return labels.length === 1
+            ? `1 зона: ${labels[0]}`
+            : `${labels.length} зон: ${labels.join(', ')}`;
     }
     if (user.role === 'BUILDING_HEAD' && user.managedBuildingCode) {
-        return `Основной корпус: ${user.managedBuildingCode}`;
+        return `Основной корпус: ${formatBuilding(user.managedBuildingCode)}`;
     }
     return 'Только просмотр';
 }
 
 function renderBuildingSelect(selectEl, selectedValue = '') {
+    const selected = buildingGroupCode(selectedValue);
     selectEl.innerHTML = '<option value="">Основной корпус не указан</option>';
-    buildings.forEach((building) => {
+    buildingGroupOptions().forEach((building) => {
         const option = document.createElement('option');
-        option.value = building.code;
-        option.textContent = building.name;
-        if (selectedValue && selectedValue === building.code) option.selected = true;
+        option.value = building.value;
+        option.textContent = building.label;
+        if (selected && selected === building.value) option.selected = true;
         selectEl.appendChild(option);
     });
 }
@@ -466,15 +536,15 @@ function loadClearButton(prefix) {
 }
 
 function renderLoadBuildings(target, selectedCodes = [], prefix = 'create') {
-    const selected = new Set(selectedCodes || []);
-    target.innerHTML = buildings.map((building) => `
-        <label class="building-checkbox-pill">
-            <input type="checkbox" data-load-building="${esc(building.code)}" data-prefix="${prefix}" ${selected.has(building.code) ? 'checked' : ''}>
-            <span>${esc(building.name)}</span>
+    const selected = new Set((selectedCodes || []).map(normalizeBuildingAccessCode));
+    target.innerHTML = buildingAccessOptions().map((building) => `
+        <label class="building-checkbox-pill ${building.groupWide ? 'building-checkbox-pill-group' : ''}">
+            <input type="checkbox" data-load-building="${esc(building.value)}" data-prefix="${prefix}" ${selected.has(building.value) ? 'checked' : ''}>
+            <span>${esc(building.label)}</span>
         </label>
     `).join('');
     target.querySelectorAll('[data-load-building]').forEach((checkbox) => {
-        checkbox.addEventListener('change', () => syncLoadBuildingScope(prefix));
+        checkbox.addEventListener('change', () => syncLoadBuildingScope(prefix, checkbox));
     });
     syncLoadBuildingScope(prefix);
 }
@@ -498,8 +568,8 @@ function loadScopeSummary(prefix) {
             return 'Выбран режим «Выбранные корпуса», но корпуса ещё не отмечены.';
         }
         return selectedCodes.length === 1
-            ? `Редактирование разрешено для корпуса ${formatBuilding(selectedCodes[0])}.`
-            : `Редактирование разрешено для ${selectedCodes.length} корпусов: ${selectedCodes.join(', ')}.`;
+            ? `Редактирование разрешено для ${formatBuilding(selectedCodes[0])}.`
+            : `Редактирование разрешено для ${selectedCodes.length} зон: ${selectedCodes.map(formatBuilding).join(', ')}.`;
     }
     if (mode === LOAD_SCOPE_MODE.PRIMARY) {
         if (roleSelect.value !== 'BUILDING_HEAD') {
@@ -513,10 +583,26 @@ function loadScopeSummary(prefix) {
     return 'Пользователь сможет только просматривать вкладку нагрузки без редактирования корпусов.';
 }
 
-function syncLoadBuildingScope(prefix) {
+function syncChildAddressCheckboxes(container, changedCheckbox) {
+    if (!changedCheckbox?.checked) return;
+    const groupValue = buildingGroupCode(changedCheckbox.dataset.loadBuilding);
+    if (!groupValue || changedCheckbox.dataset.loadBuilding !== groupValue) return;
+    container.querySelectorAll('[data-load-building]').forEach((checkbox) => {
+        if (checkbox === changedCheckbox) return;
+        if (buildingGroupCode(checkbox.dataset.loadBuilding) === groupValue) {
+            checkbox.checked = true;
+        }
+    });
+}
+
+function syncLoadBuildingScope(prefix, changedCheckbox = null) {
     const mode = selectedScopeMode(prefix);
     const container = loadBuildingsContainer(prefix);
     const allowManualSelection = mode === LOAD_SCOPE_MODE.SELECTED;
+
+    if (allowManualSelection) {
+        syncChildAddressCheckboxes(container, changedCheckbox);
+    }
 
     container.classList.toggle('is-disabled', !allowManualSelection);
     container.querySelectorAll('[data-load-building]').forEach((checkbox) => {

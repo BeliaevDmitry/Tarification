@@ -1,6 +1,9 @@
 package org.school.personalLoad.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 
 import javax.persistence.*;
 import java.time.LocalDate;
@@ -28,6 +31,13 @@ public class TeacherDirectoryEntry {
     private String email;
     private String additionalDuties;
     private String numberSchoolBuilding;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "building_group_id", insertable = false, updatable = false)
+    @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private BuildingGroup buildingGroup;
 
     private LocalDate dismissalDate;
     private LocalDate plannedDismissalDate;

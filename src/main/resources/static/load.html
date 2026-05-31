@@ -19,6 +19,7 @@
             <a class="nav-link" href="/subjects.html" data-tab="SUBJECTS">Предметы</a>
             <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
             <a class="nav-link active" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/people-load.html" data-tab="LOAD">Нагрузка по людям</a>
             <a class="nav-link" href="/load-statistics.html" data-tab="LOAD">Статистика нагрузки</a>
             <a class="nav-link" href="/settings.html" data-tab="SETTINGS">Настройки</a>
         </nav>
@@ -50,8 +51,10 @@
             <div class="row controls-row">
                 <label>Сортировка:
                     <select id="sort-field-select">
+                        <option value="subjectArea">по предметной области</option>
                         <option value="subject">по предмету</option>
                         <option value="teacher">по педагогу</option>
+                        <option value="subjectHours">по часам по предмету</option>
                         <option value="buildingHours">по часам в корпусе</option>
                         <option value="complexHours">по часам в комплексе</option>
                         <option value="classCount">по числу классов</option>
@@ -80,7 +83,6 @@
 
                 <button id="refresh-load-btn" type="button">Обновить из учебного плана</button>
                 <button id="export-load-btn" type="button" data-requires-edit>Экспорт нагрузки</button>
-                <button id="export-full-load-btn" type="button" data-allow-readonly="true">Экспорт полной нагрузки</button>
 
                 <input id="import-load-file" type="file" accept=".xlsx,.xls" style="display:none;">
                 <button id="import-load-btn" type="button" data-requires-edit>Импорт нагрузки</button>
