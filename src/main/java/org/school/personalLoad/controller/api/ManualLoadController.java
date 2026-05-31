@@ -101,8 +101,22 @@ public class ManualLoadController {
     public ResponseEntity<byte[]> exportFullWorkbook(@RequestParam(required = false) String academicYear) throws Exception {
         String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
         byte[] body = manualLoadService.exportFullWorkbook(effectiveYear);
-        String date = LocalDate.now().toString();
-        String fileName = "Полная нагрузка " + effectiveYear + " " + date + ".xlsx";
+        return workbookResponse(body, "Полная нагрузка " + effectiveYear + " " + LocalDate.now() + ".xlsx");
+    }
+
+    @GetMapping("/export-full-salary")
+    public ResponseEntity<byte[]> exportFullWorkbookWithSalary(@RequestParam(required = false) String academicYear,
+                                                               HttpServletRequest httpServletRequest) throws Exception {
+        SessionUser user = AuthSessionUtils.requiredUser(httpServletRequest);
+        if (!user.canExportSalary()) {
+            throw new ForbiddenException("Нет прав на экспорт полной нагрузки с расчётом зарплаты");
+        }
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        byte[] body = manualLoadService.exportFullWorkbookWithSalary(effectiveYear);
+        return workbookResponse(body, "Полная нагрузка с ЗП " + effectiveYear + " " + LocalDate.now() + ".xlsx");
+    }
+
+    private ResponseEntity<byte[]> workbookResponse(byte[] body, String fileName) {
         String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
