@@ -1,4 +1,4 @@
-package org.school.educationalwork.src.main.java.org.school.educationalwork.parser;
+package org.school.educationalwork.parser;
 
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
@@ -152,7 +152,7 @@ public final class ClassTeacherReportParser {
                 String teacher = DocxCells.cell(table, row, 1);
                 if (fullNameValidator.normalizeTeacher(teacher).isEmpty()) issues.add(error("PROJECT_TEACHER", "Проект «" + names[index] + "», классный руководитель", "Неверное ФИО учителя.", "Фамилия Имя Отчество", teacher));
                 int resultCol = table.getRow(row).getTableCells().size() - 1;
-                validateResult(DocxCells.cell(table, row, resultCol), "Проект «" + names[index] + "», issues);
+                validateResult(DocxCells.cell(table, row, resultCol), "Проект «" + names[index] + "»", issues);
                 String format = table.getRow(row).getTableCells().size() == 5 ? DocxCells.cell(table, row, 2) : "";
                 String students = table.getRow(row).getTableCells().size() == 5 ? DocxCells.cell(table, row, 3) : DocxCells.cell(table, row, 2);
                 result.add(new ClassTeacherReport.SpecialProjectParticipation(names[index], klass, teacher, format, students, DocxCells.cell(table, row, resultCol)));

@@ -1,4 +1,4 @@
-package org.school.educationalwork.src.main.java.org.school.educationalwork.parser;
+package org.school.educationalwork.parser;
 
 import java.util.Arrays;
 import java.util.Locale;

@@ -1,4 +1,4 @@
-package org.school.educationalwork.src.test.java.org.school.educationalwork.parser;
+package org.school.educationalwork.parser;
 
 import org.junit.jupiter.api.Test;
 
