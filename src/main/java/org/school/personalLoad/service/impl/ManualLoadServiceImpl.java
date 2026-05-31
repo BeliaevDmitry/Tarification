@@ -436,8 +436,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     }
 
                     int subjectHours = e.getGroupLoad() != null ? e.getGroupLoad() : (e.getLoad() == null ? 0 : e.getLoad());
-                    String periodLabel = e.getStudyPeriod() == StudyPeriod.H1 ? "1 полугодие"
-                            : e.getStudyPeriod() == StudyPeriod.H2 ? "2 полугодие" : "год";
+                    String periodLabel = e.getStudyPeriod() == StudyPeriod.H1 ? "1П"
+                            : e.getStudyPeriod() == StudyPeriod.H2 ? "2П" : "ГОД";
                     String hoursSummary;
                     if (t[0] == t[1] && t[2] == t[3]) {
                         hoursSummary = t[0] + "/" + t[2];
@@ -469,7 +469,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     r.createCell(7).setCellValue(hoursSummary);
                     r.createCell(8).setCellValue(extra);
                     if (includeSalary) {
-                        SalaryTotals salary = salarySummary.byBuildingTeacher().getOrDefault(salaryKey(building, key), SalaryTotals.empty());
+                        SalaryTotals salary = salarySummary.byTeacher().getOrDefault(key, SalaryTotals.empty());
                         r.createCell(9).setCellValue(moneyValue(salary.hourSalary()));
                         r.createCell(10).setCellValue(moneyValue(salary.classLeadershipSalary()));
                         r.createCell(11).setCellValue(moneyValue(salary.total()));
@@ -548,7 +548,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                                                  Map<String, Integer> classSizeByClass,
                                                  Map<String, BigDecimal> subjectCoefficientByName,
                                                  BigDecimal studentHourRate) {
-        Map<String, SalaryTotals> byBuildingTeacher = new HashMap<>();
+        Map<String, SalaryTotals> byTeacher = new HashMap<>();
         Map<String, SalaryTotals> byBuilding = new HashMap<>();
         SalaryTotals complex = new SalaryTotals();
 
@@ -556,7 +556,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             String building = buildingKey(row.getNumberSchoolBuilding());
             String teacher = String.valueOf(row.getFioTeacher()).trim().toLowerCase(Locale.ROOT);
             BigDecimal hourSalary = calculateHourSalary(row, classSizeByClass, subjectCoefficientByName, studentHourRate);
-            byBuildingTeacher.computeIfAbsent(salaryKey(building, teacher), key -> new SalaryTotals()).addHourSalary(hourSalary);
+            byTeacher.computeIfAbsent(teacher, key -> new SalaryTotals()).addHourSalary(hourSalary);
             byBuilding.computeIfAbsent(building, key -> new SalaryTotals()).addHourSalary(hourSalary);
             complex.addHourSalary(hourSalary);
         }
@@ -567,23 +567,23 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 continue;
             }
             String building = buildingKey(entry.getNumberSchoolBuilding());
-            int classSize = classSizeByClass.getOrDefault(normalizeToken(entry.getClassName()), 25);
+            int classSize = classSizeByClass.getOrDefault(normalizeToken(entry.getClassName()), 30);
             BigDecimal leadershipSalary = CLASS_LEADERSHIP_PER_STUDENT
                     .multiply(BigDecimal.valueOf(classSize))
                     .add(CLASS_LEADERSHIP_BASE);
-            byBuildingTeacher.computeIfAbsent(salaryKey(building, teacher), key -> new SalaryTotals()).addClassLeadershipSalary(leadershipSalary);
+            byTeacher.computeIfAbsent(teacher, key -> new SalaryTotals()).addClassLeadershipSalary(leadershipSalary);
             byBuilding.computeIfAbsent(building, key -> new SalaryTotals()).addClassLeadershipSalary(leadershipSalary);
             complex.addClassLeadershipSalary(leadershipSalary);
         }
 
-        return new SalarySummary(byBuildingTeacher, byBuilding, complex);
+        return new SalarySummary(byTeacher, byBuilding, complex);
     }
 
     private BigDecimal calculateHourSalary(ManualLoadEntry row,
                                            Map<String, Integer> classSizeByClass,
                                            Map<String, BigDecimal> subjectCoefficientByName,
                                            BigDecimal studentHourRate) {
-        int classSize = classSizeByClass.getOrDefault(normalizeToken(row.getClassName()), 25);
+        int classSize = classSizeByClass.getOrDefault(normalizeToken(row.getClassName()), 30);
         String group = String.valueOf(row.getGroupNameEducationalPlan() == null ? "" : row.getGroupNameEducationalPlan()).toLowerCase(Locale.ROOT);
         int firstGroupSize = (classSize + 1) / 2;
         int secondGroupSize = classSize - firstGroupSize;
@@ -621,10 +621,6 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             return BigDecimal.ONE;
         }
         return value;
-    }
-
-    private String salaryKey(String building, String teacher) {
-        return buildingKey(building) + "|" + String.valueOf(teacher == null ? "" : teacher).trim().toLowerCase(Locale.ROOT);
     }
 
     private String buildingKey(String building) {
@@ -669,7 +665,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         sheet.setColumnWidth(3, 12 * 256);
     }
 
-    private record SalarySummary(Map<String, SalaryTotals> byBuildingTeacher,
+    private record SalarySummary(Map<String, SalaryTotals> byTeacher,
                                  Map<String, SalaryTotals> byBuilding,
                                  SalaryTotals complex) {
         static SalarySummary empty() {
