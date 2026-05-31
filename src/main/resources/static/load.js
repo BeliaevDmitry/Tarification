@@ -226,7 +226,15 @@ function rowMatchesBuildingAccess(row, accessCode) {
     if (!groupCode) return false;
     if (buildingGroupCode(row?.numberSchoolBuilding) !== groupCode) return false;
     const address = buildingAddressToken(accessCode);
-    return !address || rowAddressToken(row) === address;
+    if (!address) return true;
+    const rowAddress = rowAddressToken(row);
+    if (rowAddress === address) return true;
+
+    // If a building group has exactly one known address, selecting that address is
+    // equivalent to selecting the whole group. This keeps legacy curriculum/manual
+    // rows without campusAddress visible for one-site buildings such as СП17.
+    const knownAddresses = addressesForBuildingCode(groupCode).map(normalizeBuildingAccessCode).filter(Boolean);
+    return knownAddresses.length === 1 && knownAddresses[0] === address;
 }
 
 function rememberSelectedBuilding(code) {
