@@ -398,13 +398,18 @@ function permissionMap(permissionList = []) {
 }
 
 function normalizeBuildingAccessCode(value) {
-    return String(value || '')
+    const normalized = String(value || '')
         .trim()
         .toUpperCase()
         .replace(/[–—]/g, '-')
         .replace(/[CС][ПPР]/g, 'СП')
         .replace(/\s*\|\s*/g, '|')
         .replace(/\s+/g, '');
+    const separatorIndex = normalized.indexOf('|');
+    const normalizeGroup = (group) => group.replace(/^СП-(\d+)$/, 'СП$1');
+    return separatorIndex >= 0
+        ? `${normalizeGroup(normalized.slice(0, separatorIndex))}${normalized.slice(separatorIndex)}`
+        : normalizeGroup(normalized);
 }
 
 function buildingGroupCode(value) {

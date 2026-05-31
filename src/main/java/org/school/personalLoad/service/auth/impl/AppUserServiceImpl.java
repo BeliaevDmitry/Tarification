@@ -493,7 +493,25 @@ public class AppUserServiceImpl implements AppUserService {
 
     private String normalizeOptionalBuildingCode(String value) {
         String normalized = normalizeOptional(value);
-        return normalized == null ? null : normalized.replace(" ", "").toUpperCase(Locale.ROOT);
+        if (normalized == null) {
+            return null;
+        }
+        normalized = normalized
+                .toUpperCase(Locale.ROOT)
+                .replace('–', '-')
+                .replace('—', '-')
+                .replaceAll("[CС][ПPР]", "СП")
+                .replaceAll("\\s*\\|\\s*", "|")
+                .replaceAll("\\s+", "");
+        int idx = normalized.indexOf("|");
+        if (idx >= 0) {
+            return normalizeBuildingGroupAlias(normalized.substring(0, idx)) + normalized.substring(idx);
+        }
+        return normalizeBuildingGroupAlias(normalized);
+    }
+
+    private String normalizeBuildingGroupAlias(String value) {
+        return String.valueOf(value == null ? "" : value).replaceFirst("^СП-(\\d+)$", "СП$1");
     }
 
     private String normalizeBuildingGroupCode(String value) {
