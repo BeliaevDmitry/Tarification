@@ -123,6 +123,8 @@ function navItemsForPath(pathname) {
     if (pathname === '/teachers.html' || pathname === '/teachers-notification.html' || pathname === '/service-notes.html') {
         return [
             { path: '/teachers.html', tab: 'TEACHERS', label: 'Персонал' },
+            { path: '/teachers.html#dismissals', tab: 'TEACHERS', label: 'Увольнения' },
+            { path: '/teachers.html#settings', tab: 'LOAD_SALARY', label: 'Настройки' },
             { path: '/service-notes.html', tab: 'SERVICE_NOTES', label: 'Служебные записки' },
             { path: '/teachers-notification.html', tab: 'HR_NOTIFICATIONS_VIEW', label: 'Уведомления' }
         ];
@@ -468,7 +470,12 @@ function enrichNavigation(currentUser) {
             link.href = tabDef.path;
             link.dataset.tab = tabDef.tab;
             link.textContent = tabDef.label;
-            if (window.location.pathname === tabDef.path) {
+            const currentPathWithHash = `${window.location.pathname}${window.location.hash || ''}`;
+            const tabPath = tabDef.path;
+            const active = tabPath.includes('#')
+                ? currentPathWithHash === tabPath
+                : window.location.pathname === tabPath && (!window.location.hash || window.location.hash === '#main');
+            if (active) {
                 link.classList.add('active');
             }
             nav.appendChild(link);

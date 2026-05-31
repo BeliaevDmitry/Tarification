@@ -1950,6 +1950,21 @@ dialog::backdrop {
     white-space: pre-line;
 }
 
+.people-load-money {
+    width: 96px;
+    min-width: 96px;
+    max-width: 96px;
+    font-weight: 600;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.people-load-money-leadership {
+    width: 132px;
+    min-width: 132px;
+    max-width: 132px;
+}
+
 .link-button {
     border: none;
     background: none;
