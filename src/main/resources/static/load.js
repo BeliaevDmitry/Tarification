@@ -237,6 +237,20 @@ function rowMatchesBuildingAccess(row, accessCode) {
     return knownAddresses.length === 1 && knownAddresses[0] === address;
 }
 
+function loadAccessCodesForRow(row) {
+    const groupCode = buildingGroupCode(row?.numberSchoolBuilding);
+    if (!groupCode) return [];
+    const codes = [groupCode];
+    const rowAddress = rowAddressToken(row);
+    if (rowAddress) {
+        codes.push(`${groupCode}|${rowAddress}`);
+    } else {
+        const knownAddresses = addressesForBuildingCode(groupCode).map(normalizeBuildingAccessCode).filter(Boolean);
+        if (knownAddresses.length === 1) codes.push(`${groupCode}|${knownAddresses[0]}`);
+    }
+    return Array.from(new Set(codes));
+}
+
 function rememberSelectedBuilding(code) {
     const normalized = code === ARCHIVE_BUILDING_CODE ? ARCHIVE_BUILDING_CODE : normalizeBuildingAccessCode(code);
     if (!normalized) return;
@@ -1030,11 +1044,7 @@ function prefillFromManualLoad(referenceDate = referencePlanningDate()) {
     });
 
     grouped.forEach(({ matched, entries }, apiKey) => {
-        const buildingCode = normalizeBuildingCode(matched.numberSchoolBuilding);
         const subjectKey = subjectKeyOfRow(matched);
-        const assignments = assignmentsForBuilding(buildingCode);
-        const teacherRowsMap = teacherRowsForBuilding(buildingCode);
-        const plans = futurePlansForBuilding(buildingCode);
 
         const sorted = [...entries]
             .filter((e) => String(e.fioTeacher || "").trim())
@@ -1060,59 +1070,65 @@ function prefillFromManualLoad(referenceDate = referencePlanningDate()) {
             .sort((a, b) => String(a.loadFromDate || "").localeCompare(String(b.loadFromDate || "")));
         const futureEntry = futureCandidates[0] || null;
 
-        if (currentEntry) {
-            assignments[apiKey] = String(currentEntry.fioTeacher || "").trim();
-        }
+        loadAccessCodesForRow(matched).forEach((buildingCode) => {
+            const assignments = assignmentsForBuilding(buildingCode);
+            const teacherRowsMap = teacherRowsForBuilding(buildingCode);
+            const plans = futurePlansForBuilding(buildingCode);
 
-        if (futureEntry && currentEntry && String(futureEntry.fioTeacher || "").trim().toLowerCase() !== String(currentEntry.fioTeacher || "").trim().toLowerCase()) {
-            plans[apiKey] = {
-                targetTeacher: String(futureEntry.fioTeacher || "").trim(),
-                previousTeacher: String(currentEntry.fioTeacher || "").trim(),
-                fromDate: String(futureEntry.loadFromDate || ""),
-                toDate: String(futureEntry.loadToDate || ""),
-                subjectKey,
-                plannedHours: Number(matched.plannedHours || 0),
-                className: matched.className,
-                educationLevel: matched.educationLevel,
-                subjectName: matched.subjectName
-            };
-        }
+            if (currentEntry) {
+                assignments[apiKey] = String(currentEntry.fioTeacher || "").trim();
+            }
 
-        if (!teacherRowsMap[subjectKey]) {
-            teacherRowsMap[subjectKey] = [];
-        }
+            if (futureEntry && currentEntry && String(futureEntry.fioTeacher || "").trim().toLowerCase() !== String(currentEntry.fioTeacher || "").trim().toLowerCase()) {
+                plans[apiKey] = {
+                    targetTeacher: String(futureEntry.fioTeacher || "").trim(),
+                    previousTeacher: String(currentEntry.fioTeacher || "").trim(),
+                    fromDate: String(futureEntry.loadFromDate || ""),
+                    toDate: String(futureEntry.loadToDate || ""),
+                    subjectKey,
+                    plannedHours: Number(matched.plannedHours || 0),
+                    className: matched.className,
+                    educationLevel: matched.educationLevel,
+                    subjectName: matched.subjectName
+                };
+            }
 
-        const byTeacher = new Map();
-        sorted.forEach((e) => {
-            const teacher = String(e.fioTeacher || "").trim();
-            if (!teacher) return;
-            const key = teacher.toLowerCase();
-            if (!byTeacher.has(key)) byTeacher.set(key, []);
-            byTeacher.get(key).push(e);
-        });
+            if (!teacherRowsMap[subjectKey]) {
+                teacherRowsMap[subjectKey] = [];
+            }
 
-        byTeacher.forEach((teacherEntries, key) => {
-            teacherEntries.sort((a, b) => String(a.loadFromDate || "").localeCompare(String(b.loadFromDate || "")));
-            let chosen = teacherEntries.find((e) => {
-                const from = String(e.loadFromDate || "");
-                const to = String(e.loadToDate || "");
-                return from && to && from <= referenceDate && referenceDate <= to;
+            const byTeacher = new Map();
+            sorted.forEach((e) => {
+                const teacher = String(e.fioTeacher || "").trim();
+                if (!teacher) return;
+                const key = teacher.toLowerCase();
+                if (!byTeacher.has(key)) byTeacher.set(key, []);
+                byTeacher.get(key).push(e);
             });
-            if (!chosen) {
-                chosen = teacherEntries.find((e) => String(e.loadFromDate || "") > referenceDate) || teacherEntries[teacherEntries.length - 1];
-            }
-            const teacherName = String(chosen.fioTeacher || "").trim();
-            const exists = teacherRowsMap[subjectKey].some((row) => String(row.teacherName || "").trim().toLowerCase() === key);
-            if (!exists) {
-                const period = defaultPeriodForRows([matched]);
-                teacherRowsMap[subjectKey].push({
-                    id: rowId(),
-                    teacherName,
-                    studyPeriod: period.studyPeriod,
-                    loadFromDate: chosen.loadFromDate || period.from,
-                    loadToDate: chosen.loadToDate || period.to
+
+            byTeacher.forEach((teacherEntries, key) => {
+                teacherEntries.sort((a, b) => String(a.loadFromDate || "").localeCompare(String(b.loadFromDate || "")));
+                let chosen = teacherEntries.find((e) => {
+                    const from = String(e.loadFromDate || "");
+                    const to = String(e.loadToDate || "");
+                    return from && to && from <= referenceDate && referenceDate <= to;
                 });
-            }
+                if (!chosen) {
+                    chosen = teacherEntries.find((e) => String(e.loadFromDate || "") > referenceDate) || teacherEntries[teacherEntries.length - 1];
+                }
+                const teacherName = String(chosen.fioTeacher || "").trim();
+                const exists = teacherRowsMap[subjectKey].some((row) => String(row.teacherName || "").trim().toLowerCase() === key);
+                if (!exists) {
+                    const period = defaultPeriodForRows([matched]);
+                    teacherRowsMap[subjectKey].push({
+                        id: rowId(),
+                        teacherName,
+                        studyPeriod: period.studyPeriod,
+                        loadFromDate: chosen.loadFromDate || period.from,
+                        loadToDate: chosen.loadToDate || period.to
+                    });
+                }
+            });
         });
     });
 }
