@@ -165,13 +165,30 @@ function renderStatsTable(stats) {
 
 
 function addressColumns(stats) {
-    return (stats?.columns || []).flatMap((building) => (building.addresses || []).map((address) => ({
-        buildingCode: building.buildingCode,
-        buildingName: building.buildingName,
-        address: address.address || 'Адрес не указан',
-        classes: address.classes || [],
-        totalStudents: address.totalStudents || 0
-    })));
+    const byAddress = new Map();
+    (stats?.columns || []).forEach((building) => {
+        (building.addresses || []).forEach((address) => {
+            const addressName = address.address || 'Адрес не указан';
+            const key = addressName.toLocaleLowerCase('ru');
+            if (!byAddress.has(key)) {
+                byAddress.set(key, {
+                    address: addressName,
+                    classes: [],
+                    totalStudents: 0
+                });
+            }
+            const column = byAddress.get(key);
+            column.classes.push(...(address.classes || []));
+            column.totalStudents += Number(address.totalStudents || 0);
+        });
+    });
+    return Array.from(byAddress.values())
+        .map((address) => ({
+            ...address,
+            classes: address.classes.slice().sort((a, b) => Number(a.parallel || 0) - Number(b.parallel || 0)
+                || String(a.className || '').localeCompare(String(b.className || ''), 'ru', { numeric: true }))
+        }))
+        .sort((a, b) => a.address.localeCompare(b.address, 'ru'));
 }
 
 function renderStatsAddressTable(stats) {
@@ -179,8 +196,7 @@ function renderStatsAddressTable(stats) {
     const parallels = stats?.parallels || [];
     const totalByParallel = Object.fromEntries((stats?.parallelTotals || []).map((x) => [x.parallel, x.totalStudents]));
 
-    const addressHeader = addresses.map((address) => `
-        <th colspan="2">${esc(address.address)}<br><span class="muted">${esc(address.buildingName || address.buildingCode || '')}</span></th>`).join('');
+    const addressHeader = addresses.map((address) => `<th colspan="2">${esc(address.address)}</th>`).join('');
 
     const thead = `
         <thead>
