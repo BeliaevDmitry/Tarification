@@ -1,7 +1,9 @@
-package org.school.educationalwork.src.main.java.org.school.educationalwork.controller;
+package org.school.educationalwork.controller;
 
+import lombok.RequiredArgsConstructor;
 import org.school.educationalwork.dto.EducationalWorkDtos;
 import org.school.educationalwork.service.EducationalWorkReportService;
+import org.school.personalLoad.service.AcademicYearService;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -10,7 +12,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -18,31 +19,29 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/educational-work")
+@RequiredArgsConstructor
 public class EducationalWorkReportController {
     private final EducationalWorkReportService service;
-
-    public EducationalWorkReportController(EducationalWorkReportService service) {
-        this.service = service;
-    }
+    private final AcademicYearService academicYearService;
 
     @PostMapping(value = "/reports/validate", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public EducationalWorkDtos.UploadResponse validate(@RequestParam("file") MultipartFile file) throws IOException {
-        return service.validate(file);
+    public EducationalWorkDtos.UploadResponse validate(@RequestParam("file") MultipartFile file,
+                                                       @RequestParam(required = false) String academicYear) throws IOException {
+        return service.validate(academicYearService.resolveRequestedOrDefault(academicYear), file);
     }
 
     @PostMapping(value = "/reports/submit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public EducationalWorkDtos.UploadResponse submit(@RequestParam("file") MultipartFile file) throws IOException {
-        return service.submit(file);
+    public EducationalWorkDtos.UploadResponse submit(@RequestParam("file") MultipartFile file,
+                                                     @RequestParam(required = false) String academicYear) throws IOException {
+        return service.submit(academicYearService.resolveRequestedOrDefault(academicYear), file);
     }
 
-    @PostMapping("/summary")
-    public EducationalWorkDtos.SchoolSummary summary(@RequestParam String academicYear,
-                                                      @RequestBody List<EducationalWorkDtos.ExpectedClass> expectedClasses) {
-        return service.summary(academicYear, expectedClasses);
+    @GetMapping("/summary")
+    public EducationalWorkDtos.SchoolSummary summary(@RequestParam(required = false) String academicYear) {
+        return service.summary(academicYearService.resolveRequestedOrDefault(academicYear));
     }
 
     @GetMapping("/reports/{academicYear}/{schoolClass}/file")
