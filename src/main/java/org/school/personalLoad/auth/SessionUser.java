@@ -8,6 +8,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 @Data
@@ -71,10 +72,23 @@ public class SessionUser implements Serializable {
     }
 
     private String normalizeBuildingCode(String value) {
-        return String.valueOf(value == null ? "" : value)
+        String normalized = String.valueOf(value == null ? "" : value)
                 .trim()
-                .toUpperCase()
-                .replace(" ", "");
+                .toUpperCase(Locale.ROOT)
+                .replace('–', '-')
+                .replace('—', '-')
+                .replaceAll("[CС][ПPР]", "СП")
+                .replaceAll("\\s*\\|\\s*", "|")
+                .replaceAll("\\s+", "");
+        int idx = normalized.indexOf("|");
+        if (idx >= 0) {
+            return normalizeBuildingGroupAlias(normalized.substring(0, idx)) + normalized.substring(idx);
+        }
+        return normalizeBuildingGroupAlias(normalized);
+    }
+
+    private String normalizeBuildingGroupAlias(String value) {
+        return String.valueOf(value == null ? "" : value).replaceFirst("^СП-(\\d+)$", "СП$1");
     }
 
     private String normalizeBuildingGroupCode(String value) {

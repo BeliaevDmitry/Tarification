@@ -8,8 +8,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.school.personalLoad.auth.AppUser;
 import org.school.personalLoad.auth.AppTab;
 import org.school.personalLoad.auth.UserRole;
+import org.school.personalLoad.auth.SessionUser;
+import org.school.personalLoad.auth.TabPermissionSnapshot;
 import org.school.personalLoad.dto.auth.UpdateUserRequest;
 import org.school.personalLoad.dto.auth.UserTabPermissionRequest;
+import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.auth.AppUserRepository;
@@ -152,4 +155,58 @@ class AppUserServiceImplTest {
         assertEquals("Новый пароль должен отличаться от текущего", exception.getMessage());
         verify(appUserRepository, never()).save(any());
     }
+
+    @Test
+    void updateUserAcceptsBuildingCodeWithoutHyphenWhenCatalogCodeHasHyphen() {
+        AppUserServiceImpl service = new AppUserServiceImpl(
+                appUserRepository,
+                schoolBuildingRepository,
+                teacherDirectoryRepository,
+                tabPermissionRepository,
+                passwordEncoder
+        );
+        AppUser user = new AppUser();
+        user.setId(11L);
+        user.setRole(UserRole.BUILDING_HEAD);
+        user.setCanView(true);
+        user.setCanEdit(true);
+        user.setActive(true);
+        SchoolBuilding building = new SchoolBuilding();
+        building.setCode("СП-3");
+
+        when(appUserRepository.findById(11L)).thenReturn(Optional.of(user));
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of(building));
+        when(appUserRepository.findAll()).thenReturn(List.of(user));
+        when(appUserRepository.save(any(AppUser.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(tabPermissionRepository.findAllByUserIdOrderByTabAsc(11L)).thenReturn(List.of());
+
+        UpdateUserRequest request = new UpdateUserRequest();
+        request.setManagedBuildingCode("СП3");
+
+        AppUser updated = service.updateUser(11L, request);
+
+        assertEquals("СП3", updated.getManagedBuildingCode());
+    }
+
+    @Test
+    void sessionLoadPermissionTreatsHyphenatedAndCompactBuildingCodesAsSameGroup() {
+        SessionUser user = new SessionUser(
+                12L,
+                "teacher",
+                "Педагог",
+                null,
+                null,
+                UserRole.METHODIST,
+                true,
+                true,
+                true,
+                null,
+                false,
+                new java.util.LinkedHashSet<>(List.of("СП3")),
+                List.of(new TabPermissionSnapshot(AppTab.LOAD, true, true, true, true))
+        );
+
+        assertTrue(user.canEditLoadBuilding("СП-3|УЛ.ЕЛАГИНА,Д.1"));
+    }
+
 }
