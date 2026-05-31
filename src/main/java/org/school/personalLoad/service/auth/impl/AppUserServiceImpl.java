@@ -260,12 +260,14 @@ public class AppUserServiceImpl implements AppUserService {
         List<AppUserTabPermission> permissions = new ArrayList<>();
         for (AppTab tab : AppTab.navigableTabs()) {
             UserTabPermissionRequest requested = requestedByTab.get(tab);
-            boolean defaultCanView = user.isCanView();
-            boolean defaultCanEdit = user.isCanView() && user.isCanEdit();
+            boolean salaryPrivilegedRole = isSalaryPrivilegedRole(user);
+            boolean defaultCanView = tab == AppTab.LOAD_SALARY ? salaryPrivilegedRole : user.isCanView();
+            boolean defaultCanEdit = tab == AppTab.LOAD_SALARY ? false : user.isCanView() && user.isCanEdit();
+            boolean defaultCanExport = tab == AppTab.LOAD_SALARY ? salaryPrivilegedRole : defaultCanView;
             boolean canView = requested != null ? Boolean.TRUE.equals(requested.getCanView()) : defaultCanView;
             boolean canEdit = requested != null ? Boolean.TRUE.equals(requested.getCanEdit()) : defaultCanEdit;
             boolean canImport = requested != null ? Boolean.TRUE.equals(requested.getCanImport()) : defaultCanEdit;
-            boolean canExport = requested != null ? Boolean.TRUE.equals(requested.getCanExport()) : defaultCanView;
+            boolean canExport = requested != null ? Boolean.TRUE.equals(requested.getCanExport()) : defaultCanExport;
             if (tab == AppTab.USERS) {
                 canView = false;
                 canEdit = false;
@@ -284,9 +286,21 @@ public class AppUserServiceImpl implements AppUserService {
 
     private void saveDefaultPermissions(AppUser user, boolean canView, boolean canEdit) {
         List<AppUserTabPermission> permissions = AppTab.navigableTabs().stream()
-                .map(tab -> buildPermission(user, tab, canView, canEdit, canEdit, canView))
+                .map(tab -> {
+                    if (tab == AppTab.LOAD_SALARY && user.getRole() != UserRole.ADMIN) {
+                        boolean salaryAccess = isSalaryPrivilegedRole(user);
+                        return buildPermission(user, tab, salaryAccess, false, false, salaryAccess);
+                    }
+                    return buildPermission(user, tab, canView, canEdit, canEdit, canView);
+                })
                 .toList();
         tabPermissionRepository.saveAll(permissions);
+    }
+
+    private boolean isSalaryPrivilegedRole(AppUser user) {
+        return user.getRole() == UserRole.ADMIN
+                || user.getRole() == UserRole.DIRECTOR
+                || user.getRole() == UserRole.DEPUTY_DIRECTOR;
     }
 
     private AppUserTabPermission buildPermission(AppUser user, AppTab tab, boolean canView, boolean canEdit, boolean canImport, boolean canExport) {
@@ -324,7 +338,12 @@ public class AppUserServiceImpl implements AppUserService {
             }
             boolean canView = user.getRole() == UserRole.ADMIN ? true : user.isCanView();
             boolean canEdit = user.getRole() == UserRole.ADMIN ? true : (user.isCanView() && user.isCanEdit());
-            missing.add(buildPermission(user, tab, canView, canEdit, canEdit, canView));
+            if (tab == AppTab.LOAD_SALARY && user.getRole() != UserRole.ADMIN) {
+                boolean salaryAccess = isSalaryPrivilegedRole(user);
+                missing.add(buildPermission(user, tab, salaryAccess, false, false, salaryAccess));
+            } else {
+                missing.add(buildPermission(user, tab, canView, canEdit, canEdit, canView));
+            }
         }
         if (!missing.isEmpty()) {
             tabPermissionRepository.saveAll(missing);
