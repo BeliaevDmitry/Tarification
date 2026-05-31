@@ -3,7 +3,8 @@ const jsonHeaders = { "Content-Type": "application/json" };
 const PART_META = {
     CORE: { label: "Основная часть", short: "основная", order: 1 },
     FORMABLE: { label: "Формируемая часть", short: "формируемая", order: 2 },
-    EXTRACURRICULAR: { label: "Внеурочная деятельность", short: "внеурочная", order: 3 }
+    EXTRACURRICULAR: { label: "Внеурочная деятельность", short: "внеурочная", order: 3 },
+    CORRECTIONAL: { label: "Коррекционная область", short: "коррекционная", order: 4 }
 };
 
 const PERIOD_META = {
@@ -21,7 +22,9 @@ const CORE_AREA_ORDER = [
     "Естественно-научные предметы",
     "Искусство",
     "Технология",
-    "Физическая культура и основы безопасности и защиты Родины"
+    "Физическая культура и основы безопасности и защиты Родины",
+    "Коррекционно-развивающая область",
+    "Иное"
 ];
 
 const CORE_AREA_ALIASES = {
@@ -30,7 +33,8 @@ const CORE_AREA_ALIASES = {
     "иностранный язык": "Иностранные языки",
     "иностранные языки": "Иностранные языки",
     "общественно научные предметы": "Общественно-научные предметы",
-    "естественно научные предметы": "Естественно-научные предметы"
+    "естественно научные предметы": "Естественно-научные предметы",
+    "коррекционно развивающая область": "Коррекционно-развивающая область"
 };
 
 const ui = {
@@ -61,6 +65,10 @@ const ui = {
     ,metaGroupCreateForm: document.getElementById("meta-group-create-form")
     ,metaGroupManageDialog: document.getElementById("meta-group-manage-dialog")
     ,metaGroupManageBody: document.getElementById("meta-group-manage-body")
+    ,metaGroupEditDialog: document.getElementById("meta-group-edit-dialog")
+    ,metaGroupEditForm: document.getElementById("meta-group-edit-form")
+    ,metaGroupDeleteBtn: document.getElementById("meta-group-delete-btn")
+    ,metaGroupEditCloseBtn: document.getElementById("meta-group-edit-close-btn")
 };
 
 let selectedParallel = 1;
@@ -101,6 +109,7 @@ function levelShort(v) { return v === "ADVANCED" ? "У" : "Б"; }
 function subjectTypeByPart(part) {
     if (part === "EXTRACURRICULAR") return "EXTRACURRICULAR";
     if (part === "FORMABLE") return "FORMABLE";
+    if (part === "CORRECTIONAL") return "FORMABLE";
     return "CORE";
 }
 function isSubjectTypeCompatible(actualType, expectedType) {
@@ -269,21 +278,45 @@ function renderMetaGroupManageTable() {
             const id = Number(btn.dataset.editMetaId);
             const m = rows.find((x) => Number(x.id) === id);
             if (!m) return;
-            const name = prompt("Название", m.name);
-            if (!name) return;
-            const parallel = Number(prompt("Параллель", String(m.parallel)) || m.parallel);
-            const periodId = Number(prompt("ID периода обучения", String(m.studyPeriodSettingId || "")) || m.studyPeriodSettingId || 0) || null;
-            await api(`/api/meta-groups/${id}`, { method: "PATCH", headers: jsonHeaders, body: JSON.stringify({
-                numberSchoolBuilding: m.numberSchoolBuilding,
-                classType: m.classType || "NORMAL",
-                name,
-                parallel,
-                studyPeriodSettingId: periodId
-            })});
-            await reload();
-            renderMetaGroupManageTable();
+            openMetaGroupEditDialog(m);
         });
     });
+}
+
+function renderMetaGroupFormBuildingOptions(selectEl, selectedValue = "") {
+    if (!selectEl) return;
+    const allBuildings = Array.from(new Set(classes.map((c) => c.numberSchoolBuilding))).sort((a,b)=>String(a).localeCompare(String(b),"ru"));
+    selectEl.innerHTML = allBuildings.map((b) => `<option value="${esc(b)}">${esc(b)}</option>`).join("");
+    if (selectedValue) selectEl.value = selectedValue;
+}
+
+function renderMetaGroupFormParallelOptions(selectEl, selectedValue = 1) {
+    if (!selectEl) return;
+    selectEl.innerHTML = "";
+    for (let p=1;p<=11;p++) selectEl.innerHTML += `<option value="${p}">${p}</option>`;
+    selectEl.value = String(selectedValue || 1);
+}
+
+function renderMetaGroupFormPeriodOptions(formEl, selectedValue = "") {
+    if (!formEl) return;
+    const parallel = Number(formEl.elements.parallel.value) || 1;
+    const options = settingsForParallel(parallel);
+    const selectEl = formEl.elements.studyPeriodSettingId;
+    selectEl.innerHTML = options.map((o)=>`<option value="${esc(o.id)}">${esc(o.displayName)}</option>`).join("");
+    if (selectedValue) selectEl.value = String(selectedValue);
+}
+
+function openMetaGroupEditDialog(metaGroup) {
+    if (!ui.metaGroupEditForm || !ui.metaGroupEditDialog) return;
+    const form = ui.metaGroupEditForm;
+    form.elements.id.value = String(metaGroup.id || "");
+    renderMetaGroupFormBuildingOptions(form.elements.numberSchoolBuilding, metaGroup.numberSchoolBuilding);
+    form.elements.classType.value = metaGroup.classType || "NORMAL";
+    renderMetaGroupFormParallelOptions(form.elements.parallel, Number(metaGroup.parallel) || 1);
+    form.elements.name.value = metaGroup.name || "";
+    renderMetaGroupFormPeriodOptions(form, metaGroup.studyPeriodSettingId ? String(metaGroup.studyPeriodSettingId) : "");
+    form.elements.parallel.onchange = () => renderMetaGroupFormPeriodOptions(form, "");
+    ui.metaGroupEditDialog.showModal();
 }
 
 function renderParallelTabs() {
@@ -408,7 +441,7 @@ function subjectAreaForRow(row) {
 }
 
 function buildSummaryRows(selectedClasses) {
-    const byPart = { CORE: [], FORMABLE: [], EXTRACURRICULAR: [] };
+    const byPart = { CORE: [], FORMABLE: [], EXTRACURRICULAR: [], CORRECTIONAL: [] };
     const classSet = new Set(selectedClasses.map((c) => makeClassKey(c.numberSchoolBuilding, c.className)));
 
     curriculumRows.forEach((r) => {
@@ -418,7 +451,7 @@ function buildSummaryRows(selectedClasses) {
     });
 
     const rows = [];
-    ["CORE", "FORMABLE", "EXTRACURRICULAR"].forEach((part) => {
+    ["CORE", "FORMABLE", "EXTRACURRICULAR", "CORRECTIONAL"].forEach((part) => {
         const groupedBySubject = new Map();
         byPart[part].forEach((r) => {
             const area = subjectAreaForRow(r);
@@ -493,6 +526,10 @@ function buildSummaryRows(selectedClasses) {
 
             noArea.sort((a, b) => a.subjectName.localeCompare(b.subjectName, "ru"))
                 .forEach((item) => preparedSubjects.push({ ...item, subjectColspan: 2, areaRowspan: 0 }));
+        }
+
+        if (part === "CORRECTIONAL" && preparedSubjects.length === 0) {
+            return;
         }
 
         rows.push({ type: "part", part, title: PART_META[part].label });
@@ -745,7 +782,13 @@ function renderSummaryTable() {
                         }
                     }
                 });
-                const sumLabel = row.type === "sum12" ? "sum_of" : (row.part === "CORE" ? "sum_core" : (row.part === "FORMABLE" ? "sum_formable" : "sum_extracurricular"));
+                const sumLabel = row.type === "sum12"
+                    ? "sum_of"
+                    : (row.part === "CORE"
+                        ? "sum_core"
+                        : (row.part === "FORMABLE"
+                            ? "sum_formable"
+                            : (row.part === "EXTRACURRICULAR" ? "sum_extracurricular" : "sum_correctional")));
                 const mismatch = sumMismatchKeys.has(`${col.classKey}|${sumLabel}`);
                 const display = (() => {
                     if (!(h1 || h2)) return "";
@@ -960,6 +1003,41 @@ function bindEvents() {
     });
     document.getElementById("close-meta-group-create")?.addEventListener("click", () => ui.metaGroupCreateDialog?.close());
     document.getElementById("close-meta-group-manage")?.addEventListener("click", () => ui.metaGroupManageDialog?.close());
+    ui.metaGroupEditCloseBtn?.addEventListener("click", () => ui.metaGroupEditDialog?.close());
+
+    ui.metaGroupEditForm?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+            const form = new FormData(ui.metaGroupEditForm);
+            const id = Number(form.get("id"));
+            await api(`/api/meta-groups/${id}`, {
+                method: "PATCH",
+                headers: jsonHeaders,
+                body: JSON.stringify({
+                    numberSchoolBuilding: norm(form.get("numberSchoolBuilding")),
+                    classType: norm(form.get("classType")) || "NORMAL",
+                    parallel: Number(form.get("parallel")),
+                    name: norm(form.get("name")),
+                    studyPeriodSettingId: Number(form.get("studyPeriodSettingId")) || null
+                })
+            });
+            ui.metaGroupEditDialog?.close();
+            await reload();
+            renderMetaGroupManageTable();
+        } catch (error) { print({ error: error.message }); }
+    });
+
+    ui.metaGroupDeleteBtn?.addEventListener("click", async () => {
+        const id = Number(ui.metaGroupEditForm?.elements?.id?.value || 0);
+        if (!id) return;
+        if (!window.confirm("Удалить метагруппу?")) return;
+        try {
+            await api(`/api/meta-groups/${id}`, { method: "DELETE" });
+            ui.metaGroupEditDialog?.close();
+            await reload();
+            renderMetaGroupManageTable();
+        } catch (error) { print({ error: error.message }); }
+    });
 
     ui.refreshBtn.addEventListener("click", () => reload().catch((error) => print({ error: error.message })));
     ui.importBtn?.addEventListener("click", importCurriculumFile);

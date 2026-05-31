@@ -8,6 +8,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 @Data
@@ -53,18 +54,41 @@ public class SessionUser implements Serializable {
         if (isAdmin() || loadEditAllBuildings) {
             return true;
         }
-        String normalizedRequested = normalizeBuildingGroupCode(buildingCode);
+        String requestedAccessCode = normalizeBuildingCode(buildingCode);
+        String requestedGroupCode = normalizeBuildingGroupCode(buildingCode);
         if (!loadEditableBuildingCodes.isEmpty()) {
-            return loadEditableBuildingCodes.stream().map(this::normalizeBuildingGroupCode).anyMatch(normalizedRequested::equals);
+            return loadEditableBuildingCodes.stream().anyMatch(permissionCode -> {
+                String normalizedPermission = normalizeBuildingCode(permissionCode);
+                if (normalizedPermission.isBlank()) return false;
+                if (normalizedPermission.equals(requestedAccessCode)) return true;
+                boolean groupWidePermission = !normalizedPermission.contains("|");
+                return groupWidePermission && normalizeBuildingGroupCode(normalizedPermission).equals(requestedGroupCode);
+            });
         }
         if (role == UserRole.BUILDING_HEAD) {
-            return normalizeBuildingGroupCode(managedBuildingCode).equals(normalizedRequested);
+            return normalizeBuildingGroupCode(managedBuildingCode).equals(requestedGroupCode);
         }
         return false;
     }
 
     private String normalizeBuildingCode(String value) {
-        return String.valueOf(value == null ? "" : value).trim().toUpperCase().replace(" ", "");
+        String normalized = String.valueOf(value == null ? "" : value)
+                .trim()
+                .toUpperCase(Locale.ROOT)
+                .replace('–', '-')
+                .replace('—', '-')
+                .replaceAll("[CС][ПPР]", "СП")
+                .replaceAll("\\s*\\|\\s*", "|")
+                .replaceAll("\\s+", "");
+        int idx = normalized.indexOf("|");
+        if (idx >= 0) {
+            return normalizeBuildingGroupAlias(normalized.substring(0, idx)) + normalized.substring(idx);
+        }
+        return normalizeBuildingGroupAlias(normalized);
+    }
+
+    private String normalizeBuildingGroupAlias(String value) {
+        return String.valueOf(value == null ? "" : value).replaceFirst("^СП-(\\d+)$", "СП$1");
     }
 
     private String normalizeBuildingGroupCode(String value) {
