@@ -4,10 +4,14 @@ import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.model.SubjectArea;
 import org.school.personalLoad.model.SubjectAreaNames;
 import org.school.personalLoad.repository.SubjectAreaRepository;
+import org.school.personalLoad.repository.SubjectCatalogRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("/api/subject-areas")
@@ -26,6 +30,7 @@ public class SubjectAreaController {
     }
 
     @PostMapping
+    @Transactional
     public ResponseEntity<SubjectArea> upsert(@RequestBody SubjectArea request) {
         throw new IllegalArgumentException("Предметные области фиксированы: используйте одну из 9 базовых областей");
     }
