@@ -12,7 +12,8 @@ const state = {
     manualRows: [],
     classes: [],
     teachers: [],
-    subjects: []
+    subjects: [],
+    studentHourRate: 37
 };
 
 function withYear(path) {
@@ -233,7 +234,7 @@ function rowSalary(row) {
     const children = Math.max(childrenCount(row), 1);
     const hours = Math.max(loadValue(row), 0);
     const coefficient = subjectCoefficient(row.subjectName);
-    let value = 37 * children * hours * 2.8333333 * coefficient;
+    let value = state.studentHourRate * children * hours * 2.8333333 * coefficient;
     if (normalizeText(row.groupNameEducationalPlan || "")) {
         value *= 25 / children;
     }
@@ -320,7 +321,7 @@ function renderTable() {
     const showSalary = salaryPermission().canView;
     const headers = ["ФИО", "Предмет", "Класс", "Группа", "Количество детей", "Часы по предмету", "Период нагрузки", "Часы в корпусе/всего", "Дополнительные сведения"];
     if (showSalary) {
-        headers.push("Ученико-час, руб.", "Классное руководство, руб.", "Итого, руб.");
+        headers.push("За часы", "Классное руководство", "Итого");
     }
     let html = `<thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>`;
 
@@ -355,9 +356,9 @@ function renderTable() {
                     html += `<td rowspan="${rows.length}" class="people-load-hours">${escapeHtml(hours)}</td>`;
                     html += `<td rowspan="${rows.length}" class="people-load-extra">${escapeHtml(extra)}</td>`;
                     if (showSalary) {
-                        html += `<td rowspan="${rows.length}" class="people-load-hours">${escapeHtml(formatMoney(salary.hours))}</td>`;
-                        html += `<td rowspan="${rows.length}" class="people-load-hours">${escapeHtml(formatMoney(salary.leadership))}</td>`;
-                        html += `<td rowspan="${rows.length}" class="people-load-hours">${escapeHtml(formatMoney(salary.total))}</td>`;
+                        html += `<td rowspan="${rows.length}" class="people-load-money">${escapeHtml(formatMoney(salary.hours))}</td>`;
+                        html += `<td rowspan="${rows.length}" class="people-load-money people-load-money-leadership">${escapeHtml(formatMoney(salary.leadership))}</td>`;
+                        html += `<td rowspan="${rows.length}" class="people-load-money">${escapeHtml(formatMoney(salary.total))}</td>`;
                     }
                 }
                 html += "</tr>";
@@ -418,18 +419,22 @@ function rebuildIndexes() {
 
 async function loadData() {
     ui.summary.textContent = "Загрузка данных…";
-    const [buildings, manualRows, classes, teachers, subjects] = await Promise.all([
+    const salaryAccess = salaryPermission().canView;
+    const [buildings, manualRows, classes, teachers, subjects, salarySettings] = await Promise.all([
         api("/api/buildings"),
         api("/api/manual-load"),
         api("/api/classroom-leadership"),
         api("/api/teachers"),
-        api("/api/subjects")
+        api("/api/subjects"),
+        salaryAccess ? api("/api/salary-settings") : Promise.resolve(null)
     ]);
     state.buildings = buildBuildingOptions(buildings);
     state.manualRows = manualRows || [];
     state.classes = classes || [];
     state.teachers = teachers || [];
     state.subjects = subjects || [];
+    const rate = Number(salarySettings?.studentHourRate ?? 37);
+    state.studentHourRate = Number.isFinite(rate) && rate > 0 ? rate : 37;
     rebuildIndexes();
     fillBuildingSelect();
     renderTable();

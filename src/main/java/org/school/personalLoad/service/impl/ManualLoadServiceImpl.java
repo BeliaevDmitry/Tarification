@@ -25,12 +25,14 @@ import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.StudyPeriod;
+import org.school.personalLoad.model.SalarySettings;
 import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.model.SubjectWithGroup;
 import org.school.personalLoad.model.TarifficationPerson;
 import org.school.personalLoad.model.SubjectCatalogEntry;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.SalarySettingsRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.ContingentSnapshotRepository;
@@ -65,7 +67,6 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class ManualLoadServiceImpl implements ManualLoadService {
 
-    private static final BigDecimal STUDENT_HOUR_RATE = BigDecimal.valueOf(37);
     private static final BigDecimal STUDENT_HOUR_MULTIPLIER = new BigDecimal("2.8333333");
     private static final BigDecimal GROUP_BASE_SIZE = BigDecimal.valueOf(25);
     private static final BigDecimal CLASS_LEADERSHIP_PER_STUDENT = BigDecimal.valueOf(500);
@@ -82,6 +83,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private final ContingentSnapshotRepository contingentSnapshotRepository;
     private final ContingentStudentRepository contingentStudentRepository;
     private final SchoolBuildingRepository schoolBuildingRepository;
+    private final SalarySettingsRepository salarySettingsRepository;
 
     @Override
     public ManualLoadEntry create(ManualLoadEntryRequest request) {
@@ -315,8 +317,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                         )))
                 .orElseGet(HashMap::new);
 
+        BigDecimal studentHourRate = includeSalary ? resolveStudentHourRate() : SalarySettings.DEFAULT_STUDENT_HOUR_RATE;
         SalarySummary salarySummary = includeSalary
-                ? calculateSalarySummary(rows, classEntries, classSizeByClass, subjectCoefficientByName)
+                ? calculateSalarySummary(rows, classEntries, classSizeByClass, subjectCoefficientByName, studentHourRate)
                 : SalarySummary.empty();
 
         Map<String, List<ManualLoadEntry>> byBuilding = rows.stream().collect(java.util.stream.Collectors.groupingBy(
@@ -358,7 +361,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 Row h = sheet.createRow(0);
                 List<String> cols = new ArrayList<>(List.of("ФИО", "Предмет", "Класс", "Группа", "Количество детей", "Часы по предмету", "Период нагрузки", "Часы в корпусе/всего", "Дополнительные сведения"));
                 if (includeSalary) {
-                    cols.add("Ученико-час, руб.");
+                    cols.add("За часы");
                     cols.add("Классное руководство, руб.");
                     cols.add("Итого, руб.");
                 }
@@ -493,9 +496,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 sheet.setColumnWidth(7, 24 * 256);
                 sheet.setColumnWidth(8, 45 * 256);
                 if (includeSalary) {
-                    sheet.setColumnWidth(9, 18 * 256);
-                    sheet.setColumnWidth(10, 24 * 256);
-                    sheet.setColumnWidth(11, 16 * 256);
+                    sheet.setColumnWidth(9, 12 * 256);
+                    sheet.setColumnWidth(10, 18 * 256);
+                    sheet.setColumnWidth(11, 12 * 256);
                 }
             }
             if (includeSalary) {
@@ -543,7 +546,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private SalarySummary calculateSalarySummary(List<ManualLoadEntry> rows,
                                                  List<ClassroomLeadershipEntry> classEntries,
                                                  Map<String, Integer> classSizeByClass,
-                                                 Map<String, BigDecimal> subjectCoefficientByName) {
+                                                 Map<String, BigDecimal> subjectCoefficientByName,
+                                                 BigDecimal studentHourRate) {
         Map<String, SalaryTotals> byBuildingTeacher = new HashMap<>();
         Map<String, SalaryTotals> byBuilding = new HashMap<>();
         SalaryTotals complex = new SalaryTotals();
@@ -551,7 +555,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         for (ManualLoadEntry row : rows) {
             String building = buildingKey(row.getNumberSchoolBuilding());
             String teacher = String.valueOf(row.getFioTeacher()).trim().toLowerCase(Locale.ROOT);
-            BigDecimal hourSalary = calculateHourSalary(row, classSizeByClass, subjectCoefficientByName);
+            BigDecimal hourSalary = calculateHourSalary(row, classSizeByClass, subjectCoefficientByName, studentHourRate);
             byBuildingTeacher.computeIfAbsent(salaryKey(building, teacher), key -> new SalaryTotals()).addHourSalary(hourSalary);
             byBuilding.computeIfAbsent(building, key -> new SalaryTotals()).addHourSalary(hourSalary);
             complex.addHourSalary(hourSalary);
@@ -577,7 +581,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
     private BigDecimal calculateHourSalary(ManualLoadEntry row,
                                            Map<String, Integer> classSizeByClass,
-                                           Map<String, BigDecimal> subjectCoefficientByName) {
+                                           Map<String, BigDecimal> subjectCoefficientByName,
+                                           BigDecimal studentHourRate) {
         int classSize = classSizeByClass.getOrDefault(normalizeToken(row.getClassName()), 25);
         String group = String.valueOf(row.getGroupNameEducationalPlan() == null ? "" : row.getGroupNameEducationalPlan()).toLowerCase(Locale.ROOT);
         int firstGroupSize = (classSize + 1) / 2;
@@ -593,7 +598,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         int safeChildrenCount = Math.max(childrenCount, 1);
         int subjectHours = row.getGroupLoad() != null ? row.getGroupLoad() : (row.getLoad() == null ? 0 : row.getLoad());
         BigDecimal coefficient = subjectCoefficientByName.getOrDefault(normalizeToken(row.getSubjectName()), BigDecimal.ONE);
-        BigDecimal result = STUDENT_HOUR_RATE
+        BigDecimal result = studentHourRate
                 .multiply(BigDecimal.valueOf(safeChildrenCount))
                 .multiply(BigDecimal.valueOf(Math.max(subjectHours, 0)))
                 .multiply(STUDENT_HOUR_MULTIPLIER)
@@ -602,6 +607,13 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             result = result.multiply(GROUP_BASE_SIZE).divide(BigDecimal.valueOf(safeChildrenCount), 10, RoundingMode.HALF_UP);
         }
         return result;
+    }
+
+    private BigDecimal resolveStudentHourRate() {
+        return salarySettingsRepository.findById(SalarySettings.DEFAULT_ID)
+                .map(SalarySettings::getStudentHourRate)
+                .filter(value -> value != null && value.compareTo(BigDecimal.ZERO) > 0)
+                .orElse(SalarySettings.DEFAULT_STUDENT_HOUR_RATE);
     }
 
     private BigDecimal resolvePositiveCoefficient(BigDecimal value) {
@@ -627,7 +639,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private void createSalarySummarySheet(Workbook workbook, SalarySummary salarySummary, CellStyle header, CellStyle money) {
         Sheet sheet = workbook.createSheet(uniqueSheetName(workbook, "Свод ЗП"));
         Row h = sheet.createRow(0);
-        List<String> cols = List.of("Корпус", "Ученико-час, руб.", "Классное руководство, руб.", "Итого, руб.");
+        List<String> cols = List.of("Корпус", "За часы", "Классное руководство", "Итого");
         for (int i = 0; i < cols.size(); i++) {
             h.createCell(i).setCellValue(cols.get(i));
             h.getCell(i).setCellStyle(header);
@@ -652,9 +664,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         total.createCell(3).setCellValue(moneyValue(salarySummary.complex().total()));
         for (int c = 1; c <= 3; c++) total.getCell(c).setCellStyle(money);
         sheet.setColumnWidth(0, 24 * 256);
-        sheet.setColumnWidth(1, 18 * 256);
-        sheet.setColumnWidth(2, 26 * 256);
-        sheet.setColumnWidth(3, 18 * 256);
+        sheet.setColumnWidth(1, 12 * 256);
+        sheet.setColumnWidth(2, 18 * 256);
+        sheet.setColumnWidth(3, 12 * 256);
     }
 
     private record SalarySummary(Map<String, SalaryTotals> byBuildingTeacher,

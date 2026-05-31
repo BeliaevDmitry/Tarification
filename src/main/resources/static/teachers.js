@@ -16,19 +16,49 @@ const ui = {
     buildingCreate: document.getElementById("teacher-building-create"),
     tabMainBtn: document.getElementById("teachers-tab-main-btn"),
     tabDismissalsBtn: document.getElementById("teachers-tab-dismissals-btn"),
+    tabSettingsBtn: document.getElementById("teachers-tab-settings-btn"),
     mainPanel: document.getElementById("teachers-main-panel"),
     dismissalsPanel: document.getElementById("teachers-dismissals-panel"),
+    settingsPanel: document.getElementById("teachers-settings-panel"),
+    salarySettingsForm: document.getElementById("salary-settings-form"),
+    salaryStudentHourRate: document.getElementById("salary-student-hour-rate"),
+    salarySettingsStatus: document.getElementById("salary-settings-status"),
     dismissalsBody: document.getElementById("teachers-dismissals-body"),
     result: document.getElementById("teachers-result"),
     tbody: document.getElementById("teachers-table-body")
 };
 let buildings = [];
-const currentUser = window.tarificationAuth || null;
+
+function currentAuthUser() {
+    return window.tarificationAuth || null;
+}
 
 function canEditTeachers() {
+    const currentUser = currentAuthUser();
     if (currentUser?.admin) return true;
     const permissions = window.tarificationTabPermissions || {};
     return Boolean(permissions.TEACHERS?.canEdit);
+}
+
+function salaryPermission() {
+    const user = currentAuthUser() || {};
+    const permissions = window.tarificationTabPermissions || {};
+    const privilegedRole = user.role === "DIRECTOR" || user.role === "DEPUTY_DIRECTOR";
+    return Boolean(user.admin || privilegedRole || permissions.LOAD_SALARY?.canView);
+}
+
+function waitForAuth() {
+    if (window.tarificationAuth) return Promise.resolve();
+    return new Promise((resolve) => {
+        let attempts = 0;
+        const timer = setInterval(() => {
+            attempts += 1;
+            if (window.tarificationAuth || attempts >= 50) {
+                clearInterval(timer);
+                resolve();
+            }
+        }, 50);
+    });
 }
 
 async function api(path, options = {}) {
@@ -67,6 +97,20 @@ function renderBuildingOptions(selected = "") {
         options.push(`<option value="${escapeHtml(code)}" ${selectedAttr}>${escapeHtml(label)}</option>`);
     });
     return options.join("");
+}
+
+function showTeachersTab(tab) {
+    if (ui.mainPanel) ui.mainPanel.style.display = tab === "main" ? "" : "none";
+    if (ui.dismissalsPanel) ui.dismissalsPanel.style.display = tab === "dismissals" ? "" : "none";
+    if (ui.settingsPanel) ui.settingsPanel.style.display = tab === "settings" ? "" : "none";
+}
+
+function applySalarySettingsVisibility() {
+    const allowed = salaryPermission();
+    if (ui.tabSettingsBtn) ui.tabSettingsBtn.style.display = allowed ? "" : "none";
+    if (!allowed && ui.settingsPanel?.style.display !== "none") {
+        showTeachersTab("main");
+    }
 }
 
 function renderTeachers(rows) {
@@ -302,27 +346,64 @@ async function clearTeachers() {
     }
 }
 
+async function loadSalarySettings() {
+    if (!salaryPermission() || !ui.salaryStudentHourRate) return;
+    try {
+        const settings = await api('/api/salary-settings');
+        ui.salaryStudentHourRate.value = settings?.studentHourRate ?? 37;
+        if (ui.salarySettingsStatus) ui.salarySettingsStatus.textContent = 'Текущее значение загружено.';
+    } catch (error) {
+        if (ui.salarySettingsStatus) ui.salarySettingsStatus.textContent = `Ошибка загрузки настроек: ${error.message}`;
+    }
+}
+
+async function saveSalarySettings(event) {
+    event.preventDefault();
+    if (!salaryPermission()) {
+        if (ui.salarySettingsStatus) ui.salarySettingsStatus.textContent = 'Нет прав на изменение настроек зарплаты.';
+        return;
+    }
+    const studentHourRate = Number(ui.salaryStudentHourRate?.value || 0);
+    if (!Number.isFinite(studentHourRate) || studentHourRate <= 0) {
+        if (ui.salarySettingsStatus) ui.salarySettingsStatus.textContent = 'Укажите положительное значение человеко-часа.';
+        return;
+    }
+    try {
+        const result = await api('/api/salary-settings', {
+            method: 'PUT',
+            headers: jsonHeaders,
+            body: JSON.stringify({ studentHourRate })
+        });
+        ui.salaryStudentHourRate.value = result?.studentHourRate ?? studentHourRate;
+        if (ui.salarySettingsStatus) ui.salarySettingsStatus.textContent = 'Настройки сохранены.';
+    } catch (error) {
+        if (ui.salarySettingsStatus) ui.salarySettingsStatus.textContent = `Ошибка сохранения: ${error.message}`;
+    }
+}
+
 function bindEvents() {
     ui.importBtn.addEventListener('click', importTeachers);
     ui.downloadBtn.addEventListener('click', downloadTeachers);
     ui.createForm.addEventListener('submit', createTeacher);
     ui.refreshBtn.addEventListener('click', () => loadTeachers().catch((e) => print({ error: e.message })));
     ui.clearBtn.addEventListener('click', clearTeachers);
-    ui.tabMainBtn?.addEventListener("click", () => {
-        ui.mainPanel.style.display = "";
-        ui.dismissalsPanel.style.display = "none";
+    ui.tabMainBtn?.addEventListener("click", () => showTeachersTab("main"));
+    ui.tabDismissalsBtn?.addEventListener("click", () => showTeachersTab("dismissals"));
+    ui.tabSettingsBtn?.addEventListener("click", async () => {
+        showTeachersTab("settings");
+        await loadSalarySettings();
     });
-    ui.tabDismissalsBtn?.addEventListener("click", () => {
-        ui.mainPanel.style.display = "none";
-        ui.dismissalsPanel.style.display = "";
-    });
+    ui.salarySettingsForm?.addEventListener("submit", saveSalarySettings);
 }
 
 async function init() {
+    await waitForAuth();
     bindEvents();
+    applySalarySettingsVisibility();
     try {
         await loadBuildings();
         await loadTeachers();
+        await loadSalarySettings();
     } catch (error) {
         print({ error: error.message });
     }

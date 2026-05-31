@@ -12,9 +12,11 @@ import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.StudyPeriod;
+import org.school.personalLoad.model.SalarySettings;
 import org.school.personalLoad.model.SubjectCatalogEntry;
 import org.school.personalLoad.model.SubjectType;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.SalarySettingsRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.ContingentSnapshotRepository;
@@ -63,6 +65,8 @@ class ManualLoadServiceImplBulkReplaceTest {
     private ContingentStudentRepository contingentStudentRepository;
     @Mock
     private SchoolBuildingRepository schoolBuildingRepository;
+    @Mock
+    private SalarySettingsRepository salarySettingsRepository;
 
     private ManualLoadServiceImpl service;
 
@@ -79,7 +83,8 @@ class ManualLoadServiceImplBulkReplaceTest {
                 classroomLeadershipRepository,
                 contingentSnapshotRepository,
                 contingentStudentRepository,
-                schoolBuildingRepository
+                schoolBuildingRepository,
+                salarySettingsRepository
         );
     }
 
@@ -145,17 +150,20 @@ class ManualLoadServiceImplBulkReplaceTest {
         when(subjectCatalogRepository.findAll()).thenReturn(List.of(subject));
         when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(firstClass));
         when(schoolBuildingRepository.findAll()).thenReturn(List.of());
+        SalarySettings settings = new SalarySettings();
+        settings.setStudentHourRate(java.math.BigDecimal.valueOf(40));
         when(contingentSnapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc("2025/2026"))
                 .thenReturn(Optional.empty());
+        when(salarySettingsRepository.findById(SalarySettings.DEFAULT_ID)).thenReturn(Optional.of(settings));
 
         byte[] body = service.exportFullWorkbookWithSalary("2025/2026");
 
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
             var loadSheet = workbook.getSheet("СП1");
-            assertEquals("Ученико-час, руб.", loadSheet.getRow(0).getCell(9).getStringCellValue());
+            assertEquals("За часы", loadSheet.getRow(0).getCell(9).getStringCellValue());
             assertEquals("Классное руководство, руб.", loadSheet.getRow(0).getCell(10).getStringCellValue());
             assertEquals("Итого, руб.", loadSheet.getRow(0).getCell(11).getStringCellValue());
-            double expectedHours = 37 * 25 * 9 * 2.8333333;
+            double expectedHours = 40 * 25 * 9 * 2.8333333;
             double expectedLeadership = 500 * 25 + 5000;
             assertEquals(expectedHours, loadSheet.getRow(1).getCell(9).getNumericCellValue(), 0.01);
             assertEquals(expectedLeadership, loadSheet.getRow(1).getCell(10).getNumericCellValue(), 0.01);
