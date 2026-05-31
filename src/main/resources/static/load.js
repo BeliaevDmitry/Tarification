@@ -2517,14 +2517,16 @@ async function refreshSourceData() {
         .sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"))
         .forEach((group) => {
             const firstAddress = group.addresses[0] || "";
-            buildings.push({
-                code: group.code,
-                value: group.code,
-                name: group.name,
-                address: firstAddress,
-                addresses: group.addresses,
-                scope: "group"
-            });
+            if (group.addresses.length !== 1) {
+                buildings.push({
+                    code: group.code,
+                    value: group.code,
+                    name: group.name,
+                    address: firstAddress,
+                    addresses: group.addresses,
+                    scope: "group"
+                });
+            }
             group.addresses.forEach((address) => {
                 buildings.push({
                     code: group.code,
