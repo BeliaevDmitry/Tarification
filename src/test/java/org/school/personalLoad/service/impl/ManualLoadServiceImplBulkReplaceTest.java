@@ -163,8 +163,9 @@ class ManualLoadServiceImplBulkReplaceTest {
             assertEquals("За часы", loadSheet.getRow(0).getCell(9).getStringCellValue());
             assertEquals("Классное руководство, руб.", loadSheet.getRow(0).getCell(10).getStringCellValue());
             assertEquals("Итого, руб.", loadSheet.getRow(0).getCell(11).getStringCellValue());
-            double expectedHours = 40 * 25 * 9 * 2.8333333;
-            double expectedLeadership = 500 * 25 + 5000;
+            assertEquals("ГОД", loadSheet.getRow(1).getCell(6).getStringCellValue());
+            double expectedHours = 40 * 30 * 9 * 2.8333333;
+            double expectedLeadership = 500 * 30 + 5000;
             assertEquals(expectedHours, loadSheet.getRow(1).getCell(9).getNumericCellValue(), 0.01);
             assertEquals(expectedLeadership, loadSheet.getRow(1).getCell(10).getNumericCellValue(), 0.01);
             assertEquals(expectedHours + expectedLeadership, loadSheet.getRow(1).getCell(11).getNumericCellValue(), 0.01);
