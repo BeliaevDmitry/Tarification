@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Воспитательная работа — отчёты</title>
+  <style>
+    :root { --green:#148743; --red:#c3292e; --border:#dce2e8; --bg:#f5f7fa; --ink:#1d2935; }
+    body { margin:0; font:14px Arial,sans-serif; color:var(--ink); background:var(--bg); }
+    main { max-width:1120px; margin:32px auto; padding:0 18px; }
+    h1 { margin:0 0 18px; font-size:25px; }
+    .card { background:#fff; border:1px solid var(--border); border-radius:12px; padding:18px; margin-bottom:18px; }
+    .toolbar { display:flex; flex-wrap:wrap; gap:12px; align-items:end; }
+    label { display:block; font-weight:600; margin-bottom:5px; }
+    input, button { padding:10px 12px; border-radius:8px; border:1px solid #bfc8d2; background:#fff; }
+    button { cursor:pointer; border:0; background:#1769aa; color:#fff; font-weight:600; }
+    .tabs { display:flex; gap:6px; margin-bottom:14px; }
+    .tab { background:#e8edf2; color:#273444; }
+    .tab.active { background:#1769aa; color:#fff; }
+    [hidden] { display:none !important; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border:1px solid var(--border); padding:9px; text-align:left; }
+    th { background:#eef3f7; }
+    .matrix td:not(:first-child), .matrix th:not(:first-child) { text-align:center; min-width:64px; }
+    .submitted { color:var(--green); font-weight:bold; font-size:19px; }
+    .missing { color:var(--red); font-weight:bold; font-size:19px; }
+    .download { color:#1769aa; font-weight:600; }
+    .issue { margin:8px 0; padding:10px; border-left:4px solid var(--red); background:#fff3f3; }
+    .metric-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); gap:10px; margin-top:14px; }
+    .metric { padding:12px; background:#f6f8fa; border-radius:8px; }
+    .metric strong { display:block; font-size:22px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Воспитательная работа</h1>
+  <section class="card">
+    <form id="uploadForm" class="toolbar">
+      <div><label for="reportFile">Отчёт классного руководителя (.docx)</label><input id="reportFile" type="file" accept=".docx" required></div>
+      <button type="submit">Проверить и сдать</button>
+    </form>
+    <div id="uploadResult"></div>
+  </section>
+  <section class="card">
+    <div class="tabs">
+      <button class="tab active" data-target="matrixPane">Матрица сдачи</button>
+      <button class="tab" data-target="listPane">Список отчётов</button>
+    </div>
+    <section id="matrixPane">
+      <table class="matrix"><thead id="matrixHead"></thead><tbody id="matrixBody"></tbody></table>
+      <div class="metric-grid" id="metrics"></div>
+    </section>
+    <section id="listPane" hidden>
+      <table><thead><tr><th>№</th><th>Класс</th><th>ФИО классного руководителя</th><th>Статус</th></tr></thead><tbody id="submissions"></tbody></table>
+    </section>
+  </section>
+</main>
+<script>
+const year = '2025-2026';
+// В интеграции заменить на GET из действующего справочника классов.
+const expectedClasses = [
+  { schoolClass:'1А', classTeacherFullName:'Иванова Мария Петровна' },
+  { schoolClass:'1Б', classTeacherFullName:'Петров Алексей Игоревич' },
+  { schoolClass:'2А', classTeacherFullName:'Сидорова Ольга Сергеевна' }
+];
+
+document.querySelectorAll('.tab').forEach(button => button.onclick = () => {
+  document.querySelectorAll('.tab').forEach(item => item.classList.remove('active'));
+  button.classList.add('active');
+  document.querySelectorAll('#matrixPane,#listPane').forEach(pane => pane.hidden = pane.id !== button.dataset.target);
+});
+
+document.getElementById('uploadForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const output = document.getElementById('uploadResult');
+  const data = new FormData();
+  data.append('file', document.getElementById('reportFile').files[0]);
+  const response = await fetch('/api/educational-work/reports/submit', { method:'POST', body:data });
+  const result = await response.json();
+  if (result.accepted) {
+    const staff = result.report.staffRecognitions.length;
+    const diagnostics = result.report.diagnostics.length;
+    output.innerHTML = `<p class="submitted">✓ Отчёт принят</p><p>Педагогические работники: <strong>${staff}</strong>; диагностики МЦКО: <strong>${diagnostics}</strong>.</p>`;
+    await loadSummary();
+  } else {
+    output.innerHTML = '<h3>Нужно исправить:</h3>' + result.issues.map(issue =>
+      `<div class="issue"><strong>${issue.location}</strong><br>${issue.message}<br>Ожидается: <code>${issue.expected}</code><br>Получено: <code>${issue.actual || 'пусто'}</code></div>`).join('');
+  }
+});
+
+async function loadSummary() {
+  const response = await fetch(`/api/educational-work/summary?academicYear=${encodeURIComponent(year)}`, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(expectedClasses)
+  });
+  renderSummary(await response.json());
+}
+function renderSummary(summary) {
+  const letters = summary.matrix.length ? summary.matrix[0].letters.map(cell => cell.schoolClass.replace(/\d+/g,'')) : [];
+  document.getElementById('matrixHead').innerHTML = `<tr><th>Параллель</th>${letters.map(l => `<th>${l}</th>`).join('')}</tr>`;
+  document.getElementById('matrixBody').innerHTML = summary.matrix.map(row => `<tr><th>${row.parallel}</th>${row.letters.map(cell => {
+    if (cell.status === 'CLASS_NOT_EXISTS') return '<td></td>';
+    return cell.status === 'SUBMITTED' ? '<td class="submitted">✓</td>' : '<td class="missing">✕</td>';
+  }).join('')}</tr>`).join('');
+  document.getElementById('submissions').innerHTML = summary.submissions.map(row => `<tr><td>${row.number}</td><td>${row.schoolClass}</td><td>${row.classTeacherFullName}</td><td>${row.submitted ? `<a class="download" href="${row.downloadUrl}">Сдан — скачать</a>` : '<span class="missing">Не сдан</span>'}</td></tr>`).join('');
+  const a = summary.aggregate;
+  const metrics = [['Сдано', `${a.reportsSubmitted} / ${a.expectedReports}`], ['Учащихся', a.studentCount], ['ГТО', a.gto], ['Движение Первых', a.movementFirst], ['Волонтёры', a.volunteers], ['Совет обучающихся', a.studentCouncil]];
+  document.getElementById('metrics').innerHTML = metrics.map(([name, value]) => `<div class="metric"><span>${name}</span><strong>${value}</strong></div>`).join('');
+}
+loadSummary();
+</script>
+</body>
+</html>

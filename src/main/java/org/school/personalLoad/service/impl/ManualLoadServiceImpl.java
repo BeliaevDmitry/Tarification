@@ -445,7 +445,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                         hoursSummary = "1 полугодие: " + t[0] + "/" + t[2] + "\n"
                                 + "2 полугодие: " + t[1] + "/" + t[3];
                     }
-                    int classSize = classSizeByClass.getOrDefault(normalizeToken(e.getClassName()), 25);
+                    int classSize = classSizeByClass.getOrDefault(normalizeToken(e.getClassName()), 30);
                     String group = String.valueOf(e.getGroupNameEducationalPlan() == null ? "" : e.getGroupNameEducationalPlan()).toLowerCase(Locale.ROOT);
                     int firstGroupSize = (classSize + 1) / 2;
                     int secondGroupSize = classSize - firstGroupSize;
