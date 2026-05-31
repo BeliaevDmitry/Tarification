@@ -1,7 +1,10 @@
 package org.school.personalLoad.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 
 import javax.persistence.*;
 import java.time.LocalDate;
@@ -22,8 +25,22 @@ public class ManualLoadEntry {
     @Column(nullable = false)
     private String fioTeacher;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "teacher_id", insertable = false, updatable = false)
+    @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private TeacherDirectoryEntry teacher;
+
     @Column(nullable = false)
     private String numberSchoolBuilding;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "building_group_id", insertable = false, updatable = false)
+    @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private BuildingGroup buildingGroup;
 
     @Column(nullable = false)
     private String subjectName;
@@ -31,10 +48,26 @@ public class ManualLoadEntry {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "subject_id")
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     private SubjectCatalogEntry subject;
 
     @Column(nullable = false)
     private String className;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "class_id", insertable = false, updatable = false)
+    @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private ClassroomLeadershipEntry classRef;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "meta_group_id", insertable = false, updatable = false)
+    @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private MetaGroup metaGroupRef;
 
     @Column(nullable = false)
     private Integer load;

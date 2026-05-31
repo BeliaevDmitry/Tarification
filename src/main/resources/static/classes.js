@@ -10,6 +10,7 @@ const ui = {
     body: document.getElementById("classes-body"),
     fileInput: document.getElementById("classes-file"),
     importBtn: document.getElementById("import-classes-btn"),
+    templateLink: document.getElementById("download-classes-template"),
     editDialog: document.getElementById("class-edit-dialog"),
     editForm: document.getElementById("class-edit-form"),
     editBuilding: document.getElementById("class-edit-building"),
@@ -23,8 +24,32 @@ let classRows = [];
 let editingOriginalKey = null;
 let editingOriginalEntry = null;
 
+function currentAcademicYear() {
+    return String(
+        (typeof window.getStoredAcademicYear === "function" ? window.getStoredAcademicYear() : "")
+        || sessionStorage.getItem("tarification.academicYear")
+        || ""
+    ).trim();
+}
+
+function academicYearScopedPath(path) {
+    if (typeof window.withAcademicYear === "function") {
+        return window.withAcademicYear(path);
+    }
+    const selectedYear = currentAcademicYear();
+    if (!selectedYear || String(path).includes("academicYear=")) return path;
+    const separator = String(path).includes("?") ? "&" : "?";
+    return `${path}${separator}academicYear=${encodeURIComponent(selectedYear)}`;
+}
+
+function updateTemplateLink() {
+    if (ui.templateLink) {
+        ui.templateLink.href = academicYearScopedPath("/api/classroom-leadership/template");
+    }
+}
+
 async function api(path, options = {}) {
-    const scopedPath = window.withAcademicYear ? window.withAcademicYear(path) : path;
+    const scopedPath = academicYearScopedPath(path);
     const response = await fetch(scopedPath, options);
     const text = await response.text();
     let body = null;
@@ -83,24 +108,14 @@ function buildingChoices() {
     return Array.from(map.values()).sort((a, b) => (`${a.name}|${a.address}`).localeCompare(`${b.name}|${b.address}`, "ru"));
 }
 
-function buildingChoices() {
+function buildingAddresses() {
     const map = new Map();
     (buildings || []).forEach((b) => {
-        const code = normalizeBuildingCode(b.code);
         const address = norm(b.address);
-        if (!code || !address) return;
-        map.set(`${code}|${address.toLowerCase()}`, { code, name: norm(b.name) || code, address });
+        if (!address) return;
+        map.set(buildingAddressKey(address), address);
     });
-    (classRows || []).forEach((row) => {
-        const code = normalizeBuildingCode(row.numberSchoolBuilding);
-        const address = norm(row.campusAddress);
-        if (!code || !address) return;
-        if (!map.has(`${code}|${address.toLowerCase()}`)) {
-            const known = (buildings || []).find((b) => normalizeBuildingCode(b.code) === code);
-            map.set(`${code}|${address.toLowerCase()}`, { code, name: norm(known?.name) || code, address });
-        }
-    });
-    return Array.from(map.values()).sort((a, b) => (`${a.name}|${a.address}`).localeCompare(`${b.name}|${b.address}`, "ru"));
+    return Array.from(map.values()).sort((a, b) => a.localeCompare(b, "ru"));
 }
 
 function displayCampusAddress(entry) {
@@ -117,11 +132,41 @@ function selectedBuildingChoice(selectEl) {
     };
 }
 
+function ensureAddressOption(selectEl, address) {
+    const value = norm(address);
+    if (!selectEl || !value) return;
+    const exists = Array.from(selectEl.options).some((option) => option.value === value);
+    if (exists) return;
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    selectEl.appendChild(option);
+}
+
+function setAddressValue(selectEl, address) {
+    if (!selectEl) return;
+    const value = norm(address);
+    ensureAddressOption(selectEl, value);
+    selectEl.value = value;
+}
+
+function fillCampusAddressOptions(selectEl, selectedAddress = "") {
+    if (!selectEl) return;
+    selectEl.innerHTML = `<option value="">Адрес выбранного корпуса</option>`;
+    buildingAddresses().forEach((address) => {
+        const option = document.createElement("option");
+        option.value = address;
+        option.textContent = address;
+        selectEl.appendChild(option);
+    });
+    setAddressValue(selectEl, selectedAddress);
+}
+
 function applyBuildingAddress(selectEl, addressInput, force = false) {
     const choice = selectedBuildingChoice(selectEl);
     if (!choice || !addressInput) return;
     if (force || !norm(addressInput.value)) {
-        addressInput.value = choice.address || "";
+        setAddressValue(addressInput, choice.address || "");
     }
 }
 
@@ -152,6 +197,8 @@ function renderBuildings() {
     const currentEditAddress = ui.editForm?.elements?.campusAddress?.value || "";
     fillBuildingOptions(ui.building, ui.building.value, currentBuildingAddress);
     fillBuildingOptions(ui.editBuilding, ui.editBuilding.value, currentEditAddress);
+    fillCampusAddressOptions(ui.form?.elements?.campusAddress, currentBuildingAddress);
+    fillCampusAddressOptions(ui.editForm?.elements?.campusAddress, currentEditAddress);
 }
 
 function openEditDialog(entry) {
@@ -159,11 +206,13 @@ function openEditDialog(entry) {
     editingOriginalEntry = { ...entry };
     const normalizedEntryCode = normalizeBuildingCode(entry.numberSchoolBuilding);
     fillBuildingOptions(ui.editBuilding, normalizedEntryCode || entry.numberSchoolBuilding || "", entry.campusAddress || "");
+    const campusAddress = entry.campusAddress || norm(selectedBuildingChoice(ui.editBuilding)?.address) || "";
+    fillCampusAddressOptions(ui.editForm.elements.campusAddress, campusAddress);
     ui.editForm.elements.className.value = entry.className || "";
     ui.editForm.elements.classType.value = entry.classType || "NORMAL";
     ui.editForm.elements.classDirection.value = entry.classDirection || "";
     ui.editForm.elements.fioTeacher.value = entry.fioTeacher || "";
-    ui.editForm.elements.campusAddress.value = entry.campusAddress || norm(selectedBuildingChoice(ui.editBuilding)?.address) || "";
+    setAddressValue(ui.editForm.elements.campusAddress, campusAddress);
     ui.editDialog.showModal();
 }
 
@@ -193,6 +242,7 @@ function renderClasses(rows) {
 }
 
 async function reload() {
+    updateTemplateLink();
     const [rows, buildingRows, teacherRows] = await Promise.all([
         api("/api/classroom-leadership"),
         api("/api/buildings"),
@@ -217,6 +267,8 @@ async function upsertEntry(entry, originalKey = null) {
     filtered.push(entry);
     return api("/api/classroom-leadership", { method: "PUT", headers: jsonHeaders, body: JSON.stringify(filtered) });
 }
+
+updateTemplateLink();
 
 ui.building?.addEventListener("change", () => applyBuildingAddress(ui.building, ui.form.elements.campusAddress, true));
 ui.editBuilding?.addEventListener("change", () => applyBuildingAddress(ui.editBuilding, ui.editForm.elements.campusAddress, true));

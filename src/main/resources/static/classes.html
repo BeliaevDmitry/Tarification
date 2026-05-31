@@ -31,7 +31,7 @@
         <div class="row" data-requires-edit>
             <input id="classes-file" type="file" accept=".xls,.xlsx">
             <button id="import-classes-btn" type="button">Импортировать</button>
-            <a id="download-classes-template" href="/api/classroom-leadership/template" class="nav-link">Скачать шаблон</a>
+            <a id="download-classes-template" href="/api/classroom-leadership/template" class="nav-link">Скачать классы текущего года</a>
         </div>
 
         <h2>Добавить класс</h2>
@@ -41,7 +41,7 @@
             <label class="field-row"><span>Направление</span><input name="classDirection" placeholder="Направление класса" required></label>
             <label class="field-row"><span>Тип класса</span><select name="classType"><option value="NORMAL" selected>Норма</option><option value="AOOP_UO">АООП УО</option></select></label>
             <input name="fioTeacher" id="class-teacher" list="teacher-list" placeholder="Классный руководитель" required>
-            <input name="campusAddress" id="class-campus-address" placeholder="Заполнится адресом выбранного корпуса; можно изменить">
+            <select name="campusAddress" id="class-campus-address" aria-label="Адрес площадки"></select>
             <datalist id="teacher-list"></datalist>
             <button type="submit">Добавить / обновить класс</button>
         </form>
@@ -73,7 +73,7 @@
         <label class="field-row"><span>Тип класса</span><select name="classType"><option value="NORMAL" selected>Норма</option><option value="AOOP_UO">АООП УО</option></select></label>
         <label class="field-row"><span>Направление</span><input name="classDirection" placeholder="Направление класса" required></label>
         <label class="field-row"><span>Классный руководитель</span><input name="fioTeacher" id="class-edit-teacher" list="teacher-list" placeholder="Классный руководитель" required></label>
-        <label class="field-row"><span>Адрес площадки (если отличается)</span><input name="campusAddress" id="class-edit-campus-address" placeholder="Заполнится адресом выбранного корпуса; можно изменить"></label>
+        <label class="field-row"><span>Адрес площадки (если отличается)</span><select name="campusAddress" id="class-edit-campus-address"></select></label>
         <div class="row">
             <button type="submit">Сохранить</button>
             <button type="button" id="class-edit-delete-btn" class="danger-btn">Удалить класс</button>
