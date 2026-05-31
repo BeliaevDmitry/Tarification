@@ -14,9 +14,9 @@ const ui = {
     emailCreate: document.getElementById("teacher-email-create"),
     dutiesCreate: document.getElementById("teacher-duties-create"),
     buildingCreate: document.getElementById("teacher-building-create"),
-    tabMainBtn: document.getElementById("teachers-tab-main-btn"),
-    tabDismissalsBtn: document.getElementById("teachers-tab-dismissals-btn"),
-    tabSettingsBtn: document.getElementById("teachers-tab-settings-btn"),
+    personnelPanel: document.getElementById("teachers-personnel-panel"),
+    contentCard: document.getElementById("teachers-content-card"),
+    sectionTitle: document.getElementById("teachers-section-title"),
     mainPanel: document.getElementById("teachers-main-panel"),
     dismissalsPanel: document.getElementById("teachers-dismissals-panel"),
     settingsPanel: document.getElementById("teachers-settings-panel"),
@@ -99,15 +99,47 @@ function renderBuildingOptions(selected = "") {
     return options.join("");
 }
 
-function showTeachersTab(tab) {
-    if (ui.mainPanel) ui.mainPanel.style.display = tab === "main" ? "" : "none";
-    if (ui.dismissalsPanel) ui.dismissalsPanel.style.display = tab === "dismissals" ? "" : "none";
-    if (ui.settingsPanel) ui.settingsPanel.style.display = tab === "settings" ? "" : "none";
+function teachersTabFromHash() {
+    const hash = String(window.location.hash || "").toLowerCase();
+    if (hash === "#dismissals") return "dismissals";
+    if (hash === "#settings") return salaryPermission() ? "settings" : "main";
+    return "main";
+}
+
+function updateHeaderNavActive(tab) {
+    document.querySelectorAll('.page-nav .nav-link').forEach((link) => {
+        const href = link.getAttribute('href') || '';
+        const active = (tab === "main" && href === "/teachers.html")
+            || (tab === "dismissals" && href === "/teachers.html#dismissals")
+            || (tab === "settings" && href === "/teachers.html#settings");
+        if (active) {
+            link.classList.add('active');
+        } else if (href.startsWith('/teachers.html')) {
+            link.classList.remove('active');
+        }
+    });
+}
+
+function showTeachersTab(tab = teachersTabFromHash()) {
+    const safeTab = tab === "settings" && !salaryPermission() ? "main" : tab;
+    if (safeTab !== tab) {
+        history.replaceState(null, '', '/teachers.html');
+    }
+    if (ui.personnelPanel) ui.personnelPanel.style.display = safeTab === "main" ? "" : "none";
+    if (ui.mainPanel) ui.mainPanel.style.display = safeTab === "main" ? "" : "none";
+    if (ui.dismissalsPanel) ui.dismissalsPanel.style.display = safeTab === "dismissals" ? "" : "none";
+    if (ui.settingsPanel) ui.settingsPanel.style.display = safeTab === "settings" ? "" : "none";
+    if (ui.sectionTitle) {
+        ui.sectionTitle.textContent = safeTab === "dismissals" ? "Увольнения" : safeTab === "settings" ? "Настройки" : "Кадры";
+    }
+    updateHeaderNavActive(safeTab);
 }
 
 function applySalarySettingsVisibility() {
     const allowed = salaryPermission();
-    if (ui.tabSettingsBtn) ui.tabSettingsBtn.style.display = allowed ? "" : "none";
+    document.querySelectorAll('a[href="/teachers.html#settings"]').forEach((link) => {
+        link.style.display = allowed ? '' : 'none';
+    });
     if (!allowed && ui.settingsPanel?.style.display !== "none") {
         showTeachersTab("main");
     }
@@ -387,11 +419,10 @@ function bindEvents() {
     ui.createForm.addEventListener('submit', createTeacher);
     ui.refreshBtn.addEventListener('click', () => loadTeachers().catch((e) => print({ error: e.message })));
     ui.clearBtn.addEventListener('click', clearTeachers);
-    ui.tabMainBtn?.addEventListener("click", () => showTeachersTab("main"));
-    ui.tabDismissalsBtn?.addEventListener("click", () => showTeachersTab("dismissals"));
-    ui.tabSettingsBtn?.addEventListener("click", async () => {
-        showTeachersTab("settings");
-        await loadSalarySettings();
+    window.addEventListener("hashchange", async () => {
+        const tab = teachersTabFromHash();
+        showTeachersTab(tab);
+        if (tab === "settings") await loadSalarySettings();
     });
     ui.salarySettingsForm?.addEventListener("submit", saveSalarySettings);
 }
@@ -400,10 +431,11 @@ async function init() {
     await waitForAuth();
     bindEvents();
     applySalarySettingsVisibility();
+    showTeachersTab(teachersTabFromHash());
     try {
         await loadBuildings();
         await loadTeachers();
-        await loadSalarySettings();
+        if (teachersTabFromHash() === "settings") await loadSalarySettings();
     } catch (error) {
         print({ error: error.message });
     }
