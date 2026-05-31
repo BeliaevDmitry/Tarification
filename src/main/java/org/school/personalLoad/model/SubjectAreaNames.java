@@ -12,7 +12,9 @@ public final class SubjectAreaNames {
             "Естественно-научные предметы",
             "Искусство",
             "Технология",
-            "Физическая культура и основы безопасности и защиты Родины"
+            "Физическая культура и основы безопасности и защиты Родины",
+            "Коррекционно-развивающая область",
+            "Иное"
     );
 
     private SubjectAreaNames() {
@@ -26,12 +28,12 @@ public final class SubjectAreaNames {
     public static String resolveBaseArea(String value) {
         String normalized = normalize(value);
         if (normalized.isBlank()) {
-            throw new IllegalArgumentException("Выберите одну из 9 базовых предметных областей");
+            throw new IllegalArgumentException("Выберите одну из 11 предметных областей");
         }
         return BASE_AREAS.stream()
                 .filter(area -> area.equalsIgnoreCase(normalized))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Предметная область должна быть одной из 9 базовых областей"));
+                .orElseThrow(() -> new IllegalArgumentException("Предметная область должна быть одной из 11 предметных областей"));
     }
 
     public static String defaultArea() {

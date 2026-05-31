@@ -32,7 +32,7 @@ public class SubjectAreaController {
     @PostMapping
     @Transactional
     public ResponseEntity<SubjectArea> upsert(@RequestBody SubjectArea request) {
-        throw new IllegalArgumentException("Предметные области фиксированы: используйте одну из 9 базовых областей");
+        throw new IllegalArgumentException("Предметные области фиксированы: используйте одну из 11 предметных областей");
     }
 
     @DeleteMapping("/{id}")
