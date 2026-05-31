@@ -8,11 +8,13 @@ const ui = {
     snapshotDateSelect: document.getElementById('contingent-snapshot-date'),
     statsRefreshBtn: document.getElementById('contingent-stats-refresh-btn'),
     statsExportBtn: document.getElementById('contingent-stats-export-btn'),
+    statsViewMode: document.getElementById('contingent-stats-view-mode'),
     statsTable: document.getElementById('contingent-stats-table'),
     statsSummary: document.getElementById('contingent-stats-summary')
 };
 
 const esc = (v) => String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+let currentStats = null;
 
 function contingentPermissions() {
     const permissions = window.tarificationTabPermissions || {};
@@ -82,6 +84,10 @@ function renderProblems(problems) {
 }
 
 function renderStatsTable(stats) {
+    if (ui.statsViewMode?.value === 'address') {
+        renderStatsAddressTable(stats);
+        return;
+    }
     const columns = stats?.columns || [];
     const parallels = stats?.parallels || [];
     const totalByParallel = Object.fromEntries((stats?.parallelTotals || []).map((x) => [x.parallel, x.totalStudents]));
@@ -157,6 +163,62 @@ function renderStatsTable(stats) {
     ui.statsTable.innerHTML = `${thead}<tbody>${tbodyRows.join('')}${footerTotalRow}${footerClassRow}</tbody>`;
 }
 
+
+function addressColumns(stats) {
+    return (stats?.columns || []).flatMap((building) => (building.addresses || []).map((address) => ({
+        buildingCode: building.buildingCode,
+        buildingName: building.buildingName,
+        address: address.address || 'Адрес не указан',
+        classes: address.classes || [],
+        totalStudents: address.totalStudents || 0
+    })));
+}
+
+function renderStatsAddressTable(stats) {
+    const addresses = addressColumns(stats);
+    const parallels = stats?.parallels || [];
+    const totalByParallel = Object.fromEntries((stats?.parallelTotals || []).map((x) => [x.parallel, x.totalStudents]));
+
+    const addressHeader = addresses.map((address) => `
+        <th colspan="2">${esc(address.address)}<br><span class="muted">${esc(address.buildingName || address.buildingCode || '')}</span></th>`).join('');
+
+    const thead = `
+        <thead>
+            <tr>
+                <th>Параллель</th>
+                <th>Всего детей</th>
+                ${addressHeader}
+            </tr>
+        </thead>`;
+
+    const tbodyRows = [];
+    parallels.forEach((parallel) => {
+        const perAddress = addresses.map((address) => (address.classes || []).filter((item) => Number(item.parallel) === Number(parallel)));
+        const rowCount = Math.max(1, ...perAddress.map((rows) => rows.length));
+        for (let i = 0; i < rowCount; i += 1) {
+            let row = '<tr>';
+            if (i === 0) {
+                row += `<th rowspan="${rowCount}">${esc(parallel)}</th>`;
+                row += `<th rowspan="${rowCount}">${esc(totalByParallel[parallel] || 0)}</th>`;
+            }
+            perAddress.forEach((rows) => {
+                const item = rows[i];
+                row += `<td>${esc(item?.className || '')}</td>`;
+                row += `<td>${esc(item?.students || '')}</td>`;
+            });
+            row += '</tr>';
+            tbodyRows.push(row);
+        }
+    });
+
+    const footerTotals = addresses.map((address) => `<th></th><th>${esc(address.totalStudents || 0)}</th>`).join('');
+    const footerClasses = addresses.map((address) => `<th></th><th>${esc((address.classes || []).length)}</th>`).join('');
+    const footerTotalRow = `<tr><th>ИТОГО</th><th>${esc(stats?.totalStudents || 0)}</th>${footerTotals}</tr>`;
+    const footerClassRow = `<tr><th>Классов</th><th></th>${footerClasses}</tr>`;
+
+    ui.statsTable.innerHTML = `${thead}<tbody>${tbodyRows.join('')}${footerTotalRow}${footerClassRow}</tbody>`;
+}
+
 async function loadSnapshots() {
     const snapshots = await api('/api/contingent/snapshots');
     ui.snapshotDateSelect.innerHTML = '';
@@ -176,9 +238,9 @@ async function refreshProblems() {
 async function refreshStats() {
     const selectedDate = ui.snapshotDateSelect.value;
     const query = selectedDate ? `?snapshotDate=${encodeURIComponent(selectedDate)}` : '';
-    const stats = await api(`/api/contingent/stats${query}`);
-    ui.statsSummary.textContent = `Данные по состоянию на ${stats.snapshotDate}. Всего учащихся: ${stats.totalStudents}.`;
-    renderStatsTable(stats);
+    currentStats = await api(`/api/contingent/stats${query}`);
+    ui.statsSummary.textContent = `Данные по состоянию на ${currentStats.snapshotDate}. Всего учащихся: ${currentStats.totalStudents}. Для классов без численности применяется значение 30 человек.`;
+    renderStatsTable(currentStats);
 }
 
 ui.tabs.forEach((tab) => tab.addEventListener('click', () => {
@@ -214,6 +276,12 @@ ui.statsRefreshBtn.addEventListener('click', () => refreshStats().catch((error) 
 ui.snapshotDateSelect.addEventListener('change', () => refreshStats().catch((error) => {
     ui.statsSummary.textContent = `Ошибка: ${error.message}`;
 }));
+
+ui.statsViewMode?.addEventListener('change', () => {
+    if (currentStats) {
+        renderStatsTable(currentStats);
+    }
+});
 
 
 ui.statsExportBtn?.addEventListener('click', async () => {
