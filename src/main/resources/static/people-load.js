@@ -168,14 +168,9 @@ function fillBuildingSelect() {
 }
 
 function periodLabel(row) {
-    if (row.loadFromDate || row.loadToDate) {
-        const from = row.loadFromDate || "…";
-        const to = row.loadToDate || "…";
-        return `${from} — ${to}`;
-    }
-    if (row.studyPeriod === "FIRST_HALF") return "1 полугодие";
-    if (row.studyPeriod === "SECOND_HALF") return "2 полугодие";
-    return "Год";
+    if (row.studyPeriod === "H1" || row.studyPeriod === "FIRST_HALF") return "1П";
+    if (row.studyPeriod === "H2" || row.studyPeriod === "SECOND_HALF") return "2П";
+    return "ГОД";
 }
 
 function loadValue(row) {
@@ -186,23 +181,34 @@ function loadValue(row) {
 function addHours(totals, row) {
     const load = loadValue(row);
     if (!load) return;
-    if (row.studyPeriod === "FIRST_HALF") {
+    if (row.studyPeriod === "H1" || row.studyPeriod === "FIRST_HALF") {
         totals.h1 += load;
-    } else if (row.studyPeriod === "SECOND_HALF") {
+    } else if (row.studyPeriod === "H2" || row.studyPeriod === "SECOND_HALF") {
         totals.h2 += load;
     } else {
         totals.year += load;
     }
 }
 
+function effectiveHalfHours(total) {
+    return {
+        h1: (total.year || 0) + (total.h1 || 0),
+        h2: (total.year || 0) + (total.h2 || 0)
+    };
+}
+
 function formatHours(total) {
-    const year = total.year || 0;
-    const h1 = total.h1 || 0;
-    const h2 = total.h2 || 0;
-    if (h1 || h2) {
-        return `${h1}/${h2}`;
+    const { h1, h2 } = effectiveHalfHours(total);
+    return h1 === h2 ? String(h1) : `${h1}/${h2}`;
+}
+
+function formatScopedTotalHours(scoped, total) {
+    const scopedHours = effectiveHalfHours(scoped);
+    const totalHours = effectiveHalfHours(total);
+    if (scopedHours.h1 === totalHours.h1 && scopedHours.h2 === totalHours.h2) {
+        return formatHours(total);
     }
-    return String(year);
+    return `${formatHours(scoped)} / ${formatHours(total)}`;
 }
 
 function fioKey(value) {
@@ -211,9 +217,9 @@ function fioKey(value) {
 
 function childrenCount(row) {
     const name = normalizeText(row.groupNameEducationalPlan || "").toLowerCase();
-    if (name.includes("2")) return 12;
-    if (name.includes("1")) return 13;
-    return 25;
+    if (name.includes("2")) return 15;
+    if (name.includes("1")) return 15;
+    return 30;
 }
 
 function salaryPermission() {
@@ -241,25 +247,21 @@ function rowSalary(row) {
     return value;
 }
 
-function classEntryMatchesAccess(entry, accessCode) {
-    const selectedGroup = buildingGroupCode(accessCode);
-    if (!selectedGroup || buildingGroupCode(entry.numberSchoolBuilding) !== selectedGroup) {
-        return false;
-    }
-    const selectedAddress = buildingAddressToken(accessCode);
-    return !selectedAddress || normalizeBuildingAccessCode(entry.campusAddress || "") === selectedAddress;
-}
-
-function classLeadershipSalary(fio, accessCode) {
+function classLeadershipSalary(fio) {
     const key = fioKey(fio);
     return (state.leadershipByTeacher?.get(key) || [])
-        .filter((entry) => classEntryMatchesAccess(entry, accessCode))
-        .reduce((sum, entry) => sum + 500 * 25 + 5000, 0);
+        .reduce((sum) => sum + 500 * 30 + 5000, 0);
 }
 
-function teacherSalary(fio, rows, accessCode) {
-    const hours = rows.reduce((sum, row) => sum + rowSalary(row), 0);
-    const leadership = classLeadershipSalary(fio, accessCode);
+function isFirstHalfSalaryRow(row) {
+    return row.studyPeriod !== "H2" && row.studyPeriod !== "SECOND_HALF";
+}
+
+function teacherSalary(fio, allTeacherRows) {
+    const hours = allTeacherRows
+        .filter(isFirstHalfSalaryRow)
+        .reduce((sum, row) => sum + rowSalary(row), 0);
+    const leadership = classLeadershipSalary(fio);
     return { hours, leadership, total: hours + leadership };
 }
 
@@ -338,9 +340,10 @@ function renderTable() {
             const fio = rows[0].fioTeacher || "Вакансия";
             const scoped = selectedTotals.get(key) || { year: 0, h1: 0, h2: 0 };
             const total = allTotals.get(key) || { year: 0, h1: 0, h2: 0 };
-            const hours = `${formatHours(scoped)} / ${formatHours(total)}`;
+            const hours = formatScopedTotalHours(scoped, total);
             const extra = teacherExtra(fio, allRowsByTeacher.get(key) || rows);
-            const salary = showSalary ? teacherSalary(fio, rows, selected) : null;
+            const teacherRowsAcrossAllClasses = allRowsByTeacher.get(key) || rows;
+            const salary = showSalary ? teacherSalary(fio, teacherRowsAcrossAllClasses) : null;
             rows.forEach((row, index) => {
                 html += "<tr>";
                 if (index === 0) {

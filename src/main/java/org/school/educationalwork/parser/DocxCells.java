@@ -1,4 +1,4 @@
-package org.school.educationalwork.src.main.java.org.school.educationalwork.parser;
+package org.school.educationalwork.parser;
 
 import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.apache.poi.xwpf.usermodel.XWPFTableCell;

@@ -1,4 +1,4 @@
-package org.school.educationalwork.src.main.java.org.school.educationalwork.model;
+package org.school.educationalwork.model;
 
 import java.util.List;
 
