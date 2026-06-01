@@ -176,6 +176,41 @@ class ManualLoadServiceImplBulkReplaceTest {
         }
     }
 
+    @Test
+    void exportFullWorkbookWithSalaryShowsHalfYearTotalsAndFirstHalfMoney() throws Exception {
+        ManualLoadEntry year = manualRow("Петров П.П.", "СП1", "3-А", "Математика", 10);
+        ManualLoadEntry firstHalf = manualRow("Петров П.П.", "СП1", "3-А", "Математика", 1);
+        firstHalf.setStudyPeriod(StudyPeriod.H1);
+        ManualLoadEntry secondHalf = manualRow("Петров П.П.", "СП1", "3-А", "Математика", 2);
+        secondHalf.setStudyPeriod(StudyPeriod.H2);
+
+        SubjectCatalogEntry subject = new SubjectCatalogEntry();
+        subject.setSubjectName("Математика");
+        subject.setSubjectType(SubjectType.CORE);
+        subject.setSubjectCoefficient(java.math.BigDecimal.ONE);
+
+        when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(year, firstHalf, secondHalf));
+        when(teacherDirectoryRepository.findAll()).thenReturn(List.of());
+        when(subjectCatalogRepository.findAll()).thenReturn(List.of(subject));
+        when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of());
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of());
+        SalarySettings settings = new SalarySettings();
+        settings.setStudentHourRate(java.math.BigDecimal.valueOf(40));
+        when(contingentSnapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc("2025/2026"))
+                .thenReturn(Optional.empty());
+        when(salarySettingsRepository.findById(SalarySettings.DEFAULT_ID)).thenReturn(Optional.of(settings));
+
+        byte[] body = service.exportFullWorkbookWithSalary("2025/2026");
+
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
+            var loadSheet = workbook.getSheet("СП1");
+            assertEquals("11/12", loadSheet.getRow(1).getCell(7).getStringCellValue());
+            double expectedFirstHalfHoursMoney = 40 * 30 * 11 * 2.8333333;
+            assertEquals(expectedFirstHalfHoursMoney, loadSheet.getRow(1).getCell(9).getNumericCellValue(), 0.01);
+            assertEquals(expectedFirstHalfHoursMoney, loadSheet.getRow(1).getCell(11).getNumericCellValue(), 0.01);
+        }
+    }
+
     private ManualLoadEntry manualRow(String fio, String building, String className, String subject, int load) {
         ManualLoadEntry row = new ManualLoadEntry();
         row.setAcademicYear("2025/2026");
