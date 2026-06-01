@@ -111,6 +111,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         }
 
         List<ClassroomLeadershipEntry> saved = classroomLeadershipRepository.saveAll(toSave);
+        syncClassroomBuildingGroups(saved);
         saved.stream().map(ClassroomLeadershipEntry::getId).filter(java.util.Objects::nonNull).forEach(touchedIds::add);
 
         for (ClassroomLeadershipEntry existing : existingRows) {
@@ -166,6 +167,8 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         entry.setCampusAddress(resolveCampusAddress(building, request.getCampusAddress()));
         entry.setClassType(classType);
         ClassroomLeadershipEntry saved = classroomLeadershipRepository.save(entry);
+        syncClassroomBuildingGroups(List.of(saved));
+        saved = classroomLeadershipRepository.findById(id).orElse(saved);
 
         propagateClassRename(academicYear, oldClassName, oldBuilding, saved.getClassName(), saved.getNumberSchoolBuilding());
         syncCurriculumBuildingByClass(academicYear, List.of(saved));
@@ -418,6 +421,20 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
                 normalizeBuildingCode(entry.getNumberSchoolBuilding()),
                 ClassNameNormalizer.normalize(entry.getClassName())
         );
+    }
+
+    private void syncClassroomBuildingGroups(List<ClassroomLeadershipEntry> entries) {
+        if (entries == null || entries.isEmpty()) {
+            return;
+        }
+        for (ClassroomLeadershipEntry entry : entries) {
+            if (entry.getId() == null || normalize(entry.getNumberSchoolBuilding()).isBlank()) {
+                continue;
+            }
+            String building = normalizeBuildingCode(entry.getNumberSchoolBuilding());
+            classroomLeadershipRepository.updateBuildingGroupById(entry.getId(), building);
+            entry.setNumberSchoolBuilding(building);
+        }
     }
 
     private void deleteClassTails(String academicYear, Long classId, String building, String className) {
