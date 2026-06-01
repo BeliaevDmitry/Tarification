@@ -13,6 +13,7 @@ import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.ss.util.WorkbookUtil;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.school.personalLoad.dto.ManualLoadBulkRequest;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadHealthResponse;
 import org.school.personalLoad.dto.ManualLoadPlanFactSummary;
@@ -94,6 +95,15 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     @Override
     @Transactional
     public List<ManualLoadEntry> createBulk(List<ManualLoadEntryRequest> requests) {
+        ManualLoadBulkRequest bulkRequest = new ManualLoadBulkRequest();
+        bulkRequest.setRows(requests == null ? List.of() : requests);
+        return createBulk(bulkRequest);
+    }
+
+    @Override
+    @Transactional
+    public List<ManualLoadEntry> createBulk(ManualLoadBulkRequest request) {
+        List<ManualLoadEntryRequest> requests = request == null || request.getRows() == null ? List.of() : request.getRows();
         java.util.Set<String> explicitAcademicYears = requests.stream()
                 .filter(java.util.Objects::nonNull)
                 .map(ManualLoadEntryRequest::getAcademicYear)
@@ -101,19 +111,41 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 .map(String::trim)
                 .filter(year -> !year.isBlank())
                 .collect(java.util.stream.Collectors.toSet());
+        if (request != null && request.getAcademicYear() != null && !request.getAcademicYear().isBlank()) {
+            explicitAcademicYears.add(request.getAcademicYear().trim());
+        }
         List<ManualLoadEntry> entries = requests.stream().map(this::toEntity).toList();
-        java.util.Set<String> buildingCodes = entries.stream()
-                .map(ManualLoadEntry::getNumberSchoolBuilding)
-                .filter(java.util.Objects::nonNull)
-                .map(code -> code.trim().toLowerCase())
-                .filter(code -> !code.isBlank())
-                .collect(java.util.stream.Collectors.toSet());
-        if (!buildingCodes.isEmpty()) {
-            if (explicitAcademicYears.size() == 1) {
-                String academicYear = explicitAcademicYears.iterator().next();
-                manualLoadEntryRepository.deleteByAcademicYearAndBuildingCodes(academicYear, buildingCodes);
-            } else {
-                manualLoadEntryRepository.deleteByBuildingCodes(buildingCodes);
+        java.util.Set<Long> classIds = new java.util.LinkedHashSet<>();
+        if (request != null && request.getClassIds() != null) {
+            request.getClassIds().stream().filter(java.util.Objects::nonNull).forEach(classIds::add);
+        }
+        entries.stream().map(ManualLoadEntry::getClassId).filter(java.util.Objects::nonNull).forEach(classIds::add);
+
+        if (explicitAcademicYears.size() == 1 && !classIds.isEmpty()) {
+            manualLoadEntryRepository.deleteByAcademicYearAndClassIds(explicitAcademicYears.iterator().next(), classIds);
+        } else if (explicitAcademicYears.size() == 1
+                && request != null
+                && request.getNumberSchoolBuilding() != null && !request.getNumberSchoolBuilding().isBlank()
+                && request.getCampusAddress() != null && !request.getCampusAddress().isBlank()) {
+            manualLoadEntryRepository.deleteByAcademicYearAndBuildingAddress(
+                    explicitAcademicYears.iterator().next(),
+                    request.getNumberSchoolBuilding().trim(),
+                    request.getCampusAddress().trim()
+            );
+        } else {
+            java.util.Set<String> buildingCodes = entries.stream()
+                    .map(ManualLoadEntry::getNumberSchoolBuilding)
+                    .filter(java.util.Objects::nonNull)
+                    .map(code -> code.trim().toLowerCase())
+                    .filter(code -> !code.isBlank())
+                    .collect(java.util.stream.Collectors.toSet());
+            if (!buildingCodes.isEmpty()) {
+                if (explicitAcademicYears.size() == 1) {
+                    String academicYear = explicitAcademicYears.iterator().next();
+                    manualLoadEntryRepository.deleteByAcademicYearAndBuildingCodes(academicYear, buildingCodes);
+                } else {
+                    manualLoadEntryRepository.deleteByBuildingCodes(buildingCodes);
+                }
             }
         }
         return manualLoadEntryRepository.saveAll(entries);
@@ -126,8 +158,20 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
     @Override
     public List<ManualLoadEntry> findAll(String academicYear, String numberSchoolBuilding) {
+        return findAll(academicYear, numberSchoolBuilding, null);
+    }
+
+    @Override
+    public List<ManualLoadEntry> findAll(String academicYear, String numberSchoolBuilding, String campusAddress) {
         if (numberSchoolBuilding == null || numberSchoolBuilding.isBlank()) {
             return findAll(academicYear);
+        }
+        if (campusAddress != null && !campusAddress.isBlank()) {
+            return manualLoadEntryRepository.findAllByAcademicYearAndBuildingAddress(
+                    academicYear,
+                    numberSchoolBuilding.trim(),
+                    campusAddress.trim()
+            );
         }
         return manualLoadEntryRepository.findAllByAcademicYearAndNumberSchoolBuildingIgnoreCase(
                 academicYear,
@@ -151,6 +195,15 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 academicYear,
                 java.util.List.of(numberSchoolBuilding.trim().toLowerCase(java.util.Locale.ROOT))
         );
+    }
+
+    @Override
+    @Transactional
+    public void clearByBuildingAddress(String academicYear, String numberSchoolBuilding, String campusAddress) {
+        if (numberSchoolBuilding == null || numberSchoolBuilding.isBlank() || campusAddress == null || campusAddress.isBlank()) {
+            throw new IllegalArgumentException("building and campusAddress are required");
+        }
+        manualLoadEntryRepository.deleteByAcademicYearAndBuildingAddress(academicYear, numberSchoolBuilding.trim(), campusAddress.trim());
     }
 
     @Override
@@ -436,15 +489,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     }
 
                     int subjectHours = e.getGroupLoad() != null ? e.getGroupLoad() : (e.getLoad() == null ? 0 : e.getLoad());
-                    String periodLabel = e.getStudyPeriod() == StudyPeriod.H1 ? "1 полугодие"
-                            : e.getStudyPeriod() == StudyPeriod.H2 ? "2 полугодие" : "год";
-                    String hoursSummary;
-                    if (t[0] == t[1] && t[2] == t[3]) {
-                        hoursSummary = t[0] + "/" + t[2];
-                    } else {
-                        hoursSummary = "1 полугодие: " + t[0] + "/" + t[2] + "\n"
-                                + "2 полугодие: " + t[1] + "/" + t[3];
-                    }
+                    String periodLabel = e.getStudyPeriod() == StudyPeriod.H1 ? "1П"
+                            : e.getStudyPeriod() == StudyPeriod.H2 ? "2П" : "ГОД";
+                    String hoursSummary = formatScopedTotalHours(t[0], t[1], t[2], t[3]);
                     int classSize = classSizeByClass.getOrDefault(normalizeToken(e.getClassName()), 30);
                     String group = String.valueOf(e.getGroupNameEducationalPlan() == null ? "" : e.getGroupNameEducationalPlan()).toLowerCase(Locale.ROOT);
                     int firstGroupSize = (classSize + 1) / 2;
@@ -469,7 +516,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     r.createCell(7).setCellValue(hoursSummary);
                     r.createCell(8).setCellValue(extra);
                     if (includeSalary) {
-                        SalaryTotals salary = salarySummary.byBuildingTeacher().getOrDefault(salaryKey(building, key), SalaryTotals.empty());
+                        SalaryTotals salary = salarySummary.byTeacher().getOrDefault(key, SalaryTotals.empty());
                         r.createCell(9).setCellValue(moneyValue(salary.hourSalary()));
                         r.createCell(10).setCellValue(moneyValue(salary.classLeadershipSalary()));
                         r.createCell(11).setCellValue(moneyValue(salary.total()));
@@ -507,6 +554,21 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             workbook.write(out);
             return out.toByteArray();
         }
+    }
+
+    private String formatScopedTotalHours(int scopedH1, int scopedH2, int totalH1, int totalH2) {
+        if (scopedH1 == totalH1 && scopedH2 == totalH2) {
+            return formatHalfHours(totalH1, totalH2);
+        }
+        if (scopedH1 == scopedH2 && totalH1 == totalH2) {
+            return scopedH1 + "/" + totalH1;
+        }
+        return "1П: " + scopedH1 + "/" + totalH1 + "\n"
+                + "2П: " + scopedH2 + "/" + totalH2;
+    }
+
+    private String formatHalfHours(int h1, int h2) {
+        return h1 == h2 ? String.valueOf(h1) : h1 + "/" + h2;
     }
 
     private String teacherAddresses(List<ManualLoadEntry> teacherRows,
@@ -548,15 +610,18 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                                                  Map<String, Integer> classSizeByClass,
                                                  Map<String, BigDecimal> subjectCoefficientByName,
                                                  BigDecimal studentHourRate) {
-        Map<String, SalaryTotals> byBuildingTeacher = new HashMap<>();
+        Map<String, SalaryTotals> byTeacher = new HashMap<>();
         Map<String, SalaryTotals> byBuilding = new HashMap<>();
         SalaryTotals complex = new SalaryTotals();
 
         for (ManualLoadEntry row : rows) {
+            if (!isFirstHalfSalaryRow(row)) {
+                continue;
+            }
             String building = buildingKey(row.getNumberSchoolBuilding());
             String teacher = String.valueOf(row.getFioTeacher()).trim().toLowerCase(Locale.ROOT);
             BigDecimal hourSalary = calculateHourSalary(row, classSizeByClass, subjectCoefficientByName, studentHourRate);
-            byBuildingTeacher.computeIfAbsent(salaryKey(building, teacher), key -> new SalaryTotals()).addHourSalary(hourSalary);
+            byTeacher.computeIfAbsent(teacher, key -> new SalaryTotals()).addHourSalary(hourSalary);
             byBuilding.computeIfAbsent(building, key -> new SalaryTotals()).addHourSalary(hourSalary);
             complex.addHourSalary(hourSalary);
         }
@@ -567,23 +632,27 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 continue;
             }
             String building = buildingKey(entry.getNumberSchoolBuilding());
-            int classSize = classSizeByClass.getOrDefault(normalizeToken(entry.getClassName()), 25);
+            int classSize = classSizeByClass.getOrDefault(normalizeToken(entry.getClassName()), 30);
             BigDecimal leadershipSalary = CLASS_LEADERSHIP_PER_STUDENT
                     .multiply(BigDecimal.valueOf(classSize))
                     .add(CLASS_LEADERSHIP_BASE);
-            byBuildingTeacher.computeIfAbsent(salaryKey(building, teacher), key -> new SalaryTotals()).addClassLeadershipSalary(leadershipSalary);
+            byTeacher.computeIfAbsent(teacher, key -> new SalaryTotals()).addClassLeadershipSalary(leadershipSalary);
             byBuilding.computeIfAbsent(building, key -> new SalaryTotals()).addClassLeadershipSalary(leadershipSalary);
             complex.addClassLeadershipSalary(leadershipSalary);
         }
 
-        return new SalarySummary(byBuildingTeacher, byBuilding, complex);
+        return new SalarySummary(byTeacher, byBuilding, complex);
+    }
+
+    private boolean isFirstHalfSalaryRow(ManualLoadEntry row) {
+        return row.getStudyPeriod() != StudyPeriod.H2;
     }
 
     private BigDecimal calculateHourSalary(ManualLoadEntry row,
                                            Map<String, Integer> classSizeByClass,
                                            Map<String, BigDecimal> subjectCoefficientByName,
                                            BigDecimal studentHourRate) {
-        int classSize = classSizeByClass.getOrDefault(normalizeToken(row.getClassName()), 25);
+        int classSize = classSizeByClass.getOrDefault(normalizeToken(row.getClassName()), 30);
         String group = String.valueOf(row.getGroupNameEducationalPlan() == null ? "" : row.getGroupNameEducationalPlan()).toLowerCase(Locale.ROOT);
         int firstGroupSize = (classSize + 1) / 2;
         int secondGroupSize = classSize - firstGroupSize;
@@ -621,10 +690,6 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             return BigDecimal.ONE;
         }
         return value;
-    }
-
-    private String salaryKey(String building, String teacher) {
-        return buildingKey(building) + "|" + String.valueOf(teacher == null ? "" : teacher).trim().toLowerCase(Locale.ROOT);
     }
 
     private String buildingKey(String building) {
@@ -669,7 +734,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         sheet.setColumnWidth(3, 12 * 256);
     }
 
-    private record SalarySummary(Map<String, SalaryTotals> byBuildingTeacher,
+    private record SalarySummary(Map<String, SalaryTotals> byTeacher,
                                  Map<String, SalaryTotals> byBuilding,
                                  SalaryTotals complex) {
         static SalarySummary empty() {
@@ -1161,6 +1226,23 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         return normalized.isBlank() ? null : normalized;
     }
 
+    private Long resolveClassId(String academicYear, ManualLoadEntryRequest request) {
+        if (request.getClassId() != null) {
+            return request.getClassId();
+        }
+        if (request.getNumberSchoolBuilding() == null || request.getClassName() == null) {
+            return null;
+        }
+        return classroomLeadershipRepository
+                .findByAcademicYearAndNumberSchoolBuildingAndClassName(
+                        academicYear,
+                        request.getNumberSchoolBuilding().trim(),
+                        ClassNameNormalizer.normalize(request.getClassName())
+                )
+                .map(ClassroomLeadershipEntry::getId)
+                .orElse(null);
+    }
+
     private ManualLoadEntry toEntity(ManualLoadEntryRequest request) {
         validate(request);
         String effectiveAcademicYear = resolveAcademicYearOrDefault(request.getAcademicYear());
@@ -1168,6 +1250,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         entity.setAcademicYear(effectiveAcademicYear);
         entity.setFioTeacher(request.getFioTeacher().trim());
         entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
+        entity.setClassId(resolveClassId(effectiveAcademicYear, request));
         SubjectCatalogEntry subject = subjectCatalogRepository.findAll().stream()
                 .filter(s -> s.getSubjectName().equalsIgnoreCase(request.getSubjectName().trim()))
                 .findFirst()

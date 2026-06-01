@@ -81,6 +81,25 @@ function buildingAddressKey(address) {
     return norm(address).toLowerCase();
 }
 
+function classSortValue(className) {
+    const normalized = normalizeClassName(className);
+    const match = normalized.match(/^(\d{1,2})\s*[- ]?\s*(.*)$/);
+    if (!match) {
+        return { parallel: Number.MAX_SAFE_INTEGER, letter: normalized };
+    }
+    return { parallel: Number(match[1]), letter: match[2] || '' };
+}
+
+function compareClassRows(a, b) {
+    const buildingCompare = normalizeBuildingCode(a?.numberSchoolBuilding)
+        .localeCompare(normalizeBuildingCode(b?.numberSchoolBuilding), 'ru', { numeric: true });
+    if (buildingCompare) return buildingCompare;
+    const aClass = classSortValue(a?.className);
+    const bClass = classSortValue(b?.className);
+    if (aClass.parallel !== bClass.parallel) return aClass.parallel - bClass.parallel;
+    return aClass.letter.localeCompare(bClass.letter, 'ru', { numeric: true });
+}
+
 function buildingChoiceKey(code, address) {
     return `${normalizeBuildingCode(code)}|${buildingAddressKey(address)}`;
 }
@@ -218,7 +237,7 @@ function openEditDialog(entry) {
 
 function renderClasses(rows) {
     ui.body.innerHTML = "";
-    classRows = (rows || []).slice();
+    classRows = (rows || []).slice().sort(compareClassRows);
     classRows.forEach((r) => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
