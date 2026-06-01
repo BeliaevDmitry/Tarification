@@ -39,6 +39,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -210,12 +211,13 @@ class ManualLoadServiceImplBulkReplaceTest {
     }
 
     @Test
-    void exportFullWorkbookShowsTeacherAddressesInExtraInfo() throws Exception {
+    void exportFullWorkbookShowsRowBuildingAddressAndLeadershipOnly() throws Exception {
         ManualLoadEntry first = manualRow("Иванов И.И.", "СП1", "1-А", "Математика", 5);
-        ManualLoadEntry second = manualRow("Иванов И.И.", "СП1", "2-А", "Математика", 4);
+        ManualLoadEntry second = manualRow("Иванов И.И.", "СП2", "2-А", "Математика", 4);
 
         ClassroomLeadershipEntry firstClass = classEntry("СП1", "1-А", "ул. Первая, 1");
-        ClassroomLeadershipEntry secondClass = classEntry("СП1", "2-А", "ул. Вторая, 2");
+        firstClass.setFioTeacher("Иванов И.И.");
+        ClassroomLeadershipEntry secondClass = classEntry("СП2", "2-А", "ул. Вторая, 2");
 
         when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(first, second));
         when(teacherDirectoryRepository.findAll()).thenReturn(List.of());
@@ -227,10 +229,13 @@ class ManualLoadServiceImplBulkReplaceTest {
         byte[] body = service.exportFullWorkbook("2025/2026");
 
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
-            String extra = workbook.getSheet("СП1").getRow(1).getCell(8).getStringCellValue();
-            assertTrue(extra.contains("Адреса: ул. Вторая, 2, ул. Первая, 1")
-                    || extra.contains("Адреса: ул. Первая, 1, ул. Вторая, 2"));
-            assertFalse(extra.contains("Корпуса:"));
+            var sheet = workbook.getSheet("СП1");
+            assertEquals("Корпус", sheet.getRow(0).getCell(8).getStringCellValue());
+            assertEquals("Классное руководство", sheet.getRow(0).getCell(9).getStringCellValue());
+            assertTrue(sheet.getRow(1).getCell(8).getStringCellValue().contains("ул. Первая, 1"));
+            assertEquals("1-А", sheet.getRow(1).getCell(9).getStringCellValue());
+            assertEquals("СП2", sheet.getRow(2).getCell(8).getStringCellValue().split("\n")[0]);
+            assertNotNull(workbook.getSheet("Все педагоги"));
         }
     }
 
@@ -261,15 +266,15 @@ class ManualLoadServiceImplBulkReplaceTest {
 
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
             var loadSheet = workbook.getSheet("СП1");
-            assertEquals("За часы", loadSheet.getRow(0).getCell(9).getStringCellValue());
-            assertEquals("Классное руководство, руб.", loadSheet.getRow(0).getCell(10).getStringCellValue());
-            assertEquals("Итого, руб.", loadSheet.getRow(0).getCell(11).getStringCellValue());
+            assertEquals("За часы", loadSheet.getRow(0).getCell(10).getStringCellValue());
+            assertEquals("Классное руководство, руб.", loadSheet.getRow(0).getCell(11).getStringCellValue());
+            assertEquals("Итого, руб.", loadSheet.getRow(0).getCell(12).getStringCellValue());
             assertEquals("ГОД", loadSheet.getRow(1).getCell(6).getStringCellValue());
             double expectedHours = 40 * 30 * 9 * 2.8333333;
             double expectedLeadership = 500 * 30 + 5000;
-            assertEquals(expectedHours, loadSheet.getRow(1).getCell(9).getNumericCellValue(), 0.01);
-            assertEquals(expectedLeadership, loadSheet.getRow(1).getCell(10).getNumericCellValue(), 0.01);
-            assertEquals(expectedHours + expectedLeadership, loadSheet.getRow(1).getCell(11).getNumericCellValue(), 0.01);
+            assertEquals(expectedHours, loadSheet.getRow(1).getCell(10).getNumericCellValue(), 0.01);
+            assertEquals(expectedLeadership, loadSheet.getRow(1).getCell(11).getNumericCellValue(), 0.01);
+            assertEquals(expectedHours + expectedLeadership, loadSheet.getRow(1).getCell(12).getNumericCellValue(), 0.01);
 
             var summarySheet = workbook.getSheet("Свод ЗП");
             assertEquals("Итого по комплексу", summarySheet.getRow(2).getCell(0).getStringCellValue());
@@ -307,8 +312,8 @@ class ManualLoadServiceImplBulkReplaceTest {
             var loadSheet = workbook.getSheet("СП1");
             assertEquals("11/12", loadSheet.getRow(1).getCell(7).getStringCellValue());
             double expectedFirstHalfHoursMoney = 40 * 30 * 11 * 2.8333333;
-            assertEquals(expectedFirstHalfHoursMoney, loadSheet.getRow(1).getCell(9).getNumericCellValue(), 0.01);
-            assertEquals(expectedFirstHalfHoursMoney, loadSheet.getRow(1).getCell(11).getNumericCellValue(), 0.01);
+            assertEquals(expectedFirstHalfHoursMoney, loadSheet.getRow(1).getCell(10).getNumericCellValue(), 0.01);
+            assertEquals(expectedFirstHalfHoursMoney, loadSheet.getRow(1).getCell(12).getNumericCellValue(), 0.01);
         }
     }
 

@@ -62,6 +62,7 @@ import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -412,15 +413,20 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 emptyHeader.getCell(0).setCellStyle(header);
                 sheet.setColumnWidth(0, 45 * 256);
             }
-            for (String building : sheetOrder) {
-                Sheet sheet = workbook.createSheet(uniqueSheetName(workbook, building));
+            if (!rows.isEmpty()) {
+                sheetOrder.add("Все педагоги");
+            }
+            for (String sheetScope : sheetOrder) {
+                boolean allTeachersSheet = "Все педагоги".equals(sheetScope);
+                String building = sheetScope;
+                Sheet sheet = workbook.createSheet(uniqueSheetName(workbook, sheetScope));
                 sheet.getPrintSetup().setLandscape(true);
                 sheet.setFitToPage(true);
                 sheet.getPrintSetup().setFitWidth((short) 1);
                 sheet.getPrintSetup().setFitHeight((short) 0);
 
                 Row h = sheet.createRow(0);
-                List<String> cols = new ArrayList<>(List.of("ФИО", "Предмет", "Класс", "Группа", "Количество детей", "Часы по предмету", "Период нагрузки", "Часы в корпусе/всего", "Дополнительные сведения"));
+                List<String> cols = new ArrayList<>(List.of("ФИО", "Предмет", "Класс", "Группа", "Количество детей", "Часы по предмету", "Период нагрузки", "Часы в корпусе/всего", "Корпус", "Классное руководство"));
                 if (includeSalary) {
                     cols.add("За часы");
                     cols.add("Классное руководство, руб.");
@@ -433,29 +439,36 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 Map<String, int[]> totalsByTeacher = new HashMap<>();
                 rows.forEach(r -> {
                     String k = String.valueOf(r.getFioTeacher()).trim().toLowerCase(Locale.ROOT);
-                    int[] t = totalsByTeacher.computeIfAbsent(k, x -> new int[]{0, 0, 0, 0}); // bH1,bH2,aH1,aH2
+                    int[] t = totalsByTeacher.computeIfAbsent(k, x -> new int[]{0, 0, 0, 0}); // scopedH1,scopedH2,totalH1,totalH2
                     int load = r.getLoad() == null ? 0 : r.getLoad();
-                    boolean isBuilding = building.equals(r.getNumberSchoolBuilding());
+                    boolean isScoped = allTeachersSheet || building.equals(r.getNumberSchoolBuilding());
                     StudyPeriod period = r.getStudyPeriod() == null ? StudyPeriod.YEAR : r.getStudyPeriod();
                     if (period == StudyPeriod.H1) {
                         t[2] += load;
-                        if (isBuilding) t[0] += load;
+                        if (isScoped) t[0] += load;
                     } else if (period == StudyPeriod.H2) {
                         t[3] += load;
-                        if (isBuilding) t[1] += load;
+                        if (isScoped) t[1] += load;
                     } else {
                         t[2] += load;
                         t[3] += load;
-                        if (isBuilding) {
+                        if (isScoped) {
                             t[0] += load;
                             t[1] += load;
                         }
                     }
                 });
 
-                List<ManualLoadEntry> buildingRows = byBuilding.getOrDefault(building, List.of());
+                List<ManualLoadEntry> scopeRows = allTeachersSheet ? rows : byBuilding.getOrDefault(building, List.of());
+                Set<String> teacherKeysInScope = scopeRows.stream()
+                        .map(row -> String.valueOf(row.getFioTeacher()).trim().toLowerCase(Locale.ROOT))
+                        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+                List<ManualLoadEntry> buildingRows = rows.stream()
+                        .filter(row -> teacherKeysInScope.contains(String.valueOf(row.getFioTeacher()).trim().toLowerCase(Locale.ROOT)))
+                        .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
                 buildingRows.sort(
                         Comparator.comparing(ManualLoadEntry::getFioTeacher, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                                .thenComparing(row -> allTeachersSheet || building.equals(row.getNumberSchoolBuilding()) ? 0 : 1)
                                 .thenComparing(ManualLoadEntry::getSubjectName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
                                 .thenComparing(ManualLoadEntry::getClassName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
                 );
@@ -466,30 +479,18 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     ManualLoadEntry e = buildingRows.get(i);
                     String fio = String.valueOf(e.getFioTeacher() == null ? "" : e.getFioTeacher()).trim();
                     String key = fio.toLowerCase(Locale.ROOT);
-                    int[] t = totalsByTeacher.getOrDefault(key, new int[]{0,0});
-                    TeacherDirectoryEntry td = teacherByFio.get(key);
-                    String allAddresses = teacherAddresses(rowsByTeacher.getOrDefault(key, List.of()), addressByClass, addressesByBuilding);
-                    String allBuildings = rowsByTeacher.getOrDefault(key, List.of()).stream()
-                            .map(ManualLoadEntry::getNumberSchoolBuilding).filter(Objects::nonNull).distinct().sorted().collect(java.util.stream.Collectors.joining(", "));
+                    int[] t = totalsByTeacher.getOrDefault(key, new int[]{0,0,0,0});
                     String classLeadership = String.join(", ", classLeadershipByTeacher.getOrDefault(key, List.of()));
-                    String extra = "";
-                    if (!allAddresses.isBlank()) {
-                        extra += "Адреса: " + allAddresses;
-                    } else if (!allBuildings.isBlank()) {
-                        extra += "Корпуса: " + allBuildings;
-                    }
-                    if (!classLeadership.isBlank()) extra += (extra.isBlank() ? "" : "\n") + "Классное руководство: " + classLeadership;
-                    if (td != null && td.getAdditionalDuties() != null && !td.getAdditionalDuties().isBlank()) extra += (extra.isBlank() ? "" : "\n") + "Доп. обязанности: " + td.getAdditionalDuties();
 
                     if (!Objects.equals(currentTeacher, key)) {
                         if (currentTeacher != null && rowNum - 1 > teacherStart) {
                             sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 0, 0));
                             sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 7, 7));
-                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 8, 8));
+                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 9, 9));
                             if (includeSalary) {
-                                sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 9, 9));
                                 sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 10, 10));
                                 sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 11, 11));
+                                sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 12, 12));
                             }
                         }
                         currentTeacher = key;
@@ -522,38 +523,42 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     r.createCell(5).setCellValue(subjectHours);
                     r.createCell(6).setCellValue(periodLabel);
                     r.createCell(7).setCellValue(hoursSummary);
-                    r.createCell(8).setCellValue(extra);
+                    String rowAddress = resolveRowAddress(e, addressByClass, addressesByBuilding);
+                    String rowBuilding = normalizeDisplayValue(e.getNumberSchoolBuilding());
+                    r.createCell(8).setCellValue(rowBuilding + (rowAddress.isBlank() ? "" : "\n" + rowAddress));
+                    r.createCell(9).setCellValue(classLeadership);
                     if (includeSalary) {
                         SalaryTotals salary = salarySummary.byTeacher().getOrDefault(key, SalaryTotals.empty());
-                        r.createCell(9).setCellValue(moneyValue(salary.hourSalary()));
-                        r.createCell(10).setCellValue(moneyValue(salary.classLeadershipSalary()));
-                        r.createCell(11).setCellValue(moneyValue(salary.total()));
+                        r.createCell(10).setCellValue(moneyValue(salary.hourSalary()));
+                        r.createCell(11).setCellValue(moneyValue(salary.classLeadershipSalary()));
+                        r.createCell(12).setCellValue(moneyValue(salary.total()));
                     }
-                    for (int c = 0; c <= (includeSalary ? 11 : 8); c++) r.getCell(c).setCellStyle(c >= 9 ? money : wrap);
+                    for (int c = 0; c <= (includeSalary ? 12 : 9); c++) r.getCell(c).setCellStyle(c >= 10 ? money : wrap);
                     if (i == buildingRows.size() - 1 && rowNum - 1 > teacherStart) {
                         sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 0, 0));
                         sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 7, 7));
-                        sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 8, 8));
+                        sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 9, 9));
                         if (includeSalary) {
-                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 9, 9));
                             sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 10, 10));
                             sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 11, 11));
+                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 12, 12));
                         }
                     }
                 }
-                sheet.setColumnWidth(0, 20 * 256);
-                sheet.setColumnWidth(1, 22 * 256);
-                sheet.setColumnWidth(2, 12 * 256);
-                sheet.setColumnWidth(3, 16 * 256);
-                sheet.setColumnWidth(4, 14 * 256);
-                sheet.setColumnWidth(5, 14 * 256);
-                sheet.setColumnWidth(6, 16 * 256);
-                sheet.setColumnWidth(7, 24 * 256);
-                sheet.setColumnWidth(8, 45 * 256);
+                sheet.setColumnWidth(0, 13 * 256);
+                sheet.setColumnWidth(1, 20 * 256);
+                sheet.setColumnWidth(2, 10 * 256);
+                sheet.setColumnWidth(3, 12 * 256);
+                sheet.setColumnWidth(4, 11 * 256);
+                sheet.setColumnWidth(5, 11 * 256);
+                sheet.setColumnWidth(6, 11 * 256);
+                sheet.setColumnWidth(7, 18 * 256);
+                sheet.setColumnWidth(8, 26 * 256);
+                sheet.setColumnWidth(9, 16 * 256);
                 if (includeSalary) {
-                    sheet.setColumnWidth(9, 12 * 256);
-                    sheet.setColumnWidth(10, 18 * 256);
-                    sheet.setColumnWidth(11, 12 * 256);
+                    sheet.setColumnWidth(10, 12 * 256);
+                    sheet.setColumnWidth(11, 18 * 256);
+                    sheet.setColumnWidth(12, 12 * 256);
                 }
             }
             if (includeSalary) {
