@@ -114,6 +114,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
 
         for (ClassroomLeadershipEntry existing : existingRows) {
             if (existing.getId() != null && !touchedIds.contains(existing.getId())) {
+                deleteClassTails(academicYear, existing);
                 classroomLeadershipRepository.delete(existing);
             }
         }
@@ -320,16 +321,66 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         if (building.isBlank() || normalizedClassName.isBlank()) {
             throw new IllegalArgumentException("numberSchoolBuilding and className are required");
         }
-        curriculumPlanEntryRepository.deleteByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, normalizedClassName);
-        manualLoadEntryRepository.deleteByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, normalizedClassName);
+        Optional<ClassroomLeadershipEntry> existing = classroomLeadershipRepository
+                .findByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, normalizedClassName);
+        existing.ifPresent(entry -> deleteClassTails(academicYear, entry));
+        if (existing.isEmpty()) {
+            deleteClassTails(academicYear, null, building, normalizedClassName);
+        }
         classroomLeadershipRepository.deleteByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, normalizedClassName);
     }
 
     @Override
+    public Map<String, Object> dependencySummary(String academicYear, String numberSchoolBuilding, String className) {
+        String building = normalizeBuildingCode(numberSchoolBuilding);
+        String normalizedClassName = ClassNameNormalizer.normalize(className);
+        Long classId = classroomLeadershipRepository
+                .findByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, normalizedClassName)
+                .map(ClassroomLeadershipEntry::getId)
+                .orElse(null);
+        long curriculumRows = curriculumPlanEntryRepository.countClassTails(academicYear, classId, building, normalizedClassName);
+        long manualLoadRows = manualLoadEntryRepository.countClassTails(academicYear, classId, building, normalizedClassName);
+        return Map.of(
+                "academicYear", academicYear,
+                "numberSchoolBuilding", building,
+                "className", normalizedClassName,
+                "curriculumRows", curriculumRows,
+                "manualLoadRows", manualLoadRows,
+                "totalRows", curriculumRows + manualLoadRows
+        );
+    }
+
+    @Override
+    @Transactional
     public void clearAll(String academicYear) {
+        curriculumPlanEntryRepository.deleteAllByAcademicYear(academicYear);
+        manualLoadEntryRepository.deleteAllByAcademicYear(academicYear);
         classroomLeadershipRepository.findAllByAcademicYear(academicYear).forEach(classroomLeadershipRepository::delete);
     }
 
+
+    private void deleteClassTails(String academicYear, ClassroomLeadershipEntry entry) {
+        if (entry == null) {
+            return;
+        }
+        deleteClassTails(
+                academicYear,
+                entry.getId(),
+                normalizeBuildingCode(entry.getNumberSchoolBuilding()),
+                ClassNameNormalizer.normalize(entry.getClassName())
+        );
+    }
+
+    private void deleteClassTails(String academicYear, Long classId, String building, String className) {
+        if (classId != null) {
+            curriculumPlanEntryRepository.deleteByAcademicYearAndClassId(academicYear, classId);
+            manualLoadEntryRepository.deleteByAcademicYearAndClassIds(academicYear, List.of(classId));
+        }
+        if (!normalize(building).isBlank() && !normalize(className).isBlank()) {
+            curriculumPlanEntryRepository.deleteByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, className);
+            manualLoadEntryRepository.deleteByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, className);
+        }
+    }
 
 
     private void propagateClassRename(String academicYear, String oldClassName, String oldBuilding, String newClassName, String newBuilding) {
