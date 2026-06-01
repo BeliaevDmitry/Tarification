@@ -53,6 +53,7 @@ public class AuthFilter extends OncePerRequestFilter {
             Map.entry("/settings.html", AppTab.SETTINGS),
             Map.entry("/teachers.html", AppTab.TEACHERS),
             Map.entry("/teachers-notification.html", AppTab.HR_NOTIFICATIONS_VIEW),
+            Map.entry("/educational-work.html", AppTab.EDUCATIONAL_WORK),
             Map.entry("/vsoko.html", AppTab.VSOKO_VIEW),
             Map.entry("/vsoko-oge.html", AppTab.VSOKO_VIEW),
             Map.entry("/vsoko-ege.html", AppTab.VSOKO_VIEW),
@@ -160,6 +161,7 @@ public class AuthFilter extends OncePerRequestFilter {
         if (path.matches("^/api/teachers/\\d+/plan-dismiss$")) return AppTab.HR_NOTIFICATIONS_EDIT;
         if (path.startsWith("/api/teachers")) return AppTab.TEACHERS;
         if (path.startsWith("/api/admin/users")) return AppTab.USERS;
+        if (path.startsWith("/api/educational-work")) return AppTab.EDUCATIONAL_WORK;
         if (path.startsWith("/api/pa")) return AppTab.VSOKO_EDIT;
         return null;
     }

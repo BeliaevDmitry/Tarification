@@ -53,6 +53,7 @@ const ui = {
     importFile: document.getElementById("curriculum-import-file"),
     importBtn: document.getElementById("import-curriculum-btn"),
     exportBtn: document.getElementById("export-curriculum-btn"),
+    exportParallelsBtn: document.getElementById("export-curriculum-parallels-btn"),
     subgroupRequired: document.getElementById("subgroup-required"),
     subgroupConfig: document.getElementById("subgroup-config"),
     summaryHead: document.getElementById("summary-head"),
@@ -909,6 +910,30 @@ async function exportCurriculumFile() {
     }
 }
 
+
+async function exportCurriculumParallelsFile() {
+    try {
+        const path = window.withAcademicYear ? window.withAcademicYear("/api/curriculum/export-parallels") : "/api/curriculum/export-parallels";
+        const response = await fetch(path);
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || `HTTP ${response.status}`);
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "curriculum-by-parallels.xlsx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        print({ status: "exported", file: "curriculum-by-parallels.xlsx" });
+    } catch (error) {
+        print({ error: error.message });
+    }
+}
+
 async function reload() {
     const [curriculum, classRows, buildingRows, subjectRows, settingRows, metaGroupRows] = await Promise.all([
         api("/api/curriculum"),
@@ -1042,6 +1067,7 @@ function bindEvents() {
     ui.refreshBtn.addEventListener("click", () => reload().catch((error) => print({ error: error.message })));
     ui.importBtn?.addEventListener("click", importCurriculumFile);
     ui.exportBtn?.addEventListener("click", exportCurriculumFile);
+    ui.exportParallelsBtn?.addEventListener("click", exportCurriculumParallelsFile);
     ui.subgroupRequired.addEventListener("change", () => {
         toggleSubgroupConfig(ui.subgroupConfig, ui.subgroupRequired.value);
         if (ui.subgroupRequired.value === "true") {
@@ -1132,6 +1158,7 @@ try {
     print({ error: `Ошибка инициализации страницы: ${error?.message || error}` });
     ui.importBtn?.addEventListener("click", importCurriculumFile);
     ui.exportBtn?.addEventListener("click", exportCurriculumFile);
+    ui.exportParallelsBtn?.addEventListener("click", exportCurriculumParallelsFile);
 }
 toggleSubgroupConfig(ui.subgroupConfig, ui.subgroupRequired.value);
 syncStudyPeriodControls();

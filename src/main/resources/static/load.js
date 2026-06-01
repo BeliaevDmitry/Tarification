@@ -76,7 +76,7 @@ const derivedCache = {
     classBuildingMapRowsRef: null,
     classBuildingMapValue: new Map(),
     classAddressMapRowsRef: null,
-    classAddressMapValue: new Map(),
+    classAddressMapValue: { byId: new Map(), byGroupAndClass: new Map(), byClassOnly: new Map(), idByGroupAndClass: new Map(), idByClassOnly: new Map() },
     rowsByBuildingKey: "",
     rowsByBuildingValue: [],
     expandedRowsByBuildingKey: "",
@@ -115,7 +115,7 @@ function invalidateDerivedCache() {
     derivedCache.classBuildingMapRowsRef = null;
     derivedCache.classBuildingMapValue = new Map();
     derivedCache.classAddressMapRowsRef = null;
-    derivedCache.classAddressMapValue = new Map();
+    derivedCache.classAddressMapValue = { byId: new Map(), byGroupAndClass: new Map(), byClassOnly: new Map(), idByGroupAndClass: new Map(), idByClassOnly: new Map() };
     derivedCache.rowsByBuildingKey = "";
     derivedCache.rowsByBuildingValue = [];
     derivedCache.expandedRowsByBuildingKey = "";
@@ -207,17 +207,77 @@ function rowAddressToken(row) {
     const classAddress = String(row?.campusAddress || "").trim();
     if (classAddress) return normalizeBuildingAccessCode(classAddress);
 
+    const maps = classAddressMap();
+    if (row?.classId != null) {
+        const byId = maps.byId.get(String(row.classId));
+        if (byId) return byId;
+    }
+
     const className = normalizeClassName(row?.className);
-    const groupCode = buildingGroupCode(row?.numberSchoolBuilding);
+    const groupCode = buildingGroupCode(row?.numberSchoolBuilding || selectedBuilding);
     if (className) {
-        const addressMap = classAddressMap();
-        const scopedAddress = addressMap.get(`${groupCode}|${className}`);
+        const scopedAddress = maps.byGroupAndClass.get(`${groupCode}|${className}`);
         if (scopedAddress) return scopedAddress;
-        const byClassOnly = addressMap.get(className);
+        const byClassOnly = maps.byClassOnly.get(className);
         if (byClassOnly) return byClassOnly;
     }
 
     return "";
+}
+
+function buildingOptionForAccess(accessCode) {
+    const normalized = normalizeBuildingAccessCode(accessCode);
+    return (buildings || []).find((building) => normalizeBuildingAccessCode(buildingOptionValue(building)) === normalized) || null;
+}
+
+function campusAddressForAccess(accessCode) {
+    const addressToken = buildingAddressToken(accessCode);
+    if (!addressToken) return "";
+    const optionAddress = String(buildingOptionForAccess(accessCode)?.address || "").trim();
+    if (optionAddress) return optionAddress;
+    const groupCode = buildingGroupCode(accessCode);
+    const classroomAddress = (classroomRows || [])
+        .filter((row) => buildingGroupCode(row?.numberSchoolBuilding) === groupCode)
+        .map((row) => String(row?.campusAddress || "").trim())
+        .find((address) => normalizeBuildingAccessCode(address) === addressToken);
+    return classroomAddress || "";
+}
+
+function scopedBuildingQuery(accessCode, includeAddress = false) {
+    if (!accessCode || accessCode === ARCHIVE_BUILDING_CODE) return "";
+    const groupCode = buildingGroupCode(accessCode);
+    if (!groupCode) return "";
+    const params = new URLSearchParams();
+    params.set("numberSchoolBuilding", groupCode);
+    if (includeAddress) {
+        const address = campusAddressForAccess(accessCode);
+        if (address) params.set("campusAddress", address);
+    }
+    return `?${params.toString()}`;
+}
+
+function manualLoadScopeForAccess(accessCode) {
+    const groupCode = buildingGroupCode(accessCode);
+    const campusAddress = campusAddressForAccess(accessCode);
+    const classIds = Array.from(new Set((classroomRows || [])
+        .filter((row) => rowMatchesBuildingAccess(row, accessCode))
+        .map((row) => row?.id)
+        .filter((id) => id !== null && id !== undefined)));
+    return {
+        scopeType: campusAddress ? "BUILDING_ADDRESS" : "BUILDING_GROUP",
+        numberSchoolBuilding: groupCode,
+        campusAddress,
+        classIds
+    };
+}
+
+function classIdForRow(row) {
+    if (row?.classId != null) return row.classId;
+    const className = normalizeClassName(row?.className);
+    if (!className) return null;
+    const groupCode = buildingGroupCode(row?.numberSchoolBuilding || selectedBuilding);
+    const maps = classAddressMap();
+    return maps.idByGroupAndClass.get(`${groupCode}|${className}`) || maps.idByClassOnly.get(className) || null;
 }
 
 function rowMatchesBuildingAccess(row, accessCode) {
@@ -319,18 +379,27 @@ function classAddressMap() {
     if (derivedCache.classAddressMapRowsRef === classroomRows) {
         return derivedCache.classAddressMapValue;
     }
-    const map = new Map();
+    const maps = {
+        byId: new Map(),
+        byGroupAndClass: new Map(),
+        byClassOnly: new Map(),
+        idByGroupAndClass: new Map(),
+        idByClassOnly: new Map()
+    };
     (classroomRows || []).forEach((r) => {
         const cls = normalizeClassName(r.className);
         const b = buildingGroupCode(r.numberSchoolBuilding);
         const address = normalizeBuildingAccessCode(r.campusAddress);
-        if (!cls || !address) return;
-        if (b) map.set(`${b}|${cls}`, address);
-        if (!map.has(cls)) map.set(cls, address);
+        if (!cls) return;
+        if (address && r.id != null) maps.byId.set(String(r.id), address);
+        if (b && address) maps.byGroupAndClass.set(`${b}|${cls}`, address);
+        if (address && !maps.byClassOnly.has(cls)) maps.byClassOnly.set(cls, address);
+        if (b && r.id != null) maps.idByGroupAndClass.set(`${b}|${cls}`, r.id);
+        if (r.id != null && !maps.idByClassOnly.has(cls)) maps.idByClassOnly.set(cls, r.id);
     });
     derivedCache.classAddressMapRowsRef = classroomRows;
-    derivedCache.classAddressMapValue = map;
-    return map;
+    derivedCache.classAddressMapValue = maps;
+    return maps;
 }
 
 function classBuildingMap() {
@@ -1541,12 +1610,11 @@ async function refreshSelectedBuildingData(force = false) {
         curriculumRows = cached.curriculum;
         manualRows = cached.manual;
     } else {
-        const encodedBuilding = selectedBuilding && selectedBuilding !== ARCHIVE_BUILDING_CODE
-            ? `?numberSchoolBuilding=${encodeURIComponent(buildingGroupCode(selectedBuilding))}`
-            : "";
+        const curriculumQuery = scopedBuildingQuery(selectedBuilding, false);
+        const manualQuery = scopedBuildingQuery(selectedBuilding, true);
         const [curriculum, manual] = await Promise.all([
-            api(`/api/curriculum${encodedBuilding}`),
-            api(`/api/manual-load${encodedBuilding}`)
+            api(`/api/curriculum${curriculumQuery}`),
+            api(`/api/manual-load${manualQuery}`)
         ]);
         curriculumRows = curriculum || [];
         manualRows = manual || [];
@@ -2329,6 +2397,7 @@ async function saveBuildingLoad() {
             numberSchoolBuilding: buildingGroupCode(selectedBuilding),
             subjectName: row.subjectName,
             className: row.className,
+            classId: classIdForRow(row),
             load: Number(row.plannedHours || 0),
             groupNameEducationalPlan: row.__groupIndex ? `Группа ${row.__groupIndex}` : null,
             groupLoad: row.__groupIndex ? Number(row.plannedHours || 0) : null,
@@ -2348,6 +2417,7 @@ async function saveBuildingLoad() {
             numberSchoolBuilding: buildingGroupCode(selectedBuilding),
             subjectName: row.subjectName,
             className: row.className,
+            classId: classIdForRow(row),
             load: Number(row.plannedHours || 0),
             groupNameEducationalPlan: row.__groupIndex ? `Группа ${row.__groupIndex}` : null,
             groupLoad: row.__groupIndex ? Number(row.plannedHours || 0) : null,
@@ -2362,6 +2432,7 @@ async function saveBuildingLoad() {
     payload.forEach((item) => {
         const key = [
             normalizeBuildingCode(item.numberSchoolBuilding),
+            String(item.classId || ""),
             normalizeClassName(item.className),
             String(item.subjectName || "").trim().toUpperCase(),
             String(item.educationLevel || ""),
@@ -2381,10 +2452,17 @@ async function saveBuildingLoad() {
     }
 
     try {
+        const scope = manualLoadScopeForAccess(selectedBuilding);
         const result = await api("/api/manual-load/bulk", {
             method: "POST",
             headers: jsonHeaders,
-            body: JSON.stringify(finalPayload)
+            body: JSON.stringify({
+                scopeType: scope.scopeType,
+                numberSchoolBuilding: scope.numberSchoolBuilding,
+                campusAddress: scope.campusAddress || null,
+                classIds: scope.classIds,
+                rows: finalPayload
+            })
         });
         print({ saved: result.length, uniqueRequested: finalPayload.length, building: selectedBuilding });
         state.futurePlansByBuilding[selectedBuilding] = {};
@@ -2487,12 +2565,11 @@ async function importLoadWorkbook(file) {
 
 async function refreshSourceData() {
     const initialBuildingCandidate = normalizeBuildingAccessCode(selectedBuilding) || restoreSelectedBuilding();
-    const initialEncodedBuilding = initialBuildingCandidate && initialBuildingCandidate !== ARCHIVE_BUILDING_CODE
-        ? `?numberSchoolBuilding=${encodeURIComponent(buildingGroupCode(initialBuildingCandidate))}`
-        : "";
+    const initialCurriculumQuery = scopedBuildingQuery(initialBuildingCandidate, false);
+    const initialManualQuery = scopedBuildingQuery(initialBuildingCandidate, true);
     const initialScopedDataPromise = Promise.all([
-        api(`/api/curriculum${initialEncodedBuilding}`),
-        api(`/api/manual-load${initialEncodedBuilding}`)
+        api(`/api/curriculum${initialCurriculumQuery}`),
+        api(`/api/manual-load${initialManualQuery}`)
     ]);
 
     const [teachers, buildingRows, classRows, periodSettings, yearResolve, subjectRows] = await Promise.all([
@@ -2570,15 +2647,14 @@ async function refreshSourceData() {
 
     let curriculum;
     let manual;
-    const finalEncodedBuilding = selectedBuilding && selectedBuilding !== ARCHIVE_BUILDING_CODE
-        ? `?numberSchoolBuilding=${encodeURIComponent(buildingGroupCode(selectedBuilding))}`
-        : "";
-    if (initialEncodedBuilding === finalEncodedBuilding) {
+    const finalCurriculumQuery = scopedBuildingQuery(selectedBuilding, false);
+    const finalManualQuery = scopedBuildingQuery(selectedBuilding, true);
+    if (initialCurriculumQuery === finalCurriculumQuery && initialManualQuery === finalManualQuery) {
         [curriculum, manual] = await initialScopedDataPromise;
     } else {
         [curriculum, manual] = await Promise.all([
-            api(`/api/curriculum${finalEncodedBuilding}`),
-            api(`/api/manual-load${finalEncodedBuilding}`)
+            api(`/api/curriculum${finalCurriculumQuery}`),
+            api(`/api/manual-load${finalManualQuery}`)
         ]);
     }
 
@@ -2627,7 +2703,12 @@ function bindEvents() {
         const confirmed = confirm(`Удалить всю нагрузку корпуса ${selectedBuilding} в текущем учебном году?`);
         if (!confirmed) return;
         try {
-            await api(`/api/manual-load?building=${encodeURIComponent(buildingGroupCode(selectedBuilding))}`, { method: "DELETE" });
+            const scope = manualLoadScopeForAccess(selectedBuilding);
+            const params = new URLSearchParams();
+            params.set("numberSchoolBuilding", scope.numberSchoolBuilding);
+            params.set("scopeType", scope.scopeType);
+            if (scope.campusAddress) params.set("campusAddress", scope.campusAddress);
+            await api(`/api/manual-load?${params.toString()}`, { method: "DELETE" });
             await refreshSourceData();
             print({ status: `Нагрузка корпуса ${selectedBuilding} удалена.` });
         } catch (error) {
