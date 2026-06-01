@@ -72,9 +72,15 @@ function normalizeBuildingCode(value) {
     return norm(value).replaceAll(" ", "");
 }
 
+function buildingGroupCode(value) {
+    const normalized = normalizeBuildingCode(value);
+    const separator = normalized.indexOf("|");
+    return separator >= 0 ? normalized.slice(0, separator) : normalized;
+}
+
 function entryKey(entry) {
     if (entry?.id) return `id:${entry.id}`;
-    return `${normalizeBuildingCode(entry.numberSchoolBuilding)}|${normalizeClassName(entry.className)}`;
+    return `${buildingGroupCode(entry.numberSchoolBuilding)}|${normalizeClassName(entry.className)}`;
 }
 
 function buildingAddressKey(address) {
@@ -91,8 +97,8 @@ function classSortValue(className) {
 }
 
 function compareClassRows(a, b) {
-    const buildingCompare = normalizeBuildingCode(a?.numberSchoolBuilding)
-        .localeCompare(normalizeBuildingCode(b?.numberSchoolBuilding), 'ru', { numeric: true });
+    const buildingCompare = buildingGroupCode(a?.numberSchoolBuilding)
+        .localeCompare(buildingGroupCode(b?.numberSchoolBuilding), 'ru', { numeric: true });
     if (buildingCompare) return buildingCompare;
     const aClass = classSortValue(a?.className);
     const bClass = classSortValue(b?.className);
@@ -101,14 +107,14 @@ function compareClassRows(a, b) {
 }
 
 function buildingChoiceKey(code, address) {
-    return `${normalizeBuildingCode(code)}|${buildingAddressKey(address)}`;
+    return `${buildingGroupCode(code)}|${buildingAddressKey(address)}`;
 }
 
 function findBuildingChoice(code, address = "") {
-    const normalizedCode = normalizeBuildingCode(code);
+    const normalizedCode = buildingGroupCode(code);
     const normalizedAddress = buildingAddressKey(address);
-    return buildingChoices().find((b) => normalizeBuildingCode(b.code) === normalizedCode && (!normalizedAddress || buildingAddressKey(b.address) === normalizedAddress))
-        || buildingChoices().find((b) => normalizeBuildingCode(b.code) === normalizedCode);
+    return buildingChoices().find((b) => buildingGroupCode(b.code) === normalizedCode && (!normalizedAddress || buildingAddressKey(b.address) === normalizedAddress))
+        || buildingChoices().find((b) => buildingGroupCode(b.code) === normalizedCode);
 }
 
 function buildingLabel(code, address = "") {
@@ -119,7 +125,7 @@ function buildingLabel(code, address = "") {
 function buildingChoices() {
     const map = new Map();
     (buildings || []).forEach((b) => {
-        const code = normalizeBuildingCode(b.code);
+        const code = buildingGroupCode(b.code);
         const address = norm(b.address);
         if (!code || !address) return;
         map.set(buildingChoiceKey(code, address), { code, name: norm(b.name) || code, address });
@@ -145,7 +151,7 @@ function selectedBuildingChoice(selectEl) {
     const option = selectEl?.selectedOptions?.[0];
     if (!option) return null;
     return {
-        code: option.value,
+        code: buildingGroupCode(option.value),
         address: option.dataset.address || "",
         name: option.dataset.name || option.textContent || option.value
     };
@@ -197,7 +203,7 @@ function fillBuildingOptions(selectEl, selectedValue = "", selectedAddress = "")
     selectEl.innerHTML = `<option value="">Выберите корпус</option>`;
     buildingChoices().forEach((b) => {
         const option = document.createElement("option");
-        option.value = b.code;
+        option.value = buildingGroupCode(b.code);
         option.dataset.address = b.address;
         option.dataset.name = b.name;
         option.dataset.choiceKey = buildingChoiceKey(b.code, b.address);
@@ -207,7 +213,7 @@ function fillBuildingOptions(selectEl, selectedValue = "", selectedAddress = "")
     if (!selectedValue) return;
     const selectedKey = buildingChoiceKey(selectedValue, selectedAddress);
     const option = Array.from(selectEl.options).find((opt) => opt.dataset.choiceKey === selectedKey)
-        || Array.from(selectEl.options).find((opt) => normalizeBuildingCode(opt.value) === normalizeBuildingCode(selectedValue));
+        || Array.from(selectEl.options).find((opt) => buildingGroupCode(opt.value) === buildingGroupCode(selectedValue));
     if (option) selectEl.selectedIndex = option.index;
 }
 
@@ -223,7 +229,7 @@ function renderBuildings() {
 function openEditDialog(entry) {
     editingOriginalKey = entryKey(entry);
     editingOriginalEntry = { ...entry };
-    const normalizedEntryCode = normalizeBuildingCode(entry.numberSchoolBuilding);
+    const normalizedEntryCode = buildingGroupCode(entry.numberSchoolBuilding);
     fillBuildingOptions(ui.editBuilding, normalizedEntryCode || entry.numberSchoolBuilding || "", entry.campusAddress || "");
     const campusAddress = entry.campusAddress || norm(selectedBuildingChoice(ui.editBuilding)?.address) || "";
     fillCampusAddressOptions(ui.editForm.elements.campusAddress, campusAddress);
@@ -324,7 +330,7 @@ ui.form.addEventListener("submit", async (e) => {
     applyBuildingAddress(ui.building, ui.form.elements.campusAddress);
     const form = new FormData(ui.form);
     const entry = {
-        numberSchoolBuilding: normalizeBuildingCode(form.get("numberSchoolBuilding")),
+        numberSchoolBuilding: buildingGroupCode(form.get("numberSchoolBuilding")),
         className: normalizeClassName(form.get("className")),
         classDirection: norm(form.get("classDirection")),
         fioTeacher: norm(form.get("fioTeacher")),
@@ -353,7 +359,7 @@ ui.editForm.addEventListener('submit', async (e) => {
     const form = new FormData(ui.editForm);
     const entry = {
         id: editingOriginalEntry?.id || null,
-        numberSchoolBuilding: normalizeBuildingCode(form.get("numberSchoolBuilding")),
+        numberSchoolBuilding: buildingGroupCode(form.get("numberSchoolBuilding")),
         className: normalizeClassName(form.get("className")),
         classDirection: norm(form.get("classDirection")),
         fioTeacher: norm(form.get("fioTeacher")),
@@ -378,7 +384,7 @@ ui.editForm.addEventListener('submit', async (e) => {
 
 ui.editCloseBtn.addEventListener('click', () => ui.editDialog.close());
 ui.editDeleteBtn?.addEventListener('click', async () => {
-    const building = normalizeBuildingCode(editingOriginalEntry?.numberSchoolBuilding || ui.editForm.elements.numberSchoolBuilding.value);
+    const building = buildingGroupCode(editingOriginalEntry?.numberSchoolBuilding || ui.editForm.elements.numberSchoolBuilding.value);
     const className = normalizeClassName(editingOriginalEntry?.className || ui.editForm.elements.className.value);
     if (!building || !className) {
         print({ error: "Выберите корпус и класс для удаления" });

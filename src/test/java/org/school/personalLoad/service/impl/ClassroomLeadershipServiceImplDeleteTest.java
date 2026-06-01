@@ -20,6 +20,8 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -70,7 +72,7 @@ class ClassroomLeadershipServiceImplDeleteTest {
         ClassroomLeadershipEntry entry = classEntry(42L, "СП1", "7-А");
         ClassroomLeadershipEntryRequest request = new ClassroomLeadershipEntryRequest();
         request.setAcademicYear("2026/2027");
-        request.setNumberSchoolBuilding("СП2");
+        request.setNumberSchoolBuilding("СП2|ЛЕНИНА,Д.1");
         request.setClassName("7-А");
         request.setClassDirection("Инженерный");
         request.setFioTeacher("Петров П.П.");
@@ -100,6 +102,7 @@ class ClassroomLeadershipServiceImplDeleteTest {
         assertEquals("Ленина, д.1", saved.getCampusAddress());
         verify(curriculumPlanEntryRepository).renameClassEverywhere("2026/2027", "7-А", "7-А", "СП2");
         verify(manualLoadEntryRepository).renameClassEverywhere("2026/2027", "7-А", "7-А", "СП2");
+        verify(schoolBuildingRepository, never()).save(any(SchoolBuilding.class));
     }
 
     @Test

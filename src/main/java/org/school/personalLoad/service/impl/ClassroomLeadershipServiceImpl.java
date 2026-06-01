@@ -528,14 +528,9 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     }
 
     private void ensureBuildingExists(String code) {
-        schoolBuildingRepository.findByCode(code).orElseGet(() -> {
-            org.school.personalLoad.model.SchoolBuilding b = new org.school.personalLoad.model.SchoolBuilding();
-            b.setCode(code);
-            b.setName(code);
-            b.setAddress("Не указан");
-            b.setManagerFio("Не назначен");
-            return schoolBuildingRepository.save(b);
-        });
+        if (schoolBuildingRepository.findByCode(code).isEmpty()) {
+            throw new IllegalArgumentException("Корпус не найден: " + code);
+        }
     }
 
     private void ensureTeacherExists(String fio) {
@@ -558,7 +553,9 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     }
 
     private String normalizeBuildingCode(String value) {
-        return normalize(value).replace(" ", "").toUpperCase(Locale.ROOT);
+        String normalized = normalize(value).replace(" ", "").toUpperCase(Locale.ROOT);
+        int addressSeparator = normalized.indexOf("|");
+        return addressSeparator >= 0 ? normalized.substring(0, addressSeparator) : normalized;
     }
 
     private String classScopeKey(String building, String className) {
