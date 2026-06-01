@@ -1,9 +1,13 @@
 package org.school.personalLoad.controller.api;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.auth.AuthExceptions.ForbiddenException;
 import org.school.personalLoad.auth.AuthSessionUtils;
 import org.school.personalLoad.auth.SessionUser;
+import org.school.personalLoad.dto.ManualLoadBulkRequest;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadProcessResult;
 import org.school.personalLoad.dto.ManualLoadHealthResponse;
@@ -25,6 +29,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @RestController
 @RequestMapping("/api/manual-load")
@@ -33,6 +38,7 @@ public class ManualLoadController {
 
     private final ManualLoadService manualLoadService;
     private final AcademicYearService academicYearService;
+    private final ObjectMapper objectMapper;
 
     @PostMapping
     public ResponseEntity<ManualLoadEntry> create(@RequestParam(required = false) String academicYear, @RequestBody ManualLoadEntryRequest request, HttpServletRequest httpServletRequest) {
@@ -42,34 +48,50 @@ public class ManualLoadController {
     }
 
     @PostMapping("/bulk")
-    public ResponseEntity<List<ManualLoadEntry>> createBulk(@RequestParam(required = false) String academicYear, @RequestBody List<ManualLoadEntryRequest> requests,
+    public ResponseEntity<List<ManualLoadEntry>> createBulk(@RequestParam(required = false) String academicYear,
+                                                            @RequestBody JsonNode body,
                                                             HttpServletRequest httpServletRequest) {
         String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        ManualLoadBulkRequest bulkRequest = parseBulkRequest(body);
+        bulkRequest.setAcademicYear(effectiveYear);
+        List<ManualLoadEntryRequest> requests = bulkRequest.getRows() == null ? List.of() : bulkRequest.getRows();
         requests.forEach(req -> req.setAcademicYear(effectiveYear));
-        validateLoadAccess(AuthSessionUtils.requiredUser(httpServletRequest), requests);
-        return ResponseEntity.ok(manualLoadService.createBulk(requests));
+        validateLoadAccess(AuthSessionUtils.requiredUser(httpServletRequest), bulkRequest, requests);
+        return ResponseEntity.ok(manualLoadService.createBulk(bulkRequest));
     }
 
     @GetMapping
     public ResponseEntity<List<ManualLoadEntry>> findAll(@RequestParam(required = false) String academicYear,
-                                                         @RequestParam(required = false) String building) {
+                                                         @RequestParam(required = false) String building,
+                                                         @RequestParam(required = false) String numberSchoolBuilding,
+                                                         @RequestParam(required = false) String campusAddress) {
+        String effectiveBuilding = firstNonBlank(numberSchoolBuilding, building);
         return ResponseEntity.ok(manualLoadService.findAll(
                 academicYearService.resolveRequestedOrDefault(academicYear),
-                building
+                effectiveBuilding,
+                campusAddress
         ));
     }
 
     @DeleteMapping
     public ResponseEntity<Void> clear(@RequestParam(required = false) String academicYear,
                                       @RequestParam(required = false) String building,
+                                      @RequestParam(required = false) String numberSchoolBuilding,
+                                      @RequestParam(required = false) String campusAddress,
+                                      @RequestParam(required = false) String scopeType,
                                       HttpServletRequest httpServletRequest) {
         SessionUser user = AuthSessionUtils.requiredUser(httpServletRequest);
         String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
-        if (building != null && !building.isBlank()) {
+        String effectiveBuilding = firstNonBlank(numberSchoolBuilding, building);
+        if (effectiveBuilding != null && !effectiveBuilding.isBlank()) {
             if (!user.isAdmin()) {
                 throw new ForbiddenException("Операция доступна только администратору");
             }
-            manualLoadService.clearByBuilding(effectiveYear, building);
+            if (campusAddress != null && !campusAddress.isBlank()) {
+                manualLoadService.clearByBuildingAddress(effectiveYear, effectiveBuilding, campusAddress);
+            } else {
+                manualLoadService.clearByBuilding(effectiveYear, effectiveBuilding, scopeType);
+            }
             return ResponseEntity.noContent().build();
         }
         validateGlobalLoadOperation(user);
@@ -156,12 +178,37 @@ public class ManualLoadController {
         ));
     }
 
+    private ManualLoadBulkRequest parseBulkRequest(JsonNode body) {
+        if (body == null || body.isNull()) {
+            return new ManualLoadBulkRequest();
+        }
+        if (body.isArray()) {
+            ManualLoadBulkRequest request = new ManualLoadBulkRequest();
+            request.setRows(objectMapper.convertValue(body, new TypeReference<List<ManualLoadEntryRequest>>() {}));
+            return request;
+        }
+        return objectMapper.convertValue(body, ManualLoadBulkRequest.class);
+    }
+
+    private String firstNonBlank(String preferred, String fallback) {
+        if (preferred != null && !preferred.isBlank()) {
+            return preferred.trim();
+        }
+        return fallback == null || fallback.isBlank() ? null : fallback.trim();
+    }
+
     private void validateLoadAccess(SessionUser user, List<ManualLoadEntryRequest> requests) {
+        validateLoadAccess(user, null, requests);
+    }
+
+    private void validateLoadAccess(SessionUser user, ManualLoadBulkRequest bulkRequest, List<ManualLoadEntryRequest> requests) {
         if (user.isAdmin()) {
             return;
         }
-        Set<String> forbiddenBuildings = requests.stream()
-                .map(ManualLoadEntryRequest::getNumberSchoolBuilding)
+        Stream<String> rowBuildings = (requests == null ? List.<ManualLoadEntryRequest>of() : requests).stream()
+                .map(ManualLoadEntryRequest::getNumberSchoolBuilding);
+        Stream<String> scopeBuilding = bulkRequest == null ? Stream.empty() : Stream.of(bulkRequest.getNumberSchoolBuilding());
+        Set<String> forbiddenBuildings = Stream.concat(rowBuildings, scopeBuilding)
                 .filter(buildingCode -> !user.canEditLoadBuilding(buildingCode))
                 .map(buildingCode -> buildingCode == null || buildingCode.isBlank() ? "[корпус не указан]" : buildingCode)
                 .collect(Collectors.toCollection(LinkedHashSet::new));

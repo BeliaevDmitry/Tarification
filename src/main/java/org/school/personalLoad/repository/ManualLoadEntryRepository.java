@@ -20,10 +20,46 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
 
     java.util.List<ManualLoadEntry> findAllByAcademicYear(String academicYear);
     java.util.List<ManualLoadEntry> findAllByAcademicYearAndNumberSchoolBuildingIgnoreCase(String academicYear, String numberSchoolBuilding);
+
+    @Query("""
+            select m from ManualLoadEntry m
+             where m.academicYear = :academicYear
+               and lower(m.numberSchoolBuilding) = lower(:numberSchoolBuilding)
+               and m.classId in (
+                   select cl.id from ClassroomLeadershipEntry cl
+                    where cl.academicYear = :academicYear
+                      and lower(cl.numberSchoolBuilding) = lower(:numberSchoolBuilding)
+                      and lower(trim(cl.campusAddress)) = lower(trim(:campusAddress))
+               )
+            """)
+    java.util.List<ManualLoadEntry> findAllByAcademicYearAndBuildingAddress(@Param("academicYear") String academicYear,
+                                                                            @Param("numberSchoolBuilding") String numberSchoolBuilding,
+                                                                            @Param("campusAddress") String campusAddress);
     boolean existsByNumberSchoolBuildingIgnoreCase(String numberSchoolBuilding);
     void deleteByAcademicYearAndNumberSchoolBuildingAndClassName(String academicYear, String numberSchoolBuilding, String className);
 
     void deleteAllByAcademicYear(String academicYear);
+
+    @Modifying
+    @Query("delete from ManualLoadEntry m where m.academicYear = :academicYear and m.classId in :classIds")
+    void deleteByAcademicYearAndClassIds(@Param("academicYear") String academicYear,
+                                         @Param("classIds") java.util.Collection<Long> classIds);
+
+    @Modifying
+    @Query("""
+            delete from ManualLoadEntry m
+             where m.academicYear = :academicYear
+               and lower(m.numberSchoolBuilding) = lower(:numberSchoolBuilding)
+               and m.classId in (
+                   select cl.id from ClassroomLeadershipEntry cl
+                    where cl.academicYear = :academicYear
+                      and lower(cl.numberSchoolBuilding) = lower(:numberSchoolBuilding)
+                      and lower(trim(cl.campusAddress)) = lower(trim(:campusAddress))
+               )
+            """)
+    void deleteByAcademicYearAndBuildingAddress(@Param("academicYear") String academicYear,
+                                                @Param("numberSchoolBuilding") String numberSchoolBuilding,
+                                                @Param("campusAddress") String campusAddress);
 
     @Modifying
     @Query("delete from ManualLoadEntry m where lower(m.numberSchoolBuilding) in :codes")
