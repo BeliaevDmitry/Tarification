@@ -36,6 +36,10 @@ public interface ManualLoadService {
         throw new UnsupportedOperationException("clearByBuilding is not implemented");
     }
 
+    default void clearByBuilding(String academicYear, String numberSchoolBuilding, String scopeType) {
+        clearByBuilding(academicYear, numberSchoolBuilding);
+    }
+
     default void clearByBuildingAddress(String academicYear, String numberSchoolBuilding, String campusAddress) {
         clearByBuilding(academicYear, numberSchoolBuilding);
     }

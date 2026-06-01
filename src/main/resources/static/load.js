@@ -2706,6 +2706,7 @@ function bindEvents() {
             const scope = manualLoadScopeForAccess(selectedBuilding);
             const params = new URLSearchParams();
             params.set("numberSchoolBuilding", scope.numberSchoolBuilding);
+            params.set("scopeType", scope.scopeType);
             if (scope.campusAddress) params.set("campusAddress", scope.campusAddress);
             await api(`/api/manual-load?${params.toString()}`, { method: "DELETE" });
             await refreshSourceData();
