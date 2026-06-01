@@ -79,6 +79,7 @@ const NAV_ORDER = [
     { path: '/load-statistics.html', tab: 'LOAD_STATS', label: 'Статистика нагрузки' },
     { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' },
     { path: '/subject-areas.html', tab: 'SUBJECT_AREAS', label: 'Предметные области' },
+    { path: '/educational-work.html', tab: 'EDUCATIONAL_WORK', label: 'Воспитательная работа' },
     { path: '/vsoko.html', tab: 'VSOKO_VIEW', label: 'ВСОКО' }
 ];
 
