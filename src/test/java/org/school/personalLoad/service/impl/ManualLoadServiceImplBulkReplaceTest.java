@@ -36,10 +36,12 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @ExtendWith(MockitoExtension.class)
 class ManualLoadServiceImplBulkReplaceTest {
@@ -90,17 +92,10 @@ class ManualLoadServiceImplBulkReplaceTest {
     }
 
     @Test
-    void createBulkReplacesRowsForAffectedBuilding() {
-        ManualLoadEntryRequest request = new ManualLoadEntryRequest();
-        request.setAcademicYear("2025/2026");
-        request.setFioTeacher("Иванов И.И.");
-        request.setNumberSchoolBuilding("B1");
-        request.setSubjectName("Алгебра");
-        request.setClassName("8-А");
-        request.setLoad(6);
-        request.setEducationLevel(EducationLevel.BASIC);
-        request.setLoadFromDate(LocalDate.of(2025, 9, 1));
-        request.setLoadToDate(LocalDate.of(2026, 5, 31));
+    void legacyCreateBulkForSingleAddressBuildingIsAllowed() {
+        ManualLoadEntryRequest request = manualRequest("B1", "8-А", null);
+        when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026"))
+                .thenReturn(List.of(classEntry(1L, "B1", "8-А", "ул. Одна, 1")));
         when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         service.createBulk(List.of(request));
@@ -110,18 +105,40 @@ class ManualLoadServiceImplBulkReplaceTest {
     }
 
     @Test
+    void legacyCreateBulkForMultiAddressBuildingIsRejectedWithoutDeleteOrSave() {
+        ManualLoadEntryRequest request = manualRequest("СП3", "4-Д", null);
+        when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026"))
+                .thenReturn(List.of(
+                        classEntry(1L, "СП3", "4-Д", "Кравченко, д.14, корп.1"),
+                        classEntry(2L, "СП3", "4-И", "Марии Ульяновой, д.7")
+                ));
+
+        assertThrows(IllegalArgumentException.class, () -> service.createBulk(List.of(request)));
+
+        verify(manualLoadEntryRepository, never())
+                .deleteByAcademicYearAndBuildingCodes(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
+        verify(manualLoadEntryRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void explicitBuildingGroupCreateBulkForMultiAddressBuildingIsAllowed() {
+        ManualLoadEntryRequest request = manualRequest("СП3", "4-Д", null);
+        ManualLoadBulkRequest bulk = new ManualLoadBulkRequest();
+        bulk.setAcademicYear("2025/2026");
+        bulk.setScopeType("BUILDING_GROUP");
+        bulk.setNumberSchoolBuilding("СП3");
+        bulk.setRows(List.of(request));
+        when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.createBulk(bulk);
+
+        verify(manualLoadEntryRepository).deleteByAcademicYearAndBuildingCodes("2025/2026", java.util.Set.of("сп3"));
+        verify(manualLoadEntryRepository).saveAll(any());
+    }
+
+    @Test
     void createBulkForAddressScopeReplacesOnlySelectedClassIds() {
-        ManualLoadEntryRequest request = new ManualLoadEntryRequest();
-        request.setAcademicYear("2025/2026");
-        request.setFioTeacher("Иванов И.И.");
-        request.setNumberSchoolBuilding("СП3");
-        request.setClassName("4-Д");
-        request.setClassId(9119L);
-        request.setSubjectName("Математика");
-        request.setLoad(4);
-        request.setEducationLevel(EducationLevel.BASIC);
-        request.setLoadFromDate(LocalDate.of(2025, 9, 1));
-        request.setLoadToDate(LocalDate.of(2026, 5, 31));
+        ManualLoadEntryRequest request = manualRequest("СП3", "4-Д", 9119L);
 
         ManualLoadBulkRequest bulk = new ManualLoadBulkRequest();
         bulk.setAcademicYear("2025/2026");
@@ -131,6 +148,12 @@ class ManualLoadServiceImplBulkReplaceTest {
         bulk.setClassIds(new java.util.LinkedHashSet<>(java.util.List.of(9119L, 9166L, 9139L)));
         bulk.setRows(List.of(request));
 
+        when(classroomLeadershipRepository.findAllById(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(List.of(
+                        classEntry(9119L, "СП3", "4-Д", "Марии Ульяновой, д.7"),
+                        classEntry(9166L, "СП3", "4-И", "Марии Ульяновой, д.7"),
+                        classEntry(9139L, "СП3", "4-К", "Марии Ульяновой, д.7")
+                ));
         when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         service.createBulk(bulk);
@@ -142,6 +165,48 @@ class ManualLoadServiceImplBulkReplaceTest {
         verify(manualLoadEntryRepository, org.mockito.Mockito.never())
                 .deleteByAcademicYearAndBuildingCodes(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
         verify(manualLoadEntryRepository).saveAll(any());
+    }
+
+    @Test
+    void createBulkForAddressScopeRejectsClassIdFromAnotherAddress() {
+        ManualLoadEntryRequest request = manualRequest("СП3", "4-Д", 9119L);
+
+        ManualLoadBulkRequest bulk = new ManualLoadBulkRequest();
+        bulk.setAcademicYear("2025/2026");
+        bulk.setScopeType("BUILDING_ADDRESS");
+        bulk.setNumberSchoolBuilding("СП3");
+        bulk.setCampusAddress("Марии Ульяновой, д.7");
+        bulk.setClassIds(new java.util.LinkedHashSet<>(java.util.List.of(9119L, 9166L)));
+        bulk.setRows(List.of(request));
+
+        when(classroomLeadershipRepository.findAllById(new java.util.LinkedHashSet<>(java.util.List.of(9119L, 9166L))))
+                .thenReturn(List.of(
+                        classEntry(9119L, "СП3", "4-Д", "Марии Ульяновой, д.7"),
+                        classEntry(9166L, "СП3", "4-И", "Кравченко, д.14, корп.1")
+                ));
+
+        assertThrows(IllegalArgumentException.class, () -> service.createBulk(bulk));
+
+        verify(manualLoadEntryRepository, never()).deleteByAcademicYearAndClassIds(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
+        verify(manualLoadEntryRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void deleteMultiAddressBuildingRequiresExplicitBuildingGroupScope() {
+        when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026"))
+                .thenReturn(List.of(
+                        classEntry(1L, "СП3", "4-Д", "Кравченко, д.14, корп.1"),
+                        classEntry(2L, "СП3", "4-И", "Марии Ульяновой, д.7")
+                ));
+
+        assertThrows(IllegalArgumentException.class, () -> service.clearByBuilding("2025/2026", "СП3"));
+
+        verify(manualLoadEntryRepository, never())
+                .deleteByAcademicYearAndBuildingCodes(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
+
+        service.clearByBuilding("2025/2026", "СП3", "BUILDING_GROUP");
+
+        verify(manualLoadEntryRepository).deleteByAcademicYearAndBuildingCodes("2025/2026", java.util.List.of("сп3"));
     }
 
     @Test
@@ -247,6 +312,21 @@ class ManualLoadServiceImplBulkReplaceTest {
         }
     }
 
+    private ManualLoadEntryRequest manualRequest(String building, String className, Long classId) {
+        ManualLoadEntryRequest request = new ManualLoadEntryRequest();
+        request.setAcademicYear("2025/2026");
+        request.setFioTeacher("Иванов И.И.");
+        request.setNumberSchoolBuilding(building);
+        request.setSubjectName("Алгебра");
+        request.setClassName(className);
+        request.setClassId(classId);
+        request.setLoad(6);
+        request.setEducationLevel(EducationLevel.BASIC);
+        request.setLoadFromDate(LocalDate.of(2025, 9, 1));
+        request.setLoadToDate(LocalDate.of(2026, 5, 31));
+        return request;
+    }
+
     private ManualLoadEntry manualRow(String fio, String building, String className, String subject, int load) {
         ManualLoadEntry row = new ManualLoadEntry();
         row.setAcademicYear("2025/2026");
@@ -258,6 +338,12 @@ class ManualLoadServiceImplBulkReplaceTest {
         row.setEducationLevel(EducationLevel.BASIC);
         row.setStudyPeriod(StudyPeriod.YEAR);
         return row;
+    }
+
+    private ClassroomLeadershipEntry classEntry(Long id, String building, String className, String address) {
+        ClassroomLeadershipEntry entry = classEntry(building, className, address);
+        entry.setId(id);
+        return entry;
     }
 
     private ClassroomLeadershipEntry classEntry(String building, String className, String address) {

@@ -78,6 +78,7 @@ public class ManualLoadController {
                                       @RequestParam(required = false) String building,
                                       @RequestParam(required = false) String numberSchoolBuilding,
                                       @RequestParam(required = false) String campusAddress,
+                                      @RequestParam(required = false) String scopeType,
                                       HttpServletRequest httpServletRequest) {
         SessionUser user = AuthSessionUtils.requiredUser(httpServletRequest);
         String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
@@ -89,7 +90,7 @@ public class ManualLoadController {
             if (campusAddress != null && !campusAddress.isBlank()) {
                 manualLoadService.clearByBuildingAddress(effectiveYear, effectiveBuilding, campusAddress);
             } else {
-                manualLoadService.clearByBuilding(effectiveYear, effectiveBuilding);
+                manualLoadService.clearByBuilding(effectiveYear, effectiveBuilding, scopeType);
             }
             return ResponseEntity.noContent().build();
         }
