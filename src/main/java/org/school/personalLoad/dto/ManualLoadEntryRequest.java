@@ -14,6 +14,7 @@ public class ManualLoadEntryRequest {
     private String numberSchoolBuilding;
     private String subjectName;
     private String className;
+    private Long classId;
     private Integer load;
     private String groupNameEducationalPlan;
     private Integer groupLoad;

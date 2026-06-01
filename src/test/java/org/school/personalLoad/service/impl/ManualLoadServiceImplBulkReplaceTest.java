@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.school.personalLoad.dto.ManualLoadBulkRequest;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.ManualLoadEntry;
@@ -105,6 +106,41 @@ class ManualLoadServiceImplBulkReplaceTest {
         service.createBulk(List.of(request));
 
         verify(manualLoadEntryRepository).deleteByAcademicYearAndBuildingCodes("2025/2026", java.util.Set.of("b1"));
+        verify(manualLoadEntryRepository).saveAll(any());
+    }
+
+    @Test
+    void createBulkForAddressScopeReplacesOnlySelectedClassIds() {
+        ManualLoadEntryRequest request = new ManualLoadEntryRequest();
+        request.setAcademicYear("2025/2026");
+        request.setFioTeacher("Иванов И.И.");
+        request.setNumberSchoolBuilding("СП3");
+        request.setClassName("4-Д");
+        request.setClassId(9119L);
+        request.setSubjectName("Математика");
+        request.setLoad(4);
+        request.setEducationLevel(EducationLevel.BASIC);
+        request.setLoadFromDate(LocalDate.of(2025, 9, 1));
+        request.setLoadToDate(LocalDate.of(2026, 5, 31));
+
+        ManualLoadBulkRequest bulk = new ManualLoadBulkRequest();
+        bulk.setAcademicYear("2025/2026");
+        bulk.setScopeType("BUILDING_ADDRESS");
+        bulk.setNumberSchoolBuilding("СП3");
+        bulk.setCampusAddress("Марии Ульяновой, д.7");
+        bulk.setClassIds(new java.util.LinkedHashSet<>(java.util.List.of(9119L, 9166L, 9139L)));
+        bulk.setRows(List.of(request));
+
+        when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.createBulk(bulk);
+
+        verify(manualLoadEntryRepository).deleteByAcademicYearAndClassIds(
+                "2025/2026",
+                new java.util.LinkedHashSet<>(java.util.List.of(9119L, 9166L, 9139L))
+        );
+        verify(manualLoadEntryRepository, org.mockito.Mockito.never())
+                .deleteByAcademicYearAndBuildingCodes(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
         verify(manualLoadEntryRepository).saveAll(any());
     }
 

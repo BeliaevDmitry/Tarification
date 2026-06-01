@@ -40,9 +40,17 @@ function normalizeKey(value) {
 }
 
 function normalizeBuildingAccessCode(value) {
-    return normalizeText(value)
+    return String(value || "")
+        .trim()
+        .toUpperCase()
+        .replace(/[–—]/g, "-")
+        .replace(/[CС][ПPР]/g, "СП")
         .replace(/\s*\|\s*/g, "|")
-        .toUpperCase();
+        .replace(/\s+/g, "");
+}
+
+function normalizeBuildingCode(value) {
+    return normalizeBuildingAccessCode(value);
 }
 
 function buildingGroupCode(value) {
@@ -82,7 +90,11 @@ function rowMatchesBuildingAccess(row, accessCode) {
         return false;
     }
     const selectedAddress = buildingAddressToken(accessCode);
-    return !selectedAddress || rowAddressToken(row) === selectedAddress;
+    if (!selectedAddress) return true;
+    const rowAddress = rowAddressToken(row);
+    if (rowAddress === selectedAddress) return true;
+    const knownAddresses = addressesForBuildingCode(selectedGroup).map(normalizeBuildingAccessCode).filter(Boolean);
+    return knownAddresses.length === 1 && knownAddresses[0] === selectedAddress;
 }
 
 function escapeHtml(value) {
@@ -94,50 +106,72 @@ function escapeHtml(value) {
         .replace(/'/g, "&#39;");
 }
 
-function buildingLabel(building) {
-    if (!building) return "";
-    if (building.scope === "group") {
-        const count = building.addresses?.length || 0;
-        return `${building.name || building.code} — все адреса${count ? ` (${count})` : ""}`;
-    }
-    return `${building.name || building.code} — ${building.address || "адрес не указан"}`;
+function addressesForBuildingCode(buildingCode) {
+    const normalizedCode = normalizeBuildingCode(buildingCode);
+    if (!normalizedCode) return [];
+    const option = (state.buildings || []).find((building) => normalizeBuildingCode(building.code) === normalizedCode && Array.isArray(building.addresses));
+    return option?.addresses || [];
 }
 
-function buildBuildingOptions(rawBuildings) {
+function buildingLabel(building) {
+    if (!building) return "";
+    const base = normalizeText(building.name || building.code);
+    if (building.scope === "address") {
+        return `${base} — ${building.address || "адрес не указан"}`;
+    }
+    const count = building.addresses?.length || 0;
+    return `${base} — все адреса${count ? ` (${count})` : ""}`;
+}
+
+function appendUniqueAddress(group, value) {
+    const address = normalizeText(value);
+    if (!address) return;
+    const key = normalizeBuildingAccessCode(address);
+    if (group.addresses.some((known) => normalizeBuildingAccessCode(known) === key)) return;
+    group.addresses.push(address);
+}
+
+function buildBuildingOptions(rawBuildings, classRows = []) {
     const grouped = new Map();
     for (const building of rawBuildings || []) {
-        const code = buildingGroupCode(building.code || building.name);
+        const code = normalizeBuildingCode(building.code || building.name);
         if (!code) continue;
-        if (!grouped.has(code)) {
-            grouped.set(code, {
-                code,
-                name: normalizeText(building.name || building.code || code) || code,
-                addresses: []
-            });
-        }
-        const group = grouped.get(code);
-        if (!group.name || group.name === code) {
-            group.name = normalizeText(building.name || code) || code;
-        }
-        const address = normalizeText(building.address);
-        if (address && !group.addresses.some((known) => normalizeBuildingAccessCode(known) === normalizeBuildingAccessCode(address))) {
-            group.addresses.push(address);
-        }
+        const group = grouped.get(code) || {
+            code,
+            name: normalizeText(building.name || building.code || code) || code,
+            addresses: []
+        };
+        group.name = normalizeText(group.name || building.name || code) || code;
+        appendUniqueAddress(group, building.address);
+        grouped.set(code, group);
+    }
+    for (const classRow of classRows || []) {
+        const code = normalizeBuildingCode(classRow.numberSchoolBuilding);
+        if (!code) continue;
+        const group = grouped.get(code) || {
+            code,
+            name: `${code} (из классов)`,
+            addresses: []
+        };
+        appendUniqueAddress(group, classRow.campusAddress);
+        grouped.set(code, group);
     }
 
     const options = [];
     Array.from(grouped.values())
-        .sort((a, b) => a.name.localeCompare(b.name, "ru"))
+        .sort((a, b) => String(a.code).localeCompare(String(b.code), "ru", { numeric: true }))
         .forEach((group) => {
             group.addresses.sort((a, b) => a.localeCompare(b, "ru"));
-            options.push({
-                code: group.code,
-                value: group.code,
-                name: group.name,
-                address: group.addresses[0] || "",
-                addresses: group.addresses,
-                scope: "group"
-            });
+            if (group.addresses.length !== 1) {
+                options.push({
+                    code: group.code,
+                    value: group.code,
+                    name: group.name,
+                    address: group.addresses[0] || "",
+                    addresses: group.addresses,
+                    scope: "group"
+                });
+            }
             group.addresses.forEach((address) => {
                 options.push({
                     code: group.code,
@@ -431,9 +465,9 @@ async function loadData() {
         api("/api/subjects"),
         salaryAccess ? api("/api/salary-settings") : Promise.resolve(null)
     ]);
-    state.buildings = buildBuildingOptions(buildings);
     state.manualRows = manualRows || [];
     state.classes = classes || [];
+    state.buildings = buildBuildingOptions(buildings, state.classes);
     state.teachers = teachers || [];
     state.subjects = subjects || [];
     const rate = Number(salarySettings?.studentHourRate ?? 37);
