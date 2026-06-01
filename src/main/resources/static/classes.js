@@ -84,6 +84,12 @@ function buildingGroupCode(value) {
     return separator >= 0 ? normalized.slice(0, separator) : normalized;
 }
 
+function buildingGroupCode(value) {
+    const normalized = normalizeBuildingCode(value);
+    const separator = normalized.indexOf("|");
+    return separator >= 0 ? normalized.slice(0, separator) : normalized;
+}
+
 function entryKey(entry) {
     if (entry?.id) return `id:${entry.id}`;
     return `${buildingGroupCode(entry.numberSchoolBuilding)}|${normalizeClassName(entry.className)}`;
