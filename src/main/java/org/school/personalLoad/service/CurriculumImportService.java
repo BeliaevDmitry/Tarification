@@ -9,4 +9,6 @@ public interface CurriculumImportService {
     CurriculumImportResult importFile(MultipartFile file, String academicYear);
 
     byte[] exportEditableWorkbook(String academicYear) throws IOException;
+
+    byte[] exportParallelWorkbook(String academicYear) throws IOException;
 }
