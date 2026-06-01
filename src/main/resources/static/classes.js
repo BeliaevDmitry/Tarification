@@ -69,7 +69,19 @@ function normalizeClassName(value) {
 }
 
 function normalizeBuildingCode(value) {
-    return norm(value).replaceAll(" ", "");
+    return norm(value)
+        .toUpperCase()
+        .replace(/[–—]/g, "-")
+        .replace(/[CС][ПPР]/g, "СП")
+        .replace(/\s*\|\s*/g, "|")
+        .replace(/\s+/g, "")
+        .replace(/^СП-(\d+)$/, "СП$1");
+}
+
+function buildingGroupCode(value) {
+    const normalized = normalizeBuildingCode(value);
+    const separator = normalized.indexOf("|");
+    return separator >= 0 ? normalized.slice(0, separator) : normalized;
 }
 
 function buildingGroupCode(value) {
