@@ -54,6 +54,19 @@ public class CurriculumPlanController {
         byte[] body = curriculumImportService.exportEditableWorkbook(effectiveYear);
         String date = LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"));
         String fileName = "УП ГБОУ 7 " + effectiveYear + " от " + date + ".xlsx";
+        return workbookResponse(body, fileName);
+    }
+
+    @GetMapping("/export-parallels")
+    public ResponseEntity<byte[]> exportCurriculumByParallels(@RequestParam(required = false) String academicYear) throws Exception {
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        byte[] body = curriculumImportService.exportParallelWorkbook(effectiveYear);
+        String date = LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"));
+        String fileName = "УП по параллелям ГБОУ 7 " + effectiveYear + " от " + date + ".xlsx";
+        return workbookResponse(body, fileName);
+    }
+
+    private ResponseEntity<byte[]> workbookResponse(byte[] body, String fileName) {
         String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)

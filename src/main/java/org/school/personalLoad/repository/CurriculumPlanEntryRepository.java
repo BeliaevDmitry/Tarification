@@ -50,6 +50,18 @@ public interface CurriculumPlanEntryRepository extends JpaRepository<CurriculumP
 
     void deleteByNumberSchoolBuildingAndClassName(String numberSchoolBuilding, String className);
     void deleteByAcademicYearAndNumberSchoolBuildingAndClassName(String academicYear, String numberSchoolBuilding, String className);
+
+
+    @Modifying
+    @Query(value = "delete from curriculum_plan_entry where academic_year = :academicYear and class_id = :classId", nativeQuery = true)
+    void deleteByAcademicYearAndClassId(@Param("academicYear") String academicYear, @Param("classId") Long classId);
+
+    @Query(value = "select count(*) from curriculum_plan_entry where academic_year = :academicYear and (class_id = :classId or (lower(number_school_building) = lower(:numberSchoolBuilding) and lower(class_name) = lower(:className)))", nativeQuery = true)
+    long countClassTails(@Param("academicYear") String academicYear,
+                         @Param("classId") Long classId,
+                         @Param("numberSchoolBuilding") String numberSchoolBuilding,
+                         @Param("className") String className);
+
     void deleteAllByAcademicYear(String academicYear);
 
     @Modifying

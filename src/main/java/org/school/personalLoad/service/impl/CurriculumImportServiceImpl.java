@@ -62,6 +62,316 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         }
     }
 
+
+    @Override
+    public byte[] exportParallelWorkbook(String academicYear) throws IOException {
+        List<CurriculumPlanEntry> entries = curriculumRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(e -> !e.isDeprecated())
+                .filter(e -> extractParallelForExportClass(e.getClassName()) != null)
+                .toList();
+        Map<String, ClassroomLeadershipEntry> classDirectory = classroomRepository.findAllByAcademicYear(academicYear).stream()
+                .collect(Collectors.toMap(
+                        c -> classExportKey(c.getNumberSchoolBuilding(), c.getClassName()),
+                        c -> c,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            Set<Integer> parallels = entries.stream()
+                    .map(e -> extractParallelForExportClass(e.getClassName()))
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toCollection(TreeSet::new));
+            if (parallels.isEmpty()) {
+                Sheet sheet = workbook.createSheet("Учебный план");
+                sheet.createRow(0).createCell(0).setCellValue("Нет данных учебного плана за " + academicYear);
+            } else {
+                for (Integer parallel : parallels) {
+                    buildParallelSheet(workbook, academicYear, parallel, entries, classDirectory);
+                }
+            }
+            workbook.write(output);
+            return output.toByteArray();
+        }
+    }
+
+    private void buildParallelSheet(Workbook workbook,
+                                    String academicYear,
+                                    int parallel,
+                                    List<CurriculumPlanEntry> allEntries,
+                                    Map<String, ClassroomLeadershipEntry> classDirectory) {
+        List<CurriculumPlanEntry> entries = allEntries.stream()
+                .filter(e -> Objects.equals(extractParallelForExportClass(e.getClassName()), parallel))
+                .sorted(Comparator
+                        .comparing((CurriculumPlanEntry e) -> String.valueOf(e.getNumberSchoolBuilding()), String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(e -> ClassNameNormalizer.normalize(e.getClassName()), String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(e -> partOrder(e.getCurriculumPart()))
+                        .thenComparing(e -> subjectAreaForExport(e.getSubjectName()), String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(e -> normalizeSubject(e.getSubjectName()), String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(e -> periodOrder(e.getStudyPeriod())))
+                .toList();
+        Sheet sheet = workbook.createSheet(org.apache.poi.ss.util.WorkbookUtil.createSafeSheetName(parallel + " параллель"));
+        if (entries.isEmpty()) {
+            sheet.createRow(0).createCell(0).setCellValue("Нет данных по " + parallel + " параллели");
+            return;
+        }
+
+        List<ClassColumn> classColumns = entries.stream()
+                .collect(Collectors.toMap(
+                        e -> classExportKey(e.getNumberSchoolBuilding(), e.getClassName()),
+                        e -> new ClassColumn(normalizeSubject(e.getNumberSchoolBuilding()), ClassNameNormalizer.normalize(e.getClassName())),
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ))
+                .values().stream()
+                .sorted((left, right) -> compareClassKeysForExport(left.key(), right.key()))
+                .toList();
+
+        CellStyle titleStyle = workbook.createCellStyle();
+        Font titleFont = workbook.createFont();
+        titleFont.setBold(true);
+        titleFont.setFontHeightInPoints((short) 14);
+        titleStyle.setFont(titleFont);
+        titleStyle.setAlignment(HorizontalAlignment.CENTER);
+        titleStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        titleStyle.setWrapText(true);
+
+        CellStyle headerStyle = workbook.createCellStyle();
+        Font headerFont = workbook.createFont();
+        headerFont.setBold(true);
+        headerStyle.setFont(headerFont);
+        headerStyle.setAlignment(HorizontalAlignment.CENTER);
+        headerStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        headerStyle.setWrapText(true);
+        headerStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+        headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        setThinBorders(headerStyle);
+
+        CellStyle metaStyle = workbook.createCellStyle();
+        metaStyle.cloneStyleFrom(headerStyle);
+        metaStyle.setFillForegroundColor(IndexedColors.PALE_BLUE.getIndex());
+        metaStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+        CellStyle partStyle = workbook.createCellStyle();
+        partStyle.cloneStyleFrom(headerStyle);
+        partStyle.setFillForegroundColor(IndexedColors.LIGHT_CORNFLOWER_BLUE.getIndex());
+        partStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+        CellStyle baseStyle = workbook.createCellStyle();
+        baseStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        baseStyle.setWrapText(true);
+        setThinBorders(baseStyle);
+
+        CellStyle numberStyle = workbook.createCellStyle();
+        numberStyle.cloneStyleFrom(baseStyle);
+        numberStyle.setAlignment(HorizontalAlignment.CENTER);
+
+        Row titleRow = sheet.createRow(0);
+        titleRow.setHeightInPoints(28);
+        titleRow.createCell(0).setCellValue("Учебный план по " + parallel + " параллели, " + academicYear);
+        titleRow.getCell(0).setCellStyle(titleStyle);
+        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(0, 0, 0, Math.max(2, classColumns.size() + 1)));
+
+        Row headerRow = sheet.createRow(1);
+        headerRow.createCell(0).setCellValue("Часть учебного плана");
+        headerRow.createCell(1).setCellValue("Предмет");
+        headerRow.getCell(0).setCellStyle(headerStyle);
+        headerRow.getCell(1).setCellStyle(headerStyle);
+        for (int i = 0; i < classColumns.size(); i++) {
+            Cell cell = headerRow.createCell(i + 2);
+            cell.setCellValue("");
+            cell.setCellStyle(headerStyle);
+        }
+
+        writeMetaRow(sheet, 2, "Период обучения", classColumns, column -> periodLabelForColumn(entries, column), metaStyle);
+        writeMetaRow(sheet, 3, "Направление класса", classColumns, column -> Optional.ofNullable(classDirectory.get(column.key())).map(ClassroomLeadershipEntry::getClassDirection).orElse(""), metaStyle);
+        writeMetaRow(sheet, 4, "ФИО классного руководителя", classColumns, column -> Optional.ofNullable(classDirectory.get(column.key())).map(ClassroomLeadershipEntry::getFioTeacher).orElse(""), metaStyle);
+        writeMetaRow(sheet, 5, "Класс", classColumns, ClassColumn::className, metaStyle);
+
+        int rowNum = 6;
+        for (CurriculumPart part : List.of(CurriculumPart.CORE, CurriculumPart.FORMABLE, CurriculumPart.EXTRACURRICULAR, CurriculumPart.CORRECTIONAL)) {
+            List<CurriculumPlanEntry> partEntries = entries.stream()
+                    .filter(e -> (e.getCurriculumPart() == null ? CurriculumPart.CORE : e.getCurriculumPart()) == part)
+                    .toList();
+            if (partEntries.isEmpty()) continue;
+
+            Row partRow = sheet.createRow(rowNum++);
+            partRow.createCell(0).setCellValue(partDisplayName(part));
+            partRow.getCell(0).setCellStyle(partStyle);
+            for (int c = 1; c <= classColumns.size() + 1; c++) {
+                Cell cell = partRow.createCell(c);
+                cell.setCellStyle(partStyle);
+            }
+            sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(partRow.getRowNum(), partRow.getRowNum(), 0, classColumns.size() + 1));
+
+            Map<String, List<CurriculumPlanEntry>> subjectRows = partEntries.stream()
+                    .collect(Collectors.groupingBy(e -> subjectAreaForExport(e.getSubjectName()) + "|" + normalizeSubject(e.getSubjectName()), LinkedHashMap::new, Collectors.toList()));
+            List<Map.Entry<String, List<CurriculumPlanEntry>>> sortedSubjects = subjectRows.entrySet().stream()
+                    .sorted(Comparator
+                            .comparing((Map.Entry<String, List<CurriculumPlanEntry>> e) -> subjectAreaOrderForExport(e.getKey().split("\\|", 2)[0]))
+                            .thenComparing(Map.Entry::getKey, String.CASE_INSENSITIVE_ORDER))
+                    .toList();
+
+            for (Map.Entry<String, List<CurriculumPlanEntry>> subjectEntry : sortedSubjects) {
+                String[] parts = subjectEntry.getKey().split("\\|", 2);
+                String area = parts.length > 0 ? parts[0] : "";
+                String subject = parts.length > 1 ? parts[1] : subjectEntry.getKey();
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(part == CurriculumPart.CORE ? area : partDisplayName(part));
+                row.createCell(1).setCellValue(subject);
+                row.getCell(0).setCellStyle(baseStyle);
+                row.getCell(1).setCellStyle(baseStyle);
+
+                for (int i = 0; i < classColumns.size(); i++) {
+                    ClassColumn column = classColumns.get(i);
+                    String rendered = renderHoursForColumn(subjectEntry.getValue(), column);
+                    Cell cell = row.createCell(i + 2);
+                    cell.setCellValue(rendered);
+                    cell.setCellStyle(numberStyle);
+                }
+            }
+        }
+
+        for (int r = 1; r < rowNum; r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) continue;
+            for (int c = 0; c <= classColumns.size() + 1; c++) {
+                Cell cell = row.getCell(c);
+                if (cell == null) cell = row.createCell(c);
+                if (cell.getCellStyle() == null || cell.getCellStyle().getIndex() == 0) cell.setCellStyle(baseStyle);
+            }
+        }
+        sheet.createFreezePane(2, 6);
+        sheet.setColumnWidth(0, 8500);
+        sheet.setColumnWidth(1, 9000);
+        for (int c = 2; c <= classColumns.size() + 1; c++) {
+            sheet.setColumnWidth(c, 3000);
+        }
+    }
+
+    private void writeMetaRow(Sheet sheet, int rowIndex, String title, List<ClassColumn> classColumns, java.util.function.Function<ClassColumn, String> valueFn, CellStyle style) {
+        Row row = sheet.createRow(rowIndex);
+        row.setHeightInPoints(32);
+        row.createCell(0).setCellValue(title);
+        row.createCell(1).setCellValue("");
+        row.getCell(0).setCellStyle(style);
+        row.getCell(1).setCellStyle(style);
+        for (int i = 0; i < classColumns.size(); i++) {
+            Cell cell = row.createCell(i + 2);
+            cell.setCellValue(valueFn.apply(classColumns.get(i)));
+            cell.setCellStyle(style);
+        }
+    }
+
+    private String renderHoursForColumn(List<CurriculumPlanEntry> values, ClassColumn column) {
+        List<CurriculumPlanEntry> classValues = values.stream()
+                .filter(e -> classExportKey(e.getNumberSchoolBuilding(), e.getClassName()).equals(column.key()))
+                .toList();
+        if (classValues.isEmpty()) return "";
+        BigDecimal year = sumHours(classValues, StudyPeriod.YEAR);
+        BigDecimal h1 = sumHours(classValues, StudyPeriod.H1);
+        BigDecimal h2 = sumHours(classValues, StudyPeriod.H2);
+        if (year.compareTo(BigDecimal.ZERO) > 0 && h1.compareTo(BigDecimal.ZERO) == 0 && h2.compareTo(BigDecimal.ZERO) == 0) {
+            return formatHours(year);
+        }
+        if (year.compareTo(BigDecimal.ZERO) > 0) {
+            h1 = h1.add(year);
+            h2 = h2.add(year);
+        }
+        if (h1.compareTo(BigDecimal.ZERO) == 0 && h2.compareTo(BigDecimal.ZERO) == 0) return "";
+        return formatHours(h1) + "/" + formatHours(h2);
+    }
+
+    private BigDecimal sumHours(List<CurriculumPlanEntry> values, StudyPeriod period) {
+        return values.stream()
+                .filter(v -> (v.getStudyPeriod() == null ? StudyPeriod.YEAR : v.getStudyPeriod()) == period)
+                .map(CurriculumPlanEntry::getPlannedHours)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private String periodLabelForColumn(List<CurriculumPlanEntry> entries, ClassColumn column) {
+        Set<StudyPeriod> periods = entries.stream()
+                .filter(e -> classExportKey(e.getNumberSchoolBuilding(), e.getClassName()).equals(column.key()))
+                .map(e -> e.getStudyPeriod() == null ? StudyPeriod.YEAR : e.getStudyPeriod())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        boolean hasH1 = periods.contains(StudyPeriod.H1);
+        boolean hasH2 = periods.contains(StudyPeriod.H2);
+        if (hasH1 && hasH2) return "1П/2П";
+        if (hasH1) return "1П";
+        if (hasH2) return "2П";
+        return "";
+    }
+
+    private String classExportKey(String building, String className) {
+        return normalizeSubject(building) + "|" + ClassNameNormalizer.normalize(className);
+    }
+
+    private String subjectAreaForExport(String subjectName) {
+        return subjectCatalogRepository.findAll().stream()
+                .filter(subject -> normalizeSubject(subject.getSubjectName()).equalsIgnoreCase(normalizeSubject(subjectName)))
+                .map(SubjectCatalogEntry::getSubjectAreaName)
+                .map(this::normalizeSubject)
+                .filter(value -> !value.isBlank())
+                .findFirst()
+                .orElse(SubjectAreaNames.defaultArea());
+    }
+
+    private int subjectAreaOrderForExport(String area) {
+        List<String> order = List.of(
+                "Русский язык и литература",
+                "Иностранные языки",
+                "Математика и информатика",
+                "Общественно-научные предметы",
+                "Естественно-научные предметы",
+                "Искусство",
+                "Технология",
+                "Физическая культура и основы безопасности и защиты Родины",
+                "Коррекционно-развивающая область",
+                "Иное"
+        );
+        int idx = order.indexOf(normalizeSubject(area));
+        return idx < 0 ? Integer.MAX_VALUE : idx;
+    }
+
+    private String partDisplayName(CurriculumPart part) {
+        return switch (part == null ? CurriculumPart.CORE : part) {
+            case CORE -> "Обязательная часть";
+            case FORMABLE -> "Часть, формируемая участниками образовательных отношений";
+            case EXTRACURRICULAR -> "Внеурочная деятельность";
+            case CORRECTIONAL -> "Коррекционная область";
+        };
+    }
+
+    private int partOrder(CurriculumPart part) {
+        return switch (part == null ? CurriculumPart.CORE : part) {
+            case CORE -> 1;
+            case FORMABLE -> 2;
+            case EXTRACURRICULAR -> 3;
+            case CORRECTIONAL -> 4;
+        };
+    }
+
+    private int periodOrder(StudyPeriod period) {
+        return switch (period == null ? StudyPeriod.YEAR : period) {
+            case YEAR -> 1;
+            case H1 -> 2;
+            case H2 -> 3;
+        };
+    }
+
+    private String formatHours(BigDecimal value) {
+        if (value == null || value.compareTo(BigDecimal.ZERO) == 0) return "";
+        return value.stripTrailingZeros().toPlainString();
+    }
+
+    private void setThinBorders(CellStyle style) {
+        style.setBorderTop(BorderStyle.THIN);
+        style.setBorderBottom(BorderStyle.THIN);
+        style.setBorderLeft(BorderStyle.THIN);
+        style.setBorderRight(BorderStyle.THIN);
+    }
+
     private int buildVisualSheet(Workbook workbook, String sheetName, List<CurriculumPlanEntry> allEntries, int parallelFrom, int parallelTo) {
         List<CurriculumPlanEntry> entries = allEntries.stream()
                 .filter(e -> {
@@ -1033,6 +1343,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     ) {}
 
     private record ClassHeaderMeta(int colIndex, String building, String className) {}
+    private record ClassColumn(String building, String className) {
+        String key() { return building + "|" + className; }
+    }
     private record SumPair(BigDecimal h1, BigDecimal h2) {}
     private record VisualParseResult(List<EditableImportRow> rows, Map<String, Map<String, SumPair>> expectedSums) {}
     private record MarkerFlags(String value, boolean subgroupRequired, boolean metaGroup) {}

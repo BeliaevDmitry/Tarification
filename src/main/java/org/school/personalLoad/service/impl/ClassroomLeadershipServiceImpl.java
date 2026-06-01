@@ -114,12 +114,61 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
 
         for (ClassroomLeadershipEntry existing : existingRows) {
             if (existing.getId() != null && !touchedIds.contains(existing.getId())) {
+                deleteClassTails(academicYear, existing);
                 classroomLeadershipRepository.delete(existing);
             }
         }
 
         syncCurriculumBuildingByClass(academicYear, saved);
         syncManualLoadBuildingByClass(academicYear, saved);
+        return saved;
+    }
+
+    @Override
+    @Transactional
+    public ClassroomLeadershipEntry updateOne(Long id, ClassroomLeadershipEntryRequest request) {
+        if (id == null) {
+            throw new IllegalArgumentException("id is required");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("request is required");
+        }
+        String academicYear = normalize(request.getAcademicYear());
+        if (academicYear.isBlank()) {
+            throw new IllegalArgumentException("academicYear is required");
+        }
+        ClassroomLeadershipEntry entry = classroomLeadershipRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Класс не найден"));
+        if (!academicYear.equals(entry.getAcademicYear())) {
+            throw new IllegalArgumentException("Класс относится к другому учебному году");
+        }
+
+        String building = normalizeBuildingCode(request.getNumberSchoolBuilding());
+        String className = ClassNameNormalizer.normalize(request.getClassName());
+        String classDirection = normalize(request.getClassDirection());
+        String fioTeacher = normalize(request.getFioTeacher());
+        String classType = normalizeClassType(request.getClassType());
+        if (building.isBlank() || className.isBlank() || classDirection.isBlank() || fioTeacher.isBlank()) {
+            throw new IllegalArgumentException("numberSchoolBuilding, className, classDirection and fioTeacher are required");
+        }
+
+        ensureTeacherExists(fioTeacher);
+        ensureBuildingExists(building);
+
+        String oldClassName = ClassNameNormalizer.normalize(entry.getClassName());
+        String oldBuilding = normalizeBuildingCode(entry.getNumberSchoolBuilding());
+
+        entry.setNumberSchoolBuilding(building);
+        entry.setClassName(className);
+        entry.setClassDirection(classDirection);
+        entry.setFioTeacher(fioTeacher);
+        entry.setCampusAddress(resolveCampusAddress(building, request.getCampusAddress()));
+        entry.setClassType(classType);
+        ClassroomLeadershipEntry saved = classroomLeadershipRepository.save(entry);
+
+        propagateClassRename(academicYear, oldClassName, oldBuilding, saved.getClassName(), saved.getNumberSchoolBuilding());
+        syncCurriculumBuildingByClass(academicYear, List.of(saved));
+        syncManualLoadBuildingByClass(academicYear, List.of(saved));
         return saved;
     }
 
@@ -320,16 +369,66 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         if (building.isBlank() || normalizedClassName.isBlank()) {
             throw new IllegalArgumentException("numberSchoolBuilding and className are required");
         }
-        curriculumPlanEntryRepository.deleteByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, normalizedClassName);
-        manualLoadEntryRepository.deleteByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, normalizedClassName);
+        Optional<ClassroomLeadershipEntry> existing = classroomLeadershipRepository
+                .findByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, normalizedClassName);
+        existing.ifPresent(entry -> deleteClassTails(academicYear, entry));
+        if (existing.isEmpty()) {
+            deleteClassTails(academicYear, null, building, normalizedClassName);
+        }
         classroomLeadershipRepository.deleteByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, normalizedClassName);
     }
 
     @Override
+    public Map<String, Object> dependencySummary(String academicYear, String numberSchoolBuilding, String className) {
+        String building = normalizeBuildingCode(numberSchoolBuilding);
+        String normalizedClassName = ClassNameNormalizer.normalize(className);
+        Long classId = classroomLeadershipRepository
+                .findByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, normalizedClassName)
+                .map(ClassroomLeadershipEntry::getId)
+                .orElse(null);
+        long curriculumRows = curriculumPlanEntryRepository.countClassTails(academicYear, classId, building, normalizedClassName);
+        long manualLoadRows = manualLoadEntryRepository.countClassTails(academicYear, classId, building, normalizedClassName);
+        return Map.of(
+                "academicYear", academicYear,
+                "numberSchoolBuilding", building,
+                "className", normalizedClassName,
+                "curriculumRows", curriculumRows,
+                "manualLoadRows", manualLoadRows,
+                "totalRows", curriculumRows + manualLoadRows
+        );
+    }
+
+    @Override
+    @Transactional
     public void clearAll(String academicYear) {
+        curriculumPlanEntryRepository.deleteAllByAcademicYear(academicYear);
+        manualLoadEntryRepository.deleteAllByAcademicYear(academicYear);
         classroomLeadershipRepository.findAllByAcademicYear(academicYear).forEach(classroomLeadershipRepository::delete);
     }
 
+
+    private void deleteClassTails(String academicYear, ClassroomLeadershipEntry entry) {
+        if (entry == null) {
+            return;
+        }
+        deleteClassTails(
+                academicYear,
+                entry.getId(),
+                normalizeBuildingCode(entry.getNumberSchoolBuilding()),
+                ClassNameNormalizer.normalize(entry.getClassName())
+        );
+    }
+
+    private void deleteClassTails(String academicYear, Long classId, String building, String className) {
+        if (classId != null) {
+            curriculumPlanEntryRepository.deleteByAcademicYearAndClassId(academicYear, classId);
+            manualLoadEntryRepository.deleteByAcademicYearAndClassIds(academicYear, List.of(classId));
+        }
+        if (!normalize(building).isBlank() && !normalize(className).isBlank()) {
+            curriculumPlanEntryRepository.deleteByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, className);
+            manualLoadEntryRepository.deleteByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, className);
+        }
+    }
 
 
     private void propagateClassRename(String academicYear, String oldClassName, String oldBuilding, String newClassName, String newBuilding) {
@@ -429,14 +528,9 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     }
 
     private void ensureBuildingExists(String code) {
-        schoolBuildingRepository.findByCode(code).orElseGet(() -> {
-            org.school.personalLoad.model.SchoolBuilding b = new org.school.personalLoad.model.SchoolBuilding();
-            b.setCode(code);
-            b.setName(code);
-            b.setAddress("Не указан");
-            b.setManagerFio("Не назначен");
-            return schoolBuildingRepository.save(b);
-        });
+        if (schoolBuildingRepository.findByCode(code).isEmpty()) {
+            throw new IllegalArgumentException("Корпус не найден: " + code);
+        }
     }
 
     private void ensureTeacherExists(String fio) {
@@ -459,7 +553,9 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     }
 
     private String normalizeBuildingCode(String value) {
-        return normalize(value).replace(" ", "").toUpperCase(Locale.ROOT);
+        String normalized = normalize(value).replace(" ", "").toUpperCase(Locale.ROOT);
+        int addressSeparator = normalized.indexOf("|");
+        return addressSeparator >= 0 ? normalized.substring(0, addressSeparator) : normalized;
     }
 
     private String classScopeKey(String building, String className) {

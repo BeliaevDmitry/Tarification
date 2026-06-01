@@ -53,6 +53,12 @@
             <label>Дата выгрузки:
                 <select id="contingent-snapshot-date"></select>
             </label>
+            <label>Отображение:
+                <select id="contingent-stats-view-mode" data-allow-readonly="true">
+                    <option value="building">По корпусам и адресам</option>
+                    <option value="address">По адресам</option>
+                </select>
+            </label>
             <button id="contingent-stats-refresh-btn" type="button">Обновить</button>
             <button id="contingent-stats-export-btn" type="button" data-allow-readonly="true">Экспорт на дату</button>
         </div>
