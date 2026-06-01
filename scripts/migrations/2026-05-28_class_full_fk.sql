@@ -157,7 +157,7 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_curriculum_class_id_for_regular_class') THEN
         ALTER TABLE curriculum_plan_entry
             ADD CONSTRAINT chk_curriculum_class_id_for_regular_class
-            CHECK (coalesce(meta_group, false) = true OR class_name LIKE 'МГ:%' OR class_id IS NOT NULL);
+            CHECK (class_name LIKE 'МГ:%' OR class_id IS NOT NULL);
     END IF;
 END $$;
 
@@ -178,12 +178,6 @@ DECLARE
     bcode TEXT;
     ctype TEXT;
 BEGIN
-    IF TG_TABLE_NAME = 'curriculum_plan_entry'
-       AND (coalesce(NEW.meta_group, false) = true OR NEW.class_name LIKE 'МГ:%') THEN
-        NEW.class_id := NULL;
-        RETURN NEW;
-    END IF;
-
     IF NEW.class_name LIKE 'МГ:%' THEN
         NEW.class_id := NULL;
         RETURN NEW;

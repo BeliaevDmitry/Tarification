@@ -13,6 +13,7 @@ import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.ss.util.WorkbookUtil;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.school.personalLoad.dto.ManualLoadBulkRequest;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadHealthResponse;
 import org.school.personalLoad.dto.ManualLoadPlanFactSummary;
@@ -61,6 +62,7 @@ import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -94,6 +96,15 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     @Override
     @Transactional
     public List<ManualLoadEntry> createBulk(List<ManualLoadEntryRequest> requests) {
+        ManualLoadBulkRequest bulkRequest = new ManualLoadBulkRequest();
+        bulkRequest.setRows(requests == null ? List.of() : requests);
+        return createBulk(bulkRequest);
+    }
+
+    @Override
+    @Transactional
+    public List<ManualLoadEntry> createBulk(ManualLoadBulkRequest request) {
+        List<ManualLoadEntryRequest> requests = request == null || request.getRows() == null ? List.of() : request.getRows();
         java.util.Set<String> explicitAcademicYears = requests.stream()
                 .filter(java.util.Objects::nonNull)
                 .map(ManualLoadEntryRequest::getAcademicYear)
@@ -101,19 +112,40 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 .map(String::trim)
                 .filter(year -> !year.isBlank())
                 .collect(java.util.stream.Collectors.toSet());
+        if (request != null && request.getAcademicYear() != null && !request.getAcademicYear().isBlank()) {
+            explicitAcademicYears.add(request.getAcademicYear().trim());
+        }
         List<ManualLoadEntry> entries = requests.stream().map(this::toEntity).toList();
         java.util.Set<String> buildingCodes = entries.stream()
                 .map(ManualLoadEntry::getNumberSchoolBuilding)
                 .filter(java.util.Objects::nonNull)
                 .map(code -> code.trim().toLowerCase())
                 .filter(code -> !code.isBlank())
-                .collect(java.util.stream.Collectors.toSet());
-        if (!buildingCodes.isEmpty()) {
-            if (explicitAcademicYears.size() == 1) {
-                String academicYear = explicitAcademicYears.iterator().next();
-                manualLoadEntryRepository.deleteByAcademicYearAndBuildingCodes(academicYear, buildingCodes);
-            } else {
-                manualLoadEntryRepository.deleteByBuildingCodes(buildingCodes);
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+        String requestBuilding = request == null ? null : trimToNull(request.getNumberSchoolBuilding());
+        if (requestBuilding != null) {
+            buildingCodes.add(requestBuilding.toLowerCase(java.util.Locale.ROOT));
+        }
+        String scopeType = normalizeScopeType(request == null ? null : request.getScopeType());
+        String campusAddress = request == null ? null : trimToNull(request.getCampusAddress());
+        boolean addressScope = "BUILDING_ADDRESS".equals(scopeType) || campusAddress != null;
+        boolean explicitBuildingGroup = "BUILDING_GROUP".equals(scopeType);
+
+        if (explicitAcademicYears.size() == 1 && addressScope) {
+            String academicYear = explicitAcademicYears.iterator().next();
+            String building = requestBuilding != null ? requestBuilding : singleBuildingCode(buildingCodes);
+            java.util.Set<Long> classIds = scopedClassIds(request, entries);
+            validateAddressScopeClassIds(academicYear, building, campusAddress, classIds);
+            manualLoadEntryRepository.deleteByAcademicYearAndClassIds(academicYear, classIds);
+        } else {
+            validateBuildingGroupBulkScope(explicitAcademicYears, buildingCodes, explicitBuildingGroup);
+            if (!buildingCodes.isEmpty()) {
+                if (explicitAcademicYears.size() == 1) {
+                    String academicYear = explicitAcademicYears.iterator().next();
+                    manualLoadEntryRepository.deleteByAcademicYearAndBuildingCodes(academicYear, buildingCodes);
+                } else {
+                    manualLoadEntryRepository.deleteByBuildingCodes(buildingCodes);
+                }
             }
         }
         return manualLoadEntryRepository.saveAll(entries);
@@ -126,8 +158,20 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
     @Override
     public List<ManualLoadEntry> findAll(String academicYear, String numberSchoolBuilding) {
+        return findAll(academicYear, numberSchoolBuilding, null);
+    }
+
+    @Override
+    public List<ManualLoadEntry> findAll(String academicYear, String numberSchoolBuilding, String campusAddress) {
         if (numberSchoolBuilding == null || numberSchoolBuilding.isBlank()) {
             return findAll(academicYear);
+        }
+        if (campusAddress != null && !campusAddress.isBlank()) {
+            return manualLoadEntryRepository.findAllByAcademicYearAndBuildingAddress(
+                    academicYear,
+                    numberSchoolBuilding.trim(),
+                    campusAddress.trim()
+            );
         }
         return manualLoadEntryRepository.findAllByAcademicYearAndNumberSchoolBuildingIgnoreCase(
                 academicYear,
@@ -144,13 +188,31 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     @Override
     @Transactional
     public void clearByBuilding(String academicYear, String numberSchoolBuilding) {
+        clearByBuilding(academicYear, numberSchoolBuilding, null);
+    }
+
+    @Override
+    @Transactional
+    public void clearByBuilding(String academicYear, String numberSchoolBuilding, String scopeType) {
         if (numberSchoolBuilding == null || numberSchoolBuilding.isBlank()) {
             throw new IllegalArgumentException("building is required");
         }
+        String normalizedScopeType = normalizeScopeType(scopeType);
+        boolean explicitBuildingGroup = "BUILDING_GROUP".equals(normalizedScopeType);
+        validateBuildingGroupDeleteScope(academicYear, numberSchoolBuilding.trim(), explicitBuildingGroup);
         manualLoadEntryRepository.deleteByAcademicYearAndBuildingCodes(
                 academicYear,
                 java.util.List.of(numberSchoolBuilding.trim().toLowerCase(java.util.Locale.ROOT))
         );
+    }
+
+    @Override
+    @Transactional
+    public void clearByBuildingAddress(String academicYear, String numberSchoolBuilding, String campusAddress) {
+        if (numberSchoolBuilding == null || numberSchoolBuilding.isBlank() || campusAddress == null || campusAddress.isBlank()) {
+            throw new IllegalArgumentException("building and campusAddress are required");
+        }
+        manualLoadEntryRepository.deleteByAcademicYearAndBuildingAddress(academicYear, numberSchoolBuilding.trim(), campusAddress.trim());
     }
 
     @Override
@@ -351,15 +413,20 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 emptyHeader.getCell(0).setCellStyle(header);
                 sheet.setColumnWidth(0, 45 * 256);
             }
-            for (String building : sheetOrder) {
-                Sheet sheet = workbook.createSheet(uniqueSheetName(workbook, building));
+            if (!rows.isEmpty()) {
+                sheetOrder.add("Все педагоги");
+            }
+            for (String sheetScope : sheetOrder) {
+                boolean allTeachersSheet = "Все педагоги".equals(sheetScope);
+                String building = sheetScope;
+                Sheet sheet = workbook.createSheet(uniqueSheetName(workbook, sheetScope));
                 sheet.getPrintSetup().setLandscape(true);
                 sheet.setFitToPage(true);
                 sheet.getPrintSetup().setFitWidth((short) 1);
                 sheet.getPrintSetup().setFitHeight((short) 0);
 
                 Row h = sheet.createRow(0);
-                List<String> cols = new ArrayList<>(List.of("ФИО", "Предмет", "Класс", "Группа", "Количество детей", "Часы по предмету", "Период нагрузки", "Часы в корпусе/всего", "Дополнительные сведения"));
+                List<String> cols = new ArrayList<>(List.of("ФИО", "Предмет", "Класс", "Группа", "Количество детей", "Часы по предмету", "Период нагрузки", "Часы в корпусе/всего", "Корпус", "Классное руководство"));
                 if (includeSalary) {
                     cols.add("За часы");
                     cols.add("Классное руководство, руб.");
@@ -372,29 +439,36 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 Map<String, int[]> totalsByTeacher = new HashMap<>();
                 rows.forEach(r -> {
                     String k = String.valueOf(r.getFioTeacher()).trim().toLowerCase(Locale.ROOT);
-                    int[] t = totalsByTeacher.computeIfAbsent(k, x -> new int[]{0, 0, 0, 0}); // bH1,bH2,aH1,aH2
+                    int[] t = totalsByTeacher.computeIfAbsent(k, x -> new int[]{0, 0, 0, 0}); // scopedH1,scopedH2,totalH1,totalH2
                     int load = r.getLoad() == null ? 0 : r.getLoad();
-                    boolean isBuilding = building.equals(r.getNumberSchoolBuilding());
+                    boolean isScoped = allTeachersSheet || building.equals(r.getNumberSchoolBuilding());
                     StudyPeriod period = r.getStudyPeriod() == null ? StudyPeriod.YEAR : r.getStudyPeriod();
                     if (period == StudyPeriod.H1) {
                         t[2] += load;
-                        if (isBuilding) t[0] += load;
+                        if (isScoped) t[0] += load;
                     } else if (period == StudyPeriod.H2) {
                         t[3] += load;
-                        if (isBuilding) t[1] += load;
+                        if (isScoped) t[1] += load;
                     } else {
                         t[2] += load;
                         t[3] += load;
-                        if (isBuilding) {
+                        if (isScoped) {
                             t[0] += load;
                             t[1] += load;
                         }
                     }
                 });
 
-                List<ManualLoadEntry> buildingRows = byBuilding.getOrDefault(building, List.of());
+                List<ManualLoadEntry> scopeRows = allTeachersSheet ? rows : byBuilding.getOrDefault(building, List.of());
+                Set<String> teacherKeysInScope = scopeRows.stream()
+                        .map(row -> String.valueOf(row.getFioTeacher()).trim().toLowerCase(Locale.ROOT))
+                        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+                List<ManualLoadEntry> buildingRows = rows.stream()
+                        .filter(row -> teacherKeysInScope.contains(String.valueOf(row.getFioTeacher()).trim().toLowerCase(Locale.ROOT)))
+                        .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
                 buildingRows.sort(
                         Comparator.comparing(ManualLoadEntry::getFioTeacher, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                                .thenComparing(row -> allTeachersSheet || building.equals(row.getNumberSchoolBuilding()) ? 0 : 1)
                                 .thenComparing(ManualLoadEntry::getSubjectName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
                                 .thenComparing(ManualLoadEntry::getClassName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
                 );
@@ -405,30 +479,18 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     ManualLoadEntry e = buildingRows.get(i);
                     String fio = String.valueOf(e.getFioTeacher() == null ? "" : e.getFioTeacher()).trim();
                     String key = fio.toLowerCase(Locale.ROOT);
-                    int[] t = totalsByTeacher.getOrDefault(key, new int[]{0,0});
-                    TeacherDirectoryEntry td = teacherByFio.get(key);
-                    String allAddresses = teacherAddresses(rowsByTeacher.getOrDefault(key, List.of()), addressByClass, addressesByBuilding);
-                    String allBuildings = rowsByTeacher.getOrDefault(key, List.of()).stream()
-                            .map(ManualLoadEntry::getNumberSchoolBuilding).filter(Objects::nonNull).distinct().sorted().collect(java.util.stream.Collectors.joining(", "));
+                    int[] t = totalsByTeacher.getOrDefault(key, new int[]{0,0,0,0});
                     String classLeadership = String.join(", ", classLeadershipByTeacher.getOrDefault(key, List.of()));
-                    String extra = "";
-                    if (!allAddresses.isBlank()) {
-                        extra += "Адреса: " + allAddresses;
-                    } else if (!allBuildings.isBlank()) {
-                        extra += "Корпуса: " + allBuildings;
-                    }
-                    if (!classLeadership.isBlank()) extra += (extra.isBlank() ? "" : "\n") + "Классное руководство: " + classLeadership;
-                    if (td != null && td.getAdditionalDuties() != null && !td.getAdditionalDuties().isBlank()) extra += (extra.isBlank() ? "" : "\n") + "Доп. обязанности: " + td.getAdditionalDuties();
 
                     if (!Objects.equals(currentTeacher, key)) {
                         if (currentTeacher != null && rowNum - 1 > teacherStart) {
                             sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 0, 0));
                             sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 7, 7));
-                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 8, 8));
+                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 9, 9));
                             if (includeSalary) {
-                                sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 9, 9));
                                 sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 10, 10));
                                 sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 11, 11));
+                                sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 12, 12));
                             }
                         }
                         currentTeacher = key;
@@ -436,15 +498,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     }
 
                     int subjectHours = e.getGroupLoad() != null ? e.getGroupLoad() : (e.getLoad() == null ? 0 : e.getLoad());
-                    String periodLabel = e.getStudyPeriod() == StudyPeriod.H1 ? "1 полугодие"
-                            : e.getStudyPeriod() == StudyPeriod.H2 ? "2 полугодие" : "год";
-                    String hoursSummary;
-                    if (t[0] == t[1] && t[2] == t[3]) {
-                        hoursSummary = t[0] + "/" + t[2];
-                    } else {
-                        hoursSummary = "1 полугодие: " + t[0] + "/" + t[2] + "\n"
-                                + "2 полугодие: " + t[1] + "/" + t[3];
-                    }
+                    String periodLabel = e.getStudyPeriod() == StudyPeriod.H1 ? "1П"
+                            : e.getStudyPeriod() == StudyPeriod.H2 ? "2П" : "ГОД";
+                    String hoursSummary = formatScopedTotalHours(t[0], t[1], t[2], t[3]);
                     int classSize = classSizeByClass.getOrDefault(normalizeToken(e.getClassName()), 30);
                     String group = String.valueOf(e.getGroupNameEducationalPlan() == null ? "" : e.getGroupNameEducationalPlan()).toLowerCase(Locale.ROOT);
                     int firstGroupSize = (classSize + 1) / 2;
@@ -467,38 +523,42 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     r.createCell(5).setCellValue(subjectHours);
                     r.createCell(6).setCellValue(periodLabel);
                     r.createCell(7).setCellValue(hoursSummary);
-                    r.createCell(8).setCellValue(extra);
+                    String rowAddress = resolveRowAddress(e, addressByClass, addressesByBuilding);
+                    String rowBuilding = normalizeDisplayValue(e.getNumberSchoolBuilding());
+                    r.createCell(8).setCellValue(rowBuilding + (rowAddress.isBlank() ? "" : "\n" + rowAddress));
+                    r.createCell(9).setCellValue(classLeadership);
                     if (includeSalary) {
-                        SalaryTotals salary = salarySummary.byBuildingTeacher().getOrDefault(salaryKey(building, key), SalaryTotals.empty());
-                        r.createCell(9).setCellValue(moneyValue(salary.hourSalary()));
-                        r.createCell(10).setCellValue(moneyValue(salary.classLeadershipSalary()));
-                        r.createCell(11).setCellValue(moneyValue(salary.total()));
+                        SalaryTotals salary = salarySummary.byTeacher().getOrDefault(key, SalaryTotals.empty());
+                        r.createCell(10).setCellValue(moneyValue(salary.hourSalary()));
+                        r.createCell(11).setCellValue(moneyValue(salary.classLeadershipSalary()));
+                        r.createCell(12).setCellValue(moneyValue(salary.total()));
                     }
-                    for (int c = 0; c <= (includeSalary ? 11 : 8); c++) r.getCell(c).setCellStyle(c >= 9 ? money : wrap);
+                    for (int c = 0; c <= (includeSalary ? 12 : 9); c++) r.getCell(c).setCellStyle(c >= 10 ? money : wrap);
                     if (i == buildingRows.size() - 1 && rowNum - 1 > teacherStart) {
                         sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 0, 0));
                         sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 7, 7));
-                        sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 8, 8));
+                        sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 9, 9));
                         if (includeSalary) {
-                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 9, 9));
                             sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 10, 10));
                             sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 11, 11));
+                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 12, 12));
                         }
                     }
                 }
-                sheet.setColumnWidth(0, 20 * 256);
-                sheet.setColumnWidth(1, 22 * 256);
-                sheet.setColumnWidth(2, 12 * 256);
-                sheet.setColumnWidth(3, 16 * 256);
-                sheet.setColumnWidth(4, 14 * 256);
-                sheet.setColumnWidth(5, 14 * 256);
-                sheet.setColumnWidth(6, 16 * 256);
-                sheet.setColumnWidth(7, 24 * 256);
-                sheet.setColumnWidth(8, 45 * 256);
+                sheet.setColumnWidth(0, 13 * 256);
+                sheet.setColumnWidth(1, 20 * 256);
+                sheet.setColumnWidth(2, 10 * 256);
+                sheet.setColumnWidth(3, 12 * 256);
+                sheet.setColumnWidth(4, 11 * 256);
+                sheet.setColumnWidth(5, 11 * 256);
+                sheet.setColumnWidth(6, 11 * 256);
+                sheet.setColumnWidth(7, 18 * 256);
+                sheet.setColumnWidth(8, 26 * 256);
+                sheet.setColumnWidth(9, 16 * 256);
                 if (includeSalary) {
-                    sheet.setColumnWidth(9, 12 * 256);
-                    sheet.setColumnWidth(10, 18 * 256);
-                    sheet.setColumnWidth(11, 12 * 256);
+                    sheet.setColumnWidth(10, 12 * 256);
+                    sheet.setColumnWidth(11, 18 * 256);
+                    sheet.setColumnWidth(12, 12 * 256);
                 }
             }
             if (includeSalary) {
@@ -507,6 +567,21 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             workbook.write(out);
             return out.toByteArray();
         }
+    }
+
+    private String formatScopedTotalHours(int scopedH1, int scopedH2, int totalH1, int totalH2) {
+        if (scopedH1 == totalH1 && scopedH2 == totalH2) {
+            return formatHalfHours(totalH1, totalH2);
+        }
+        if (scopedH1 == scopedH2 && totalH1 == totalH2) {
+            return scopedH1 + "/" + totalH1;
+        }
+        return "1П: " + scopedH1 + "/" + totalH1 + "\n"
+                + "2П: " + scopedH2 + "/" + totalH2;
+    }
+
+    private String formatHalfHours(int h1, int h2) {
+        return h1 == h2 ? String.valueOf(h1) : h1 + "/" + h2;
     }
 
     private String teacherAddresses(List<ManualLoadEntry> teacherRows,
@@ -548,15 +623,18 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                                                  Map<String, Integer> classSizeByClass,
                                                  Map<String, BigDecimal> subjectCoefficientByName,
                                                  BigDecimal studentHourRate) {
-        Map<String, SalaryTotals> byBuildingTeacher = new HashMap<>();
+        Map<String, SalaryTotals> byTeacher = new HashMap<>();
         Map<String, SalaryTotals> byBuilding = new HashMap<>();
         SalaryTotals complex = new SalaryTotals();
 
         for (ManualLoadEntry row : rows) {
+            if (!isFirstHalfSalaryRow(row)) {
+                continue;
+            }
             String building = buildingKey(row.getNumberSchoolBuilding());
             String teacher = String.valueOf(row.getFioTeacher()).trim().toLowerCase(Locale.ROOT);
             BigDecimal hourSalary = calculateHourSalary(row, classSizeByClass, subjectCoefficientByName, studentHourRate);
-            byBuildingTeacher.computeIfAbsent(salaryKey(building, teacher), key -> new SalaryTotals()).addHourSalary(hourSalary);
+            byTeacher.computeIfAbsent(teacher, key -> new SalaryTotals()).addHourSalary(hourSalary);
             byBuilding.computeIfAbsent(building, key -> new SalaryTotals()).addHourSalary(hourSalary);
             complex.addHourSalary(hourSalary);
         }
@@ -567,23 +645,27 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 continue;
             }
             String building = buildingKey(entry.getNumberSchoolBuilding());
-            int classSize = classSizeByClass.getOrDefault(normalizeToken(entry.getClassName()), 25);
+            int classSize = classSizeByClass.getOrDefault(normalizeToken(entry.getClassName()), 30);
             BigDecimal leadershipSalary = CLASS_LEADERSHIP_PER_STUDENT
                     .multiply(BigDecimal.valueOf(classSize))
                     .add(CLASS_LEADERSHIP_BASE);
-            byBuildingTeacher.computeIfAbsent(salaryKey(building, teacher), key -> new SalaryTotals()).addClassLeadershipSalary(leadershipSalary);
+            byTeacher.computeIfAbsent(teacher, key -> new SalaryTotals()).addClassLeadershipSalary(leadershipSalary);
             byBuilding.computeIfAbsent(building, key -> new SalaryTotals()).addClassLeadershipSalary(leadershipSalary);
             complex.addClassLeadershipSalary(leadershipSalary);
         }
 
-        return new SalarySummary(byBuildingTeacher, byBuilding, complex);
+        return new SalarySummary(byTeacher, byBuilding, complex);
+    }
+
+    private boolean isFirstHalfSalaryRow(ManualLoadEntry row) {
+        return row.getStudyPeriod() != StudyPeriod.H2;
     }
 
     private BigDecimal calculateHourSalary(ManualLoadEntry row,
                                            Map<String, Integer> classSizeByClass,
                                            Map<String, BigDecimal> subjectCoefficientByName,
                                            BigDecimal studentHourRate) {
-        int classSize = classSizeByClass.getOrDefault(normalizeToken(row.getClassName()), 25);
+        int classSize = classSizeByClass.getOrDefault(normalizeToken(row.getClassName()), 30);
         String group = String.valueOf(row.getGroupNameEducationalPlan() == null ? "" : row.getGroupNameEducationalPlan()).toLowerCase(Locale.ROOT);
         int firstGroupSize = (classSize + 1) / 2;
         int secondGroupSize = classSize - firstGroupSize;
@@ -621,10 +703,6 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             return BigDecimal.ONE;
         }
         return value;
-    }
-
-    private String salaryKey(String building, String teacher) {
-        return buildingKey(building) + "|" + String.valueOf(teacher == null ? "" : teacher).trim().toLowerCase(Locale.ROOT);
     }
 
     private String buildingKey(String building) {
@@ -669,7 +747,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         sheet.setColumnWidth(3, 12 * 256);
     }
 
-    private record SalarySummary(Map<String, SalaryTotals> byBuildingTeacher,
+    private record SalarySummary(Map<String, SalaryTotals> byTeacher,
                                  Map<String, SalaryTotals> byBuilding,
                                  SalaryTotals complex) {
         static SalarySummary empty() {
@@ -1113,6 +1191,86 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 normalizeToken(level == null ? EducationLevel.BASIC.name() : level.name()));
     }
 
+    private java.util.Set<Long> scopedClassIds(ManualLoadBulkRequest request, List<ManualLoadEntry> entries) {
+        java.util.Set<Long> classIds = new java.util.LinkedHashSet<>();
+        if (request != null && request.getClassIds() != null) {
+            request.getClassIds().stream().filter(java.util.Objects::nonNull).forEach(classIds::add);
+        }
+        entries.stream().map(ManualLoadEntry::getClassId).filter(java.util.Objects::nonNull).forEach(classIds::add);
+        return classIds;
+    }
+
+    private void validateAddressScopeClassIds(String academicYear, String numberSchoolBuilding, String campusAddress, java.util.Set<Long> classIds) {
+        if (academicYear == null || academicYear.isBlank() || numberSchoolBuilding == null || numberSchoolBuilding.isBlank() || campusAddress == null || campusAddress.isBlank()) {
+            throw new IllegalArgumentException("academicYear, numberSchoolBuilding and campusAddress are required for BUILDING_ADDRESS scope");
+        }
+        if (classIds == null || classIds.isEmpty()) {
+            throw new IllegalArgumentException("classIds are required for BUILDING_ADDRESS scope");
+        }
+        java.util.Map<Long, ClassroomLeadershipEntry> classesById = classroomLeadershipRepository.findAllById(classIds).stream()
+                .collect(java.util.stream.Collectors.toMap(ClassroomLeadershipEntry::getId, java.util.function.Function.identity()));
+        java.util.List<Long> invalidIds = classIds.stream()
+                .filter(id -> !classBelongsToAddressScope(classesById.get(id), academicYear, numberSchoolBuilding, campusAddress))
+                .toList();
+        if (!invalidIds.isEmpty()) {
+            throw new IllegalArgumentException("classIds do not belong to selected building/address scope: " + invalidIds);
+        }
+    }
+
+    private boolean classBelongsToAddressScope(ClassroomLeadershipEntry entry, String academicYear, String numberSchoolBuilding, String campusAddress) {
+        return entry != null
+                && normalizeToken(entry.getAcademicYear()).equals(normalizeToken(academicYear))
+                && normalizeToken(entry.getNumberSchoolBuilding()).equals(normalizeToken(numberSchoolBuilding))
+                && normalizeToken(entry.getCampusAddress()).equals(normalizeToken(campusAddress));
+    }
+
+    private void validateBuildingGroupBulkScope(java.util.Set<String> academicYears, java.util.Set<String> buildingCodes, boolean explicitBuildingGroup) {
+        if (buildingCodes == null || buildingCodes.isEmpty() || academicYears == null || academicYears.size() != 1) {
+            return;
+        }
+        String academicYear = academicYears.iterator().next();
+        java.util.List<String> unsafeBuildings = buildingCodes.stream()
+                .filter(building -> buildingHasMultipleAddresses(academicYear, building))
+                .filter(building -> !explicitBuildingGroup)
+                .toList();
+        if (!unsafeBuildings.isEmpty()) {
+            throw new IllegalArgumentException("Manual load bulk save for multi-address building requires campusAddress/classIds or explicit scopeType=BUILDING_GROUP: " + String.join(", ", unsafeBuildings));
+        }
+    }
+
+    private void validateBuildingGroupDeleteScope(String academicYear, String numberSchoolBuilding, boolean explicitBuildingGroup) {
+        if (!explicitBuildingGroup && buildingHasMultipleAddresses(academicYear, numberSchoolBuilding)) {
+            throw new IllegalArgumentException("Manual load delete for multi-address building requires campusAddress or explicit scopeType=BUILDING_GROUP");
+        }
+    }
+
+    private boolean buildingHasMultipleAddresses(String academicYear, String numberSchoolBuilding) {
+        if (academicYear == null || academicYear.isBlank() || numberSchoolBuilding == null || numberSchoolBuilding.isBlank()) {
+            return false;
+        }
+        return classroomLeadershipRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(entry -> normalizeToken(entry.getNumberSchoolBuilding()).equals(normalizeToken(numberSchoolBuilding)))
+                .map(ClassroomLeadershipEntry::getCampusAddress)
+                .map(this::normalizeToken)
+                .filter(address -> !address.isBlank())
+                .distinct()
+                .limit(2)
+                .count() > 1;
+    }
+
+    private String normalizeScopeType(String scopeType) {
+        return String.valueOf(scopeType == null ? "" : scopeType).trim().toUpperCase(Locale.ROOT);
+    }
+
+    private String trimToNull(String value) {
+        String normalized = String.valueOf(value == null ? "" : value).trim();
+        return normalized.isBlank() ? null : normalized;
+    }
+
+    private String singleBuildingCode(java.util.Set<String> buildingCodes) {
+        return buildingCodes == null || buildingCodes.size() != 1 ? null : buildingCodes.iterator().next();
+    }
+
     private String normalizeToken(String value) {
         return String.valueOf(value == null ? "" : value).trim().toLowerCase(Locale.ROOT);
     }
@@ -1161,6 +1319,23 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         return normalized.isBlank() ? null : normalized;
     }
 
+    private Long resolveClassId(String academicYear, ManualLoadEntryRequest request) {
+        if (request.getClassId() != null) {
+            return request.getClassId();
+        }
+        if (request.getNumberSchoolBuilding() == null || request.getClassName() == null) {
+            return null;
+        }
+        return classroomLeadershipRepository
+                .findByAcademicYearAndNumberSchoolBuildingAndClassName(
+                        academicYear,
+                        request.getNumberSchoolBuilding().trim(),
+                        ClassNameNormalizer.normalize(request.getClassName())
+                )
+                .map(ClassroomLeadershipEntry::getId)
+                .orElse(null);
+    }
+
     private ManualLoadEntry toEntity(ManualLoadEntryRequest request) {
         validate(request);
         String effectiveAcademicYear = resolveAcademicYearOrDefault(request.getAcademicYear());
@@ -1168,6 +1343,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         entity.setAcademicYear(effectiveAcademicYear);
         entity.setFioTeacher(request.getFioTeacher().trim());
         entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
+        entity.setClassId(resolveClassId(effectiveAcademicYear, request));
         SubjectCatalogEntry subject = subjectCatalogRepository.findAll().stream()
                 .filter(s -> s.getSubjectName().equalsIgnoreCase(request.getSubjectName().trim()))
                 .findFirst()

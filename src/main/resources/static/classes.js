@@ -81,6 +81,25 @@ function buildingAddressKey(address) {
     return norm(address).toLowerCase();
 }
 
+function classSortValue(className) {
+    const normalized = normalizeClassName(className);
+    const match = normalized.match(/^(\d{1,2})\s*[- ]?\s*(.*)$/);
+    if (!match) {
+        return { parallel: Number.MAX_SAFE_INTEGER, letter: normalized };
+    }
+    return { parallel: Number(match[1]), letter: match[2] || '' };
+}
+
+function compareClassRows(a, b) {
+    const buildingCompare = normalizeBuildingCode(a?.numberSchoolBuilding)
+        .localeCompare(normalizeBuildingCode(b?.numberSchoolBuilding), 'ru', { numeric: true });
+    if (buildingCompare) return buildingCompare;
+    const aClass = classSortValue(a?.className);
+    const bClass = classSortValue(b?.className);
+    if (aClass.parallel !== bClass.parallel) return aClass.parallel - bClass.parallel;
+    return aClass.letter.localeCompare(bClass.letter, 'ru', { numeric: true });
+}
+
 function buildingChoiceKey(code, address) {
     return `${normalizeBuildingCode(code)}|${buildingAddressKey(address)}`;
 }
@@ -218,7 +237,7 @@ function openEditDialog(entry) {
 
 function renderClasses(rows) {
     ui.body.innerHTML = "";
-    classRows = (rows || []).slice();
+    classRows = (rows || []).slice().sort(compareClassRows);
     classRows.forEach((r) => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
@@ -257,6 +276,22 @@ async function reload() {
     renderClasses(classRows);
 }
 
+async function classDependencySummary(building, className) {
+    return api(`/api/classroom-leadership/one/dependencies?numberSchoolBuilding=${encodeURIComponent(building)}&className=${encodeURIComponent(className)}`);
+}
+
+function classDeleteWarning(className, building, dependencies) {
+    const curriculumRows = Number(dependencies?.curriculumRows || 0);
+    const manualLoadRows = Number(dependencies?.manualLoadRows || 0);
+    const warnings = [];
+    if (manualLoadRows > 0) warnings.push(`нагрузка: ${manualLoadRows} строк`);
+    if (curriculumRows > 0) warnings.push(`учебный план: ${curriculumRows} строк`);
+    const tailText = warnings.length
+        ? `\n\nВНИМАНИЕ: вместе с классом будут удалены связанные хвосты (${warnings.join(", ")}).`
+        : `\n\nСвязанной нагрузки и предметов учебного плана для этого класса не найдено.`;
+    return `Удалить класс ${className} в корпусе ${building}?${tailText}`;
+}
+
 async function upsertEntry(entry, originalKey = null) {
     const current = await api("/api/classroom-leadership");
     const filtered = (current || []).filter((r) => {
@@ -266,6 +301,17 @@ async function upsertEntry(entry, originalKey = null) {
     });
     filtered.push(entry);
     return api("/api/classroom-leadership", { method: "PUT", headers: jsonHeaders, body: JSON.stringify(filtered) });
+}
+
+async function updateEntry(entry) {
+    if (!entry?.id) {
+        return upsertEntry(entry, editingOriginalKey);
+    }
+    return api(`/api/classroom-leadership/${encodeURIComponent(entry.id)}`, {
+        method: "PATCH",
+        headers: jsonHeaders,
+        body: JSON.stringify(entry)
+    });
 }
 
 updateTemplateLink();
@@ -321,9 +367,9 @@ ui.editForm.addEventListener('submit', async (e) => {
     }
 
     try {
-        const saved = await upsertEntry(entry, editingOriginalKey);
+        const saved = await updateEntry(entry);
         ui.editDialog.close();
-        print({ status: "updated", total: saved.length });
+        print({ status: "updated", id: saved.id, numberSchoolBuilding: saved.numberSchoolBuilding, className: saved.className });
         await reload();
     } catch (error) {
         print({ error: error.message });
@@ -338,8 +384,9 @@ ui.editDeleteBtn?.addEventListener('click', async () => {
         print({ error: "Выберите корпус и класс для удаления" });
         return;
     }
-    if (!window.confirm(`Удалить класс ${className} в корпусе ${building}?`)) return;
     try {
+        const dependencies = await classDependencySummary(building, className);
+        if (!window.confirm(classDeleteWarning(className, building, dependencies))) return;
         await api(`/api/classroom-leadership/one?numberSchoolBuilding=${encodeURIComponent(building)}&className=${encodeURIComponent(className)}`, { method: "DELETE" });
         ui.editDialog.close();
         print({ status: "deleted", numberSchoolBuilding: building, className });
@@ -366,6 +413,7 @@ ui.importBtn.addEventListener("click", async () => {
 
 ui.refreshBtn.addEventListener("click", () => reload().catch((error) => print({ error: error.message })));
 ui.clearBtn.addEventListener("click", async () => {
+    if (!window.confirm("Удалить все классы выбранного учебного года? Вместе с ними будут удалены вся нагрузка и весь учебный план этого года.")) return;
     try {
         await api("/api/classroom-leadership", { method: "DELETE" });
         print({ status: "cleared" });
