@@ -1,5 +1,6 @@
 package org.school.personalLoad.service;
 
+import org.school.personalLoad.dto.ManualLoadBulkRequest;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadHealthResponse;
 import org.school.personalLoad.dto.ManualLoadProcessResult;
@@ -15,16 +16,28 @@ public interface ManualLoadService {
 
     List<ManualLoadEntry> createBulk(List<ManualLoadEntryRequest> requests);
 
+    default List<ManualLoadEntry> createBulk(ManualLoadBulkRequest request) {
+        return createBulk(request == null ? List.of() : request.getRows());
+    }
+
     List<ManualLoadEntry> findAll(String academicYear);
 
     default List<ManualLoadEntry> findAll(String academicYear, String numberSchoolBuilding) {
         return findAll(academicYear);
     }
 
+    default List<ManualLoadEntry> findAll(String academicYear, String numberSchoolBuilding, String campusAddress) {
+        return findAll(academicYear, numberSchoolBuilding);
+    }
+
     void clearAll(String academicYear);
 
     default void clearByBuilding(String academicYear, String numberSchoolBuilding) {
         throw new UnsupportedOperationException("clearByBuilding is not implemented");
+    }
+
+    default void clearByBuildingAddress(String academicYear, String numberSchoolBuilding, String campusAddress) {
+        clearByBuilding(academicYear, numberSchoolBuilding);
     }
 
     ManualLoadProcessResult processCurrentManualLoad(String academicYear);
