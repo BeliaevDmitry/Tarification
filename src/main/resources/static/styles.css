@@ -2052,3 +2052,151 @@ dialog::backdrop {
     z-index: 12;
     background: #f8fafc;
 }
+
+/* Воспитательная работа */
+.toolbar-form {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.result-block {
+    margin-top: 14px;
+}
+
+.educational-work-tabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 12px 0 16px;
+}
+
+.tab-button {
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #1f2937;
+}
+
+.tab-button.active {
+    background: #1769aa;
+    border-color: #1769aa;
+    color: #fff;
+}
+
+.table-wrapper {
+    overflow-x: auto;
+    margin-bottom: 16px;
+}
+
+.status-ok {
+    color: #148743;
+    font-weight: 700;
+    text-align: center;
+}
+
+.status-error {
+    color: #c3292e;
+    font-weight: 700;
+}
+
+.success-message,
+.error-message {
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-weight: 700;
+}
+
+.success-message {
+    background: #ecfdf3;
+    color: #146c43;
+    border: 1px solid #badbcc;
+}
+
+.error-message {
+    background: #fff3f3;
+    color: #9f1c22;
+    border: 1px solid #f1b6b9;
+}
+
+.issue-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.issue-item {
+    background: #fff7f7;
+    border-left: 4px solid #c3292e;
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+.building-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+    margin-top: 14px;
+}
+
+.building-summary-card {
+    border: 1px solid #d8e0ea;
+    border-radius: 12px;
+    background: #fff;
+    padding: 14px;
+}
+
+.building-summary-card h3 {
+    margin-top: 0;
+}
+
+.educational-work-summary-table th,
+.educational-work-summary-table td {
+    text-align: center;
+    min-width: 44px;
+}
+
+.educational-work-summary-table th:first-child {
+    min-width: 110px;
+    text-align: left;
+}
+
+.summary-empty {
+    background: #f8fafc;
+}
+
+
+.educational-work-unified-summary-table .summary-building-divider > th,
+.educational-work-unified-summary-table .summary-building-divider > td {
+    border-top: 4px solid #334155;
+}
+
+.educational-work-unified-summary-table .summary-building-cell {
+    font-weight: 700;
+    background: #eef4ff;
+    vertical-align: middle;
+    min-width: 90px;
+}
+
+.download-btn {
+    display: inline-block;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: #1769aa;
+    color: #fff;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.download-btn:hover,
+.download-btn:focus {
+    background: #11598f;
+    color: #fff;
+}
+
+.educational-work-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-bottom: 12px;
+}

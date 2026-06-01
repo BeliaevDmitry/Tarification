@@ -55,6 +55,9 @@ public class ManualLoadEntry {
     @Column(nullable = false)
     private String className;
 
+    @Column(name = "class_id")
+    private Long classId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "class_id", insertable = false, updatable = false)
     @JsonIgnore

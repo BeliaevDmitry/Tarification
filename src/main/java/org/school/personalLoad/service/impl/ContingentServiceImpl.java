@@ -3,6 +3,7 @@ package org.school.personalLoad.service.impl;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.ss.util.RegionUtil;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.contingent.ContingentDtos;
 import org.school.personalLoad.model.ContingentSnapshot;
@@ -192,12 +193,23 @@ public class ContingentServiceImpl implements ContingentService {
             placementByClass.put(className, new ClassPlacement(buildingCode, buildingName, address));
         });
 
+        Map<String, Integer> importedCountByClass = new TreeMap<>();
+        for (String rawClassName : classNames) {
+            String className = ClassNameNormalizer.normalize(rawClassName);
+            if (extractParallel(className) >= 0) {
+                importedCountByClass.merge(className, 1, Integer::sum);
+            }
+        }
+
+        Set<String> allClassNames = new TreeSet<>(this::compareClassNames);
+        allClassNames.addAll(placementByClass.keySet());
+        allClassNames.addAll(importedCountByClass.keySet());
+
         Map<Integer, Integer> totalByParallel = new TreeMap<>();
         Map<String, Integer> totalByAddress = new LinkedHashMap<>();
         Map<String, List<ContingentDtos.ClassTotal>> classesByAddress = new LinkedHashMap<>();
 
-        for (String rawClassName : classNames) {
-            String className = ClassNameNormalizer.normalize(rawClassName);
+        for (String className : allClassNames) {
             int parallel = extractParallel(className);
             if (parallel < 0) {
                 continue;
@@ -205,24 +217,17 @@ public class ContingentServiceImpl implements ContingentService {
 
             ClassPlacement placement = placementByClass.getOrDefault(className, new ClassPlacement("НЕОПР", "НЕОПР", "Адрес не указан"));
             String addressKey = placement.buildingCode + "|" + placement.buildingName + "|" + placement.address;
+            int students = importedCountByClass.getOrDefault(className, 30);
 
             List<ContingentDtos.ClassTotal> classTotals = classesByAddress.computeIfAbsent(addressKey, k -> new ArrayList<>());
-            ContingentDtos.ClassTotal existing = classTotals.stream()
-                    .filter(item -> Objects.equals(item.getClassName(), className) && Objects.equals(item.getParallel(), parallel))
-                    .findFirst()
-                    .orElse(null);
-            if (existing == null) {
-                ContingentDtos.ClassTotal created = new ContingentDtos.ClassTotal();
-                created.setParallel(parallel);
-                created.setClassName(className);
-                created.setStudents(1);
-                classTotals.add(created);
-            } else {
-                existing.setStudents(existing.getStudents() + 1);
-            }
+            ContingentDtos.ClassTotal created = new ContingentDtos.ClassTotal();
+            created.setParallel(parallel);
+            created.setClassName(className);
+            created.setStudents(students);
+            classTotals.add(created);
 
-            totalByParallel.merge(parallel, 1, Integer::sum);
-            totalByAddress.merge(addressKey, 1, Integer::sum);
+            totalByParallel.merge(parallel, students, Integer::sum);
+            totalByAddress.merge(addressKey, students, Integer::sum);
         }
 
         List<String> sortedAddressKeys = new ArrayList<>(classesByAddress.keySet());
@@ -274,11 +279,19 @@ public class ContingentServiceImpl implements ContingentService {
         ContingentDtos.StatsResponse response = new ContingentDtos.StatsResponse();
         response.setSnapshotId(snapshot.getId());
         response.setSnapshotDate(snapshot.getSnapshotDate());
-        response.setTotalStudents(classNames.size());
+        response.setTotalStudents(totalByParallel.values().stream().mapToInt(Integer::intValue).sum());
         response.setParallels(new ArrayList<>(totalByParallel.keySet()));
         response.setColumns(columns);
         response.setParallelTotals(parallelTotals);
         return response;
+    }
+
+
+    private int compareClassNames(String first, String second) {
+        int firstParallel = extractParallel(first);
+        int secondParallel = extractParallel(second);
+        int parallelCompare = Integer.compare(firstParallel, secondParallel);
+        return parallelCompare != 0 ? parallelCompare : String.valueOf(first).compareTo(String.valueOf(second));
     }
 
 
@@ -287,88 +300,301 @@ public class ContingentServiceImpl implements ContingentService {
         ContingentDtos.StatsResponse stats = getStats(academicYear, snapshotDate);
 
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            Sheet sheet = workbook.createSheet("Численность");
-
-            int rowIdx = 0;
-            Row title = sheet.createRow(rowIdx++);
-            title.createCell(0).setCellValue("Численность по состоянию на " + stats.getSnapshotDate());
-
-            Row h1 = sheet.createRow(rowIdx++);
-            Row h2 = sheet.createRow(rowIdx++);
-            h1.createCell(0).setCellValue("Параллель");
-            h1.createCell(1).setCellValue("Всего детей");
-            sheet.addMergedRegion(new CellRangeAddress(1, 2, 0, 0));
-            sheet.addMergedRegion(new CellRangeAddress(1, 2, 1, 1));
-
-            int col = 2;
-            for (ContingentDtos.BuildingColumn building : stats.getColumns()) {
-                int start = col;
-                for (ContingentDtos.AddressColumn address : building.getAddresses()) {
-                    h2.createCell(col).setCellValue(address.getAddress());
-                    sheet.addMergedRegion(new CellRangeAddress(2, 2, col, col + 1));
-                    col += 2;
-                }
-                if (col - 1 >= start) {
-                    h1.createCell(start).setCellValue(building.getBuildingName());
-                    sheet.addMergedRegion(new CellRangeAddress(1, 1, start, col - 1));
-                }
-            }
-
-            Map<Integer, Integer> totalByParallel = stats.getParallelTotals().stream()
-                    .collect(java.util.stream.Collectors.toMap(ContingentDtos.ParallelTotal::getParallel, ContingentDtos.ParallelTotal::getTotalStudents));
-
-            for (Integer parallel : stats.getParallels()) {
-                List<List<ContingentDtos.ClassTotal>> perAddress = new ArrayList<>();
-                for (ContingentDtos.BuildingColumn building : stats.getColumns()) {
-                    for (ContingentDtos.AddressColumn address : building.getAddresses()) {
-                        List<ContingentDtos.ClassTotal> rows = address.getClasses().stream()
-                                .filter(c -> Objects.equals(c.getParallel(), parallel))
-                                .toList();
-                        perAddress.add(rows);
-                    }
-                }
-
-                int lines = Math.max(1, perAddress.stream().mapToInt(List::size).max().orElse(1));
-                int startRow = rowIdx;
-                for (int i = 0; i < lines; i++) {
-                    Row row = sheet.createRow(rowIdx++);
-                    if (i == 0) {
-                        row.createCell(0).setCellValue(parallel);
-                        row.createCell(1).setCellValue(totalByParallel.getOrDefault(parallel, 0));
-                    }
-                    int dataCol = 2;
-                    for (List<ContingentDtos.ClassTotal> rows : perAddress) {
-                        ContingentDtos.ClassTotal item = i < rows.size() ? rows.get(i) : null;
-                        row.createCell(dataCol).setCellValue(item == null ? "" : item.getClassName());
-                        row.createCell(dataCol + 1).setCellValue(item == null ? "" : String.valueOf(item.getStudents()));
-                        dataCol += 2;
-                    }
-                }
-                if (lines > 1) {
-                    sheet.addMergedRegion(new CellRangeAddress(startRow, rowIdx - 1, 0, 0));
-                    sheet.addMergedRegion(new CellRangeAddress(startRow, rowIdx - 1, 1, 1));
-                }
-            }
-
-            Row totalRow = sheet.createRow(rowIdx);
-            totalRow.createCell(0).setCellValue("ИТОГО");
-            totalRow.createCell(1).setCellValue(stats.getTotalStudents());
-            int totalCol = 2;
-            for (ContingentDtos.BuildingColumn building : stats.getColumns()) {
-                for (ContingentDtos.AddressColumn address : building.getAddresses()) {
-                    totalRow.createCell(totalCol).setCellValue("");
-                    totalRow.createCell(totalCol + 1).setCellValue(address.getTotalStudents());
-                    totalCol += 2;
-                }
-            }
-
-            for (int i = 0; i < Math.max(totalCol, 4); i++) {
-                sheet.autoSizeColumn(i);
-            }
+            ContingentWorkbookStyles styles = createContingentStyles(workbook);
+            writeBuildingStatsSheet(workbook, stats, styles);
+            writeAddressStatsSheet(workbook, stats, styles);
             workbook.write(out);
             return out.toByteArray();
         } catch (Exception e) {
             throw new RuntimeException("Не удалось экспортировать численность", e);
+        }
+    }
+
+    private void writeBuildingStatsSheet(Workbook workbook, ContingentDtos.StatsResponse stats, ContingentWorkbookStyles styles) {
+        Sheet sheet = workbook.createSheet("По СП");
+        int lastCol = Math.max(3, 1 + stats.getColumns().stream()
+                .mapToInt(building -> Math.max(0, building.getAddresses().size()) * 2)
+                .sum());
+
+        int rowIdx = 0;
+        Row title = sheet.createRow(rowIdx++);
+        createCell(title, 0, "Численность по СП на " + stats.getSnapshotDate(), styles.title());
+        merge(sheet, new CellRangeAddress(0, 0, 0, lastCol));
+
+        Row h1 = sheet.createRow(rowIdx++);
+        Row h2 = sheet.createRow(rowIdx++);
+        createCell(h1, 0, "Параллель", styles.header());
+        createCell(h1, 1, "Всего детей", styles.header());
+        createCell(h2, 0, "", styles.header());
+        createCell(h2, 1, "", styles.header());
+        merge(sheet, new CellRangeAddress(1, 2, 0, 0));
+        merge(sheet, new CellRangeAddress(1, 2, 1, 1));
+
+        int col = 2;
+        for (ContingentDtos.BuildingColumn building : stats.getColumns()) {
+            int start = col;
+            for (ContingentDtos.AddressColumn address : building.getAddresses()) {
+                createCell(h2, col, address.getAddress(), styles.subHeader());
+                createCell(h2, col + 1, "", styles.subHeader());
+                merge(sheet, new CellRangeAddress(2, 2, col, col + 1));
+                col += 2;
+            }
+            if (col - 1 >= start) {
+                createCell(h1, start, building.getBuildingName(), styles.header());
+                for (int c = start + 1; c < col; c++) {
+                    createCell(h1, c, "", styles.header());
+                }
+                merge(sheet, new CellRangeAddress(1, 1, start, col - 1));
+            }
+        }
+
+        Map<Integer, Integer> totalByParallel = stats.getParallelTotals().stream()
+                .collect(java.util.stream.Collectors.toMap(ContingentDtos.ParallelTotal::getParallel, ContingentDtos.ParallelTotal::getTotalStudents));
+
+        for (Integer parallel : stats.getParallels()) {
+            List<List<ContingentDtos.ClassTotal>> perAddress = new ArrayList<>();
+            for (ContingentDtos.BuildingColumn building : stats.getColumns()) {
+                for (ContingentDtos.AddressColumn address : building.getAddresses()) {
+                    perAddress.add(classesForParallel(address.getClasses(), parallel));
+                }
+            }
+            rowIdx = writeParallelRows(sheet, rowIdx, parallel, totalByParallel.getOrDefault(parallel, 0), perAddress, styles);
+        }
+
+        Row totalRow = sheet.createRow(rowIdx);
+        createCell(totalRow, 0, "ИТОГО", styles.total());
+        createCell(totalRow, 1, stats.getTotalStudents(), styles.total());
+        int totalCol = 2;
+        for (ContingentDtos.BuildingColumn building : stats.getColumns()) {
+            for (ContingentDtos.AddressColumn address : building.getAddresses()) {
+                createCell(totalRow, totalCol, "", styles.total());
+                createCell(totalRow, totalCol + 1, address.getTotalStudents(), styles.total());
+                totalCol += 2;
+            }
+        }
+
+        finishContingentSheet(sheet, Math.max(totalCol, 4), 3);
+    }
+
+    private void writeAddressStatsSheet(Workbook workbook, ContingentDtos.StatsResponse stats, ContingentWorkbookStyles styles) {
+        Sheet sheet = workbook.createSheet("По адресам");
+        List<AddressStatsColumn> addresses = addressStatsColumns(stats);
+        int lastCol = Math.max(3, 1 + addresses.size() * 2);
+
+        int rowIdx = 0;
+        Row title = sheet.createRow(rowIdx++);
+        createCell(title, 0, "Численность по адресам на " + stats.getSnapshotDate(), styles.title());
+        merge(sheet, new CellRangeAddress(0, 0, 0, lastCol));
+
+        Row header = sheet.createRow(rowIdx++);
+        createCell(header, 0, "Параллель", styles.header());
+        createCell(header, 1, "Всего детей", styles.header());
+        int col = 2;
+        for (AddressStatsColumn address : addresses) {
+            createCell(header, col, address.address(), styles.header());
+            createCell(header, col + 1, "", styles.header());
+            merge(sheet, new CellRangeAddress(1, 1, col, col + 1));
+            col += 2;
+        }
+
+        Map<Integer, Integer> totalByParallel = stats.getParallelTotals().stream()
+                .collect(java.util.stream.Collectors.toMap(ContingentDtos.ParallelTotal::getParallel, ContingentDtos.ParallelTotal::getTotalStudents));
+
+        for (Integer parallel : stats.getParallels()) {
+            List<List<ContingentDtos.ClassTotal>> perAddress = addresses.stream()
+                    .map(address -> classesForParallel(address.classes(), parallel))
+                    .toList();
+            rowIdx = writeParallelRows(sheet, rowIdx, parallel, totalByParallel.getOrDefault(parallel, 0), perAddress, styles);
+        }
+
+        Row totalRow = sheet.createRow(rowIdx);
+        createCell(totalRow, 0, "ИТОГО", styles.total());
+        createCell(totalRow, 1, stats.getTotalStudents(), styles.total());
+        int totalCol = 2;
+        for (AddressStatsColumn address : addresses) {
+            createCell(totalRow, totalCol, "", styles.total());
+            createCell(totalRow, totalCol + 1, address.totalStudents(), styles.total());
+            totalCol += 2;
+        }
+
+        finishContingentSheet(sheet, Math.max(totalCol, 4), 2);
+    }
+
+    private int writeParallelRows(Sheet sheet,
+                                  int rowIdx,
+                                  Integer parallel,
+                                  Integer totalStudents,
+                                  List<List<ContingentDtos.ClassTotal>> groupedClasses,
+                                  ContingentWorkbookStyles styles) {
+        int lines = Math.max(1, groupedClasses.stream().mapToInt(List::size).max().orElse(1));
+        int startRow = rowIdx;
+        for (int i = 0; i < lines; i++) {
+            Row row = sheet.createRow(rowIdx++);
+            if (i == 0) {
+                createCell(row, 0, parallel, styles.number());
+                createCell(row, 1, totalStudents, styles.number());
+            } else {
+                createCell(row, 0, "", styles.number());
+                createCell(row, 1, "", styles.number());
+            }
+            int dataCol = 2;
+            for (List<ContingentDtos.ClassTotal> rows : groupedClasses) {
+                ContingentDtos.ClassTotal item = i < rows.size() ? rows.get(i) : null;
+                createCell(row, dataCol, item == null ? "" : item.getClassName(), styles.text());
+                createCell(row, dataCol + 1, item == null ? "" : item.getStudents(), styles.number());
+                dataCol += 2;
+            }
+            row.setHeightInPoints(Math.max(row.getHeightInPoints(), 24));
+        }
+        if (lines > 1) {
+            merge(sheet, new CellRangeAddress(startRow, rowIdx - 1, 0, 0));
+            merge(sheet, new CellRangeAddress(startRow, rowIdx - 1, 1, 1));
+        }
+        return rowIdx;
+    }
+
+    private List<ContingentDtos.ClassTotal> classesForParallel(List<ContingentDtos.ClassTotal> classes, Integer parallel) {
+        return classes.stream()
+                .filter(c -> Objects.equals(c.getParallel(), parallel))
+                .sorted(Comparator.comparing(ContingentDtos.ClassTotal::getParallel)
+                        .thenComparing(ContingentDtos.ClassTotal::getClassName, this::compareClassNames))
+                .toList();
+    }
+
+    private List<AddressStatsColumn> addressStatsColumns(ContingentDtos.StatsResponse stats) {
+        Map<String, AddressStatsAccumulator> byAddress = new LinkedHashMap<>();
+        for (ContingentDtos.BuildingColumn building : stats.getColumns()) {
+            for (ContingentDtos.AddressColumn address : building.getAddresses()) {
+                String addressName = normalize(address.getAddress()).isBlank() ? "Адрес не указан" : normalize(address.getAddress());
+                String key = addressName.toLowerCase(Locale.ROOT);
+                AddressStatsAccumulator accumulator = byAddress.computeIfAbsent(key, k -> new AddressStatsAccumulator(addressName));
+                accumulator.classes().addAll(address.getClasses());
+                accumulator.addTotal(address.getTotalStudents());
+            }
+        }
+        return byAddress.values().stream()
+                .map(accumulator -> new AddressStatsColumn(
+                        accumulator.address(),
+                        accumulator.classes().stream()
+                                .sorted(Comparator.comparing(ContingentDtos.ClassTotal::getParallel)
+                                        .thenComparing(ContingentDtos.ClassTotal::getClassName, this::compareClassNames))
+                                .toList(),
+                        accumulator.totalStudents()
+                ))
+                .sorted(Comparator.comparing(AddressStatsColumn::address, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+    private void finishContingentSheet(Sheet sheet, int columns, int headerRows) {
+        sheet.createFreezePane(2, headerRows);
+        for (int i = 0; i < columns; i++) {
+            sheet.autoSizeColumn(i);
+            int width = sheet.getColumnWidth(i);
+            int minWidth = i < 2 ? 14 * 256 : 12 * 256;
+            int maxWidth = i < 2 ? 18 * 256 : 28 * 256;
+            sheet.setColumnWidth(i, Math.min(Math.max(width + 512, minWidth), maxWidth));
+        }
+    }
+
+    private Cell createCell(Row row, int column, Object value, CellStyle style) {
+        Cell cell = row.createCell(column);
+        if (value instanceof Number number) {
+            cell.setCellValue(number.doubleValue());
+        } else {
+            cell.setCellValue(String.valueOf(value == null ? "" : value));
+        }
+        cell.setCellStyle(style);
+        return cell;
+    }
+
+    private void merge(Sheet sheet, CellRangeAddress region) {
+        sheet.addMergedRegion(region);
+        RegionUtil.setBorderTop(BorderStyle.THIN, region, sheet);
+        RegionUtil.setBorderRight(BorderStyle.THIN, region, sheet);
+        RegionUtil.setBorderBottom(BorderStyle.THIN, region, sheet);
+        RegionUtil.setBorderLeft(BorderStyle.THIN, region, sheet);
+    }
+
+    private ContingentWorkbookStyles createContingentStyles(Workbook workbook) {
+        Font titleFont = workbook.createFont();
+        titleFont.setBold(true);
+        titleFont.setFontHeightInPoints((short) 14);
+
+        Font boldFont = workbook.createFont();
+        boldFont.setBold(true);
+
+        CellStyle title = baseContingentStyle(workbook);
+        title.setFont(titleFont);
+        title.setFillForegroundColor(IndexedColors.LIGHT_CORNFLOWER_BLUE.getIndex());
+        title.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+        CellStyle header = baseContingentStyle(workbook);
+        header.setFont(boldFont);
+        header.setFillForegroundColor(IndexedColors.PALE_BLUE.getIndex());
+        header.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+        CellStyle subHeader = baseContingentStyle(workbook);
+        subHeader.setFont(boldFont);
+        subHeader.setFillForegroundColor(IndexedColors.LEMON_CHIFFON.getIndex());
+        subHeader.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+        CellStyle text = baseContingentStyle(workbook);
+        CellStyle number = baseContingentStyle(workbook);
+
+        CellStyle total = baseContingentStyle(workbook);
+        total.setFont(boldFont);
+        total.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+        total.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+        return new ContingentWorkbookStyles(title, header, subHeader, text, number, total);
+    }
+
+    private CellStyle baseContingentStyle(Workbook workbook) {
+        CellStyle style = workbook.createCellStyle();
+        style.setWrapText(true);
+        style.setAlignment(HorizontalAlignment.CENTER);
+        style.setVerticalAlignment(VerticalAlignment.CENTER);
+        style.setBorderTop(BorderStyle.THIN);
+        style.setBorderRight(BorderStyle.THIN);
+        style.setBorderBottom(BorderStyle.THIN);
+        style.setBorderLeft(BorderStyle.THIN);
+        return style;
+    }
+
+    private record ContingentWorkbookStyles(CellStyle title,
+                                            CellStyle header,
+                                            CellStyle subHeader,
+                                            CellStyle text,
+                                            CellStyle number,
+                                            CellStyle total) {
+    }
+
+    private record AddressStatsColumn(String address, List<ContingentDtos.ClassTotal> classes, int totalStudents) {
+    }
+
+    private static class AddressStatsAccumulator {
+        private final String address;
+        private final List<ContingentDtos.ClassTotal> classes = new ArrayList<>();
+        private int totalStudents;
+
+        private AddressStatsAccumulator(String address) {
+            this.address = address;
+        }
+
+        private String address() {
+            return address;
+        }
+
+        private List<ContingentDtos.ClassTotal> classes() {
+            return classes;
+        }
+
+        private int totalStudents() {
+            return totalStudents;
+        }
+
+        private void addTotal(Integer value) {
+            totalStudents += value == null ? 0 : value;
         }
     }
 

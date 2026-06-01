@@ -15,6 +15,8 @@ public interface ClassroomLeadershipService {
 
     void deleteOne(String academicYear, String numberSchoolBuilding, String className);
 
+    Map<String, Object> dependencySummary(String academicYear, String numberSchoolBuilding, String className);
+
     void clearAll(String academicYear);
 
     Map<String, Object> importFromExcel(String academicYear, MultipartFile file);
