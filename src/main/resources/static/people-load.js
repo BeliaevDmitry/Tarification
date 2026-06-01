@@ -190,14 +190,25 @@ function addHours(totals, row) {
     }
 }
 
+function effectiveHalfHours(total) {
+    return {
+        h1: (total.year || 0) + (total.h1 || 0),
+        h2: (total.year || 0) + (total.h2 || 0)
+    };
+}
+
 function formatHours(total) {
-    const year = total.year || 0;
-    const h1 = total.h1 || 0;
-    const h2 = total.h2 || 0;
-    if (h1 || h2) {
-        return `${h1}/${h2}`;
+    const { h1, h2 } = effectiveHalfHours(total);
+    return h1 === h2 ? String(h1) : `${h1}/${h2}`;
+}
+
+function formatScopedTotalHours(scoped, total) {
+    const scopedHours = effectiveHalfHours(scoped);
+    const totalHours = effectiveHalfHours(total);
+    if (scopedHours.h1 === totalHours.h1 && scopedHours.h2 === totalHours.h2) {
+        return formatHours(total);
     }
-    return String(year);
+    return `${formatHours(scoped)} / ${formatHours(total)}`;
 }
 
 function fioKey(value) {
@@ -242,8 +253,14 @@ function classLeadershipSalary(fio) {
         .reduce((sum) => sum + 500 * 30 + 5000, 0);
 }
 
+function isFirstHalfSalaryRow(row) {
+    return row.studyPeriod !== "H2" && row.studyPeriod !== "SECOND_HALF";
+}
+
 function teacherSalary(fio, allTeacherRows) {
-    const hours = allTeacherRows.reduce((sum, row) => sum + rowSalary(row), 0);
+    const hours = allTeacherRows
+        .filter(isFirstHalfSalaryRow)
+        .reduce((sum, row) => sum + rowSalary(row), 0);
     const leadership = classLeadershipSalary(fio);
     return { hours, leadership, total: hours + leadership };
 }
@@ -323,7 +340,7 @@ function renderTable() {
             const fio = rows[0].fioTeacher || "Вакансия";
             const scoped = selectedTotals.get(key) || { year: 0, h1: 0, h2: 0 };
             const total = allTotals.get(key) || { year: 0, h1: 0, h2: 0 };
-            const hours = `${formatHours(scoped)} / ${formatHours(total)}`;
+            const hours = formatScopedTotalHours(scoped, total);
             const extra = teacherExtra(fio, allRowsByTeacher.get(key) || rows);
             const teacherRowsAcrossAllClasses = allRowsByTeacher.get(key) || rows;
             const salary = showSalary ? teacherSalary(fio, teacherRowsAcrossAllClasses) : null;

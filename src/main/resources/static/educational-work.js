@@ -119,30 +119,75 @@ async function submitEducationalWorkReport(event) {
     }
 }
 
-function matrixHtml(matrix) {
-    const rows = matrix || [];
-    const letters = rows.length ? rows[0].letters.map((cell) => cell.schoolClass.replace(/\d+/g, '')) : [];
-    if (letters.length === 0) {
-        return '<p class="muted">В этом СП нет классов за выбранный учебный год.</p>';
+function classLetter(schoolClass) {
+    const text = String(schoolClass || '').trim();
+    const match = text.match(/^\d+\s*[- ]?\s*(.+)$/);
+    return match ? match[1].trim() : text.replace(/\d+/g, '').trim();
+}
+
+function compareLetters(a, b) {
+    return String(a || '').localeCompare(String(b || ''), 'ru', { numeric: true });
+}
+
+function collectSummaryLetters(buildingSummaries) {
+    const letters = new Set();
+    buildingSummaries.forEach((building) => {
+        (building.matrix || []).forEach((row) => {
+            (row.letters || []).forEach((cell) => letters.add(classLetter(cell.schoolClass)));
+        });
+    });
+    return Array.from(letters).filter(Boolean).sort(compareLetters);
+}
+
+function renderSummaryStatusCell(cell) {
+    if (!cell || cell.status === 'CLASS_NOT_EXISTS') {
+        return '<td class="summary-empty" title="Класса нет"></td>';
     }
-    const body = rows.map((row) => `<tr><th>${row.parallel}</th>${row.letters.map((cell) => {
-        if (cell.status === 'CLASS_NOT_EXISTS') return '<td class="summary-empty" title="Класса нет"></td>';
-        return cell.status === 'SUBMITTED'
-            ? `<td class="status-ok" title="${ewEscape(cell.schoolClass)}: отчёт сдан">✓</td>`
-            : `<td class="status-error" title="${ewEscape(cell.schoolClass)}: отчёт не сдан">✕</td>`;
-    }).join('')}</tr>`).join('');
-    return `<div class="table-wrapper"><table class="data-table educational-work-summary-table"><thead><tr><th>Класс / литера</th>${letters.map((letter) => `<th>${ewEscape(letter)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
+    return cell.status === 'SUBMITTED'
+        ? `<td class="status-ok" title="${ewEscape(cell.schoolClass)}: отчёт сдан">✓</td>`
+        : `<td class="status-error" title="${ewEscape(cell.schoolClass)}: отчёт не сдан">✕</td>`;
 }
 
 function renderBuildingSummaries(summary) {
     const buildingSummaries = summary.buildingSummaries?.length
         ? summary.buildingSummaries
         : [{ numberSchoolBuilding: 'Все СП', matrix: summary.matrix || [] }];
-    ewUi.buildingSummaries.innerHTML = buildingSummaries.map((building) => `
-        <section class="building-summary-card">
-            <h3>${ewEscape(building.numberSchoolBuilding || 'Без СП')}</h3>
-            ${matrixHtml(building.matrix)}
-        </section>`).join('') || '<p class="muted">В справочнике классов пока нет строк за выбранный учебный год.</p>';
+    const letters = collectSummaryLetters(buildingSummaries);
+    if (letters.length === 0) {
+        ewUi.buildingSummaries.innerHTML = '<p class="muted">В справочнике классов пока нет строк за выбранный учебный год.</p>';
+        return;
+    }
+
+    const rows = [];
+    buildingSummaries.forEach((building) => {
+        const matrixRows = building.matrix || [];
+        if (matrixRows.length === 0) return;
+        matrixRows.forEach((matrixRow, index) => {
+            const cellsByLetter = new Map((matrixRow.letters || []).map((cell) => [classLetter(cell.schoolClass), cell]));
+            const buildingCell = index === 0
+                ? `<th rowspan="${matrixRows.length}" class="summary-building-cell">${ewEscape(building.numberSchoolBuilding || 'Без СП')}</th>`
+                : '';
+            rows.push(`<tr class="${index === 0 ? 'summary-building-divider' : ''}">
+                ${buildingCell}
+                <th>${ewEscape(matrixRow.parallel)}</th>
+                ${letters.map((letter) => renderSummaryStatusCell(cellsByLetter.get(letter))).join('')}
+            </tr>`);
+        });
+    });
+
+    ewUi.buildingSummaries.innerHTML = `
+        <div class="table-wrapper">
+            <table class="data-table educational-work-summary-table educational-work-unified-summary-table">
+                <thead>
+                    <tr>
+                        <th>СП</th>
+                        <th>Класс / литера</th>
+                        ${letters.map((letter) => `<th>${ewEscape(letter)}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody>${rows.join('')}</tbody>
+            </table>
+        </div>`;
 }
 
 function renderMetrics(aggregate) {

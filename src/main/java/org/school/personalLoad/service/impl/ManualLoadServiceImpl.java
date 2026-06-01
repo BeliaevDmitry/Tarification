@@ -438,13 +438,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     int subjectHours = e.getGroupLoad() != null ? e.getGroupLoad() : (e.getLoad() == null ? 0 : e.getLoad());
                     String periodLabel = e.getStudyPeriod() == StudyPeriod.H1 ? "1П"
                             : e.getStudyPeriod() == StudyPeriod.H2 ? "2П" : "ГОД";
-                    String hoursSummary;
-                    if (t[0] == t[1] && t[2] == t[3]) {
-                        hoursSummary = t[0] + "/" + t[2];
-                    } else {
-                        hoursSummary = "1 полугодие: " + t[0] + "/" + t[2] + "\n"
-                                + "2 полугодие: " + t[1] + "/" + t[3];
-                    }
+                    String hoursSummary = formatScopedTotalHours(t[0], t[1], t[2], t[3]);
                     int classSize = classSizeByClass.getOrDefault(normalizeToken(e.getClassName()), 30);
                     String group = String.valueOf(e.getGroupNameEducationalPlan() == null ? "" : e.getGroupNameEducationalPlan()).toLowerCase(Locale.ROOT);
                     int firstGroupSize = (classSize + 1) / 2;
@@ -509,6 +503,21 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         }
     }
 
+    private String formatScopedTotalHours(int scopedH1, int scopedH2, int totalH1, int totalH2) {
+        if (scopedH1 == totalH1 && scopedH2 == totalH2) {
+            return formatHalfHours(totalH1, totalH2);
+        }
+        if (scopedH1 == scopedH2 && totalH1 == totalH2) {
+            return scopedH1 + "/" + totalH1;
+        }
+        return "1П: " + scopedH1 + "/" + totalH1 + "\n"
+                + "2П: " + scopedH2 + "/" + totalH2;
+    }
+
+    private String formatHalfHours(int h1, int h2) {
+        return h1 == h2 ? String.valueOf(h1) : h1 + "/" + h2;
+    }
+
     private String teacherAddresses(List<ManualLoadEntry> teacherRows,
                                     Map<String, String> addressByClass,
                                     Map<String, List<String>> addressesByBuilding) {
@@ -553,6 +562,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         SalaryTotals complex = new SalaryTotals();
 
         for (ManualLoadEntry row : rows) {
+            if (!isFirstHalfSalaryRow(row)) {
+                continue;
+            }
             String building = buildingKey(row.getNumberSchoolBuilding());
             String teacher = String.valueOf(row.getFioTeacher()).trim().toLowerCase(Locale.ROOT);
             BigDecimal hourSalary = calculateHourSalary(row, classSizeByClass, subjectCoefficientByName, studentHourRate);
@@ -577,6 +589,10 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         }
 
         return new SalarySummary(byTeacher, byBuilding, complex);
+    }
+
+    private boolean isFirstHalfSalaryRow(ManualLoadEntry row) {
+        return row.getStudyPeriod() != StudyPeriod.H2;
     }
 
     private BigDecimal calculateHourSalary(ManualLoadEntry row,

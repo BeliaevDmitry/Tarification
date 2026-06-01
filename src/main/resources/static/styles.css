@@ -2165,6 +2165,19 @@ dialog::backdrop {
     background: #f8fafc;
 }
 
+
+.educational-work-unified-summary-table .summary-building-divider > th,
+.educational-work-unified-summary-table .summary-building-divider > td {
+    border-top: 4px solid #334155;
+}
+
+.educational-work-unified-summary-table .summary-building-cell {
+    font-weight: 700;
+    background: #eef4ff;
+    vertical-align: middle;
+    min-width: 90px;
+}
+
 .download-btn {
     display: inline-block;
     padding: 6px 10px;
