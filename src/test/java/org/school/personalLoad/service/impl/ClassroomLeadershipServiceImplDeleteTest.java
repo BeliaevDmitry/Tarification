@@ -82,14 +82,15 @@ class ClassroomLeadershipServiceImplDeleteTest {
         TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
         teacher.setFioTeacher("Петров П.П.");
         SchoolBuilding building = new SchoolBuilding();
-        building.setCode("СП2");
+        building.setCode("СП-2");
         building.setName("СП2");
         building.setAddress("Ленина, д.1");
         building.setManagerFio("Директор");
 
         when(classroomLeadershipRepository.findById(42L)).thenReturn(Optional.of(entry));
         when(teacherDirectoryRepository.findByFioTeacher("Петров П.П.")).thenReturn(Optional.of(teacher));
-        when(schoolBuildingRepository.findByCode("СП2")).thenReturn(Optional.of(building));
+        when(schoolBuildingRepository.findByCode("СП2")).thenReturn(Optional.empty());
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of(building));
         when(classroomLeadershipRepository.save(entry)).thenReturn(entry);
         when(curriculumPlanEntryRepository.findAll()).thenReturn(List.of());
         when(manualLoadEntryRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());

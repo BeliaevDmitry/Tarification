@@ -7,6 +7,7 @@ import org.school.personalLoad.dto.ClassroomLeadershipEntryRequest;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.ManualLoadEntry;
+import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
@@ -528,7 +529,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     }
 
     private void ensureBuildingExists(String code) {
-        if (schoolBuildingRepository.findByCode(code).isEmpty()) {
+        if (findKnownBuilding(code).isEmpty()) {
             throw new IllegalArgumentException("Корпус не найден: " + code);
         }
     }
@@ -546,16 +547,33 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         if (!normalized.isBlank()) {
             return normalized;
         }
-        return schoolBuildingRepository.findByCode(buildingCode)
-                .map(org.school.personalLoad.model.SchoolBuilding::getAddress)
+        return findKnownBuilding(buildingCode)
+                .map(SchoolBuilding::getAddress)
                 .map(this::normalize)
                 .orElse("");
     }
 
+    private Optional<SchoolBuilding> findKnownBuilding(String code) {
+        String normalizedCode = normalizeBuildingCode(code);
+        return schoolBuildingRepository.findByCode(normalizedCode)
+                .or(() -> schoolBuildingRepository.findAll().stream()
+                        .filter(building -> normalizeBuildingCode(building.getCode()).equals(normalizedCode))
+                        .findFirst());
+    }
+
     private String normalizeBuildingCode(String value) {
-        String normalized = normalize(value).replace(" ", "").toUpperCase(Locale.ROOT);
+        String normalized = normalize(value)
+                .toUpperCase(Locale.ROOT)
+                .replace('–', '-')
+                .replace('—', '-')
+                .replaceAll("[CС][ПPР]", "СП")
+                .replaceAll("\\s*\\|\\s*", "|")
+                .replaceAll("\\s+", "");
         int addressSeparator = normalized.indexOf("|");
-        return addressSeparator >= 0 ? normalized.substring(0, addressSeparator) : normalized;
+        if (addressSeparator >= 0) {
+            normalized = normalized.substring(0, addressSeparator);
+        }
+        return normalized.replaceFirst("^СП-(\\d+)$", "СП$1");
     }
 
     private String classScopeKey(String building, String className) {
