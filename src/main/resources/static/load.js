@@ -1416,7 +1416,8 @@ function buildPresentationRows() {
             if (periodTotals.year <= 0 && periodTotals.h1 > 0 && periodTotals.h2 <= 0) displayName = `${displayName} (1П)`;
             else if (periodTotals.year <= 0 && periodTotals.h2 > 0 && periodTotals.h1 <= 0) displayName = `${displayName} (2П)`;
 
-            const buildingHoursPair = buildingTeacherHours[selectedBuilding]?.[teacherRow.teacherName || ""] || { h1: 0, h2: 0 };
+            const selectedBuildingGroup = buildingGroupCode(selectedBuilding);
+            const buildingHoursPair = buildingTeacherHours[selectedBuildingGroup]?.[teacherRow.teacherName || ""] || { h1: 0, h2: 0 };
             const complexHoursPair = complexTeacherHours[teacherRow.teacherName || ""] || { h1: 0, h2: 0 };
             result.push({
                 subjectKey: info.subjectKey,
