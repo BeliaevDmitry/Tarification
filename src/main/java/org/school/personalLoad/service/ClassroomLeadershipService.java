@@ -13,7 +13,11 @@ public interface ClassroomLeadershipService {
 
     List<ClassroomLeadershipEntry> findAll(String academicYear);
 
+    ClassroomLeadershipEntry updateOne(Long id, ClassroomLeadershipEntryRequest request);
+
     void deleteOne(String academicYear, String numberSchoolBuilding, String className);
+
+    Map<String, Object> dependencySummary(String academicYear, String numberSchoolBuilding, String className);
 
     void clearAll(String academicYear);
 
