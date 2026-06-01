@@ -26,10 +26,14 @@ public interface ClassroomLeadershipRepository extends JpaRepository<ClassroomLe
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = """
-            update classroom_leadership_entry
-               set "numberSchoolBuilding" = :numberSchoolBuilding,
-                   building_group_id = (select bg.id from building_group bg where bg.code = :numberSchoolBuilding)
-             where id = :id
-            """, nativeQuery = true)
-    int updateBuildingGroupById(@Param("id") Long id, @Param("numberSchoolBuilding") String numberSchoolBuilding);
+        update classroom_leadership_entry
+           set building_group_id = (
+               select bg.id
+                 from building_group bg
+                where bg.code = :numberSchoolBuilding
+           )
+         where id = :id
+        """, nativeQuery = true)
+    int updateBuildingGroupById(@Param("id") Long id,
+                                @Param("numberSchoolBuilding") String numberSchoolBuilding);
 }
