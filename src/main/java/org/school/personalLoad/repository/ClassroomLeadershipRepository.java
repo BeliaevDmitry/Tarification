@@ -2,6 +2,9 @@ package org.school.personalLoad.repository;
 
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -20,4 +23,13 @@ public interface ClassroomLeadershipRepository extends JpaRepository<ClassroomLe
     void deleteByAcademicYearAndNumberSchoolBuildingAndClassName(String academicYear, String numberSchoolBuilding, String className);
 
     java.util.List<ClassroomLeadershipEntry> findAllByAcademicYear(String academicYear);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = """
+            update classroom_leadership_entry
+               set "numberSchoolBuilding" = :numberSchoolBuilding,
+                   building_group_id = (select bg.id from building_group bg where bg.code = :numberSchoolBuilding)
+             where id = :id
+            """, nativeQuery = true)
+    int updateBuildingGroupById(@Param("id") Long id, @Param("numberSchoolBuilding") String numberSchoolBuilding);
 }

@@ -101,6 +101,7 @@ class ClassroomLeadershipServiceImplDeleteTest {
         assertEquals("Инженерный", saved.getClassDirection());
         assertEquals("Петров П.П.", saved.getFioTeacher());
         assertEquals("Ленина, д.1", saved.getCampusAddress());
+        verify(classroomLeadershipRepository).updateBuildingGroupById(42L, "СП2");
         verify(curriculumPlanEntryRepository).renameClassEverywhere("2026/2027", "7-А", "7-А", "СП2");
         verify(manualLoadEntryRepository).renameClassEverywhere("2026/2027", "7-А", "7-А", "СП2");
         verify(schoolBuildingRepository, never()).save(any(SchoolBuilding.class));
