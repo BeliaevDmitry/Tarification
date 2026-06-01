@@ -124,6 +124,54 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         return saved;
     }
 
+    @Override
+    @Transactional
+    public ClassroomLeadershipEntry updateOne(Long id, ClassroomLeadershipEntryRequest request) {
+        if (id == null) {
+            throw new IllegalArgumentException("id is required");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("request is required");
+        }
+        String academicYear = normalize(request.getAcademicYear());
+        if (academicYear.isBlank()) {
+            throw new IllegalArgumentException("academicYear is required");
+        }
+        ClassroomLeadershipEntry entry = classroomLeadershipRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Класс не найден"));
+        if (!academicYear.equals(entry.getAcademicYear())) {
+            throw new IllegalArgumentException("Класс относится к другому учебному году");
+        }
+
+        String building = normalizeBuildingCode(request.getNumberSchoolBuilding());
+        String className = ClassNameNormalizer.normalize(request.getClassName());
+        String classDirection = normalize(request.getClassDirection());
+        String fioTeacher = normalize(request.getFioTeacher());
+        String classType = normalizeClassType(request.getClassType());
+        if (building.isBlank() || className.isBlank() || classDirection.isBlank() || fioTeacher.isBlank()) {
+            throw new IllegalArgumentException("numberSchoolBuilding, className, classDirection and fioTeacher are required");
+        }
+
+        ensureTeacherExists(fioTeacher);
+        ensureBuildingExists(building);
+
+        String oldClassName = ClassNameNormalizer.normalize(entry.getClassName());
+        String oldBuilding = normalizeBuildingCode(entry.getNumberSchoolBuilding());
+
+        entry.setNumberSchoolBuilding(building);
+        entry.setClassName(className);
+        entry.setClassDirection(classDirection);
+        entry.setFioTeacher(fioTeacher);
+        entry.setCampusAddress(resolveCampusAddress(building, request.getCampusAddress()));
+        entry.setClassType(classType);
+        ClassroomLeadershipEntry saved = classroomLeadershipRepository.save(entry);
+
+        propagateClassRename(academicYear, oldClassName, oldBuilding, saved.getClassName(), saved.getNumberSchoolBuilding());
+        syncCurriculumBuildingByClass(academicYear, List.of(saved));
+        syncManualLoadBuildingByClass(academicYear, List.of(saved));
+        return saved;
+    }
+
 
     @Override
     public Map<String, Object> importFromExcel(String academicYear, MultipartFile file) {

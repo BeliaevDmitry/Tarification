@@ -303,6 +303,17 @@ async function upsertEntry(entry, originalKey = null) {
     return api("/api/classroom-leadership", { method: "PUT", headers: jsonHeaders, body: JSON.stringify(filtered) });
 }
 
+async function updateEntry(entry) {
+    if (!entry?.id) {
+        return upsertEntry(entry, editingOriginalKey);
+    }
+    return api(`/api/classroom-leadership/${encodeURIComponent(entry.id)}`, {
+        method: "PATCH",
+        headers: jsonHeaders,
+        body: JSON.stringify(entry)
+    });
+}
+
 updateTemplateLink();
 
 ui.building?.addEventListener("change", () => applyBuildingAddress(ui.building, ui.form.elements.campusAddress, true));
@@ -356,9 +367,9 @@ ui.editForm.addEventListener('submit', async (e) => {
     }
 
     try {
-        const saved = await upsertEntry(entry, editingOriginalKey);
+        const saved = await updateEntry(entry);
         ui.editDialog.close();
-        print({ status: "updated", total: saved.length });
+        print({ status: "updated", id: saved.id, numberSchoolBuilding: saved.numberSchoolBuilding, className: saved.className });
         await reload();
     } catch (error) {
         print({ error: error.message });
