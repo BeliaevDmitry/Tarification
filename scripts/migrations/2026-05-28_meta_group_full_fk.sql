@@ -22,7 +22,7 @@ WITH chosen AS (
       ON lower(trim(c."numberSchoolBuilding")) = lower(trim(mg."numberSchoolBuilding"))
      AND lower(trim(regexp_replace(c."className", '^\s*МГ:', ''))) = lower(trim(mg."name"))
     WHERE c.meta_group_id IS NULL
-      AND (coalesce(c."metaGroup", false) = true OR c."className" LIKE 'МГ:%')
+      AND c."className" LIKE 'МГ:%'
 )
 UPDATE curriculum_plan_entry c
 SET meta_group_id = chosen.meta_group_id,
@@ -67,7 +67,7 @@ SELECT DISTINCT
        c."studyPeriodSettingId"
 FROM curriculum_plan_entry c
 WHERE c.meta_group_id IS NULL
-  AND (coalesce(c."metaGroup", false) = true OR c."className" LIKE 'МГ:%')
+  AND c."className" LIKE 'МГ:%'
   AND coalesce(trim(regexp_replace(c."className", '^\s*МГ:', '')), '') <> ''
 ON CONFLICT ON CONSTRAINT uk_meta_group_scope DO NOTHING;
 
@@ -95,7 +95,7 @@ WITH chosen AS (
       ON lower(trim(c."numberSchoolBuilding")) = lower(trim(mg."numberSchoolBuilding"))
      AND lower(trim(regexp_replace(c."className", '^\s*МГ:', ''))) = lower(trim(mg."name"))
     WHERE c.meta_group_id IS NULL
-      AND (coalesce(c."metaGroup", false) = true OR c."className" LIKE 'МГ:%')
+      AND c."className" LIKE 'МГ:%'
 )
 UPDATE curriculum_plan_entry c
 SET meta_group_id = chosen.meta_group_id,
@@ -144,7 +144,7 @@ CREATE INDEX IF NOT EXISTS idx_manual_meta_group_id ON manual_load_entry(meta_gr
 -- Для строк-метагрупп meta_group_id обязателен. Для обычных классов NULL допустим.
 ALTER TABLE curriculum_plan_entry
     ADD CONSTRAINT chk_curriculum_meta_group_id_for_meta
-    CHECK ((coalesce("metaGroup", false) = false AND "className" NOT LIKE 'МГ:%') OR meta_group_id IS NOT NULL);
+    CHECK ("className" NOT LIKE 'МГ:%' OR meta_group_id IS NOT NULL);
 
 ALTER TABLE manual_load_entry
     ADD CONSTRAINT chk_manual_meta_group_id_for_meta
@@ -158,15 +158,7 @@ DECLARE
     bcode TEXT;
     parallel_value INTEGER;
 BEGIN
-    IF TG_TABLE_NAME = 'curriculum_plan_entry'
-       AND coalesce(NEW."metaGroup", false) = false
-       AND NEW."className" NOT LIKE 'МГ:%' THEN
-        NEW.meta_group_id := NULL;
-        RETURN NEW;
-    END IF;
-
-    IF TG_TABLE_NAME = 'manual_load_entry'
-       AND NEW."className" NOT LIKE 'МГ:%' THEN
+    IF NEW."className" NOT LIKE 'МГ:%' THEN
         NEW.meta_group_id := NULL;
         RETURN NEW;
     END IF;
