@@ -5,7 +5,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.school.personalLoad.dto.ClassroomLeadershipEntryRequest;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
+import org.school.personalLoad.model.SchoolBuilding;
+import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
@@ -60,6 +63,43 @@ class ClassroomLeadershipServiceImplDeleteTest {
         verify(curriculumPlanEntryRepository).deleteByAcademicYearAndNumberSchoolBuildingAndClassName("2026/2027", "СП3", "7-А");
         verify(manualLoadEntryRepository).deleteByAcademicYearAndNumberSchoolBuildingAndClassName("2026/2027", "СП3", "7-А");
         verify(classroomLeadershipRepository).deleteByAcademicYearAndNumberSchoolBuildingAndClassName("2026/2027", "СП3", "7-А");
+    }
+
+    @Test
+    void updateOneChangesBuildingByIdAndPropagatesLoadAndCurriculumTails() {
+        ClassroomLeadershipEntry entry = classEntry(42L, "СП1", "7-А");
+        ClassroomLeadershipEntryRequest request = new ClassroomLeadershipEntryRequest();
+        request.setAcademicYear("2026/2027");
+        request.setNumberSchoolBuilding("СП2");
+        request.setClassName("7-А");
+        request.setClassDirection("Инженерный");
+        request.setFioTeacher("Петров П.П.");
+        request.setCampusAddress("Ленина, д.1");
+        request.setClassType("REGULAR");
+
+        TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
+        teacher.setFioTeacher("Петров П.П.");
+        SchoolBuilding building = new SchoolBuilding();
+        building.setCode("СП2");
+        building.setName("СП2");
+        building.setAddress("Ленина, д.1");
+        building.setManagerFio("Директор");
+
+        when(classroomLeadershipRepository.findById(42L)).thenReturn(Optional.of(entry));
+        when(teacherDirectoryRepository.findByFioTeacher("Петров П.П.")).thenReturn(Optional.of(teacher));
+        when(schoolBuildingRepository.findByCode("СП2")).thenReturn(Optional.of(building));
+        when(classroomLeadershipRepository.save(entry)).thenReturn(entry);
+        when(curriculumPlanEntryRepository.findAll()).thenReturn(List.of());
+        when(manualLoadEntryRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
+
+        ClassroomLeadershipEntry saved = service.updateOne(42L, request);
+
+        assertEquals("СП2", saved.getNumberSchoolBuilding());
+        assertEquals("Инженерный", saved.getClassDirection());
+        assertEquals("Петров П.П.", saved.getFioTeacher());
+        assertEquals("Ленина, д.1", saved.getCampusAddress());
+        verify(curriculumPlanEntryRepository).renameClassEverywhere("2026/2027", "7-А", "7-А", "СП2");
+        verify(manualLoadEntryRepository).renameClassEverywhere("2026/2027", "7-А", "7-А", "СП2");
     }
 
     @Test

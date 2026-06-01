@@ -49,6 +49,15 @@ public class ClassroomLeadershipController {
         return ResponseEntity.ok(classroomLeadershipService.findAll(academicYearService.resolveRequestedOrDefault(academicYear)));
     }
 
+    @PatchMapping("/{id}")
+    public ResponseEntity<ClassroomLeadershipEntry> updateOne(@PathVariable Long id,
+                                                              @RequestParam(required = false) String academicYear,
+                                                              @RequestBody(required = false) ClassroomLeadershipEntryRequest request) {
+        ClassroomLeadershipEntryRequest effectiveRequest = request != null ? request : new ClassroomLeadershipEntryRequest();
+        effectiveRequest.setAcademicYear(academicYearService.resolveRequestedOrDefault(academicYear));
+        return ResponseEntity.ok(classroomLeadershipService.updateOne(id, effectiveRequest));
+    }
+
     @GetMapping("/one/dependencies")
     public ResponseEntity<Map<String, Object>> classDependencies(@RequestParam String numberSchoolBuilding,
                                                                  @RequestParam String className,
