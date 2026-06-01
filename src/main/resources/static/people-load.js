@@ -68,6 +68,10 @@ function classKey(className, buildingCode) {
 
 
 function rowClassEntry(row) {
+    if (row?.classId != null) {
+        const byId = state.classMapById?.get(String(row.classId));
+        if (byId) return byId;
+    }
     const byGroup = classKey(row.className, row.numberSchoolBuilding);
     const exact = state.classMapByGroup?.get(byGroup);
     if (exact) return exact;
@@ -303,32 +307,36 @@ function formatMoney(value) {
     return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value || 0);
 }
 
-function teacherExtra(fio, teacherRows) {
+function teacherLeadershipClasses(fio) {
     const key = fioKey(fio);
-    const teacher = state.teacherByFio?.get(key);
-    const teacherAddresses = Array.from(new Set(teacherRows.map(rowAddressLabel).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ru"));
-    const teacherBuildings = Array.from(new Set(teacherRows.map((row) => buildingGroupCode(row.numberSchoolBuilding)).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ru"));
-    const leadership = (state.leadershipByTeacher?.get(key) || [])
-        .map((entry) => `${entry.className} (${entry.numberSchoolBuilding}${entry.campusAddress ? `, ${entry.campusAddress}` : ""})`)
-        .join("; ");
-    const extra = [];
-    if (teacherAddresses.length) {
-        extra.push(`Адреса: ${teacherAddresses.join(", ")}`);
-    } else if (teacherBuildings.length) {
-        extra.push(`Корпуса: ${teacherBuildings.join(", ")}`);
-    }
-    if (leadership) extra.push(`Классное руководство: ${leadership}`);
-    if (normalizeText(teacher?.additionalDuties)) extra.push(`Доп. обязанности: ${teacher.additionalDuties}`);
-    return extra.join("\n");
+    return (state.leadershipByTeacher?.get(key) || [])
+        .map((entry) => normalizeText(entry.className))
+        .filter(Boolean)
+        .join(", ");
+}
+
+function rowBuildingLabel(row) {
+    const building = buildingGroupCode(row.numberSchoolBuilding);
+    const address = rowAddressLabel(row);
+    return [building, address].filter(Boolean).join("\n");
+}
+
+function fioHtml(fio) {
+    return escapeHtml(normalizeText(fio)).replace(/\s+/g, "<br>");
 }
 
 function renderTable() {
     const selected = ui.buildingSelect?.value || state.buildings[0]?.value || "";
-    const selectedRows = state.manualRows
-        .filter((row) => rowMatchesBuildingAccess(row, selected))
+    const selectedRows = state.manualRows.filter((row) => rowMatchesBuildingAccess(row, selected));
+    const selectedTeacherKeys = new Set(selectedRows.map((row) => fioKey(row.fioTeacher)));
+    const displayRows = state.manualRows
+        .filter((row) => selectedTeacherKeys.has(fioKey(row.fioTeacher)))
         .sort((a, b) => {
             const fioCompare = normalizeText(a.fioTeacher).localeCompare(normalizeText(b.fioTeacher), "ru");
             if (fioCompare) return fioCompare;
+            const aSelected = rowMatchesBuildingAccess(a, selected) ? 0 : 1;
+            const bSelected = rowMatchesBuildingAccess(b, selected) ? 0 : 1;
+            if (aSelected !== bSelected) return aSelected - bSelected;
             const subjectCompare = normalizeText(a.subjectName).localeCompare(normalizeText(b.subjectName), "ru");
             if (subjectCompare) return subjectCompare;
             return normalizeText(a.className).localeCompare(normalizeText(b.className), "ru");
@@ -355,17 +363,17 @@ function renderTable() {
     });
 
     const showSalary = salaryPermission().canView;
-    const headers = ["ФИО", "Предмет", "Класс", "Группа", "Количество детей", "Часы по предмету", "Период нагрузки", "Часы в корпусе/всего", "Дополнительные сведения"];
+    const headers = ["ФИО", "Предмет", "Класс", "Группа", "Количество детей", "Часы по предмету", "Период нагрузки", "Часы в корпусе/всего", "Корпус", "Классное руководство"];
     if (showSalary) {
-        headers.push("За часы", "Классное руководство", "Итого");
+        headers.push("За часы", "Кл. рук., руб.", "Итого");
     }
     let html = `<thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>`;
 
-    if (!selectedRows.length) {
+    if (!displayRows.length) {
         html += `<tr><td colspan="${headers.length}" class="muted">Для выбранного корпуса или адреса нагрузка не найдена.</td></tr>`;
     } else {
         const rowsByTeacher = new Map();
-        selectedRows.forEach((row) => {
+        displayRows.forEach((row) => {
             const key = fioKey(row.fioTeacher);
             if (!rowsByTeacher.has(key)) rowsByTeacher.set(key, []);
             rowsByTeacher.get(key).push(row);
@@ -375,13 +383,13 @@ function renderTable() {
             const scoped = selectedTotals.get(key) || { year: 0, h1: 0, h2: 0 };
             const total = allTotals.get(key) || { year: 0, h1: 0, h2: 0 };
             const hours = formatScopedTotalHours(scoped, total);
-            const extra = teacherExtra(fio, allRowsByTeacher.get(key) || rows);
+            const leadership = teacherLeadershipClasses(fio);
             const teacherRowsAcrossAllClasses = allRowsByTeacher.get(key) || rows;
             const salary = showSalary ? teacherSalary(fio, teacherRowsAcrossAllClasses) : null;
             rows.forEach((row, index) => {
                 html += "<tr>";
                 if (index === 0) {
-                    html += `<td rowspan="${rows.length}" class="people-load-fio">${escapeHtml(fio)}</td>`;
+                    html += `<td rowspan="${rows.length}" class="people-load-fio">${fioHtml(fio)}</td>`;
                 }
                 html += `<td>${escapeHtml(row.subjectName)}</td>`;
                 html += `<td>${escapeHtml(row.className)}</td>`;
@@ -391,7 +399,10 @@ function renderTable() {
                 html += `<td>${escapeHtml(periodLabel(row))}</td>`;
                 if (index === 0) {
                     html += `<td rowspan="${rows.length}" class="people-load-hours">${escapeHtml(hours)}</td>`;
-                    html += `<td rowspan="${rows.length}" class="people-load-extra">${escapeHtml(extra)}</td>`;
+                }
+                html += `<td class="people-load-building">${escapeHtml(rowBuildingLabel(row))}</td>`;
+                if (index === 0) {
+                    html += `<td rowspan="${rows.length}" class="people-load-leadership">${escapeHtml(leadership)}</td>`;
                     if (showSalary) {
                         html += `<td rowspan="${rows.length}" class="people-load-money">${escapeHtml(formatMoney(salary.hours))}</td>`;
                         html += `<td rowspan="${rows.length}" class="people-load-money people-load-money-leadership">${escapeHtml(formatMoney(salary.leadership))}</td>`;
@@ -406,7 +417,7 @@ function renderTable() {
     html += "</tbody>";
     ui.table.innerHTML = html;
     const label = state.buildings.find((building) => building.value === selected);
-    ui.summary.textContent = `Показано строк: ${selectedRows.length}. Выбрано: ${buildingLabel(label) || "корпус не выбран"}.`;
+    ui.summary.textContent = `Показано строк: ${displayRows.length} (в выбранном корпусе: ${selectedRows.length}). Выбрано: ${buildingLabel(label) || "корпус не выбран"}.`;
 }
 
 async function exportFullLoadWorkbook(withSalary = false) {
@@ -431,7 +442,9 @@ async function exportFullLoadWorkbook(withSalary = false) {
 function rebuildIndexes() {
     state.classMapByGroup = new Map();
     state.classMapByName = new Map();
+    state.classMapById = new Map();
     state.classes.forEach((entry) => {
+        if (entry.id != null) state.classMapById.set(String(entry.id), entry);
         state.classMapByGroup.set(classKey(entry.className, entry.numberSchoolBuilding), entry);
         const name = normalizeKey(entry.className);
         if (!state.classMapByName.has(name)) state.classMapByName.set(name, entry);

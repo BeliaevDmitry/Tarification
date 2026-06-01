@@ -38,6 +38,12 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
     boolean existsByNumberSchoolBuildingIgnoreCase(String numberSchoolBuilding);
     void deleteByAcademicYearAndNumberSchoolBuildingAndClassName(String academicYear, String numberSchoolBuilding, String className);
 
+    @Query(value = "select count(*) from manual_load_entry where academic_year = :academicYear and (class_id = :classId or (lower(number_school_building) = lower(:numberSchoolBuilding) and lower(class_name) = lower(:className)))", nativeQuery = true)
+    long countClassTails(@Param("academicYear") String academicYear,
+                         @Param("classId") Long classId,
+                         @Param("numberSchoolBuilding") String numberSchoolBuilding,
+                         @Param("className") String className);
+
     void deleteAllByAcademicYear(String academicYear);
 
     @Modifying

@@ -276,6 +276,22 @@ async function reload() {
     renderClasses(classRows);
 }
 
+async function classDependencySummary(building, className) {
+    return api(`/api/classroom-leadership/one/dependencies?numberSchoolBuilding=${encodeURIComponent(building)}&className=${encodeURIComponent(className)}`);
+}
+
+function classDeleteWarning(className, building, dependencies) {
+    const curriculumRows = Number(dependencies?.curriculumRows || 0);
+    const manualLoadRows = Number(dependencies?.manualLoadRows || 0);
+    const warnings = [];
+    if (manualLoadRows > 0) warnings.push(`нагрузка: ${manualLoadRows} строк`);
+    if (curriculumRows > 0) warnings.push(`учебный план: ${curriculumRows} строк`);
+    const tailText = warnings.length
+        ? `\n\nВНИМАНИЕ: вместе с классом будут удалены связанные хвосты (${warnings.join(", ")}).`
+        : `\n\nСвязанной нагрузки и предметов учебного плана для этого класса не найдено.`;
+    return `Удалить класс ${className} в корпусе ${building}?${tailText}`;
+}
+
 async function upsertEntry(entry, originalKey = null) {
     const current = await api("/api/classroom-leadership");
     const filtered = (current || []).filter((r) => {
@@ -357,8 +373,9 @@ ui.editDeleteBtn?.addEventListener('click', async () => {
         print({ error: "Выберите корпус и класс для удаления" });
         return;
     }
-    if (!window.confirm(`Удалить класс ${className} в корпусе ${building}?`)) return;
     try {
+        const dependencies = await classDependencySummary(building, className);
+        if (!window.confirm(classDeleteWarning(className, building, dependencies))) return;
         await api(`/api/classroom-leadership/one?numberSchoolBuilding=${encodeURIComponent(building)}&className=${encodeURIComponent(className)}`, { method: "DELETE" });
         ui.editDialog.close();
         print({ status: "deleted", numberSchoolBuilding: building, className });
@@ -385,6 +402,7 @@ ui.importBtn.addEventListener("click", async () => {
 
 ui.refreshBtn.addEventListener("click", () => reload().catch((error) => print({ error: error.message })));
 ui.clearBtn.addEventListener("click", async () => {
+    if (!window.confirm("Удалить все классы выбранного учебного года? Вместе с ними будут удалены вся нагрузка и весь учебный план этого года.")) return;
     try {
         await api("/api/classroom-leadership", { method: "DELETE" });
         print({ status: "cleared" });

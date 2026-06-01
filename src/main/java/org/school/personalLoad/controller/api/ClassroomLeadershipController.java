@@ -49,6 +49,17 @@ public class ClassroomLeadershipController {
         return ResponseEntity.ok(classroomLeadershipService.findAll(academicYearService.resolveRequestedOrDefault(academicYear)));
     }
 
+    @GetMapping("/one/dependencies")
+    public ResponseEntity<Map<String, Object>> classDependencies(@RequestParam String numberSchoolBuilding,
+                                                                 @RequestParam String className,
+                                                                 @RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(classroomLeadershipService.dependencySummary(
+                academicYearService.resolveRequestedOrDefault(academicYear),
+                numberSchoolBuilding,
+                className
+        ));
+    }
+
     @DeleteMapping("/one")
     public ResponseEntity<Void> deleteOne(@RequestParam String numberSchoolBuilding,
                                           @RequestParam String className,
