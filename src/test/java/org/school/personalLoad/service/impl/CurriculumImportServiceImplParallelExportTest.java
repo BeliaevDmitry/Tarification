@@ -94,6 +94,14 @@ class CurriculumImportServiceImplParallelExportTest {
             assertEquals("Алгебра", sheet.getRow(7).getCell(1).getStringCellValue());
             assertEquals("3/4", sheet.getRow(7).getCell(2).getStringCellValue());
             assertEquals("5", sheet.getRow(7).getCell(3).getStringCellValue());
+            assertEquals("Итого основная часть", sheet.getRow(8).getCell(0).getStringCellValue());
+            assertEquals("3/4", sheet.getRow(8).getCell(2).getStringCellValue());
+            assertEquals("5", sheet.getRow(8).getCell(3).getStringCellValue());
+            assertEquals("Итого формируемая часть", sheet.getRow(9).getCell(0).getStringCellValue());
+            assertEquals("", sheet.getRow(9).getCell(2).getStringCellValue());
+            assertEquals("Итого основная+формируемая часть", sheet.getRow(10).getCell(0).getStringCellValue());
+            assertEquals("3/4", sheet.getRow(10).getCell(2).getStringCellValue());
+            assertEquals("Итого внеурочная часть", sheet.getRow(11).getCell(0).getStringCellValue());
         }
     }
 
