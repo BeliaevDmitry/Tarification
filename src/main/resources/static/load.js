@@ -502,8 +502,9 @@ function partLabel(part) {
 }
 
 function subjectTypeByPart(part) {
+    if (part === "CORRECTIONAL") return "CORRECTIONAL";
     if (part === "EXTRACURRICULAR") return "EXTRACURRICULAR";
-    if (part === "FORMABLE" || part === "CORRECTIONAL") return "FORMABLE";
+    if (part === "FORMABLE") return "FORMABLE";
     return "CORE";
 }
 
