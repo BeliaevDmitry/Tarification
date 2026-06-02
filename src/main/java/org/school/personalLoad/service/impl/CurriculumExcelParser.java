@@ -298,7 +298,8 @@ public class CurriculumExcelParser {
         String value = normalizeText(subject).toLowerCase(Locale.ROOT);
         return value.contains("обязательная часть")
                 || value.contains("часть, формируемая участниками образовательных отношений")
-                || value.contains("внеурочная деятельность");
+                || value.contains("внеурочная деятельность")
+                || value.contains("коррекцион");
     }
 
     private CurriculumPart mapPart(String marker, CurriculumPart fallback) {
@@ -306,6 +307,7 @@ public class CurriculumExcelParser {
         if (value.contains("обязательная часть")) return CurriculumPart.CORE;
         if (value.contains("формируемая")) return CurriculumPart.FORMABLE;
         if (value.contains("внеурочная")) return CurriculumPart.EXTRACURRICULAR;
+        if (value.contains("коррекцион")) return CurriculumPart.CORRECTIONAL;
         return fallback;
     }
 
@@ -317,6 +319,8 @@ public class CurriculumExcelParser {
                 "обязательная часть",
                 "часть, формируемая участниками образовательных отношений",
                 "внеурочная деятельность",
+                "коррекционная область",
+                "коррекционно-развивающая область",
                 "итого",
                 "всего",
                 "максимально допустим",
