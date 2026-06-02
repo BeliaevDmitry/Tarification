@@ -63,17 +63,18 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             String className = ClassNameNormalizer.normalize(request.getClassName());
             String classDirection = normalize(request.getClassDirection());
             String fioTeacher = normalize(request.getFioTeacher());
-            String campusAddress = resolveCampusAddress(building, request.getCampusAddress());
             String classType = normalizeClassType(request.getClassType());
             if (building.isBlank() || className.isBlank() || classDirection.isBlank() || fioTeacher.isBlank()) continue;
 
             ensureTeacherExists(fioTeacher);
+            SchoolBuilding schoolBuilding = resolveSchoolBuilding(request, building);
 
             request.setNumberSchoolBuilding(building);
+            request.setSchoolBuildingId(schoolBuilding.getId());
             request.setClassName(className);
             request.setClassDirection(classDirection);
             request.setFioTeacher(fioTeacher);
-            request.setCampusAddress(campusAddress);
+            request.setCampusAddress(normalize(schoolBuilding.getAddress()));
             request.setClassType(classType);
             request.setAcademicYear(academicYear);
 
@@ -100,7 +101,9 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             entry.setClassName(ClassNameNormalizer.normalize(request.getClassName()));
             entry.setClassDirection(normalize(request.getClassDirection()));
             entry.setFioTeacher(normalize(request.getFioTeacher()));
-            entry.setCampusAddress(resolveCampusAddress(entry.getNumberSchoolBuilding(), request.getCampusAddress()));
+            SchoolBuilding schoolBuilding = resolveSchoolBuilding(request, entry.getNumberSchoolBuilding());
+            entry.setSchoolBuilding(schoolBuilding);
+            entry.setCampusAddress(normalize(schoolBuilding.getAddress()));
             entry.setClassType(normalizeClassType(request.getClassType()));
             toSave.add(entry);
 
@@ -156,6 +159,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
 
         ensureTeacherExists(fioTeacher);
         ensureBuildingExists(building);
+        SchoolBuilding schoolBuilding = resolveSchoolBuilding(request, building);
 
         String oldClassName = ClassNameNormalizer.normalize(entry.getClassName());
         String oldBuilding = normalizeBuildingCode(entry.getNumberSchoolBuilding());
@@ -164,7 +168,8 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         entry.setClassName(className);
         entry.setClassDirection(classDirection);
         entry.setFioTeacher(fioTeacher);
-        entry.setCampusAddress(resolveCampusAddress(building, request.getCampusAddress()));
+        entry.setSchoolBuilding(schoolBuilding);
+        entry.setCampusAddress(normalize(schoolBuilding.getAddress()));
         entry.setClassType(classType);
         ClassroomLeadershipEntry saved = classroomLeadershipRepository.save(entry);
         syncClassroomBuildingGroups(List.of(saved));
@@ -192,6 +197,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             req.setClassName(existing.getClassName());
             req.setClassDirection(existing.getClassDirection());
             req.setFioTeacher(existing.getFioTeacher());
+            req.setSchoolBuildingId(existing.getSchoolBuildingId());
             req.setCampusAddress(existing.getCampusAddress());
             req.setClassType(normalizeClassType(existing.getClassType()));
             String key = existing.getNumberSchoolBuilding() + "|" + existing.getClassName();
@@ -233,7 +239,9 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
                 req.setClassName(className);
                 req.setClassDirection(direction);
                 req.setFioTeacher(teacher);
-                req.setCampusAddress(resolveCampusAddress(building, campusAddress));
+                SchoolBuilding schoolBuilding = resolveSchoolBuildingByAddressOrDefault(building, campusAddress);
+                req.setSchoolBuildingId(schoolBuilding.getId());
+                req.setCampusAddress(normalize(schoolBuilding.getAddress()));
                 req.setClassType(classType);
                 req.setAcademicYear(academicYear);
                 String newKey = building + "|" + className;
@@ -331,7 +339,11 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             entry.setClassName(nextClass);
             entry.setClassDirection(normalize(previous.getClassDirection()));
             entry.setFioTeacher(normalize(previous.getFioTeacher()));
-            entry.setCampusAddress(resolveCampusAddress(entry.getNumberSchoolBuilding(), previous.getCampusAddress()));
+            SchoolBuilding schoolBuilding = previous.getSchoolBuilding() != null
+                    ? previous.getSchoolBuilding()
+                    : resolveSchoolBuildingByAddressOrDefault(entry.getNumberSchoolBuilding(), previous.getCampusAddress());
+            entry.setSchoolBuilding(schoolBuilding);
+            entry.setCampusAddress(normalize(schoolBuilding.getAddress()));
             entry.setClassType(normalizeClassType(previous.getClassType()));
             promoted.add(entry);
         }
@@ -559,15 +571,34 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         });
     }
 
-    private String resolveCampusAddress(String buildingCode, String requestedAddress) {
-        String normalized = normalize(requestedAddress);
-        if (!normalized.isBlank()) {
-            return normalized;
+    private SchoolBuilding resolveSchoolBuilding(ClassroomLeadershipEntryRequest request, String buildingCode) {
+        if (request.getSchoolBuildingId() != null) {
+            return schoolBuildingRepository.findById(request.getSchoolBuildingId())
+                    .orElseThrow(() -> new IllegalArgumentException("Площадка не найдена: " + request.getSchoolBuildingId()));
+        }
+        return resolveSchoolBuildingByAddressOrDefault(buildingCode, request.getCampusAddress());
+    }
+
+    private SchoolBuilding resolveSchoolBuildingByAddressOrDefault(String buildingCode, String requestedAddress) {
+        String normalizedAddress = normalizeAddress(requestedAddress);
+        if (!normalizedAddress.isBlank()) {
+            List<SchoolBuilding> matches = schoolBuildingRepository.findAll().stream()
+                    .filter(building -> normalizeAddress(building.getAddress()).equals(normalizedAddress))
+                    .toList();
+            if (matches.isEmpty()) {
+                throw new IllegalArgumentException("Площадка не найдена по адресу: " + requestedAddress);
+            }
+            if (matches.size() > 1) {
+                throw new IllegalArgumentException("Адрес площадки неоднозначен: " + requestedAddress);
+            }
+            return matches.get(0);
         }
         return findKnownBuilding(buildingCode)
-                .map(SchoolBuilding::getAddress)
-                .map(this::normalize)
-                .orElse("");
+                .orElseThrow(() -> new IllegalArgumentException("Площадка для корпуса не найдена: " + buildingCode));
+    }
+
+    private String normalizeAddress(String value) {
+        return normalize(value).replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     private Optional<SchoolBuilding> findKnownBuilding(String code) {
