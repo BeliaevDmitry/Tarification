@@ -10,10 +10,21 @@ ALTER TABLE classroom_leadership_entry
 
 DO $$
 DECLARE
+    blank_count BIGINT;
     missing_count BIGINT;
     duplicate_count BIGINT;
     sample_addresses TEXT;
 BEGIN
+    SELECT count(*), string_agg(format('id=%s', id), '; ' ORDER BY id)
+      INTO blank_count, sample_addresses
+    FROM classroom_leadership_entry
+    WHERE trim(coalesce(campus_address, '')) = '';
+
+    IF blank_count > 0 THEN
+        RAISE EXCEPTION 'Cannot backfill classroom_leadership_entry.school_building_id: % class(es) have empty campus_address. Examples: %',
+            blank_count, left(coalesce(sample_addresses, ''), 1000);
+    END IF;
+
     WITH class_address AS (
         SELECT c.id,
                c.campus_address,
@@ -93,11 +104,19 @@ END $$;
 
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_classroom_school_building') THEN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'fk_classroom_school_building'
+          AND conrelid = 'classroom_leadership_entry'::regclass
+          AND contype = 'f'
+    ) THEN
         ALTER TABLE classroom_leadership_entry
             ADD CONSTRAINT fk_classroom_school_building
-            FOREIGN KEY (school_building_id) REFERENCES school_building(id)
-            ON UPDATE RESTRICT ON DELETE RESTRICT;
+            FOREIGN KEY (school_building_id)
+            REFERENCES school_building(id)
+            ON UPDATE RESTRICT
+            ON DELETE RESTRICT;
     END IF;
 END $$;
 

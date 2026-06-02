@@ -18,6 +18,8 @@ class ClassroomSchoolBuildingMigrationSqlTest {
         String sql = Files.readString(MIGRATION).toLowerCase(Locale.ROOT);
 
         assertTrue(sql.contains("add column if not exists school_building_id bigint"));
+        assertTrue(sql.contains("and conrelid = 'classroom_leadership_entry'::regclass"));
+        assertTrue(sql.contains("and contype = 'f'"));
         assertTrue(sql.contains("foreign key (school_building_id)"));
         assertTrue(sql.contains("references school_building(id)"));
         assertTrue(sql.contains("set school_building_id = unique_match.school_building_id"));
@@ -31,6 +33,8 @@ class ClassroomSchoolBuildingMigrationSqlTest {
     void migrationFailsWhenAddressHasNoMatchOrMultipleMatches() throws Exception {
         String sql = Files.readString(MIGRATION).toLowerCase(Locale.ROOT);
 
+        assertTrue(sql.contains("trim(coalesce(campus_address, '')) = ''"));
+        assertTrue(sql.contains("empty campus_address"));
         assertTrue(sql.contains("match_count = 0"));
         assertTrue(sql.contains("match_count > 1"));
         assertTrue(sql.contains("raise exception 'cannot backfill classroom_leadership_entry.school_building_id"));
