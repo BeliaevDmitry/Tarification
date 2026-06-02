@@ -27,6 +27,7 @@ This audit is the first, read-only PR in the FK cutover. It documents the state 
 | Meta-groups | `curriculum_plan_entry` | `meta_group_id` | `meta_group(id)` | `2026-05-28_meta_group_full_fk.sql` adds `meta_group_id`, `fk_curriculum_meta_group`, index, check constraint, and sync/rename triggers; `2026-06-01_meta_group_curriculum_fk_fix.sql` corrects curriculum semantics. |
 | Meta-groups | `manual_load_entry` | `meta_group_id` | `meta_group(id)` | `2026-05-28_meta_group_full_fk.sql` adds `meta_group_id`, `fk_manual_meta_group`, index, check constraint, and sync/rename triggers. |
 | Subject areas | `subject_catalog_entry` | `subject_area_id` | `subject_area(id)` | `2026-05-30_subject_area_fk.sql` adds `subject_area_id`, makes it `NOT NULL`, adds `fk_subject_catalog_area`, index, and sync/rename triggers. |
+| Physical class site | `classroom_leadership_entry` | `school_building_id` | `school_building(id)` | `2026-06-02_classroom_school_building_fk.sql` adds the independent physical-site FK, backfilled by normalized `campus_address` ↔ `school_building.address` without comparing `building_group_id`. |
 
 ## Constraints and triggers that currently enforce or synchronize FK state
 
@@ -34,6 +35,7 @@ This audit is the first, read-only PR in the FK cutover. It documents the state 
 
 - `uk_building_group_code` uniquely identifies a logical building group by `building_group.code`.
 - `fk_school_building_group`, `fk_classroom_leadership_group`, `fk_curriculum_plan_group`, `fk_manual_load_group`, `fk_meta_group_group`, and `fk_teacher_directory_group` point `building_group_id` to `building_group(id)`.
+- `fk_classroom_school_building` points `classroom_leadership_entry.school_building_id` to `school_building(id)` and is intentionally independent from `classroom_leadership_entry.building_group_id`.
 - `trg_sync_building_group_fk()` synchronizes legacy `numberSchoolBuilding` with `building_group_id` and is installed as `trg_*_sync_building_group` on `classroom_leadership_entry`, `curriculum_plan_entry`, `manual_load_entry`, `meta_group`, and `teacher_directory_entry`.
 - `uk_school_building_code` is explicitly dropped so one logical group code can have multiple `school_building.address` rows.
 
@@ -67,18 +69,24 @@ This audit is the first, read-only PR in the FK cutover. It documents the state 
 - `trg_sync_subject_area_fk()` synchronizes `subject_area_id` and legacy `subjectAreaName`.
 - `trg_propagate_subject_area_rename()` pushes subject-area name changes to subject legacy text.
 
-## `school_building_id` status and address logic
+## Independent classroom ownership and physical site model
 
-No migration in `scripts/migrations` or `deploy/sql` adds a `school_building_id` column, FK, index, or trigger for `classroom_leadership_entry`, `curriculum_plan_entry`, `manual_load_entry`, or `meta_group`. The JPA entities likewise expose `building_group_id` relations but do not expose a `school_building_id` relation for classes, curriculum, manual load, or metagroups.
+Correct business model after the PR 1 review:
 
-Current address-level logic is therefore not fully represented by FK. The schema has a FK to the logical building group (`building_group_id`) and keeps the concrete площадка/address in legacy text (`classroom_leadership_entry.campus_address`, matched to `school_building.address` in repository queries). Because `2026-05-27_school_building_group_fk.sql` intentionally allows multiple `school_building` rows per logical code, `building_group_id` alone is not enough to represent a specific address. The only possible missing schema step for address-safe cutover is a real `school_building_id` FK on the class/location-bearing model, with dependent rows resolving the concrete site through their class/metagroup FK rather than through `campusAddress` strings.
+- `BuildingGroup` is the class organizational СП / ownership. `classroom_leadership_entry.building_group_id` and legacy `numberSchoolBuilding` describe this organizational СП.
+- `SchoolBuilding` is the physical building/site/address. A class owned by `СП1` may physically be placed in a site whose `school_building.code`/group is `СП2` or `СП3`.
+- `ClassroomLeadershipEntry` must therefore contain two independent relations: organizational СП through `building_group_id`, and physical placement through `school_building_id`. These relations must not be forced to match.
+
+PR 1 found that no then-existing migration in `scripts/migrations` or `deploy/sql` added a `school_building_id` column, FK, index, or trigger for `classroom_leadership_entry`, `curriculum_plan_entry`, `manual_load_entry`, or `meta_group`. The pre-PR2 JPA entities likewise exposed `building_group_id` relations but did not expose a `school_building_id` relation for classes, curriculum, manual load, or metagroups.
+
+That made `school_building_id` on `classroom_leadership_entry` the only missing FK for physical class placement. PR 2 adds it, resolved from the physical address (`campusAddress` ↔ `school_building.address`) without filtering by the class `building_group_id`; changing the physical site must not change the class СП, and changing the class СП must not automatically choose a physical site.
 
 ## Legacy fields still used by the application as relation keys
 
 | Legacy field | Current key-like usage |
 | --- | --- |
 | `numberSchoolBuilding` / `number_school_building` | Building-group sync trigger input; class uniqueness; class lookup/backfill; metagroup lookup/backfill; current class save/update requests; classroom repository find/delete methods; curriculum/manual filters; manual load address queries; building deletion/cleanup by code. |
-| `campusAddress` / `campus_address` | Current class location snapshot and the only concrete площадка/address discriminator; manual-load repository address queries join manual rows to class rows by `class_id` but still filter class `campusAddress` text against the requested address. |
+| `campusAddress` / `campus_address` | Current class location snapshot and, before `school_building_id`, the only concrete physical площадка/address discriminator; matching to `school_building.address` must be independent from the class organizational `building_group_id`. |
 | `className` / `class_name` | Current class uniqueness and FK sync fallback; curriculum/manual repository lookups and count fallbacks; class rename propagation; metagroup routing by `МГ:` prefix; PA/VSOKO and import/export display workflows. |
 | `fioTeacher` / `fio_teacher` | Teacher FK sync fallback; classroom/manual display; teacher dismissal/restore still finds manual load by FIO; teacher uniqueness remains `uk_teacher_directory_fio`; service memo and exports use FIO. |
 | `subjectName` / `subject_name` | Subject FK sync fallback; curriculum/manual repository lookups; subject rename propagation; import/export and PA/VSOKO display workflows. |
@@ -99,9 +107,13 @@ Current address-level logic is therefore not fully represented by FK. The schema
 
 ## Recommended PR sequence after this audit
 
-1. Add a true `school_building_id` FK only if the next PR confirms address-safe class location cannot be modeled with the existing schema. Based on this audit, this is the only missing relation for distinguishing a logical building group from a concrete address.
-2. Cut class location updates over to FK relations and remove the native building-group sync workaround.
+1. Add a true `school_building_id` FK on `classroom_leadership_entry` for physical placement, independent from the class `building_group_id` СП ownership.
+2. Cut class location updates over to the physical-site FK while keeping the temporary native building-group sync workaround only for organizational СП until `building_group_id` itself becomes a writable JPA relation.
 3. Remove class/meta-group string fallback in curriculum/manual load and keep the regular-row-vs-metagroup-row rule via constraints.
 4. Move teacher workflows to `teacher_id`, keeping `fioTeacher` for display/search/export only.
 5. Move subject and subject-area operations to `subject_id`/`subject_area_id`, keeping names only as display/snapshot text.
 6. Remove remaining triggers whose only purpose is temporary string/ID synchronization once application code no longer depends on the string side.
+
+## PR 2 update
+
+PR 2 adds `scripts/migrations/2026-06-02_classroom_school_building_fk.sql`, which backfills `classroom_leadership_entry.school_building_id` by normalized physical address only. The migration intentionally does not compare or update `classroom_leadership_entry.building_group_id`, because СП ownership and physical site are independent business facts. Legacy `numberSchoolBuilding` and `campusAddress` remain as compatibility/display snapshots during the transition.

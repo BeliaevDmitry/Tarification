@@ -180,34 +180,34 @@ WITH checks AS (
              <> upper(replace(split_part(coalesce(mg.number_school_building, ''), '|', 1), ' ', ''))
       )
 
-    -- Address/site diagnostics: concrete school_building_id is absent, so campus_address remains the only site discriminator.
+    -- Address/site diagnostics: physical site matching is independent from the class building_group_id.
     UNION ALL
-    SELECT 'classroom campus_address has no matching school_building address in same building group', count(*)::bigint
+    SELECT 'classroom campus_address has no matching school_building address', count(*)::bigint
     FROM classroom_leadership_entry c
     WHERE coalesce(trim(c.campus_address), '') <> ''
       AND NOT EXISTS (
           SELECT 1
           FROM school_building sb
-          WHERE sb.building_group_id = c.building_group_id
-            AND lower(trim(sb.address)) = lower(trim(c.campus_address))
+          WHERE lower(regexp_replace(trim(coalesce(sb.address, '')), '\s+', ' ', 'g')) =
+                lower(regexp_replace(trim(coalesce(c.campus_address, '')), '\s+', ' ', 'g'))
       )
     UNION ALL
-    SELECT 'classroom campus_address matches multiple school_building rows in same building group', count(*)::bigint
+    SELECT 'classroom campus_address matches multiple school_building rows', count(*)::bigint
     FROM classroom_leadership_entry c
     WHERE coalesce(trim(c.campus_address), '') <> ''
       AND (
           SELECT count(*)
           FROM school_building sb
-          WHERE sb.building_group_id = c.building_group_id
-            AND lower(trim(sb.address)) = lower(trim(c.campus_address))
+          WHERE lower(regexp_replace(trim(coalesce(sb.address, '')), '\s+', ' ', 'g')) =
+                lower(regexp_replace(trim(coalesce(c.campus_address, '')), '\s+', ' ', 'g'))
       ) > 1
 )
 SELECT check_name, issue_count
 FROM checks
 ORDER BY check_name;
 
--- Schema-presence diagnostic for the missing concrete site FK.
--- Expected current result from audited migrations/entities: school_building_id is absent on these tables.
+-- Schema-presence diagnostic for the concrete site FK.
+-- Before PR 2 this is absent; after the classroom FK migration it should exist on classroom_leadership_entry.
 SELECT table_name,
        EXISTS (
            SELECT 1
