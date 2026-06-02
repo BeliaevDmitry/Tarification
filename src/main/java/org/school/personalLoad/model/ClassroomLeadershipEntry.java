@@ -32,6 +32,18 @@ public class ClassroomLeadershipEntry {
     @EqualsAndHashCode.Exclude
     private BuildingGroup buildingGroup;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "school_building_id", nullable = false)
+    @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private SchoolBuilding schoolBuilding;
+
+    @com.fasterxml.jackson.annotation.JsonProperty("schoolBuildingId")
+    public Long getSchoolBuildingId() {
+        return schoolBuilding == null ? null : schoolBuilding.getId();
+    }
+
     @Column(nullable = false)
     private String className;
 
