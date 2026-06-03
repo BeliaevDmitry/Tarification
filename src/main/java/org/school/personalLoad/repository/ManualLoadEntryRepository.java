@@ -51,6 +51,7 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
     void deleteByAcademicYearAndClassIds(@Param("academicYear") String academicYear,
                                          @Param("classIds") java.util.Collection<Long> classIds);
 
+
     @Modifying
     @Query("delete from ManualLoadEntry m where m.academicYear = :academicYear and m.metaGroupId in :metaGroupIds")
     void deleteByAcademicYearAndMetaGroupIds(@Param("academicYear") String academicYear,

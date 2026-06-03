@@ -34,6 +34,7 @@ async function api(path, options = {}) {
 const esc = (v) => String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 const print = (v) => { ui.result.textContent = JSON.stringify(v, null, 2); };
 const typeLabel = (v) => {
+    if (v === "CORRECTIONAL") return "4 тип: коррекционно-развивающая";
     if (v === "EXTRACURRICULAR") return "3 тип: внеурочная";
     if (v === "FORMABLE") return "2 тип: формируемая";
     return "1 тип: основная";
