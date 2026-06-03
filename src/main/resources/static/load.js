@@ -329,25 +329,26 @@ function metaGroupIdForRow(row) {
 
 function rowMatchesBuildingAccess(row, accessCode) {
     if (accessCode === ARCHIVE_BUILDING_CODE) return false;
+
     const groupCode = buildingGroupCode(accessCode);
     if (!groupCode) return false;
+
     const address = buildingAddressToken(accessCode);
     if (address) {
         const selectedSchoolBuildingId = schoolBuildingIdForAccess(accessCode);
         const rowSchoolBuildingId = schoolBuildingIdForRow(row);
-        if (selectedSchoolBuildingId != null && rowSchoolBuildingId != null) {
-            return Number(rowSchoolBuildingId) === Number(selectedSchoolBuildingId);
-        }
-        if (isExplicitMetaGroupRow(row)) return false;
-        const rowAddress = rowAddressToken(row);
-        if (rowAddress === address) return true;
 
-        // If a building group has exactly one known address, selecting that address is
-        // equivalent to selecting the whole group. This keeps legacy curriculum/manual
-        // rows without campusAddress visible for one-site buildings such as СП17.
-        const knownAddresses = addressesForBuildingCode(groupCode).map(normalizeBuildingAccessCode).filter(Boolean);
-        return buildingGroupCode(row?.numberSchoolBuilding) === groupCode && knownAddresses.length === 1 && knownAddresses[0] === address;
+        if (selectedSchoolBuildingId == null) {
+            return false;
+        }
+
+        if (rowSchoolBuildingId == null) {
+            return false;
+        }
+
+        return Number(rowSchoolBuildingId) === Number(selectedSchoolBuildingId);
     }
+
     return buildingGroupCode(row?.numberSchoolBuilding) === groupCode;
 }
 
@@ -746,6 +747,45 @@ function isManualEntryActiveAt(entry, referenceDate) {
     return from && to && from <= referenceDate && referenceDate <= to;
 }
 
+function periodEndDateForEntry(entry, studyPeriod) {
+    const period = defaultLoadPeriod(entry?.className || "1-А", studyPeriod);
+    return period?.to || "";
+}
+
+function accumulateManualAtHalfYearEnds(pair, entry) {
+    const value = Number(entry?.load || 0);
+    if (!value) return;
+
+    const h1EndDate = periodEndDateForEntry(entry, "H1");
+    const h2EndDate = periodEndDateForEntry(entry, "H2");
+
+    if (h1EndDate && isManualEntryActiveAt(entry, h1EndDate)) {
+        pair.h1 += value;
+    }
+
+    if (h2EndDate && isManualEntryActiveAt(entry, h2EndDate)) {
+        pair.h2 += value;
+    }
+}
+
+function buildTeacherHoursAtHalfYearEnds(rows = []) {
+    const result = {};
+
+    (rows || [])
+        .filter((entry) => String(entry?.fioTeacher || "").trim())
+        .forEach((entry) => {
+            const teacherName = String(entry.fioTeacher || "").trim();
+
+            if (!result[teacherName]) {
+                result[teacherName] = { h1: 0, h2: 0 };
+            }
+
+            accumulateManualAtHalfYearEnds(result[teacherName], entry);
+        });
+
+    return result;
+}
+
 function apiKeyOfRow(row) {
     return `${row.className}|${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}|${rowStudyPeriod(row)}${groupSuffix(row)}`;
 }
@@ -927,14 +967,34 @@ function periodSettingsMap() {
     return Object.fromEntries((studyPeriodSettings || []).map((item) => [item.code || item.settingKey, item]));
 }
 
+function selectedAcademicYearStart() {
+    const raw = String(sessionStorage.getItem("tarification.academicYear") || "").trim();
+    const match = raw.match(/^(\d{4})\s*\/\s*(\d{4})$/);
+    if (match) return Number(match[1]);
+
+    const settingsDates = (studyPeriodSettings || [])
+        .map((item) => String(item?.startDate || ""))
+        .filter(Boolean)
+        .sort();
+
+    if (settingsDates.length) {
+        return Number(settingsDates[0].slice(0, 4));
+    }
+
+    return new Date().getFullYear();
+}
+
 function fallbackYearRange() {
+    const yearFrom = selectedAcademicYearStart();
+    const yearTo = yearFrom + 1;
+
     return {
-        yearFrom: "2026-09-01",
-        h1To: "2026-12-31",
-        h2From: "2027-01-01",
-        yearTo: "2027-05-31",
-        h1_11_to: "2027-01-31",
-        h2_11_from: "2027-02-01"
+        yearFrom: `${yearFrom}-09-01`,
+        h1To: `${yearFrom}-12-31`,
+        h2From: `${yearTo}-01-01`,
+        yearTo: `${yearTo}-05-31`,
+        h1_11_to: `${yearTo}-01-31`,
+        h2_11_from: `${yearTo}-02-01`
     };
 }
 
@@ -968,11 +1028,14 @@ function defaultLoadPeriod(classNameOrStudyPeriod = "YEAR", maybeStudyPeriod = n
     return { from: fallback.yearFrom, to: fallback.yearTo };
 }
 
-function referencePlanningDate() {
-    const today = new Date().toISOString().slice(0, 10);
-    const period = defaultLoadPeriod("1-А", "YEAR");
-    return today < period.from ? period.from : today;
+function clampDateToPeriod(date, period) {
+    if (!period?.from || !period?.to) return date;
+    if (date < period.from) return period.from;
+    if (date > period.to) return period.to;
+    return date;
 }
+
+
 
 function currentDisplayDate() {
     if (state.viewMode === "date" && state.viewDate) {
@@ -1424,65 +1487,58 @@ function teacherHoursInComplex(teacherName) {
 }
 
 function computeTeacherHourIndexes() {
-    const assignments = assignmentsForBuilding(selectedBuilding);
-    const assignmentSignature = Object.entries(assignments)
+    const assignmentSignature = Object.entries(assignmentsForBuilding(selectedBuilding))
         .map(([k, v]) => `${k}:${String(v || "").trim()}`)
         .sort()
         .join("||");
-    const complexSignature = (complexManualRows || [])
+
+    const buildingSignature = (manualRows || [])
         .map((row) => [
             row.id || "",
             row.fioTeacher || "",
-            row.numberSchoolBuilding || "",
-            row.className || "",
-            row.subjectName || "",
+            row.teacherId || "",
+            row.classId || "",
+            row.metaGroupId || "",
+            row.subjectId || "",
             row.load || "",
             row.studyPeriod || "",
             row.loadFromDate || "",
             row.loadToDate || ""
         ].join(":"))
         .join("||");
-    const cacheKey = `${sourceRevision}|${selectedBuilding}|${assignmentSignature}|${complexSignature}`;
+
+    const complexSignature = (complexManualRows || [])
+        .map((row) => [
+            row.id || "",
+            row.fioTeacher || "",
+            row.teacherId || "",
+            row.classId || "",
+            row.metaGroupId || "",
+            row.subjectId || "",
+            row.load || "",
+            row.studyPeriod || "",
+            row.loadFromDate || "",
+            row.loadToDate || ""
+        ].join(":"))
+        .join("||");
+
+    const cacheKey = `${sourceRevision}|${selectedBuilding}|${assignmentSignature}|${buildingSignature}|${complexSignature}`;
+
     if (teacherHourIndexesCacheKey === cacheKey) {
         return teacherHourIndexesCacheValue;
     }
 
-    const buildingTeacherHours = {};
-    const complexTeacherHours = {};
-    const classMap = classBuildingMap();
+    const selectedBuildingGroup = buildingGroupCode(selectedBuilding);
 
-    expandCurriculumRows(curriculumRows || []).forEach((row) => {
-        const fromRow = canonicalBuildingCode(row.numberSchoolBuilding);
-        const fromClass = canonicalBuildingCode(classMap.get(normalizeClassName(row.className)));
-        const buildingCode = fromRow || fromClass;
-        if (!buildingCode) return;
-        const assignedTeacher = String(assignmentsForBuilding(buildingCode)[apiKeyOfRow(row)] || "").trim();
-        if (!assignedTeacher) return;
+    const buildingTeacherHours = {
+        [selectedBuildingGroup]: buildTeacherHoursAtHalfYearEnds(manualRows || [])
+    };
 
-        if (!buildingTeacherHours[buildingCode]) {
-            buildingTeacherHours[buildingCode] = {};
-        }
-        if (!buildingTeacherHours[buildingCode][assignedTeacher]) {
-            buildingTeacherHours[buildingCode][assignedTeacher] = { h1: 0, h2: 0 };
-        }
-
-        accumulateSplit(buildingTeacherHours[buildingCode][assignedTeacher], row);
-    });
-
-    const referenceDate = currentDisplayDate();
-    (complexManualRows || [])
-        .filter((entry) => String(entry?.fioTeacher || "").trim())
-        .filter((entry) => isManualEntryActiveAt(entry, referenceDate))
-        .forEach((entry) => {
-            const assignedTeacher = String(entry.fioTeacher || "").trim();
-            if (!complexTeacherHours[assignedTeacher]) {
-                complexTeacherHours[assignedTeacher] = { h1: 0, h2: 0 };
-            }
-            accumulateManualSplit(complexTeacherHours[assignedTeacher], entry);
-        });
+    const complexTeacherHours = buildTeacherHoursAtHalfYearEnds(complexManualRows || []);
 
     teacherHourIndexesCacheKey = cacheKey;
     teacherHourIndexesCacheValue = { buildingTeacherHours, complexTeacherHours };
+
     return teacherHourIndexesCacheValue;
 }
 
