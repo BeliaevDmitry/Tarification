@@ -63,13 +63,11 @@ class ClassroomLeadershipServiceImplDeleteTest {
 
         verify(curriculumPlanEntryRepository).deleteByAcademicYearAndClassId("2026/2027", 42L);
         verify(manualLoadEntryRepository).deleteByAcademicYearAndClassIds("2026/2027", List.of(42L));
-        verify(curriculumPlanEntryRepository).deleteByAcademicYearAndNumberSchoolBuildingAndClassName("2026/2027", "СП3", "7-А");
-        verify(manualLoadEntryRepository).deleteByAcademicYearAndNumberSchoolBuildingAndClassName("2026/2027", "СП3", "7-А");
-        verify(classroomLeadershipRepository).deleteByAcademicYearAndNumberSchoolBuildingAndClassName("2026/2027", "СП3", "7-А");
+        verify(classroomLeadershipRepository).delete(entry);
     }
 
     @Test
-    void updateOneChangesBuildingByIdAndPropagatesLoadAndCurriculumTails() {
+    void updateOneChangesBuildingByIdWithoutPropagatingLoadAndCurriculumTails() {
         ClassroomLeadershipEntry entry = classEntry(42L, "СП1", "7-А");
         ClassroomLeadershipEntryRequest request = new ClassroomLeadershipEntryRequest();
         request.setAcademicYear("2026/2027");
@@ -94,8 +92,6 @@ class ClassroomLeadershipServiceImplDeleteTest {
         when(schoolBuildingRepository.findByCode("СП2")).thenReturn(Optional.empty());
         when(schoolBuildingRepository.findAll()).thenReturn(List.of(building));
         when(classroomLeadershipRepository.save(entry)).thenReturn(entry);
-        when(curriculumPlanEntryRepository.findAll()).thenReturn(List.of());
-        when(manualLoadEntryRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
 
         ClassroomLeadershipEntry saved = service.updateOne(42L, request);
 
@@ -104,8 +100,8 @@ class ClassroomLeadershipServiceImplDeleteTest {
         assertEquals("Петров П.П.", saved.getFioTeacher());
         assertEquals("Ленина, д.1", saved.getCampusAddress());
         verify(classroomLeadershipRepository).updateBuildingGroupById(42L, "СП2");
-        verify(curriculumPlanEntryRepository).renameClassEverywhere("2026/2027", "7-А", "7-А", "СП2");
-        verify(manualLoadEntryRepository).renameClassEverywhere("2026/2027", "7-А", "7-А", "СП2");
+        verify(curriculumPlanEntryRepository, never()).deleteByAcademicYearAndClassId(any(), any());
+        verify(manualLoadEntryRepository, never()).deleteByAcademicYearAndClassIds(any(), any());
         verify(schoolBuildingRepository, never()).save(any(SchoolBuilding.class));
     }
 
@@ -214,14 +210,41 @@ class ClassroomLeadershipServiceImplDeleteTest {
         ClassroomLeadershipEntry entry = classEntry(42L, "СП3", "7-А");
         when(classroomLeadershipRepository.findByAcademicYearAndNumberSchoolBuildingAndClassName("2026/2027", "СП3", "7-А"))
                 .thenReturn(Optional.of(entry));
-        when(curriculumPlanEntryRepository.countClassTails("2026/2027", 42L, "СП3", "7-А")).thenReturn(5L);
-        when(manualLoadEntryRepository.countClassTails("2026/2027", 42L, "СП3", "7-А")).thenReturn(3L);
+        when(curriculumPlanEntryRepository.countClassTails("2026/2027", 42L)).thenReturn(5L);
+        when(manualLoadEntryRepository.countClassTails("2026/2027", 42L)).thenReturn(3L);
 
         Map<String, Object> summary = service.dependencySummary("2026/2027", "СП3", "7-А");
 
         assertEquals(5L, summary.get("curriculumRows"));
         assertEquals(3L, summary.get("manualLoadRows"));
         assertEquals(8L, summary.get("totalRows"));
+    }
+
+
+    @Test
+    void dependencySummaryByIdIgnoresMatchingLegacyStringsWithDifferentClassId() {
+        ClassroomLeadershipEntry entry = classEntry(42L, "СП3", "7-А");
+        when(classroomLeadershipRepository.findById(42L)).thenReturn(Optional.of(entry));
+        when(curriculumPlanEntryRepository.countClassTails("2026/2027", 42L)).thenReturn(2L);
+        when(manualLoadEntryRepository.countClassTails("2026/2027", 42L)).thenReturn(1L);
+
+        Map<String, Object> summary = service.dependencySummary(42L, "2026/2027");
+
+        assertEquals(42L, summary.get("classId"));
+        assertEquals(2L, summary.get("curriculumRows"));
+        assertEquals(1L, summary.get("manualLoadRows"));
+    }
+
+    @Test
+    void deleteByIdUsesOnlyClassIdForDependentRows() {
+        ClassroomLeadershipEntry entry = classEntry(42L, "СП1", "7-А");
+        when(classroomLeadershipRepository.findById(42L)).thenReturn(Optional.of(entry));
+
+        service.deleteOne(42L, "2026/2027");
+
+        verify(curriculumPlanEntryRepository).deleteByAcademicYearAndClassId("2026/2027", 42L);
+        verify(manualLoadEntryRepository).deleteByAcademicYearAndClassIds("2026/2027", List.of(42L));
+        verify(classroomLeadershipRepository).delete(entry);
     }
 
     private void stubSuccessfulUpdate(ClassroomLeadershipEntry entry, ClassroomLeadershipEntryRequest request, SchoolBuilding spBuilding, SchoolBuilding physicalSite) {
@@ -232,8 +255,6 @@ class ClassroomLeadershipServiceImplDeleteTest {
         when(schoolBuildingRepository.findByCode(request.getNumberSchoolBuilding())).thenReturn(Optional.of(spBuilding));
         when(schoolBuildingRepository.findById(request.getSchoolBuildingId())).thenReturn(Optional.of(physicalSite));
         when(classroomLeadershipRepository.save(entry)).thenReturn(entry);
-        when(curriculumPlanEntryRepository.findAll()).thenReturn(List.of());
-        when(manualLoadEntryRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
     }
 
     private ClassroomLeadershipEntryRequest updateRequest(String numberSchoolBuilding, Long schoolBuildingId) {

@@ -1,11 +1,11 @@
 # FK cutover cleanup plan
 
-This audit is the first, read-only PR in the FK cutover. It documents the state implied by the already-applied SQL migrations and the current application code before removing any legacy relation fallback.
+This document tracks the FK cutover across the incremental PRs. PR 1 documented the already-applied FK migrations, PR 2 completed the independent physical-site relation for classes, and PR 3 moves curriculum/manual-load class operations to `class_id` / `meta_group_id` as the only working relation source.
 
 ## Scope and assumptions
 
 - Existing SQL migrations and the production backfill are treated as already applied.
-- This PR does not change application logic, run DDL, or run UPDATE/DELETE backfill.
+- PR 3 is code-only for production data: no new production database migration is required because the production audit confirmed `class_id` and `meta_group_id` are already populated for the relevant rows.
 - The migration files are the schema source of truth for this audit.
 
 ## FK columns that already exist according to SQL migrations
@@ -85,9 +85,9 @@ That made `school_building_id` on `classroom_leadership_entry` the only missing 
 
 | Legacy field | Current key-like usage |
 | --- | --- |
-| `numberSchoolBuilding` / `number_school_building` | Building-group sync trigger input; class uniqueness; class lookup/backfill; metagroup lookup/backfill; current class save/update requests; classroom repository find/delete methods; curriculum/manual filters; manual load address queries; building deletion/cleanup by code. |
-| `campusAddress` / `campus_address` | Current class location snapshot and, before `school_building_id`, the only concrete physical площадка/address discriminator; matching to `school_building.address` must be independent from the class organizational `building_group_id`. |
-| `className` / `class_name` | Current class uniqueness and FK sync fallback; curriculum/manual repository lookups and count fallbacks; class rename propagation; metagroup routing by `МГ:` prefix; PA/VSOKO and import/export display workflows. |
+| `numberSchoolBuilding` / `number_school_building` | Still used as legacy/snapshot/display/export text and as class/metagroup uniqueness/backfill input in old migrations. PR 3 removes it from curriculum/manual-load dependency counts and deletes for ordinary classes; the known 32 curriculum snapshot mismatches are informational and do not block FK-only operations. |
+| `campusAddress` / `campus_address` | Current class location snapshot. The working class physical-site relation is now `classroom_leadership_entry.school_building_id`; matching to `school_building.address` remains independent from the class organizational `building_group_id`. |
+| `className` / `class_name` | Still used as legacy/snapshot/display/export text and for parsing imported `МГ:` rows before resolving a `MetaGroup`. PR 3 removes it from ordinary class dependency counts/deletes and from metagroup update/delete lookup after a `meta_group_id` exists. |
 | `fioTeacher` / `fio_teacher` | Teacher FK sync fallback; classroom/manual display; teacher dismissal/restore still finds manual load by FIO; teacher uniqueness remains `uk_teacher_directory_fio`; service memo and exports use FIO. |
 | `subjectName` / `subject_name` | Subject FK sync fallback; curriculum/manual repository lookups; subject rename propagation; import/export and PA/VSOKO display workflows. |
 | `subjectAreaName` / `subject_area_name` | Subject-area FK sync fallback; subject-area rename propagation; subject import/export display and validation; repository bulk rename by area text. |
@@ -96,10 +96,10 @@ That made `school_building_id` on `classroom_leadership_entry` the only missing 
 
 - `ClassroomLeadershipRepository.updateBuildingGroupById()` runs native SQL to set `classroom_leadership_entry.building_group_id` by building code.
 - `ClassroomLeadershipServiceImpl.syncClassroomBuildingGroups()` calls that native SQL after saving classes.
-- `ClassroomLeadershipServiceImpl.propagateClassRename()` calls repository bulk updates by old/new class names and building strings.
-- `ClassroomLeadershipServiceImpl.syncCurriculumBuildingByClass()` and `syncManualLoadBuildingByClass()` manually rewrite dependent rows after class moves.
-- `CurriculumPlanEntryRepository.countClassTails()` and `ManualLoadEntryRepository.countClassTails()` count dependencies by `class_id OR (number_school_building + class_name)`, preserving a string fallback.
-- `CurriculumPlanEntryRepository.renameClassEverywhere()` and `ManualLoadEntryRepository.renameClassEverywhere()` bulk-update dependent rows by class name string.
+- PR 3 removes `ClassroomLeadershipServiceImpl.propagateClassRename()`: dependent curriculum/manual-load rows remain linked through `class_id`, so class rename/SP/site edits no longer need mass legacy-text rewrites for relation integrity.
+- PR 3 removes `ClassroomLeadershipServiceImpl.syncCurriculumBuildingByClass()` and `syncManualLoadBuildingByClass()`: dependent rows are no longer found by `numberSchoolBuilding + className`, so moving a class СП or physical site does not require rewriting curriculum/manual-load snapshots.
+- PR 3 changes `CurriculumPlanEntryRepository.countClassTails()` and `ManualLoadEntryRepository.countClassTails()` to count only `academic_year + class_id`.
+- PR 3 removes `CurriculumPlanEntryRepository.renameClassEverywhere()` and `ManualLoadEntryRepository.renameClassEverywhere()` because they only preserved legacy string relation lookup.
 - `CurriculumPlanEntryRepository.renameSubjectEverywhere()` and `ManualLoadEntryRepository.renameSubjectEverywhere()` bulk-update dependent rows by subject name string.
 - `SubjectCatalogRepository.renameSubjectAreaEverywhere()` bulk-updates subject catalog rows by subject-area name string.
 - `ManualLoadEntryRepository.findByFioTeacherIgnoreCase()` and `TeacherDirectoryServiceImpl.markForDismissal()`/`restore()` still use `fioTeacher` to find affected manual-load rows.
@@ -109,7 +109,7 @@ That made `school_building_id` on `classroom_leadership_entry` the only missing 
 
 1. Add a true `school_building_id` FK on `classroom_leadership_entry` for physical placement, independent from the class `building_group_id` СП ownership.
 2. Cut class location updates over to the physical-site FK while keeping the temporary native building-group sync workaround only for organizational СП until `building_group_id` itself becomes a writable JPA relation.
-3. Remove class/meta-group string fallback in curriculum/manual load and keep the regular-row-vs-metagroup-row rule via constraints.
+3. PR 3 removes class/meta-group string fallback in curriculum/manual load. Ordinary rows use `class_id != null, meta_group_id = null`; explicit `МГ:` rows use `class_id = null, meta_group_id != null`. Existing migrations already provide FK constraints and class/meta-group check constraints, so no new production migration is required for this step.
 4. Move teacher workflows to `teacher_id`, keeping `fioTeacher` for display/search/export only.
 5. Move subject and subject-area operations to `subject_id`/`subject_area_id`, keeping names only as display/snapshot text.
 6. Remove remaining triggers whose only purpose is temporary string/ID synchronization once application code no longer depends on the string side.
@@ -117,3 +117,18 @@ That made `school_building_id` on `classroom_leadership_entry` the only missing 
 ## PR 2 update
 
 PR 2 adds `scripts/migrations/2026-06-02_classroom_school_building_fk.sql`, which backfills `classroom_leadership_entry.school_building_id` by normalized physical address only. The migration intentionally does not compare or update `classroom_leadership_entry.building_group_id`, because СП ownership and physical site are independent business facts. Legacy `numberSchoolBuilding` and `campusAddress` remain as compatibility/display snapshots during the transition.
+
+
+## PR 3 update
+
+PR 3 translates working curriculum/manual-load operations to FK-only class and metagroup relations:
+
+- ordinary class dependency summaries and deletes now resolve the class once and then operate only by `class_id`;
+- manual-load template/stat/health generation excludes ordinary curriculum member rows whose subject is moved into a metagroup (`meta_group = true` but no explicit `meta_group_id`) and uses the explicit `МГ:` curriculum row as the load source;
+- metagroup update/delete operations use `meta_group_id`;
+- the old `class_id OR (number_school_building + class_name)` fallback is removed from repository count queries;
+- class rename/SP/site edits no longer call bulk legacy sync methods for curriculum/manual-load rows;
+- explicit metagroup manual-load rows carry `meta_group_id` and `class_id = null`, so validation resolves the curriculum rule by FK instead of by ordinary class text;
+- the new editable manual-load Excel export includes `CLASS_ID` and `META_GROUP_ID`, while older editable files without those columns are temporarily accepted through a safe deprecated fallback that must resolve exactly one `class_id` or `meta_group_id` before saving.
+
+Legacy `numberSchoolBuilding` and `className` values remain in dependent tables for display, imports, exports, and historical snapshots. The production audit result `curriculum number_school_building does not match building_group.code | 32` is therefore documented as an informational legacy snapshot mismatch, not a blocker for FK-only operations, because `curriculum class_id target does not match legacy class fields | 0` confirmed the FK relation itself is correct. The next planned PR is the teacher workflow cutover to `teacher_id`; this PR intentionally does not change teacher dismissal/restoration, vacancy handling, `subject_id`, or `subject_area_id`.
