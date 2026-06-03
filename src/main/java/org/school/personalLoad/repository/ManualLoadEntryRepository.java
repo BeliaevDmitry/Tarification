@@ -23,11 +23,15 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
 
 
     @Query(value = """
-            select m.*
+            select distinct m.*
               from manual_load_entry m
-              join classroom_leadership_entry c on c.id = m.class_id
+              left join classroom_leadership_entry c on c.id = m.class_id
+              left join meta_group mg on mg.id = m.meta_group_id
              where m.academic_year = :academicYear
-               and c.school_building_id = :schoolBuildingId
+               and (
+                    (m.class_id is not null and c.school_building_id = :schoolBuildingId)
+                 or (m.meta_group_id is not null and mg.school_building_id = :schoolBuildingId)
+               )
             """, nativeQuery = true)
     java.util.List<ManualLoadEntry> findAllByAcademicYearAndSchoolBuildingId(@Param("academicYear") String academicYear,
                                                                              @Param("schoolBuildingId") Long schoolBuildingId);
@@ -49,14 +53,27 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
 
 
     @Modifying
+    @Query("delete from ManualLoadEntry m where m.academicYear = :academicYear and m.metaGroupId in :metaGroupIds")
+    void deleteByAcademicYearAndMetaGroupIds(@Param("academicYear") String academicYear,
+                                             @Param("metaGroupIds") java.util.Collection<Long> metaGroupIds);
+
+
+    @Modifying
     @Query(value = """
             delete from manual_load_entry m
              where m.academic_year = :academicYear
-               and m.class_id in (
-                   select c.id
-                     from classroom_leadership_entry c
-                    where c.academic_year = :academicYear
-                      and c.school_building_id = :schoolBuildingId
+               and (
+                    m.class_id in (
+                        select c.id
+                          from classroom_leadership_entry c
+                         where c.academic_year = :academicYear
+                           and c.school_building_id = :schoolBuildingId
+                    )
+                 or m.meta_group_id in (
+                        select mg.id
+                          from meta_group mg
+                         where mg.school_building_id = :schoolBuildingId
+                    )
                )
             """, nativeQuery = true)
     void deleteByAcademicYearAndSchoolBuildingId(@Param("academicYear") String academicYear,

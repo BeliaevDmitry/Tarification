@@ -69,6 +69,17 @@ public class CurriculumPlanEntry {
     @EqualsAndHashCode.Exclude
     private MetaGroup metaGroupRef;
 
+
+    public Long getSchoolBuildingId() {
+        if (metaGroupRef != null && metaGroupRef.getSchoolBuildingId() != null) {
+            return metaGroupRef.getSchoolBuildingId();
+        }
+        if (classRef != null) {
+            return classRef.getSchoolBuildingId();
+        }
+        return null;
+    }
+
     @Column(nullable = false)
     private String subjectName;
 

@@ -246,6 +246,7 @@ function renderMetaGroupCreateForm() {
     const allBuildings = Array.from(new Set(classes.map((c) => c.numberSchoolBuilding))).sort((a,b)=>String(a).localeCompare(String(b),"ru"));
     allBuildings.forEach((b)=> buildingSelect.innerHTML += `<option value="${esc(b)}">${esc(b)}</option>`);
     buildingSelect.value = selectedBuilding || allBuildings[0] || "";
+    renderMetaGroupFormSchoolBuildingOptions(form.elements.schoolBuildingId, "");
 
     const parallelSelect = form.elements.parallel;
     parallelSelect.innerHTML = "";
@@ -267,6 +268,7 @@ function renderMetaGroupManageTable() {
         const period = (studyPeriodSettings || []).find((s) => Number(s.id) === Number(m.studyPeriodSettingId));
         return `<tr>
             <td>${esc(m.numberSchoolBuilding)}</td>
+            <td>${esc(metaGroupSchoolBuildingLabel(m) || "— выберите площадку —")}</td>
             <td>${esc((m.classType || "NORMAL")==="AOOP_UO" ? "АООП УО" : "Норма")}</td>
             <td>${esc(m.parallel)}</td>
             <td>${esc(m.name)}</td>
@@ -291,6 +293,27 @@ function renderMetaGroupFormBuildingOptions(selectEl, selectedValue = "") {
     if (selectedValue) selectEl.value = selectedValue;
 }
 
+function metaGroupSchoolBuildingLabel(metaGroup) {
+    const id = Number(metaGroup?.schoolBuildingId || 0);
+    const building = buildings.find((row) => Number(row.id) === id);
+    if (!building) return "";
+    const code = norm(building.code);
+    const address = norm(building.address);
+    return [code, address].filter(Boolean).join(" — ");
+}
+
+function renderMetaGroupFormSchoolBuildingOptions(selectEl, selectedValue = "") {
+    if (!selectEl) return;
+    const selected = selectedValue ? String(selectedValue) : "";
+    selectEl.innerHTML = '<option value="">Выберите физическую площадку</option>' + buildings
+        .map((b) => {
+            const label = [norm(b.code), norm(b.address)].filter(Boolean).join(" — ") || norm(b.name) || String(b.id);
+            return `<option value="${esc(b.id)}">${esc(label)}</option>`;
+        })
+        .join("");
+    selectEl.value = selected;
+}
+
 function renderMetaGroupFormParallelOptions(selectEl, selectedValue = 1) {
     if (!selectEl) return;
     selectEl.innerHTML = "";
@@ -312,6 +335,7 @@ function openMetaGroupEditDialog(metaGroup) {
     const form = ui.metaGroupEditForm;
     form.elements.id.value = String(metaGroup.id || "");
     renderMetaGroupFormBuildingOptions(form.elements.numberSchoolBuilding, metaGroup.numberSchoolBuilding);
+    renderMetaGroupFormSchoolBuildingOptions(form.elements.schoolBuildingId, metaGroup.schoolBuildingId ? String(metaGroup.schoolBuildingId) : "");
     form.elements.classType.value = metaGroup.classType || "NORMAL";
     renderMetaGroupFormParallelOptions(form.elements.parallel, Number(metaGroup.parallel) || 1);
     form.elements.name.value = metaGroup.name || "";
@@ -1019,7 +1043,8 @@ function bindEvents() {
                     parallel: Number(form.get("parallel")),
                     name: norm(form.get("name")),
                     classType: selectedParallel === AOOP_TAB_KEY ? AOOP_TAB_KEY : "NORMAL",
-                    studyPeriodSettingId: Number(form.get("studyPeriodSettingId")) || null
+                    studyPeriodSettingId: Number(form.get("studyPeriodSettingId")) || null,
+                    schoolBuildingId: Number(form.get("schoolBuildingId")) || null
                 })
             });
             ui.metaGroupCreateDialog?.close();
@@ -1043,7 +1068,8 @@ function bindEvents() {
                     classType: norm(form.get("classType")) || "NORMAL",
                     parallel: Number(form.get("parallel")),
                     name: norm(form.get("name")),
-                    studyPeriodSettingId: Number(form.get("studyPeriodSettingId")) || null
+                    studyPeriodSettingId: Number(form.get("studyPeriodSettingId")) || null,
+                    schoolBuildingId: Number(form.get("schoolBuildingId")) || null
                 })
             });
             ui.metaGroupEditDialog?.close();

@@ -16,6 +16,7 @@ import org.school.personalLoad.dto.ManualLoadStatsResponse;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.ManualLoadEntry;
+import org.school.personalLoad.model.MetaGroup;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.SalarySettings;
@@ -31,6 +32,7 @@ import org.school.personalLoad.repository.ContingentSnapshotRepository;
 import org.school.personalLoad.repository.ContingentStudentRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
+import org.school.personalLoad.repository.MetaGroupRepository;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.DatabaseService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
@@ -47,6 +49,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.anyString;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -84,11 +87,16 @@ class ManualLoadServiceImplBulkReplaceTest {
     private SchoolBuildingRepository schoolBuildingRepository;
     @Mock
     private SalarySettingsRepository salarySettingsRepository;
+    @Mock
+    private MetaGroupRepository metaGroupRepository;
 
     private ManualLoadServiceImpl service;
 
     @BeforeEach
     void setUp() {
+        lenient().when(metaGroupRepository.findById(any()))
+                .thenAnswer(invocation -> Optional.of(metaGroup(invocation.getArgument(0), 36L)));
+
         service = new ManualLoadServiceImpl(
                 manualLoadEntryRepository,
                 tarifficationProcessingService,
@@ -102,7 +110,8 @@ class ManualLoadServiceImplBulkReplaceTest {
                 contingentSnapshotRepository,
                 contingentStudentRepository,
                 schoolBuildingRepository,
-                salarySettingsRepository
+                salarySettingsRepository,
+                metaGroupRepository
         );
     }
 
@@ -414,6 +423,84 @@ class ManualLoadServiceImplBulkReplaceTest {
         service.clearBySchoolBuilding("2025/2026", 36L);
 
         verify(manualLoadEntryRepository).deleteByAcademicYearAndSchoolBuildingId("2025/2026", 36L);
+    }
+
+
+    @Test
+    void addressScopeFindsExplicitMetaGroupOnSelectedPhysicalSite() {
+        ManualLoadEntry ordinary = manualRow("Иванов И.И.", "СП1", "7-А", "Алгебра", 6);
+        ordinary.setClassId(701L);
+        ManualLoadEntry explicitMeta = manualRow("Петров П.П.", "СП2", "МГ:4 4ЦЧ-СВЕТСКАЯ", "ОДНКНР", 1);
+        explicitMeta.setClassId(null);
+        explicitMeta.setMetaGroupId(4L);
+        when(manualLoadEntryRepository.findAllByAcademicYearAndSchoolBuildingId("2026/2027", 36L))
+                .thenReturn(List.of(ordinary, explicitMeta));
+
+        List<ManualLoadEntry> result = service.findAll("2026/2027", "СП2", "Марии Ульяновой, д.5А", 36L);
+
+        assertEquals(2, result.size());
+        assertEquals(701L, result.get(0).getClassId());
+        assertEquals(4L, result.get(1).getMetaGroupId());
+        assertNull(result.get(1).getClassId());
+    }
+
+    @Test
+    void addressScopeBulkSaveReplacesExplicitMetaGroupRowsByMetaGroupId() {
+        ManualLoadEntryRequest request = manualRequest("СП2", "МГ:4 4ЦЧ-СВЕТСКАЯ", null);
+        request.setAcademicYear("2026/2027");
+        request.setSubjectName("ОДНКНР");
+        request.setLoad(1);
+        request.setMetaGroupId(4L);
+        ManualLoadBulkRequest bulk = new ManualLoadBulkRequest();
+        bulk.setAcademicYear("2026/2027");
+        bulk.setScopeType("BUILDING_ADDRESS");
+        bulk.setNumberSchoolBuilding("СП2");
+        bulk.setSchoolBuildingId(36L);
+        bulk.setRows(List.of(request));
+        when(metaGroupRepository.findById(4L)).thenReturn(Optional.of(metaGroup(4L, 36L)));
+        when(metaGroupRepository.findAllById(java.util.Set.of(4L))).thenReturn(List.of(metaGroup(4L, 36L)));
+        when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<ManualLoadEntry> saved = service.createBulk(bulk);
+
+        assertEquals(1, saved.size());
+        assertNull(saved.get(0).getClassId());
+        assertEquals(4L, saved.get(0).getMetaGroupId());
+        verify(manualLoadEntryRepository).deleteByAcademicYearAndMetaGroupIds("2026/2027", java.util.Set.of(4L));
+        verify(manualLoadEntryRepository, never()).deleteByAcademicYearAndBuildingCodes(anyString(), any());
+    }
+
+    @Test
+    void explicitMetaGroupWithoutPhysicalSiteFailsWithClearMessage() {
+        ManualLoadEntryRequest request = manualRequest("СП2", "МГ:4 4ЦЧ-СВЕТСКАЯ", null);
+        request.setMetaGroupId(4L);
+        when(metaGroupRepository.findById(4L)).thenReturn(Optional.of(metaGroup(4L, null)));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.createBulk(List.of(request)));
+
+        assertTrue(error.getMessage().contains("Для метагруппы не выбрана физическая площадка проведения"));
+        verify(manualLoadEntryRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void addressScopeBulkSaveRejectsMetaGroupFromAnotherPhysicalSite() {
+        ManualLoadEntryRequest request = manualRequest("СП2", "МГ:4 4ЦЧ-СВЕТСКАЯ", null);
+        request.setAcademicYear("2026/2027");
+        request.setMetaGroupId(4L);
+        ManualLoadBulkRequest bulk = new ManualLoadBulkRequest();
+        bulk.setAcademicYear("2026/2027");
+        bulk.setScopeType("BUILDING_ADDRESS");
+        bulk.setNumberSchoolBuilding("СП2");
+        bulk.setSchoolBuildingId(36L);
+        bulk.setRows(List.of(request));
+        when(metaGroupRepository.findById(4L)).thenReturn(Optional.of(metaGroup(4L, 38L)));
+        when(metaGroupRepository.findAllById(java.util.Set.of(4L))).thenReturn(List.of(metaGroup(4L, 38L)));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.createBulk(bulk));
+
+        assertTrue(error.getMessage().contains("metaGroupIds do not belong to selected schoolBuildingId=36"));
+        verify(manualLoadEntryRepository, never()).deleteByAcademicYearAndMetaGroupIds(anyString(), any());
+        verify(manualLoadEntryRepository, never()).saveAll(any());
     }
 
     @Test
@@ -730,6 +817,19 @@ class ManualLoadServiceImplBulkReplaceTest {
         row.setEducationLevel(EducationLevel.BASIC);
         row.setStudyPeriod(StudyPeriod.YEAR);
         return row;
+    }
+
+    private MetaGroup metaGroup(Long id, Long schoolBuildingId) {
+        MetaGroup metaGroup = new MetaGroup();
+        metaGroup.setId(id);
+        metaGroup.setNumberSchoolBuilding("СП1");
+        metaGroup.setParallel(5);
+        metaGroup.setName("5 ФИЗИКА");
+        metaGroup.setClassType("NORMAL");
+        if (schoolBuildingId != null) {
+            metaGroup.setSchoolBuilding(schoolBuilding(schoolBuildingId, "СП2", "Марии Ульяновой, д.5А"));
+        }
+        return metaGroup;
     }
 
     private SchoolBuilding schoolBuilding(Long id, String code, String address) {
