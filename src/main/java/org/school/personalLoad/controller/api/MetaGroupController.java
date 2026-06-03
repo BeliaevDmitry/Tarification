@@ -7,6 +7,8 @@ import org.school.personalLoad.model.MetaGroup;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.MetaGroupRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.SchoolBuildingRepository;
+import org.school.personalLoad.model.SchoolBuilding;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +23,7 @@ public class MetaGroupController {
     private final MetaGroupRepository repository;
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     private final ManualLoadEntryRepository manualLoadEntryRepository;
+    private final SchoolBuildingRepository schoolBuildingRepository;
 
     @GetMapping
     public ResponseEntity<List<MetaGroup>> findAll() {
@@ -43,6 +46,7 @@ public class MetaGroupController {
         entity.setName(name);
         entity.setClassType(classType);
         entity.setStudyPeriodSettingId(request.getStudyPeriodSettingId());
+        entity.setSchoolBuilding(resolveRequiredSchoolBuilding(request.getSchoolBuildingId()));
         return ResponseEntity.ok(repository.save(entity));
     }
 
@@ -71,6 +75,11 @@ public class MetaGroupController {
         existing.setName(newName);
         existing.setClassType(classType);
         if (request.getStudyPeriodSettingId() != null) existing.setStudyPeriodSettingId(request.getStudyPeriodSettingId());
+        if (request.getSchoolBuildingId() != null) {
+            existing.setSchoolBuilding(resolveRequiredSchoolBuilding(request.getSchoolBuildingId()));
+        } else if (existing.getSchoolBuildingId() == null) {
+            throw new IllegalArgumentException("schoolBuildingId is required for meta group");
+        }
         return ResponseEntity.ok(repository.save(existing));
     }
 
@@ -83,6 +92,14 @@ public class MetaGroupController {
         manualLoadEntryRepository.deleteByMetaGroupId(existing.getId());
         repository.delete(existing);
         return ResponseEntity.noContent().build();
+    }
+
+    private SchoolBuilding resolveRequiredSchoolBuilding(Long schoolBuildingId) {
+        if (schoolBuildingId == null) {
+            throw new IllegalArgumentException("schoolBuildingId is required for meta group");
+        }
+        return schoolBuildingRepository.findById(schoolBuildingId)
+                .orElseThrow(() -> new IllegalArgumentException("Физическая площадка метагруппы не найдена"));
     }
 
     private String normalizeBuilding(String value) {
@@ -125,6 +142,7 @@ public class MetaGroupController {
         String name;
         String classType;
         Long studyPeriodSettingId;
+        Long schoolBuildingId;
     }
 
     @Value
@@ -134,5 +152,6 @@ public class MetaGroupController {
         String name;
         String classType;
         Long studyPeriodSettingId;
+        Long schoolBuildingId;
     }
 }

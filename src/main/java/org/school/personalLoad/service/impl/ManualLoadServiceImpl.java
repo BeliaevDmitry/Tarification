@@ -24,6 +24,7 @@ import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.ContinuityStatus;
 import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.ManualLoadEntry;
+import org.school.personalLoad.model.MetaGroup;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.SalarySettings;
@@ -41,6 +42,7 @@ import org.school.personalLoad.repository.ContingentSnapshotRepository;
 import org.school.personalLoad.repository.ContingentStudentRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
+import org.school.personalLoad.repository.MetaGroupRepository;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.DatabaseService;
 import org.school.personalLoad.service.ManualLoadService;
@@ -88,6 +90,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private final ContingentStudentRepository contingentStudentRepository;
     private final SchoolBuildingRepository schoolBuildingRepository;
     private final SalarySettingsRepository salarySettingsRepository;
+    private final MetaGroupRepository metaGroupRepository;
 
     @Override
     public ManualLoadEntry create(ManualLoadEntryRequest request) {
@@ -138,8 +141,14 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             String academicYear = explicitAcademicYears.iterator().next();
             Long resolvedSchoolBuildingId = resolveSchoolBuildingIdForAddressScope(schoolBuildingId, campusAddress);
             java.util.Set<Long> classIds = scopedClassIds(request, entries);
-            validateAddressScopeClassIds(academicYear, resolvedSchoolBuildingId, classIds);
-            manualLoadEntryRepository.deleteByAcademicYearAndClassIds(academicYear, classIds);
+            java.util.Set<Long> metaGroupIds = scopedMetaGroupIds(entries);
+            validateAddressScopeTargets(academicYear, resolvedSchoolBuildingId, classIds, metaGroupIds);
+            if (!classIds.isEmpty()) {
+                manualLoadEntryRepository.deleteByAcademicYearAndClassIds(academicYear, classIds);
+            }
+            if (!metaGroupIds.isEmpty()) {
+                manualLoadEntryRepository.deleteByAcademicYearAndMetaGroupIds(academicYear, metaGroupIds);
+            }
         } else {
             validateBuildingGroupBulkScope(explicitAcademicYears, buildingCodes, explicitBuildingGroup);
             if (!buildingCodes.isEmpty()) {
@@ -1231,20 +1240,40 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         return classIds;
     }
 
-    private void validateAddressScopeClassIds(String academicYear, Long schoolBuildingId, java.util.Set<Long> classIds) {
+    private java.util.Set<Long> scopedMetaGroupIds(List<ManualLoadEntry> entries) {
+        java.util.Set<Long> metaGroupIds = new java.util.LinkedHashSet<>();
+        entries.stream().map(ManualLoadEntry::getMetaGroupId).filter(java.util.Objects::nonNull).forEach(metaGroupIds::add);
+        return metaGroupIds;
+    }
+
+    private void validateAddressScopeTargets(String academicYear, Long schoolBuildingId, java.util.Set<Long> classIds, java.util.Set<Long> metaGroupIds) {
         if (academicYear == null || academicYear.isBlank() || schoolBuildingId == null) {
             throw new IllegalArgumentException("academicYear and schoolBuildingId are required for BUILDING_ADDRESS scope");
         }
-        if (classIds == null || classIds.isEmpty()) {
-            throw new IllegalArgumentException("classIds are required for BUILDING_ADDRESS scope");
+        boolean hasClasses = classIds != null && !classIds.isEmpty();
+        boolean hasMetaGroups = metaGroupIds != null && !metaGroupIds.isEmpty();
+        if (!hasClasses && !hasMetaGroups) {
+            throw new IllegalArgumentException("classIds or metaGroupIds are required for BUILDING_ADDRESS scope");
         }
-        java.util.Map<Long, ClassroomLeadershipEntry> classesById = classroomLeadershipRepository.findAllById(classIds).stream()
-                .collect(java.util.stream.Collectors.toMap(ClassroomLeadershipEntry::getId, java.util.function.Function.identity()));
-        java.util.List<Long> invalidIds = classIds.stream()
-                .filter(id -> !classBelongsToAddressScope(classesById.get(id), academicYear, schoolBuildingId))
-                .toList();
-        if (!invalidIds.isEmpty()) {
-            throw new IllegalArgumentException("classIds do not belong to selected schoolBuildingId=" + schoolBuildingId + ": " + invalidIds);
+        if (hasClasses) {
+            java.util.Map<Long, ClassroomLeadershipEntry> classesById = classroomLeadershipRepository.findAllById(classIds).stream()
+                    .collect(java.util.stream.Collectors.toMap(ClassroomLeadershipEntry::getId, java.util.function.Function.identity()));
+            java.util.List<Long> invalidIds = classIds.stream()
+                    .filter(id -> !classBelongsToAddressScope(classesById.get(id), academicYear, schoolBuildingId))
+                    .toList();
+            if (!invalidIds.isEmpty()) {
+                throw new IllegalArgumentException("classIds do not belong to selected schoolBuildingId=" + schoolBuildingId + ": " + invalidIds);
+            }
+        }
+        if (hasMetaGroups) {
+            java.util.Map<Long, MetaGroup> metaGroupsById = metaGroupRepository.findAllById(metaGroupIds).stream()
+                    .collect(java.util.stream.Collectors.toMap(MetaGroup::getId, java.util.function.Function.identity()));
+            java.util.List<Long> invalidIds = metaGroupIds.stream()
+                    .filter(id -> !metaGroupBelongsToAddressScope(metaGroupsById.get(id), schoolBuildingId))
+                    .toList();
+            if (!invalidIds.isEmpty()) {
+                throw new IllegalArgumentException("metaGroupIds do not belong to selected schoolBuildingId=" + schoolBuildingId + ": " + invalidIds);
+            }
         }
     }
 
@@ -1252,6 +1281,16 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         return entry != null
                 && normalizeToken(entry.getAcademicYear()).equals(normalizeToken(academicYear))
                 && java.util.Objects.equals(entry.getSchoolBuildingId(), schoolBuildingId);
+    }
+
+    private boolean metaGroupBelongsToAddressScope(MetaGroup metaGroup, Long schoolBuildingId) {
+        if (metaGroup == null) {
+            return false;
+        }
+        if (metaGroup.getSchoolBuildingId() == null) {
+            throw new IllegalArgumentException("Для метагруппы не выбрана физическая площадка проведения. Укажите площадку в редактировании метагруппы.");
+        }
+        return java.util.Objects.equals(metaGroup.getSchoolBuildingId(), schoolBuildingId);
     }
 
     private Long resolveOptionalSchoolBuildingIdForAddressScope(Long schoolBuildingId, String campusAddress) {
@@ -1510,6 +1549,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         boolean explicitMetaGroup = isExplicitMetaGroupRequest(request);
         entity.setClassId(explicitMetaGroup ? null : resolveClassId(effectiveAcademicYear, request));
         entity.setMetaGroupId(explicitMetaGroup ? resolveMetaGroupId(effectiveAcademicYear, request) : null);
+        if (explicitMetaGroup) {
+            validateMetaGroupHasPhysicalSite(entity.getMetaGroupId());
+        }
         SubjectCatalogEntry subject = subjectCatalogRepository.findAll().stream()
                 .filter(s -> s.getSubjectName().equalsIgnoreCase(request.getSubjectName().trim()))
                 .findFirst()
@@ -1613,6 +1655,14 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         )
                 .map(CurriculumPlanEntry::getMetaGroupId)
                 .orElseThrow(() -> new IllegalArgumentException("meta_group_id is required for metagroup load row"));
+    }
+
+    private void validateMetaGroupHasPhysicalSite(Long metaGroupId) {
+        MetaGroup metaGroup = metaGroupRepository.findById(metaGroupId)
+                .orElseThrow(() -> new IllegalArgumentException("Метагруппа не найдена: " + metaGroupId));
+        if (metaGroup.getSchoolBuildingId() == null) {
+            throw new IllegalArgumentException("Для метагруппы не выбрана физическая площадка проведения. Укажите площадку в редактировании метагруппы.");
+        }
     }
 
     private java.util.Optional<CurriculumPlanEntry> findRuleWithFallback(ManualLoadEntry entry, StudyPeriod effectiveStudyPeriod) {

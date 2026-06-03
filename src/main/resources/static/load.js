@@ -314,12 +314,17 @@ function manualLoadScopeForAccess(accessCode) {
 }
 
 function classIdForRow(row) {
+    if (isExplicitMetaGroupRow(row)) return null;
     if (row?.classId != null) return row.classId;
     const className = normalizeClassName(row?.className);
     if (!className) return null;
     const groupCode = buildingGroupCode(row?.numberSchoolBuilding || selectedBuilding);
     const maps = classAddressMap();
     return maps.idByGroupAndClass.get(`${groupCode}|${className}`) || maps.idByClassOnly.get(className) || null;
+}
+
+function metaGroupIdForRow(row) {
+    return isExplicitMetaGroupRow(row) && row?.metaGroupId != null ? row.metaGroupId : null;
 }
 
 function rowMatchesBuildingAccess(row, accessCode) {
@@ -333,6 +338,7 @@ function rowMatchesBuildingAccess(row, accessCode) {
         if (selectedSchoolBuildingId != null && rowSchoolBuildingId != null) {
             return Number(rowSchoolBuildingId) === Number(selectedSchoolBuildingId);
         }
+        if (isExplicitMetaGroupRow(row)) return false;
         const rowAddress = rowAddressToken(row);
         if (rowAddress === address) return true;
 
@@ -2514,6 +2520,7 @@ async function saveBuildingLoad() {
             subjectName: row.subjectName,
             className: row.className,
             classId: classIdForRow(row),
+            metaGroupId: metaGroupIdForRow(row),
             load: Number(row.plannedHours || 0),
             groupNameEducationalPlan: row.__groupIndex ? `Группа ${row.__groupIndex}` : null,
             groupLoad: row.__groupIndex ? Number(row.plannedHours || 0) : null,
@@ -2534,6 +2541,7 @@ async function saveBuildingLoad() {
             subjectName: row.subjectName,
             className: row.className,
             classId: classIdForRow(row),
+            metaGroupId: metaGroupIdForRow(row),
             load: Number(row.plannedHours || 0),
             groupNameEducationalPlan: row.__groupIndex ? `Группа ${row.__groupIndex}` : null,
             groupLoad: row.__groupIndex ? Number(row.plannedHours || 0) : null,
@@ -2549,6 +2557,7 @@ async function saveBuildingLoad() {
         const key = [
             normalizeBuildingCode(item.numberSchoolBuilding),
             String(item.classId || ""),
+            String(item.metaGroupId || ""),
             normalizeClassName(item.className),
             String(item.subjectName || "").trim().toUpperCase(),
             String(item.educationLevel || ""),
