@@ -405,11 +405,6 @@ function addressesForBuildingCode(buildingCode) {
             pushUnique(b.address);
         });
 
-    (classroomRows || []).forEach((row) => {
-        if (normalizeBuildingCode(row?.numberSchoolBuilding) !== normalizedCode) return;
-        pushUnique(row?.campusAddress);
-    });
-
     return addresses;
 }
 
@@ -1035,7 +1030,11 @@ function clampDateToPeriod(date, period) {
     return date;
 }
 
-
+function referencePlanningDate() {
+    const today = new Date().toISOString().slice(0, 10);
+    const period = defaultLoadPeriod("1-А", "YEAR");
+    return clampDateToPeriod(today, period);
+}
 
 function currentDisplayDate() {
     if (state.viewMode === "date" && state.viewDate) {
@@ -2236,6 +2235,13 @@ function collectLoadIssues(presentationRows, classes) {
 
 async function refreshHealthCounters() {
     if (!selectedBuilding || selectedBuilding === ARCHIVE_BUILDING_CODE) return;
+
+    // Для физической площадки локальный расчёт уже выполнен через
+    // collectLoadIssues() по строкам, отобранным через schoolBuildingId.
+    // Backend health сейчас принимает только организационное СП,
+    // поэтому не должен перезаписывать корректные site-scope счётчики.
+    if (isAddressScopedBuilding(selectedBuilding)) return;
+
     try {
         const health = await api(`/api/manual-load/health?building=${encodeURIComponent(buildingGroupCode(selectedBuilding))}`);
         ui.unassignedHours.textContent = String(health?.unassignedHours || 0);
@@ -2801,13 +2807,7 @@ async function refreshSourceData() {
         existing.addressRows.push(b);
         buildingGroups.set(code, existing);
     });
-    (classRows || []).forEach((r) => {
-        const code = normalizeBuildingCode(r.numberSchoolBuilding);
-        if (!code) return;
-        const existing = buildingGroups.get(code) || { code, name: `${code} (из классов)`, addresses: [], addressRows: [] };
-        appendAddress(existing, r.campusAddress);
-        buildingGroups.set(code, existing);
-    });
+
     buildings = [];
     [...buildingGroups.values()]
         .sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"))
