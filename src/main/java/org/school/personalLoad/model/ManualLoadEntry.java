@@ -25,6 +25,9 @@ public class ManualLoadEntry {
     @Column(nullable = false)
     private String fioTeacher;
 
+    @Column(name = "teacher_id")
+    private Long teacherId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "teacher_id", insertable = false, updatable = false)
     @JsonIgnore
@@ -51,6 +54,10 @@ public class ManualLoadEntry {
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private SubjectCatalogEntry subject;
+
+    public Long getSubjectId() {
+        return subject == null ? null : subject.getId();
+    }
 
     @Column(nullable = false)
     private String className;

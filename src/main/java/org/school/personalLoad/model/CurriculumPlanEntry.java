@@ -46,6 +46,10 @@ public class CurriculumPlanEntry {
     @Column(nullable = false)
     private boolean deprecated = false;
 
+    public Long getSubjectId() {
+        return subject == null ? null : subject.getId();
+    }
+
     @Column(nullable = false)
     private String className;
 

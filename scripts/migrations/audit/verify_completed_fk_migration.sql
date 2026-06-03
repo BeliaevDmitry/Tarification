@@ -234,3 +234,52 @@ FROM (VALUES
     ('meta_group')
 ) AS v(table_name)
 ORDER BY table_name;
+
+-- Teacher/subject/subject-area FK cutover diagnostics for the current PR.
+-- These are blocking FK checks for working relations; legacy text mismatches remain informational snapshots below.
+WITH teacher_subject_area_fk_checks AS (
+    SELECT 'curriculum_plan_entry.subject_id is NULL' AS check_name, count(*)::bigint AS issue_count
+    FROM curriculum_plan_entry
+    WHERE subject_id IS NULL
+    UNION ALL
+    SELECT 'manual_load_entry.subject_id is NULL', count(*)::bigint
+    FROM manual_load_entry
+    WHERE subject_id IS NULL
+    UNION ALL
+    SELECT 'manual_load_entry.teacher_id is NULL', count(*)::bigint
+    FROM manual_load_entry
+    WHERE teacher_id IS NULL
+    UNION ALL
+    SELECT 'subject_catalog_entry.subject_area_id is NULL', count(*)::bigint
+    FROM subject_catalog_entry
+    WHERE subject_area_id IS NULL
+    UNION ALL
+    SELECT 'curriculum_plan_entry.subject_id target missing', count(*)::bigint
+    FROM curriculum_plan_entry c
+    LEFT JOIN subject_catalog_entry s ON s.id = c.subject_id
+    WHERE c.subject_id IS NOT NULL AND s.id IS NULL
+    UNION ALL
+    SELECT 'manual_load_entry.subject_id target missing', count(*)::bigint
+    FROM manual_load_entry m
+    LEFT JOIN subject_catalog_entry s ON s.id = m.subject_id
+    WHERE m.subject_id IS NOT NULL AND s.id IS NULL
+    UNION ALL
+    SELECT 'manual_load_entry.teacher_id target missing', count(*)::bigint
+    FROM manual_load_entry m
+    LEFT JOIN teacher_directory_entry t ON t.id = m.teacher_id
+    WHERE m.teacher_id IS NOT NULL AND t.id IS NULL
+    UNION ALL
+    SELECT 'subject_catalog_entry.subject_area_id target missing', count(*)::bigint
+    FROM subject_catalog_entry s
+    LEFT JOIN subject_area a ON a.id = s.subject_area_id
+    WHERE s.subject_area_id IS NOT NULL AND a.id IS NULL
+)
+SELECT check_name, issue_count
+FROM teacher_subject_area_fk_checks
+ORDER BY check_name;
+
+-- Informational unresolved teacher model question: do not auto-backfill this in FK cutover PRs.
+SELECT 'informational unresolved design: teacher_directory_entry.building_group_id is NULL' AS check_name,
+       count(*)::bigint AS row_count
+FROM teacher_directory_entry
+WHERE building_group_id IS NULL;

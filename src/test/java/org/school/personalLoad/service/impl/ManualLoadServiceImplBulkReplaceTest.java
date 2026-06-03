@@ -23,6 +23,7 @@ import org.school.personalLoad.model.SalarySettings;
 import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.model.SubjectCatalogEntry;
 import org.school.personalLoad.model.SubjectType;
+import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.SalarySettingsRepository;
@@ -96,6 +97,24 @@ class ManualLoadServiceImplBulkReplaceTest {
     void setUp() {
         lenient().when(metaGroupRepository.findById(any()))
                 .thenAnswer(invocation -> Optional.of(metaGroup(invocation.getArgument(0), 36L)));
+        TeacherDirectoryEntry teacher = teacher(10L, "Иванов И.И.");
+        TeacherDirectoryEntry vacancy = teacher(11L, "Вакансия");
+        SubjectCatalogEntry algebra = subject(20L, "Алгебра");
+        SubjectCatalogEntry math = subject(21L, "Математика");
+        SubjectCatalogEntry ethics = subject(22L, "ОРКСЭ");
+        SubjectCatalogEntry physics = subject(23L, "Физика");
+        SubjectCatalogEntry odnknr = subject(24L, "ОДНКНР");
+        lenient().when(teacherDirectoryRepository.findAll()).thenReturn(List.of(teacher, vacancy));
+        lenient().when(teacherDirectoryRepository.findByFioTeacherIgnoreCase("Иванов И.И.")).thenReturn(Optional.of(teacher));
+        lenient().when(teacherDirectoryRepository.findByFioTeacherIgnoreCase("Вакансия")).thenReturn(Optional.of(vacancy));
+        lenient().when(teacherDirectoryRepository.findById(10L)).thenReturn(Optional.of(teacher));
+        lenient().when(teacherDirectoryRepository.findById(11L)).thenReturn(Optional.of(vacancy));
+        lenient().when(subjectCatalogRepository.findAll()).thenReturn(List.of(algebra, math, ethics, physics, odnknr));
+        lenient().when(subjectCatalogRepository.findById(20L)).thenReturn(Optional.of(algebra));
+        lenient().when(subjectCatalogRepository.findById(21L)).thenReturn(Optional.of(math));
+        lenient().when(subjectCatalogRepository.findById(22L)).thenReturn(Optional.of(ethics));
+        lenient().when(subjectCatalogRepository.findById(23L)).thenReturn(Optional.of(physics));
+        lenient().when(subjectCatalogRepository.findById(24L)).thenReturn(Optional.of(odnknr));
 
         service = new ManualLoadServiceImpl(
                 manualLoadEntryRepository,
@@ -817,6 +836,22 @@ class ManualLoadServiceImplBulkReplaceTest {
         row.setEducationLevel(EducationLevel.BASIC);
         row.setStudyPeriod(StudyPeriod.YEAR);
         return row;
+    }
+
+    private TeacherDirectoryEntry teacher(Long id, String fio) {
+        TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
+        teacher.setId(id);
+        teacher.setFioTeacher(fio);
+        return teacher;
+    }
+
+    private SubjectCatalogEntry subject(Long id, String name) {
+        SubjectCatalogEntry subject = new SubjectCatalogEntry();
+        subject.setId(id);
+        subject.setSubjectName(name);
+        subject.setSubjectType(SubjectType.CORE);
+        subject.setSubjectCoefficient(java.math.BigDecimal.ONE);
+        return subject;
     }
 
     private MetaGroup metaGroup(Long id, Long schoolBuildingId) {
