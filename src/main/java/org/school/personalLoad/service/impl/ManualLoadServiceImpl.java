@@ -1287,7 +1287,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             java.util.Map<Long, MetaGroup> metaGroupsById = metaGroupRepository.findAllById(metaGroupIds).stream()
                     .collect(java.util.stream.Collectors.toMap(MetaGroup::getId, java.util.function.Function.identity()));
             java.util.List<Long> invalidIds = metaGroupIds.stream()
-                    .filter(id -> !metaGroupBelongsToAddressScope(metaGroupsById.get(id), schoolBuildingId))
+                    .filter(id -> !metaGroupBelongsToAddressScope(metaGroupsById.get(id), academicYear, schoolBuildingId))
                     .toList();
             if (!invalidIds.isEmpty()) {
                 throw new IllegalArgumentException("metaGroupIds do not belong to selected schoolBuildingId=" + schoolBuildingId + ": " + invalidIds);
@@ -1301,8 +1301,11 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 && java.util.Objects.equals(entry.getSchoolBuildingId(), schoolBuildingId);
     }
 
-    private boolean metaGroupBelongsToAddressScope(MetaGroup metaGroup, Long schoolBuildingId) {
+    private boolean metaGroupBelongsToAddressScope(MetaGroup metaGroup, String academicYear, Long schoolBuildingId) {
         if (metaGroup == null) {
+            return false;
+        }
+        if (metaGroup.getAcademicYear() != null && !java.util.Objects.equals(metaGroup.getAcademicYear(), academicYear)) {
             return false;
         }
         if (metaGroup.getSchoolBuildingId() == null) {
@@ -1453,8 +1456,12 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         if (classId != null && classroomLeadershipRepository.findById(classId).isEmpty()) {
             throw new IllegalArgumentException("class_id не найден: " + classId);
         }
-        if (metaGroupId != null && metaGroupRepository.findById(metaGroupId).isEmpty()) {
-            throw new IllegalArgumentException("meta_group_id не найден: " + metaGroupId);
+        if (metaGroupId != null) {
+            MetaGroup metaGroup = metaGroupRepository.findById(metaGroupId)
+                    .orElseThrow(() -> new IllegalArgumentException("meta_group_id не найден: " + metaGroupId));
+            if (metaGroup.getAcademicYear() != null && !academicYear.equals(metaGroup.getAcademicYear())) {
+                throw new IllegalArgumentException("meta_group_id относится к другому учебному году: " + metaGroupId);
+            }
         }
         if (teacherDirectoryRepository.findById(teacherId).isEmpty()) {
             throw new IllegalArgumentException("teacher_id не найден в справочнике — " + teacherId);
@@ -1653,8 +1660,10 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         if (request.getMetaGroupId() == null) {
             throw new IllegalArgumentException("meta_group_id is required for metagroup load row");
         }
-        if (metaGroupRepository.findById(request.getMetaGroupId()).isEmpty()) {
-            throw new IllegalArgumentException("Метагруппа не найдена: " + request.getMetaGroupId());
+        MetaGroup metaGroup = metaGroupRepository.findById(request.getMetaGroupId())
+                .orElseThrow(() -> new IllegalArgumentException("Метагруппа не найдена: " + request.getMetaGroupId()));
+        if (metaGroup.getAcademicYear() != null && !academicYear.equals(metaGroup.getAcademicYear())) {
+            throw new IllegalArgumentException("Метагруппа относится к другому учебному году: " + request.getMetaGroupId());
         }
         return request.getMetaGroupId();
     }
