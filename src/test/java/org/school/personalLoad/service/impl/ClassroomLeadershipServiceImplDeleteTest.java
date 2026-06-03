@@ -21,6 +21,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -74,12 +75,12 @@ class ClassroomLeadershipServiceImplDeleteTest {
         request.setNumberSchoolBuilding("СП2|ЛЕНИНА,Д.1");
         request.setClassName("7-А");
         request.setClassDirection("Инженерный");
+        request.setTeacherId(2L);
         request.setFioTeacher("Петров П.П.");
         request.setCampusAddress("Ленина, д.1");
         request.setClassType("REGULAR");
 
-        TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
-        teacher.setFioTeacher("Петров П.П.");
+        TeacherDirectoryEntry teacher = teacher(2L, "Петров П.П.");
         SchoolBuilding building = new SchoolBuilding();
         building.setId(36L);
         building.setCode("СП-2");
@@ -88,7 +89,7 @@ class ClassroomLeadershipServiceImplDeleteTest {
         building.setManagerFio("Директор");
 
         when(classroomLeadershipRepository.findById(42L)).thenReturn(Optional.of(entry));
-        when(teacherDirectoryRepository.findByFioTeacher("Петров П.П.")).thenReturn(Optional.of(teacher));
+        when(teacherDirectoryRepository.findById(2L)).thenReturn(Optional.of(teacher));
         when(schoolBuildingRepository.findByCode("СП2")).thenReturn(Optional.empty());
         when(schoolBuildingRepository.findAll()).thenReturn(List.of(building));
         when(classroomLeadershipRepository.save(entry)).thenReturn(entry);
@@ -195,7 +196,7 @@ class ClassroomLeadershipServiceImplDeleteTest {
         ClassroomLeadershipEntryRequest request = updateRequest("СП1", 999L);
 
         when(classroomLeadershipRepository.findById(42L)).thenReturn(Optional.of(entry));
-        when(teacherDirectoryRepository.findByFioTeacher("Петров П.П.")).thenReturn(Optional.of(new TeacherDirectoryEntry()));
+        when(teacherDirectoryRepository.findById(2L)).thenReturn(Optional.of(teacher(2L, "Петров П.П.")));
         when(schoolBuildingRepository.findByCode("СП1")).thenReturn(Optional.of(sp1));
         when(schoolBuildingRepository.findById(999L)).thenReturn(Optional.empty());
 
@@ -203,6 +204,119 @@ class ClassroomLeadershipServiceImplDeleteTest {
 
         assertEquals("Площадка не найдена: 999", error.getMessage());
         verify(classroomLeadershipRepository, never()).save(any(ClassroomLeadershipEntry.class));
+    }
+
+    @Test
+    void updateOnePersistsTeacherIdAndTeacherSnapshot() {
+        ClassroomLeadershipEntry entry = classEntry(42L, "СП1", "7-А");
+        SchoolBuilding sp1 = schoolBuilding(10L, "СП1", "СП1", "Обручева, д.1");
+        TeacherDirectoryEntry newTeacher = teacher(23L, "Новый Педагог");
+        ClassroomLeadershipEntryRequest request = updateRequest("СП1", 10L);
+        request.setTeacherId(23L);
+        request.setFioTeacher("Старое ФИО из формы игнорируется");
+
+        when(classroomLeadershipRepository.findById(42L)).thenReturn(Optional.of(entry));
+        when(teacherDirectoryRepository.findById(23L)).thenReturn(Optional.of(newTeacher));
+        when(schoolBuildingRepository.findByCode("СП1")).thenReturn(Optional.of(sp1));
+        when(schoolBuildingRepository.findById(10L)).thenReturn(Optional.of(sp1));
+        when(classroomLeadershipRepository.save(entry)).thenReturn(entry);
+
+        ClassroomLeadershipEntry saved = service.updateOne(42L, request);
+
+        assertEquals(23L, saved.getTeacherId());
+        assertEquals("Новый Педагог", saved.getFioTeacher());
+    }
+
+    @Test
+    void updateOneRejectsUnknownTeacherId() {
+        ClassroomLeadershipEntry entry = classEntry(42L, "СП1", "7-А");
+        ClassroomLeadershipEntryRequest request = updateRequest("СП1", 10L);
+        request.setTeacherId(999L);
+
+        when(classroomLeadershipRepository.findById(42L)).thenReturn(Optional.of(entry));
+        when(teacherDirectoryRepository.findById(999L)).thenReturn(Optional.empty());
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.updateOne(42L, request));
+
+        assertEquals("Педагог не найден: 999", error.getMessage());
+        verify(classroomLeadershipRepository, never()).save(any(ClassroomLeadershipEntry.class));
+    }
+
+    @Test
+    void replaceAllPersistsSelectedTeacherId() {
+        SchoolBuilding sp1 = schoolBuilding(10L, "СП1", "СП1", "Обручева, д.1");
+        TeacherDirectoryEntry teacher = teacher(23L, "Новый Педагог");
+        ClassroomLeadershipEntryRequest request = updateRequest("СП1", 10L);
+        request.setId(null);
+        request.setTeacherId(23L);
+        request.setFioTeacher("ФИО из формы");
+
+        when(classroomLeadershipRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
+        when(teacherDirectoryRepository.findById(23L)).thenReturn(Optional.of(teacher));
+        when(schoolBuildingRepository.findById(10L)).thenReturn(Optional.of(sp1));
+        when(classroomLeadershipRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<ClassroomLeadershipEntry> saved = service.replaceAll(List.of(request));
+
+        assertEquals(1, saved.size());
+        assertEquals(23L, saved.get(0).getTeacherId());
+        assertEquals("Новый Педагог", saved.get(0).getFioTeacher());
+    }
+
+    @Test
+    void responseAccessorReturnsSelectedTeacherIdAfterUpdate() {
+        ClassroomLeadershipEntry entry = classEntry(42L, "СП1", "7-А");
+        SchoolBuilding sp1 = schoolBuilding(10L, "СП1", "СП1", "Обручева, д.1");
+        TeacherDirectoryEntry teacher = teacher(23L, "Новый Педагог");
+        ClassroomLeadershipEntryRequest request = updateRequest("СП1", 10L);
+        request.setTeacherId(23L);
+
+        when(classroomLeadershipRepository.findById(42L)).thenReturn(Optional.of(entry));
+        when(teacherDirectoryRepository.findById(23L)).thenReturn(Optional.of(teacher));
+        when(schoolBuildingRepository.findByCode("СП1")).thenReturn(Optional.of(sp1));
+        when(schoolBuildingRepository.findById(10L)).thenReturn(Optional.of(sp1));
+        when(classroomLeadershipRepository.save(entry)).thenReturn(entry);
+
+        ClassroomLeadershipEntry saved = service.updateOne(42L, request);
+
+        assertEquals(23L, saved.getTeacherId());
+        assertEquals("Новый Педагог", saved.getFioTeacher());
+    }
+
+    @Test
+    void importWithLegacyTeacherNameStoresResolvedTeacherId() throws Exception {
+        SchoolBuilding sp1 = schoolBuilding(10L, "СП1", "СП1", "Обручева, д.1");
+        TeacherDirectoryEntry teacher = teacher(23L, "Новый Педагог");
+        org.springframework.mock.web.MockMultipartFile file = classImportFile("СП1", "7-А", "Инженерный", "Новый Педагог", "Обручева, д.1");
+
+        when(classroomLeadershipRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
+        when(schoolBuildingRepository.findByCode("СП1")).thenReturn(Optional.of(sp1));
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of(sp1));
+        when(teacherDirectoryRepository.findAll()).thenReturn(List.of(teacher));
+        when(teacherDirectoryRepository.findById(23L)).thenReturn(Optional.of(teacher));
+        when(schoolBuildingRepository.findById(10L)).thenReturn(Optional.of(sp1));
+        when(classroomLeadershipRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Map<String, Object> result = service.importFromExcel("2026/2027", file);
+
+        assertEquals("ok", result.get("status"));
+        verify(classroomLeadershipRepository).saveAll(org.mockito.ArgumentMatchers.argThat(entries -> {
+            List<ClassroomLeadershipEntry> saved = (List<ClassroomLeadershipEntry>) entries;
+            return saved.size() == 1
+                    && Long.valueOf(23L).equals(saved.get(0).getTeacherId())
+                    && "Новый Педагог".equals(saved.get(0).getFioTeacher());
+        }));
+    }
+
+    @Test
+    void classesFrontendSendsTeacherIdWithFioTeacher() throws Exception {
+        String js = java.nio.file.Files.readString(java.nio.file.Path.of("src/main/resources/static/classes.js"));
+
+        assertTrue(js.contains("function teacherIdForName(fioTeacher)"));
+        assertTrue(js.contains("const teacherId = teacherIdForName(teacherName);"));
+        assertTrue(js.contains("teacherId,"));
+        assertTrue(js.contains("fioTeacher: teacherName"));
+        assertTrue(js.contains("Выберите педагога из справочника"));
     }
 
     @Test
@@ -248,10 +362,9 @@ class ClassroomLeadershipServiceImplDeleteTest {
     }
 
     private void stubSuccessfulUpdate(ClassroomLeadershipEntry entry, ClassroomLeadershipEntryRequest request, SchoolBuilding spBuilding, SchoolBuilding physicalSite) {
-        TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
-        teacher.setFioTeacher("Петров П.П.");
+        TeacherDirectoryEntry teacher = teacher(2L, "Петров П.П.");
         when(classroomLeadershipRepository.findById(42L)).thenReturn(Optional.of(entry));
-        when(teacherDirectoryRepository.findByFioTeacher("Петров П.П.")).thenReturn(Optional.of(teacher));
+        when(teacherDirectoryRepository.findById(2L)).thenReturn(Optional.of(teacher));
         when(schoolBuildingRepository.findByCode(request.getNumberSchoolBuilding())).thenReturn(Optional.of(spBuilding));
         when(schoolBuildingRepository.findById(request.getSchoolBuildingId())).thenReturn(Optional.of(physicalSite));
         when(classroomLeadershipRepository.save(entry)).thenReturn(entry);
@@ -264,10 +377,44 @@ class ClassroomLeadershipServiceImplDeleteTest {
         request.setSchoolBuildingId(schoolBuildingId);
         request.setClassName("7-А");
         request.setClassDirection("Инженерный");
+        request.setTeacherId(2L);
         request.setFioTeacher("Петров П.П.");
         request.setCampusAddress("legacy ignored");
         request.setClassType("NORMAL");
         return request;
+    }
+
+    private org.springframework.mock.web.MockMultipartFile classImportFile(String building, String className, String direction, String teacher, String address) throws Exception {
+        try (org.apache.poi.ss.usermodel.Workbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook();
+             java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+            org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet("Классы");
+            org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
+            header.createCell(0).setCellValue("Корпус");
+            header.createCell(1).setCellValue("Класс");
+            header.createCell(2).setCellValue("Направление класса");
+            header.createCell(3).setCellValue("Классный руководитель");
+            header.createCell(4).setCellValue("Адрес площадки (если отличается)");
+            org.apache.poi.ss.usermodel.Row row = sheet.createRow(1);
+            row.createCell(0).setCellValue(building);
+            row.createCell(1).setCellValue(className);
+            row.createCell(2).setCellValue(direction);
+            row.createCell(3).setCellValue(teacher);
+            row.createCell(4).setCellValue(address);
+            workbook.write(out);
+            return new org.springframework.mock.web.MockMultipartFile(
+                    "file",
+                    "classes.xlsx",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    out.toByteArray()
+            );
+        }
+    }
+
+    private TeacherDirectoryEntry teacher(Long id, String fio) {
+        TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
+        teacher.setId(id);
+        teacher.setFioTeacher(fio);
+        return teacher;
     }
 
     private SchoolBuilding schoolBuilding(Long id, String code, String name, String address) {
@@ -287,6 +434,7 @@ class ClassroomLeadershipServiceImplDeleteTest {
         entry.setNumberSchoolBuilding(building);
         entry.setClassName(className);
         entry.setClassDirection("Универсальный");
+        entry.setTeacher(teacher(1L, "Иванов И.И."));
         entry.setFioTeacher("Иванов И.И.");
         return entry;
     }

@@ -60,18 +60,19 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             String building = normalizeBuildingCode(request.getNumberSchoolBuilding());
             String className = ClassNameNormalizer.normalize(request.getClassName());
             String classDirection = normalize(request.getClassDirection());
-            String fioTeacher = normalize(request.getFioTeacher());
             String classType = normalizeClassType(request.getClassType());
-            if (building.isBlank() || className.isBlank() || classDirection.isBlank() || fioTeacher.isBlank()) continue;
+            if (building.isBlank() || className.isBlank() || classDirection.isBlank()
+                    || (request.getTeacherId() == null && normalize(request.getFioTeacher()).isBlank())) continue;
 
-            ensureTeacherExists(fioTeacher);
+            TeacherDirectoryEntry teacher = resolveRequiredTeacher(request);
             SchoolBuilding schoolBuilding = resolveSchoolBuilding(request, building);
 
             request.setNumberSchoolBuilding(building);
             request.setSchoolBuildingId(schoolBuilding.getId());
             request.setClassName(className);
             request.setClassDirection(classDirection);
-            request.setFioTeacher(fioTeacher);
+            request.setTeacherId(teacher.getId());
+            request.setFioTeacher(normalize(teacher.getFioTeacher()));
             request.setCampusAddress(normalize(schoolBuilding.getAddress()));
             request.setClassType(classType);
             request.setAcademicYear(academicYear);
@@ -95,7 +96,9 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             entry.setNumberSchoolBuilding(normalizeBuildingCode(request.getNumberSchoolBuilding()));
             entry.setClassName(ClassNameNormalizer.normalize(request.getClassName()));
             entry.setClassDirection(normalize(request.getClassDirection()));
-            entry.setFioTeacher(normalize(request.getFioTeacher()));
+            TeacherDirectoryEntry teacher = resolveRequiredTeacher(request);
+            entry.setTeacher(teacher);
+            entry.setFioTeacher(normalize(teacher.getFioTeacher()));
             SchoolBuilding schoolBuilding = resolveSchoolBuilding(request, entry.getNumberSchoolBuilding());
             entry.setSchoolBuilding(schoolBuilding);
             entry.setCampusAddress(normalize(schoolBuilding.getAddress()));
@@ -143,20 +146,21 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         String building = normalizeBuildingCode(request.getNumberSchoolBuilding());
         String className = ClassNameNormalizer.normalize(request.getClassName());
         String classDirection = normalize(request.getClassDirection());
-        String fioTeacher = normalize(request.getFioTeacher());
         String classType = normalizeClassType(request.getClassType());
-        if (building.isBlank() || className.isBlank() || classDirection.isBlank() || fioTeacher.isBlank()) {
-            throw new IllegalArgumentException("numberSchoolBuilding, className, classDirection and fioTeacher are required");
+        if (building.isBlank() || className.isBlank() || classDirection.isBlank()
+                || (request.getTeacherId() == null && normalize(request.getFioTeacher()).isBlank())) {
+            throw new IllegalArgumentException("numberSchoolBuilding, className, classDirection and teacherId are required");
         }
 
-        ensureTeacherExists(fioTeacher);
+        TeacherDirectoryEntry teacher = resolveRequiredTeacher(request);
         ensureBuildingExists(building);
         SchoolBuilding schoolBuilding = resolveSchoolBuilding(request, building);
 
         entry.setNumberSchoolBuilding(building);
         entry.setClassName(className);
         entry.setClassDirection(classDirection);
-        entry.setFioTeacher(fioTeacher);
+        entry.setTeacher(teacher);
+        entry.setFioTeacher(normalize(teacher.getFioTeacher()));
         entry.setSchoolBuilding(schoolBuilding);
         entry.setCampusAddress(normalize(schoolBuilding.getAddress()));
         entry.setClassType(classType);
@@ -182,6 +186,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             req.setNumberSchoolBuilding(existing.getNumberSchoolBuilding());
             req.setClassName(existing.getClassName());
             req.setClassDirection(existing.getClassDirection());
+            req.setTeacherId(existing.getTeacherId());
             req.setFioTeacher(existing.getFioTeacher());
             req.setSchoolBuildingId(existing.getSchoolBuildingId());
             req.setCampusAddress(existing.getCampusAddress());
@@ -218,13 +223,14 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
 
                 // Архитектурное правило: при импорте классов автоматически создаём отсутствующие сущности справочников.
                 ensureBuildingExists(building);
-                ensureTeacherExists(teacher);
+                TeacherDirectoryEntry teacherEntry = resolveOrCreateTeacherForImport(teacher);
 
                 ClassroomLeadershipEntryRequest req = new ClassroomLeadershipEntryRequest();
                 req.setNumberSchoolBuilding(building);
                 req.setClassName(className);
                 req.setClassDirection(direction);
-                req.setFioTeacher(teacher);
+                req.setTeacherId(teacherEntry.getId());
+                req.setFioTeacher(normalize(teacherEntry.getFioTeacher()));
                 SchoolBuilding schoolBuilding = resolveSchoolBuildingByAddressOrDefault(building, campusAddress);
                 req.setSchoolBuildingId(schoolBuilding.getId());
                 req.setCampusAddress(normalize(schoolBuilding.getAddress()));
@@ -324,7 +330,17 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
             entry.setNumberSchoolBuilding(normalizeBuildingCode(previous.getNumberSchoolBuilding()));
             entry.setClassName(nextClass);
             entry.setClassDirection(normalize(previous.getClassDirection()));
-            entry.setFioTeacher(normalize(previous.getFioTeacher()));
+            TeacherDirectoryEntry teacher = previous.getTeacher();
+            if (teacher == null && !normalize(previous.getFioTeacher()).isBlank()) {
+                ClassroomLeadershipEntryRequest teacherRequest = new ClassroomLeadershipEntryRequest();
+                teacherRequest.setFioTeacher(previous.getFioTeacher());
+                teacher = resolveRequiredTeacher(teacherRequest);
+            }
+            if (teacher == null) {
+                continue;
+            }
+            entry.setTeacher(teacher);
+            entry.setFioTeacher(normalize(teacher.getFioTeacher()));
             SchoolBuilding schoolBuilding = previous.getSchoolBuilding() != null
                     ? previous.getSchoolBuilding()
                     : resolveSchoolBuildingByAddressOrDefault(entry.getNumberSchoolBuilding(), previous.getCampusAddress());
@@ -473,12 +489,46 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         }
     }
 
-    private void ensureTeacherExists(String fio) {
-        teacherDirectoryRepository.findByFioTeacher(fio).orElseGet(() -> {
-            TeacherDirectoryEntry t = new TeacherDirectoryEntry();
-            t.setFioTeacher(fio);
-            return teacherDirectoryRepository.save(t);
-        });
+    private TeacherDirectoryEntry resolveRequiredTeacher(ClassroomLeadershipEntryRequest request) {
+        if (request.getTeacherId() != null) {
+            return teacherDirectoryRepository.findById(request.getTeacherId())
+                    .orElseThrow(() -> new IllegalArgumentException("Педагог не найден: " + request.getTeacherId()));
+        }
+
+        String fio = normalize(request.getFioTeacher());
+        if (fio.isBlank()) {
+            throw new IllegalArgumentException("teacherId is required");
+        }
+
+        List<TeacherDirectoryEntry> matches = teacherDirectoryRepository.findAll().stream()
+                .filter(teacher -> normalize(teacher.getFioTeacher()).equalsIgnoreCase(fio))
+                .toList();
+        if (matches.isEmpty()) {
+            throw new IllegalArgumentException("Педагог не найден: " + fio);
+        }
+        if (matches.size() > 1) {
+            throw new IllegalArgumentException("Педагог неоднозначен: " + fio);
+        }
+        return matches.get(0);
+    }
+
+    private TeacherDirectoryEntry resolveOrCreateTeacherForImport(String fio) {
+        String normalized = normalize(fio);
+        if (normalized.isBlank()) {
+            throw new IllegalArgumentException("teacherId is required");
+        }
+        List<TeacherDirectoryEntry> matches = teacherDirectoryRepository.findAll().stream()
+                .filter(teacher -> normalize(teacher.getFioTeacher()).equalsIgnoreCase(normalized))
+                .toList();
+        if (matches.size() == 1) {
+            return matches.get(0);
+        }
+        if (matches.size() > 1) {
+            throw new IllegalArgumentException("Педагог неоднозначен: " + normalized);
+        }
+        TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
+        teacher.setFioTeacher(normalized);
+        return teacherDirectoryRepository.save(teacher);
     }
 
     private SchoolBuilding resolveSchoolBuilding(ClassroomLeadershipEntryRequest request, String buildingCode) {
