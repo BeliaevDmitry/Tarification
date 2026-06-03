@@ -28,6 +28,18 @@ public class MetaGroup {
     @EqualsAndHashCode.Exclude
     private BuildingGroup buildingGroup;
 
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "school_building_id")
+    @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private SchoolBuilding schoolBuilding;
+
+    public Long getSchoolBuildingId() {
+        return schoolBuilding == null ? null : schoolBuilding.getId();
+    }
+
     @Column(nullable = false)
     private Integer parallel;
 

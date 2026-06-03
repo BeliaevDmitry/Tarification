@@ -30,6 +30,10 @@ public interface ManualLoadService {
         return findAll(academicYear, numberSchoolBuilding);
     }
 
+    default List<ManualLoadEntry> findAll(String academicYear, String numberSchoolBuilding, String campusAddress, Long schoolBuildingId) {
+        return findAll(academicYear, numberSchoolBuilding, campusAddress);
+    }
+
     void clearAll(String academicYear);
 
     default void clearByBuilding(String academicYear, String numberSchoolBuilding) {
@@ -42,6 +46,10 @@ public interface ManualLoadService {
 
     default void clearByBuildingAddress(String academicYear, String numberSchoolBuilding, String campusAddress) {
         clearByBuilding(academicYear, numberSchoolBuilding);
+    }
+
+    default void clearBySchoolBuilding(String academicYear, Long schoolBuildingId) {
+        throw new UnsupportedOperationException("clearBySchoolBuilding is not implemented");
     }
 
     ManualLoadProcessResult processCurrentManualLoad(String academicYear);

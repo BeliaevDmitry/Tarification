@@ -65,12 +65,26 @@ public class ManualLoadEntry {
     @EqualsAndHashCode.Exclude
     private ClassroomLeadershipEntry classRef;
 
+    @Column(name = "meta_group_id")
+    private Long metaGroupId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "meta_group_id", insertable = false, updatable = false)
     @JsonIgnore
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private MetaGroup metaGroupRef;
+
+
+    public Long getSchoolBuildingId() {
+        if (metaGroupRef != null && metaGroupRef.getSchoolBuildingId() != null) {
+            return metaGroupRef.getSchoolBuildingId();
+        }
+        if (classRef != null) {
+            return classRef.getSchoolBuildingId();
+        }
+        return null;
+    }
 
     @Column(nullable = false)
     private Integer load;
