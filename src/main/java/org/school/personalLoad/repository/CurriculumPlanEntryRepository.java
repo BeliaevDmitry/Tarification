@@ -34,51 +34,53 @@ public interface CurriculumPlanEntryRepository extends JpaRepository<CurriculumP
 
     Optional<CurriculumPlanEntry> findFirstByNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndStudyPeriodAndDeprecatedFalse(String numberSchoolBuilding, String className, String subjectName, EducationLevel educationLevel, StudyPeriod studyPeriod);
     Optional<CurriculumPlanEntry> findFirstByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndStudyPeriodAndDeprecatedFalse(String academicYear, String numberSchoolBuilding, String className, String subjectName, EducationLevel educationLevel, StudyPeriod studyPeriod);
+    List<CurriculumPlanEntry> findAllByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(String academicYear, String numberSchoolBuilding, String className, String subjectName, EducationLevel educationLevel, StudyPeriod studyPeriod);
 
     Optional<CurriculumPlanEntry> findFirstByClassNameAndSubjectNameAndEducationLevelAndStudyPeriodAndDeprecatedFalse(String className, String subjectName, EducationLevel educationLevel, StudyPeriod studyPeriod);
     Optional<CurriculumPlanEntry> findFirstByAcademicYearAndClassNameAndSubjectNameAndEducationLevelAndStudyPeriodAndDeprecatedFalse(String academicYear, String className, String subjectName, EducationLevel educationLevel, StudyPeriod studyPeriod);
 
     Optional<CurriculumPlanEntry> findFirstByAcademicYearAndStageAndClassNameAndSubjectNameAndStudyPeriod(String academicYear, CurriculumStage stage, String className, String subjectName, StudyPeriod studyPeriod);
 
+    Optional<CurriculumPlanEntry> findFirstByAcademicYearAndClassIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+            String academicYear,
+            Long classId,
+            String subjectName,
+            EducationLevel educationLevel,
+            StudyPeriod studyPeriod
+    );
+
+    Optional<CurriculumPlanEntry> findFirstByAcademicYearAndMetaGroupIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+            String academicYear,
+            Long metaGroupId,
+            String subjectName,
+            EducationLevel educationLevel,
+            StudyPeriod studyPeriod
+    );
+
     List<CurriculumPlanEntry> findAllByAcademicYearAndStage(String academicYear, CurriculumStage stage);
     List<CurriculumPlanEntry> findAllByAcademicYear(String academicYear);
     List<CurriculumPlanEntry> findAllByAcademicYearAndNumberSchoolBuildingIgnoreCase(String academicYear, String numberSchoolBuilding);
     boolean existsByNumberSchoolBuildingIgnoreCase(String numberSchoolBuilding);
 
-    List<CurriculumPlanEntry> findAllByNumberSchoolBuildingAndClassName(String numberSchoolBuilding, String className);
-    List<CurriculumPlanEntry> findAllByAcademicYearAndNumberSchoolBuildingAndClassName(String academicYear, String numberSchoolBuilding, String className);
+    @Query(value = "select * from curriculum_plan_entry where meta_group_id = :metaGroupId", nativeQuery = true)
+    List<CurriculumPlanEntry> findAllByMetaGroupId(@Param("metaGroupId") Long metaGroupId);
 
-    void deleteByNumberSchoolBuildingAndClassName(String numberSchoolBuilding, String className);
-    void deleteByAcademicYearAndNumberSchoolBuildingAndClassName(String academicYear, String numberSchoolBuilding, String className);
-
+    @Modifying
+    @Query(value = "delete from curriculum_plan_entry where meta_group_id = :metaGroupId", nativeQuery = true)
+    void deleteByMetaGroupId(@Param("metaGroupId") Long metaGroupId);
 
     @Modifying
     @Query(value = "delete from curriculum_plan_entry where academic_year = :academicYear and class_id = :classId", nativeQuery = true)
     void deleteByAcademicYearAndClassId(@Param("academicYear") String academicYear, @Param("classId") Long classId);
 
-    @Query(value = "select count(*) from curriculum_plan_entry where academic_year = :academicYear and (class_id = :classId or (lower(number_school_building) = lower(:numberSchoolBuilding) and lower(class_name) = lower(:className)))", nativeQuery = true)
+    @Query(value = "select count(*) from curriculum_plan_entry where academic_year = :academicYear and class_id = :classId", nativeQuery = true)
     long countClassTails(@Param("academicYear") String academicYear,
-                         @Param("classId") Long classId,
-                         @Param("numberSchoolBuilding") String numberSchoolBuilding,
-                         @Param("className") String className);
+                         @Param("classId") Long classId);
 
     void deleteAllByAcademicYear(String academicYear);
 
     @Modifying
     @Query("update CurriculumPlanEntry c set c.subjectName = :newName where lower(c.subjectName) = lower(:oldName)")
     int renameSubjectEverywhere(@Param("oldName") String oldName, @Param("newName") String newName);
-
-    @Modifying
-    @Query("""
-            update CurriculumPlanEntry c
-               set c.className = :newClassName,
-                   c.numberSchoolBuilding = :newBuilding
-             where c.academicYear = :academicYear
-               and lower(trim(c.className)) = lower(trim(:oldClassName))
-            """)
-    int renameClassEverywhere(@Param("academicYear") String academicYear,
-                              @Param("oldClassName") String oldClassName,
-                              @Param("newClassName") String newClassName,
-                              @Param("newBuilding") String newBuilding);
 
 }

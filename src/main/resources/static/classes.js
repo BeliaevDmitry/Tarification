@@ -284,7 +284,12 @@ async function reload() {
     renderClasses(classRows);
 }
 
-async function classDependencySummary(building, className) {
+async function classDependencySummary(entry) {
+    if (entry?.id) {
+        return api(`/api/classroom-leadership/${encodeURIComponent(entry.id)}/dependencies`);
+    }
+    const building = buildingGroupCode(entry?.numberSchoolBuilding);
+    const className = normalizeClassName(entry?.className);
     return api(`/api/classroom-leadership/one/dependencies?numberSchoolBuilding=${encodeURIComponent(building)}&className=${encodeURIComponent(className)}`);
 }
 
@@ -395,9 +400,12 @@ ui.editDeleteBtn?.addEventListener('click', async () => {
         return;
     }
     try {
-        const dependencies = await classDependencySummary(building, className);
+        const dependencies = await classDependencySummary(editingOriginalEntry);
         if (!window.confirm(classDeleteWarning(className, building, dependencies))) return;
-        await api(`/api/classroom-leadership/one?numberSchoolBuilding=${encodeURIComponent(building)}&className=${encodeURIComponent(className)}`, { method: "DELETE" });
+        const deleteUrl = editingOriginalEntry?.id
+            ? `/api/classroom-leadership/${encodeURIComponent(editingOriginalEntry.id)}`
+            : `/api/classroom-leadership/one?numberSchoolBuilding=${encodeURIComponent(building)}&className=${encodeURIComponent(className)}`;
+        await api(deleteUrl, { method: "DELETE" });
         ui.editDialog.close();
         print({ status: "deleted", numberSchoolBuilding: building, className });
         await reload();

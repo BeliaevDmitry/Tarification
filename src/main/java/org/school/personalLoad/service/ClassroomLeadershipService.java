@@ -15,7 +15,11 @@ public interface ClassroomLeadershipService {
 
     ClassroomLeadershipEntry updateOne(Long id, ClassroomLeadershipEntryRequest request);
 
+    void deleteOne(Long id, String academicYear);
+
     void deleteOne(String academicYear, String numberSchoolBuilding, String className);
+
+    Map<String, Object> dependencySummary(Long id, String academicYear);
 
     Map<String, Object> dependencySummary(String academicYear, String numberSchoolBuilding, String className);
 

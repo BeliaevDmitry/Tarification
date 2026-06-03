@@ -1,6 +1,7 @@
 -- Read-only verification for the completed FK migration cutover state.
 -- This script intentionally performs no DDL and no data changes.
--- Expected result for data-quality checks: issue_count = 0.
+-- Expected result for blocking FK data-quality checks: issue_count = 0.
+-- Legacy snapshot mismatches are reported in a separate informational block below.
 
 WITH checks AS (
     -- Required FK columns should be populated after the completed migrations/backfill.
@@ -48,16 +49,6 @@ WITH checks AS (
     FROM classroom_leadership_entry c
     JOIN building_group bg ON bg.id = c.building_group_id
     WHERE upper(replace(split_part(coalesce(c.number_school_building, ''), '|', 1), ' ', '')) <> bg.code
-    UNION ALL
-    SELECT 'curriculum number_school_building does not match building_group.code', count(*)::bigint
-    FROM curriculum_plan_entry c
-    JOIN building_group bg ON bg.id = c.building_group_id
-    WHERE upper(replace(split_part(coalesce(c.number_school_building, ''), '|', 1), ' ', '')) <> bg.code
-    UNION ALL
-    SELECT 'manual load number_school_building does not match building_group.code', count(*)::bigint
-    FROM manual_load_entry m
-    JOIN building_group bg ON bg.id = m.building_group_id
-    WHERE upper(replace(split_part(coalesce(m.number_school_building, ''), '|', 1), ' ', '')) <> bg.code
     UNION ALL
     SELECT 'meta_group number_school_building does not match building_group.code', count(*)::bigint
     FROM meta_group mg
@@ -135,50 +126,27 @@ WITH checks AS (
     SELECT 'manual regular rows with meta_group_id set', count(*)::bigint
     FROM manual_load_entry
     WHERE class_name NOT LIKE 'МГ:%' AND meta_group_id IS NOT NULL
+    UNION ALL
+    SELECT 'curriculum class_id target is missing', count(*)::bigint
+    FROM curriculum_plan_entry c
+    LEFT JOIN classroom_leadership_entry cl ON cl.id = c.class_id
+    WHERE c.class_id IS NOT NULL AND cl.id IS NULL
+    UNION ALL
+    SELECT 'manual class_id target is missing', count(*)::bigint
+    FROM manual_load_entry m
+    LEFT JOIN classroom_leadership_entry cl ON cl.id = m.class_id
+    WHERE m.class_id IS NOT NULL AND cl.id IS NULL
+    UNION ALL
+    SELECT 'curriculum meta_group_id target is missing', count(*)::bigint
+    FROM curriculum_plan_entry c
+    LEFT JOIN meta_group mg ON mg.id = c.meta_group_id
+    WHERE c.meta_group_id IS NOT NULL AND mg.id IS NULL
+    UNION ALL
+    SELECT 'manual meta_group_id target is missing', count(*)::bigint
+    FROM manual_load_entry m
+    LEFT JOIN meta_group mg ON mg.id = m.meta_group_id
+    WHERE m.meta_group_id IS NOT NULL AND mg.id IS NULL
 
-    -- FK target text should agree with class/meta-group references.
-    UNION ALL
-    SELECT 'curriculum class_id target does not match legacy class fields', count(*)::bigint
-    FROM curriculum_plan_entry c
-    JOIN classroom_leadership_entry cl ON cl.id = c.class_id
-    WHERE c.class_name NOT LIKE 'МГ:%'
-      AND (
-          coalesce(c.academic_year, '') <> coalesce(cl.academic_year, '')
-          OR lower(trim(c.class_name)) <> lower(trim(cl.class_name))
-          OR upper(replace(split_part(coalesce(c.number_school_building, ''), '|', 1), ' ', ''))
-             <> upper(replace(split_part(coalesce(cl.number_school_building, ''), '|', 1), ' ', ''))
-      )
-    UNION ALL
-    SELECT 'manual class_id target does not match legacy class fields', count(*)::bigint
-    FROM manual_load_entry m
-    JOIN classroom_leadership_entry cl ON cl.id = m.class_id
-    WHERE m.class_name NOT LIKE 'МГ:%'
-      AND (
-          coalesce(m.academic_year, '') <> coalesce(cl.academic_year, '')
-          OR lower(trim(m.class_name)) <> lower(trim(cl.class_name))
-          OR upper(replace(split_part(coalesce(m.number_school_building, ''), '|', 1), ' ', ''))
-             <> upper(replace(split_part(coalesce(cl.number_school_building, ''), '|', 1), ' ', ''))
-      )
-    UNION ALL
-    SELECT 'curriculum meta_group_id target does not match legacy meta fields', count(*)::bigint
-    FROM curriculum_plan_entry c
-    JOIN meta_group mg ON mg.id = c.meta_group_id
-    WHERE c.class_name LIKE 'МГ:%'
-      AND (
-          lower(trim(regexp_replace(c.class_name, '^\s*МГ:', ''))) <> lower(trim(mg.name))
-          OR upper(replace(split_part(coalesce(c.number_school_building, ''), '|', 1), ' ', ''))
-             <> upper(replace(split_part(coalesce(mg.number_school_building, ''), '|', 1), ' ', ''))
-      )
-    UNION ALL
-    SELECT 'manual meta_group_id target does not match legacy meta fields', count(*)::bigint
-    FROM manual_load_entry m
-    JOIN meta_group mg ON mg.id = m.meta_group_id
-    WHERE m.class_name LIKE 'МГ:%'
-      AND (
-          lower(trim(regexp_replace(m.class_name, '^\s*МГ:', ''))) <> lower(trim(mg.name))
-          OR upper(replace(split_part(coalesce(m.number_school_building, ''), '|', 1), ' ', ''))
-             <> upper(replace(split_part(coalesce(mg.number_school_building, ''), '|', 1), ' ', ''))
-      )
 
     -- Address/site diagnostics: physical site matching is independent from the class building_group_id.
     UNION ALL
@@ -204,6 +172,49 @@ WITH checks AS (
 )
 SELECT check_name, issue_count
 FROM checks
+ORDER BY check_name;
+
+-- Informational legacy snapshot mismatch report.
+-- These rows should not block FK-only operations after PR 3 because relations are resolved by class_id/meta_group_id.
+WITH informational_legacy_snapshot_mismatch AS (
+    SELECT 'informational legacy snapshot mismatch: curriculum number_school_building does not match building_group.code' AS check_name,
+           count(*)::bigint AS row_count
+    FROM curriculum_plan_entry c
+    JOIN building_group bg ON bg.id = c.building_group_id
+    WHERE upper(replace(split_part(coalesce(c.number_school_building, ''), '|', 1), ' ', '')) <> bg.code
+    UNION ALL
+    SELECT 'informational legacy snapshot mismatch: manual load number_school_building does not match building_group.code',
+           count(*)::bigint
+    FROM manual_load_entry m
+    JOIN building_group bg ON bg.id = m.building_group_id
+    WHERE upper(replace(split_part(coalesce(m.number_school_building, ''), '|', 1), ' ', '')) <> bg.code
+    UNION ALL
+    SELECT 'informational legacy snapshot mismatch: curriculum class_id target text differs from legacy class fields',
+           count(*)::bigint
+    FROM curriculum_plan_entry c
+    JOIN classroom_leadership_entry cl ON cl.id = c.class_id
+    WHERE c.class_name NOT LIKE 'МГ:%'
+      AND (
+          coalesce(c.academic_year, '') <> coalesce(cl.academic_year, '')
+          OR lower(trim(c.class_name)) <> lower(trim(cl.class_name))
+          OR upper(replace(split_part(coalesce(c.number_school_building, ''), '|', 1), ' ', ''))
+             <> upper(replace(split_part(coalesce(cl.number_school_building, ''), '|', 1), ' ', ''))
+      )
+    UNION ALL
+    SELECT 'informational legacy snapshot mismatch: manual class_id target text differs from legacy class fields',
+           count(*)::bigint
+    FROM manual_load_entry m
+    JOIN classroom_leadership_entry cl ON cl.id = m.class_id
+    WHERE m.class_name NOT LIKE 'МГ:%'
+      AND (
+          coalesce(m.academic_year, '') <> coalesce(cl.academic_year, '')
+          OR lower(trim(m.class_name)) <> lower(trim(cl.class_name))
+          OR upper(replace(split_part(coalesce(m.number_school_building, ''), '|', 1), ' ', ''))
+             <> upper(replace(split_part(coalesce(cl.number_school_building, ''), '|', 1), ' ', ''))
+      )
+)
+SELECT check_name, row_count
+FROM informational_legacy_snapshot_mismatch
 ORDER BY check_name;
 
 -- Schema-presence diagnostic for the concrete site FK.

@@ -65,6 +65,9 @@ public class ManualLoadEntry {
     @EqualsAndHashCode.Exclude
     private ClassroomLeadershipEntry classRef;
 
+    @Column(name = "meta_group_id")
+    private Long metaGroupId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "meta_group_id", insertable = false, updatable = false)
     @JsonIgnore
