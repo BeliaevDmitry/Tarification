@@ -11,10 +11,13 @@ import java.time.LocalDate;
 public class ManualLoadEntryRequest {
     private String academicYear;
     private String fioTeacher;
+    private Long teacherId;
     private String numberSchoolBuilding;
     private String subjectName;
+    private Long subjectId;
     private String className;
     private Long classId;
+    private Long metaGroupId;
     private Integer load;
     private String groupNameEducationalPlan;
     private Integer groupLoad;

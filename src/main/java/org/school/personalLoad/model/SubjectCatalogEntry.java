@@ -20,6 +20,10 @@ public class SubjectCatalogEntry {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    public Long getSubjectAreaId() {
+        return subjectAreaRef == null ? null : subjectAreaRef.getId();
+    }
+
     @Column(nullable = false)
     private String subjectName;
 
