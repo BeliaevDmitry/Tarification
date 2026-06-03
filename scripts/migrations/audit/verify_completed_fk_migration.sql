@@ -273,6 +273,10 @@ WITH teacher_subject_area_fk_checks AS (
     FROM subject_catalog_entry s
     LEFT JOIN subject_area a ON a.id = s.subject_area_id
     WHERE s.subject_area_id IS NOT NULL AND a.id IS NULL
+    UNION ALL
+    SELECT 'school_building.building_group_id is NULL', count(*)::bigint
+    FROM school_building
+    WHERE building_group_id IS NULL
 )
 SELECT check_name, issue_count
 FROM teacher_subject_area_fk_checks

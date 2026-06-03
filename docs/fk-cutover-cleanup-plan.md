@@ -102,8 +102,8 @@ That made `school_building_id` on `classroom_leadership_entry` the only missing 
 - PR 3 removes `CurriculumPlanEntryRepository.renameClassEverywhere()` and `ManualLoadEntryRepository.renameClassEverywhere()` because they only preserved legacy string relation lookup.
 - `CurriculumPlanEntryRepository.renameSubjectEverywhere()` and `ManualLoadEntryRepository.renameSubjectEverywhere()` bulk-update dependent rows by subject name string.
 - `SubjectCatalogRepository.renameSubjectAreaEverywhere()` bulk-updates subject catalog rows by subject-area name string.
-- `ManualLoadEntryRepository.findByFioTeacherIgnoreCase()` and `TeacherDirectoryServiceImpl.markForDismissal()`/`restore()` still use `fioTeacher` to find affected manual-load rows.
-- Hotfix after PR 3 moves manual-load physical-site scope to `schoolBuildingId`: reading/clearing address scope joins `manual_load_entry.class_id -> classroom_leadership_entry.school_building_id`, so classes owned by СП1 but physically placed on СП2/СП3 sites are included without changing their organizational `numberSchoolBuilding`. Metagroups still have no independent physical-site FK, so address scope does not infer a metagroup site from СП text.
+- Teacher dismissal/restoration and vacancy replacement now use `teacher_id`; `fioTeacher` remains a display/export/snapshot field.
+- Manual-load physical-site scope uses `schoolBuildingId`: ordinary rows join `manual_load_entry.class_id -> classroom_leadership_entry.school_building_id`, and explicit metagroup rows join `manual_load_entry.meta_group_id -> meta_group.school_building_id`. Organizational СП text is not used as a physical-site key.
 
 ## Recommended PR sequence after this audit
 
@@ -129,16 +129,16 @@ PR 3 translates working curriculum/manual-load operations to FK-only class and m
 - the old `class_id OR (number_school_building + class_name)` fallback is removed from repository count queries;
 - class rename/SP/site edits no longer call bulk legacy sync methods for curriculum/manual-load rows;
 - explicit metagroup manual-load rows carry `meta_group_id` and `class_id = null`, so validation resolves the curriculum rule by FK instead of by ordinary class text;
-- the new editable manual-load Excel export includes `CLASS_ID` and `META_GROUP_ID`, while older editable files without those columns are temporarily accepted through a safe deprecated fallback that must resolve exactly one `class_id` or `meta_group_id` before saving;
-- manual-load physical-site scope uses `schoolBuildingId` independently from class СП; no production SQL migration is required for this hotfix because PR 2 already populated `classroom_leadership_entry.school_building_id`.
+- the editable manual-load Excel export includes `CLASS_ID` and `META_GROUP_ID` and later final cleanup also requires `TEACHER_ID` and `SUBJECT_ID`;
+- manual-load physical-site scope uses `schoolBuildingId` independently from class СП; ordinary classes and explicit metagroups are scoped by their own physical-site FKs.
 
-Legacy `numberSchoolBuilding` and `className` values remain in dependent tables for display, imports, exports, and historical snapshots. The production audit result `curriculum number_school_building does not match building_group.code | 32` is therefore documented as an informational legacy snapshot mismatch, not a blocker for FK-only operations, because `curriculum class_id target does not match legacy class fields | 0` confirmed the FK relation itself is correct. The next planned PR is the teacher workflow cutover to `teacher_id`; this PR intentionally does not change teacher dismissal/restoration, vacancy handling, `subject_id`, or `subject_area_id`.
+Legacy `numberSchoolBuilding` and `className` values remain in dependent tables for display, exports, and historical snapshots. The production audit result `curriculum number_school_building does not match building_group.code | 32` is therefore documented as an informational legacy snapshot mismatch, not a blocker for FK-only operations, because `curriculum class_id target does not match legacy class fields | 0` confirmed the FK relation itself is correct. The next planned PR is the teacher workflow cutover to `teacher_id`; this PR intentionally does not change teacher dismissal/restoration, vacancy handling, `subject_id`, or `subject_area_id`.
 
 ## Current PR update: teacher, subject, and subject-area FK cutover
 
 This PR moves the remaining teacher/subject/subject-area workflows to the already-populated production FKs without adding a production data migration:
 
-- `manual_load_entry.teacher_id` is now the working relation for manual-load assignment, dismissal/restoration side effects, vacancy replacement rows, editable Excel import/export, and teacher dependency checks. `fioTeacher` remains display/export/snapshot compatibility and a deprecated import fallback that must resolve exactly one teacher before saving.
+- `manual_load_entry.teacher_id` is now the working relation for manual-load assignment, dismissal/restoration side effects, vacancy replacement rows, editable Excel import/export, and teacher dependency checks. `fioTeacher` remains display/export/snapshot compatibility only.
 - `curriculum_plan_entry.subject_id` and `manual_load_entry.subject_id` are the working subject relations. Manual-load validation first matches curriculum rules by `class_id` or `meta_group_id` plus `subject_id`, education level, study period, and subgroup context; `subjectName` remains display/export/snapshot compatibility.
 - `subject_catalog_entry.subject_area_id` is the working relation to `subject_area`. Subject create/update/import resolve and save `subjectAreaRef`; `subjectAreaName` remains display/export/snapshot compatibility, and editable subject import/export includes `SUBJECT_AREA_ID`.
 - The special teacher-directory row `Вакансия` is used by ID when dismissal creates vacancy load rows; the application no longer creates vacancy workload rows with only text and an empty `teacher_id`.
@@ -149,3 +149,19 @@ Known production audit items remain intentionally unresolved or informational:
 - `curriculum number_school_building does not match building_group.code | 32` remains an informational legacy snapshot mismatch. It is not corrected automatically because FK-only operations use `class_id`/`meta_group_id` and the production audit confirmed those FKs are complete.
 
 No production SQL migration is required for this PR; the existing production audit already confirmed `teacher_id`, `subject_id`, and `subject_area_id` are populated and consistent.
+
+
+## Final FK-cutover cleanup update
+
+The main relation cutover is complete. Runtime workflows now use the FK columns as relation keys:
+
+- ordinary manual-load rows require `class_id`, `teacher_id`, and `subject_id`;
+- explicit metagroup manual-load rows require `meta_group_id`, `teacher_id`, and `subject_id`, with `class_id = null`;
+- physical-site scopes use `school_building_id` from the class or metagroup parent;
+- `subject_catalog_entry.subject_area_id` is the subject-area relation.
+
+Manual-load editable Excel import intentionally accepts only the new FK template with all four required columns: `CLASS_ID`, `META_GROUP_ID`, `TEACHER_ID`, and `SUBJECT_ID`. Older editable files are rejected with a user-facing instruction to export a fresh template and move data into it. Legacy text fields (`numberSchoolBuilding`, `className`, `fioTeacher`, `subjectName`, `subjectAreaName`, `campusAddress`) remain for display, export, printing, historical snapshots, and informational audit only; they are not relation keys.
+
+School-building creation/editing is also finalized as code-only cleanup: `school_building.building_group_id` already exists and is required by production schema, so the API/UI/import now require an explicit `buildingGroupId` and save the writable `SchoolBuilding.buildingGroup` relation before hitting the database. This does not change the business rule that a class/metagroup organizational СП and physical site are independent.
+
+No new production SQL migration is required for this final cleanup. The unresolved `teacher_directory_entry.building_group_id is NULL` result remains a separate design question because teachers may work across multiple СП/physical sites, and the `curriculum number_school_building` mismatch remains an informational legacy snapshot mismatch.

@@ -16,6 +16,7 @@ const ui = {
 };
 
 let buildings = [];
+let buildingGroups = [];
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -37,9 +38,33 @@ function displayManagerFio(item) {
     return value || "Не назначен";
 }
 
+function groupLabelById(id) {
+    const group = buildingGroups.find((g) => String(g.id) === String(id));
+    if (!group) return id ? `#${id}` : "—";
+    const code = String(group.code || "").trim();
+    const name = String(group.name || "").trim();
+    return [code, name].filter(Boolean).join(" — ") || `#${group.id}`;
+}
+
+function fillBuildingGroupSelect(select, selectedId = "") {
+    if (!select) return;
+    select.innerHTML = '<option value="">Группа корпуса</option>';
+    buildingGroups
+        .slice()
+        .sort((a, b) => String(a.code || a.name || "").localeCompare(String(b.code || b.name || ""), "ru"))
+        .forEach((group) => {
+            const option = document.createElement("option");
+            option.value = String(group.id);
+            option.textContent = groupLabelById(group.id);
+            select.appendChild(option);
+        });
+    select.value = selectedId ? String(selectedId) : "";
+}
+
 function openEdit(item) {
     ui.editForm.elements.id.value = item.id || "";
     ui.editForm.elements.code.value = item.code;
+    fillBuildingGroupSelect(ui.editForm.elements.buildingGroupId, item.buildingGroupId);
     ui.editForm.elements.name.value = item.name;
     ui.editForm.elements.address.value = item.address;
     if (ui.managerDisplay) ui.managerDisplay.textContent = displayManagerFio(item);
@@ -51,7 +76,7 @@ function render(rows) {
     buildings = rows || [];
     buildings.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ru")).forEach((r) => {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${escapeHtml(r.name)}</td><td>${escapeHtml(displayManagerFio(r))}</td><td>${escapeHtml(r.address)}</td><td><button type="button" class="inline-plus" data-edit-id="${escapeHtml(r.id)}" title="Редактировать">✏️</button></td>`;
+        tr.innerHTML = `<td>${escapeHtml(groupLabelById(r.buildingGroupId))}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(displayManagerFio(r))}</td><td>${escapeHtml(r.address)}</td><td><button type="button" class="inline-plus" data-edit-id="${escapeHtml(r.id)}" title="Редактировать">✏️</button></td>`;
         ui.body.appendChild(tr);
     });
 
@@ -64,7 +89,12 @@ function render(rows) {
 }
 
 async function reload() {
-    const rows = await api("/api/buildings");
+    const [groups, rows] = await Promise.all([
+        api("/api/building-groups"),
+        api("/api/buildings")
+    ]);
+    buildingGroups = groups || [];
+    fillBuildingGroupSelect(ui.form.elements.buildingGroupId, ui.form.elements.buildingGroupId?.value);
     render(rows);
 }
 
@@ -72,10 +102,12 @@ ui.form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const form = new FormData(ui.form);
     const payload = {
+        buildingGroupId: Number(form.get("buildingGroupId") || 0) || null,
         name: String(form.get("name") || "").trim(),
         address: String(form.get("address") || "").trim()
     };
-    payload.code = payload.name;
+    const selectedGroup = buildingGroups.find((g) => String(g.id) === String(payload.buildingGroupId));
+    payload.code = String(selectedGroup?.code || payload.name || "").trim();
 
     try {
         const saved = await api("/api/buildings", { method: "POST", headers: jsonHeaders, body: JSON.stringify(payload) });
@@ -90,9 +122,12 @@ ui.editForm.addEventListener('submit', async (e) => {
     const payload = {
         id: Number(ui.editForm.elements.id.value || 0) || null,
         code: String(ui.editForm.elements.code.value || '').trim(),
+        buildingGroupId: Number(ui.editForm.elements.buildingGroupId.value || 0) || null,
         name: String(ui.editForm.elements.name.value || '').trim(),
         address: String(ui.editForm.elements.address.value || '').trim()
     };
+    const selectedGroup = buildingGroups.find((g) => String(g.id) === String(payload.buildingGroupId));
+    if (selectedGroup?.code) payload.code = String(selectedGroup.code).trim();
 
     try {
         const saved = await api('/api/buildings', { method: 'POST', headers: jsonHeaders, body: JSON.stringify(payload) });

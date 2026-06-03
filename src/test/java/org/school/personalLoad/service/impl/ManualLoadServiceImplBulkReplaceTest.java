@@ -116,6 +116,8 @@ class ManualLoadServiceImplBulkReplaceTest {
         lenient().when(subjectCatalogRepository.findById(22L)).thenReturn(Optional.of(ethics));
         lenient().when(subjectCatalogRepository.findById(23L)).thenReturn(Optional.of(physics));
         lenient().when(subjectCatalogRepository.findById(24L)).thenReturn(Optional.of(odnknr));
+        lenient().when(classroomLeadershipRepository.findById(any()))
+                .thenAnswer(invocation -> Optional.of(classEntry(invocation.getArgument(0), "СП1", "7-А", "ул. Первая, 1")));
 
         service = new ManualLoadServiceImpl(
                 manualLoadEntryRepository,
@@ -171,8 +173,8 @@ class ManualLoadServiceImplBulkReplaceTest {
     }
 
     @Test
-    void legacyCreateBulkForSingleAddressBuildingIsAllowed() {
-        ManualLoadEntryRequest request = manualRequest("B1", "8-А", null);
+    void buildingGroupCreateBulkForSingleAddressBuildingIsAllowed() {
+        ManualLoadEntryRequest request = manualRequest("B1", "8-А", 1L);
         when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026"))
                 .thenReturn(List.of(classEntry(1L, "B1", "8-А", "ул. Одна, 1")));
         when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -184,8 +186,8 @@ class ManualLoadServiceImplBulkReplaceTest {
     }
 
     @Test
-    void legacyCreateBulkForMultiAddressBuildingIsRejectedWithoutDeleteOrSave() {
-        ManualLoadEntryRequest request = manualRequest("СП3", "4-Д", null);
+    void buildingGroupCreateBulkForMultiAddressBuildingIsRejectedWithoutDeleteOrSave() {
+        ManualLoadEntryRequest request = manualRequest("СП3", "4-Д", 1L);
         when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026"))
                 .thenReturn(List.of(
                         classEntry(1L, "СП3", "4-Д", "Кравченко, д.14, корп.1"),
@@ -201,7 +203,7 @@ class ManualLoadServiceImplBulkReplaceTest {
 
     @Test
     void explicitBuildingGroupCreateBulkForMultiAddressBuildingIsAllowed() {
-        ManualLoadEntryRequest request = manualRequest("СП3", "4-Д", null);
+        ManualLoadEntryRequest request = manualRequest("СП3", "4-Д", 1L);
         ManualLoadBulkRequest bulk = new ManualLoadBulkRequest();
         bulk.setAcademicYear("2025/2026");
         bulk.setScopeType("BUILDING_GROUP");
@@ -370,18 +372,20 @@ class ManualLoadServiceImplBulkReplaceTest {
     void validateMetaGroupLoadUsesMetaGroupIdRule() {
         ManualLoadEntry assignedMeta = manualRow("Иванов И.И.", "СП1", "МГ:5 ФИЗИКА", "Физика", 3);
         assignedMeta.setMetaGroupId(501L);
+        assignedMeta.setSubject(subject(23L, "Физика"));
         CurriculumPlanEntry explicitMeta = curriculumRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3);
         explicitMeta.setMetaGroupId(501L);
+        explicitMeta.setSubject(subject(23L, "Физика"));
         when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(assignedMeta));
-        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                "2025/2026", 501L, "Физика", EducationLevel.BASIC, StudyPeriod.YEAR))
+        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", 501L, 23L, EducationLevel.BASIC, StudyPeriod.YEAR))
                 .thenReturn(Optional.of(explicitMeta));
         when(tarifficationProcessingService.addingGroup(any(), any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         service.processCurrentManualLoad("2025/2026");
 
-        verify(curriculumPlanEntryRepository).findFirstByAcademicYearAndMetaGroupIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                "2025/2026", 501L, "Физика", EducationLevel.BASIC, StudyPeriod.YEAR);
+        verify(curriculumPlanEntryRepository).findFirstByAcademicYearAndMetaGroupIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", 501L, 23L, EducationLevel.BASIC, StudyPeriod.YEAR);
         verify(curriculumPlanService, never()).findRule(anyString(), anyString(), anyString(), anyString(), any(), any());
     }
 
@@ -559,20 +563,22 @@ class ManualLoadServiceImplBulkReplaceTest {
     }
 
     @Test
-    void importNewTemplateWithClassAndMetaGroupIdsPersistsFkRelations() throws Exception {
+    void importNewTemplateWithRequiredFkColumnsPersistsOrdinaryAndMetaGroupRows() throws Exception {
         CurriculumPlanEntry ordinaryRule = curriculumRow("СП1", "5-А", "Математика", 5);
         ordinaryRule.setClassId(101L);
+        ordinaryRule.setSubject(subject(21L, "Математика"));
         CurriculumPlanEntry explicitMetaRule = curriculumRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3);
         explicitMetaRule.setMetaGroupId(501L);
+        explicitMetaRule.setSubject(subject(23L, "Физика"));
         MockMultipartFile file = editableImportFile(true, List.of(
-                importRow("СП1", "5-А", "Математика", 5, 101L, null),
-                importRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3, null, 501L)
+                importRow("СП1", "5-А", "Математика", 5, 101L, null, 10L, 21L),
+                importRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3, null, 501L, 10L, 23L)
         ));
-        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                "2025/2026", 101L, "Математика", EducationLevel.BASIC, StudyPeriod.YEAR))
+        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", 101L, 21L, EducationLevel.BASIC, StudyPeriod.YEAR))
                 .thenReturn(Optional.of(ordinaryRule));
-        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                "2025/2026", 501L, "Физика", EducationLevel.BASIC, StudyPeriod.YEAR))
+        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", 501L, 23L, EducationLevel.BASIC, StudyPeriod.YEAR))
                 .thenReturn(Optional.of(explicitMetaRule));
         when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -581,159 +587,68 @@ class ManualLoadServiceImplBulkReplaceTest {
         assertEquals(2, saved.size());
         assertEquals(101L, saved.get(0).getClassId());
         assertNull(saved.get(0).getMetaGroupId());
-        assertNull(saved.get(1).getClassId());
-        assertEquals(501L, saved.get(1).getMetaGroupId());
-    }
-
-    @Test
-    void importLegacyTemplateResolvesOrdinaryRowToClassId() throws Exception {
-        CurriculumPlanEntry ordinaryRule = curriculumRow("СП1", "5-А", "Математика", 5);
-        ordinaryRule.setClassId(101L);
-        MockMultipartFile file = editableImportFile(false, List.of(
-                importRow("СП1", "5-А", "Математика", 5, null, null)
-        ));
-        when(classroomLeadershipRepository.findAllByAcademicYearAndNumberSchoolBuildingAndClassName("2025/2026", "СП1", "5-А"))
-                .thenReturn(List.of(classEntry(101L, "СП1", "5-А", "ул. Первая, 1")));
-        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                "2025/2026", 101L, "Математика", EducationLevel.BASIC, StudyPeriod.YEAR))
-                .thenReturn(Optional.of(ordinaryRule));
-        when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
-
-        List<ManualLoadEntry> saved = service.importWorkbook("2025/2026", file);
-
-        assertEquals(1, saved.size());
-        assertEquals(101L, saved.get(0).getClassId());
-        assertNull(saved.get(0).getMetaGroupId());
-    }
-
-    @Test
-    void importLegacyTemplateResolvesExplicitMetaGroupRowToMetaGroupId() throws Exception {
-        CurriculumPlanEntry explicitMetaRule = curriculumRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3);
-        explicitMetaRule.setMetaGroupId(501L);
-        MockMultipartFile file = editableImportFile(false, List.of(
-                importRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3, null, null)
-        ));
-        when(curriculumPlanEntryRepository.findAllByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                "2025/2026", "СП1", "МГ:5 ФИЗИКА", "Физика", EducationLevel.BASIC, StudyPeriod.YEAR))
-                .thenReturn(List.of(explicitMetaRule));
-        when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
-
-        List<ManualLoadEntry> saved = service.importWorkbook("2025/2026", file);
-
-        assertEquals(1, saved.size());
-        assertNull(saved.get(0).getClassId());
-        assertEquals(501L, saved.get(0).getMetaGroupId());
-    }
-
-    @Test
-    void importLegacyTemplateSkipsOrdinaryMetaGroupMemberAndSavesExplicitMetaGroupOnly() throws Exception {
-        CurriculumPlanEntry metaMember = curriculumRow("СП1", "5-Б", "Физика", 3);
-        metaMember.setClassId(102L);
-        metaMember.setMetaGroup(true);
-        CurriculumPlanEntry explicitMetaRule = curriculumRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3);
-        explicitMetaRule.setMetaGroupId(501L);
-        MockMultipartFile file = editableImportFile(false, List.of(
-                importRow("СП1", "5-Б", "Физика", 3, null, null),
-                importRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3, null, null)
-        ));
-        when(classroomLeadershipRepository.findAllByAcademicYearAndNumberSchoolBuildingAndClassName("2025/2026", "СП1", "5-Б"))
-                .thenReturn(List.of(classEntry(102L, "СП1", "5-Б", "ул. Вторая, 2")));
-        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                "2025/2026", 102L, "Физика", EducationLevel.BASIC, StudyPeriod.YEAR))
-                .thenReturn(Optional.of(metaMember));
-        when(curriculumPlanEntryRepository.findAllByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                "2025/2026", "СП1", "МГ:5 ФИЗИКА", "Физика", EducationLevel.BASIC, StudyPeriod.YEAR))
-                .thenReturn(List.of(explicitMetaRule));
-        when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
-
-        List<ManualLoadEntry> saved = service.importWorkbook("2025/2026", file);
-
-        assertEquals(1, saved.size());
-        assertNull(saved.get(0).getClassId());
-        assertEquals(501L, saved.get(0).getMetaGroupId());
-        assertEquals("МГ:5 ФИЗИКА", saved.get(0).getClassName());
-    }
-
-    @Test
-    void importLegacyTemplateRejectsAmbiguousClassFallbackWithClearError() throws Exception {
-        MockMultipartFile file = editableImportFile(false, List.of(
-                importRow("СП1", "5-А", "Математика", 5, null, null)
-        ));
-        when(classroomLeadershipRepository.findAllByAcademicYearAndNumberSchoolBuildingAndClassName("2025/2026", "СП1", "5-А"))
-                .thenReturn(List.of(
-                        classEntry(101L, "СП1", "5-А", "ул. Первая, 1"),
-                        classEntry(202L, "СП1", "5-А", "ул. Вторая, 2")
-                ));
-
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.importWorkbook("2025/2026", file));
-
-        assertTrue(error.getMessage().contains("неоднозначный class_id"));
-    }
-
-
-    @Test
-    void importLegacyTemplateRejectsMissingMetaGroupFallbackWithClearError() throws Exception {
-        MockMultipartFile file = editableImportFile(false, List.of(
-                importRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3, null, null)
-        ));
-
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.importWorkbook("2025/2026", file));
-
-        assertTrue(error.getMessage().contains("не найдено FK-соответствие curriculum"));
-    }
-
-    @Test
-    void importNewTemplateWithTeacherAndSubjectIdsPersistsBothFks() throws Exception {
-        CurriculumPlanEntry ordinaryRule = curriculumRow("СП1", "5-А", "Математика", 5);
-        ordinaryRule.setClassId(101L);
-        ordinaryRule.setSubject(subject(21L, "Математика"));
-        MockMultipartFile file = editableImportFile(true, List.of(
-                importRow("СП1", "5-А", "Математика", 5, 101L, null, 10L, 21L)
-        ));
-        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                "2025/2026", 101L, "Математика", EducationLevel.BASIC, StudyPeriod.YEAR))
-                .thenReturn(Optional.of(ordinaryRule));
-        when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
-
-        List<ManualLoadEntry> saved = service.importWorkbook("2025/2026", file);
-
         assertEquals(10L, saved.get(0).getTeacherId());
         assertEquals(21L, saved.get(0).getSubjectId());
+        assertNull(saved.get(1).getClassId());
+        assertEquals(501L, saved.get(1).getMetaGroupId());
+        assertEquals(10L, saved.get(1).getTeacherId());
+        assertEquals(23L, saved.get(1).getSubjectId());
     }
 
     @Test
-    void importLegacyTemplateRejectsAmbiguousTeacherFallbackWithClearError() throws Exception {
-        TeacherDirectoryEntry firstVacancy = teacher(11L, "Вакансия");
-        TeacherDirectoryEntry secondVacancy = teacher(12L, "Вакансия");
-        when(teacherDirectoryRepository.findAll()).thenReturn(List.of(firstVacancy, secondVacancy));
+    void importOldTemplateWithoutFkColumnsIsRejectedWithClearMessage() throws Exception {
         MockMultipartFile file = editableImportFile(false, List.of(
                 importRow("СП1", "5-А", "Математика", 5, null, null)
         ));
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.importWorkbook("2025/2026", file));
 
-        assertTrue(error.getMessage().contains("Педагог найден неоднозначно"));
+        assertTrue(error.getMessage().contains("Файл создан в старом формате"));
+        assertTrue(error.getMessage().contains("Выгрузите новый шаблон нагрузки"));
+        verify(manualLoadEntryRepository, never()).saveAll(any());
     }
 
     @Test
-    void importLegacyTemplateRejectsAmbiguousSubjectFallbackWithClearError() throws Exception {
-        SubjectCatalogEntry firstMath = subject(21L, "Математика");
-        SubjectCatalogEntry secondMath = subject(25L, "Математика");
-        when(subjectCatalogRepository.findAll()).thenReturn(List.of(firstMath, secondMath));
-        CurriculumPlanEntry ordinaryRule = curriculumRow("СП1", "5-А", "Математика", 5);
-        ordinaryRule.setClassId(101L);
-        when(classroomLeadershipRepository.findAllByAcademicYearAndNumberSchoolBuildingAndClassName("2025/2026", "СП1", "5-А"))
-                .thenReturn(List.of(classEntry(101L, "СП1", "5-А", "ул. Первая, 1")));
-        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                "2025/2026", 101L, "Математика", EducationLevel.BASIC, StudyPeriod.YEAR))
-                .thenReturn(Optional.of(ordinaryRule));
-        MockMultipartFile file = editableImportFile(false, List.of(
-                importRow("СП1", "5-А", "Математика", 5, null, null)
+    void importNewTemplateRejectsUnknownForeignKey() throws Exception {
+        MockMultipartFile file = editableImportFile(true, List.of(
+                importRow("СП1", "5-А", "Математика", 5, 101L, null, 999L, 21L)
         ));
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.importWorkbook("2025/2026", file));
 
-        assertTrue(error.getMessage().contains("Предмет найден неоднозначно"));
+        assertTrue(error.getMessage().contains("teacher_id не найден"));
+        verify(manualLoadEntryRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void importNewTemplateRejectsRowsWithBothClassIdAndMetaGroupId() throws Exception {
+        MockMultipartFile file = editableImportFile(true, List.of(
+                importRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3, 101L, 501L, 10L, 23L)
+        ));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.importWorkbook("2025/2026", file));
+
+        assertTrue(error.getMessage().contains("нельзя одновременно указывать CLASS_ID и META_GROUP_ID"));
+        verify(manualLoadEntryRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void importNewTemplateRejectsOrdinaryMetaGroupMemberRow() throws Exception {
+        CurriculumPlanEntry metaMember = curriculumRow("СП1", "5-Б", "Физика", 3);
+        metaMember.setClassId(102L);
+        metaMember.setSubject(subject(23L, "Физика"));
+        metaMember.setMetaGroup(true);
+        MockMultipartFile file = editableImportFile(true, List.of(
+                importRow("СП1", "5-Б", "Физика", 3, 102L, null, 10L, 23L)
+        ));
+        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", 102L, 23L, EducationLevel.BASIC, StudyPeriod.YEAR))
+                .thenReturn(Optional.of(metaMember));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.importWorkbook("2025/2026", file));
+
+        assertTrue(error.getMessage().contains("ordinary member row"));
+        verify(manualLoadEntryRepository, never()).saveAll(any());
     }
 
     @Test
@@ -912,8 +827,10 @@ class ManualLoadServiceImplBulkReplaceTest {
         request.setFioTeacher("Иванов И.И.");
         request.setNumberSchoolBuilding(building);
         request.setSubjectName("Алгебра");
+        request.setSubjectId(20L);
         request.setClassName(className);
         request.setClassId(classId);
+        request.setTeacherId(10L);
         request.setLoad(6);
         request.setEducationLevel(EducationLevel.BASIC);
         request.setLoadFromDate(LocalDate.of(2025, 9, 1));

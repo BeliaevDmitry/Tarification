@@ -2959,7 +2959,7 @@ function bindEvents() {
     ui.importLoadFile?.addEventListener("change", async () => {
         const file = ui.importLoadFile.files?.[0];
         if (!file) return;
-        const confirmed = confirm("Импорт нагрузки заменит текущие назначения по корпусам из файла. Продолжить?");
+        const confirmed = confirm("Импорт нагрузки принимает только свежий шаблон с CLASS_ID, META_GROUP_ID, TEACHER_ID и SUBJECT_ID и заменит текущие назначения по корпусам из файла. Продолжить?");
         if (!confirmed) {
             ui.importLoadFile.value = "";
             return;
