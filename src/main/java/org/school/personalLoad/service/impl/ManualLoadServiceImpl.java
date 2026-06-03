@@ -318,6 +318,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             header.createCell(11).setCellValue("ROW_KEY");
             header.createCell(12).setCellValue("CLASS_ID");
             header.createCell(13).setCellValue("META_GROUP_ID");
+            header.createCell(14).setCellValue("TEACHER_ID");
+            header.createCell(15).setCellValue("SUBJECT_ID");
 
             int rowNum = 1;
             for (ManualLoadTemplateRow row : templateRows) {
@@ -336,9 +338,11 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 excelRow.createCell(11).setCellValue(row.rowKey());
                 if (row.classId() != null) excelRow.createCell(12).setCellValue(row.classId());
                 if (row.metaGroupId() != null) excelRow.createCell(13).setCellValue(row.metaGroupId());
+                if (row.teacherId() != null) excelRow.createCell(14).setCellValue(row.teacherId());
+                if (row.subjectId() != null) excelRow.createCell(15).setCellValue(row.subjectId());
             }
 
-            for (int i = 0; i <= 13; i++) {
+            for (int i = 0; i <= 15; i++) {
                 sheet.autoSizeColumn(i);
             }
             workbook.write(out);
@@ -856,15 +860,31 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     errors.add("Строка " + (i + 1) + ": учебный год " + rowYear + " не совпадает с выбранным " + academicYear);
                     continue;
                 }
+                Long teacherId = parseLong(readCell(row, 14));
+                Long subjectId = parseLong(readCell(row, 15));
                 String fio = readCell(row, 10).trim();
-                if (fio.isBlank()) {
-                    fio = "Вакансия";
-                } else if (!fio.toLowerCase(Locale.ROOT).contains("вакан")) {
-                    TeacherDirectoryEntry teacher = teacherDirectoryRepository.findByFioTeacherIgnoreCase(fio).orElse(null);
-                    if (teacher == null) {
-                        errors.add("Строка " + (i + 1) + ": педагог не найден в справочнике — " + fio);
+                TeacherDirectoryEntry teacherForImport = null;
+                if (teacherId != null) {
+                    teacherForImport = teacherDirectoryRepository.findById(teacherId).orElse(null);
+                    if (teacherForImport == null) {
+                        errors.add("Строка " + (i + 1) + ": teacher_id не найден в справочнике — " + teacherId);
                         continue;
                     }
+                    fio = teacherForImport.getFioTeacher();
+                } else if (fio.isBlank()) {
+                    fio = "Вакансия";
+                }
+                if (teacherForImport == null) {
+                    try {
+                        teacherForImport = resolveTeacherByFioFallback(fio);
+                        fio = teacherForImport.getFioTeacher();
+                    } catch (IllegalArgumentException ex) {
+                        errors.add("Строка " + (i + 1) + ": " + ex.getMessage());
+                        continue;
+                    }
+                }
+                if (!fio.toLowerCase(Locale.ROOT).contains("вакан")) {
+                    TeacherDirectoryEntry teacher = teacherForImport;
                     LocalDate dismissalDate = teacher.getDismissalDate();
                     LocalDate from = parseDate(readCell(row, 6));
                     LocalDate to = parseDate(readCell(row, 7));
@@ -882,6 +902,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 request.setNumberSchoolBuilding(readCell(row, 1));
                 request.setClassName(readCell(row, 2));
                 request.setSubjectName(readCell(row, 3));
+                request.setSubjectId(subjectId);
                 request.setGroupNameEducationalPlan(emptyToNull(readCell(row, 4)));
                 request.setStudyPeriod(parseStudyPeriod(readCell(row, 5)));
                 request.setLoadFromDate(parseDate(readCell(row, 6)));
@@ -891,6 +912,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 request.setGroupLoad(request.getGroupNameEducationalPlan() == null ? null : load);
                 request.setEducationLevel(parseEducationLevel(readCell(row, 9)));
                 request.setFioTeacher(fio);
+                request.setTeacherId(teacherForImport.getId());
                 request.setClassId(parseLong(readCell(row, 12)));
                 request.setMetaGroupId(parseLong(readCell(row, 13)));
                 try {
@@ -1130,6 +1152,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 loadHours,
                 level,
                 "",
+                null,
+                curriculum.getSubjectId(),
                 manualClassId(curriculum),
                 manualMetaGroupId(curriculum),
                 exportRowKey(academicYear, curriculum.getNumberSchoolBuilding(), curriculum.getClassName(), curriculum.getSubjectName(), groupName, studyPeriod, range.startDate(), range.endDate(), level)
@@ -1159,6 +1183,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     template.load(),
                     template.educationLevel(),
                     existing.getFioTeacher(),
+                    existing.getTeacherId(),
+                    template.subjectId(),
                     template.classId(),
                     template.metaGroupId(),
                     template.rowKey()
@@ -1544,7 +1570,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         String effectiveAcademicYear = resolveAcademicYearOrDefault(request.getAcademicYear());
         ManualLoadEntry entity = new ManualLoadEntry();
         entity.setAcademicYear(effectiveAcademicYear);
-        entity.setFioTeacher(request.getFioTeacher().trim());
+        TeacherDirectoryEntry teacher = resolveTeacher(request);
+        entity.setTeacherId(teacher.getId());
+        entity.setFioTeacher(teacher.getFioTeacher());
         entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
         boolean explicitMetaGroup = isExplicitMetaGroupRequest(request);
         entity.setClassId(explicitMetaGroup ? null : resolveClassId(effectiveAcademicYear, request));
@@ -1552,12 +1580,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         if (explicitMetaGroup) {
             validateMetaGroupHasPhysicalSite(entity.getMetaGroupId());
         }
-        SubjectCatalogEntry subject = subjectCatalogRepository.findAll().stream()
-                .filter(s -> s.getSubjectName().equalsIgnoreCase(request.getSubjectName().trim()))
-                .findFirst()
-                .orElse(null);
+        SubjectCatalogEntry subject = resolveSubject(request);
         entity.setSubject(subject);
-        entity.setSubjectName(subject == null ? request.getSubjectName().trim() : subject.getSubjectName());
+        entity.setSubjectName(subject.getSubjectName());
         entity.setClassName(ClassNameNormalizer.normalize(request.getClassName()));
         entity.setLoad(request.getLoad());
         entity.setGroupNameEducationalPlan(request.getGroupNameEducationalPlan());
@@ -1568,6 +1593,56 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         entity.setLoadToDate(request.getLoadToDate());
         entity.setContinuityStatus(request.getContinuityStatus() == null ? ContinuityStatus.UNKNOWN : request.getContinuityStatus());
         return entity;
+    }
+
+
+    private TeacherDirectoryEntry resolveTeacher(ManualLoadEntryRequest request) {
+        if (request.getTeacherId() != null) {
+            return teacherDirectoryRepository.findById(request.getTeacherId())
+                    .orElseThrow(() -> new IllegalArgumentException("teacher_id не найден в справочнике: " + request.getTeacherId()));
+        }
+        String fio = request.getFioTeacher() == null || request.getFioTeacher().isBlank() ? "Вакансия" : request.getFioTeacher().trim();
+        return resolveTeacherByFioFallback(fio);
+    }
+
+    private TeacherDirectoryEntry resolveTeacherByFioFallback(String fioTeacher) {
+        String normalized = String.valueOf(fioTeacher == null ? "" : fioTeacher).trim();
+        if (normalized.isBlank()) {
+            normalized = "Вакансия";
+        }
+        String key = normalized.toLowerCase(Locale.ROOT);
+        java.util.List<TeacherDirectoryEntry> matches = teacherDirectoryRepository.findAll().stream()
+                .filter(t -> t.getFioTeacher() != null && t.getFioTeacher().trim().toLowerCase(Locale.ROOT).equals(key))
+                .toList();
+        if (matches.isEmpty()) {
+            throw new IllegalArgumentException("Педагог не найден в справочнике для deprecated FIO fallback: " + normalized);
+        }
+        if (matches.size() > 1) {
+            throw new IllegalArgumentException("Педагог найден неоднозначно для deprecated FIO fallback: " + normalized);
+        }
+        return matches.get(0);
+    }
+
+    private SubjectCatalogEntry resolveSubject(ManualLoadEntryRequest request) {
+        if (request.getSubjectId() != null) {
+            return subjectCatalogRepository.findById(request.getSubjectId())
+                    .orElseThrow(() -> new IllegalArgumentException("subject_id не найден в справочнике: " + request.getSubjectId()));
+        }
+        String subjectName = request.getSubjectName() == null ? "" : request.getSubjectName().trim();
+        if (subjectName.isBlank()) {
+            throw new IllegalArgumentException("subjectName is required");
+        }
+        String key = subjectName.toLowerCase(Locale.ROOT);
+        java.util.List<SubjectCatalogEntry> matches = subjectCatalogRepository.findAll().stream()
+                .filter(subject -> subject.getSubjectName() != null && subject.getSubjectName().trim().toLowerCase(Locale.ROOT).equals(key))
+                .toList();
+        if (matches.isEmpty()) {
+            throw new IllegalArgumentException("Предмет не найден в справочнике для deprecated subjectName fallback: " + subjectName);
+        }
+        if (matches.size() > 1) {
+            throw new IllegalArgumentException("Предмет найден неоднозначно для deprecated subjectName fallback: " + subjectName);
+        }
+        return matches.get(0);
     }
 
     private CurriculumPlanEntry validateAgainstCurriculum(ManualLoadEntry entry) {
@@ -1668,7 +1743,19 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private java.util.Optional<CurriculumPlanEntry> findRuleWithFallback(ManualLoadEntry entry, StudyPeriod effectiveStudyPeriod) {
         java.util.List<StudyPeriod> candidates = candidateStudyPeriods(effectiveStudyPeriod);
         String subjectName = entry.getSubjectName() == null ? "" : entry.getSubjectName().trim();
+        Long subjectId = entry.getSubjectId();
         if (isExplicitMetaGroupEntry(entry)) {
+            if (entry.getMetaGroupId() != null && subjectId != null) {
+                java.util.Optional<CurriculumPlanEntry> bySubjectId = candidates.stream()
+                        .map(period -> curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                                entry.getAcademicYear(), entry.getMetaGroupId(), subjectId, entry.getEducationLevel(), period))
+                        .filter(java.util.Optional::isPresent)
+                        .map(java.util.Optional::get)
+                        .findFirst();
+                if (bySubjectId.isPresent()) {
+                    return bySubjectId;
+                }
+            }
             if (entry.getMetaGroupId() != null) {
                 return candidates.stream()
                         .map(period -> curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
@@ -1679,6 +1766,18 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             }
             return findRuleWithFallback(entry.getAcademicYear(), entry.getNumberSchoolBuilding().trim(), entry.getClassName(), subjectName, entry.getEducationLevel(), effectiveStudyPeriod)
                     .filter(this::isExplicitMetaGroupRow);
+        }
+        if (entry.getClassId() != null && subjectId != null) {
+            java.util.Optional<CurriculumPlanEntry> bySubjectId = candidates.stream()
+                    .map(period -> curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                            entry.getAcademicYear(), entry.getClassId(), subjectId, entry.getEducationLevel(), period))
+                    .filter(java.util.Optional::isPresent)
+                    .map(java.util.Optional::get)
+                    .filter(row -> !isExplicitMetaGroupRow(row))
+                    .findFirst();
+            if (bySubjectId.isPresent()) {
+                return bySubjectId;
+            }
         }
         if (entry.getClassId() != null) {
             return candidates.stream()
@@ -1789,6 +1888,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                                          Integer load,
                                          EducationLevel educationLevel,
                                          String fioTeacher,
+                                         Long teacherId,
+                                         Long subjectId,
                                          Long classId,
                                          Long metaGroupId,
                                          String rowKey) {}

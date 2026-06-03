@@ -49,10 +49,26 @@ public interface CurriculumPlanEntryRepository extends JpaRepository<CurriculumP
             StudyPeriod studyPeriod
     );
 
+    Optional<CurriculumPlanEntry> findFirstByAcademicYearAndClassIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+            String academicYear,
+            Long classId,
+            Long subjectId,
+            EducationLevel educationLevel,
+            StudyPeriod studyPeriod
+    );
+
     Optional<CurriculumPlanEntry> findFirstByAcademicYearAndMetaGroupIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
             String academicYear,
             Long metaGroupId,
             String subjectName,
+            EducationLevel educationLevel,
+            StudyPeriod studyPeriod
+    );
+
+    Optional<CurriculumPlanEntry> findFirstByAcademicYearAndMetaGroupIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+            String academicYear,
+            Long metaGroupId,
+            Long subjectId,
             EducationLevel educationLevel,
             StudyPeriod studyPeriod
     );
@@ -78,9 +94,5 @@ public interface CurriculumPlanEntryRepository extends JpaRepository<CurriculumP
                          @Param("classId") Long classId);
 
     void deleteAllByAcademicYear(String academicYear);
-
-    @Modifying
-    @Query("update CurriculumPlanEntry c set c.subjectName = :newName where lower(c.subjectName) = lower(:oldName)")
-    int renameSubjectEverywhere(@Param("oldName") String oldName, @Param("newName") String newName);
 
 }

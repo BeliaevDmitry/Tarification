@@ -576,6 +576,18 @@ function subjectTypeByPart(part) {
     return "CORE";
 }
 
+
+function teacherIdForName(fioTeacher) {
+    const key = String(fioTeacher || "").trim().toLowerCase();
+    if (!key) return null;
+    const teacher = (teacherDirectory || []).find((t) => String(t.fioTeacher || "").trim().toLowerCase() === key);
+    return teacher?.id ?? null;
+}
+
+function subjectIdForRow(row) {
+    return row?.subjectId ?? row?.subject?.id ?? null;
+}
+
 function subjectCatalogKey(subjectName, subjectType = "") {
     return `${String(subjectName || "").trim().toLowerCase()}|${String(subjectType || "").trim().toUpperCase()}`;
 }
@@ -2516,8 +2528,10 @@ async function saveBuildingLoad() {
 
         return {
             fioTeacher,
+            teacherId: teacherIdForName(fioTeacher),
             numberSchoolBuilding: buildingGroupCode(row.numberSchoolBuilding || selectedBuilding),
             subjectName: row.subjectName,
+            subjectId: subjectIdForRow(row),
             className: row.className,
             classId: classIdForRow(row),
             metaGroupId: metaGroupIdForRow(row),
@@ -2537,8 +2551,10 @@ async function saveBuildingLoad() {
         if (!row) return;
         payload.push({
             fioTeacher: plan.targetTeacher,
+            teacherId: teacherIdForName(plan.targetTeacher),
             numberSchoolBuilding: buildingGroupCode(row.numberSchoolBuilding || selectedBuilding),
             subjectName: row.subjectName,
+            subjectId: subjectIdForRow(row),
             className: row.className,
             classId: classIdForRow(row),
             metaGroupId: metaGroupIdForRow(row),

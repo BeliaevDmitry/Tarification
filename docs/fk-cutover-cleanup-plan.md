@@ -133,3 +133,19 @@ PR 3 translates working curriculum/manual-load operations to FK-only class and m
 - manual-load physical-site scope uses `schoolBuildingId` independently from class СП; no production SQL migration is required for this hotfix because PR 2 already populated `classroom_leadership_entry.school_building_id`.
 
 Legacy `numberSchoolBuilding` and `className` values remain in dependent tables for display, imports, exports, and historical snapshots. The production audit result `curriculum number_school_building does not match building_group.code | 32` is therefore documented as an informational legacy snapshot mismatch, not a blocker for FK-only operations, because `curriculum class_id target does not match legacy class fields | 0` confirmed the FK relation itself is correct. The next planned PR is the teacher workflow cutover to `teacher_id`; this PR intentionally does not change teacher dismissal/restoration, vacancy handling, `subject_id`, or `subject_area_id`.
+
+## Current PR update: teacher, subject, and subject-area FK cutover
+
+This PR moves the remaining teacher/subject/subject-area workflows to the already-populated production FKs without adding a production data migration:
+
+- `manual_load_entry.teacher_id` is now the working relation for manual-load assignment, dismissal/restoration side effects, vacancy replacement rows, editable Excel import/export, and teacher dependency checks. `fioTeacher` remains display/export/snapshot compatibility and a deprecated import fallback that must resolve exactly one teacher before saving.
+- `curriculum_plan_entry.subject_id` and `manual_load_entry.subject_id` are the working subject relations. Manual-load validation first matches curriculum rules by `class_id` or `meta_group_id` plus `subject_id`, education level, study period, and subgroup context; `subjectName` remains display/export/snapshot compatibility.
+- `subject_catalog_entry.subject_area_id` is the working relation to `subject_area`. Subject create/update/import resolve and save `subjectAreaRef`; `subjectAreaName` remains display/export/snapshot compatibility, and editable subject import/export includes `SUBJECT_AREA_ID`.
+- The special teacher-directory row `Вакансия` is used by ID when dismissal creates vacancy load rows; the application no longer creates vacancy workload rows with only text and an empty `teacher_id`.
+
+Known production audit items remain intentionally unresolved or informational:
+
+- `teacher_directory_entry.building_group_id is NULL | 360` is an unresolved business-model question because a teacher may work in multiple СП/physical sites. This PR does not backfill it, make it required, or treat one СП as authoritative for a teacher.
+- `curriculum number_school_building does not match building_group.code | 32` remains an informational legacy snapshot mismatch. It is not corrected automatically because FK-only operations use `class_id`/`meta_group_id` and the production audit confirmed those FKs are complete.
+
+No production SQL migration is required for this PR; the existing production audit already confirmed `teacher_id`, `subject_id`, and `subject_area_id` are populated and consistent.

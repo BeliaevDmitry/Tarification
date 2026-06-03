@@ -7,6 +7,7 @@ import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 import org.school.personalLoad.dto.ManualLoadBulkRequest;
@@ -23,6 +24,7 @@ import org.school.personalLoad.model.SalarySettings;
 import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.model.SubjectCatalogEntry;
 import org.school.personalLoad.model.SubjectType;
+import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.SalarySettingsRepository;
@@ -96,6 +98,24 @@ class ManualLoadServiceImplBulkReplaceTest {
     void setUp() {
         lenient().when(metaGroupRepository.findById(any()))
                 .thenAnswer(invocation -> Optional.of(metaGroup(invocation.getArgument(0), 36L)));
+        TeacherDirectoryEntry teacher = teacher(10L, "Иванов И.И.");
+        TeacherDirectoryEntry vacancy = teacher(11L, "Вакансия");
+        SubjectCatalogEntry algebra = subject(20L, "Алгебра");
+        SubjectCatalogEntry math = subject(21L, "Математика");
+        SubjectCatalogEntry ethics = subject(22L, "ОРКСЭ");
+        SubjectCatalogEntry physics = subject(23L, "Физика");
+        SubjectCatalogEntry odnknr = subject(24L, "ОДНКНР");
+        lenient().when(teacherDirectoryRepository.findAll()).thenReturn(List.of(teacher, vacancy));
+        lenient().when(teacherDirectoryRepository.findByFioTeacherIgnoreCase("Иванов И.И.")).thenReturn(Optional.of(teacher));
+        lenient().when(teacherDirectoryRepository.findByFioTeacherIgnoreCase("Вакансия")).thenReturn(Optional.of(vacancy));
+        lenient().when(teacherDirectoryRepository.findById(10L)).thenReturn(Optional.of(teacher));
+        lenient().when(teacherDirectoryRepository.findById(11L)).thenReturn(Optional.of(vacancy));
+        lenient().when(subjectCatalogRepository.findAll()).thenReturn(List.of(algebra, math, ethics, physics, odnknr));
+        lenient().when(subjectCatalogRepository.findById(20L)).thenReturn(Optional.of(algebra));
+        lenient().when(subjectCatalogRepository.findById(21L)).thenReturn(Optional.of(math));
+        lenient().when(subjectCatalogRepository.findById(22L)).thenReturn(Optional.of(ethics));
+        lenient().when(subjectCatalogRepository.findById(23L)).thenReturn(Optional.of(physics));
+        lenient().when(subjectCatalogRepository.findById(24L)).thenReturn(Optional.of(odnknr));
 
         service = new ManualLoadServiceImpl(
                 manualLoadEntryRepository,
@@ -113,6 +133,41 @@ class ManualLoadServiceImplBulkReplaceTest {
                 salarySettingsRepository,
                 metaGroupRepository
         );
+    }
+
+    @Test
+    void createOrdinaryManualLoadPersistsTeacherIdAndSubjectIdWithSnapshots() {
+        ManualLoadEntryRequest request = manualRequest("СП1", "7-А", 701L);
+        request.setTeacherId(10L);
+        request.setSubjectId(20L);
+        when(manualLoadEntryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ManualLoadEntry saved = service.create(request);
+
+        assertEquals(10L, saved.getTeacherId());
+        assertEquals("Иванов И.И.", saved.getFioTeacher());
+        assertEquals(20L, saved.getSubjectId());
+        assertEquals("Алгебра", saved.getSubjectName());
+        assertEquals(701L, saved.getClassId());
+        assertNull(saved.getMetaGroupId());
+    }
+
+    @Test
+    void createExplicitMetaGroupManualLoadPersistsMetaTeacherAndSubjectFks() {
+        ManualLoadEntryRequest request = manualRequest("СП1", "МГ:5 ФИЗИКА", null);
+        request.setTeacherId(10L);
+        request.setSubjectId(23L);
+        request.setSubjectName("Физика");
+        request.setMetaGroupId(501L);
+        when(metaGroupRepository.findById(501L)).thenReturn(Optional.of(metaGroup(501L, 36L)));
+        when(manualLoadEntryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ManualLoadEntry saved = service.create(request);
+
+        assertNull(saved.getClassId());
+        assertEquals(501L, saved.getMetaGroupId());
+        assertEquals(10L, saved.getTeacherId());
+        assertEquals(23L, saved.getSubjectId());
     }
 
     @Test
@@ -628,6 +683,60 @@ class ManualLoadServiceImplBulkReplaceTest {
     }
 
     @Test
+    void importNewTemplateWithTeacherAndSubjectIdsPersistsBothFks() throws Exception {
+        CurriculumPlanEntry ordinaryRule = curriculumRow("СП1", "5-А", "Математика", 5);
+        ordinaryRule.setClassId(101L);
+        ordinaryRule.setSubject(subject(21L, "Математика"));
+        MockMultipartFile file = editableImportFile(true, List.of(
+                importRow("СП1", "5-А", "Математика", 5, 101L, null, 10L, 21L)
+        ));
+        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", 101L, "Математика", EducationLevel.BASIC, StudyPeriod.YEAR))
+                .thenReturn(Optional.of(ordinaryRule));
+        when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<ManualLoadEntry> saved = service.importWorkbook("2025/2026", file);
+
+        assertEquals(10L, saved.get(0).getTeacherId());
+        assertEquals(21L, saved.get(0).getSubjectId());
+    }
+
+    @Test
+    void importLegacyTemplateRejectsAmbiguousTeacherFallbackWithClearError() throws Exception {
+        TeacherDirectoryEntry firstVacancy = teacher(11L, "Вакансия");
+        TeacherDirectoryEntry secondVacancy = teacher(12L, "Вакансия");
+        when(teacherDirectoryRepository.findAll()).thenReturn(List.of(firstVacancy, secondVacancy));
+        MockMultipartFile file = editableImportFile(false, List.of(
+                importRow("СП1", "5-А", "Математика", 5, null, null)
+        ));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.importWorkbook("2025/2026", file));
+
+        assertTrue(error.getMessage().contains("Педагог найден неоднозначно"));
+    }
+
+    @Test
+    void importLegacyTemplateRejectsAmbiguousSubjectFallbackWithClearError() throws Exception {
+        SubjectCatalogEntry firstMath = subject(21L, "Математика");
+        SubjectCatalogEntry secondMath = subject(25L, "Математика");
+        when(subjectCatalogRepository.findAll()).thenReturn(List.of(firstMath, secondMath));
+        CurriculumPlanEntry ordinaryRule = curriculumRow("СП1", "5-А", "Математика", 5);
+        ordinaryRule.setClassId(101L);
+        when(classroomLeadershipRepository.findAllByAcademicYearAndNumberSchoolBuildingAndClassName("2025/2026", "СП1", "5-А"))
+                .thenReturn(List.of(classEntry(101L, "СП1", "5-А", "ул. Первая, 1")));
+        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", 101L, "Математика", EducationLevel.BASIC, StudyPeriod.YEAR))
+                .thenReturn(Optional.of(ordinaryRule));
+        MockMultipartFile file = editableImportFile(false, List.of(
+                importRow("СП1", "5-А", "Математика", 5, null, null)
+        ));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.importWorkbook("2025/2026", file));
+
+        assertTrue(error.getMessage().contains("Предмет найден неоднозначно"));
+    }
+
+    @Test
     void exportFullWorkbookShowsRowBuildingAddressAndLeadershipOnly() throws Exception {
         ManualLoadEntry first = manualRow("Иванов И.И.", "СП1", "1-А", "Математика", 5);
         ManualLoadEntry second = manualRow("Иванов И.И.", "СП2", "2-А", "Математика", 4);
@@ -739,7 +848,7 @@ class ManualLoadServiceImplBulkReplaceTest {
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             var sheet = workbook.createSheet("LOAD_EDITABLE");
             var header = sheet.createRow(0);
-            String[] headers = {"Учебный год", "Корпус", "Класс", "Предмет", "Группа", "Период", "С", "По", "Часы", "Уровень", "ФИО педагога", "ROW_KEY", "CLASS_ID", "META_GROUP_ID"};
+            String[] headers = {"Учебный год", "Корпус", "Класс", "Предмет", "Группа", "Период", "С", "По", "Часы", "Уровень", "ФИО педагога", "ROW_KEY", "CLASS_ID", "META_GROUP_ID", "TEACHER_ID", "SUBJECT_ID"};
             int headerCount = includeFkColumns ? headers.length : 12;
             for (int i = 0; i < headerCount; i++) {
                 header.createCell(i).setCellValue(headers[i]);
@@ -762,6 +871,8 @@ class ManualLoadServiceImplBulkReplaceTest {
                 if (includeFkColumns) {
                     if (source.classId() != null) row.createCell(12).setCellValue(source.classId());
                     if (source.metaGroupId() != null) row.createCell(13).setCellValue(source.metaGroupId());
+                    if (source.teacherId() != null) row.createCell(14).setCellValue(source.teacherId());
+                    if (source.subjectId() != null) row.createCell(15).setCellValue(source.subjectId());
                 }
             }
             workbook.write(out);
@@ -770,10 +881,14 @@ class ManualLoadServiceImplBulkReplaceTest {
     }
 
     private ImportRow importRow(String building, String className, String subject, int load, Long classId, Long metaGroupId) {
-        return new ImportRow(building, className, subject, load, classId, metaGroupId);
+        return importRow(building, className, subject, load, classId, metaGroupId, null, null);
     }
 
-    private record ImportRow(String building, String className, String subject, int load, Long classId, Long metaGroupId) {
+    private ImportRow importRow(String building, String className, String subject, int load, Long classId, Long metaGroupId, Long teacherId, Long subjectId) {
+        return new ImportRow(building, className, subject, load, classId, metaGroupId, teacherId, subjectId);
+    }
+
+    private record ImportRow(String building, String className, String subject, int load, Long classId, Long metaGroupId, Long teacherId, Long subjectId) {
     }
 
     private CurriculumPlanEntry curriculumRow(String building, String className, String subject, int hours) {
@@ -817,6 +932,22 @@ class ManualLoadServiceImplBulkReplaceTest {
         row.setEducationLevel(EducationLevel.BASIC);
         row.setStudyPeriod(StudyPeriod.YEAR);
         return row;
+    }
+
+    private TeacherDirectoryEntry teacher(Long id, String fio) {
+        TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
+        teacher.setId(id);
+        teacher.setFioTeacher(fio);
+        return teacher;
+    }
+
+    private SubjectCatalogEntry subject(Long id, String name) {
+        SubjectCatalogEntry subject = new SubjectCatalogEntry();
+        subject.setId(id);
+        subject.setSubjectName(name);
+        subject.setSubjectType(SubjectType.CORE);
+        subject.setSubjectCoefficient(java.math.BigDecimal.ONE);
+        return subject;
     }
 
     private MetaGroup metaGroup(Long id, Long schoolBuildingId) {
