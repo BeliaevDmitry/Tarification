@@ -330,26 +330,27 @@ function metaGroupIdForRow(row) {
 function rowMatchesBuildingAccess(row, accessCode) {
     if (accessCode === ARCHIVE_BUILDING_CODE) return false;
 
-    const groupCode = buildingGroupCode(accessCode);
-    if (!groupCode) return false;
+    const selectedOrganizationalSp = buildingGroupCode(accessCode);
+    if (!selectedOrganizationalSp) return false;
+
+    const rowOrganizationalSp = buildingGroupCode(row?.numberSchoolBuilding);
+    if (rowOrganizationalSp !== selectedOrganizationalSp) {
+        return false;
+    }
 
     const address = buildingAddressToken(accessCode);
     if (address) {
         const selectedSchoolBuildingId = schoolBuildingIdForAccess(accessCode);
         const rowSchoolBuildingId = schoolBuildingIdForRow(row);
 
-        if (selectedSchoolBuildingId == null) {
-            return false;
-        }
-
-        if (rowSchoolBuildingId == null) {
+        if (selectedSchoolBuildingId == null || rowSchoolBuildingId == null) {
             return false;
         }
 
         return Number(rowSchoolBuildingId) === Number(selectedSchoolBuildingId);
     }
 
-    return buildingGroupCode(row?.numberSchoolBuilding) === groupCode;
+    return true;
 }
 
 function loadAccessCodesForRow(row) {
@@ -366,7 +367,11 @@ function loadAccessCodesForRow(row) {
     const rowSchoolBuildingId = schoolBuildingIdForRow(row);
     if (rowSchoolBuildingId != null) {
         (buildings || [])
-            .filter((building) => building?.scope === "address" && Number(building.schoolBuildingId ?? building.id) === Number(rowSchoolBuildingId))
+            .filter((building) =>
+                building?.scope === "address"
+                && buildingGroupCode(buildingOptionValue(building)) === groupCode
+                && Number(building.schoolBuildingId ?? building.id) === Number(rowSchoolBuildingId)
+            )
             .map(buildingOptionValue)
             .filter(Boolean)
             .forEach((value) => codes.push(value));
@@ -1529,10 +1534,12 @@ function computeTeacherHourIndexes() {
 
     const selectedBuildingGroup = buildingGroupCode(selectedBuilding);
 
-    const buildingTeacherHours = {
-        [selectedBuildingGroup]: buildTeacherHoursAtHalfYearEnds(manualRows || [])
-    };
+    const scopedManualRows = (manualRows || [])
+        .filter((row) => rowMatchesBuildingAccess(row, selectedBuilding));
 
+    const buildingTeacherHours = {
+        [selectedBuildingGroup]: buildTeacherHoursAtHalfYearEnds(scopedManualRows)
+    };
     const complexTeacherHours = buildTeacherHoursAtHalfYearEnds(complexManualRows || []);
 
     teacherHourIndexesCacheKey = cacheKey;
@@ -2808,6 +2815,36 @@ async function refreshSourceData() {
         buildingGroups.set(code, existing);
     });
 
+(classRows || []).forEach((r) => {
+    const organizationalSp = normalizeBuildingCode(r.numberSchoolBuilding);
+    const address = String(r.campusAddress || "").trim();
+    const schoolBuildingId = r.schoolBuildingId == null ? null : Number(r.schoolBuildingId);
+
+    if (!organizationalSp || !address || schoolBuildingId == null) return;
+
+    const existing = buildingGroups.get(organizationalSp) || {
+        code: organizationalSp,
+        name: organizationalSp,
+        addresses: [],
+        addressRows: []
+    };
+
+    appendAddress(existing, address);
+
+    const hasSameSite = (existing.addressRows || []).some((row) =>
+        Number(row?.id) === schoolBuildingId
+        && normalizeBuildingAccessCode(row?.address) === normalizeBuildingAccessCode(address)
+    );
+
+    if (!hasSameSite) {
+        existing.addressRows.push({
+            id: schoolBuildingId,
+            address
+        });
+    }
+
+    buildingGroups.set(organizationalSp, existing);
+});
     buildings = [];
     [...buildingGroups.values()]
         .sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"))
@@ -2907,6 +2944,12 @@ function bindEvents() {
         if (!currentAuthUser()?.admin) return;
         if (!selectedBuilding || selectedBuilding === ARCHIVE_BUILDING_CODE) {
             print({ error: "Выберите корпус с активной нагрузкой." });
+            return;
+        }
+        if (isAddressScopedBuilding(selectedBuilding)) {
+            print({
+                warning: "Очистка всей нагрузки для отдельной площадки временно недоступна: на одной площадке могут заниматься классы разных СП."
+            });
             return;
         }
         const confirmed = confirm(`Удалить всю нагрузку корпуса ${selectedBuilding} в текущем учебном году?`);
