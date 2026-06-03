@@ -108,9 +108,9 @@ function norm(v) { return String(v || "").trim(); }
 function classToParallel(className) { const m = norm(className).match(/^(\d{1,2})/); return m ? Number(m[1]) : null; }
 function levelShort(v) { return v === "ADVANCED" ? "У" : "Б"; }
 function subjectTypeByPart(part) {
+    if (part === "CORRECTIONAL") return "CORRECTIONAL";
     if (part === "EXTRACURRICULAR") return "EXTRACURRICULAR";
     if (part === "FORMABLE") return "FORMABLE";
-    if (part === "CORRECTIONAL") return "FORMABLE";
     return "CORE";
 }
 function isSubjectTypeCompatible(actualType, expectedType) {
