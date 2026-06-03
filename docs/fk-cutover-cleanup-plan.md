@@ -103,7 +103,7 @@ That made `school_building_id` on `classroom_leadership_entry` the only missing 
 - `CurriculumPlanEntryRepository.renameSubjectEverywhere()` and `ManualLoadEntryRepository.renameSubjectEverywhere()` bulk-update dependent rows by subject name string.
 - `SubjectCatalogRepository.renameSubjectAreaEverywhere()` bulk-updates subject catalog rows by subject-area name string.
 - `ManualLoadEntryRepository.findByFioTeacherIgnoreCase()` and `TeacherDirectoryServiceImpl.markForDismissal()`/`restore()` still use `fioTeacher` to find affected manual-load rows.
-- `ManualLoadEntryRepository.findAllByAcademicYearAndBuildingAddress()` and `deleteByAcademicYearAndBuildingAddress()` still filter the concrete site by `ClassroomLeadershipEntry.campusAddress` text.
+- Hotfix after PR 3 moves manual-load physical-site scope to `schoolBuildingId`: reading/clearing address scope joins `manual_load_entry.class_id -> classroom_leadership_entry.school_building_id`, so classes owned by СП1 but physically placed on СП2/СП3 sites are included without changing their organizational `numberSchoolBuilding`. Metagroups still have no independent physical-site FK, so address scope does not infer a metagroup site from СП text.
 
 ## Recommended PR sequence after this audit
 
@@ -129,6 +129,7 @@ PR 3 translates working curriculum/manual-load operations to FK-only class and m
 - the old `class_id OR (number_school_building + class_name)` fallback is removed from repository count queries;
 - class rename/SP/site edits no longer call bulk legacy sync methods for curriculum/manual-load rows;
 - explicit metagroup manual-load rows carry `meta_group_id` and `class_id = null`, so validation resolves the curriculum rule by FK instead of by ordinary class text;
-- the new editable manual-load Excel export includes `CLASS_ID` and `META_GROUP_ID`, while older editable files without those columns are temporarily accepted through a safe deprecated fallback that must resolve exactly one `class_id` or `meta_group_id` before saving.
+- the new editable manual-load Excel export includes `CLASS_ID` and `META_GROUP_ID`, while older editable files without those columns are temporarily accepted through a safe deprecated fallback that must resolve exactly one `class_id` or `meta_group_id` before saving;
+- manual-load physical-site scope uses `schoolBuildingId` independently from class СП; no production SQL migration is required for this hotfix because PR 2 already populated `classroom_leadership_entry.school_building_id`.
 
 Legacy `numberSchoolBuilding` and `className` values remain in dependent tables for display, imports, exports, and historical snapshots. The production audit result `curriculum number_school_building does not match building_group.code | 32` is therefore documented as an informational legacy snapshot mismatch, not a blocker for FK-only operations, because `curriculum class_id target does not match legacy class fields | 0` confirmed the FK relation itself is correct. The next planned PR is the teacher workflow cutover to `teacher_id`; this PR intentionally does not change teacher dismissal/restoration, vacancy handling, `subject_id`, or `subject_area_id`.

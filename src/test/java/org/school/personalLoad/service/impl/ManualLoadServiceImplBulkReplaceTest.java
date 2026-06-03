@@ -19,6 +19,7 @@ import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.SalarySettings;
+import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.model.SubjectCatalogEntry;
 import org.school.personalLoad.model.SubjectType;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
@@ -159,14 +160,15 @@ class ManualLoadServiceImplBulkReplaceTest {
         bulk.setScopeType("BUILDING_ADDRESS");
         bulk.setNumberSchoolBuilding("СП3");
         bulk.setCampusAddress("Марии Ульяновой, д.7");
+        bulk.setSchoolBuildingId(36L);
         bulk.setClassIds(new java.util.LinkedHashSet<>(java.util.List.of(9119L, 9166L, 9139L)));
         bulk.setRows(List.of(request));
 
         when(classroomLeadershipRepository.findAllById(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(List.of(
-                        classEntry(9119L, "СП3", "4-Д", "Марии Ульяновой, д.7"),
-                        classEntry(9166L, "СП3", "4-И", "Марии Ульяновой, д.7"),
-                        classEntry(9139L, "СП3", "4-К", "Марии Ульяновой, д.7")
+                        classEntry(9119L, "СП3", "4-Д", "Марии Ульяновой, д.7", 36L),
+                        classEntry(9166L, "СП3", "4-И", "Марии Ульяновой, д.7", 36L),
+                        classEntry(9139L, "СП3", "4-К", "Марии Ульяновой, д.7", 36L)
                 ));
         when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -190,13 +192,14 @@ class ManualLoadServiceImplBulkReplaceTest {
         bulk.setScopeType("BUILDING_ADDRESS");
         bulk.setNumberSchoolBuilding("СП3");
         bulk.setCampusAddress("Марии Ульяновой, д.7");
+        bulk.setSchoolBuildingId(36L);
         bulk.setClassIds(new java.util.LinkedHashSet<>(java.util.List.of(9119L, 9166L)));
         bulk.setRows(List.of(request));
 
-        when(classroomLeadershipRepository.findAllById(new java.util.LinkedHashSet<>(java.util.List.of(9119L, 9166L))))
+        when(classroomLeadershipRepository.findAllById(any()))
                 .thenReturn(List.of(
-                        classEntry(9119L, "СП3", "4-Д", "Марии Ульяновой, д.7"),
-                        classEntry(9166L, "СП3", "4-И", "Кравченко, д.14, корп.1")
+                        classEntry(9119L, "СП3", "4-Д", "Марии Ульяновой, д.7", 36L),
+                        classEntry(9166L, "СП3", "4-И", "Кравченко, д.14, корп.1", 38L)
                 ));
 
         assertThrows(IllegalArgumentException.class, () -> service.createBulk(bulk));
@@ -318,6 +321,100 @@ class ManualLoadServiceImplBulkReplaceTest {
         verify(curriculumPlanService, never()).findRule(anyString(), anyString(), anyString(), anyString(), any(), any());
     }
 
+
+
+    @Test
+    void addressScopeFindsSp1ClassOnPhysicalSp2BySchoolBuildingId() {
+        ManualLoadEntry row = manualRow("Иванов И.И.", "СП1", "7-А", "Алгебра", 6);
+        row.setClassId(701L);
+        when(manualLoadEntryRepository.findAllByAcademicYearAndSchoolBuildingId("2025/2026", 36L))
+                .thenReturn(List.of(row));
+
+        List<ManualLoadEntry> result = service.findAll("2025/2026", "СП2", "Марии Ульяновой, д.5А", 36L);
+
+        assertEquals(1, result.size());
+        assertEquals("СП1", result.get(0).getNumberSchoolBuilding());
+        assertEquals(701L, result.get(0).getClassId());
+        verify(manualLoadEntryRepository).findAllByAcademicYearAndSchoolBuildingId("2025/2026", 36L);
+    }
+
+    @Test
+    void addressScopeFindsSp1ClassOnPhysicalSp3BySchoolBuildingId() {
+        ManualLoadEntry row = manualRow("Иванов И.И.", "СП1", "10-А", "Алгебра", 6);
+        row.setClassId(1001L);
+        when(manualLoadEntryRepository.findAllByAcademicYearAndSchoolBuildingId("2025/2026", 38L))
+                .thenReturn(List.of(row));
+
+        List<ManualLoadEntry> result = service.findAll("2025/2026", "СП3", "Кравченко, д.14, корп.1", 38L);
+
+        assertEquals(1, result.size());
+        assertEquals("СП1", result.get(0).getNumberSchoolBuilding());
+        assertEquals("10-А", result.get(0).getClassName());
+        verify(manualLoadEntryRepository).findAllByAcademicYearAndSchoolBuildingId("2025/2026", 38L);
+    }
+
+    @Test
+    void buildingGroupScopeStillFiltersByOrganizationalSp() {
+        ManualLoadEntry row = manualRow("Иванов И.И.", "СП1", "7-А", "Алгебра", 6);
+        when(manualLoadEntryRepository.findAllByAcademicYearAndNumberSchoolBuildingIgnoreCase("2025/2026", "СП1"))
+                .thenReturn(List.of(row));
+
+        List<ManualLoadEntry> result = service.findAll("2025/2026", "СП1", null, null);
+
+        assertEquals(1, result.size());
+        assertEquals("СП1", result.get(0).getNumberSchoolBuilding());
+        verify(manualLoadEntryRepository).findAllByAcademicYearAndNumberSchoolBuildingIgnoreCase("2025/2026", "СП1");
+    }
+
+    @Test
+    void addressScopeBulkSaveAcceptsSp1ClassOnSelectedPhysicalSite() {
+        ManualLoadEntryRequest request = manualRequest("СП1", "7-А", 701L);
+        ManualLoadBulkRequest bulk = new ManualLoadBulkRequest();
+        bulk.setAcademicYear("2025/2026");
+        bulk.setScopeType("BUILDING_ADDRESS");
+        bulk.setNumberSchoolBuilding("СП2");
+        bulk.setCampusAddress("Марии Ульяновой, д.5А");
+        bulk.setSchoolBuildingId(36L);
+        bulk.setClassIds(new java.util.LinkedHashSet<>(List.of(701L)));
+        bulk.setRows(List.of(request));
+        ClassroomLeadershipEntry classroom = classEntry(701L, "СП1", "7-А", "Марии Ульяновой, д.5А");
+        classroom.setSchoolBuilding(schoolBuilding(36L, "СП2", "Марии Ульяновой, д.5А"));
+        when(classroomLeadershipRepository.findAllById(any())).thenReturn(List.of(classroom));
+        when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<ManualLoadEntry> saved = service.createBulk(bulk);
+
+        assertEquals(1, saved.size());
+        assertEquals("СП1", saved.get(0).getNumberSchoolBuilding());
+        assertEquals(701L, saved.get(0).getClassId());
+        verify(manualLoadEntryRepository).deleteByAcademicYearAndClassIds("2025/2026", java.util.Set.of(701L));
+    }
+
+    @Test
+    void addressScopeBulkSaveRejectsClassFromAnotherPhysicalSite() {
+        ManualLoadEntryRequest request = manualRequest("СП1", "10-А", 1001L);
+        ManualLoadBulkRequest bulk = new ManualLoadBulkRequest();
+        bulk.setAcademicYear("2025/2026");
+        bulk.setScopeType("BUILDING_ADDRESS");
+        bulk.setNumberSchoolBuilding("СП2");
+        bulk.setSchoolBuildingId(36L);
+        bulk.setClassIds(new java.util.LinkedHashSet<>(List.of(1001L)));
+        bulk.setRows(List.of(request));
+        ClassroomLeadershipEntry classroom = classEntry(1001L, "СП1", "10-А", "Кравченко, д.14, корп.1");
+        classroom.setSchoolBuilding(schoolBuilding(38L, "СП3", "Кравченко, д.14, корп.1"));
+        when(classroomLeadershipRepository.findAllById(any())).thenReturn(List.of(classroom));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.createBulk(bulk));
+
+        assertTrue(error.getMessage().contains("schoolBuildingId=36"));
+    }
+
+    @Test
+    void clearAddressScopeDeletesOrdinaryRowsBySchoolBuildingId() {
+        service.clearBySchoolBuilding("2025/2026", 36L);
+
+        verify(manualLoadEntryRepository).deleteByAcademicYearAndSchoolBuildingId("2025/2026", 36L);
+    }
 
     @Test
     void importNewTemplateWithClassAndMetaGroupIdsPersistsFkRelations() throws Exception {
@@ -633,6 +730,22 @@ class ManualLoadServiceImplBulkReplaceTest {
         row.setEducationLevel(EducationLevel.BASIC);
         row.setStudyPeriod(StudyPeriod.YEAR);
         return row;
+    }
+
+    private SchoolBuilding schoolBuilding(Long id, String code, String address) {
+        SchoolBuilding building = new SchoolBuilding();
+        building.setId(id);
+        building.setCode(code);
+        building.setName(code);
+        building.setManagerFio("Ответственный");
+        building.setAddress(address);
+        return building;
+    }
+
+    private ClassroomLeadershipEntry classEntry(Long id, String building, String className, String address, Long schoolBuildingId) {
+        ClassroomLeadershipEntry entry = classEntry(id, building, className, address);
+        entry.setSchoolBuilding(schoolBuilding(schoolBuildingId, building, address));
+        return entry;
     }
 
     private ClassroomLeadershipEntry classEntry(Long id, String building, String className, String address) {

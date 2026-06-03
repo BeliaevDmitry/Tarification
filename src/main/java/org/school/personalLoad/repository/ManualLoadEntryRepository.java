@@ -21,20 +21,16 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
     java.util.List<ManualLoadEntry> findAllByAcademicYear(String academicYear);
     java.util.List<ManualLoadEntry> findAllByAcademicYearAndNumberSchoolBuildingIgnoreCase(String academicYear, String numberSchoolBuilding);
 
-    @Query("""
-            select m from ManualLoadEntry m
-             where m.academicYear = :academicYear
-               and lower(m.numberSchoolBuilding) = lower(:numberSchoolBuilding)
-               and m.classId in (
-                   select cl.id from ClassroomLeadershipEntry cl
-                    where cl.academicYear = :academicYear
-                      and lower(cl.numberSchoolBuilding) = lower(:numberSchoolBuilding)
-                      and lower(trim(cl.campusAddress)) = lower(trim(:campusAddress))
-               )
-            """)
-    java.util.List<ManualLoadEntry> findAllByAcademicYearAndBuildingAddress(@Param("academicYear") String academicYear,
-                                                                            @Param("numberSchoolBuilding") String numberSchoolBuilding,
-                                                                            @Param("campusAddress") String campusAddress);
+
+    @Query(value = """
+            select m.*
+              from manual_load_entry m
+              join classroom_leadership_entry c on c.id = m.class_id
+             where m.academic_year = :academicYear
+               and c.school_building_id = :schoolBuildingId
+            """, nativeQuery = true)
+    java.util.List<ManualLoadEntry> findAllByAcademicYearAndSchoolBuildingId(@Param("academicYear") String academicYear,
+                                                                             @Param("schoolBuildingId") Long schoolBuildingId);
     boolean existsByNumberSchoolBuildingIgnoreCase(String numberSchoolBuilding);
     @Query(value = "select count(*) from manual_load_entry where academic_year = :academicYear and class_id = :classId", nativeQuery = true)
     long countClassTails(@Param("academicYear") String academicYear,
@@ -51,21 +47,20 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
     void deleteByAcademicYearAndClassIds(@Param("academicYear") String academicYear,
                                          @Param("classIds") java.util.Collection<Long> classIds);
 
+
     @Modifying
-    @Query("""
-            delete from ManualLoadEntry m
-             where m.academicYear = :academicYear
-               and lower(m.numberSchoolBuilding) = lower(:numberSchoolBuilding)
-               and m.classId in (
-                   select cl.id from ClassroomLeadershipEntry cl
-                    where cl.academicYear = :academicYear
-                      and lower(cl.numberSchoolBuilding) = lower(:numberSchoolBuilding)
-                      and lower(trim(cl.campusAddress)) = lower(trim(:campusAddress))
+    @Query(value = """
+            delete from manual_load_entry m
+             where m.academic_year = :academicYear
+               and m.class_id in (
+                   select c.id
+                     from classroom_leadership_entry c
+                    where c.academic_year = :academicYear
+                      and c.school_building_id = :schoolBuildingId
                )
-            """)
-    void deleteByAcademicYearAndBuildingAddress(@Param("academicYear") String academicYear,
-                                                @Param("numberSchoolBuilding") String numberSchoolBuilding,
-                                                @Param("campusAddress") String campusAddress);
+            """, nativeQuery = true)
+    void deleteByAcademicYearAndSchoolBuildingId(@Param("academicYear") String academicYear,
+                                                 @Param("schoolBuildingId") Long schoolBuildingId);
 
     @Modifying
     @Query("delete from ManualLoadEntry m where lower(m.numberSchoolBuilding) in :codes")
