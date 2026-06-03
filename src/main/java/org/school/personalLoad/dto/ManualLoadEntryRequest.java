@@ -15,6 +15,7 @@ public class ManualLoadEntryRequest {
     private String subjectName;
     private String className;
     private Long classId;
+    private Long metaGroupId;
     private Integer load;
     private String groupNameEducationalPlan;
     private Integer groupLoad;

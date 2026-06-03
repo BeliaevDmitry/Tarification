@@ -49,12 +49,18 @@ public class CurriculumPlanEntry {
     @Column(nullable = false)
     private String className;
 
+    @Column(name = "class_id", insertable = false, updatable = false)
+    private Long classId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "class_id", insertable = false, updatable = false)
     @JsonIgnore
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private ClassroomLeadershipEntry classRef;
+
+    @Column(name = "meta_group_id", insertable = false, updatable = false)
+    private Long metaGroupId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "meta_group_id", insertable = false, updatable = false)
