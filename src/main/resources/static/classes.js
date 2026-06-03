@@ -183,7 +183,20 @@ function syncCampusAddressFromSite(siteSelect, campusInput) {
 }
 
 function renderTeachers() {
-    ui.teacherList.innerHTML = teachers.map((fio) => `<option value="${esc(fio)}"></option>`).join("");
+    ui.teacherList.innerHTML = teachers
+        .map((teacher) => `<option value="${esc(teacher.fioTeacher)}"></option>`)
+        .join("");
+}
+
+function teacherIdForName(fioTeacher) {
+    const value = norm(fioTeacher).toLowerCase();
+    const matches = (teachers || []).filter(
+        (teacher) => norm(teacher.fioTeacher).toLowerCase() === value
+    );
+    if (matches.length === 1) {
+        return matches[0].id;
+    }
+    return null;
 }
 
 function fillBuildingOptions(selectEl, selectedValue = "") {
@@ -277,7 +290,12 @@ async function reload() {
     ]);
     classRows = rows || [];
     buildings = buildingRows || [];
-    teachers = (teacherRows || []).map((r) => norm(r.fioTeacher)).filter(Boolean);
+    teachers = (teacherRows || [])
+        .filter((r) => r?.id && norm(r.fioTeacher))
+        .map((r) => ({
+            id: Number(r.id),
+            fioTeacher: norm(r.fioTeacher)
+        }));
     renderTeachers();
     renderBuildings();
     syncCampusAddressFromSite(ui.schoolBuilding, ui.form.elements.campusAddress);
@@ -336,12 +354,19 @@ ui.form.addEventListener("submit", async (e) => {
     e.preventDefault();
     syncCampusAddressFromSite(ui.schoolBuilding, ui.form.elements.campusAddress);
     const form = new FormData(ui.form);
+    const teacherName = norm(form.get("fioTeacher"));
+    const teacherId = teacherIdForName(teacherName);
+    if (!teacherId) {
+        print({ error: "Выберите педагога из справочника" });
+        return;
+    }
     const entry = {
         numberSchoolBuilding: buildingGroupCode(form.get("numberSchoolBuilding")),
         schoolBuildingId: Number(form.get("schoolBuildingId")) || null,
         className: normalizeClassName(form.get("className")),
         classDirection: norm(form.get("classDirection")),
-        fioTeacher: norm(form.get("fioTeacher")),
+        teacherId,
+        fioTeacher: teacherName,
         campusAddress: norm(form.get("campusAddress")),
         classType: norm(form.get("classType")) || "NORMAL"
     };
@@ -365,13 +390,20 @@ ui.editForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     syncCampusAddressFromSite(ui.editSchoolBuilding, ui.editForm.elements.campusAddress);
     const form = new FormData(ui.editForm);
+    const teacherName = norm(form.get("fioTeacher"));
+    const teacherId = teacherIdForName(teacherName);
+    if (!teacherId) {
+        print({ error: "Выберите педагога из справочника" });
+        return;
+    }
     const entry = {
         id: editingOriginalEntry?.id || null,
         numberSchoolBuilding: buildingGroupCode(form.get("numberSchoolBuilding")),
         schoolBuildingId: Number(form.get("schoolBuildingId")) || null,
         className: normalizeClassName(form.get("className")),
         classDirection: norm(form.get("classDirection")),
-        fioTeacher: norm(form.get("fioTeacher")),
+        teacherId,
+        fioTeacher: teacherName,
         campusAddress: norm(form.get("campusAddress")),
         classType: norm(form.get("classType")) || "NORMAL"
     };
