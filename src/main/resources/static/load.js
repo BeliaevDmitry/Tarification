@@ -39,6 +39,7 @@ const ui = {
 
 let curriculumRows = [];
 let manualRows = [];
+let complexManualRows = [];
 let teacherNames = [];
 let teacherDirectory = [];
 let teacherDirectoryByName = new Map();
@@ -265,6 +266,15 @@ function campusAddressForAccess(accessCode) {
         .map((row) => String(row?.campusAddress || "").trim())
         .find((address) => normalizeBuildingAccessCode(address) === addressToken);
     return classroomAddress || "";
+}
+
+function shouldScopeByCampusAddress(accessCode) {
+    const addressToken = buildingAddressToken(accessCode);
+    if (!addressToken) return false;
+    const knownAddresses = addressesForBuildingCode(buildingGroupCode(accessCode))
+        .map(normalizeBuildingAccessCode)
+        .filter(Boolean);
+    return knownAddresses.length !== 1;
 }
 
 function scopedBuildingQuery(accessCode, includeAddress = false) {
@@ -554,8 +564,9 @@ function partLabel(part) {
 }
 
 function subjectTypeByPart(part) {
+    if (part === "CORRECTIONAL") return "CORRECTIONAL";
     if (part === "EXTRACURRICULAR") return "EXTRACURRICULAR";
-    if (part === "FORMABLE" || part === "CORRECTIONAL") return "FORMABLE";
+    if (part === "FORMABLE") return "FORMABLE";
     return "CORE";
 }
 
@@ -698,6 +709,23 @@ function accumulateSplit(pair, row) {
         pair.h1 += value;
         pair.h2 += value;
     }
+}
+
+function accumulateManualSplit(pair, entry) {
+    const value = Number(entry?.load || 0);
+    const period = manualEntryStudyPeriod(entry);
+    if (period === "H1") pair.h1 += value;
+    else if (period === "H2") pair.h2 += value;
+    else {
+        pair.h1 += value;
+        pair.h2 += value;
+    }
+}
+
+function isManualEntryActiveAt(entry, referenceDate) {
+    const from = String(entry?.loadFromDate || "");
+    const to = String(entry?.loadToDate || "");
+    return from && to && from <= referenceDate && referenceDate <= to;
 }
 
 function apiKeyOfRow(row) {
@@ -1383,7 +1411,20 @@ function computeTeacherHourIndexes() {
         .map(([k, v]) => `${k}:${String(v || "").trim()}`)
         .sort()
         .join("||");
-    const cacheKey = `${sourceRevision}|${selectedBuilding}|${assignmentSignature}`;
+    const complexSignature = (complexManualRows || [])
+        .map((row) => [
+            row.id || "",
+            row.fioTeacher || "",
+            row.numberSchoolBuilding || "",
+            row.className || "",
+            row.subjectName || "",
+            row.load || "",
+            row.studyPeriod || "",
+            row.loadFromDate || "",
+            row.loadToDate || ""
+        ].join(":"))
+        .join("||");
+    const cacheKey = `${sourceRevision}|${selectedBuilding}|${assignmentSignature}|${complexSignature}`;
     if (teacherHourIndexesCacheKey === cacheKey) {
         return teacherHourIndexesCacheValue;
     }
@@ -1406,13 +1447,21 @@ function computeTeacherHourIndexes() {
         if (!buildingTeacherHours[buildingCode][assignedTeacher]) {
             buildingTeacherHours[buildingCode][assignedTeacher] = { h1: 0, h2: 0 };
         }
-        if (!complexTeacherHours[assignedTeacher]) {
-            complexTeacherHours[assignedTeacher] = { h1: 0, h2: 0 };
-        }
 
         accumulateSplit(buildingTeacherHours[buildingCode][assignedTeacher], row);
-        accumulateSplit(complexTeacherHours[assignedTeacher], row);
     });
+
+    const referenceDate = currentDisplayDate();
+    (complexManualRows || [])
+        .filter((entry) => String(entry?.fioTeacher || "").trim())
+        .filter((entry) => isManualEntryActiveAt(entry, referenceDate))
+        .forEach((entry) => {
+            const assignedTeacher = String(entry.fioTeacher || "").trim();
+            if (!complexTeacherHours[assignedTeacher]) {
+                complexTeacherHours[assignedTeacher] = { h1: 0, h2: 0 };
+            }
+            accumulateManualSplit(complexTeacherHours[assignedTeacher], entry);
+        });
 
     teacherHourIndexesCacheKey = cacheKey;
     teacherHourIndexesCacheValue = { buildingTeacherHours, complexTeacherHours };
@@ -1672,16 +1721,20 @@ async function refreshSelectedBuildingData(force = false) {
     if (!force && cached && (now - cached.ts) < BUILDING_DATA_CACHE_TTL_MS) {
         curriculumRows = cached.curriculum;
         manualRows = cached.manual;
+        complexManualRows = await api("/api/manual-load");
+        buildingDataCache.set(cacheKey, { ...cached, complexManual: complexManualRows });
     } else {
         const curriculumQuery = scopedBuildingQuery(selectedBuilding, false);
         const manualQuery = scopedBuildingQuery(selectedBuilding, true);
-        const [curriculum, manual] = await Promise.all([
+        const [curriculum, manual, complexManual] = await Promise.all([
             api(`/api/curriculum${curriculumQuery}`),
-            api(`/api/manual-load${manualQuery}`)
+            api(`/api/manual-load${manualQuery}`),
+            api("/api/manual-load")
         ]);
         curriculumRows = curriculum || [];
         manualRows = manual || [];
-        buildingDataCache.set(cacheKey, { ts: now, curriculum: curriculumRows, manual: manualRows });
+        complexManualRows = complexManual || [];
+        buildingDataCache.set(cacheKey, { ts: now, curriculum: curriculumRows, manual: manualRows, complexManual: complexManualRows });
     }
     sourceRevision += 1;
     invalidateDerivedCache();
@@ -2529,9 +2582,13 @@ async function saveBuildingLoad() {
             })
         });
         print({ saved: result.length, uniqueRequested: finalPayload.length, building: selectedBuilding });
+        manualRows = result || manualRows;
+        complexManualRows = await api("/api/manual-load");
         state.futurePlansByBuilding[selectedBuilding] = {};
         invalidateBuildingDataCache(selectedBuilding);
+        invalidateTeacherHourIndexesCache();
         markDirty(false);
+        scheduleRenderTable();
     } catch (error) {
         print({ error: error.message });
     }
@@ -2635,6 +2692,7 @@ async function refreshSourceData() {
         api(`/api/curriculum${initialCurriculumQuery}`),
         api(`/api/manual-load${initialManualQuery}`)
     ]);
+    const complexManualPromise = api("/api/manual-load");
 
     const [teachers, buildingRows, classRows, periodSettings, yearResolve, subjectRows] = await Promise.all([
         api("/api/teachers"),
@@ -2714,6 +2772,7 @@ async function refreshSourceData() {
 
     let curriculum;
     let manual;
+    let complexManual;
     const finalCurriculumQuery = scopedBuildingQuery(selectedBuilding, false);
     const finalManualQuery = scopedBuildingQuery(selectedBuilding, true);
     if (initialCurriculumQuery === finalCurriculumQuery && initialManualQuery === finalManualQuery) {
@@ -2725,10 +2784,12 @@ async function refreshSourceData() {
         ]);
     }
 
+    complexManual = await complexManualPromise;
     curriculumRows = curriculum || [];
     manualRows = manual || [];
+    complexManualRows = complexManual || [];
     invalidateBuildingDataCache();
-    buildingDataCache.set(buildingCacheKey(selectedBuilding), { ts: Date.now(), curriculum: curriculumRows, manual: manualRows });
+    buildingDataCache.set(buildingCacheKey(selectedBuilding), { ts: Date.now(), curriculum: curriculumRows, manual: manualRows, complexManual: complexManualRows });
     teacherDirectory = teachers || [];
     teacherNames = sortRu(Array.from(new Set(teacherDirectory.map((t) => String(t.fioTeacher || "").trim()).filter(Boolean))));
     teacherDirectoryByName = new Map(
