@@ -36,12 +36,13 @@
 
         <h2>Добавить класс</h2>
         <form id="class-form" class="grid" data-requires-edit>
-            <select name="numberSchoolBuilding" id="class-building" required></select>
+            <label class="field-row"><span>СП класса</span><select name="numberSchoolBuilding" id="class-building" required></select></label>
+            <label class="field-row"><span>Физическая площадка</span><select name="schoolBuildingId" id="class-school-building" required></select></label>
+            <input type="hidden" name="campusAddress" id="class-campus-address">
             <input name="className" placeholder="Класс (например 7А)" required>
             <label class="field-row"><span>Направление</span><input name="classDirection" placeholder="Направление класса" required></label>
             <label class="field-row"><span>Тип класса</span><select name="classType"><option value="NORMAL" selected>Норма</option><option value="AOOP_UO">АООП УО</option></select></label>
             <input name="fioTeacher" id="class-teacher" list="teacher-list" placeholder="Классный руководитель" required>
-            <select name="campusAddress" id="class-campus-address" aria-label="Адрес площадки"></select>
             <datalist id="teacher-list"></datalist>
             <button type="submit">Добавить / обновить класс</button>
         </form>
@@ -57,7 +58,7 @@
         <div class="sheet-wrap">
             <table class="sheet-table">
                 <thead>
-                <tr><th>Корпус</th><th>Класс</th><th>Тип</th><th>Направление</th><th>Классный руководитель</th><th>Адрес площадки</th><th></th></tr>
+                <tr><th>СП класса</th><th>Класс</th><th>Тип</th><th>Направление</th><th>Классный руководитель</th><th>Физическая площадка</th><th></th></tr>
                 </thead>
                 <tbody id="classes-body"></tbody>
             </table>
@@ -68,12 +69,13 @@
 <dialog id="class-edit-dialog">
     <form method="dialog" id="class-edit-form" class="grid labeled-grid" data-requires-edit>
         <h3>Редактирование класса</h3>
-        <label class="field-row"><span>Корпус</span><select name="numberSchoolBuilding" id="class-edit-building" required></select></label>
+        <label class="field-row"><span>СП класса</span><select name="numberSchoolBuilding" id="class-edit-building" required></select></label>
+        <label class="field-row"><span>Физическая площадка</span><select name="schoolBuildingId" id="class-edit-school-building" required></select></label>
+        <input type="hidden" name="campusAddress" id="class-edit-campus-address">
         <label class="field-row"><span>Класс</span><input name="className" placeholder="Класс" required></label>
         <label class="field-row"><span>Тип класса</span><select name="classType"><option value="NORMAL" selected>Норма</option><option value="AOOP_UO">АООП УО</option></select></label>
         <label class="field-row"><span>Направление</span><input name="classDirection" placeholder="Направление класса" required></label>
         <label class="field-row"><span>Классный руководитель</span><input name="fioTeacher" id="class-edit-teacher" list="teacher-list" placeholder="Классный руководитель" required></label>
-        <label class="field-row"><span>Адрес площадки (если отличается)</span><select name="campusAddress" id="class-edit-campus-address"></select></label>
         <div class="row">
             <button type="submit">Сохранить</button>
             <button type="button" id="class-edit-delete-btn" class="danger-btn">Удалить класс</button>

@@ -25,6 +25,9 @@ public class ManualLoadEntry {
     @Column(nullable = false)
     private String fioTeacher;
 
+    @Column(name = "teacher_id")
+    private Long teacherId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "teacher_id", insertable = false, updatable = false)
     @JsonIgnore
@@ -52,6 +55,10 @@ public class ManualLoadEntry {
     @EqualsAndHashCode.Exclude
     private SubjectCatalogEntry subject;
 
+    public Long getSubjectId() {
+        return subject == null ? null : subject.getId();
+    }
+
     @Column(nullable = false)
     private String className;
 
@@ -65,12 +72,26 @@ public class ManualLoadEntry {
     @EqualsAndHashCode.Exclude
     private ClassroomLeadershipEntry classRef;
 
+    @Column(name = "meta_group_id")
+    private Long metaGroupId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "meta_group_id", insertable = false, updatable = false)
     @JsonIgnore
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private MetaGroup metaGroupRef;
+
+
+    public Long getSchoolBuildingId() {
+        if (metaGroupRef != null && metaGroupRef.getSchoolBuildingId() != null) {
+            return metaGroupRef.getSchoolBuildingId();
+        }
+        if (classRef != null) {
+            return classRef.getSchoolBuildingId();
+        }
+        return null;
+    }
 
     @Column(nullable = false)
     private Integer load;

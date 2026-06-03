@@ -76,7 +76,7 @@ const derivedCache = {
     classBuildingMapRowsRef: null,
     classBuildingMapValue: new Map(),
     classAddressMapRowsRef: null,
-    classAddressMapValue: { byId: new Map(), byGroupAndClass: new Map(), byClassOnly: new Map(), idByGroupAndClass: new Map(), idByClassOnly: new Map() },
+    classAddressMapValue: { byId: new Map(), byGroupAndClass: new Map(), byClassOnly: new Map(), idByGroupAndClass: new Map(), idByClassOnly: new Map(), schoolBuildingIdByClassId: new Map(), schoolBuildingIdByGroupAndClass: new Map(), schoolBuildingIdByClassOnly: new Map() },
     rowsByBuildingKey: "",
     rowsByBuildingValue: [],
     expandedRowsByBuildingKey: "",
@@ -230,6 +230,30 @@ function buildingOptionForAccess(accessCode) {
     return (buildings || []).find((building) => normalizeBuildingAccessCode(buildingOptionValue(building)) === normalized) || null;
 }
 
+function schoolBuildingIdForAccess(accessCode) {
+    const option = buildingOptionForAccess(accessCode);
+    const id = option?.schoolBuildingId ?? option?.id ?? null;
+    return id === null || id === undefined || id === "" ? null : Number(id);
+}
+
+function schoolBuildingIdForRow(row) {
+    if (row?.schoolBuildingId !== null && row?.schoolBuildingId !== undefined) return Number(row.schoolBuildingId);
+    const maps = classAddressMap();
+    if (row?.classId !== null && row?.classId !== undefined) {
+        const byId = maps.schoolBuildingIdByClassId.get(String(row.classId));
+        if (byId !== null && byId !== undefined) return Number(byId);
+    }
+    const className = normalizeClassName(row?.className);
+    const groupCode = buildingGroupCode(row?.numberSchoolBuilding || selectedBuilding);
+    if (className) {
+        const scoped = maps.schoolBuildingIdByGroupAndClass.get(`${groupCode}|${className}`);
+        if (scoped !== null && scoped !== undefined) return Number(scoped);
+        const byClassOnly = maps.schoolBuildingIdByClassOnly.get(className);
+        if (byClassOnly !== null && byClassOnly !== undefined) return Number(byClassOnly);
+    }
+    return null;
+}
+
 function campusAddressForAccess(accessCode) {
     const addressToken = buildingAddressToken(accessCode);
     if (!addressToken) return "";
@@ -248,8 +272,14 @@ function scopedBuildingQuery(accessCode, includeAddress = false) {
     const groupCode = buildingGroupCode(accessCode);
     if (!groupCode) return "";
     const params = new URLSearchParams();
+    const addressScoped = isAddressScopedBuilding(accessCode);
+    if (!includeAddress && addressScoped) {
+        return "";
+    }
     params.set("numberSchoolBuilding", groupCode);
     if (includeAddress) {
+        const schoolBuildingId = schoolBuildingIdForAccess(accessCode);
+        if (schoolBuildingId != null) params.set("schoolBuildingId", String(schoolBuildingId));
         const address = campusAddressForAccess(accessCode);
         if (address) params.set("campusAddress", address);
     }
@@ -259,19 +289,22 @@ function scopedBuildingQuery(accessCode, includeAddress = false) {
 function manualLoadScopeForAccess(accessCode) {
     const groupCode = buildingGroupCode(accessCode);
     const campusAddress = campusAddressForAccess(accessCode);
+    const schoolBuildingId = schoolBuildingIdForAccess(accessCode);
     const classIds = Array.from(new Set((classroomRows || [])
         .filter((row) => rowMatchesBuildingAccess(row, accessCode))
         .map((row) => row?.id)
         .filter((id) => id !== null && id !== undefined)));
     return {
-        scopeType: campusAddress ? "BUILDING_ADDRESS" : "BUILDING_GROUP",
+        scopeType: schoolBuildingId != null || campusAddress ? "BUILDING_ADDRESS" : "BUILDING_GROUP",
         numberSchoolBuilding: groupCode,
         campusAddress,
+        schoolBuildingId,
         classIds
     };
 }
 
 function classIdForRow(row) {
+    if (isExplicitMetaGroupRow(row)) return null;
     if (row?.classId != null) return row.classId;
     const className = normalizeClassName(row?.className);
     if (!className) return null;
@@ -280,21 +313,32 @@ function classIdForRow(row) {
     return maps.idByGroupAndClass.get(`${groupCode}|${className}`) || maps.idByClassOnly.get(className) || null;
 }
 
+function metaGroupIdForRow(row) {
+    return isExplicitMetaGroupRow(row) && row?.metaGroupId != null ? row.metaGroupId : null;
+}
+
 function rowMatchesBuildingAccess(row, accessCode) {
     if (accessCode === ARCHIVE_BUILDING_CODE) return false;
     const groupCode = buildingGroupCode(accessCode);
     if (!groupCode) return false;
-    if (buildingGroupCode(row?.numberSchoolBuilding) !== groupCode) return false;
     const address = buildingAddressToken(accessCode);
-    if (!address) return true;
-    const rowAddress = rowAddressToken(row);
-    if (rowAddress === address) return true;
+    if (address) {
+        const selectedSchoolBuildingId = schoolBuildingIdForAccess(accessCode);
+        const rowSchoolBuildingId = schoolBuildingIdForRow(row);
+        if (selectedSchoolBuildingId != null && rowSchoolBuildingId != null) {
+            return Number(rowSchoolBuildingId) === Number(selectedSchoolBuildingId);
+        }
+        if (isExplicitMetaGroupRow(row)) return false;
+        const rowAddress = rowAddressToken(row);
+        if (rowAddress === address) return true;
 
-    // If a building group has exactly one known address, selecting that address is
-    // equivalent to selecting the whole group. This keeps legacy curriculum/manual
-    // rows without campusAddress visible for one-site buildings such as СП17.
-    const knownAddresses = addressesForBuildingCode(groupCode).map(normalizeBuildingAccessCode).filter(Boolean);
-    return knownAddresses.length === 1 && knownAddresses[0] === address;
+        // If a building group has exactly one known address, selecting that address is
+        // equivalent to selecting the whole group. This keeps legacy curriculum/manual
+        // rows without campusAddress visible for one-site buildings such as СП17.
+        const knownAddresses = addressesForBuildingCode(groupCode).map(normalizeBuildingAccessCode).filter(Boolean);
+        return buildingGroupCode(row?.numberSchoolBuilding) === groupCode && knownAddresses.length === 1 && knownAddresses[0] === address;
+    }
+    return buildingGroupCode(row?.numberSchoolBuilding) === groupCode;
 }
 
 function loadAccessCodesForRow(row) {
@@ -307,6 +351,14 @@ function loadAccessCodesForRow(row) {
     } else {
         const knownAddresses = addressesForBuildingCode(groupCode).map(normalizeBuildingAccessCode).filter(Boolean);
         if (knownAddresses.length === 1) codes.push(`${groupCode}|${knownAddresses[0]}`);
+    }
+    const rowSchoolBuildingId = schoolBuildingIdForRow(row);
+    if (rowSchoolBuildingId != null) {
+        (buildings || [])
+            .filter((building) => building?.scope === "address" && Number(building.schoolBuildingId ?? building.id) === Number(rowSchoolBuildingId))
+            .map(buildingOptionValue)
+            .filter(Boolean)
+            .forEach((value) => codes.push(value));
     }
     return Array.from(new Set(codes));
 }
@@ -384,7 +436,10 @@ function classAddressMap() {
         byGroupAndClass: new Map(),
         byClassOnly: new Map(),
         idByGroupAndClass: new Map(),
-        idByClassOnly: new Map()
+        idByClassOnly: new Map(),
+        schoolBuildingIdByClassId: new Map(),
+        schoolBuildingIdByGroupAndClass: new Map(),
+        schoolBuildingIdByClassOnly: new Map()
     };
     (classroomRows || []).forEach((r) => {
         const cls = normalizeClassName(r.className);
@@ -396,6 +451,9 @@ function classAddressMap() {
         if (address && !maps.byClassOnly.has(cls)) maps.byClassOnly.set(cls, address);
         if (b && r.id != null) maps.idByGroupAndClass.set(`${b}|${cls}`, r.id);
         if (r.id != null && !maps.idByClassOnly.has(cls)) maps.idByClassOnly.set(cls, r.id);
+        if (r.schoolBuildingId != null && r.id != null) maps.schoolBuildingIdByClassId.set(String(r.id), Number(r.schoolBuildingId));
+        if (r.schoolBuildingId != null && b) maps.schoolBuildingIdByGroupAndClass.set(`${b}|${cls}`, Number(r.schoolBuildingId));
+        if (r.schoolBuildingId != null && !maps.schoolBuildingIdByClassOnly.has(cls)) maps.schoolBuildingIdByClassOnly.set(cls, Number(r.schoolBuildingId));
     });
     derivedCache.classAddressMapRowsRef = classroomRows;
     derivedCache.classAddressMapValue = maps;
@@ -505,6 +563,18 @@ function subjectTypeByPart(part) {
     if (part === "EXTRACURRICULAR") return "EXTRACURRICULAR";
     if (part === "FORMABLE" || part === "CORRECTIONAL") return "FORMABLE";
     return "CORE";
+}
+
+
+function teacherIdForName(fioTeacher) {
+    const key = String(fioTeacher || "").trim().toLowerCase();
+    if (!key) return null;
+    const teacher = (teacherDirectory || []).find((t) => String(t.fioTeacher || "").trim().toLowerCase() === key);
+    return teacher?.id ?? null;
+}
+
+function subjectIdForRow(row) {
+    return row?.subjectId ?? row?.subject?.id ?? null;
 }
 
 function subjectCatalogKey(subjectName, subjectType = "") {
@@ -718,6 +788,16 @@ function dayBefore(isoDate) {
 }
 
 
+function isExplicitMetaGroupRow(row) {
+    return row?.metaGroupId != null
+        || String(row?.className || "").trim().toUpperCase().startsWith("МГ:");
+}
+
+function contributesToManualLoad(row) {
+    if (isExplicitMetaGroupRow(row)) return true;
+    return !Boolean(row?.metaGroup);
+}
+
 function rowsForSelectedBuilding() {
     if (selectedBuilding === ARCHIVE_BUILDING_CODE) return [];
     const cacheKey = `${sourceRevision}|${normalizeBuildingAccessCode(selectedBuilding)}`;
@@ -729,7 +809,7 @@ function rowsForSelectedBuilding() {
         const rowSource = { ...row, numberSchoolBuilding: row.numberSchoolBuilding || map.get(normalizeClassName(row.className)) };
         return rowMatchesBuildingAccess(rowSource, selectedBuilding);
     });
-    const filtered = scoped.filter((row) => !Boolean(row.metaGroup));
+    const filtered = scoped.filter(contributesToManualLoad);
     derivedCache.rowsByBuildingKey = cacheKey;
     derivedCache.rowsByBuildingValue = filtered;
     return filtered;
@@ -2395,10 +2475,13 @@ async function saveBuildingLoad() {
 
         return {
             fioTeacher,
-            numberSchoolBuilding: buildingGroupCode(selectedBuilding),
+            teacherId: teacherIdForName(fioTeacher),
+            numberSchoolBuilding: buildingGroupCode(row.numberSchoolBuilding || selectedBuilding),
             subjectName: row.subjectName,
+            subjectId: subjectIdForRow(row),
             className: row.className,
             classId: classIdForRow(row),
+            metaGroupId: metaGroupIdForRow(row),
             load: Number(row.plannedHours || 0),
             groupNameEducationalPlan: row.__groupIndex ? `Группа ${row.__groupIndex}` : null,
             groupLoad: row.__groupIndex ? Number(row.plannedHours || 0) : null,
@@ -2415,10 +2498,13 @@ async function saveBuildingLoad() {
         if (!row) return;
         payload.push({
             fioTeacher: plan.targetTeacher,
-            numberSchoolBuilding: buildingGroupCode(selectedBuilding),
+            teacherId: teacherIdForName(plan.targetTeacher),
+            numberSchoolBuilding: buildingGroupCode(row.numberSchoolBuilding || selectedBuilding),
             subjectName: row.subjectName,
+            subjectId: subjectIdForRow(row),
             className: row.className,
             classId: classIdForRow(row),
+            metaGroupId: metaGroupIdForRow(row),
             load: Number(row.plannedHours || 0),
             groupNameEducationalPlan: row.__groupIndex ? `Группа ${row.__groupIndex}` : null,
             groupLoad: row.__groupIndex ? Number(row.plannedHours || 0) : null,
@@ -2434,6 +2520,7 @@ async function saveBuildingLoad() {
         const key = [
             normalizeBuildingCode(item.numberSchoolBuilding),
             String(item.classId || ""),
+            String(item.metaGroupId || ""),
             normalizeClassName(item.className),
             String(item.subjectName || "").trim().toUpperCase(),
             String(item.educationLevel || ""),
@@ -2461,6 +2548,7 @@ async function saveBuildingLoad() {
                 scopeType: scope.scopeType,
                 numberSchoolBuilding: scope.numberSchoolBuilding,
                 campusAddress: scope.campusAddress || null,
+                schoolBuildingId: scope.schoolBuildingId || null,
                 classIds: scope.classIds,
                 rows: finalPayload
             })
@@ -2622,13 +2710,16 @@ async function refreshSourceData() {
                 });
             }
             group.addresses.forEach((address) => {
+                const addressKey = normalizeBuildingAccessCode(address);
+                const site = (group.addressRows || []).find((row) => normalizeBuildingAccessCode(row?.address) === addressKey) || null;
                 buildings.push({
                     code: group.code,
-                    value: `${group.code}|${normalizeBuildingAccessCode(address)}`,
+                    value: `${group.code}|${addressKey}`,
                     name: group.name,
                     address,
                     addresses: [address],
-                    scope: "address"
+                    scope: "address",
+                    schoolBuildingId: site?.id ?? null
                 });
             });
         });
@@ -2708,6 +2799,7 @@ function bindEvents() {
             const params = new URLSearchParams();
             params.set("numberSchoolBuilding", scope.numberSchoolBuilding);
             params.set("scopeType", scope.scopeType);
+            if (scope.schoolBuildingId) params.set("schoolBuildingId", String(scope.schoolBuildingId));
             if (scope.campusAddress) params.set("campusAddress", scope.campusAddress);
             await api(`/api/manual-load?${params.toString()}`, { method: "DELETE" });
             await refreshSourceData();

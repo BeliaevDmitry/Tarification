@@ -245,7 +245,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         entry.setPlannedDismissalMarkedBy(normalizeOptional(markedBy));
 
         TeacherDirectoryEntry vacancyTeacher = ensureVacancyTeacher();
-        manualLoadEntryRepository.findByFioTeacherIgnoreCase(entry.getFioTeacher()).forEach(loadEntry -> {
+        manualLoadEntryRepository.findByTeacherId(entry.getId()).forEach(loadEntry -> {
             if (loadEntry.getLoadToDate() == null) {
                 return;
             }
@@ -259,10 +259,14 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 LocalDate vacancyFrom = dismissalDate.plusDays(1);
                 if (!vacancyFrom.isAfter(originalLoadToDate) && !isLoadAlreadyAssigned(loadEntry, vacancyFrom, originalLoadToDate)) {
                     var vacancyEntry = new org.school.personalLoad.model.ManualLoadEntry();
+                    vacancyEntry.setTeacherId(vacancyTeacher.getId());
                     vacancyEntry.setFioTeacher(vacancyTeacher.getFioTeacher());
                     vacancyEntry.setNumberSchoolBuilding(loadEntry.getNumberSchoolBuilding());
+                    vacancyEntry.setSubject(loadEntry.getSubject());
                     vacancyEntry.setSubjectName(loadEntry.getSubjectName());
                     vacancyEntry.setClassName(loadEntry.getClassName());
+                    vacancyEntry.setClassId(loadEntry.getClassId());
+                    vacancyEntry.setMetaGroupId(loadEntry.getMetaGroupId());
                     vacancyEntry.setLoad(loadEntry.getLoad());
                     vacancyEntry.setGroupNameEducationalPlan(loadEntry.getGroupNameEducationalPlan());
                     vacancyEntry.setGroupLoad(loadEntry.getGroupLoad());
@@ -299,7 +303,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
                 .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
 
-        manualLoadEntryRepository.findByFioTeacherIgnoreCase(entry.getFioTeacher()).forEach(loadEntry -> {
+        manualLoadEntryRepository.findByTeacherId(entry.getId()).forEach(loadEntry -> {
             if (!loadEntry.isDismissalAdjusted() || loadEntry.getBackupLoadToDate() == null) {
                 return;
             }
@@ -321,7 +325,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
                 .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
 
-        if (manualLoadEntryRepository.existsByFioTeacherIgnoreCase(entry.getFioTeacher())) {
+        if (manualLoadEntryRepository.existsByTeacherId(entry.getId())) {
             throw new IllegalStateException("Педагог назначен на нагрузку. Сначала снимите нагрузку, затем удаляйте из справочника.");
         }
 

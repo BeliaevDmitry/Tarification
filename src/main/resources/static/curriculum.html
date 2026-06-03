@@ -143,7 +143,8 @@
 <dialog id="meta-group-create-dialog">
     <form method="dialog" id="meta-group-create-form" class="grid" data-requires-edit>
         <h3>Создать метагруппу</h3>
-        <label>Корпус<select name="numberSchoolBuilding" required></select></label>
+        <label>СП метагруппы<select name="numberSchoolBuilding" required></select></label>
+        <label>Физическая площадка проведения занятий<select name="schoolBuildingId" required></select></label>
         <label>Параллель<select name="parallel" required></select></label>
         <label>Название<input name="name" required></label>
         <label>Период<select name="studyPeriodSettingId" required></select></label>
@@ -154,7 +155,7 @@
 <dialog id="meta-group-manage-dialog" class="meta-group-manage-dialog">
     <form method="dialog" id="meta-group-manage-form" class="grid" data-requires-edit>
         <h3>Метагруппы</h3>
-        <div class="sheet-wrap meta-group-manage-wrap" data-scroll-controls="off"><table class="sheet-table meta-group-manage-table"><thead><tr><th>Корпус</th><th>Тип</th><th>Параллель</th><th>Название</th><th>Период</th><th>Действие</th></tr></thead><tbody id="meta-group-manage-body"></tbody></table></div>
+        <div class="sheet-wrap meta-group-manage-wrap" data-scroll-controls="off"><table class="sheet-table meta-group-manage-table"><thead><tr><th>СП</th><th>Площадка</th><th>Тип</th><th>Параллель</th><th>Название</th><th>Период</th><th>Действие</th></tr></thead><tbody id="meta-group-manage-body"></tbody></table></div>
         <div class="row"><button type="button" id="close-meta-group-manage">Закрыть</button></div>
     </form>
 </dialog>
@@ -163,7 +164,8 @@
     <form method="dialog" id="meta-group-edit-form" class="grid labeled-grid" data-requires-edit>
         <h3>Редактирование метагруппы</h3>
         <input type="hidden" name="id">
-        <label class="field-row"><span>Корпус</span><select name="numberSchoolBuilding" required></select></label>
+        <label class="field-row"><span>СП метагруппы</span><select name="numberSchoolBuilding" required></select></label>
+        <label class="field-row"><span>Физическая площадка проведения</span><select name="schoolBuildingId" required></select></label>
         <label class="field-row"><span>Тип</span><select name="classType" required><option value="NORMAL">Норма</option><option value="AOOP_UO">АООП УО</option></select></label>
         <label class="field-row"><span>Параллель</span><select name="parallel" required></select></label>
         <label class="field-row"><span>Название</span><input name="name" required></label>
