@@ -12,7 +12,7 @@
 <main class="container">
     <header class="card">
         <h1>Корпуса</h1>
-        <p class="muted">Во вкладке корпуса заполняются только название и адрес. ФИО руководителя здесь отображается автоматически, а назначается во вкладке «Пользователи» у роли «Руководитель корпуса».</p>
+        <p class="muted">Во вкладке корпуса заполняются группа корпуса, название и адрес. ФИО руководителя здесь отображается автоматически, а назначается во вкладке «Пользователи» у роли «Руководитель корпуса».</p>
         <nav class="page-nav">
             <a class="nav-link active" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
             <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
@@ -35,6 +35,9 @@
         </div>
 
         <form id="building-form" class="grid" data-requires-edit>
+            <select name="buildingGroupId" required>
+                <option value="">Группа корпуса</option>
+            </select>
             <input name="name" placeholder="Название корпуса" required>
             <input name="address" placeholder="Адрес корпуса" required>
             <div class="full-span muted">Руководитель корпуса назначается во вкладке «Пользователи системы».</div>
@@ -51,7 +54,7 @@
         <h2>Список корпусов</h2>
         <div class="sheet-wrap">
             <table class="sheet-table">
-                <thead><tr><th>Название</th><th>Руководитель</th><th>Адрес</th><th></th></tr></thead>
+                <thead><tr><th>Группа</th><th>Название</th><th>Руководитель</th><th>Адрес</th><th></th></tr></thead>
                 <tbody id="buildings-body"></tbody>
             </table>
         </div>
@@ -63,6 +66,7 @@
         <h3>Редактирование корпуса</h3>
         <input type="hidden" name="id">
         <input type="hidden" name="code">
+        <label class="field-row"><span>Группа корпуса</span><select name="buildingGroupId" required><option value="">Выберите группу</option></select></label>
         <label class="field-row"><span>Название</span><input name="name" placeholder="Название корпуса" required></label>
         <label class="field-row"><span>Адрес</span><input name="address" placeholder="Адрес корпуса" required></label>
         <div class="full-span muted">Текущий руководитель: <strong id="building-manager-display">Не назначен</strong>. Назначение меняется во вкладке «Пользователи системы».</div>

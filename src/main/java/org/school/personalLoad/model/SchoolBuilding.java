@@ -13,6 +13,10 @@ import java.time.LocalDateTime;
 @Table(name = "school_building")
 public class SchoolBuilding {
 
+    public Long getBuildingGroupId() {
+        return buildingGroup == null ? null : buildingGroup.getId();
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -20,8 +24,8 @@ public class SchoolBuilding {
     @Column(nullable = false)
     private String code;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "building_group_id", insertable = false, updatable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "building_group_id", nullable = false)
     @JsonIgnore
     @ToString.Exclude
     @EqualsAndHashCode.Exclude

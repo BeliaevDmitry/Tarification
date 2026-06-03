@@ -3,7 +3,9 @@ package org.school.personalLoad.service.impl;
 import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.auth.UserRole;
 import org.school.personalLoad.dto.SchoolBuildingRequest;
+import org.school.personalLoad.model.BuildingGroup;
 import org.school.personalLoad.model.SchoolBuilding;
+import org.school.personalLoad.repository.BuildingGroupRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
@@ -30,6 +32,7 @@ import java.util.Map;
 public class SchoolBuildingServiceImpl implements SchoolBuildingService {
 
     private final SchoolBuildingRepository repository;
+    private final BuildingGroupRepository buildingGroupRepository;
     private final AppUserRepository appUserRepository;
     private final ClassroomLeadershipRepository classroomLeadershipRepository;
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
@@ -45,15 +48,23 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
         if (name.isBlank()) throw new IllegalArgumentException("name is required");
         if (address.isBlank()) throw new IllegalArgumentException("address is required");
 
+        if (request.getBuildingGroupId() == null) {
+            throw new IllegalArgumentException("buildingGroupId is required for school building");
+        }
+        BuildingGroup buildingGroup = buildingGroupRepository.findById(request.getBuildingGroupId())
+                .orElseThrow(() -> new IllegalArgumentException("BuildingGroup not found: " + request.getBuildingGroupId()));
+
         String code = normalizeBuildingGroupCode(request.getCode());
+        if (code.isBlank()) code = normalizeBuildingGroupCode(buildingGroup.getCode());
         if (code.isBlank()) code = normalizeBuildingGroupCode(name);
         if (code.isBlank()) throw new IllegalArgumentException("code is required");
         SchoolBuilding entity = request.getId() == null
                 ? new SchoolBuilding()
                 : repository.findById(request.getId()).orElseGet(SchoolBuilding::new);
         entity.setCode(code);
+        entity.setBuildingGroup(buildingGroup);
         entity.setName(name);
-        entity.setManagerFio(normalize(entity.getManagerFio()));
+        entity.setManagerFio(normalize(request.getManagerFio()));
         entity.setAddress(address);
         return repository.save(entity);
     }
@@ -98,6 +109,7 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
         copy.setId(source.getId());
         copy.setCode(source.getCode());
         copy.setName(source.getName());
+        copy.setBuildingGroup(source.getBuildingGroup());
         copy.setAddress(source.getAddress());
         copy.setCreatedAt(source.getCreatedAt());
         String displayManager = normalize(assignedManagerFio);
@@ -122,6 +134,7 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
             header.createCell(0).setCellValue("Код");
             header.createCell(1).setCellValue("Название");
             header.createCell(2).setCellValue("Адрес");
+            header.createCell(3).setCellValue("BUILDING_GROUP_ID");
 
             int rowIdx = 1;
             for (SchoolBuilding building : repository.findAll()) {
@@ -129,9 +142,13 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
                 row.createCell(0).setCellValue(normalize(building.getCode()));
                 row.createCell(1).setCellValue(normalize(building.getName()));
                 row.createCell(2).setCellValue(normalize(building.getAddress()));
+                Long buildingGroupId = building.getBuildingGroupId();
+                if (buildingGroupId != null) {
+                    row.createCell(3).setCellValue(buildingGroupId);
+                }
             }
 
-            for (int i = 0; i < 3; i++) sheet.autoSizeColumn(i);
+            for (int i = 0; i < 4; i++) sheet.autoSizeColumn(i);
             workbook.write(out);
             return out.toByteArray();
         } catch (Exception e) {
@@ -157,8 +174,12 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
                 String code = normalize(formatter.formatCellValue(row.getCell(0)));
                 String name = normalize(formatter.formatCellValue(row.getCell(1)));
                 String address = normalize(formatter.formatCellValue(row.getCell(2)));
+                String buildingGroupIdText = normalize(formatter.formatCellValue(row.getCell(3)));
 
                 if (name.equalsIgnoreCase("Название") || code.equalsIgnoreCase("Код")) {
+                    if (!"BUILDING_GROUP_ID".equalsIgnoreCase(buildingGroupIdText)) {
+                        throw new IllegalArgumentException("Файл корпусов создан в старом формате: добавьте колонку BUILDING_GROUP_ID из нового шаблона");
+                    }
                     skipped++;
                     continue;
                 }
@@ -168,8 +189,10 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
                     continue;
                 }
 
+                Long buildingGroupId = parseRequiredLong(buildingGroupIdText, "BUILDING_GROUP_ID", i + 1);
                 SchoolBuildingRequest request = new SchoolBuildingRequest();
                 request.setCode(code.isBlank() ? name : code);
+                request.setBuildingGroupId(buildingGroupId);
                 request.setName(name);
                 request.setAddress(address);
                 upsert(request);
@@ -178,7 +201,19 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
 
             return java.util.Map.of("status", "ok", "imported", imported, "skipped", skipped, "total", repository.count());
         } catch (Exception e) {
-            throw new RuntimeException("Не удалось импортировать корпуса", e);
+            throw new RuntimeException("Не удалось импортировать корпуса: " + e.getMessage(), e);
+        }
+    }
+
+    private Long parseRequiredLong(String value, String column, int rowNumber) {
+        String normalized = normalize(value);
+        if (normalized.isBlank()) {
+            throw new IllegalArgumentException("Строка " + rowNumber + ": " + column + " is required for school building import");
+        }
+        try {
+            return Long.valueOf(normalized.replace(".0", ""));
+        } catch (NumberFormatException ex) {
+            throw new IllegalArgumentException("Строка " + rowNumber + ": " + column + " must be numeric");
         }
     }
 

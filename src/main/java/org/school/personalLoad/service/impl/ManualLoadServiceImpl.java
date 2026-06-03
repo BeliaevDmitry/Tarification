@@ -847,6 +847,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             if (sheet == null) {
                 throw new IllegalArgumentException("В файле отсутствует лист LOAD_EDITABLE");
             }
+            validateManualLoadImportHeaders(sheet);
             for (int i = 1; i <= sheet.getLastRowNum(); i++) {
                 Row row = sheet.getRow(i);
                 if (row == null) continue;
@@ -860,29 +861,23 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     errors.add("Строка " + (i + 1) + ": учебный год " + rowYear + " не совпадает с выбранным " + academicYear);
                     continue;
                 }
+                Long classId = parseLong(readCell(row, 12));
+                Long metaGroupId = parseLong(readCell(row, 13));
                 Long teacherId = parseLong(readCell(row, 14));
                 Long subjectId = parseLong(readCell(row, 15));
-                String fio = readCell(row, 10).trim();
                 TeacherDirectoryEntry teacherForImport = null;
-                if (teacherId != null) {
-                    teacherForImport = teacherDirectoryRepository.findById(teacherId).orElse(null);
-                    if (teacherForImport == null) {
-                        errors.add("Строка " + (i + 1) + ": teacher_id не найден в справочнике — " + teacherId);
-                        continue;
-                    }
-                    fio = teacherForImport.getFioTeacher();
-                } else if (fio.isBlank()) {
-                    fio = "Вакансия";
+                SubjectCatalogEntry subjectForImport = null;
+                try {
+                    validateStrictImportIds(academicYear, classId, metaGroupId, teacherId, subjectId, i + 1);
+                    teacherForImport = teacherDirectoryRepository.findById(teacherId)
+                            .orElseThrow(() -> new IllegalArgumentException("teacher_id не найден в справочнике — " + teacherId));
+                    subjectForImport = subjectCatalogRepository.findById(subjectId)
+                            .orElseThrow(() -> new IllegalArgumentException("subject_id не найден в справочнике — " + subjectId));
+                } catch (IllegalArgumentException ex) {
+                    errors.add("Строка " + (i + 1) + ": " + ex.getMessage());
+                    continue;
                 }
-                if (teacherForImport == null) {
-                    try {
-                        teacherForImport = resolveTeacherByFioFallback(fio);
-                        fio = teacherForImport.getFioTeacher();
-                    } catch (IllegalArgumentException ex) {
-                        errors.add("Строка " + (i + 1) + ": " + ex.getMessage());
-                        continue;
-                    }
-                }
+                String fio = teacherForImport.getFioTeacher();
                 if (!fio.toLowerCase(Locale.ROOT).contains("вакан")) {
                     TeacherDirectoryEntry teacher = teacherForImport;
                     LocalDate dismissalDate = teacher.getDismissalDate();
@@ -901,7 +896,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 request.setAcademicYear(academicYear);
                 request.setNumberSchoolBuilding(readCell(row, 1));
                 request.setClassName(readCell(row, 2));
-                request.setSubjectName(readCell(row, 3));
+                request.setSubjectName(subjectForImport.getSubjectName());
                 request.setSubjectId(subjectId);
                 request.setGroupNameEducationalPlan(emptyToNull(readCell(row, 4)));
                 request.setStudyPeriod(parseStudyPeriod(readCell(row, 5)));
@@ -912,15 +907,12 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 request.setGroupLoad(request.getGroupNameEducationalPlan() == null ? null : load);
                 request.setEducationLevel(parseEducationLevel(readCell(row, 9)));
                 request.setFioTeacher(fio);
-                request.setTeacherId(teacherForImport.getId());
-                request.setClassId(parseLong(readCell(row, 12)));
-                request.setMetaGroupId(parseLong(readCell(row, 13)));
+                request.setTeacherId(teacherId);
+                request.setClassId(classId);
+                request.setMetaGroupId(metaGroupId);
                 try {
                     validate(request);
-                    if (!resolveImportForeignKeys(academicYear, request, i + 1)) {
-                        log.warn("Строка {} импорта нагрузки пропущена: ordinary curriculum row is a metagroup member and must not create duplicate manual load", i + 1);
-                        continue;
-                    }
+                    validateImportCurriculumRule(academicYear, request, i + 1);
                 } catch (Exception e) {
                     errors.add("Строка " + (i + 1) + ": " + e.getMessage());
                     continue;
@@ -1429,99 +1421,81 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         return new BigDecimal(value).longValue();
     }
 
-    private boolean resolveImportForeignKeys(String academicYear, ManualLoadEntryRequest request, int rowNumber) {
+    private void validateManualLoadImportHeaders(Sheet sheet) {
+        Row header = sheet.getRow(0);
+        if (header == null
+                || !"CLASS_ID".equalsIgnoreCase(readCell(header, 12).trim())
+                || !"META_GROUP_ID".equalsIgnoreCase(readCell(header, 13).trim())
+                || !"TEACHER_ID".equalsIgnoreCase(readCell(header, 14).trim())
+                || !"SUBJECT_ID".equalsIgnoreCase(readCell(header, 15).trim())) {
+            throw new IllegalArgumentException("Файл создан в старом формате. Выгрузите новый шаблон нагрузки и перенесите данные в него.");
+        }
+    }
+
+    private void validateStrictImportIds(String academicYear,
+                                         Long classId,
+                                         Long metaGroupId,
+                                         Long teacherId,
+                                         Long subjectId,
+                                         int rowNumber) {
+        if (teacherId == null) {
+            throw new IllegalArgumentException("TEACHER_ID is required");
+        }
+        if (subjectId == null) {
+            throw new IllegalArgumentException("SUBJECT_ID is required");
+        }
+        if (classId == null && metaGroupId == null) {
+            throw new IllegalArgumentException("укажите ровно один FK: CLASS_ID или META_GROUP_ID");
+        }
+        if (classId != null && metaGroupId != null) {
+            throw new IllegalArgumentException("нельзя одновременно указывать CLASS_ID и META_GROUP_ID");
+        }
+        if (classId != null && classroomLeadershipRepository.findById(classId).isEmpty()) {
+            throw new IllegalArgumentException("class_id не найден: " + classId);
+        }
+        if (metaGroupId != null && metaGroupRepository.findById(metaGroupId).isEmpty()) {
+            throw new IllegalArgumentException("meta_group_id не найден: " + metaGroupId);
+        }
+        if (teacherDirectoryRepository.findById(teacherId).isEmpty()) {
+            throw new IllegalArgumentException("teacher_id не найден в справочнике — " + teacherId);
+        }
+        if (subjectCatalogRepository.findById(subjectId).isEmpty()) {
+            throw new IllegalArgumentException("subject_id не найден в справочнике — " + subjectId);
+        }
+    }
+
+    private void validateImportCurriculumRule(String academicYear, ManualLoadEntryRequest request, int rowNumber) {
         StudyPeriod period = resolveStudyPeriod(academicYear, request.getClassName(), request.getStudyPeriod(), request.getLoadFromDate(), request.getLoadToDate());
-        String subjectName = request.getSubjectName() == null ? "" : request.getSubjectName().trim();
-        if (isExplicitMetaGroupRequest(request)) {
-            CurriculumPlanEntry rule = request.getMetaGroupId() == null
-                    ? resolveUniqueLegacyCurriculumRule(academicYear, request, period, true, rowNumber)
-                    : findRuleByMetaGroupId(academicYear, request.getMetaGroupId(), subjectName, request.getEducationLevel(), period)
-                    .orElseThrow(() -> new IllegalArgumentException("не найдено curriculum-правило метагруппы для meta_group_id=" + request.getMetaGroupId()));
-            if (rule.getMetaGroupId() == null) {
-                throw new IllegalArgumentException("meta_group_id не найден для строки метагруппы " + request.getClassName());
+        Long subjectId = request.getSubjectId();
+        CurriculumPlanEntry rule;
+        if (request.getMetaGroupId() != null) {
+            rule = findRuleByMetaGroupIdAndSubjectId(academicYear, request.getMetaGroupId(), subjectId, request.getEducationLevel(), period)
+                    .orElseThrow(() -> new IllegalArgumentException("не найдено curriculum-правило метагруппы для meta_group_id=" + request.getMetaGroupId() + " и subject_id=" + subjectId));
+            if (!isExplicitMetaGroupRow(rule)) {
+                throw new IllegalArgumentException("curriculum-правило meta_group_id=" + request.getMetaGroupId() + " не является explicit строкой метагруппы");
             }
-            request.setClassId(null);
-            request.setMetaGroupId(rule.getMetaGroupId());
-            return true;
+            return;
         }
-
-        Long classId = request.getClassId();
-        if (classId == null) {
-            classId = resolveUniqueLegacyClassId(academicYear, request, rowNumber);
-            request.setClassId(classId);
-        }
-        Long resolvedClassId = classId;
-        CurriculumPlanEntry rule = findRuleByClassId(academicYear, resolvedClassId, subjectName, request.getEducationLevel(), period)
-                .orElseThrow(() -> new IllegalArgumentException("не найдено curriculum-правило обычного класса для class_id=" + resolvedClassId));
+        rule = findRuleByClassIdAndSubjectId(academicYear, request.getClassId(), subjectId, request.getEducationLevel(), period)
+                .orElseThrow(() -> new IllegalArgumentException("не найдено curriculum-правило обычного класса для class_id=" + request.getClassId() + " и subject_id=" + subjectId));
         if (!contributesToManualLoad(rule)) {
-            return false;
+            throw new IllegalArgumentException("ordinary member row метагруппы не должна импортироваться как отдельная нагрузка");
         }
-        request.setMetaGroupId(null);
-        return true;
     }
 
-    private Long resolveUniqueLegacyClassId(String academicYear, ManualLoadEntryRequest request, int rowNumber) {
-        String building = request.getNumberSchoolBuilding() == null ? "" : request.getNumberSchoolBuilding().trim();
-        String className = ClassNameNormalizer.normalize(request.getClassName());
-        java.util.List<ClassroomLeadershipEntry> matches = classroomLeadershipRepository
-                .findAllByAcademicYearAndNumberSchoolBuildingAndClassName(academicYear, building, className);
-        if (matches.isEmpty()) {
-            throw new IllegalArgumentException("не найден class_id для legacy-строки класса " + building + " / " + className);
-        }
-        java.util.List<Long> ids = matches.stream()
-                .map(ClassroomLeadershipEntry::getId)
-                .filter(java.util.Objects::nonNull)
-                .distinct()
-                .toList();
-        if (ids.size() != 1) {
-            throw new IllegalArgumentException("неоднозначный class_id для legacy-строки класса " + building + " / " + className + ": " + ids);
-        }
-        return ids.get(0);
-    }
-
-    private CurriculumPlanEntry resolveUniqueLegacyCurriculumRule(String academicYear,
-                                                                 ManualLoadEntryRequest request,
-                                                                 StudyPeriod effectiveStudyPeriod,
-                                                                 boolean explicitMetaGroup,
-                                                                 int rowNumber) {
-        String building = request.getNumberSchoolBuilding() == null ? "" : request.getNumberSchoolBuilding().trim();
-        String className = ClassNameNormalizer.normalize(request.getClassName());
-        String subjectName = request.getSubjectName() == null ? "" : request.getSubjectName().trim();
-        java.util.List<CurriculumPlanEntry> matches = candidateStudyPeriods(effectiveStudyPeriod).stream()
-                .flatMap(period -> curriculumPlanEntryRepository
-                        .findAllByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                                academicYear, building, className, subjectName, request.getEducationLevel(), period)
-                        .stream())
-                .filter(row -> explicitMetaGroup ? isExplicitMetaGroupRow(row) : !isExplicitMetaGroupRow(row))
-                .distinct()
-                .toList();
-        if (matches.isEmpty()) {
-            throw new IllegalArgumentException("не найдено FK-соответствие curriculum для legacy-строки " + building + " / " + className + " / " + subjectName);
-        }
-        java.util.List<Long> relationIds = matches.stream()
-                .map(row -> explicitMetaGroup ? row.getMetaGroupId() : row.getClassId())
-                .filter(java.util.Objects::nonNull)
-                .distinct()
-                .toList();
-        if (relationIds.size() != 1 || matches.size() > 1) {
-            throw new IllegalArgumentException("неоднозначное FK-соответствие curriculum для legacy-строки " + building + " / " + className + " / " + subjectName + ": " + relationIds);
-        }
-        return matches.get(0);
-    }
-
-    private java.util.Optional<CurriculumPlanEntry> findRuleByClassId(String academicYear, Long classId, String subjectName, EducationLevel educationLevel, StudyPeriod effectiveStudyPeriod) {
+    private java.util.Optional<CurriculumPlanEntry> findRuleByClassIdAndSubjectId(String academicYear, Long classId, Long subjectId, EducationLevel educationLevel, StudyPeriod effectiveStudyPeriod) {
         return candidateStudyPeriods(effectiveStudyPeriod).stream()
-                .map(period -> curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                        academicYear, classId, subjectName, educationLevel, period))
+                .map(period -> curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                        academicYear, classId, subjectId, educationLevel, period))
                 .filter(java.util.Optional::isPresent)
                 .map(java.util.Optional::get)
                 .findFirst();
     }
 
-    private java.util.Optional<CurriculumPlanEntry> findRuleByMetaGroupId(String academicYear, Long metaGroupId, String subjectName, EducationLevel educationLevel, StudyPeriod effectiveStudyPeriod) {
+    private java.util.Optional<CurriculumPlanEntry> findRuleByMetaGroupIdAndSubjectId(String academicYear, Long metaGroupId, Long subjectId, EducationLevel educationLevel, StudyPeriod effectiveStudyPeriod) {
         return candidateStudyPeriods(effectiveStudyPeriod).stream()
-                .map(period -> curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                        academicYear, metaGroupId, subjectName, educationLevel, period))
+                .map(period -> curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                        academicYear, metaGroupId, subjectId, educationLevel, period))
                 .filter(java.util.Optional::isPresent)
                 .map(java.util.Optional::get)
                 .findFirst();
@@ -1549,20 +1523,13 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
     private Long resolveClassId(String academicYear, ManualLoadEntryRequest request) {
-        if (request.getClassId() != null) {
-            return request.getClassId();
+        if (request.getClassId() == null) {
+            throw new IllegalArgumentException("class_id is required for ordinary manual-load row");
         }
-        if (request.getNumberSchoolBuilding() == null || request.getClassName() == null) {
-            return null;
+        if (classroomLeadershipRepository.findById(request.getClassId()).isEmpty()) {
+            throw new IllegalArgumentException("class_id не найден: " + request.getClassId());
         }
-        return classroomLeadershipRepository
-                .findByAcademicYearAndNumberSchoolBuildingAndClassName(
-                        academicYear,
-                        request.getNumberSchoolBuilding().trim(),
-                        ClassNameNormalizer.normalize(request.getClassName())
-                )
-                .map(ClassroomLeadershipEntry::getId)
-                .orElse(null);
+        return request.getClassId();
     }
 
     private ManualLoadEntry toEntity(ManualLoadEntryRequest request) {
@@ -1597,57 +1564,24 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
 
     private TeacherDirectoryEntry resolveTeacher(ManualLoadEntryRequest request) {
-        if (request.getTeacherId() != null) {
-            return teacherDirectoryRepository.findById(request.getTeacherId())
-                    .orElseThrow(() -> new IllegalArgumentException("teacher_id не найден в справочнике: " + request.getTeacherId()));
+        if (request.getTeacherId() == null) {
+            throw new IllegalArgumentException("teacher_id is required for manual-load row");
         }
-        String fio = request.getFioTeacher() == null || request.getFioTeacher().isBlank() ? "Вакансия" : request.getFioTeacher().trim();
-        return resolveTeacherByFioFallback(fio);
-    }
-
-    private TeacherDirectoryEntry resolveTeacherByFioFallback(String fioTeacher) {
-        String normalized = String.valueOf(fioTeacher == null ? "" : fioTeacher).trim();
-        if (normalized.isBlank()) {
-            normalized = "Вакансия";
-        }
-        String key = normalized.toLowerCase(Locale.ROOT);
-        java.util.List<TeacherDirectoryEntry> matches = teacherDirectoryRepository.findAll().stream()
-                .filter(t -> t.getFioTeacher() != null && t.getFioTeacher().trim().toLowerCase(Locale.ROOT).equals(key))
-                .toList();
-        if (matches.isEmpty()) {
-            throw new IllegalArgumentException("Педагог не найден в справочнике для deprecated FIO fallback: " + normalized);
-        }
-        if (matches.size() > 1) {
-            throw new IllegalArgumentException("Педагог найден неоднозначно для deprecated FIO fallback: " + normalized);
-        }
-        return matches.get(0);
+        return teacherDirectoryRepository.findById(request.getTeacherId())
+                .orElseThrow(() -> new IllegalArgumentException("teacher_id не найден в справочнике: " + request.getTeacherId()));
     }
 
     private SubjectCatalogEntry resolveSubject(ManualLoadEntryRequest request) {
-        if (request.getSubjectId() != null) {
-            return subjectCatalogRepository.findById(request.getSubjectId())
-                    .orElseThrow(() -> new IllegalArgumentException("subject_id не найден в справочнике: " + request.getSubjectId()));
+        if (request.getSubjectId() == null) {
+            throw new IllegalArgumentException("subject_id is required for manual-load row");
         }
-        String subjectName = request.getSubjectName() == null ? "" : request.getSubjectName().trim();
-        if (subjectName.isBlank()) {
-            throw new IllegalArgumentException("subjectName is required");
-        }
-        String key = subjectName.toLowerCase(Locale.ROOT);
-        java.util.List<SubjectCatalogEntry> matches = subjectCatalogRepository.findAll().stream()
-                .filter(subject -> subject.getSubjectName() != null && subject.getSubjectName().trim().toLowerCase(Locale.ROOT).equals(key))
-                .toList();
-        if (matches.isEmpty()) {
-            throw new IllegalArgumentException("Предмет не найден в справочнике для deprecated subjectName fallback: " + subjectName);
-        }
-        if (matches.size() > 1) {
-            throw new IllegalArgumentException("Предмет найден неоднозначно для deprecated subjectName fallback: " + subjectName);
-        }
-        return matches.get(0);
+        return subjectCatalogRepository.findById(request.getSubjectId())
+                .orElseThrow(() -> new IllegalArgumentException("subject_id не найден в справочнике: " + request.getSubjectId()));
     }
 
     private CurriculumPlanEntry validateAgainstCurriculum(ManualLoadEntry entry) {
         StudyPeriod effectiveStudyPeriod = resolveStudyPeriod(entry.getAcademicYear(), entry.getClassName(), entry.getStudyPeriod(), entry.getLoadFromDate(), entry.getLoadToDate());
-        CurriculumPlanEntry rule = findRuleWithFallback(entry, effectiveStudyPeriod)
+        CurriculumPlanEntry rule = findRuleByFk(entry, effectiveStudyPeriod)
                 .orElseThrow(() -> new IllegalArgumentException("Curriculum rule not found for class=" + entry.getClassName() +
                 ", subject=" + entry.getSubjectName() + ", level=" + entry.getEducationLevel() + ", period=" + effectiveStudyPeriod));
 
@@ -1716,20 +1650,13 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
     private Long resolveMetaGroupId(String academicYear, ManualLoadEntryRequest request) {
-        if (request.getMetaGroupId() != null) {
-            return request.getMetaGroupId();
+        if (request.getMetaGroupId() == null) {
+            throw new IllegalArgumentException("meta_group_id is required for metagroup load row");
         }
-        StudyPeriod period = resolveStudyPeriod(academicYear, request.getClassName(), request.getStudyPeriod(), request.getLoadFromDate(), request.getLoadToDate());
-        return findRuleWithFallback(
-                academicYear,
-                request.getNumberSchoolBuilding().trim(),
-                request.getClassName(),
-                request.getSubjectName(),
-                request.getEducationLevel(),
-                period
-        )
-                .map(CurriculumPlanEntry::getMetaGroupId)
-                .orElseThrow(() -> new IllegalArgumentException("meta_group_id is required for metagroup load row"));
+        if (metaGroupRepository.findById(request.getMetaGroupId()).isEmpty()) {
+            throw new IllegalArgumentException("Метагруппа не найдена: " + request.getMetaGroupId());
+        }
+        return request.getMetaGroupId();
     }
 
     private void validateMetaGroupHasPhysicalSite(Long metaGroupId) {
@@ -1740,55 +1667,21 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         }
     }
 
-    private java.util.Optional<CurriculumPlanEntry> findRuleWithFallback(ManualLoadEntry entry, StudyPeriod effectiveStudyPeriod) {
-        java.util.List<StudyPeriod> candidates = candidateStudyPeriods(effectiveStudyPeriod);
-        String subjectName = entry.getSubjectName() == null ? "" : entry.getSubjectName().trim();
+    private java.util.Optional<CurriculumPlanEntry> findRuleByFk(ManualLoadEntry entry, StudyPeriod effectiveStudyPeriod) {
         Long subjectId = entry.getSubjectId();
+        if (subjectId == null) {
+            return java.util.Optional.empty();
+        }
         if (isExplicitMetaGroupEntry(entry)) {
-            if (entry.getMetaGroupId() != null && subjectId != null) {
-                java.util.Optional<CurriculumPlanEntry> bySubjectId = candidates.stream()
-                        .map(period -> curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                                entry.getAcademicYear(), entry.getMetaGroupId(), subjectId, entry.getEducationLevel(), period))
-                        .filter(java.util.Optional::isPresent)
-                        .map(java.util.Optional::get)
-                        .findFirst();
-                if (bySubjectId.isPresent()) {
-                    return bySubjectId;
-                }
+            if (entry.getMetaGroupId() == null) {
+                return java.util.Optional.empty();
             }
-            if (entry.getMetaGroupId() != null) {
-                return candidates.stream()
-                        .map(period -> curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                                entry.getAcademicYear(), entry.getMetaGroupId(), subjectName, entry.getEducationLevel(), period))
-                        .filter(java.util.Optional::isPresent)
-                        .map(java.util.Optional::get)
-                        .findFirst();
-            }
-            return findRuleWithFallback(entry.getAcademicYear(), entry.getNumberSchoolBuilding().trim(), entry.getClassName(), subjectName, entry.getEducationLevel(), effectiveStudyPeriod)
-                    .filter(this::isExplicitMetaGroupRow);
+            return findRuleByMetaGroupIdAndSubjectId(entry.getAcademicYear(), entry.getMetaGroupId(), subjectId, entry.getEducationLevel(), effectiveStudyPeriod);
         }
-        if (entry.getClassId() != null && subjectId != null) {
-            java.util.Optional<CurriculumPlanEntry> bySubjectId = candidates.stream()
-                    .map(period -> curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                            entry.getAcademicYear(), entry.getClassId(), subjectId, entry.getEducationLevel(), period))
-                    .filter(java.util.Optional::isPresent)
-                    .map(java.util.Optional::get)
-                    .filter(row -> !isExplicitMetaGroupRow(row))
-                    .findFirst();
-            if (bySubjectId.isPresent()) {
-                return bySubjectId;
-            }
+        if (entry.getClassId() == null) {
+            return java.util.Optional.empty();
         }
-        if (entry.getClassId() != null) {
-            return candidates.stream()
-                    .map(period -> curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                            entry.getAcademicYear(), entry.getClassId(), subjectName, entry.getEducationLevel(), period))
-                    .filter(java.util.Optional::isPresent)
-                    .map(java.util.Optional::get)
-                    .filter(row -> !isExplicitMetaGroupRow(row))
-                    .findFirst();
-        }
-        return findRuleWithFallback(entry.getAcademicYear(), entry.getNumberSchoolBuilding().trim(), entry.getClassName(), subjectName, entry.getEducationLevel(), effectiveStudyPeriod)
+        return findRuleByClassIdAndSubjectId(entry.getAcademicYear(), entry.getClassId(), subjectId, entry.getEducationLevel(), effectiveStudyPeriod)
                 .filter(row -> !isExplicitMetaGroupRow(row));
     }
 
@@ -1799,23 +1692,6 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         candidates.add(StudyPeriod.H1);
         candidates.add(StudyPeriod.H2);
         return candidates.stream().distinct().toList();
-    }
-
-    private java.util.Optional<CurriculumPlanEntry> findRuleWithFallback(String academicYear,
-                                                                         String numberSchoolBuilding,
-                                                                         String className,
-                                                                         String subjectName,
-                                                                         org.school.personalLoad.model.EducationLevel educationLevel,
-                                                                         StudyPeriod effectiveStudyPeriod) {
-        return candidateStudyPeriods(effectiveStudyPeriod).stream()
-                .map(period -> curriculumPlanService.findRule(academicYear, numberSchoolBuilding,
-                        ClassNameNormalizer.normalize(className),
-                        subjectName.trim(),
-                        educationLevel,
-                        period))
-                .filter(java.util.Optional::isPresent)
-                .map(java.util.Optional::get)
-                .findFirst();
     }
 
     private StudyPeriod resolveStudyPeriod(String academicYear,
