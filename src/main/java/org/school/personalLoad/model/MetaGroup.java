@@ -10,13 +10,16 @@ import javax.persistence.*;
 @Data
 @Entity
 @Table(name = "meta_group", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_meta_group_scope", columnNames = {"numberSchoolBuilding", "parallel", "name", "classType"})
+        @UniqueConstraint(name = "uk_meta_group_year_scope", columnNames = {"academic_year", "number_school_building", "parallel", "name", "class_type"})
 })
 public class MetaGroup {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "academic_year", nullable = false)
+    private String academicYear;
 
     @Column(nullable = false)
     private String numberSchoolBuilding;
