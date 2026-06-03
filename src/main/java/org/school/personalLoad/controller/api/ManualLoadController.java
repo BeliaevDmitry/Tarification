@@ -64,12 +64,14 @@ public class ManualLoadController {
     public ResponseEntity<List<ManualLoadEntry>> findAll(@RequestParam(required = false) String academicYear,
                                                          @RequestParam(required = false) String building,
                                                          @RequestParam(required = false) String numberSchoolBuilding,
-                                                         @RequestParam(required = false) String campusAddress) {
+                                                         @RequestParam(required = false) String campusAddress,
+                                                         @RequestParam(required = false) Long schoolBuildingId) {
         String effectiveBuilding = firstNonBlank(numberSchoolBuilding, building);
         return ResponseEntity.ok(manualLoadService.findAll(
                 academicYearService.resolveRequestedOrDefault(academicYear),
                 effectiveBuilding,
-                campusAddress
+                campusAddress,
+                schoolBuildingId
         ));
     }
 
@@ -78,16 +80,19 @@ public class ManualLoadController {
                                       @RequestParam(required = false) String building,
                                       @RequestParam(required = false) String numberSchoolBuilding,
                                       @RequestParam(required = false) String campusAddress,
+                                      @RequestParam(required = false) Long schoolBuildingId,
                                       @RequestParam(required = false) String scopeType,
                                       HttpServletRequest httpServletRequest) {
         SessionUser user = AuthSessionUtils.requiredUser(httpServletRequest);
         String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
         String effectiveBuilding = firstNonBlank(numberSchoolBuilding, building);
-        if (effectiveBuilding != null && !effectiveBuilding.isBlank()) {
+        if ((effectiveBuilding != null && !effectiveBuilding.isBlank()) || schoolBuildingId != null) {
             if (!user.isAdmin()) {
                 throw new ForbiddenException("Операция доступна только администратору");
             }
-            if (campusAddress != null && !campusAddress.isBlank()) {
+            if (schoolBuildingId != null) {
+                manualLoadService.clearBySchoolBuilding(effectiveYear, schoolBuildingId);
+            } else if (campusAddress != null && !campusAddress.isBlank()) {
                 manualLoadService.clearByBuildingAddress(effectiveYear, effectiveBuilding, campusAddress);
             } else {
                 manualLoadService.clearByBuilding(effectiveYear, effectiveBuilding, scopeType);

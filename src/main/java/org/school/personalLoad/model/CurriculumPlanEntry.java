@@ -46,8 +46,15 @@ public class CurriculumPlanEntry {
     @Column(nullable = false)
     private boolean deprecated = false;
 
+    public Long getSubjectId() {
+        return subject == null ? null : subject.getId();
+    }
+
     @Column(nullable = false)
     private String className;
+
+    @Column(name = "class_id", insertable = false, updatable = false)
+    private Long classId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "class_id", insertable = false, updatable = false)
@@ -56,12 +63,26 @@ public class CurriculumPlanEntry {
     @EqualsAndHashCode.Exclude
     private ClassroomLeadershipEntry classRef;
 
+    @Column(name = "meta_group_id", insertable = false, updatable = false)
+    private Long metaGroupId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "meta_group_id", insertable = false, updatable = false)
     @JsonIgnore
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private MetaGroup metaGroupRef;
+
+
+    public Long getSchoolBuildingId() {
+        if (metaGroupRef != null && metaGroupRef.getSchoolBuildingId() != null) {
+            return metaGroupRef.getSchoolBuildingId();
+        }
+        if (classRef != null) {
+            return classRef.getSchoolBuildingId();
+        }
+        return null;
+    }
 
     @Column(nullable = false)
     private String subjectName;

@@ -6,9 +6,9 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.SubjectCreateRequest;
 import org.school.personalLoad.model.SubjectCatalogEntry;
 import org.school.personalLoad.model.SubjectAreaNames;
+import org.school.personalLoad.model.SubjectArea;
 import org.school.personalLoad.model.SubjectType;
-import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
-import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.SubjectAreaRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.service.SubjectCatalogService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -27,8 +27,7 @@ import java.util.*;
 public class SubjectCatalogServiceImpl implements SubjectCatalogService {
 
     private final SubjectCatalogRepository repository;
-    private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
-    private final ManualLoadEntryRepository manualLoadEntryRepository;
+    private final SubjectAreaRepository subjectAreaRepository;
 
     @Override
     public SubjectCatalogEntry create(SubjectCreateRequest request) {
@@ -40,7 +39,9 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
                     SubjectCatalogEntry entry = new SubjectCatalogEntry();
                     entry.setSubjectName(name);
                     entry.setSubjectType(type);
-                    entry.setSubjectAreaName(resolveAreaName(request.getSubjectAreaName()));
+                    SubjectArea area = resolveArea(request.getSubjectAreaId(), request.getSubjectAreaName());
+                    entry.setSubjectAreaRef(area);
+                    entry.setSubjectAreaName(area.getName());
                     entry.setSubjectCoefficient(resolveCoefficient(request.getSubjectCoefficient()));
                     return repository.save(entry);
                 });
@@ -61,17 +62,13 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
                     throw new IllegalArgumentException("Предмет с таким названием и типом уже существует");
                 });
 
-        String oldName = existing.getSubjectName();
+        SubjectArea area = resolveArea(request.getSubjectAreaId(), request.getSubjectAreaName());
         existing.setSubjectName(name);
         existing.setSubjectType(type);
-        existing.setSubjectAreaName(resolveAreaName(request.getSubjectAreaName()));
+        existing.setSubjectAreaRef(area);
+        existing.setSubjectAreaName(area.getName());
         existing.setSubjectCoefficient(resolveCoefficient(request.getSubjectCoefficient()));
-        SubjectCatalogEntry saved = repository.save(existing);
-        if (!oldName.equalsIgnoreCase(name)) {
-            curriculumPlanEntryRepository.renameSubjectEverywhere(oldName, name);
-            manualLoadEntryRepository.renameSubjectEverywhere(oldName, name);
-        }
-        return saved;
+        return repository.save(existing);
     }
 
     @Override
@@ -129,7 +126,8 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
                     continue;
                 }
 
-                String areaName = resolveAreaName(cellValue(row.getCell(2)));
+                Long subjectAreaId = parseLong(cellValue(row.getCell(4)));
+                SubjectArea area = resolveArea(subjectAreaId, cellValue(row.getCell(2)));
                 java.math.BigDecimal coefficient = resolveCoefficient(parseDecimal(cellValue(row.getCell(3))));
 
                 String key = subjectName.trim().toLowerCase() + "|" + type.name();
@@ -146,7 +144,8 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
                 SubjectCatalogEntry entry = new SubjectCatalogEntry();
                 entry.setSubjectName(subjectName.trim());
                 entry.setSubjectType(type);
-                entry.setSubjectAreaName(areaName);
+                entry.setSubjectAreaRef(area);
+                entry.setSubjectAreaName(area.getName());
                 entry.setSubjectCoefficient(coefficient);
                 repository.save(entry);
                 imported++;
@@ -167,6 +166,7 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
             header.createCell(1).setCellValue("Тип");
             header.createCell(2).setCellValue("Предметная область");
             header.createCell(3).setCellValue("Коэффициент");
+            header.createCell(4).setCellValue("SUBJECT_AREA_ID");
 
             List<SubjectCatalogEntry> rows = repository.findAll();
             if (rows.isEmpty()) {
@@ -175,18 +175,21 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
                 ex1.createCell(1).setCellValue("1");
                 ex1.createCell(2).setCellValue("Математика и информатика");
                 ex1.createCell(3).setCellValue("1");
+                ex1.createCell(4).setCellValue("");
 
                 Row ex2 = sheet.createRow(2);
                 ex2.createCell(0).setCellValue("Физика");
                 ex2.createCell(1).setCellValue("2");
                 ex2.createCell(2).setCellValue("Естественно-научные предметы");
                 ex2.createCell(3).setCellValue("1");
+                ex2.createCell(4).setCellValue("");
 
                 Row ex3 = sheet.createRow(3);
                 ex3.createCell(0).setCellValue("Разговоры о важном");
                 ex3.createCell(1).setCellValue("3");
                 ex3.createCell(2).setCellValue("Общественно-научные предметы");
                 ex3.createCell(3).setCellValue("1");
+                ex3.createCell(4).setCellValue("");
             } else {
                 rows.sort(Comparator.comparing(SubjectCatalogEntry::getSubjectName, String.CASE_INSENSITIVE_ORDER));
                 int idx = 1;
@@ -196,6 +199,7 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
                     row.createCell(1).setCellValue(exportTypeCode(entry.getSubjectType()));
                     row.createCell(2).setCellValue(resolveAreaNameForExport(entry.getSubjectAreaName()));
                     row.createCell(3).setCellValue(resolveCoefficient(entry.getSubjectCoefficient()).toPlainString());
+                    if (entry.getSubjectAreaId() != null) row.createCell(4).setCellValue(entry.getSubjectAreaId());
                 }
             }
 
@@ -203,6 +207,7 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
             sheet.autoSizeColumn(1);
             sheet.autoSizeColumn(2);
             sheet.autoSizeColumn(3);
+            sheet.autoSizeColumn(4);
             workbook.write(out);
             return new ByteArrayResource(out.toByteArray());
         } catch (Exception e) {
@@ -224,8 +229,21 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
         return request.getSubjectType();
     }
 
-    private String resolveAreaName(String value) {
-        return SubjectAreaNames.resolveBaseArea(value);
+    private SubjectArea resolveArea(Long subjectAreaId, String subjectAreaName) {
+        if (subjectAreaId != null) {
+            return subjectAreaRepository.findById(subjectAreaId)
+                    .orElseThrow(() -> new IllegalArgumentException("subject_area_id not found: " + subjectAreaId));
+        }
+        String areaName = SubjectAreaNames.resolveBaseArea(subjectAreaName);
+        return subjectAreaRepository.findByNameIgnoreCase(areaName)
+                .orElseThrow(() -> new IllegalArgumentException("Предметная область не найдена для deprecated subjectAreaName fallback: " + areaName));
+    }
+
+    private Long parseLong(String value) {
+        String normalized = value == null ? "" : value.trim();
+        if (normalized.isBlank()) return null;
+        try { return Long.parseLong(normalized.replaceAll("\\.0$", "")); }
+        catch (Exception e) { return null; }
     }
 
     private String resolveAreaNameForExport(String value) {

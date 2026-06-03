@@ -7,6 +7,7 @@ public class ClassroomLeadershipEntryRequest {
     private Long id;
     private String academicYear;
     private String numberSchoolBuilding;
+    private Long schoolBuildingId;
     private String className;
     private String classDirection;
     private String fioTeacher;

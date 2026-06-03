@@ -24,6 +24,7 @@ import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.ContinuityStatus;
 import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.ManualLoadEntry;
+import org.school.personalLoad.model.MetaGroup;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.SalarySettings;
@@ -33,6 +34,7 @@ import org.school.personalLoad.model.SubjectWithGroup;
 import org.school.personalLoad.model.TarifficationPerson;
 import org.school.personalLoad.model.SubjectCatalogEntry;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.SalarySettingsRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
@@ -40,6 +42,7 @@ import org.school.personalLoad.repository.ContingentSnapshotRepository;
 import org.school.personalLoad.repository.ContingentStudentRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
+import org.school.personalLoad.repository.MetaGroupRepository;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.DatabaseService;
 import org.school.personalLoad.service.ManualLoadService;
@@ -78,6 +81,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private final TarifficationProcessingService tarifficationProcessingService;
     private final DatabaseService databaseService;
     private final CurriculumPlanService curriculumPlanService;
+    private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     private final StudyPeriodSettingService studyPeriodSettingService;
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final SubjectCatalogRepository subjectCatalogRepository;
@@ -86,6 +90,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private final ContingentStudentRepository contingentStudentRepository;
     private final SchoolBuildingRepository schoolBuildingRepository;
     private final SalarySettingsRepository salarySettingsRepository;
+    private final MetaGroupRepository metaGroupRepository;
 
     @Override
     public ManualLoadEntry create(ManualLoadEntryRequest request) {
@@ -128,15 +133,22 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         }
         String scopeType = normalizeScopeType(request == null ? null : request.getScopeType());
         String campusAddress = request == null ? null : trimToNull(request.getCampusAddress());
-        boolean addressScope = "BUILDING_ADDRESS".equals(scopeType) || campusAddress != null;
+        Long schoolBuildingId = request == null ? null : request.getSchoolBuildingId();
+        boolean addressScope = "BUILDING_ADDRESS".equals(scopeType) || schoolBuildingId != null || campusAddress != null;
         boolean explicitBuildingGroup = "BUILDING_GROUP".equals(scopeType);
 
         if (explicitAcademicYears.size() == 1 && addressScope) {
             String academicYear = explicitAcademicYears.iterator().next();
-            String building = requestBuilding != null ? requestBuilding : singleBuildingCode(buildingCodes);
+            Long resolvedSchoolBuildingId = resolveSchoolBuildingIdForAddressScope(schoolBuildingId, campusAddress);
             java.util.Set<Long> classIds = scopedClassIds(request, entries);
-            validateAddressScopeClassIds(academicYear, building, campusAddress, classIds);
-            manualLoadEntryRepository.deleteByAcademicYearAndClassIds(academicYear, classIds);
+            java.util.Set<Long> metaGroupIds = scopedMetaGroupIds(entries);
+            validateAddressScopeTargets(academicYear, resolvedSchoolBuildingId, classIds, metaGroupIds);
+            if (!classIds.isEmpty()) {
+                manualLoadEntryRepository.deleteByAcademicYearAndClassIds(academicYear, classIds);
+            }
+            if (!metaGroupIds.isEmpty()) {
+                manualLoadEntryRepository.deleteByAcademicYearAndMetaGroupIds(academicYear, metaGroupIds);
+            }
         } else {
             validateBuildingGroupBulkScope(explicitAcademicYears, buildingCodes, explicitBuildingGroup);
             if (!buildingCodes.isEmpty()) {
@@ -163,15 +175,17 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
     @Override
     public List<ManualLoadEntry> findAll(String academicYear, String numberSchoolBuilding, String campusAddress) {
+        return findAll(academicYear, numberSchoolBuilding, campusAddress, null);
+    }
+
+    @Override
+    public List<ManualLoadEntry> findAll(String academicYear, String numberSchoolBuilding, String campusAddress, Long schoolBuildingId) {
+        Long resolvedSchoolBuildingId = resolveOptionalSchoolBuildingIdForAddressScope(schoolBuildingId, campusAddress);
+        if (resolvedSchoolBuildingId != null) {
+            return manualLoadEntryRepository.findAllByAcademicYearAndSchoolBuildingId(academicYear, resolvedSchoolBuildingId);
+        }
         if (numberSchoolBuilding == null || numberSchoolBuilding.isBlank()) {
             return findAll(academicYear);
-        }
-        if (campusAddress != null && !campusAddress.isBlank()) {
-            return manualLoadEntryRepository.findAllByAcademicYearAndBuildingAddress(
-                    academicYear,
-                    numberSchoolBuilding.trim(),
-                    campusAddress.trim()
-            );
         }
         return manualLoadEntryRepository.findAllByAcademicYearAndNumberSchoolBuildingIgnoreCase(
                 academicYear,
@@ -209,10 +223,17 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     @Override
     @Transactional
     public void clearByBuildingAddress(String academicYear, String numberSchoolBuilding, String campusAddress) {
-        if (numberSchoolBuilding == null || numberSchoolBuilding.isBlank() || campusAddress == null || campusAddress.isBlank()) {
-            throw new IllegalArgumentException("building and campusAddress are required");
+        Long schoolBuildingId = resolveSchoolBuildingIdForAddressScope(null, campusAddress);
+        clearBySchoolBuilding(academicYear, schoolBuildingId);
+    }
+
+    @Override
+    @Transactional
+    public void clearBySchoolBuilding(String academicYear, Long schoolBuildingId) {
+        if (schoolBuildingId == null) {
+            throw new IllegalArgumentException("schoolBuildingId is required for BUILDING_ADDRESS scope");
         }
-        manualLoadEntryRepository.deleteByAcademicYearAndBuildingAddress(academicYear, numberSchoolBuilding.trim(), campusAddress.trim());
+        manualLoadEntryRepository.deleteByAcademicYearAndSchoolBuildingId(academicYear, schoolBuildingId);
     }
 
     @Override
@@ -295,6 +316,10 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             header.createCell(9).setCellValue("Уровень");
             header.createCell(10).setCellValue("ФИО педагога");
             header.createCell(11).setCellValue("ROW_KEY");
+            header.createCell(12).setCellValue("CLASS_ID");
+            header.createCell(13).setCellValue("META_GROUP_ID");
+            header.createCell(14).setCellValue("TEACHER_ID");
+            header.createCell(15).setCellValue("SUBJECT_ID");
 
             int rowNum = 1;
             for (ManualLoadTemplateRow row : templateRows) {
@@ -311,9 +336,13 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 excelRow.createCell(9).setCellValue(row.educationLevel().name());
                 excelRow.createCell(10).setCellValue(row.fioTeacher() == null ? "" : row.fioTeacher());
                 excelRow.createCell(11).setCellValue(row.rowKey());
+                if (row.classId() != null) excelRow.createCell(12).setCellValue(row.classId());
+                if (row.metaGroupId() != null) excelRow.createCell(13).setCellValue(row.metaGroupId());
+                if (row.teacherId() != null) excelRow.createCell(14).setCellValue(row.teacherId());
+                if (row.subjectId() != null) excelRow.createCell(15).setCellValue(row.subjectId());
             }
 
-            for (int i = 0; i <= 11; i++) {
+            for (int i = 0; i <= 15; i++) {
                 sheet.autoSizeColumn(i);
             }
             workbook.write(out);
@@ -818,6 +847,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             if (sheet == null) {
                 throw new IllegalArgumentException("В файле отсутствует лист LOAD_EDITABLE");
             }
+            validateManualLoadImportHeaders(sheet);
             for (int i = 1; i <= sheet.getLastRowNum(); i++) {
                 Row row = sheet.getRow(i);
                 if (row == null) continue;
@@ -831,15 +861,25 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     errors.add("Строка " + (i + 1) + ": учебный год " + rowYear + " не совпадает с выбранным " + academicYear);
                     continue;
                 }
-                String fio = readCell(row, 10).trim();
-                if (fio.isBlank()) {
-                    fio = "Вакансия";
-                } else if (!fio.toLowerCase(Locale.ROOT).contains("вакан")) {
-                    TeacherDirectoryEntry teacher = teacherDirectoryRepository.findByFioTeacherIgnoreCase(fio).orElse(null);
-                    if (teacher == null) {
-                        errors.add("Строка " + (i + 1) + ": педагог не найден в справочнике — " + fio);
-                        continue;
-                    }
+                Long classId = parseLong(readCell(row, 12));
+                Long metaGroupId = parseLong(readCell(row, 13));
+                Long teacherId = parseLong(readCell(row, 14));
+                Long subjectId = parseLong(readCell(row, 15));
+                TeacherDirectoryEntry teacherForImport = null;
+                SubjectCatalogEntry subjectForImport = null;
+                try {
+                    validateStrictImportIds(academicYear, classId, metaGroupId, teacherId, subjectId, i + 1);
+                    teacherForImport = teacherDirectoryRepository.findById(teacherId)
+                            .orElseThrow(() -> new IllegalArgumentException("teacher_id не найден в справочнике — " + teacherId));
+                    subjectForImport = subjectCatalogRepository.findById(subjectId)
+                            .orElseThrow(() -> new IllegalArgumentException("subject_id не найден в справочнике — " + subjectId));
+                } catch (IllegalArgumentException ex) {
+                    errors.add("Строка " + (i + 1) + ": " + ex.getMessage());
+                    continue;
+                }
+                String fio = teacherForImport.getFioTeacher();
+                if (!fio.toLowerCase(Locale.ROOT).contains("вакан")) {
+                    TeacherDirectoryEntry teacher = teacherForImport;
                     LocalDate dismissalDate = teacher.getDismissalDate();
                     LocalDate from = parseDate(readCell(row, 6));
                     LocalDate to = parseDate(readCell(row, 7));
@@ -856,7 +896,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 request.setAcademicYear(academicYear);
                 request.setNumberSchoolBuilding(readCell(row, 1));
                 request.setClassName(readCell(row, 2));
-                request.setSubjectName(readCell(row, 3));
+                request.setSubjectName(subjectForImport.getSubjectName());
+                request.setSubjectId(subjectId);
                 request.setGroupNameEducationalPlan(emptyToNull(readCell(row, 4)));
                 request.setStudyPeriod(parseStudyPeriod(readCell(row, 5)));
                 request.setLoadFromDate(parseDate(readCell(row, 6)));
@@ -866,8 +907,12 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 request.setGroupLoad(request.getGroupNameEducationalPlan() == null ? null : load);
                 request.setEducationLevel(parseEducationLevel(readCell(row, 9)));
                 request.setFioTeacher(fio);
+                request.setTeacherId(teacherId);
+                request.setClassId(classId);
+                request.setMetaGroupId(metaGroupId);
                 try {
                     validate(request);
+                    validateImportCurriculumRule(academicYear, request, i + 1);
                 } catch (Exception e) {
                     errors.add("Строка " + (i + 1) + ": " + e.getMessage());
                     continue;
@@ -882,14 +927,16 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             throw new IllegalArgumentException("Импорт отклонён: в файле нет строк для загрузки" + details);
         }
         if (!errors.isEmpty()) {
-            log.warn("Импорт нагрузки выполнен частично: пропущено {} строк(и): {}", errors.size(), String.join(" | ", errors));
+            throw new IllegalArgumentException("Импорт отклонён: " + String.join(" | ", errors));
         }
         return createBulk(requests);
     }
 
     @Override
     public ManualLoadStatsResponse buildStats(String academicYear, String numberSchoolBuilding, int page, int pageSize) {
-        List<CurriculumPlanEntry> curriculum = curriculumPlanService.findAll(academicYear, numberSchoolBuilding);
+        List<CurriculumPlanEntry> curriculum = curriculumPlanService.findAll(academicYear, numberSchoolBuilding).stream()
+                .filter(this::contributesToManualLoad)
+                .toList();
         List<ManualLoadEntry> manual = findAll(academicYear, numberSchoolBuilding);
 
         Map<String, String> subjectAreaByName = new HashMap<>();
@@ -949,7 +996,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
     @Override
     public ManualLoadHealthResponse buildHealth(String academicYear, String numberSchoolBuilding) {
-        List<CurriculumPlanEntry> curriculum = curriculumPlanService.findAll(academicYear, numberSchoolBuilding);
+        List<CurriculumPlanEntry> curriculum = curriculumPlanService.findAll(academicYear, numberSchoolBuilding).stream()
+                .filter(this::contributesToManualLoad)
+                .toList();
         List<ManualLoadEntry> manual = findAll(academicYear, numberSchoolBuilding);
         java.util.Set<String> assignedKeys = manual.stream()
                 .map(this::healthSoftKey)
@@ -1043,6 +1092,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private List<ManualLoadTemplateRow> buildTemplateRows(String academicYear) {
         List<CurriculumPlanEntry> curriculum = curriculumPlanService.findAll(academicYear).stream()
                 .filter(row -> !row.isDeprecated())
+                .filter(this::contributesToManualLoad)
                 .toList();
         Map<String, ManualLoadEntry> existingByKey = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
                 .collect(java.util.stream.Collectors.toMap(this::manualRowKey, java.util.function.Function.identity(), (a, b) -> a));
@@ -1094,6 +1144,10 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 loadHours,
                 level,
                 "",
+                null,
+                curriculum.getSubjectId(),
+                manualClassId(curriculum),
+                manualMetaGroupId(curriculum),
                 exportRowKey(academicYear, curriculum.getNumberSchoolBuilding(), curriculum.getClassName(), curriculum.getSubjectName(), groupName, studyPeriod, range.startDate(), range.endDate(), level)
         );
         ManualLoadEntry existing = existingByKey.get(template.rowKey());
@@ -1121,6 +1175,10 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     template.load(),
                     template.educationLevel(),
                     existing.getFioTeacher(),
+                    existing.getTeacherId(),
+                    template.subjectId(),
+                    template.classId(),
+                    template.metaGroupId(),
                     template.rowKey()
             );
         }
@@ -1200,28 +1258,87 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         return classIds;
     }
 
-    private void validateAddressScopeClassIds(String academicYear, String numberSchoolBuilding, String campusAddress, java.util.Set<Long> classIds) {
-        if (academicYear == null || academicYear.isBlank() || numberSchoolBuilding == null || numberSchoolBuilding.isBlank() || campusAddress == null || campusAddress.isBlank()) {
-            throw new IllegalArgumentException("academicYear, numberSchoolBuilding and campusAddress are required for BUILDING_ADDRESS scope");
+    private java.util.Set<Long> scopedMetaGroupIds(List<ManualLoadEntry> entries) {
+        java.util.Set<Long> metaGroupIds = new java.util.LinkedHashSet<>();
+        entries.stream().map(ManualLoadEntry::getMetaGroupId).filter(java.util.Objects::nonNull).forEach(metaGroupIds::add);
+        return metaGroupIds;
+    }
+
+    private void validateAddressScopeTargets(String academicYear, Long schoolBuildingId, java.util.Set<Long> classIds, java.util.Set<Long> metaGroupIds) {
+        if (academicYear == null || academicYear.isBlank() || schoolBuildingId == null) {
+            throw new IllegalArgumentException("academicYear and schoolBuildingId are required for BUILDING_ADDRESS scope");
         }
-        if (classIds == null || classIds.isEmpty()) {
-            throw new IllegalArgumentException("classIds are required for BUILDING_ADDRESS scope");
+        boolean hasClasses = classIds != null && !classIds.isEmpty();
+        boolean hasMetaGroups = metaGroupIds != null && !metaGroupIds.isEmpty();
+        if (!hasClasses && !hasMetaGroups) {
+            throw new IllegalArgumentException("classIds or metaGroupIds are required for BUILDING_ADDRESS scope");
         }
-        java.util.Map<Long, ClassroomLeadershipEntry> classesById = classroomLeadershipRepository.findAllById(classIds).stream()
-                .collect(java.util.stream.Collectors.toMap(ClassroomLeadershipEntry::getId, java.util.function.Function.identity()));
-        java.util.List<Long> invalidIds = classIds.stream()
-                .filter(id -> !classBelongsToAddressScope(classesById.get(id), academicYear, numberSchoolBuilding, campusAddress))
-                .toList();
-        if (!invalidIds.isEmpty()) {
-            throw new IllegalArgumentException("classIds do not belong to selected building/address scope: " + invalidIds);
+        if (hasClasses) {
+            java.util.Map<Long, ClassroomLeadershipEntry> classesById = classroomLeadershipRepository.findAllById(classIds).stream()
+                    .collect(java.util.stream.Collectors.toMap(ClassroomLeadershipEntry::getId, java.util.function.Function.identity()));
+            java.util.List<Long> invalidIds = classIds.stream()
+                    .filter(id -> !classBelongsToAddressScope(classesById.get(id), academicYear, schoolBuildingId))
+                    .toList();
+            if (!invalidIds.isEmpty()) {
+                throw new IllegalArgumentException("classIds do not belong to selected schoolBuildingId=" + schoolBuildingId + ": " + invalidIds);
+            }
+        }
+        if (hasMetaGroups) {
+            java.util.Map<Long, MetaGroup> metaGroupsById = metaGroupRepository.findAllById(metaGroupIds).stream()
+                    .collect(java.util.stream.Collectors.toMap(MetaGroup::getId, java.util.function.Function.identity()));
+            java.util.List<Long> invalidIds = metaGroupIds.stream()
+                    .filter(id -> !metaGroupBelongsToAddressScope(metaGroupsById.get(id), schoolBuildingId))
+                    .toList();
+            if (!invalidIds.isEmpty()) {
+                throw new IllegalArgumentException("metaGroupIds do not belong to selected schoolBuildingId=" + schoolBuildingId + ": " + invalidIds);
+            }
         }
     }
 
-    private boolean classBelongsToAddressScope(ClassroomLeadershipEntry entry, String academicYear, String numberSchoolBuilding, String campusAddress) {
+    private boolean classBelongsToAddressScope(ClassroomLeadershipEntry entry, String academicYear, Long schoolBuildingId) {
         return entry != null
                 && normalizeToken(entry.getAcademicYear()).equals(normalizeToken(academicYear))
-                && normalizeToken(entry.getNumberSchoolBuilding()).equals(normalizeToken(numberSchoolBuilding))
-                && normalizeToken(entry.getCampusAddress()).equals(normalizeToken(campusAddress));
+                && java.util.Objects.equals(entry.getSchoolBuildingId(), schoolBuildingId);
+    }
+
+    private boolean metaGroupBelongsToAddressScope(MetaGroup metaGroup, Long schoolBuildingId) {
+        if (metaGroup == null) {
+            return false;
+        }
+        if (metaGroup.getSchoolBuildingId() == null) {
+            throw new IllegalArgumentException("Для метагруппы не выбрана физическая площадка проведения. Укажите площадку в редактировании метагруппы.");
+        }
+        return java.util.Objects.equals(metaGroup.getSchoolBuildingId(), schoolBuildingId);
+    }
+
+    private Long resolveOptionalSchoolBuildingIdForAddressScope(Long schoolBuildingId, String campusAddress) {
+        if (schoolBuildingId != null) {
+            return schoolBuildingId;
+        }
+        if (campusAddress == null || campusAddress.isBlank()) {
+            return null;
+        }
+        return resolveSchoolBuildingIdForAddressScope(null, campusAddress);
+    }
+
+    private Long resolveSchoolBuildingIdForAddressScope(Long schoolBuildingId, String campusAddress) {
+        if (schoolBuildingId != null) {
+            return schoolBuildingId;
+        }
+        if (campusAddress == null || campusAddress.isBlank()) {
+            throw new IllegalArgumentException("schoolBuildingId is required for BUILDING_ADDRESS scope");
+        }
+        java.util.List<SchoolBuilding> matches = schoolBuildingRepository.findAll().stream()
+                .filter(building -> normalizeToken(building.getAddress()).equals(normalizeToken(campusAddress)))
+                .toList();
+        if (matches.isEmpty()) {
+            throw new IllegalArgumentException("schoolBuildingId is required: physical site not found by campusAddress=" + campusAddress);
+        }
+        java.util.List<Long> ids = matches.stream().map(SchoolBuilding::getId).filter(java.util.Objects::nonNull).distinct().toList();
+        if (ids.size() != 1) {
+            throw new IllegalArgumentException("schoolBuildingId is ambiguous for campusAddress=" + campusAddress + ": " + ids);
+        }
+        return ids.get(0);
     }
 
     private void validateBuildingGroupBulkScope(java.util.Set<String> academicYears, java.util.Set<String> buildingCodes, boolean explicitBuildingGroup) {
@@ -1298,6 +1415,92 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         return Integer.parseInt(value);
     }
 
+    private Long parseLong(String raw) {
+        String value = String.valueOf(raw == null ? "" : raw).trim();
+        if (value.isBlank()) return null;
+        return new BigDecimal(value).longValue();
+    }
+
+    private void validateManualLoadImportHeaders(Sheet sheet) {
+        Row header = sheet.getRow(0);
+        if (header == null
+                || !"CLASS_ID".equalsIgnoreCase(readCell(header, 12).trim())
+                || !"META_GROUP_ID".equalsIgnoreCase(readCell(header, 13).trim())
+                || !"TEACHER_ID".equalsIgnoreCase(readCell(header, 14).trim())
+                || !"SUBJECT_ID".equalsIgnoreCase(readCell(header, 15).trim())) {
+            throw new IllegalArgumentException("Файл создан в старом формате. Выгрузите новый шаблон нагрузки и перенесите данные в него.");
+        }
+    }
+
+    private void validateStrictImportIds(String academicYear,
+                                         Long classId,
+                                         Long metaGroupId,
+                                         Long teacherId,
+                                         Long subjectId,
+                                         int rowNumber) {
+        if (teacherId == null) {
+            throw new IllegalArgumentException("TEACHER_ID is required");
+        }
+        if (subjectId == null) {
+            throw new IllegalArgumentException("SUBJECT_ID is required");
+        }
+        if (classId == null && metaGroupId == null) {
+            throw new IllegalArgumentException("укажите ровно один FK: CLASS_ID или META_GROUP_ID");
+        }
+        if (classId != null && metaGroupId != null) {
+            throw new IllegalArgumentException("нельзя одновременно указывать CLASS_ID и META_GROUP_ID");
+        }
+        if (classId != null && classroomLeadershipRepository.findById(classId).isEmpty()) {
+            throw new IllegalArgumentException("class_id не найден: " + classId);
+        }
+        if (metaGroupId != null && metaGroupRepository.findById(metaGroupId).isEmpty()) {
+            throw new IllegalArgumentException("meta_group_id не найден: " + metaGroupId);
+        }
+        if (teacherDirectoryRepository.findById(teacherId).isEmpty()) {
+            throw new IllegalArgumentException("teacher_id не найден в справочнике — " + teacherId);
+        }
+        if (subjectCatalogRepository.findById(subjectId).isEmpty()) {
+            throw new IllegalArgumentException("subject_id не найден в справочнике — " + subjectId);
+        }
+    }
+
+    private void validateImportCurriculumRule(String academicYear, ManualLoadEntryRequest request, int rowNumber) {
+        StudyPeriod period = resolveStudyPeriod(academicYear, request.getClassName(), request.getStudyPeriod(), request.getLoadFromDate(), request.getLoadToDate());
+        Long subjectId = request.getSubjectId();
+        CurriculumPlanEntry rule;
+        if (request.getMetaGroupId() != null) {
+            rule = findRuleByMetaGroupIdAndSubjectId(academicYear, request.getMetaGroupId(), subjectId, request.getEducationLevel(), period)
+                    .orElseThrow(() -> new IllegalArgumentException("не найдено curriculum-правило метагруппы для meta_group_id=" + request.getMetaGroupId() + " и subject_id=" + subjectId));
+            if (!isExplicitMetaGroupRow(rule)) {
+                throw new IllegalArgumentException("curriculum-правило meta_group_id=" + request.getMetaGroupId() + " не является explicit строкой метагруппы");
+            }
+            return;
+        }
+        rule = findRuleByClassIdAndSubjectId(academicYear, request.getClassId(), subjectId, request.getEducationLevel(), period)
+                .orElseThrow(() -> new IllegalArgumentException("не найдено curriculum-правило обычного класса для class_id=" + request.getClassId() + " и subject_id=" + subjectId));
+        if (!contributesToManualLoad(rule)) {
+            throw new IllegalArgumentException("ordinary member row метагруппы не должна импортироваться как отдельная нагрузка");
+        }
+    }
+
+    private java.util.Optional<CurriculumPlanEntry> findRuleByClassIdAndSubjectId(String academicYear, Long classId, Long subjectId, EducationLevel educationLevel, StudyPeriod effectiveStudyPeriod) {
+        return candidateStudyPeriods(effectiveStudyPeriod).stream()
+                .map(period -> curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                        academicYear, classId, subjectId, educationLevel, period))
+                .filter(java.util.Optional::isPresent)
+                .map(java.util.Optional::get)
+                .findFirst();
+    }
+
+    private java.util.Optional<CurriculumPlanEntry> findRuleByMetaGroupIdAndSubjectId(String academicYear, Long metaGroupId, Long subjectId, EducationLevel educationLevel, StudyPeriod effectiveStudyPeriod) {
+        return candidateStudyPeriods(effectiveStudyPeriod).stream()
+                .map(period -> curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                        academicYear, metaGroupId, subjectId, educationLevel, period))
+                .filter(java.util.Optional::isPresent)
+                .map(java.util.Optional::get)
+                .findFirst();
+    }
+
     private StudyPeriod parseStudyPeriod(String raw) {
         String value = String.valueOf(raw == null ? "" : raw).trim().toUpperCase(Locale.ROOT);
         if (value.isBlank() || "ГОД".equals(value)) return StudyPeriod.YEAR;
@@ -1320,20 +1523,13 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
     private Long resolveClassId(String academicYear, ManualLoadEntryRequest request) {
-        if (request.getClassId() != null) {
-            return request.getClassId();
+        if (request.getClassId() == null) {
+            throw new IllegalArgumentException("class_id is required for ordinary manual-load row");
         }
-        if (request.getNumberSchoolBuilding() == null || request.getClassName() == null) {
-            return null;
+        if (classroomLeadershipRepository.findById(request.getClassId()).isEmpty()) {
+            throw new IllegalArgumentException("class_id не найден: " + request.getClassId());
         }
-        return classroomLeadershipRepository
-                .findByAcademicYearAndNumberSchoolBuildingAndClassName(
-                        academicYear,
-                        request.getNumberSchoolBuilding().trim(),
-                        ClassNameNormalizer.normalize(request.getClassName())
-                )
-                .map(ClassroomLeadershipEntry::getId)
-                .orElse(null);
+        return request.getClassId();
     }
 
     private ManualLoadEntry toEntity(ManualLoadEntryRequest request) {
@@ -1341,15 +1537,19 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         String effectiveAcademicYear = resolveAcademicYearOrDefault(request.getAcademicYear());
         ManualLoadEntry entity = new ManualLoadEntry();
         entity.setAcademicYear(effectiveAcademicYear);
-        entity.setFioTeacher(request.getFioTeacher().trim());
+        TeacherDirectoryEntry teacher = resolveTeacher(request);
+        entity.setTeacherId(teacher.getId());
+        entity.setFioTeacher(teacher.getFioTeacher());
         entity.setNumberSchoolBuilding(request.getNumberSchoolBuilding().trim());
-        entity.setClassId(resolveClassId(effectiveAcademicYear, request));
-        SubjectCatalogEntry subject = subjectCatalogRepository.findAll().stream()
-                .filter(s -> s.getSubjectName().equalsIgnoreCase(request.getSubjectName().trim()))
-                .findFirst()
-                .orElse(null);
+        boolean explicitMetaGroup = isExplicitMetaGroupRequest(request);
+        entity.setClassId(explicitMetaGroup ? null : resolveClassId(effectiveAcademicYear, request));
+        entity.setMetaGroupId(explicitMetaGroup ? resolveMetaGroupId(effectiveAcademicYear, request) : null);
+        if (explicitMetaGroup) {
+            validateMetaGroupHasPhysicalSite(entity.getMetaGroupId());
+        }
+        SubjectCatalogEntry subject = resolveSubject(request);
         entity.setSubject(subject);
-        entity.setSubjectName(subject == null ? request.getSubjectName().trim() : subject.getSubjectName());
+        entity.setSubjectName(subject.getSubjectName());
         entity.setClassName(ClassNameNormalizer.normalize(request.getClassName()));
         entity.setLoad(request.getLoad());
         entity.setGroupNameEducationalPlan(request.getGroupNameEducationalPlan());
@@ -1362,16 +1562,27 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         return entity;
     }
 
+
+    private TeacherDirectoryEntry resolveTeacher(ManualLoadEntryRequest request) {
+        if (request.getTeacherId() == null) {
+            throw new IllegalArgumentException("teacher_id is required for manual-load row");
+        }
+        return teacherDirectoryRepository.findById(request.getTeacherId())
+                .orElseThrow(() -> new IllegalArgumentException("teacher_id не найден в справочнике: " + request.getTeacherId()));
+    }
+
+    private SubjectCatalogEntry resolveSubject(ManualLoadEntryRequest request) {
+        if (request.getSubjectId() == null) {
+            throw new IllegalArgumentException("subject_id is required for manual-load row");
+        }
+        return subjectCatalogRepository.findById(request.getSubjectId())
+                .orElseThrow(() -> new IllegalArgumentException("subject_id не найден в справочнике: " + request.getSubjectId()));
+    }
+
     private CurriculumPlanEntry validateAgainstCurriculum(ManualLoadEntry entry) {
         StudyPeriod effectiveStudyPeriod = resolveStudyPeriod(entry.getAcademicYear(), entry.getClassName(), entry.getStudyPeriod(), entry.getLoadFromDate(), entry.getLoadToDate());
-        CurriculumPlanEntry rule = findRuleWithFallback(
-                entry.getAcademicYear(),
-                entry.getNumberSchoolBuilding().trim(),
-                entry.getClassName(),
-                entry.getSubjectName(),
-                entry.getEducationLevel(),
-                effectiveStudyPeriod
-        ).orElseThrow(() -> new IllegalArgumentException("Curriculum rule not found for class=" + entry.getClassName() +
+        CurriculumPlanEntry rule = findRuleByFk(entry, effectiveStudyPeriod)
+                .orElseThrow(() -> new IllegalArgumentException("Curriculum rule not found for class=" + entry.getClassName() +
                 ", subject=" + entry.getSubjectName() + ", level=" + entry.getEducationLevel() + ", period=" + effectiveStudyPeriod));
 
         int effectiveLoad = entry.getGroupLoad() != null ? entry.getGroupLoad() : entry.getLoad();
@@ -1404,27 +1615,83 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
 
-    private java.util.Optional<CurriculumPlanEntry> findRuleWithFallback(String academicYear,
-                                                                         String numberSchoolBuilding,
-                                                                         String className,
-                                                                         String subjectName,
-                                                                         org.school.personalLoad.model.EducationLevel educationLevel,
-                                                                         StudyPeriod effectiveStudyPeriod) {
+    private boolean contributesToManualLoad(CurriculumPlanEntry row) {
+        if (row == null) {
+            return false;
+        }
+        if (isExplicitMetaGroupRow(row)) {
+            return true;
+        }
+        return !row.isMetaGroup();
+    }
+
+    private boolean isExplicitMetaGroupRow(CurriculumPlanEntry row) {
+        return row.getMetaGroupId() != null || isExplicitMetaGroupClassName(row.getClassName());
+    }
+
+    private boolean isExplicitMetaGroupRequest(ManualLoadEntryRequest request) {
+        return request.getMetaGroupId() != null || isExplicitMetaGroupClassName(request.getClassName());
+    }
+
+    private boolean isExplicitMetaGroupEntry(ManualLoadEntry entry) {
+        return entry.getMetaGroupId() != null || isExplicitMetaGroupClassName(entry.getClassName());
+    }
+
+    private boolean isExplicitMetaGroupClassName(String className) {
+        return ClassNameNormalizer.normalize(className).toUpperCase(Locale.ROOT).startsWith("МГ:");
+    }
+
+    private Long manualClassId(CurriculumPlanEntry row) {
+        return isExplicitMetaGroupRow(row) ? null : row.getClassId();
+    }
+
+    private Long manualMetaGroupId(CurriculumPlanEntry row) {
+        return isExplicitMetaGroupRow(row) ? row.getMetaGroupId() : null;
+    }
+
+    private Long resolveMetaGroupId(String academicYear, ManualLoadEntryRequest request) {
+        if (request.getMetaGroupId() == null) {
+            throw new IllegalArgumentException("meta_group_id is required for metagroup load row");
+        }
+        if (metaGroupRepository.findById(request.getMetaGroupId()).isEmpty()) {
+            throw new IllegalArgumentException("Метагруппа не найдена: " + request.getMetaGroupId());
+        }
+        return request.getMetaGroupId();
+    }
+
+    private void validateMetaGroupHasPhysicalSite(Long metaGroupId) {
+        MetaGroup metaGroup = metaGroupRepository.findById(metaGroupId)
+                .orElseThrow(() -> new IllegalArgumentException("Метагруппа не найдена: " + metaGroupId));
+        if (metaGroup.getSchoolBuildingId() == null) {
+            throw new IllegalArgumentException("Для метагруппы не выбрана физическая площадка проведения. Укажите площадку в редактировании метагруппы.");
+        }
+    }
+
+    private java.util.Optional<CurriculumPlanEntry> findRuleByFk(ManualLoadEntry entry, StudyPeriod effectiveStudyPeriod) {
+        Long subjectId = entry.getSubjectId();
+        if (subjectId == null) {
+            return java.util.Optional.empty();
+        }
+        if (isExplicitMetaGroupEntry(entry)) {
+            if (entry.getMetaGroupId() == null) {
+                return java.util.Optional.empty();
+            }
+            return findRuleByMetaGroupIdAndSubjectId(entry.getAcademicYear(), entry.getMetaGroupId(), subjectId, entry.getEducationLevel(), effectiveStudyPeriod);
+        }
+        if (entry.getClassId() == null) {
+            return java.util.Optional.empty();
+        }
+        return findRuleByClassIdAndSubjectId(entry.getAcademicYear(), entry.getClassId(), subjectId, entry.getEducationLevel(), effectiveStudyPeriod)
+                .filter(row -> !isExplicitMetaGroupRow(row));
+    }
+
+    private java.util.List<StudyPeriod> candidateStudyPeriods(StudyPeriod effectiveStudyPeriod) {
         java.util.List<StudyPeriod> candidates = new java.util.ArrayList<>();
         candidates.add(effectiveStudyPeriod == null ? StudyPeriod.YEAR : effectiveStudyPeriod);
         candidates.add(StudyPeriod.YEAR);
         candidates.add(StudyPeriod.H1);
         candidates.add(StudyPeriod.H2);
-        return candidates.stream()
-                .distinct()
-                .map(period -> curriculumPlanService.findRule(academicYear, numberSchoolBuilding,
-                        ClassNameNormalizer.normalize(className),
-                        subjectName.trim(),
-                        educationLevel,
-                        period))
-                .filter(java.util.Optional::isPresent)
-                .map(java.util.Optional::get)
-                .findFirst();
+        return candidates.stream().distinct().toList();
     }
 
     private StudyPeriod resolveStudyPeriod(String academicYear,
@@ -1497,6 +1764,10 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                                          Integer load,
                                          EducationLevel educationLevel,
                                          String fioTeacher,
+                                         Long teacherId,
+                                         Long subjectId,
+                                         Long classId,
+                                         Long metaGroupId,
                                          String rowKey) {}
 
     private void validate(ManualLoadEntryRequest request) {

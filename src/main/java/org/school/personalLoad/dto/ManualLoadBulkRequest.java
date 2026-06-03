@@ -13,6 +13,7 @@ public class ManualLoadBulkRequest {
     private String scopeType;
     private String numberSchoolBuilding;
     private String campusAddress;
+    private Long schoolBuildingId;
     private Set<Long> classIds = new LinkedHashSet<>();
     private List<ManualLoadEntryRequest> rows = new ArrayList<>();
 }
