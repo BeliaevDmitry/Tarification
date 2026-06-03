@@ -166,6 +166,14 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         numberStyle.cloneStyleFrom(baseStyle);
         numberStyle.setAlignment(HorizontalAlignment.CENTER);
 
+        CellStyle summaryStyle = workbook.createCellStyle();
+        summaryStyle.cloneStyleFrom(numberStyle);
+        Font summaryFont = workbook.createFont();
+        summaryFont.setBold(true);
+        summaryStyle.setFont(summaryFont);
+        summaryStyle.setFillForegroundColor(IndexedColors.LEMON_CHIFFON.getIndex());
+        summaryStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
         Row titleRow = sheet.createRow(0);
         titleRow.setHeightInPoints(28);
         titleRow.createCell(0).setCellValue("Учебный план по " + parallel + " параллели, " + academicYear);
@@ -232,6 +240,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             }
         }
 
+        rowNum = appendParallelTotalRows(sheet, rowNum, entries, classColumns, summaryStyle);
+
         for (int r = 1; r < rowNum; r++) {
             Row row = sheet.getRow(r);
             if (row == null) continue;
@@ -247,6 +257,43 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         for (int c = 2; c <= classColumns.size() + 1; c++) {
             sheet.setColumnWidth(c, 3000);
         }
+    }
+
+    private int appendParallelTotalRows(Sheet sheet,
+                                        int startRow,
+                                        List<CurriculumPlanEntry> entries,
+                                        List<ClassColumn> classColumns,
+                                        CellStyle style) {
+        int rowNum = startRow;
+        rowNum = appendParallelTotalRow(sheet, rowNum, "Итого основная часть", entries, classColumns, style, CurriculumPart.CORE);
+        rowNum = appendParallelTotalRow(sheet, rowNum, "Итого формируемая часть", entries, classColumns, style, CurriculumPart.FORMABLE);
+        rowNum = appendParallelTotalRow(sheet, rowNum, "Итого основная+формируемая часть", entries, classColumns, style, CurriculumPart.CORE, CurriculumPart.FORMABLE);
+        return appendParallelTotalRow(sheet, rowNum, "Итого внеурочная часть", entries, classColumns, style, CurriculumPart.EXTRACURRICULAR);
+    }
+
+    private int appendParallelTotalRow(Sheet sheet,
+                                       int rowNum,
+                                       String title,
+                                       List<CurriculumPlanEntry> entries,
+                                       List<ClassColumn> classColumns,
+                                       CellStyle style,
+                                       CurriculumPart... parts) {
+        Set<CurriculumPart> partSet = new HashSet<>(Arrays.asList(parts));
+        List<CurriculumPlanEntry> totalEntries = entries.stream()
+                .filter(e -> partSet.contains(e.getCurriculumPart() == null ? CurriculumPart.CORE : e.getCurriculumPart()))
+                .toList();
+        Row row = sheet.createRow(rowNum);
+        row.createCell(0).setCellValue(title);
+        row.createCell(1).setCellValue("");
+        row.getCell(0).setCellStyle(style);
+        row.getCell(1).setCellStyle(style);
+        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(rowNum, rowNum, 0, 1));
+        for (int i = 0; i < classColumns.size(); i++) {
+            Cell cell = row.createCell(i + 2);
+            cell.setCellValue(renderHoursForColumn(totalEntries, classColumns.get(i)));
+            cell.setCellStyle(style);
+        }
+        return rowNum + 1;
     }
 
     private void writeMetaRow(Sheet sheet, int rowIndex, String title, List<ClassColumn> classColumns, java.util.function.Function<ClassColumn, String> valueFn, CellStyle style) {
@@ -1359,6 +1406,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         if (curriculumPart == CurriculumPart.CORE) return SubjectType.CORE;
         if (curriculumPart == CurriculumPart.FORMABLE) return SubjectType.FORMABLE;
         if (curriculumPart == CurriculumPart.EXTRACURRICULAR) return SubjectType.EXTRACURRICULAR;
+        if (curriculumPart == CurriculumPart.CORRECTIONAL) return SubjectType.CORRECTIONAL;
 
         String value = String.valueOf(subjectName == null ? "" : subjectName).trim().toLowerCase(Locale.ROOT);
         if (value.contains("внеур") || value.contains("разговоры о важном")) {
