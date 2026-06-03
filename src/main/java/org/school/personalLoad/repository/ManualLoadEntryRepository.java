@@ -36,15 +36,15 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
                                                                             @Param("numberSchoolBuilding") String numberSchoolBuilding,
                                                                             @Param("campusAddress") String campusAddress);
     boolean existsByNumberSchoolBuildingIgnoreCase(String numberSchoolBuilding);
-    void deleteByAcademicYearAndNumberSchoolBuildingAndClassName(String academicYear, String numberSchoolBuilding, String className);
-
-    @Query(value = "select count(*) from manual_load_entry where academic_year = :academicYear and (class_id = :classId or (lower(number_school_building) = lower(:numberSchoolBuilding) and lower(class_name) = lower(:className)))", nativeQuery = true)
+    @Query(value = "select count(*) from manual_load_entry where academic_year = :academicYear and class_id = :classId", nativeQuery = true)
     long countClassTails(@Param("academicYear") String academicYear,
-                         @Param("classId") Long classId,
-                         @Param("numberSchoolBuilding") String numberSchoolBuilding,
-                         @Param("className") String className);
+                         @Param("classId") Long classId);
 
     void deleteAllByAcademicYear(String academicYear);
+
+    @Modifying
+    @Query(value = "delete from manual_load_entry where meta_group_id = :metaGroupId", nativeQuery = true)
+    void deleteByMetaGroupId(@Param("metaGroupId") Long metaGroupId);
 
     @Modifying
     @Query("delete from ManualLoadEntry m where m.academicYear = :academicYear and m.classId in :classIds")
@@ -74,18 +74,5 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
     @Modifying
     @Query("update ManualLoadEntry m set m.subjectName = :newName where lower(m.subjectName) = lower(:oldName)")
     int renameSubjectEverywhere(@Param("oldName") String oldName, @Param("newName") String newName);
-
-    @Modifying
-    @Query("""
-            update ManualLoadEntry m
-               set m.className = :newClassName,
-                   m.numberSchoolBuilding = :newBuilding
-             where m.academicYear = :academicYear
-               and lower(trim(m.className)) = lower(trim(:oldClassName))
-            """)
-    int renameClassEverywhere(@Param("academicYear") String academicYear,
-                              @Param("oldClassName") String oldClassName,
-                              @Param("newClassName") String newClassName,
-                              @Param("newBuilding") String newBuilding);
 
 }

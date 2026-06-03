@@ -2,13 +2,18 @@ package org.school.personalLoad.service.impl;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
 import org.school.personalLoad.dto.ManualLoadBulkRequest;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
+import org.school.personalLoad.dto.ManualLoadHealthResponse;
+import org.school.personalLoad.dto.ManualLoadStatsResponse;
+import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
@@ -17,6 +22,7 @@ import org.school.personalLoad.model.SalarySettings;
 import org.school.personalLoad.model.SubjectCatalogEntry;
 import org.school.personalLoad.model.SubjectType;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.SalarySettingsRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
@@ -30,6 +36,8 @@ import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.school.personalLoad.service.TarifficationProcessingService;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.List;
@@ -38,10 +46,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.anyString;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @ExtendWith(MockitoExtension.class)
@@ -55,6 +65,8 @@ class ManualLoadServiceImplBulkReplaceTest {
     private DatabaseService databaseService;
     @Mock
     private CurriculumPlanService curriculumPlanService;
+    @Mock
+    private CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     @Mock
     private StudyPeriodSettingService studyPeriodSettingService;
     @Mock
@@ -81,6 +93,7 @@ class ManualLoadServiceImplBulkReplaceTest {
                 tarifficationProcessingService,
                 databaseService,
                 curriculumPlanService,
+                curriculumPlanEntryRepository,
                 studyPeriodSettingService,
                 teacherDirectoryRepository,
                 subjectCatalogRepository,
@@ -210,6 +223,226 @@ class ManualLoadServiceImplBulkReplaceTest {
         verify(manualLoadEntryRepository).deleteByAcademicYearAndBuildingCodes("2025/2026", java.util.List.of("сп3"));
     }
 
+
+    @Test
+    void exportTemplateIncludesStandaloneClassOnceAndSkipsOrdinaryMetaMemberRows() throws Exception {
+        CurriculumPlanEntry standalone = curriculumRow("СП1", "5-А", "Математика", 5);
+        standalone.setClassId(101L);
+        CurriculumPlanEntry metaMember = curriculumRow("СП1", "5-Б", "Физика", 3);
+        metaMember.setClassId(102L);
+        metaMember.setMetaGroup(true);
+        CurriculumPlanEntry explicitMeta = curriculumRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3);
+        explicitMeta.setMetaGroupId(501L);
+
+        when(curriculumPlanService.findAll("2025/2026")).thenReturn(List.of(standalone, metaMember, explicitMeta));
+        when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of());
+        when(studyPeriodSettingService.resolveDateRange(anyString(), anyString(), any()))
+                .thenReturn(new StudyPeriodSettingService.DateRange(LocalDate.of(2025, 9, 1), LocalDate.of(2026, 5, 31)));
+
+        byte[] body = service.exportWorkbook("2025/2026");
+
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
+            var sheet = workbook.getSheet("LOAD_EDITABLE");
+            assertEquals(2, sheet.getLastRowNum());
+            assertEquals("Математика", sheet.getRow(1).getCell(3).getStringCellValue());
+            assertEquals(101L, (long) sheet.getRow(1).getCell(12).getNumericCellValue());
+            assertEquals("МГ:5 ФИЗИКА", sheet.getRow(2).getCell(2).getStringCellValue());
+            assertEquals(501L, (long) sheet.getRow(2).getCell(13).getNumericCellValue());
+            assertFalse(sheet.getRow(1).getCell(2).getStringCellValue().equals("5-Б"));
+            assertEquals("CLASS_ID", sheet.getRow(0).getCell(12).getStringCellValue());
+            assertEquals("META_GROUP_ID", sheet.getRow(0).getCell(13).getStringCellValue());
+        }
+    }
+
+    @Test
+    void explicitMetaGroupLoadRequestIsSavedByMetaGroupIdWithoutClassId() {
+        ManualLoadEntryRequest request = manualRequest("СП1", "МГ:5 ФИЗИКА", null);
+        request.setMetaGroupId(501L);
+        ManualLoadBulkRequest bulk = new ManualLoadBulkRequest();
+        bulk.setAcademicYear("2025/2026");
+        bulk.setScopeType("BUILDING_GROUP");
+        bulk.setNumberSchoolBuilding("СП1");
+        bulk.setRows(List.of(request));
+        when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<ManualLoadEntry> saved = service.createBulk(bulk);
+
+        assertEquals(1, saved.size());
+        assertEquals(501L, saved.get(0).getMetaGroupId());
+        assertEquals(null, saved.get(0).getClassId());
+    }
+
+    @Test
+    void statsAndHealthCountExplicitMetaGroupPlanWithoutOrdinaryMemberDuplicate() {
+        CurriculumPlanEntry metaMember = curriculumRow("СП1", "5-Б", "Физика", 3);
+        metaMember.setClassId(102L);
+        metaMember.setMetaGroup(true);
+        CurriculumPlanEntry explicitMeta = curriculumRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3);
+        explicitMeta.setMetaGroupId(501L);
+        ManualLoadEntry assignedMeta = manualRow("Иванов И.И.", "СП1", "МГ:5 ФИЗИКА", "Физика", 3);
+        assignedMeta.setMetaGroupId(501L);
+
+        when(curriculumPlanService.findAll("2025/2026", "СП1")).thenReturn(List.of(metaMember, explicitMeta));
+        when(manualLoadEntryRepository.findAllByAcademicYearAndNumberSchoolBuildingIgnoreCase("2025/2026", "СП1"))
+                .thenReturn(List.of(assignedMeta));
+        SubjectCatalogEntry subject = new SubjectCatalogEntry();
+        subject.setSubjectName("Физика");
+        subject.setSubjectAreaName("Естественные науки");
+        when(subjectCatalogRepository.findAll()).thenReturn(List.of(subject));
+
+        ManualLoadStatsResponse stats = service.buildStats("2025/2026", "СП1", 0, 20);
+        ManualLoadHealthResponse health = service.buildHealth("2025/2026", "СП1");
+
+        assertEquals(3, stats.getTotalPlanned());
+        assertEquals(3, stats.getTotalAssigned());
+        assertEquals(0, stats.getTotalUnassigned());
+        assertEquals(0, health.getUnassignedHours());
+    }
+
+    @Test
+    void validateMetaGroupLoadUsesMetaGroupIdRule() {
+        ManualLoadEntry assignedMeta = manualRow("Иванов И.И.", "СП1", "МГ:5 ФИЗИКА", "Физика", 3);
+        assignedMeta.setMetaGroupId(501L);
+        CurriculumPlanEntry explicitMeta = curriculumRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3);
+        explicitMeta.setMetaGroupId(501L);
+        when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(assignedMeta));
+        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", 501L, "Физика", EducationLevel.BASIC, StudyPeriod.YEAR))
+                .thenReturn(Optional.of(explicitMeta));
+        when(tarifficationProcessingService.addingGroup(any(), any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.processCurrentManualLoad("2025/2026");
+
+        verify(curriculumPlanEntryRepository).findFirstByAcademicYearAndMetaGroupIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", 501L, "Физика", EducationLevel.BASIC, StudyPeriod.YEAR);
+        verify(curriculumPlanService, never()).findRule(anyString(), anyString(), anyString(), anyString(), any(), any());
+    }
+
+
+    @Test
+    void importNewTemplateWithClassAndMetaGroupIdsPersistsFkRelations() throws Exception {
+        CurriculumPlanEntry ordinaryRule = curriculumRow("СП1", "5-А", "Математика", 5);
+        ordinaryRule.setClassId(101L);
+        CurriculumPlanEntry explicitMetaRule = curriculumRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3);
+        explicitMetaRule.setMetaGroupId(501L);
+        MockMultipartFile file = editableImportFile(true, List.of(
+                importRow("СП1", "5-А", "Математика", 5, 101L, null),
+                importRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3, null, 501L)
+        ));
+        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", 101L, "Математика", EducationLevel.BASIC, StudyPeriod.YEAR))
+                .thenReturn(Optional.of(ordinaryRule));
+        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", 501L, "Физика", EducationLevel.BASIC, StudyPeriod.YEAR))
+                .thenReturn(Optional.of(explicitMetaRule));
+        when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<ManualLoadEntry> saved = service.importWorkbook("2025/2026", file);
+
+        assertEquals(2, saved.size());
+        assertEquals(101L, saved.get(0).getClassId());
+        assertNull(saved.get(0).getMetaGroupId());
+        assertNull(saved.get(1).getClassId());
+        assertEquals(501L, saved.get(1).getMetaGroupId());
+    }
+
+    @Test
+    void importLegacyTemplateResolvesOrdinaryRowToClassId() throws Exception {
+        CurriculumPlanEntry ordinaryRule = curriculumRow("СП1", "5-А", "Математика", 5);
+        ordinaryRule.setClassId(101L);
+        MockMultipartFile file = editableImportFile(false, List.of(
+                importRow("СП1", "5-А", "Математика", 5, null, null)
+        ));
+        when(classroomLeadershipRepository.findAllByAcademicYearAndNumberSchoolBuildingAndClassName("2025/2026", "СП1", "5-А"))
+                .thenReturn(List.of(classEntry(101L, "СП1", "5-А", "ул. Первая, 1")));
+        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", 101L, "Математика", EducationLevel.BASIC, StudyPeriod.YEAR))
+                .thenReturn(Optional.of(ordinaryRule));
+        when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<ManualLoadEntry> saved = service.importWorkbook("2025/2026", file);
+
+        assertEquals(1, saved.size());
+        assertEquals(101L, saved.get(0).getClassId());
+        assertNull(saved.get(0).getMetaGroupId());
+    }
+
+    @Test
+    void importLegacyTemplateResolvesExplicitMetaGroupRowToMetaGroupId() throws Exception {
+        CurriculumPlanEntry explicitMetaRule = curriculumRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3);
+        explicitMetaRule.setMetaGroupId(501L);
+        MockMultipartFile file = editableImportFile(false, List.of(
+                importRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3, null, null)
+        ));
+        when(curriculumPlanEntryRepository.findAllByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", "СП1", "МГ:5 ФИЗИКА", "Физика", EducationLevel.BASIC, StudyPeriod.YEAR))
+                .thenReturn(List.of(explicitMetaRule));
+        when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<ManualLoadEntry> saved = service.importWorkbook("2025/2026", file);
+
+        assertEquals(1, saved.size());
+        assertNull(saved.get(0).getClassId());
+        assertEquals(501L, saved.get(0).getMetaGroupId());
+    }
+
+    @Test
+    void importLegacyTemplateSkipsOrdinaryMetaGroupMemberAndSavesExplicitMetaGroupOnly() throws Exception {
+        CurriculumPlanEntry metaMember = curriculumRow("СП1", "5-Б", "Физика", 3);
+        metaMember.setClassId(102L);
+        metaMember.setMetaGroup(true);
+        CurriculumPlanEntry explicitMetaRule = curriculumRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3);
+        explicitMetaRule.setMetaGroupId(501L);
+        MockMultipartFile file = editableImportFile(false, List.of(
+                importRow("СП1", "5-Б", "Физика", 3, null, null),
+                importRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3, null, null)
+        ));
+        when(classroomLeadershipRepository.findAllByAcademicYearAndNumberSchoolBuildingAndClassName("2025/2026", "СП1", "5-Б"))
+                .thenReturn(List.of(classEntry(102L, "СП1", "5-Б", "ул. Вторая, 2")));
+        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", 102L, "Физика", EducationLevel.BASIC, StudyPeriod.YEAR))
+                .thenReturn(Optional.of(metaMember));
+        when(curriculumPlanEntryRepository.findAllByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", "СП1", "МГ:5 ФИЗИКА", "Физика", EducationLevel.BASIC, StudyPeriod.YEAR))
+                .thenReturn(List.of(explicitMetaRule));
+        when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<ManualLoadEntry> saved = service.importWorkbook("2025/2026", file);
+
+        assertEquals(1, saved.size());
+        assertNull(saved.get(0).getClassId());
+        assertEquals(501L, saved.get(0).getMetaGroupId());
+        assertEquals("МГ:5 ФИЗИКА", saved.get(0).getClassName());
+    }
+
+    @Test
+    void importLegacyTemplateRejectsAmbiguousClassFallbackWithClearError() throws Exception {
+        MockMultipartFile file = editableImportFile(false, List.of(
+                importRow("СП1", "5-А", "Математика", 5, null, null)
+        ));
+        when(classroomLeadershipRepository.findAllByAcademicYearAndNumberSchoolBuildingAndClassName("2025/2026", "СП1", "5-А"))
+                .thenReturn(List.of(
+                        classEntry(101L, "СП1", "5-А", "ул. Первая, 1"),
+                        classEntry(202L, "СП1", "5-А", "ул. Вторая, 2")
+                ));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.importWorkbook("2025/2026", file));
+
+        assertTrue(error.getMessage().contains("неоднозначный class_id"));
+    }
+
+
+    @Test
+    void importLegacyTemplateRejectsMissingMetaGroupFallbackWithClearError() throws Exception {
+        MockMultipartFile file = editableImportFile(false, List.of(
+                importRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3, null, null)
+        ));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.importWorkbook("2025/2026", file));
+
+        assertTrue(error.getMessage().contains("не найдено FK-соответствие curriculum"));
+    }
+
     @Test
     void exportFullWorkbookShowsRowBuildingAddressAndLeadershipOnly() throws Exception {
         ManualLoadEntry first = manualRow("Иванов И.И.", "СП1", "1-А", "Математика", 5);
@@ -315,6 +548,63 @@ class ManualLoadServiceImplBulkReplaceTest {
             assertEquals(expectedFirstHalfHoursMoney, loadSheet.getRow(1).getCell(10).getNumericCellValue(), 0.01);
             assertEquals(expectedFirstHalfHoursMoney, loadSheet.getRow(1).getCell(12).getNumericCellValue(), 0.01);
         }
+    }
+
+
+    private MockMultipartFile editableImportFile(boolean includeFkColumns, List<ImportRow> rows) throws Exception {
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            var sheet = workbook.createSheet("LOAD_EDITABLE");
+            var header = sheet.createRow(0);
+            String[] headers = {"Учебный год", "Корпус", "Класс", "Предмет", "Группа", "Период", "С", "По", "Часы", "Уровень", "ФИО педагога", "ROW_KEY", "CLASS_ID", "META_GROUP_ID"};
+            int headerCount = includeFkColumns ? headers.length : 12;
+            for (int i = 0; i < headerCount; i++) {
+                header.createCell(i).setCellValue(headers[i]);
+            }
+            for (int i = 0; i < rows.size(); i++) {
+                ImportRow source = rows.get(i);
+                var row = sheet.createRow(i + 1);
+                row.createCell(0).setCellValue("2025/2026");
+                row.createCell(1).setCellValue(source.building());
+                row.createCell(2).setCellValue(source.className());
+                row.createCell(3).setCellValue(source.subject());
+                row.createCell(4).setCellValue("");
+                row.createCell(5).setCellValue("YEAR");
+                row.createCell(6).setCellValue("2025-09-01");
+                row.createCell(7).setCellValue("2026-05-31");
+                row.createCell(8).setCellValue(source.load());
+                row.createCell(9).setCellValue("BASIC");
+                row.createCell(10).setCellValue("Вакансия");
+                row.createCell(11).setCellValue("row-" + i);
+                if (includeFkColumns) {
+                    if (source.classId() != null) row.createCell(12).setCellValue(source.classId());
+                    if (source.metaGroupId() != null) row.createCell(13).setCellValue(source.metaGroupId());
+                }
+            }
+            workbook.write(out);
+            return new MockMultipartFile("file", "load.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", out.toByteArray());
+        }
+    }
+
+    private ImportRow importRow(String building, String className, String subject, int load, Long classId, Long metaGroupId) {
+        return new ImportRow(building, className, subject, load, classId, metaGroupId);
+    }
+
+    private record ImportRow(String building, String className, String subject, int load, Long classId, Long metaGroupId) {
+    }
+
+    private CurriculumPlanEntry curriculumRow(String building, String className, String subject, int hours) {
+        CurriculumPlanEntry row = new CurriculumPlanEntry();
+        row.setAcademicYear("2025/2026");
+        row.setNumberSchoolBuilding(building);
+        row.setClassName(className);
+        row.setSubjectName(subject);
+        row.setPlannedHours(BigDecimal.valueOf(hours));
+        row.setEducationLevel(EducationLevel.BASIC);
+        row.setStudyPeriod(StudyPeriod.YEAR);
+        row.setSubgroupRequired(false);
+        row.setSubgroupCount(0);
+        row.setDeprecated(false);
+        return row;
     }
 
     private ManualLoadEntryRequest manualRequest(String building, String className, Long classId) {

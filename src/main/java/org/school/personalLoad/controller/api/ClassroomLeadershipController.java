@@ -58,6 +58,15 @@ public class ClassroomLeadershipController {
         return ResponseEntity.ok(classroomLeadershipService.updateOne(id, effectiveRequest));
     }
 
+    @GetMapping("/{id}/dependencies")
+    public ResponseEntity<Map<String, Object>> classDependenciesById(@PathVariable Long id,
+                                                                     @RequestParam(required = false) String academicYear) {
+        return ResponseEntity.ok(classroomLeadershipService.dependencySummary(
+                id,
+                academicYearService.resolveRequestedOrDefault(academicYear)
+        ));
+    }
+
     @GetMapping("/one/dependencies")
     public ResponseEntity<Map<String, Object>> classDependencies(@RequestParam String numberSchoolBuilding,
                                                                  @RequestParam String className,
@@ -67,6 +76,13 @@ public class ClassroomLeadershipController {
                 numberSchoolBuilding,
                 className
         ));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteOneById(@PathVariable Long id,
+                                              @RequestParam(required = false) String academicYear) {
+        classroomLeadershipService.deleteOne(id, academicYearService.resolveRequestedOrDefault(academicYear));
+        return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/one")

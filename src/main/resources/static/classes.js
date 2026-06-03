@@ -3,6 +3,7 @@ const jsonHeaders = { "Content-Type": "application/json" };
 const ui = {
     form: document.getElementById("class-form"),
     building: document.getElementById("class-building"),
+    schoolBuilding: document.getElementById("class-school-building"),
     teacherList: document.getElementById("teacher-list"),
     refreshBtn: document.getElementById("refresh-classes-btn"),
     clearBtn: document.getElementById("clear-classes-btn"),
@@ -14,6 +15,7 @@ const ui = {
     editDialog: document.getElementById("class-edit-dialog"),
     editForm: document.getElementById("class-edit-form"),
     editBuilding: document.getElementById("class-edit-building"),
+    editSchoolBuilding: document.getElementById("class-edit-school-building"),
     editDeleteBtn: document.getElementById("class-edit-delete-btn"),
     editCloseBtn: document.getElementById("class-edit-close-btn")
 };
@@ -116,134 +118,128 @@ function buildingChoiceKey(code, address) {
     return `${buildingGroupCode(code)}|${buildingAddressKey(address)}`;
 }
 
-function findBuildingChoice(code, address = "") {
-    const normalizedCode = buildingGroupCode(code);
-    const normalizedAddress = buildingAddressKey(address);
-    return buildingChoices().find((b) => buildingGroupCode(b.code) === normalizedCode && (!normalizedAddress || buildingAddressKey(b.address) === normalizedAddress))
-        || buildingChoices().find((b) => buildingGroupCode(b.code) === normalizedCode);
+function physicalSiteChoices() {
+    return (buildings || [])
+        .filter((b) => b?.id && norm(b.address))
+        .map((b) => ({
+            id: Number(b.id),
+            code: buildingGroupCode(b.code),
+            name: norm(b.name) || buildingGroupCode(b.code),
+            address: norm(b.address)
+        }))
+        .sort((a, b) => (`${a.code}|${a.name}|${a.address}`).localeCompare(`${b.code}|${b.name}|${b.address}`, "ru", { numeric: true }));
 }
 
-function buildingLabel(code, address = "") {
-    const b = findBuildingChoice(code, address);
-    return b ? `${b.name} — ${b.address}` : code;
-}
-
-function buildingChoices() {
+function buildingGroupChoices() {
     const map = new Map();
     (buildings || []).forEach((b) => {
         const code = buildingGroupCode(b.code);
-        const address = norm(b.address);
-        if (!code || !address) return;
-        map.set(buildingChoiceKey(code, address), { code, name: norm(b.name) || code, address });
+        if (!code) return;
+        const name = norm(b.name) || code;
+        if (!map.has(code)) map.set(code, { code, name });
     });
-    return Array.from(map.values()).sort((a, b) => (`${a.name}|${a.address}`).localeCompare(`${b.name}|${b.address}`, "ru"));
+    return Array.from(map.values()).sort((a, b) => a.code.localeCompare(b.code, "ru", { numeric: true }));
 }
 
-function buildingAddresses() {
-    const map = new Map();
-    (buildings || []).forEach((b) => {
-        const address = norm(b.address);
-        if (!address) return;
-        map.set(buildingAddressKey(address), address);
-    });
-    return Array.from(map.values()).sort((a, b) => a.localeCompare(b, "ru"));
+function findPhysicalSiteById(id) {
+    const numericId = Number(id);
+    return physicalSiteChoices().find((b) => b.id === numericId) || null;
+}
+
+function findPhysicalSiteByAddress(address) {
+    const key = buildingAddressKey(address);
+    if (!key) return null;
+    return physicalSiteChoices().find((b) => buildingAddressKey(b.address) === key) || null;
+}
+
+function findBuildingChoice(code, address = "") {
+    const normalizedCode = buildingGroupCode(code);
+    const normalizedAddress = buildingAddressKey(address);
+    return physicalSiteChoices().find((b) => b.code === normalizedCode && (!normalizedAddress || buildingAddressKey(b.address) === normalizedAddress))
+        || physicalSiteChoices().find((b) => b.code === normalizedCode);
+}
+
+function buildingLabel(code) {
+    return code || "—";
+}
+
+function siteLabel(site) {
+    return site ? `${site.code} — ${site.address}` : "";
 }
 
 function displayCampusAddress(entry) {
-    return norm(entry?.campusAddress) || norm(findBuildingChoice(entry?.numberSchoolBuilding)?.address) || "—";
+    const site = findPhysicalSiteById(entry?.schoolBuildingId) || findPhysicalSiteByAddress(entry?.campusAddress);
+    return siteLabel(site) || norm(entry?.campusAddress) || "—";
 }
 
-function selectedBuildingChoice(selectEl) {
-    const option = selectEl?.selectedOptions?.[0];
-    if (!option) return null;
-    return {
-        code: buildingGroupCode(option.value),
-        address: option.dataset.address || "",
-        name: option.dataset.name || option.textContent || option.value
-    };
+function selectedPhysicalSite(selectEl) {
+    return findPhysicalSiteById(selectEl?.value);
 }
 
-function ensureAddressOption(selectEl, address) {
-    const value = norm(address);
-    if (!selectEl || !value) return;
-    const exists = Array.from(selectEl.options).some((option) => option.value === value);
-    if (exists) return;
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = value;
-    selectEl.appendChild(option);
-}
-
-function setAddressValue(selectEl, address) {
-    if (!selectEl) return;
-    const value = norm(address);
-    ensureAddressOption(selectEl, value);
-    selectEl.value = value;
-}
-
-function fillCampusAddressOptions(selectEl, selectedAddress = "") {
-    if (!selectEl) return;
-    selectEl.innerHTML = `<option value="">Адрес выбранного корпуса</option>`;
-    buildingAddresses().forEach((address) => {
-        const option = document.createElement("option");
-        option.value = address;
-        option.textContent = address;
-        selectEl.appendChild(option);
-    });
-    setAddressValue(selectEl, selectedAddress);
-}
-
-function applyBuildingAddress(selectEl, addressInput, force = false) {
-    const choice = selectedBuildingChoice(selectEl);
-    if (!choice || !addressInput) return;
-    if (force || !norm(addressInput.value)) {
-        setAddressValue(addressInput, choice.address || "");
-    }
+function syncCampusAddressFromSite(siteSelect, campusInput) {
+    if (!campusInput) return;
+    const site = selectedPhysicalSite(siteSelect);
+    campusInput.value = site?.address || "";
 }
 
 function renderTeachers() {
     ui.teacherList.innerHTML = teachers.map((fio) => `<option value="${esc(fio)}"></option>`).join("");
 }
 
-function fillBuildingOptions(selectEl, selectedValue = "", selectedAddress = "") {
-    selectEl.innerHTML = `<option value="">Выберите корпус</option>`;
-    buildingChoices().forEach((b) => {
+function fillBuildingOptions(selectEl, selectedValue = "") {
+    if (!selectEl) return;
+    selectEl.innerHTML = `<option value="">Выберите СП класса</option>`;
+    buildingGroupChoices().forEach((b) => {
         const option = document.createElement("option");
-        option.value = buildingGroupCode(b.code);
-        option.dataset.address = b.address;
-        option.dataset.name = b.name;
-        option.dataset.choiceKey = buildingChoiceKey(b.code, b.address);
-        option.textContent = `${b.name} — ${b.address}`;
+        option.value = b.code;
+        option.textContent = b.code;
+        option.title = b.name;
         selectEl.appendChild(option);
     });
-    if (!selectedValue) return;
-    const selectedKey = buildingChoiceKey(selectedValue, selectedAddress);
-    const option = Array.from(selectEl.options).find((opt) => opt.dataset.choiceKey === selectedKey)
-        || Array.from(selectEl.options).find((opt) => buildingGroupCode(opt.value) === buildingGroupCode(selectedValue));
-    if (option) selectEl.selectedIndex = option.index;
+    if (selectedValue) selectEl.value = buildingGroupCode(selectedValue);
+}
+
+function fillPhysicalSiteOptions(selectEl, selectedId = null, fallbackAddress = "") {
+    if (!selectEl) return;
+    selectEl.innerHTML = `<option value="">Выберите физическую площадку</option>`;
+    physicalSiteChoices().forEach((b) => {
+        const option = document.createElement("option");
+        option.value = String(b.id);
+        option.dataset.address = b.address;
+        option.dataset.code = b.code;
+        option.textContent = `${b.code} — ${b.address}`;
+        selectEl.appendChild(option);
+    });
+    const fallbackSite = selectedId ? null : findPhysicalSiteByAddress(fallbackAddress);
+    const value = selectedId || fallbackSite?.id || "";
+    if (value) selectEl.value = String(value);
 }
 
 function renderBuildings() {
-    const currentBuildingAddress = ui.form?.elements?.campusAddress?.value || "";
-    const currentEditAddress = ui.editForm?.elements?.campusAddress?.value || "";
-    fillBuildingOptions(ui.building, ui.building.value, currentBuildingAddress);
-    fillBuildingOptions(ui.editBuilding, ui.editBuilding.value, currentEditAddress);
-    fillCampusAddressOptions(ui.form?.elements?.campusAddress, currentBuildingAddress);
-    fillCampusAddressOptions(ui.editForm?.elements?.campusAddress, currentEditAddress);
+    const currentBuilding = ui.building?.value || "";
+    const currentEditBuilding = ui.editBuilding?.value || "";
+    const currentSite = ui.schoolBuilding?.value || "";
+    const currentEditSite = ui.editSchoolBuilding?.value || "";
+    fillBuildingOptions(ui.building, currentBuilding);
+    fillBuildingOptions(ui.editBuilding, currentEditBuilding);
+    fillPhysicalSiteOptions(ui.schoolBuilding, currentSite);
+    fillPhysicalSiteOptions(ui.editSchoolBuilding, currentEditSite);
+    syncCampusAddressFromSite(ui.schoolBuilding, ui.form?.elements?.campusAddress);
+    syncCampusAddressFromSite(ui.editSchoolBuilding, ui.editForm?.elements?.campusAddress);
 }
 
 function openEditDialog(entry) {
     editingOriginalKey = entryKey(entry);
     editingOriginalEntry = { ...entry };
     const normalizedEntryCode = buildingGroupCode(entry.numberSchoolBuilding);
-    fillBuildingOptions(ui.editBuilding, normalizedEntryCode || entry.numberSchoolBuilding || "", entry.campusAddress || "");
-    const campusAddress = entry.campusAddress || norm(selectedBuildingChoice(ui.editBuilding)?.address) || "";
-    fillCampusAddressOptions(ui.editForm.elements.campusAddress, campusAddress);
+    fillBuildingOptions(ui.editBuilding, normalizedEntryCode || entry.numberSchoolBuilding || "");
+    fillPhysicalSiteOptions(ui.editSchoolBuilding, entry.schoolBuildingId, entry.campusAddress || "");
+    syncCampusAddressFromSite(ui.editSchoolBuilding, ui.editForm.elements.campusAddress);
     ui.editForm.elements.className.value = entry.className || "";
     ui.editForm.elements.classType.value = entry.classType || "NORMAL";
     ui.editForm.elements.classDirection.value = entry.classDirection || "";
     ui.editForm.elements.fioTeacher.value = entry.fioTeacher || "";
-    setAddressValue(ui.editForm.elements.campusAddress, campusAddress);
+    syncCampusAddressFromSite(ui.editSchoolBuilding, ui.editForm.elements.campusAddress);
     ui.editDialog.showModal();
 }
 
@@ -284,11 +280,16 @@ async function reload() {
     teachers = (teacherRows || []).map((r) => norm(r.fioTeacher)).filter(Boolean);
     renderTeachers();
     renderBuildings();
-    applyBuildingAddress(ui.building, ui.form.elements.campusAddress);
+    syncCampusAddressFromSite(ui.schoolBuilding, ui.form.elements.campusAddress);
     renderClasses(classRows);
 }
 
-async function classDependencySummary(building, className) {
+async function classDependencySummary(entry) {
+    if (entry?.id) {
+        return api(`/api/classroom-leadership/${encodeURIComponent(entry.id)}/dependencies`);
+    }
+    const building = buildingGroupCode(entry?.numberSchoolBuilding);
+    const className = normalizeClassName(entry?.className);
     return api(`/api/classroom-leadership/one/dependencies?numberSchoolBuilding=${encodeURIComponent(building)}&className=${encodeURIComponent(className)}`);
 }
 
@@ -328,15 +329,16 @@ async function updateEntry(entry) {
 
 updateTemplateLink();
 
-ui.building?.addEventListener("change", () => applyBuildingAddress(ui.building, ui.form.elements.campusAddress, true));
-ui.editBuilding?.addEventListener("change", () => applyBuildingAddress(ui.editBuilding, ui.editForm.elements.campusAddress, true));
+ui.schoolBuilding?.addEventListener("change", () => syncCampusAddressFromSite(ui.schoolBuilding, ui.form.elements.campusAddress));
+ui.editSchoolBuilding?.addEventListener("change", () => syncCampusAddressFromSite(ui.editSchoolBuilding, ui.editForm.elements.campusAddress));
 
 ui.form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    applyBuildingAddress(ui.building, ui.form.elements.campusAddress);
+    syncCampusAddressFromSite(ui.schoolBuilding, ui.form.elements.campusAddress);
     const form = new FormData(ui.form);
     const entry = {
         numberSchoolBuilding: buildingGroupCode(form.get("numberSchoolBuilding")),
+        schoolBuildingId: Number(form.get("schoolBuildingId")) || null,
         className: normalizeClassName(form.get("className")),
         classDirection: norm(form.get("classDirection")),
         fioTeacher: norm(form.get("fioTeacher")),
@@ -344,7 +346,7 @@ ui.form.addEventListener("submit", async (e) => {
         classType: norm(form.get("classType")) || "NORMAL"
     };
 
-    if (!entry.numberSchoolBuilding || !entry.className || !entry.classDirection || !entry.fioTeacher) {
+    if (!entry.numberSchoolBuilding || !entry.schoolBuildingId || !entry.className || !entry.classDirection || !entry.fioTeacher) {
         print({ error: "Заполните все поля" });
         return;
     }
@@ -361,11 +363,12 @@ ui.form.addEventListener("submit", async (e) => {
 
 ui.editForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    applyBuildingAddress(ui.editBuilding, ui.editForm.elements.campusAddress);
+    syncCampusAddressFromSite(ui.editSchoolBuilding, ui.editForm.elements.campusAddress);
     const form = new FormData(ui.editForm);
     const entry = {
         id: editingOriginalEntry?.id || null,
         numberSchoolBuilding: buildingGroupCode(form.get("numberSchoolBuilding")),
+        schoolBuildingId: Number(form.get("schoolBuildingId")) || null,
         className: normalizeClassName(form.get("className")),
         classDirection: norm(form.get("classDirection")),
         fioTeacher: norm(form.get("fioTeacher")),
@@ -373,7 +376,7 @@ ui.editForm.addEventListener('submit', async (e) => {
         classType: norm(form.get("classType")) || "NORMAL"
     };
 
-    if (!entry.numberSchoolBuilding || !entry.className || !entry.classDirection || !entry.fioTeacher) {
+    if (!entry.numberSchoolBuilding || !entry.schoolBuildingId || !entry.className || !entry.classDirection || !entry.fioTeacher) {
         print({ error: "Заполните все поля" });
         return;
     }
@@ -397,9 +400,12 @@ ui.editDeleteBtn?.addEventListener('click', async () => {
         return;
     }
     try {
-        const dependencies = await classDependencySummary(building, className);
+        const dependencies = await classDependencySummary(editingOriginalEntry);
         if (!window.confirm(classDeleteWarning(className, building, dependencies))) return;
-        await api(`/api/classroom-leadership/one?numberSchoolBuilding=${encodeURIComponent(building)}&className=${encodeURIComponent(className)}`, { method: "DELETE" });
+        const deleteUrl = editingOriginalEntry?.id
+            ? `/api/classroom-leadership/${encodeURIComponent(editingOriginalEntry.id)}`
+            : `/api/classroom-leadership/one?numberSchoolBuilding=${encodeURIComponent(building)}&className=${encodeURIComponent(className)}`;
+        await api(deleteUrl, { method: "DELETE" });
         ui.editDialog.close();
         print({ status: "deleted", numberSchoolBuilding: building, className });
         await reload();

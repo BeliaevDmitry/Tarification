@@ -6,6 +6,7 @@ import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.MetaGroup;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.MetaGroupRepository;
+import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +20,7 @@ public class MetaGroupController {
 
     private final MetaGroupRepository repository;
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
+    private final ManualLoadEntryRepository manualLoadEntryRepository;
 
     @GetMapping
     public ResponseEntity<List<MetaGroup>> findAll() {
@@ -58,12 +60,8 @@ public class MetaGroupController {
             throw new IllegalArgumentException("Метагруппа уже существует");
         }
 
-        String oldClassName = asMetaGroupClassName(existing.getName());
-        String newClassName = asMetaGroupClassName(newName);
-        List<CurriculumPlanEntry> entries = curriculumPlanEntryRepository
-                .findAllByNumberSchoolBuildingAndClassName(building, oldClassName);
+        List<CurriculumPlanEntry> entries = curriculumPlanEntryRepository.findAllByMetaGroupId(existing.getId());
         for (CurriculumPlanEntry entry : entries) {
-            entry.setClassName(newClassName);
             entry.setStudyPeriodSettingId(request.getStudyPeriodSettingId() != null ? request.getStudyPeriodSettingId() : existing.getStudyPeriodSettingId());
         }
         curriculumPlanEntryRepository.saveAll(entries);
@@ -81,7 +79,8 @@ public class MetaGroupController {
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         MetaGroup existing = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Метагруппа не найдена"));
-        curriculumPlanEntryRepository.deleteByNumberSchoolBuildingAndClassName(existing.getNumberSchoolBuilding(), asMetaGroupClassName(existing.getName()));
+        curriculumPlanEntryRepository.deleteByMetaGroupId(existing.getId());
+        manualLoadEntryRepository.deleteByMetaGroupId(existing.getId());
         repository.delete(existing);
         return ResponseEntity.noContent().build();
     }
@@ -110,10 +109,6 @@ public class MetaGroupController {
             return name;
         }
         return prefix + name;
-    }
-
-    private String asMetaGroupClassName(String name) {
-        return "МГ:" + name;
     }
 
     private String normalizeClassType(String value) {
