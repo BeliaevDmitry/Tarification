@@ -41,7 +41,26 @@ class ClassAndMetaGroupFkCutoverSqlTest {
         assertFalse(metaGroupController.contains("deletebynumberschoolbuildingandclassname"));
     }
 
+    @Test
+    void loadFrontendShowsExplicitMetaGroupsButSkipsOrdinaryMembers() throws Exception {
+        String loadJs = readRaw("src/main/resources/static/load.js");
+        String normalized = loadJs.toLowerCase(Locale.ROOT);
+
+        assertTrue(loadJs.contains("function isExplicitMetaGroupRow(row)"));
+        assertTrue(loadJs.contains("row?.metaGroupId != null"));
+        assertTrue(loadJs.contains("startsWith(\"МГ:\")"));
+        assertTrue(loadJs.contains("function contributesToManualLoad(row)"));
+        assertTrue(loadJs.contains("if (isExplicitMetaGroupRow(row)) return true;"));
+        assertTrue(loadJs.contains("return !Boolean(row?.metaGroup);"));
+        assertTrue(loadJs.contains("const filtered = scoped.filter(contributesToManualLoad);"));
+        assertFalse(normalized.contains("scoped.filter((row) => !boolean(row.metagroup))"));
+    }
+
     private String read(String path) throws Exception {
-        return Files.readString(Path.of(path)).toLowerCase(Locale.ROOT);
+        return readRaw(path).toLowerCase(Locale.ROOT);
+    }
+
+    private String readRaw(String path) throws Exception {
+        return Files.readString(Path.of(path));
     }
 }

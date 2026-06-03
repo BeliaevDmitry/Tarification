@@ -130,14 +130,15 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         }
         String scopeType = normalizeScopeType(request == null ? null : request.getScopeType());
         String campusAddress = request == null ? null : trimToNull(request.getCampusAddress());
-        boolean addressScope = "BUILDING_ADDRESS".equals(scopeType) || campusAddress != null;
+        Long schoolBuildingId = request == null ? null : request.getSchoolBuildingId();
+        boolean addressScope = "BUILDING_ADDRESS".equals(scopeType) || schoolBuildingId != null || campusAddress != null;
         boolean explicitBuildingGroup = "BUILDING_GROUP".equals(scopeType);
 
         if (explicitAcademicYears.size() == 1 && addressScope) {
             String academicYear = explicitAcademicYears.iterator().next();
-            String building = requestBuilding != null ? requestBuilding : singleBuildingCode(buildingCodes);
+            Long resolvedSchoolBuildingId = resolveSchoolBuildingIdForAddressScope(schoolBuildingId, campusAddress);
             java.util.Set<Long> classIds = scopedClassIds(request, entries);
-            validateAddressScopeClassIds(academicYear, building, campusAddress, classIds);
+            validateAddressScopeClassIds(academicYear, resolvedSchoolBuildingId, classIds);
             manualLoadEntryRepository.deleteByAcademicYearAndClassIds(academicYear, classIds);
         } else {
             validateBuildingGroupBulkScope(explicitAcademicYears, buildingCodes, explicitBuildingGroup);
@@ -165,15 +166,17 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
     @Override
     public List<ManualLoadEntry> findAll(String academicYear, String numberSchoolBuilding, String campusAddress) {
+        return findAll(academicYear, numberSchoolBuilding, campusAddress, null);
+    }
+
+    @Override
+    public List<ManualLoadEntry> findAll(String academicYear, String numberSchoolBuilding, String campusAddress, Long schoolBuildingId) {
+        Long resolvedSchoolBuildingId = resolveOptionalSchoolBuildingIdForAddressScope(schoolBuildingId, campusAddress);
+        if (resolvedSchoolBuildingId != null) {
+            return manualLoadEntryRepository.findAllByAcademicYearAndSchoolBuildingId(academicYear, resolvedSchoolBuildingId);
+        }
         if (numberSchoolBuilding == null || numberSchoolBuilding.isBlank()) {
             return findAll(academicYear);
-        }
-        if (campusAddress != null && !campusAddress.isBlank()) {
-            return manualLoadEntryRepository.findAllByAcademicYearAndBuildingAddress(
-                    academicYear,
-                    numberSchoolBuilding.trim(),
-                    campusAddress.trim()
-            );
         }
         return manualLoadEntryRepository.findAllByAcademicYearAndNumberSchoolBuildingIgnoreCase(
                 academicYear,
@@ -211,10 +214,17 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     @Override
     @Transactional
     public void clearByBuildingAddress(String academicYear, String numberSchoolBuilding, String campusAddress) {
-        if (numberSchoolBuilding == null || numberSchoolBuilding.isBlank() || campusAddress == null || campusAddress.isBlank()) {
-            throw new IllegalArgumentException("building and campusAddress are required");
+        Long schoolBuildingId = resolveSchoolBuildingIdForAddressScope(null, campusAddress);
+        clearBySchoolBuilding(academicYear, schoolBuildingId);
+    }
+
+    @Override
+    @Transactional
+    public void clearBySchoolBuilding(String academicYear, Long schoolBuildingId) {
+        if (schoolBuildingId == null) {
+            throw new IllegalArgumentException("schoolBuildingId is required for BUILDING_ADDRESS scope");
         }
-        manualLoadEntryRepository.deleteByAcademicYearAndBuildingAddress(academicYear, numberSchoolBuilding.trim(), campusAddress.trim());
+        manualLoadEntryRepository.deleteByAcademicYearAndSchoolBuildingId(academicYear, schoolBuildingId);
     }
 
     @Override
@@ -1221,9 +1231,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         return classIds;
     }
 
-    private void validateAddressScopeClassIds(String academicYear, String numberSchoolBuilding, String campusAddress, java.util.Set<Long> classIds) {
-        if (academicYear == null || academicYear.isBlank() || numberSchoolBuilding == null || numberSchoolBuilding.isBlank() || campusAddress == null || campusAddress.isBlank()) {
-            throw new IllegalArgumentException("academicYear, numberSchoolBuilding and campusAddress are required for BUILDING_ADDRESS scope");
+    private void validateAddressScopeClassIds(String academicYear, Long schoolBuildingId, java.util.Set<Long> classIds) {
+        if (academicYear == null || academicYear.isBlank() || schoolBuildingId == null) {
+            throw new IllegalArgumentException("academicYear and schoolBuildingId are required for BUILDING_ADDRESS scope");
         }
         if (classIds == null || classIds.isEmpty()) {
             throw new IllegalArgumentException("classIds are required for BUILDING_ADDRESS scope");
@@ -1231,18 +1241,47 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         java.util.Map<Long, ClassroomLeadershipEntry> classesById = classroomLeadershipRepository.findAllById(classIds).stream()
                 .collect(java.util.stream.Collectors.toMap(ClassroomLeadershipEntry::getId, java.util.function.Function.identity()));
         java.util.List<Long> invalidIds = classIds.stream()
-                .filter(id -> !classBelongsToAddressScope(classesById.get(id), academicYear, numberSchoolBuilding, campusAddress))
+                .filter(id -> !classBelongsToAddressScope(classesById.get(id), academicYear, schoolBuildingId))
                 .toList();
         if (!invalidIds.isEmpty()) {
-            throw new IllegalArgumentException("classIds do not belong to selected building/address scope: " + invalidIds);
+            throw new IllegalArgumentException("classIds do not belong to selected schoolBuildingId=" + schoolBuildingId + ": " + invalidIds);
         }
     }
 
-    private boolean classBelongsToAddressScope(ClassroomLeadershipEntry entry, String academicYear, String numberSchoolBuilding, String campusAddress) {
+    private boolean classBelongsToAddressScope(ClassroomLeadershipEntry entry, String academicYear, Long schoolBuildingId) {
         return entry != null
                 && normalizeToken(entry.getAcademicYear()).equals(normalizeToken(academicYear))
-                && normalizeToken(entry.getNumberSchoolBuilding()).equals(normalizeToken(numberSchoolBuilding))
-                && normalizeToken(entry.getCampusAddress()).equals(normalizeToken(campusAddress));
+                && java.util.Objects.equals(entry.getSchoolBuildingId(), schoolBuildingId);
+    }
+
+    private Long resolveOptionalSchoolBuildingIdForAddressScope(Long schoolBuildingId, String campusAddress) {
+        if (schoolBuildingId != null) {
+            return schoolBuildingId;
+        }
+        if (campusAddress == null || campusAddress.isBlank()) {
+            return null;
+        }
+        return resolveSchoolBuildingIdForAddressScope(null, campusAddress);
+    }
+
+    private Long resolveSchoolBuildingIdForAddressScope(Long schoolBuildingId, String campusAddress) {
+        if (schoolBuildingId != null) {
+            return schoolBuildingId;
+        }
+        if (campusAddress == null || campusAddress.isBlank()) {
+            throw new IllegalArgumentException("schoolBuildingId is required for BUILDING_ADDRESS scope");
+        }
+        java.util.List<SchoolBuilding> matches = schoolBuildingRepository.findAll().stream()
+                .filter(building -> normalizeToken(building.getAddress()).equals(normalizeToken(campusAddress)))
+                .toList();
+        if (matches.isEmpty()) {
+            throw new IllegalArgumentException("schoolBuildingId is required: physical site not found by campusAddress=" + campusAddress);
+        }
+        java.util.List<Long> ids = matches.stream().map(SchoolBuilding::getId).filter(java.util.Objects::nonNull).distinct().toList();
+        if (ids.size() != 1) {
+            throw new IllegalArgumentException("schoolBuildingId is ambiguous for campusAddress=" + campusAddress + ": " + ids);
+        }
+        return ids.get(0);
     }
 
     private void validateBuildingGroupBulkScope(java.util.Set<String> academicYears, java.util.Set<String> buildingCodes, boolean explicitBuildingGroup) {
