@@ -145,7 +145,7 @@
 <dialog id="meta-group-create-dialog">
     <form method="dialog" id="meta-group-create-form" class="grid" data-requires-edit>
         <h3>Создать метагруппу</h3>
-        <label>СП метагруппы<select name="numberSchoolBuilding" required></select></label>
+        <label>Основное СП метагруппы<select name="numberSchoolBuilding" required></select></label>
         <label>Физическая площадка проведения занятий<select name="schoolBuildingId" required></select></label>
         <label>Параллель<select name="parallel" required></select></label>
         <label>Название<input name="name" required></label>
@@ -166,12 +166,13 @@
     <form method="dialog" id="meta-group-edit-form" class="grid labeled-grid" data-requires-edit>
         <h3>Редактирование метагруппы</h3>
         <input type="hidden" name="id">
-        <label class="field-row"><span>СП метагруппы</span><select name="numberSchoolBuilding" required></select></label>
-        <label class="field-row"><span>Физическая площадка проведения</span><select name="schoolBuildingId" required></select></label>
+        <label class="field-row"><span>Основное СП метагруппы</span><select name="numberSchoolBuilding" required></select></label>
+        <label class="field-row"><span>Физическая площадка проведения занятий</span><select name="schoolBuildingId" required></select></label>
         <label class="field-row"><span>Тип</span><select name="classType" required><option value="NORMAL">Норма</option><option value="AOOP_UO">АООП УО</option></select></label>
         <label class="field-row"><span>Параллель</span><select name="parallel" required></select></label>
         <label class="field-row"><span>Название</span><input name="name" required></label>
         <label class="field-row"><span>Период</span><select name="studyPeriodSettingId" required></select></label>
+        <div id="meta-group-edit-error" class="error-message" role="alert" aria-live="polite"></div>
         <div class="row">
             <button type="submit">Сохранить</button>
             <button type="button" id="meta-group-delete-btn" class="danger-btn">Удалить</button>

@@ -335,3 +335,26 @@ JOIN meta_group mg ON mg.id = cpe.meta_group_id
 WHERE cpe.meta_group_id IS NOT NULL
   AND mg.school_building_id IS NULL
 ORDER BY cpe.academic_year, cpe.class_name, cpe.id;
+
+-- Explicit meta-group legacy snapshots must stay synchronized with their parent meta_group after edits.
+SELECT 'curriculum explicit meta row organizational SP differs from parent meta_group' AS check_name,
+       count(*)::bigint AS issue_count
+FROM curriculum_plan_entry cpe
+JOIN meta_group mg ON mg.id = cpe.meta_group_id
+WHERE cpe.meta_group_id IS NOT NULL
+  AND (
+        cpe.academic_year IS DISTINCT FROM mg.academic_year
+        OR cpe.number_school_building IS DISTINCT FROM mg.number_school_building
+        OR cpe.class_name IS DISTINCT FROM ('МГ:' || mg.name)
+      );
+
+SELECT 'manual explicit meta row organizational SP differs from parent meta_group' AS check_name,
+       count(*)::bigint AS issue_count
+FROM manual_load_entry mle
+JOIN meta_group mg ON mg.id = mle.meta_group_id
+WHERE mle.meta_group_id IS NOT NULL
+  AND (
+        mle.academic_year IS DISTINCT FROM mg.academic_year
+        OR mle.number_school_building IS DISTINCT FROM mg.number_school_building
+        OR mle.class_name IS DISTINCT FROM ('МГ:' || mg.name)
+      );
