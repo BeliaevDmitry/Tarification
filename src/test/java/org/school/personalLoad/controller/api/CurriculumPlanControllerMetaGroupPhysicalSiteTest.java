@@ -18,7 +18,9 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -57,8 +59,25 @@ class CurriculumPlanControllerMetaGroupPhysicalSiteTest {
         assertNull(row.getClassId());
         assertEquals(4L, row.getMetaGroupId());
         assertEquals(37L, row.getSchoolBuildingId());
+        assertFalse(row.isExcludedFromManualLoad());
         assertEquals(BigDecimal.ONE, row.getPlannedHours());
         verify(metaGroupRepository).findAllById(List.of(4L));
+    }
+
+    @Test
+    void curriculumEntryResponseExposesOrdinaryManualLoadExclusionFlag() {
+        CurriculumPlanEntry ordinaryExcluded = curriculumRow();
+        ordinaryExcluded.setNumberSchoolBuilding("СП1");
+        ordinaryExcluded.setClassName("4-Е");
+        ordinaryExcluded.setMetaGroupId(null);
+        ordinaryExcluded.setMetaGroup(true);
+        ordinaryExcluded.setExcludedFromManualLoad(true);
+
+        CurriculumPlanEntryResponse response = CurriculumPlanEntryResponse.from(ordinaryExcluded, null);
+
+        assertEquals("4-Е", response.getClassName());
+        assertTrue(response.isExcludedFromManualLoad());
+        assertNull(response.getSchoolBuildingId());
     }
 
     private CurriculumPlanEntry curriculumRow() {
