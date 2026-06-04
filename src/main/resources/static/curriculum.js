@@ -522,6 +522,8 @@ function buildSummaryRows(selectedClasses) {
                     subgroup2Hours: v.subgroup2Hours,
                     id: v.id,
                     studyPeriod: v.studyPeriod,
+                    className: v.className,
+                    excludedFromManualLoad: Boolean(v.excludedFromManualLoad),
                     metaGroup: Boolean(v.metaGroup)
                 };
                 if (v.studyPeriod === "H1") perClass[classKey].h1 = item;

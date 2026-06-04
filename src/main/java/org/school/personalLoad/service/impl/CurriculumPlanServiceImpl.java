@@ -215,7 +215,7 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
             entity.setMetaGroup(true);
         } else {
             entity.setExcludedFromManualLoad(request.isExcludedFromManualLoad());
-            entity.setMetaGroup(request.isMetaGroup());
+            entity.setMetaGroup(request.isExcludedFromManualLoad());
         }
     }
 

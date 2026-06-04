@@ -29,6 +29,8 @@ class CurriculumManualLoadExclusionFrontendTest {
         assertTrue(html.contains("Строка метагруппы переносится в нагрузку и распределяется педагогу."));
         assertTrue(js.contains("control.disabled = true;"));
         assertTrue(js.contains("excludedFromManualLoad: isExplicitMetaGroupClassName(className) ? false"));
+        assertTrue(js.contains("className: v.className"));
+        assertTrue(js.contains("excludedFromManualLoad: Boolean(v.excludedFromManualLoad)"));
         assertTrue(js.contains("markers.push(\"Н\")"));
         assertFalse(js.contains("markers.push(\"М\")"));
     }
