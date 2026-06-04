@@ -21,6 +21,21 @@ class CurriculumManualLoadExclusionFrontendTest {
     }
 
     @Test
+    void loadTabsCreateSyntheticOrganizationalAddressScopesForExplicitMetaGroups() throws Exception {
+        String js = Files.readString(Path.of("src/main/resources/static/load.js"));
+
+        assertTrue(js.contains("function mergeMetaGroupAddressScopeOptions(buildingGroups, curriculumSourceRows, physicalBuildingRows)"));
+        assertTrue(js.contains(".filter(contributesToManualLoad)"));
+        assertTrue(js.contains(".filter(isExplicitMetaGroupRow)"));
+        assertTrue(js.contains("physicalById.get(schoolBuildingId)"));
+        assertTrue(js.contains("const organizationalSp = normalizeBuildingCode(row.numberSchoolBuilding);"));
+        assertTrue(js.contains("buildingGroups.set(organizationalSp, existing);"));
+        assertTrue(js.contains("Number(site?.id ?? site?.schoolBuildingId) === schoolBuildingId"));
+        assertTrue(js.contains("mergeMetaGroupAddressScopeOptions(buildingGroups, allCurriculumRows || [], buildingRows || []);"));
+        assertTrue(js.contains("const allCurriculumPromise = api(\"/api/curriculum\");"));
+    }
+
+    @Test
     void curriculumUiSubmitsExclusionFlagAndProtectsExplicitMetaGroups() throws Exception {
         String js = Files.readString(Path.of("src/main/resources/static/curriculum.js"));
         String html = Files.readString(Path.of("src/main/resources/static/curriculum.html"));
