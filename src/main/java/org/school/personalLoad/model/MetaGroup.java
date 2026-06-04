@@ -10,7 +10,7 @@ import javax.persistence.*;
 @Data
 @Entity
 @Table(name = "meta_group", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_meta_group_year_scope", columnNames = {"academic_year", "number_school_building", "parallel", "name", "class_type"})
+        @UniqueConstraint(name = "uk_meta_group_year_scope", columnNames = {"academic_year", "numberSchoolBuilding", "parallel", "name", "classType"})
 })
 public class MetaGroup {
 
