@@ -300,6 +300,7 @@ class ManualLoadServiceImplBulkReplaceTest {
         CurriculumPlanEntry metaMember = curriculumRow("СП1", "5-Б", "Физика", 3);
         metaMember.setClassId(102L);
         metaMember.setMetaGroup(true);
+        metaMember.setExcludedFromManualLoad(true);
         CurriculumPlanEntry explicitMeta = curriculumRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3);
         explicitMeta.setMetaGroupId(501L);
 
@@ -346,6 +347,7 @@ class ManualLoadServiceImplBulkReplaceTest {
         CurriculumPlanEntry metaMember = curriculumRow("СП1", "5-Б", "Физика", 3);
         metaMember.setClassId(102L);
         metaMember.setMetaGroup(true);
+        metaMember.setExcludedFromManualLoad(true);
         CurriculumPlanEntry explicitMeta = curriculumRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3);
         explicitMeta.setMetaGroupId(501L);
         ManualLoadEntry assignedMeta = manualRow("Иванов И.И.", "СП1", "МГ:5 ФИЗИКА", "Физика", 3);
@@ -638,6 +640,7 @@ class ManualLoadServiceImplBulkReplaceTest {
         metaMember.setClassId(102L);
         metaMember.setSubject(subject(23L, "Физика"));
         metaMember.setMetaGroup(true);
+        metaMember.setExcludedFromManualLoad(true);
         MockMultipartFile file = editableImportFile(true, List.of(
                 importRow("СП1", "5-Б", "Физика", 3, 102L, null, 10L, 23L)
         ));

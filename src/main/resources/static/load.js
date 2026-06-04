@@ -863,7 +863,7 @@ function isExplicitMetaGroupRow(row) {
 
 function contributesToManualLoad(row) {
     if (isExplicitMetaGroupRow(row)) return true;
-    return !Boolean(row?.metaGroup);
+    return !Boolean(row?.excludedFromManualLoad);
 }
 
 function rowsForSelectedBuilding() {
@@ -1260,7 +1260,7 @@ function prefillFromManualLoad(referenceDate = referencePlanningDate()) {
     state.subjectTeacherRowsByBuilding = {};
     state.futurePlansByBuilding = {};
 
-    const allApiRows = expandCurriculumRows(curriculumRows);
+    const allApiRows = expandCurriculumRows(curriculumRows.filter(contributesToManualLoad));
 
     const matchByManual = (entry) => {
         const entryGroup = String(entry.groupNameEducationalPlan || "").trim().toUpperCase();
@@ -1462,7 +1462,7 @@ function teacherHoursInBuilding(buildingCode, teacherName) {
     const normalizedBuilding = canonicalBuildingCode(buildingCode);
     const assignments = assignmentsForBuilding(normalizedBuilding);
     const classMap = classBuildingMap();
-    const buildingRows = expandCurriculumRows(curriculumRows.filter((row) => {
+    const buildingRows = expandCurriculumRows(curriculumRows.filter(contributesToManualLoad).filter((row) => {
         const rowBuilding = canonicalBuildingCode(row.numberSchoolBuilding);
         const byClass = canonicalBuildingCode(classMap.get(normalizeClassName(row.className)));
         return rowBuilding === normalizedBuilding || byClass === normalizedBuilding;
