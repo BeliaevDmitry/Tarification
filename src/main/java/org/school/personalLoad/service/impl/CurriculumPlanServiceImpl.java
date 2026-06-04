@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -203,7 +204,19 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         entity.setCurriculumPart(curriculumPart);
         entity.setStudyPeriod(rule.getStudyPeriod());
         entity.setStudyPeriodSettingId(rule.getId());
-        entity.setMetaGroup(request.isMetaGroup());
+
+        boolean explicitMetaGroupRow = entity.getClassName() != null
+                && entity.getClassName().trim().toUpperCase(Locale.ROOT).startsWith("МГ:");
+        if (explicitMetaGroupRow) {
+            if (request.isExcludedFromManualLoad()) {
+                throw new IllegalArgumentException("Строка нагрузки метагруппы должна переноситься в нагрузку");
+            }
+            entity.setExcludedFromManualLoad(false);
+            entity.setMetaGroup(true);
+        } else {
+            entity.setExcludedFromManualLoad(request.isExcludedFromManualLoad());
+            entity.setMetaGroup(request.isMetaGroup());
+        }
     }
 
     private void validate(CurriculumPlanEntryRequest request) {
