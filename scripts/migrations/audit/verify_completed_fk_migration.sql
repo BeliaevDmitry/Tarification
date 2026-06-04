@@ -158,6 +158,12 @@ WITH checks AS (
     LEFT JOIN meta_group mg ON mg.id = c.meta_group_id
     WHERE c.meta_group_id IS NOT NULL AND mg.id IS NULL
     UNION ALL
+    SELECT 'explicit meta curriculum rows without physical school_building_id', count(*)::bigint
+    FROM curriculum_plan_entry cpe
+    JOIN meta_group mg ON mg.id = cpe.meta_group_id
+    WHERE cpe.meta_group_id IS NOT NULL
+      AND mg.school_building_id IS NULL
+    UNION ALL
     SELECT 'manual meta_group_id target is missing', count(*)::bigint
     FROM manual_load_entry m
     LEFT JOIN meta_group mg ON mg.id = m.meta_group_id
@@ -316,3 +322,16 @@ SELECT 'informational unresolved design: teacher_directory_entry.building_group_
        count(*)::bigint AS row_count
 FROM teacher_directory_entry
 WHERE building_group_id IS NULL;
+
+-- Explicit meta-group curriculum rows must resolve their physical teaching site through meta_group.school_building_id.
+-- Expected result after completed migrations: 0 rows.
+SELECT cpe.id,
+       cpe.academic_year,
+       cpe.class_name,
+       cpe.meta_group_id,
+       mg.school_building_id
+FROM curriculum_plan_entry cpe
+JOIN meta_group mg ON mg.id = cpe.meta_group_id
+WHERE cpe.meta_group_id IS NOT NULL
+  AND mg.school_building_id IS NULL
+ORDER BY cpe.academic_year, cpe.class_name, cpe.id;
