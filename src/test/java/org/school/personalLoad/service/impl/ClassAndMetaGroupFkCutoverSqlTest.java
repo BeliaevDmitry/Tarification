@@ -90,6 +90,16 @@ class ClassAndMetaGroupFkCutoverSqlTest {
         assertTrue(manualRepository.contains("deletebyacademicyearandmetagroupids"));
     }
 
+    @Test
+    void completedFkAuditChecksExplicitMetaGroupSnapshotsAgainstParent() throws Exception {
+        String audit = readRaw("scripts/migrations/audit/verify_completed_fk_migration.sql");
+
+        assertTrue(audit.contains("curriculum explicit meta row organizational SP differs from parent meta_group"));
+        assertTrue(audit.contains("manual explicit meta row organizational SP differs from parent meta_group"));
+        assertTrue(audit.contains("cpe.class_name IS DISTINCT FROM ('МГ:' || mg.name)"));
+        assertTrue(audit.contains("mle.class_name IS DISTINCT FROM ('МГ:' || mg.name)"));
+    }
+
     private String read(String path) throws Exception {
         return readRaw(path).toLowerCase(Locale.ROOT);
     }

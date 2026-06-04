@@ -797,7 +797,6 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     importedIds.add(saved.getId());
                     if (isNew) created++; else updated++;
 
-                    boolean explicitMetaGroupRow = isExplicitMetaGroupClassName(normalizedClassName);
                     boolean createdClass = !explicitMetaGroupRow
                             && ensureClassroom(academicYear, resolvedBuilding, normalizedClassName, row.classDirection(), fallbackTeacher);
                     if (!explicitMetaGroupRow) {
@@ -1500,10 +1499,6 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
     private SubjectType resolveSubjectType(CurriculumImportRow row) {
         return resolveSubjectType(row.getCurriculumPart(), row.getSubjectName());
-    }
-
-    private static boolean isExplicitMetaGroupClassName(String className) {
-        return String.valueOf(className == null ? "" : className).trim().toUpperCase(Locale.ROOT).startsWith("МГ:");
     }
 
     private SubjectType resolveSubjectType(CurriculumPart curriculumPart, String subjectName) {

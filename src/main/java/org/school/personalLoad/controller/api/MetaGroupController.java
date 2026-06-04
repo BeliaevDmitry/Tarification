@@ -2,19 +2,26 @@ package org.school.personalLoad.controller.api;
 
 import lombok.RequiredArgsConstructor;
 import lombok.Value;
+import org.school.personalLoad.model.BuildingGroup;
 import org.school.personalLoad.model.CurriculumPlanEntry;
+import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.MetaGroup;
+import org.school.personalLoad.model.SchoolBuilding;
+import org.school.personalLoad.model.StudyPeriodSetting;
+import org.school.personalLoad.repository.BuildingGroupRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.MetaGroupRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
-import org.school.personalLoad.model.SchoolBuilding;
+import org.school.personalLoad.repository.StudyPeriodSettingRepository;
 import org.school.personalLoad.service.AcademicYearService;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("/api/meta-groups")
@@ -25,6 +32,8 @@ public class MetaGroupController {
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     private final ManualLoadEntryRepository manualLoadEntryRepository;
     private final SchoolBuildingRepository schoolBuildingRepository;
+    private final BuildingGroupRepository buildingGroupRepository;
+    private final StudyPeriodSettingRepository studyPeriodSettingRepository;
     private final AcademicYearService academicYearService;
 
     @GetMapping
@@ -37,7 +46,8 @@ public class MetaGroupController {
     public ResponseEntity<MetaGroup> create(@RequestParam(required = false) String academicYear,
                                             @RequestBody CreateMetaGroupRequest request) {
         String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
-        String building = normalizeBuilding(request.getNumberSchoolBuilding());
+        BuildingGroup buildingGroup = resolveRequiredBuildingGroup(request.getNumberSchoolBuilding());
+        String building = buildingGroup.getCode();
         Integer parallel = normalizeParallel(request.getParallel());
         String name = normalizeName(parallel, request.getName());
         String classType = normalizeClassType(request.getClassType());
@@ -48,6 +58,7 @@ public class MetaGroupController {
         MetaGroup entity = new MetaGroup();
         entity.setAcademicYear(effectiveYear);
         entity.setNumberSchoolBuilding(building);
+        entity.setBuildingGroup(buildingGroup);
         entity.setParallel(parallel);
         entity.setName(name);
         entity.setClassType(classType);
@@ -68,38 +79,46 @@ public class MetaGroupController {
             throw new IllegalArgumentException("Метагруппа относится к другому учебному году");
         }
         Integer parallel = normalizeParallel(request.getParallel() == null ? existing.getParallel() : request.getParallel());
-        String building = normalizeBuilding(request.getNumberSchoolBuilding() == null ? existing.getNumberSchoolBuilding() : request.getNumberSchoolBuilding());
+        BuildingGroup newBuildingGroup = resolveRequiredBuildingGroup(
+                request.getNumberSchoolBuilding() == null ? existing.getNumberSchoolBuilding() : request.getNumberSchoolBuilding());
+        String building = newBuildingGroup.getCode();
         String classType = normalizeClassType(request.getClassType() == null ? existing.getClassType() : request.getClassType());
         String newName = normalizeName(parallel, request.getName() == null ? existing.getName() : request.getName());
+        Long newStudyPeriodSettingId = request.getStudyPeriodSettingId() != null
+                ? request.getStudyPeriodSettingId()
+                : existing.getStudyPeriodSettingId();
+        StudyPeriodSetting newStudyPeriodSetting = resolveStudyPeriodSetting(effectiveYear, newStudyPeriodSettingId);
+        SchoolBuilding newPhysicalSite = request.getSchoolBuildingId() != null
+                ? resolveRequiredSchoolBuilding(request.getSchoolBuildingId())
+                : existing.getSchoolBuilding();
+        if (newPhysicalSite == null) {
+            throw new IllegalArgumentException("schoolBuildingId is required for meta group");
+        }
+
         boolean scopeChanged = !existing.getName().equalsIgnoreCase(newName)
                 || !existing.getNumberSchoolBuilding().equals(building)
                 || !existing.getParallel().equals(parallel)
                 || !existing.getClassType().equals(classType);
+        boolean studyPeriodSettingChanged = !Objects.equals(existing.getStudyPeriodSettingId(), newStudyPeriodSettingId);
         if (scopeChanged
                 && repository.existsByAcademicYearAndNumberSchoolBuildingAndParallelAndNameIgnoreCaseAndClassType(effectiveYear, building, parallel, newName, classType)) {
             throw new IllegalArgumentException("Метагруппа уже существует");
         }
 
-        List<CurriculumPlanEntry> entries = curriculumPlanEntryRepository.findAllByMetaGroupId(existing.getId())
-                .stream()
-                .filter(entry -> effectiveYear.equals(entry.getAcademicYear()))
-                .toList();
-        for (CurriculumPlanEntry entry : entries) {
-            entry.setStudyPeriodSettingId(request.getStudyPeriodSettingId() != null ? request.getStudyPeriodSettingId() : existing.getStudyPeriodSettingId());
-        }
-        curriculumPlanEntryRepository.saveAll(entries);
-
         existing.setNumberSchoolBuilding(building);
+        existing.setBuildingGroup(newBuildingGroup);
         existing.setParallel(parallel);
         existing.setName(newName);
         existing.setClassType(classType);
-        if (request.getStudyPeriodSettingId() != null) existing.setStudyPeriodSettingId(request.getStudyPeriodSettingId());
-        if (request.getSchoolBuildingId() != null) {
-            existing.setSchoolBuilding(resolveRequiredSchoolBuilding(request.getSchoolBuildingId()));
-        } else if (existing.getSchoolBuildingId() == null) {
-            throw new IllegalArgumentException("schoolBuildingId is required for meta group");
+        existing.setStudyPeriodSettingId(newStudyPeriodSettingId);
+        existing.setSchoolBuilding(newPhysicalSite);
+
+        MetaGroup savedMetaGroup = repository.saveAndFlush(existing);
+        if (scopeChanged || studyPeriodSettingChanged) {
+            synchronizeCurriculumRows(effectiveYear, savedMetaGroup, newStudyPeriodSetting);
+            synchronizeManualLoadRows(effectiveYear, savedMetaGroup);
         }
-        return ResponseEntity.ok(repository.save(existing));
+        return ResponseEntity.ok(savedMetaGroup);
     }
 
     @DeleteMapping("/{id}")
@@ -127,6 +146,60 @@ public class MetaGroupController {
         return ResponseEntity.noContent().build();
     }
 
+    private void synchronizeCurriculumRows(String effectiveYear, MetaGroup savedMetaGroup, StudyPeriodSetting studyPeriodSetting) {
+        List<CurriculumPlanEntry> entries = curriculumPlanEntryRepository.findAllByMetaGroupId(savedMetaGroup.getId())
+                .stream()
+                .filter(entry -> effectiveYear.equals(entry.getAcademicYear()))
+                .toList();
+        for (CurriculumPlanEntry entry : entries) {
+            entry.setNumberSchoolBuilding(savedMetaGroup.getNumberSchoolBuilding());
+            entry.setClassName(explicitMetaGroupClassName(savedMetaGroup));
+            entry.setStudyPeriodSettingId(savedMetaGroup.getStudyPeriodSettingId());
+            if (studyPeriodSetting != null) {
+                entry.setStudyPeriod(studyPeriodSetting.getStudyPeriod());
+            }
+            entry.setMetaGroup(true);
+            entry.setExcludedFromManualLoad(false);
+            entry.setClassId(null);
+        }
+        curriculumPlanEntryRepository.saveAll(entries);
+    }
+
+    private void synchronizeManualLoadRows(String effectiveYear, MetaGroup savedMetaGroup) {
+        List<ManualLoadEntry> rows = manualLoadEntryRepository.findAllByMetaGroupId(savedMetaGroup.getId())
+                .stream()
+                .filter(row -> effectiveYear.equals(row.getAcademicYear()))
+                .toList();
+        for (ManualLoadEntry row : rows) {
+            row.setNumberSchoolBuilding(savedMetaGroup.getNumberSchoolBuilding());
+            row.setClassName(explicitMetaGroupClassName(savedMetaGroup));
+            row.setClassId(null);
+        }
+        manualLoadEntryRepository.saveAll(rows);
+    }
+
+    private String explicitMetaGroupClassName(MetaGroup metaGroup) {
+        return "МГ:" + metaGroup.getName();
+    }
+
+    private BuildingGroup resolveRequiredBuildingGroup(String code) {
+        String normalized = normalizeBuilding(code);
+        return buildingGroupRepository.findByCodeIgnoreCase(normalized)
+                .orElseThrow(() -> new IllegalArgumentException("Основное СП метагруппы не найдено: " + normalized));
+    }
+
+    private StudyPeriodSetting resolveStudyPeriodSetting(String academicYear, Long studyPeriodSettingId) {
+        if (studyPeriodSettingId == null) {
+            return null;
+        }
+        StudyPeriodSetting setting = studyPeriodSettingRepository.findById(studyPeriodSettingId)
+                .orElseThrow(() -> new IllegalArgumentException("Период обучения не найден: " + studyPeriodSettingId));
+        if (!academicYear.equals(setting.getAcademicYear())) {
+            throw new IllegalArgumentException("Период обучения относится к другому учебному году");
+        }
+        return setting;
+    }
+
     private SchoolBuilding resolveRequiredSchoolBuilding(Long schoolBuildingId) {
         if (schoolBuildingId == null) {
             throw new IllegalArgumentException("schoolBuildingId is required for meta group");
@@ -139,7 +212,18 @@ public class MetaGroupController {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("numberSchoolBuilding is required");
         }
-        return value.trim();
+        String normalized = value.trim()
+                .toUpperCase(Locale.ROOT)
+                .replace('–', '-')
+                .replace('—', '-')
+                .replaceAll("[CС][ПPР]", "СП")
+                .replaceAll("\\s*\\|\\s*", "|")
+                .replaceAll("\\s+", "");
+        int addressSeparator = normalized.indexOf("|");
+        if (addressSeparator >= 0) {
+            normalized = normalized.substring(0, addressSeparator);
+        }
+        return normalized.replaceFirst("^СП-(\\d+)$", "СП$1");
     }
 
     private Integer normalizeParallel(Integer value) {
