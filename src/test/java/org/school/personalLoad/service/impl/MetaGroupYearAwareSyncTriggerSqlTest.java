@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MetaGroupYearAwareSyncTriggerSqlTest {
@@ -27,15 +28,17 @@ class MetaGroupYearAwareSyncTriggerSqlTest {
         assertTrue(sql.contains("where academic_year = new.academic_year"));
         assertTrue(sql.contains("and lower(trim(number_school_building)) = lower(trim(new.number_school_building))"));
         assertTrue(sql.contains("and lower(trim(name)) = lower(trim(regexp_replace(new.class_name"));
-        assertTrue(sql.contains("insert into meta_group(academic_year, number_school_building, parallel, name, class_type, study_period_setting_id)"));
-        assertTrue(sql.contains("values (new.academic_year, new.number_school_building"));
+        assertTrue(sql.contains("meta group not found for academic_year="));
+        assertTrue(sql.contains("create the meta group with a physical school building before saving curriculum/manual-load rows"));
+        assertTrue(sql.contains("raise exception"));
+        assertFalse(sql.contains("insert into meta_group("));
     }
 
     @Test
     void explicitMetaGroupIdFromAnotherAcademicYearIsRejected() throws Exception {
         String sql = migration();
 
-        assertTrue(sql.contains("select name, number_school_building, academic_year, parallel"));
+        assertTrue(sql.contains("select name, number_school_building, academic_year"));
         assertTrue(sql.contains("if myear is distinct from new.academic_year then"));
         assertTrue(sql.contains("belongs to academic_year"));
     }
@@ -59,6 +62,11 @@ class MetaGroupYearAwareSyncTriggerSqlTest {
         assertTrue(sql.contains("manual-load explicit мг row resolved"));
         assertTrue(sql.contains("cross-year explicit meta_group_id was accepted unexpectedly"));
         assertTrue(sql.contains("class_id=null"));
+        assertTrue(sql.contains("school_building_id"));
+        assertTrue(sql.contains("building_group_id"));
+        assertTrue(sql.contains("subject_id"));
+        assertTrue(sql.contains("teacher_id"));
+        assertTrue(sql.contains("missing meta group explicit row was accepted unexpectedly"));
     }
 
     private String migration() throws Exception {
