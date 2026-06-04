@@ -63,7 +63,8 @@ function fillBuildingGroupSelect(select, selectedId = "") {
 
 function openEdit(item) {
     ui.editForm.elements.id.value = item.id || "";
-    ui.editForm.elements.code.value = item.code;
+    const siteCode = ui.editForm.elements.siteCode;
+    if (siteCode) siteCode.value = item.code || "";
     fillBuildingGroupSelect(ui.editForm.elements.buildingGroupId, item.buildingGroupId);
     ui.editForm.elements.name.value = item.name;
     ui.editForm.elements.address.value = item.address;
@@ -106,8 +107,6 @@ ui.form.addEventListener("submit", async (e) => {
         name: String(form.get("name") || "").trim(),
         address: String(form.get("address") || "").trim()
     };
-    const selectedGroup = buildingGroups.find((g) => String(g.id) === String(payload.buildingGroupId));
-    payload.code = String(selectedGroup?.code || payload.name || "").trim();
 
     try {
         const saved = await api("/api/buildings", { method: "POST", headers: jsonHeaders, body: JSON.stringify(payload) });
@@ -121,13 +120,10 @@ ui.editForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const payload = {
         id: Number(ui.editForm.elements.id.value || 0) || null,
-        code: String(ui.editForm.elements.code.value || '').trim(),
         buildingGroupId: Number(ui.editForm.elements.buildingGroupId.value || 0) || null,
         name: String(ui.editForm.elements.name.value || '').trim(),
         address: String(ui.editForm.elements.address.value || '').trim()
     };
-    const selectedGroup = buildingGroups.find((g) => String(g.id) === String(payload.buildingGroupId));
-    if (selectedGroup?.code) payload.code = String(selectedGroup.code).trim();
 
     try {
         const saved = await api('/api/buildings', { method: 'POST', headers: jsonHeaders, body: JSON.stringify(payload) });

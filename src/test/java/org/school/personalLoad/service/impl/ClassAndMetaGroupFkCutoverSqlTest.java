@@ -100,6 +100,30 @@ class ClassAndMetaGroupFkCutoverSqlTest {
         assertTrue(audit.contains("mle.class_name IS DISTINCT FROM ('МГ:' || mg.name)"));
     }
 
+    @Test
+    void buildingsFrontendDoesNotSubmitOrganizationalCodeAsPhysicalSiteCode() throws Exception {
+        String buildingsJs = readRaw("src/main/resources/static/buildings.js");
+        String buildingsHtml = readRaw("src/main/resources/static/buildings.html");
+
+        assertFalse(buildingsJs.contains("payload.code = String(selectedGroup?.code"));
+        assertFalse(buildingsJs.contains("if (selectedGroup?.code) payload.code"));
+        assertFalse(buildingsJs.contains("code: String(ui.editForm.elements.code.value"));
+        assertTrue(buildingsJs.contains("buildingGroupId: Number(form.get(\"buildingGroupId\")"));
+        assertTrue(buildingsJs.contains("buildingGroupId: Number(ui.editForm.elements.buildingGroupId.value"));
+        assertTrue(buildingsHtml.contains("name=\"siteCode\" readonly"));
+        assertTrue(buildingsHtml.contains("Код физической площадки формируется автоматически из СП и адреса."));
+    }
+
+    @Test
+    void completedFkAuditChecksSchoolBuildingPhysicalSiteCodeQuality() throws Exception {
+        String audit = readRaw("scripts/migrations/audit/verify_completed_fk_migration.sql");
+
+        assertTrue(audit.contains("school_building physical code equals organizational building-group code"));
+        assertTrue(audit.contains("lower(trim(sb.code)) = lower(trim(bg.code))"));
+        assertTrue(audit.contains("lower(trim(sb.address)) AS normalized_address"));
+        assertTrue(audit.contains("HAVING count(*) > 1"));
+    }
+
     private String read(String path) throws Exception {
         return readRaw(path).toLowerCase(Locale.ROOT);
     }
