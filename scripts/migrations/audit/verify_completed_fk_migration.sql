@@ -358,3 +358,20 @@ WHERE mle.meta_group_id IS NOT NULL
         OR mle.number_school_building IS DISTINCT FROM mg.number_school_building
         OR mle.class_name IS DISTINCT FROM ('МГ:' || mg.name)
       );
+
+
+-- Physical school buildings must use address-scoped site codes, not the generic organizational SP code.
+SELECT 'school_building physical code equals organizational building-group code' AS check_name,
+       count(*)::bigint AS issue_count
+FROM school_building sb
+JOIN building_group bg ON bg.id = sb.building_group_id
+WHERE lower(trim(sb.code)) = lower(trim(bg.code));
+
+-- Duplicate physical addresses inside one organizational SP make site identity ambiguous.
+SELECT bg.code,
+       lower(trim(sb.address)) AS normalized_address,
+       count(*)::bigint AS rows_count
+FROM school_building sb
+JOIN building_group bg ON bg.id = sb.building_group_id
+GROUP BY bg.code, lower(trim(sb.address))
+HAVING count(*) > 1;
