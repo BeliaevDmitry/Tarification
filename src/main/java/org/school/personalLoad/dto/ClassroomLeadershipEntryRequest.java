@@ -10,6 +10,7 @@ public class ClassroomLeadershipEntryRequest {
     private Long schoolBuildingId;
     private String className;
     private String classDirection;
+    private Long teacherId;
     private String fioTeacher;
     private String campusAddress;
     private String classType;
