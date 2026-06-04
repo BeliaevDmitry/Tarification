@@ -2,11 +2,14 @@ package org.school.personalLoad.controller.api;
 
 import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.dto.CurriculumPlanEntryRequest;
+import org.school.personalLoad.dto.CurriculumPlanEntryResponse;
 import org.school.personalLoad.dto.CurriculumImportResult;
 import org.school.personalLoad.model.CurriculumPlanEntry;
+import org.school.personalLoad.model.MetaGroup;
 import org.school.personalLoad.service.CurriculumImportService;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.AcademicYearService;
+import org.school.personalLoad.repository.MetaGroupRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -18,6 +21,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/curriculum")
@@ -27,6 +34,7 @@ public class CurriculumPlanController {
     private final CurriculumPlanService curriculumPlanService;
     private final CurriculumImportService curriculumImportService;
     private final AcademicYearService academicYearService;
+    private final MetaGroupRepository metaGroupRepository;
 
     @PostMapping
     public ResponseEntity<CurriculumPlanEntry> upsert(@RequestParam(required = false) String academicYear, @RequestBody CurriculumPlanEntryRequest request) {
@@ -75,10 +83,40 @@ public class CurriculumPlanController {
     }
 
     @GetMapping
-    public ResponseEntity<List<CurriculumPlanEntry>> findAll(@RequestParam(required = false) String academicYear,
-                                                             @RequestParam(required = false) String building) {
+    public ResponseEntity<List<CurriculumPlanEntryResponse>> findAll(@RequestParam(required = false) String academicYear,
+                                                                     @RequestParam(required = false) String building) {
         String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
-        return ResponseEntity.ok(curriculumPlanService.findAll(effectiveYear, building));
+        List<CurriculumPlanEntry> entries = curriculumPlanService.findAll(effectiveYear, building);
+        return ResponseEntity.ok(toResponses(entries));
+    }
+
+    private List<CurriculumPlanEntryResponse> toResponses(List<CurriculumPlanEntry> entries) {
+        List<Long> metaGroupIds = entries.stream()
+                .map(CurriculumPlanEntry::getMetaGroupId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<Long, MetaGroup> metaGroupsById = metaGroupIds.isEmpty()
+                ? Map.of()
+                : metaGroupRepository.findAllById(metaGroupIds).stream()
+                .collect(Collectors.toMap(MetaGroup::getId, Function.identity()));
+        return entries.stream()
+                .map(entry -> CurriculumPlanEntryResponse.from(entry, resolvedSchoolBuildingId(entry, metaGroupsById)))
+                .toList();
+    }
+
+    private Long resolvedSchoolBuildingId(CurriculumPlanEntry entry, Map<Long, MetaGroup> metaGroupsById) {
+        if (entry.getMetaGroupId() == null) {
+            return null;
+        }
+        MetaGroup metaGroup = metaGroupsById.get(entry.getMetaGroupId());
+        if (metaGroup == null) {
+            throw new IllegalStateException("Метагруппа учебного плана не найдена: " + entry.getMetaGroupId());
+        }
+        if (metaGroup.getSchoolBuildingId() == null) {
+            throw new IllegalStateException("Для метагруппы не выбрана физическая площадка проведения: " + entry.getClassName());
+        }
+        return metaGroup.getSchoolBuildingId();
     }
 
     @PatchMapping("/{id}")

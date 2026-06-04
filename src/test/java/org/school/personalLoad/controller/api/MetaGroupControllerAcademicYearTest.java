@@ -128,6 +128,30 @@ class MetaGroupControllerAcademicYearTest {
     }
 
     @Test
+    void updatePersistsOnlyPhysicalSchoolBuildingWithoutChangingOrganizationalSp() {
+        MetaGroup existing = metaGroup(4L, "2026/2027");
+        SchoolBuilding newPhysicalSite = schoolBuilding(37L);
+        newPhysicalSite.setCode("СП21");
+        newPhysicalSite.setAddress("Ломоносовский пр-кт, д. 3А");
+        when(metaGroupRepository.findById(4L)).thenReturn(Optional.of(existing));
+        when(academicYearService.resolveRequestedOrDefault("2026/2027")).thenReturn("2026/2027");
+        when(curriculumPlanEntryRepository.findAllByMetaGroupId(4L)).thenReturn(List.of());
+        when(schoolBuildingRepository.findById(37L)).thenReturn(Optional.of(newPhysicalSite));
+        when(metaGroupRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MetaGroup saved = controller.update(4L, "2026/2027", new MetaGroupController.UpdateMetaGroupRequest(
+                null, null, null, null, null, 37L
+        )).getBody();
+
+        assertNotNull(saved);
+        assertEquals(37L, saved.getSchoolBuildingId());
+        assertEquals("СП21", saved.getSchoolBuilding().getCode());
+        assertEquals("СП1", saved.getNumberSchoolBuilding());
+        verify(schoolBuildingRepository).findById(37L);
+        verify(metaGroupRepository).save(existing);
+    }
+
+    @Test
     void deleteRejectsCrossYearDependentRowsEvenWhenMetaGroupYearMatches() {
         MetaGroup existing = metaGroup(4L, "2026/2027");
         when(metaGroupRepository.findById(4L)).thenReturn(Optional.of(existing));

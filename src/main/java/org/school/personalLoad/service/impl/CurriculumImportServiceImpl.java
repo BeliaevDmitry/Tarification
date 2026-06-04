@@ -797,8 +797,11 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     importedIds.add(saved.getId());
                     if (isNew) created++; else updated++;
 
-                    boolean createdClass = ensureClassroom(academicYear, resolvedBuilding, normalizedClassName, row.classDirection(), fallbackTeacher);
-                    buildingByNormalizedClass.putIfAbsent(normalizedClassName, resolvedBuilding);
+                    boolean createdClass = !explicitMetaGroupRow
+                            && ensureClassroom(academicYear, resolvedBuilding, normalizedClassName, row.classDirection(), fallbackTeacher);
+                    if (!explicitMetaGroupRow) {
+                        buildingByNormalizedClass.putIfAbsent(normalizedClassName, resolvedBuilding);
+                    }
                     if (createdClass) classesCreated++;
 
                     SubjectType subjectType = resolveSubjectType(row.curriculumPart(), row.subjectName());
@@ -863,8 +866,12 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     importedIds.add(saved.getId());
                     if (isNew) created++; else updated++;
 
-                    boolean createdClass = ensureClassroom(academicYear, entry.getNumberSchoolBuilding(), normalizedClassName, row.getClassDirection(), fallbackTeacher);
-                    buildingByNormalizedClass.putIfAbsent(normalizedClassName, entry.getNumberSchoolBuilding());
+                    boolean explicitMetaGroupRow = isExplicitMetaGroupClassName(normalizedClassName);
+                    boolean createdClass = !explicitMetaGroupRow
+                            && ensureClassroom(academicYear, entry.getNumberSchoolBuilding(), normalizedClassName, row.getClassDirection(), fallbackTeacher);
+                    if (!explicitMetaGroupRow) {
+                        buildingByNormalizedClass.putIfAbsent(normalizedClassName, entry.getNumberSchoolBuilding());
+                    }
                     if (createdClass) classesCreated++;
 
                     SubjectType subjectType = resolveSubjectType(row);
@@ -1486,12 +1493,12 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     private record MarkerFlags(String value, boolean subgroupRequired, boolean metaGroup) {}
     private record SubgroupHoursParseResult(Integer h1g1, Integer h1g2, Integer h2g1, Integer h2g2, boolean hasH2) {}
 
-    private SubjectType resolveSubjectType(CurriculumImportRow row) {
-        return resolveSubjectType(row.getCurriculumPart(), row.getSubjectName());
-    }
-
     private static boolean isExplicitMetaGroupClassName(String className) {
         return String.valueOf(className == null ? "" : className).trim().toUpperCase(Locale.ROOT).startsWith("МГ:");
+    }
+
+    private SubjectType resolveSubjectType(CurriculumImportRow row) {
+        return resolveSubjectType(row.getCurriculumPart(), row.getSubjectName());
     }
 
     private SubjectType resolveSubjectType(CurriculumPart curriculumPart, String subjectName) {

@@ -385,6 +385,52 @@ function rememberSelectedBuilding(code) {
     sessionStorage.setItem(LOAD_SELECTED_BUILDING_KEY, normalized);
 }
 
+function mergeMetaGroupAddressScopeOptions(buildingGroups, curriculumSourceRows, physicalBuildingRows) {
+    const physicalById = new Map((physicalBuildingRows || [])
+        .filter((building) => building?.id != null || building?.schoolBuildingId != null)
+        .map((building) => [Number(building.id ?? building.schoolBuildingId), building]));
+
+    (curriculumSourceRows || [])
+        .filter(contributesToManualLoad)
+        .filter(isExplicitMetaGroupRow)
+        .filter((row) => row?.schoolBuildingId !== null && row?.schoolBuildingId !== undefined)
+        .forEach((row) => {
+            const organizationalSp = normalizeBuildingCode(row.numberSchoolBuilding);
+            const schoolBuildingId = Number(row.schoolBuildingId);
+            if (!organizationalSp || !Number.isFinite(schoolBuildingId)) return;
+
+            const physicalSite = physicalById.get(schoolBuildingId) || {};
+            const physicalAddress = String(physicalSite.address || physicalSite.name || physicalSite.code || `Площадка ${schoolBuildingId}`).trim();
+            if (!physicalAddress) return;
+
+            const existing = buildingGroups.get(organizationalSp) || {
+                code: organizationalSp,
+                name: organizationalSp,
+                addresses: [],
+                addressRows: []
+            };
+
+            const addressKey = normalizeBuildingAccessCode(physicalAddress);
+            if (!existing.addresses.some((address) => normalizeBuildingAccessCode(address) === addressKey)) {
+                existing.addresses.push(physicalAddress);
+            }
+
+            const hasSamePhysicalSite = (existing.addressRows || []).some((site) =>
+                Number(site?.id ?? site?.schoolBuildingId) === schoolBuildingId
+            );
+            if (!hasSamePhysicalSite) {
+                existing.addressRows.push({
+                    ...physicalSite,
+                    id: schoolBuildingId,
+                    schoolBuildingId,
+                    address: physicalAddress
+                });
+            }
+
+            buildingGroups.set(organizationalSp, existing);
+        });
+}
+
 function restoreSelectedBuilding() {
     const restored = String(sessionStorage.getItem(LOAD_SELECTED_BUILDING_KEY) || "").trim();
     return restored === ARCHIVE_BUILDING_CODE ? ARCHIVE_BUILDING_CODE : normalizeBuildingAccessCode(restored);
@@ -2787,14 +2833,16 @@ async function refreshSourceData() {
         api(`/api/manual-load${initialManualQuery}`)
     ]);
     const complexManualPromise = api("/api/manual-load");
+    const allCurriculumPromise = api("/api/curriculum");
 
-    const [teachers, buildingRows, classRows, periodSettings, yearResolve, subjectRows] = await Promise.all([
+    const [teachers, buildingRows, classRows, periodSettings, yearResolve, subjectRows, allCurriculumRows] = await Promise.all([
         api("/api/teachers"),
         api("/api/buildings"),
         api("/api/classroom-leadership"),
         api("/api/settings/study-periods"),
         api("/api/academic-years/active"),
-        api("/api/subjects")
+        api("/api/subjects"),
+        allCurriculumPromise
     ]);
 
     const buildingGroups = new Map();
@@ -2845,6 +2893,9 @@ async function refreshSourceData() {
 
     buildingGroups.set(organizationalSp, existing);
 });
+
+    mergeMetaGroupAddressScopeOptions(buildingGroups, allCurriculumRows || [], buildingRows || []);
+
     buildings = [];
     [...buildingGroups.values()]
         .sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"))
