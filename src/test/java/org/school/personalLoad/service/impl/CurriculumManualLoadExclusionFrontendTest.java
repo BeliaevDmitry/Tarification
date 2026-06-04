@@ -20,6 +20,18 @@ class CurriculumManualLoadExclusionFrontendTest {
     }
 
     @Test
+    void manualLoadSourcePathFiltersOrdinaryExcludedRowsButKeepsExplicitMetaGroups() throws Exception {
+        String js = Files.readString(Path.of("src/main/resources/static/load.js"));
+
+        assertTrue(js.contains("function contributesToManualLoad(row)"));
+        assertTrue(js.contains("if (isExplicitMetaGroupRow(row)) return true;"));
+        assertTrue(js.contains("return !Boolean(row?.excludedFromManualLoad);"));
+        assertTrue(js.contains("expandCurriculumRows(curriculumRows.filter(contributesToManualLoad))"));
+        assertTrue(js.contains("curriculumRows.filter(contributesToManualLoad).filter((row) => {"));
+        assertTrue(js.contains("String(row?.className || \"\").trim().toUpperCase().startsWith(\"МГ:\")"));
+    }
+
+    @Test
     void curriculumUiSubmitsExclusionFlagAndProtectsExplicitMetaGroups() throws Exception {
         String js = Files.readString(Path.of("src/main/resources/static/curriculum.js"));
         String html = Files.readString(Path.of("src/main/resources/static/curriculum.html"));
