@@ -53,12 +53,17 @@ public class ClassroomLeadershipEntry {
     @Column(nullable = false)
     private String fioTeacher;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "teacher_id", insertable = false, updatable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "teacher_id", nullable = false)
     @JsonIgnore
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private TeacherDirectoryEntry teacher;
+
+    @com.fasterxml.jackson.annotation.JsonProperty("teacherId")
+    public Long getTeacherId() {
+        return teacher == null ? null : teacher.getId();
+    }
 
     @Column(nullable = false)
     private String campusAddress;
