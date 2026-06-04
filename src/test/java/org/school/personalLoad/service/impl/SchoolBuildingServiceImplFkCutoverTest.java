@@ -10,7 +10,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.school.personalLoad.dto.SchoolBuildingRequest;
 import org.school.personalLoad.model.BuildingGroup;
+import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.SchoolBuilding;
+import org.springframework.data.repository.query.parser.PartTree;
 import org.school.personalLoad.repository.BuildingGroupRepository;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.MetaGroupRepository;
@@ -54,6 +56,12 @@ class SchoolBuildingServiceImplFkCutoverTest {
                 classroomLeadershipRepository,
                 metaGroupRepository
         );
+    }
+
+    @Test
+    void directPhysicalSiteFkRepositoryMethodsUseNestedSchoolBuildingIdPath() {
+        new PartTree("existsBySchoolBuilding_Id", ClassroomLeadershipEntry.class);
+        new PartTree("existsBySchoolBuilding_Id", org.school.personalLoad.model.MetaGroup.class);
     }
 
     @Test
@@ -169,7 +177,7 @@ class SchoolBuildingServiceImplFkCutoverTest {
         SchoolBuilding existing = building(47L, sp3, "сп3|мехмат", "Мехмат", "мехмат");
         when(schoolBuildingRepository.findById(47L)).thenReturn(Optional.of(existing));
         when(buildingGroupRepository.findById(3L)).thenReturn(Optional.of(sp3));
-        when(classroomLeadershipRepository.existsBySchoolBuildingId(47L)).thenReturn(true);
+        when(classroomLeadershipRepository.existsBySchoolBuilding_Id(47L)).thenReturn(true);
 
         IllegalStateException error = assertThrows(IllegalStateException.class,
                 () -> service.upsert(request(47L, 3L, null, "Мехмат", "новый адрес")));
@@ -185,7 +193,7 @@ class SchoolBuildingServiceImplFkCutoverTest {
         SchoolBuilding existing = building(47L, sp3, "сп3|мехмат", "Мехмат", "мехмат");
         when(schoolBuildingRepository.findById(47L)).thenReturn(Optional.of(existing));
         when(buildingGroupRepository.findById(4L)).thenReturn(Optional.of(sp4));
-        when(metaGroupRepository.existsBySchoolBuildingId(47L)).thenReturn(true);
+        when(metaGroupRepository.existsBySchoolBuilding_Id(47L)).thenReturn(true);
 
         IllegalStateException error = assertThrows(IllegalStateException.class,
                 () -> service.upsert(request(47L, 4L, null, "Мехмат", "мехмат")));
@@ -218,7 +226,7 @@ class SchoolBuildingServiceImplFkCutoverTest {
     void deletePhysicalSiteReferencedByClassIsRejected() {
         SchoolBuilding existing = building(47L, group(3L, "СП3", "СП3"), "сп3|мехмат", "Мехмат", "мехмат");
         when(schoolBuildingRepository.findById(47L)).thenReturn(Optional.of(existing));
-        when(classroomLeadershipRepository.existsBySchoolBuildingId(47L)).thenReturn(true);
+        when(classroomLeadershipRepository.existsBySchoolBuilding_Id(47L)).thenReturn(true);
 
         IllegalStateException error = assertThrows(IllegalStateException.class, () -> service.deleteById(47L));
 
@@ -230,7 +238,7 @@ class SchoolBuildingServiceImplFkCutoverTest {
     void deletePhysicalSiteReferencedByMetaGroupIsRejected() {
         SchoolBuilding existing = building(47L, group(3L, "СП3", "СП3"), "сп3|мехмат", "Мехмат", "мехмат");
         when(schoolBuildingRepository.findById(47L)).thenReturn(Optional.of(existing));
-        when(metaGroupRepository.existsBySchoolBuildingId(47L)).thenReturn(true);
+        when(metaGroupRepository.existsBySchoolBuilding_Id(47L)).thenReturn(true);
 
         IllegalStateException error = assertThrows(IllegalStateException.class, () -> service.deleteById(47L));
 

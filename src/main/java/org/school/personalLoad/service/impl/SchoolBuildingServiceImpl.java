@@ -105,10 +105,10 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
             throw new IllegalArgumentException("id is required");
         }
         SchoolBuilding entity = repository.findById(id).orElseThrow(() -> new IllegalArgumentException("Корпус не найден"));
-        if (classroomLeadershipRepository.existsBySchoolBuildingId(id)) {
+        if (classroomLeadershipRepository.existsBySchoolBuilding_Id(id)) {
             throw new IllegalStateException("Нельзя удалить площадку: к ней привязаны классы");
         }
-        if (metaGroupRepository.existsBySchoolBuildingId(id)) {
+        if (metaGroupRepository.existsBySchoolBuilding_Id(id)) {
             throw new IllegalStateException("Нельзя удалить площадку: к ней привязаны метагруппы");
         }
         repository.deleteById(entity.getId());
@@ -272,8 +272,8 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
 
     private boolean isPhysicalSiteReferenced(Long schoolBuildingId) {
         return schoolBuildingId != null
-                && (classroomLeadershipRepository.existsBySchoolBuildingId(schoolBuildingId)
-                || metaGroupRepository.existsBySchoolBuildingId(schoolBuildingId));
+                && (classroomLeadershipRepository.existsBySchoolBuilding_Id(schoolBuildingId)
+                || metaGroupRepository.existsBySchoolBuilding_Id(schoolBuildingId));
     }
 
 }
