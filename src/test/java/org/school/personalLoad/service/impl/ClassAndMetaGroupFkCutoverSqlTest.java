@@ -51,7 +51,7 @@ class ClassAndMetaGroupFkCutoverSqlTest {
         assertTrue(loadJs.contains("startsWith(\"МГ:\")"));
         assertTrue(loadJs.contains("function contributesToManualLoad(row)"));
         assertTrue(loadJs.contains("if (isExplicitMetaGroupRow(row)) return true;"));
-        assertTrue(loadJs.contains("return !Boolean(row?.excludedFromManualLoad);"));
+        assertTrue(loadJs.contains("return !Boolean(row?.metaGroup);"));
         assertTrue(loadJs.contains("const filtered = scoped.filter(contributesToManualLoad);"));
         assertFalse(normalized.contains("scoped.filter((row) => !boolean(row.metagroup))"));
     }

@@ -127,24 +127,6 @@ WITH checks AS (
     FROM curriculum_plan_entry
     WHERE class_name NOT LIKE 'МГ:%' AND meta_group_id IS NOT NULL
     UNION ALL
-    SELECT 'explicit meta curriculum rows excluded from manual load', count(*)::bigint
-    FROM curriculum_plan_entry
-    WHERE meta_group_id IS NOT NULL
-      AND excluded_from_manual_load = true
-    UNION ALL
-    SELECT 'explicit meta curriculum rows without physical school_building_id', count(*)::bigint
-    FROM curriculum_plan_entry cpe
-    JOIN meta_group mg ON mg.id = cpe.meta_group_id
-    WHERE cpe.meta_group_id IS NOT NULL
-      AND mg.school_building_id IS NULL
-    UNION ALL
-    SELECT 'ordinary legacy meta rows not excluded from manual load', count(*)::bigint
-    FROM curriculum_plan_entry
-    WHERE meta_group = true
-      AND class_id IS NOT NULL
-      AND meta_group_id IS NULL
-      AND excluded_from_manual_load = false
-    UNION ALL
     SELECT 'manual regular rows with meta_group_id set', count(*)::bigint
     FROM manual_load_entry
     WHERE class_name NOT LIKE 'МГ:%' AND meta_group_id IS NOT NULL
@@ -163,6 +145,12 @@ WITH checks AS (
     FROM curriculum_plan_entry c
     LEFT JOIN meta_group mg ON mg.id = c.meta_group_id
     WHERE c.meta_group_id IS NOT NULL AND mg.id IS NULL
+    UNION ALL
+    SELECT 'explicit meta curriculum rows without physical school_building_id', count(*)::bigint
+    FROM curriculum_plan_entry cpe
+    JOIN meta_group mg ON mg.id = cpe.meta_group_id
+    WHERE cpe.meta_group_id IS NOT NULL
+      AND mg.school_building_id IS NULL
     UNION ALL
     SELECT 'manual meta_group_id target is missing', count(*)::bigint
     FROM manual_load_entry m

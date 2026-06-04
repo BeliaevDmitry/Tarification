@@ -53,62 +53,12 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             buildVisualSheet(workbook, "НОО", entries, 1, 4);
             buildVisualSheet(workbook, "ООО", entries, 5, 9);
             buildVisualSheet(workbook, "СОО", entries, 10, 11);
-            buildEditableRowsSheet(workbook, entries);
             Sheet legacySheet = workbook.createSheet("CURRICULUM_VISUAL");
             Row legacyRow = legacySheet.createRow(0);
             legacyRow.createCell(0).setCellValue("Экспорт перенесен в листы НОО/ООО/СОО. Этот лист оставлен для совместимости импорта.");
 
             workbook.write(output);
             return output.toByteArray();
-        }
-    }
-
-    private void buildEditableRowsSheet(Workbook workbook, List<CurriculumPlanEntry> entries) {
-        Sheet sheet = workbook.createSheet("CURRICULUM_EDITABLE");
-        String[] headers = {
-                "NUMBER_SCHOOL_BUILDING",
-                "CLASS_NAME",
-                "CLASS_DIRECTION",
-                "CURRICULUM_PART",
-                "SUBJECT_NAME",
-                "EDUCATION_LEVEL",
-                "STUDY_PERIOD",
-                "PLANNED_HOURS",
-                "SUBGROUP_REQUIRED",
-                "SUBGROUP1_HOURS",
-                "SUBGROUP1_EDUCATION_LEVEL",
-                "SUBGROUP2_HOURS",
-                "SUBGROUP2_EDUCATION_LEVEL",
-                "META_GROUP",
-                "EXCLUDED_FROM_MANUAL_LOAD"
-        };
-        Row header = sheet.createRow(0);
-        for (int i = 0; i < headers.length; i++) {
-            header.createCell(i).setCellValue(headers[i]);
-        }
-        int rowNum = 1;
-        for (CurriculumPlanEntry entry : entries) {
-            boolean explicitMetaGroup = isExplicitMetaGroupClassName(entry.getClassName()) || entry.getMetaGroupId() != null;
-            boolean excludedFromManualLoad = !explicitMetaGroup && entry.isExcludedFromManualLoad();
-            Row row = sheet.createRow(rowNum++);
-            row.createCell(0).setCellValue(normalizeSubject(entry.getNumberSchoolBuilding()));
-            row.createCell(1).setCellValue(ClassNameNormalizer.normalize(entry.getClassName()));
-            row.createCell(2).setCellValue("");
-            row.createCell(3).setCellValue((entry.getCurriculumPart() == null ? CurriculumPart.CORE : entry.getCurriculumPart()).name());
-            row.createCell(4).setCellValue(normalizeSubject(entry.getSubjectName()));
-            row.createCell(5).setCellValue((entry.getEducationLevel() == null ? EducationLevel.BASIC : entry.getEducationLevel()).name());
-            row.createCell(6).setCellValue((entry.getStudyPeriod() == null ? StudyPeriod.YEAR : entry.getStudyPeriod()).name());
-            row.createCell(7).setCellValue(entry.getPlannedHours() == null ? 0D : entry.getPlannedHours().doubleValue());
-            row.createCell(8).setCellValue(entry.isSubgroupRequired());
-            if (entry.getSubgroup1Hours() != null) row.createCell(9).setCellValue(entry.getSubgroup1Hours());
-            row.createCell(10).setCellValue((entry.getSubgroup1EducationLevel() == null ? EducationLevel.BASIC : entry.getSubgroup1EducationLevel()).name());
-            if (entry.getSubgroup2Hours() != null) row.createCell(11).setCellValue(entry.getSubgroup2Hours());
-            row.createCell(12).setCellValue((entry.getSubgroup2EducationLevel() == null ? EducationLevel.BASIC : entry.getSubgroup2EducationLevel()).name());
-            row.createCell(13).setCellValue(explicitMetaGroup || excludedFromManualLoad);
-            row.createCell(14).setCellValue(excludedFromManualLoad);
-        }
-        for (int i = 0; i < headers.length; i++) {
-            sheet.autoSizeColumn(i);
         }
     }
 
@@ -786,17 +736,13 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     entry.setSubgroup1EducationLevel(row.subgroupRequired() ? row.subgroup1EducationLevel() : null);
                     entry.setSubgroup2EducationLevel(row.subgroupRequired() ? row.subgroup2EducationLevel() : null);
                     entry.setDeprecated(false);
-                    boolean explicitMetaGroupRow = isExplicitMetaGroupClassName(normalizedClassName);
-                    if (explicitMetaGroupRow && row.excludedFromManualLoad()) {
-                        throw new IllegalArgumentException("Строка нагрузки метагруппы должна переноситься в нагрузку");
-                    }
-                    entry.setExcludedFromManualLoad(explicitMetaGroupRow ? false : row.excludedFromManualLoad());
-                    entry.setMetaGroup(explicitMetaGroupRow || entry.isExcludedFromManualLoad());
+                    entry.setMetaGroup(row.metaGroup());
 
                     CurriculumPlanEntry saved = curriculumRepository.save(entry);
                     importedIds.add(saved.getId());
                     if (isNew) created++; else updated++;
 
+                    boolean explicitMetaGroupRow = isExplicitMetaGroupClassName(normalizedClassName);
                     boolean createdClass = !explicitMetaGroupRow
                             && ensureClassroom(academicYear, resolvedBuilding, normalizedClassName, row.classDirection(), fallbackTeacher);
                     if (!explicitMetaGroupRow) {
@@ -1353,16 +1299,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 EducationLevel subgroup1Level = parseLevel(readCell(row.getCell(10)));
                 Integer subgroup2Hours = parseInteger(readCell(row.getCell(11)));
                 EducationLevel subgroup2Level = parseLevel(readCell(row.getCell(12)));
-                String legacyMetaRaw = normalizeSubject(readCell(row.getCell(13)));
-                String excludedRaw = normalizeSubject(readCell(row.getCell(14)));
-                boolean legacyMetaGroup = Boolean.parseBoolean(legacyMetaRaw);
-                boolean excludedFromManualLoad = excludedRaw.isBlank()
-                        ? legacyMetaGroup && !isExplicitMetaGroupClassName(className)
-                        : Boolean.parseBoolean(excludedRaw);
                 if (building.isBlank() || className.isBlank() || subject.isBlank() || hours == null || hours.compareTo(BigDecimal.ZERO) <= 0) continue;
-                if (isExplicitMetaGroupClassName(className) && excludedFromManualLoad) {
-                    throw new IllegalArgumentException("Строка нагрузки метагруппы должна переноситься в нагрузку");
-                }
                 rows.add(new EditableImportRow(
                         building,
                         className,
@@ -1377,13 +1314,10 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         subgroup1Level == null ? EducationLevel.BASIC : subgroup1Level,
                         subgroup2Hours,
                         subgroup2Level == null ? EducationLevel.BASIC : subgroup2Level,
-                        legacyMetaGroup || isExplicitMetaGroupClassName(className),
-                        excludedFromManualLoad
+                        false
                 ));
             }
             return rows;
-        } catch (IllegalArgumentException e) {
-            throw e;
         } catch (Exception e) {
             return List.of();
         }
@@ -1460,29 +1394,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             EducationLevel subgroup1EducationLevel,
             Integer subgroup2Hours,
             EducationLevel subgroup2EducationLevel,
-            boolean metaGroup,
-            boolean excludedFromManualLoad
-    ) {
-        private EditableImportRow(String numberSchoolBuilding,
-                                  String className,
-                                  String classDirection,
-                                  CurriculumPart curriculumPart,
-                                  String subjectName,
-                                  EducationLevel educationLevel,
-                                  StudyPeriod studyPeriod,
-                                  BigDecimal plannedHours,
-                                  boolean subgroupRequired,
-                                  Integer subgroup1Hours,
-                                  EducationLevel subgroup1EducationLevel,
-                                  Integer subgroup2Hours,
-                                  EducationLevel subgroup2EducationLevel,
-                                  boolean metaGroup) {
-            this(numberSchoolBuilding, className, classDirection, curriculumPart, subjectName, educationLevel,
-                    studyPeriod, plannedHours, subgroupRequired, subgroup1Hours, subgroup1EducationLevel,
-                    subgroup2Hours, subgroup2EducationLevel, metaGroup,
-                    metaGroup && !isExplicitMetaGroupClassName(className));
-        }
-    }
+            boolean metaGroup
+    ) {}
 
     private record ClassHeaderMeta(int colIndex, String building, String className) {}
     private record ClassColumn(String building, String className) {
@@ -1493,12 +1406,12 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     private record MarkerFlags(String value, boolean subgroupRequired, boolean metaGroup) {}
     private record SubgroupHoursParseResult(Integer h1g1, Integer h1g2, Integer h2g1, Integer h2g2, boolean hasH2) {}
 
-    private SubjectType resolveSubjectType(CurriculumImportRow row) {
-        return resolveSubjectType(row.getCurriculumPart(), row.getSubjectName());
-    }
-
     private static boolean isExplicitMetaGroupClassName(String className) {
         return String.valueOf(className == null ? "" : className).trim().toUpperCase(Locale.ROOT).startsWith("МГ:");
+    }
+
+    private SubjectType resolveSubjectType(CurriculumImportRow row) {
+        return resolveSubjectType(row.getCurriculumPart(), row.getSubjectName());
     }
 
     private SubjectType resolveSubjectType(CurriculumPart curriculumPart, String subjectName) {

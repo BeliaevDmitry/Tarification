@@ -1629,7 +1629,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         if (isExplicitMetaGroupRow(row)) {
             return true;
         }
-        return !row.isExcludedFromManualLoad();
+        return !row.isMetaGroup();
     }
 
     private boolean isExplicitMetaGroupRow(CurriculumPlanEntry row) {

@@ -56,16 +56,12 @@ const ui = {
     exportParallelsBtn: document.getElementById("export-curriculum-parallels-btn"),
     subgroupRequired: document.getElementById("subgroup-required"),
     subgroupConfig: document.getElementById("subgroup-config"),
-    subjectExclusionLabel: document.getElementById("subject-exclusion-label"),
-    subjectMetaGroupInfo: document.getElementById("subject-meta-group-info"),
     summaryHead: document.getElementById("summary-head"),
     summaryBody: document.getElementById("summary-body"),
     editDialog: document.getElementById("curriculum-edit-dialog"),
     editForm: document.getElementById("curriculum-edit-form"),
     deleteItemBtn: document.getElementById("delete-curriculum-item"),
-    closeDialogBtn: document.getElementById("close-curriculum-dialog"),
-    editExclusionLabel: document.getElementById("edit-exclusion-label"),
-    editMetaGroupInfo: document.getElementById("edit-meta-group-info")
+    closeDialogBtn: document.getElementById("close-curriculum-dialog")
     ,metaGroupCreateDialog: document.getElementById("meta-group-create-dialog")
     ,metaGroupCreateForm: document.getElementById("meta-group-create-form")
     ,metaGroupManageDialog: document.getElementById("meta-group-manage-dialog")
@@ -123,22 +119,6 @@ function isSubjectTypeCompatible(actualType, expectedType) {
 }
 function isHighSchoolParallel(parallel = selectedParallel) { return Number(parallel) >= 10; }
 function makeClassKey(numberSchoolBuilding, className) { return `${norm(numberSchoolBuilding)}|${norm(className)}`; }
-function isExplicitMetaGroupClassName(className) { return norm(className).toUpperCase().startsWith("МГ:"); }
-function configureExclusionControl(form, className, label, info) {
-    const control = form?.elements?.excludedFromManualLoad;
-    if (!control) return;
-    const explicitMetaGroup = isExplicitMetaGroupClassName(className);
-    if (explicitMetaGroup) {
-        control.value = "false";
-        control.disabled = true;
-        label?.classList.add("hidden");
-        info?.classList.remove("hidden");
-    } else {
-        control.disabled = false;
-        label?.classList.remove("hidden");
-        info?.classList.add("hidden");
-    }
-}
 function normalizeStudyPeriod(className, studyPeriod) {
     return studyPeriod || (isHighSchoolParallel(classToParallel(className)) ? "H1" : "YEAR");
 }
@@ -449,7 +429,6 @@ function renderClassOptions() {
         const value = `МГ:${m.name}`;
         ui.formClass.innerHTML += `<option value="${esc(value)}">${esc(value)} (Метагруппа)</option>`;
     });
-    configureExclusionControl(ui.form, ui.formClass.value, ui.subjectExclusionLabel, ui.subjectMetaGroupInfo);
 }
 
 function syncStudyPeriodControls() {
@@ -522,8 +501,6 @@ function buildSummaryRows(selectedClasses) {
                     subgroup2Hours: v.subgroup2Hours,
                     id: v.id,
                     studyPeriod: v.studyPeriod,
-                    className: v.className,
-                    excludedFromManualLoad: Boolean(v.excludedFromManualLoad),
                     metaGroup: Boolean(v.metaGroup)
                 };
                 if (v.studyPeriod === "H1") perClass[classKey].h1 = item;
@@ -603,8 +580,7 @@ function openEditById(id) {
     ui.editForm.elements.educationLevel.value = existing.educationLevel || "BASIC";
     ui.editForm.elements.subgroupRequired.value = String(Boolean(existing.subgroupRequired));
     ui.editForm.elements.studyPeriod.value = String(existing.studyPeriodSettingId || "");
-    ui.editForm.elements.excludedFromManualLoad.value = String(Boolean(existing.excludedFromManualLoad));
-    configureExclusionControl(ui.editForm, existing.className, ui.editExclusionLabel, ui.editMetaGroupInfo);
+    ui.editForm.elements.metaGroup.value = String(Boolean(existing.metaGroup));
     ui.editForm.elements.subgroup1Hours.value = existing.subgroup1Hours || existing.plannedHours || "";
     ui.editForm.elements.subgroup2Hours.value = existing.subgroup2Hours || existing.plannedHours || "";
     ui.editForm.elements.subgroup1EducationLevel.value = existing.subgroup1EducationLevel || existing.educationLevel || "BASIC";
@@ -623,8 +599,7 @@ function openCreateByCell(cellCtx) {
     ui.editForm.elements.plannedHours.value = "";
     ui.editForm.elements.educationLevel.value = cellCtx.educationLevel || "BASIC";
     ui.editForm.elements.subgroupRequired.value = "false";
-    ui.editForm.elements.excludedFromManualLoad.value = "false";
-    configureExclusionControl(ui.editForm, cellCtx.className, ui.editExclusionLabel, ui.editMetaGroupInfo);
+    ui.editForm.elements.metaGroup.value = "false";
     ui.editForm.elements.subgroup1Hours.value = "";
     ui.editForm.elements.subgroup2Hours.value = "";
     ui.editForm.elements.subgroup1EducationLevel.value = ui.editForm.elements.educationLevel.value;
@@ -649,7 +624,7 @@ function classCellMarkup(cellInfo, rowMeta, classMeta) {
         if (!cell) return "";
         const markers = [];
         if (cell.subgroupRequired) markers.push("Д");
-        if (cell.excludedFromManualLoad && !isExplicitMetaGroupClassName(cell.className)) markers.push("Н");
+        if (cell.metaGroup) markers.push("М");
         const markersHtml = markers.length
             ? `<sup class="hours-index">${markers.join("")}</sup>`
             : "";
@@ -677,7 +652,7 @@ function classCellMarkup(cellInfo, rowMeta, classMeta) {
     const split = Boolean(classMeta.split || h1 || h2);
 
     if (year) {
-        const cls = `${(year.educationLevel || rowMeta.educationLevel) === "ADVANCED" ? "advanced-cell" : ""} ${year.excludedFromManualLoad && !isExplicitMetaGroupClassName(year.className) ? "meta-group-cell" : ""}`;
+        const cls = `${(year.educationLevel || rowMeta.educationLevel) === "ADVANCED" ? "advanced-cell" : ""} ${year.metaGroup ? "meta-group-cell" : ""}`;
         return `<button class="hours-cell ${cls}" data-id="${esc(year.id)}">${hoursLabelMarkup(year)}</button>`;
     }
 
@@ -686,10 +661,10 @@ function classCellMarkup(cellInfo, rowMeta, classMeta) {
     }
 
     const left = h1
-        ? `<button class="hours-cell ${(h1.educationLevel === "ADVANCED" ? "advanced-cell" : "")} ${h1.excludedFromManualLoad && !isExplicitMetaGroupClassName(h1.className) ? "meta-group-cell" : ""}" data-id="${esc(h1.id)}">${hoursLabelMarkup(h1)}</button>`
+        ? `<button class="hours-cell ${(h1.educationLevel === "ADVANCED" ? "advanced-cell" : "")} ${h1.metaGroup ? "meta-group-cell" : ""}" data-id="${esc(h1.id)}">${hoursLabelMarkup(h1)}</button>`
         : emptyBtn("H1");
     const right = h2
-        ? `<button class="hours-cell ${(h2.educationLevel === "ADVANCED" ? "advanced-cell" : "")} ${h2.excludedFromManualLoad && !isExplicitMetaGroupClassName(h2.className) ? "meta-group-cell" : ""}" data-id="${esc(h2.id)}">${hoursLabelMarkup(h2)}</button>`
+        ? `<button class="hours-cell ${(h2.educationLevel === "ADVANCED" ? "advanced-cell" : "")} ${h2.metaGroup ? "meta-group-cell" : ""}" data-id="${esc(h2.id)}">${hoursLabelMarkup(h2)}</button>`
         : emptyBtn("H2");
     return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0"><div style="padding-right:4px">${left}</div><div style="border-left:1px solid #cbd5e1;padding-left:4px">${right}</div></div>`;
 }
@@ -913,8 +888,7 @@ function normalizeForm() {
         subgroup2EducationLevel: f.get("subgroup2EducationLevel") || null,
         curriculumPart: f.get("curriculumPart"),
         studyPeriodSettingId: Number(f.get("studyPeriod") || 0) || null,
-        metaGroup: isExplicitMetaGroupClassName(className),
-        excludedFromManualLoad: isExplicitMetaGroupClassName(className) ? false : String(f.get("excludedFromManualLoad")) === "true"
+        metaGroup: String(f.get("metaGroup")) === "true"
     };
 }
 
@@ -1039,10 +1013,7 @@ function bindEvents() {
     });
 
     ui.formBuilding.addEventListener("change", renderClassOptions);
-    ui.formClass.addEventListener("change", () => {
-        configureExclusionControl(ui.form, ui.formClass.value, ui.subjectExclusionLabel, ui.subjectMetaGroupInfo);
-        syncStudyPeriodControls();
-    });
+    ui.formClass.addEventListener("change", syncStudyPeriodControls);
     ui.form.elements.curriculumPart.addEventListener("change", renderSubjectOptions);
     ui.buildingFilter.addEventListener("change", () => {
         selectedBuilding = norm(ui.buildingFilter.value);
@@ -1106,7 +1077,6 @@ function bindEvents() {
             ui.metaGroupEditDialog?.close();
             await reload();
             renderMetaGroupManageTable();
-            renderSummaryTable();
         } catch (error) { print({ error: error.message }); }
     });
 
@@ -1174,8 +1144,7 @@ function bindEvents() {
             subgroupRequired,
             subgroupCount: 2,
             studyPeriodSettingId: Number(ui.editForm.elements.studyPeriod.value || 0) || null,
-            metaGroup: isExplicitMetaGroupClassName(existing?.className || pendingCreateContext?.className),
-            excludedFromManualLoad: isExplicitMetaGroupClassName(existing?.className || pendingCreateContext?.className) ? false : ui.editForm.elements.excludedFromManualLoad.value === "true",
+            metaGroup: ui.editForm.elements.metaGroup.value === "true",
             subgroup1Hours: subgroupRequired ? subgroup1Hours : null,
             subgroup2Hours: subgroupRequired ? subgroup2Hours : null,
             subgroup1EducationLevel: subgroupRequired ? ui.editForm.elements.subgroup1EducationLevel.value : null,

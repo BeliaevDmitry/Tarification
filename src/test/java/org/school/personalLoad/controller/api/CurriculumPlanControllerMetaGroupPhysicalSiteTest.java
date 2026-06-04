@@ -18,7 +18,6 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -58,7 +57,6 @@ class CurriculumPlanControllerMetaGroupPhysicalSiteTest {
         assertNull(row.getClassId());
         assertEquals(4L, row.getMetaGroupId());
         assertEquals(37L, row.getSchoolBuildingId());
-        assertFalse(row.isExcludedFromManualLoad());
         assertEquals(BigDecimal.ONE, row.getPlannedHours());
         verify(metaGroupRepository).findAllById(List.of(4L));
     }
@@ -76,7 +74,6 @@ class CurriculumPlanControllerMetaGroupPhysicalSiteTest {
         entry.setEducationLevel(EducationLevel.BASIC);
         entry.setSubgroupRequired(false);
         entry.setSubgroupCount(0);
-        entry.setExcludedFromManualLoad(false);
         entry.setMetaGroup(true);
         return entry;
     }

@@ -36,7 +36,6 @@ public class CurriculumPlanEntryResponse {
     private CurriculumPart curriculumPart;
     private LocalDateTime createdAt;
     private boolean metaGroup;
-    private boolean excludedFromManualLoad;
 
     public static CurriculumPlanEntryResponse from(CurriculumPlanEntry entry, Long schoolBuildingId) {
         CurriculumPlanEntryResponse response = new CurriculumPlanEntryResponse();
@@ -64,7 +63,6 @@ public class CurriculumPlanEntryResponse {
         response.setCurriculumPart(entry.getCurriculumPart());
         response.setCreatedAt(entry.getCreatedAt());
         response.setMetaGroup(entry.isMetaGroup());
-        response.setExcludedFromManualLoad(entry.isExcludedFromManualLoad());
         return response;
     }
 }
