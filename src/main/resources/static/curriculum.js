@@ -267,6 +267,7 @@ function renderMetaGroupManageTable() {
     ui.metaGroupManageBody.innerHTML = rows.map((m) => {
         const period = (studyPeriodSettings || []).find((s) => Number(s.id) === Number(m.studyPeriodSettingId));
         return `<tr>
+            <td>${esc(m.academicYear || "—")}</td>
             <td>${esc(m.numberSchoolBuilding)}</td>
             <td>${esc(metaGroupSchoolBuildingLabel(m) || "— выберите площадку —")}</td>
             <td>${esc((m.classType || "NORMAL")==="AOOP_UO" ? "АООП УО" : "Норма")}</td>
@@ -914,7 +915,8 @@ async function importCurriculumFile() {
 
 async function exportCurriculumFile() {
     try {
-        const response = await fetch("/api/curriculum/export");
+        const path = window.withAcademicYear ? window.withAcademicYear("/api/curriculum/export") : "/api/curriculum/export";
+        const response = await fetch(path);
         if (!response.ok) {
             const text = await response.text();
             throw new Error(text || `HTTP ${response.status}`);

@@ -9,6 +9,7 @@ import org.school.personalLoad.repository.MetaGroupRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.model.SchoolBuilding;
+import org.school.personalLoad.service.AcademicYearService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,23 +25,28 @@ public class MetaGroupController {
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     private final ManualLoadEntryRepository manualLoadEntryRepository;
     private final SchoolBuildingRepository schoolBuildingRepository;
+    private final AcademicYearService academicYearService;
 
     @GetMapping
-    public ResponseEntity<List<MetaGroup>> findAll() {
-        return ResponseEntity.ok(repository.findAll());
+    public ResponseEntity<List<MetaGroup>> findAll(@RequestParam(required = false) String academicYear) {
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        return ResponseEntity.ok(repository.findAllByAcademicYearOrderByNumberSchoolBuildingAscParallelAscNameAsc(effectiveYear));
     }
 
     @PostMapping
-    public ResponseEntity<MetaGroup> create(@RequestBody CreateMetaGroupRequest request) {
+    public ResponseEntity<MetaGroup> create(@RequestParam(required = false) String academicYear,
+                                            @RequestBody CreateMetaGroupRequest request) {
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
         String building = normalizeBuilding(request.getNumberSchoolBuilding());
         Integer parallel = normalizeParallel(request.getParallel());
         String name = normalizeName(parallel, request.getName());
         String classType = normalizeClassType(request.getClassType());
 
-        if (repository.existsByNumberSchoolBuildingAndParallelAndNameIgnoreCaseAndClassType(building, parallel, name, classType)) {
+        if (repository.existsByAcademicYearAndNumberSchoolBuildingAndParallelAndNameIgnoreCaseAndClassType(effectiveYear, building, parallel, name, classType)) {
             throw new IllegalArgumentException("Метагруппа уже существует");
         }
         MetaGroup entity = new MetaGroup();
+        entity.setAcademicYear(effectiveYear);
         entity.setNumberSchoolBuilding(building);
         entity.setParallel(parallel);
         entity.setName(name);
@@ -52,19 +58,32 @@ public class MetaGroupController {
 
     @PatchMapping("/{id}")
     @Transactional
-    public ResponseEntity<MetaGroup> update(@PathVariable Long id, @RequestBody UpdateMetaGroupRequest request) {
+    public ResponseEntity<MetaGroup> update(@PathVariable Long id,
+                                            @RequestParam(required = false) String academicYear,
+                                            @RequestBody UpdateMetaGroupRequest request) {
         MetaGroup existing = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Метагруппа не найдена"));
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        if (!effectiveYear.equals(existing.getAcademicYear())) {
+            throw new IllegalArgumentException("Метагруппа относится к другому учебному году");
+        }
         Integer parallel = normalizeParallel(request.getParallel() == null ? existing.getParallel() : request.getParallel());
         String building = normalizeBuilding(request.getNumberSchoolBuilding() == null ? existing.getNumberSchoolBuilding() : request.getNumberSchoolBuilding());
         String classType = normalizeClassType(request.getClassType() == null ? existing.getClassType() : request.getClassType());
         String newName = normalizeName(parallel, request.getName() == null ? existing.getName() : request.getName());
-        if (!existing.getName().equalsIgnoreCase(newName)
-                && repository.existsByNumberSchoolBuildingAndParallelAndNameIgnoreCaseAndClassType(building, parallel, newName, classType)) {
+        boolean scopeChanged = !existing.getName().equalsIgnoreCase(newName)
+                || !existing.getNumberSchoolBuilding().equals(building)
+                || !existing.getParallel().equals(parallel)
+                || !existing.getClassType().equals(classType);
+        if (scopeChanged
+                && repository.existsByAcademicYearAndNumberSchoolBuildingAndParallelAndNameIgnoreCaseAndClassType(effectiveYear, building, parallel, newName, classType)) {
             throw new IllegalArgumentException("Метагруппа уже существует");
         }
 
-        List<CurriculumPlanEntry> entries = curriculumPlanEntryRepository.findAllByMetaGroupId(existing.getId());
+        List<CurriculumPlanEntry> entries = curriculumPlanEntryRepository.findAllByMetaGroupId(existing.getId())
+                .stream()
+                .filter(entry -> effectiveYear.equals(entry.getAcademicYear()))
+                .toList();
         for (CurriculumPlanEntry entry : entries) {
             entry.setStudyPeriodSettingId(request.getStudyPeriodSettingId() != null ? request.getStudyPeriodSettingId() : existing.getStudyPeriodSettingId());
         }
@@ -85,9 +104,23 @@ public class MetaGroupController {
 
     @DeleteMapping("/{id}")
     @Transactional
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ResponseEntity<Void> delete(@PathVariable Long id,
+                                       @RequestParam(required = false) String academicYear) {
         MetaGroup existing = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Метагруппа не найдена"));
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        if (!effectiveYear.equals(existing.getAcademicYear())) {
+            throw new IllegalArgumentException("Метагруппа относится к другому учебному году");
+        }
+        boolean crossYearCurriculumExists = curriculumPlanEntryRepository.findAllByMetaGroupId(existing.getId())
+                .stream()
+                .anyMatch(row -> !effectiveYear.equals(row.getAcademicYear()));
+        boolean crossYearManualLoadExists = manualLoadEntryRepository.findAllByMetaGroupId(existing.getId())
+                .stream()
+                .anyMatch(row -> !effectiveYear.equals(row.getAcademicYear()));
+        if (crossYearCurriculumExists || crossYearManualLoadExists) {
+            throw new IllegalStateException("Метагруппа ошибочно используется в другом учебном году");
+        }
         curriculumPlanEntryRepository.deleteByMetaGroupId(existing.getId());
         manualLoadEntryRepository.deleteByMetaGroupId(existing.getId());
         repository.delete(existing);

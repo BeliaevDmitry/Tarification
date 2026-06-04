@@ -20,6 +20,10 @@ WITH checks AS (
     SELECT 'meta_group.building_group_id is NULL', count(*)::bigint
     FROM meta_group WHERE building_group_id IS NULL
     UNION ALL
+    SELECT 'meta_group.academic_year is NULL', count(*)::bigint
+    FROM meta_group
+    WHERE academic_year IS NULL
+    UNION ALL
     SELECT 'teacher_directory_entry.building_group_id is NULL', count(*)::bigint
     FROM teacher_directory_entry WHERE building_group_id IS NULL
     UNION ALL
@@ -146,6 +150,19 @@ WITH checks AS (
     FROM manual_load_entry m
     LEFT JOIN meta_group mg ON mg.id = m.meta_group_id
     WHERE m.meta_group_id IS NOT NULL AND mg.id IS NULL
+
+    UNION ALL
+    SELECT 'curriculum academic_year does not match meta_group.academic_year', count(*)::bigint
+    FROM curriculum_plan_entry cpe
+    JOIN meta_group mg ON mg.id = cpe.meta_group_id
+    WHERE cpe.meta_group_id IS NOT NULL
+      AND cpe.academic_year <> mg.academic_year
+    UNION ALL
+    SELECT 'manual load academic_year does not match meta_group.academic_year', count(*)::bigint
+    FROM manual_load_entry mle
+    JOIN meta_group mg ON mg.id = mle.meta_group_id
+    WHERE mle.meta_group_id IS NOT NULL
+      AND mle.academic_year <> mg.academic_year
 
 
     -- Address/site diagnostics: physical site matching is independent from the class building_group_id.

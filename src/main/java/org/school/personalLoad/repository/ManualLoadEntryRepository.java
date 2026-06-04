@@ -46,6 +46,9 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
     @Query(value = "delete from manual_load_entry where meta_group_id = :metaGroupId", nativeQuery = true)
     void deleteByMetaGroupId(@Param("metaGroupId") Long metaGroupId);
 
+    @Query(value = "select * from manual_load_entry where meta_group_id = :metaGroupId", nativeQuery = true)
+    java.util.List<ManualLoadEntry> findAllByMetaGroupId(@Param("metaGroupId") Long metaGroupId);
+
     @Modifying
     @Query("delete from ManualLoadEntry m where m.academicYear = :academicYear and m.classId in :classIds")
     void deleteByAcademicYearAndClassIds(@Param("academicYear") String academicYear,
