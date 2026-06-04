@@ -19,6 +19,7 @@ public class CurriculumPlanEntryResponse {
     private StudyPeriod studyPeriod;
     private Long studyPeriodSettingId;
     private boolean deprecated;
+    private boolean excludedFromManualLoad;
     private String className;
     private Long classId;
     private Long metaGroupId;
@@ -46,6 +47,7 @@ public class CurriculumPlanEntryResponse {
         response.setStudyPeriod(entry.getStudyPeriod());
         response.setStudyPeriodSettingId(entry.getStudyPeriodSettingId());
         response.setDeprecated(entry.isDeprecated());
+        response.setExcludedFromManualLoad(entry.isExcludedFromManualLoad());
         response.setClassName(entry.getClassName());
         response.setClassId(entry.getClassId());
         response.setMetaGroupId(entry.getMetaGroupId());

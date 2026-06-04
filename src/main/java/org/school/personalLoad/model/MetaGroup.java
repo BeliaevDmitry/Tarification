@@ -24,12 +24,16 @@ public class MetaGroup {
     @Column(nullable = false)
     private String numberSchoolBuilding;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "building_group_id", insertable = false, updatable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "building_group_id", nullable = false)
     @JsonIgnore
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private BuildingGroup buildingGroup;
+
+    public Long getBuildingGroupId() {
+        return buildingGroup == null ? null : buildingGroup.getId();
+    }
 
 
     @ManyToOne(fetch = FetchType.LAZY)
