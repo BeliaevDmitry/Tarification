@@ -61,6 +61,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
@@ -358,6 +359,230 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     @Override
     public byte[] exportFullWorkbookWithSalary(String academicYear) throws IOException {
         return exportFullWorkbook(academicYear, true);
+    }
+
+    @Override
+    public byte[] exportConsolidatedWorkbook(String academicYear) throws IOException {
+        List<ManualLoadEntry> rows = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(row -> normalizeDisplayValue(row.getFioTeacher()).length() > 0)
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        Map<String, BigDecimal> subjectCoefficientByName = subjectCatalogRepository.findAll().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        s -> normalizeToken(s.getSubjectName()),
+                        s -> resolvePositiveCoefficient(s.getSubjectCoefficient()),
+                        (a, b) -> a
+                ));
+        Map<String, List<String>> classLeadershipByTeacher = new HashMap<>();
+        classroomLeadershipRepository.findAllByAcademicYear(academicYear).forEach(entry -> {
+            String teacherKey = normalizeToken(entry.getFioTeacher());
+            String className = normalizeDisplayValue(entry.getClassName());
+            if (!teacherKey.isBlank() && !className.isBlank()) {
+                classLeadershipByTeacher.computeIfAbsent(teacherKey, key -> new ArrayList<>()).add(className);
+            }
+        });
+        classLeadershipByTeacher.values().forEach(classes -> classes.sort(String.CASE_INSENSITIVE_ORDER));
+
+        Map<String, List<ManualLoadEntry>> rowsByTeacher = rows.stream()
+                .collect(java.util.stream.Collectors.groupingBy(
+                        row -> normalizeToken(row.getFioTeacher()),
+                        LinkedHashMap::new,
+                        java.util.stream.Collectors.toCollection(ArrayList::new)
+                ));
+        List<ConsolidatedTeacherGroup> teacherGroups = rowsByTeacher.entrySet().stream()
+                .map(entry -> new ConsolidatedTeacherGroup(
+                        normalizeDisplayValue(entry.getValue().get(0).getFioTeacher()),
+                        entry.getKey(),
+                        resolvePrimarySubject(entry.getValue()),
+                        entry.getValue()
+                ))
+                .sorted(Comparator.comparing(ConsolidatedTeacherGroup::primarySubject, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(ConsolidatedTeacherGroup::fio, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            CellStyle header = workbook.createCellStyle();
+            Font bold = workbook.createFont();
+            bold.setBold(true);
+            header.setFont(bold);
+            header.setWrapText(true);
+            header.setAlignment(HorizontalAlignment.CENTER);
+            header.setVerticalAlignment(VerticalAlignment.CENTER);
+
+            CellStyle wrap = workbook.createCellStyle();
+            wrap.setWrapText(true);
+            wrap.setAlignment(HorizontalAlignment.CENTER);
+            wrap.setVerticalAlignment(VerticalAlignment.CENTER);
+
+            Sheet sheet = workbook.createSheet(uniqueSheetName(workbook, "Нагрузка укрупнённо"));
+            sheet.getPrintSetup().setLandscape(true);
+            sheet.setFitToPage(true);
+            sheet.getPrintSetup().setFitWidth((short) 1);
+            sheet.getPrintSetup().setFitHeight((short) 0);
+
+            List<String> cols = List.of(
+                    "Основной предмет*",
+                    "ФИО",
+                    "Корпус",
+                    "Предмет",
+                    "Класс",
+                    "Группа",
+                    "Кол-во часов",
+                    "ИТОГО Часов",
+                    "К-во детей (Норм)",
+                    "К-во детей (с К=2)",
+                    "К-во детей (с К=3)",
+                    "Коэф. Предмета",
+                    "Классное руководство"
+            );
+            Row headerRow = sheet.createRow(0);
+            headerRow.setHeightInPoints(45);
+            for (int i = 0; i < cols.size(); i++) {
+                headerRow.createCell(i).setCellValue(cols.get(i));
+                headerRow.getCell(i).setCellStyle(header);
+            }
+            sheet.createFreezePane(0, 1);
+            sheet.setAutoFilter(new CellRangeAddress(0, 0, 0, cols.size() - 1));
+
+            int rowNum = 1;
+            for (ConsolidatedTeacherGroup group : teacherGroups) {
+                List<ManualLoadEntry> teacherRows = group.rows().stream()
+                        .sorted(Comparator.comparing(ManualLoadEntry::getNumberSchoolBuilding, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                                .thenComparing(ManualLoadEntry::getSubjectName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                                .thenComparing(ManualLoadEntry::getClassName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                                .thenComparing(ManualLoadEntry::getGroupNameEducationalPlan, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER)))
+                        .toList();
+                int teacherStart = rowNum;
+                int totalHours = teacherRows.stream().mapToInt(this::manualLoadHours).sum();
+                String classLeadership = String.join(", ", classLeadershipByTeacher.getOrDefault(group.teacherKey(), List.of()));
+
+                for (ManualLoadEntry entry : teacherRows) {
+                    Row row = sheet.createRow(rowNum++);
+                    row.createCell(0).setCellValue(group.primarySubject());
+                    row.createCell(1).setCellValue(group.fio());
+                    row.createCell(2).setCellValue(normalizeDisplayValue(entry.getNumberSchoolBuilding()));
+                    row.createCell(3).setCellValue(normalizeDisplayValue(entry.getSubjectName()));
+                    row.createCell(4).setCellValue(normalizeDisplayValue(entry.getClassName()));
+                    row.createCell(5).setCellValue(normalizeDisplayValue(entry.getGroupNameEducationalPlan()));
+                    row.createCell(6).setCellValue(manualLoadHours(entry));
+                    row.createCell(7).setCellValue(totalHours);
+                    row.createCell(8).setCellValue("");
+                    row.createCell(9).setCellValue("");
+                    row.createCell(10).setCellValue("");
+                    row.createCell(11).setCellValue(subjectCoefficientByName
+                            .getOrDefault(normalizeToken(entry.getSubjectName()), BigDecimal.ONE)
+                            .stripTrailingZeros()
+                            .toPlainString());
+                    row.createCell(12).setCellValue(classLeadership);
+                    for (int c = 0; c < cols.size(); c++) {
+                        row.getCell(c).setCellStyle(wrap);
+                    }
+                }
+                if (rowNum - 1 > teacherStart) {
+                    sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 0, 0));
+                    sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 1, 1));
+                    sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 7, 7));
+                    sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 12, 12));
+                }
+            }
+
+            int[] widths = {28, 30, 12, 22, 10, 12, 12, 13, 15, 15, 15, 14, 20};
+            for (int i = 0; i < widths.length; i++) {
+                sheet.setColumnWidth(i, widths[i] * 256);
+            }
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private int manualLoadHours(ManualLoadEntry entry) {
+        return entry.getGroupLoad() != null ? entry.getGroupLoad() : (entry.getLoad() == null ? 0 : entry.getLoad());
+    }
+
+    private String resolvePrimarySubject(List<ManualLoadEntry> teacherRows) {
+        boolean primarySchool = teacherRows.stream()
+                .map(ManualLoadEntry::getClassName)
+                .map(ClassNameNormalizer::extractParallel)
+                .filter(Objects::nonNull)
+                .anyMatch(parallel -> parallel >= 1 && parallel <= 4);
+        if (primarySchool) {
+            return "Начальная школа";
+        }
+        Map<String, Integer> hoursByPrimarySubject = new LinkedHashMap<>();
+        for (ManualLoadEntry row : teacherRows) {
+            String primarySubject = classifyConsolidatedSubject(row.getSubjectName());
+            hoursByPrimarySubject.merge(primarySubject, manualLoadHours(row), Integer::sum);
+        }
+        return hoursByPrimarySubject.entrySet().stream()
+                .max(Map.Entry.<String, Integer>comparingByValue()
+                        .thenComparing(Map.Entry.comparingByKey(String.CASE_INSENSITIVE_ORDER)))
+                .map(Map.Entry::getKey)
+                .orElse("");
+    }
+
+    private String classifyConsolidatedSubject(String subjectName) {
+        String normalized = normalizeToken(subjectName).replace('ё', 'е');
+        if (normalized.isBlank()) {
+            return "";
+        }
+        if (normalized.contains("русск") || normalized.contains("литерат")) {
+            return "Русский язык и литература";
+        }
+        if (normalized.contains("математ")
+                || normalized.contains("алгебр")
+                || normalized.contains("лгебр")
+                || normalized.contains("геометр")
+                || normalized.contains("вероятн")) {
+            return "Математика";
+        }
+        if (normalized.contains("информат")) {
+            return "Информатика";
+        }
+        if (normalized.contains("физическ")
+                || normalized.contains("физ-ра")
+                || normalized.contains("физра")
+                || normalized.contains("физкультур")
+                || normalized.contains("обзр")
+                || normalized.contains("обж")
+                || normalized.contains("основы безопасности")) {
+            return "Физ-ра (ОБЗР)";
+        }
+        if (normalized.contains("физик")) {
+            return "Физика";
+        }
+        if (normalized.contains("биолог")) {
+            return "Биология";
+        }
+        if (normalized.contains("хими")) {
+            return "Химия";
+        }
+        if (normalized.contains("географ")) {
+            return "География";
+        }
+        if (normalized.contains("истор")) {
+            return "История";
+        }
+        if (normalized.contains("иностран")
+                || normalized.contains("ин. язык")
+                || normalized.contains("англий")
+                || normalized.contains("немец")
+                || normalized.contains("француз")
+                || normalized.contains("испан")
+                || normalized.contains("китай")) {
+            return "Ин. Язык";
+        }
+        if (normalized.contains("обществ")) {
+            return "Обществознание";
+        }
+        if (normalized.contains("труд") || normalized.contains("технолог")) {
+            return "Труд (технология)";
+        }
+        if (normalized.equals("изо") || normalized.contains("изобраз")) {
+            return "ИЗО";
+        }
+        if (normalized.contains("музык")) {
+            return "Музыка";
+        }
+        return normalizeDisplayValue(subjectName);
     }
 
     private byte[] exportFullWorkbook(String academicYear, boolean includeSalary) throws IOException {
@@ -1761,6 +1986,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             return java.util.Objects.hash(className, subjectName, educationLevel, studyPeriod);
         }
     }
+
+    private record ConsolidatedTeacherGroup(String fio, String teacherKey, String primarySubject, List<ManualLoadEntry> rows) {}
 
     private record ManualLoadTemplateRow(String academicYear,
                                          String numberSchoolBuilding,
