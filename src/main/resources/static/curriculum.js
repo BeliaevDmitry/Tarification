@@ -108,6 +108,10 @@ function esc(v) {
 }
 
 function print(v) { ui.result.textContent = JSON.stringify(v, null, 2); }
+function showMetaGroupEditError(message = "") {
+    const target = document.getElementById("meta-group-edit-error");
+    if (target) target.textContent = message;
+}
 function norm(v) { return String(v || "").trim(); }
 function classToParallel(className) { const m = norm(className).match(/^(\d{1,2})/); return m ? Number(m[1]) : null; }
 function levelShort(v) { return v === "ADVANCED" ? "У" : "Б"; }
@@ -1088,6 +1092,7 @@ function bindEvents() {
 
     ui.metaGroupEditForm?.addEventListener("submit", async (e) => {
         e.preventDefault();
+        showMetaGroupEditError();
         try {
             const form = new FormData(ui.metaGroupEditForm);
             const id = Number(form.get("id"));
@@ -1106,7 +1111,12 @@ function bindEvents() {
             ui.metaGroupEditDialog?.close();
             await reload();
             renderMetaGroupManageTable();
-        } catch (error) { print({ error: error.message }); }
+            renderSummaryTable();
+        } catch (error) {
+            const message = error?.message || String(error);
+            showMetaGroupEditError(message);
+            print({ error: message });
+        }
     });
 
     ui.metaGroupDeleteBtn?.addEventListener("click", async () => {
@@ -1118,7 +1128,12 @@ function bindEvents() {
             ui.metaGroupEditDialog?.close();
             await reload();
             renderMetaGroupManageTable();
-        } catch (error) { print({ error: error.message }); }
+            renderSummaryTable();
+        } catch (error) {
+            const message = error?.message || String(error);
+            showMetaGroupEditError(message);
+            print({ error: message });
+        }
     });
 
     ui.refreshBtn.addEventListener("click", () => reload().catch((error) => print({ error: error.message })));

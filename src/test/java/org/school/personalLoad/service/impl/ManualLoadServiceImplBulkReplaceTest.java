@@ -654,6 +654,74 @@ class ManualLoadServiceImplBulkReplaceTest {
         verify(manualLoadEntryRepository, never()).saveAll(any());
     }
 
+
+    @Test
+    void exportConsolidatedWorkbookUsesRequestedColumnsAndTeacherPrimarySubject() throws Exception {
+        ManualLoadEntry russian = manualRow("Иванова И.И.", "СП1", "5-А", "Русский язык", 6);
+        ManualLoadEntry literature = manualRow("Иванова И.И.", "СП1", "5-А", "Литература", 3);
+        ManualLoadEntry math = manualRow("Иванова И.И.", "СП3", "5-Б", "Алгебра", 1);
+        math.setGroupNameEducationalPlan("1 группа");
+        ClassroomLeadershipEntry leadership = classEntry("СП1", "5-А", "ул. Первая, 1");
+        leadership.setFioTeacher("Иванова И.И.");
+        SubjectCatalogEntry russianSubject = subject(30L, "Русский язык");
+        russianSubject.setSubjectCoefficient(BigDecimal.valueOf(1.25));
+        SubjectCatalogEntry mathSubject = subject(31L, "Алгебра");
+        mathSubject.setSubjectCoefficient(BigDecimal.valueOf(1.3));
+
+        when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(russian, literature, math));
+        when(subjectCatalogRepository.findAll()).thenReturn(List.of(russianSubject, mathSubject));
+        when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(leadership));
+
+        byte[] body = service.exportConsolidatedWorkbook("2025/2026");
+
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
+            var sheet = workbook.getSheet("Нагрузка укрупнённо");
+            assertNotNull(sheet);
+            List<String> expectedHeaders = List.of(
+                    "Основной предмет*", "ФИО", "Корпус", "Предмет", "Класс", "Группа", "Кол-во часов",
+                    "ИТОГО Часов", "К-во детей (Норм)", "К-во детей (с К=2)", "К-во детей (с К=3)",
+                    "Коэф. Предмета", "Классное руководство"
+            );
+            for (int i = 0; i < expectedHeaders.size(); i++) {
+                assertEquals(expectedHeaders.get(i), sheet.getRow(0).getCell(i).getStringCellValue());
+            }
+            assertEquals("Русский язык и литература", sheet.getRow(1).getCell(0).getStringCellValue());
+            assertEquals("Иванова И.И.", sheet.getRow(1).getCell(1).getStringCellValue());
+            assertEquals(10, (int) sheet.getRow(1).getCell(7).getNumericCellValue());
+            assertEquals("", sheet.getRow(1).getCell(8).getStringCellValue());
+            assertEquals("", sheet.getRow(1).getCell(9).getStringCellValue());
+            assertEquals("", sheet.getRow(1).getCell(10).getStringCellValue());
+            assertEquals("5-А", sheet.getRow(1).getCell(12).getStringCellValue());
+            boolean hasMathCoefficient = false;
+            for (int rowIndex = 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+                if ("Алгебра".equals(sheet.getRow(rowIndex).getCell(3).getStringCellValue())) {
+                    assertEquals("1.3", sheet.getRow(rowIndex).getCell(11).getStringCellValue());
+                    hasMathCoefficient = true;
+                }
+            }
+            assertTrue(hasMathCoefficient);
+            assertTrue(sheet.getMergedRegions().stream().anyMatch(region -> region.getFirstColumn() == 0 && region.getLastColumn() == 0));
+            assertTrue(sheet.getMergedRegions().stream().anyMatch(region -> region.getFirstColumn() == 1 && region.getLastColumn() == 1));
+            assertTrue(sheet.getMergedRegions().stream().anyMatch(region -> region.getFirstColumn() == 7 && region.getLastColumn() == 7));
+            assertTrue(sheet.getMergedRegions().stream().anyMatch(region -> region.getFirstColumn() == 12 && region.getLastColumn() == 12));
+        }
+    }
+
+    @Test
+    void exportConsolidatedWorkbookMarksTeacherAsPrimarySchoolWhenTeachingGradesOneToFour() throws Exception {
+        ManualLoadEntry row = manualRow("Петрова П.П.", "СП1", "3-А", "Физика", 2);
+        when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(row));
+        when(subjectCatalogRepository.findAll()).thenReturn(List.of(subject(23L, "Физика")));
+        when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of());
+
+        byte[] body = service.exportConsolidatedWorkbook("2025/2026");
+
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
+            var sheet = workbook.getSheet("Нагрузка укрупнённо");
+            assertEquals("Начальная школа", sheet.getRow(1).getCell(0).getStringCellValue());
+        }
+    }
+
     @Test
     void exportFullWorkbookShowsRowBuildingAddressAndLeadershipOnly() throws Exception {
         ManualLoadEntry first = manualRow("Иванов И.И.", "СП1", "1-А", "Математика", 5);
