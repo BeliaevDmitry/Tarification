@@ -126,4 +126,7 @@ public class CurriculumPlanEntry {
 
     @Column(nullable = false)
     private boolean metaGroup = false;
+
+    @Column(name = "excluded_from_manual_load", nullable = false)
+    private boolean excludedFromManualLoad = false;
 }
