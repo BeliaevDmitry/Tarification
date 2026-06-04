@@ -8,10 +8,7 @@ import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.repository.BuildingGroupRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
-import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
-import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.MetaGroupRepository;
-import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.auth.AppUserRepository;
 import org.school.personalLoad.service.SchoolBuildingService;
 import org.apache.poi.ss.usermodel.*;
@@ -35,10 +32,7 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
     private final BuildingGroupRepository buildingGroupRepository;
     private final AppUserRepository appUserRepository;
     private final ClassroomLeadershipRepository classroomLeadershipRepository;
-    private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
-    private final ManualLoadEntryRepository manualLoadEntryRepository;
     private final MetaGroupRepository metaGroupRepository;
-    private final TeacherDirectoryRepository teacherDirectoryRepository;
 
     @Override
     public SchoolBuilding upsert(SchoolBuildingRequest request) {
@@ -54,14 +48,30 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
         BuildingGroup buildingGroup = buildingGroupRepository.findById(request.getBuildingGroupId())
                 .orElseThrow(() -> new IllegalArgumentException("BuildingGroup not found: " + request.getBuildingGroupId()));
 
-        String code = normalizeBuildingGroupCode(request.getCode());
-        if (code.isBlank()) code = normalizeBuildingGroupCode(buildingGroup.getCode());
-        if (code.isBlank()) code = normalizeBuildingGroupCode(name);
-        if (code.isBlank()) throw new IllegalArgumentException("code is required");
         SchoolBuilding entity = request.getId() == null
                 ? new SchoolBuilding()
-                : repository.findById(request.getId()).orElseGet(SchoolBuilding::new);
-        entity.setCode(code);
+                : repository.findById(request.getId())
+                .orElseThrow(() -> new IllegalArgumentException("Корпус не найден"));
+
+        boolean newEntity = entity.getId() == null;
+        boolean addressChanged = !newEntity && !normalize(entity.getAddress()).equals(address);
+        boolean buildingGroupChanged = !newEntity
+                && (entity.getBuildingGroupId() == null || !entity.getBuildingGroupId().equals(request.getBuildingGroupId()));
+        boolean physicalIdentityChanged = newEntity || addressChanged || buildingGroupChanged;
+
+        if (physicalIdentityChanged && !newEntity && isPhysicalSiteReferenced(entity.getId())) {
+            throw new IllegalStateException("Нельзя изменить адрес или основное СП используемой площадки. Сначала перенесите связанные классы/метагруппы на другую физическую площадку.");
+        }
+
+        if (physicalIdentityChanged) {
+            String physicalSiteCode = buildPhysicalSiteCode(buildingGroup, address);
+            boolean duplicate = repository.findAllByCodeIgnoreCase(physicalSiteCode).stream()
+                    .anyMatch(existing -> entity.getId() == null || !existing.getId().equals(entity.getId()));
+            if (duplicate) {
+                throw new IllegalArgumentException("Физическая площадка с таким адресом уже существует в выбранном СП");
+            }
+            entity.setCode(physicalSiteCode);
+        }
         entity.setBuildingGroup(buildingGroup);
         entity.setName(name);
         entity.setManagerFio(normalize(request.getManagerFio()));
@@ -76,14 +86,14 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
                 .filter(user -> user.getRole() == UserRole.BUILDING_HEAD)
                 .filter(user -> !normalize(user.getManagedBuildingCode()).isBlank())
                 .forEach(user -> buildingHeadByGroupCode.put(
-                        normalizeBuildingGroupCode(user.getManagedBuildingCode()),
+                        normalizeOrganizationalCode(user.getManagedBuildingCode()),
                         normalize(user.getFullName())
                 ));
 
         return repository.findAll().stream()
                 .map(entity -> withDisplayManager(
                         entity,
-                        buildingHeadByGroupCode.get(normalizeBuildingGroupCode(entity.getCode()))
+                        buildingHeadByGroupCode.get(normalizeOrganizationalCode(entity.getCode()))
                 ))
                 .toList();
     }
@@ -95,12 +105,13 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
             throw new IllegalArgumentException("id is required");
         }
         SchoolBuilding entity = repository.findById(id).orElseThrow(() -> new IllegalArgumentException("Корпус не найден"));
-        String code = normalizeBuildingGroupCode(entity.getCode());
-        long sameCodeCount = repository.findAllByCodeIgnoreCase(code).size();
-        if (sameCodeCount <= 1 && isBuildingCodeReferenced(code)) {
-            throw new IllegalStateException("Нельзя удалить последний адрес корпуса " + code + ": код используется в связанных разделах");
+        if (classroomLeadershipRepository.existsBySchoolBuilding_Id(id)) {
+            throw new IllegalStateException("Нельзя удалить площадку: к ней привязаны классы");
         }
-        repository.deleteById(id);
+        if (metaGroupRepository.existsBySchoolBuilding_Id(id)) {
+            throw new IllegalStateException("Нельзя удалить площадку: к ней привязаны метагруппы");
+        }
+        repository.deleteById(entity.getId());
     }
 
 
@@ -122,6 +133,12 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
 
     @Override
     public void clearAll() {
+        boolean hasUsedPhysicalSites = repository.findAll().stream()
+                .map(SchoolBuilding::getId)
+                .anyMatch(this::isPhysicalSiteReferenced);
+        if (hasUsedPhysicalSites) {
+            throw new IllegalStateException("Нельзя очистить список площадок: есть площадки, к которым привязаны классы или метагруппы");
+        }
         repository.deleteAll();
     }
 
@@ -191,7 +208,7 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
 
                 Long buildingGroupId = parseRequiredLong(buildingGroupIdText, "BUILDING_GROUP_ID", i + 1);
                 SchoolBuildingRequest request = new SchoolBuildingRequest();
-                request.setCode(code.isBlank() ? name : code);
+                request.setCode(code);
                 request.setBuildingGroupId(buildingGroupId);
                 request.setName(name);
                 request.setAddress(address);
@@ -221,24 +238,42 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
         return value == null ? "" : value.trim();
     }
 
-    private String normalizeBuildingGroupCode(String value) {
-        String normalized = normalize(value).replace(" ", "").toUpperCase();
+    private String normalizeOrganizationalCode(String value) {
+        String normalized = normalize(value)
+                .replace('\u00A0', ' ')
+                .trim()
+                .toUpperCase(java.util.Locale.ROOT)
+                .replaceAll("\\s+", "")
+                .replace('–', '-')
+                .replace('—', '-');
         int idx = normalized.indexOf("|");
-        return idx >= 0 ? normalized.substring(0, idx) : normalized;
+        if (idx >= 0) {
+            normalized = normalized.substring(0, idx);
+        }
+        return normalized.replaceFirst("^СП-(\\d+)$", "СП$1");
     }
 
-    private boolean isBuildingCodeReferenced(String code) {
-        if (classroomLeadershipRepository.existsByNumberSchoolBuildingIgnoreCase(code)) return true;
-        if (curriculumPlanEntryRepository.existsByNumberSchoolBuildingIgnoreCase(code)) return true;
-        if (manualLoadEntryRepository.existsByNumberSchoolBuildingIgnoreCase(code)) return true;
-        if (metaGroupRepository.existsByNumberSchoolBuildingIgnoreCase(code)) return true;
-        if (teacherDirectoryRepository.existsByNumberSchoolBuildingIgnoreCase(code)) return true;
-        return appUserRepository.findAll().stream().anyMatch(user -> {
-            String managedCode = normalizeBuildingGroupCode(user.getManagedBuildingCode());
-            if (managedCode.equalsIgnoreCase(code)) return true;
-            return user.getLoadEditableBuildingCodes().stream()
-                    .map(this::normalizeBuildingGroupCode)
-                    .anyMatch(c -> c.equalsIgnoreCase(code));
-        });
+    private String buildPhysicalSiteCode(BuildingGroup group, String address) {
+        String groupCode = normalizeOrganizationalCode(group == null ? null : group.getCode())
+                .toLowerCase(java.util.Locale.ROOT);
+        if (groupCode.isBlank()) {
+            throw new IllegalArgumentException("buildingGroup code is required");
+        }
+        String normalizedAddress = normalize(address)
+                .replace('\u00A0', ' ')
+                .trim()
+                .toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("\\s+", " ");
+        if (normalizedAddress.isBlank()) {
+            throw new IllegalArgumentException("address is required");
+        }
+        return groupCode + "|" + normalizedAddress;
     }
+
+    private boolean isPhysicalSiteReferenced(Long schoolBuildingId) {
+        return schoolBuildingId != null
+                && (classroomLeadershipRepository.existsBySchoolBuilding_Id(schoolBuildingId)
+                || metaGroupRepository.existsBySchoolBuilding_Id(schoolBuildingId));
+    }
+
 }
