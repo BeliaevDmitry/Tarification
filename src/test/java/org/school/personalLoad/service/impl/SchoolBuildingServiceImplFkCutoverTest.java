@@ -78,6 +78,22 @@ class SchoolBuildingServiceImplFkCutoverTest {
         verify(schoolBuildingRepository).save(any(SchoolBuilding.class));
     }
 
+
+    @Test
+    void existingAddressCreationUsesExistingBuildingGroupWithoutCreatingOrganizationalGroup() {
+        BuildingGroup group = group(7L, "СП7", "СП7");
+        when(buildingGroupRepository.findById(7L)).thenReturn(Optional.of(group));
+        when(schoolBuildingRepository.findAllByCodeIgnoreCase("сп7|ул. филиал, 2")).thenReturn(java.util.List.of());
+        when(schoolBuildingRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        SchoolBuilding saved = service.upsert(request(null, 7L, null, "Филиал", "ул. Филиал, 2"));
+
+        assertEquals(7L, saved.getBuildingGroupId());
+        assertEquals("сп7|ул. филиал, 2", saved.getCode());
+        verify(buildingGroupRepository, never()).save(any());
+        verify(buildingGroupRepository, never()).saveAndFlush(any());
+    }
+
     @Test
     void upsertWithoutBuildingGroupIdFailsBeforeDatabaseSave() {
         SchoolBuildingRequest request = request(null, null, "СП7", "СП7 — корпус", "ул. Новая, 1");

@@ -114,6 +114,25 @@ class ClassAndMetaGroupFkCutoverSqlTest {
         assertTrue(buildingsHtml.contains("Код физической площадки формируется автоматически из СП и адреса."));
     }
 
+
+    @Test
+    void buildingsFrontendSeparatesExistingAddressAndNewOrganizationalBuildingFlows() throws Exception {
+        String buildingsJs = readRaw("src/main/resources/static/buildings.js");
+        String buildingsHtml = readRaw("src/main/resources/static/buildings.html");
+
+        assertTrue(buildingsHtml.contains("Добавить адрес к существующему корпусу"));
+        assertTrue(buildingsHtml.contains("Добавить новый самостоятельный корпус"));
+        assertTrue(buildingsHtml.contains("Новая площадка создаётся пустой. Классы и метагруппы на неё автоматически не переводятся."));
+        assertTrue(buildingsHtml.contains("Новый корпус появится как самостоятельная вкладка нагрузки. Создаётся пустым, без автоматического переноса классов и метагрупп."));
+        assertTrue(buildingsHtml.contains("<th>Основной корпус</th><th>Площадка</th><th>Руководитель</th><th>Адрес</th><th>Действия</th>"));
+        assertTrue(buildingsJs.contains("buildingGroupId: Number(form.get(\"buildingGroupId\")"));
+        assertTrue(buildingsJs.contains("api(\"/api/buildings\", { method: \"POST\""));
+        assertTrue(buildingsJs.contains("ui.buildingGroupForm?.addEventListener"));
+        assertTrue(buildingsJs.contains("api(\"/api/building-groups\", { method: \"POST\""));
+        assertTrue(buildingsJs.contains("await loadBuildingGroups();"));
+        assertTrue(buildingsJs.contains("await loadBuildings();"));
+    }
+
     @Test
     void completedFkAuditChecksSchoolBuildingPhysicalSiteCodeQuality() throws Exception {
         String audit = readRaw("scripts/migrations/audit/verify_completed_fk_migration.sql");

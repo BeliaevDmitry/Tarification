@@ -150,6 +150,7 @@ public class AuthFilter extends OncePerRequestFilter {
     }
 
     private AppTab apiTabForPath(String path) {
+        if (path.startsWith("/api/building-groups")) return AppTab.BUILDINGS;
         if (path.startsWith("/api/buildings")) return AppTab.BUILDINGS;
         if (path.startsWith("/api/classroom-leadership")) return AppTab.CLASSES;
         if (path.startsWith("/api/subjects")) return AppTab.SUBJECTS;
