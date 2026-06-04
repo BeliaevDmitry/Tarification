@@ -127,6 +127,18 @@ WITH checks AS (
     FROM curriculum_plan_entry
     WHERE class_name NOT LIKE 'МГ:%' AND meta_group_id IS NOT NULL
     UNION ALL
+    SELECT 'explicit meta curriculum rows excluded from manual load', count(*)::bigint
+    FROM curriculum_plan_entry
+    WHERE meta_group_id IS NOT NULL
+      AND excluded_from_manual_load = true
+    UNION ALL
+    SELECT 'ordinary legacy meta rows not excluded from manual load', count(*)::bigint
+    FROM curriculum_plan_entry
+    WHERE meta_group = true
+      AND class_id IS NOT NULL
+      AND meta_group_id IS NULL
+      AND excluded_from_manual_load = false
+    UNION ALL
     SELECT 'manual regular rows with meta_group_id set', count(*)::bigint
     FROM manual_load_entry
     WHERE class_name NOT LIKE 'МГ:%' AND meta_group_id IS NOT NULL
