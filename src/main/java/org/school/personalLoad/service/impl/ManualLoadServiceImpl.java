@@ -502,7 +502,6 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     @Override
     public byte[] exportSubjectLoadWorkbook(String academicYear, String building, String campusAddress) throws IOException {
         String selectedBuilding = normalizeDisplayValue(building);
-        String selectedAddress = normalizeDisplayValue(campusAddress);
         List<ManualLoadEntry> allRows = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
                 .filter(row -> !normalizeDisplayValue(row.getFioTeacher()).isBlank())
                 .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
@@ -521,7 +520,56 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                         row -> normalizeToken(row.getCode()),
                         java.util.stream.Collectors.mapping(SchoolBuilding::getAddress, java.util.stream.Collectors.toList())
                 ));
+        Map<String, String> subjectAreaBySubject = subjectCatalogRepository.findAll().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        entry -> normalizeToken(entry.getSubjectName()),
+                        entry -> normalizeDisplayValue(entry.getSubjectAreaName()),
+                        (first, second) -> first
+                ));
 
+        String selectedBuildingKey = normalizeToken(selectedBuilding);
+        List<String> addressSheets = subjectLoadAddresses(selectedBuildingKey, allRows, classEntries, addressByClass, addressesByBuilding);
+
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            SubjectLoadStyles styles = createSubjectLoadStyles(workbook);
+            for (String address : addressSheets) {
+                buildSubjectLoadSheet(
+                        workbook,
+                        styles,
+                        selectedBuilding,
+                        address,
+                        allRows,
+                        classEntries,
+                        addressByClass,
+                        addressesByBuilding,
+                        subjectAreaBySubject
+                );
+            }
+            buildSubjectLoadSheet(
+                    workbook,
+                    styles,
+                    selectedBuilding,
+                    "",
+                    allRows,
+                    classEntries,
+                    addressByClass,
+                    addressesByBuilding,
+                    subjectAreaBySubject
+            );
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private void buildSubjectLoadSheet(Workbook workbook,
+                                       SubjectLoadStyles styles,
+                                       String selectedBuilding,
+                                       String selectedAddress,
+                                       List<ManualLoadEntry> allRows,
+                                       List<ClassroomLeadershipEntry> classEntries,
+                                       Map<String, String> addressByClass,
+                                       Map<String, List<String>> addressesByBuilding,
+                                       Map<String, String> subjectAreaBySubject) {
         String selectedBuildingKey = normalizeToken(selectedBuilding);
         String selectedAddressKey = normalizeToken(selectedAddress);
         List<ManualLoadEntry> scopedRows = allRows.stream()
@@ -558,11 +606,19 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
         Map<SubjectTeacherKey, SubjectTeacherSummary> summaries = new LinkedHashMap<>();
         scopedRows.stream()
-                .sorted(Comparator.comparing(ManualLoadEntry::getSubjectName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
-                        .thenComparing(ManualLoadEntry::getFioTeacher, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
-                        .thenComparing(ManualLoadEntry::getClassName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER)))
+                .sorted(Comparator
+                        .comparing((ManualLoadEntry row) -> subjectAreaSortKey(row.getSubjectName(), subjectAreaBySubject), String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(row -> normalizeDisplayValue(row.getSubjectName()), String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(row -> normalizeDisplayValue(row.getFioTeacher()), String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(row -> normalizeDisplayValue(row.getClassName()), String.CASE_INSENSITIVE_ORDER))
                 .forEach(row -> {
-                    SubjectTeacherKey key = new SubjectTeacherKey(normalizeDisplayValue(row.getSubjectName()), normalizeDisplayValue(row.getFioTeacher()), normalizeToken(row.getSubjectName()), normalizeToken(row.getFioTeacher()));
+                    SubjectTeacherKey key = new SubjectTeacherKey(
+                            normalizeDisplayValue(row.getSubjectName()),
+                            normalizeDisplayValue(row.getFioTeacher()),
+                            subjectAreaSortKey(row.getSubjectName(), subjectAreaBySubject),
+                            normalizeToken(row.getSubjectName()),
+                            normalizeToken(row.getFioTeacher())
+                    );
                     SubjectTeacherSummary summary = summaries.computeIfAbsent(key, SubjectTeacherSummary::new);
                     summary.addClassHours(normalizeDisplayValue(row.getClassName()), groupSlot(row), row);
                 });
@@ -570,7 +626,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         for (SubjectTeacherSummary summary : summaries.values()) {
             List<ManualLoadEntry> teacherRows = rowsByTeacher.getOrDefault(summary.key.teacherKey(), List.of());
             for (ManualLoadEntry row : teacherRows) {
-                summary.addTotal(row, rowInSubjectExportScope(row, selectedBuildingKey, selectedAddressKey, addressByClass, addressesByBuilding));
+                if (normalizeToken(row.getNumberSchoolBuilding()).equals(selectedBuildingKey)) {
+                    summary.addTotal(row, rowInSubjectExportScope(row, selectedBuildingKey, selectedAddressKey, addressByClass, addressesByBuilding));
+                }
             }
             summary.addressesElsewhere = teacherRows.stream()
                     .filter(row -> !rowInSubjectExportScope(row, selectedBuildingKey, selectedAddressKey, addressByClass, addressesByBuilding))
@@ -582,87 +640,82 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             summary.classLeadership = String.join(", ", leadershipByTeacher.getOrDefault(summary.key.teacherKey(), List.of()));
         }
 
-        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            SubjectLoadStyles styles = createSubjectLoadStyles(workbook);
-            Sheet sheet = workbook.createSheet(uniqueSheetName(workbook, "Нагрузка по предметам"));
-            sheet.getPrintSetup().setLandscape(true);
-            sheet.setFitToPage(true);
-            sheet.getPrintSetup().setFitWidth((short) 1);
-            sheet.getPrintSetup().setFitHeight((short) 0);
+        Sheet sheet = workbook.createSheet(uniqueSheetName(workbook, subjectLoadSheetName(selectedAddress)));
+        sheet.getPrintSetup().setLandscape(true);
+        sheet.setFitToPage(true);
+        sheet.getPrintSetup().setFitWidth((short) 1);
+        sheet.getPrintSetup().setFitHeight((short) 0);
 
-            int fixedColumns = 3;
-            int leadershipColumn = fixedColumns + classColumns.size();
-            int addressColumn = leadershipColumn + 1;
-            int lastColumn = addressColumn;
+        int fixedColumns = 3;
+        int leadershipColumn = fixedColumns + classColumns.size();
+        int addressColumn = leadershipColumn + 1;
+        int lastColumn = addressColumn;
 
-            Row title = sheet.createRow(0);
-            title.setHeightInPoints(24);
-            Cell titleCell = title.createCell(0);
-            titleCell.setCellValue(subjectLoadTitle(selectedBuilding, selectedAddress));
-            titleCell.setCellStyle(styles.title());
-            if (lastColumn > 0) sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, lastColumn));
+        Row title = sheet.createRow(0);
+        title.setHeightInPoints(24);
+        Cell titleCell = title.createCell(0);
+        titleCell.setCellValue(subjectLoadTitle(selectedBuilding, selectedAddress));
+        titleCell.setCellStyle(styles.title());
+        if (lastColumn > 0) sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, lastColumn));
 
-            Row topHeader = sheet.createRow(1);
-            Row subHeader = sheet.createRow(2);
-            topHeader.setHeightInPoints(36);
-            subHeader.setHeightInPoints(34);
-            setMergedHeader(sheet, topHeader, subHeader, 0, "Предмет", styles.header());
-            setMergedHeader(sheet, topHeader, subHeader, 1, "ФИО", styles.header());
-            Cell classesCell = topHeader.createCell(2);
-            classesCell.setCellValue("Классы");
-            classesCell.setCellStyle(styles.header());
-            subHeader.createCell(2).setCellValue("часов\nпредмет/корпус/всего");
-            subHeader.getCell(2).setCellStyle(styles.header());
-            for (int i = 0; i < classColumns.size(); i++) {
-                Cell cell = topHeader.createCell(fixedColumns + i);
-                cell.setCellValue(classColumns.get(i));
-                cell.setCellStyle(styles.header());
-                Cell subCell = subHeader.createCell(fixedColumns + i);
-                subCell.setCellValue("1г | 2г");
-                subCell.setCellStyle(styles.groupHeader());
-            }
-            setMergedHeader(sheet, topHeader, subHeader, leadershipColumn, "классное\nруководство", styles.header());
-            setMergedHeader(sheet, topHeader, subHeader, addressColumn, "адреса, где\nработает ещё", styles.header());
-
-            int rowNum = 3;
-            String currentSubject = null;
-            int subjectStart = rowNum;
-            for (SubjectTeacherSummary summary : summaries.values()) {
-                if (currentSubject != null && !Objects.equals(currentSubject, summary.key.subjectKey()) && rowNum - 1 > subjectStart) {
-                    sheet.addMergedRegion(new CellRangeAddress(subjectStart, rowNum - 1, 0, 0));
-                    subjectStart = rowNum;
-                } else if (currentSubject != null && !Objects.equals(currentSubject, summary.key.subjectKey())) {
-                    subjectStart = rowNum;
-                }
-                currentSubject = summary.key.subjectKey();
-                Row row = sheet.createRow(rowNum++);
-                row.setHeightInPoints(28);
-                writeCell(row, 0, summary.key.subject(), styles.subject());
-                writeCell(row, 1, summary.key.fio(), styles.text());
-                writeCell(row, 2, summary.hoursSummary(), styles.center());
-                for (int i = 0; i < classColumns.size(); i++) {
-                    writeCell(row, fixedColumns + i, summary.classCell(classColumns.get(i)), styles.center());
-                }
-                writeCell(row, leadershipColumn, summary.classLeadership, styles.text());
-                writeCell(row, addressColumn, summary.addressesElsewhere, styles.text());
-            }
-            if (currentSubject != null && rowNum - 1 > subjectStart) {
-                sheet.addMergedRegion(new CellRangeAddress(subjectStart, rowNum - 1, 0, 0));
-            }
-
-            sheet.createFreezePane(3, 3);
-            sheet.setAutoFilter(new CellRangeAddress(2, Math.max(2, rowNum - 1), 0, lastColumn));
-            sheet.setColumnWidth(0, 22 * 256);
-            sheet.setColumnWidth(1, 28 * 256);
-            sheet.setColumnWidth(2, 18 * 256);
-            for (int i = 0; i < classColumns.size(); i++) {
-                sheet.setColumnWidth(fixedColumns + i, 9 * 256);
-            }
-            sheet.setColumnWidth(leadershipColumn, 18 * 256);
-            sheet.setColumnWidth(addressColumn, 34 * 256);
-            workbook.write(out);
-            return out.toByteArray();
+        Row topHeader = sheet.createRow(1);
+        Row subHeader = sheet.createRow(2);
+        topHeader.setHeightInPoints(36);
+        subHeader.setHeightInPoints(34);
+        setMergedHeader(sheet, topHeader, subHeader, 0, "Предмет", styles.header());
+        setMergedHeader(sheet, topHeader, subHeader, 1, "ФИО", styles.header());
+        Cell classesCell = topHeader.createCell(2);
+        classesCell.setCellValue("Классы");
+        classesCell.setCellStyle(styles.header());
+        subHeader.createCell(2).setCellValue("часов\nпредмет/площадка/комплекс");
+        subHeader.getCell(2).setCellStyle(styles.header());
+        for (int i = 0; i < classColumns.size(); i++) {
+            Cell cell = topHeader.createCell(fixedColumns + i);
+            cell.setCellValue(classColumns.get(i));
+            cell.setCellStyle(styles.header());
+            Cell subCell = subHeader.createCell(fixedColumns + i);
+            subCell.setCellValue("1г | 2г");
+            subCell.setCellStyle(styles.groupHeader());
         }
+        setMergedHeader(sheet, topHeader, subHeader, leadershipColumn, "классное\nруководство", styles.header());
+        setMergedHeader(sheet, topHeader, subHeader, addressColumn, "адреса, где\nработает ещё", styles.header());
+
+        int rowNum = 3;
+        String currentSubject = null;
+        int subjectStart = rowNum;
+        for (SubjectTeacherSummary summary : summaries.values()) {
+            if (currentSubject != null && !Objects.equals(currentSubject, summary.key.subjectKey()) && rowNum - 1 > subjectStart) {
+                sheet.addMergedRegion(new CellRangeAddress(subjectStart, rowNum - 1, 0, 0));
+                subjectStart = rowNum;
+            } else if (currentSubject != null && !Objects.equals(currentSubject, summary.key.subjectKey())) {
+                subjectStart = rowNum;
+            }
+            currentSubject = summary.key.subjectKey();
+            Row row = sheet.createRow(rowNum++);
+            row.setHeightInPoints(28);
+            writeCell(row, 0, summary.key.subject(), styles.subject());
+            writeCell(row, 1, summary.key.fio(), styles.text());
+            writeCell(row, 2, summary.hoursSummary(), styles.center());
+            for (int i = 0; i < classColumns.size(); i++) {
+                writeCell(row, fixedColumns + i, summary.classCell(classColumns.get(i)), styles.center());
+            }
+            writeCell(row, leadershipColumn, summary.classLeadership, styles.text());
+            writeCell(row, addressColumn, summary.addressesElsewhere, styles.text());
+        }
+        if (currentSubject != null && rowNum - 1 > subjectStart) {
+            sheet.addMergedRegion(new CellRangeAddress(subjectStart, rowNum - 1, 0, 0));
+        }
+
+        sheet.createFreezePane(3, 3);
+        sheet.setAutoFilter(new CellRangeAddress(2, Math.max(2, rowNum - 1), 0, lastColumn));
+        sheet.setColumnWidth(0, 22 * 256);
+        sheet.setColumnWidth(1, 28 * 256);
+        sheet.setColumnWidth(2, 20 * 256);
+        for (int i = 0; i < classColumns.size(); i++) {
+            sheet.setColumnWidth(fixedColumns + i, 9 * 256);
+        }
+        sheet.setColumnWidth(leadershipColumn, 18 * 256);
+        sheet.setColumnWidth(addressColumn, 34 * 256);
     }
 
     private int manualLoadHours(ManualLoadEntry entry) {
@@ -1040,6 +1093,44 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
 
+
+    private List<String> subjectLoadAddresses(String selectedBuildingKey,
+                                              List<ManualLoadEntry> allRows,
+                                              List<ClassroomLeadershipEntry> classEntries,
+                                              Map<String, String> addressByClass,
+                                              Map<String, List<String>> addressesByBuilding) {
+        LinkedHashSet<String> addresses = new LinkedHashSet<>();
+        addressesByBuilding.getOrDefault(selectedBuildingKey, List.of()).stream()
+                .map(this::normalizeDisplayValue)
+                .filter(address -> !address.isBlank())
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .forEach(addresses::add);
+        classEntries.stream()
+                .filter(entry -> normalizeToken(entry.getNumberSchoolBuilding()).equals(selectedBuildingKey))
+                .map(ClassroomLeadershipEntry::getCampusAddress)
+                .map(this::normalizeDisplayValue)
+                .filter(address -> !address.isBlank())
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .forEach(addresses::add);
+        allRows.stream()
+                .filter(row -> normalizeToken(row.getNumberSchoolBuilding()).equals(selectedBuildingKey))
+                .map(row -> resolveRowAddress(row, addressByClass, addressesByBuilding))
+                .filter(address -> !address.isBlank())
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .forEach(addresses::add);
+        return new ArrayList<>(addresses);
+    }
+
+    private String subjectAreaSortKey(String subjectName, Map<String, String> subjectAreaBySubject) {
+        String area = normalizeDisplayValue(subjectAreaBySubject.getOrDefault(normalizeToken(subjectName), ""));
+        return area.isBlank() ? "Без предметной области" : area;
+    }
+
+    private String subjectLoadSheetName(String campusAddress) {
+        String address = normalizeDisplayValue(campusAddress);
+        return address.isBlank() ? "Комплекс" : address;
+    }
+
     private boolean rowInSubjectExportScope(ManualLoadEntry row,
                                             String selectedBuildingKey,
                                             String selectedAddressKey,
@@ -1159,7 +1250,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                                      CellStyle text,
                                      CellStyle center) {}
 
-    private record SubjectTeacherKey(String subject, String fio, String subjectKey, String teacherKey) {}
+    private record SubjectTeacherKey(String subject, String fio, String subjectAreaKey, String subjectKey, String teacherKey) {}
 
     private final class SubjectTeacherSummary {
         private final SubjectTeacherKey key;
