@@ -20,8 +20,17 @@ class ClassroomBuildingScopeFrontendTest {
         assertTrue(html.contains("Класс будет перенесён в другой основной корпус. Учебный план и уже распределённая нагрузка этого класса будут отображаться в новой вкладке корпуса. Педагоги и часы не изменятся."));
         assertTrue(js.contains("function fillPhysicalSiteOptions(selectEl, selectedId = null, fallbackAddress = \"\", buildingCode = \"\")"));
         assertTrue(js.contains(".filter((b) => !selectedGroup || b.code === selectedGroup)"));
+        assertTrue(js.contains("const ordinaryPatchEntry = shouldTransferScope"));
+        assertTrue(js.contains("numberSchoolBuilding: buildingGroupCode(editingOriginalEntry.numberSchoolBuilding)"));
+        assertTrue(js.contains("schoolBuildingId: Number(editingOriginalEntry.schoolBuildingId) || null"));
+        assertTrue(js.contains("campusAddress: norm(editingOriginalEntry.campusAddress)"));
+        assertTrue(js.contains("body: JSON.stringify(ordinaryPatchEntry)"));
         assertTrue(js.contains("/api/classes/${encodeURIComponent(entry.id)}/building-scope"));
         assertTrue(js.contains("body: JSON.stringify({ schoolBuildingId: entry.schoolBuildingId })"));
         assertTrue(js.contains("teacherId,"));
+
+        int updateEntryStart = js.indexOf("async function updateEntry(entry)");
+        String updateEntry = js.substring(updateEntryStart, js.indexOf("updateTemplateLink();", updateEntryStart));
+        assertTrue(!updateEntry.contains("catch"), "updateEntry must propagate transfer errors to the form-level error handler");
     }
 }

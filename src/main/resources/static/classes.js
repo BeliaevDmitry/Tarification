@@ -359,10 +359,26 @@ async function updateEntry(entry) {
         return upsertEntry(entry, editingOriginalKey);
     }
     const shouldTransferScope = buildingScopeChanged(entry);
+    const ordinaryPatchEntry = shouldTransferScope
+        ? {
+            ...entry,
+            numberSchoolBuilding: buildingGroupCode(editingOriginalEntry.numberSchoolBuilding),
+            schoolBuildingId: Number(editingOriginalEntry.schoolBuildingId) || null,
+            campusAddress: norm(editingOriginalEntry.campusAddress)
+        }
+        : entry;
     const saved = await api(`/api/classroom-leadership/${encodeURIComponent(entry.id)}`, {
         method: "PATCH",
         headers: jsonHeaders,
-        body: JSON.stringify(entry)
+        body: JSON.stringify(ordinaryPatchEntry)
+    });
+    if (!shouldTransferScope) {
+        return saved;
+    }
+    return api(`/api/classes/${encodeURIComponent(entry.id)}/building-scope`, {
+        method: "PATCH",
+        headers: jsonHeaders,
+        body: JSON.stringify({ schoolBuildingId: entry.schoolBuildingId })
     });
     if (!shouldTransferScope) {
         return saved;

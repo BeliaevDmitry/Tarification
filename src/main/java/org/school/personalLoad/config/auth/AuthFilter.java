@@ -153,6 +153,7 @@ public class AuthFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/building-groups")) return AppTab.BUILDINGS;
         if (path.startsWith("/api/buildings")) return AppTab.BUILDINGS;
         if (path.startsWith("/api/classroom-leadership")) return AppTab.CLASSES;
+        if (path.startsWith("/api/classes")) return AppTab.CLASSES;
         if (path.startsWith("/api/subjects")) return AppTab.SUBJECTS;
         if (path.startsWith("/api/curriculum")) return AppTab.CURRICULUM;
         if (path.startsWith("/api/manual-load")) return AppTab.LOAD;
