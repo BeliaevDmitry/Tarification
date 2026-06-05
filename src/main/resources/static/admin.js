@@ -132,6 +132,7 @@ const ui = {
 };
 
 let buildings = [];
+let buildingGroups = [];
 let users = [];
 let editingUserId = null;
 let teacherFioOptions = [];
@@ -424,6 +425,12 @@ function buildingDisplayName(building) {
     return String(building?.name || code || '').trim() || code;
 }
 
+function buildingGroupOptionLabel(group) {
+    const code = buildingGroupCode(group?.code || group?.name);
+    const name = String(group?.name || '').trim();
+    return name && name !== code ? `${code} — ${name}` : code;
+}
+
 function buildingAddressLabel(building) {
     return String(building?.address || '').trim();
 }
@@ -435,13 +442,14 @@ function buildingAccessValue(building) {
 }
 
 function buildingGroupOptions() {
-    const byCode = new Map();
-    (buildings || []).forEach((building) => {
-        const code = buildingGroupCode(building?.code || building?.name);
-        if (!code || byCode.has(code)) return;
-        byCode.set(code, { value: code, label: `${buildingDisplayName(building)} — все адреса` });
-    });
-    return [...byCode.values()].sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+    return (buildingGroups || [])
+        .map((group) => {
+            const code = buildingGroupCode(group?.code || group?.name);
+            if (!code) return null;
+            return { value: code, label: buildingGroupOptionLabel(group) };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
 }
 
 function buildingAccessOptions() {
@@ -492,13 +500,23 @@ function loadScopeLabel(user) {
 }
 
 function renderBuildingSelect(selectEl, selectedValue = '') {
-    const selected = buildingGroupCode(selectedValue);
+    const rawSelected = String(selectedValue || '').trim();
+    const normalizedSelected = normalizeBuildingAccessCode(rawSelected);
     selectEl.innerHTML = '<option value="">Основной корпус не указан</option>';
-    buildingGroupOptions().forEach((building) => {
+    const options = buildingGroupOptions();
+    const hasExactOption = options.some((building) => normalizeBuildingAccessCode(building.value) === normalizedSelected);
+    if (rawSelected && !hasExactOption) {
+        const legacyOption = document.createElement('option');
+        legacyOption.value = rawSelected;
+        legacyOption.textContent = `Текущее значение: ${rawSelected}`;
+        legacyOption.selected = true;
+        selectEl.appendChild(legacyOption);
+    }
+    options.forEach((building) => {
         const option = document.createElement('option');
         option.value = building.value;
         option.textContent = building.label;
-        if (selected && selected === building.value) option.selected = true;
+        if (normalizedSelected && normalizedSelected === normalizeBuildingAccessCode(building.value)) option.selected = true;
         selectEl.appendChild(option);
     });
 }
@@ -984,13 +1002,15 @@ function resetCreateForm() {
 }
 
 async function reload() {
-    const [userRows, buildingRows, teacherRows] = await Promise.all([
+    const [userRows, buildingRows, buildingGroupRows, teacherRows] = await Promise.all([
         api('/api/admin/users'),
         api('/api/buildings'),
+        api('/api/building-groups'),
         api('/api/teachers')
     ]);
     users = userRows || [];
     buildings = (buildingRows || []).slice().sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), 'ru'));
+    buildingGroups = (buildingGroupRows || []).slice().sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), 'ru'));
     teacherFioOptions = (teacherRows || [])
         .map((row) => String(row.fioTeacher || '').trim())
         .filter(Boolean)

@@ -108,10 +108,10 @@ class ClassAndMetaGroupFkCutoverSqlTest {
         assertFalse(buildingsJs.contains("payload.code = String(selectedGroup?.code"));
         assertFalse(buildingsJs.contains("if (selectedGroup?.code) payload.code"));
         assertFalse(buildingsJs.contains("code: String(ui.editForm.elements.code.value"));
+        assertFalse(buildingsJs.contains("ui.editForm.elements"));
         assertTrue(buildingsJs.contains("buildingGroupId: Number(form.get(\"buildingGroupId\")"));
-        assertTrue(buildingsJs.contains("buildingGroupId: Number(ui.editForm.elements.buildingGroupId.value"));
-        assertTrue(buildingsHtml.contains("name=\"siteCode\" readonly"));
-        assertTrue(buildingsHtml.contains("Код физической площадки формируется автоматически из СП и адреса."));
+        assertFalse(buildingsHtml.contains("name=\"siteCode\" readonly"));
+        assertTrue(buildingsHtml.contains("name=\"code\" readonly"));
     }
 
 
@@ -120,11 +120,12 @@ class ClassAndMetaGroupFkCutoverSqlTest {
         String buildingsJs = readRaw("src/main/resources/static/buildings.js");
         String buildingsHtml = readRaw("src/main/resources/static/buildings.html");
 
-        assertTrue(buildingsHtml.contains("Добавить адрес к существующему корпусу"));
-        assertTrue(buildingsHtml.contains("Добавить новый самостоятельный корпус"));
+        assertTrue(buildingsHtml.contains("Добавить физическую площадку к существующему основному корпусу"));
+        assertTrue(buildingsHtml.contains("Добавить новый основной корпус / подразделение"));
         assertTrue(buildingsHtml.contains("Новая площадка создаётся пустой. Классы и метагруппы на неё автоматически не переводятся."));
         assertTrue(buildingsHtml.contains("Новый корпус появится как самостоятельная вкладка нагрузки. Создаётся пустым, без автоматического переноса классов и метагрупп."));
-        assertTrue(buildingsHtml.contains("<th>Основной корпус</th><th>Площадка</th><th>Руководитель</th><th>Адрес</th><th>Действия</th>"));
+        assertTrue(buildingsHtml.contains("<th>Код корпуса</th><th>Название корпуса</th><th>Руководитель / ответственный</th><th>Физическая площадка / адрес</th><th>Действия</th>"));
+        assertFalse(buildingsHtml.contains("<h2>Физические площадки / адреса</h2>"));
         assertTrue(buildingsJs.contains("buildingGroupId: Number(form.get(\"buildingGroupId\")"));
         assertTrue(buildingsJs.contains("api(\"/api/buildings\", { method: \"POST\""));
         assertTrue(buildingsJs.contains("ui.buildingGroupForm?.addEventListener"));

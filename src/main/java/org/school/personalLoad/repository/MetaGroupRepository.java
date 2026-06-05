@@ -10,4 +10,5 @@ public interface MetaGroupRepository extends JpaRepository<MetaGroup, Long> {
     boolean existsByAcademicYearAndNumberSchoolBuildingAndParallelAndNameIgnoreCaseAndClassType(String academicYear, String numberSchoolBuilding, Integer parallel, String name, String classType);
     boolean existsByNumberSchoolBuildingIgnoreCase(String numberSchoolBuilding);
     boolean existsBySchoolBuilding_Id(Long schoolBuildingId);
+    boolean existsByBuildingGroup_Id(Long buildingGroupId);
 }

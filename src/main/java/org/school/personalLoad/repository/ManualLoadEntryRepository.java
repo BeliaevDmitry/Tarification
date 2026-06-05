@@ -37,6 +37,7 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
     java.util.List<ManualLoadEntry> findAllByAcademicYearAndSchoolBuildingId(@Param("academicYear") String academicYear,
                                                                              @Param("schoolBuildingId") Long schoolBuildingId);
     boolean existsByNumberSchoolBuildingIgnoreCase(String numberSchoolBuilding);
+    boolean existsByBuildingGroup_Id(Long buildingGroupId);
     @Query(value = "select count(*) from manual_load_entry where academic_year = :academicYear and class_id = :classId", nativeQuery = true)
     long countClassTails(@Param("academicYear") String academicYear,
                          @Param("classId") Long classId);
