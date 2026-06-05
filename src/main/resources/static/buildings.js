@@ -6,13 +6,7 @@ const ui = {
     refreshBtn: document.getElementById("refresh-buildings-btn"),
     clearBtn: document.getElementById("clear-buildings-btn"),
     result: document.getElementById("buildings-result"),
-    body: document.getElementById("buildings-body"),
     buildingGroupsBody: document.getElementById("building-groups-body"),
-    editDialog: document.getElementById("building-edit-dialog"),
-    editForm: document.getElementById("building-edit-form"),
-    closeBtn: document.getElementById("building-close-btn"),
-    deleteBtn: document.getElementById("building-delete-btn"),
-    managerDisplay: document.getElementById("building-manager-display"),
     fileInput: document.getElementById("buildings-file"),
     importBtn: document.getElementById("import-buildings-btn"),
     buildingGroupModeInputs: Array.from(document.querySelectorAll('input[name="createInitialSite"]')),
@@ -21,7 +15,8 @@ const ui = {
     buildingGroupEditDialog: document.getElementById("building-group-edit-dialog"),
     buildingGroupEditForm: document.getElementById("building-group-edit-form"),
     buildingGroupCloseBtn: document.getElementById("building-group-close-btn"),
-    buildingGroupManagerDisplay: document.getElementById("building-group-manager-display")
+    buildingGroupManagerDisplay: document.getElementById("building-group-manager-display"),
+    buildingGroupSitesDisplay: document.getElementById("building-group-sites-display")
 };
 
 let buildings = [];
@@ -120,12 +115,16 @@ function sitesForGroup(groupId) {
 function physicalSitesForGroupLabel(groupId) {
     const sites = sitesForGroup(groupId);
     if (!sites.length) {
-        return "Собственной площадки нет. Классы могут использовать существующие площадки других корпусов.";
+        return "Собственной площадки нет. Классы используют выбранные существующие площадки.";
     }
     return sites
         .map((site) => [String(site.name || "").trim(), String(site.address || "").trim()].filter(Boolean).join(" — "))
         .filter(Boolean)
         .join("; ");
+}
+
+function physicalSitesForGroupHtml(groupId) {
+    return escapeHtml(physicalSitesForGroupLabel(groupId)).replaceAll("; ", "<br>");
 }
 
 function openBuildingGroupEdit(group) {
@@ -134,6 +133,13 @@ function openBuildingGroupEdit(group) {
     ui.buildingGroupEditForm.elements.code.value = group.code || "";
     ui.buildingGroupEditForm.elements.name.value = group.name || "";
     if (ui.buildingGroupManagerDisplay) ui.buildingGroupManagerDisplay.textContent = displayManagerFio(group);
+    if (ui.buildingGroupSitesDisplay) ui.buildingGroupSitesDisplay.textContent = physicalSitesForGroupLabel(group.id);
+    const mode = sitesForGroup(group.id).length ? "own" : "shared";
+    const modeInput = ui.buildingGroupEditForm.elements.physicalSiteMode;
+    if (modeInput) {
+        Array.from(ui.buildingGroupEditForm.querySelectorAll('input[name="physicalSiteMode"]'))
+            .forEach((input) => { input.checked = input.value === mode; });
+    }
     ui.buildingGroupEditDialog.showModal();
 }
 
@@ -145,7 +151,7 @@ function renderBuildingGroups() {
         .sort((a, b) => String(a.code || a.name || "").localeCompare(String(b.code || b.name || ""), "ru", { numeric: true }))
         .forEach((group) => {
             const tr = document.createElement("tr");
-            tr.innerHTML = `<td>${escapeHtml(group.code || "")}</td><td>${escapeHtml(group.name || "")}</td><td>${escapeHtml(displayManagerFio(group))}</td><td>${escapeHtml(physicalSitesForGroupLabel(group.id))}</td><td><button type="button" class="inline-plus" data-edit-group-id="${escapeHtml(group.id)}" title="Редактировать основной корпус">✏️</button></td>`;
+            tr.innerHTML = `<td>${escapeHtml(group.code || "")}</td><td>${escapeHtml(group.name || "")}</td><td>${escapeHtml(displayManagerFio(group))}</td><td>${physicalSitesForGroupHtml(group.id)}</td><td><button type="button" class="inline-plus" data-edit-group-id="${escapeHtml(group.id)}" title="Редактировать корпус">✏️</button></td>`;
             ui.buildingGroupsBody.appendChild(tr);
         });
 
@@ -157,32 +163,9 @@ function renderBuildingGroups() {
     });
 }
 
-function openEdit(item) {
-    ui.editForm.elements.id.value = item.id || "";
-    const siteCode = ui.editForm.elements.siteCode;
-    if (siteCode) siteCode.value = item.code || "";
-    fillBuildingGroupSelect(ui.editForm.elements.buildingGroupId, item.buildingGroupId);
-    ui.editForm.elements.name.value = item.name;
-    ui.editForm.elements.address.value = item.address;
-    if (ui.managerDisplay) ui.managerDisplay.textContent = displayManagerFio(item);
-    ui.editDialog.showModal();
-}
-
 function render(rows) {
-    ui.body.innerHTML = "";
     buildings = rows || [];
-    buildings.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ru")).forEach((r) => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${escapeHtml(groupLabelById(r.buildingGroupId))}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.address)}</td><td>${escapeHtml(displayManagerFio(r))}</td><td><button type="button" class="inline-plus" data-edit-id="${escapeHtml(r.id)}" title="Редактировать">✏️</button></td>`;
-        ui.body.appendChild(tr);
-    });
-
-    ui.body.querySelectorAll('button[data-edit-id]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const found = buildings.find((b) => String(b.id) === String(btn.dataset.editId));
-            if (found) openEdit(found);
-        });
-    });
+    renderBuildingGroups();
 }
 
 async function loadBuildingGroups() {
@@ -248,33 +231,12 @@ ui.buildingGroupForm?.addEventListener("submit", async (e) => {
     } catch (error) { print({ error: error.message }); }
 });
 
-ui.editForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const payload = {
-        id: Number(ui.editForm.elements.id.value || 0) || null,
-        buildingGroupId: Number(ui.editForm.elements.buildingGroupId.value || 0) || null,
-        name: String(ui.editForm.elements.name.value || '').trim(),
-        address: String(ui.editForm.elements.address.value || '').trim()
-    };
-
-    try {
-        const saved = await api('/api/buildings', { method: 'POST', headers: jsonHeaders, body: JSON.stringify(payload) });
-        ui.editDialog.close();
-        print(saved);
-        await reload();
-    } catch (error) {
-        print({ error: error.message });
-    }
-});
-
-ui.closeBtn.addEventListener('click', () => ui.editDialog.close());
 ui.buildingGroupCloseBtn?.addEventListener('click', () => ui.buildingGroupEditDialog?.close());
 
 ui.buildingGroupEditForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = Number(ui.buildingGroupEditForm.elements.id.value || 0) || null;
     const payload = {
-        code: String(ui.buildingGroupEditForm.elements.code.value || '').trim(),
         name: String(ui.buildingGroupEditForm.elements.name.value || '').trim()
     };
     try {
@@ -286,23 +248,6 @@ ui.buildingGroupEditForm?.addEventListener('submit', async (e) => {
         print({ error: error.message });
     }
 });
-ui.deleteBtn?.addEventListener('click', async () => {
-    const id = Number(ui.editForm.elements.id.value || 0) || null;
-    if (!id) {
-        print({ error: "ID корпуса не найден" });
-        return;
-    }
-    if (!window.confirm("Удалить корпус? Действие необратимо.")) return;
-    try {
-        await api(`/api/buildings/one?id=${encodeURIComponent(id)}`, { method: "DELETE" });
-        ui.editDialog.close();
-        print({ status: "deleted", id });
-        await reload();
-    } catch (error) {
-        print({ error: error.message });
-    }
-});
-
 ui.importBtn?.addEventListener('click', async () => {
     const file = ui.fileInput?.files?.[0];
     if (!file) {

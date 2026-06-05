@@ -12,7 +12,7 @@
 <main class="container">
     <header class="card">
         <h1>Корпуса</h1>
-        <p class="muted">Основные корпуса / подразделения управляют вкладками нагрузки и правами руководителей. Физические площадки / адреса показываются отдельно и могут принадлежать одному из основных корпусов.</p>
+        <p class="muted">В таблице показаны основные корпуса / подразделения. Физическая площадка / адрес отображается как свойство корпуса, а руководитель назначается во вкладке «Пользователи».</p>
         <nav class="page-nav">
             <a class="nav-link active" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
             <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
@@ -71,42 +71,35 @@
     </section>
 
     <section class="card">
-        <h2>Основные корпуса / подразделения</h2>
-        <p class="muted">Источник: /api/building-groups. Здесь отображаются все основные корпуса, включая подразделения без собственной физической площадки.</p>
+        <h2>Корпуса</h2>
+        <p class="muted">В таблице отображаются все основные корпуса, включая подразделения без собственной физической площадки.</p>
         <div class="sheet-wrap">
-            <table class="sheet-table">
-                <thead><tr><th>Код</th><th>Название</th><th>Руководитель / ответственный</th><th>Физические площадки</th><th>Действия</th></tr></thead>
+            <table class="sheet-table" id="buildings-table">
+                <thead><tr><th>Код корпуса</th><th>Название корпуса</th><th>Руководитель / ответственный</th><th>Физическая площадка / адрес</th><th>Действия</th></tr></thead>
                 <tbody id="building-groups-body"></tbody>
-            </table>
-        </div>
-    </section>
-
-    <section class="card">
-        <h2>Физические площадки / адреса</h2>
-        <p class="muted">Источник: /api/buildings. Здесь отображаются только реальные адреса, созданные в school_building.</p>
-        <div class="sheet-wrap">
-            <table class="sheet-table">
-                <thead><tr><th>Основной корпус-владелец площадки</th><th>Название площадки</th><th>Адрес</th><th>Руководитель площадки</th><th>Действия</th></tr></thead>
-                <tbody id="buildings-body"></tbody>
             </table>
         </div>
     </section>
 </main>
 
-<dialog id="building-edit-dialog">
-    <form method="dialog" id="building-edit-form" class="grid labeled-grid" data-requires-edit>
-        <h3>Редактирование площадки</h3>
+<dialog id="building-group-edit-dialog">
+    <form method="dialog" id="building-group-edit-form" class="grid labeled-grid" data-requires-edit>
+        <h3>Редактирование основного корпуса / подразделения</h3>
         <input type="hidden" name="id">
-        <label class="field-row"><span>Код площадки</span><input name="siteCode" readonly></label>
-        <div class="full-span muted">Код физической площадки формируется автоматически из СП и адреса.</div>
-        <label class="field-row"><span>Основной корпус</span><select name="buildingGroupId" required><option value="">Выберите группу</option></select></label>
-        <label class="field-row"><span>Название площадки</span><input name="name" placeholder="Название площадки" required></label>
-        <label class="field-row"><span>Адрес площадки</span><input name="address" placeholder="Адрес площадки" required></label>
-        <div class="full-span muted">Текущий руководитель: <strong id="building-manager-display">Не назначен</strong>. Назначение меняется во вкладке «Пользователи системы».</div>
+        <label class="field-row"><span>Код корпуса</span><input name="code" readonly></label>
+        <div class="full-span muted">Код корпуса используется в правах, классах и нагрузке, поэтому сейчас не редактируется.</div>
+        <label class="field-row"><span>Название корпуса</span><input name="name" placeholder="Название корпуса" required></label>
+        <div class="full-span muted">Руководитель / ответственный: <strong id="building-group-manager-display">Не назначен</strong>. Назначение меняется во вкладке «Пользователи системы» у роли «Руководитель корпуса».</div>
+        <fieldset class="full-span" disabled>
+            <legend>Режим физической площадки</legend>
+            <label><input type="radio" name="physicalSiteMode" value="own"> Собственная площадка / адрес</label>
+            <label><input type="radio" name="physicalSiteMode" value="shared"> Использовать существующую площадку другого корпуса</label>
+        </fieldset>
+        <div class="full-span muted" id="building-group-sites-display">Собственной площадки нет.</div>
+        <div class="full-span muted">Физическая площадка меняется через классы: у каждого класса можно выбрать основной корпус и физическую площадку. Новый адрес можно добавить формой на этой странице.</div>
         <div class="row">
             <button type="submit">Сохранить</button>
-            <button type="button" id="building-delete-btn" class="danger-btn">Удалить площадку</button>
-            <button type="button" id="building-close-btn">Отмена</button>
+            <button type="button" id="building-group-close-btn">Отмена</button>
         </div>
     </form>
 </dialog>
