@@ -501,13 +501,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
     @Override
     public byte[] exportSubjectLoadWorkbook(String academicYear, String building, String campusAddress) throws IOException {
-        String selectedBuilding = normalizeDisplayValue(building);
         List<ManualLoadEntry> allRows = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
                 .filter(row -> !normalizeDisplayValue(row.getFioTeacher()).isBlank())
                 .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
-        if (selectedBuilding.isBlank() && !allRows.isEmpty()) {
-            selectedBuilding = normalizeDisplayValue(allRows.get(0).getNumberSchoolBuilding());
-        }
 
         List<ClassroomLeadershipEntry> classEntries = classroomLeadershipRepository.findAllByAcademicYear(academicYear);
         Map<String, String> addressByClass = new HashMap<>();
@@ -527,8 +523,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                         (first, second) -> first
                 ));
 
-        String selectedBuildingKey = normalizeToken(selectedBuilding);
-        List<String> addressSheets = subjectLoadAddresses(selectedBuildingKey, allRows, classEntries, addressByClass, addressesByBuilding);
+        List<String> addressSheets = subjectLoadAddresses(allRows, classEntries, addressByClass, addressesByBuilding);
 
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             SubjectLoadStyles styles = createSubjectLoadStyles(workbook);
@@ -536,7 +531,6 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 buildSubjectLoadSheet(
                         workbook,
                         styles,
-                        selectedBuilding,
                         address,
                         allRows,
                         classEntries,
@@ -548,7 +542,6 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             buildSubjectLoadSheet(
                     workbook,
                     styles,
-                    selectedBuilding,
                     "",
                     allRows,
                     classEntries,
@@ -563,21 +556,18 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
     private void buildSubjectLoadSheet(Workbook workbook,
                                        SubjectLoadStyles styles,
-                                       String selectedBuilding,
                                        String selectedAddress,
                                        List<ManualLoadEntry> allRows,
                                        List<ClassroomLeadershipEntry> classEntries,
                                        Map<String, String> addressByClass,
                                        Map<String, List<String>> addressesByBuilding,
                                        Map<String, String> subjectAreaBySubject) {
-        String selectedBuildingKey = normalizeToken(selectedBuilding);
         String selectedAddressKey = normalizeToken(selectedAddress);
         List<ManualLoadEntry> scopedRows = allRows.stream()
-                .filter(row -> rowInSubjectExportScope(row, selectedBuildingKey, selectedAddressKey, addressByClass, addressesByBuilding))
+                .filter(row -> rowInSubjectExportScope(row, selectedAddressKey, addressByClass, addressesByBuilding))
                 .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
 
         List<String> classColumns = classEntries.stream()
-                .filter(entry -> normalizeToken(entry.getNumberSchoolBuilding()).equals(selectedBuildingKey))
                 .filter(entry -> selectedAddressKey.isBlank() || normalizeToken(entry.getCampusAddress()).equals(selectedAddressKey))
                 .map(ClassroomLeadershipEntry::getClassName)
                 .map(this::normalizeDisplayValue)
@@ -626,12 +616,10 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         for (SubjectTeacherSummary summary : summaries.values()) {
             List<ManualLoadEntry> teacherRows = rowsByTeacher.getOrDefault(summary.key.teacherKey(), List.of());
             for (ManualLoadEntry row : teacherRows) {
-                if (normalizeToken(row.getNumberSchoolBuilding()).equals(selectedBuildingKey)) {
-                    summary.addTotal(row, rowInSubjectExportScope(row, selectedBuildingKey, selectedAddressKey, addressByClass, addressesByBuilding));
-                }
+                summary.addTotal(row, rowInSubjectExportScope(row, selectedAddressKey, addressByClass, addressesByBuilding));
             }
             summary.addressesElsewhere = teacherRows.stream()
-                    .filter(row -> !rowInSubjectExportScope(row, selectedBuildingKey, selectedAddressKey, addressByClass, addressesByBuilding))
+                    .filter(row -> !rowInSubjectExportScope(row, selectedAddressKey, addressByClass, addressesByBuilding))
                     .map(row -> resolveRowAddress(row, addressByClass, addressesByBuilding))
                     .filter(address -> !address.isBlank())
                     .distinct()
@@ -654,7 +642,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         Row title = sheet.createRow(0);
         title.setHeightInPoints(24);
         Cell titleCell = title.createCell(0);
-        titleCell.setCellValue(subjectLoadTitle(selectedBuilding, selectedAddress));
+        titleCell.setCellValue(subjectLoadTitle(selectedAddress));
         titleCell.setCellStyle(styles.title());
         if (lastColumn > 0) sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, lastColumn));
 
@@ -1094,26 +1082,24 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
 
 
-    private List<String> subjectLoadAddresses(String selectedBuildingKey,
-                                              List<ManualLoadEntry> allRows,
+    private List<String> subjectLoadAddresses(List<ManualLoadEntry> allRows,
                                               List<ClassroomLeadershipEntry> classEntries,
                                               Map<String, String> addressByClass,
                                               Map<String, List<String>> addressesByBuilding) {
         LinkedHashSet<String> addresses = new LinkedHashSet<>();
-        addressesByBuilding.getOrDefault(selectedBuildingKey, List.of()).stream()
+        addressesByBuilding.values().stream()
+                .flatMap(List::stream)
                 .map(this::normalizeDisplayValue)
                 .filter(address -> !address.isBlank())
                 .sorted(String.CASE_INSENSITIVE_ORDER)
                 .forEach(addresses::add);
         classEntries.stream()
-                .filter(entry -> normalizeToken(entry.getNumberSchoolBuilding()).equals(selectedBuildingKey))
                 .map(ClassroomLeadershipEntry::getCampusAddress)
                 .map(this::normalizeDisplayValue)
                 .filter(address -> !address.isBlank())
                 .sorted(String.CASE_INSENSITIVE_ORDER)
                 .forEach(addresses::add);
         allRows.stream()
-                .filter(row -> normalizeToken(row.getNumberSchoolBuilding()).equals(selectedBuildingKey))
                 .map(row -> resolveRowAddress(row, addressByClass, addressesByBuilding))
                 .filter(address -> !address.isBlank())
                 .sorted(String.CASE_INSENSITIVE_ORDER)
@@ -1132,13 +1118,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
     private boolean rowInSubjectExportScope(ManualLoadEntry row,
-                                            String selectedBuildingKey,
                                             String selectedAddressKey,
                                             Map<String, String> addressByClass,
                                             Map<String, List<String>> addressesByBuilding) {
-        if (selectedBuildingKey.isBlank() || !normalizeToken(row.getNumberSchoolBuilding()).equals(selectedBuildingKey)) {
-            return false;
-        }
         if (selectedAddressKey.isBlank()) {
             return true;
         }
@@ -1174,12 +1156,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         return normalizeDisplayValue(left).compareToIgnoreCase(normalizeDisplayValue(right));
     }
 
-    private String subjectLoadTitle(String building, String campusAddress) {
-        String title = normalizeDisplayValue(building);
-        if (!normalizeDisplayValue(campusAddress).isBlank()) {
-            title += " — " + normalizeDisplayValue(campusAddress);
-        }
-        return title.isBlank() ? "Нагрузка по предметам" : title;
+    private String subjectLoadTitle(String campusAddress) {
+        String address = normalizeDisplayValue(campusAddress);
+        return address.isBlank() ? "Нагрузка по предметам — весь комплекс" : "Нагрузка по предметам — " + address;
     }
 
     private SubjectLoadStyles createSubjectLoadStyles(Workbook workbook) {
