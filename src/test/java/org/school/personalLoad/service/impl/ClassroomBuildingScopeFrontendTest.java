@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ClassroomBuildingScopeFrontendTest {
@@ -17,16 +18,18 @@ class ClassroomBuildingScopeFrontendTest {
         assertTrue(html.contains("Основной корпус / площадка"));
         assertTrue(html.contains("Основной корпус"));
         assertTrue(html.contains("Физическая площадка / адрес"));
-        assertTrue(html.contains("Класс будет перенесён в другой основной корпус. Учебный план и уже распределённая нагрузка этого класса будут отображаться в новой вкладке корпуса. Педагоги и часы не изменятся."));
+        assertTrue(html.contains("Класс будет отображаться во вкладке выбранного основного корпуса. Физическая площадка может быть любой существующей площадкой; педагоги и часы не изменятся."));
         assertTrue(js.contains("function fillPhysicalSiteOptions(selectEl, selectedId = null, fallbackAddress = \"\", buildingCode = \"\")"));
-        assertTrue(js.contains(".filter((b) => !selectedGroup || b.code === selectedGroup)"));
+        assertFalse(js.contains(".filter((b) => !selectedGroup || b.code === selectedGroup)"));
         assertTrue(js.contains("const ordinaryPatchEntry = shouldTransferScope"));
         assertTrue(js.contains("numberSchoolBuilding: buildingGroupCode(editingOriginalEntry.numberSchoolBuilding)"));
         assertTrue(js.contains("schoolBuildingId: Number(editingOriginalEntry.schoolBuildingId) || null"));
         assertTrue(js.contains("campusAddress: norm(editingOriginalEntry.campusAddress)"));
         assertTrue(js.contains("body: JSON.stringify(ordinaryPatchEntry)"));
         assertTrue(js.contains("/api/classes/${encodeURIComponent(entry.id)}/building-scope"));
-        assertTrue(js.contains("body: JSON.stringify({ schoolBuildingId: entry.schoolBuildingId })"));
+        assertTrue(js.contains("function buildingGroupIdForCode(code)"));
+        assertTrue(js.contains("buildingGroupId: buildingGroupIdForCode(entry.numberSchoolBuilding)"));
+        assertTrue(js.contains("schoolBuildingId: entry.schoolBuildingId"));
         assertTrue(js.contains("teacherId,"));
 
         int updateEntryStart = js.indexOf("async function updateEntry(entry)");

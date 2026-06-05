@@ -124,6 +124,7 @@ function physicalSiteChoices() {
         .filter((b) => b?.id && norm(b.address))
         .map((b) => ({
             id: Number(b.id),
+            buildingGroupId: Number(b.buildingGroupId) || null,
             code: buildingGroupCode(b.code),
             name: norm(b.name) || buildingGroupCode(b.code),
             address: norm(b.address)
@@ -136,10 +137,17 @@ function buildingGroupChoices() {
     (buildings || []).forEach((b) => {
         const code = buildingGroupCode(b.code);
         if (!code) return;
+        const id = Number(b.buildingGroupId) || null;
         const name = norm(b.name) || code;
-        if (!map.has(code)) map.set(code, { code, name });
+        if (!map.has(code)) map.set(code, { code, id, name });
+        if (id && !map.get(code).id) map.get(code).id = id;
     });
     return Array.from(map.values()).sort((a, b) => a.code.localeCompare(b.code, "ru", { numeric: true }));
+}
+
+function buildingGroupIdForCode(code) {
+    const normalizedCode = buildingGroupCode(code);
+    return buildingGroupChoices().find((b) => b.code === normalizedCode)?.id || null;
 }
 
 function findPhysicalSiteById(id) {
@@ -215,11 +223,8 @@ function fillBuildingOptions(selectEl, selectedValue = "") {
 
 function fillPhysicalSiteOptions(selectEl, selectedId = null, fallbackAddress = "", buildingCode = "") {
     if (!selectEl) return;
-    const selectedGroup = buildingGroupCode(buildingCode);
     selectEl.innerHTML = `<option value="">Выберите физическую площадку / адрес</option>`;
-    physicalSiteChoices()
-        .filter((b) => !selectedGroup || b.code === selectedGroup)
-        .forEach((b) => {
+    physicalSiteChoices().forEach((b) => {
         const option = document.createElement("option");
         option.value = String(b.id);
         option.dataset.address = b.address;
@@ -378,15 +383,10 @@ async function updateEntry(entry) {
     return api(`/api/classes/${encodeURIComponent(entry.id)}/building-scope`, {
         method: "PATCH",
         headers: jsonHeaders,
-        body: JSON.stringify({ schoolBuildingId: entry.schoolBuildingId })
-    });
-    if (!shouldTransferScope) {
-        return saved;
-    }
-    return api(`/api/classes/${encodeURIComponent(entry.id)}/building-scope`, {
-        method: "PATCH",
-        headers: jsonHeaders,
-        body: JSON.stringify({ schoolBuildingId: entry.schoolBuildingId })
+        body: JSON.stringify({
+            buildingGroupId: buildingGroupIdForCode(entry.numberSchoolBuilding),
+            schoolBuildingId: entry.schoolBuildingId
+        })
     });
 }
 
