@@ -3,6 +3,10 @@ package org.school.personalLoad.service.impl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.IndexedColors;
+import org.apache.poi.ss.usermodel.FillPatternType;
+import org.apache.poi.ss.usermodel.BorderStyle;
+import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.Font;
@@ -494,6 +498,173 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         }
     }
 
+
+    @Override
+    public byte[] exportSubjectLoadWorkbook(String academicYear, String building, String campusAddress) throws IOException {
+        String selectedBuilding = normalizeDisplayValue(building);
+        String selectedAddress = normalizeDisplayValue(campusAddress);
+        List<ManualLoadEntry> allRows = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(row -> !normalizeDisplayValue(row.getFioTeacher()).isBlank())
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        if (selectedBuilding.isBlank() && !allRows.isEmpty()) {
+            selectedBuilding = normalizeDisplayValue(allRows.get(0).getNumberSchoolBuilding());
+        }
+
+        List<ClassroomLeadershipEntry> classEntries = classroomLeadershipRepository.findAllByAcademicYear(academicYear);
+        Map<String, String> addressByClass = new HashMap<>();
+        for (ClassroomLeadershipEntry entry : classEntries) {
+            String key = classAddressKey(entry.getNumberSchoolBuilding(), entry.getClassName());
+            addressByClass.put(key, normalizeDisplayValue(entry.getCampusAddress()));
+        }
+        Map<String, List<String>> addressesByBuilding = schoolBuildingRepository.findAll().stream()
+                .collect(java.util.stream.Collectors.groupingBy(
+                        row -> normalizeToken(row.getCode()),
+                        java.util.stream.Collectors.mapping(SchoolBuilding::getAddress, java.util.stream.Collectors.toList())
+                ));
+
+        String selectedBuildingKey = normalizeToken(selectedBuilding);
+        String selectedAddressKey = normalizeToken(selectedAddress);
+        List<ManualLoadEntry> scopedRows = allRows.stream()
+                .filter(row -> rowInSubjectExportScope(row, selectedBuildingKey, selectedAddressKey, addressByClass, addressesByBuilding))
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+
+        List<String> classColumns = classEntries.stream()
+                .filter(entry -> normalizeToken(entry.getNumberSchoolBuilding()).equals(selectedBuildingKey))
+                .filter(entry -> selectedAddressKey.isBlank() || normalizeToken(entry.getCampusAddress()).equals(selectedAddressKey))
+                .map(ClassroomLeadershipEntry::getClassName)
+                .map(this::normalizeDisplayValue)
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .sorted(this::compareClassNames)
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        scopedRows.stream()
+                .map(ManualLoadEntry::getClassName)
+                .map(this::normalizeDisplayValue)
+                .filter(value -> !value.isBlank() && !classColumns.contains(value))
+                .sorted(this::compareClassNames)
+                .forEach(classColumns::add);
+
+        Map<String, List<ManualLoadEntry>> rowsByTeacher = allRows.stream()
+                .collect(java.util.stream.Collectors.groupingBy(row -> normalizeToken(row.getFioTeacher()), HashMap::new, java.util.stream.Collectors.toList()));
+        Map<String, List<String>> leadershipByTeacher = new HashMap<>();
+        for (ClassroomLeadershipEntry entry : classEntries) {
+            String teacherKey = normalizeToken(entry.getFioTeacher());
+            String className = normalizeDisplayValue(entry.getClassName());
+            if (!teacherKey.isBlank() && !className.isBlank()) {
+                leadershipByTeacher.computeIfAbsent(teacherKey, key -> new ArrayList<>()).add(className);
+            }
+        }
+        leadershipByTeacher.values().forEach(values -> values.sort(this::compareClassNames));
+
+        Map<SubjectTeacherKey, SubjectTeacherSummary> summaries = new LinkedHashMap<>();
+        scopedRows.stream()
+                .sorted(Comparator.comparing(ManualLoadEntry::getSubjectName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                        .thenComparing(ManualLoadEntry::getFioTeacher, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                        .thenComparing(ManualLoadEntry::getClassName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER)))
+                .forEach(row -> {
+                    SubjectTeacherKey key = new SubjectTeacherKey(normalizeDisplayValue(row.getSubjectName()), normalizeDisplayValue(row.getFioTeacher()), normalizeToken(row.getSubjectName()), normalizeToken(row.getFioTeacher()));
+                    SubjectTeacherSummary summary = summaries.computeIfAbsent(key, SubjectTeacherSummary::new);
+                    summary.addClassHours(normalizeDisplayValue(row.getClassName()), groupSlot(row), row);
+                });
+
+        for (SubjectTeacherSummary summary : summaries.values()) {
+            List<ManualLoadEntry> teacherRows = rowsByTeacher.getOrDefault(summary.key.teacherKey(), List.of());
+            for (ManualLoadEntry row : teacherRows) {
+                summary.addTotal(row, rowInSubjectExportScope(row, selectedBuildingKey, selectedAddressKey, addressByClass, addressesByBuilding));
+            }
+            summary.addressesElsewhere = teacherRows.stream()
+                    .filter(row -> !rowInSubjectExportScope(row, selectedBuildingKey, selectedAddressKey, addressByClass, addressesByBuilding))
+                    .map(row -> resolveRowAddress(row, addressByClass, addressesByBuilding))
+                    .filter(address -> !address.isBlank())
+                    .distinct()
+                    .sorted(String.CASE_INSENSITIVE_ORDER)
+                    .collect(java.util.stream.Collectors.joining(", "));
+            summary.classLeadership = String.join(", ", leadershipByTeacher.getOrDefault(summary.key.teacherKey(), List.of()));
+        }
+
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            SubjectLoadStyles styles = createSubjectLoadStyles(workbook);
+            Sheet sheet = workbook.createSheet(uniqueSheetName(workbook, "Нагрузка по предметам"));
+            sheet.getPrintSetup().setLandscape(true);
+            sheet.setFitToPage(true);
+            sheet.getPrintSetup().setFitWidth((short) 1);
+            sheet.getPrintSetup().setFitHeight((short) 0);
+
+            int fixedColumns = 3;
+            int leadershipColumn = fixedColumns + classColumns.size();
+            int addressColumn = leadershipColumn + 1;
+            int lastColumn = addressColumn;
+
+            Row title = sheet.createRow(0);
+            title.setHeightInPoints(24);
+            Cell titleCell = title.createCell(0);
+            titleCell.setCellValue(subjectLoadTitle(selectedBuilding, selectedAddress));
+            titleCell.setCellStyle(styles.title());
+            if (lastColumn > 0) sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, lastColumn));
+
+            Row topHeader = sheet.createRow(1);
+            Row subHeader = sheet.createRow(2);
+            topHeader.setHeightInPoints(36);
+            subHeader.setHeightInPoints(34);
+            setMergedHeader(sheet, topHeader, subHeader, 0, "Предмет", styles.header());
+            setMergedHeader(sheet, topHeader, subHeader, 1, "ФИО", styles.header());
+            Cell classesCell = topHeader.createCell(2);
+            classesCell.setCellValue("Классы");
+            classesCell.setCellStyle(styles.header());
+            subHeader.createCell(2).setCellValue("часов\nпредмет/корпус/всего");
+            subHeader.getCell(2).setCellStyle(styles.header());
+            for (int i = 0; i < classColumns.size(); i++) {
+                Cell cell = topHeader.createCell(fixedColumns + i);
+                cell.setCellValue(classColumns.get(i));
+                cell.setCellStyle(styles.header());
+                Cell subCell = subHeader.createCell(fixedColumns + i);
+                subCell.setCellValue("1г | 2г");
+                subCell.setCellStyle(styles.groupHeader());
+            }
+            setMergedHeader(sheet, topHeader, subHeader, leadershipColumn, "классное\nруководство", styles.header());
+            setMergedHeader(sheet, topHeader, subHeader, addressColumn, "адреса, где\nработает ещё", styles.header());
+
+            int rowNum = 3;
+            String currentSubject = null;
+            int subjectStart = rowNum;
+            for (SubjectTeacherSummary summary : summaries.values()) {
+                if (currentSubject != null && !Objects.equals(currentSubject, summary.key.subjectKey()) && rowNum - 1 > subjectStart) {
+                    sheet.addMergedRegion(new CellRangeAddress(subjectStart, rowNum - 1, 0, 0));
+                    subjectStart = rowNum;
+                } else if (currentSubject != null && !Objects.equals(currentSubject, summary.key.subjectKey())) {
+                    subjectStart = rowNum;
+                }
+                currentSubject = summary.key.subjectKey();
+                Row row = sheet.createRow(rowNum++);
+                row.setHeightInPoints(28);
+                writeCell(row, 0, summary.key.subject(), styles.subject());
+                writeCell(row, 1, summary.key.fio(), styles.text());
+                writeCell(row, 2, summary.hoursSummary(), styles.center());
+                for (int i = 0; i < classColumns.size(); i++) {
+                    writeCell(row, fixedColumns + i, summary.classCell(classColumns.get(i)), styles.center());
+                }
+                writeCell(row, leadershipColumn, summary.classLeadership, styles.text());
+                writeCell(row, addressColumn, summary.addressesElsewhere, styles.text());
+            }
+            if (currentSubject != null && rowNum - 1 > subjectStart) {
+                sheet.addMergedRegion(new CellRangeAddress(subjectStart, rowNum - 1, 0, 0));
+            }
+
+            sheet.createFreezePane(3, 3);
+            sheet.setAutoFilter(new CellRangeAddress(2, Math.max(2, rowNum - 1), 0, lastColumn));
+            sheet.setColumnWidth(0, 22 * 256);
+            sheet.setColumnWidth(1, 28 * 256);
+            sheet.setColumnWidth(2, 18 * 256);
+            for (int i = 0; i < classColumns.size(); i++) {
+                sheet.setColumnWidth(fixedColumns + i, 9 * 256);
+            }
+            sheet.setColumnWidth(leadershipColumn, 18 * 256);
+            sheet.setColumnWidth(addressColumn, 34 * 256);
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
     private int manualLoadHours(ManualLoadEntry entry) {
         return entry.getGroupLoad() != null ? entry.getGroupLoad() : (entry.getLoad() == null ? 0 : entry.getLoad());
     }
@@ -866,6 +1037,220 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
     private String classAddressKey(String building, String className) {
         return normalizeToken(building) + "|" + normalizeToken(ClassNameNormalizer.normalize(className));
+    }
+
+
+    private boolean rowInSubjectExportScope(ManualLoadEntry row,
+                                            String selectedBuildingKey,
+                                            String selectedAddressKey,
+                                            Map<String, String> addressByClass,
+                                            Map<String, List<String>> addressesByBuilding) {
+        if (selectedBuildingKey.isBlank() || !normalizeToken(row.getNumberSchoolBuilding()).equals(selectedBuildingKey)) {
+            return false;
+        }
+        if (selectedAddressKey.isBlank()) {
+            return true;
+        }
+        return normalizeToken(resolveRowAddress(row, addressByClass, addressesByBuilding)).equals(selectedAddressKey);
+    }
+
+    private String groupSlot(ManualLoadEntry row) {
+        String group = normalizeToken(row.getGroupNameEducationalPlan());
+        if (row.getMetaGroupId() == null && group.isBlank()) {
+            return "CLASS";
+        }
+        if (group.contains("2")) {
+            return "G2";
+        }
+        if (group.contains("1")) {
+            return "G1";
+        }
+        String className = normalizeToken(row.getClassName());
+        if (className.contains("2")) {
+            return "G2";
+        }
+        return "G1";
+    }
+
+    private int compareClassNames(String left, String right) {
+        Integer leftParallel = ClassNameNormalizer.extractParallel(left);
+        Integer rightParallel = ClassNameNormalizer.extractParallel(right);
+        if (leftParallel != null && rightParallel != null && !Objects.equals(leftParallel, rightParallel)) {
+            return Integer.compare(leftParallel, rightParallel);
+        }
+        if (leftParallel != null && rightParallel == null) return -1;
+        if (leftParallel == null && rightParallel != null) return 1;
+        return normalizeDisplayValue(left).compareToIgnoreCase(normalizeDisplayValue(right));
+    }
+
+    private String subjectLoadTitle(String building, String campusAddress) {
+        String title = normalizeDisplayValue(building);
+        if (!normalizeDisplayValue(campusAddress).isBlank()) {
+            title += " — " + normalizeDisplayValue(campusAddress);
+        }
+        return title.isBlank() ? "Нагрузка по предметам" : title;
+    }
+
+    private SubjectLoadStyles createSubjectLoadStyles(Workbook workbook) {
+        Font titleFont = workbook.createFont();
+        titleFont.setBold(true);
+        titleFont.setFontHeightInPoints((short) 14);
+        CellStyle title = subjectBaseStyle(workbook);
+        title.setFont(titleFont);
+        title.setAlignment(HorizontalAlignment.CENTER);
+
+        Font bold = workbook.createFont();
+        bold.setBold(true);
+        CellStyle header = subjectBaseStyle(workbook);
+        header.setFont(bold);
+        header.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+        header.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        header.setAlignment(HorizontalAlignment.CENTER);
+        header.setVerticalAlignment(VerticalAlignment.CENTER);
+
+        CellStyle groupHeader = subjectBaseStyle(workbook);
+        groupHeader.cloneStyleFrom(header);
+        groupHeader.setFillForegroundColor(IndexedColors.LIGHT_CORNFLOWER_BLUE.getIndex());
+
+        CellStyle subject = subjectBaseStyle(workbook);
+        subject.setFont(bold);
+        subject.setAlignment(HorizontalAlignment.RIGHT);
+        subject.setVerticalAlignment(VerticalAlignment.CENTER);
+
+        CellStyle text = subjectBaseStyle(workbook);
+        text.setAlignment(HorizontalAlignment.LEFT);
+        text.setVerticalAlignment(VerticalAlignment.CENTER);
+
+        CellStyle center = subjectBaseStyle(workbook);
+        center.setAlignment(HorizontalAlignment.CENTER);
+        center.setVerticalAlignment(VerticalAlignment.CENTER);
+        return new SubjectLoadStyles(title, header, groupHeader, subject, text, center);
+    }
+
+    private CellStyle subjectBaseStyle(Workbook workbook) {
+        CellStyle style = workbook.createCellStyle();
+        style.setWrapText(true);
+        style.setBorderTop(BorderStyle.THIN);
+        style.setBorderBottom(BorderStyle.THIN);
+        style.setBorderLeft(BorderStyle.THIN);
+        style.setBorderRight(BorderStyle.THIN);
+        return style;
+    }
+
+    private void setMergedHeader(Sheet sheet, Row topHeader, Row subHeader, int column, String value, CellStyle style) {
+        Cell top = topHeader.createCell(column);
+        top.setCellValue(value);
+        top.setCellStyle(style);
+        Cell sub = subHeader.createCell(column);
+        sub.setCellStyle(style);
+        sheet.addMergedRegion(new CellRangeAddress(topHeader.getRowNum(), subHeader.getRowNum(), column, column));
+    }
+
+    private void writeCell(Row row, int column, String value, CellStyle style) {
+        Cell cell = row.createCell(column);
+        cell.setCellValue(value == null ? "" : value);
+        cell.setCellStyle(style);
+    }
+
+    private record SubjectLoadStyles(CellStyle title,
+                                     CellStyle header,
+                                     CellStyle groupHeader,
+                                     CellStyle subject,
+                                     CellStyle text,
+                                     CellStyle center) {}
+
+    private record SubjectTeacherKey(String subject, String fio, String subjectKey, String teacherKey) {}
+
+    private final class SubjectTeacherSummary {
+        private final SubjectTeacherKey key;
+        private final Map<String, GroupedHours> hoursByClass = new LinkedHashMap<>();
+        private final PeriodTotals subjectTotals = new PeriodTotals();
+        private final PeriodTotals scopedTotals = new PeriodTotals();
+        private final PeriodTotals totalTotals = new PeriodTotals();
+        private String classLeadership = "";
+        private String addressesElsewhere = "";
+
+        private SubjectTeacherSummary(SubjectTeacherKey key) {
+            this.key = key;
+        }
+
+        private void addClassHours(String className, String slot, ManualLoadEntry row) {
+            if (className.isBlank()) return;
+            GroupedHours grouped = hoursByClass.computeIfAbsent(className, ignored -> new GroupedHours());
+            grouped.add(slot, row);
+            subjectTotals.add(row);
+        }
+
+        private void addTotal(ManualLoadEntry row, boolean scoped) {
+            totalTotals.add(row);
+            if (scoped) {
+                scopedTotals.add(row);
+            }
+        }
+
+        private String hoursSummary() {
+            return formatPeriodTotals(subjectTotals) + "/" + formatPeriodTotals(scopedTotals) + "/" + formatPeriodTotals(totalTotals);
+        }
+
+        private String classCell(String className) {
+            GroupedHours hours = hoursByClass.get(className);
+            return hours == null ? "" : hours.format();
+        }
+    }
+
+    private final class GroupedHours {
+        private final PeriodTotals classHours = new PeriodTotals();
+        private final PeriodTotals firstGroup = new PeriodTotals();
+        private final PeriodTotals secondGroup = new PeriodTotals();
+
+        private void add(String slot, ManualLoadEntry row) {
+            if ("G1".equals(slot)) {
+                firstGroup.add(row);
+            } else if ("G2".equals(slot)) {
+                secondGroup.add(row);
+            } else {
+                classHours.add(row);
+            }
+        }
+
+        private String format() {
+            if (!classHours.isEmpty()) {
+                return formatPeriodTotals(classHours);
+            }
+            return formatPeriodTotals(firstGroup) + " | " + formatPeriodTotals(secondGroup);
+        }
+    }
+
+    private final class PeriodTotals {
+        private int year;
+        private int h1;
+        private int h2;
+
+        private void add(ManualLoadEntry row) {
+            int hours = manualLoadHours(row);
+            if (hours == 0) return;
+            StudyPeriod period = row.getStudyPeriod() == null ? StudyPeriod.YEAR : row.getStudyPeriod();
+            if (period == StudyPeriod.H1) {
+                h1 += hours;
+            } else if (period == StudyPeriod.H2) {
+                h2 += hours;
+            } else {
+                year += hours;
+            }
+        }
+
+        private boolean isEmpty() {
+            return year == 0 && h1 == 0 && h2 == 0;
+        }
+    }
+
+    private String formatPeriodTotals(PeriodTotals totals) {
+        int first = totals.year + totals.h1;
+        int second = totals.year + totals.h2;
+        if (first == 0 && second == 0) {
+            return "";
+        }
+        return first == second ? String.valueOf(first) : first + "/" + second;
     }
 
     private String normalizeDisplayValue(String value) {
