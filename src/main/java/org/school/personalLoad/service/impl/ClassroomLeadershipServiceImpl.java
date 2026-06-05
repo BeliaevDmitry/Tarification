@@ -3,10 +3,13 @@ package org.school.personalLoad.service.impl;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.school.personalLoad.dto.ClassroomBuildingScopeUpdateRequest;
 import org.school.personalLoad.dto.ClassroomLeadershipEntryRequest;
+import org.school.personalLoad.model.BuildingGroup;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
+import org.school.personalLoad.repository.BuildingGroupRepository;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
@@ -31,6 +34,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     private final ClassroomLeadershipRepository classroomLeadershipRepository;
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final SchoolBuildingRepository schoolBuildingRepository;
+    private final BuildingGroupRepository buildingGroupRepository;
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     private final ManualLoadEntryRepository manualLoadEntryRepository;
 
@@ -171,6 +175,68 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         return saved;
     }
 
+    @Override
+    @Transactional
+    public ClassroomLeadershipEntry updateBuildingScope(Long id, ClassroomBuildingScopeUpdateRequest request) {
+        if (id == null) {
+            throw new IllegalArgumentException("classId is required");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("request is required");
+        }
+        if (request.getSchoolBuildingId() == null) {
+            throw new IllegalArgumentException("schoolBuildingId is required");
+        }
+
+        ClassroomLeadershipEntry entry = classroomLeadershipRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Класс не найден"));
+        SchoolBuilding targetSchoolBuilding = schoolBuildingRepository.findById(request.getSchoolBuildingId())
+                .orElseThrow(() -> new IllegalArgumentException("Площадка не найдена: " + request.getSchoolBuildingId()));
+        BuildingGroup targetBuildingGroup = request.getBuildingGroupId() != null
+                ? buildingGroupRepository.findById(request.getBuildingGroupId())
+                .orElseThrow(() -> new IllegalArgumentException("Основной корпус не найден: " + request.getBuildingGroupId()))
+                : targetSchoolBuilding.getBuildingGroup();
+        if (targetBuildingGroup == null || targetBuildingGroup.getId() == null) {
+            throw new IllegalArgumentException("Основной корпус целевой площадки не найден");
+        }
+
+        String targetCode = normalizeBuildingCode(targetBuildingGroup.getCode());
+        if (targetCode.isBlank()) {
+            throw new IllegalArgumentException("Код основного корпуса целевой площадки пуст");
+        }
+        String targetAddress = normalize(targetSchoolBuilding.getAddress());
+        String className = ClassNameNormalizer.normalize(entry.getClassName());
+
+        entry.setNumberSchoolBuilding(targetCode);
+        entry.setSchoolBuilding(targetSchoolBuilding);
+        entry.setCampusAddress(targetAddress);
+        entry.setClassName(className);
+        ClassroomLeadershipEntry saved = classroomLeadershipRepository.save(entry);
+
+        classroomLeadershipRepository.updateBuildingScopeById(
+                saved.getId(),
+                targetCode,
+                targetBuildingGroup.getId(),
+                targetSchoolBuilding.getId(),
+                targetAddress
+        );
+        curriculumPlanEntryRepository.updateClassBuildingScope(
+                saved.getAcademicYear(),
+                saved.getId(),
+                targetCode,
+                targetBuildingGroup.getId(),
+                className
+        );
+        manualLoadEntryRepository.updateClassBuildingScope(
+                saved.getAcademicYear(),
+                saved.getId(),
+                targetCode,
+                targetBuildingGroup.getId(),
+                className
+        );
+
+        return classroomLeadershipRepository.findById(saved.getId()).orElse(saved);
+    }
 
     @Override
     public Map<String, Object> importFromExcel(String academicYear, MultipartFile file) {

@@ -12,7 +12,7 @@
 <main class="container">
     <header class="card">
         <h1>Классы</h1>
-        <p class="muted">Корпус выбирается из справочника «Корпуса»; адрес площадки заполняется адресом выбранного корпуса и может быть уточнён вручную.</p>
+        <p class="muted">Выберите основной корпус для вкладки нагрузки и физическую площадку / адрес внутри него.</p>
         <nav class="page-nav">
             <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
             <a class="nav-link active" href="/classes.html" data-tab="CLASSES">Классы</a>
@@ -36,8 +36,11 @@
 
         <h2>Добавить класс</h2>
         <form id="class-form" class="grid" data-requires-edit>
-            <label class="field-row"><span>СП класса</span><select name="numberSchoolBuilding" id="class-building" required></select></label>
-            <label class="field-row"><span>Физическая площадка</span><select name="schoolBuildingId" id="class-school-building" required></select></label>
+            <fieldset class="full-span">
+                <legend>Основной корпус / площадка</legend>
+                <label class="field-row"><span>Основной корпус</span><select name="numberSchoolBuilding" id="class-building" required></select></label>
+                <label class="field-row"><span>Физическая площадка / адрес</span><select name="schoolBuildingId" id="class-school-building" required></select></label>
+            </fieldset>
             <input type="hidden" name="campusAddress" id="class-campus-address">
             <input name="className" placeholder="Класс (например 7А)" required>
             <label class="field-row"><span>Направление</span><input name="classDirection" placeholder="Направление класса" required></label>
@@ -58,7 +61,7 @@
         <div class="sheet-wrap">
             <table class="sheet-table">
                 <thead>
-                <tr><th>СП класса</th><th>Класс</th><th>Тип</th><th>Направление</th><th>Классный руководитель</th><th>Физическая площадка</th><th></th></tr>
+                <tr><th>Основной корпус</th><th>Класс</th><th>Тип</th><th>Направление</th><th>Классный руководитель</th><th>Физическая площадка / адрес</th><th></th></tr>
                 </thead>
                 <tbody id="classes-body"></tbody>
             </table>
@@ -69,8 +72,12 @@
 <dialog id="class-edit-dialog">
     <form method="dialog" id="class-edit-form" class="grid labeled-grid" data-requires-edit>
         <h3>Редактирование класса</h3>
-        <label class="field-row"><span>СП класса</span><select name="numberSchoolBuilding" id="class-edit-building" required></select></label>
-        <label class="field-row"><span>Физическая площадка</span><select name="schoolBuildingId" id="class-edit-school-building" required></select></label>
+        <fieldset class="full-span">
+            <legend>Основной корпус / площадка</legend>
+            <label class="field-row"><span>Основной корпус</span><select name="numberSchoolBuilding" id="class-edit-building" required></select></label>
+            <label class="field-row"><span>Физическая площадка / адрес</span><select name="schoolBuildingId" id="class-edit-school-building" required></select></label>
+            <div id="class-transfer-warning" class="muted warning-text" hidden>Класс будет отображаться во вкладке выбранного основного корпуса. Физическая площадка может быть любой существующей площадкой; педагоги и часы не изменятся.</div>
+        </fieldset>
         <input type="hidden" name="campusAddress" id="class-edit-campus-address">
         <label class="field-row"><span>Класс</span><input name="className" placeholder="Класс" required></label>
         <label class="field-row"><span>Тип класса</span><select name="classType"><option value="NORMAL" selected>Норма</option><option value="AOOP_UO">АООП УО</option></select></label>
