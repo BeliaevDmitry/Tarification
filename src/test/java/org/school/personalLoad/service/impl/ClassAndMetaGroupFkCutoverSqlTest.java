@@ -90,6 +90,59 @@ class ClassAndMetaGroupFkCutoverSqlTest {
         assertTrue(manualRepository.contains("deletebyacademicyearandmetagroupids"));
     }
 
+    @Test
+    void completedFkAuditChecksExplicitMetaGroupSnapshotsAgainstParent() throws Exception {
+        String audit = readRaw("scripts/migrations/audit/verify_completed_fk_migration.sql");
+
+        assertTrue(audit.contains("curriculum explicit meta row organizational SP differs from parent meta_group"));
+        assertTrue(audit.contains("manual explicit meta row organizational SP differs from parent meta_group"));
+        assertTrue(audit.contains("cpe.class_name IS DISTINCT FROM ('МГ:' || mg.name)"));
+        assertTrue(audit.contains("mle.class_name IS DISTINCT FROM ('МГ:' || mg.name)"));
+    }
+
+    @Test
+    void buildingsFrontendDoesNotSubmitOrganizationalCodeAsPhysicalSiteCode() throws Exception {
+        String buildingsJs = readRaw("src/main/resources/static/buildings.js");
+        String buildingsHtml = readRaw("src/main/resources/static/buildings.html");
+
+        assertFalse(buildingsJs.contains("payload.code = String(selectedGroup?.code"));
+        assertFalse(buildingsJs.contains("if (selectedGroup?.code) payload.code"));
+        assertFalse(buildingsJs.contains("code: String(ui.editForm.elements.code.value"));
+        assertTrue(buildingsJs.contains("buildingGroupId: Number(form.get(\"buildingGroupId\")"));
+        assertTrue(buildingsJs.contains("buildingGroupId: Number(ui.editForm.elements.buildingGroupId.value"));
+        assertTrue(buildingsHtml.contains("name=\"siteCode\" readonly"));
+        assertTrue(buildingsHtml.contains("Код физической площадки формируется автоматически из СП и адреса."));
+    }
+
+
+    @Test
+    void buildingsFrontendSeparatesExistingAddressAndNewOrganizationalBuildingFlows() throws Exception {
+        String buildingsJs = readRaw("src/main/resources/static/buildings.js");
+        String buildingsHtml = readRaw("src/main/resources/static/buildings.html");
+
+        assertTrue(buildingsHtml.contains("Добавить адрес к существующему корпусу"));
+        assertTrue(buildingsHtml.contains("Добавить новый самостоятельный корпус"));
+        assertTrue(buildingsHtml.contains("Новая площадка создаётся пустой. Классы и метагруппы на неё автоматически не переводятся."));
+        assertTrue(buildingsHtml.contains("Новый корпус появится как самостоятельная вкладка нагрузки. Создаётся пустым, без автоматического переноса классов и метагрупп."));
+        assertTrue(buildingsHtml.contains("<th>Основной корпус</th><th>Площадка</th><th>Руководитель</th><th>Адрес</th><th>Действия</th>"));
+        assertTrue(buildingsJs.contains("buildingGroupId: Number(form.get(\"buildingGroupId\")"));
+        assertTrue(buildingsJs.contains("api(\"/api/buildings\", { method: \"POST\""));
+        assertTrue(buildingsJs.contains("ui.buildingGroupForm?.addEventListener"));
+        assertTrue(buildingsJs.contains("api(\"/api/building-groups\", { method: \"POST\""));
+        assertTrue(buildingsJs.contains("await loadBuildingGroups();"));
+        assertTrue(buildingsJs.contains("await loadBuildings();"));
+    }
+
+    @Test
+    void completedFkAuditChecksSchoolBuildingPhysicalSiteCodeQuality() throws Exception {
+        String audit = readRaw("scripts/migrations/audit/verify_completed_fk_migration.sql");
+
+        assertTrue(audit.contains("school_building physical code equals organizational building-group code"));
+        assertTrue(audit.contains("lower(trim(sb.code)) = lower(trim(bg.code))"));
+        assertTrue(audit.contains("lower(trim(sb.address)) AS normalized_address"));
+        assertTrue(audit.contains("HAVING count(*) > 1"));
+    }
+
     private String read(String path) throws Exception {
         return readRaw(path).toLowerCase(Locale.ROOT);
     }

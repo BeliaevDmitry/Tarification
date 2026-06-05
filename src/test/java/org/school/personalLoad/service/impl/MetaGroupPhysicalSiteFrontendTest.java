@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MetaGroupPhysicalSiteFrontendTest {
@@ -31,5 +32,11 @@ class MetaGroupPhysicalSiteFrontendTest {
         assertTrue(java.contains("boolean explicitMetaGroupRow = isExplicitMetaGroupClassName(normalizedClassName);"));
         assertTrue(java.contains("boolean createdClass = !explicitMetaGroupRow"));
         assertTrue(java.contains("&& ensureClassroom"));
+
+        String editableBranch = java.substring(
+                java.indexOf("if (!editableRows.isEmpty())"),
+                java.indexOf("} else {", java.indexOf("if (!editableRows.isEmpty())"))
+        );
+        assertEquals(1, editableBranch.split("boolean explicitMetaGroupRow = isExplicitMetaGroupClassName\\(normalizedClassName\\);", -1).length - 1);
     }
 }
