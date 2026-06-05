@@ -20,4 +20,7 @@ public class BuildingGroup {
 
     @Column(nullable = false)
     private String name;
+
+    @Transient
+    private String managerFio;
 }

@@ -15,8 +15,8 @@ class BuildingGroupFrontendTest {
         String buildingsHtml = Files.readString(Path.of("src/main/resources/static/buildings.html"));
         String buildingsJs = Files.readString(Path.of("src/main/resources/static/buildings.js"));
 
-        assertTrue(buildingsHtml.contains("Добавить адрес к существующему корпусу"));
-        assertTrue(buildingsHtml.contains("Добавить новый самостоятельный корпус"));
+        assertTrue(buildingsHtml.contains("Добавить физическую площадку к существующему основному корпусу"));
+        assertTrue(buildingsHtml.contains("Добавить новый основной корпус / подразделение"));
 
         assertTrue(buildingsHtml.contains("Создать с новой физической площадкой"));
         assertTrue(buildingsHtml.contains("Создать без собственной площадки, использовать существующую площадку"));
@@ -27,15 +27,21 @@ class BuildingGroupFrontendTest {
         assertTrue(buildingsJs.contains("fillBaseSiteSelect"));
         assertTrue(buildingsHtml.contains("Новая площадка создаётся пустой. Классы и метагруппы на неё автоматически не переводятся."));
         assertTrue(buildingsHtml.contains("Новый корпус появится как самостоятельная вкладка нагрузки. Создаётся пустым, без автоматического переноса классов и метагрупп."));
-        assertTrue(buildingsHtml.contains("Список площадок / адресов корпусов"));
+        assertTrue(buildingsHtml.contains("Основные корпуса / подразделения"));
+        assertTrue(buildingsHtml.contains("Физические площадки / адреса"));
+        assertTrue(buildingsJs.contains("Собственной площадки нет. Классы могут использовать существующие площадки других корпусов."));
         assertTrue(buildingsHtml.contains("Редактирование площадки"));
         assertTrue(buildingsHtml.contains("Очистить список площадок"));
         assertTrue(buildingsHtml.contains("Удалить площадку"));
-        assertTrue(buildingsHtml.contains("<th>Основной корпус</th><th>Площадка</th><th>Руководитель</th><th>Адрес</th><th>Действия</th>"));
+        assertTrue(buildingsHtml.contains("<th>Код</th><th>Название</th><th>Руководитель / ответственный</th><th>Физические площадки</th><th>Действия</th>"));
+        assertTrue(buildingsHtml.contains("<th>Основной корпус-владелец площадки</th><th>Название площадки</th><th>Адрес</th><th>Руководитель площадки</th><th>Действия</th>"));
         assertTrue(buildingsJs.contains("buildingGroupId: Number(form.get(\"buildingGroupId\")"));
         assertTrue(buildingsJs.contains("api(\"/api/buildings\", { method: \"POST\""));
         assertTrue(buildingsJs.contains("ui.buildingGroupForm?.addEventListener"));
         assertTrue(buildingsJs.contains("api(\"/api/building-groups\", { method: \"POST\""));
+        assertTrue(buildingsJs.contains("method: 'PATCH'"));
+        assertTrue(buildingsJs.contains("renderBuildingGroups"));
+        assertTrue(buildingsJs.contains("physicalSitesForGroupLabel"));
         assertTrue(buildingsJs.contains("await loadBuildingGroups();"));
         assertTrue(buildingsJs.contains("await loadBuildings();"));
         assertFalse(buildingsJs.contains("payload.code = String(selectedGroup?.code"));
