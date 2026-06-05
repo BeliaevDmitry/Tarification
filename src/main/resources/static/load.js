@@ -355,16 +355,23 @@ function rowMatchesBuildingAccess(row, accessCode) {
         return false;
     }
 
+    const selectedSiteId = buildingSiteIdToken(accessCode);
+    if (selectedSiteId != null) {
+        const rowSchoolBuildingId = schoolBuildingIdForRow(row);
+        return rowSchoolBuildingId != null && Number(rowSchoolBuildingId) === Number(selectedSiteId);
+    }
+
     const address = buildingAddressToken(accessCode);
     if (address) {
         const selectedSchoolBuildingId = schoolBuildingIdForAccess(accessCode);
         const rowSchoolBuildingId = schoolBuildingIdForRow(row);
 
-        if (selectedSchoolBuildingId == null || rowSchoolBuildingId == null) {
-            return false;
+        if (selectedSchoolBuildingId != null) {
+            return rowSchoolBuildingId != null && Number(rowSchoolBuildingId) === Number(selectedSchoolBuildingId);
         }
 
-        return Number(rowSchoolBuildingId) === Number(selectedSchoolBuildingId);
+        const rowAddress = rowAddressToken(row);
+        return Boolean(rowAddress) && rowAddress === address;
     }
 
     return true;
@@ -1151,7 +1158,7 @@ function buildingPermissionMatchesOption(permissionCode, optionValue) {
     const option = normalizeBuildingAccessCode(optionValue);
     if (!permission || !option) return false;
     if (permission === option) return true;
-    return !permission.includes("|") && buildingGroupCode(permission) === buildingGroupCode(option);
+    return !permission.includes("|") && !permission.includes("::") && buildingGroupCode(permission) === buildingGroupCode(option);
 }
 
 function preferredBuildingCode(availableBuildings) {
