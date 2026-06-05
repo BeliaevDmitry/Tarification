@@ -104,21 +104,6 @@
     </form>
 </dialog>
 
-<dialog id="building-group-edit-dialog">
-    <form method="dialog" id="building-group-edit-form" class="grid labeled-grid" data-requires-edit>
-        <h3>Редактирование основного корпуса / подразделения</h3>
-        <input type="hidden" name="id">
-        <label class="field-row"><span>Код</span><input name="code" readonly></label>
-        <div class="full-span muted">Код основного корпуса используется в правах, классах и нагрузке, поэтому сейчас не редактируется.</div>
-        <label class="field-row"><span>Название</span><input name="name" placeholder="Название основного корпуса" required></label>
-        <div class="full-span muted">Текущий руководитель / ответственный: <strong id="building-group-manager-display">Не назначен</strong>. Назначение меняется во вкладке «Пользователи системы» у роли «Руководитель корпуса».</div>
-        <div class="row">
-            <button type="submit">Сохранить</button>
-            <button type="button" id="building-group-close-btn">Отмена</button>
-        </div>
-    </form>
-</dialog>
-
 <script src="/auth.js"></script>
 <script src="/table-scroll.js"></script>
 <script src="/buildings.js"></script>
