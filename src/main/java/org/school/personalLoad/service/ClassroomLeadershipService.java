@@ -1,5 +1,6 @@
 package org.school.personalLoad.service;
 
+import org.school.personalLoad.dto.ClassroomBuildingScopeUpdateRequest;
 import org.school.personalLoad.dto.ClassroomLeadershipEntryRequest;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.springframework.core.io.Resource;
@@ -14,6 +15,8 @@ public interface ClassroomLeadershipService {
     List<ClassroomLeadershipEntry> findAll(String academicYear);
 
     ClassroomLeadershipEntry updateOne(Long id, ClassroomLeadershipEntryRequest request);
+
+    ClassroomLeadershipEntry updateBuildingScope(Long id, ClassroomBuildingScopeUpdateRequest request);
 
     void deleteOne(Long id, String academicYear);
 
