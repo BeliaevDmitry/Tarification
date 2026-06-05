@@ -35,26 +35,37 @@
         </div>
 
         <form id="building-form" class="grid" data-requires-edit>
+            <h2 class="full-span">Добавить адрес к существующему корпусу</h2>
             <select name="buildingGroupId" required>
-                <option value="">Группа корпуса</option>
+                <option value="">Основной корпус</option>
             </select>
+            <input name="name" placeholder="Название площадки" required>
+            <input name="address" placeholder="Адрес площадки" required>
+            <div class="full-span muted">Новая площадка создаётся пустой. Классы и метагруппы на неё автоматически не переводятся. Руководитель назначается во вкладке «Пользователи системы».</div>
+            <button type="submit">Добавить адрес</button>
+        </form>
+
+        <form id="building-group-form" class="grid" data-requires-edit>
+            <h2 class="full-span">Добавить новый самостоятельный корпус</h2>
+            <input name="code" placeholder="Код корпуса" required>
             <input name="name" placeholder="Название корпуса" required>
-            <input name="address" placeholder="Адрес корпуса" required>
-            <div class="full-span muted">Руководитель корпуса назначается во вкладке «Пользователи системы».</div>
-            <button type="submit">Добавить / обновить корпус</button>
+            <input name="initialAddress" placeholder="Первый адрес корпуса" required>
+            <input name="initialSiteName" placeholder="Название первой площадки (если отличается)">
+            <div class="full-span muted">Новый корпус появится как самостоятельная вкладка нагрузки. Создаётся пустым, без автоматического переноса классов и метагрупп.</div>
+            <button type="submit">Создать новый корпус</button>
         </form>
         <div class="row">
             <button id="refresh-buildings-btn" type="button">Обновить</button>
-            <button id="clear-buildings-btn" type="button" data-requires-edit>Очистить список корпусов</button>
+            <button id="clear-buildings-btn" type="button" data-requires-edit>Очистить список площадок</button>
         </div>
         <pre id="buildings-result"></pre>
     </section>
 
     <section class="card" data-requires-edit>
-        <h2>Список корпусов</h2>
+        <h2>Список площадок / адресов корпусов</h2>
         <div class="sheet-wrap">
             <table class="sheet-table">
-                <thead><tr><th>Группа</th><th>Название</th><th>Руководитель</th><th>Адрес</th><th></th></tr></thead>
+                <thead><tr><th>Основной корпус</th><th>Площадка</th><th>Руководитель</th><th>Адрес</th><th>Действия</th></tr></thead>
                 <tbody id="buildings-body"></tbody>
             </table>
         </div>
@@ -63,17 +74,17 @@
 
 <dialog id="building-edit-dialog">
     <form method="dialog" id="building-edit-form" class="grid labeled-grid" data-requires-edit>
-        <h3>Редактирование корпуса</h3>
+        <h3>Редактирование площадки</h3>
         <input type="hidden" name="id">
         <label class="field-row"><span>Код площадки</span><input name="siteCode" readonly></label>
         <div class="full-span muted">Код физической площадки формируется автоматически из СП и адреса.</div>
-        <label class="field-row"><span>Группа корпуса</span><select name="buildingGroupId" required><option value="">Выберите группу</option></select></label>
-        <label class="field-row"><span>Название</span><input name="name" placeholder="Название корпуса" required></label>
-        <label class="field-row"><span>Адрес</span><input name="address" placeholder="Адрес корпуса" required></label>
+        <label class="field-row"><span>Основной корпус</span><select name="buildingGroupId" required><option value="">Выберите группу</option></select></label>
+        <label class="field-row"><span>Название площадки</span><input name="name" placeholder="Название площадки" required></label>
+        <label class="field-row"><span>Адрес площадки</span><input name="address" placeholder="Адрес площадки" required></label>
         <div class="full-span muted">Текущий руководитель: <strong id="building-manager-display">Не назначен</strong>. Назначение меняется во вкладке «Пользователи системы».</div>
         <div class="row">
             <button type="submit">Сохранить</button>
-            <button type="button" id="building-delete-btn" class="danger-btn">Удалить корпус</button>
+            <button type="button" id="building-delete-btn" class="danger-btn">Удалить площадку</button>
             <button type="button" id="building-close-btn">Отмена</button>
         </div>
     </form>

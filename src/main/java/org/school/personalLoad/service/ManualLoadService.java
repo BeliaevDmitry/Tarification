@@ -57,6 +57,7 @@ public interface ManualLoadService {
     byte[] exportWorkbook(String academicYear) throws IOException;
     byte[] exportFullWorkbook(String academicYear) throws IOException;
     byte[] exportFullWorkbookWithSalary(String academicYear) throws IOException;
+    byte[] exportConsolidatedWorkbook(String academicYear) throws IOException;
 
     List<ManualLoadEntry> importWorkbook(String academicYear, MultipartFile file);
 

@@ -2,6 +2,7 @@ const jsonHeaders = { "Content-Type": "application/json" };
 
 const ui = {
     form: document.getElementById("building-form"),
+    buildingGroupForm: document.getElementById("building-group-form"),
     refreshBtn: document.getElementById("refresh-buildings-btn"),
     clearBtn: document.getElementById("clear-buildings-btn"),
     result: document.getElementById("buildings-result"),
@@ -48,7 +49,7 @@ function groupLabelById(id) {
 
 function fillBuildingGroupSelect(select, selectedId = "") {
     if (!select) return;
-    select.innerHTML = '<option value="">Группа корпуса</option>';
+    select.innerHTML = '<option value="">Основной корпус</option>';
     buildingGroups
         .slice()
         .sort((a, b) => String(a.code || a.name || "").localeCompare(String(b.code || b.name || ""), "ru"))
@@ -89,14 +90,21 @@ function render(rows) {
     });
 }
 
-async function reload() {
-    const [groups, rows] = await Promise.all([
-        api("/api/building-groups"),
-        api("/api/buildings")
-    ]);
-    buildingGroups = groups || [];
+async function loadBuildingGroups() {
+    buildingGroups = await api("/api/building-groups") || [];
     fillBuildingGroupSelect(ui.form.elements.buildingGroupId, ui.form.elements.buildingGroupId?.value);
+    return buildingGroups;
+}
+
+async function loadBuildings() {
+    const rows = await api("/api/buildings");
     render(rows);
+    return rows;
+}
+
+async function reload() {
+    await loadBuildingGroups();
+    await loadBuildings();
 }
 
 ui.form.addEventListener("submit", async (e) => {
@@ -113,6 +121,25 @@ ui.form.addEventListener("submit", async (e) => {
         print(saved);
         ui.form.reset();
         await reload();
+    } catch (error) { print({ error: error.message }); }
+});
+
+ui.buildingGroupForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = new FormData(ui.buildingGroupForm);
+    const payload = {
+        code: String(form.get("code") || "").trim(),
+        name: String(form.get("name") || "").trim(),
+        initialAddress: String(form.get("initialAddress") || "").trim(),
+        initialSiteName: String(form.get("initialSiteName") || "").trim()
+    };
+
+    try {
+        const saved = await api("/api/building-groups", { method: "POST", headers: jsonHeaders, body: JSON.stringify(payload) });
+        print(saved);
+        ui.buildingGroupForm.reset();
+        await loadBuildingGroups();
+        await loadBuildings();
     } catch (error) { print({ error: error.message }); }
 });
 

@@ -2,6 +2,7 @@ const ui = {
     buildingSelect: document.getElementById("people-load-building-select"),
     refreshBtn: document.getElementById("people-load-refresh-btn"),
     exportFullLoadBtn: document.getElementById("export-full-load-btn"),
+    exportConsolidatedLoadBtn: document.getElementById("export-consolidated-load-btn"),
     exportFullLoadSalaryBtn: document.getElementById("export-full-load-salary-btn"),
     summary: document.getElementById("people-load-summary"),
     table: document.getElementById("people-load-table")
@@ -420,8 +421,8 @@ function renderTable() {
     ui.summary.textContent = `Показано строк: ${displayRows.length} (в выбранном корпусе: ${selectedRows.length}). Выбрано: ${buildingLabel(label) || "корпус не выбран"}.`;
 }
 
-async function exportFullLoadWorkbook(withSalary = false) {
-    const response = await fetch(withYear(withSalary ? "/api/manual-load/export-full-salary" : "/api/manual-load/export-full"));
+async function exportLoadWorkbook(path, fallbackName) {
+    const response = await fetch(withYear(path));
     if (!response.ok) {
         const text = await response.text();
         throw new Error(text || `HTTP ${response.status}`);
@@ -432,11 +433,22 @@ async function exportFullLoadWorkbook(withSalary = false) {
     const disposition = response.headers.get("Content-Disposition") || "";
     const match = disposition.match(/filename\*=UTF-8''([^;]+)/);
     a.href = url;
-    a.download = match ? decodeURIComponent(match[1]) : (withSalary ? "full-load-salary-export.xlsx" : "full-load-export.xlsx");
+    a.download = match ? decodeURIComponent(match[1]) : fallbackName;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+}
+
+async function exportFullLoadWorkbook(withSalary = false) {
+    return exportLoadWorkbook(
+        withSalary ? "/api/manual-load/export-full-salary" : "/api/manual-load/export-full",
+        withSalary ? "full-load-salary-export.xlsx" : "full-load-export.xlsx"
+    );
+}
+
+async function exportConsolidatedLoadWorkbook() {
+    return exportLoadWorkbook("/api/manual-load/export-consolidated", "consolidated-load-export.xlsx");
 }
 
 function rebuildIndexes() {
@@ -513,6 +525,7 @@ async function init() {
     ui.buildingSelect?.addEventListener("change", renderTable);
     ui.refreshBtn?.addEventListener("click", () => loadData().catch(showError));
     ui.exportFullLoadBtn?.addEventListener("click", () => exportFullLoadWorkbook().catch((error) => alert(`Не удалось скачать полную нагрузку: ${error.message}`)));
+    ui.exportConsolidatedLoadBtn?.addEventListener("click", () => exportConsolidatedLoadWorkbook().catch((error) => alert(`Не удалось скачать укрупнённую нагрузку: ${error.message}`)));
     if (ui.exportFullLoadSalaryBtn) {
         ui.exportFullLoadSalaryBtn.addEventListener("click", () => exportFullLoadWorkbook(true).catch((error) => alert(`Не удалось скачать полную нагрузку с ЗП: ${error.message}`)));
     }
