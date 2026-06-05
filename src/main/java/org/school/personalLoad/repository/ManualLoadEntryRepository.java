@@ -86,4 +86,19 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
     @Query("delete from ManualLoadEntry m where lower(m.numberSchoolBuilding) in :codes")
     void deleteByBuildingCodes(@Param("codes") java.util.Collection<String> codes);
 
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = """
+            update manual_load_entry
+               set number_school_building = :numberSchoolBuilding,
+                   building_group_id = :buildingGroupId,
+                   class_name = :className
+             where academic_year = :academicYear
+               and class_id = :classId
+            """, nativeQuery = true)
+    int updateClassBuildingScope(@Param("academicYear") String academicYear,
+                                 @Param("classId") Long classId,
+                                 @Param("numberSchoolBuilding") String numberSchoolBuilding,
+                                 @Param("buildingGroupId") Long buildingGroupId,
+                                 @Param("className") String className);
+
 }
