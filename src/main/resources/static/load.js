@@ -190,18 +190,29 @@ function normalizeBuildingAccessCode(value) {
 
 function buildingGroupCode(value) {
     const normalized = normalizeBuildingAccessCode(value);
+    const siteSeparatorIndex = normalized.indexOf("::");
+    if (siteSeparatorIndex >= 0) return normalized.slice(0, siteSeparatorIndex);
     const separatorIndex = normalized.indexOf("|");
     return separatorIndex >= 0 ? normalized.slice(0, separatorIndex) : normalized;
 }
 
 function buildingAddressToken(value) {
     const normalized = normalizeBuildingAccessCode(value);
+    if (normalized.includes("::")) return "";
     const separatorIndex = normalized.indexOf("|");
     return separatorIndex >= 0 ? normalized.slice(separatorIndex + 1) : "";
 }
 
+function buildingSiteIdToken(value) {
+    const normalized = normalizeBuildingAccessCode(value);
+    const separatorIndex = normalized.indexOf("::");
+    if (separatorIndex < 0) return null;
+    const token = Number(normalized.slice(separatorIndex + 2));
+    return Number.isFinite(token) ? token : null;
+}
+
 function isAddressScopedBuilding(value) {
-    return Boolean(buildingAddressToken(value));
+    return buildingSiteIdToken(value) != null || Boolean(buildingAddressToken(value));
 }
 
 function rowAddressToken(row) {
@@ -232,6 +243,8 @@ function buildingOptionForAccess(accessCode) {
 }
 
 function schoolBuildingIdForAccess(accessCode) {
+    const siteId = buildingSiteIdToken(accessCode);
+    if (siteId != null) return siteId;
     const option = buildingOptionForAccess(accessCode);
     const id = option?.schoolBuildingId ?? option?.id ?? null;
     return id === null || id === undefined || id === "" ? null : Number(id);
@@ -256,6 +269,10 @@ function schoolBuildingIdForRow(row) {
 }
 
 function campusAddressForAccess(accessCode) {
+    const siteId = buildingSiteIdToken(accessCode);
+    if (siteId != null) {
+        return String(buildingOptionForAccess(accessCode)?.address || "").trim();
+    }
     const addressToken = buildingAddressToken(accessCode);
     if (!addressToken) return "";
     const optionAddress = String(buildingOptionForAccess(accessCode)?.address || "").trim();
@@ -357,15 +374,9 @@ function loadAccessCodesForRow(row) {
     const groupCode = buildingGroupCode(row?.numberSchoolBuilding);
     if (!groupCode) return [];
     const codes = [groupCode];
-    const rowAddress = rowAddressToken(row);
-    if (rowAddress) {
-        codes.push(`${groupCode}|${rowAddress}`);
-    } else {
-        const knownAddresses = addressesForBuildingCode(groupCode).map(normalizeBuildingAccessCode).filter(Boolean);
-        if (knownAddresses.length === 1) codes.push(`${groupCode}|${knownAddresses[0]}`);
-    }
     const rowSchoolBuildingId = schoolBuildingIdForRow(row);
     if (rowSchoolBuildingId != null) {
+        codes.push(`${groupCode}::${rowSchoolBuildingId}`);
         (buildings || [])
             .filter((building) =>
                 building?.scope === "address"
@@ -375,6 +386,14 @@ function loadAccessCodesForRow(row) {
             .map(buildingOptionValue)
             .filter(Boolean)
             .forEach((value) => codes.push(value));
+    } else {
+        const rowAddress = rowAddressToken(row);
+        if (rowAddress) {
+            codes.push(`${groupCode}|${rowAddress}`);
+        } else {
+            const knownAddresses = addressesForBuildingCode(groupCode).map(normalizeBuildingAccessCode).filter(Boolean);
+            if (knownAddresses.length === 1) codes.push(`${groupCode}|${knownAddresses[0]}`);
+        }
     }
     return Array.from(new Set(codes));
 }
@@ -2835,9 +2854,10 @@ async function refreshSourceData() {
     const complexManualPromise = api("/api/manual-load");
     const allCurriculumPromise = api("/api/curriculum");
 
-    const [teachers, buildingRows, classRows, periodSettings, yearResolve, subjectRows, allCurriculumRows] = await Promise.all([
+    const [teachers, buildingRows, organizationalBuildingRows, classRows, periodSettings, yearResolve, subjectRows, allCurriculumRows] = await Promise.all([
         api("/api/teachers"),
         api("/api/buildings"),
+        api("/api/building-groups"),
         api("/api/classroom-leadership"),
         api("/api/settings/study-periods"),
         api("/api/academic-years/active"),
@@ -2846,6 +2866,16 @@ async function refreshSourceData() {
     ]);
 
     const buildingGroups = new Map();
+    (organizationalBuildingRows || []).forEach((group) => {
+        const code = normalizeBuildingCode(group?.code || group?.name);
+        if (!code) return;
+        buildingGroups.set(code, {
+            code,
+            name: String(group?.name || group?.code || "").trim() || code,
+            addresses: [],
+            addressRows: []
+        });
+    });
     const appendAddress = (entry, value) => {
         const cleaned = String(value || "").trim();
         if (!cleaned) return;
@@ -2911,17 +2941,39 @@ async function refreshSourceData() {
                     scope: "group"
                 });
             }
-            group.addresses.forEach((address) => {
+            const seenScopes = new Set();
+            (group.addressRows || []).forEach((site) => {
+                const schoolBuildingId = site?.id ?? site?.schoolBuildingId ?? null;
+                const address = String(site?.address || "").trim();
                 const addressKey = normalizeBuildingAccessCode(address);
-                const site = (group.addressRows || []).find((row) => normalizeBuildingAccessCode(row?.address) === addressKey) || null;
+                const value = schoolBuildingId != null ? `${group.code}::${schoolBuildingId}` : `${group.code}|${addressKey}`;
+                if (seenScopes.has(value) || !address) return;
+                seenScopes.add(value);
                 buildings.push({
                     code: group.code,
-                    value: `${group.code}|${addressKey}`,
+                    value,
                     name: group.name,
                     address,
                     addresses: [address],
                     scope: "address",
-                    schoolBuildingId: site?.id ?? null
+                    schoolBuildingId
+                });
+            });
+            group.addresses.forEach((address) => {
+                const addressKey = normalizeBuildingAccessCode(address);
+                const value = `${group.code}|${addressKey}`;
+                if (seenScopes.has(value)) return;
+                const site = (group.addressRows || []).find((row) => normalizeBuildingAccessCode(row?.address) === addressKey) || null;
+                if (site?.id != null || site?.schoolBuildingId != null) return;
+                seenScopes.add(value);
+                buildings.push({
+                    code: group.code,
+                    value,
+                    name: group.name,
+                    address,
+                    addresses: [address],
+                    scope: "address",
+                    schoolBuildingId: null
                 });
             });
         });

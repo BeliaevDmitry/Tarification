@@ -55,7 +55,7 @@ class BuildingGroupServiceImplTest {
                 classroomLeadershipRepository,
                 metaGroupRepository
         );
-        service = new BuildingGroupServiceImpl(buildingGroupRepository, schoolBuildingService);
+        service = new BuildingGroupServiceImpl(buildingGroupRepository, schoolBuildingService, schoolBuildingRepository);
     }
 
     @Test
@@ -85,6 +85,50 @@ class BuildingGroupServiceImplTest {
         assertEquals("Мехмат", response.getSchoolBuilding().getName());
         assertEquals("Адрес Мехмата", response.getSchoolBuilding().getAddress());
         assertEquals("мехмат|адрес мехмата", response.getSchoolBuilding().getCode());
+    }
+
+
+    @Test
+    void createWithoutOwnPhysicalSiteCreatesOnlyOrganizationalBuildingAndReturnsBaseSite() {
+        BuildingGroupCreateRequest request = request(" СП3 МЕХМАТ ", "СП3 мехмат", "", "");
+        request.setCreateInitialSite(false);
+        request.setBaseSchoolBuildingId(38L);
+        SchoolBuilding baseSite = new SchoolBuilding();
+        baseSite.setId(38L);
+        baseSite.setName("СП3");
+        baseSite.setAddress("Кравченко, д.14, корп.1");
+
+        when(buildingGroupRepository.findByCodeIgnoreCase("СП3 МЕХМАТ")).thenReturn(Optional.empty());
+        when(schoolBuildingRepository.findById(38L)).thenReturn(Optional.of(baseSite));
+        when(buildingGroupRepository.saveAndFlush(any())).thenAnswer(invocation -> {
+            BuildingGroup group = invocation.getArgument(0);
+            group.setId(19L);
+            return group;
+        });
+
+        BuildingGroupCreateResponse response = service.createWithInitialSite(request);
+
+        assertEquals("СП3 МЕХМАТ", response.getBuildingGroup().getCode());
+        assertEquals("СП3 мехмат", response.getBuildingGroup().getName());
+        assertEquals(38L, response.getBaseSchoolBuilding().getId());
+        assertEquals(null, response.getSchoolBuilding());
+        verify(schoolBuildingRepository, never()).save(any());
+    }
+
+    @Test
+    void createWithoutOwnPhysicalSiteRejectsUnknownBaseSiteBeforeCreatingGroup() {
+        BuildingGroupCreateRequest request = request("СП3 МЕХМАТ", "СП3 мехмат", "", "");
+        request.setCreateInitialSite(false);
+        request.setBaseSchoolBuildingId(404L);
+
+        when(schoolBuildingRepository.findById(404L)).thenReturn(Optional.empty());
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> service.createWithInitialSite(request));
+
+        assertTrue(error.getMessage().contains("Базовая физическая площадка не найдена: 404"));
+        verify(buildingGroupRepository, never()).saveAndFlush(any());
+        verify(schoolBuildingRepository, never()).save(any());
     }
 
     @Test

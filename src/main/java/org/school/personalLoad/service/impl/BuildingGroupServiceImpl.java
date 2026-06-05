@@ -7,6 +7,7 @@ import org.school.personalLoad.dto.SchoolBuildingRequest;
 import org.school.personalLoad.model.BuildingGroup;
 import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.repository.BuildingGroupRepository;
+import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.service.BuildingGroupService;
 import org.school.personalLoad.service.SchoolBuildingService;
 import org.springframework.stereotype.Service;
@@ -21,6 +22,7 @@ public class BuildingGroupServiceImpl implements BuildingGroupService {
 
     private final BuildingGroupRepository buildingGroupRepository;
     private final SchoolBuildingService schoolBuildingService;
+    private final SchoolBuildingRepository schoolBuildingRepository;
 
     @Override
     public List<BuildingGroup> findAll() {
@@ -35,10 +37,16 @@ public class BuildingGroupServiceImpl implements BuildingGroupService {
         }
         String code = normalizeCode(request.getCode());
         String name = normalizeRequired(request.getName(), "name is required");
-        String initialAddress = normalizeRequired(request.getInitialAddress(), "initialAddress is required");
+        boolean createInitialSite = request.getCreateInitialSite() == null || Boolean.TRUE.equals(request.getCreateInitialSite());
+        String initialAddress = createInitialSite ? normalizeRequired(request.getInitialAddress(), "initialAddress is required") : "";
         String initialSiteName = normalize(request.getInitialSiteName());
-        if (initialSiteName.isBlank()) {
+        if (createInitialSite && initialSiteName.isBlank()) {
             initialSiteName = name;
+        }
+        SchoolBuilding baseSchoolBuilding = null;
+        if (!createInitialSite && request.getBaseSchoolBuildingId() != null) {
+            baseSchoolBuilding = schoolBuildingRepository.findById(request.getBaseSchoolBuildingId())
+                    .orElseThrow(() -> new IllegalArgumentException("Базовая физическая площадка не найдена: " + request.getBaseSchoolBuildingId()));
         }
 
         buildingGroupRepository.findByCodeIgnoreCase(code).ifPresent(existing -> {
@@ -50,13 +58,17 @@ public class BuildingGroupServiceImpl implements BuildingGroupService {
         group.setName(name);
         BuildingGroup savedGroup = buildingGroupRepository.saveAndFlush(group);
 
+        if (!createInitialSite) {
+            return new BuildingGroupCreateResponse(savedGroup, null, baseSchoolBuilding);
+        }
+
         SchoolBuildingRequest siteRequest = new SchoolBuildingRequest();
         siteRequest.setBuildingGroupId(savedGroup.getId());
         siteRequest.setName(initialSiteName);
         siteRequest.setAddress(initialAddress);
         SchoolBuilding savedSite = schoolBuildingService.upsert(siteRequest);
 
-        return new BuildingGroupCreateResponse(savedGroup, savedSite);
+        return new BuildingGroupCreateResponse(savedGroup, savedSite, null);
     }
 
     private String normalizeCode(String value) {

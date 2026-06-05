@@ -29,8 +29,9 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
               left join meta_group mg on mg.id = m.meta_group_id
              where m.academic_year = :academicYear
                and (
-                    (m.class_id is not null and c.school_building_id = :schoolBuildingId)
-                 or (m.meta_group_id is not null and mg.school_building_id = :schoolBuildingId)
+                    m.school_building_id = :schoolBuildingId
+                 or (m.school_building_id is null and m.class_id is not null and c.school_building_id = :schoolBuildingId)
+                 or (m.school_building_id is null and m.meta_group_id is not null and mg.school_building_id = :schoolBuildingId)
                )
             """, nativeQuery = true)
     java.util.List<ManualLoadEntry> findAllByAcademicYearAndSchoolBuildingId(@Param("academicYear") String academicYear,
@@ -66,17 +67,18 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
             delete from manual_load_entry m
              where m.academic_year = :academicYear
                and (
-                    m.class_id in (
+                    m.school_building_id = :schoolBuildingId
+                 or (m.school_building_id is null and m.class_id in (
                         select c.id
                           from classroom_leadership_entry c
                          where c.academic_year = :academicYear
                            and c.school_building_id = :schoolBuildingId
-                    )
-                 or m.meta_group_id in (
+                    ))
+                 or (m.school_building_id is null and m.meta_group_id in (
                         select mg.id
                           from meta_group mg
                          where mg.school_building_id = :schoolBuildingId
-                    )
+                    ))
                )
             """, nativeQuery = true)
     void deleteByAcademicYearAndSchoolBuildingId(@Param("academicYear") String academicYear,
@@ -85,5 +87,22 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
     @Modifying
     @Query("delete from ManualLoadEntry m where lower(m.numberSchoolBuilding) in :codes")
     void deleteByBuildingCodes(@Param("codes") java.util.Collection<String> codes);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = """
+            update manual_load_entry
+               set number_school_building = :numberSchoolBuilding,
+                   building_group_id = :buildingGroupId,
+                   school_building_id = :schoolBuildingId,
+                   class_name = :className
+             where academic_year = :academicYear
+               and class_id = :classId
+            """, nativeQuery = true)
+    int updateClassBuildingScope(@Param("academicYear") String academicYear,
+                                 @Param("classId") Long classId,
+                                 @Param("numberSchoolBuilding") String numberSchoolBuilding,
+                                 @Param("buildingGroupId") Long buildingGroupId,
+                                 @Param("schoolBuildingId") Long schoolBuildingId,
+                                 @Param("className") String className);
 
 }

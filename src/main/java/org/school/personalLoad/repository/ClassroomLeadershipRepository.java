@@ -36,4 +36,19 @@ public interface ClassroomLeadershipRepository extends JpaRepository<ClassroomLe
         """, nativeQuery = true)
     int updateBuildingGroupById(@Param("id") Long id,
                                 @Param("numberSchoolBuilding") String numberSchoolBuilding);
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = """
+        update classroom_leadership_entry
+           set number_school_building = :numberSchoolBuilding,
+               building_group_id = :buildingGroupId,
+               school_building_id = :schoolBuildingId,
+               campus_address = :campusAddress
+         where id = :id
+        """, nativeQuery = true)
+    int updateBuildingScopeById(@Param("id") Long id,
+                                @Param("numberSchoolBuilding") String numberSchoolBuilding,
+                                @Param("buildingGroupId") Long buildingGroupId,
+                                @Param("schoolBuildingId") Long schoolBuildingId,
+                                @Param("campusAddress") String campusAddress);
+
 }

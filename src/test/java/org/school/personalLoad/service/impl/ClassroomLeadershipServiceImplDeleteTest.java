@@ -5,10 +5,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.school.personalLoad.dto.ClassroomBuildingScopeUpdateRequest;
 import org.school.personalLoad.dto.ClassroomLeadershipEntryRequest;
+import org.school.personalLoad.model.BuildingGroup;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
+import org.school.personalLoad.repository.BuildingGroupRepository;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
@@ -37,6 +40,8 @@ class ClassroomLeadershipServiceImplDeleteTest {
     @Mock
     private SchoolBuildingRepository schoolBuildingRepository;
     @Mock
+    private BuildingGroupRepository buildingGroupRepository;
+    @Mock
     private CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     @Mock
     private ManualLoadEntryRepository manualLoadEntryRepository;
@@ -49,6 +54,7 @@ class ClassroomLeadershipServiceImplDeleteTest {
                 classroomLeadershipRepository,
                 teacherDirectoryRepository,
                 schoolBuildingRepository,
+                buildingGroupRepository,
                 curriculumPlanEntryRepository,
                 manualLoadEntryRepository
         );
@@ -349,6 +355,72 @@ class ClassroomLeadershipServiceImplDeleteTest {
         assertEquals(1L, summary.get("manualLoadRows"));
     }
 
+
+    @Test
+    void updateBuildingScopeMovesClassToSelectedBuildingGroupAndDifferentPhysicalSite() {
+        ClassroomLeadershipEntry entry = classEntry(9130L, "СП3", "7-М");
+        BuildingGroup selectedGroup = buildingGroup(19L, "СП3 МЕХМАТ");
+        BuildingGroup physicalSiteGroup = buildingGroup(12L, "СП3");
+        SchoolBuilding targetSite = schoolBuilding(48L, "СП3|КРАВЧЕНКО", "СП3", "Кравченко, д.14, корп.1");
+        targetSite.setBuildingGroup(physicalSiteGroup);
+        ClassroomBuildingScopeUpdateRequest request = new ClassroomBuildingScopeUpdateRequest();
+        request.setBuildingGroupId(19L);
+        request.setSchoolBuildingId(48L);
+
+        when(classroomLeadershipRepository.findById(9130L)).thenReturn(Optional.of(entry));
+        when(schoolBuildingRepository.findById(48L)).thenReturn(Optional.of(targetSite));
+        when(buildingGroupRepository.findById(19L)).thenReturn(Optional.of(selectedGroup));
+        when(classroomLeadershipRepository.save(entry)).thenReturn(entry);
+
+        ClassroomLeadershipEntry saved = service.updateBuildingScope(9130L, request);
+
+        assertEquals("СП3МЕХМАТ", saved.getNumberSchoolBuilding());
+        assertEquals(48L, saved.getSchoolBuildingId());
+        assertEquals("Кравченко, д.14, корп.1", saved.getCampusAddress());
+        verify(classroomLeadershipRepository).updateBuildingScopeById(9130L, "СП3МЕХМАТ", 19L, 48L, "Кравченко, д.14, корп.1");
+        verify(curriculumPlanEntryRepository).updateClassBuildingScope("2026/2027", 9130L, "СП3МЕХМАТ", 19L, "7-М");
+        verify(manualLoadEntryRepository).updateClassBuildingScope("2026/2027", 9130L, "СП3МЕХМАТ", 19L, 48L, "7-М");
+        verify(curriculumPlanEntryRepository, never()).deleteByAcademicYearAndClassId(any(), any());
+        verify(manualLoadEntryRepository, never()).deleteByAcademicYearAndClassIds(any(), any());
+    }
+
+    @Test
+    void updateBuildingScopeRejectsUnknownSchoolBuildingId() {
+        ClassroomLeadershipEntry entry = classEntry(9130L, "СП3", "7-М");
+        ClassroomBuildingScopeUpdateRequest request = new ClassroomBuildingScopeUpdateRequest();
+        request.setSchoolBuildingId(999L);
+
+        when(classroomLeadershipRepository.findById(9130L)).thenReturn(Optional.of(entry));
+        when(schoolBuildingRepository.findById(999L)).thenReturn(Optional.empty());
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.updateBuildingScope(9130L, request));
+
+        assertEquals("Площадка не найдена: 999", error.getMessage());
+        verify(classroomLeadershipRepository, never()).save(any(ClassroomLeadershipEntry.class));
+        verify(curriculumPlanEntryRepository, never()).updateClassBuildingScope(any(), any(), any(), any(), any());
+        verify(manualLoadEntryRepository, never()).updateClassBuildingScope(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void updateBuildingScopeRejectsUnknownBuildingGroupIdFromRequest() {
+        ClassroomLeadershipEntry entry = classEntry(9130L, "СП3", "7-М");
+        BuildingGroup physicalSiteGroup = buildingGroup(19L, "СП3 МЕХМАТ");
+        SchoolBuilding targetSite = schoolBuilding(48L, "СП3 МЕХМАТ|КРАВЧЕНКО", "СП3 мехмат", "Кравченко, д.14, корп.1");
+        targetSite.setBuildingGroup(physicalSiteGroup);
+        ClassroomBuildingScopeUpdateRequest request = new ClassroomBuildingScopeUpdateRequest();
+        request.setSchoolBuildingId(48L);
+        request.setBuildingGroupId(999L);
+
+        when(classroomLeadershipRepository.findById(9130L)).thenReturn(Optional.of(entry));
+        when(schoolBuildingRepository.findById(48L)).thenReturn(Optional.of(targetSite));
+        when(buildingGroupRepository.findById(999L)).thenReturn(Optional.empty());
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.updateBuildingScope(9130L, request));
+
+        assertEquals("Основной корпус не найден: 999", error.getMessage());
+        verify(classroomLeadershipRepository, never()).save(any(ClassroomLeadershipEntry.class));
+    }
+
     @Test
     void deleteByIdUsesOnlyClassIdForDependentRows() {
         ClassroomLeadershipEntry entry = classEntry(42L, "СП1", "7-А");
@@ -415,6 +487,14 @@ class ClassroomLeadershipServiceImplDeleteTest {
         teacher.setId(id);
         teacher.setFioTeacher(fio);
         return teacher;
+    }
+
+    private BuildingGroup buildingGroup(Long id, String code) {
+        BuildingGroup group = new BuildingGroup();
+        group.setId(id);
+        group.setCode(code);
+        group.setName(code);
+        return group;
     }
 
     private SchoolBuilding schoolBuilding(Long id, String code, String name, String address) {

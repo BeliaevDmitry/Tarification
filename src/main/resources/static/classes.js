@@ -17,11 +17,13 @@ const ui = {
     editBuilding: document.getElementById("class-edit-building"),
     editSchoolBuilding: document.getElementById("class-edit-school-building"),
     editDeleteBtn: document.getElementById("class-edit-delete-btn"),
-    editCloseBtn: document.getElementById("class-edit-close-btn")
+    editCloseBtn: document.getElementById("class-edit-close-btn"),
+    transferWarning: document.getElementById("class-transfer-warning")
 };
 
 let teachers = [];
 let buildings = [];
+let buildingGroups = [];
 let classRows = [];
 let editingOriginalKey = null;
 let editingOriginalEntry = null;
@@ -123,6 +125,7 @@ function physicalSiteChoices() {
         .filter((b) => b?.id && norm(b.address))
         .map((b) => ({
             id: Number(b.id),
+            buildingGroupId: Number(b.buildingGroupId) || null,
             code: buildingGroupCode(b.code),
             name: norm(b.name) || buildingGroupCode(b.code),
             address: norm(b.address)
@@ -132,13 +135,29 @@ function physicalSiteChoices() {
 
 function buildingGroupChoices() {
     const map = new Map();
+    (buildingGroups || []).forEach((group) => {
+        const code = buildingGroupCode(group.code || group.name);
+        if (!code) return;
+        map.set(code, {
+            code,
+            id: Number(group.id) || null,
+            name: norm(group.name) || code
+        });
+    });
     (buildings || []).forEach((b) => {
         const code = buildingGroupCode(b.code);
         if (!code) return;
+        const id = Number(b.buildingGroupId) || null;
         const name = norm(b.name) || code;
-        if (!map.has(code)) map.set(code, { code, name });
+        if (!map.has(code)) map.set(code, { code, id, name });
+        if (id && !map.get(code).id) map.get(code).id = id;
     });
     return Array.from(map.values()).sort((a, b) => a.code.localeCompare(b.code, "ru", { numeric: true }));
+}
+
+function buildingGroupIdForCode(code) {
+    const normalizedCode = buildingGroupCode(code);
+    return buildingGroupChoices().find((b) => b.code === normalizedCode)?.id || null;
 }
 
 function findPhysicalSiteById(id) {
@@ -164,7 +183,7 @@ function buildingLabel(code) {
 }
 
 function siteLabel(site) {
-    return site ? `${site.code} — ${site.address}` : "";
+    return site ? `${site.name || site.code} — ${site.address}` : "";
 }
 
 function displayCampusAddress(entry) {
@@ -201,7 +220,7 @@ function teacherIdForName(fioTeacher) {
 
 function fillBuildingOptions(selectEl, selectedValue = "") {
     if (!selectEl) return;
-    selectEl.innerHTML = `<option value="">Выберите СП класса</option>`;
+    selectEl.innerHTML = `<option value="">Выберите основной корпус</option>`;
     buildingGroupChoices().forEach((b) => {
         const option = document.createElement("option");
         option.value = b.code;
@@ -212,15 +231,15 @@ function fillBuildingOptions(selectEl, selectedValue = "") {
     if (selectedValue) selectEl.value = buildingGroupCode(selectedValue);
 }
 
-function fillPhysicalSiteOptions(selectEl, selectedId = null, fallbackAddress = "") {
+function fillPhysicalSiteOptions(selectEl, selectedId = null, fallbackAddress = "", buildingCode = "") {
     if (!selectEl) return;
-    selectEl.innerHTML = `<option value="">Выберите физическую площадку</option>`;
+    selectEl.innerHTML = `<option value="">Выберите физическую площадку / адрес</option>`;
     physicalSiteChoices().forEach((b) => {
         const option = document.createElement("option");
         option.value = String(b.id);
         option.dataset.address = b.address;
         option.dataset.code = b.code;
-        option.textContent = `${b.code} — ${b.address}`;
+        option.textContent = siteLabel(b);
         selectEl.appendChild(option);
     });
     const fallbackSite = selectedId ? null : findPhysicalSiteByAddress(fallbackAddress);
@@ -235,8 +254,8 @@ function renderBuildings() {
     const currentEditSite = ui.editSchoolBuilding?.value || "";
     fillBuildingOptions(ui.building, currentBuilding);
     fillBuildingOptions(ui.editBuilding, currentEditBuilding);
-    fillPhysicalSiteOptions(ui.schoolBuilding, currentSite);
-    fillPhysicalSiteOptions(ui.editSchoolBuilding, currentEditSite);
+    fillPhysicalSiteOptions(ui.schoolBuilding, currentSite, "", ui.building?.value || currentBuilding);
+    fillPhysicalSiteOptions(ui.editSchoolBuilding, currentEditSite, "", ui.editBuilding?.value || currentEditBuilding);
     syncCampusAddressFromSite(ui.schoolBuilding, ui.form?.elements?.campusAddress);
     syncCampusAddressFromSite(ui.editSchoolBuilding, ui.editForm?.elements?.campusAddress);
 }
@@ -246,13 +265,14 @@ function openEditDialog(entry) {
     editingOriginalEntry = { ...entry };
     const normalizedEntryCode = buildingGroupCode(entry.numberSchoolBuilding);
     fillBuildingOptions(ui.editBuilding, normalizedEntryCode || entry.numberSchoolBuilding || "");
-    fillPhysicalSiteOptions(ui.editSchoolBuilding, entry.schoolBuildingId, entry.campusAddress || "");
+    fillPhysicalSiteOptions(ui.editSchoolBuilding, entry.schoolBuildingId, entry.campusAddress || "", normalizedEntryCode);
     syncCampusAddressFromSite(ui.editSchoolBuilding, ui.editForm.elements.campusAddress);
     ui.editForm.elements.className.value = entry.className || "";
     ui.editForm.elements.classType.value = entry.classType || "NORMAL";
     ui.editForm.elements.classDirection.value = entry.classDirection || "";
     ui.editForm.elements.fioTeacher.value = entry.fioTeacher || "";
     syncCampusAddressFromSite(ui.editSchoolBuilding, ui.editForm.elements.campusAddress);
+    updateTransferWarning();
     ui.editDialog.showModal();
 }
 
@@ -283,13 +303,15 @@ function renderClasses(rows) {
 
 async function reload() {
     updateTemplateLink();
-    const [rows, buildingRows, teacherRows] = await Promise.all([
+    const [rows, buildingRows, buildingGroupRows, teacherRows] = await Promise.all([
         api("/api/classroom-leadership"),
         api("/api/buildings"),
+        api("/api/building-groups"),
         api("/api/teachers")
     ]);
     classRows = rows || [];
     buildings = buildingRows || [];
+    buildingGroups = buildingGroupRows || [];
     teachers = (teacherRows || [])
         .filter((r) => r?.id && norm(r.fioTeacher))
         .map((r) => ({
@@ -334,21 +356,68 @@ async function upsertEntry(entry, originalKey = null) {
     return api("/api/classroom-leadership", { method: "PUT", headers: jsonHeaders, body: JSON.stringify(filtered) });
 }
 
+function buildingScopeChanged(entry) {
+    if (!entry?.id || !editingOriginalEntry) return false;
+    const originalSiteId = Number(editingOriginalEntry.schoolBuildingId) || null;
+    const targetSiteId = Number(entry.schoolBuildingId) || null;
+    return buildingGroupCode(editingOriginalEntry.numberSchoolBuilding) !== buildingGroupCode(entry.numberSchoolBuilding)
+        || originalSiteId !== targetSiteId;
+}
+
+function updateTransferWarning() {
+    if (!ui.transferWarning || !ui.editForm || !editingOriginalEntry) return;
+    const targetBuilding = buildingGroupCode(ui.editForm.elements.numberSchoolBuilding.value);
+    const originalBuilding = buildingGroupCode(editingOriginalEntry.numberSchoolBuilding);
+    ui.transferWarning.hidden = !targetBuilding || targetBuilding === originalBuilding;
+}
+
 async function updateEntry(entry) {
     if (!entry?.id) {
         return upsertEntry(entry, editingOriginalKey);
     }
-    return api(`/api/classroom-leadership/${encodeURIComponent(entry.id)}`, {
+    const shouldTransferScope = buildingScopeChanged(entry);
+    const ordinaryPatchEntry = shouldTransferScope
+        ? {
+            ...entry,
+            numberSchoolBuilding: buildingGroupCode(editingOriginalEntry.numberSchoolBuilding),
+            schoolBuildingId: Number(editingOriginalEntry.schoolBuildingId) || null,
+            campusAddress: norm(editingOriginalEntry.campusAddress)
+        }
+        : entry;
+    const saved = await api(`/api/classroom-leadership/${encodeURIComponent(entry.id)}`, {
         method: "PATCH",
         headers: jsonHeaders,
-        body: JSON.stringify(entry)
+        body: JSON.stringify(ordinaryPatchEntry)
+    });
+    if (!shouldTransferScope) {
+        return saved;
+    }
+    return api(`/api/classes/${encodeURIComponent(entry.id)}/building-scope`, {
+        method: "PATCH",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+            buildingGroupId: buildingGroupIdForCode(entry.numberSchoolBuilding),
+            schoolBuildingId: entry.schoolBuildingId
+        })
     });
 }
 
 updateTemplateLink();
 
+ui.building?.addEventListener("change", () => {
+    fillPhysicalSiteOptions(ui.schoolBuilding, null, "", ui.building.value);
+    syncCampusAddressFromSite(ui.schoolBuilding, ui.form.elements.campusAddress);
+});
+ui.editBuilding?.addEventListener("change", () => {
+    fillPhysicalSiteOptions(ui.editSchoolBuilding, null, "", ui.editBuilding.value);
+    syncCampusAddressFromSite(ui.editSchoolBuilding, ui.editForm.elements.campusAddress);
+    updateTransferWarning();
+});
 ui.schoolBuilding?.addEventListener("change", () => syncCampusAddressFromSite(ui.schoolBuilding, ui.form.elements.campusAddress));
-ui.editSchoolBuilding?.addEventListener("change", () => syncCampusAddressFromSite(ui.editSchoolBuilding, ui.editForm.elements.campusAddress));
+ui.editSchoolBuilding?.addEventListener("change", () => {
+    syncCampusAddressFromSite(ui.editSchoolBuilding, ui.editForm.elements.campusAddress);
+    updateTransferWarning();
+});
 
 ui.form.addEventListener("submit", async (e) => {
     e.preventDefault();
