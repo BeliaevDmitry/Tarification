@@ -10,4 +10,5 @@ import org.school.personalLoad.model.SchoolBuilding;
 public class BuildingGroupCreateResponse {
     private BuildingGroup buildingGroup;
     private SchoolBuilding schoolBuilding;
+    private SchoolBuilding baseSchoolBuilding;
 }
