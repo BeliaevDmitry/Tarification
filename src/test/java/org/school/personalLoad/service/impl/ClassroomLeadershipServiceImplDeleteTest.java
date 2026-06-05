@@ -11,6 +11,7 @@ import org.school.personalLoad.model.BuildingGroup;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
+import org.school.personalLoad.repository.BuildingGroupRepository;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
@@ -39,6 +40,8 @@ class ClassroomLeadershipServiceImplDeleteTest {
     @Mock
     private SchoolBuildingRepository schoolBuildingRepository;
     @Mock
+    private BuildingGroupRepository buildingGroupRepository;
+    @Mock
     private CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     @Mock
     private ManualLoadEntryRepository manualLoadEntryRepository;
@@ -51,6 +54,7 @@ class ClassroomLeadershipServiceImplDeleteTest {
                 classroomLeadershipRepository,
                 teacherDirectoryRepository,
                 schoolBuildingRepository,
+                buildingGroupRepository,
                 curriculumPlanEntryRepository,
                 manualLoadEntryRepository
         );
@@ -353,16 +357,19 @@ class ClassroomLeadershipServiceImplDeleteTest {
 
 
     @Test
-    void updateBuildingScopeMovesClassAndSynchronizesCurriculumAndManualLoadTails() {
+    void updateBuildingScopeMovesClassToSelectedBuildingGroupAndDifferentPhysicalSite() {
         ClassroomLeadershipEntry entry = classEntry(9130L, "СП3", "7-М");
-        BuildingGroup targetGroup = buildingGroup(19L, "СП3 МЕХМАТ");
-        SchoolBuilding targetSite = schoolBuilding(48L, "СП3 МЕХМАТ|КРАВЧЕНКО", "СП3 мехмат", "Кравченко, д.14, корп.1");
-        targetSite.setBuildingGroup(targetGroup);
+        BuildingGroup selectedGroup = buildingGroup(19L, "СП3 МЕХМАТ");
+        BuildingGroup physicalSiteGroup = buildingGroup(12L, "СП3");
+        SchoolBuilding targetSite = schoolBuilding(48L, "СП3|КРАВЧЕНКО", "СП3", "Кравченко, д.14, корп.1");
+        targetSite.setBuildingGroup(physicalSiteGroup);
         ClassroomBuildingScopeUpdateRequest request = new ClassroomBuildingScopeUpdateRequest();
+        request.setBuildingGroupId(19L);
         request.setSchoolBuildingId(48L);
 
         when(classroomLeadershipRepository.findById(9130L)).thenReturn(Optional.of(entry));
         when(schoolBuildingRepository.findById(48L)).thenReturn(Optional.of(targetSite));
+        when(buildingGroupRepository.findById(19L)).thenReturn(Optional.of(selectedGroup));
         when(classroomLeadershipRepository.save(entry)).thenReturn(entry);
 
         ClassroomLeadershipEntry saved = service.updateBuildingScope(9130L, request);
@@ -395,21 +402,22 @@ class ClassroomLeadershipServiceImplDeleteTest {
     }
 
     @Test
-    void updateBuildingScopeRejectsMismatchedBuildingGroupIdFromRequest() {
+    void updateBuildingScopeRejectsUnknownBuildingGroupIdFromRequest() {
         ClassroomLeadershipEntry entry = classEntry(9130L, "СП3", "7-М");
-        BuildingGroup targetGroup = buildingGroup(19L, "СП3 МЕХМАТ");
+        BuildingGroup physicalSiteGroup = buildingGroup(19L, "СП3 МЕХМАТ");
         SchoolBuilding targetSite = schoolBuilding(48L, "СП3 МЕХМАТ|КРАВЧЕНКО", "СП3 мехмат", "Кравченко, д.14, корп.1");
-        targetSite.setBuildingGroup(targetGroup);
+        targetSite.setBuildingGroup(physicalSiteGroup);
         ClassroomBuildingScopeUpdateRequest request = new ClassroomBuildingScopeUpdateRequest();
         request.setSchoolBuildingId(48L);
-        request.setBuildingGroupId(12L);
+        request.setBuildingGroupId(999L);
 
         when(classroomLeadershipRepository.findById(9130L)).thenReturn(Optional.of(entry));
         when(schoolBuildingRepository.findById(48L)).thenReturn(Optional.of(targetSite));
+        when(buildingGroupRepository.findById(999L)).thenReturn(Optional.empty());
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.updateBuildingScope(9130L, request));
 
-        assertEquals("Основной корпус не соответствует выбранной площадке", error.getMessage());
+        assertEquals("Основной корпус не найден: 999", error.getMessage());
         verify(classroomLeadershipRepository, never()).save(any(ClassroomLeadershipEntry.class));
     }
 

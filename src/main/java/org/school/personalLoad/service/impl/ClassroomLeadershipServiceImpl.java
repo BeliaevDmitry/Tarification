@@ -9,6 +9,7 @@ import org.school.personalLoad.model.BuildingGroup;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
+import org.school.personalLoad.repository.BuildingGroupRepository;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
@@ -33,6 +34,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     private final ClassroomLeadershipRepository classroomLeadershipRepository;
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final SchoolBuildingRepository schoolBuildingRepository;
+    private final BuildingGroupRepository buildingGroupRepository;
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     private final ManualLoadEntryRepository manualLoadEntryRepository;
 
@@ -190,12 +192,12 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
                 .orElseThrow(() -> new IllegalArgumentException("Класс не найден"));
         SchoolBuilding targetSchoolBuilding = schoolBuildingRepository.findById(request.getSchoolBuildingId())
                 .orElseThrow(() -> new IllegalArgumentException("Площадка не найдена: " + request.getSchoolBuildingId()));
-        BuildingGroup targetBuildingGroup = targetSchoolBuilding.getBuildingGroup();
+        BuildingGroup targetBuildingGroup = request.getBuildingGroupId() != null
+                ? buildingGroupRepository.findById(request.getBuildingGroupId())
+                .orElseThrow(() -> new IllegalArgumentException("Основной корпус не найден: " + request.getBuildingGroupId()))
+                : targetSchoolBuilding.getBuildingGroup();
         if (targetBuildingGroup == null || targetBuildingGroup.getId() == null) {
             throw new IllegalArgumentException("Основной корпус целевой площадки не найден");
-        }
-        if (request.getBuildingGroupId() != null && !request.getBuildingGroupId().equals(targetBuildingGroup.getId())) {
-            throw new IllegalArgumentException("Основной корпус не соответствует выбранной площадке");
         }
 
         String targetCode = normalizeBuildingCode(targetBuildingGroup.getCode());
