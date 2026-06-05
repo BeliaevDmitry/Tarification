@@ -232,6 +232,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
                 saved.getId(),
                 targetCode,
                 targetBuildingGroup.getId(),
+                targetSchoolBuilding.getId(),
                 className
         );
 

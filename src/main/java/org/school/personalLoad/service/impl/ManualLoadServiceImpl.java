@@ -1778,6 +1778,13 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         entity.setMetaGroupId(explicitMetaGroup ? resolveMetaGroupId(effectiveAcademicYear, request) : null);
         if (explicitMetaGroup) {
             validateMetaGroupHasPhysicalSite(entity.getMetaGroupId());
+            metaGroupRepository.findById(entity.getMetaGroupId())
+                    .map(MetaGroup::getSchoolBuildingId)
+                    .ifPresent(entity::setSchoolBuildingId);
+        } else if (entity.getClassId() != null) {
+            classroomLeadershipRepository.findById(entity.getClassId())
+                    .map(ClassroomLeadershipEntry::getSchoolBuildingId)
+                    .ifPresent(entity::setSchoolBuildingId);
         }
         SubjectCatalogEntry subject = resolveSubject(request);
         entity.setSubject(subject);

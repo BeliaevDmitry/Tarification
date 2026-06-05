@@ -379,7 +379,7 @@ class ClassroomLeadershipServiceImplDeleteTest {
         assertEquals("Кравченко, д.14, корп.1", saved.getCampusAddress());
         verify(classroomLeadershipRepository).updateBuildingScopeById(9130L, "СП3МЕХМАТ", 19L, 48L, "Кравченко, д.14, корп.1");
         verify(curriculumPlanEntryRepository).updateClassBuildingScope("2026/2027", 9130L, "СП3МЕХМАТ", 19L, "7-М");
-        verify(manualLoadEntryRepository).updateClassBuildingScope("2026/2027", 9130L, "СП3МЕХМАТ", 19L, "7-М");
+        verify(manualLoadEntryRepository).updateClassBuildingScope("2026/2027", 9130L, "СП3МЕХМАТ", 19L, 48L, "7-М");
         verify(curriculumPlanEntryRepository, never()).deleteByAcademicYearAndClassId(any(), any());
         verify(manualLoadEntryRepository, never()).deleteByAcademicYearAndClassIds(any(), any());
     }
@@ -398,7 +398,7 @@ class ClassroomLeadershipServiceImplDeleteTest {
         assertEquals("Площадка не найдена: 999", error.getMessage());
         verify(classroomLeadershipRepository, never()).save(any(ClassroomLeadershipEntry.class));
         verify(curriculumPlanEntryRepository, never()).updateClassBuildingScope(any(), any(), any(), any(), any());
-        verify(manualLoadEntryRepository, never()).updateClassBuildingScope(any(), any(), any(), any(), any());
+        verify(manualLoadEntryRepository, never()).updateClassBuildingScope(any(), any(), any(), any(), any(), any());
     }
 
     @Test
