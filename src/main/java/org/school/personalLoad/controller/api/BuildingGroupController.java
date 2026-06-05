@@ -3,10 +3,13 @@ package org.school.personalLoad.controller.api;
 import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.dto.BuildingGroupCreateRequest;
 import org.school.personalLoad.dto.BuildingGroupCreateResponse;
+import org.school.personalLoad.dto.BuildingGroupUpdateRequest;
 import org.school.personalLoad.model.BuildingGroup;
 import org.school.personalLoad.service.BuildingGroupService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,5 +32,10 @@ public class BuildingGroupController {
     @PostMapping
     public ResponseEntity<BuildingGroupCreateResponse> create(@RequestBody BuildingGroupCreateRequest request) {
         return ResponseEntity.ok(buildingGroupService.createWithInitialSite(request));
+    }
+
+    @PatchMapping("/{id}")
+    public ResponseEntity<BuildingGroup> update(@PathVariable Long id, @RequestBody BuildingGroupUpdateRequest request) {
+        return ResponseEntity.ok(buildingGroupService.update(id, request));
     }
 }
