@@ -95,4 +95,19 @@ public interface CurriculumPlanEntryRepository extends JpaRepository<CurriculumP
 
     void deleteAllByAcademicYear(String academicYear);
 
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = """
+            update curriculum_plan_entry
+               set number_school_building = :numberSchoolBuilding,
+                   building_group_id = :buildingGroupId,
+                   class_name = :className
+             where academic_year = :academicYear
+               and class_id = :classId
+            """, nativeQuery = true)
+    int updateClassBuildingScope(@Param("academicYear") String academicYear,
+                                 @Param("classId") Long classId,
+                                 @Param("numberSchoolBuilding") String numberSchoolBuilding,
+                                 @Param("buildingGroupId") Long buildingGroupId,
+                                 @Param("className") String className);
+
 }

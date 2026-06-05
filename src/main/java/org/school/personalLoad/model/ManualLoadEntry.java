@@ -45,6 +45,9 @@ public class ManualLoadEntry {
     @EqualsAndHashCode.Exclude
     private BuildingGroup buildingGroup;
 
+    @Column(name = "school_building_id")
+    private Long schoolBuildingId;
+
     @Column(nullable = false)
     private String subjectName;
 
@@ -84,6 +87,9 @@ public class ManualLoadEntry {
 
 
     public Long getSchoolBuildingId() {
+        if (schoolBuildingId != null) {
+            return schoolBuildingId;
+        }
         if (metaGroupRef != null && metaGroupRef.getSchoolBuildingId() != null) {
             return metaGroupRef.getSchoolBuildingId();
         }
