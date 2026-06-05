@@ -380,6 +380,14 @@ async function updateEntry(entry) {
         headers: jsonHeaders,
         body: JSON.stringify({ schoolBuildingId: entry.schoolBuildingId })
     });
+    if (!shouldTransferScope) {
+        return saved;
+    }
+    return api(`/api/classes/${encodeURIComponent(entry.id)}/building-scope`, {
+        method: "PATCH",
+        headers: jsonHeaders,
+        body: JSON.stringify({ schoolBuildingId: entry.schoolBuildingId })
+    });
 }
 
 updateTemplateLink();
