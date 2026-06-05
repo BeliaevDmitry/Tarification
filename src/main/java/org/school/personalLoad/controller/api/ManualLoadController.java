@@ -138,6 +138,17 @@ public class ManualLoadController {
         return workbookResponse(body, "Нагрузка укрупнённо " + effectiveYear + " " + LocalDate.now() + ".xlsx");
     }
 
+    @GetMapping("/export-subjects")
+    public ResponseEntity<byte[]> exportSubjectLoadWorkbook(@RequestParam(required = false) String academicYear,
+                                                            @RequestParam(required = false) String building,
+                                                            @RequestParam(required = false) String numberSchoolBuilding,
+                                                            @RequestParam(required = false) String campusAddress) throws Exception {
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        String effectiveBuilding = firstNonBlank(numberSchoolBuilding, building);
+        byte[] body = manualLoadService.exportSubjectLoadWorkbook(effectiveYear, effectiveBuilding, campusAddress);
+        return workbookResponse(body, "Нагрузка по предметам " + effectiveYear + " " + LocalDate.now() + ".xlsx");
+    }
+
     @GetMapping("/export-full-salary")
     public ResponseEntity<byte[]> exportFullWorkbookWithSalary(@RequestParam(required = false) String academicYear,
                                                                HttpServletRequest httpServletRequest) throws Exception {
