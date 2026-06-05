@@ -6,17 +6,17 @@ const ui = {
     refreshBtn: document.getElementById("refresh-buildings-btn"),
     clearBtn: document.getElementById("clear-buildings-btn"),
     result: document.getElementById("buildings-result"),
-    body: document.getElementById("buildings-body"),
-    editDialog: document.getElementById("building-edit-dialog"),
-    editForm: document.getElementById("building-edit-form"),
-    closeBtn: document.getElementById("building-close-btn"),
-    deleteBtn: document.getElementById("building-delete-btn"),
-    managerDisplay: document.getElementById("building-manager-display"),
+    buildingGroupsBody: document.getElementById("building-groups-body"),
     fileInput: document.getElementById("buildings-file"),
     importBtn: document.getElementById("import-buildings-btn"),
     buildingGroupModeInputs: Array.from(document.querySelectorAll('input[name="createInitialSite"]')),
     newSiteFields: Array.from(document.querySelectorAll("[data-new-site-field]")),
-    baseSiteField: document.querySelector("[data-base-site-field]")
+    baseSiteField: document.querySelector("[data-base-site-field]"),
+    buildingGroupEditDialog: document.getElementById("building-group-edit-dialog"),
+    buildingGroupEditForm: document.getElementById("building-group-edit-form"),
+    buildingGroupCloseBtn: document.getElementById("building-group-close-btn"),
+    buildingGroupManagerDisplay: document.getElementById("building-group-manager-display"),
+    buildingGroupSitesDisplay: document.getElementById("building-group-sites-display")
 };
 
 let buildings = [];
@@ -38,7 +38,7 @@ function escapeHtml(v) {
 function print(value) { ui.result.textContent = JSON.stringify(value, null, 2); }
 
 function displayManagerFio(item) {
-    const value = String(item?.managerFio || "").trim();
+    const value = String(item?.managerFio || item?.manager || item?.responsibleUserName || "").trim();
     return value || "Не назначен";
 }
 
@@ -107,37 +107,71 @@ function fillBuildingGroupSelect(select, selectedId = "") {
     select.value = selectedId ? String(selectedId) : "";
 }
 
-function openEdit(item) {
-    ui.editForm.elements.id.value = item.id || "";
-    const siteCode = ui.editForm.elements.siteCode;
-    if (siteCode) siteCode.value = item.code || "";
-    fillBuildingGroupSelect(ui.editForm.elements.buildingGroupId, item.buildingGroupId);
-    ui.editForm.elements.name.value = item.name;
-    ui.editForm.elements.address.value = item.address;
-    if (ui.managerDisplay) ui.managerDisplay.textContent = displayManagerFio(item);
-    ui.editDialog.showModal();
+
+function sitesForGroup(groupId) {
+    return buildings.filter((site) => String(site.buildingGroupId) === String(groupId));
+}
+
+function physicalSitesForGroupLabel(groupId) {
+    const sites = sitesForGroup(groupId);
+    if (!sites.length) {
+        return "Собственной площадки нет. Классы используют выбранные существующие площадки.";
+    }
+    return sites
+        .map((site) => [String(site.name || "").trim(), String(site.address || "").trim()].filter(Boolean).join(" — "))
+        .filter(Boolean)
+        .join("; ");
+}
+
+function physicalSitesForGroupHtml(groupId) {
+    return escapeHtml(physicalSitesForGroupLabel(groupId)).replaceAll("; ", "<br>");
+}
+
+function openBuildingGroupEdit(group) {
+    if (!ui.buildingGroupEditForm || !ui.buildingGroupEditDialog) return;
+    ui.buildingGroupEditForm.elements.id.value = group.id || "";
+    ui.buildingGroupEditForm.elements.code.value = group.code || "";
+    ui.buildingGroupEditForm.elements.name.value = group.name || "";
+    if (ui.buildingGroupManagerDisplay) ui.buildingGroupManagerDisplay.textContent = displayManagerFio(group);
+    if (ui.buildingGroupSitesDisplay) ui.buildingGroupSitesDisplay.textContent = physicalSitesForGroupLabel(group.id);
+    const mode = sitesForGroup(group.id).length ? "own" : "shared";
+    const modeInput = ui.buildingGroupEditForm.elements.physicalSiteMode;
+    if (modeInput) {
+        Array.from(ui.buildingGroupEditForm.querySelectorAll('input[name="physicalSiteMode"]'))
+            .forEach((input) => { input.checked = input.value === mode; });
+    }
+    ui.buildingGroupEditDialog.showModal();
+}
+
+function renderBuildingGroups() {
+    if (!ui.buildingGroupsBody) return;
+    ui.buildingGroupsBody.innerHTML = "";
+    buildingGroups
+        .slice()
+        .sort((a, b) => String(a.code || a.name || "").localeCompare(String(b.code || b.name || ""), "ru", { numeric: true }))
+        .forEach((group) => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `<td>${escapeHtml(group.code || "")}</td><td>${escapeHtml(group.name || "")}</td><td>${escapeHtml(displayManagerFio(group))}</td><td>${physicalSitesForGroupHtml(group.id)}</td><td><button type="button" class="inline-plus" data-edit-group-id="${escapeHtml(group.id)}" title="Редактировать корпус">✏️</button></td>`;
+            ui.buildingGroupsBody.appendChild(tr);
+        });
+
+    ui.buildingGroupsBody.querySelectorAll('button[data-edit-group-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const found = buildingGroups.find((group) => String(group.id) === String(btn.dataset.editGroupId));
+            if (found) openBuildingGroupEdit(found);
+        });
+    });
 }
 
 function render(rows) {
-    ui.body.innerHTML = "";
     buildings = rows || [];
-    buildings.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ru")).forEach((r) => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${escapeHtml(groupLabelById(r.buildingGroupId))}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(displayManagerFio(r))}</td><td>${escapeHtml(r.address)}</td><td><button type="button" class="inline-plus" data-edit-id="${escapeHtml(r.id)}" title="Редактировать">✏️</button></td>`;
-        ui.body.appendChild(tr);
-    });
-
-    ui.body.querySelectorAll('button[data-edit-id]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const found = buildings.find((b) => String(b.id) === String(btn.dataset.editId));
-            if (found) openEdit(found);
-        });
-    });
+    renderBuildingGroups();
 }
 
 async function loadBuildingGroups() {
     buildingGroups = await api("/api/building-groups") || [];
     fillBuildingGroupSelect(ui.form.elements.buildingGroupId, ui.form.elements.buildingGroupId?.value);
+    renderBuildingGroups();
     return buildingGroups;
 }
 
@@ -145,6 +179,7 @@ async function loadBuildings() {
     const rows = await api("/api/buildings");
     render(rows);
     fillBaseSiteSelect(ui.baseSiteField?.value);
+    renderBuildingGroups();
     return rows;
 }
 
@@ -196,43 +231,23 @@ ui.buildingGroupForm?.addEventListener("submit", async (e) => {
     } catch (error) { print({ error: error.message }); }
 });
 
-ui.editForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const payload = {
-        id: Number(ui.editForm.elements.id.value || 0) || null,
-        buildingGroupId: Number(ui.editForm.elements.buildingGroupId.value || 0) || null,
-        name: String(ui.editForm.elements.name.value || '').trim(),
-        address: String(ui.editForm.elements.address.value || '').trim()
-    };
+ui.buildingGroupCloseBtn?.addEventListener('click', () => ui.buildingGroupEditDialog?.close());
 
+ui.buildingGroupEditForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = Number(ui.buildingGroupEditForm.elements.id.value || 0) || null;
+    const payload = {
+        name: String(ui.buildingGroupEditForm.elements.name.value || '').trim()
+    };
     try {
-        const saved = await api('/api/buildings', { method: 'POST', headers: jsonHeaders, body: JSON.stringify(payload) });
-        ui.editDialog.close();
+        const saved = await api(`/api/building-groups/${encodeURIComponent(id)}`, { method: 'PATCH', headers: jsonHeaders, body: JSON.stringify(payload) });
+        ui.buildingGroupEditDialog.close();
         print(saved);
         await reload();
     } catch (error) {
         print({ error: error.message });
     }
 });
-
-ui.closeBtn.addEventListener('click', () => ui.editDialog.close());
-ui.deleteBtn?.addEventListener('click', async () => {
-    const id = Number(ui.editForm.elements.id.value || 0) || null;
-    if (!id) {
-        print({ error: "ID корпуса не найден" });
-        return;
-    }
-    if (!window.confirm("Удалить корпус? Действие необратимо.")) return;
-    try {
-        await api(`/api/buildings/one?id=${encodeURIComponent(id)}`, { method: "DELETE" });
-        ui.editDialog.close();
-        print({ status: "deleted", id });
-        await reload();
-    } catch (error) {
-        print({ error: error.message });
-    }
-});
-
 ui.importBtn?.addEventListener('click', async () => {
     const file = ui.fileInput?.files?.[0];
     if (!file) {

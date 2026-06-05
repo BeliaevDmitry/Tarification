@@ -8,6 +8,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.school.personalLoad.dto.BuildingGroupCreateRequest;
 import org.school.personalLoad.dto.BuildingGroupCreateResponse;
+import org.school.personalLoad.dto.BuildingGroupUpdateRequest;
+import org.school.personalLoad.auth.AppUser;
+import org.school.personalLoad.auth.UserRole;
 import org.school.personalLoad.model.BuildingGroup;
 import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.repository.BuildingGroupRepository;
@@ -55,7 +58,53 @@ class BuildingGroupServiceImplTest {
                 classroomLeadershipRepository,
                 metaGroupRepository
         );
-        service = new BuildingGroupServiceImpl(buildingGroupRepository, schoolBuildingService, schoolBuildingRepository);
+        service = new BuildingGroupServiceImpl(buildingGroupRepository, schoolBuildingService, schoolBuildingRepository, appUserRepository);
+    }
+
+
+    @Test
+    void findAllReturnsOrganizationalBuildingWithoutPhysicalSiteAndManagerFromAccessModel() {
+        BuildingGroup group = new BuildingGroup();
+        group.setId(19L);
+        group.setCode("СП3 МЕХМАТ");
+        group.setName("СП3 мехмат");
+        AppUser manager = new AppUser();
+        manager.setRole(UserRole.BUILDING_HEAD);
+        manager.setManagedBuildingCode("сп3 мехмат");
+        manager.setFullName("Иванов И.И.");
+
+        when(buildingGroupRepository.findAll()).thenReturn(List.of(group));
+        when(appUserRepository.findAll()).thenReturn(List.of(manager));
+
+        List<BuildingGroup> result = service.findAll();
+
+        assertEquals(1, result.size());
+        assertEquals("СП3 МЕХМАТ", result.get(0).getCode());
+        assertEquals("Иванов И.И.", result.get(0).getManagerFio());
+    }
+
+    @Test
+    void updateAllowsNameButRejectsCodeChange() {
+        BuildingGroup group = new BuildingGroup();
+        group.setId(19L);
+        group.setCode("СП3 МЕХМАТ");
+        group.setName("Старое");
+        BuildingGroupUpdateRequest request = new BuildingGroupUpdateRequest();
+        request.setCode("СП3 МЕХМАТ");
+        request.setName("Новое название");
+
+        when(buildingGroupRepository.findById(19L)).thenReturn(Optional.of(group));
+        when(buildingGroupRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(appUserRepository.findAll()).thenReturn(List.of());
+
+        BuildingGroup result = service.update(19L, request);
+
+        assertEquals("Новое название", result.getName());
+
+        BuildingGroupUpdateRequest invalid = new BuildingGroupUpdateRequest();
+        invalid.setCode("СП9");
+        invalid.setName("Новое название");
+        assertThrows(IllegalArgumentException.class, () -> service.update(19L, invalid));
     }
 
     @Test
