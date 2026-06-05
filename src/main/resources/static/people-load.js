@@ -3,6 +3,7 @@ const ui = {
     refreshBtn: document.getElementById("people-load-refresh-btn"),
     exportFullLoadBtn: document.getElementById("export-full-load-btn"),
     exportConsolidatedLoadBtn: document.getElementById("export-consolidated-load-btn"),
+    exportSubjectLoadBtn: document.getElementById("export-subject-load-btn"),
     exportFullLoadSalaryBtn: document.getElementById("export-full-load-salary-btn"),
     summary: document.getElementById("people-load-summary"),
     table: document.getElementById("people-load-table")
@@ -451,6 +452,18 @@ async function exportConsolidatedLoadWorkbook() {
     return exportLoadWorkbook("/api/manual-load/export-consolidated", "consolidated-load-export.xlsx");
 }
 
+function exportSubjectLoadWorkbook() {
+    const selected = ui.buildingSelect?.value || state.buildings[0]?.value || "";
+    const [building, ...addressParts] = selected.split("|");
+    const params = new URLSearchParams();
+    if (building) params.set("building", building);
+    const address = addressParts.join("|");
+    const selectedOption = state.buildings.find((option) => option.value === selected);
+    if (address && selectedOption?.address) params.set("campusAddress", selectedOption.address);
+    const query = params.toString();
+    return exportLoadWorkbook(`/api/manual-load/export-subjects${query ? `?${query}` : ""}`, "subject-load-export.xlsx");
+}
+
 function rebuildIndexes() {
     state.classMapByGroup = new Map();
     state.classMapByName = new Map();
@@ -526,6 +539,7 @@ async function init() {
     ui.refreshBtn?.addEventListener("click", () => loadData().catch(showError));
     ui.exportFullLoadBtn?.addEventListener("click", () => exportFullLoadWorkbook().catch((error) => alert(`Не удалось скачать полную нагрузку: ${error.message}`)));
     ui.exportConsolidatedLoadBtn?.addEventListener("click", () => exportConsolidatedLoadWorkbook().catch((error) => alert(`Не удалось скачать укрупнённую нагрузку: ${error.message}`)));
+    ui.exportSubjectLoadBtn?.addEventListener("click", () => exportSubjectLoadWorkbook().catch((error) => alert(`Не удалось скачать нагрузку по предметам: ${error.message}`)));
     if (ui.exportFullLoadSalaryBtn) {
         ui.exportFullLoadSalaryBtn.addEventListener("click", () => exportFullLoadWorkbook(true).catch((error) => alert(`Не удалось скачать полную нагрузку с ЗП: ${error.message}`)));
     }
