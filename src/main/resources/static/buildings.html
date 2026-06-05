@@ -49,8 +49,17 @@
             <h2 class="full-span">Добавить новый самостоятельный корпус</h2>
             <input name="code" placeholder="Код корпуса" required>
             <input name="name" placeholder="Название корпуса" required>
-            <input name="initialAddress" placeholder="Первый адрес корпуса" required>
-            <input name="initialSiteName" placeholder="Название первой площадки (если отличается)">
+            <fieldset class="full-span">
+                <legend>Режим создания</legend>
+                <label><input type="radio" name="createInitialSite" value="true" checked> Создать с новой физической площадкой</label>
+                <label><input type="radio" name="createInitialSite" value="false"> Создать без собственной площадки, использовать существующую площадку</label>
+            </fieldset>
+            <input name="initialAddress" data-new-site-field placeholder="Первый адрес корпуса" required>
+            <input name="initialSiteName" data-new-site-field placeholder="Название первой площадки (если отличается)">
+            <select name="baseSchoolBuildingId" data-base-site-field hidden disabled>
+                <option value="">Базовая физическая площадка</option>
+            </select>
+            <div class="full-span muted">Если подразделение работает на базе уже существующего адреса, выберите “без собственной площадки”. В этом случае будет создан только основной корпус/вкладка, а классы можно будет привязать к существующей физической площадке.</div>
             <div class="full-span muted">Новый корпус появится как самостоятельная вкладка нагрузки. Создаётся пустым, без автоматического переноса классов и метагрупп.</div>
             <button type="submit">Создать новый корпус</button>
         </form>

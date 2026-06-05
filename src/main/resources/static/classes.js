@@ -23,6 +23,7 @@ const ui = {
 
 let teachers = [];
 let buildings = [];
+let buildingGroups = [];
 let classRows = [];
 let editingOriginalKey = null;
 let editingOriginalEntry = null;
@@ -134,6 +135,15 @@ function physicalSiteChoices() {
 
 function buildingGroupChoices() {
     const map = new Map();
+    (buildingGroups || []).forEach((group) => {
+        const code = buildingGroupCode(group.code || group.name);
+        if (!code) return;
+        map.set(code, {
+            code,
+            id: Number(group.id) || null,
+            name: norm(group.name) || code
+        });
+    });
     (buildings || []).forEach((b) => {
         const code = buildingGroupCode(b.code);
         if (!code) return;
@@ -293,13 +303,15 @@ function renderClasses(rows) {
 
 async function reload() {
     updateTemplateLink();
-    const [rows, buildingRows, teacherRows] = await Promise.all([
+    const [rows, buildingRows, buildingGroupRows, teacherRows] = await Promise.all([
         api("/api/classroom-leadership"),
         api("/api/buildings"),
+        api("/api/building-groups"),
         api("/api/teachers")
     ]);
     classRows = rows || [];
     buildings = buildingRows || [];
+    buildingGroups = buildingGroupRows || [];
     teachers = (teacherRows || [])
         .filter((r) => r?.id && norm(r.fioTeacher))
         .map((r) => ({

@@ -13,7 +13,10 @@ const ui = {
     deleteBtn: document.getElementById("building-delete-btn"),
     managerDisplay: document.getElementById("building-manager-display"),
     fileInput: document.getElementById("buildings-file"),
-    importBtn: document.getElementById("import-buildings-btn")
+    importBtn: document.getElementById("import-buildings-btn"),
+    buildingGroupModeInputs: Array.from(document.querySelectorAll('input[name="createInitialSite"]')),
+    newSiteFields: Array.from(document.querySelectorAll("[data-new-site-field]")),
+    baseSiteField: document.querySelector("[data-base-site-field]")
 };
 
 let buildings = [];
@@ -45,6 +48,48 @@ function groupLabelById(id) {
     const code = String(group.code || "").trim();
     const name = String(group.name || "").trim();
     return [code, name].filter(Boolean).join(" — ") || `#${group.id}`;
+}
+
+
+function physicalSiteLabel(site) {
+    const groupLabel = groupLabelById(site?.buildingGroupId);
+    const siteName = String(site?.name || "").trim();
+    const address = String(site?.address || "").trim();
+    return [siteName || groupLabel, address].filter(Boolean).join(" — ") || `#${site?.id}`;
+}
+
+function fillBaseSiteSelect(selectedId = "") {
+    if (!ui.baseSiteField) return;
+    ui.baseSiteField.innerHTML = '<option value="">Базовая физическая площадка</option>';
+    buildings
+        .slice()
+        .sort((a, b) => physicalSiteLabel(a).localeCompare(physicalSiteLabel(b), "ru", { numeric: true }))
+        .forEach((site) => {
+            const option = document.createElement("option");
+            option.value = String(site.id);
+            option.textContent = physicalSiteLabel(site);
+            ui.baseSiteField.appendChild(option);
+        });
+    ui.baseSiteField.value = selectedId ? String(selectedId) : "";
+}
+
+function selectedCreateInitialSite() {
+    const selected = ui.buildingGroupForm?.querySelector('input[name="createInitialSite"]:checked');
+    return selected ? selected.value !== "false" : true;
+}
+
+function syncBuildingGroupCreateMode() {
+    const createInitialSite = selectedCreateInitialSite();
+    ui.newSiteFields.forEach((field) => {
+        field.hidden = !createInitialSite;
+        field.disabled = !createInitialSite;
+        if (field.name === "initialAddress") field.required = createInitialSite;
+    });
+    if (ui.baseSiteField) {
+        ui.baseSiteField.hidden = createInitialSite;
+        ui.baseSiteField.disabled = createInitialSite;
+        ui.baseSiteField.required = !createInitialSite;
+    }
 }
 
 function fillBuildingGroupSelect(select, selectedId = "") {
@@ -99,6 +144,7 @@ async function loadBuildingGroups() {
 async function loadBuildings() {
     const rows = await api("/api/buildings");
     render(rows);
+    fillBaseSiteSelect(ui.baseSiteField?.value);
     return rows;
 }
 
@@ -127,17 +173,24 @@ ui.form.addEventListener("submit", async (e) => {
 ui.buildingGroupForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const form = new FormData(ui.buildingGroupForm);
+    const createInitialSite = form.get("createInitialSite") !== "false";
     const payload = {
         code: String(form.get("code") || "").trim(),
         name: String(form.get("name") || "").trim(),
-        initialAddress: String(form.get("initialAddress") || "").trim(),
-        initialSiteName: String(form.get("initialSiteName") || "").trim()
+        createInitialSite
     };
+    if (createInitialSite) {
+        payload.initialAddress = String(form.get("initialAddress") || "").trim();
+        payload.initialSiteName = String(form.get("initialSiteName") || "").trim();
+    } else {
+        payload.baseSchoolBuildingId = Number(form.get("baseSchoolBuildingId") || 0) || null;
+    }
 
     try {
         const saved = await api("/api/building-groups", { method: "POST", headers: jsonHeaders, body: JSON.stringify(payload) });
         print(saved);
         ui.buildingGroupForm.reset();
+        syncBuildingGroupCreateMode();
         await loadBuildingGroups();
         await loadBuildings();
     } catch (error) { print({ error: error.message }); }
@@ -197,6 +250,9 @@ ui.importBtn?.addEventListener('click', async () => {
         print({ error: error.message });
     }
 });
+
+ui.buildingGroupModeInputs.forEach((input) => input.addEventListener("change", syncBuildingGroupCreateMode));
+syncBuildingGroupCreateMode();
 
 ui.refreshBtn.addEventListener("click", () => reload().catch((e) => print({ error: e.message })));
 ui.clearBtn.addEventListener("click", async () => {

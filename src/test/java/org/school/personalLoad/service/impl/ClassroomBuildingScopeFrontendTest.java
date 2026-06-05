@@ -28,6 +28,7 @@ class ClassroomBuildingScopeFrontendTest {
         assertTrue(js.contains("body: JSON.stringify(ordinaryPatchEntry)"));
         assertTrue(js.contains("/api/classes/${encodeURIComponent(entry.id)}/building-scope"));
         assertTrue(js.contains("function buildingGroupIdForCode(code)"));
+        assertTrue(js.contains("api(\"/api/building-groups\")"));
         assertTrue(js.contains("buildingGroupId: buildingGroupIdForCode(entry.numberSchoolBuilding)"));
         assertTrue(js.contains("schoolBuildingId: entry.schoolBuildingId"));
         assertTrue(js.contains("teacherId,"));

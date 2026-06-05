@@ -17,6 +17,14 @@ class BuildingGroupFrontendTest {
 
         assertTrue(buildingsHtml.contains("Добавить адрес к существующему корпусу"));
         assertTrue(buildingsHtml.contains("Добавить новый самостоятельный корпус"));
+
+        assertTrue(buildingsHtml.contains("Создать с новой физической площадкой"));
+        assertTrue(buildingsHtml.contains("Создать без собственной площадки, использовать существующую площадку"));
+        assertTrue(buildingsHtml.contains("Базовая физическая площадка"));
+        assertTrue(buildingsHtml.contains("Если подразделение работает на базе уже существующего адреса"));
+        assertTrue(buildingsJs.contains("createInitialSite = form.get(\"createInitialSite\") !== \"false\""));
+        assertTrue(buildingsJs.contains("payload.baseSchoolBuildingId = Number(form.get(\"baseSchoolBuildingId\")"));
+        assertTrue(buildingsJs.contains("fillBaseSiteSelect"));
         assertTrue(buildingsHtml.contains("Новая площадка создаётся пустой. Классы и метагруппы на неё автоматически не переводятся."));
         assertTrue(buildingsHtml.contains("Новый корпус появится как самостоятельная вкладка нагрузки. Создаётся пустым, без автоматического переноса классов и метагрупп."));
         assertTrue(buildingsHtml.contains("Список площадок / адресов корпусов"));
