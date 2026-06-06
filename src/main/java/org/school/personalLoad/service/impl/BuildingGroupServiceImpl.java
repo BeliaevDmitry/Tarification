@@ -3,18 +3,28 @@ package org.school.personalLoad.service.impl;
 import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.dto.BuildingGroupCreateRequest;
 import org.school.personalLoad.dto.BuildingGroupCreateResponse;
+import org.school.personalLoad.dto.BuildingGroupUpdateRequest;
 import org.school.personalLoad.dto.SchoolBuildingRequest;
+import org.school.personalLoad.auth.UserRole;
 import org.school.personalLoad.model.BuildingGroup;
 import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.repository.BuildingGroupRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
+import org.school.personalLoad.repository.ClassroomLeadershipRepository;
+import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
+import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.MetaGroupRepository;
+import org.school.personalLoad.repository.TeacherDirectoryRepository;
+import org.school.personalLoad.repository.auth.AppUserRepository;
 import org.school.personalLoad.service.BuildingGroupService;
 import org.school.personalLoad.service.SchoolBuildingService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -23,10 +33,19 @@ public class BuildingGroupServiceImpl implements BuildingGroupService {
     private final BuildingGroupRepository buildingGroupRepository;
     private final SchoolBuildingService schoolBuildingService;
     private final SchoolBuildingRepository schoolBuildingRepository;
+    private final AppUserRepository appUserRepository;
+    private final ClassroomLeadershipRepository classroomLeadershipRepository;
+    private final MetaGroupRepository metaGroupRepository;
+    private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
+    private final ManualLoadEntryRepository manualLoadEntryRepository;
+    private final TeacherDirectoryRepository teacherDirectoryRepository;
 
     @Override
     public List<BuildingGroup> findAll() {
-        return buildingGroupRepository.findAll();
+        Map<String, String> managerByGroupCode = buildingHeadByGroupCode();
+        return buildingGroupRepository.findAll().stream()
+                .peek(group -> group.setManagerFio(managerByGroupCode.get(normalizeOrganizationalCode(group.getCode()))))
+                .toList();
     }
 
     @Override
@@ -71,6 +90,76 @@ public class BuildingGroupServiceImpl implements BuildingGroupService {
         return new BuildingGroupCreateResponse(savedGroup, savedSite, null);
     }
 
+
+    @Override
+    @Transactional
+    public BuildingGroup update(Long id, BuildingGroupUpdateRequest request) {
+        if (id == null) {
+            throw new IllegalArgumentException("id is required");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("request is required");
+        }
+
+        BuildingGroup group = buildingGroupRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Основной корпус не найден: " + id));
+
+        String requestedCode = normalize(request.getCode());
+        if (!requestedCode.isBlank()) {
+            String normalizedRequestedCode = requestedCode.toUpperCase(Locale.ROOT);
+            if (!normalize(group.getCode()).equalsIgnoreCase(normalizedRequestedCode)) {
+                throw new IllegalArgumentException("Изменение кода основного корпуса временно запрещено: код используется в правах руководителей, классах и нагрузке");
+            }
+        }
+
+        String name = normalizeRequired(request.getName(), "name is required");
+        group.setName(name);
+        BuildingGroup saved = buildingGroupRepository.save(group);
+        saved.setManagerFio(buildingHeadByGroupCode().get(normalizeOrganizationalCode(saved.getCode())));
+        return saved;
+    }
+
+
+    @Override
+    @Transactional
+    public void deleteById(Long id) {
+        if (id == null) {
+            throw new IllegalArgumentException("id is required");
+        }
+        BuildingGroup group = buildingGroupRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Основной корпус не найден: " + id));
+
+        if (schoolBuildingRepository.existsByBuildingGroup_Id(id)) {
+            throw new IllegalStateException("Нельзя удалить корпус: у него есть физические площадки. Сначала удалите площадки или перенесите классы.");
+        }
+        String groupCode = normalize(group.getCode());
+        if (classroomLeadershipRepository.existsByBuildingGroup_Id(id)
+                || classroomLeadershipRepository.existsByNumberSchoolBuildingIgnoreCase(groupCode)) {
+            throw new IllegalStateException("Нельзя удалить корпус: к нему привязаны классы");
+        }
+        if (metaGroupRepository.existsByBuildingGroup_Id(id)
+                || metaGroupRepository.existsByNumberSchoolBuildingIgnoreCase(groupCode)) {
+            throw new IllegalStateException("Нельзя удалить корпус: к нему привязаны метагруппы");
+        }
+        if (curriculumPlanEntryRepository.existsByBuildingGroup_Id(id)
+                || curriculumPlanEntryRepository.existsByNumberSchoolBuildingIgnoreCase(groupCode)) {
+            throw new IllegalStateException("Нельзя удалить корпус: к нему привязан учебный план");
+        }
+        if (manualLoadEntryRepository.existsByBuildingGroup_Id(id)
+                || manualLoadEntryRepository.existsByNumberSchoolBuildingIgnoreCase(groupCode)) {
+            throw new IllegalStateException("Нельзя удалить корпус: к нему привязана нагрузка");
+        }
+        if (teacherDirectoryRepository.existsByBuildingGroup_Id(id)
+                || teacherDirectoryRepository.existsByNumberSchoolBuildingIgnoreCase(groupCode)) {
+            throw new IllegalStateException("Нельзя удалить корпус: к нему привязаны сотрудники");
+        }
+        if (hasAssignedBuildingHead(group)) {
+            throw new IllegalStateException("Нельзя удалить корпус: ему назначен руководитель. Сначала измените права пользователя.");
+        }
+
+        buildingGroupRepository.deleteById(id);
+    }
+
     private String normalizeCode(String value) {
         String normalized = normalizeRequired(value, "code is required")
                 .toUpperCase(Locale.ROOT);
@@ -90,5 +179,44 @@ public class BuildingGroupServiceImpl implements BuildingGroupService {
                 .replace('\u00A0', ' ')
                 .trim()
                 .replaceAll("\\s+", " ");
+    }
+
+    private Map<String, String> buildingHeadByGroupCode() {
+        Map<String, String> managerByGroupCode = new LinkedHashMap<>();
+        appUserRepository.findAll().stream()
+                .filter(user -> user.getRole() == UserRole.BUILDING_HEAD)
+                .filter(user -> !normalize(user.getManagedBuildingCode()).isBlank())
+                .forEach(user -> managerByGroupCode.put(
+                        normalizeOrganizationalCode(user.getManagedBuildingCode()),
+                        normalize(user.getFullName())
+                ));
+        return managerByGroupCode;
+    }
+
+
+    private boolean hasAssignedBuildingHead(BuildingGroup group) {
+        String groupCode = normalizeOrganizationalCode(group == null ? null : group.getCode());
+        if (groupCode.isBlank()) {
+            return false;
+        }
+        return appUserRepository.findAll().stream()
+                .filter(user -> user.getRole() == UserRole.BUILDING_HEAD)
+                .map(user -> normalizeOrganizationalCode(user.getManagedBuildingCode()))
+                .anyMatch(groupCode::equals);
+    }
+
+    private String normalizeOrganizationalCode(String value) {
+        String normalized = normalize(value)
+                .replace('\u00A0', ' ')
+                .trim()
+                .toUpperCase(Locale.ROOT)
+                .replaceAll("\\s+", "")
+                .replace('–', '-')
+                .replace('—', '-');
+        int idx = normalized.indexOf("|");
+        if (idx >= 0) {
+            normalized = normalized.substring(0, idx);
+        }
+        return normalized.replaceFirst("^СП-(\\d+)$", "СП$1");
     }
 }

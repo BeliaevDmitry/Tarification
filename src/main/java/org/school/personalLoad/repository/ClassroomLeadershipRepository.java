@@ -20,6 +20,7 @@ public interface ClassroomLeadershipRepository extends JpaRepository<ClassroomLe
     java.util.List<ClassroomLeadershipEntry> findAllByAcademicYearAndNumberSchoolBuildingAndClassName(String academicYear, String numberSchoolBuilding, String className);
     boolean existsByNumberSchoolBuildingIgnoreCase(String numberSchoolBuilding);
     boolean existsBySchoolBuilding_Id(Long schoolBuildingId);
+    boolean existsByBuildingGroup_Id(Long buildingGroupId);
 
 
     java.util.List<ClassroomLeadershipEntry> findAllByAcademicYear(String academicYear);

@@ -77,6 +77,7 @@ public interface CurriculumPlanEntryRepository extends JpaRepository<CurriculumP
     List<CurriculumPlanEntry> findAllByAcademicYear(String academicYear);
     List<CurriculumPlanEntry> findAllByAcademicYearAndNumberSchoolBuildingIgnoreCase(String academicYear, String numberSchoolBuilding);
     boolean existsByNumberSchoolBuildingIgnoreCase(String numberSchoolBuilding);
+    boolean existsByBuildingGroup_Id(Long buildingGroupId);
 
     @Query(value = "select * from curriculum_plan_entry where meta_group_id = :metaGroupId", nativeQuery = true)
     List<CurriculumPlanEntry> findAllByMetaGroupId(@Param("metaGroupId") Long metaGroupId);
