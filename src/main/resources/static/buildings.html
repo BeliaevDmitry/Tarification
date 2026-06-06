@@ -82,24 +82,44 @@
     </section>
 </main>
 
-<dialog id="building-group-edit-dialog">
-    <form method="dialog" id="building-group-edit-form" class="grid labeled-grid" data-requires-edit>
-        <h3>Редактирование основного корпуса / подразделения</h3>
+<dialog id="building-group-edit-dialog" class="building-group-edit-dialog">
+    <form method="dialog" id="building-group-edit-form" class="building-group-edit-form labeled-grid" data-requires-edit>
+        <div class="dialog-hero full-span">
+            <h3>Редактирование основного корпуса / подразделения</h3>
+            <p class="muted">Измените название, проверьте ответственного и управляйте физическими площадками корпуса.</p>
+        </div>
+
         <input type="hidden" name="id">
-        <label class="field-row"><span>Код корпуса</span><input name="code" readonly></label>
-        <div class="full-span muted">Код корпуса используется в правах, классах и нагрузке, поэтому сейчас не редактируется.</div>
-        <label class="field-row"><span>Название корпуса</span><input name="name" placeholder="Название корпуса" required></label>
-        <div class="full-span muted">Руководитель / ответственный: <strong id="building-group-manager-display">Не назначен</strong>. Назначение меняется во вкладке «Пользователи системы» у роли «Руководитель корпуса».</div>
-        <fieldset class="full-span" disabled>
-            <legend>Режим физической площадки</legend>
-            <label><input type="radio" name="physicalSiteMode" value="own"> Собственная площадка / адрес</label>
-            <label><input type="radio" name="physicalSiteMode" value="shared"> Использовать существующую площадку другого корпуса</label>
-        </fieldset>
-        <div class="full-span muted" id="building-group-sites-display">Собственной площадки нет.</div>
-        <div class="full-span muted">Физическая площадка меняется через классы: у каждого класса можно выбрать основной корпус и физическую площадку. Новый адрес можно добавить формой на этой странице.</div>
-        <div class="row">
-            <button type="submit">Сохранить</button>
+
+        <section class="dialog-section full-span">
+            <h4>Основные сведения</h4>
+            <label class="field-row"><span>Код корпуса</span><input name="code" readonly></label>
+            <p class="muted">Код корпуса используется в правах, классах и нагрузке, поэтому сейчас не редактируется.</p>
+            <label class="field-row"><span>Название корпуса</span><input name="name" placeholder="Название корпуса" required></label>
+        </section>
+
+        <section class="dialog-section full-span">
+            <h4>Руководитель / ответственный</h4>
+            <p class="manager-readonly"><strong id="building-group-manager-display">Не назначен</strong></p>
+            <p class="muted">Назначение меняется во вкладке «Пользователи системы» у роли «Руководитель корпуса».</p>
+        </section>
+
+        <section class="dialog-section full-span">
+            <h4>Физическая площадка</h4>
+            <fieldset class="site-mode-fieldset" disabled>
+                <legend>Режим физической площадки</legend>
+                <label><input type="radio" name="physicalSiteMode" value="own"> Собственная площадка / адрес</label>
+                <label><input type="radio" name="physicalSiteMode" value="shared"> Использовать существующую площадку другого корпуса</label>
+            </fieldset>
+            <div class="site-list" id="building-group-sites-display">Собственной площадки нет.</div>
+            <p class="muted">Физическая площадка для класса меняется в разделе «Классы». Новый адрес можно добавить формой на этой странице.</p>
+        </section>
+
+        <div class="row dialog-actions sticky-dialog-actions full-span">
+            <button type="button" id="building-group-delete-btn" class="danger-btn">Удалить корпус</button>
+            <span class="dialog-action-spacer"></span>
             <button type="button" id="building-group-close-btn">Отмена</button>
+            <button type="submit">Сохранить</button>
         </div>
     </form>
 </dialog>

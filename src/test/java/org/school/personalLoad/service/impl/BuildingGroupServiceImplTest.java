@@ -15,8 +15,11 @@ import org.school.personalLoad.model.BuildingGroup;
 import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.repository.BuildingGroupRepository;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
+import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
+import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.MetaGroupRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
+import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.auth.AppUserRepository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,6 +49,12 @@ class BuildingGroupServiceImplTest {
     private ClassroomLeadershipRepository classroomLeadershipRepository;
     @Mock
     private MetaGroupRepository metaGroupRepository;
+    @Mock
+    private CurriculumPlanEntryRepository curriculumPlanEntryRepository;
+    @Mock
+    private ManualLoadEntryRepository manualLoadEntryRepository;
+    @Mock
+    private TeacherDirectoryRepository teacherDirectoryRepository;
 
     private BuildingGroupServiceImpl service;
 
@@ -58,7 +67,17 @@ class BuildingGroupServiceImplTest {
                 classroomLeadershipRepository,
                 metaGroupRepository
         );
-        service = new BuildingGroupServiceImpl(buildingGroupRepository, schoolBuildingService, schoolBuildingRepository, appUserRepository);
+        service = new BuildingGroupServiceImpl(
+                buildingGroupRepository,
+                schoolBuildingService,
+                schoolBuildingRepository,
+                appUserRepository,
+                classroomLeadershipRepository,
+                metaGroupRepository,
+                curriculumPlanEntryRepository,
+                manualLoadEntryRepository,
+                teacherDirectoryRepository
+        );
     }
 
 
@@ -215,6 +234,78 @@ class BuildingGroupServiceImplTest {
         verify(buildingGroupRepository).saveAndFlush(groupCaptor.capture());
         assertEquals("МЕХМАТ", groupCaptor.getValue().getCode());
         verify(schoolBuildingRepository, never()).save(any());
+    }
+
+
+    @Test
+    void deleteUnusedOrganizationalBuildingIsAllowed() {
+        BuildingGroup group = new BuildingGroup();
+        group.setId(21L);
+        group.setCode("МЕХМАТ");
+        group.setName("МЕХМАТ");
+
+        when(buildingGroupRepository.findById(21L)).thenReturn(Optional.of(group));
+        when(appUserRepository.findAll()).thenReturn(List.of());
+
+        service.deleteById(21L);
+
+        verify(buildingGroupRepository).deleteById(21L);
+    }
+
+    @Test
+    void deleteOrganizationalBuildingWithPhysicalSitesIsRejected() {
+        BuildingGroup group = new BuildingGroup();
+        group.setId(21L);
+        group.setCode("МЕХМАТ");
+        group.setName("МЕХМАТ");
+
+        when(buildingGroupRepository.findById(21L)).thenReturn(Optional.of(group));
+        when(schoolBuildingRepository.existsByBuildingGroup_Id(21L)).thenReturn(true);
+
+        IllegalStateException error = assertThrows(IllegalStateException.class, () -> service.deleteById(21L));
+
+        assertTrue(error.getMessage().contains("у него есть физические площадки"));
+        verify(buildingGroupRepository, never()).deleteById(any());
+    }
+
+    @Test
+    void deleteOrganizationalBuildingWithCurriculumOrLoadIsRejected() {
+        BuildingGroup group = new BuildingGroup();
+        group.setId(21L);
+        group.setCode("МЕХМАТ");
+        group.setName("МЕХМАТ");
+
+        when(buildingGroupRepository.findById(21L)).thenReturn(Optional.of(group));
+        when(curriculumPlanEntryRepository.existsByBuildingGroup_Id(21L)).thenReturn(true);
+
+        IllegalStateException curriculumError = assertThrows(IllegalStateException.class, () -> service.deleteById(21L));
+        assertTrue(curriculumError.getMessage().contains("учебный план"));
+
+        when(curriculumPlanEntryRepository.existsByBuildingGroup_Id(21L)).thenReturn(false);
+        when(manualLoadEntryRepository.existsByBuildingGroup_Id(21L)).thenReturn(true);
+
+        IllegalStateException loadError = assertThrows(IllegalStateException.class, () -> service.deleteById(21L));
+        assertTrue(loadError.getMessage().contains("нагрузка"));
+        verify(buildingGroupRepository, never()).deleteById(any());
+    }
+
+    @Test
+    void deleteOrganizationalBuildingWithAssignedHeadIsRejected() {
+        BuildingGroup group = new BuildingGroup();
+        group.setId(21L);
+        group.setCode("МЕХМАТ");
+        group.setName("МЕХМАТ");
+        AppUser manager = new AppUser();
+        manager.setRole(UserRole.BUILDING_HEAD);
+        manager.setManagedBuildingCode("мехмат");
+
+        when(buildingGroupRepository.findById(21L)).thenReturn(Optional.of(group));
+        when(appUserRepository.findAll()).thenReturn(List.of(manager));
+
+        IllegalStateException error = assertThrows(IllegalStateException.class, () -> service.deleteById(21L));
+
+        assertTrue(error.getMessage().contains("назначен руководитель"));
+        verify(buildingGroupRepository, never()).deleteById(any());
     }
 
     private BuildingGroupCreateRequest request(String code, String name, String initialSiteName, String initialAddress) {

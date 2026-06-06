@@ -32,7 +32,14 @@ class BuildingGroupFrontendTest {
         assertFalse(buildingsHtml.contains("id=\"buildings-body\""));
         assertTrue(buildingsJs.contains("Собственной площадки нет"));
         assertTrue(buildingsHtml.contains("Редактирование основного корпуса / подразделения"));
+        assertTrue(buildingsHtml.contains("class=\"building-group-edit-dialog\""));
+        assertTrue(buildingsHtml.contains("Измените название, проверьте ответственного и управляйте физическими площадками корпуса."));
         assertTrue(buildingsHtml.contains("Очистить список площадок"));
+        assertTrue(buildingsHtml.contains("Удалить корпус"));
+        assertTrue(buildingsJs.contains("Удалить площадку"));
+        assertTrue(buildingsJs.contains("/api/buildings/one?id="));
+        assertTrue(buildingsJs.contains("method: 'DELETE'"));
+        assertTrue(buildingsJs.contains("/api/building-groups/${encodeURIComponent(id)}"));
         assertTrue(buildingsHtml.contains("name=\"code\" readonly"));
         assertTrue(buildingsHtml.contains("Режим физической площадки"));
         assertTrue(buildingsHtml.contains("<th>Код корпуса</th><th>Название корпуса</th><th>Руководитель / ответственный</th><th>Физическая площадка / адрес</th><th>Действия</th>"));
@@ -46,6 +53,8 @@ class BuildingGroupFrontendTest {
         assertFalse(buildingsJs.contains("code: String(ui.buildingGroupEditForm.elements.code.value"));
         assertTrue(buildingsJs.contains("renderBuildingGroups"));
         assertTrue(buildingsJs.contains("physicalSitesForGroupLabel"));
+        assertTrue(buildingsJs.contains("renderPhysicalSitesForGroupEditor"));
+        assertTrue(buildingsJs.contains("refreshOpenBuildingGroupEditor"));
         assertTrue(buildingsJs.contains("await loadBuildingGroups();"));
         assertTrue(buildingsJs.contains("await loadBuildings();"));
         assertFalse(buildingsJs.contains("payload.code = String(selectedGroup?.code"));

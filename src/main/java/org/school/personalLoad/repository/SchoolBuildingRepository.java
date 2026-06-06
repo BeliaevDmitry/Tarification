@@ -16,5 +16,7 @@ public interface SchoolBuildingRepository extends JpaRepository<SchoolBuilding, 
     Optional<SchoolBuilding> findFirstByCodeIgnoreCaseOrderByIdAsc(String code);
     List<SchoolBuilding> findAllByCodeIgnoreCase(String code);
 
+    boolean existsByBuildingGroup_Id(Long buildingGroupId);
+
     void deleteById(Long id);
 }

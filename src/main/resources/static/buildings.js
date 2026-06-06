@@ -15,6 +15,7 @@ const ui = {
     buildingGroupEditDialog: document.getElementById("building-group-edit-dialog"),
     buildingGroupEditForm: document.getElementById("building-group-edit-form"),
     buildingGroupCloseBtn: document.getElementById("building-group-close-btn"),
+    buildingGroupDeleteBtn: document.getElementById("building-group-delete-btn"),
     buildingGroupManagerDisplay: document.getElementById("building-group-manager-display"),
     buildingGroupSitesDisplay: document.getElementById("building-group-sites-display")
 };
@@ -127,19 +128,64 @@ function physicalSitesForGroupHtml(groupId) {
     return escapeHtml(physicalSitesForGroupLabel(groupId)).replaceAll("; ", "<br>");
 }
 
-function openBuildingGroupEdit(group) {
-    if (!ui.buildingGroupEditForm || !ui.buildingGroupEditDialog) return;
+function renderPhysicalSitesForGroupEditor(groupId) {
+    if (!ui.buildingGroupSitesDisplay) return;
+    ui.buildingGroupSitesDisplay.innerHTML = "";
+    const sites = sitesForGroup(groupId);
+    if (!sites.length) {
+        const empty = document.createElement("div");
+        empty.className = "site-empty-note";
+        empty.textContent = "Собственной площадки нет. Классы используют выбранные существующие площадки.";
+        ui.buildingGroupSitesDisplay.appendChild(empty);
+        return;
+    }
+
+    sites
+        .slice()
+        .sort((a, b) => physicalSiteLabel(a).localeCompare(physicalSiteLabel(b), "ru", { numeric: true }))
+        .forEach((site) => {
+            const item = document.createElement("div");
+            item.className = "site-list-item";
+            const details = document.createElement("div");
+            details.className = "site-list-details";
+            const title = document.createElement("strong");
+            title.textContent = String(site.name || "Физическая площадка").trim() || "Физическая площадка";
+            const address = document.createElement("span");
+            address.textContent = String(site.address || "Адрес не указан").trim() || "Адрес не указан";
+            details.append(title, address);
+
+            const deleteBtn = document.createElement("button");
+            deleteBtn.type = "button";
+            deleteBtn.className = "danger-btn";
+            deleteBtn.dataset.deleteSiteId = String(site.id);
+            deleteBtn.textContent = "Удалить площадку";
+
+            item.append(details, deleteBtn);
+            ui.buildingGroupSitesDisplay.appendChild(item);
+        });
+
+    ui.buildingGroupSitesDisplay.querySelectorAll('button[data-delete-site-id]').forEach((btn) => {
+        btn.addEventListener('click', () => deletePhysicalSite(btn.dataset.deleteSiteId));
+    });
+}
+
+function refreshBuildingGroupEditState(group) {
     ui.buildingGroupEditForm.elements.id.value = group.id || "";
     ui.buildingGroupEditForm.elements.code.value = group.code || "";
     ui.buildingGroupEditForm.elements.name.value = group.name || "";
     if (ui.buildingGroupManagerDisplay) ui.buildingGroupManagerDisplay.textContent = displayManagerFio(group);
-    if (ui.buildingGroupSitesDisplay) ui.buildingGroupSitesDisplay.textContent = physicalSitesForGroupLabel(group.id);
+    renderPhysicalSitesForGroupEditor(group.id);
     const mode = sitesForGroup(group.id).length ? "own" : "shared";
     const modeInput = ui.buildingGroupEditForm.elements.physicalSiteMode;
     if (modeInput) {
         Array.from(ui.buildingGroupEditForm.querySelectorAll('input[name="physicalSiteMode"]'))
             .forEach((input) => { input.checked = input.value === mode; });
     }
+}
+
+function openBuildingGroupEdit(group) {
+    if (!ui.buildingGroupEditForm || !ui.buildingGroupEditDialog) return;
+    refreshBuildingGroupEditState(group);
     ui.buildingGroupEditDialog.showModal();
 }
 
@@ -232,6 +278,44 @@ ui.buildingGroupForm?.addEventListener("submit", async (e) => {
 });
 
 ui.buildingGroupCloseBtn?.addEventListener('click', () => ui.buildingGroupEditDialog?.close());
+ui.buildingGroupDeleteBtn?.addEventListener('click', () => deleteBuildingGroup());
+
+async function refreshOpenBuildingGroupEditor(groupId) {
+    await reload();
+    if (!ui.buildingGroupEditDialog?.open) return;
+    const group = buildingGroups.find((item) => String(item.id) === String(groupId));
+    if (group) refreshBuildingGroupEditState(group);
+}
+
+async function deletePhysicalSite(siteId) {
+    const site = buildings.find((item) => String(item.id) === String(siteId));
+    const groupId = ui.buildingGroupEditForm?.elements.id.value;
+    const label = physicalSiteLabel(site || { id: siteId });
+    if (!confirm(`Удалить физическую площадку «${label}»? Удаление возможно только если к площадке не привязаны классы или метагруппы.`)) return;
+    try {
+        await api(`/api/buildings/one?id=${encodeURIComponent(siteId)}`, { method: 'DELETE' });
+        print({ status: 'deleted', type: 'physicalSite', id: siteId });
+        await refreshOpenBuildingGroupEditor(groupId);
+    } catch (error) {
+        print({ error: error.message });
+    }
+}
+
+async function deleteBuildingGroup() {
+    const id = ui.buildingGroupEditForm?.elements.id.value;
+    if (!id) return;
+    const group = buildingGroups.find((item) => String(item.id) === String(id));
+    const label = group ? groupLabelById(group.id) : `#${id}`;
+    if (!confirm(`Удалить корпус «${label}»? Удаление возможно только если нет площадок, классов, метагрупп, учебного плана, нагрузки и назначенного руководителя.`)) return;
+    try {
+        await api(`/api/building-groups/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        ui.buildingGroupEditDialog?.close();
+        print({ status: 'deleted', type: 'buildingGroup', id });
+        await reload();
+    } catch (error) {
+        print({ error: error.message });
+    }
+}
 
 ui.buildingGroupEditForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
