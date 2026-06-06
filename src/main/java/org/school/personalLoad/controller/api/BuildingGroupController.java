@@ -7,6 +7,7 @@ import org.school.personalLoad.dto.BuildingGroupUpdateRequest;
 import org.school.personalLoad.model.BuildingGroup;
 import org.school.personalLoad.service.BuildingGroupService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -37,5 +38,11 @@ public class BuildingGroupController {
     @PatchMapping("/{id}")
     public ResponseEntity<BuildingGroup> update(@PathVariable Long id, @RequestBody BuildingGroupUpdateRequest request) {
         return ResponseEntity.ok(buildingGroupService.update(id, request));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteById(@PathVariable Long id) {
+        buildingGroupService.deleteById(id);
+        return ResponseEntity.noContent().build();
     }
 }

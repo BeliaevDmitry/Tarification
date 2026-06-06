@@ -13,4 +13,6 @@ public interface BuildingGroupService {
     BuildingGroupCreateResponse createWithInitialSite(BuildingGroupCreateRequest request);
 
     BuildingGroup update(Long id, BuildingGroupUpdateRequest request);
+
+    void deleteById(Long id);
 }
