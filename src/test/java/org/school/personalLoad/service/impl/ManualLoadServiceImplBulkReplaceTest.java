@@ -794,6 +794,61 @@ class ManualLoadServiceImplBulkReplaceTest {
         }
     }
 
+
+    @Test
+    void exportSubjectLoadWorkbookSeparatesHalfYearHoursWithPipe() throws Exception {
+        ManualLoadEntry firstHalf = manualRow("Петров П.П.", "СП1", "5-А", "Математика", 1);
+        firstHalf.setStudyPeriod(StudyPeriod.H1);
+        ManualLoadEntry secondHalf = manualRow("Петров П.П.", "СП1", "5-А", "Математика", 2);
+        secondHalf.setStudyPeriod(StudyPeriod.H2);
+
+        when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(firstHalf, secondHalf));
+        when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of());
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of());
+
+        byte[] body = service.exportSubjectLoadWorkbook("2025/2026", "", "");
+
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
+            var sheet = workbook.getSheet("Комплекс");
+            assertNotNull(sheet);
+            assertEquals("часов\nпредмет/площадка/комплекс", sheet.getRow(2).getCell(2).getStringCellValue());
+            assertEquals("1|2 / 1|2 / 1|2", sheet.getRow(3).getCell(2).getStringCellValue());
+            assertEquals("1|2", sheet.getRow(3).getCell(3).getStringCellValue());
+        }
+    }
+
+
+    @Test
+    void exportSubjectLoadWorkbookFormatsSubjectAddressAndComplexHoursReadably() throws Exception {
+        ManualLoadEntry subject = manualRow("Петров П.П.", "СП1", "5-А", "Математика", 2);
+        ManualLoadEntry addressFirstHalf = manualRow("Петров П.П.", "СП1", "5-А", "Физика", 13);
+        addressFirstHalf.setStudyPeriod(StudyPeriod.H1);
+        ManualLoadEntry addressSecondHalf = manualRow("Петров П.П.", "СП1", "5-А", "Физика", 18);
+        addressSecondHalf.setStudyPeriod(StudyPeriod.H2);
+        ManualLoadEntry complexFirstHalf = manualRow("Петров П.П.", "СП2", "6-Б", "Физика", 5);
+        complexFirstHalf.setStudyPeriod(StudyPeriod.H1);
+        ManualLoadEntry complexSecondHalf = manualRow("Петров П.П.", "СП2", "6-Б", "Физика", 1);
+        complexSecondHalf.setStudyPeriod(StudyPeriod.H2);
+
+        ClassroomLeadershipEntry firstAddressClass = classEntry("СП1", "5-А", "ул. Первая, 1");
+        ClassroomLeadershipEntry secondAddressClass = classEntry("СП2", "6-Б", "ул. Вторая, 2");
+
+        when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026"))
+                .thenReturn(List.of(subject, addressFirstHalf, addressSecondHalf, complexFirstHalf, complexSecondHalf));
+        when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026"))
+                .thenReturn(List.of(firstAddressClass, secondAddressClass));
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of());
+
+        byte[] body = service.exportSubjectLoadWorkbook("2025/2026", "", "");
+
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
+            var sheet = workbook.getSheet("ул. Первая, 1");
+            assertNotNull(sheet);
+            assertEquals("Математика", sheet.getRow(3).getCell(0).getStringCellValue());
+            assertEquals("2 / 15|20 / 20|21", sheet.getRow(3).getCell(2).getStringCellValue());
+        }
+    }
+
     @Test
     void exportFullWorkbookWithSalaryShowsHalfYearTotalsAndFirstHalfMoney() throws Exception {
         ManualLoadEntry year = manualRow("Петров П.П.", "СП1", "3-А", "Математика", 10);
@@ -822,7 +877,7 @@ class ManualLoadServiceImplBulkReplaceTest {
 
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
             var loadSheet = workbook.getSheet("СП1");
-            assertEquals("11/12", loadSheet.getRow(1).getCell(7).getStringCellValue());
+            assertEquals("11 | 12", loadSheet.getRow(1).getCell(7).getStringCellValue());
             double expectedFirstHalfHoursMoney = 40 * 30 * 11 * 2.8333333;
             assertEquals(expectedFirstHalfHoursMoney, loadSheet.getRow(1).getCell(10).getNumericCellValue(), 0.01);
             assertEquals(expectedFirstHalfHoursMoney, loadSheet.getRow(1).getCell(12).getNumericCellValue(), 0.01);

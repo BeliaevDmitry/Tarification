@@ -1047,7 +1047,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
     private String formatHalfHours(int h1, int h2) {
-        return h1 == h2 ? String.valueOf(h1) : h1 + "/" + h2;
+        return h1 == h2 ? String.valueOf(h1) : h1 + " | " + h2;
     }
 
     private String teacherAddresses(List<ManualLoadEntry> teacherRows,
@@ -1259,7 +1259,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         }
 
         private String hoursSummary() {
-            return formatPeriodTotals(subjectTotals) + "/" + formatPeriodTotals(scopedTotals) + "/" + formatPeriodTotals(totalTotals);
+            return formatPeriodTotals(subjectTotals) + " / " + formatPeriodTotals(scopedTotals) + " / " + formatPeriodTotals(totalTotals);
         }
 
         private String classCell(String className) {
@@ -1320,7 +1320,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         if (first == 0 && second == 0) {
             return "";
         }
-        return first == second ? String.valueOf(first) : first + "/" + second;
+        return first == second ? String.valueOf(first) : first + "|" + second;
     }
 
     private String normalizeDisplayValue(String value) {
