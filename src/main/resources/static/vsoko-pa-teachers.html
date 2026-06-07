@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ВСОКО / ПА — Педагоги</title>
+  <link rel="icon" type="image/png" href="/school-crest.png">
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .pa-teachers-note { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 12px; color: #1e3a8a; }
+    .pa-teachers-filters { display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: 10px; align-items: end; }
+    .pa-teachers-filters label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #4b5563; }
+    .pa-teachers-check { flex-direction: row !important; align-items: center; color: #111827 !important; }
+    .pa-teachers-table-wrap { overflow-x: auto; }
+    .pa-mark-pill { display: inline-flex; justify-content: center; min-width: 32px; padding: 4px 8px; border-radius: 999px; font-weight: 800; }
+    .pa-mark-5 { background: #bbf7d0; color: #166534; }
+    .pa-mark-4 { background: #dcfce7; color: #166534; }
+    .pa-mark-3 { background: #fef9c3; color: #854d0e; }
+    .pa-mark-low { background: #fee2e2; color: #991b1b; }
+    .pa-mark-null { background: #e5e7eb; color: #374151; }
+    .pa-review-warning { color: #991b1b; font-weight: 800; }
+    .pa-teacher-dialog { width: min(1450px, 96vw); max-height: 92vh; overflow: auto; border: none; border-radius: 12px; padding: 0; }
+    .pa-teacher-dialog .dialog-inner { padding: 18px; }
+    .pa-dialog-header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; position: sticky; top: 0; background: #fff; z-index: 5; border-bottom: 1px solid #e5e7eb; padding-bottom: 10px; }
+    .pa-info-grid { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 8px; margin: 12px 0; }
+    .pa-info-card { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; }
+    .pa-info-card span { display: block; font-size: 12px; color: #64748b; margin-bottom: 3px; }
+    .pa-message { min-height: 20px; }
+    @media (max-width: 900px) { .pa-teachers-filters, .pa-info-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main class="container">
+  <header class="card app-shell-header">
+    <h1>ВСОКО / ПА — Педагоги</h1>
+    <nav class="page-nav"></nav>
+  </header>
+
+  <section class="card">
+    <h2>Педагоги ВСОКО / ПА</h2>
+    <p class="pa-teachers-note">Показатель ПА рассчитывается по результатам загруженных работ. Динамика ВСОКО рассчитывается отдельно при наличии входной и выходной пары.</p>
+    <div class="row">
+      <button id="pa-teachers-refresh-btn" type="button">Обновить</button>
+      <span id="pa-teachers-feedback" class="muted pa-message"></span>
+    </div>
+    <div class="pa-teachers-filters">
+      <label>Предмет <input id="pa-teachers-subject-filter" type="search" placeholder="Например, русский язык"></label>
+      <label>Поиск по ФИО педагога <input id="pa-teachers-name-filter" type="search" placeholder="ФИО педагога"></label>
+      <label class="pa-teachers-check"><input id="pa-teachers-only-review" type="checkbox"> Только требующие проверки</label>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Сводка по педагогам</h2>
+    <div class="pa-teachers-table-wrap">
+      <table class="sheet-table sticky-head">
+        <thead>
+        <tr>
+          <th>Педагог</th><th>Предметы</th><th>Классы</th><th>Работ</th><th>Учеников с результатом</th>
+          <th>Средний %</th><th>Средняя отметка</th><th>Успеваемость</th><th>Качество</th>
+          <th>Пробл. задания</th><th>Пробл. темы</th><th>Работ на проверку</th>
+          <th>Показатель ПА</th><th>Оценка ПА</th><th>Динамика ВСОКО</th><th>Действия</th>
+        </tr>
+        </thead>
+        <tbody id="pa-teachers-body"><tr><td colspan="16" class="muted">Загрузка…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<dialog id="pa-teacher-details-dialog" class="pa-teacher-dialog">
+  <div class="dialog-inner">
+    <div class="pa-dialog-header">
+      <div>
+        <h2 id="pa-teacher-details-title">Детали педагога</h2>
+        <p class="muted">Показатель ПА и динамика ВСОКО показаны отдельно.</p>
+      </div>
+      <button id="pa-teacher-details-close" type="button">Закрыть</button>
+    </div>
+    <section>
+      <h3>Паспорт педагога</h3>
+      <div id="pa-teacher-passport" class="pa-info-grid"></div>
+    </section>
+    <section>
+      <h3>Работы педагога</h3>
+      <div class="pa-teachers-table-wrap">
+        <table class="sheet-table">
+          <thead><tr><th>Предмет</th><th>Класс</th><th>Тип</th><th>Дата</th><th>Уровень</th><th>Ученики</th><th>Средний %</th><th>Средняя отметка</th><th>Успеваемость</th><th>Качество</th><th>Пробл. задания</th><th>Пробл. темы</th><th>Проверка</th><th>Статус анализа</th><th>Действие</th></tr></thead>
+          <tbody id="pa-teacher-reports-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</dialog>
+
+<script src="/auth.js"></script>
+<script src="/pa-teachers.js"></script>
+</body>
+</html>
