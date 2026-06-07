@@ -23,6 +23,7 @@ const TAB_PATHS = {
     '/vsoko-pa-exit.html': 'VSOKO_VIEW',
     '/vsoko-pa-folders.html': 'VSOKO_VIEW',
     '/vsoko-pa-analysis.html': 'VSOKO_VIEW',
+    '/vsoko-pa-teachers.html': 'VSOKO_VIEW',
     '/vsoko-pa-upload.html': 'VSOKO_VIEW',
     '/subject-areas.html': 'SUBJECT_AREAS',
     '/admin.html': 'USERS'
@@ -91,6 +92,7 @@ const PA_NAV_ORDER = [
     { path: '/vsoko-pa-exit.html', tab: 'VSOKO_VIEW', label: 'Выходные работы' },
     { path: '/vsoko-pa-folders.html', tab: 'VSOKO_VIEW', label: 'Отчёты по папкам' },
     { path: '/vsoko-pa-analysis.html', tab: 'VSOKO_VIEW', label: 'Анализ работ' },
+    { path: '/vsoko-pa-teachers.html', tab: 'VSOKO_VIEW', label: 'Педагоги ВСОКО' },
     { path: '/vsoko-pa-upload.html', tab: 'VSOKO_VIEW', label: 'Сдача ПА' }
 ];
 const PA_HUB_NAV_ORDER = [
@@ -103,6 +105,7 @@ function isPaSubPage(pathname) {
         || pathname === '/vsoko-pa-exit.html'
         || pathname === '/vsoko-pa-folders.html'
         || pathname === '/vsoko-pa-analysis.html'
+        || pathname === '/vsoko-pa-teachers.html'
         || pathname === '/vsoko-pa-upload.html';
 }
 
