@@ -7,6 +7,7 @@ import org.school.personalLoad.auth.AuthExceptions.UnauthorizedException;
 import org.school.personalLoad.dto.auth.CreateUserRequest;
 import org.school.personalLoad.dto.auth.UpdateUserRequest;
 import org.school.personalLoad.dto.auth.UserTabPermissionRequest;
+import org.school.personalLoad.repository.BuildingGroupRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.auth.AppUserRepository;
@@ -31,6 +32,7 @@ public class AppUserServiceImpl implements AppUserService {
     private static final String PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
 
     private final AppUserRepository appUserRepository;
+    private final BuildingGroupRepository buildingGroupRepository;
     private final SchoolBuildingRepository schoolBuildingRepository;
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final AppUserTabPermissionRepository tabPermissionRepository;
@@ -109,7 +111,7 @@ public class AppUserServiceImpl implements AppUserService {
         user.setFullName(normalizedFio);
         user.setEmail(normalizeOptional(request.getEmail()));
         user.setPhone(normalizePhone(request.getPhone()));
-        user.setManagedBuildingCode(normalizeExistingBuildingCode(request.getManagedBuildingCode(), knownBuildingGroupCodes, "Основной корпус"));
+        user.setManagedBuildingCode(normalizeManagedBuildingCode(request.getManagedBuildingCode(), request.getRole(), knownBuildingGroupCodes, knownBuildingAccessCodes));
         user.setLoadEditAllBuildings(Boolean.TRUE.equals(request.getLoadEditAllBuildings()));
         user.setLoadEditableBuildingCodes(normalizeBuildingCodes(request.getLoadEditableBuildingCodes(), knownBuildingAccessCodes));
         user.setRole(Objects.requireNonNull(request.getRole(), "Роль обязательна"));
@@ -145,7 +147,8 @@ public class AppUserServiceImpl implements AppUserService {
             user.setPhone(normalizePhone(request.getPhone()));
         }
         if (request.getManagedBuildingCode() != null) {
-            user.setManagedBuildingCode(normalizeExistingBuildingCode(request.getManagedBuildingCode(), knownBuildingGroupCodes, "Основной корпус"));
+            UserRole effectiveRole = request.getRole() != null ? request.getRole() : user.getRole();
+            user.setManagedBuildingCode(normalizeManagedBuildingCode(request.getManagedBuildingCode(), effectiveRole, knownBuildingGroupCodes, knownBuildingAccessCodes));
         }
         if (request.getLoadEditAllBuildings() != null) {
             user.setLoadEditAllBuildings(request.getLoadEditAllBuildings());
@@ -477,8 +480,8 @@ public class AppUserServiceImpl implements AppUserService {
     }
 
     private Set<String> loadKnownBuildingGroupCodes() {
-        return schoolBuildingRepository.findAll().stream()
-                .map(building -> normalizeOptionalBuildingCode(building.getCode()))
+        return buildingGroupRepository.findAll().stream()
+                .map(group -> normalizeOptionalBuildingCode(group.getCode()))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
@@ -497,6 +500,20 @@ public class AppUserServiceImpl implements AppUserService {
             }
         });
         return codes;
+    }
+
+    private String normalizeManagedBuildingCode(String value, UserRole role, Set<String> knownBuildingGroupCodes, Set<String> knownBuildingAccessCodes) {
+        String normalized = normalizeOptionalBuildingCode(value);
+        if (normalized == null) {
+            return null;
+        }
+        if (role == UserRole.BUILDING_HEAD && knownBuildingGroupCodes.contains(normalized)) {
+            return normalized;
+        }
+        if (knownBuildingAccessCodes.contains(normalized)) {
+            return normalized;
+        }
+        throw new IllegalArgumentException("Корпус для редактирования нагрузки не найден: " + normalized);
     }
 
     private String normalizeExistingBuildingCode(String value, Set<String> knownBuildingCodes, String fieldName) {
