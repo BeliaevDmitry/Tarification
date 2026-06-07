@@ -556,9 +556,16 @@ function loadClearButton(prefix) {
 
 function renderLoadBuildings(target, selectedCodes = [], prefix = 'create') {
     const selected = new Set((selectedCodes || []).map(normalizeBuildingAccessCode));
-    target.innerHTML = buildingAccessOptions().map((building) => `
-        <label class="building-checkbox-pill ${building.groupWide ? 'building-checkbox-pill-group' : ''}">
-            <input type="checkbox" data-load-building="${esc(building.value)}" data-prefix="${prefix}" ${selected.has(building.value) ? 'checked' : ''}>
+    const options = buildingAccessOptions();
+    const knownValues = new Set(options.map((building) => normalizeBuildingAccessCode(building.value)));
+    const legacyOptions = (selectedCodes || [])
+        .map((code) => String(code || '').trim())
+        .filter(Boolean)
+        .filter((code) => !knownValues.has(normalizeBuildingAccessCode(code)))
+        .map((code) => ({ value: code, label: `Текущее значение: ${code}`, groupWide: false, legacy: true }));
+    target.innerHTML = options.concat(legacyOptions).map((building) => `
+        <label class="building-checkbox-pill ${building.groupWide ? 'building-checkbox-pill-group' : ''} ${building.legacy ? 'building-checkbox-pill-legacy' : ''}">
+            <input type="checkbox" data-load-building="${esc(building.value)}" data-prefix="${prefix}" ${selected.has(normalizeBuildingAccessCode(building.value)) ? 'checked' : ''}>
             <span>${esc(building.label)}</span>
         </label>
     `).join('');

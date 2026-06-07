@@ -309,6 +309,131 @@ class AppUserServiceImplTest {
         assertEquals("СП3|МАРИИУЛЬЯНОВОЙ,Д.17,КОРП.1", updated.getManagedBuildingCode());
     }
 
+
+    @Test
+    void updateMethodistAcceptsBuildingGroupCodeAsLoadEditableScope() {
+        AppUserServiceImpl service = new AppUserServiceImpl(
+                appUserRepository,
+                buildingGroupRepository,
+                schoolBuildingRepository,
+                teacherDirectoryRepository,
+                tabPermissionRepository,
+                passwordEncoder
+        );
+        AppUser user = new AppUser();
+        user.setId(16L);
+        user.setRole(UserRole.METHODIST);
+        user.setCanView(true);
+        user.setCanEdit(true);
+        user.setActive(true);
+        BuildingGroup buildingGroup = new BuildingGroup();
+        buildingGroup.setCode("МЕХМАТ");
+
+        when(appUserRepository.findById(16L)).thenReturn(Optional.of(user));
+        when(buildingGroupRepository.findAll()).thenReturn(List.of(buildingGroup));
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of());
+        when(appUserRepository.save(any(AppUser.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(tabPermissionRepository.findAllByUserIdOrderByTabAsc(16L)).thenReturn(List.of());
+
+        UpdateUserRequest request = new UpdateUserRequest();
+        request.setLoadEditableBuildingCodes(List.of("мехмат"));
+
+        AppUser updated = service.updateUser(16L, request);
+
+        assertEquals(new java.util.LinkedHashSet<>(List.of("МЕХМАТ")), updated.getLoadEditableBuildingCodes());
+    }
+
+    @Test
+    void updateUserAcceptsSiteScopedLoadEditableScopeWhenPhysicalSiteExists() {
+        AppUserServiceImpl service = new AppUserServiceImpl(
+                appUserRepository,
+                buildingGroupRepository,
+                schoolBuildingRepository,
+                teacherDirectoryRepository,
+                tabPermissionRepository,
+                passwordEncoder
+        );
+        AppUser user = new AppUser();
+        user.setId(17L);
+        user.setRole(UserRole.METHODIST);
+        user.setCanView(true);
+        user.setCanEdit(true);
+        user.setActive(true);
+        BuildingGroup buildingGroup = new BuildingGroup();
+        buildingGroup.setCode("МЕХМАТ");
+        SchoolBuilding building = new SchoolBuilding();
+        building.setId(38L);
+        building.setCode("МЕХМАТ");
+        building.setAddress("Кравченко, д.14, корп.1");
+
+        when(appUserRepository.findById(17L)).thenReturn(Optional.of(user));
+        when(buildingGroupRepository.findAll()).thenReturn(List.of(buildingGroup));
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of(building));
+        when(appUserRepository.save(any(AppUser.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(tabPermissionRepository.findAllByUserIdOrderByTabAsc(17L)).thenReturn(List.of());
+
+        UpdateUserRequest request = new UpdateUserRequest();
+        request.setLoadEditableBuildingCodes(List.of("мехмат::38"));
+
+        AppUser updated = service.updateUser(17L, request);
+
+        assertEquals(new java.util.LinkedHashSet<>(List.of("МЕХМАТ::38")), updated.getLoadEditableBuildingCodes());
+    }
+
+    @Test
+    void updateUserRejectsUnknownLoadEditableScopeWithExistingError() {
+        AppUserServiceImpl service = new AppUserServiceImpl(
+                appUserRepository,
+                buildingGroupRepository,
+                schoolBuildingRepository,
+                teacherDirectoryRepository,
+                tabPermissionRepository,
+                passwordEncoder
+        );
+        AppUser user = new AppUser();
+        user.setId(18L);
+        user.setRole(UserRole.METHODIST);
+        user.setCanView(true);
+        user.setCanEdit(true);
+        user.setActive(true);
+
+        when(appUserRepository.findById(18L)).thenReturn(Optional.of(user));
+        when(buildingGroupRepository.findAll()).thenReturn(List.of());
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of());
+
+        UpdateUserRequest request = new UpdateUserRequest();
+        request.setLoadEditableBuildingCodes(List.of("НЕСУЩЕСТВУЕТ"));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.updateUser(18L, request));
+
+        assertEquals("Корпус для редактирования нагрузки не найден: НЕСУЩЕСТВУЕТ", error.getMessage());
+        verify(appUserRepository, never()).save(any());
+    }
+
+
+    @Test
+    void sessionLoadPermissionTreatsSiteScopedBuildingCodesAsExactScope() {
+        SessionUser user = new SessionUser(
+                19L,
+                "methodist",
+                "Методист",
+                null,
+                null,
+                UserRole.METHODIST,
+                true,
+                true,
+                true,
+                null,
+                false,
+                new java.util.LinkedHashSet<>(List.of("МЕХМАТ::38")),
+                List.of(new TabPermissionSnapshot(AppTab.LOAD, true, true, true, true))
+        );
+
+        assertTrue(user.canEditLoadBuilding("МЕХМАТ::38"));
+        assertFalse(user.canEditLoadBuilding("МЕХМАТ::39"));
+        assertFalse(user.canEditLoadBuilding("МЕХМАТ"));
+    }
+
     @Test
     void sessionLoadPermissionTreatsHyphenatedAndCompactBuildingCodesAsSameGroup() {
         SessionUser user = new SessionUser(

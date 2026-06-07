@@ -73,7 +73,7 @@ public class SessionUser implements Serializable {
                 String normalizedPermission = normalizeBuildingCode(permissionCode);
                 if (normalizedPermission.isBlank()) return false;
                 if (normalizedPermission.equals(requestedAccessCode)) return true;
-                boolean groupWidePermission = !normalizedPermission.contains("|");
+                boolean groupWidePermission = !normalizedPermission.contains("|") && !normalizedPermission.contains("::");
                 return groupWidePermission && normalizeBuildingGroupCode(normalizedPermission).equals(requestedGroupCode);
             });
         }
@@ -105,6 +105,8 @@ public class SessionUser implements Serializable {
 
     private String normalizeBuildingGroupCode(String value) {
         String normalized = normalizeBuildingCode(value);
+        int siteIdx = normalized.indexOf("::");
+        if (siteIdx >= 0) return normalized.substring(0, siteIdx);
         int idx = normalized.indexOf("|");
         return idx >= 0 ? normalized.substring(0, idx) : normalized;
     }
