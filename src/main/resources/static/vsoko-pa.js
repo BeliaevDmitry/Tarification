@@ -46,7 +46,8 @@ function setPaTab(tab) {
     if (tab === 'entry' || tab === 'exit') {
         renderWorkflow(tab).catch(() => {});
     }
-    if (tab === 'exit' && !document.getElementById('pa-exit-folders-panel').classList.contains('hidden')) {
+    const foldersPanel = document.getElementById('pa-exit-folders-panel');
+    if (tab === 'exit' && foldersPanel && !foldersPanel.classList.contains('hidden')) {
         loadReportFolders('exit').catch(() => {});
     }
 }
@@ -64,9 +65,15 @@ function setSpecTab(tab) {
 }
 
 function setExitTab(tab) {
-    document.querySelectorAll('#pa-exit-tabs [data-exit-tab]').forEach((btn) => btn.classList.toggle('active', btn.dataset.exitTab === tab));
-    document.getElementById('pa-exit-summary-panel').classList.toggle('hidden', tab !== 'summary');
-    document.getElementById('pa-exit-folders-panel').classList.toggle('hidden', tab !== 'folders');
+    const exitTabs = document.getElementById('pa-exit-tabs');
+    const summaryPanel = document.getElementById('pa-exit-summary-panel');
+    const foldersPanel = document.getElementById('pa-exit-folders-panel');
+    if (!exitTabs || !summaryPanel || !foldersPanel) return;
+    exitTabs.querySelectorAll('[data-exit-tab]').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.exitTab === tab);
+    });
+    summaryPanel.classList.toggle('hidden', tab !== 'summary');
+    foldersPanel.classList.toggle('hidden', tab !== 'folders');
     if (tab === 'summary') {
         renderWorkflow('exit').catch(() => {});
     } else if (tab === 'folders') {
