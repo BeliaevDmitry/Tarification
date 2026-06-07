@@ -134,7 +134,10 @@
             <td>${fmt(row.paPerformanceScore, 2)}</td>
             <td>${markPill(row.paPerformanceMark)}</td>
             <td>${esc(dynamicLabel(row.vsokoDynamicStatus))}</td>
-            <td><button type="button" data-teacher-open="${esc(row.teacherFio)}">Открыть</button></td>
+            <td>
+                <button type="button" data-teacher-open="${esc(row.teacherFio)}">Открыть</button>
+                <button type="button" data-teacher-dossier="${esc(row.teacherFio)}">Скачать Word-досье</button>
+            </td>
         </tr>`).join('');
     }
 
@@ -189,6 +192,35 @@
         window.open(scoped(`/api/pa/analytics/reports/${encodeURIComponent(reportVersionId)}`), '_blank');
     }
 
+    async function downloadDossier(teacherFio) {
+        setFeedback(`Формирование Word-досье: ${teacherFio}…`);
+        try {
+            const response = await fetch(scoped(`/api/pa/analytics/teacher-dossier.docx?teacherFio=${encodeURIComponent(teacherFio)}`));
+            if (!response.ok) {
+                const message = await response.text();
+                throw new Error(message || `HTTP ${response.status}`);
+            }
+            const blob = await response.blob();
+            const disposition = response.headers.get('content-disposition') || '';
+            const fileNameMatch = disposition.match(/filename\*=UTF-8''([^;]+)/);
+            const fileName = fileNameMatch
+                ? decodeURIComponent(fileNameMatch[1])
+                : `Досье_ПА_${teacherFio}.docx`;
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            setFeedback('Word-досье сформировано.');
+        } catch (error) {
+            alert(`Ошибка скачивания Word-досье: ${error.message}`);
+            setFeedback(`Ошибка скачивания Word-досье: ${error.message}`, true);
+        }
+    }
+
     function bindEvents() {
         ui.refreshBtn?.addEventListener('click', loadTeachers);
         ui.subject?.addEventListener('input', () => delayed(loadTeachers, ui.subject));
@@ -199,9 +231,15 @@
             setFeedback(`Загружено педагогов: ${visibleTeachers().length}`);
         });
         ui.body?.addEventListener('click', (event) => {
-            const btn = event.target.closest('[data-teacher-open]');
-            if (!btn) return;
-            openTeacherDetails(btn.dataset.teacherOpen).catch((error) => setFeedback(`Ошибка: ${error.message}`, true));
+            const openBtn = event.target.closest('[data-teacher-open]');
+            if (openBtn) {
+                openTeacherDetails(openBtn.dataset.teacherOpen).catch((error) => setFeedback(`Ошибка: ${error.message}`, true));
+                return;
+            }
+            const dossierBtn = event.target.closest('[data-teacher-dossier]');
+            if (dossierBtn) {
+                downloadDossier(dossierBtn.dataset.teacherDossier);
+            }
         });
         ui.reportsBody?.addEventListener('click', (event) => {
             const btn = event.target.closest('[data-report-open]');

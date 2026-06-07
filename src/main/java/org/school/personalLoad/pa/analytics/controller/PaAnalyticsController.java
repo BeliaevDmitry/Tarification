@@ -6,8 +6,10 @@ import org.school.personalLoad.pa.analytics.model.PaReportAnalysisSummary;
 import org.school.personalLoad.pa.analytics.repository.PaReportAnalysisSummaryRepository;
 import org.school.personalLoad.pa.analytics.service.PaReportAnalysisService;
 import org.school.personalLoad.pa.analytics.service.PaTeacherAnalyticsService;
+import org.school.personalLoad.pa.analytics.service.PaTeacherDossierService;
 import org.school.personalLoad.service.AcademicYearService;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -31,6 +34,7 @@ public class PaAnalyticsController {
 
     private final PaReportAnalysisService analysisService;
     private final PaTeacherAnalyticsService teacherAnalyticsService;
+    private final PaTeacherDossierService teacherDossierService;
     private final PaReportAnalysisSummaryRepository summaryRepository;
     private final AcademicYearService academicYearService;
 
@@ -60,6 +64,25 @@ public class PaAnalyticsController {
                                                                                  @RequestParam String teacherFio) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
         return ResponseEntity.ok(teacherAnalyticsService.getTeacherDetails(year, teacherFio));
+    }
+
+
+    @GetMapping("/teacher-dossier.docx")
+    public ResponseEntity<byte[]> teacherDossier(@RequestParam(required = false) String academicYear,
+                                                 @RequestParam String teacherFio) throws Exception {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        byte[] body;
+        try {
+            body = teacherDossierService.generateTeacherDossier(year, teacherFio);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
+        }
+        String fileName = "Досье_ПА_" + safeFilePart(teacherFio) + "_" + safeFilePart(year) + ".docx";
+        String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+                .body(body);
     }
 
     @GetMapping("/reports/{reportVersionId}")
@@ -102,6 +125,10 @@ public class PaAnalyticsController {
             text = "Анализ ещё не выполнялся";
         }
         return textFile(fileName, text.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String safeFilePart(String value) {
+        return String.valueOf(value == null ? "" : value).trim().replaceAll("[^\\p{L}\\p{N}._-]+", "_");
     }
 
     private ResponseEntity<byte[]> textFile(String fileName, byte[] body) {
