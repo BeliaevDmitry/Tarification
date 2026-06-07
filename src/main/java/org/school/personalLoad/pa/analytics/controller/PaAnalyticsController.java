@@ -52,7 +52,7 @@ public class PaAnalyticsController {
     @PostMapping("/reports/{reportVersionId}/rebuild")
     public ResponseEntity<Map<String, Object>> rebuildReport(@PathVariable Long reportVersionId) {
         analysisService.analyzeReport(reportVersionId);
-        return ResponseEntity.ok(Map.of("reportVersionId", reportVersionId, "status", "NOT_ANALYZED"));
+        return ResponseEntity.ok(Map.of("reportVersionId", reportVersionId, "status", "REBUILD_FINISHED"));
     }
 
     @PostMapping("/rebuild")
