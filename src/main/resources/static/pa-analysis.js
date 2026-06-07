@@ -167,9 +167,11 @@
         const year = currentAcademicYear();
         if (!confirm(`Пересчитать все подходящие отчёты${year ? ` за ${year}` : ''}?`)) return;
         setFeedback('Запущен пересчёт всех отчётов…');
-        await api('/api/pa/analytics/rebuild', { method: 'POST' });
+        const result = await api('/api/pa/analytics/rebuild', { method: 'POST' });
         await loadReports();
-        setFeedback('Пересчёт всех отчётов завершён.');
+        const processed = result?.processed ?? result?.rebuilt ?? 0;
+        const failed = result?.failed ?? 0;
+        setFeedback(`Пересчёт всех отчётов завершён: обработано ${processed}, ошибок ${failed}.`, failed > 0);
     }
 
     function openDownload(path) {

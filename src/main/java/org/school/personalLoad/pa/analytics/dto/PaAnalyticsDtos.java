@@ -37,6 +37,13 @@ public final class PaAnalyticsDtos {
     }
 
 
+    public record RebuildAllResult(String status,
+                                   String academicYear,
+                                   Integer processed,
+                                   Integer failed) {
+    }
+
+
     public record TeacherSummaryRow(String teacherFio,
                                     List<String> subjects,
                                     List<String> classes,

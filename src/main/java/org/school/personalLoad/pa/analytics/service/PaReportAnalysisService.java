@@ -10,7 +10,7 @@ public interface PaReportAnalysisService {
 
     void saveAnalysisError(Long reportVersionId, Exception exception);
 
-    int rebuildAll(String academicYear);
+    PaAnalyticsDtos.RebuildAllResult rebuildAll(String academicYear);
 
     PaAnalyticsDtos.ReportAnalysisDetails getDetails(Long reportVersionId);
 
