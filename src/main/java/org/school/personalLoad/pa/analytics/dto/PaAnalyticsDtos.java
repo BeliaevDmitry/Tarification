@@ -36,6 +36,49 @@ public final class PaAnalyticsDtos {
                                         List<TaskResultRow> tasks) {
     }
 
+
+    public record TeacherSummaryRow(String teacherFio,
+                                    List<String> subjects,
+                                    List<String> classes,
+                                    Integer reportsCount,
+                                    Integer studentsWithResult,
+                                    Double avgPercent,
+                                    Double avgMark,
+                                    Double successPercent,
+                                    Double qualityPercent,
+                                    Integer problemTasksCount,
+                                    Integer problemTopicsCount,
+                                    Integer needsReviewCount,
+                                    Double paPerformanceScore,
+                                    Integer paPerformanceMark,
+                                    Double vsokoDynamicScore,
+                                    Integer vsokoDynamicMark,
+                                    String vsokoDynamicStatus) {
+    }
+
+    public record TeacherReportDetailRow(Long reportVersionId,
+                                         String subjectName,
+                                         String className,
+                                         String workType,
+                                         LocalDate workDate,
+                                         String level,
+                                         Integer studentsTotal,
+                                         Integer studentsWithResult,
+                                         Double avgPercent,
+                                         Double avgMark,
+                                         Double successPercent,
+                                         Double qualityPercent,
+                                         Integer problemTasksCount,
+                                         Integer problemTopicsCount,
+                                         Boolean needsReview,
+                                         PaAnalysisStatus analysisStatus,
+                                         String analysisMessage) {
+    }
+
+    public record TeacherDetailsResponse(TeacherSummaryRow teacherSummary,
+                                         List<TeacherReportDetailRow> reports) {
+    }
+
     public record StudentResultRow(String studentFio,
                                    String presenceStatus,
                                    String variantName,

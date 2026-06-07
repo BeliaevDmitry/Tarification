@@ -9,5 +9,7 @@ public interface PaReportStudentResultRepository extends JpaRepository<PaReportS
 
     List<PaReportStudentResult> findAllByReportVersionIdOrderByStudentFioAsc(Long reportVersionId);
 
+    List<PaReportStudentResult> findAllByReportVersionIdIn(List<Long> reportVersionIds);
+
     void deleteByReportVersionId(Long reportVersionId);
 }

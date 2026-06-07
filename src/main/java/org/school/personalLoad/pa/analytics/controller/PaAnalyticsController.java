@@ -5,6 +5,7 @@ import org.school.personalLoad.pa.analytics.dto.PaAnalyticsDtos;
 import org.school.personalLoad.pa.analytics.model.PaReportAnalysisSummary;
 import org.school.personalLoad.pa.analytics.repository.PaReportAnalysisSummaryRepository;
 import org.school.personalLoad.pa.analytics.service.PaReportAnalysisService;
+import org.school.personalLoad.pa.analytics.service.PaTeacherAnalyticsService;
 import org.school.personalLoad.service.AcademicYearService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -29,6 +30,7 @@ import java.util.Map;
 public class PaAnalyticsController {
 
     private final PaReportAnalysisService analysisService;
+    private final PaTeacherAnalyticsService teacherAnalyticsService;
     private final PaReportAnalysisSummaryRepository summaryRepository;
     private final AcademicYearService academicYearService;
 
@@ -42,6 +44,22 @@ public class PaAnalyticsController {
                                                                                  @RequestParam(required = false) Boolean onlyNeedsReview) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
         return ResponseEntity.ok(analysisService.getReports(year, subjectName, teacherFio, className, workType, onlyProblems, onlyNeedsReview));
+    }
+
+
+    @GetMapping("/teachers")
+    public ResponseEntity<List<PaAnalyticsDtos.TeacherSummaryRow>> teachers(@RequestParam(required = false) String academicYear,
+                                                                             @RequestParam(required = false) String subjectName,
+                                                                             @RequestParam(required = false) Boolean onlyNeedsReview) {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        return ResponseEntity.ok(teacherAnalyticsService.getTeacherSummaries(year, subjectName, onlyNeedsReview));
+    }
+
+    @GetMapping("/teacher-details")
+    public ResponseEntity<PaAnalyticsDtos.TeacherDetailsResponse> teacherDetails(@RequestParam(required = false) String academicYear,
+                                                                                 @RequestParam String teacherFio) {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        return ResponseEntity.ok(teacherAnalyticsService.getTeacherDetails(year, teacherFio));
     }
 
     @GetMapping("/reports/{reportVersionId}")
