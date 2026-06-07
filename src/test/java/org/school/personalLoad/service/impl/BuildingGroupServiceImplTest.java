@@ -102,6 +102,28 @@ class BuildingGroupServiceImplTest {
         assertEquals("Иванов И.И.", result.get(0).getManagerFio());
     }
 
+
+    @Test
+    void findAllReturnsManagerFioForBuildingHeadAssignedByBuildingGroupCode() {
+        BuildingGroup group = new BuildingGroup();
+        group.setId(20L);
+        group.setCode("МЕХМАТ");
+        group.setName("МЕХМАТ");
+        AppUser manager = new AppUser();
+        manager.setRole(UserRole.BUILDING_HEAD);
+        manager.setManagedBuildingCode("МЕХМАТ");
+        manager.setFullName("Петров Пётр Петрович");
+
+        when(buildingGroupRepository.findAll()).thenReturn(List.of(group));
+        when(appUserRepository.findAll()).thenReturn(List.of(manager));
+
+        List<BuildingGroup> result = service.findAll();
+
+        assertEquals(1, result.size());
+        assertEquals("МЕХМАТ", result.get(0).getCode());
+        assertEquals("Петров Пётр Петрович", result.get(0).getManagerFio());
+    }
+
     @Test
     void updateAllowsNameButRejectsCodeChange() {
         BuildingGroup group = new BuildingGroup();
