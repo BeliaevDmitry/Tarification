@@ -9,7 +9,6 @@ import org.school.personalLoad.pa.analytics.service.PaTeacherAnalyticsService;
 import org.school.personalLoad.pa.analytics.service.PaTeacherDossierService;
 import org.school.personalLoad.service.AcademicYearService;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,8 +17,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -69,13 +68,15 @@ public class PaAnalyticsController {
 
     @GetMapping("/teacher-dossier.docx")
     public ResponseEntity<byte[]> teacherDossier(@RequestParam(required = false) String academicYear,
-                                                 @RequestParam String teacherFio) throws Exception {
+                                                 @RequestParam String teacherFio) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
         byte[] body;
         try {
             body = teacherDossierService.generateTeacherDossier(year, teacherFio);
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
+            return textResponse(404, exception.getMessage());
+        } catch (IOException exception) {
+            return textResponse(500, "Не удалось сформировать Word-досье: " + exception.getMessage());
         }
         String fileName = "Досье_ПА_" + safeFilePart(teacherFio) + "_" + safeFilePart(year) + ".docx";
         String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
@@ -129,6 +130,12 @@ public class PaAnalyticsController {
 
     private String safeFilePart(String value) {
         return String.valueOf(value == null ? "" : value).trim().replaceAll("[^\\p{L}\\p{N}._-]+", "_");
+    }
+
+    private ResponseEntity<byte[]> textResponse(int status, String message) {
+        return ResponseEntity.status(status)
+                .contentType(MediaType.TEXT_PLAIN)
+                .body(String.valueOf(message == null ? "" : message).getBytes(StandardCharsets.UTF_8));
     }
 
     private ResponseEntity<byte[]> textFile(String fileName, byte[] body) {

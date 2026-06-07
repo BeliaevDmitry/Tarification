@@ -11,6 +11,10 @@ import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.apache.poi.xwpf.usermodel.XWPFTableCell;
 import org.apache.poi.xwpf.usermodel.XWPFTableRow;
 import org.school.personalLoad.pa.analytics.dto.PaAnalyticsDtos;
+import org.school.personalLoad.pa.analytics.model.PaReportStudentResult;
+import org.school.personalLoad.pa.analytics.model.PaReportTaskResult;
+import org.school.personalLoad.pa.analytics.repository.PaReportStudentResultRepository;
+import org.school.personalLoad.pa.analytics.repository.PaReportTaskResultRepository;
 import org.school.personalLoad.pa.analytics.service.PaReportAnalysisService;
 import org.school.personalLoad.pa.analytics.service.PaTeacherAnalyticsService;
 import org.school.personalLoad.pa.analytics.service.PaTeacherDossierService;
@@ -20,7 +24,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -31,6 +38,8 @@ public class PaTeacherDossierServiceImpl implements PaTeacherDossierService {
 
     private final PaTeacherAnalyticsService teacherAnalyticsService;
     private final PaReportAnalysisService reportAnalysisService;
+    private final PaReportStudentResultRepository studentResultRepository;
+    private final PaReportTaskResultRepository taskResultRepository;
 
     @Override
     public byte[] generateTeacherDossier(String academicYear, String teacherFio) throws IOException {
@@ -125,6 +134,8 @@ public class PaTeacherDossierServiceImpl implements PaTeacherDossierService {
         PaAnalyticsDtos.ReportAnalysisDetails details = reportAnalysisService.getDetails(report.reportVersionId());
         List<PaAnalyticsDtos.StudentResultRow> students = details.students() == null ? List.of() : details.students();
         List<PaAnalyticsDtos.TaskResultRow> tasks = details.tasks() == null ? List.of() : details.tasks();
+        List<PaReportStudentResult> studentEntities = studentResultRepository.findAllByReportVersionIdOrderByStudentFioAsc(report.reportVersionId());
+        Map<Long, String> problemTasksByStudent = findProblemTasksByStudent(report.reportVersionId());
         addHeading(document, "Работа: " + workLabel(report), 1);
         addWorkSummary(document, report, details.summary(), students);
         addHeading(document, "Змейка учеников", 2);
@@ -132,7 +143,7 @@ public class PaTeacherDossierServiceImpl implements PaTeacherDossierService {
         addHeading(document, "Задания", 2);
         addTasksTable(document, tasks);
         addHeading(document, "Ученики", 2);
-        addStudentsTable(document, students);
+        addStudentsTable(document, studentEntities, students, problemTasksByStudent);
     }
 
     private void addWorkSummary(XWPFDocument document,
@@ -180,14 +191,46 @@ public class PaTeacherDossierServiceImpl implements PaTeacherDossierService {
         }
     }
 
-    private void addStudentsTable(XWPFDocument document, List<PaAnalyticsDtos.StudentResultRow> students) {
-        String[] headers = {"№", "ФИО", "Присутствие", "Вариант", "Итог", "Макс.", "%", "Отметка", "Статус строки"};
-        XWPFTable table = document.createTable(Math.max(1, students.size()) + 1, headers.length);
+    private void addStudentsTable(XWPFDocument document,
+                                  List<PaReportStudentResult> studentEntities,
+                                  List<PaAnalyticsDtos.StudentResultRow> students,
+                                  Map<Long, String> problemTasksByStudent) {
+        String[] headers = {"№", "ФИО", "Присутствие", "Вариант", "Итог", "Макс.", "%", "Отметка", "Статус строки", "Проблемные задания ученика"};
+        int rowsCount = studentEntities.isEmpty() ? students.size() : studentEntities.size();
+        XWPFTable table = document.createTable(Math.max(1, rowsCount) + 1, headers.length);
         fillHeader(table.getRow(0), headers);
+        if (!studentEntities.isEmpty()) {
+            for (int i = 0; i < studentEntities.size(); i++) {
+                PaReportStudentResult student = studentEntities.get(i);
+                fillCells(table.getRow(i + 1),
+                        i + 1,
+                        student.getStudentFio(),
+                        student.getPresenceStatus(),
+                        student.getVariantName(),
+                        number(student.getTotalScore(), 2),
+                        number(student.getMaxScore(), 2),
+                        percent(student.getPercent()),
+                        student.getMark(),
+                        rowStatus(student.getRowStatus() == null ? null : student.getRowStatus().name()),
+                        problemTasksByStudent.getOrDefault(student.getId(), "—"));
+            }
+            return;
+        }
         for (int i = 0; i < students.size(); i++) {
             PaAnalyticsDtos.StudentResultRow student = students.get(i);
-            fillCells(table.getRow(i + 1), i + 1, student.studentFio(), student.presenceStatus(), student.variantName(), number(student.totalScore(), 2), number(student.maxScore(), 2), percent(student.percent()), student.mark(), rowStatus(student.rowStatus() == null ? null : student.rowStatus().name()));
+            fillCells(table.getRow(i + 1), i + 1, student.studentFio(), student.presenceStatus(), student.variantName(), number(student.totalScore(), 2), number(student.maxScore(), 2), percent(student.percent()), student.mark(), rowStatus(student.rowStatus() == null ? null : student.rowStatus().name()), "—");
         }
+    }
+
+    private Map<Long, String> findProblemTasksByStudent(Long reportVersionId) {
+        return taskResultRepository.findAllByReportVersionIdOrderByTaskNoAsc(reportVersionId).stream()
+                .filter(task -> task.getStudentResultId() != null)
+                .filter(task -> !task.isEmpty())
+                .filter(task -> task.getPercent() != null && task.getPercent() < 50D)
+                .collect(Collectors.groupingBy(
+                        PaReportTaskResult::getStudentResultId,
+                        LinkedHashMap::new,
+                        Collectors.mapping(task -> value(task.getTaskNo()), Collectors.joining(", "))));
     }
 
     private void addTitle(XWPFDocument document, String text) {
