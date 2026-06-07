@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.pa.analytics.dto.PaAnalyticsDtos;
 import org.school.personalLoad.pa.analytics.model.PaReportAnalysisSummary;
 import org.school.personalLoad.pa.analytics.repository.PaReportAnalysisSummaryRepository;
+import org.school.personalLoad.pa.analytics.service.PaReportAnalysisJobRunner;
 import org.school.personalLoad.pa.analytics.service.PaReportAnalysisService;
 import org.school.personalLoad.pa.analytics.service.PaTeacherAnalyticsService;
 import org.school.personalLoad.pa.analytics.service.PaTeacherDossierService;
@@ -32,6 +33,7 @@ import java.util.Map;
 public class PaAnalyticsController {
 
     private final PaReportAnalysisService analysisService;
+    private final PaReportAnalysisJobRunner analysisJobRunner;
     private final PaTeacherAnalyticsService teacherAnalyticsService;
     private final PaTeacherDossierService teacherDossierService;
     private final PaReportAnalysisSummaryRepository summaryRepository;
@@ -93,14 +95,22 @@ public class PaAnalyticsController {
 
     @PostMapping("/reports/{reportVersionId}/rebuild")
     public ResponseEntity<Map<String, Object>> rebuildReport(@PathVariable Long reportVersionId) {
-        analysisService.analyzeReport(reportVersionId);
-        return ResponseEntity.ok(Map.of("reportVersionId", reportVersionId, "status", "REBUILD_FINISHED"));
+        try {
+            analysisJobRunner.analyzeOneInNewTransaction(reportVersionId);
+            return ResponseEntity.ok(Map.of("reportVersionId", reportVersionId, "status", "REBUILD_FINISHED"));
+        } catch (Exception exception) {
+            try {
+                analysisJobRunner.saveAnalysisErrorInNewTransaction(reportVersionId, exception);
+            } catch (Exception ignored) {
+                // Ошибка записи аналитического лога не должна ломать rebuild endpoint.
+            }
+            return ResponseEntity.ok(Map.of("reportVersionId", reportVersionId, "status", "ERROR", "message", exception.getMessage()));
+        }
     }
 
     @PostMapping("/rebuild")
-    public ResponseEntity<Map<String, Object>> rebuildAll(@RequestParam String academicYear) {
-        int rebuilt = analysisService.rebuildAll(academicYear);
-        return ResponseEntity.ok(Map.of("academicYear", academicYear, "rebuilt", rebuilt));
+    public ResponseEntity<PaAnalyticsDtos.RebuildAllResult> rebuildAll(@RequestParam String academicYear) {
+        return ResponseEntity.ok(analysisService.rebuildAll(academicYear));
     }
 
     @GetMapping("/reports/{reportVersionId}/log/download")

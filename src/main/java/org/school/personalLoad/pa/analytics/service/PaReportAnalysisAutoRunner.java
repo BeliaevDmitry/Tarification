@@ -10,12 +10,12 @@ import org.springframework.transaction.event.TransactionalEventListener;
 @RequiredArgsConstructor
 public class PaReportAnalysisAutoRunner {
 
-    private final PaReportAnalysisService paReportAnalysisService;
+    private final PaReportAnalysisJobRunner paReportAnalysisJobRunner;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void analyzeAcceptedReport(PaReportAcceptedForAnalysisEvent event) {
         try {
-            paReportAnalysisService.analyzeReport(event.reportVersionId());
+            paReportAnalysisJobRunner.analyzeOneInNewTransaction(event.reportVersionId());
         } catch (Exception exception) {
             saveErrorSafely(event.reportVersionId(), exception);
         }
@@ -23,7 +23,7 @@ public class PaReportAnalysisAutoRunner {
 
     private void saveErrorSafely(Long reportVersionId, Exception exception) {
         try {
-            paReportAnalysisService.saveAnalysisError(reportVersionId, exception);
+            paReportAnalysisJobRunner.saveAnalysisErrorInNewTransaction(reportVersionId, exception);
         } catch (Exception ignored) {
             // Аналитика не должна ломать успешную сдачу отчёта ПА.
         }

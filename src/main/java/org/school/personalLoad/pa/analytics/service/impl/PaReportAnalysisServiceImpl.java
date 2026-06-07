@@ -17,6 +17,7 @@ import org.school.personalLoad.pa.analytics.model.PaStudentResultStatus;
 import org.school.personalLoad.pa.analytics.repository.PaReportAnalysisSummaryRepository;
 import org.school.personalLoad.pa.analytics.repository.PaReportStudentResultRepository;
 import org.school.personalLoad.pa.analytics.repository.PaReportTaskResultRepository;
+import org.school.personalLoad.pa.analytics.service.PaReportAnalysisJobRunner;
 import org.school.personalLoad.pa.analytics.service.PaReportAnalysisService;
 import org.school.personalLoad.pa.model.PaGradingScale;
 import org.school.personalLoad.pa.model.PaReportVersion;
@@ -26,7 +27,9 @@ import org.school.personalLoad.pa.model.PaSpecificationTask;
 import org.school.personalLoad.pa.repository.PaReportVersionRepository;
 import org.school.personalLoad.pa.repository.PaSpecificationRepository;
 import org.school.personalLoad.pa.repository.PaSpecificationTaskRepository;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.PrintWriter;
@@ -64,40 +67,36 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
     private final PaReportAnalysisSummaryRepository summaryRepository;
     private final PaReportStudentResultRepository studentResultRepository;
     private final PaReportTaskResultRepository taskResultRepository;
+    private final ObjectProvider<PaReportAnalysisJobRunner> jobRunnerProvider;
 
     @Override
     @Transactional
     public void analyzeReport(Long reportVersionId) {
+        PaReportVersion version = findReportVersion(reportVersionId);
+        LocalDateTime startedAt = LocalDateTime.now();
+        String skipReason = validateReportForAnalysis(version);
+        if (skipReason != null) {
+            PaReportAnalysisSummary summary = findOrCreateSummary(version);
+            summary.setAnalysisStartedAt(startedAt);
+            summary.setAnalysisFinishedAt(LocalDateTime.now());
+            summary.setAnalysisStatus(PaAnalysisStatus.SKIPPED);
+            summary.setAnalysisMessage(skipReason);
+            summary.setNeedsReview(true);
+            summaryRepository.save(summary);
+            return;
+        }
+
+        taskResultRepository.deleteByReportVersionId(reportVersionId);
+        studentResultRepository.deleteByReportVersionId(reportVersionId);
         try {
-            PaReportVersion version = findReportVersion(reportVersionId);
-            LocalDateTime startedAt = LocalDateTime.now();
-            String skipReason = validateReportForAnalysis(version);
-            if (skipReason != null) {
-                PaReportAnalysisSummary summary = findOrCreateSummary(version);
-                summary.setAnalysisStartedAt(startedAt);
-                summary.setAnalysisFinishedAt(LocalDateTime.now());
-                summary.setAnalysisStatus(PaAnalysisStatus.SKIPPED);
-                summary.setAnalysisMessage(skipReason);
-                summary.setNeedsReview(true);
-                summaryRepository.save(summary);
-                return;
-            }
-
-            taskResultRepository.deleteByReportVersionId(reportVersionId);
-            studentResultRepository.deleteByReportVersionId(reportVersionId);
-
-            try {
-                analyzeAcceptedReport(version, startedAt);
-            } catch (Exception exception) {
-                saveAnalysisError(reportVersionId, exception);
-            }
+            analyzeAcceptedReport(version, startedAt);
         } catch (Exception exception) {
-            saveAnalysisError(reportVersionId, exception);
+            throw new IllegalStateException("Ошибка анализа отчёта ПА " + reportVersionId, exception);
         }
     }
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void saveAnalysisError(Long reportVersionId, Exception exception) {
         PaReportVersion version = reportVersionRepository.findById(reportVersionId).orElse(null);
         LocalDateTime now = LocalDateTime.now();
@@ -131,13 +130,35 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
     }
 
     @Override
-    @Transactional
-    public int rebuildAll(String academicYear) {
-        List<PaReportVersion> versions = reportVersionRepository.findAll().stream()
+    public PaAnalyticsDtos.RebuildAllResult rebuildAll(String academicYear) {
+        List<Long> reportVersionIds = reportVersionRepository.findAll().stream()
                 .filter(version -> Objects.equals(version.getAcademicYear(), academicYear))
+                .filter(version -> "ACCEPTED".equalsIgnoreCase(version.getStatus()))
+                .filter(PaReportVersion::isUploadedBackSuccess)
+                .filter(version -> version.getSourceFilePath() != null && !version.getSourceFilePath().isBlank())
+                .map(PaReportVersion::getId)
                 .toList();
-        versions.forEach(version -> analyzeReport(version.getId()));
-        return versions.size();
+        PaReportAnalysisJobRunner jobRunner = jobRunnerProvider.getObject();
+        int processed = 0;
+        int failed = 0;
+        for (Long reportVersionId : reportVersionIds) {
+            try {
+                jobRunner.analyzeOneInNewTransaction(reportVersionId);
+                processed++;
+            } catch (Exception exception) {
+                failed++;
+                saveErrorSafely(jobRunner, reportVersionId, exception);
+            }
+        }
+        return new PaAnalyticsDtos.RebuildAllResult("REBUILD_FINISHED", academicYear, processed, failed);
+    }
+
+    private void saveErrorSafely(PaReportAnalysisJobRunner jobRunner, Long reportVersionId, Exception exception) {
+        try {
+            jobRunner.saveAnalysisErrorInNewTransaction(reportVersionId, exception);
+        } catch (Exception ignored) {
+            // Массовый пересчёт не должен падать из-за сбоя записи диагностического лога по одному отчёту.
+        }
     }
 
     @Override
