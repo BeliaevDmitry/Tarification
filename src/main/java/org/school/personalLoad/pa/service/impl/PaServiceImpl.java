@@ -12,12 +12,14 @@ import org.school.personalLoad.pa.repository.PaReportVersionRepository;
 import org.school.personalLoad.pa.repository.PaSpecImportLogRepository;
 import org.school.personalLoad.pa.repository.PaSpecificationRepository;
 import org.school.personalLoad.pa.repository.PaSpecificationTaskRepository;
+import org.school.personalLoad.pa.analytics.event.PaReportAcceptedForAnalysisEvent;
 import org.school.personalLoad.pa.service.PaService;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.ContingentSnapshotRepository;
 import org.school.personalLoad.repository.ContingentStudentRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -55,6 +57,7 @@ public class PaServiceImpl implements PaService {
     private final PaParticipationRepository participationRepository;
     private final PaClassLevelAssignmentRepository classLevelAssignmentRepository;
     private final PaReportVersionRepository reportVersionRepository;
+    private final ApplicationEventPublisher eventPublisher;
     private final PaSpecImportLogRepository paSpecImportLogRepository;
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     private final TeacherDirectoryRepository teacherDirectoryRepository;
@@ -655,6 +658,7 @@ public class PaServiceImpl implements PaService {
                 version.setUploadedBackSuccess(true);
                 version.setCreatedAt(LocalDateTime.now());
                 reportVersionRepository.save(version);
+                eventPublisher.publishEvent(new PaReportAcceptedForAnalysisEvent(version.getId()));
                 results.add(new PaDtos.ReportUploadResult(file.getOriginalFilename(), "ACCEPTED", replaced ? "Отчёт заменен" : "Отчёт принят", nextVersion, subject.trim(), scopeValue.trim(), workType));
             } catch (Exception e) {
                 String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
@@ -1517,6 +1521,7 @@ public class PaServiceImpl implements PaService {
     private String sanitizeFileName(String value) {
         return String.valueOf(value == null ? "" : value).trim().replaceAll("[^\\p{L}\\p{N}_-]+", "_");
     }
+
 
     private PaDtos.ReportUploadResult saveRejectedReport(String academicYear,
                                                          String fileName,
