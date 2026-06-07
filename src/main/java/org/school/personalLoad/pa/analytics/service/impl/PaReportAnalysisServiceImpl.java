@@ -18,6 +18,7 @@ import org.school.personalLoad.pa.analytics.repository.PaReportAnalysisSummaryRe
 import org.school.personalLoad.pa.analytics.repository.PaReportStudentResultRepository;
 import org.school.personalLoad.pa.analytics.repository.PaReportTaskResultRepository;
 import org.school.personalLoad.pa.analytics.service.PaReportAnalysisService;
+import org.school.personalLoad.pa.model.PaGradingScale;
 import org.school.personalLoad.pa.model.PaReportVersion;
 import org.school.personalLoad.pa.model.PaScopeType;
 import org.school.personalLoad.pa.model.PaSpecification;
@@ -206,6 +207,10 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
             if (specification.specification() == null) {
                 warnings.add("Спецификация не найдена, темы и навыки не подтянуты");
             }
+            GradingRules gradingRules = resolveGradingRules(specification.specification());
+            if (gradingRules.fallbackUsed()) {
+                warnings.add(gradingRules.warningMessage());
+            }
 
             boolean subgroupSubject = isSubgroupSubject(version.getSubjectName());
             List<PaReportStudentResult> students = new ArrayList<>();
@@ -216,7 +221,7 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
                 if (studentFio.isBlank()) {
                     continue;
                 }
-                StudentParseResult parsedStudent = parseStudentRow(version, row, structure, subgroupSubject);
+                StudentParseResult parsedStudent = parseStudentRow(version, row, structure, subgroupSubject, gradingRules);
                 PaReportStudentResult savedStudent = studentResultRepository.save(parsedStudent.student());
                 students.add(savedStudent);
                 if (savedStudent.getRowStatus() == PaStudentResultStatus.PRESENT_WITH_RESULT
@@ -229,7 +234,7 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
             }
 
             PaReportAnalysisSummary summary = findOrCreateSummary(version);
-            fillSummaryFromAnalysis(summary, version, students, taskResults, specification, warnings, startedAt);
+            fillSummaryFromAnalysis(summary, version, students, taskResults, specification, gradingRules, warnings, startedAt);
             summaryRepository.save(summary);
         }
     }
@@ -275,7 +280,11 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
         return new SheetStructure(taskColumns, totalCol, markCol);
     }
 
-    private StudentParseResult parseStudentRow(PaReportVersion version, Row row, SheetStructure structure, boolean subgroupSubject) {
+    private StudentParseResult parseStudentRow(PaReportVersion version,
+                                               Row row,
+                                               SheetStructure structure,
+                                               boolean subgroupSubject,
+                                               GradingRules gradingRules) {
         String studentFio = cellText(row, 1).trim();
         String presenceStatus = cellText(row, 2).trim();
         String variantName = cellText(row, 3).trim();
@@ -301,7 +310,7 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
             maxScore = null;
         }
         Double percent = totalScore == null || maxScore == null || maxScore <= 0D ? null : totalScore / maxScore * 100D;
-        Integer mark = structure.markCol() == null ? null : parseInteger(cellText(row, structure.markCol()));
+        Integer mark = null;
 
         PaStudentResultStatus rowStatus;
         boolean possibleOtherSubgroup = false;
@@ -322,6 +331,9 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
             rowStatus = PaStudentResultStatus.INVALID_ROW;
         } else {
             rowStatus = PaStudentResultStatus.EMPTY_RESULT;
+        }
+        if (rowStatus == PaStudentResultStatus.PRESENT_WITH_RESULT) {
+            mark = calculateMark(percent, gradingRules);
         }
 
         PaReportStudentResult student = new PaReportStudentResult();
@@ -380,6 +392,7 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
                                          List<PaReportStudentResult> students,
                                          List<PaReportTaskResult> taskResults,
                                          SpecificationResolution specification,
+                                         GradingRules gradingRules,
                                          List<String> warnings,
                                          LocalDateTime startedAt) {
         fillSummaryFromVersion(summary, version);
@@ -409,14 +422,22 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
                 .filter(Objects::nonNull)
                 .map(Integer::doubleValue)
                 .toList()));
-        summary.setSuccessPercent(studentsWithResult == 0 ? null : percent(students.stream()
-                .filter(student -> student.getRowStatus() == PaStudentResultStatus.PRESENT_WITH_RESULT)
-                .filter(student -> student.getMark() != null && student.getMark() >= 3)
-                .count(), studentsWithResult));
-        summary.setQualityPercent(studentsWithResult == 0 ? null : percent(students.stream()
-                .filter(student -> student.getRowStatus() == PaStudentResultStatus.PRESENT_WITH_RESULT)
-                .filter(student -> student.getMark() != null && student.getMark() >= 4)
-                .count(), studentsWithResult));
+        if (gradingRules.passFail()) {
+            summary.setSuccessPercent(studentsWithResult == 0 ? null : percent(students.stream()
+                    .filter(student -> student.getRowStatus() == PaStudentResultStatus.PRESENT_WITH_RESULT)
+                    .filter(student -> student.getPercent() != null && student.getPercent() >= gradingRules.passPercent())
+                    .count(), studentsWithResult));
+            summary.setQualityPercent(null);
+        } else {
+            summary.setSuccessPercent(studentsWithResult == 0 ? null : percent(students.stream()
+                    .filter(student -> student.getRowStatus() == PaStudentResultStatus.PRESENT_WITH_RESULT)
+                    .filter(student -> student.getMark() != null && student.getMark() >= 3)
+                    .count(), studentsWithResult));
+            summary.setQualityPercent(studentsWithResult == 0 ? null : percent(students.stream()
+                    .filter(student -> student.getRowStatus() == PaStudentResultStatus.PRESENT_WITH_RESULT)
+                    .filter(student -> student.getMark() != null && student.getMark() >= 4)
+                    .count(), studentsWithResult));
+        }
 
         List<PaAnalyticsDtos.TaskResultRow> aggregatedTasks = toTaskRows(taskResults);
         List<PaAnalyticsDtos.TaskResultRow> problemTasks = aggregatedTasks.stream()
@@ -451,6 +472,51 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
         summary.setAnalysisErrorLogFileName(null);
         summary.setAnalysisStartedAt(startedAt);
         summary.setAnalysisFinishedAt(LocalDateTime.now());
+    }
+
+    private GradingRules resolveGradingRules(PaSpecification specification) {
+        if (specification == null) {
+            return GradingRules.fallback(false, "Отметки рассчитаны по fallback-порогам 85/61/35");
+        }
+        if (specification.getGradingScale() == PaGradingScale.PASS_FAIL) {
+            Integer passPercent = specification.getPassPercent();
+            if (passPercent == null || passPercent < 0 || passPercent > 100) {
+                return GradingRules.passFailFallback("Некорректный порог зачёта в спецификации, использован fallback-порог 35%");
+            }
+            return GradingRules.passFail(passPercent);
+        }
+        Integer grade5 = specification.getGrade5Percent();
+        Integer grade4 = specification.getGrade4Percent();
+        Integer grade3 = specification.getGrade3Percent();
+        if (!validFivePointThresholds(grade5, grade4, grade3)) {
+            return GradingRules.fallback(true, "Некорректные пороги отметок в спецификации, использованы fallback-пороги 85/61/35");
+        }
+        return GradingRules.fivePoint(grade5, grade4, grade3);
+    }
+
+    private boolean validFivePointThresholds(Integer grade5, Integer grade4, Integer grade3) {
+        return grade5 != null && grade4 != null && grade3 != null
+                && grade5 >= 0 && grade5 <= 100
+                && grade4 >= 0 && grade4 <= 100
+                && grade3 >= 0 && grade3 <= 100
+                && grade5 > grade4
+                && grade4 > grade3;
+    }
+
+    private Integer calculateMark(Double percent, GradingRules gradingRules) {
+        if (percent == null || gradingRules.passFail()) {
+            return null;
+        }
+        if (percent >= gradingRules.grade5Percent()) {
+            return 5;
+        }
+        if (percent >= gradingRules.grade4Percent()) {
+            return 4;
+        }
+        if (percent >= gradingRules.grade3Percent()) {
+            return 3;
+        }
+        return 2;
     }
 
     private SpecificationResolution resolveSpecificationForAnalysis(PaReportVersion report) {
@@ -774,6 +840,30 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
     }
 
     private record SpecificationResolution(PaSpecification specification, PaSpecificationMatchSource source) {
+    }
+
+    private record GradingRules(boolean passFail,
+                                int grade5Percent,
+                                int grade4Percent,
+                                int grade3Percent,
+                                int passPercent,
+                                boolean fallbackUsed,
+                                String warningMessage) {
+        private static GradingRules fivePoint(int grade5Percent, int grade4Percent, int grade3Percent) {
+            return new GradingRules(false, grade5Percent, grade4Percent, grade3Percent, 0, false, null);
+        }
+
+        private static GradingRules fallback(boolean warning, String warningMessage) {
+            return new GradingRules(false, 85, 61, 35, 0, warning, warningMessage);
+        }
+
+        private static GradingRules passFail(int passPercent) {
+            return new GradingRules(true, 0, 0, 0, passPercent, false, null);
+        }
+
+        private static GradingRules passFailFallback(String warningMessage) {
+            return new GradingRules(true, 0, 0, 0, 35, true, warningMessage);
+        }
     }
 
     private record SpecificationCandidate(PaScopeType scopeType,
