@@ -10,9 +10,12 @@ import org.school.personalLoad.auth.AppTab;
 import org.school.personalLoad.auth.UserRole;
 import org.school.personalLoad.auth.SessionUser;
 import org.school.personalLoad.auth.TabPermissionSnapshot;
+import org.school.personalLoad.dto.auth.CreateUserRequest;
 import org.school.personalLoad.dto.auth.UpdateUserRequest;
 import org.school.personalLoad.dto.auth.UserTabPermissionRequest;
+import org.school.personalLoad.model.BuildingGroup;
 import org.school.personalLoad.model.SchoolBuilding;
+import org.school.personalLoad.repository.BuildingGroupRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.auth.AppUserRepository;
@@ -31,6 +34,8 @@ class AppUserServiceImplTest {
     @Mock
     private AppUserRepository appUserRepository;
     @Mock
+    private BuildingGroupRepository buildingGroupRepository;
+    @Mock
     private SchoolBuildingRepository schoolBuildingRepository;
     @Mock
     private TeacherDirectoryRepository teacherDirectoryRepository;
@@ -43,6 +48,7 @@ class AppUserServiceImplTest {
     void updateUserFlushesDeletedTabPermissionsBeforeInsert() {
         AppUserServiceImpl service = new AppUserServiceImpl(
                 appUserRepository,
+                buildingGroupRepository,
                 schoolBuildingRepository,
                 teacherDirectoryRepository,
                 tabPermissionRepository,
@@ -76,6 +82,7 @@ class AppUserServiceImplTest {
     void changeOwnPasswordUpdatesHashWhenCurrentPasswordIsValid() {
         AppUserServiceImpl service = new AppUserServiceImpl(
                 appUserRepository,
+                buildingGroupRepository,
                 schoolBuildingRepository,
                 teacherDirectoryRepository,
                 tabPermissionRepository,
@@ -97,6 +104,7 @@ class AppUserServiceImplTest {
     void changeOwnPasswordThrowsWhenCurrentPasswordIsWrong() {
         AppUserServiceImpl service = new AppUserServiceImpl(
                 appUserRepository,
+                buildingGroupRepository,
                 schoolBuildingRepository,
                 teacherDirectoryRepository,
                 tabPermissionRepository,
@@ -118,6 +126,7 @@ class AppUserServiceImplTest {
     void changeOwnPasswordThrowsWhenNewPasswordIsTooShort() {
         AppUserServiceImpl service = new AppUserServiceImpl(
                 appUserRepository,
+                buildingGroupRepository,
                 schoolBuildingRepository,
                 teacherDirectoryRepository,
                 tabPermissionRepository,
@@ -139,6 +148,7 @@ class AppUserServiceImplTest {
     void changeOwnPasswordThrowsWhenNewPasswordMatchesCurrent() {
         AppUserServiceImpl service = new AppUserServiceImpl(
                 appUserRepository,
+                buildingGroupRepository,
                 schoolBuildingRepository,
                 teacherDirectoryRepository,
                 tabPermissionRepository,
@@ -160,6 +170,7 @@ class AppUserServiceImplTest {
     void updateUserAcceptsBuildingCodeWithoutHyphenWhenCatalogCodeHasHyphen() {
         AppUserServiceImpl service = new AppUserServiceImpl(
                 appUserRepository,
+                buildingGroupRepository,
                 schoolBuildingRepository,
                 teacherDirectoryRepository,
                 tabPermissionRepository,
@@ -186,6 +197,241 @@ class AppUserServiceImplTest {
         AppUser updated = service.updateUser(11L, request);
 
         assertEquals("СП3", updated.getManagedBuildingCode());
+    }
+
+
+    @Test
+    void updateUserAcceptsManagedBuildingGroupCode() {
+        AppUserServiceImpl service = new AppUserServiceImpl(
+                appUserRepository,
+                buildingGroupRepository,
+                schoolBuildingRepository,
+                teacherDirectoryRepository,
+                tabPermissionRepository,
+                passwordEncoder
+        );
+        AppUser user = new AppUser();
+        user.setId(13L);
+        user.setRole(UserRole.BUILDING_HEAD);
+        user.setCanView(true);
+        user.setCanEdit(true);
+        user.setActive(true);
+        BuildingGroup buildingGroup = new BuildingGroup();
+        buildingGroup.setCode("МЕХМАТ");
+
+        when(appUserRepository.findById(13L)).thenReturn(Optional.of(user));
+        when(buildingGroupRepository.findAll()).thenReturn(List.of(buildingGroup));
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of());
+        when(appUserRepository.findAll()).thenReturn(List.of(user));
+        when(appUserRepository.save(any(AppUser.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(tabPermissionRepository.findAllByUserIdOrderByTabAsc(13L)).thenReturn(List.of());
+
+        UpdateUserRequest request = new UpdateUserRequest();
+        request.setManagedBuildingCode("мехмат");
+
+        AppUser updated = service.updateUser(13L, request);
+
+        assertEquals("МЕХМАТ", updated.getManagedBuildingCode());
+    }
+
+    @Test
+    void createUserPersistsManagedBuildingGroupCode() {
+        AppUserServiceImpl service = new AppUserServiceImpl(
+                appUserRepository,
+                buildingGroupRepository,
+                schoolBuildingRepository,
+                teacherDirectoryRepository,
+                tabPermissionRepository,
+                passwordEncoder
+        );
+        BuildingGroup buildingGroup = new BuildingGroup();
+        buildingGroup.setCode("МЕХМАТ");
+        org.school.personalLoad.model.TeacherDirectoryEntry teacher = new org.school.personalLoad.model.TeacherDirectoryEntry();
+        teacher.setFioTeacher("Иванов Иван Иванович");
+
+        when(appUserRepository.existsByUsernameIgnoreCase("ivanov")).thenReturn(false);
+        when(buildingGroupRepository.findAll()).thenReturn(List.of(buildingGroup));
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of());
+        when(teacherDirectoryRepository.findByFioTeacherIgnoreCase("Иванов Иван Иванович")).thenReturn(Optional.of(teacher));
+        when(appUserRepository.findAll()).thenReturn(List.of());
+        when(appUserRepository.save(any(AppUser.class))).thenAnswer(invocation -> {
+            AppUser saved = invocation.getArgument(0);
+            saved.setId(14L);
+            return saved;
+        });
+        when(tabPermissionRepository.findAllByUserIdOrderByTabAsc(14L)).thenReturn(List.of());
+
+        CreateUserRequest request = new CreateUserRequest();
+        request.setUsername("ivanov");
+        request.setFullName("Иванов Иван Иванович");
+        request.setRole(UserRole.BUILDING_HEAD);
+        request.setManagedBuildingCode("МЕХМАТ");
+        request.setCanView(true);
+        request.setCanEdit(true);
+
+        AppUser created = service.createUser(request);
+
+        assertEquals("МЕХМАТ", created.getManagedBuildingCode());
+    }
+
+    @Test
+    void updateUserKeepsLegacyManagedBuildingAccessCodeSupported() {
+        AppUserServiceImpl service = new AppUserServiceImpl(
+                appUserRepository,
+                buildingGroupRepository,
+                schoolBuildingRepository,
+                teacherDirectoryRepository,
+                tabPermissionRepository,
+                passwordEncoder
+        );
+        AppUser user = new AppUser();
+        user.setId(15L);
+        user.setRole(UserRole.BUILDING_HEAD);
+        user.setCanView(true);
+        user.setCanEdit(true);
+        user.setActive(true);
+        SchoolBuilding building = new SchoolBuilding();
+        building.setCode("СП3");
+        building.setAddress("Марии Ульяновой, д.17, корп.1");
+
+        when(appUserRepository.findById(15L)).thenReturn(Optional.of(user));
+        when(buildingGroupRepository.findAll()).thenReturn(List.of());
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of(building));
+        when(appUserRepository.findAll()).thenReturn(List.of(user));
+        when(appUserRepository.save(any(AppUser.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(tabPermissionRepository.findAllByUserIdOrderByTabAsc(15L)).thenReturn(List.of());
+
+        UpdateUserRequest request = new UpdateUserRequest();
+        request.setManagedBuildingCode("СП3|МАРИИУЛЬЯНОВОЙ,Д.17,КОРП.1");
+
+        AppUser updated = service.updateUser(15L, request);
+
+        assertEquals("СП3|МАРИИУЛЬЯНОВОЙ,Д.17,КОРП.1", updated.getManagedBuildingCode());
+    }
+
+
+    @Test
+    void updateMethodistAcceptsBuildingGroupCodeAsLoadEditableScope() {
+        AppUserServiceImpl service = new AppUserServiceImpl(
+                appUserRepository,
+                buildingGroupRepository,
+                schoolBuildingRepository,
+                teacherDirectoryRepository,
+                tabPermissionRepository,
+                passwordEncoder
+        );
+        AppUser user = new AppUser();
+        user.setId(16L);
+        user.setRole(UserRole.METHODIST);
+        user.setCanView(true);
+        user.setCanEdit(true);
+        user.setActive(true);
+        BuildingGroup buildingGroup = new BuildingGroup();
+        buildingGroup.setCode("МЕХМАТ");
+
+        when(appUserRepository.findById(16L)).thenReturn(Optional.of(user));
+        when(buildingGroupRepository.findAll()).thenReturn(List.of(buildingGroup));
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of());
+        when(appUserRepository.save(any(AppUser.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(tabPermissionRepository.findAllByUserIdOrderByTabAsc(16L)).thenReturn(List.of());
+
+        UpdateUserRequest request = new UpdateUserRequest();
+        request.setLoadEditableBuildingCodes(List.of("мехмат"));
+
+        AppUser updated = service.updateUser(16L, request);
+
+        assertEquals(new java.util.LinkedHashSet<>(List.of("МЕХМАТ")), updated.getLoadEditableBuildingCodes());
+    }
+
+    @Test
+    void updateUserAcceptsSiteScopedLoadEditableScopeWhenPhysicalSiteExists() {
+        AppUserServiceImpl service = new AppUserServiceImpl(
+                appUserRepository,
+                buildingGroupRepository,
+                schoolBuildingRepository,
+                teacherDirectoryRepository,
+                tabPermissionRepository,
+                passwordEncoder
+        );
+        AppUser user = new AppUser();
+        user.setId(17L);
+        user.setRole(UserRole.METHODIST);
+        user.setCanView(true);
+        user.setCanEdit(true);
+        user.setActive(true);
+        BuildingGroup buildingGroup = new BuildingGroup();
+        buildingGroup.setCode("МЕХМАТ");
+        SchoolBuilding building = new SchoolBuilding();
+        building.setId(38L);
+        building.setCode("МЕХМАТ");
+        building.setAddress("Кравченко, д.14, корп.1");
+
+        when(appUserRepository.findById(17L)).thenReturn(Optional.of(user));
+        when(buildingGroupRepository.findAll()).thenReturn(List.of(buildingGroup));
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of(building));
+        when(appUserRepository.save(any(AppUser.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(tabPermissionRepository.findAllByUserIdOrderByTabAsc(17L)).thenReturn(List.of());
+
+        UpdateUserRequest request = new UpdateUserRequest();
+        request.setLoadEditableBuildingCodes(List.of("мехмат::38"));
+
+        AppUser updated = service.updateUser(17L, request);
+
+        assertEquals(new java.util.LinkedHashSet<>(List.of("МЕХМАТ::38")), updated.getLoadEditableBuildingCodes());
+    }
+
+    @Test
+    void updateUserRejectsUnknownLoadEditableScopeWithExistingError() {
+        AppUserServiceImpl service = new AppUserServiceImpl(
+                appUserRepository,
+                buildingGroupRepository,
+                schoolBuildingRepository,
+                teacherDirectoryRepository,
+                tabPermissionRepository,
+                passwordEncoder
+        );
+        AppUser user = new AppUser();
+        user.setId(18L);
+        user.setRole(UserRole.METHODIST);
+        user.setCanView(true);
+        user.setCanEdit(true);
+        user.setActive(true);
+
+        when(appUserRepository.findById(18L)).thenReturn(Optional.of(user));
+        when(buildingGroupRepository.findAll()).thenReturn(List.of());
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of());
+
+        UpdateUserRequest request = new UpdateUserRequest();
+        request.setLoadEditableBuildingCodes(List.of("НЕСУЩЕСТВУЕТ"));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.updateUser(18L, request));
+
+        assertEquals("Корпус для редактирования нагрузки не найден: НЕСУЩЕСТВУЕТ", error.getMessage());
+        verify(appUserRepository, never()).save(any());
+    }
+
+
+    @Test
+    void sessionLoadPermissionTreatsSiteScopedBuildingCodesAsExactScope() {
+        SessionUser user = new SessionUser(
+                19L,
+                "methodist",
+                "Методист",
+                null,
+                null,
+                UserRole.METHODIST,
+                true,
+                true,
+                true,
+                null,
+                false,
+                new java.util.LinkedHashSet<>(List.of("МЕХМАТ::38")),
+                List.of(new TabPermissionSnapshot(AppTab.LOAD, true, true, true, true))
+        );
+
+        assertTrue(user.canEditLoadBuilding("МЕХМАТ::38"));
+        assertFalse(user.canEditLoadBuilding("МЕХМАТ::39"));
+        assertFalse(user.canEditLoadBuilding("МЕХМАТ"));
     }
 
     @Test
