@@ -15,6 +15,7 @@ const state = {
     classes: [],
     teachers: [],
     subjects: [],
+    coefficients: [],
     studentHourRate: 37
 };
 
@@ -239,7 +240,7 @@ function effectiveHalfHours(total) {
 
 function formatHours(total) {
     const { h1, h2 } = effectiveHalfHours(total);
-    return h1 === h2 ? String(h1) : `${h1}/${h2}`;
+    return h1 === h2 ? String(h1) : `${h1} | ${h2}`;
 }
 
 function formatScopedTotalHours(scoped, total) {
@@ -272,14 +273,28 @@ function salaryPermission() {
     };
 }
 
-function subjectCoefficient(subjectName) {
-    return state.subjectCoefficientByName?.get(normalizeKey(subjectName)) || 1;
+function educationStageByClassName(className) {
+    const match = normalizeText(className).match(/\d+/);
+    const grade = match ? Number(match[0]) : NaN;
+    if (!Number.isFinite(grade)) return "";
+    if (grade >= 1 && grade <= 4) return "NOO";
+    if (grade >= 5 && grade <= 9) return "OOO";
+    if (grade >= 10 && grade <= 11) return "SOO";
+    return "";
+}
+
+function subjectLevelCoefficientKey(subjectName, className) {
+    return `${normalizeKey(subjectName)}|${educationStageByClassName(className)}`;
+}
+
+function subjectCoefficient(subjectName, className) {
+    return state.subjectCoefficientByKey?.get(subjectLevelCoefficientKey(subjectName, className)) || 1;
 }
 
 function rowSalary(row) {
     const children = Math.max(childrenCount(row), 1);
     const hours = Math.max(loadValue(row), 0);
-    const coefficient = subjectCoefficient(row.subjectName);
+    const coefficient = subjectCoefficient(row.subjectName, row.className);
     let value = state.studentHourRate * children * hours * 2.8333333 * coefficient;
     if (normalizeText(row.groupNameEducationalPlan || "")) {
         value *= 25 / children;
@@ -485,22 +500,24 @@ function rebuildIndexes() {
         state.leadershipByTeacher.get(key).push(entry);
     });
 
-    state.subjectCoefficientByName = new Map();
-    state.subjects.forEach((subject) => {
-        const coefficient = Number(subject.subjectCoefficient ?? 1);
-        state.subjectCoefficientByName.set(normalizeKey(subject.subjectName), Number.isFinite(coefficient) && coefficient > 0 ? coefficient : 1);
+    state.subjectCoefficientByKey = new Map();
+    state.coefficients.forEach((entry) => {
+        const coefficient = Number(entry.coefficient ?? 1);
+        const key = `${normalizeKey(entry.subjectName)}|${entry.educationStage || ""}`;
+        state.subjectCoefficientByKey.set(key, Number.isFinite(coefficient) && coefficient > 0 ? coefficient : 1);
     });
 }
 
 async function loadData() {
     ui.summary.textContent = "Загрузка данных…";
     const salaryAccess = salaryPermission().canView;
-    const [buildings, manualRows, classes, teachers, subjects, salarySettings] = await Promise.all([
+    const [buildings, manualRows, classes, teachers, subjects, coefficients, salarySettings] = await Promise.all([
         api("/api/buildings"),
         api("/api/manual-load"),
         api("/api/classroom-leadership"),
         api("/api/teachers"),
         api("/api/subjects"),
+        api("/api/subjects/coefficients"),
         salaryAccess ? api("/api/salary-settings") : Promise.resolve(null)
     ]);
     state.manualRows = manualRows || [];
@@ -508,6 +525,7 @@ async function loadData() {
     state.buildings = buildBuildingOptions(buildings, state.classes);
     state.teachers = teachers || [];
     state.subjects = subjects || [];
+    state.coefficients = coefficients || [];
     const rate = Number(salarySettings?.studentHourRate ?? 37);
     state.studentHourRate = Number.isFinite(rate) && rate > 0 ? rate : 37;
     rebuildIndexes();
