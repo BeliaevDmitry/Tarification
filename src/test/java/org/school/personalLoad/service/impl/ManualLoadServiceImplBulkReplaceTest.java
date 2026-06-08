@@ -16,6 +16,7 @@ import org.school.personalLoad.dto.ManualLoadHealthResponse;
 import org.school.personalLoad.dto.ManualLoadStatsResponse;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.EducationLevel;
+import org.school.personalLoad.model.EducationStage;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.MetaGroup;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
@@ -23,6 +24,7 @@ import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.SalarySettings;
 import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.model.SubjectCatalogEntry;
+import org.school.personalLoad.model.SubjectLevelCoefficientEntry;
 import org.school.personalLoad.model.SubjectType;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
@@ -34,6 +36,7 @@ import org.school.personalLoad.repository.ContingentSnapshotRepository;
 import org.school.personalLoad.repository.ContingentStudentRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
+import org.school.personalLoad.repository.SubjectLevelCoefficientRepository;
 import org.school.personalLoad.repository.MetaGroupRepository;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.DatabaseService;
@@ -80,6 +83,8 @@ class ManualLoadServiceImplBulkReplaceTest {
     @Mock
     private SubjectCatalogRepository subjectCatalogRepository;
     @Mock
+    private SubjectLevelCoefficientRepository subjectLevelCoefficientRepository;
+    @Mock
     private ClassroomLeadershipRepository classroomLeadershipRepository;
     @Mock
     private ContingentSnapshotRepository contingentSnapshotRepository;
@@ -111,6 +116,7 @@ class ManualLoadServiceImplBulkReplaceTest {
         lenient().when(teacherDirectoryRepository.findById(10L)).thenReturn(Optional.of(teacher));
         lenient().when(teacherDirectoryRepository.findById(11L)).thenReturn(Optional.of(vacancy));
         lenient().when(subjectCatalogRepository.findAll()).thenReturn(List.of(algebra, math, ethics, physics, odnknr));
+        lenient().when(subjectLevelCoefficientRepository.findAll()).thenReturn(List.of());
         lenient().when(subjectCatalogRepository.findById(20L)).thenReturn(Optional.of(algebra));
         lenient().when(subjectCatalogRepository.findById(21L)).thenReturn(Optional.of(math));
         lenient().when(subjectCatalogRepository.findById(22L)).thenReturn(Optional.of(ethics));
@@ -128,6 +134,7 @@ class ManualLoadServiceImplBulkReplaceTest {
                 studyPeriodSettingService,
                 teacherDirectoryRepository,
                 subjectCatalogRepository,
+                subjectLevelCoefficientRepository,
                 classroomLeadershipRepository,
                 contingentSnapshotRepository,
                 contingentStudentRepository,
@@ -359,7 +366,6 @@ class ManualLoadServiceImplBulkReplaceTest {
         SubjectCatalogEntry subject = new SubjectCatalogEntry();
         subject.setSubjectName("Физика");
         subject.setSubjectAreaName("Естественные науки");
-        when(subjectCatalogRepository.findAll()).thenReturn(List.of(subject));
 
         ManualLoadStatsResponse stats = service.buildStats("2025/2026", "СП1", 0, 20);
         ManualLoadHealthResponse health = service.buildHealth("2025/2026", "СП1");
@@ -663,13 +669,8 @@ class ManualLoadServiceImplBulkReplaceTest {
         math.setGroupNameEducationalPlan("1 группа");
         ClassroomLeadershipEntry leadership = classEntry("СП1", "5-А", "ул. Первая, 1");
         leadership.setFioTeacher("Иванова И.И.");
-        SubjectCatalogEntry russianSubject = subject(30L, "Русский язык");
-        russianSubject.setSubjectCoefficient(BigDecimal.valueOf(1.25));
-        SubjectCatalogEntry mathSubject = subject(31L, "Алгебра");
-        mathSubject.setSubjectCoefficient(BigDecimal.valueOf(1.3));
-
         when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(russian, literature, math));
-        when(subjectCatalogRepository.findAll()).thenReturn(List.of(russianSubject, mathSubject));
+        when(subjectLevelCoefficientRepository.findAll()).thenReturn(List.of(coefficient("Алгебра", EducationStage.OOO, "1.3")));
         when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(leadership));
 
         byte[] body = service.exportConsolidatedWorkbook("2025/2026");
@@ -678,7 +679,7 @@ class ManualLoadServiceImplBulkReplaceTest {
             var sheet = workbook.getSheet("Нагрузка укрупнённо");
             assertNotNull(sheet);
             List<String> expectedHeaders = List.of(
-                    "Основной предмет*", "ФИО", "Корпус", "Предмет", "Класс", "Группа", "Кол-во часов",
+                    "Основной предмет*", "ФИО", "Корпус", "Предмет", "Класс", "Группа", "Период", "Кол-во часов",
                     "ИТОГО Часов", "К-во детей (Норм)", "К-во детей (с К=2)", "К-во детей (с К=3)",
                     "Коэф. Предмета", "Классное руководство"
             );
@@ -687,23 +688,24 @@ class ManualLoadServiceImplBulkReplaceTest {
             }
             assertEquals("Русский язык и литература", sheet.getRow(1).getCell(0).getStringCellValue());
             assertEquals("Иванова И.И.", sheet.getRow(1).getCell(1).getStringCellValue());
-            assertEquals(10, (int) sheet.getRow(1).getCell(7).getNumericCellValue());
-            assertEquals("", sheet.getRow(1).getCell(8).getStringCellValue());
+            assertEquals("ГОД", sheet.getRow(1).getCell(6).getStringCellValue());
+            assertEquals("10", sheet.getRow(1).getCell(8).getStringCellValue());
             assertEquals("", sheet.getRow(1).getCell(9).getStringCellValue());
             assertEquals("", sheet.getRow(1).getCell(10).getStringCellValue());
-            assertEquals("5-А", sheet.getRow(1).getCell(12).getStringCellValue());
+            assertEquals("", sheet.getRow(1).getCell(11).getStringCellValue());
+            assertEquals("5-А", sheet.getRow(1).getCell(13).getStringCellValue());
             boolean hasMathCoefficient = false;
             for (int rowIndex = 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
                 if ("Алгебра".equals(sheet.getRow(rowIndex).getCell(3).getStringCellValue())) {
-                    assertEquals("1.3", sheet.getRow(rowIndex).getCell(11).getStringCellValue());
+                    assertEquals("1.3", sheet.getRow(rowIndex).getCell(12).getStringCellValue());
                     hasMathCoefficient = true;
                 }
             }
             assertTrue(hasMathCoefficient);
             assertTrue(sheet.getMergedRegions().stream().anyMatch(region -> region.getFirstColumn() == 0 && region.getLastColumn() == 0));
             assertTrue(sheet.getMergedRegions().stream().anyMatch(region -> region.getFirstColumn() == 1 && region.getLastColumn() == 1));
-            assertTrue(sheet.getMergedRegions().stream().anyMatch(region -> region.getFirstColumn() == 7 && region.getLastColumn() == 7));
-            assertTrue(sheet.getMergedRegions().stream().anyMatch(region -> region.getFirstColumn() == 12 && region.getLastColumn() == 12));
+            assertTrue(sheet.getMergedRegions().stream().anyMatch(region -> region.getFirstColumn() == 8 && region.getLastColumn() == 8));
+            assertTrue(sheet.getMergedRegions().stream().anyMatch(region -> region.getFirstColumn() == 13 && region.getLastColumn() == 13));
         }
     }
 
@@ -711,7 +713,6 @@ class ManualLoadServiceImplBulkReplaceTest {
     void exportConsolidatedWorkbookMarksTeacherAsPrimarySchoolWhenTeachingGradesOneToFour() throws Exception {
         ManualLoadEntry row = manualRow("Петрова П.П.", "СП1", "3-А", "Физика", 2);
         when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(row));
-        when(subjectCatalogRepository.findAll()).thenReturn(List.of(subject(23L, "Физика")));
         when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of());
 
         byte[] body = service.exportConsolidatedWorkbook("2025/2026");
@@ -765,7 +766,6 @@ class ManualLoadServiceImplBulkReplaceTest {
 
         when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(first, second));
         when(teacherDirectoryRepository.findAll()).thenReturn(List.of());
-        when(subjectCatalogRepository.findAll()).thenReturn(List.of(subject));
         when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(firstClass));
         when(schoolBuildingRepository.findAll()).thenReturn(List.of());
         SalarySettings settings = new SalarySettings();
@@ -864,7 +864,6 @@ class ManualLoadServiceImplBulkReplaceTest {
 
         when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(year, firstHalf, secondHalf));
         when(teacherDirectoryRepository.findAll()).thenReturn(List.of());
-        when(subjectCatalogRepository.findAll()).thenReturn(List.of(subject));
         when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of());
         when(schoolBuildingRepository.findAll()).thenReturn(List.of());
         SalarySettings settings = new SalarySettings();
@@ -982,6 +981,14 @@ class ManualLoadServiceImplBulkReplaceTest {
         teacher.setId(id);
         teacher.setFioTeacher(fio);
         return teacher;
+    }
+
+    private SubjectLevelCoefficientEntry coefficient(String subjectName, EducationStage stage, String coefficient) {
+        SubjectLevelCoefficientEntry entry = new SubjectLevelCoefficientEntry();
+        entry.setSubjectName(subjectName);
+        entry.setEducationStage(stage);
+        entry.setCoefficient(new BigDecimal(coefficient));
+        return entry;
     }
 
     private SubjectCatalogEntry subject(Long id, String name) {
