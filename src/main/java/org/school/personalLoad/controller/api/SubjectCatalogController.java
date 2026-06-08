@@ -2,8 +2,11 @@ package org.school.personalLoad.controller.api;
 
 import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.dto.SubjectCreateRequest;
+import org.school.personalLoad.dto.SubjectLevelCoefficientRequest;
 import org.school.personalLoad.model.SubjectCatalogEntry;
+import org.school.personalLoad.model.SubjectLevelCoefficientEntry;
 import org.school.personalLoad.service.SubjectCatalogService;
+import org.school.personalLoad.service.SubjectLevelCoefficientService;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -20,6 +23,7 @@ import java.util.Map;
 public class SubjectCatalogController {
 
     private final SubjectCatalogService subjectCatalogService;
+    private final SubjectLevelCoefficientService subjectLevelCoefficientService;
 
     @PostMapping
     public ResponseEntity<SubjectCatalogEntry> create(@RequestBody SubjectCreateRequest request) {
@@ -48,6 +52,36 @@ public class SubjectCatalogController {
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=subjects-template.xlsx")
+                .body(resource);
+    }
+
+    @GetMapping("/coefficients")
+    public ResponseEntity<List<SubjectLevelCoefficientEntry>> findAllCoefficients() {
+        return ResponseEntity.ok(subjectLevelCoefficientService.findAll());
+    }
+
+    @PostMapping("/coefficients")
+    public ResponseEntity<SubjectLevelCoefficientEntry> saveCoefficient(@RequestBody SubjectLevelCoefficientRequest request) {
+        return ResponseEntity.ok(subjectLevelCoefficientService.save(request));
+    }
+
+    @DeleteMapping("/coefficients/{id}")
+    public ResponseEntity<Void> deleteCoefficient(@PathVariable Long id) {
+        subjectLevelCoefficientService.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/coefficients/import")
+    public ResponseEntity<Map<String, Object>> importCoefficientsFromExcel(@RequestParam("file") MultipartFile file) {
+        return ResponseEntity.ok(subjectLevelCoefficientService.importFromExcel(file));
+    }
+
+    @GetMapping("/coefficients/export")
+    public ResponseEntity<Resource> exportCoefficients() {
+        Resource resource = subjectLevelCoefficientService.exportWorkbook();
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=subject-coefficients.xlsx")
                 .body(resource);
     }
 

@@ -12,7 +12,7 @@
 <main class="container">
     <header class="card">
         <h1>Предметы</h1>
-        <p class="muted">Список предметов для вкладки учебного плана.</p>
+        <p class="muted">Список предметов для вкладки учебного плана и коэффициенты по предметам/уровням обучения.</p>
         <nav class="page-nav">
             <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
             <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
@@ -45,7 +45,6 @@
             <select id="subject-area">
                 <option value="Без области">Без области</option>
             </select>
-            <input id="subject-coefficient" type="number" step="0.01" min="0" value="1" placeholder="Коэффициент">
             <button type="submit">Добавить предмет</button>
             <button id="refresh-subjects-btn" type="button" data-allow-readonly="true">Обновить</button>
             <button id="clear-subjects-btn" type="button">Очистить</button>
@@ -57,11 +56,38 @@
         <h2>Список предметов</h2>
         <div class="sheet-wrap">
             <table class="sheet-table">
-                <thead><tr><th>Предмет</th><th>Тип</th><th>Область</th><th>Коэффициент</th></tr></thead>
+                <thead><tr><th>Предмет</th><th>Тип</th><th>Область</th></tr></thead>
                 <tbody id="subjects-body"></tbody>
             </table>
         </div>
     </section>
+    <section class="card" data-requires-edit>
+        <h2>Коэффициенты</h2>
+        <p class="muted compact-note">Коэффициент задаётся для пары «Предмет + уровень обучения»: НОО (1–4), ООО (5–9), СОО (10–11). Если совпадения нет, в расчёте используется 1.</p>
+        <div class="row">
+            <input id="coefficient-file" type="file" accept=".xls,.xlsx">
+            <button id="import-coefficients-btn" type="button">Импортировать коэффициенты</button>
+            <a id="export-coefficients-link" href="/api/subjects/coefficients/export" class="nav-link" data-allow-readonly="true">Экспорт коэффициентов</a>
+        </div>
+        <form id="coefficient-form" class="row">
+            <input id="coefficient-subject-name" placeholder="Предмет" required>
+            <select id="coefficient-education-stage" required>
+                <option value="NOO">НОО (1–4 классы)</option>
+                <option value="OOO">ООО (5–9 классы)</option>
+                <option value="SOO">СОО (10–11 классы)</option>
+            </select>
+            <input id="coefficient-value" type="number" step="0.01" min="0" value="1" placeholder="Коэффициент">
+            <button type="submit">Сохранить коэффициент</button>
+            <button id="refresh-coefficients-btn" type="button" data-allow-readonly="true">Обновить коэффициенты</button>
+        </form>
+        <div class="sheet-wrap">
+            <table class="sheet-table">
+                <thead><tr><th>Предмет</th><th>Уровень</th><th>Коэффициент</th><th>Действие</th></tr></thead>
+                <tbody id="coefficients-body"></tbody>
+            </table>
+        </div>
+    </section>
+
 </main>
 
 <dialog id="subject-edit-dialog">
@@ -78,7 +104,6 @@
         <select name="subjectAreaName">
             <option value="Без области">Без области</option>
         </select>
-        <input name="subjectCoefficient" type="number" step="0.01" min="0" value="1" placeholder="Коэффициент">
         <div class="row">
             <button type="submit">Сохранить</button>
             <button type="button" id="subject-delete-btn" class="danger-btn">Удалить</button>

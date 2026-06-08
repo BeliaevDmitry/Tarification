@@ -8,7 +8,6 @@ const ui = {
     name: document.getElementById("subject-name"),
     type: document.getElementById("subject-type"),
     area: document.getElementById("subject-area"),
-    coefficient: document.getElementById("subject-coefficient"),
     refreshBtn: document.getElementById("refresh-subjects-btn"),
     clearBtn: document.getElementById("clear-subjects-btn"),
     result: document.getElementById("subjects-result"),
@@ -16,11 +15,20 @@ const ui = {
     editDialog: document.getElementById("subject-edit-dialog"),
     editForm: document.getElementById("subject-edit-form"),
     deleteBtn: document.getElementById("subject-delete-btn"),
-    closeBtn: document.getElementById("subject-close-btn")
+    closeBtn: document.getElementById("subject-close-btn"),
+    coefficientFileInput: document.getElementById("coefficient-file"),
+    coefficientImportBtn: document.getElementById("import-coefficients-btn"),
+    coefficientForm: document.getElementById("coefficient-form"),
+    coefficientSubjectName: document.getElementById("coefficient-subject-name"),
+    coefficientEducationStage: document.getElementById("coefficient-education-stage"),
+    coefficientValue: document.getElementById("coefficient-value"),
+    coefficientRefreshBtn: document.getElementById("refresh-coefficients-btn"),
+    coefficientsBody: document.getElementById("coefficients-body")
 };
 
 let subjects = [];
 let subjectAreas = [];
+let coefficients = [];
 
 async function api(path, options = {}) {
     const response = await fetch(path, options);
@@ -39,6 +47,12 @@ const typeLabel = (v) => {
     if (v === "FORMABLE") return "2 тип: формируемая";
     return "1 тип: основная";
 };
+const stageLabel = (v) => {
+    if (v === "NOO") return "НОО (1–4)";
+    if (v === "OOO") return "ООО (5–9)";
+    if (v === "SOO") return "СОО (10–11)";
+    return v || "";
+};
 
 function render(rows) {
     ui.body.innerHTML = "";
@@ -48,10 +62,34 @@ function render(rows) {
             <td>${esc(r.subjectName)}</td>
             <td>${esc(typeLabel(r.subjectType))}</td>
             <td>${esc(r.subjectAreaName || DEFAULT_SUBJECT_AREA)}</td>
-            <td>${esc(formatCoefficient(r.subjectCoefficient))}</td>
         `;
         tr.addEventListener('click', () => openEdit(r));
         ui.body.appendChild(tr);
+    });
+}
+
+function renderCoefficients(rows) {
+    ui.coefficientsBody.innerHTML = "";
+    (rows || [])
+        .sort((a, b) => String(a.subjectName).localeCompare(String(b.subjectName), "ru") || String(a.educationStage).localeCompare(String(b.educationStage)))
+        .forEach((r) => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${esc(r.subjectName)}</td>
+                <td>${esc(stageLabel(r.educationStage))}</td>
+                <td>${esc(formatCoefficient(r.coefficient))}</td>
+                <td><button type="button" data-delete-coefficient="${esc(r.id)}" class="danger-btn">Удалить</button></td>
+            `;
+            tr.addEventListener("click", (event) => {
+                if (event.target?.dataset?.deleteCoefficient) return;
+                ui.coefficientSubjectName.value = r.subjectName;
+                ui.coefficientEducationStage.value = r.educationStage;
+                ui.coefficientValue.value = formatCoefficient(r.coefficient);
+            });
+            ui.coefficientsBody.appendChild(tr);
+        });
+    ui.coefficientsBody.querySelectorAll("button[data-delete-coefficient]").forEach((button) => {
+        button.addEventListener("click", () => deleteCoefficient(button.dataset.deleteCoefficient));
     });
 }
 
@@ -67,7 +105,6 @@ function openEdit(subject) {
         ui.editForm.elements.subjectAreaName.appendChild(customOption);
     }
     ui.editForm.elements.subjectAreaName.value = areaName;
-    ui.editForm.elements.subjectCoefficient.value = formatCoefficient(subject.subjectCoefficient);
     ui.editDialog.showModal();
 }
 
@@ -103,9 +140,18 @@ async function loadSubjectAreas() {
     applySubjectAreaOptions();
 }
 
-async function reload() {
+async function reloadSubjects() {
     subjects = await api('/api/subjects');
     render(subjects || []);
+}
+
+async function reloadCoefficients() {
+    coefficients = await api('/api/subjects/coefficients');
+    renderCoefficients(coefficients || []);
+}
+
+async function reload() {
+    await Promise.all([reloadSubjects(), reloadCoefficients()]);
 }
 
 ui.importBtn.addEventListener('click', async () => {
@@ -116,7 +162,7 @@ ui.importBtn.addEventListener('click', async () => {
     try {
         const result = await api('/api/subjects/import', { method: 'POST', body: form });
         print(result);
-        await reload();
+        await reloadSubjects();
     } catch (e) { print({ error: e.message }); }
 });
 
@@ -128,15 +174,13 @@ ui.form.addEventListener('submit', async (e) => {
             body: JSON.stringify({
                 subjectName: ui.name.value.trim(),
                 subjectType: ui.type.value,
-                subjectAreaName: normalizeAreaName(ui.area.value),
-                subjectCoefficient: parseCoefficient(ui.coefficient.value)
+                subjectAreaName: normalizeAreaName(ui.area.value)
             })
         });
         print(result);
         ui.form.reset();
         ui.area.value = DEFAULT_SUBJECT_AREA;
-        ui.coefficient.value = "1";
-        await reload();
+        await reloadSubjects();
     } catch (e) { print({ error: e.message }); }
 });
 
@@ -149,15 +193,52 @@ ui.editForm.addEventListener('submit', async (e) => {
             body: JSON.stringify({
                 subjectName: ui.editForm.elements.subjectName.value.trim(),
                 subjectType: ui.editForm.elements.subjectType.value,
-                subjectAreaName: normalizeAreaName(ui.editForm.elements.subjectAreaName.value),
-                subjectCoefficient: parseCoefficient(ui.editForm.elements.subjectCoefficient.value)
+                subjectAreaName: normalizeAreaName(ui.editForm.elements.subjectAreaName.value)
             })
         });
         ui.editDialog.close();
         print(result);
-        await reload();
+        await reloadSubjects();
     } catch (e) { print({ error: e.message }); }
 });
+
+ui.coefficientImportBtn.addEventListener('click', async () => {
+    const file = ui.coefficientFileInput.files?.[0];
+    if (!file) return print({ error: 'Выберите файл коэффициентов' });
+    const form = new FormData();
+    form.append('file', file);
+    try {
+        const result = await api('/api/subjects/coefficients/import', { method: 'POST', body: form });
+        print(result);
+        await reloadCoefficients();
+    } catch (e) { print({ error: e.message }); }
+});
+
+ui.coefficientForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+        const result = await api('/api/subjects/coefficients', {
+            method: 'POST', headers: jsonHeaders,
+            body: JSON.stringify({
+                subjectName: ui.coefficientSubjectName.value.trim(),
+                educationStage: ui.coefficientEducationStage.value,
+                coefficient: parseCoefficient(ui.coefficientValue.value)
+            })
+        });
+        print(result);
+        ui.coefficientValue.value = "1";
+        await reloadCoefficients();
+    } catch (e) { print({ error: e.message }); }
+});
+
+async function deleteCoefficient(id) {
+    if (!confirm('Удалить коэффициент?')) return;
+    try {
+        await api(`/api/subjects/coefficients/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        print({ status: 'deleted', id });
+        await reloadCoefficients();
+    } catch (e) { print({ error: e.message }); }
+}
 
 ui.deleteBtn.addEventListener('click', async () => {
     const id = Number(ui.editForm.elements.id.value);
@@ -166,14 +247,15 @@ ui.deleteBtn.addEventListener('click', async () => {
         await api(`/api/subjects/${id}`, { method: 'DELETE' });
         ui.editDialog.close();
         print({ status: 'deleted', id });
-        await reload();
+        await reloadSubjects();
     } catch (e) { print({ error: e.message }); }
 });
 
 ui.closeBtn.addEventListener('click', () => ui.editDialog.close());
-ui.refreshBtn.addEventListener('click', () => reload().catch((e) => print({ error: e.message })));
+ui.refreshBtn.addEventListener('click', () => reloadSubjects().catch((e) => print({ error: e.message })));
+ui.coefficientRefreshBtn.addEventListener('click', () => reloadCoefficients().catch((e) => print({ error: e.message })));
 ui.clearBtn.addEventListener('click', async () => {
-    try { await api('/api/subjects', { method: 'DELETE' }); print({ status: 'cleared' }); await reload(); }
+    try { await api('/api/subjects', { method: 'DELETE' }); print({ status: 'cleared' }); await reloadSubjects(); }
     catch (e) { print({ error: e.message }); }
 });
 
