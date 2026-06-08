@@ -430,6 +430,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     "Предмет",
                     "Класс",
                     "Группа",
+                    "Период",
                     "Кол-во часов",
                     "ИТОГО Часов",
                     "К-во детей (Норм)",
@@ -453,10 +454,11 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                         .sorted(Comparator.comparing(ManualLoadEntry::getNumberSchoolBuilding, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
                                 .thenComparing(ManualLoadEntry::getSubjectName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
                                 .thenComparing(ManualLoadEntry::getClassName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
-                                .thenComparing(ManualLoadEntry::getGroupNameEducationalPlan, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER)))
+                                .thenComparing(ManualLoadEntry::getGroupNameEducationalPlan, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                                .thenComparing(entry -> entry.getStudyPeriod() == null ? StudyPeriod.YEAR : entry.getStudyPeriod()))
                         .toList();
                 int teacherStart = rowNum;
-                int totalHours = teacherRows.stream().mapToInt(this::manualLoadHours).sum();
+                String totalHours = formatTotalHalfHours(teacherRows);
                 String classLeadership = String.join(", ", classLeadershipByTeacher.getOrDefault(group.teacherKey(), List.of()));
 
                 for (ManualLoadEntry entry : teacherRows) {
@@ -467,16 +469,17 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     row.createCell(3).setCellValue(normalizeDisplayValue(entry.getSubjectName()));
                     row.createCell(4).setCellValue(normalizeDisplayValue(entry.getClassName()));
                     row.createCell(5).setCellValue(normalizeDisplayValue(entry.getGroupNameEducationalPlan()));
-                    row.createCell(6).setCellValue(manualLoadHours(entry));
-                    row.createCell(7).setCellValue(totalHours);
-                    row.createCell(8).setCellValue("");
+                    row.createCell(6).setCellValue(studyPeriodLabel(entry.getStudyPeriod()));
+                    row.createCell(7).setCellValue(manualLoadHours(entry));
+                    row.createCell(8).setCellValue(totalHours);
                     row.createCell(9).setCellValue("");
                     row.createCell(10).setCellValue("");
-                    row.createCell(11).setCellValue(subjectCoefficientByName
+                    row.createCell(11).setCellValue("");
+                    row.createCell(12).setCellValue(subjectCoefficientByName
                             .getOrDefault(normalizeToken(entry.getSubjectName()), BigDecimal.ONE)
                             .stripTrailingZeros()
                             .toPlainString());
-                    row.createCell(12).setCellValue(classLeadership);
+                    row.createCell(13).setCellValue(classLeadership);
                     for (int c = 0; c < cols.size(); c++) {
                         row.getCell(c).setCellStyle(wrap);
                     }
@@ -484,18 +487,45 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 if (rowNum - 1 > teacherStart) {
                     sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 0, 0));
                     sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 1, 1));
-                    sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 7, 7));
-                    sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 12, 12));
+                    sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 8, 8));
+                    sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 13, 13));
                 }
             }
 
-            int[] widths = {28, 30, 12, 22, 10, 12, 12, 13, 15, 15, 15, 14, 20};
+            int[] widths = {28, 30, 12, 22, 10, 12, 10, 12, 13, 15, 15, 15, 14, 20};
             for (int i = 0; i < widths.length; i++) {
                 sheet.setColumnWidth(i, widths[i] * 256);
             }
             workbook.write(out);
             return out.toByteArray();
         }
+    }
+    private String formatTotalHalfHours(List<ManualLoadEntry> rows) {
+        int h1 = 0;
+        int h2 = 0;
+        for (ManualLoadEntry row : rows) {
+            int hours = manualLoadHours(row);
+            StudyPeriod period = row.getStudyPeriod() == null ? StudyPeriod.YEAR : row.getStudyPeriod();
+            if (period == StudyPeriod.H1) {
+                h1 += hours;
+            } else if (period == StudyPeriod.H2) {
+                h2 += hours;
+            } else {
+                h1 += hours;
+                h2 += hours;
+            }
+        }
+        return h1 == h2 ? String.valueOf(h1) : h1 + " / " + h2;
+    }
+
+    private String studyPeriodLabel(StudyPeriod period) {
+        if (period == StudyPeriod.H1) {
+            return "1П";
+        }
+        if (period == StudyPeriod.H2) {
+            return "2П";
+        }
+        return "ГОД";
     }
 
 
