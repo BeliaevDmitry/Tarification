@@ -136,8 +136,16 @@ public class SubjectCatalogServiceImpl implements SubjectCatalogService {
                     continue;
                 }
 
-                if (repository.findBySubjectNameAndSubjectType(subjectName.trim(), type).isPresent()) {
-                    skipped++;
+                Optional<SubjectCatalogEntry> existing =
+                        repository.findBySubjectNameAndSubjectType(subjectName.trim(), type);
+
+                if (existing.isPresent()) {
+                    SubjectCatalogEntry entry = existing.get();
+                    entry.setSubjectAreaRef(area);
+                    entry.setSubjectAreaName(area.getName());
+                    entry.setSubjectCoefficient(coefficient);
+                    repository.save(entry);
+                    imported++;
                     continue;
                 }
 
