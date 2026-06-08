@@ -27,6 +27,7 @@ import org.school.personalLoad.model.SubjectAreaNames;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.ContinuityStatus;
 import org.school.personalLoad.model.EducationLevel;
+import org.school.personalLoad.model.EducationStage;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.MetaGroup;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
@@ -45,6 +46,7 @@ import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.ContingentSnapshotRepository;
 import org.school.personalLoad.repository.ContingentStudentRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
+import org.school.personalLoad.repository.SubjectLevelCoefficientRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.MetaGroupRepository;
 import org.school.personalLoad.service.CurriculumPlanService;
@@ -90,6 +92,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private final StudyPeriodSettingService studyPeriodSettingService;
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final SubjectCatalogRepository subjectCatalogRepository;
+    private final SubjectLevelCoefficientRepository subjectLevelCoefficientRepository;
     private final ClassroomLeadershipRepository classroomLeadershipRepository;
     private final ContingentSnapshotRepository contingentSnapshotRepository;
     private final ContingentStudentRepository contingentStudentRepository;
@@ -370,12 +373,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         List<ManualLoadEntry> rows = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
                 .filter(row -> normalizeDisplayValue(row.getFioTeacher()).length() > 0)
                 .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
-        Map<String, BigDecimal> subjectCoefficientByName = subjectCatalogRepository.findAll().stream()
-                .collect(java.util.stream.Collectors.toMap(
-                        s -> normalizeToken(s.getSubjectName()),
-                        s -> resolvePositiveCoefficient(s.getSubjectCoefficient()),
-                        (a, b) -> a
-                ));
+        Map<String, BigDecimal> subjectCoefficientByLevel = subjectCoefficientByLevel();
         Map<String, List<String>> classLeadershipByTeacher = new HashMap<>();
         classroomLeadershipRepository.findAllByAcademicYear(academicYear).forEach(entry -> {
             String teacherKey = normalizeToken(entry.getFioTeacher());
@@ -475,8 +473,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     row.createCell(9).setCellValue("");
                     row.createCell(10).setCellValue("");
                     row.createCell(11).setCellValue("");
-                    row.createCell(12).setCellValue(subjectCoefficientByName
-                            .getOrDefault(normalizeToken(entry.getSubjectName()), BigDecimal.ONE)
+                    row.createCell(12).setCellValue(subjectCoefficient(entry, subjectCoefficientByLevel)
                             .stripTrailingZeros()
                             .toPlainString());
                     row.createCell(13).setCellValue(classLeadership);
@@ -835,12 +832,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                         t -> t,
                         (a, b) -> a
                 ));
-        Map<String, BigDecimal> subjectCoefficientByName = subjectCatalogRepository.findAll().stream()
-                .collect(java.util.stream.Collectors.toMap(
-                        s -> normalizeToken(s.getSubjectName()),
-                        s -> resolvePositiveCoefficient(s.getSubjectCoefficient()),
-                        (a, b) -> a
-                ));
+        Map<String, BigDecimal> subjectCoefficientByLevel = subjectCoefficientByLevel();
         List<ClassroomLeadershipEntry> classEntries = classroomLeadershipRepository.findAllByAcademicYear(academicYear);
         Map<String, List<String>> classLeadershipByTeacher = new HashMap<>();
         Map<String, String> addressByClass = new HashMap<>();
@@ -877,7 +869,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
         BigDecimal studentHourRate = includeSalary ? resolveStudentHourRate() : SalarySettings.DEFAULT_STUDENT_HOUR_RATE;
         SalarySummary salarySummary = includeSalary
-                ? calculateSalarySummary(rows, classEntries, classSizeByClass, subjectCoefficientByName, studentHourRate)
+                ? calculateSalarySummary(rows, classEntries, classSizeByClass, subjectCoefficientByLevel, studentHourRate)
                 : SalarySummary.empty();
 
         Map<String, List<ManualLoadEntry>> byBuilding = rows.stream().collect(java.util.stream.Collectors.groupingBy(
@@ -1357,10 +1349,48 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         return value == null ? "" : value.trim().replaceAll("\\s+", " ");
     }
 
+    private Map<String, BigDecimal> subjectCoefficientByLevel() {
+        return subjectLevelCoefficientRepository.findAll().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        entry -> subjectCoefficientKey(entry.getSubjectName(), entry.getEducationStage()),
+                        entry -> resolvePositiveCoefficient(entry.getCoefficient()),
+                        (a, b) -> a
+                ));
+    }
+
+    private BigDecimal subjectCoefficient(ManualLoadEntry row, Map<String, BigDecimal> subjectCoefficientByLevel) {
+        return subjectCoefficientByLevel.getOrDefault(
+                subjectCoefficientKey(row.getSubjectName(), educationStageForClass(row.getClassName())),
+                BigDecimal.ONE
+        );
+    }
+
+    private String subjectCoefficientKey(String subjectName, EducationStage stage) {
+        return normalizeToken(subjectName) + "|" + (stage == null ? "" : stage.name());
+    }
+
+    private EducationStage educationStageForClass(String className) {
+        String normalized = String.valueOf(className == null ? "" : className);
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\\d+").matcher(normalized);
+        if (!matcher.find()) {
+            return null;
+        }
+        int grade;
+        try {
+            grade = Integer.parseInt(matcher.group());
+        } catch (Exception e) {
+            return null;
+        }
+        if (grade >= 1 && grade <= 4) return EducationStage.NOO;
+        if (grade >= 5 && grade <= 9) return EducationStage.OOO;
+        if (grade >= 10 && grade <= 11) return EducationStage.SOO;
+        return null;
+    }
+
     private SalarySummary calculateSalarySummary(List<ManualLoadEntry> rows,
                                                  List<ClassroomLeadershipEntry> classEntries,
                                                  Map<String, Integer> classSizeByClass,
-                                                 Map<String, BigDecimal> subjectCoefficientByName,
+                                                 Map<String, BigDecimal> subjectCoefficientByLevel,
                                                  BigDecimal studentHourRate) {
         Map<String, SalaryTotals> byTeacher = new HashMap<>();
         Map<String, SalaryTotals> byBuilding = new HashMap<>();
@@ -1372,7 +1402,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             }
             String building = buildingKey(row.getNumberSchoolBuilding());
             String teacher = String.valueOf(row.getFioTeacher()).trim().toLowerCase(Locale.ROOT);
-            BigDecimal hourSalary = calculateHourSalary(row, classSizeByClass, subjectCoefficientByName, studentHourRate);
+            BigDecimal hourSalary = calculateHourSalary(row, classSizeByClass, subjectCoefficientByLevel, studentHourRate);
             byTeacher.computeIfAbsent(teacher, key -> new SalaryTotals()).addHourSalary(hourSalary);
             byBuilding.computeIfAbsent(building, key -> new SalaryTotals()).addHourSalary(hourSalary);
             complex.addHourSalary(hourSalary);
@@ -1402,7 +1432,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
     private BigDecimal calculateHourSalary(ManualLoadEntry row,
                                            Map<String, Integer> classSizeByClass,
-                                           Map<String, BigDecimal> subjectCoefficientByName,
+                                           Map<String, BigDecimal> subjectCoefficientByLevel,
                                            BigDecimal studentHourRate) {
         int classSize = classSizeByClass.getOrDefault(normalizeToken(row.getClassName()), 30);
         String group = String.valueOf(row.getGroupNameEducationalPlan() == null ? "" : row.getGroupNameEducationalPlan()).toLowerCase(Locale.ROOT);
@@ -1418,7 +1448,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         }
         int safeChildrenCount = Math.max(childrenCount, 1);
         int subjectHours = row.getGroupLoad() != null ? row.getGroupLoad() : (row.getLoad() == null ? 0 : row.getLoad());
-        BigDecimal coefficient = subjectCoefficientByName.getOrDefault(normalizeToken(row.getSubjectName()), BigDecimal.ONE);
+        BigDecimal coefficient = subjectCoefficient(row, subjectCoefficientByLevel);
         BigDecimal result = studentHourRate
                 .multiply(BigDecimal.valueOf(safeChildrenCount))
                 .multiply(BigDecimal.valueOf(Math.max(subjectHours, 0)))
