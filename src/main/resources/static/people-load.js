@@ -240,7 +240,7 @@ function effectiveHalfHours(total) {
 
 function formatHours(total) {
     const { h1, h2 } = effectiveHalfHours(total);
-    return h1 === h2 ? String(h1) : `${h1}/${h2}`;
+    return h1 === h2 ? String(h1) : `${h1} | ${h2}`;
 }
 
 function formatScopedTotalHours(scoped, total) {

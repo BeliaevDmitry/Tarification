@@ -512,7 +512,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 h2 += hours;
             }
         }
-        return h1 == h2 ? String.valueOf(h1) : h1 + " / " + h2;
+        return h1 == h2 ? String.valueOf(h1) : h1 + " | " + h2;
     }
 
     private String studyPeriodLabel(StudyPeriod period) {
@@ -689,7 +689,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             cell.setCellValue(classColumns.get(i));
             cell.setCellStyle(styles.header());
             Cell subCell = subHeader.createCell(fixedColumns + i);
-            subCell.setCellValue("1г | 2г");
+            subCell.setCellValue("1г; 2г");
             subCell.setCellStyle(styles.groupHeader());
         }
         setMergedHeader(sheet, topHeader, subHeader, leadershipColumn, "классное\nруководство", styles.header());
@@ -1061,11 +1061,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         if (scopedH1 == totalH1 && scopedH2 == totalH2) {
             return formatHalfHours(totalH1, totalH2);
         }
-        if (scopedH1 == scopedH2 && totalH1 == totalH2) {
-            return scopedH1 + "/" + totalH1;
-        }
-        return "1П: " + scopedH1 + "/" + totalH1 + "\n"
-                + "2П: " + scopedH2 + "/" + totalH2;
+        return formatHalfHours(scopedH1, scopedH2) + " / " + formatHalfHours(totalH1, totalH2);
     }
 
     private String formatHalfHours(int h1, int h2) {
@@ -1309,7 +1305,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             if (!classHours.isEmpty()) {
                 return formatPeriodTotals(classHours);
             }
-            return formatPeriodTotals(firstGroup) + " | " + formatPeriodTotals(secondGroup);
+            return "1г: " + formatPeriodTotals(firstGroup) + "; 2г: " + formatPeriodTotals(secondGroup);
         }
     }
 
@@ -1342,7 +1338,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         if (first == 0 && second == 0) {
             return "";
         }
-        return first == second ? String.valueOf(first) : first + "|" + second;
+        return first == second ? String.valueOf(first) : first + " | " + second;
     }
 
     private String normalizeDisplayValue(String value) {

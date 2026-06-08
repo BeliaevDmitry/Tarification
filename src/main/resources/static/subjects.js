@@ -75,8 +75,7 @@ function renderCoefficients(rows) {
         .forEach((r) => {
             const tr = document.createElement("tr");
             tr.innerHTML = `
-                <td>${esc(r.subjectName)}</td>
-                <td>${esc(stageLabel(r.educationStage))}</td>
+                <td>${esc(`${r.subjectName} ${stageLabel(r.educationStage).split(" ")[0]}`.trim())}</td>
                 <td>${esc(formatCoefficient(r.coefficient))}</td>
                 <td><button type="button" data-delete-coefficient="${esc(r.id)}" class="danger-btn">Удалить</button></td>
             `;

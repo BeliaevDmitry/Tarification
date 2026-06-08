@@ -812,8 +812,8 @@ class ManualLoadServiceImplBulkReplaceTest {
             var sheet = workbook.getSheet("Комплекс");
             assertNotNull(sheet);
             assertEquals("часов\nпредмет/площадка/комплекс", sheet.getRow(2).getCell(2).getStringCellValue());
-            assertEquals("1|2 / 1|2 / 1|2", sheet.getRow(3).getCell(2).getStringCellValue());
-            assertEquals("1|2", sheet.getRow(3).getCell(3).getStringCellValue());
+            assertEquals("1 | 2 / 1 | 2 / 1 | 2", sheet.getRow(3).getCell(2).getStringCellValue());
+            assertEquals("1 | 2", sheet.getRow(3).getCell(3).getStringCellValue());
         }
     }
 
@@ -845,7 +845,7 @@ class ManualLoadServiceImplBulkReplaceTest {
             var sheet = workbook.getSheet("ул. Первая, 1");
             assertNotNull(sheet);
             assertEquals("Математика", sheet.getRow(3).getCell(0).getStringCellValue());
-            assertEquals("2 / 15|20 / 20|21", sheet.getRow(3).getCell(2).getStringCellValue());
+            assertEquals("2 / 15 | 20 / 20 | 21", sheet.getRow(3).getCell(2).getStringCellValue());
         }
     }
 

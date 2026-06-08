@@ -63,7 +63,7 @@
     </section>
     <section class="card" data-requires-edit>
         <h2>Коэффициенты</h2>
-        <p class="muted compact-note">Коэффициент задаётся для пары «Предмет + уровень обучения»: НОО (1–4), ООО (5–9), СОО (10–11). Если совпадения нет, в расчёте используется 1.</p>
+        <p class="muted compact-note">Импорт принимает 2 столбца: «Предмет + уровень» (например, «Алгебра ООО») и «Для расчета». Если уровень не указан, коэффициент применится ко всем уровням.</p>
         <div class="row">
             <input id="coefficient-file" type="file" accept=".xls,.xlsx">
             <button id="import-coefficients-btn" type="button">Импортировать коэффициенты</button>
@@ -82,7 +82,7 @@
         </form>
         <div class="sheet-wrap">
             <table class="sheet-table">
-                <thead><tr><th>Предмет</th><th>Уровень</th><th>Коэффициент</th><th>Действие</th></tr></thead>
+                <thead><tr><th>Предмет + уровень</th><th>Для расчета</th><th>Действие</th></tr></thead>
                 <tbody id="coefficients-body"></tbody>
             </table>
         </div>

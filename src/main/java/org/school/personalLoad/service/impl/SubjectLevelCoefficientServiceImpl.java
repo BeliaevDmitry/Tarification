@@ -67,31 +67,33 @@ public class SubjectLevelCoefficientServiceImpl implements SubjectLevelCoefficie
             for (int i = 0; i <= sheet.getLastRowNum(); i++) {
                 Row row = sheet.getRow(i);
                 if (row == null) continue;
-                String subjectName = cellValue(row.getCell(0));
-                if (subjectName.isBlank() || subjectName.equalsIgnoreCase("предмет")) {
+                String subjectWithStage = cellValue(row.getCell(0));
+                if (subjectWithStage.isBlank() || subjectWithStage.equalsIgnoreCase("предмет")) {
                     skipped++;
                     continue;
                 }
-                EducationStage stage = parseStage(cellValue(row.getCell(1)));
-                if (stage == null) {
+                BigDecimal coefficient = parseDecimal(cellValue(row.getCell(1)));
+                if (coefficient == null) {
                     skipped++;
                     continue;
                 }
-                BigDecimal coefficient = resolveCoefficient(parseDecimal(cellValue(row.getCell(2))));
-                String normalizedName = normalizeSubjectName(subjectName);
-                String key = normalizedName.toLowerCase(Locale.ROOT) + "|" + stage.name();
-                if (!seen.add(key)) {
-                    skipped++;
-                    continue;
+                SubjectStage subjectStage = parseSubjectStage(subjectWithStage);
+                BigDecimal resolvedCoefficient = resolveCoefficient(coefficient);
+                for (EducationStage stage : subjectStage.stages()) {
+                    String key = subjectStage.subjectName().toLowerCase(Locale.ROOT) + "|" + stage.name();
+                    if (!seen.add(key)) {
+                        skipped++;
+                        continue;
+                    }
+                    SubjectLevelCoefficientEntry entry = repository
+                            .findBySubjectNameIgnoreCaseAndEducationStage(subjectStage.subjectName(), stage)
+                            .orElseGet(SubjectLevelCoefficientEntry::new);
+                    entry.setSubjectName(subjectStage.subjectName());
+                    entry.setEducationStage(stage);
+                    entry.setCoefficient(resolvedCoefficient);
+                    repository.save(entry);
+                    imported++;
                 }
-                SubjectLevelCoefficientEntry entry = repository
-                        .findBySubjectNameIgnoreCaseAndEducationStage(normalizedName, stage)
-                        .orElseGet(SubjectLevelCoefficientEntry::new);
-                entry.setSubjectName(normalizedName);
-                entry.setEducationStage(stage);
-                entry.setCoefficient(coefficient);
-                repository.save(entry);
-                imported++;
             }
             return Map.of("status", "ok", "imported", imported, "skipped", skipped);
         } catch (Exception e) {
@@ -105,24 +107,38 @@ public class SubjectLevelCoefficientServiceImpl implements SubjectLevelCoefficie
             Sheet sheet = workbook.createSheet("Коэффициенты");
             Row header = sheet.createRow(0);
             header.createCell(0).setCellValue("Предмет");
-            header.createCell(1).setCellValue("Уровень");
-            header.createCell(2).setCellValue("Коэффициент");
-            List<SubjectLevelCoefficientEntry> rows = repository.findAll();
+            header.createCell(1).setCellValue("Для расчета");
+            List<SubjectLevelCoefficientEntry> rows = new ArrayList<>(repository.findAll());
             rows.sort(Comparator.comparing(SubjectLevelCoefficientEntry::getSubjectName, String.CASE_INSENSITIVE_ORDER)
                     .thenComparing(SubjectLevelCoefficientEntry::getEducationStage));
             int rowNum = 1;
             for (SubjectLevelCoefficientEntry entry : rows) {
                 Row row = sheet.createRow(rowNum++);
-                row.createCell(0).setCellValue(entry.getSubjectName());
-                row.createCell(1).setCellValue(stageLabel(entry.getEducationStage()));
-                row.createCell(2).setCellValue(resolveCoefficient(entry.getCoefficient()).stripTrailingZeros().toPlainString());
+                row.createCell(0).setCellValue(subjectStageLabel(entry));
+                row.createCell(1).setCellValue(resolveCoefficient(entry.getCoefficient()).stripTrailingZeros().toPlainString());
             }
-            for (int i = 0; i <= 2; i++) sheet.autoSizeColumn(i);
+            for (int i = 0; i <= 1; i++) sheet.autoSizeColumn(i);
             workbook.write(out);
             return new ByteArrayResource(out.toByteArray());
         } catch (Exception e) {
             throw new RuntimeException("Не удалось экспортировать коэффициенты предметов", e);
         }
+    }
+
+    private SubjectStage parseSubjectStage(String value) {
+        String normalized = normalizeSubjectName(value);
+        for (EducationStage stage : EducationStage.values()) {
+            String suffix = " " + stageLabel(stage);
+            if (normalized.toUpperCase(Locale.ROOT).endsWith(suffix)) {
+                String subjectName = normalizeSubjectName(normalized.substring(0, normalized.length() - suffix.length()));
+                return new SubjectStage(subjectName, List.of(stage));
+            }
+        }
+        return new SubjectStage(normalized, List.of(EducationStage.NOO, EducationStage.OOO, EducationStage.SOO));
+    }
+
+    private String subjectStageLabel(SubjectLevelCoefficientEntry entry) {
+        return normalizeSubjectName(entry.getSubjectName()) + " " + stageLabel(entry.getEducationStage());
     }
 
     private String normalizeSubjectName(String value) {
@@ -158,15 +174,7 @@ public class SubjectLevelCoefficientServiceImpl implements SubjectLevelCoefficie
         };
     }
 
-    private EducationStage parseStage(String value) {
-        String normalized = String.valueOf(value == null ? "" : value).trim().toUpperCase(Locale.ROOT);
-        if (normalized.isBlank()) return null;
-        if (normalized.contains("НОО") || normalized.contains("1-4")) return EducationStage.NOO;
-        if (normalized.contains("ООО") || normalized.contains("5-9")) return EducationStage.OOO;
-        if (normalized.contains("СОО") || normalized.contains("10-11")) return EducationStage.SOO;
-        try { return EducationStage.valueOf(normalized); }
-        catch (Exception e) { return null; }
-    }
+    private record SubjectStage(String subjectName, List<EducationStage> stages) {}
 
     private String stageLabel(EducationStage stage) {
         if (stage == EducationStage.NOO) return "НОО";
