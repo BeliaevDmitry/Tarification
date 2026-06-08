@@ -46,9 +46,10 @@ public class PaAnalyticsController {
                                                                                  @RequestParam(required = false) String className,
                                                                                  @RequestParam(required = false) String workType,
                                                                                  @RequestParam(required = false) Boolean onlyProblems,
-                                                                                 @RequestParam(required = false) Boolean onlyNeedsReview) {
+                                                                                 @RequestParam(required = false) Boolean onlyNeedsReview,
+                                                                                 @RequestParam(required = false) Boolean includeTechnical) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
-        return ResponseEntity.ok(analysisService.getReports(year, subjectName, teacherFio, className, workType, onlyProblems, onlyNeedsReview));
+        return ResponseEntity.ok(analysisService.getReports(year, subjectName, teacherFio, className, workType, onlyProblems, onlyNeedsReview, includeTechnical));
     }
 
 

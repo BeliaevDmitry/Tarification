@@ -1,5 +1,5 @@
 (() => {
-    const state = { reports: [] };
+    const state = { reports: [], sortKey: 'subjectName', sortDir: 'asc' };
     const ui = {};
 
     function initUi() {
@@ -14,6 +14,7 @@
             workType: document.getElementById('pa-analysis-work-type-filter'),
             onlyProblems: document.getElementById('pa-analysis-only-problems'),
             onlyReview: document.getElementById('pa-analysis-only-review'),
+            includeTechnical: document.getElementById('pa-analysis-include-technical'),
             dialog: document.getElementById('pa-analysis-details-dialog'),
             closeDialog: document.getElementById('pa-analysis-details-close'),
             detailsTitle: document.getElementById('pa-analysis-details-title'),
@@ -105,6 +106,7 @@
         add('workType', ui.workType?.value);
         if (ui.onlyProblems?.checked) params.set('onlyProblems', 'true');
         if (ui.onlyReview?.checked) params.set('onlyNeedsReview', 'true');
+        if (ui.includeTechnical?.checked) params.set('includeTechnical', 'true');
         const qs = params.toString();
         return qs ? `?${qs}` : '';
     }
@@ -123,16 +125,35 @@
         }
     }
 
+    function sortedReports() {
+        return [...state.reports].sort((a, b) => compareValues(a?.[state.sortKey], b?.[state.sortKey]) * (state.sortDir === 'desc' ? -1 : 1));
+    }
+
+    function compareValues(a, b) {
+        if (a === null || a === undefined || a === '') return b === null || b === undefined || b === '' ? 0 : 1;
+        if (b === null || b === undefined || b === '') return -1;
+        const an = Number(a);
+        const bn = Number(b);
+        if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn;
+        return String(a).localeCompare(String(b), 'ru', { numeric: true, sensitivity: 'base' });
+    }
+
     function renderReports() {
-        if (!state.reports.length) {
+        const rows = sortedReports();
+        if (!rows.length) {
             ui.body.innerHTML = '<tr><td colspan="15" class="muted">Нет данных аналитики за выбранный учебный год.</td></tr>';
             return;
         }
-        ui.body.innerHTML = state.reports.map((row) => {
+        ui.body.innerHTML = rows.map((row) => {
             const status = row.analysisStatus || 'NOT_ANALYZED';
-            const showLog = status === 'WARNING' || status === 'ERROR' || row.analysisMessage;
+            const showLog = Boolean(row.reportVersionId) && (status === 'WARNING' || status === 'ERROR' || row.analysisMessage);
+            const actions = row.reportVersionId ? `
+                    <button type="button" data-action="open" data-id="${esc(row.reportVersionId)}">Открыть</button>
+                    <button type="button" data-action="rebuild" data-id="${esc(row.reportVersionId)}">Пересчитать</button>
+                    ${showLog ? `<button type="button" data-action="log" data-id="${esc(row.reportVersionId)}">Скачать лог</button>` : ''}
+                    <button type="button" data-action="source" data-id="${esc(row.reportVersionId)}">Скачать исходный файл</button>` : '—';
             return `<tr>
-                <td><span class="pa-status-pill ${statusClass(status)}">${esc(statusLabel(status))}</span></td>
+                <td><span class="pa-status-pill ${statusClass(status)}">${esc(statusLabel(status))}</span>${row.technical ? '<br><span class="pa-technical-badge">Техническая запись</span>' : ''}</td>
                 <td>${esc(row.subjectName)}</td>
                 <td>${esc(row.className)}</td>
                 <td>${esc(row.teacherFio)}</td>
@@ -146,12 +167,7 @@
                 <td>${esc(row.problemTasksCount ?? 0)}</td>
                 <td>${esc(row.problemTopicsCount ?? 0)}</td>
                 <td class="${row.needsReview ? 'pa-needs-review' : ''}">${row.needsReview ? 'Да' : 'Нет'}</td>
-                <td>
-                    <button type="button" data-action="open" data-id="${esc(row.reportVersionId)}">Открыть</button>
-                    <button type="button" data-action="rebuild" data-id="${esc(row.reportVersionId)}">Пересчитать</button>
-                    ${showLog ? `<button type="button" data-action="log" data-id="${esc(row.reportVersionId)}">Скачать лог</button>` : ''}
-                    <button type="button" data-action="source" data-id="${esc(row.reportVersionId)}">Скачать исходный файл</button>
-                </td>
+                <td>${actions}</td>
             </tr>`;
         }).join('');
     }
@@ -260,13 +276,23 @@
     function bindEvents() {
         ui.refreshBtn?.addEventListener('click', loadReports);
         ui.rebuildAllBtn?.addEventListener('click', () => rebuildAll().catch((e) => setFeedback(`Ошибка: ${e.message}`, true)));
-        [ui.subject, ui.teacher, ui.className, ui.workType, ui.onlyProblems, ui.onlyReview].forEach((el) => {
+        [ui.subject, ui.teacher, ui.className, ui.workType, ui.onlyProblems, ui.onlyReview, ui.includeTechnical].forEach((el) => {
             el?.addEventListener('change', loadReports);
             el?.addEventListener('input', () => {
                 clearTimeout(el._paAnalysisTimer);
                 el._paAnalysisTimer = setTimeout(loadReports, 350);
             });
         });
+        document.querySelectorAll('th[data-sort]').forEach((th) => th.addEventListener('click', () => {
+            const key = th.dataset.sort;
+            if (state.sortKey === key) {
+                state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                state.sortKey = key;
+                state.sortDir = 'asc';
+            }
+            renderReports();
+        }));
         ui.body?.addEventListener('click', (event) => {
             const btn = event.target.closest('button[data-action]');
             if (!btn) return;

@@ -98,14 +98,13 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void saveAnalysisError(Long reportVersionId, Exception exception) {
-        PaReportVersion version = reportVersionRepository.findById(reportVersionId).orElse(null);
+        PaReportVersion version = reportVersionRepository.findById(reportVersionId)
+                .orElseThrow(() -> new IllegalArgumentException("Не найден reportVersionId=" + reportVersionId));
         LocalDateTime now = LocalDateTime.now();
-        PaReportAnalysisSummary summary = version == null
-                ? summaryRepository.findByReportVersionId(reportVersionId).orElseGet(PaReportAnalysisSummary::new)
-                : findOrCreateSummary(version);
+        PaReportAnalysisSummary summary = findOrCreateSummary(version);
         summary.setReportVersionId(reportVersionId);
         if (summary.getAcademicYear() == null || summary.getAcademicYear().isBlank()) {
-            summary.setAcademicYear(version == null ? "unknown" : version.getAcademicYear());
+            summary.setAcademicYear(version.getAcademicYear());
         }
         summary.setAnalysisStartedAt(summary.getAnalysisStartedAt() == null ? now : summary.getAnalysisStartedAt());
         summary.setAnalysisFinishedAt(now);
@@ -165,7 +164,7 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
     @Transactional(readOnly = true)
     public PaAnalyticsDtos.ReportAnalysisDetails getDetails(Long reportVersionId) {
         PaAnalyticsDtos.ReportAnalysisListItem summary = summaryRepository.findByReportVersionId(reportVersionId)
-                .map(this::toListItem)
+                .map(summaryRow -> toListItem(summaryRow, reportVersionRepository.findById(reportVersionId).orElse(null)))
                 .orElse(null);
         List<PaAnalyticsDtos.StudentResultRow> students = studentResultRepository
                 .findAllByReportVersionIdOrderByStudentFioAsc(reportVersionId)
@@ -186,16 +185,23 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
                                                                    String className,
                                                                    String workType,
                                                                    Boolean onlyProblems,
-                                                                   Boolean onlyNeedsReview) {
+                                                                   Boolean onlyNeedsReview,
+                                                                   Boolean includeTechnical) {
+        Map<Long, PaReportVersion> versionsById = reportVersionRepository.findAll().stream()
+                .collect(Collectors.toMap(PaReportVersion::getId, version -> version, (first, second) -> first));
         return summaryRepository.findAllByAcademicYearOrderBySubjectNameAscClassNameAscTeacherFioAsc(academicYear)
                 .stream()
+                .filter(summary -> Boolean.TRUE.equals(includeTechnical) || isUserVisibleReport(summary, versionsById.get(summary.getReportVersionId())))
                 .filter(summary -> matches(summary.getSubjectName(), subjectName))
                 .filter(summary -> matches(summary.getTeacherFio(), teacherFio))
                 .filter(summary -> matches(summary.getClassName(), className))
                 .filter(summary -> matches(summary.getWorkType(), workType))
                 .filter(summary -> !Boolean.TRUE.equals(onlyNeedsReview) || summary.isNeedsReview())
                 .filter(summary -> !Boolean.TRUE.equals(onlyProblems) || positive(summary.getProblemTasksCount()) || positive(summary.getProblemTopicsCount()))
-                .map(this::toListItem)
+                .map(summary -> toListItem(summary, versionsById.get(summary.getReportVersionId())))
+                .sorted(Comparator.comparing(PaAnalyticsDtos.ReportAnalysisListItem::subjectName, Comparator.nullsLast(String::compareToIgnoreCase))
+                        .thenComparing(PaAnalyticsDtos.ReportAnalysisListItem::className, Comparator.nullsLast(String::compareToIgnoreCase))
+                        .thenComparing(PaAnalyticsDtos.ReportAnalysisListItem::teacherFio, Comparator.nullsLast(String::compareToIgnoreCase)))
                 .toList();
     }
 
@@ -609,7 +615,7 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
         summary.setLevel(version.getLevel() == null ? null : version.getLevel().name());
     }
 
-    private PaAnalyticsDtos.ReportAnalysisListItem toListItem(PaReportAnalysisSummary summary) {
+    private PaAnalyticsDtos.ReportAnalysisListItem toListItem(PaReportAnalysisSummary summary, PaReportVersion version) {
         return new PaAnalyticsDtos.ReportAnalysisListItem(
                 summary.getReportVersionId(),
                 summary.getAcademicYear(),
@@ -629,8 +635,25 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
                 summary.getProblemTopicsCount(),
                 summary.isNeedsReview(),
                 summary.getAnalysisStatus(),
-                summary.getAnalysisMessage()
+                summary.getAnalysisMessage(),
+                !isUserVisibleReport(summary, version)
         );
+    }
+
+    private boolean isUserVisibleReport(PaReportAnalysisSummary summary, PaReportVersion version) {
+        if (version == null || summary == null) {
+            return false;
+        }
+        if (!version.isActiveVersion() || !"ACCEPTED".equalsIgnoreCase(nvl(version.getStatus())) || !version.isUploadedBackSuccess()) {
+            return false;
+        }
+        if (isBlank(version.getSourceFilePath()) || isBlank(version.getSubjectName()) || isBlank(version.getScopeValue())) {
+            return false;
+        }
+        if (summary.getAnalysisStatus() == PaAnalysisStatus.SKIPPED || summary.getAnalysisStatus() == PaAnalysisStatus.NOT_ANALYZED) {
+            return false;
+        }
+        return !isBlank(summary.getSubjectName()) && !isBlank(summary.getClassName());
     }
 
     private PaAnalyticsDtos.StudentResultRow toStudentRow(PaReportStudentResult row) {
@@ -836,6 +859,10 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
                 + "error: " + buildErrorMessage(exception) + System.lineSeparator()
                 + "stacktrace:" + System.lineSeparator()
                 + stackTrace(exception);
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private String nvl(String value) {

@@ -28,7 +28,8 @@ public final class PaAnalyticsDtos {
                                          Integer problemTopicsCount,
                                          Boolean needsReview,
                                          PaAnalysisStatus analysisStatus,
-                                         String analysisMessage) {
+                                         String analysisMessage,
+                                         Boolean technical) {
     }
 
     public record ReportAnalysisDetails(ReportAnalysisListItem summary,
