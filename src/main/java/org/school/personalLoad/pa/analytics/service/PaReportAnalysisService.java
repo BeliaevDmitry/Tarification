@@ -20,5 +20,6 @@ public interface PaReportAnalysisService {
                                                             String className,
                                                             String workType,
                                                             Boolean onlyProblems,
-                                                            Boolean onlyNeedsReview);
+                                                            Boolean onlyNeedsReview,
+                                                            Boolean includeTechnical);
 }

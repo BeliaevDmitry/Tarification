@@ -90,7 +90,16 @@ public class PaTeacherAnalyticsServiceImpl implements PaTeacherAnalyticsService 
 
     private boolean isActiveAcceptedReport(PaReportAnalysisSummary summary, Map<Long, PaReportVersion> versionsById) {
         PaReportVersion version = versionsById.get(summary.getReportVersionId());
-        return version != null && version.isActiveVersion() && "ACCEPTED".equalsIgnoreCase(nvl(version.getStatus()));
+        return version != null
+                && version.isActiveVersion()
+                && "ACCEPTED".equalsIgnoreCase(nvl(version.getStatus()))
+                && version.isUploadedBackSuccess()
+                && !isBlank(version.getSourceFilePath())
+                && !isBlank(version.getSubjectName())
+                && !isBlank(version.getScopeValue())
+                && !isBlank(summary.getSubjectName())
+                && !isBlank(summary.getClassName())
+                && !isBlank(summary.getTeacherFio());
     }
 
     private Map<Long, List<PaReportStudentResult>> loadStudentsByReport(List<PaReportAnalysisSummary> summaries) {
@@ -237,6 +246,10 @@ public class PaTeacherAnalyticsServiceImpl implements PaTeacherAnalyticsService 
             return false;
         }
         return value.toLowerCase(Locale.ROOT).contains(filter.trim().toLowerCase(Locale.ROOT));
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private boolean positive(Integer value) {
