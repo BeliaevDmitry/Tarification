@@ -21,7 +21,6 @@
             detailsMessage: document.getElementById('pa-analysis-details-message'),
             passport: document.getElementById('pa-analysis-passport'),
             summary: document.getElementById('pa-analysis-summary'),
-            snake: document.getElementById('pa-analysis-student-snake'),
             studentsBody: document.getElementById('pa-analysis-students-body'),
             tasksBody: document.getElementById('pa-analysis-tasks-body')
         });
@@ -81,6 +80,18 @@
         return `pa-status-${String(status || 'NOT_ANALYZED').toLowerCase().replace('_', '-')}`;
     }
 
+    function workTypeLabel(workType) {
+        return ({ ENTRY: 'Входная работа', EXIT: 'Выходная работа', MID: 'Промежуточная работа' })[workType] || workType || '—';
+    }
+
+    function taskKindLabel(kind) {
+        return ({ NEW: 'Новое задание', REPEAT: 'Повторение' })[kind] || kind || '—';
+    }
+
+    function levelLabel(level) {
+        return ({ BASIC: 'Базовый', ADVANCED: 'Углублённый' })[level] || level || '—';
+    }
+
     function rowStatusLabel(status) {
         return ({
             PRESENT_WITH_RESULT: 'Есть результат',
@@ -89,12 +100,6 @@
             POSSIBLE_OTHER_SUBGROUP: 'Возможна другая подгруппа',
             INVALID_ROW: 'Некорректная строка'
         })[status] || status || '—';
-    }
-
-    function shortFio(fio) {
-        const parts = String(fio || '').trim().split(/\s+/).filter(Boolean);
-        if (parts.length < 2) return fio || '—';
-        return `${parts[0]} ${parts[1]?.[0] || ''}.${parts[2]?.[0] ? `${parts[2][0]}.` : ''}`;
     }
 
     function filterQuery() {
@@ -157,7 +162,7 @@
                 <td>${esc(row.subjectName)}</td>
                 <td>${esc(row.className)}</td>
                 <td>${esc(row.teacherFio)}</td>
-                <td>${esc(row.workType)}</td>
+                <td>${esc(workTypeLabel(row.workType))}</td>
                 <td>${esc(row.workDate || '—')}</td>
                 <td>${esc(row.studentsWithResult ?? 0)} / ${esc(row.studentsTotal ?? 0)}</td>
                 <td>${fmtPercent(row.avgPercent)}</td>
@@ -215,7 +220,7 @@
         if (ui.passport) {
             ui.passport.innerHTML = [
                 infoCard('Предмет', summary.subjectName), infoCard('Класс', summary.className), infoCard('Педагог', summary.teacherFio),
-                infoCard('Тип работы', summary.workType), infoCard('Дата работы', summary.workDate), infoCard('Уровень', summary.level),
+                infoCard('Тип работы', workTypeLabel(summary.workType)), infoCard('Дата работы', summary.workDate), infoCard('Уровень', levelLabel(summary.level)),
                 infoCard('Статус анализа', statusLabel(summary.analysisStatus)), infoCard('Сообщение', summary.analysisMessage)
             ].join('');
         }
@@ -229,30 +234,8 @@
                 infoCard('Требуется проверка', summary.needsReview ? 'Да' : 'Нет')
             ].join('');
         }
-        renderStudentSnake(students);
         renderStudents(students);
         renderTasks(tasks);
-    }
-
-    function studentClass(student) {
-        if (student.rowStatus === 'ABSENT' || student.rowStatus === 'EMPTY_RESULT' || student.rowStatus === 'POSSIBLE_OTHER_SUBGROUP') return 'muted';
-        const percent = Number(student.percent);
-        if (!Number.isFinite(percent)) return 'muted';
-        if (percent >= 70) return 'good';
-        if (percent >= 50) return 'warn';
-        return 'bad';
-    }
-
-    function renderStudentSnake(students) {
-        if (!ui.snake) return;
-        if (!students.length) {
-            ui.snake.innerHTML = '<span class="muted">Нет строк учеников.</span>';
-            return;
-        }
-        ui.snake.innerHTML = students.map((student) => `<div class="pa-student-chip ${studentClass(student)}">
-            <strong>${esc(shortFio(student.studentFio))}</strong>
-            <span>${fmtPercent(student.percent)} · ${student.mark ?? '—'} · ${esc(rowStatusLabel(student.rowStatus))}</span>
-        </div>`).join('');
     }
 
     function renderStudents(students) {
@@ -267,7 +250,7 @@
     function renderTasks(tasks) {
         if (!ui.tasksBody) return;
         ui.tasksBody.innerHTML = tasks.length ? tasks.map((task) => `<tr>
-            <td>${esc(task.taskNo)}</td><td>${esc(task.topic || '—')}</td><td>${esc(task.skill || '—')}</td><td>${esc(task.taskKind || '—')}</td>
+            <td>${esc(task.taskNo)}</td><td>${esc(task.topic || '—')}</td><td>${esc(task.skill || '—')}</td><td>${esc(taskKindLabel(task.taskKind))}</td>
             <td>${fmt(task.maxScore, 2)}</td><td>${fmt(task.avgScore, 2)}</td><td>${fmtPercent(task.avgPercent)}</td>
             <td>${esc(task.below50Count ?? 0)}</td><td>${esc(task.emptyCount ?? 0)}</td><td>${esc(task.status || '—')}</td>
         </tr>`).join('') : '<tr><td colspan="10" class="muted">Нет данных</td></tr>';

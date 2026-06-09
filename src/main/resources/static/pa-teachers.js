@@ -64,7 +64,21 @@
 
     function dynamicLabel(status) {
         if (status === 'NOT_AVAILABLE_NO_ENTRY_EXIT_PAIR') return 'Не рассчитана: нет входной/выходной пары';
+        if (status === 'CALCULATED') return 'Рассчитана';
         return status || '—';
+    }
+
+    function dynamicDisplay(row) {
+        if (row.vsokoDynamicScore == null) return dynamicLabel(row.vsokoDynamicStatus);
+        return `${fmt(row.vsokoDynamicScore, 2)} (${dynamicLabel(row.vsokoDynamicStatus)})`;
+    }
+
+    function workTypeLabel(workType) {
+        return ({ ENTRY: 'Входная работа', EXIT: 'Выходная работа', MID: 'Промежуточная работа' })[workType] || workType || '—';
+    }
+
+    function levelLabel(level) {
+        return ({ BASIC: 'Базовый', ADVANCED: 'Углублённый' })[level] || level || '—';
     }
 
     function analysisStatusLabel(status) {
@@ -133,10 +147,10 @@
             <td class="${row.needsReviewCount > 0 ? 'pa-review-warning' : ''}">${esc(row.needsReviewCount ?? 0)}</td>
             <td>${fmt(row.paPerformanceScore, 2)}</td>
             <td>${markPill(row.paPerformanceMark)}</td>
-            <td>${esc(dynamicLabel(row.vsokoDynamicStatus))}</td>
+            <td>${esc(dynamicDisplay(row))}</td>
             <td>
                 <button type="button" data-teacher-open="${esc(row.teacherFio)}">Открыть</button>
-                <button type="button" data-teacher-dossier="${esc(row.teacherFio)}">Скачать Word-досье</button>
+                <button type="button" data-teacher-dossier="${esc(row.teacherFio)}">Скачать Word-анализ</button>
             </td>
         </tr>`).join('');
     }
@@ -180,7 +194,7 @@
             return;
         }
         ui.reportsBody.innerHTML = reports.map((row) => `<tr>
-            <td>${esc(row.subjectName)}</td><td>${esc(row.className)}</td><td>${esc(row.workType)}</td><td>${esc(row.workDate || '—')}</td><td>${esc(row.level)}</td>
+            <td>${esc(row.subjectName)}</td><td>${esc(row.className)}</td><td>${esc(workTypeLabel(row.workType))}</td><td>${esc(row.workDate || '—')}</td><td>${esc(levelLabel(row.level))}</td>
             <td>${esc(row.studentsWithResult ?? 0)} / ${esc(row.studentsTotal ?? 0)}</td><td>${fmtPercent(row.avgPercent)}</td><td>${fmt(row.avgMark, 2)}</td>
             <td>${fmtPercent(row.successPercent)}</td><td>${fmtPercent(row.qualityPercent)}</td><td>${esc(row.problemTasksCount ?? 0)}</td><td>${esc(row.problemTopicsCount ?? 0)}</td>
             <td class="${row.needsReview ? 'pa-review-warning' : ''}">${row.needsReview ? 'Да' : 'Нет'}</td><td>${esc(analysisStatusLabel(row.analysisStatus))}</td>
@@ -193,7 +207,7 @@
     }
 
     async function downloadDossier(teacherFio) {
-        setFeedback(`Формирование Word-досье: ${teacherFio}…`);
+        setFeedback(`Формирование Word-анализа: ${teacherFio}…`);
         try {
             const response = await fetch(scoped(`/api/pa/analytics/teacher-dossier.docx?teacherFio=${encodeURIComponent(teacherFio)}`));
             if (!response.ok) {
@@ -205,7 +219,7 @@
             const fileNameMatch = disposition.match(/filename\*=UTF-8''([^;]+)/);
             const fileName = fileNameMatch
                 ? decodeURIComponent(fileNameMatch[1])
-                : `Досье_ПА_${teacherFio}.docx`;
+                : `Анализ_ПА_${teacherFio}.docx`;
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
@@ -214,10 +228,10 @@
             link.click();
             link.remove();
             URL.revokeObjectURL(url);
-            setFeedback('Word-досье сформировано.');
+            setFeedback('Word-анализ сформирован.');
         } catch (error) {
-            alert(`Ошибка скачивания Word-досье: ${error.message}`);
-            setFeedback(`Ошибка скачивания Word-досье: ${error.message}`, true);
+            alert(`Ошибка скачивания Word-анализа: ${error.message}`);
+            setFeedback(`Ошибка скачивания Word-анализа: ${error.message}`, true);
         }
     }
 

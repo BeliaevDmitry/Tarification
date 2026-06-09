@@ -49,13 +49,13 @@ public class PaTeacherDossierServiceImpl implements PaTeacherDossierService {
         }
 
         try (XWPFDocument document = new XWPFDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            addTitle(document, "Досье педагогической результативности ВСОКО / ПА");
+            addTitle(document, "Анализ педагогической результативности ВСОКО / ПА");
             addTeacherPassport(document, academicYear, details.teacherSummary());
-            addParagraph(document, "Показатель ПА рассчитан по результатам загруженных и проанализированных работ ПА. Он не является полной динамикой ВСОКО при отсутствии входной диагностики.", true, false);
+            addParagraph(document, "Показатель ПА рассчитан по результатам загруженных и проанализированных работ. Динамика ВСОКО рассчитывается по входной и выходной работам с учётом повторяющихся заданий.", true, false);
 
             addPageBreak(document);
-            addHeading(document, "Работы педагога", 1);
-            addReportsTable(document, details.reports());
+            addHeading(document, "Расчёт показателя «Педагоги ВСОКО»", 1);
+            addTeacherCalculationTable(document, details.reports(), details.teacherSummary());
             addReportsConclusion(document, details.reports());
 
             for (PaAnalyticsDtos.TeacherReportDetailRow report : details.reports()) {
@@ -86,9 +86,11 @@ public class PaTeacherDossierServiceImpl implements PaTeacherDossierService {
         fillRow(table.getRow(13), "Статус динамики ВСОКО", dynamicStatus(summary.vsokoDynamicStatus()));
     }
 
-    private void addReportsTable(XWPFDocument document, List<PaAnalyticsDtos.TeacherReportDetailRow> reports) {
-        String[] headers = {"№", "Предмет", "Класс", "Тип работы", "Дата", "Уровень", "С результатом", "Средний %", "Средняя отметка", "Успеваемость", "Качество", "Пробл. задания", "Пробл. темы", "Проверка", "Статус"};
-        XWPFTable table = document.createTable(reports.size() + 1, headers.length);
+    private void addTeacherCalculationTable(XWPFDocument document,
+                                            List<PaAnalyticsDtos.TeacherReportDetailRow> reports,
+                                            PaAnalyticsDtos.TeacherSummaryRow summary) {
+        String[] headers = {"№", "Предмет", "Класс", "Тип работы", "С результатом", "Средний %", "Средняя отметка", "Успеваемость", "Качество", "Проблемные задания", "Проблемные темы", "Требует проверки"};
+        XWPFTable table = document.createTable(reports.size() + 2, headers.length);
         fillHeader(table.getRow(0), headers);
         for (int i = 0; i < reports.size(); i++) {
             PaAnalyticsDtos.TeacherReportDetailRow report = reports.get(i);
@@ -96,9 +98,7 @@ public class PaTeacherDossierServiceImpl implements PaTeacherDossierService {
                     i + 1,
                     report.subjectName(),
                     report.className(),
-                    report.workType(),
-                    date(report),
-                    report.level(),
+                    workTypeLabel(report.workType()),
                     report.studentsWithResult(),
                     percent(report.avgPercent()),
                     number(report.avgMark(), 2),
@@ -106,8 +106,24 @@ public class PaTeacherDossierServiceImpl implements PaTeacherDossierService {
                     percent(report.qualityPercent()),
                     report.problemTasksCount(),
                     report.problemTopicsCount(),
-                    yesNo(report.needsReview()),
-                    report.analysisStatus());
+                    yesNo(report.needsReview()));
+        }
+        XWPFTableRow average = table.getRow(reports.size() + 1);
+        fillCells(average,
+                "Средний анализ",
+                join(summary.subjects()),
+                join(summary.classes()),
+                "Все работы",
+                summary.studentsWithResult(),
+                percent(summary.avgPercent()),
+                number(summary.avgMark(), 2),
+                percent(summary.successPercent()),
+                percent(summary.qualityPercent()),
+                summary.problemTasksCount(),
+                summary.problemTopicsCount(),
+                summary.needsReviewCount());
+        for (int i = 0; i < headers.length; i++) {
+            average.getCell(i).setColor("F2F2F2");
         }
     }
 
@@ -138,8 +154,6 @@ public class PaTeacherDossierServiceImpl implements PaTeacherDossierService {
         Map<Long, String> problemTasksByStudent = findProblemTasksByStudent(report.reportVersionId());
         addHeading(document, "Работа: " + workLabel(report), 1);
         addWorkSummary(document, report, details.summary(), students);
-        addHeading(document, "Змейка учеников", 2);
-        addStudentSnake(document, students);
         addHeading(document, "Задания", 2);
         addTasksTable(document, tasks);
         addHeading(document, "Ученики", 2);
@@ -165,29 +179,13 @@ public class PaTeacherDossierServiceImpl implements PaTeacherDossierService {
         fillRow(table.getRow(11), "Требуется проверка", yesNo(report.needsReview()));
     }
 
-    private void addStudentSnake(XWPFDocument document, List<PaAnalyticsDtos.StudentResultRow> students) {
-        int columns = 4;
-        int rows = Math.max(1, (int) Math.ceil(students.size() / (double) columns));
-        XWPFTable table = document.createTable(rows, columns);
-        for (int i = 0; i < rows * columns; i++) {
-            XWPFTableCell cell = table.getRow(i / columns).getCell(i % columns);
-            if (i >= students.size()) {
-                setCellText(cell, "");
-                continue;
-            }
-            PaAnalyticsDtos.StudentResultRow student = students.get(i);
-            setCellText(cell, shortFio(student.studentFio()) + "\n" + percent(student.percent()) + " · " + value(student.mark()) + "\n" + snakeStatus(student));
-            cell.setColor(snakeColor(student));
-        }
-    }
-
     private void addTasksTable(XWPFDocument document, List<PaAnalyticsDtos.TaskResultRow> tasks) {
         String[] headers = {"№", "Тема", "Навык", "Тип", "Макс.", "Средний балл", "Средний %", "Ниже 50%", "Пусто", "Статус"};
         XWPFTable table = document.createTable(Math.max(1, tasks.size()) + 1, headers.length);
         fillHeader(table.getRow(0), headers);
         for (int i = 0; i < tasks.size(); i++) {
             PaAnalyticsDtos.TaskResultRow task = tasks.get(i);
-            fillCells(table.getRow(i + 1), task.taskNo(), task.topic(), task.skill(), task.taskKind(), number(task.maxScore(), 2), number(task.avgScore(), 2), percent(task.avgPercent()), task.below50Count(), task.emptyCount(), task.status());
+            fillCells(table.getRow(i + 1), task.taskNo(), task.topic(), task.skill(), taskKindLabel(task.taskKind()), number(task.maxScore(), 2), number(task.avgScore(), 2), percent(task.avgPercent()), task.below50Count(), task.emptyCount(), task.status());
         }
     }
 
@@ -205,7 +203,7 @@ public class PaTeacherDossierServiceImpl implements PaTeacherDossierService {
                 fillCells(table.getRow(i + 1),
                         i + 1,
                         student.getStudentFio(),
-                        student.getPresenceStatus(),
+                        presenceStatus(student.getPresenceStatus()),
                         student.getVariantName(),
                         number(student.getTotalScore(), 2),
                         number(student.getMaxScore(), 2),
@@ -218,7 +216,7 @@ public class PaTeacherDossierServiceImpl implements PaTeacherDossierService {
         }
         for (int i = 0; i < students.size(); i++) {
             PaAnalyticsDtos.StudentResultRow student = students.get(i);
-            fillCells(table.getRow(i + 1), i + 1, student.studentFio(), student.presenceStatus(), student.variantName(), number(student.totalScore(), 2), number(student.maxScore(), 2), percent(student.percent()), student.mark(), rowStatus(student.rowStatus() == null ? null : student.rowStatus().name()), "—");
+            fillCells(table.getRow(i + 1), i + 1, student.studentFio(), presenceStatus(student.presenceStatus()), student.variantName(), number(student.totalScore(), 2), number(student.maxScore(), 2), percent(student.percent()), student.mark(), rowStatus(student.rowStatus() == null ? null : student.rowStatus().name()), "—");
         }
     }
 
@@ -295,41 +293,7 @@ public class PaTeacherDossierServiceImpl implements PaTeacherDossierService {
     }
 
     private String workLabel(PaAnalyticsDtos.TeacherReportDetailRow report) {
-        return value(report.subjectName()) + ", " + value(report.className()) + ", " + value(report.workType()) + ", " + date(report);
-    }
-
-    private String shortFio(String fio) {
-        String[] parts = value(fio).trim().split("\\s+");
-        if (parts.length < 2) {
-            return value(fio);
-        }
-        return parts[0] + " " + parts[1].charAt(0) + "." + (parts.length > 2 ? parts[2].charAt(0) + "." : "");
-    }
-
-    private String snakeStatus(PaAnalyticsDtos.StudentResultRow student) {
-        if (student.percent() == null) {
-            return "нет результата";
-        }
-        if (student.percent() >= 70D) {
-            return "норма";
-        }
-        if (student.percent() >= 50D) {
-            return "зона внимания";
-        }
-        return "проблема";
-    }
-
-    private String snakeColor(PaAnalyticsDtos.StudentResultRow student) {
-        if (student.percent() == null || student.rowStatus() == null || !"PRESENT_WITH_RESULT".equals(student.rowStatus().name())) {
-            return "E5E7EB";
-        }
-        if (student.percent() >= 70D) {
-            return "DCFCE7";
-        }
-        if (student.percent() >= 50D) {
-            return "FEF9C3";
-        }
-        return "FEE2E2";
+        return value(report.subjectName()) + ", " + value(report.className()) + ", " + workTypeLabel(report.workType()) + ", " + date(report);
     }
 
     private long countByRowStatus(List<PaAnalyticsDtos.StudentResultRow> students, String status) {
@@ -349,7 +313,32 @@ public class PaTeacherDossierServiceImpl implements PaTeacherDossierService {
         if (DYNAMIC_NOT_AVAILABLE.equals(status)) {
             return "Динамика ВСОКО не рассчитана: отсутствует входная/выходная пара.";
         }
+        if ("CALCULATED".equals(status)) {
+            return "Рассчитана";
+        }
         return value(status);
+    }
+
+    private String workTypeLabel(String workType) {
+        if ("ENTRY".equalsIgnoreCase(value(workType))) return "Входная работа";
+        if ("EXIT".equalsIgnoreCase(value(workType))) return "Выходная работа";
+        if ("MID".equalsIgnoreCase(value(workType))) return "Промежуточная работа";
+        return value(workType);
+    }
+
+    private String taskKindLabel(String taskKind) {
+        if ("NEW".equalsIgnoreCase(value(taskKind))) return "Новое задание";
+        if ("REPEAT".equalsIgnoreCase(value(taskKind))) return "Повторение";
+        return value(taskKind);
+    }
+
+    private String presenceStatus(String status) {
+        if (status == null) return "—";
+        return switch (status) {
+            case "PRESENT", "PRESENT_WITH_RESULT" -> "Присутствовал";
+            case "ABSENT" -> "Отсутствовал";
+            default -> status;
+        };
     }
 
     private String rowStatus(String status) {

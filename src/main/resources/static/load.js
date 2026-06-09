@@ -782,7 +782,7 @@ function formatSplitHours(pair) {
     const h1 = Number(pair?.h1 || 0);
     const h2 = Number(pair?.h2 || 0);
     if (h1 === h2) return String(h1);
-    return `${h1}/${h2}`;
+    return `${h1} | ${h2}`;
 }
 
 function splitHoursSortValue(pair) {
