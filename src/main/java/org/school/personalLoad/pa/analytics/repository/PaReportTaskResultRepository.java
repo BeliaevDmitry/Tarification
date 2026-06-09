@@ -9,5 +9,7 @@ public interface PaReportTaskResultRepository extends JpaRepository<PaReportTask
 
     List<PaReportTaskResult> findAllByReportVersionIdOrderByTaskNoAsc(Long reportVersionId);
 
+    List<PaReportTaskResult> findAllByReportVersionIdIn(List<Long> reportVersionIds);
+
     void deleteByReportVersionId(Long reportVersionId);
 }
