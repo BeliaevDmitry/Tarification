@@ -79,9 +79,9 @@ public class PaAnalyticsController {
         } catch (IllegalArgumentException exception) {
             return textResponse(404, exception.getMessage());
         } catch (IOException exception) {
-            return textResponse(500, "Не удалось сформировать Word-досье: " + exception.getMessage());
+            return textResponse(500, "Не удалось сформировать Word-анализ: " + exception.getMessage());
         }
-        String fileName = "Досье_ПА_" + safeFilePart(teacherFio) + "_" + safeFilePart(year) + ".docx";
+        String fileName = "Анализ_ПА_" + safeFilePart(teacherFio) + "_" + safeFilePart(year) + ".docx";
         String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
