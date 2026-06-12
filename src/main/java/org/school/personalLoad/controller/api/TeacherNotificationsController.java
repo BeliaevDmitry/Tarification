@@ -9,8 +9,10 @@ import org.openxmlformats.schemas.wordprocessingml.x2006.main.*;
 import org.school.personalLoad.auth.AuthSessionUtils;
 import org.school.personalLoad.auth.SessionUser;
 import org.school.personalLoad.model.ManualLoadEntry;
+import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.model.TeacherNotificationRecord;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.TeacherNotificationRecordRepository;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -46,6 +48,7 @@ public class TeacherNotificationsController {
 
     private final ManualLoadEntryRepository manualLoadEntryRepository;
     private final TeacherNotificationRecordRepository recordRepository;
+    private final TeacherDirectoryRepository teacherDirectoryRepository;
 
     @GetMapping
     public List<Row> list(@RequestParam String academicYear, @RequestParam(required = false) String loadDate) {
@@ -113,7 +116,7 @@ public class TeacherNotificationsController {
         try (InputStream in = templateOrFallback(templatePath);
              XWPFDocument doc = in != null ? new XWPFDocument(in) : new XWPFDocument();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            replacePlaceholders(doc, fio, notificationDate, year, rows);
+            replacePlaceholders(doc, teacherNameForNotification(fio), notificationDate, year, rows);
             insertLoadTable(doc, rows);
             doc.write(out);
             return out.toByteArray();
@@ -145,12 +148,13 @@ public class TeacherNotificationsController {
         String text = p.getText();
         if (text == null || text.isBlank()) return;
         text = text.replace("\\${", "${");
-        int totalLoad = rows.stream().map(ManualLoadEntry::getLoad).filter(Objects::nonNull).mapToInt(Integer::intValue).sum();
+        String totalLoad = formatNotificationTotalLoad(rows);
         String dateRu = String.format("%02d.%02d.%04d", date.getDayOfMonth(), date.getMonthValue(), date.getYear());
-        String replaced = text.replace(PLACEHOLDER_TEACHER, fio)
+        String replaced = stripTemplateHourWordAfterTotalLoad(text)
+                .replace(PLACEHOLDER_TEACHER, fio)
                 .replace(PLACEHOLDER_DATE, String.valueOf(date))
                 .replace(PLACEHOLDER_YEAR, year)
-                .replace(PLACEHOLDER_TOTAL_LOAD, String.valueOf(totalLoad));
+                .replace(PLACEHOLDER_TOTAL_LOAD, totalLoad);
 
         if (replaced.contains(PLACEHOLDER_DATE_CITY_LINE)) {
             while (p.getRuns().size() > 0) p.removeRun(0);
@@ -175,6 +179,54 @@ public class TeacherNotificationsController {
             run.setFontFamily("Times New Roman");
             run.setFontSize(12);
         }
+    }
+
+    String teacherNameForNotification(String fio) {
+        return teacherDirectoryRepository.findByFioTeacherIgnoreCase(fio)
+                .map(TeacherDirectoryEntry::getFioTeacherDative)
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .orElse(fio);
+    }
+
+    String stripTemplateHourWordAfterTotalLoad(String text) {
+        return text.replace(PLACEHOLDER_TOTAL_LOAD + " часов", PLACEHOLDER_TOTAL_LOAD)
+                .replace(PLACEHOLDER_TOTAL_LOAD + " часа", PLACEHOLDER_TOTAL_LOAD)
+                .replace(PLACEHOLDER_TOTAL_LOAD + " час", PLACEHOLDER_TOTAL_LOAD);
+    }
+
+    String formatNotificationTotalLoad(List<ManualLoadEntry> rows) {
+        int totalH1 = 0;
+        int totalH2 = 0;
+        for (ManualLoadEntry row : rows) {
+            int hours = Optional.ofNullable(row.getLoad()).orElse(0);
+            if (row.getStudyPeriod() == org.school.personalLoad.model.StudyPeriod.H1) {
+                totalH1 += hours;
+            } else if (row.getStudyPeriod() == org.school.personalLoad.model.StudyPeriod.H2) {
+                totalH2 += hours;
+            } else {
+                totalH1 += hours;
+                totalH2 += hours;
+            }
+        }
+        if (totalH1 == totalH2) {
+            return totalH1 + " " + hourWord(totalH1);
+        }
+        return "в 1 полугодие: " + totalH1 + " " + hourWord(totalH1)
+                + " и во 2 полугодие: " + totalH2 + " " + hourWord(totalH2);
+    }
+
+    String hourWord(int hours) {
+        int abs = Math.abs(hours);
+        int lastTwo = abs % 100;
+        if (lastTwo >= 11 && lastTwo <= 14) {
+            return "часов";
+        }
+        return switch (abs % 10) {
+            case 1 -> "час";
+            case 2, 3, 4 -> "часа";
+            default -> "часов";
+        };
     }
 
     private void insertLoadTable(XWPFDocument doc, List<ManualLoadEntry> rows) {
