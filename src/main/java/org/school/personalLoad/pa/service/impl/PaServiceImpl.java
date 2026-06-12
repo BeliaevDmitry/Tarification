@@ -624,11 +624,17 @@ public class PaServiceImpl implements PaService {
                 List<PaReportVersion> sameKey = reportVersionRepository.findAllByAcademicYearAndSubjectNameAndScopeTypeAndScopeValueAndLevelAndWorkTypeAndWorkDate(
                         academicYear, subject, scopeType, scopeValue.trim().toUpperCase(Locale.ROOT), level, workType, workDate
                 );
-                sameKey.forEach(v -> v.setActiveVersion(false));
-                if (!sameKey.isEmpty()) {
-                    reportVersionRepository.saveAll(sameKey);
+                List<PaReportVersion> previousTeacherUploads = sameKey.stream()
+                        .filter(v -> "ACCEPTED".equalsIgnoreCase(v.getStatus()))
+                        .filter(PaReportVersion::isUploadedBackSuccess)
+                        .filter(v -> normalizeFio(v.getTeacherFio()).equals(normalizedTeacher)
+                                || normalizeFio(v.getTeacherFioNormalized()).equals(normalizedTeacher))
+                        .toList();
+                previousTeacherUploads.forEach(v -> v.setActiveVersion(false));
+                if (!previousTeacherUploads.isEmpty()) {
+                    reportVersionRepository.saveAll(previousTeacherUploads);
                 }
-                boolean replaced = !sameKey.isEmpty();
+                boolean replaced = !previousTeacherUploads.isEmpty();
                 int nextVersion = resolveNextReportVersion(academicYear, subject, scopeType, scopeValue.trim().toUpperCase(Locale.ROOT), level, workType, workDate);
                 PaReportVersion version = new PaReportVersion();
                 version.setAcademicYear(academicYear);
@@ -853,8 +859,11 @@ public class PaServiceImpl implements PaService {
         List<PaReportVersion> sameKey = reportVersionRepository.findAllByAcademicYearAndSubjectNameAndScopeTypeAndScopeValueAndLevelAndWorkTypeAndWorkDate(
                 academicYear, subjectName, PaScopeType.CLASS, className.toUpperCase(Locale.ROOT), assignedLevel, workType, workDate
         );
-        sameKey.forEach(v -> v.setActiveVersion(false));
-        if (!sameKey.isEmpty()) reportVersionRepository.saveAll(sameKey);
+        List<PaReportVersion> generatedTemplates = sameKey.stream()
+                .filter(v -> "GENERATED".equalsIgnoreCase(v.getStatus()))
+                .toList();
+        generatedTemplates.forEach(v -> v.setActiveVersion(false));
+        if (!generatedTemplates.isEmpty()) reportVersionRepository.saveAll(generatedTemplates);
         int versionNo = resolveNextReportVersion(academicYear, subjectName, PaScopeType.CLASS, className.toUpperCase(Locale.ROOT), assignedLevel, workType, workDate);
         PaReportVersion version = new PaReportVersion();
         version.setAcademicYear(academicYear);
