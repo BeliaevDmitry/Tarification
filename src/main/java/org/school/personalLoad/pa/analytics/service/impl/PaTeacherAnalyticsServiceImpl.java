@@ -5,9 +5,11 @@ import org.school.personalLoad.pa.analytics.dto.PaAnalyticsDtos;
 import org.school.personalLoad.pa.analytics.model.PaAnalysisStatus;
 import org.school.personalLoad.pa.analytics.model.PaReportAnalysisSummary;
 import org.school.personalLoad.pa.analytics.model.PaReportStudentResult;
+import org.school.personalLoad.pa.analytics.model.PaReportTaskResult;
 import org.school.personalLoad.pa.analytics.model.PaStudentResultStatus;
 import org.school.personalLoad.pa.analytics.repository.PaReportAnalysisSummaryRepository;
 import org.school.personalLoad.pa.analytics.repository.PaReportStudentResultRepository;
+import org.school.personalLoad.pa.analytics.repository.PaReportTaskResultRepository;
 import org.school.personalLoad.pa.analytics.service.PaTeacherAnalyticsService;
 import org.school.personalLoad.pa.model.PaReportVersion;
 import org.school.personalLoad.pa.repository.PaReportVersionRepository;
@@ -33,6 +35,7 @@ public class PaTeacherAnalyticsServiceImpl implements PaTeacherAnalyticsService 
 
     private final PaReportAnalysisSummaryRepository summaryRepository;
     private final PaReportStudentResultRepository studentResultRepository;
+    private final PaReportTaskResultRepository taskResultRepository;
     private final PaReportVersionRepository reportVersionRepository;
 
     @Override
@@ -45,8 +48,9 @@ public class PaTeacherAnalyticsServiceImpl implements PaTeacherAnalyticsService 
                 .filter(summary -> summary.getTeacherFio() != null && !summary.getTeacherFio().isBlank())
                 .collect(Collectors.groupingBy(summary -> normalizeTeacherKey(summary.getTeacherFio())));
         Map<Long, List<PaReportStudentResult>> studentsByReport = loadStudentsByReport(summaries);
+        Map<Long, List<PaReportTaskResult>> tasksByReport = loadTasksByReport(summaries);
         return byTeacher.values().stream()
-                .map(teacherSummaries -> toTeacherSummary(teacherSummaries, studentsByReport, null))
+                .map(teacherSummaries -> toTeacherSummary(teacherSummaries, studentsByReport, tasksByReport, null))
                 .sorted(Comparator.comparing(PaAnalyticsDtos.TeacherSummaryRow::teacherFio, Comparator.nullsLast(String::compareToIgnoreCase)))
                 .toList();
     }
@@ -56,7 +60,8 @@ public class PaTeacherAnalyticsServiceImpl implements PaTeacherAnalyticsService 
     public PaAnalyticsDtos.TeacherDetailsResponse getTeacherDetails(String academicYear, String teacherFio) {
         List<PaReportAnalysisSummary> summaries = loadEligibleSummaries(academicYear, null, null, teacherFio);
         Map<Long, List<PaReportStudentResult>> studentsByReport = loadStudentsByReport(summaries);
-        PaAnalyticsDtos.TeacherSummaryRow teacherSummary = toTeacherSummary(summaries, studentsByReport, teacherFio);
+        Map<Long, List<PaReportTaskResult>> tasksByReport = loadTasksByReport(summaries);
+        PaAnalyticsDtos.TeacherSummaryRow teacherSummary = toTeacherSummary(summaries, studentsByReport, tasksByReport, teacherFio);
         List<PaAnalyticsDtos.TeacherReportDetailRow> reports = summaries.stream()
                 .sorted(Comparator.comparing(PaReportAnalysisSummary::getWorkDate, Comparator.nullsLast(Comparator.naturalOrder()))
                         .thenComparing(PaReportAnalysisSummary::getSubjectName, Comparator.nullsLast(String::compareToIgnoreCase))
@@ -115,8 +120,22 @@ public class PaTeacherAnalyticsServiceImpl implements PaTeacherAnalyticsService 
                 .collect(Collectors.groupingBy(PaReportStudentResult::getReportVersionId));
     }
 
+    private Map<Long, List<PaReportTaskResult>> loadTasksByReport(List<PaReportAnalysisSummary> summaries) {
+        List<Long> ids = summaries.stream()
+                .map(PaReportAnalysisSummary::getReportVersionId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        return taskResultRepository.findAllByReportVersionIdIn(ids).stream()
+                .collect(Collectors.groupingBy(PaReportTaskResult::getReportVersionId));
+    }
+
     private PaAnalyticsDtos.TeacherSummaryRow toTeacherSummary(List<PaReportAnalysisSummary> summaries,
                                                                Map<Long, List<PaReportStudentResult>> studentsByReport,
+                                                               Map<Long, List<PaReportTaskResult>> tasksByReport,
                                                                String fallbackTeacherFio) {
         String teacherFio = summaries.stream()
                 .map(PaReportAnalysisSummary::getTeacherFio)
@@ -170,6 +189,9 @@ public class PaTeacherAnalyticsServiceImpl implements PaTeacherAnalyticsService 
         Double avgMark = markCount == 0 ? null : markSum / markCount;
         Double successPercent = studentsWithResult == 0 ? null : successCount * 100D / studentsWithResult;
         Double qualityPercent = studentsWithResult == 0 ? null : qualityCount * 100D / studentsWithResult;
+        Double paPerformanceScore = calculateTeacherPerformanceScore(summaries, studentsByReport, tasksByReport);
+        Double dynamicScore = calculateVsokoDynamic(summaries, tasksByReport);
+        Integer dynamicMark = dynamicScore == null ? null : dynamicMark(dynamicScore);
         return new PaAnalyticsDtos.TeacherSummaryRow(
                 teacherFio,
                 new ArrayList<>(subjects),
@@ -183,12 +205,246 @@ public class PaTeacherAnalyticsServiceImpl implements PaTeacherAnalyticsService 
                 problemTasksCount,
                 problemTopicsCount,
                 needsReviewCount,
-                avgMark,
-                performanceMark(avgMark),
-                null,
-                null,
-                DYNAMIC_NOT_AVAILABLE
+                paPerformanceScore,
+                performanceMark(paPerformanceScore),
+                dynamicScore,
+                dynamicMark,
+                dynamicScore == null ? DYNAMIC_NOT_AVAILABLE : "CALCULATED"
         );
+    }
+
+    private Double calculateTeacherPerformanceScore(List<PaReportAnalysisSummary> summaries,
+                                                    Map<Long, List<PaReportStudentResult>> studentsByReport,
+                                                    Map<Long, List<PaReportTaskResult>> tasksByReport) {
+        List<PaReportAnalysisSummary> entries = summaries.stream()
+                .filter(summary -> "ENTRY".equalsIgnoreCase(nvl(summary.getWorkType())))
+                .toList();
+        List<PaReportAnalysisSummary> exits = summaries.stream()
+                .filter(summary -> "EXIT".equalsIgnoreCase(nvl(summary.getWorkType())))
+                .toList();
+        List<Double> studentScores = new ArrayList<>();
+        for (PaReportAnalysisSummary exit : exits) {
+            PaReportAnalysisSummary entry = latestMatchingEntry(entries, exit);
+            if (entry == null) {
+                continue;
+            }
+            studentScores.addAll(calculateStudentPerformanceScores(entry, exit, studentsByReport, tasksByReport));
+        }
+        return studentScores.isEmpty() ? null : studentScores.stream().mapToDouble(Double::doubleValue).average().orElse(0D);
+    }
+
+    private List<Double> calculateStudentPerformanceScores(PaReportAnalysisSummary entry,
+                                                           PaReportAnalysisSummary exit,
+                                                           Map<Long, List<PaReportStudentResult>> studentsByReport,
+                                                           Map<Long, List<PaReportTaskResult>> tasksByReport) {
+        Map<String, PaReportStudentResult> entryStudentsByFio = studentsByReport
+                .getOrDefault(entry.getReportVersionId(), List.of())
+                .stream()
+                .filter(this::hasPresentResult)
+                .filter(student -> !isBlank(student.getStudentFioNormalized()) || !isBlank(student.getStudentFio()))
+                .collect(Collectors.toMap(
+                        this::normalizedStudentKey,
+                        Function.identity(),
+                        (first, second) -> first
+                ));
+        Map<Long, List<PaReportTaskResult>> exitTasksByStudent = tasksByReport
+                .getOrDefault(exit.getReportVersionId(), List.of())
+                .stream()
+                .filter(task -> task.getStudentResultId() != null)
+                .collect(Collectors.groupingBy(PaReportTaskResult::getStudentResultId));
+        List<Double> scores = new ArrayList<>();
+        for (PaReportStudentResult exitStudent : studentsByReport.getOrDefault(exit.getReportVersionId(), List.of())) {
+            if (!hasPresentResult(exitStudent)) {
+                continue;
+            }
+            PaReportStudentResult entryStudent = entryStudentsByFio.get(normalizedStudentKey(exitStudent));
+            if (entryStudent == null) {
+                continue;
+            }
+            Double score = calculateStudentPerformanceScore(entryStudent, exitStudent, exitTasksByStudent.getOrDefault(exitStudent.getId(), List.of()));
+            if (score != null) {
+                scores.add(score);
+            }
+        }
+        return scores;
+    }
+
+    private Double calculateStudentPerformanceScore(PaReportStudentResult entryStudent,
+                                                    PaReportStudentResult exitStudent,
+                                                    List<PaReportTaskResult> exitTasks) {
+        Double entryPercent = entryStudent.getPercent();
+        Integer entryMark = entryStudent.getMark();
+        Double exitRepeatPercent = taskGroupPercent(exitTasks, "REPEAT");
+        Double exitNewPercent = taskGroupPercent(exitTasks, "NEW");
+        Integer exitMark = exitStudent.getMark();
+        if (entryPercent == null || entryMark == null || exitRepeatPercent == null || exitNewPercent == null || exitMark == null) {
+            return null;
+        }
+        return (previousPeriodProgressMark(entryPercent, exitRepeatPercent)
+                + gapClosureMark(entryPercent, exitRepeatPercent)
+                + currentPeriodMasteryMark(exitNewPercent)
+                + markDynamicsMark(entryMark, exitMark)) / 4D;
+    }
+
+    private Double taskGroupPercent(List<PaReportTaskResult> tasks, String taskKind) {
+        List<PaReportTaskResult> matchingTasks = tasks.stream()
+                .filter(task -> taskKind.equalsIgnoreCase(nvl(task.getTaskKind())))
+                .toList();
+        double maxScore = matchingTasks.stream()
+                .map(PaReportTaskResult::getMaxScore)
+                .filter(Objects::nonNull)
+                .filter(value -> value > 0D)
+                .mapToDouble(Double::doubleValue)
+                .sum();
+        if (maxScore > 0D) {
+            double score = matchingTasks.stream()
+                    .filter(task -> task.getMaxScore() != null && task.getMaxScore() > 0D)
+                    .map(PaReportTaskResult::getScore)
+                    .filter(Objects::nonNull)
+                    .mapToDouble(Double::doubleValue)
+                    .sum();
+            return score / maxScore * 100D;
+        }
+        List<Double> percents = matchingTasks.stream()
+                .map(PaReportTaskResult::getPercent)
+                .filter(Objects::nonNull)
+                .toList();
+        return percents.isEmpty() ? null : percents.stream().mapToDouble(Double::doubleValue).average().orElse(0D);
+    }
+
+    private int previousPeriodProgressMark(Double entryPercent, Double exitRepeatPercent) {
+        if (entryPercent >= 90D && exitRepeatPercent >= 90D) return 5;
+        if (entryPercent >= 75D && exitRepeatPercent >= 90D) return 5;
+        if (entryPercent >= 75D && exitRepeatPercent >= 75D) return 4;
+        double delta = exitRepeatPercent - entryPercent;
+        if (delta <= -10D) return 2;
+        if (delta <= 4D) return 3;
+        if (delta <= 14D) return 4;
+        return 5;
+    }
+
+    private int gapClosureMark(Double entryPercent, Double exitRepeatPercent) {
+        double efficiency;
+        if (entryPercent >= 90D) {
+            if (exitRepeatPercent >= 90D) return 5;
+            if (exitRepeatPercent >= 75D) return 4;
+            efficiency = exitRepeatPercent - entryPercent;
+        } else {
+            efficiency = (exitRepeatPercent - entryPercent) / (100D - entryPercent) * 100D;
+        }
+        if (efficiency <= -30D) return 1;
+        if (efficiency <= -10D) return 2;
+        if (efficiency <= 39D) return 3;
+        if (efficiency <= 59D) return 4;
+        return 5;
+    }
+
+    private int currentPeriodMasteryMark(Double exitNewPercent) {
+        if (exitNewPercent < 40D) return 2;
+        if (exitNewPercent < 60D) return 3;
+        if (exitNewPercent < 80D) return 4;
+        return 5;
+    }
+
+    private int markDynamicsMark(Integer entryMark, Integer exitMark) {
+        if (Objects.equals(entryMark, exitMark)) {
+            if (entryMark == 5) return 5;
+            if (entryMark == 4) return 4;
+            if (entryMark == 2) return 2;
+        }
+        int delta = exitMark - entryMark;
+        if (delta <= -2) return 2;
+        if (delta <= 0) return 3;
+        if (delta == 1) return 4;
+        return 5;
+    }
+
+    private PaReportAnalysisSummary latestMatchingEntry(List<PaReportAnalysisSummary> entries, PaReportAnalysisSummary exit) {
+        return entries.stream()
+                .filter(candidate -> sameDynamicPair(candidate, exit))
+                .filter(candidate -> candidate.getWorkDate() == null || exit.getWorkDate() == null || !candidate.getWorkDate().isAfter(exit.getWorkDate()))
+                .max(Comparator.comparing(PaReportAnalysisSummary::getWorkDate, Comparator.nullsFirst(Comparator.naturalOrder())))
+                .orElse(null);
+    }
+
+    private boolean hasPresentResult(PaReportStudentResult student) {
+        return student != null && student.getRowStatus() == PaStudentResultStatus.PRESENT_WITH_RESULT;
+    }
+
+    private String normalizedStudentKey(PaReportStudentResult student) {
+        return !isBlank(student.getStudentFioNormalized())
+                ? normalizeTeacherKey(student.getStudentFioNormalized())
+                : normalizeTeacherKey(student.getStudentFio());
+    }
+
+    private Double calculateVsokoDynamic(List<PaReportAnalysisSummary> summaries,
+                                         Map<Long, List<PaReportTaskResult>> tasksByReport) {
+        List<PaReportAnalysisSummary> entries = summaries.stream()
+                .filter(summary -> "ENTRY".equalsIgnoreCase(nvl(summary.getWorkType())))
+                .toList();
+        List<PaReportAnalysisSummary> exits = summaries.stream()
+                .filter(summary -> "EXIT".equalsIgnoreCase(nvl(summary.getWorkType())))
+                .toList();
+        List<Double> deltas = new ArrayList<>();
+        for (PaReportAnalysisSummary exit : exits) {
+            PaReportAnalysisSummary entry = latestMatchingEntry(entries, exit);
+            if (entry == null) {
+                continue;
+            }
+            Double taskDelta = repeatedTaskDelta(entry, exit, tasksByReport);
+            if (taskDelta != null) {
+                deltas.add(taskDelta);
+            } else if (entry.getAvgPercent() != null && exit.getAvgPercent() != null) {
+                deltas.add(exit.getAvgPercent() - entry.getAvgPercent());
+            }
+        }
+        return deltas.isEmpty() ? null : deltas.stream().mapToDouble(Double::doubleValue).average().orElse(0D);
+    }
+
+    private boolean sameDynamicPair(PaReportAnalysisSummary entry, PaReportAnalysisSummary exit) {
+        return sameText(entry.getTeacherFio(), exit.getTeacherFio())
+                && sameText(entry.getSubjectName(), exit.getSubjectName())
+                && sameText(entry.getClassName(), exit.getClassName())
+                && sameText(entry.getLevel(), exit.getLevel());
+    }
+
+    private Double repeatedTaskDelta(PaReportAnalysisSummary entry,
+                                     PaReportAnalysisSummary exit,
+                                     Map<Long, List<PaReportTaskResult>> tasksByReport) {
+        Map<Integer, Double> entryAvgByTask = avgPercentByTask(tasksByReport.getOrDefault(entry.getReportVersionId(), List.of()));
+        List<Double> deltas = tasksByReport.getOrDefault(exit.getReportVersionId(), List.of()).stream()
+                .filter(task -> "REPEAT".equalsIgnoreCase(nvl(task.getTaskKind())))
+                .filter(task -> task.getRepeatFromTaskNo() != null)
+                .filter(task -> task.getPercent() != null)
+                .map(task -> {
+                    Double entryPercent = entryAvgByTask.get(task.getRepeatFromTaskNo());
+                    return entryPercent == null ? null : task.getPercent() - entryPercent;
+                })
+                .filter(Objects::nonNull)
+                .toList();
+        return deltas.isEmpty() ? null : deltas.stream().mapToDouble(Double::doubleValue).average().orElse(0D);
+    }
+
+    private Map<Integer, Double> avgPercentByTask(List<PaReportTaskResult> tasks) {
+        return tasks.stream()
+                .filter(task -> task.getTaskNo() != null && task.getPercent() != null)
+                .collect(Collectors.groupingBy(
+                        PaReportTaskResult::getTaskNo,
+                        Collectors.averagingDouble(PaReportTaskResult::getPercent)
+                ));
+    }
+
+    private Integer dynamicMark(Double dynamicScore) {
+        if (dynamicScore == null) return null;
+        if (dynamicScore >= 15D) return 5;
+        if (dynamicScore >= 5D) return 4;
+        if (dynamicScore >= 0D) return 3;
+        if (dynamicScore >= -10D) return 2;
+        return 1;
+    }
+
+    private boolean sameText(String a, String b) {
+        return normalizeTeacherKey(a).equals(normalizeTeacherKey(b));
     }
 
     private PaAnalyticsDtos.TeacherReportDetailRow toReportDetail(PaReportAnalysisSummary summary) {
