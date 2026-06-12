@@ -813,46 +813,46 @@ function accumulateManualSplit(pair, entry) {
     }
 }
 
-function isManualEntryActiveAt(entry, referenceDate) {
-    const from = String(entry?.loadFromDate || "");
-    const to = String(entry?.loadToDate || "");
-    return from && to && from <= referenceDate && referenceDate <= to;
+function teacherHoursKey(teacherName) {
+    return String(teacherName || "")
+        .trim()
+        .replace(/ё/g, "е")
+        .replace(/Ё/g, "Е")
+        .replace(/\s+/g, " ")
+        .toLowerCase();
 }
 
-function periodEndDateForEntry(entry, studyPeriod) {
-    const period = defaultLoadPeriod(entry?.className || "1-А", studyPeriod);
-    return period?.to || "";
+function manualEntryLoadValue(entry) {
+    const value = Number(entry?.groupLoad ?? entry?.load ?? 0);
+    return Number.isFinite(value) ? value : 0;
 }
 
-function accumulateManualAtHalfYearEnds(pair, entry) {
-    const value = Number(entry?.load || 0);
+function accumulateManualByStudyPeriod(pair, entry) {
+    const value = manualEntryLoadValue(entry);
     if (!value) return;
-
-    const h1EndDate = periodEndDateForEntry(entry, "H1");
-    const h2EndDate = periodEndDateForEntry(entry, "H2");
-
-    if (h1EndDate && isManualEntryActiveAt(entry, h1EndDate)) {
+    const period = manualEntryStudyPeriod(entry);
+    if (period === "H1") pair.h1 += value;
+    else if (period === "H2") pair.h2 += value;
+    else {
         pair.h1 += value;
-    }
-
-    if (h2EndDate && isManualEntryActiveAt(entry, h2EndDate)) {
         pair.h2 += value;
     }
 }
 
-function buildTeacherHoursAtHalfYearEnds(rows = []) {
+function buildTeacherHoursByStudyPeriod(rows = []) {
     const result = {};
 
     (rows || [])
         .filter((entry) => String(entry?.fioTeacher || "").trim())
         .forEach((entry) => {
-            const teacherName = String(entry.fioTeacher || "").trim();
+            const key = teacherHoursKey(entry.fioTeacher);
+            if (!key) return;
 
-            if (!result[teacherName]) {
-                result[teacherName] = { h1: 0, h2: 0 };
+            if (!result[key]) {
+                result[key] = { h1: 0, h2: 0 };
             }
 
-            accumulateManualAtHalfYearEnds(result[teacherName], entry);
+            accumulateManualByStudyPeriod(result[key], entry);
         });
 
     return result;
@@ -1610,9 +1610,9 @@ function computeTeacherHourIndexes() {
         .filter((row) => rowMatchesBuildingAccess(row, selectedBuilding));
 
     const buildingTeacherHours = {
-        [selectedBuildingGroup]: buildTeacherHoursAtHalfYearEnds(scopedManualRows)
+        [selectedBuildingGroup]: buildTeacherHoursByStudyPeriod(scopedManualRows)
     };
-    const complexTeacherHours = buildTeacherHoursAtHalfYearEnds(complexManualRows || []);
+    const complexTeacherHours = buildTeacherHoursByStudyPeriod(complexManualRows || []);
 
     teacherHourIndexesCacheKey = cacheKey;
     teacherHourIndexesCacheValue = { buildingTeacherHours, complexTeacherHours };
@@ -1680,8 +1680,9 @@ function buildPresentationRows() {
             else if (periodTotals.year <= 0 && periodTotals.h2 > 0 && periodTotals.h1 <= 0) displayName = `${displayName} (2П)`;
 
             const selectedBuildingGroup = buildingGroupCode(selectedBuilding);
-            const buildingHoursPair = buildingTeacherHours[selectedBuildingGroup]?.[teacherRow.teacherName || ""] || { h1: 0, h2: 0 };
-            const complexHoursPair = complexTeacherHours[teacherRow.teacherName || ""] || { h1: 0, h2: 0 };
+            const teacherHoursLookupKey = teacherHoursKey(teacherRow.teacherName);
+            const buildingHoursPair = buildingTeacherHours[selectedBuildingGroup]?.[teacherHoursLookupKey] || { h1: 0, h2: 0 };
+            const complexHoursPair = complexTeacherHours[teacherHoursLookupKey] || { h1: 0, h2: 0 };
             result.push({
                 subjectKey: info.subjectKey,
                 teacherRowId: teacherRow.id,
