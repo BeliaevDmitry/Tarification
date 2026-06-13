@@ -51,7 +51,7 @@ public class PaTeacherDossierServiceImpl implements PaTeacherDossierService {
         try (XWPFDocument document = new XWPFDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             addTitle(document, "Анализ педагогической результативности ВСОКО / ПА");
             addTeacherPassport(document, academicYear, details.teacherSummary());
-            addParagraph(document, "Показатель ПА рассчитан по результатам загруженных и проанализированных работ. Динамика ВСОКО рассчитывается по входной и выходной работам с учётом повторяющихся заданий.", true, false);
+            addParagraph(document, "Показатель ПА рассчитан по доступным результатам загруженных и проанализированных работ. Если входная работа отсутствует, оценка рассчитывается без критериев динамики. Динамика ВСОКО рассчитывается отдельно только при наличии входной и выходной пары.", true, false);
 
             addPageBreak(document);
             addHeading(document, "Расчёт показателя «Педагоги ВСОКО»", 1);

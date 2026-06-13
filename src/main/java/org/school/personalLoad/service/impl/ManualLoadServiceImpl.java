@@ -1305,7 +1305,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             if (!classHours.isEmpty()) {
                 return formatPeriodTotals(classHours);
             }
-            return "1г: " + formatPeriodTotals(firstGroup) + "; 2г: " + formatPeriodTotals(secondGroup);
+            return formatPeriodTotals(firstGroup) + " / " + formatPeriodTotals(secondGroup);
         }
     }
 

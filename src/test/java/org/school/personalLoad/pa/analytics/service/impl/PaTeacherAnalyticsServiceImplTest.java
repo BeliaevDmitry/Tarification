@@ -21,6 +21,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -93,6 +94,34 @@ class PaTeacherAnalyticsServiceImplTest {
         assertNotNull(row.paPerformanceScore());
         assertEquals(4D, row.paPerformanceScore(), 0.001);
         assertEquals(4, row.paPerformanceMark());
+    }
+
+    @Test
+    void getTeacherSummariesCalculatesPerformanceWithoutEntryAndLeavesDynamicUnavailable() {
+        PaReportAnalysisSummary exit = summary(2L, "EXIT", LocalDate.of(2026, 5, 10), 75D);
+        when(summaryRepository.findAllByAcademicYearOrderBySubjectNameAscClassNameAscTeacherFioAsc("2025/2026"))
+                .thenReturn(List.of(exit));
+        when(reportVersionRepository.findAll()).thenReturn(List.of(version(2L)));
+        when(studentResultRepository.findAllByReportVersionIdIn(List.of(2L)))
+                .thenReturn(List.of(student(201L, 2L, "Иванов Иван", 75D, 4)));
+        when(taskResultRepository.findAllByReportVersionIdIn(List.of(2L)))
+                .thenReturn(List.of(task(2L, 201L, 4, "NEW", null, 7.5D, 10D, 75D)));
+        PaTeacherAnalyticsServiceImpl service = new PaTeacherAnalyticsServiceImpl(
+                summaryRepository,
+                studentResultRepository,
+                taskResultRepository,
+                reportVersionRepository
+        );
+
+        List<PaAnalyticsDtos.TeacherSummaryRow> rows = service.getTeacherSummaries("2025/2026", null, null);
+
+        assertEquals(1, rows.size());
+        PaAnalyticsDtos.TeacherSummaryRow row = rows.get(0);
+        assertEquals(4D, row.paPerformanceScore(), 0.001);
+        assertEquals(4, row.paPerformanceMark());
+        assertNull(row.vsokoDynamicScore());
+        assertNull(row.vsokoDynamicMark());
+        assertEquals("NOT_AVAILABLE_NO_ENTRY_EXIT_PAIR", row.vsokoDynamicStatus());
     }
 
     private PaReportAnalysisSummary summary(Long reportVersionId, String workType, LocalDate workDate, Double avgPercent) {

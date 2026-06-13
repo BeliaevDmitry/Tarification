@@ -226,11 +226,36 @@ public class PaTeacherAnalyticsServiceImpl implements PaTeacherAnalyticsService 
         for (PaReportAnalysisSummary exit : exits) {
             PaReportAnalysisSummary entry = latestMatchingEntry(entries, exit);
             if (entry == null) {
+                studentScores.addAll(calculateExitOnlyStudentPerformanceScores(exit, studentsByReport, tasksByReport));
                 continue;
             }
             studentScores.addAll(calculateStudentPerformanceScores(entry, exit, studentsByReport, tasksByReport));
         }
         return studentScores.isEmpty() ? null : studentScores.stream().mapToDouble(Double::doubleValue).average().orElse(0D);
+    }
+
+    private List<Double> calculateExitOnlyStudentPerformanceScores(PaReportAnalysisSummary exit,
+                                                                   Map<Long, List<PaReportStudentResult>> studentsByReport,
+                                                                   Map<Long, List<PaReportTaskResult>> tasksByReport) {
+        Map<Long, List<PaReportTaskResult>> exitTasksByStudent = tasksByReport
+                .getOrDefault(exit.getReportVersionId(), List.of())
+                .stream()
+                .filter(task -> task.getStudentResultId() != null)
+                .collect(Collectors.groupingBy(PaReportTaskResult::getStudentResultId));
+        List<Double> scores = new ArrayList<>();
+        for (PaReportStudentResult exitStudent : studentsByReport.getOrDefault(exit.getReportVersionId(), List.of())) {
+            if (!hasPresentResult(exitStudent)) {
+                continue;
+            }
+            Double exitNewPercent = taskGroupPercent(
+                    exitTasksByStudent.getOrDefault(exitStudent.getId(), List.of()),
+                    "NEW"
+            );
+            if (exitNewPercent != null) {
+                scores.add((double) currentPeriodMasteryMark(exitNewPercent));
+            }
+        }
+        return scores;
     }
 
     private List<Double> calculateStudentPerformanceScores(PaReportAnalysisSummary entry,
