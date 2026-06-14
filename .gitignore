@@ -41,3 +41,7 @@ build/
 .env.*
 !.env.example
 !deploy/vps/.env.production.example
+
+# Runtime PA files: generated reports, uploaded workbooks and specifications.
+/pa-reports/
+/pa-specifications/

@@ -14,5 +14,5 @@ public interface PrimarySubjectService {
     List<PrimarySubjectRule> getRules();
     PrimarySubjectRule saveRule(Long id, PrimarySubjectDtos.RuleRequest request);
     void deleteRule(Long id);
-    Map<String, String> resolveForExport(String academicYear);
+    Map<Long, String> resolveForExport(String academicYear);
 }

@@ -671,6 +671,9 @@ class ManualLoadServiceImplBulkReplaceTest {
         ManualLoadEntry russian = manualRow("Иванова И.И.", "СП1", "5-А", "Русский язык", 6);
         ManualLoadEntry literature = manualRow("Иванова И.И.", "СП1", "5-А", "Литература", 3);
         ManualLoadEntry math = manualRow("Иванова И.И.", "СП3", "5-Б", "Алгебра", 1);
+        russian.setTeacherId(10L);
+        literature.setTeacherId(10L);
+        math.setTeacherId(10L);
         math.setGroupNameEducationalPlan("1 группа");
         ClassroomLeadershipEntry leadership = classEntry("СП1", "5-А", "ул. Первая, 1");
         leadership.setFioTeacher("Иванова И.И.");
@@ -678,7 +681,7 @@ class ManualLoadServiceImplBulkReplaceTest {
         when(subjectLevelCoefficientRepository.findAll()).thenReturn(List.of(coefficient("Алгебра", EducationStage.OOO, "1.3")));
         when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(leadership));
         when(primarySubjectService.resolveForExport("2025/2026"))
-                .thenReturn(Map.of("иванова и.и.", "Русский язык и литература"));
+                .thenReturn(Map.of(10L, "Русский язык и литература"));
 
         byte[] body = service.exportConsolidatedWorkbook("2025/2026");
 
@@ -719,10 +722,11 @@ class ManualLoadServiceImplBulkReplaceTest {
     @Test
     void exportConsolidatedWorkbookMarksTeacherAsPrimarySchoolWhenTeachingGradesOneToFour() throws Exception {
         ManualLoadEntry row = manualRow("Петрова П.П.", "СП1", "3-А", "Физика", 2);
+        row.setTeacherId(11L);
         when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(row));
         when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of());
         when(primarySubjectService.resolveForExport("2025/2026"))
-                .thenReturn(Map.of("петрова п.п.", "Начальная школа"));
+                .thenReturn(Map.of(11L, "Начальная школа"));
 
         byte[] body = service.exportConsolidatedWorkbook("2025/2026");
 
