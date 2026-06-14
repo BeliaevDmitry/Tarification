@@ -20,8 +20,7 @@ const ui = {
     addPrimarySubjectRuleBtn: document.getElementById("add-primary-subject-rule-btn"),
     newPrimarySubjectName: document.getElementById("new-primary-subject-name"),
     newPrimarySubjectRuleType: document.getElementById("new-primary-subject-rule-type"),
-    newPrimarySubjectRuleValue: document.getElementById("new-primary-subject-rule-value"),
-    newPrimarySubjectPriority: document.getElementById("new-primary-subject-priority")
+    newPrimarySubjectRuleValue: document.getElementById("new-primary-subject-rule-value")
 };
 
 const state = {
@@ -585,7 +584,7 @@ function ruleTypeLabel(ruleType) {
 function renderPrimarySubjectRules() {
     if (!ui.primarySubjectRulesBody) return;
     ui.primarySubjectRulesBody.innerHTML = state.primarySubjectRules.map((rule) => `
-        <tr data-primary-subject-rule="${rule.id}">
+        <tr data-primary-subject-rule="${rule.id}" data-rule-priority="${escapeHtml(rule.priority)}">
             <td><input data-rule-field="primarySubject" value="${escapeHtml(rule.primarySubject)}"></td>
             <td>
                 <select data-rule-field="ruleType">
@@ -594,7 +593,6 @@ function renderPrimarySubjectRules() {
                 </select>
             </td>
             <td><input data-rule-field="ruleValue" value="${escapeHtml(rule.ruleValue)}" title="${escapeHtml(ruleTypeLabel(rule.ruleType))}"></td>
-            <td><input data-rule-field="priority" type="number" value="${escapeHtml(rule.priority)}"></td>
             <td class="row-actions">
                 <button type="button" data-save-primary-subject-rule="${rule.id}">Сохранить</button>
                 <button type="button" class="danger" data-delete-primary-subject-rule="${rule.id}">Удалить</button>
@@ -608,7 +606,7 @@ function ruleRequestFromRow(row) {
         primarySubject: row.querySelector('[data-rule-field="primarySubject"]').value,
         ruleType: row.querySelector('[data-rule-field="ruleType"]').value,
         ruleValue: row.querySelector('[data-rule-field="ruleValue"]').value,
-        priority: Number(row.querySelector('[data-rule-field="priority"]').value || 100)
+        priority: Number(row.dataset.rulePriority || 100)
     };
 }
 
@@ -625,7 +623,7 @@ async function addPrimarySubjectRule() {
         primarySubject: ui.newPrimarySubjectName.value,
         ruleType: ui.newPrimarySubjectRuleType.value,
         ruleValue: ui.newPrimarySubjectRuleValue.value,
-        priority: Number(ui.newPrimarySubjectPriority.value || 100)
+        priority: Math.max(100, ...state.primarySubjectRules.map((rule) => Number(rule.priority || 0))) + 10
     });
     ui.newPrimarySubjectName.value = "";
     ui.newPrimarySubjectRuleValue.value = "";
@@ -735,6 +733,11 @@ async function init() {
     ui.primaryTab?.addEventListener("click", () => showPeopleLoadPanel("primary"));
     ui.determinePrimarySubjectsBtn?.addEventListener("click", () => determinePrimarySubjects().catch((error) => alert(`Не удалось определить основные предметы: ${error.message}`)));
     ui.managePrimarySubjectsBtn?.addEventListener("click", () => ui.primarySubjectRulesDialog?.showModal());
+    ui.primarySubjectRulesDialog?.addEventListener("click", (event) => {
+        if (event.target === ui.primarySubjectRulesDialog) {
+            ui.primarySubjectRulesDialog.close();
+        }
+    });
     ui.primarySubjectTeachersTable?.addEventListener("change", (event) => {
         const select = event.target.closest("[data-primary-subject-teacher]");
         if (!select) return;

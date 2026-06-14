@@ -2023,7 +2023,8 @@ dialog::backdrop {
 }
 
 .primary-subject-dialog {
-    width: min(1100px, calc(100vw - 32px));
+    width: min(1480px, calc(100vw - 20px));
+    max-width: none;
     max-height: calc(100vh - 32px);
     padding: 0;
     border: 0;
@@ -2061,7 +2062,7 @@ dialog::backdrop {
 
 .primary-subject-new-rule {
     display: grid;
-    grid-template-columns: minmax(180px, 1fr) 170px minmax(240px, 2fr) 90px auto;
+    grid-template-columns: minmax(180px, 1fr) 170px minmax(240px, 2fr) auto;
     gap: 8px;
 }
 
