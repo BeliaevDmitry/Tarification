@@ -124,6 +124,32 @@ class PaTeacherAnalyticsServiceImplTest {
         assertEquals("NOT_AVAILABLE_NO_ENTRY_EXIT_PAIR", row.vsokoDynamicStatus());
     }
 
+    @Test
+    void getTeacherSummariesUsesOverallExitPercentWhenTaskKindsAreNotConfigured() {
+        PaReportAnalysisSummary exit = summary(2L, "EXIT", LocalDate.of(2026, 5, 10), 59D);
+        when(summaryRepository.findAllByAcademicYearOrderBySubjectNameAscClassNameAscTeacherFioAsc("2025/2026"))
+                .thenReturn(List.of(exit));
+        when(reportVersionRepository.findAll()).thenReturn(List.of(version(2L)));
+        when(studentResultRepository.findAllByReportVersionIdIn(List.of(2L)))
+                .thenReturn(List.of(student(201L, 2L, "Иванов Иван", 59D, 3)));
+        when(taskResultRepository.findAllByReportVersionIdIn(List.of(2L)))
+                .thenReturn(List.of(task(2L, 201L, 1, null, null, 1D, 1D, 100D)));
+        PaTeacherAnalyticsServiceImpl service = new PaTeacherAnalyticsServiceImpl(
+                summaryRepository,
+                studentResultRepository,
+                taskResultRepository,
+                reportVersionRepository
+        );
+
+        PaAnalyticsDtos.TeacherSummaryRow row = service
+                .getTeacherSummaries("2025/2026", null, null)
+                .get(0);
+
+        assertEquals(3D, row.paPerformanceScore(), 0.001);
+        assertEquals(3, row.paPerformanceMark());
+        assertNull(row.vsokoDynamicScore());
+    }
+
     private PaReportAnalysisSummary summary(Long reportVersionId, String workType, LocalDate workDate, Double avgPercent) {
         PaReportAnalysisSummary summary = new PaReportAnalysisSummary();
         summary.setReportVersionId(reportVersionId);

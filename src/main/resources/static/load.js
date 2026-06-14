@@ -968,8 +968,8 @@ function expandCurriculumRows(rows) {
 
         for (let i = 1; i <= subgroupCount; i += 1) {
             const subgroupHours = i === 1
-                ? Number(row.subgroup1Hours || row.plannedHours || 0)
-                : Number(row.subgroup2Hours || row.plannedHours || 0);
+                ? Number(row.subgroup1Hours ?? row.plannedHours ?? 0)
+                : Number(row.subgroup2Hours ?? row.plannedHours ?? 0);
             const subgroupLevel = i === 1
                 ? (row.subgroup1EducationLevel || row.educationLevel)
                 : (row.subgroup2EducationLevel || row.educationLevel);
@@ -2040,9 +2040,16 @@ function openSubgroupDrawer(presentationRow, className, classRows) {
         const teacher = String(assignments[apiKey] || '').trim();
         const period = defaultPeriodForRows([item]);
         const manualPeriod = findManualPeriodForClassTeacher(item, teacher);
-        return `<div class="subgroup-line" data-subgroup-idx="${idx}"><strong>${esc(subgroupName)}</strong> · ${esc(Number(item.plannedHours || 0))} ч
-<label>Педагог</label><input type="text" list="teacher-list-shared" data-subgroup-teacher="1" value="${esc(teacher)}" placeholder="ФИО педагога">
-<div class="subgroup-period-grid"><label>С</label><input type="date" data-subgroup-from="1" value="${esc(manualPeriod?.from || period.from || '')}"><label>По</label><input type="date" data-subgroup-to="1" value="${esc(manualPeriod?.to || period.to || '')}"></div></div>`;
+        const hasHours = Number(item.plannedHours || 0) > 0;
+        const teacherControl = hasHours
+            ? `<div class="subgroup-teacher-row"><input type="text" list="teacher-list-shared" data-subgroup-teacher="1" value="${esc(teacher)}" placeholder="ФИО педагога"><button type="button" class="danger-btn" data-subgroup-remove="1">Снять</button></div>`
+            : '<div class="subgroup-no-hours">Педагог не требуется</div>';
+        const periodControl = hasHours
+            ? `<div class="subgroup-period-grid"><label>С</label><input type="date" data-subgroup-from="1" value="${esc(manualPeriod?.from || period.from || '')}"><label>По</label><input type="date" data-subgroup-to="1" value="${esc(manualPeriod?.to || period.to || '')}"></div>`
+            : '';
+        return `<div class="subgroup-line" data-subgroup-idx="${idx}"><div class="subgroup-line-head"><strong>${esc(subgroupName)}</strong><span>${esc(Number(item.plannedHours || 0))} ч</span></div>
+<label>Педагог</label>${teacherControl}
+${periodControl}</div>`;
     }).join('') + '<datalist id="teacher-list-shared"></datalist>';
     const sharedList = ui.subgroupDrawerBody.querySelector('#teacher-list-shared');
     if (sharedList) {
@@ -2053,6 +2060,16 @@ function openSubgroupDrawer(presentationRow, className, classRows) {
             input.addEventListener('click', () => updateDatalistOptions(sharedList, ''));
         });
     }
+    ui.subgroupDrawerBody.querySelectorAll('[data-subgroup-remove]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const line = button.closest('.subgroup-line');
+            const input = line?.querySelector('[data-subgroup-teacher]');
+            if (input) {
+                input.value = '';
+                input.focus();
+            }
+        });
+    });
     if (ui.subgroupDrawerBackdrop) ui.subgroupDrawerBackdrop.hidden = false;
     ui.subgroupDrawer.setAttribute('aria-hidden', 'false');
     ui.subgroupDrawer.classList.add('open');
@@ -2077,6 +2094,11 @@ function applySubgroupDrawerAssignments() {
         const row = (ctx.rows || [])[idx];
         if (!row) continue;
         const apiKey = apiKeyOfRow(row);
+        if (Number(row.plannedHours || 0) <= 0) {
+            assignments[apiKey] = '';
+            delete plans[apiKey];
+            continue;
+        }
         const input = line.querySelector('input[type="text"][data-subgroup-teacher]');
         const raw = String(input?.value || '').trim();
         const fromInput = line.querySelector('[data-subgroup-from]');
@@ -2284,6 +2306,7 @@ function collectLoadIssues(presentationRows, classes) {
         classes.forEach((className) => {
             const classRows = row.rowsByClassAll?.[className] || [];
             classRows.forEach((curriculumRow) => {
+                if (Number(curriculumRow.plannedHours || 0) <= 0) return;
                 const assignedTeacher = String(assignmentsForBuilding(selectedBuilding)[apiKeyOfRow(curriculumRow)] || "").trim();
                 if (!assignedTeacher) {
                     unassignedHours += Number(curriculumRow.plannedHours || 0);
@@ -2653,6 +2676,7 @@ async function saveBuildingLoad() {
     const rowsMap = teacherRowsForBuilding(selectedBuilding);
     const plans = futurePlansForBuilding(selectedBuilding);
     const payload = expandedRowsForSelectedBuilding().map((row) => {
+        if (Number(row.plannedHours || 0) <= 0) return null;
         const apiKey = apiKeyOfRow(row);
         const fioTeacher = String(assignments[apiKey] || "").trim();
         if (!fioTeacher) return null;
@@ -2690,7 +2714,7 @@ async function saveBuildingLoad() {
 
     Object.entries(plans).forEach(([apiKey, plan]) => {
         const row = expandedRowsForSelectedBuilding().find((r) => apiKeyOfRow(r) === apiKey);
-        if (!row) return;
+        if (!row || Number(row.plannedHours || 0) <= 0) return;
         payload.push({
             fioTeacher: plan.targetTeacher,
             teacherId: teacherIdForName(plan.targetTeacher),
@@ -2728,11 +2752,6 @@ async function saveBuildingLoad() {
         dedupedPayload.set(key, item);
     });
     const finalPayload = [...dedupedPayload.values()];
-
-    if (!finalPayload.length) {
-        print({ warning: "Нет назначений для сохранения" });
-        return;
-    }
 
     try {
         const scope = manualLoadScopeForAccess(selectedBuilding);

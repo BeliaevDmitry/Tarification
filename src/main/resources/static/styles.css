@@ -1801,6 +1801,10 @@ dialog::backdrop {
 .subgroup-drawer-actions { margin-top:auto; padding-top:8px; }
 .subgroup-line label { display:block; font-size:12px; color:#475569; margin-bottom:4px; }
 .subgroup-line input { width:100%; }
+.subgroup-line-head { display:flex; justify-content:space-between; gap:8px; margin-bottom:8px; }
+.subgroup-teacher-row { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:8px; align-items:center; }
+.subgroup-teacher-row .danger-btn { white-space:nowrap; }
+.subgroup-no-hours { padding:8px 10px; border-radius:8px; background:#f1f5f9; color:#64748b; }
 
 .subgroup-period-grid { display:grid; grid-template-columns:40px 1fr 40px 1fr; gap:6px; margin-top:8px; align-items:center; }
 
