@@ -559,6 +559,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     private TeacherDirectoryEntry resolveRequiredTeacher(ClassroomLeadershipEntryRequest request) {
         if (request.getTeacherId() != null) {
             return teacherDirectoryRepository.findById(request.getTeacherId())
+                    .filter(teacher -> !teacher.isArchived())
                     .orElseThrow(() -> new IllegalArgumentException("Педагог не найден: " + request.getTeacherId()));
         }
 
@@ -568,6 +569,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         }
 
         List<TeacherDirectoryEntry> matches = teacherDirectoryRepository.findAll().stream()
+                .filter(teacher -> !teacher.isArchived())
                 .filter(teacher -> normalize(teacher.getFioTeacher()).equalsIgnoreCase(fio))
                 .toList();
         if (matches.isEmpty()) {

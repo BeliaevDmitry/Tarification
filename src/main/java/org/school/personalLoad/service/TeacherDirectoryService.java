@@ -21,10 +21,13 @@ public interface TeacherDirectoryService {
     TeacherDirectoryEntry markPlannedDismissal(Long teacherId, LocalDate plannedDismissalDate, String comment, String markedBy);
 
     TeacherDirectoryEntry restore(Long teacherId);
+    TeacherDirectoryEntry archive(Long teacherId);
+    TeacherDirectoryEntry unarchive(Long teacherId);
 
     void deleteById(Long teacherId);
 
     List<TeacherDirectoryEntry> findAll();
+    List<TeacherDirectoryEntry> findArchived();
 
     void clearAll();
 }

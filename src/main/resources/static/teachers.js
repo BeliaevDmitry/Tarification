@@ -18,6 +18,8 @@ const ui = {
     contentCard: document.getElementById("teachers-content-card"),
     sectionTitle: document.getElementById("teachers-section-title"),
     mainPanel: document.getElementById("teachers-main-panel"),
+    archivePanel: document.getElementById("teachers-archive-panel"),
+    archiveBody: document.getElementById("teachers-archive-body"),
     dismissalsPanel: document.getElementById("teachers-dismissals-panel"),
     settingsPanel: document.getElementById("teachers-settings-panel"),
     salarySettingsForm: document.getElementById("salary-settings-form"),
@@ -101,6 +103,7 @@ function renderBuildingOptions(selected = "") {
 
 function teachersTabFromHash() {
     const hash = String(window.location.hash || "").toLowerCase();
+    if (hash === "#archive") return "archive";
     if (hash === "#dismissals") return "dismissals";
     if (hash === "#settings") return salaryPermission() ? "settings" : "main";
     return "main";
@@ -110,6 +113,7 @@ function updateHeaderNavActive(tab) {
     document.querySelectorAll('.page-nav .nav-link').forEach((link) => {
         const href = link.getAttribute('href') || '';
         const active = (tab === "main" && href === "/teachers.html")
+            || (tab === "archive" && href === "/teachers.html#archive")
             || (tab === "dismissals" && href === "/teachers.html#dismissals")
             || (tab === "settings" && href === "/teachers.html#settings");
         if (active) {
@@ -127,10 +131,11 @@ function showTeachersTab(tab = teachersTabFromHash()) {
     }
     if (ui.personnelPanel) ui.personnelPanel.style.display = safeTab === "main" ? "" : "none";
     if (ui.mainPanel) ui.mainPanel.style.display = safeTab === "main" ? "" : "none";
+    if (ui.archivePanel) ui.archivePanel.style.display = safeTab === "archive" ? "" : "none";
     if (ui.dismissalsPanel) ui.dismissalsPanel.style.display = safeTab === "dismissals" ? "" : "none";
     if (ui.settingsPanel) ui.settingsPanel.style.display = safeTab === "settings" ? "" : "none";
     if (ui.sectionTitle) {
-        ui.sectionTitle.textContent = safeTab === "dismissals" ? "Увольнения" : safeTab === "settings" ? "Настройки" : "Кадры";
+        ui.sectionTitle.textContent = safeTab === "archive" ? "Архив" : safeTab === "dismissals" ? "Увольнения" : safeTab === "settings" ? "Настройки" : "Кадры";
     }
     updateHeaderNavActive(safeTab);
 }
@@ -177,6 +182,7 @@ function renderTeachers(rows) {
                         <input type="text" class="plan-dismiss-comment-input" value="${escapeHtml(row.plannedDismissalComment || "")}" data-id="${row.id}" placeholder="Комментарий" data-allow-readonly="true">
                         <button type="button" class="mark-plan-dismiss-btn" data-id="${row.id}" data-allow-readonly="true">Планирует уволиться</button>
                         ${row.dismissalDate ? `<button type="button" class="restore-teacher-btn" data-id="${row.id}">Восстановить</button>` : ""}
+                        <button type="button" class="archive-teacher-btn" data-id="${row.id}">В архив</button>
                         <button type="button" class="danger-btn delete-teacher-btn" data-id="${row.id}">Удалить</button>
                     </div>
                 </td>`;
@@ -285,13 +291,59 @@ function renderTeachers(rows) {
             }
         });
     });
+
+    ui.tbody.querySelectorAll(".archive-teacher-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+            try {
+                const result = await api(`/api/teachers/${btn.dataset.id}/archive`, { method: "PATCH" });
+                print(result);
+                await loadTeachers();
+            } catch (error) {
+                print({ error: error.message });
+            }
+        });
+    });
 }
 
 async function loadTeachers() {
-    const rows = await api('/api/teachers');
+    const [rows, archivedRows] = await Promise.all([
+        api('/api/teachers'),
+        api('/api/teachers/archive')
+    ]);
     renderTeachers(rows || []);
     renderDismissals(rows || []);
+    renderArchive(archivedRows || []);
     return rows;
+}
+
+function renderArchive(rows) {
+    if (!ui.archiveBody) return;
+    if (!rows.length) {
+        ui.archiveBody.innerHTML = '<tr><td colspan="7">В архиве пока нет сотрудников.</td></tr>';
+        return;
+    }
+    ui.archiveBody.innerHTML = rows.map((row) => `
+        <tr>
+            <td>${escapeHtml(row.fioTeacher || "")}</td>
+            <td>${escapeHtml(row.phone || "")}</td>
+            <td>${escapeHtml(row.email || "")}</td>
+            <td>${escapeHtml(row.numberSchoolBuilding || "")}</td>
+            <td>${escapeHtml(row.dismissalDate || "")}</td>
+            <td>${escapeHtml(row.archivedAt || "")}</td>
+            <td><button type="button" class="unarchive-teacher-btn" data-id="${row.id}">Вернуть в персонал</button></td>
+        </tr>
+    `).join("");
+    ui.archiveBody.querySelectorAll(".unarchive-teacher-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+            try {
+                const result = await api(`/api/teachers/${btn.dataset.id}/unarchive`, { method: "PATCH" });
+                print(result);
+                await loadTeachers();
+            } catch (error) {
+                print({ error: error.message });
+            }
+        });
+    });
 }
 
 function renderDismissals(rows) {

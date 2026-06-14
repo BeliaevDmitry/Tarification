@@ -19,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.regex.Pattern;
 
@@ -143,7 +144,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
             header.createCell(5).setCellValue("Дополнительные обязанности");
             header.createCell(6).setCellValue("Корпус");
 
-            List<TeacherDirectoryEntry> rows = teacherDirectoryRepository.findAll();
+            List<TeacherDirectoryEntry> rows = activeTeachers();
             if (rows.isEmpty()) {
                 Row example = sheet.createRow(1);
                 example.createCell(0).setCellValue("Иванов Иван Иванович");
@@ -321,6 +322,29 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
     }
 
     @Override
+    @Transactional
+    public TeacherDirectoryEntry archive(Long teacherId) {
+        TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
+                .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
+        if (VACANCY_TEACHER.equalsIgnoreCase(entry.getFioTeacher())) {
+            throw new IllegalStateException("Системную запись «Вакансия» нельзя перенести в архив");
+        }
+        entry.setArchived(true);
+        entry.setArchivedAt(LocalDateTime.now());
+        return teacherDirectoryRepository.save(entry);
+    }
+
+    @Override
+    @Transactional
+    public TeacherDirectoryEntry unarchive(Long teacherId) {
+        TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
+                .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
+        entry.setArchived(false);
+        entry.setArchivedAt(null);
+        return teacherDirectoryRepository.save(entry);
+    }
+
+    @Override
     public void deleteById(Long teacherId) {
         TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
                 .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
@@ -335,7 +359,15 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
     @Override
     public List<TeacherDirectoryEntry> findAll() {
         ensureVacancyTeacher();
-        return teacherDirectoryRepository.findAll();
+        return activeTeachers();
+    }
+
+    @Override
+    public List<TeacherDirectoryEntry> findArchived() {
+        return teacherDirectoryRepository.findAll().stream()
+                .filter(TeacherDirectoryEntry::isArchived)
+                .sorted(Comparator.comparing(TeacherDirectoryEntry::getFioTeacher, String.CASE_INSENSITIVE_ORDER))
+                .toList();
     }
 
     @Override
@@ -385,12 +417,25 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
     }
 
     private TeacherDirectoryEntry ensureVacancyTeacher() {
-        return teacherDirectoryRepository.findByFioTeacherIgnoreCase(VACANCY_TEACHER).orElseGet(() -> {
+        TeacherDirectoryEntry vacancy = teacherDirectoryRepository.findByFioTeacherIgnoreCase(VACANCY_TEACHER).orElseGet(() -> {
             TeacherDirectoryEntry entry = new TeacherDirectoryEntry();
             entry.setFioTeacher(VACANCY_TEACHER);
             entry.setFioTeacherDative("Вакансии");
             return teacherDirectoryRepository.save(entry);
         });
+        if (vacancy.isArchived()) {
+            vacancy.setArchived(false);
+            vacancy.setArchivedAt(null);
+            return teacherDirectoryRepository.save(vacancy);
+        }
+        return vacancy;
+    }
+
+    private List<TeacherDirectoryEntry> activeTeachers() {
+        return teacherDirectoryRepository.findAll().stream()
+                .filter(teacher -> !teacher.isArchived())
+                .sorted(Comparator.comparing(TeacherDirectoryEntry::getFioTeacher, String.CASE_INSENSITIVE_ORDER))
+                .toList();
     }
 
     private boolean isLoadAlreadyAssigned(org.school.personalLoad.model.ManualLoadEntry source,

@@ -44,6 +44,11 @@ public class TeacherDirectoryEntry {
     private String plannedDismissalComment;
     private String plannedDismissalMarkedBy;
 
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean archived = false;
+
+    private LocalDateTime archivedAt;
+
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 }

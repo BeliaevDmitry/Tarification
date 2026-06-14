@@ -83,6 +83,16 @@ public class TeacherDirectoryController {
         return ResponseEntity.ok(teacherDirectoryService.restore(teacherId));
     }
 
+    @PatchMapping("/{teacherId}/archive")
+    public ResponseEntity<TeacherDirectoryEntry> archive(@PathVariable Long teacherId) {
+        return ResponseEntity.ok(teacherDirectoryService.archive(teacherId));
+    }
+
+    @PatchMapping("/{teacherId}/unarchive")
+    public ResponseEntity<TeacherDirectoryEntry> unarchive(@PathVariable Long teacherId) {
+        return ResponseEntity.ok(teacherDirectoryService.unarchive(teacherId));
+    }
+
     @DeleteMapping("/{teacherId}")
     public ResponseEntity<Void> deleteById(@PathVariable Long teacherId) {
         teacherDirectoryService.deleteById(teacherId);
@@ -92,6 +102,11 @@ public class TeacherDirectoryController {
     @GetMapping
     public ResponseEntity<List<TeacherDirectoryEntry>> findAll() {
         return ResponseEntity.ok(teacherDirectoryService.findAll());
+    }
+
+    @GetMapping("/archive")
+    public ResponseEntity<List<TeacherDirectoryEntry>> findArchived() {
+        return ResponseEntity.ok(teacherDirectoryService.findArchived());
     }
 
     @DeleteMapping
