@@ -82,6 +82,7 @@ public class PrimarySubjectServiceImpl implements PrimarySubjectService {
                 .collect(Collectors.toMap(TeacherPrimarySubjectAssignment::getTeacherId, Function.identity()));
         Map<Long, List<String>> subjectsByTeacher = loadSubjectsByTeacher(academicYear);
         return teacherRepository.findAll().stream()
+                .filter(teacher -> !teacher.isArchived())
                 .sorted(Comparator.comparing(TeacherDirectoryEntry::getFioTeacher, String.CASE_INSENSITIVE_ORDER))
                 .map(teacher -> toRow(teacher, assignments.get(teacher.getId()), subjectsByTeacher.getOrDefault(teacher.getId(), List.of())))
                 .toList();
@@ -103,7 +104,9 @@ public class PrimarySubjectServiceImpl implements PrimarySubjectService {
         int assigned = 0;
         int preservedManual = 0;
         int unresolved = 0;
-        List<TeacherDirectoryEntry> teachers = teacherRepository.findAll();
+        List<TeacherDirectoryEntry> teachers = teacherRepository.findAll().stream()
+                .filter(teacher -> !teacher.isArchived())
+                .toList();
         for (TeacherDirectoryEntry teacher : teachers) {
             TeacherPrimarySubjectAssignment current = existing.get(teacher.getId());
             if (current != null && current.getMode() == PrimarySubjectAssignmentMode.MANUAL) {

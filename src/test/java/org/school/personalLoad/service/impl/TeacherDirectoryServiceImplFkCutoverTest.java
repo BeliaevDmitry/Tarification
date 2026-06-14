@@ -16,10 +16,12 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyLong;
 
 @ExtendWith(MockitoExtension.class)
 class TeacherDirectoryServiceImplFkCutoverTest {
@@ -73,6 +75,24 @@ class TeacherDirectoryServiceImplFkCutoverTest {
         when(manualLoadEntryRepository.existsByTeacherId(1L)).thenReturn(false);
         service.deleteById(1L);
         verify(manualLoadEntryRepository).existsByTeacherId(1L);
+    }
+
+    @Test
+    void archivePreservesTeacherAndLoadRelations() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Иванов И.И.");
+        TeacherDirectoryServiceImpl service = new TeacherDirectoryServiceImpl(teacherDirectoryRepository, manualLoadEntryRepository);
+        when(teacherDirectoryRepository.findById(1L)).thenReturn(Optional.of(teacher));
+        when(teacherDirectoryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TeacherDirectoryEntry archived = service.archive(1L);
+
+        assertTrue(archived.isArchived());
+        assertTrue(archived.getArchivedAt() != null);
+        verify(manualLoadEntryRepository, org.mockito.Mockito.never()).findByTeacherId(anyLong());
+
+        TeacherDirectoryEntry restored = service.unarchive(1L);
+        assertFalse(restored.isArchived());
+        assertEquals(null, restored.getArchivedAt());
     }
 
     private TeacherDirectoryEntry teacher(Long id, String fio) {

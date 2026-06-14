@@ -556,6 +556,7 @@ public class OgeService {
 
     public List<String> teachers() {
         return teacherDirectoryRepository.findAll().stream()
+                .filter(teacher -> !teacher.isArchived())
                 .map(TeacherDirectoryEntry::getFioTeacher)
                 .filter(Objects::nonNull)
                 .map(String::trim)

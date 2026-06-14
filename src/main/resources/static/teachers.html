@@ -16,6 +16,7 @@
         <nav class="page-nav">
             <a class="nav-link" href="/" aria-label="Главная">🏠</a>
             <a class="nav-link active" href="/teachers.html" data-tab="TEACHERS">Персонал</a>
+            <a class="nav-link" href="/teachers.html#archive" data-tab="TEACHERS">Архив</a>
             <a class="nav-link" href="/teachers.html#dismissals" data-tab="TEACHERS">Увольнения</a>
             <a class="nav-link" href="/teachers.html#settings" data-tab="LOAD_SALARY">Настройки</a>
             <a class="nav-link" href="/service-notes.html" data-tab="SERVICE_NOTES">Служебные записки</a>
@@ -82,6 +83,22 @@
                 </tr>
                 </thead>
                 <tbody id="teachers-dismissals-body"></tbody>
+            </table>
+        </div>
+        <div class="sheet-wrap" id="teachers-archive-panel" style="display:none;">
+            <table class="sheet-table teachers-table">
+                <thead>
+                <tr>
+                    <th>ФИО</th>
+                    <th>Телефон</th>
+                    <th>Email</th>
+                    <th>Корпус</th>
+                    <th>Дата увольнения</th>
+                    <th>Дата переноса в архив</th>
+                    <th>Действия</th>
+                </tr>
+                </thead>
+                <tbody id="teachers-archive-body"></tbody>
             </table>
         </div>
         <div id="teachers-settings-panel" style="display:none;">

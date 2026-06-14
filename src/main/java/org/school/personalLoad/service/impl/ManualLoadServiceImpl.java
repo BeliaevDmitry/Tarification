@@ -2241,6 +2241,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             throw new IllegalArgumentException("teacher_id is required for manual-load row");
         }
         return teacherDirectoryRepository.findById(request.getTeacherId())
+                .filter(teacher -> !teacher.isArchived())
                 .orElseThrow(() -> new IllegalArgumentException("teacher_id не найден в справочнике: " + request.getTeacherId()));
     }
 

@@ -134,6 +134,7 @@ function navItemsForPath(pathname) {
     if (pathname === '/teachers.html' || pathname === '/teachers-notification.html' || pathname === '/service-notes.html') {
         return [
             { path: '/teachers.html', tab: 'TEACHERS', label: 'Персонал' },
+            { path: '/teachers.html#archive', tab: 'TEACHERS', label: 'Архив' },
             { path: '/teachers.html#dismissals', tab: 'TEACHERS', label: 'Увольнения' },
             { path: '/teachers.html#settings', tab: 'LOAD_SALARY', label: 'Настройки' },
             { path: '/service-notes.html', tab: 'SERVICE_NOTES', label: 'Служебные записки' },
