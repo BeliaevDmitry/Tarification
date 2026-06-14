@@ -52,6 +52,7 @@ import org.school.personalLoad.repository.MetaGroupRepository;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.DatabaseService;
 import org.school.personalLoad.service.ManualLoadService;
+import org.school.personalLoad.service.PrimarySubjectService;
 import org.school.personalLoad.service.TarifficationProcessingService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.springframework.stereotype.Service;
@@ -99,6 +100,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private final SchoolBuildingRepository schoolBuildingRepository;
     private final SalarySettingsRepository salarySettingsRepository;
     private final MetaGroupRepository metaGroupRepository;
+    private final PrimarySubjectService primarySubjectService;
 
     @Override
     public ManualLoadEntry create(ManualLoadEntryRequest request) {
@@ -373,6 +375,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         List<ManualLoadEntry> rows = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
                 .filter(row -> normalizeDisplayValue(row.getFioTeacher()).length() > 0)
                 .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        Map<String, String> primarySubjectByTeacher = primarySubjectService.resolveForExport(academicYear);
         Map<String, BigDecimal> subjectCoefficientByLevel = subjectCoefficientByLevel();
         Map<String, List<String>> classLeadershipByTeacher = new HashMap<>();
         classroomLeadershipRepository.findAllByAcademicYear(academicYear).forEach(entry -> {
@@ -394,7 +397,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 .map(entry -> new ConsolidatedTeacherGroup(
                         normalizeDisplayValue(entry.getValue().get(0).getFioTeacher()),
                         entry.getKey(),
-                        resolvePrimarySubject(entry.getValue()),
+                        primarySubjectByTeacher.getOrDefault(entry.getKey(), ""),
                         entry.getValue()
                 ))
                 .sorted(Comparator.comparing(ConsolidatedTeacherGroup::primarySubject, String.CASE_INSENSITIVE_ORDER)
@@ -415,7 +418,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             wrap.setAlignment(HorizontalAlignment.CENTER);
             wrap.setVerticalAlignment(VerticalAlignment.CENTER);
 
-            Sheet sheet = workbook.createSheet(uniqueSheetName(workbook, "Нагрузка укрупнённо"));
+            Sheet sheet = workbook.createSheet(uniqueSheetName(workbook, "По основному предмету"));
             sheet.getPrintSetup().setLandscape(true);
             sheet.setFitToPage(true);
             sheet.getPrintSetup().setFitWidth((short) 1);
@@ -735,93 +738,6 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
     private int manualLoadHours(ManualLoadEntry entry) {
         return entry.getGroupLoad() != null ? entry.getGroupLoad() : (entry.getLoad() == null ? 0 : entry.getLoad());
-    }
-
-    private String resolvePrimarySubject(List<ManualLoadEntry> teacherRows) {
-        boolean primarySchool = teacherRows.stream()
-                .map(ManualLoadEntry::getClassName)
-                .map(ClassNameNormalizer::extractParallel)
-                .filter(Objects::nonNull)
-                .anyMatch(parallel -> parallel >= 1 && parallel <= 4);
-        if (primarySchool) {
-            return "Начальная школа";
-        }
-        Map<String, Integer> hoursByPrimarySubject = new LinkedHashMap<>();
-        for (ManualLoadEntry row : teacherRows) {
-            String primarySubject = classifyConsolidatedSubject(row.getSubjectName());
-            hoursByPrimarySubject.merge(primarySubject, manualLoadHours(row), Integer::sum);
-        }
-        return hoursByPrimarySubject.entrySet().stream()
-                .max(Map.Entry.<String, Integer>comparingByValue()
-                        .thenComparing(Map.Entry.comparingByKey(String.CASE_INSENSITIVE_ORDER)))
-                .map(Map.Entry::getKey)
-                .orElse("");
-    }
-
-    private String classifyConsolidatedSubject(String subjectName) {
-        String normalized = normalizeToken(subjectName).replace('ё', 'е');
-        if (normalized.isBlank()) {
-            return "";
-        }
-        if (normalized.contains("русск") || normalized.contains("литерат")) {
-            return "Русский язык и литература";
-        }
-        if (normalized.contains("математ")
-                || normalized.contains("алгебр")
-                || normalized.contains("лгебр")
-                || normalized.contains("геометр")
-                || normalized.contains("вероятн")) {
-            return "Математика";
-        }
-        if (normalized.contains("информат")) {
-            return "Информатика";
-        }
-        if (normalized.contains("физическ")
-                || normalized.contains("физ-ра")
-                || normalized.contains("физра")
-                || normalized.contains("физкультур")
-                || normalized.contains("обзр")
-                || normalized.contains("обж")
-                || normalized.contains("основы безопасности")) {
-            return "Физ-ра (ОБЗР)";
-        }
-        if (normalized.contains("физик")) {
-            return "Физика";
-        }
-        if (normalized.contains("биолог")) {
-            return "Биология";
-        }
-        if (normalized.contains("хими")) {
-            return "Химия";
-        }
-        if (normalized.contains("географ")) {
-            return "География";
-        }
-        if (normalized.contains("истор")) {
-            return "История";
-        }
-        if (normalized.contains("иностран")
-                || normalized.contains("ин. язык")
-                || normalized.contains("англий")
-                || normalized.contains("немец")
-                || normalized.contains("француз")
-                || normalized.contains("испан")
-                || normalized.contains("китай")) {
-            return "Ин. Язык";
-        }
-        if (normalized.contains("обществ")) {
-            return "Обществознание";
-        }
-        if (normalized.contains("труд") || normalized.contains("технолог")) {
-            return "Труд (технология)";
-        }
-        if (normalized.equals("изо") || normalized.contains("изобраз")) {
-            return "ИЗО";
-        }
-        if (normalized.contains("музык")) {
-            return "Музыка";
-        }
-        return normalizeDisplayValue(subjectName);
     }
 
     private byte[] exportFullWorkbook(String academicYear, boolean includeSalary) throws IOException {

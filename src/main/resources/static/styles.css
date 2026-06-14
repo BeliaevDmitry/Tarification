@@ -1995,6 +1995,82 @@ dialog::backdrop {
     max-width: 132px;
 }
 
+.people-load-subtabs {
+    display: flex;
+    gap: 8px;
+    margin: 12px 0;
+}
+
+.primary-subject-toolbar {
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.primary-subject-table select {
+    min-width: 220px;
+}
+
+.primary-subject-status {
+    font-weight: 700;
+}
+
+.primary-subject-status.auto {
+    color: #1769aa;
+}
+
+.primary-subject-status.manual {
+    color: #8a4b08;
+}
+
+.primary-subject-dialog {
+    width: min(1100px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    padding: 0;
+    border: 0;
+    border-radius: 14px;
+}
+
+.primary-subject-dialog::backdrop {
+    background: rgba(15, 23, 42, 0.55);
+}
+
+.primary-subject-dialog-form {
+    display: grid;
+    gap: 14px;
+    padding: 20px;
+}
+
+.primary-subject-dialog-form > .row {
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.primary-subject-dialog-form h2 {
+    margin: 0 0 6px;
+}
+
+.primary-subject-rules-wrap {
+    max-height: 55vh;
+}
+
+.primary-subject-rules-wrap input,
+.primary-subject-rules-wrap select {
+    width: 100%;
+    min-width: 120px;
+}
+
+.primary-subject-new-rule {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) 170px minmax(240px, 2fr) 90px auto;
+    gap: 8px;
+}
+
+@media (max-width: 900px) {
+    .primary-subject-new-rule {
+        grid-template-columns: 1fr;
+    }
+}
+
 .link-button {
     border: none;
     background: none;
