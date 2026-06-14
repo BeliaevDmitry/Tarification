@@ -194,35 +194,28 @@ public class PrimarySubjectServiceImpl implements PrimarySubjectService {
 
     @Override
     @Transactional
-    public Map<String, String> resolveForExport(String academicYear) {
+    public Map<Long, String> resolveForExport(String academicYear) {
         List<TeacherPrimarySubjectAssignment> assignments = assignmentRepository.findAllByAcademicYear(academicYear);
         Set<Long> assignedTeacherIds = assignments.stream()
                 .map(TeacherPrimarySubjectAssignment::getTeacherId)
                 .collect(Collectors.toSet());
-        Map<String, Long> teacherIdByFio = teacherRepository.findAll().stream()
-                .collect(Collectors.toMap(
-                        teacher -> normalizeKey(teacher.getFioTeacher()),
-                        TeacherDirectoryEntry::getId,
-                        (first, second) -> first
-                ));
-        boolean hasMissing = manualLoadRepository.findAllByAcademicYear(academicYear).stream()
-                .map(row -> row.getTeacherId() != null
-                        ? row.getTeacherId()
-                        : teacherIdByFio.get(normalizeKey(row.getFioTeacher())))
-                .filter(Objects::nonNull)
+        List<ManualLoadEntry> loadRows = manualLoadRepository.findAllByAcademicYear(academicYear);
+        loadRows.stream()
+                .filter(row -> row.getTeacherId() == null)
+                .findFirst()
+                .ifPresent(row -> {
+                    throw new IllegalStateException("У педагога не заполнен teacherId: " + row.getFioTeacher());
+                });
+        boolean hasMissing = loadRows.stream()
+                .map(ManualLoadEntry::getTeacherId)
                 .anyMatch(teacherId -> !assignedTeacherIds.contains(teacherId));
         if (hasMissing) {
             determine(academicYear);
             assignments = assignmentRepository.findAllByAcademicYear(academicYear);
         }
-        Map<Long, String> fioById = teacherRepository.findAll().stream()
-                .collect(Collectors.toMap(TeacherDirectoryEntry::getId, TeacherDirectoryEntry::getFioTeacher));
-        Map<String, String> result = new HashMap<>();
+        Map<Long, String> result = new HashMap<>();
         for (TeacherPrimarySubjectAssignment assignment : assignments) {
-            String fio = fioById.get(assignment.getTeacherId());
-            if (fio != null) {
-                result.put(normalizeKey(fio), assignment.getPrimarySubject());
-            }
+            result.put(assignment.getTeacherId(), assignment.getPrimarySubject());
         }
         return result;
     }

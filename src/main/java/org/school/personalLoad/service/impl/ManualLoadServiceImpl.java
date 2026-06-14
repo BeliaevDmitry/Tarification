@@ -375,7 +375,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         List<ManualLoadEntry> rows = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
                 .filter(row -> normalizeDisplayValue(row.getFioTeacher()).length() > 0)
                 .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
-        Map<String, String> primarySubjectByTeacher = primarySubjectService.resolveForExport(academicYear);
+        Map<Long, String> primarySubjectByTeacherId = primarySubjectService.resolveForExport(academicYear);
         Map<String, BigDecimal> subjectCoefficientByLevel = subjectCoefficientByLevel();
         Map<String, List<String>> classLeadershipByTeacher = new HashMap<>();
         classroomLeadershipRepository.findAllByAcademicYear(academicYear).forEach(entry -> {
@@ -387,17 +387,17 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         });
         classLeadershipByTeacher.values().forEach(classes -> classes.sort(String.CASE_INSENSITIVE_ORDER));
 
-        Map<String, List<ManualLoadEntry>> rowsByTeacher = rows.stream()
+        Map<Long, List<ManualLoadEntry>> rowsByTeacher = rows.stream()
                 .collect(java.util.stream.Collectors.groupingBy(
-                        row -> normalizeToken(row.getFioTeacher()),
+                        this::requiredTeacherId,
                         LinkedHashMap::new,
                         java.util.stream.Collectors.toCollection(ArrayList::new)
                 ));
         List<ConsolidatedTeacherGroup> teacherGroups = rowsByTeacher.entrySet().stream()
                 .map(entry -> new ConsolidatedTeacherGroup(
                         normalizeDisplayValue(entry.getValue().get(0).getFioTeacher()),
-                        entry.getKey(),
-                        primarySubjectByTeacher.getOrDefault(entry.getKey(), ""),
+                        normalizeToken(entry.getValue().get(0).getFioTeacher()),
+                        primarySubjectByTeacherId.getOrDefault(entry.getKey(), ""),
                         entry.getValue()
                 ))
                 .sorted(Comparator.comparing(ConsolidatedTeacherGroup::primarySubject, String.CASE_INSENSITIVE_ORDER)
@@ -2045,6 +2045,13 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
     private String normalizeToken(String value) {
         return String.valueOf(value == null ? "" : value).trim().toLowerCase(Locale.ROOT);
+    }
+
+    private Long requiredTeacherId(ManualLoadEntry row) {
+        if (row.getTeacherId() == null) {
+            throw new IllegalStateException("У педагога не заполнен teacherId: " + normalizeDisplayValue(row.getFioTeacher()));
+        }
+        return row.getTeacherId();
     }
 
     private String readCell(Row row, int index) {
