@@ -66,14 +66,14 @@
         <div class="row">
             <div>
                 <h2>Основные предметы</h2>
-                <p class="muted">Правила применяются по порядку. Для ключевых слов можно указать несколько значений через запятую.</p>
+                <p class="muted">Система выбирает самое точное совпадение ключевого выражения. Настраивать очередность правил вручную не требуется.</p>
             </div>
             <button id="close-primary-subject-rules-btn" type="submit">Закрыть</button>
         </div>
         <div class="sheet-wrap primary-subject-rules-wrap">
             <table class="sheet-table">
                 <thead>
-                <tr><th>Основной предмет</th><th>Тип правила</th><th>Правило определения</th><th>Порядок</th><th>Действия</th></tr>
+                <tr><th>Основной предмет</th><th>Тип правила</th><th>Правило определения</th><th>Действия</th></tr>
                 </thead>
                 <tbody id="primary-subject-rules-body"></tbody>
             </table>
@@ -85,7 +85,6 @@
                 <option value="PRIMARY_GRADES">1–4 классы</option>
             </select>
             <input id="new-primary-subject-rule-value" type="text" placeholder="Ключевые слова через запятую">
-            <input id="new-primary-subject-priority" type="number" value="100" aria-label="Порядок">
             <button id="add-primary-subject-rule-btn" type="button">Добавить основной предмет</button>
         </div>
     </form>
