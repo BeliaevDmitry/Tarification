@@ -251,8 +251,9 @@ public class PaTeacherAnalyticsServiceImpl implements PaTeacherAnalyticsService 
                     exitTasksByStudent.getOrDefault(exitStudent.getId(), List.of()),
                     "NEW"
             );
-            if (exitNewPercent != null) {
-                scores.add((double) currentPeriodMasteryMark(exitNewPercent));
+            Double availableExitPercent = exitNewPercent != null ? exitNewPercent : exitStudent.getPercent();
+            if (availableExitPercent != null) {
+                scores.add((double) currentPeriodMasteryMark(availableExitPercent));
             }
         }
         return scores;

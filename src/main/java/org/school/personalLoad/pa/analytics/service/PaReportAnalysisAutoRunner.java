@@ -12,7 +12,7 @@ public class PaReportAnalysisAutoRunner {
 
     private final PaReportAnalysisJobRunner paReportAnalysisJobRunner;
 
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void analyzeAcceptedReport(PaReportAcceptedForAnalysisEvent event) {
         try {
             paReportAnalysisJobRunner.analyzeOneInNewTransaction(event.reportVersionId());

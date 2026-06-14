@@ -320,6 +320,10 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
         boolean hasAnyScore = structure.taskColumns().stream()
                 .map(task -> cellText(row, task.col()))
                 .anyMatch(text -> !text.isBlank());
+        if (presenceStatus.isBlank() && hasAnyScore) {
+            presenceStatus = "Был";
+            present = true;
+        }
         Double totalScore = structure.totalCol() == null ? null : parseDouble(cellText(row, structure.totalCol()));
         if (totalScore == null && hasAnyScore) {
             totalScore = structure.taskColumns().stream()
@@ -354,7 +358,7 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
             } else {
                 rowStatus = PaStudentResultStatus.EMPTY_RESULT;
             }
-        } else if ((!presenceStatus.isBlank() && !present && !absent) || (presenceStatus.isBlank() && hasAnyScore)) {
+        } else if (!presenceStatus.isBlank() && !present && !absent) {
             rowStatus = PaStudentResultStatus.INVALID_ROW;
         } else {
             rowStatus = PaStudentResultStatus.EMPTY_RESULT;

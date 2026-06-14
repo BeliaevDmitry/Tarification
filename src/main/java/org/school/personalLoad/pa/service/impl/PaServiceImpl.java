@@ -612,6 +612,7 @@ public class PaServiceImpl implements PaService {
                     results.add(saveRejectedReport(academicYear, file.getOriginalFilename(), subject, scopeValue, typeRaw, studentsProblem, uploaderUsername, uploaderFio));
                     continue;
                 }
+                normalizePresenceByScores(wb.getSheet("Сбор информации"));
                 int reportFioCount = countReportFio(wb.getSheet("Сбор информации"));
                 int acceptedResultsCount = countAcceptedResults(wb.getSheet("Сбор информации"));
                 int classSizeCount = classSizeByContingent(academicYear, scopeValue);
@@ -652,7 +653,9 @@ public class PaServiceImpl implements PaService {
                 Path directory = Path.of(PA_REPORT_STORAGE_DIR, academicYear.replace("/", "-"), "uploaded");
                 Files.createDirectories(directory);
                 Path stored = directory.resolve(LocalDateTime.now().toString().replace(":", "-") + "_" + sanitizeFileName(file.getOriginalFilename()));
-                Files.write(stored, file.getBytes());
+                try (OutputStream output = Files.newOutputStream(stored)) {
+                    wb.write(output);
+                }
                 version.setSourceFilePath(stored.toString());
                 version.setTeacherFio(teacher.trim());
                 version.setTeacherFioNormalized(normalizedTeacher);
@@ -776,15 +779,61 @@ public class PaServiceImpl implements PaService {
 
     private int countAcceptedResults(Sheet dataSheet) {
         if (dataSheet == null) return 0;
+        int taskEndCol = findTaskEndColumn(dataSheet);
         int count = 0;
         for (int r = 1; r <= dataSheet.getLastRowNum(); r++) {
             Row row = dataSheet.getRow(r);
             if (row == null) continue;
             String fio = getCell(row, 1).trim();
             String presence = getCell(row, 2).trim();
-            if (!fio.isBlank() && normalize(presence).equals("был")) count++;
+            boolean hasTaskScores = false;
+            for (int col = 4; col < taskEndCol; col++) {
+                if (!getCell(row, col).isBlank()) {
+                    hasTaskScores = true;
+                    break;
+                }
+            }
+            if (!fio.isBlank() && (normalize(presence).equals("был") || (presence.isBlank() && hasTaskScores))) {
+                count++;
+            }
         }
         return count;
+    }
+
+    private void normalizePresenceByScores(Sheet dataSheet) {
+        if (dataSheet == null) return;
+        int taskEndCol = findTaskEndColumn(dataSheet);
+        for (int rowIndex = 3; rowIndex <= dataSheet.getLastRowNum(); rowIndex++) {
+            Row row = dataSheet.getRow(rowIndex);
+            if (row == null || getCell(row, 1).isBlank() || !getCell(row, 2).isBlank()) {
+                continue;
+            }
+            boolean hasTaskScores = false;
+            for (int col = 4; col < taskEndCol; col++) {
+                if (!getCell(row, col).isBlank()) {
+                    hasTaskScores = true;
+                    break;
+                }
+            }
+            if (hasTaskScores) {
+                Cell presenceCell = row.getCell(2);
+                if (presenceCell == null) {
+                    presenceCell = row.createCell(2);
+                }
+                presenceCell.setCellValue("Был");
+            }
+        }
+    }
+
+    private int findTaskEndColumn(Sheet dataSheet) {
+        Row header = dataSheet.getRow(0);
+        int lastCell = header == null ? 4 : Math.max(4, header.getLastCellNum());
+        for (int col = 4; col < lastCell; col++) {
+            if (normalize(getCell(header, col)).contains("итог")) {
+                return col;
+            }
+        }
+        return lastCell;
     }
 
     @Override
