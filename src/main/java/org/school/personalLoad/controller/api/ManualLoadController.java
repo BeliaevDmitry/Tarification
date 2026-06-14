@@ -135,7 +135,7 @@ public class ManualLoadController {
     public ResponseEntity<byte[]> exportConsolidatedWorkbook(@RequestParam(required = false) String academicYear) throws Exception {
         String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
         byte[] body = manualLoadService.exportConsolidatedWorkbook(effectiveYear);
-        return workbookResponse(body, "Нагрузка укрупнённо " + effectiveYear + " " + LocalDate.now() + ".xlsx");
+        return workbookResponse(body, "По основному предмету " + effectiveYear + " " + LocalDate.now() + ".xlsx");
     }
 
     @GetMapping("/export-subjects")

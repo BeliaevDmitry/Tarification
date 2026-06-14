@@ -6,7 +6,22 @@ const ui = {
     exportSubjectLoadBtn: document.getElementById("export-subject-load-btn"),
     exportFullLoadSalaryBtn: document.getElementById("export-full-load-salary-btn"),
     summary: document.getElementById("people-load-summary"),
-    table: document.getElementById("people-load-table")
+    table: document.getElementById("people-load-table"),
+    mainTab: document.getElementById("people-load-main-tab"),
+    primaryTab: document.getElementById("people-load-primary-tab"),
+    mainPanel: document.getElementById("people-load-main-panel"),
+    primaryPanel: document.getElementById("people-load-primary-panel"),
+    determinePrimarySubjectsBtn: document.getElementById("determine-primary-subjects-btn"),
+    managePrimarySubjectsBtn: document.getElementById("manage-primary-subjects-btn"),
+    primarySubjectSummary: document.getElementById("primary-subject-summary"),
+    primarySubjectTeachersTable: document.getElementById("primary-subject-teachers-table"),
+    primarySubjectRulesDialog: document.getElementById("primary-subject-rules-dialog"),
+    primarySubjectRulesBody: document.getElementById("primary-subject-rules-body"),
+    addPrimarySubjectRuleBtn: document.getElementById("add-primary-subject-rule-btn"),
+    newPrimarySubjectName: document.getElementById("new-primary-subject-name"),
+    newPrimarySubjectRuleType: document.getElementById("new-primary-subject-rule-type"),
+    newPrimarySubjectRuleValue: document.getElementById("new-primary-subject-rule-value"),
+    newPrimarySubjectPriority: document.getElementById("new-primary-subject-priority")
 };
 
 const state = {
@@ -16,6 +31,8 @@ const state = {
     teachers: [],
     subjects: [],
     coefficients: [],
+    primarySubjectAssignments: [],
+    primarySubjectRules: [],
     studentHourRate: 37
 };
 
@@ -29,6 +46,22 @@ async function api(path) {
         const text = await response.text();
         throw new Error(text || `HTTP ${response.status}`);
     }
+    return response.json();
+}
+
+async function apiRequest(path, options = {}) {
+    const response = await fetch(withYear(path), {
+        ...options,
+        headers: {
+            "Content-Type": "application/json",
+            ...(options.headers || {})
+        }
+    });
+    if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `HTTP ${response.status}`);
+    }
+    if (response.status === 204) return null;
     return response.json();
 }
 
@@ -464,7 +497,138 @@ async function exportFullLoadWorkbook(withSalary = false) {
 }
 
 async function exportConsolidatedLoadWorkbook() {
-    return exportLoadWorkbook("/api/manual-load/export-consolidated", "consolidated-load-export.xlsx");
+    return exportLoadWorkbook("/api/manual-load/export-consolidated", "primary-subject-load-export.xlsx");
+}
+
+function showPeopleLoadPanel(panel) {
+    const primary = panel === "primary";
+    ui.mainPanel.hidden = primary;
+    ui.primaryPanel.hidden = !primary;
+    ui.mainTab.classList.toggle("active", !primary);
+    ui.primaryTab.classList.toggle("active", primary);
+}
+
+function primarySubjectOptions(selectedValue) {
+    const values = new Set();
+    state.primarySubjectRules.forEach((rule) => values.add(normalizeText(rule.primarySubject)));
+    state.subjects.forEach((subject) => values.add(normalizeText(subject.subjectName)));
+    state.primarySubjectAssignments.forEach((row) => values.add(normalizeText(row.primarySubject)));
+    values.delete("");
+    const options = Array.from(values).sort((a, b) => a.localeCompare(b, "ru"));
+    return [
+        `<option value="">Не задан</option>`,
+        ...options.map((value) => `<option value="${escapeHtml(value)}" ${value === selectedValue ? "selected" : ""}>${escapeHtml(value)}</option>`)
+    ].join("");
+}
+
+function renderPrimarySubjectTeachers() {
+    if (!ui.primarySubjectTeachersTable) return;
+    let html = "<thead><tr><th>Педагог</th><th>Основной предмет</th><th>Принцип определения</th><th>Предметы в нагрузке</th></tr></thead><tbody>";
+    if (!state.primarySubjectAssignments.length) {
+        html += '<tr><td colspan="4" class="muted">Педагоги не найдены.</td></tr>';
+    } else {
+        state.primarySubjectAssignments.forEach((row) => {
+            const mode = row.mode === "MANUAL" ? "Ручное" : row.mode === "AUTO" ? "АВТО" : "Не определён";
+            const modeClass = row.mode === "MANUAL" ? "manual" : row.mode === "AUTO" ? "auto" : "";
+            html += `<tr>
+                <td>${escapeHtml(row.teacherFio)}</td>
+                <td><select data-primary-subject-teacher="${row.teacherId}">${primarySubjectOptions(normalizeText(row.primarySubject))}</select></td>
+                <td><span class="primary-subject-status ${modeClass}">${mode}</span></td>
+                <td>${escapeHtml((row.loadSubjects || []).join(", "))}</td>
+            </tr>`;
+        });
+    }
+    html += "</tbody>";
+    ui.primarySubjectTeachersTable.innerHTML = html;
+    const assigned = state.primarySubjectAssignments.filter((row) => normalizeText(row.primarySubject)).length;
+    ui.primarySubjectSummary.textContent = `Основной предмет задан у ${assigned} из ${state.primarySubjectAssignments.length} педагогов.`;
+}
+
+async function loadPrimarySubjects() {
+    const [assignments, rules] = await Promise.all([
+        api("/api/primary-subjects/teachers"),
+        api("/api/primary-subjects/rules")
+    ]);
+    state.primarySubjectAssignments = assignments || [];
+    state.primarySubjectRules = rules || [];
+    renderPrimarySubjectTeachers();
+    renderPrimarySubjectRules();
+}
+
+async function changeTeacherPrimarySubject(teacherId, primarySubject) {
+    if (!primarySubject) {
+        await apiRequest(`/api/primary-subjects/teachers/${teacherId}`, { method: "DELETE" });
+    } else {
+        await apiRequest(`/api/primary-subjects/teachers/${teacherId}`, {
+            method: "PUT",
+            body: JSON.stringify({ primarySubject })
+        });
+    }
+    await loadPrimarySubjects();
+}
+
+async function determinePrimarySubjects() {
+    ui.determinePrimarySubjectsBtn.disabled = true;
+    try {
+        const result = await apiRequest("/api/primary-subjects/determine", { method: "POST", body: "{}" });
+        await loadPrimarySubjects();
+        ui.primarySubjectSummary.textContent = `Определено автоматически: ${result.assigned}. Ручных сохранено: ${result.preservedManual}. Без данных: ${result.unresolved}.`;
+    } finally {
+        ui.determinePrimarySubjectsBtn.disabled = false;
+    }
+}
+
+function ruleTypeLabel(ruleType) {
+    return ruleType === "PRIMARY_GRADES" ? "1–4 классы" : "Ключевые слова";
+}
+
+function renderPrimarySubjectRules() {
+    if (!ui.primarySubjectRulesBody) return;
+    ui.primarySubjectRulesBody.innerHTML = state.primarySubjectRules.map((rule) => `
+        <tr data-primary-subject-rule="${rule.id}">
+            <td><input data-rule-field="primarySubject" value="${escapeHtml(rule.primarySubject)}"></td>
+            <td>
+                <select data-rule-field="ruleType">
+                    <option value="KEYWORDS" ${rule.ruleType === "KEYWORDS" ? "selected" : ""}>Ключевые слова</option>
+                    <option value="PRIMARY_GRADES" ${rule.ruleType === "PRIMARY_GRADES" ? "selected" : ""}>1–4 классы</option>
+                </select>
+            </td>
+            <td><input data-rule-field="ruleValue" value="${escapeHtml(rule.ruleValue)}" title="${escapeHtml(ruleTypeLabel(rule.ruleType))}"></td>
+            <td><input data-rule-field="priority" type="number" value="${escapeHtml(rule.priority)}"></td>
+            <td class="row-actions">
+                <button type="button" data-save-primary-subject-rule="${rule.id}">Сохранить</button>
+                <button type="button" class="danger" data-delete-primary-subject-rule="${rule.id}">Удалить</button>
+            </td>
+        </tr>
+    `).join("");
+}
+
+function ruleRequestFromRow(row) {
+    return {
+        primarySubject: row.querySelector('[data-rule-field="primarySubject"]').value,
+        ruleType: row.querySelector('[data-rule-field="ruleType"]').value,
+        ruleValue: row.querySelector('[data-rule-field="ruleValue"]').value,
+        priority: Number(row.querySelector('[data-rule-field="priority"]').value || 100)
+    };
+}
+
+async function savePrimarySubjectRule(id, request) {
+    await apiRequest(id ? `/api/primary-subjects/rules/${id}` : "/api/primary-subjects/rules", {
+        method: id ? "PUT" : "POST",
+        body: JSON.stringify(request)
+    });
+    await loadPrimarySubjects();
+}
+
+async function addPrimarySubjectRule() {
+    await savePrimarySubjectRule(null, {
+        primarySubject: ui.newPrimarySubjectName.value,
+        ruleType: ui.newPrimarySubjectRuleType.value,
+        ruleValue: ui.newPrimarySubjectRuleValue.value,
+        priority: Number(ui.newPrimarySubjectPriority.value || 100)
+    });
+    ui.newPrimarySubjectName.value = "";
+    ui.newPrimarySubjectRuleValue.value = "";
 }
 
 function exportSubjectLoadWorkbook() {
@@ -511,14 +675,16 @@ function rebuildIndexes() {
 async function loadData() {
     ui.summary.textContent = "Загрузка данных…";
     const salaryAccess = salaryPermission().canView;
-    const [buildings, manualRows, classes, teachers, subjects, coefficients, salarySettings] = await Promise.all([
+    const [buildings, manualRows, classes, teachers, subjects, coefficients, salarySettings, primaryAssignments, primaryRules] = await Promise.all([
         api("/api/buildings"),
         api("/api/manual-load"),
         api("/api/classroom-leadership"),
         api("/api/teachers"),
         api("/api/subjects"),
         api("/api/subjects/coefficients"),
-        salaryAccess ? api("/api/salary-settings") : Promise.resolve(null)
+        salaryAccess ? api("/api/salary-settings") : Promise.resolve(null),
+        api("/api/primary-subjects/teachers"),
+        api("/api/primary-subjects/rules")
     ]);
     state.manualRows = manualRows || [];
     state.classes = classes || [];
@@ -526,11 +692,15 @@ async function loadData() {
     state.teachers = teachers || [];
     state.subjects = subjects || [];
     state.coefficients = coefficients || [];
+    state.primarySubjectAssignments = primaryAssignments || [];
+    state.primarySubjectRules = primaryRules || [];
     const rate = Number(salarySettings?.studentHourRate ?? 37);
     state.studentHourRate = Number.isFinite(rate) && rate > 0 ? rate : 37;
     rebuildIndexes();
     fillBuildingSelect();
     renderTable();
+    renderPrimarySubjectTeachers();
+    renderPrimarySubjectRules();
 }
 
 function showError(error) {
@@ -556,11 +726,36 @@ async function init() {
     ui.buildingSelect?.addEventListener("change", renderTable);
     ui.refreshBtn?.addEventListener("click", () => loadData().catch(showError));
     ui.exportFullLoadBtn?.addEventListener("click", () => exportFullLoadWorkbook().catch((error) => alert(`Не удалось скачать полную нагрузку: ${error.message}`)));
-    ui.exportConsolidatedLoadBtn?.addEventListener("click", () => exportConsolidatedLoadWorkbook().catch((error) => alert(`Не удалось скачать укрупнённую нагрузку: ${error.message}`)));
+    ui.exportConsolidatedLoadBtn?.addEventListener("click", () => exportConsolidatedLoadWorkbook().catch((error) => alert(`Не удалось скачать отчёт по основному предмету: ${error.message}`)));
     ui.exportSubjectLoadBtn?.addEventListener("click", () => exportSubjectLoadWorkbook().catch((error) => alert(`Не удалось скачать нагрузку по предметам: ${error.message}`)));
     if (ui.exportFullLoadSalaryBtn) {
         ui.exportFullLoadSalaryBtn.addEventListener("click", () => exportFullLoadWorkbook(true).catch((error) => alert(`Не удалось скачать полную нагрузку с ЗП: ${error.message}`)));
     }
+    ui.mainTab?.addEventListener("click", () => showPeopleLoadPanel("main"));
+    ui.primaryTab?.addEventListener("click", () => showPeopleLoadPanel("primary"));
+    ui.determinePrimarySubjectsBtn?.addEventListener("click", () => determinePrimarySubjects().catch((error) => alert(`Не удалось определить основные предметы: ${error.message}`)));
+    ui.managePrimarySubjectsBtn?.addEventListener("click", () => ui.primarySubjectRulesDialog?.showModal());
+    ui.primarySubjectTeachersTable?.addEventListener("change", (event) => {
+        const select = event.target.closest("[data-primary-subject-teacher]");
+        if (!select) return;
+        changeTeacherPrimarySubject(select.dataset.primarySubjectTeacher, select.value)
+            .catch((error) => alert(`Не удалось сохранить основной предмет: ${error.message}`));
+    });
+    ui.primarySubjectRulesBody?.addEventListener("click", (event) => {
+        const saveButton = event.target.closest("[data-save-primary-subject-rule]");
+        const deleteButton = event.target.closest("[data-delete-primary-subject-rule]");
+        if (saveButton) {
+            const row = saveButton.closest("[data-primary-subject-rule]");
+            savePrimarySubjectRule(saveButton.dataset.savePrimarySubjectRule, ruleRequestFromRow(row))
+                .catch((error) => alert(`Не удалось сохранить правило: ${error.message}`));
+        }
+        if (deleteButton && confirm("Удалить правило основного предмета?")) {
+            apiRequest(`/api/primary-subjects/rules/${deleteButton.dataset.deletePrimarySubjectRule}`, { method: "DELETE" })
+                .then(loadPrimarySubjects)
+                .catch((error) => alert(`Не удалось удалить правило: ${error.message}`));
+        }
+    });
+    ui.addPrimarySubjectRuleBtn?.addEventListener("click", () => addPrimarySubjectRule().catch((error) => alert(`Не удалось добавить правило: ${error.message}`)));
     await waitForAuth();
     if (ui.exportFullLoadSalaryBtn) {
         ui.exportFullLoadSalaryBtn.style.display = salaryPermission().canExport ? "" : "none";

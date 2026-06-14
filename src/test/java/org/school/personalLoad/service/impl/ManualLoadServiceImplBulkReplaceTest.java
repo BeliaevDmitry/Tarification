@@ -38,6 +38,7 @@ import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.repository.SubjectLevelCoefficientRepository;
 import org.school.personalLoad.repository.MetaGroupRepository;
+import org.school.personalLoad.service.PrimarySubjectService;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.DatabaseService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
@@ -47,6 +48,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.Optional;
 import java.util.List;
 
@@ -96,6 +98,8 @@ class ManualLoadServiceImplBulkReplaceTest {
     private SalarySettingsRepository salarySettingsRepository;
     @Mock
     private MetaGroupRepository metaGroupRepository;
+    @Mock
+    private PrimarySubjectService primarySubjectService;
 
     private ManualLoadServiceImpl service;
 
@@ -140,7 +144,8 @@ class ManualLoadServiceImplBulkReplaceTest {
                 contingentStudentRepository,
                 schoolBuildingRepository,
                 salarySettingsRepository,
-                metaGroupRepository
+                metaGroupRepository,
+                primarySubjectService
         );
     }
 
@@ -672,11 +677,13 @@ class ManualLoadServiceImplBulkReplaceTest {
         when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(russian, literature, math));
         when(subjectLevelCoefficientRepository.findAll()).thenReturn(List.of(coefficient("Алгебра", EducationStage.OOO, "1.3")));
         when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(leadership));
+        when(primarySubjectService.resolveForExport("2025/2026"))
+                .thenReturn(Map.of("иванова и.и.", "Русский язык и литература"));
 
         byte[] body = service.exportConsolidatedWorkbook("2025/2026");
 
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
-            var sheet = workbook.getSheet("Нагрузка укрупнённо");
+            var sheet = workbook.getSheet("По основному предмету");
             assertNotNull(sheet);
             List<String> expectedHeaders = List.of(
                     "Основной предмет*", "ФИО", "Корпус", "Предмет", "Класс", "Группа", "Период", "Кол-во часов",
@@ -714,11 +721,13 @@ class ManualLoadServiceImplBulkReplaceTest {
         ManualLoadEntry row = manualRow("Петрова П.П.", "СП1", "3-А", "Физика", 2);
         when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(row));
         when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of());
+        when(primarySubjectService.resolveForExport("2025/2026"))
+                .thenReturn(Map.of("петрова п.п.", "Начальная школа"));
 
         byte[] body = service.exportConsolidatedWorkbook("2025/2026");
 
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
-            var sheet = workbook.getSheet("Нагрузка укрупнённо");
+            var sheet = workbook.getSheet("По основному предмету");
             assertEquals("Начальная школа", sheet.getRow(1).getCell(0).getStringCellValue());
         }
     }
