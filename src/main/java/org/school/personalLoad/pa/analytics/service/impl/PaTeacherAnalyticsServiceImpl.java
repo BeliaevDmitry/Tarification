@@ -93,13 +93,17 @@ public class PaTeacherAnalyticsServiceImpl implements PaTeacherAnalyticsService 
                 || summary.getAnalysisStatus() == PaAnalysisStatus.WARNING;
     }
 
+    private boolean hasReportFileLocator(PaReportVersion version) {
+        return !isBlank(version.getSourceFilePath())
+                || (!isBlank(version.getAcademicYear()) && !isBlank(version.getSourceFileName()));
+    }
+
     private boolean isActiveAcceptedReport(PaReportAnalysisSummary summary, Map<Long, PaReportVersion> versionsById) {
         PaReportVersion version = versionsById.get(summary.getReportVersionId());
         return version != null
                 && version.isActiveVersion()
                 && "ACCEPTED".equalsIgnoreCase(nvl(version.getStatus()))
-                && version.isUploadedBackSuccess()
-                && !isBlank(version.getSourceFilePath())
+                && hasReportFileLocator(version)
                 && !isBlank(version.getSubjectName())
                 && !isBlank(version.getScopeValue())
                 && !isBlank(summary.getSubjectName())

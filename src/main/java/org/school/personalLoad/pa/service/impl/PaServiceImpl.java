@@ -508,7 +508,7 @@ public class PaServiceImpl implements PaService {
                 .map(r -> new PaDtos.ReportVersionRow(
                         r.getId(), r.getAcademicYear(), r.getSubjectName(), r.getScopeType(), r.getScopeValue(), r.getLevel(),
                         r.getWorkType(), r.getWorkDate(), r.getVersionNo(), r.isActiveVersion(), r.getStatus(),
-                        r.getValidationMessage(), r.getSourceFileName(), r.getCreatedAt(), r.isDownloadedAtLeastOnce(), r.isUploadedBackSuccess()
+                        r.getValidationMessage(), r.getSourceFileName(), r.getCreatedAt(), r.isDownloadedAtLeastOnce(), hasAcceptedReportFile(r)
                 ))
                 .toList();
     }
@@ -529,10 +529,9 @@ public class PaServiceImpl implements PaService {
                     .sorted(Comparator.comparing(PaReportVersion::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
                     .findFirst()
                     .orElse(null);
-            PaReportVersion latestUploaded = versions.stream()
-                    .filter(v -> "ACCEPTED".equalsIgnoreCase(v.getStatus()) && v.isUploadedBackSuccess())
-                    .sorted(Comparator.comparing(PaReportVersion::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
-                    .findFirst()
+            List<PaReportVersion> uploadedReports = latestUploadedReportsByTeacher(versions);
+            PaReportVersion latestUploaded = uploadedReports.stream()
+                    .max(Comparator.comparing(PaReportVersion::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)))
                     .orElse(null);
             PaReportVersion sample = versions.get(0);
             result.add(new PaDtos.ReportWorkflowSummaryItem(
@@ -540,12 +539,64 @@ public class PaServiceImpl implements PaService {
                     sample.getScopeValue(),
                     versions.stream().anyMatch(v -> "GENERATED".equalsIgnoreCase(v.getStatus())),
                     versions.stream().anyMatch(PaReportVersion::isDownloadedAtLeastOnce),
-                    versions.stream().anyMatch(v -> "ACCEPTED".equalsIgnoreCase(v.getStatus()) && v.isUploadedBackSuccess()),
+                    !uploadedReports.isEmpty(),
                     latestGenerated == null ? null : latestGenerated.getId(),
-                    latestUploaded == null ? null : latestUploaded.getId()
+                    latestUploaded == null ? null : latestUploaded.getId(),
+                    workflowDownloadItems(uploadedReports)
             ));
         });
         return result;
+    }
+
+    private List<PaReportVersion> latestUploadedReportsByTeacher(List<PaReportVersion> versions) {
+        Map<String, PaReportVersion> latestByTeacher = new LinkedHashMap<>();
+        versions.stream()
+                .filter(PaReportVersion::isActiveVersion)
+                .filter(this::hasAcceptedReportFile)
+                .sorted(Comparator.comparing(PaReportVersion::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
+                .forEach(version -> latestByTeacher.putIfAbsent(workflowTeacherKey(version), version));
+        return latestByTeacher.values().stream()
+                .sorted(Comparator
+                        .comparing((PaReportVersion v) -> String.valueOf(v.getTeacherFio() == null ? "" : v.getTeacherFio()), String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(PaReportVersion::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)))
+                .toList();
+    }
+
+    private List<PaDtos.ReportWorkflowDownloadItem> workflowDownloadItems(List<PaReportVersion> reports) {
+        if (reports == null || reports.isEmpty()) {
+            return List.of();
+        }
+        if (reports.size() == 1) {
+            PaReportVersion report = reports.get(0);
+            return List.of(new PaDtos.ReportWorkflowDownloadItem(
+                    report.getId(),
+                    "Скачать",
+                    report.getTeacherFio(),
+                    report.getSourceFileName()
+            ));
+        }
+        List<PaDtos.ReportWorkflowDownloadItem> items = new ArrayList<>();
+        for (int i = 0; i < reports.size(); i++) {
+            PaReportVersion report = reports.get(i);
+            items.add(new PaDtos.ReportWorkflowDownloadItem(
+                    report.getId(),
+                    (i + 1) + " группа",
+                    report.getTeacherFio(),
+                    report.getSourceFileName()
+            ));
+        }
+        return items;
+    }
+
+    private String workflowTeacherKey(PaReportVersion version) {
+        String normalized = normalizeFio(version.getTeacherFioNormalized());
+        if (normalized.isBlank()) {
+            normalized = normalizeFio(version.getTeacherFio());
+        }
+        if (normalized.isBlank()) {
+            normalized = "report:" + version.getId();
+        }
+        return normalized;
     }
 
     @Override
@@ -627,7 +678,6 @@ public class PaServiceImpl implements PaService {
                 );
                 List<PaReportVersion> previousTeacherUploads = sameKey.stream()
                         .filter(v -> "ACCEPTED".equalsIgnoreCase(v.getStatus()))
-                        .filter(PaReportVersion::isUploadedBackSuccess)
                         .filter(v -> normalizeFio(v.getTeacherFio()).equals(normalizedTeacher)
                                 || normalizeFio(v.getTeacherFioNormalized()).equals(normalizedTeacher))
                         .toList();
@@ -1941,6 +1991,15 @@ public class PaServiceImpl implements PaService {
 
     private String normalize(String value) {
         return String.valueOf(value == null ? "" : value).toLowerCase(Locale.ROOT).replace('ё', 'е');
+    }
+
+    private boolean hasAcceptedReportFile(PaReportVersion version) {
+        return version != null
+                && "ACCEPTED".equalsIgnoreCase(version.getStatus())
+                && (version.isUploadedBackSuccess()
+                    || (version.getSourceFilePath() != null && !version.getSourceFilePath().isBlank())
+                    || (version.getAcademicYear() != null && !version.getAcademicYear().isBlank()
+                        && version.getSourceFileName() != null && !version.getSourceFileName().isBlank()));
     }
 
     private Integer parseInt(String value) {

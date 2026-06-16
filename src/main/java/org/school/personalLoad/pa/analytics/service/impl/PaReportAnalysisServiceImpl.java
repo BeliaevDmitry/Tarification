@@ -133,8 +133,7 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
         List<Long> reportVersionIds = reportVersionRepository.findAll().stream()
                 .filter(version -> Objects.equals(version.getAcademicYear(), academicYear))
                 .filter(version -> "ACCEPTED".equalsIgnoreCase(version.getStatus()))
-                .filter(PaReportVersion::isUploadedBackSuccess)
-                .filter(version -> version.getSourceFilePath() != null && !version.getSourceFilePath().isBlank())
+                .filter(this::hasReportFileLocator)
                 .map(PaReportVersion::getId)
                 .toList();
         PaReportAnalysisJobRunner jobRunner = jobRunnerProvider.getObject();
@@ -206,7 +205,7 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
     }
 
     private void analyzeAcceptedReport(PaReportVersion version, LocalDateTime startedAt) throws Exception {
-        Path reportPath = Path.of(version.getSourceFilePath());
+        Path reportPath = resolveReportFilePath(version);
         try (Workbook workbook = WorkbookFactory.create(reportPath.toFile())) {
             Sheet dataSheet = workbook.getSheet("Сбор информации");
             if (dataSheet == null) {
@@ -584,16 +583,36 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
         if (!"ACCEPTED".equalsIgnoreCase(nvl(version.getStatus()))) {
             return "Анализ пропущен: версия отчёта не принята (status=" + nvl(version.getStatus()) + ")";
         }
-        if (!version.isUploadedBackSuccess()) {
-            return "Анализ пропущен: отчёт не был успешно сдан обратно";
-        }
-        if (version.getSourceFilePath() == null || version.getSourceFilePath().isBlank()) {
+        Path reportPath = resolveReportFilePath(version);
+        if (reportPath == null) {
             return "Анализ пропущен: не заполнен путь к исходному файлу отчёта";
         }
-        if (!Files.isRegularFile(Path.of(version.getSourceFilePath()))) {
+        if (!Files.isRegularFile(reportPath)) {
             return "Анализ пропущен: файл отчёта не найден на диске";
         }
+        if (version.getSourceFilePath() == null || version.getSourceFilePath().isBlank()) {
+            version.setSourceFilePath(reportPath.toString());
+        }
         return null;
+    }
+
+    private Path resolveReportFilePath(PaReportVersion version) {
+        if (version.getSourceFilePath() != null && !version.getSourceFilePath().isBlank()) {
+            return Path.of(version.getSourceFilePath());
+        }
+        if (version.getAcademicYear() != null
+                && !version.getAcademicYear().isBlank()
+                && version.getSourceFileName() != null
+                && !version.getSourceFileName().isBlank()) {
+            return Path.of(PA_REPORT_STORAGE_DIR, safeYear(version.getAcademicYear()), version.getSourceFileName());
+        }
+        return null;
+    }
+
+    private boolean hasReportFileLocator(PaReportVersion version) {
+        return version != null
+                && (!isBlank(version.getSourceFilePath())
+                    || (!isBlank(version.getAcademicYear()) && !isBlank(version.getSourceFileName())));
     }
 
     private PaReportVersion findReportVersion(Long reportVersionId) {
@@ -648,10 +667,10 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
         if (version == null || summary == null) {
             return false;
         }
-        if (!version.isActiveVersion() || !"ACCEPTED".equalsIgnoreCase(nvl(version.getStatus())) || !version.isUploadedBackSuccess()) {
+        if (!version.isActiveVersion() || !"ACCEPTED".equalsIgnoreCase(nvl(version.getStatus()))) {
             return false;
         }
-        if (isBlank(version.getSourceFilePath()) || isBlank(version.getSubjectName()) || isBlank(version.getScopeValue())) {
+        if (!hasReportFileLocator(version) || isBlank(version.getSubjectName()) || isBlank(version.getScopeValue())) {
             return false;
         }
         if (summary.getAnalysisStatus() == PaAnalysisStatus.SKIPPED || summary.getAnalysisStatus() == PaAnalysisStatus.NOT_ANALYZED) {

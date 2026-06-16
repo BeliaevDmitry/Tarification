@@ -24,6 +24,15 @@ let summaryStatusSelection = null;
 let summaryStatusOverrides = {};
 let classLevelAssignments = {};
 
+function paHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function paApi(path, options = {}) {
     const scoped = typeof window.withAcademicYear === 'function' ? window.withAcademicYear(path) : path;
     return fetch(scoped, options).then(async (response) => {
@@ -1082,7 +1091,8 @@ async function renderWorkflow(prefix, loadedVersions = null) {
             hasDownloaded: Boolean(row.hasDownloaded),
             hasUploaded: Boolean(row.hasUploaded),
             latestGeneratedId: row.latestGeneratedId,
-            latestUploadedId: row.latestUploadedId
+            latestUploadedId: row.latestUploadedId,
+            uploadedReports: Array.isArray(row.uploadedReports) ? row.uploadedReports : []
         });
     });
 
@@ -1151,7 +1161,7 @@ async function renderWorkflow(prefix, loadedVersions = null) {
                     } else if (rowName === 'Скачан') {
                         html += `<td>${state.hasDownloaded ? '✅' : (hasSpec ? '⚠️' : '')}</td>`;
                     } else {
-                        html += `<td>${state.hasUploaded ? `✅ ${state.latestUploadedId ? `<button type="button" class="tab-btn" data-download-report-id="${state.latestUploadedId}">⬇</button>` : ''}` : (hasSpec ? '⚠️' : '')}</td>`;
+                        html += `<td>${state.hasUploaded ? `✅ ${uploadedReportButtons(state)}` : (hasSpec ? '⚠️' : '')}</td>`;
                     }
                 });
                 html += '</tr>';
@@ -1166,6 +1176,23 @@ async function renderWorkflow(prefix, loadedVersions = null) {
     if (prevBtn) prevBtn.disabled = ui.page <= 1;
     if (nextBtn) nextBtn.disabled = ui.page >= totalPages;
     bindReportDownloadButtons();
+}
+
+function uploadedReportButtons(state) {
+    const reports = Array.isArray(state.uploadedReports) ? state.uploadedReports : [];
+    if (reports.length) {
+        return reports
+            .filter((report) => report && report.reportVersionId)
+            .map((report) => {
+                const label = report.label || '⬇';
+                const title = report.teacherFio ? ` title="${paHtml(report.teacherFio)}"` : '';
+                return `<button type="button" class="tab-btn" data-download-report-id="${paHtml(report.reportVersionId)}"${title}>${paHtml(label)}</button>`;
+            })
+            .join(' ');
+    }
+    return state.latestUploadedId
+        ? `<button type="button" class="tab-btn" data-download-report-id="${paHtml(state.latestUploadedId)}">⬇</button>`
+        : '';
 }
 
 function bindWorkflowControls(prefix) {
