@@ -174,7 +174,7 @@ class PaTeacherAnalyticsServiceImplTest {
         version.setId(id);
         version.setActiveVersion(true);
         version.setStatus("ACCEPTED");
-        version.setUploadedBackSuccess(true);
+        version.setUploadedBackSuccess(false);
         version.setSourceFilePath("/tmp/report-" + id + ".xlsx");
         version.setSubjectName("Русский язык");
         version.setScopeValue("8-Ц");

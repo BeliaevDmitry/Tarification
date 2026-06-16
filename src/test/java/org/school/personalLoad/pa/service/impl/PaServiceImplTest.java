@@ -78,7 +78,7 @@ class PaServiceImplTest {
         LocalDate workDate = LocalDate.of(2026, 5, 10);
         PaReportVersion generated = version("GENERATED", null, false, true);
         PaReportVersion firstTeacherUpload = version("ACCEPTED", "Иванова Анна Петровна", true, true);
-        PaReportVersion previousSameTeacherUpload = version("ACCEPTED", "Петрова Мария Ивановна", true, true);
+        PaReportVersion previousSameTeacherUpload = version("ACCEPTED", "Петрова Мария Ивановна", false, true);
         when(teacherDirectoryRepository.findAll()).thenReturn(List.of(teacher("Петрова Мария Ивановна")));
         when(contingentSnapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear))
                 .thenReturn(Optional.of(snapshot(10L, academicYear)));

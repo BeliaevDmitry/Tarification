@@ -119,7 +119,14 @@ public final class PaDtos {
                                             boolean hasDownloaded,
                                             boolean hasUploaded,
                                             Long latestGeneratedId,
-                                            Long latestUploadedId) {
+                                            Long latestUploadedId,
+                                            List<ReportWorkflowDownloadItem> uploadedReports) {
+    }
+
+    public record ReportWorkflowDownloadItem(Long reportVersionId,
+                                             String label,
+                                             String teacherFio,
+                                             String fileName) {
     }
 
     public record ClassLevelAssignmentRow(String subjectName,
