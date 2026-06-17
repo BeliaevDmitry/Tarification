@@ -49,12 +49,16 @@ class PaReportAnalysisServiceImplTest {
         PaReportVersion legacyReport = new PaReportVersion();
         legacyReport.setId(42L);
         legacyReport.setAcademicYear("2025/2026");
+        legacyReport.setSubjectName("Математика");
+        legacyReport.setScopeValue("5-А");
         legacyReport.setStatus("ACCEPTED");
         legacyReport.setUploadedBackSuccess(false);
         legacyReport.setSourceFilePath(reportFile.toString());
         PaReportVersion inactiveOldVersion = new PaReportVersion();
         inactiveOldVersion.setId(13L);
         inactiveOldVersion.setAcademicYear("2025/2026");
+        inactiveOldVersion.setSubjectName("Математика");
+        inactiveOldVersion.setScopeValue("5-А");
         inactiveOldVersion.setStatus("ACCEPTED");
         inactiveOldVersion.setActiveVersion(false);
         inactiveOldVersion.setSourceFilePath(reportFile.toString());
