@@ -133,7 +133,10 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
         List<Long> reportVersionIds = reportVersionRepository.findAll().stream()
                 .filter(version -> Objects.equals(version.getAcademicYear(), academicYear))
                 .filter(version -> "ACCEPTED".equalsIgnoreCase(version.getStatus()))
+                .filter(PaReportVersion::isActiveVersion)
                 .filter(this::hasReportFileLocator)
+                .filter(version -> !isBlank(version.getSubjectName()) && !isBlank(version.getScopeValue()))
+                .filter(this::reportFileExists)
                 .map(PaReportVersion::getId)
                 .toList();
         PaReportAnalysisJobRunner jobRunner = jobRunnerProvider.getObject();
@@ -613,6 +616,11 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
         return version != null
                 && (!isBlank(version.getSourceFilePath())
                     || (!isBlank(version.getAcademicYear()) && !isBlank(version.getSourceFileName())));
+    }
+
+    private boolean reportFileExists(PaReportVersion version) {
+        Path reportPath = resolveReportFilePath(version);
+        return reportPath != null && Files.isRegularFile(reportPath);
     }
 
     private PaReportVersion findReportVersion(Long reportVersionId) {

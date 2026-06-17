@@ -179,20 +179,24 @@
 
     async function rebuildOne(id) {
         setFeedback(`Пересчёт отчёта ${id}…`);
-        await api(`/api/pa/analytics/reports/${encodeURIComponent(id)}/rebuild`, { method: 'POST' });
+        const result = await api(`/api/pa/analytics/reports/${encodeURIComponent(id)}/rebuild`, { method: 'POST' });
         await loadReports();
+        if (result?.status === 'ERROR') {
+            setFeedback(`Отчёт ${id} не пересчитан: ${result.message || 'ошибка анализа'}. В строке отчёта доступен лог.`, true);
+            return;
+        }
         setFeedback(`Отчёт ${id} пересчитан.`);
     }
 
     async function rebuildAll() {
         const year = currentAcademicYear();
-        if (!confirm(`Пересчитать все подходящие отчёты${year ? ` за ${year}` : ''}?`)) return;
-        setFeedback('Запущен пересчёт всех отчётов…');
+        if (!confirm(`Пересчитать актуальные отчёты${year ? ` за ${year}` : ''}?`)) return;
+        setFeedback('Запущен пересчёт актуальных отчётов…');
         const result = await api('/api/pa/analytics/rebuild', { method: 'POST' });
         await loadReports();
         const processed = result?.processed ?? result?.rebuilt ?? 0;
         const failed = result?.failed ?? 0;
-        setFeedback(`Пересчёт всех отчётов завершён: обработано ${processed}, ошибок ${failed}.`, failed > 0);
+        setFeedback(`Пересчёт актуальных отчётов завершён: обработано ${processed}, ошибок ${failed}.`, failed > 0);
     }
 
     function openDownload(path) {
