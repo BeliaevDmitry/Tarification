@@ -858,6 +858,32 @@ function buildTeacherHoursByStudyPeriod(rows = []) {
     return result;
 }
 
+function addTeacherHours(target, source) {
+    Object.entries(source || {}).forEach(([key, pair]) => {
+        if (!target[key]) {
+            target[key] = { h1: 0, h2: 0 };
+        }
+        target[key].h1 += Number(pair?.h1 || 0);
+        target[key].h2 += Number(pair?.h2 || 0);
+    });
+    return target;
+}
+
+function buildTeacherHoursFromAssignments(buildingCode) {
+    const result = {};
+    const assignments = assignmentsForBuilding(buildingCode);
+    expandedRowsForSelectedBuilding().forEach((row) => {
+        const teacher = String(assignments[apiKeyOfRow(row)] || "").trim();
+        const key = teacherHoursKey(teacher);
+        if (!key) return;
+        if (!result[key]) {
+            result[key] = { h1: 0, h2: 0 };
+        }
+        accumulateSplit(result[key], row);
+    });
+    return result;
+}
+
 function apiKeyOfRow(row) {
     return `${row.className}|${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}|${rowStudyPeriod(row)}${groupSuffix(row)}`;
 }
@@ -1605,14 +1631,17 @@ function computeTeacherHourIndexes() {
     }
 
     const selectedBuildingGroup = buildingGroupCode(selectedBuilding);
-
-    const scopedManualRows = (manualRows || [])
-        .filter((row) => rowMatchesBuildingAccess(row, selectedBuilding));
+    const selectedAssignmentHours = buildTeacherHoursFromAssignments(selectedBuilding);
+    const complexRowsOutsideSelected = (complexManualRows || [])
+        .filter((row) => !rowMatchesBuildingAccess(row, selectedBuilding));
 
     const buildingTeacherHours = {
-        [selectedBuildingGroup]: buildTeacherHoursByStudyPeriod(scopedManualRows)
+        [selectedBuildingGroup]: selectedAssignmentHours
     };
-    const complexTeacherHours = buildTeacherHoursByStudyPeriod(complexManualRows || []);
+    const complexTeacherHours = addTeacherHours(
+        buildTeacherHoursByStudyPeriod(complexRowsOutsideSelected),
+        selectedAssignmentHours
+    );
 
     teacherHourIndexesCacheKey = cacheKey;
     teacherHourIndexesCacheValue = { buildingTeacherHours, complexTeacherHours };

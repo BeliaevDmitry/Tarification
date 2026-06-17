@@ -46,6 +46,19 @@ class TeacherNotificationsControllerTest {
     }
 
     @Test
+    void formatNotificationTotalLoadUsesGroupLoadForSubgroups() {
+        TeacherNotificationsController controller = controller();
+        ManualLoadEntry subgroup = row(StudyPeriod.YEAR, 5);
+        subgroup.setGroupNameEducationalPlan("Группа 1");
+        subgroup.setGroupLoad(3);
+
+        assertEquals(
+                "3 часа",
+                controller.formatNotificationTotalLoad(List.of(subgroup))
+        );
+    }
+
+    @Test
     void teacherNameForNotificationUsesDativeNameFromDirectory() {
         TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
         teacher.setFioTeacher("Иванов Иван Иванович");

@@ -1656,8 +1656,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 .map(this::healthSoftKey)
                 .collect(java.util.stream.Collectors.toSet());
         int unassignedHours = curriculum.stream()
+                .flatMap(row -> expandForStats(row).stream())
                 .filter(row -> !assignedKeys.contains(healthSoftKey(row)))
-                .mapToInt(row -> row.getPlannedHours() == null ? 0 : row.getPlannedHours().intValue())
+                .mapToInt(row -> Math.max(row.getPlannedHours() == null ? 0 : row.getPlannedHours().intValue(), 0))
                 .sum();
         int orphanedCount = (int) manual.stream().filter(ManualLoadEntry::isOrphaned).count();
         return new ManualLoadHealthResponse(unassignedHours, orphanedCount);
@@ -1681,7 +1682,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 row.getNumberSchoolBuilding(),
                 row.getClassName(),
                 row.getSubjectName(),
-                row.isSubgroupRequired() ? "Группа 1" : "",
+                groupNameForStats(row),
                 row.getStudyPeriod() == null ? StudyPeriod.YEAR : row.getStudyPeriod(),
                 row.getEducationLevel()
         );
@@ -1707,8 +1708,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
     private String groupNameForStats(CurriculumPlanEntry row) {
-        if (row.isSubgroupRequired() && row.getSubgroupCount() != null && row.getSubgroupCount() > 0) {
-            return "Группа 1";
+        if (row.isSubgroupRequired()) {
+            int groupIndex = row.getSubgroupCount() == null ? 1 : row.getSubgroupCount();
+            return groupIndex == 2 ? "Группа 2" : "Группа 1";
         }
         return "";
     }
@@ -1722,17 +1724,20 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         copyForStats(row, first);
         first.setPlannedHours(row.getSubgroup1Hours() != null ? java.math.BigDecimal.valueOf(row.getSubgroup1Hours()) : row.getPlannedHours());
         first.setEducationLevel(row.getSubgroup1EducationLevel() != null ? row.getSubgroup1EducationLevel() : row.getEducationLevel());
+        first.setSubgroupCount(1);
         result.add(first);
         CurriculumPlanEntry second = new CurriculumPlanEntry();
         copyForStats(row, second);
         second.setPlannedHours(row.getSubgroup2Hours() != null ? java.math.BigDecimal.valueOf(row.getSubgroup2Hours()) : row.getPlannedHours());
         second.setEducationLevel(row.getSubgroup2EducationLevel() != null ? row.getSubgroup2EducationLevel() : row.getEducationLevel());
-        second.setClassName(row.getClassName() + "#G2");
+        second.setSubgroupCount(2);
         result.add(second);
         return result;
     }
 
     private void copyForStats(CurriculumPlanEntry from, CurriculumPlanEntry to) {
+        to.setAcademicYear(from.getAcademicYear());
+        to.setNumberSchoolBuilding(from.getNumberSchoolBuilding());
         to.setClassName(from.getClassName());
         to.setSubjectName(from.getSubjectName());
         to.setStudyPeriod(from.getStudyPeriod());
