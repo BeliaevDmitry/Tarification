@@ -35,6 +35,7 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.ss.util.CellRangeAddressList;
 import org.apache.poi.ss.util.CellReference;
@@ -741,25 +742,37 @@ public class PaServiceImpl implements PaService {
     @Override
     @Transactional(readOnly = true)
     public List<PaDtos.ReportUploadLogRow> reportUploadLog(String academicYear, String uploaderUsername, boolean admin) {
-        return reportVersionRepository.findAll().stream()
+        return reportUploadLogRows(academicYear, uploaderUsername, admin, 500);
+    }
+
+    private List<PaDtos.ReportUploadLogRow> reportUploadLogRows(String academicYear, String uploaderUsername, boolean admin, Integer limit) {
+        Stream<PaReportVersion> stream = reportVersionRepository.findAll().stream()
                 .filter(v -> academicYear.equals(v.getAcademicYear()))
                 .filter(v -> "ACCEPTED".equalsIgnoreCase(v.getStatus()) || "REJECTED".equalsIgnoreCase(v.getStatus()))
                 .filter(v -> admin || normalize(v.getUploadedByUsername()).equals(normalize(uploaderUsername)))
-                .sorted(Comparator.comparing(PaReportVersion::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
-                .limit(500)
+                .sorted(Comparator.comparing(PaReportVersion::getCreatedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed());
+        if (limit != null && limit > 0) {
+            stream = stream.limit(limit);
+        }
+        return stream
                 .map(v -> new PaDtos.ReportUploadLogRow(
                         v.getId(),
                         v.getCreatedAt(),
                         v.getSourceFileName(),
                         v.getSubjectName(),
                         v.getScopeValue(),
+                        v.getTeacherFio(),
                         v.getStatus(),
                         v.getValidationMessage(),
                         (v.getAcceptedResultsCount() == null ? 0 : v.getAcceptedResultsCount()) + "/" + (v.getReportedStudentsCount() == null ? 0 : v.getReportedStudentsCount()) + "/" + (v.getClassSizeCount() == null ? 0 : v.getClassSizeCount()),
                         ((v.getAcceptedResultsCount() == null ? 0 : v.getAcceptedResultsCount()) == (v.getReportedStudentsCount() == null ? 0 : v.getReportedStudentsCount())
                                 && (v.getReportedStudentsCount() == null ? 0 : v.getReportedStudentsCount()) == (v.getClassSizeCount() == null ? 0 : v.getClassSizeCount()))
                                 ? "Нет" : "Да",
-                        (v.getUploadedByFio() == null || v.getUploadedByFio().isBlank()) ? "Аноним" : v.getUploadedByFio()
+                        (v.getUploadedByFio() == null || v.getUploadedByFio().isBlank()) ? "Аноним" : v.getUploadedByFio(),
+                        v.isActiveVersion(),
+                        hasAcceptedReportFile(v),
+                        reportFileExists(v),
+                        reportFilePathForLog(v)
                 ))
                 .toList();
     }
@@ -767,24 +780,30 @@ public class PaServiceImpl implements PaService {
     @Override
     @Transactional(readOnly = true)
     public byte[] downloadReportUploadLogExcel(String academicYear, String uploaderUsername, boolean admin) throws IOException {
-        List<PaDtos.ReportUploadLogRow> rows = reportUploadLog(academicYear, uploaderUsername, admin);
+        List<PaDtos.ReportUploadLogRow> rows = reportUploadLogRows(academicYear, uploaderUsername, admin, null);
         try (Workbook workbook = new XSSFWorkbook(); java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
             Sheet sheet = workbook.createSheet("Сдача ПА");
             Row header = sheet.createRow(0);
-            String[] headers = {"Дата", "Файл", "Предмет", "Параллель/класс", "Статус", "Сообщение", "Записей", "Проверить отчёт", "ФИО подгрузившего"};
+            String[] headers = {"ID", "Дата", "Файл", "Предмет", "Параллель/класс", "Педагог", "Статус", "Сообщение", "Записей", "Проверить отчёт", "ФИО подгрузившего", "Активная версия", "Файл принят для анализа", "Файл найден", "Путь к файлу"};
             for (int i = 0; i < headers.length; i++) header.createCell(i).setCellValue(headers[i]);
             int rowNum = 1;
             for (PaDtos.ReportUploadLogRow row : rows) {
                 Row x = sheet.createRow(rowNum++);
-                x.createCell(0).setCellValue(row.createdAt() == null ? "" : row.createdAt().toString());
-                x.createCell(1).setCellValue(row.fileName() == null ? "" : row.fileName());
-                x.createCell(2).setCellValue(row.subjectName() == null ? "" : row.subjectName());
-                x.createCell(3).setCellValue(row.scopeValue() == null ? "" : row.scopeValue());
-                x.createCell(4).setCellValue(row.status() == null ? "" : row.status());
-                x.createCell(5).setCellValue(row.message() == null ? "" : row.message());
-                x.createCell(6).setCellValue(row.recordsSummary() == null ? "" : row.recordsSummary());
-                x.createCell(7).setCellValue(row.checkReport() == null ? "" : row.checkReport());
-                x.createCell(8).setCellValue(row.uploadedByFio() == null ? "" : row.uploadedByFio());
+                x.createCell(0).setCellValue(row.reportVersionId() == null ? "" : String.valueOf(row.reportVersionId()));
+                x.createCell(1).setCellValue(row.createdAt() == null ? "" : row.createdAt().toString());
+                x.createCell(2).setCellValue(row.fileName() == null ? "" : row.fileName());
+                x.createCell(3).setCellValue(row.subjectName() == null ? "" : row.subjectName());
+                x.createCell(4).setCellValue(row.scopeValue() == null ? "" : row.scopeValue());
+                x.createCell(5).setCellValue(row.teacherFio() == null ? "" : row.teacherFio());
+                x.createCell(6).setCellValue(row.status() == null ? "" : row.status());
+                x.createCell(7).setCellValue(row.message() == null ? "" : row.message());
+                x.createCell(8).setCellValue(row.recordsSummary() == null ? "" : row.recordsSummary());
+                x.createCell(9).setCellValue(row.checkReport() == null ? "" : row.checkReport());
+                x.createCell(10).setCellValue(row.uploadedByFio() == null ? "" : row.uploadedByFio());
+                x.createCell(11).setCellValue(row.activeVersion() ? "Да" : "Нет");
+                x.createCell(12).setCellValue(row.uploadedBackSuccess() ? "Да" : "Нет");
+                x.createCell(13).setCellValue(row.sourceFileExists() ? "Да" : "Нет");
+                x.createCell(14).setCellValue(row.sourceFilePath() == null ? "" : row.sourceFilePath());
             }
             for (int i = 0; i < headers.length; i++) sheet.autoSizeColumn(i);
             workbook.write(out);
@@ -2000,6 +2019,22 @@ public class PaServiceImpl implements PaService {
                     || (version.getSourceFilePath() != null && !version.getSourceFilePath().isBlank())
                     || (version.getAcademicYear() != null && !version.getAcademicYear().isBlank()
                         && version.getSourceFileName() != null && !version.getSourceFileName().isBlank()));
+    }
+
+    private boolean reportFileExists(PaReportVersion version) {
+        try {
+            return Files.isRegularFile(resolveReportFilePath(version));
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private String reportFilePathForLog(PaReportVersion version) {
+        try {
+            return resolveReportFilePath(version).toString();
+        } catch (Exception ignored) {
+            return version == null ? "" : String.valueOf(version.getSourceFilePath() == null ? "" : version.getSourceFilePath());
+        }
     }
 
     private Integer parseInt(String value) {
