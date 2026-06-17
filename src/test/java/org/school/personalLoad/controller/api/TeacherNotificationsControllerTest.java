@@ -75,6 +75,20 @@ class TeacherNotificationsControllerTest {
     }
 
     @Test
+    void activeRowsCollapseDuplicateRows() {
+        ManualLoadEntry first = row(StudyPeriod.YEAR, 2);
+        fillDuplicateKey(first);
+        ManualLoadEntry duplicate = row(StudyPeriod.YEAR, 2);
+        fillDuplicateKey(duplicate);
+        when(manualLoadEntryRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(first, duplicate));
+
+        List<ManualLoadEntry> rows = controller().activeRows("2026/2027", LocalDate.of(2026, 9, 1));
+
+        assertEquals(List.of(first), rows);
+        assertEquals("2 С‡Р°СЃР°", controller().formatNotificationTotalLoad(rows));
+    }
+
+    @Test
     void teacherNameForNotificationUsesDativeNameFromDirectory() {
         TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
         teacher.setFioTeacher("Иванов Иван Иванович");
@@ -105,5 +119,15 @@ class TeacherNotificationsControllerTest {
         row.setStudyPeriod(period);
         row.setLoad(load);
         return row;
+    }
+
+    private void fillDuplicateKey(ManualLoadEntry row) {
+        row.setFioTeacher("РџРµРґР°РіРѕРі");
+        row.setNumberSchoolBuilding("1");
+        row.setClassName("8-А");
+        row.setSubjectName("Биология");
+        row.setEducationLevel(org.school.personalLoad.model.EducationLevel.BASIC);
+        row.setLoadFromDate(LocalDate.of(2026, 9, 1));
+        row.setLoadToDate(LocalDate.of(2027, 5, 31));
     }
 }

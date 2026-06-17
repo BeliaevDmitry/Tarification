@@ -338,7 +338,29 @@ public class TeacherNotificationsController {
                 .filter(r -> notificationLoadHours(r) > 0)
                 .filter(r -> r.getLoadFromDate() == null || !r.getLoadFromDate().isAfter(d))
                 .filter(r -> r.getLoadToDate() == null || !r.getLoadToDate().isBefore(d))
-                .collect(Collectors.toList());
+                .collect(Collectors.collectingAndThen(
+                        Collectors.toMap(this::notificationRowKey, r -> r, (first, second) -> first, LinkedHashMap::new),
+                        map -> new ArrayList<>(map.values())
+                ));
+    }
+
+    private String notificationRowKey(ManualLoadEntry row) {
+        return String.join("|",
+                normalizeNotificationValue(row.getFioTeacher()),
+                normalizeNotificationValue(row.getNumberSchoolBuilding()),
+                normalizeNotificationValue(row.getClassName()),
+                normalizeNotificationValue(row.getSubjectName()),
+                normalizeNotificationValue(row.getGroupNameEducationalPlan()),
+                row.getStudyPeriod() == null ? "" : row.getStudyPeriod().name(),
+                row.getEducationLevel() == null ? "" : row.getEducationLevel().name(),
+                String.valueOf(row.getLoadFromDate()),
+                String.valueOf(row.getLoadToDate()),
+                String.valueOf(notificationLoadHours(row))
+        );
+    }
+
+    private String normalizeNotificationValue(String value) {
+        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     private void upsert(String fio, String year, LocalDate d, String user) {

@@ -845,10 +845,34 @@ function manualRowActiveOnDate(row, referenceDate = currentDisplayDate()) {
     return (!from || from <= referenceDate) && (!to || referenceDate <= to);
 }
 
+function manualRowDuplicateKey(row) {
+    return [
+        teacherHoursKey(row?.fioTeacher),
+        normalizeBuildingCode(row?.numberSchoolBuilding),
+        normalizeClassName(row?.className),
+        String(row?.subjectName || "").trim().toLowerCase(),
+        String(row?.groupNameEducationalPlan || "").trim().toLowerCase(),
+        String(row?.studyPeriod || "YEAR"),
+        String(row?.educationLevel || ""),
+        String(row?.loadFromDate || ""),
+        String(row?.loadToDate || ""),
+        String(manualEntryLoadValue(row))
+    ].join("|");
+}
+
+function dedupeManualRows(rows = []) {
+    const byKey = new Map();
+    (rows || []).forEach((row) => {
+        const key = manualRowDuplicateKey(row);
+        if (!byKey.has(key)) byKey.set(key, row);
+    });
+    return Array.from(byKey.values());
+}
+
 function buildTeacherHoursByStudyPeriod(rows = [], referenceDate = currentDisplayDate()) {
     const result = {};
 
-    (rows || [])
+    dedupeManualRows(rows || [])
         .filter((entry) => String(entry?.fioTeacher || "").trim())
         .filter((entry) => manualRowActiveOnDate(entry, referenceDate))
         .forEach((entry) => {
