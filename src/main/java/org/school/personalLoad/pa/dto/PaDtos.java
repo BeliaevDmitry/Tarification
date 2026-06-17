@@ -97,11 +97,16 @@ public final class PaDtos {
                                      String fileName,
                                      String subjectName,
                                      String scopeValue,
+                                     String teacherFio,
                                      String status,
                                      String message,
                                      String recordsSummary,
                                      String checkReport,
-                                     String uploadedByFio) {
+                                     String uploadedByFio,
+                                     boolean activeVersion,
+                                     boolean uploadedBackSuccess,
+                                     boolean sourceFileExists,
+                                     String sourceFilePath) {
     }
 
     public record ReportFolderItem(Long reportVersionId,
