@@ -46,6 +46,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -130,10 +131,12 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
 
     @Override
     public PaAnalyticsDtos.RebuildAllResult rebuildAll(String academicYear) {
-        List<Long> reportVersionIds = reportVersionRepository.findAll().stream()
+        List<PaReportVersion> allVersions = reportVersionRepository.findAll();
+        Set<Long> effectivelyActiveIds = effectivelyActiveAcceptedReportIds(allVersions);
+        List<Long> reportVersionIds = allVersions.stream()
                 .filter(version -> Objects.equals(version.getAcademicYear(), academicYear))
                 .filter(version -> "ACCEPTED".equalsIgnoreCase(version.getStatus()))
-                .filter(PaReportVersion::isActiveVersion)
+                .filter(version -> effectivelyActiveIds.contains(version.getId()))
                 .filter(this::hasReportFileLocator)
                 .filter(version -> !isBlank(version.getSubjectName()) && !isBlank(version.getScopeValue()))
                 .filter(this::reportFileExists)
@@ -165,8 +168,12 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
     @Override
     @Transactional(readOnly = true)
     public PaAnalyticsDtos.ReportAnalysisDetails getDetails(Long reportVersionId) {
+        List<PaReportVersion> allVersions = reportVersionRepository.findAll();
+        Map<Long, PaReportVersion> versionsById = allVersions.stream()
+                .collect(Collectors.toMap(PaReportVersion::getId, version -> version, (first, second) -> first));
+        Set<Long> effectivelyActiveIds = effectivelyActiveAcceptedReportIds(allVersions);
         PaAnalyticsDtos.ReportAnalysisListItem summary = summaryRepository.findByReportVersionId(reportVersionId)
-                .map(summaryRow -> toListItem(summaryRow, reportVersionRepository.findById(reportVersionId).orElse(null)))
+                .map(summaryRow -> toListItem(summaryRow, versionsById.get(reportVersionId), effectivelyActiveIds))
                 .orElse(null);
         List<PaAnalyticsDtos.StudentResultRow> students = studentResultRepository
                 .findAllByReportVersionIdOrderByStudentFioAsc(reportVersionId)
@@ -189,18 +196,20 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
                                                                    Boolean onlyProblems,
                                                                    Boolean onlyNeedsReview,
                                                                    Boolean includeTechnical) {
-        Map<Long, PaReportVersion> versionsById = reportVersionRepository.findAll().stream()
+        List<PaReportVersion> allVersions = reportVersionRepository.findAll();
+        Set<Long> effectivelyActiveIds = effectivelyActiveAcceptedReportIds(allVersions);
+        Map<Long, PaReportVersion> versionsById = allVersions.stream()
                 .collect(Collectors.toMap(PaReportVersion::getId, version -> version, (first, second) -> first));
         return summaryRepository.findAllByAcademicYearOrderBySubjectNameAscClassNameAscTeacherFioAsc(academicYear)
                 .stream()
-                .filter(summary -> Boolean.TRUE.equals(includeTechnical) || isUserVisibleReport(summary, versionsById.get(summary.getReportVersionId())))
+                .filter(summary -> Boolean.TRUE.equals(includeTechnical) || isUserVisibleReport(summary, versionsById.get(summary.getReportVersionId()), effectivelyActiveIds))
                 .filter(summary -> matches(summary.getSubjectName(), subjectName))
                 .filter(summary -> matches(summary.getTeacherFio(), teacherFio))
                 .filter(summary -> matches(summary.getClassName(), className))
                 .filter(summary -> matches(summary.getWorkType(), workType))
                 .filter(summary -> !Boolean.TRUE.equals(onlyNeedsReview) || summary.isNeedsReview())
                 .filter(summary -> !Boolean.TRUE.equals(onlyProblems) || positive(summary.getProblemTasksCount()) || positive(summary.getProblemTopicsCount()))
-                .map(summary -> toListItem(summary, versionsById.get(summary.getReportVersionId())))
+                .map(summary -> toListItem(summary, versionsById.get(summary.getReportVersionId()), effectivelyActiveIds))
                 .sorted(Comparator.comparing(PaAnalyticsDtos.ReportAnalysisListItem::subjectName, Comparator.nullsLast(String::compareToIgnoreCase))
                         .thenComparing(PaAnalyticsDtos.ReportAnalysisListItem::className, Comparator.nullsLast(String::compareToIgnoreCase))
                         .thenComparing(PaAnalyticsDtos.ReportAnalysisListItem::teacherFio, Comparator.nullsLast(String::compareToIgnoreCase)))
@@ -623,6 +632,36 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
         return reportPath != null && Files.isRegularFile(reportPath);
     }
 
+    private Set<Long> effectivelyActiveAcceptedReportIds(List<PaReportVersion> versions) {
+        Map<String, Boolean> hasActiveByKey = versions.stream()
+                .filter(version -> "ACCEPTED".equalsIgnoreCase(nvl(version.getStatus())))
+                .filter(PaReportVersion::isActiveVersion)
+                .collect(Collectors.toMap(this::reportReplacementKey, version -> true, (first, second) -> true));
+        return versions.stream()
+                .filter(version -> "ACCEPTED".equalsIgnoreCase(nvl(version.getStatus())))
+                .filter(version -> version.getId() != null)
+                .filter(version -> version.isActiveVersion() || !hasActiveByKey.containsKey(reportReplacementKey(version)))
+                .map(PaReportVersion::getId)
+                .collect(Collectors.toSet());
+    }
+
+    private String reportReplacementKey(PaReportVersion version) {
+        return String.join("|",
+                normalize(version.getAcademicYear()),
+                normalize(version.getSubjectName()),
+                version.getScopeType() == null ? "" : version.getScopeType().name(),
+                normalizeClass(version.getScopeValue()),
+                version.getLevel() == null ? "" : version.getLevel().name(),
+                version.getWorkType() == null ? "" : version.getWorkType().name(),
+                version.getWorkDate() == null ? "" : version.getWorkDate().toString(),
+                normalizeFio(firstNonBlank(version.getTeacherFioNormalized(), version.getTeacherFio()))
+        );
+    }
+
+    private String firstNonBlank(String preferred, String fallback) {
+        return preferred != null && !preferred.isBlank() ? preferred : fallback;
+    }
+
     private PaReportVersion findReportVersion(Long reportVersionId) {
         return reportVersionRepository.findById(reportVersionId)
                 .orElseThrow(() -> new IllegalArgumentException("Версия отчёта ПА не найдена: " + reportVersionId));
@@ -646,7 +685,7 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
         summary.setLevel(version.getLevel() == null ? null : version.getLevel().name());
     }
 
-    private PaAnalyticsDtos.ReportAnalysisListItem toListItem(PaReportAnalysisSummary summary, PaReportVersion version) {
+    private PaAnalyticsDtos.ReportAnalysisListItem toListItem(PaReportAnalysisSummary summary, PaReportVersion version, Set<Long> effectivelyActiveIds) {
         return new PaAnalyticsDtos.ReportAnalysisListItem(
                 summary.getReportVersionId(),
                 summary.getAcademicYear(),
@@ -667,15 +706,15 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
                 summary.isNeedsReview(),
                 summary.getAnalysisStatus(),
                 summary.getAnalysisMessage(),
-                !isUserVisibleReport(summary, version)
+                !isUserVisibleReport(summary, version, effectivelyActiveIds)
         );
     }
 
-    private boolean isUserVisibleReport(PaReportAnalysisSummary summary, PaReportVersion version) {
+    private boolean isUserVisibleReport(PaReportAnalysisSummary summary, PaReportVersion version, Set<Long> effectivelyActiveIds) {
         if (version == null || summary == null) {
             return false;
         }
-        if (!version.isActiveVersion() || !"ACCEPTED".equalsIgnoreCase(nvl(version.getStatus()))) {
+        if (!effectivelyActiveIds.contains(version.getId()) || !"ACCEPTED".equalsIgnoreCase(nvl(version.getStatus()))) {
             return false;
         }
         if (!hasReportFileLocator(version) || isBlank(version.getSubjectName()) || isBlank(version.getScopeValue())) {

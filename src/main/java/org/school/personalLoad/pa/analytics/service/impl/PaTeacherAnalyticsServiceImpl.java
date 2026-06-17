@@ -77,6 +77,7 @@ public class PaTeacherAnalyticsServiceImpl implements PaTeacherAnalyticsService 
                                                                 String teacherFio) {
         Map<Long, PaReportVersion> versionsById = reportVersionRepository.findAll().stream()
                 .collect(Collectors.toMap(PaReportVersion::getId, Function.identity()));
+        Set<Long> effectivelyActiveIds = effectivelyActiveAcceptedReportIds(versionsById.values().stream().toList());
         return summaryRepository.findAllByAcademicYearOrderBySubjectNameAscClassNameAscTeacherFioAsc(academicYear)
                 .stream()
                 .filter(this::hasSuccessfulAnalysis)
@@ -84,7 +85,7 @@ public class PaTeacherAnalyticsServiceImpl implements PaTeacherAnalyticsService 
                 .filter(summary -> matches(summary.getSubjectName(), subjectName))
                 .filter(summary -> matches(summary.getTeacherFio(), teacherFio))
                 .filter(summary -> !Boolean.TRUE.equals(onlyNeedsReview) || summary.isNeedsReview())
-                .filter(summary -> isActiveAcceptedReport(summary, versionsById))
+                .filter(summary -> isActiveAcceptedReport(summary, versionsById, effectivelyActiveIds))
                 .toList();
     }
 
@@ -98,10 +99,10 @@ public class PaTeacherAnalyticsServiceImpl implements PaTeacherAnalyticsService 
                 || (!isBlank(version.getAcademicYear()) && !isBlank(version.getSourceFileName()));
     }
 
-    private boolean isActiveAcceptedReport(PaReportAnalysisSummary summary, Map<Long, PaReportVersion> versionsById) {
+    private boolean isActiveAcceptedReport(PaReportAnalysisSummary summary, Map<Long, PaReportVersion> versionsById, Set<Long> effectivelyActiveIds) {
         PaReportVersion version = versionsById.get(summary.getReportVersionId());
         return version != null
-                && version.isActiveVersion()
+                && effectivelyActiveIds.contains(version.getId())
                 && "ACCEPTED".equalsIgnoreCase(nvl(version.getStatus()))
                 && hasReportFileLocator(version)
                 && !isBlank(version.getSubjectName())
@@ -109,6 +110,36 @@ public class PaTeacherAnalyticsServiceImpl implements PaTeacherAnalyticsService 
                 && !isBlank(summary.getSubjectName())
                 && !isBlank(summary.getClassName())
                 && !isBlank(summary.getTeacherFio());
+    }
+
+    private Set<Long> effectivelyActiveAcceptedReportIds(List<PaReportVersion> versions) {
+        Map<String, Boolean> hasActiveByKey = versions.stream()
+                .filter(version -> "ACCEPTED".equalsIgnoreCase(nvl(version.getStatus())))
+                .filter(PaReportVersion::isActiveVersion)
+                .collect(Collectors.toMap(this::reportReplacementKey, version -> true, (first, second) -> true));
+        return versions.stream()
+                .filter(version -> "ACCEPTED".equalsIgnoreCase(nvl(version.getStatus())))
+                .filter(version -> version.getId() != null)
+                .filter(version -> version.isActiveVersion() || !hasActiveByKey.containsKey(reportReplacementKey(version)))
+                .map(PaReportVersion::getId)
+                .collect(Collectors.toSet());
+    }
+
+    private String reportReplacementKey(PaReportVersion version) {
+        return String.join("|",
+                normalizeTeacherKey(version.getAcademicYear()),
+                normalizeTeacherKey(version.getSubjectName()),
+                version.getScopeType() == null ? "" : version.getScopeType().name(),
+                normalizeTeacherKey(version.getScopeValue()),
+                version.getLevel() == null ? "" : version.getLevel().name(),
+                version.getWorkType() == null ? "" : version.getWorkType().name(),
+                version.getWorkDate() == null ? "" : version.getWorkDate().toString(),
+                normalizeTeacherKey(firstNonBlank(version.getTeacherFioNormalized(), version.getTeacherFio()))
+        );
+    }
+
+    private String firstNonBlank(String preferred, String fallback) {
+        return preferred != null && !preferred.isBlank() ? preferred : fallback;
     }
 
     private Map<Long, List<PaReportStudentResult>> loadStudentsByReport(List<PaReportAnalysisSummary> summaries) {
