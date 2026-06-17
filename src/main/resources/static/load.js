@@ -839,11 +839,18 @@ function accumulateManualByStudyPeriod(pair, entry) {
     }
 }
 
-function buildTeacherHoursByStudyPeriod(rows = []) {
+function manualRowActiveOnDate(row, referenceDate = currentDisplayDate()) {
+    const from = String(row?.loadFromDate || "");
+    const to = String(row?.loadToDate || "");
+    return (!from || from <= referenceDate) && (!to || referenceDate <= to);
+}
+
+function buildTeacherHoursByStudyPeriod(rows = [], referenceDate = currentDisplayDate()) {
     const result = {};
 
     (rows || [])
         .filter((entry) => String(entry?.fioTeacher || "").trim())
+        .filter((entry) => manualRowActiveOnDate(entry, referenceDate))
         .forEach((entry) => {
             const key = teacherHoursKey(entry.fioTeacher);
             if (!key) return;
@@ -855,6 +862,32 @@ function buildTeacherHoursByStudyPeriod(rows = []) {
             accumulateManualByStudyPeriod(result[key], entry);
         });
 
+    return result;
+}
+
+function addTeacherHours(target, source) {
+    Object.entries(source || {}).forEach(([key, pair]) => {
+        if (!target[key]) {
+            target[key] = { h1: 0, h2: 0 };
+        }
+        target[key].h1 += Number(pair?.h1 || 0);
+        target[key].h2 += Number(pair?.h2 || 0);
+    });
+    return target;
+}
+
+function buildTeacherHoursFromAssignments(buildingCode) {
+    const result = {};
+    const assignments = assignmentsForBuilding(buildingCode);
+    expandedRowsForSelectedBuilding().forEach((row) => {
+        const teacher = String(assignments[apiKeyOfRow(row)] || "").trim();
+        const key = teacherHoursKey(teacher);
+        if (!key) return;
+        if (!result[key]) {
+            result[key] = { h1: 0, h2: 0 };
+        }
+        accumulateSplit(result[key], row);
+    });
     return result;
 }
 
@@ -1563,6 +1596,7 @@ function teacherHoursInComplex(teacherName) {
 }
 
 function computeTeacherHourIndexes() {
+    const referenceDate = currentDisplayDate();
     const assignmentSignature = Object.entries(assignmentsForBuilding(selectedBuilding))
         .map(([k, v]) => `${k}:${String(v || "").trim()}`)
         .sort()
@@ -1598,21 +1632,24 @@ function computeTeacherHourIndexes() {
         ].join(":"))
         .join("||");
 
-    const cacheKey = `${sourceRevision}|${selectedBuilding}|${assignmentSignature}|${buildingSignature}|${complexSignature}`;
+    const cacheKey = `${sourceRevision}|${selectedBuilding}|${referenceDate}|${assignmentSignature}|${buildingSignature}|${complexSignature}`;
 
     if (teacherHourIndexesCacheKey === cacheKey) {
         return teacherHourIndexesCacheValue;
     }
 
     const selectedBuildingGroup = buildingGroupCode(selectedBuilding);
-
-    const scopedManualRows = (manualRows || [])
-        .filter((row) => rowMatchesBuildingAccess(row, selectedBuilding));
+    const selectedAssignmentHours = buildTeacherHoursFromAssignments(selectedBuilding);
+    const complexRowsOutsideSelected = (complexManualRows || [])
+        .filter((row) => !rowMatchesBuildingAccess(row, selectedBuilding));
 
     const buildingTeacherHours = {
-        [selectedBuildingGroup]: buildTeacherHoursByStudyPeriod(scopedManualRows)
+        [selectedBuildingGroup]: selectedAssignmentHours
     };
-    const complexTeacherHours = buildTeacherHoursByStudyPeriod(complexManualRows || []);
+    const complexTeacherHours = addTeacherHours(
+        buildTeacherHoursByStudyPeriod(complexRowsOutsideSelected, referenceDate),
+        selectedAssignmentHours
+    );
 
     teacherHourIndexesCacheKey = cacheKey;
     teacherHourIndexesCacheValue = { buildingTeacherHours, complexTeacherHours };

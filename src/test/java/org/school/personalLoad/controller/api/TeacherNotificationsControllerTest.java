@@ -11,6 +11,7 @@ import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.TeacherNotificationRecordRepository;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -43,6 +44,34 @@ class TeacherNotificationsControllerTest {
                 "18 часов",
                 controller.formatNotificationTotalLoad(List.of(row(StudyPeriod.YEAR, 18)))
         );
+    }
+
+    @Test
+    void formatNotificationTotalLoadUsesGroupLoadForSubgroups() {
+        TeacherNotificationsController controller = controller();
+        ManualLoadEntry subgroup = row(StudyPeriod.YEAR, 5);
+        subgroup.setGroupNameEducationalPlan("Группа 1");
+        subgroup.setGroupLoad(3);
+
+        assertEquals(
+                "3 часа",
+                controller.formatNotificationTotalLoad(List.of(subgroup))
+        );
+    }
+
+    @Test
+    void activeRowsIgnoreFutureRowsOnNotificationDate() {
+        ManualLoadEntry current = row(StudyPeriod.YEAR, 5);
+        current.setLoadFromDate(LocalDate.of(2026, 9, 1));
+        current.setLoadToDate(LocalDate.of(2026, 12, 31));
+        ManualLoadEntry future = row(StudyPeriod.YEAR, 5);
+        future.setLoadFromDate(LocalDate.of(2027, 1, 1));
+        future.setLoadToDate(LocalDate.of(2027, 5, 31));
+        when(manualLoadEntryRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(current, future));
+
+        List<ManualLoadEntry> rows = controller().activeRows("2026/2027", LocalDate.of(2026, 9, 1));
+
+        assertEquals(List.of(current), rows);
     }
 
     @Test

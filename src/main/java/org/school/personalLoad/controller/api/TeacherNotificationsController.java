@@ -199,7 +199,7 @@ public class TeacherNotificationsController {
         int totalH1 = 0;
         int totalH2 = 0;
         for (ManualLoadEntry row : rows) {
-            int hours = Optional.ofNullable(row.getLoad()).orElse(0);
+            int hours = notificationLoadHours(row);
             if (row.getStudyPeriod() == org.school.personalLoad.model.StudyPeriod.H1) {
                 totalH1 += hours;
             } else if (row.getStudyPeriod() == org.school.personalLoad.model.StudyPeriod.H2) {
@@ -261,7 +261,7 @@ public class TeacherNotificationsController {
         for (ManualLoadEntry row : rows) {
             String key = row.getSubjectName() + "|" + row.getClassName();
             SubjectLoad sl = map.computeIfAbsent(key, k -> new SubjectLoad(row.getSubjectName(), row.getClassName()));
-            int hours = Optional.ofNullable(row.getLoad()).orElse(0);
+            int hours = notificationLoadHours(row);
             if (row.getStudyPeriod() == org.school.personalLoad.model.StudyPeriod.H1) sl.h1 += hours;
             else if (row.getStudyPeriod() == org.school.personalLoad.model.StudyPeriod.H2) sl.h2 += hours;
             else { sl.h1 += hours; sl.h2 += hours; }
@@ -275,6 +275,14 @@ public class TeacherNotificationsController {
         int totalH2 = rows.stream().mapToInt(r -> r.h2).sum();
         if (totalH1 == totalH2) return String.valueOf(totalH1);
         return totalH1 + "/" + totalH2;
+    }
+
+    private int notificationLoadHours(ManualLoadEntry row) {
+        if (row == null) {
+            return 0;
+        }
+        return Optional.ofNullable(row.getGroupLoad())
+                .orElseGet(() -> Optional.ofNullable(row.getLoad()).orElse(0));
     }
 
     private LocalDate defaultLoadDate(String academicYear, String loadDate) {
@@ -325,9 +333,12 @@ public class TeacherNotificationsController {
         }
     }
 
-    private List<ManualLoadEntry> activeRows(String year, LocalDate d) {
-        return manualLoadEntryRepository.findAllByAcademicYear(year).stream().filter(r -> r.getLoad() != null && r.getLoad() > 0)
-                .filter(r -> r.getLoadToDate() == null || !r.getLoadToDate().isBefore(d)).collect(Collectors.toList());
+    List<ManualLoadEntry> activeRows(String year, LocalDate d) {
+        return manualLoadEntryRepository.findAllByAcademicYear(year).stream()
+                .filter(r -> notificationLoadHours(r) > 0)
+                .filter(r -> r.getLoadFromDate() == null || !r.getLoadFromDate().isAfter(d))
+                .filter(r -> r.getLoadToDate() == null || !r.getLoadToDate().isBefore(d))
+                .collect(Collectors.toList());
     }
 
     private void upsert(String fio, String year, LocalDate d, String user) {
