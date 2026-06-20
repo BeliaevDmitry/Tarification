@@ -23,21 +23,7 @@ import org.school.personalLoad.dto.ManualLoadHealthResponse;
 import org.school.personalLoad.dto.ManualLoadPlanFactSummary;
 import org.school.personalLoad.dto.ManualLoadProcessResult;
 import org.school.personalLoad.dto.ManualLoadStatsResponse;
-import org.school.personalLoad.model.SubjectAreaNames;
-import org.school.personalLoad.model.CurriculumPlanEntry;
-import org.school.personalLoad.model.ContinuityStatus;
-import org.school.personalLoad.model.EducationLevel;
-import org.school.personalLoad.model.EducationStage;
-import org.school.personalLoad.model.ManualLoadEntry;
-import org.school.personalLoad.model.MetaGroup;
-import org.school.personalLoad.model.ClassroomLeadershipEntry;
-import org.school.personalLoad.model.StudyPeriod;
-import org.school.personalLoad.model.SalarySettings;
-import org.school.personalLoad.model.SchoolBuilding;
-import org.school.personalLoad.model.TeacherDirectoryEntry;
-import org.school.personalLoad.model.SubjectWithGroup;
-import org.school.personalLoad.model.TarifficationPerson;
-import org.school.personalLoad.model.SubjectCatalogEntry;
+import org.school.personalLoad.model.*;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.SalarySettingsRepository;
@@ -262,7 +248,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             CurriculumPlanEntry rule = validateAgainstCurriculum(entry);
             int effectiveLoad = entry.getGroupLoad() != null ? entry.getGroupLoad() : entry.getLoad();
 
-            RuleKey key = new RuleKey(rule.getClassName(), rule.getSubjectName(), rule.getEducationLevel(), rule.getStudyPeriod());
+            RuleKey key = new RuleKey(rule.getClassName(), rule.getSubjectName(), rule.getCurriculumPart(), rule.getEducationLevel(), rule.getStudyPeriod());
             summaryByRule.computeIfAbsent(key, k -> new SummaryAccumulator(rule.getPlannedHours()))
                     .addActualHours(effectiveLoad);
 
@@ -335,6 +321,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             header.createCell(13).setCellValue("META_GROUP_ID");
             header.createCell(14).setCellValue("TEACHER_ID");
             header.createCell(15).setCellValue("SUBJECT_ID");
+            header.createCell(16).setCellValue("CURRICULUM_PART");
 
             int rowNum = 1;
             for (ManualLoadTemplateRow row : templateRows) {
@@ -355,9 +342,10 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 if (row.metaGroupId() != null) excelRow.createCell(13).setCellValue(row.metaGroupId());
                 if (row.teacherId() != null) excelRow.createCell(14).setCellValue(row.teacherId());
                 if (row.subjectId() != null) excelRow.createCell(15).setCellValue(row.subjectId());
+                excelRow.createCell(16).setCellValue((row.curriculumPart() == null ? CurriculumPart.CORE : row.curriculumPart()).name());
             }
 
-            for (int i = 0; i <= 15; i++) {
+            for (int i = 0; i <= 16; i++) {
                 sheet.autoSizeColumn(i);
             }
             workbook.write(out);
@@ -1562,6 +1550,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 Integer load = parseInteger(readCell(row, 8));
                 request.setLoad(load);
                 request.setGroupLoad(request.getGroupNameEducationalPlan() == null ? null : load);
+                request.setCurriculumPart(parseCurriculumPart(readCell(row, 16)));
                 request.setEducationLevel(parseEducationLevel(readCell(row, 9)));
                 request.setFioTeacher(fio);
                 request.setTeacherId(teacherId);
@@ -1677,7 +1666,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 row.getSubjectName(),
                 row.getGroupNameEducationalPlan(),
                 row.getStudyPeriod() == null ? StudyPeriod.YEAR : row.getStudyPeriod(),
-                row.getEducationLevel()
+                row.getCurriculumPart()
         );
     }
 
@@ -1689,7 +1678,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 row.getSubjectName(),
                 groupNameForStats(row),
                 row.getStudyPeriod() == null ? StudyPeriod.YEAR : row.getStudyPeriod(),
-                row.getEducationLevel()
+                row.getCurriculumPart()
         );
     }
 
@@ -1746,6 +1735,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         to.setClassName(from.getClassName());
         to.setSubjectName(from.getSubjectName());
         to.setStudyPeriod(from.getStudyPeriod());
+        to.setCurriculumPart(from.getCurriculumPart());
         to.setEducationLevel(from.getEducationLevel());
         to.setPlannedHours(from.getPlannedHours());
         to.setSubgroupRequired(from.isSubgroupRequired());
@@ -1804,13 +1794,14 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 range.startDate(),
                 range.endDate(),
                 loadHours,
+                curriculum.getCurriculumPart() == null ? CurriculumPart.CORE : curriculum.getCurriculumPart(),
                 level,
                 "",
                 null,
                 curriculum.getSubjectId(),
                 manualClassId(curriculum),
                 manualMetaGroupId(curriculum),
-                exportRowKey(academicYear, curriculum.getNumberSchoolBuilding(), curriculum.getClassName(), curriculum.getSubjectName(), groupName, studyPeriod, range.startDate(), range.endDate(), level)
+                exportRowKey(academicYear, curriculum.getNumberSchoolBuilding(), curriculum.getClassName(), curriculum.getSubjectName(), groupName, studyPeriod, range.startDate(), range.endDate(), curriculum.getCurriculumPart())
         );
         ManualLoadEntry existing = existingByKey.get(template.rowKey());
         if (existing == null) {
@@ -1821,7 +1812,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     template.subjectName(),
                     template.groupNameEducationalPlan(),
                     template.studyPeriod(),
-                    template.educationLevel()
+                    template.curriculumPart()
             ));
         }
         if (existing != null) {
@@ -1835,6 +1826,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     template.loadFromDate(),
                     template.loadToDate(),
                     template.load(),
+                    template.curriculumPart(),
                     template.educationLevel(),
                     existing.getFioTeacher(),
                     existing.getTeacherId(),
@@ -1857,7 +1849,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 row.getStudyPeriod() == null ? StudyPeriod.YEAR : row.getStudyPeriod(),
                 row.getLoadFromDate(),
                 row.getLoadToDate(),
-                row.getEducationLevel()
+                row.getCurriculumPart()
         );
     }
 
@@ -1869,7 +1861,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 row.getSubjectName(),
                 row.getGroupNameEducationalPlan(),
                 row.getStudyPeriod() == null ? StudyPeriod.YEAR : row.getStudyPeriod(),
-                row.getEducationLevel()
+                row.getCurriculumPart()
         );
     }
 
@@ -1886,9 +1878,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 String.valueOf(row.getMetaGroupId()),
                 normalizeToken(row.getClassName()),
                 normalizeToken(row.getGroupNameEducationalPlan()),
+                row.getCurriculumPart() == null ? CurriculumPart.CORE.name() : row.getCurriculumPart().name(),
                 String.valueOf(row.getGroupLoad() == null ? row.getLoad() : row.getGroupLoad()),
                 String.valueOf(row.getLoad()),
-                row.getEducationLevel() == null ? "" : row.getEducationLevel().name(),
                 row.getStudyPeriod() == null ? StudyPeriod.YEAR.name() : row.getStudyPeriod().name(),
                 String.valueOf(row.getLoadFromDate()),
                 String.valueOf(row.getLoadToDate())
@@ -1901,7 +1893,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                                     String subject,
                                     String group,
                                     StudyPeriod studyPeriod,
-                                    EducationLevel level) {
+                                    CurriculumPart curriculumPart) {
         return String.join("|",
                 normalizeToken(year),
                 normalizeToken(building),
@@ -1909,7 +1901,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 normalizeToken(subject),
                 normalizeToken(group),
                 normalizeToken(studyPeriod == null ? StudyPeriod.YEAR.name() : studyPeriod.name()),
-                normalizeToken(level == null ? EducationLevel.BASIC.name() : level.name()));
+                normalizeToken(curriculumPart == null ? CurriculumPart.CORE.name() : curriculumPart.name()));
     }
 
     private String exportRowKey(String year,
@@ -1920,7 +1912,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                                 StudyPeriod studyPeriod,
                                 LocalDate from,
                                 LocalDate to,
-                                EducationLevel level) {
+                                CurriculumPart curriculumPart) {
         return String.join("|",
                 normalizeToken(year),
                 normalizeToken(building),
@@ -1930,7 +1922,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 normalizeToken(studyPeriod == null ? StudyPeriod.YEAR.name() : studyPeriod.name()),
                 normalizeToken(from == null ? "" : from.toString()),
                 normalizeToken(to == null ? "" : to.toString()),
-                normalizeToken(level == null ? EducationLevel.BASIC.name() : level.name()));
+                normalizeToken(curriculumPart == null ? CurriculumPart.CORE.name() : curriculumPart.name()));
     }
 
     private java.util.Set<Long> scopedClassIds(ManualLoadBulkRequest request, List<ManualLoadEntry> entries) {
@@ -2121,7 +2113,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 || !"CLASS_ID".equalsIgnoreCase(readCell(header, 12).trim())
                 || !"META_GROUP_ID".equalsIgnoreCase(readCell(header, 13).trim())
                 || !"TEACHER_ID".equalsIgnoreCase(readCell(header, 14).trim())
-                || !"SUBJECT_ID".equalsIgnoreCase(readCell(header, 15).trim())) {
+                || !"SUBJECT_ID".equalsIgnoreCase(readCell(header, 15).trim())
+                || !"CURRICULUM_PART".equalsIgnoreCase(readCell(header, 16).trim())) {
             throw new IllegalArgumentException("Файл создан в старом формате. Выгрузите новый шаблон нагрузки и перенесите данные в него.");
         }
     }
@@ -2167,33 +2160,39 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         Long subjectId = request.getSubjectId();
         CurriculumPlanEntry rule;
         if (request.getMetaGroupId() != null) {
-            rule = findRuleByMetaGroupIdAndSubjectId(academicYear, request.getMetaGroupId(), subjectId, request.getEducationLevel(), period)
+            rule = findRuleByMetaGroupIdAndSubjectId(academicYear, request.getMetaGroupId(), subjectId, request.getCurriculumPart(), request.getEducationLevel(), period)
                     .orElseThrow(() -> new IllegalArgumentException("не найдено curriculum-правило метагруппы для meta_group_id=" + request.getMetaGroupId() + " и subject_id=" + subjectId));
             if (!isExplicitMetaGroupRow(rule)) {
                 throw new IllegalArgumentException("curriculum-правило meta_group_id=" + request.getMetaGroupId() + " не является explicit строкой метагруппы");
             }
             return;
         }
-        rule = findRuleByClassIdAndSubjectId(academicYear, request.getClassId(), subjectId, request.getEducationLevel(), period)
+        rule = findRuleByClassIdAndSubjectId(academicYear, request.getClassId(), subjectId, request.getCurriculumPart(), request.getEducationLevel(), period)
                 .orElseThrow(() -> new IllegalArgumentException("не найдено curriculum-правило обычного класса для class_id=" + request.getClassId() + " и subject_id=" + subjectId));
         if (!contributesToManualLoad(rule)) {
             throw new IllegalArgumentException("ordinary member row метагруппы не должна импортироваться как отдельная нагрузка");
         }
     }
 
-    private java.util.Optional<CurriculumPlanEntry> findRuleByClassIdAndSubjectId(String academicYear, Long classId, Long subjectId, EducationLevel educationLevel, StudyPeriod effectiveStudyPeriod) {
+    private java.util.Optional<CurriculumPlanEntry> findRuleByClassIdAndSubjectId(String academicYear, Long classId, Long subjectId, CurriculumPart curriculumPart, EducationLevel educationLevel, StudyPeriod effectiveStudyPeriod) {
         return candidateStudyPeriods(effectiveStudyPeriod).stream()
-                .map(period -> curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                        academicYear, classId, subjectId, educationLevel, period))
+                .map(period -> curriculumPart == null
+                        ? curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                                academicYear, classId, subjectId, educationLevel, period)
+                        : curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubject_IdAndCurriculumPartAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                                academicYear, classId, subjectId, curriculumPart, educationLevel, period))
                 .filter(java.util.Optional::isPresent)
                 .map(java.util.Optional::get)
                 .findFirst();
     }
 
-    private java.util.Optional<CurriculumPlanEntry> findRuleByMetaGroupIdAndSubjectId(String academicYear, Long metaGroupId, Long subjectId, EducationLevel educationLevel, StudyPeriod effectiveStudyPeriod) {
+    private java.util.Optional<CurriculumPlanEntry> findRuleByMetaGroupIdAndSubjectId(String academicYear, Long metaGroupId, Long subjectId, CurriculumPart curriculumPart, EducationLevel educationLevel, StudyPeriod effectiveStudyPeriod) {
         return candidateStudyPeriods(effectiveStudyPeriod).stream()
-                .map(period -> curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                        academicYear, metaGroupId, subjectId, educationLevel, period))
+                .map(period -> curriculumPart == null
+                        ? curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                                academicYear, metaGroupId, subjectId, educationLevel, period)
+                        : curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubject_IdAndCurriculumPartAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                                academicYear, metaGroupId, subjectId, curriculumPart, educationLevel, period))
                 .filter(java.util.Optional::isPresent)
                 .map(java.util.Optional::get)
                 .findFirst();
@@ -2213,6 +2212,11 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         if ("БАЗОВЫЙ".equals(value)) return EducationLevel.BASIC;
         if ("УГЛУБЛЁННЫЙ".equals(value) || "УГЛУБЛЕННЫЙ".equals(value)) return EducationLevel.ADVANCED;
         return EducationLevel.valueOf(value);
+    }
+
+    private CurriculumPart parseCurriculumPart(String raw) {
+        String value = String.valueOf(raw == null ? "" : raw).trim().toUpperCase(Locale.ROOT);
+        return value.isBlank() ? CurriculumPart.CORE : CurriculumPart.valueOf(value);
     }
 
     private String emptyToNull(String value) {
@@ -2259,6 +2263,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         entity.setLoad(request.getLoad());
         entity.setGroupNameEducationalPlan(request.getGroupNameEducationalPlan());
         entity.setGroupLoad(request.getGroupLoad());
+        entity.setCurriculumPart(request.getCurriculumPart() == null ? CurriculumPart.CORE : request.getCurriculumPart());
         entity.setEducationLevel(request.getEducationLevel());
         entity.setStudyPeriod(resolveStudyPeriod(effectiveAcademicYear, request.getClassName(), request.getStudyPeriod(), request.getLoadFromDate(), request.getLoadToDate()));
         entity.setLoadFromDate(request.getLoadFromDate());
@@ -2384,12 +2389,12 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             if (entry.getMetaGroupId() == null) {
                 return java.util.Optional.empty();
             }
-            return findRuleByMetaGroupIdAndSubjectId(entry.getAcademicYear(), entry.getMetaGroupId(), subjectId, entry.getEducationLevel(), effectiveStudyPeriod);
+            return findRuleByMetaGroupIdAndSubjectId(entry.getAcademicYear(), entry.getMetaGroupId(), subjectId, entry.getCurriculumPart(), entry.getEducationLevel(), effectiveStudyPeriod);
         }
         if (entry.getClassId() == null) {
             return java.util.Optional.empty();
         }
-        return findRuleByClassIdAndSubjectId(entry.getAcademicYear(), entry.getClassId(), subjectId, entry.getEducationLevel(), effectiveStudyPeriod)
+        return findRuleByClassIdAndSubjectId(entry.getAcademicYear(), entry.getClassId(), subjectId, entry.getCurriculumPart(), entry.getEducationLevel(), effectiveStudyPeriod)
                 .filter(row -> !isExplicitMetaGroupRow(row));
     }
 
@@ -2430,12 +2435,14 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private static class RuleKey {
         private final String className;
         private final String subjectName;
+        private final CurriculumPart curriculumPart;
         private final org.school.personalLoad.model.EducationLevel educationLevel;
         private final StudyPeriod studyPeriod;
 
-        private RuleKey(String className, String subjectName, org.school.personalLoad.model.EducationLevel educationLevel, StudyPeriod studyPeriod) {
+        private RuleKey(String className, String subjectName, CurriculumPart curriculumPart, org.school.personalLoad.model.EducationLevel educationLevel, StudyPeriod studyPeriod) {
             this.className = className;
             this.subjectName = subjectName;
+            this.curriculumPart = curriculumPart == null ? CurriculumPart.CORE : curriculumPart;
             this.educationLevel = educationLevel;
             this.studyPeriod = studyPeriod;
         }
@@ -2451,13 +2458,14 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             RuleKey ruleKey = (RuleKey) o;
             return className.equals(ruleKey.className)
                     && subjectName.equals(ruleKey.subjectName)
+                    && curriculumPart == ruleKey.curriculumPart
                     && educationLevel == ruleKey.educationLevel
                     && studyPeriod == ruleKey.studyPeriod;
         }
 
         @Override
         public int hashCode() {
-            return java.util.Objects.hash(className, subjectName, educationLevel, studyPeriod);
+            return java.util.Objects.hash(className, subjectName, curriculumPart, educationLevel, studyPeriod);
         }
     }
 
@@ -2472,6 +2480,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                                          LocalDate loadFromDate,
                                          LocalDate loadToDate,
                                          Integer load,
+                                         CurriculumPart curriculumPart,
                                          EducationLevel educationLevel,
                                          String fioTeacher,
                                          Long teacherId,

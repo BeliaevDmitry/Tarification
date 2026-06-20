@@ -6,6 +6,7 @@ import org.apache.poi.xwpf.usermodel.*;
 import org.school.personalLoad.dto.ServiceMemoDtos;
 import org.school.personalLoad.dto.ServiceMemoSettingsDto;
 import org.school.personalLoad.model.ManualLoadEntry;
+import org.school.personalLoad.model.CurriculumPart;
 import org.school.personalLoad.model.ServiceMemo;
 import org.school.personalLoad.model.StudyPeriodSettingKey;
 import org.school.personalLoad.model.TarifficationChanges;
@@ -656,6 +657,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         row.setLoadFromDate(source.getLoadFromDate());
         row.setLoadToDate(removalToDate);
         row.setGroupNameEducationalPlan(source.getGroupNameEducationalPlan());
+        row.setCurriculumPart(source.getCurriculumPart());
         row.setEducationLevel(source.getEducationLevel());
         row.setStudyPeriod(source.getStudyPeriod());
         row.setNumberSchoolBuilding(source.getNumberSchoolBuilding());
@@ -992,7 +994,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 String.valueOf(row.getLoad() == null ? 0 : row.getLoad()),
                 safe(row.getNumberSchoolBuilding()),
                 safe(row.getGroupNameEducationalPlan()),
-                String.valueOf(row.getEducationLevel()),
+                String.valueOf(row.getCurriculumPart() == null ? CurriculumPart.CORE : row.getCurriculumPart()),
                 String.valueOf(row.getStudyPeriod()));
     }
 

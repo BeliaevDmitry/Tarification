@@ -6,8 +6,8 @@ const TAB_PATHS = {
     '/subjects.html': 'SUBJECTS',
     '/curriculum.html': 'CURRICULUM',
     '/load.html': 'LOAD',
-    '/people-load.html': 'LOAD',
-    '/load-issues.html': 'LOAD',
+    '/people-load.html': 'PEOPLE_LOAD',
+    '/load-issues.html': 'LOAD_ISSUES',
     '/load-statistics.html': 'LOAD_STATS',
     '/service-notes.html': 'SERVICE_NOTES',
     '/settings.html': 'SETTINGS',
@@ -78,8 +78,8 @@ const NAV_ORDER = [
     { path: '/subjects.html', tab: 'SUBJECTS', label: 'Предметы' },
     { path: '/curriculum.html', tab: 'CURRICULUM', label: 'Учебный план' },
     { path: '/load.html', tab: 'LOAD', label: 'Нагрузка по корпусам' },
-    { path: '/people-load.html', tab: 'LOAD', label: 'Нагрузка по людям' },
-    { path: '/load-issues.html', tab: 'LOAD', label: 'Возможные ошибки' },
+    { path: '/people-load.html', tab: 'PEOPLE_LOAD', label: 'Нагрузка по людям' },
+    { path: '/load-issues.html', tab: 'LOAD_ISSUES', label: 'Возможные ошибки' },
     { path: '/load-statistics.html', tab: 'LOAD_STATS', label: 'Статистика нагрузки' },
     { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' },
     { path: '/subject-areas.html', tab: 'SUBJECT_AREAS', label: 'Предметные области' },
@@ -137,9 +137,9 @@ function navItemsForPath(pathname) {
     if (pathname === '/teachers.html' || pathname === '/teachers-notification.html' || pathname === '/service-notes.html') {
         return [
             { path: '/teachers.html', tab: 'TEACHERS', label: 'Персонал' },
-            { path: '/teachers.html#archive', tab: 'TEACHERS', label: 'Архив' },
-            { path: '/teachers.html#dismissals', tab: 'TEACHERS', label: 'Увольнения' },
-            { path: '/teachers.html#settings', tab: 'LOAD_SALARY', label: 'Настройки' },
+            { path: '/teachers.html#archive', tab: 'TEACHERS_ARCHIVE', label: 'Архив' },
+            { path: '/teachers.html#dismissals', tab: 'TEACHERS_DISMISSALS', label: 'Увольнения' },
+            { path: '/teachers.html#settings', tab: 'TEACHERS_SETTINGS', label: 'Настройки' },
             { path: '/service-notes.html', tab: 'SERVICE_NOTES', label: 'Служебные записки' },
             { path: '/teachers-notification.html', tab: 'HR_NOTIFICATIONS_VIEW', label: 'Уведомления' }
         ];
@@ -203,12 +203,12 @@ function tabPermissionMap(currentUser) {
 }
 
 function currentTab() {
-    if (window.location.pathname === '/load.html'
-        || window.location.pathname === '/people-load.html'
-        || window.location.pathname === '/load-issues.html') {
+    if (window.location.pathname === '/teachers.html') {
         const hash = String(window.location.hash || '').toLowerCase();
-        if (hash === '#stats') return 'LOAD_STATS';
-        return 'LOAD';
+        if (hash === '#archive') return 'TEACHERS_ARCHIVE';
+        if (hash === '#dismissals') return 'TEACHERS_DISMISSALS';
+        if (hash === '#settings') return 'TEACHERS_SETTINGS';
+        return 'TEACHERS';
     }
     if (window.location.pathname === '/contingent.html') {
         const hash = String(window.location.hash || '').toLowerCase();
@@ -246,7 +246,18 @@ function hasContingentAccess(currentUser) {
 function hasLoadAccess(currentUser) {
     if (currentUser.admin) return true;
     const permissions = tabPermissionMap(currentUser);
-    return Boolean(permissions.LOAD?.canView || permissions.LOAD_STATS?.canView);
+    return Boolean(
+        permissions.BUILDINGS?.canView
+        || permissions.CLASSES?.canView
+        || permissions.SUBJECTS?.canView
+        || permissions.CURRICULUM?.canView
+        || permissions.LOAD?.canView
+        || permissions.PEOPLE_LOAD?.canView
+        || permissions.LOAD_ISSUES?.canView
+        || permissions.LOAD_STATS?.canView
+        || permissions.SETTINGS?.canView
+        || permissions.SUBJECT_AREAS?.canView
+    );
 }
 
 function hasEducationalWorkAccess(currentUser) {

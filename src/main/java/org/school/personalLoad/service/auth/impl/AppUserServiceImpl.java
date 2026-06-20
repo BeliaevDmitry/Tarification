@@ -262,10 +262,10 @@ public class AppUserServiceImpl implements AppUserService {
         List<AppUserTabPermission> permissions = new ArrayList<>();
         for (AppTab tab : AppTab.navigableTabs()) {
             UserTabPermissionRequest requested = requestedByTab.get(tab);
-            boolean salaryPrivilegedRole = isSalaryPrivilegedRole(user);
-            boolean defaultCanView = tab == AppTab.LOAD_SALARY ? salaryPrivilegedRole : user.isCanView();
-            boolean defaultCanEdit = tab == AppTab.LOAD_SALARY ? false : user.isCanView() && user.isCanEdit();
-            boolean defaultCanExport = tab == AppTab.LOAD_SALARY ? salaryPrivilegedRole : defaultCanView;
+            boolean sensitive = isSensitivePermission(tab);
+            boolean defaultCanView = sensitive ? false : user.isCanView();
+            boolean defaultCanEdit = sensitive ? false : user.isCanView() && user.isCanEdit();
+            boolean defaultCanExport = sensitive ? false : defaultCanView;
             boolean canView = requested != null ? Boolean.TRUE.equals(requested.getCanView()) : defaultCanView;
             boolean canEdit = requested != null ? Boolean.TRUE.equals(requested.getCanEdit()) : defaultCanEdit;
             boolean canImport = requested != null ? Boolean.TRUE.equals(requested.getCanImport()) : defaultCanEdit;
@@ -289,9 +289,8 @@ public class AppUserServiceImpl implements AppUserService {
     private void saveDefaultPermissions(AppUser user, boolean canView, boolean canEdit) {
         List<AppUserTabPermission> permissions = AppTab.navigableTabs().stream()
                 .map(tab -> {
-                    if (tab == AppTab.LOAD_SALARY && user.getRole() != UserRole.ADMIN) {
-                        boolean salaryAccess = isSalaryPrivilegedRole(user);
-                        return buildPermission(user, tab, salaryAccess, false, false, salaryAccess);
+                    if (isSensitivePermission(tab) && user.getRole() != UserRole.ADMIN) {
+                        return buildPermission(user, tab, false, false, false, false);
                     }
                     return buildPermission(user, tab, canView, canEdit, canEdit, canView);
                 })
@@ -299,10 +298,8 @@ public class AppUserServiceImpl implements AppUserService {
         tabPermissionRepository.saveAll(permissions);
     }
 
-    private boolean isSalaryPrivilegedRole(AppUser user) {
-        return user.getRole() == UserRole.ADMIN
-                || user.getRole() == UserRole.DIRECTOR
-                || user.getRole() == UserRole.DEPUTY_DIRECTOR;
+    private boolean isSensitivePermission(AppTab tab) {
+        return tab == AppTab.LOAD_SALARY || tab == AppTab.OGE_MISMATCH_VIEW;
     }
 
     private AppUserTabPermission buildPermission(AppUser user, AppTab tab, boolean canView, boolean canEdit, boolean canImport, boolean canExport) {
@@ -332,24 +329,55 @@ public class AppUserServiceImpl implements AppUserService {
         EnumSet<AppTab> existingTabs = existing.stream()
                 .map(AppUserTabPermission::getTab)
                 .collect(java.util.stream.Collectors.toCollection(() -> EnumSet.noneOf(AppTab.class)));
+        Map<AppTab, AppUserTabPermission> existingByTab = existing.stream()
+                .collect(Collectors.toMap(AppUserTabPermission::getTab, Function.identity(), (left, right) -> left,
+                        () -> new EnumMap<>(AppTab.class)));
+        mergeLegacyNotificationPermission(existingByTab);
 
         List<AppUserTabPermission> missing = new ArrayList<>();
         for (AppTab tab : AppTab.navigableTabs()) {
             if (existingTabs.contains(tab)) {
                 continue;
             }
-            boolean canView = user.getRole() == UserRole.ADMIN ? true : user.isCanView();
-            boolean canEdit = user.getRole() == UserRole.ADMIN ? true : (user.isCanView() && user.isCanEdit());
-            if (tab == AppTab.LOAD_SALARY && user.getRole() != UserRole.ADMIN) {
-                boolean salaryAccess = isSalaryPrivilegedRole(user);
-                missing.add(buildPermission(user, tab, salaryAccess, false, false, salaryAccess));
+            AppUserTabPermission legacy = existingByTab.get(legacySourceTab(tab));
+            boolean canView = user.getRole() == UserRole.ADMIN || (legacy != null ? legacy.isCanView() : user.isCanView());
+            boolean canEdit = user.getRole() == UserRole.ADMIN || (legacy != null
+                    ? legacy.isCanEdit()
+                    : user.isCanView() && user.isCanEdit());
+            boolean canImport = user.getRole() == UserRole.ADMIN || (legacy != null ? legacy.isCanImport() : canEdit);
+            boolean canExport = user.getRole() == UserRole.ADMIN || (legacy != null ? legacy.isCanExport() : canView);
+            if (isSensitivePermission(tab) && user.getRole() != UserRole.ADMIN) {
+                missing.add(buildPermission(user, tab, false, false, false, false));
             } else {
-                missing.add(buildPermission(user, tab, canView, canEdit, canEdit, canView));
+                missing.add(buildPermission(user, tab, canView, canEdit, canImport, canExport));
             }
         }
         if (!missing.isEmpty()) {
             tabPermissionRepository.saveAll(missing);
         }
+    }
+
+    private void mergeLegacyNotificationPermission(Map<AppTab, AppUserTabPermission> existingByTab) {
+        AppUserTabPermission view = existingByTab.get(AppTab.HR_NOTIFICATIONS_VIEW);
+        AppUserTabPermission legacyEdit = existingByTab.get(AppTab.HR_NOTIFICATIONS_EDIT);
+        if (view == null || legacyEdit == null || !legacyEdit.isCanEdit() || view.isCanEdit()) {
+            return;
+        }
+        view.setCanView(true);
+        view.setCanEdit(true);
+        view.setCanImport(view.isCanImport() || legacyEdit.isCanImport());
+        view.setCanExport(view.isCanExport() || legacyEdit.isCanExport());
+        tabPermissionRepository.save(view);
+    }
+
+    private AppTab legacySourceTab(AppTab tab) {
+        if (tab == AppTab.PEOPLE_LOAD || tab == AppTab.LOAD_ISSUES || tab == AppTab.LOAD_STATS) {
+            return AppTab.LOAD;
+        }
+        if (tab == AppTab.TEACHERS_ARCHIVE || tab == AppTab.TEACHERS_DISMISSALS || tab == AppTab.TEACHERS_SETTINGS) {
+            return AppTab.TEACHERS;
+        }
+        return tab;
     }
 
     private List<TabPermissionSnapshot> loadPermissionSnapshots(AppUser user) {

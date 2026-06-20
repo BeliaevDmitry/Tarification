@@ -35,18 +35,35 @@ function currentAuthUser() {
     return window.tarificationAuth || null;
 }
 
-function canEditTeachers() {
+function canEditTeacherPermission(permissionKey) {
     const currentUser = currentAuthUser();
     if (currentUser?.admin) return true;
     const permissions = window.tarificationTabPermissions || {};
-    return Boolean(permissions.TEACHERS?.canEdit);
+    return Boolean(permissions[permissionKey]?.canEdit);
 }
 
-function salaryPermission() {
+function canEditTeachers() {
+    const tab = teachersTabFromHash();
+    const permissionKey = tab === "archive" ? "TEACHERS_ARCHIVE"
+        : tab === "dismissals" ? "TEACHERS_DISMISSALS"
+            : tab === "settings" ? "TEACHERS_SETTINGS" : "TEACHERS";
+    return canEditTeacherPermission(permissionKey);
+}
+
+function settingsPermission() {
     const user = currentAuthUser() || {};
     const permissions = window.tarificationTabPermissions || {};
-    const privilegedRole = user.role === "DIRECTOR" || user.role === "DEPUTY_DIRECTOR";
-    return Boolean(user.admin || privilegedRole || permissions.LOAD_SALARY?.canView);
+    return Boolean(user.admin || permissions.TEACHERS_SETTINGS?.canView);
+}
+
+function canViewTeachersTab(tab) {
+    const user = currentAuthUser() || {};
+    if (user.admin) return true;
+    const permissions = window.tarificationTabPermissions || {};
+    const permissionKey = tab === "archive" ? "TEACHERS_ARCHIVE"
+        : tab === "dismissals" ? "TEACHERS_DISMISSALS"
+            : tab === "settings" ? "TEACHERS_SETTINGS" : "TEACHERS";
+    return Boolean(permissions[permissionKey]?.canView);
 }
 
 function waitForAuth() {
@@ -105,7 +122,7 @@ function teachersTabFromHash() {
     const hash = String(window.location.hash || "").toLowerCase();
     if (hash === "#archive") return "archive";
     if (hash === "#dismissals") return "dismissals";
-    if (hash === "#settings") return salaryPermission() ? "settings" : "main";
+    if (hash === "#settings") return "settings";
     return "main";
 }
 
@@ -125,7 +142,9 @@ function updateHeaderNavActive(tab) {
 }
 
 function showTeachersTab(tab = teachersTabFromHash()) {
-    const safeTab = tab === "settings" && !salaryPermission() ? "main" : tab;
+    const safeTab = canViewTeachersTab(tab)
+        ? tab
+        : ["main", "archive", "dismissals", "settings"].find(canViewTeachersTab) || "main";
     if (safeTab !== tab) {
         history.replaceState(null, '', '/teachers.html');
     }
@@ -141,7 +160,7 @@ function showTeachersTab(tab = teachersTabFromHash()) {
 }
 
 function applySalarySettingsVisibility() {
-    const allowed = salaryPermission();
+    const allowed = settingsPermission();
     document.querySelectorAll('a[href="/teachers.html#settings"]').forEach((link) => {
         link.style.display = allowed ? '' : 'none';
     });
@@ -177,12 +196,12 @@ function renderTeachers(rows) {
                     <div class="row">
                         <button type="button" class="save-teacher-btn" data-id="${row.id}">Сохранить</button>
                         <input type="date" class="dismiss-date-input" value="${escapeHtml(row.dismissalDate || "")}" data-id="${row.id}">
-                        <button type="button" class="mark-dismiss-btn" data-id="${row.id}" ${canEditTeachers() ? "" : "disabled title=\"Требуется право редактирования кадров\""}>На увольнение</button>
+                        <button type="button" class="mark-dismiss-btn" data-id="${row.id}" ${canEditTeacherPermission("TEACHERS_DISMISSALS") ? "" : "disabled title=\"Требуется право редактирования увольнений\""}>На увольнение</button>
                         <input type="date" class="plan-dismiss-date-input" value="${escapeHtml(row.plannedDismissalDate || "")}" data-id="${row.id}" data-allow-readonly="true">
                         <input type="text" class="plan-dismiss-comment-input" value="${escapeHtml(row.plannedDismissalComment || "")}" data-id="${row.id}" placeholder="Комментарий" data-allow-readonly="true">
-                        <button type="button" class="mark-plan-dismiss-btn" data-id="${row.id}" data-allow-readonly="true">Планирует уволиться</button>
-                        ${row.dismissalDate ? `<button type="button" class="restore-teacher-btn" data-id="${row.id}">Восстановить</button>` : ""}
-                        <button type="button" class="archive-teacher-btn" data-id="${row.id}">В архив</button>
+                        <button type="button" class="mark-plan-dismiss-btn" data-id="${row.id}" data-allow-readonly="true" ${canEditTeacherPermission("TEACHERS_DISMISSALS") ? "" : "disabled"}>Планирует уволиться</button>
+                        ${row.dismissalDate ? `<button type="button" class="restore-teacher-btn" data-id="${row.id}" ${canEditTeacherPermission("TEACHERS_DISMISSALS") ? "" : "disabled"}>Восстановить</button>` : ""}
+                        <button type="button" class="archive-teacher-btn" data-id="${row.id}" ${canEditTeacherPermission("TEACHERS_ARCHIVE") ? "" : "disabled"}>В архив</button>
                         <button type="button" class="danger-btn delete-teacher-btn" data-id="${row.id}">Удалить</button>
                     </div>
                 </td>`;
@@ -330,7 +349,7 @@ function renderArchive(rows) {
             <td>${escapeHtml(row.numberSchoolBuilding || "")}</td>
             <td>${escapeHtml(row.dismissalDate || "")}</td>
             <td>${escapeHtml(row.archivedAt || "")}</td>
-            <td><button type="button" class="unarchive-teacher-btn" data-id="${row.id}">Вернуть в персонал</button></td>
+            <td><button type="button" class="unarchive-teacher-btn" data-id="${row.id}" ${canEditTeacherPermission("TEACHERS_ARCHIVE") ? "" : "disabled"}>Вернуть в персонал</button></td>
         </tr>
     `).join("");
     ui.archiveBody.querySelectorAll(".unarchive-teacher-btn").forEach((btn) => {

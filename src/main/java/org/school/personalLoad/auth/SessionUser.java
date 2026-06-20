@@ -48,13 +48,13 @@ public class SessionUser implements Serializable {
     }
 
     public boolean canViewSalary() {
-        if (isAdmin() || role == UserRole.DIRECTOR || role == UserRole.DEPUTY_DIRECTOR) return true;
+        if (isAdmin()) return true;
         if (!canView) return false;
         return tabPermissions.stream().anyMatch(permission -> permission.getTab() == AppTab.LOAD_SALARY && permission.isCanView());
     }
 
     public boolean canExportSalary() {
-        if (isAdmin() || role == UserRole.DIRECTOR || role == UserRole.DEPUTY_DIRECTOR) return true;
+        if (isAdmin()) return true;
         if (!canView) return false;
         return tabPermissions.stream().anyMatch(permission -> permission.getTab() == AppTab.LOAD_SALARY && permission.isCanExport());
     }

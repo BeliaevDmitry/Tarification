@@ -9,24 +9,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.school.personalLoad.model.*;
 import org.springframework.mock.web.MockMultipartFile;
 import org.school.personalLoad.dto.ManualLoadBulkRequest;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadHealthResponse;
 import org.school.personalLoad.dto.ManualLoadStatsResponse;
-import org.school.personalLoad.model.CurriculumPlanEntry;
-import org.school.personalLoad.model.EducationLevel;
-import org.school.personalLoad.model.EducationStage;
-import org.school.personalLoad.model.ManualLoadEntry;
-import org.school.personalLoad.model.MetaGroup;
-import org.school.personalLoad.model.ClassroomLeadershipEntry;
-import org.school.personalLoad.model.StudyPeriod;
-import org.school.personalLoad.model.SalarySettings;
-import org.school.personalLoad.model.SchoolBuilding;
-import org.school.personalLoad.model.SubjectCatalogEntry;
-import org.school.personalLoad.model.SubjectLevelCoefficientEntry;
-import org.school.personalLoad.model.SubjectType;
-import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.SalarySettingsRepository;
@@ -333,6 +321,8 @@ class ManualLoadServiceImplBulkReplaceTest {
             assertFalse(sheet.getRow(1).getCell(2).getStringCellValue().equals("5-Б"));
             assertEquals("CLASS_ID", sheet.getRow(0).getCell(12).getStringCellValue());
             assertEquals("META_GROUP_ID", sheet.getRow(0).getCell(13).getStringCellValue());
+            assertEquals("CURRICULUM_PART", sheet.getRow(0).getCell(16).getStringCellValue());
+            assertEquals("CORE", sheet.getRow(1).getCell(16).getStringCellValue());
         }
     }
 
@@ -390,15 +380,15 @@ class ManualLoadServiceImplBulkReplaceTest {
         explicitMeta.setMetaGroupId(501L);
         explicitMeta.setSubject(subject(23L, "Физика"));
         when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(assignedMeta));
-        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                "2025/2026", 501L, 23L, EducationLevel.BASIC, StudyPeriod.YEAR))
+        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubject_IdAndCurriculumPartAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", 501L, 23L, CurriculumPart.CORE, EducationLevel.BASIC, StudyPeriod.YEAR))
                 .thenReturn(Optional.of(explicitMeta));
         when(tarifficationProcessingService.addingGroup(any(), any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         service.processCurrentManualLoad("2025/2026");
 
-        verify(curriculumPlanEntryRepository).findFirstByAcademicYearAndMetaGroupIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                "2025/2026", 501L, 23L, EducationLevel.BASIC, StudyPeriod.YEAR);
+        verify(curriculumPlanEntryRepository).findFirstByAcademicYearAndMetaGroupIdAndSubject_IdAndCurriculumPartAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", 501L, 23L, CurriculumPart.CORE, EducationLevel.BASIC, StudyPeriod.YEAR);
         verify(curriculumPlanService, never()).findRule(anyString(), anyString(), anyString(), anyString(), any(), any());
     }
 
@@ -587,11 +577,11 @@ class ManualLoadServiceImplBulkReplaceTest {
                 importRow("СП1", "5-А", "Математика", 5, 101L, null, 10L, 21L),
                 importRow("СП1", "МГ:5 ФИЗИКА", "Физика", 3, null, 501L, 10L, 23L)
         ));
-        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                "2025/2026", 101L, 21L, EducationLevel.BASIC, StudyPeriod.YEAR))
+        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubject_IdAndCurriculumPartAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", 101L, 21L, CurriculumPart.CORE, EducationLevel.BASIC, StudyPeriod.YEAR))
                 .thenReturn(Optional.of(ordinaryRule));
-        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                "2025/2026", 501L, 23L, EducationLevel.BASIC, StudyPeriod.YEAR))
+        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndMetaGroupIdAndSubject_IdAndCurriculumPartAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", 501L, 23L, CurriculumPart.CORE, EducationLevel.BASIC, StudyPeriod.YEAR))
                 .thenReturn(Optional.of(explicitMetaRule));
         when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -655,8 +645,8 @@ class ManualLoadServiceImplBulkReplaceTest {
         MockMultipartFile file = editableImportFile(true, List.of(
                 importRow("СП1", "5-Б", "Физика", 3, 102L, null, 10L, 23L)
         ));
-        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubject_IdAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
-                "2025/2026", 102L, 23L, EducationLevel.BASIC, StudyPeriod.YEAR))
+        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubject_IdAndCurriculumPartAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", 102L, 23L, CurriculumPart.CORE, EducationLevel.BASIC, StudyPeriod.YEAR))
                 .thenReturn(Optional.of(metaMember));
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> service.importWorkbook("2025/2026", file));
@@ -901,7 +891,7 @@ class ManualLoadServiceImplBulkReplaceTest {
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             var sheet = workbook.createSheet("LOAD_EDITABLE");
             var header = sheet.createRow(0);
-            String[] headers = {"Учебный год", "Корпус", "Класс", "Предмет", "Группа", "Период", "С", "По", "Часы", "Уровень", "ФИО педагога", "ROW_KEY", "CLASS_ID", "META_GROUP_ID", "TEACHER_ID", "SUBJECT_ID"};
+            String[] headers = {"Учебный год", "Корпус", "Класс", "Предмет", "Группа", "Период", "С", "По", "Часы", "Уровень", "ФИО педагога", "ROW_KEY", "CLASS_ID", "META_GROUP_ID", "TEACHER_ID", "SUBJECT_ID", "CURRICULUM_PART"};
             int headerCount = includeFkColumns ? headers.length : 12;
             for (int i = 0; i < headerCount; i++) {
                 header.createCell(i).setCellValue(headers[i]);
@@ -926,6 +916,7 @@ class ManualLoadServiceImplBulkReplaceTest {
                     if (source.metaGroupId() != null) row.createCell(13).setCellValue(source.metaGroupId());
                     if (source.teacherId() != null) row.createCell(14).setCellValue(source.teacherId());
                     if (source.subjectId() != null) row.createCell(15).setCellValue(source.subjectId());
+                    row.createCell(16).setCellValue("CORE");
                 }
             }
             workbook.write(out);

@@ -107,6 +107,10 @@ public class ManualLoadEntry {
     private Integer groupLoad;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "curriculum_part")
+    private CurriculumPart curriculumPart = CurriculumPart.CORE;
+
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EducationLevel educationLevel;
 

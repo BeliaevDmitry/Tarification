@@ -18,9 +18,9 @@
 --                    coalesce(meta_group_id, -1),
 --                    lower(trim(coalesce(class_name, ''))),
 --                    lower(trim(coalesce(group_name_educational_plan, ''))),
+--                    coalesce(curriculum_part, 'CORE'),
 --                    coalesce(group_load, load, 0),
 --                    coalesce(load, 0),
---                    coalesce(education_level, ''),
 --                    coalesce(study_period, 'YEAR'),
 --                    load_from_date,
 --                    load_to_date
@@ -34,6 +34,9 @@
 -- ORDER BY academic_year, fio_teacher, class_name, subject_name, load_from_date, id;
 
 BEGIN;
+
+ALTER TABLE manual_load_entry
+    ADD COLUMN IF NOT EXISTS curriculum_part varchar(32) DEFAULT 'CORE';
 
 WITH ranked AS (
     SELECT id,
@@ -51,9 +54,9 @@ WITH ranked AS (
                    coalesce(meta_group_id, -1),
                    lower(trim(coalesce(class_name, ''))),
                    lower(trim(coalesce(group_name_educational_plan, ''))),
+                   coalesce(curriculum_part, 'CORE'),
                    coalesce(group_load, load, 0),
                    coalesce(load, 0),
-                   coalesce(education_level, ''),
                    coalesce(study_period, 'YEAR'),
                    load_from_date,
                    load_to_date

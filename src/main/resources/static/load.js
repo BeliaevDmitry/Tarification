@@ -851,9 +851,9 @@ function manualRowDuplicateKey(row) {
         normalizeBuildingCode(row?.numberSchoolBuilding),
         normalizeClassName(row?.className),
         String(row?.subjectName || "").trim().toLowerCase(),
+        String(row?.curriculumPart || "CORE"),
         String(row?.groupNameEducationalPlan || "").trim().toLowerCase(),
         String(row?.studyPeriod || "YEAR"),
-        String(row?.educationLevel || ""),
         String(row?.loadFromDate || ""),
         String(row?.loadToDate || ""),
         String(manualEntryLoadValue(row))
@@ -916,12 +916,12 @@ function buildTeacherHoursFromAssignments(buildingCode) {
 }
 
 function apiKeyOfRow(row) {
-    return `${row.className}|${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}|${rowStudyPeriod(row)}${groupSuffix(row)}`;
+    return `${row.className}|${row.subjectName}|${row.curriculumPart || "CORE"}|${rowStudyPeriod(row)}${groupSuffix(row)}`;
 }
 
 function subjectKeyOfRow(row) {
     const periodToken = "YEAR";
-    return `${row.subjectName}|${row.curriculumPart || "CORE"}|${row.educationLevel}|${periodToken}${groupSuffix(row)}`;
+    return `${row.subjectName}|${row.curriculumPart || "CORE"}|${periodToken}${groupSuffix(row)}`;
 }
 
 function highSchoolUnifiedSubject(row) {
@@ -944,7 +944,6 @@ function rowsToSyncForCurriculumRow(curriculumRow) {
         row.className === curriculumRow.className
         && row.subjectName === curriculumRow.subjectName
         && (row.curriculumPart || "CORE") === (curriculumRow.curriculumPart || "CORE")
-        && row.educationLevel === curriculumRow.educationLevel
         && groupSuffix(row) === groupSuffix(curriculumRow)
     );
     return matched.length ? matched : [curriculumRow];
@@ -1346,7 +1345,7 @@ function subjectConflictKey(row) {
         normalizeBuildingCode(row.numberSchoolBuilding),
         normalizeClassName(row.className),
         String(row.subjectName || "").trim().toUpperCase(),
-        String(row.educationLevel || ""),
+        String(row.curriculumPart || "CORE"),
         String(manualEntryStudyPeriod(row) || "YEAR"),
         String(row.groupNameEducationalPlan || "").trim().toUpperCase()
     ].join("|");
@@ -1397,14 +1396,22 @@ function prefillFromManualLoad(referenceDate = referencePlanningDate()) {
             normalizeBuildingCode(row.numberSchoolBuilding) === normalizeBuildingCode(entry.numberSchoolBuilding)
             && row.className === entry.className
             && row.subjectName === entry.subjectName
-            && row.educationLevel === entry.educationLevel
+            && (!entry.curriculumPart || (row.curriculumPart || "CORE") === entry.curriculumPart)
             && String(row.__groupIndex ? `ГРУППА ${row.__groupIndex}` : "").trim().toUpperCase() === entryGroup
         );
         if (!candidates.length) return null;
+        let resolvedCandidates = candidates;
+        if (!entry.curriculumPart) {
+            const sameLevel = candidates.filter((row) => String(row.educationLevel || "") === String(entry.educationLevel || ""));
+            if (sameLevel.length) resolvedCandidates = sameLevel;
+            const entryHours = Number(entry.groupLoad ?? entry.load ?? 0);
+            const sameHours = resolvedCandidates.filter((row) => Number(row.plannedHours || 0) === entryHours);
+            if (sameHours.length) resolvedCandidates = sameHours;
+        }
         const effectivePeriod = manualEntryStudyPeriod(entry);
-        return candidates.find((row) => rowStudyPeriod(row) === effectivePeriod)
-            || candidates.find((row) => rowStudyPeriod(row) === "YEAR")
-            || candidates[0];
+        return resolvedCandidates.find((row) => rowStudyPeriod(row) === effectivePeriod)
+            || resolvedCandidates.find((row) => rowStudyPeriod(row) === "YEAR")
+            || resolvedCandidates[0];
     };
 
     const grouped = new Map();
@@ -1506,12 +1513,12 @@ function prefillFromManualLoad(referenceDate = referencePlanningDate()) {
     });
 }
 
-function continuityStatusKey(buildingCode, className, subjectName, educationLevel, groupName, teacherName) {
+function continuityStatusKey(buildingCode, className, subjectName, curriculumPart, groupName, teacherName) {
     return [
         normalizeBuildingCode(buildingCode),
         normalizeClassName(className),
         String(subjectName || "").trim().toLowerCase(),
-        String(educationLevel || "").trim().toUpperCase(),
+        String(curriculumPart || "CORE").trim().toUpperCase(),
         String(groupName || "").trim().toLowerCase(),
         String(teacherName || "").trim().toLowerCase()
     ].join("|");
@@ -1532,7 +1539,7 @@ function buildContinuityStatusIndex(referenceDate) {
             entry.numberSchoolBuilding,
             entry.className,
             entry.subjectName,
-            entry.educationLevel,
+            entry.curriculumPart,
             entry.groupNameEducationalPlan,
             entry.fioTeacher
         );
@@ -2059,7 +2066,7 @@ function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
         if (!rowMatchesBuildingAccess(entry, buildingCode)) return false;
         if (normalizeClassName(entry.className) !== normalizeClassName(curriculumRow.className)) return false;
         if (String(entry.subjectName || "").trim() !== String(curriculumRow.subjectName || "").trim()) return false;
-        if (String(entry.educationLevel || "") !== String(curriculumRow.educationLevel || "")) return false;
+        if (entry.curriculumPart && String(entry.curriculumPart) !== String(curriculumRow.curriculumPart || "CORE")) return false;
         if (String(manualEntryStudyPeriod(entry) || "YEAR") !== String(targetPeriod || "YEAR")) return false;
         const entryGroup = String(entry.groupNameEducationalPlan || "").trim().toUpperCase();
         return entryGroup === targetGroup;
@@ -2644,7 +2651,7 @@ function renderTable() {
                         item.numberSchoolBuilding,
                         item.className,
                         item.subjectName,
-                        item.educationLevel,
+                        item.curriculumPart,
                         continuityGroupName(item),
                         rowTeacher
                     )) || "")
@@ -2765,6 +2772,7 @@ async function saveBuildingLoad() {
             load: Number(row.plannedHours || 0),
             groupNameEducationalPlan: row.__groupIndex ? `Группа ${row.__groupIndex}` : null,
             groupLoad: row.__groupIndex ? Number(row.plannedHours || 0) : null,
+            curriculumPart: row.curriculumPart || "CORE",
             educationLevel: row.educationLevel,
             studyPeriod: rowStudyPeriod(row),
             loadFromDate: rowLoadFromDate,
@@ -2788,6 +2796,7 @@ async function saveBuildingLoad() {
             load: Number(row.plannedHours || 0),
             groupNameEducationalPlan: row.__groupIndex ? `Группа ${row.__groupIndex}` : null,
             groupLoad: row.__groupIndex ? Number(row.plannedHours || 0) : null,
+            curriculumPart: row.curriculumPart || "CORE",
             educationLevel: row.educationLevel,
             studyPeriod: rowStudyPeriod(row),
             loadFromDate: plan.fromDate,
@@ -2803,7 +2812,7 @@ async function saveBuildingLoad() {
             String(item.metaGroupId || ""),
             normalizeClassName(item.className),
             String(item.subjectName || "").trim().toUpperCase(),
-            String(item.educationLevel || ""),
+            String(item.curriculumPart || "CORE"),
             String(item.studyPeriod || "YEAR"),
             String(item.groupNameEducationalPlan || "").trim().toUpperCase(),
             String(item.fioTeacher || "").trim().toUpperCase(),

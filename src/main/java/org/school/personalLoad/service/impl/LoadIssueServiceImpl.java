@@ -257,9 +257,9 @@ public class LoadIssueServiceImpl implements LoadIssueService {
                 normalize(row.getNumberSchoolBuilding()),
                 normalize(row.getClassName()),
                 normalize(row.getSubjectName()),
+                row.getCurriculumPart() == null ? CurriculumPart.CORE.name() : row.getCurriculumPart().name(),
                 normalize(row.getGroupNameEducationalPlan()),
                 row.getStudyPeriod() == null ? StudyPeriod.YEAR.name() : row.getStudyPeriod().name(),
-                row.getEducationLevel() == null ? "" : row.getEducationLevel().name(),
                 String.valueOf(row.getLoadFromDate()),
                 String.valueOf(row.getLoadToDate()),
                 String.valueOf(row.getGroupLoad() == null ? row.getLoad() : row.getGroupLoad())

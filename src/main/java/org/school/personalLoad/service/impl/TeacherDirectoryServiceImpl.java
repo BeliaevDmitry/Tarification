@@ -271,6 +271,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                     vacancyEntry.setLoad(loadEntry.getLoad());
                     vacancyEntry.setGroupNameEducationalPlan(loadEntry.getGroupNameEducationalPlan());
                     vacancyEntry.setGroupLoad(loadEntry.getGroupLoad());
+                    vacancyEntry.setCurriculumPart(loadEntry.getCurriculumPart());
                     vacancyEntry.setEducationLevel(loadEntry.getEducationLevel());
                     vacancyEntry.setStudyPeriod(loadEntry.getStudyPeriod());
                     vacancyEntry.setLoadFromDate(vacancyFrom);

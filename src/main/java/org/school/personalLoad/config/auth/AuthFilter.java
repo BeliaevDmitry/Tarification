@@ -48,11 +48,12 @@ public class AuthFilter extends OncePerRequestFilter {
             Map.entry("/subjects.html", AppTab.SUBJECTS),
             Map.entry("/curriculum.html", AppTab.CURRICULUM),
             Map.entry("/load.html", AppTab.LOAD),
-            Map.entry("/people-load.html", AppTab.LOAD),
-            Map.entry("/load-issues.html", AppTab.LOAD),
+            Map.entry("/people-load.html", AppTab.PEOPLE_LOAD),
+            Map.entry("/load-issues.html", AppTab.LOAD_ISSUES),
+            Map.entry("/load-statistics.html", AppTab.LOAD_STATS),
             Map.entry("/service-notes.html", AppTab.SERVICE_NOTES),
             Map.entry("/settings.html", AppTab.SETTINGS),
-            Map.entry("/teachers.html", AppTab.TEACHERS),
+            Map.entry("/subject-areas.html", AppTab.SUBJECT_AREAS),
             Map.entry("/teachers-notification.html", AppTab.HR_NOTIFICATIONS_VIEW),
             Map.entry("/educational-work.html", AppTab.EDUCATIONAL_WORK),
             Map.entry("/vsoko.html", AppTab.VSOKO_VIEW),
@@ -116,10 +117,8 @@ public class AuthFilter extends OncePerRequestFilter {
             return;
         }
 
-        if (("/load.html".equals(path) || "/people-load.html".equals(path) || "/load-issues.html".equals(path))
-                && !currentUser.canViewTab(AppTab.LOAD)
-                && !currentUser.canViewTab(AppTab.LOAD_STATS)) {
-            rejectForbidden(request, response, "У пользователя нет прав на просмотр раздела нагрузки");
+        if ("/teachers.html".equals(path) && !hasAnyHrPageAccess(currentUser)) {
+            rejectForbidden(request, response, "У пользователя нет прав на просмотр раздела кадров");
             return;
         }
 
@@ -150,6 +149,13 @@ public class AuthFilter extends OncePerRequestFilter {
         return "/admin.html".equals(path) || path.startsWith("/api/admin/");
     }
 
+    private boolean hasAnyHrPageAccess(SessionUser user) {
+        return user.canViewTab(AppTab.TEACHERS)
+                || user.canViewTab(AppTab.TEACHERS_ARCHIVE)
+                || user.canViewTab(AppTab.TEACHERS_DISMISSALS)
+                || user.canViewTab(AppTab.TEACHERS_SETTINGS);
+    }
+
     private AppTab apiTabForPath(String path) {
         if (path.startsWith("/api/building-groups")) return AppTab.BUILDINGS;
         if (path.startsWith("/api/buildings")) return AppTab.BUILDINGS;
@@ -157,12 +163,16 @@ public class AuthFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/classes")) return AppTab.CLASSES;
         if (path.startsWith("/api/subjects")) return AppTab.SUBJECTS;
         if (path.startsWith("/api/curriculum")) return AppTab.CURRICULUM;
+        if (path.startsWith("/api/manual-load/issues")) return AppTab.LOAD_ISSUES;
+        if (path.startsWith("/api/manual-load/stats") || path.startsWith("/api/manual-load/health")) return AppTab.LOAD_STATS;
+        if (path.startsWith("/api/manual-load/export-full") || path.startsWith("/api/manual-load/export-consolidated")) return AppTab.PEOPLE_LOAD;
         if (path.startsWith("/api/manual-load")) return AppTab.LOAD;
-        if (path.startsWith("/api/primary-subjects")) return AppTab.LOAD;
+        if (path.startsWith("/api/primary-subjects")) return AppTab.PEOPLE_LOAD;
         if (path.startsWith("/api/service-memos")) return AppTab.SERVICE_NOTES;
         if (path.startsWith("/api/settings/")) return AppTab.SETTINGS;
-        if (path.startsWith("/api/teachers-notification")) return AppTab.HR_NOTIFICATIONS_EDIT;
-        if (path.matches("^/api/teachers/\\d+/plan-dismiss$")) return AppTab.HR_NOTIFICATIONS_EDIT;
+        if (path.startsWith("/api/teachers-notification")) return AppTab.HR_NOTIFICATIONS_VIEW;
+        if (path.matches("^/api/teachers/\\d+/(plan-dismiss|dismiss|restore)$")) return AppTab.TEACHERS_DISMISSALS;
+        if (path.matches("^/api/teachers/\\d+/(archive|unarchive)$")) return AppTab.TEACHERS_ARCHIVE;
         if (path.startsWith("/api/teachers")) return AppTab.TEACHERS;
         if (path.startsWith("/api/admin/users")) return AppTab.USERS;
         if (path.startsWith("/api/educational-work")) return AppTab.EDUCATIONAL_WORK;

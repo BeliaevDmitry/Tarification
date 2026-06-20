@@ -1100,20 +1100,59 @@ dialog::backdrop {
 
 #summary-table {
     min-width: 1500px;
+    width: 1500px;
+    table-layout: fixed;
 }
 
 #summary-table th,
 #summary-table td {
+    box-sizing: border-box;
+    width: 120px;
     min-width: 120px;
+    max-width: 120px;
 }
 
-#summary-table th:first-child,
-#summary-table td:first-child {
+#summary-table .summary-building-row > th:first-child,
+#summary-table .summary-part-row > td:first-child,
+#summary-table .summary-sum-row > td:first-child,
+#summary-table .subject-area-cell {
     position: sticky;
     left: 0;
-    z-index: 6;
-    background: #fff;
+    z-index: 12;
+    width: 280px;
     min-width: 280px;
+    max-width: 280px;
+    background: #fff !important;
+}
+
+#summary-table .summary-building-row > th:nth-child(2),
+#summary-table .summary-part-row > td:nth-child(2),
+#summary-table .summary-sum-row > td:nth-child(2),
+#summary-table .subject-name-cell:not(.subject-name-wide-cell) {
+    position: sticky;
+    left: 280px;
+    z-index: 11;
+    width: 260px;
+    min-width: 260px;
+    max-width: 260px;
+    background: #fff !important;
+    box-shadow: 2px 0 0 #d6dae3;
+}
+
+#summary-table .subject-name-wide-cell {
+    position: sticky;
+    left: 0;
+    z-index: 12;
+    width: 540px;
+    min-width: 540px;
+    max-width: 540px;
+    background: #fff !important;
+    box-shadow: 2px 0 0 #d6dae3;
+}
+
+#summary-table .summary-building-row > th:first-child,
+#summary-table .summary-building-row > th:nth-child(2) {
+    z-index: 15;
 }
 
 #summary-table .summary-direction-row th {
