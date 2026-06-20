@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.auth.AuthExceptions.ForbiddenException;
 import org.school.personalLoad.auth.AuthSessionUtils;
 import org.school.personalLoad.auth.SessionUser;
+import org.school.personalLoad.auth.AppTab;
 import org.school.personalLoad.dto.SalarySettingsRequest;
 import org.school.personalLoad.model.SalarySettings;
 import org.school.personalLoad.repository.SalarySettingsRepository;
@@ -22,14 +23,14 @@ public class SalarySettingsController {
 
     @GetMapping
     public ResponseEntity<SalarySettings> get(HttpServletRequest httpServletRequest) {
-        requireSalaryAccess(httpServletRequest);
+        requireSettingsAccess(httpServletRequest, false);
         return ResponseEntity.ok(currentSettings());
     }
 
     @PutMapping
     public ResponseEntity<SalarySettings> update(@RequestBody SalarySettingsRequest request,
                                                  HttpServletRequest httpServletRequest) {
-        requireSalaryAccess(httpServletRequest);
+        requireSettingsAccess(httpServletRequest, true);
         if (request == null || request.getStudentHourRate() == null || request.getStudentHourRate().compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Человеко-час должен быть больше 0");
         }
@@ -47,10 +48,13 @@ public class SalarySettingsController {
         });
     }
 
-    private void requireSalaryAccess(HttpServletRequest request) {
+    private void requireSettingsAccess(HttpServletRequest request, boolean edit) {
         SessionUser user = AuthSessionUtils.requiredUser(request);
-        if (!user.canViewSalary()) {
-            throw new ForbiddenException("Нет прав на настройки расчёта зарплаты");
+        boolean allowed = edit
+                ? user.canEditTab(AppTab.TEACHERS_SETTINGS)
+                : user.canViewTab(AppTab.TEACHERS_SETTINGS) || user.canViewSalary();
+        if (!allowed) {
+            throw new ForbiddenException("Нет прав на настройки кадров");
         }
     }
 }

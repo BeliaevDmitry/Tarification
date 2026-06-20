@@ -753,6 +753,10 @@ function renderSummaryTable() {
         split: hasSemesterSplitForClass(c)
     }));
     const rows = buildSummaryRows(allColumns);
+    const summaryTable = ui.summaryHead.closest("table");
+    if (summaryTable) {
+        summaryTable.style.width = `${Math.max(1500, 540 + classDescriptors.length * 120)}px`;
+    }
 
     ui.summaryHead.innerHTML = "";
     ui.summaryBody.innerHTML = "";
@@ -792,7 +796,7 @@ function renderSummaryTable() {
             tr.innerHTML = `<td>${esc(row.title)}</td><td></td>${classDescriptors.map(() => "<td></td>").join("")}`;
         } else if (row.type === "subject") {
             const lead = row.subjectColspan === 2
-                ? `<td colspan="2" class="subject-name-cell">${esc(row.subjectName)}</td>`
+                ? `<td colspan="2" class="subject-name-cell subject-name-wide-cell">${esc(row.subjectName)}</td>`
                 : `${row.areaRowspan > 0 ? `<td rowspan="${esc(row.areaRowspan)}" class="subject-area-cell">${esc(row.areaLabel || "")}</td>` : ""}<td class="subject-name-cell">${esc(row.subjectName)}</td>`;
             tr.innerHTML = `${lead}` + classDescriptors
                 .map((col) => `<td class="hours-cell-wrap">${classCellMarkup(row.perClass[col.classKey], row, col)}</td>`)
@@ -1011,7 +1015,30 @@ async function exportCurriculumParallelsFile() {
     }
 }
 
-async function reload() {
+function captureCurriculumScroll() {
+    const wrap = ui.summaryBody?.closest(".sheet-wrap");
+    return {
+        tableLeft: wrap?.scrollLeft || 0,
+        tableTop: wrap?.scrollTop || 0,
+        windowX: window.scrollX || 0,
+        windowY: window.scrollY || 0
+    };
+}
+
+function restoreCurriculumScroll(state) {
+    if (!state) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        const wrap = ui.summaryBody?.closest(".sheet-wrap");
+        if (wrap) {
+            wrap.scrollLeft = state.tableLeft;
+            wrap.scrollTop = state.tableTop;
+            wrap.dispatchEvent(new Event("scroll"));
+        }
+        window.scrollTo(state.windowX, state.windowY);
+    }));
+}
+
+async function reload(scrollState = captureCurriculumScroll()) {
     const [curriculum, classRows, buildingRows, subjectRows, settingRows, metaGroupRows, loadLimits] = await Promise.all([
         api("/api/curriculum"),
         api("/api/classroom-leadership"),
@@ -1042,6 +1069,7 @@ async function reload() {
     renderSubjectOptions();
     syncStudyPeriodControls();
     renderSummaryTable();
+    restoreCurriculumScroll(scrollState);
 }
 
 function bindEvents() {

@@ -298,10 +298,9 @@ function childrenCount(row) {
 function salaryPermission() {
     const user = window.tarificationAuth || {};
     const permissions = window.tarificationTabPermissions || {};
-    const privilegedRole = user.role === "DIRECTOR" || user.role === "DEPUTY_DIRECTOR";
     return {
-        canView: Boolean(user.admin || privilegedRole || permissions.LOAD_SALARY?.canView),
-        canExport: Boolean(user.admin || privilegedRole || permissions.LOAD_SALARY?.canExport)
+        canView: Boolean(user.admin || permissions.LOAD_SALARY?.canView),
+        canExport: Boolean(user.admin || permissions.LOAD_SALARY?.canExport)
     };
 }
 

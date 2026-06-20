@@ -350,9 +350,9 @@ public class TeacherNotificationsController {
                 normalizeNotificationValue(row.getNumberSchoolBuilding()),
                 normalizeNotificationValue(row.getClassName()),
                 normalizeNotificationValue(row.getSubjectName()),
+                row.getCurriculumPart() == null ? "CORE" : row.getCurriculumPart().name(),
                 normalizeNotificationValue(row.getGroupNameEducationalPlan()),
                 row.getStudyPeriod() == null ? "" : row.getStudyPeriod().name(),
-                row.getEducationLevel() == null ? "" : row.getEducationLevel().name(),
                 String.valueOf(row.getLoadFromDate()),
                 String.valueOf(row.getLoadToDate()),
                 String.valueOf(notificationLoadHours(row))

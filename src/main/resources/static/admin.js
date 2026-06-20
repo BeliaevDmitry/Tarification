@@ -12,33 +12,39 @@ function applyAcademicYearScope(path) {
 }
 const TAB_GROUPS = [
     {
-        key: 'CORE',
-        label: 'Базовые справочники',
+        key: 'LOAD_MODULE',
+        label: 'Нагрузка',
         tabs: [
             { key: 'BUILDINGS', label: 'Корпуса' },
             { key: 'CLASSES', label: 'Классы' },
             { key: 'SUBJECTS', label: 'Предметы' },
+            { key: 'CURRICULUM', label: 'Учебный план' },
+            { key: 'LOAD', label: 'Нагрузка по корпусам' },
+            { key: 'PEOPLE_LOAD', label: 'Нагрузка по людям' },
+            { key: 'LOAD_ISSUES', label: 'Возможные ошибки' },
+            { key: 'LOAD_STATS', label: 'Статистика нагрузки' },
+            { key: 'SETTINGS', label: 'Настройки' },
             { key: 'SUBJECT_AREAS', label: 'Предметные области' }
         ]
     },
     {
-        key: 'PLANNING',
-        label: 'Планирование и нагрузка',
+        key: 'HR',
+        label: 'Кадры',
         tabs: [
-            { key: 'CURRICULUM', label: 'Учебный план' },
-            { key: 'LOAD', label: 'Нагрузка по корпусам' },
-            { key: 'LOAD_STATS', label: 'Нагрузка: статистика' },
-            { key: 'LOAD_SALARY', label: 'Нагрузка: расчёт денег (ЗП)' }
+            { key: 'TEACHERS', label: 'Персонал' },
+            { key: 'TEACHERS_ARCHIVE', label: 'Архив' },
+            { key: 'TEACHERS_DISMISSALS', label: 'Увольнения' },
+            { key: 'TEACHERS_SETTINGS', label: 'Настройки' },
+            { key: 'SERVICE_NOTES', label: 'Служебные записки' },
+            { key: 'HR_NOTIFICATIONS_VIEW', label: 'Уведомления' }
         ]
     },
     {
-        key: 'HR',
-        label: 'Кадры и документы',
+        key: 'SENSITIVE',
+        label: 'Чувствительные данные',
         tabs: [
-            { key: 'TEACHERS', label: 'Кадры' },
-            { key: 'HR_NOTIFICATIONS_VIEW', label: 'Кадры: уведомления (просмотр)' },
-            { key: 'HR_NOTIFICATIONS_EDIT', label: 'Кадры: уведомления' },
-            { key: 'SERVICE_NOTES', label: 'Служебные записки' }
+            { key: 'LOAD_SALARY', label: 'Нагрузка: расчёт денег (ЗП)', sensitive: true },
+            { key: 'OGE_MISMATCH_VIEW', label: 'ОГЭ: Нестыковки (просмотр)', sensitive: true }
         ]
     },
     {
@@ -50,10 +56,10 @@ const TAB_GROUPS = [
         ]
     },
     {
-        key: 'SETTINGS',
-        label: 'Настройки',
+        key: 'EDUCATIONAL_WORK',
+        label: 'Воспитательная работа',
         tabs: [
-            { key: 'SETTINGS', label: 'Настройки' }
+            { key: 'EDUCATIONAL_WORK', label: 'Воспитательная работа' }
         ]
     },
     {
@@ -63,7 +69,6 @@ const TAB_GROUPS = [
             { key: 'VSOKO_VIEW', label: 'ВСОКО/ПА: просмотр' },
             { key: 'VSOKO_EDIT', label: 'ВСОКО/ПА: редактирование' },
             { key: 'OGE_UPLOAD_VIEW', label: 'ОГЭ: Выгрузка (просмотр)' },
-            { key: 'OGE_MISMATCH_VIEW', label: 'ОГЭ: Нестыковки (просмотр)' },
             { key: 'OGE_EXTERNAL_WORKS_VIEW', label: 'ОГЭ: Внешние работы пробники (просмотр)' },
             { key: 'OGE_TEACHER_BINDING_VIEW', label: 'ОГЭ: Привязка к педагогу (просмотр)' },
             { key: 'OGE_SCORE_VIEW', label: 'ОГЭ: Баллы за задания (просмотр)' },
@@ -658,7 +663,8 @@ function renderPermissionMatrix(targetBody, selectedPermissions = [], prefix = '
     const byTab = permissionMap(selectedPermissions);
     targetBody.innerHTML = TAB_GROUPS.map((group) => {
         const groupRows = group.tabs.map((tab) => {
-            const current = byTab[tab.key] || { canView: tab.key !== 'USERS' && tab.key !== 'LOAD_SALARY', canEdit: false, canImport: false, canExport: tab.key !== 'LOAD_SALARY' };
+            const defaultView = tab.key !== 'USERS' && !tab.sensitive;
+            const current = byTab[tab.key] || { canView: defaultView, canEdit: false, canImport: false, canExport: defaultView };
             return `
                 <tr data-tab-row="${tab.key}" data-tab-group="${group.key}">
                     <td class="permission-tab-cell">${tab.label}</td>
@@ -906,6 +912,13 @@ function applyRoleBaseValues(prefix) {
         const imp = targetBody.querySelector(`[data-tab-import="${tab.key}"]`);
         const exp = targetBody.querySelector(`[data-tab-export="${tab.key}"]`);
         if (!view || !edit || !imp || !exp || view.disabled) return;
+        if (tab.sensitive) {
+            view.checked = false;
+            edit.checked = false;
+            imp.checked = false;
+            exp.checked = false;
+            return;
+        }
         view.checked = true;
         edit.checked = allowEdit;
         imp.checked = allowEdit;

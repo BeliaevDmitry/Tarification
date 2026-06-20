@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.model.AcademicYearConfig;
 import org.school.personalLoad.model.ContinuityStatus;
 import org.school.personalLoad.model.CurriculumPlanEntry;
+import org.school.personalLoad.model.CurriculumPart;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.repository.AcademicYearRepository;
@@ -141,17 +142,17 @@ public class AcademicYearServiceImpl implements AcademicYearService {
                     List<String> classCandidates = continuityClassCandidates(source.getClassName());
                     for (String targetClass : classCandidates) {
                         CurriculumPlanEntry curriculum = curriculumByClassSubjectPeriod.get(
-                                classSubjectPeriodKey(targetClass, source.getSubjectName(), period)
+                                classSubjectPeriodKey(targetClass, source.getSubjectName(), source.getCurriculumPart(), period)
                         );
                         if (curriculum == null && period != StudyPeriod.YEAR) {
                             curriculum = curriculumByClassSubjectPeriod.get(
-                                    classSubjectPeriodKey(targetClass, source.getSubjectName(), StudyPeriod.YEAR)
+                                    classSubjectPeriodKey(targetClass, source.getSubjectName(), source.getCurriculumPart(), StudyPeriod.YEAR)
                             );
                         }
                         if (curriculum == null) {
                             continue;
                         }
-                        String targetKey = joinKey(targetClass, source.getSubjectName(), source.getGroupNameEducationalPlan());
+                        String targetKey = joinKey(targetClass, source.getSubjectName(), source.getCurriculumPart(), source.getGroupNameEducationalPlan());
                         if (targetExisting.containsKey(targetKey)) {
                             return null;
                         }
@@ -179,6 +180,7 @@ public class AcademicYearServiceImpl implements AcademicYearService {
         return joinKey(
                 entry.getClassName(),
                 entry.getSubjectName(),
+                entry.getCurriculumPart(),
                 entry.getGroupNameEducationalPlan()
         );
     }
@@ -187,6 +189,7 @@ public class AcademicYearServiceImpl implements AcademicYearService {
         return joinKey(
                 entry.getClassName(),
                 entry.getSubjectName(),
+                entry.getCurriculumPart(),
                 ""
         );
     }
@@ -195,6 +198,7 @@ public class AcademicYearServiceImpl implements AcademicYearService {
         return joinKey(
                 entry.getClassName(),
                 entry.getSubjectName(),
+                entry.getCurriculumPart(),
                 ""
         );
     }
@@ -203,23 +207,25 @@ public class AcademicYearServiceImpl implements AcademicYearService {
         return joinKey(
                 entry.getClassName(),
                 entry.getSubjectName(),
+                entry.getCurriculumPart(),
                 ""
         );
     }
 
     private String classSubjectPeriodKey(CurriculumPlanEntry entry) {
         StudyPeriod period = entry.getStudyPeriod() == null ? StudyPeriod.YEAR : entry.getStudyPeriod();
-        return classSubjectPeriodKey(entry.getClassName(), entry.getSubjectName(), period);
+        return classSubjectPeriodKey(entry.getClassName(), entry.getSubjectName(), entry.getCurriculumPart(), period);
     }
 
-    private String classSubjectPeriodKey(String className, String subjectName, StudyPeriod studyPeriod) {
-        return joinKey(className, subjectName, studyPeriod == null ? StudyPeriod.YEAR.name() : studyPeriod.name());
+    private String classSubjectPeriodKey(String className, String subjectName, CurriculumPart curriculumPart, StudyPeriod studyPeriod) {
+        return joinKey(className, subjectName, curriculumPart, studyPeriod == null ? StudyPeriod.YEAR.name() : studyPeriod.name());
     }
 
-    private String joinKey(String className, String subjectName, String groupNameEducationalPlan) {
+    private String joinKey(String className, String subjectName, CurriculumPart curriculumPart, String groupNameEducationalPlan) {
         return String.join("|",
                 normalizeKey(className),
                 normalizeKey(subjectName),
+                (curriculumPart == null ? CurriculumPart.CORE : curriculumPart).name(),
                 normalizeKey(groupNameEducationalPlan));
     }
 
@@ -275,6 +281,7 @@ public class AcademicYearServiceImpl implements AcademicYearService {
         entry.setLoad(curriculum.getPlannedHours() == null ? 0 : curriculum.getPlannedHours().intValue());
         entry.setGroupNameEducationalPlan(source.getGroupNameEducationalPlan());
         entry.setGroupLoad(source.getGroupLoad() == null ? entry.getLoad() : source.getGroupLoad());
+        entry.setCurriculumPart(curriculum.getCurriculumPart());
         entry.setEducationLevel(curriculum.getEducationLevel());
         StudyPeriod studyPeriod = curriculum.getStudyPeriod() == null ? StudyPeriod.YEAR : curriculum.getStudyPeriod();
         entry.setStudyPeriod(studyPeriod);
