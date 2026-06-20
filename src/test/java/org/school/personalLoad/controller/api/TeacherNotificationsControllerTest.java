@@ -85,7 +85,7 @@ class TeacherNotificationsControllerTest {
         List<ManualLoadEntry> rows = controller().activeRows("2026/2027", LocalDate.of(2026, 9, 1));
 
         assertEquals(List.of(first), rows);
-        assertEquals("2 С‡Р°СЃР°", controller().formatNotificationTotalLoad(rows));
+        assertEquals("2 часа", controller().formatNotificationTotalLoad(rows));
     }
 
     @Test

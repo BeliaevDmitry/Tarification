@@ -14,6 +14,7 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.service.CurriculumImportService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
+import org.school.personalLoad.util.CurriculumLoadStandard;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -224,6 +225,15 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         summaryStyle.setFillForegroundColor(IndexedColors.LEMON_CHIFFON.getIndex());
         summaryStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
 
+        CellStyle exceededMaximumStyle = workbook.createCellStyle();
+        exceededMaximumStyle.cloneStyleFrom(summaryStyle);
+        exceededMaximumStyle.setFillForegroundColor(IndexedColors.RED.getIndex());
+        exceededMaximumStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        Font exceededMaximumFont = workbook.createFont();
+        exceededMaximumFont.setBold(true);
+        exceededMaximumFont.setColor(IndexedColors.WHITE.getIndex());
+        exceededMaximumStyle.setFont(exceededMaximumFont);
+
         Row titleRow = sheet.createRow(0);
         titleRow.setHeightInPoints(28);
         titleRow.createCell(0).setCellValue("Учебный план по " + parallel + " параллели, " + academicYear);
@@ -290,7 +300,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             }
         }
 
-        rowNum = appendParallelTotalRows(sheet, rowNum, entries, classColumns, summaryStyle);
+        rowNum = appendParallelTotalRows(sheet, rowNum, entries, classColumns, summaryStyle, exceededMaximumStyle, parallel);
 
         for (int r = 1; r < rowNum; r++) {
             Row row = sheet.getRow(r);
@@ -313,12 +323,52 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                                         int startRow,
                                         List<CurriculumPlanEntry> entries,
                                         List<ClassColumn> classColumns,
-                                        CellStyle style) {
+                                        CellStyle style,
+                                        CellStyle exceededStyle,
+                                        int parallel) {
         int rowNum = startRow;
         rowNum = appendParallelTotalRow(sheet, rowNum, "Итого основная часть", entries, classColumns, style, CurriculumPart.CORE);
         rowNum = appendParallelTotalRow(sheet, rowNum, "Итого формируемая часть", entries, classColumns, style, CurriculumPart.FORMABLE);
         rowNum = appendParallelTotalRow(sheet, rowNum, "Итого основная+формируемая часть", entries, classColumns, style, CurriculumPart.CORE, CurriculumPart.FORMABLE);
+        rowNum = appendMaximumLoadRow(sheet, rowNum, entries, classColumns, style, exceededStyle, parallel);
         return appendParallelTotalRow(sheet, rowNum, "Итого внеурочная часть", entries, classColumns, style, CurriculumPart.EXTRACURRICULAR);
+    }
+
+    private int appendMaximumLoadRow(Sheet sheet,
+                                     int rowNum,
+                                     List<CurriculumPlanEntry> entries,
+                                     List<ClassColumn> classColumns,
+                                     CellStyle style,
+                                     CellStyle exceededStyle,
+                                     int parallel) {
+        BigDecimal maximum = CurriculumLoadStandard.maxHours(parallel);
+        Row row = sheet.createRow(rowNum);
+        row.createCell(0).setCellValue("Максимальная нагрузка");
+        row.createCell(1).setCellValue("");
+        row.getCell(0).setCellStyle(style);
+        row.getCell(1).setCellStyle(style);
+        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(rowNum, rowNum, 0, 1));
+        for (int i = 0; i < classColumns.size(); i++) {
+            ClassColumn column = classColumns.get(i);
+            Cell cell = row.createCell(i + 2);
+            cell.setCellValue(formatHours(maximum));
+            cell.setCellStyle(maximumExceeded(entries, column, maximum) ? exceededStyle : style);
+        }
+        return rowNum + 1;
+    }
+
+    private boolean maximumExceeded(List<CurriculumPlanEntry> entries, ClassColumn column, BigDecimal maximum) {
+        List<CurriculumPlanEntry> values = entries.stream()
+                .filter(e -> classExportKey(e.getNumberSchoolBuilding(), e.getClassName()).equals(column.key()))
+                .filter(e -> {
+                    CurriculumPart part = e.getCurriculumPart() == null ? CurriculumPart.CORE : e.getCurriculumPart();
+                    return part == CurriculumPart.CORE || part == CurriculumPart.FORMABLE;
+                })
+                .toList();
+        BigDecimal year = sumHours(values, StudyPeriod.YEAR);
+        BigDecimal firstHalf = year.add(sumHours(values, StudyPeriod.H1));
+        BigDecimal secondHalf = year.add(sumHours(values, StudyPeriod.H2));
+        return firstHalf.compareTo(maximum) > 0 || secondHalf.compareTo(maximum) > 0;
     }
 
     private int appendParallelTotalRow(Sheet sheet,

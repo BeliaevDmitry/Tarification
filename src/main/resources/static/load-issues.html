@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ГБОУ школа 7 — Возможные ошибки нагрузки</title>
+    <link rel="icon" type="image/png" href="/school-crest.png">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="load-page">
+<main class="container">
+    <header class="card">
+        <h1>Возможные ошибки нагрузки</h1>
+        <p class="muted compact-note">Список автоматических проверок нагрузки. Комментарии и отметка «решено» сохраняются отдельно от нагрузки.</p>
+        <nav class="page-nav">
+            <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
+            <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
+            <a class="nav-link" href="/subjects.html" data-tab="SUBJECTS">Предметы</a>
+            <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
+            <a class="nav-link" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/people-load.html" data-tab="LOAD">Нагрузка по людям</a>
+            <a class="nav-link active" href="/load-issues.html" data-tab="LOAD">Возможные ошибки</a>
+            <a class="nav-link" href="/load-statistics.html" data-tab="LOAD">Статистика нагрузки</a>
+            <a class="nav-link" href="/settings.html" data-tab="SETTINGS">Настройки</a>
+        </nav>
+    </header>
+
+    <section class="card">
+        <div class="row controls-row">
+            <label>Корпус
+                <select id="load-issues-building">
+                    <option value="">Все</option>
+                </select>
+            </label>
+            <button id="load-issues-refresh" type="button">Обновить</button>
+            <strong>Нерешённых нестыковок: <span id="load-issues-unresolved">0</span></strong>
+        </div>
+        <pre id="load-issues-result" class="result-box"></pre>
+        <div class="sheet-wrap">
+            <table class="sheet-table load-issues-table">
+                <thead>
+                <tr>
+                    <th>Тип ошибки</th>
+                    <th>Описание</th>
+                    <th>Комментарий к ошибке</th>
+                    <th>Решено</th>
+                </tr>
+                </thead>
+                <tbody id="load-issues-body">
+                <tr><td colspan="4">Загрузка...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<script src="/auth.js"></script>
+<script src="/table-scroll.js"></script>
+<script src="/load-issues.js"></script>
+<script src="/branding.js"></script>
+</body>
+</html>
