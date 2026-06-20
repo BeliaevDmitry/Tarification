@@ -49,6 +49,7 @@ public class AuthFilter extends OncePerRequestFilter {
             Map.entry("/curriculum.html", AppTab.CURRICULUM),
             Map.entry("/load.html", AppTab.LOAD),
             Map.entry("/people-load.html", AppTab.LOAD),
+            Map.entry("/load-issues.html", AppTab.LOAD),
             Map.entry("/service-notes.html", AppTab.SERVICE_NOTES),
             Map.entry("/settings.html", AppTab.SETTINGS),
             Map.entry("/teachers.html", AppTab.TEACHERS),
@@ -115,7 +116,7 @@ public class AuthFilter extends OncePerRequestFilter {
             return;
         }
 
-        if (("/load.html".equals(path) || "/people-load.html".equals(path))
+        if (("/load.html".equals(path) || "/people-load.html".equals(path) || "/load-issues.html".equals(path))
                 && !currentUser.canViewTab(AppTab.LOAD)
                 && !currentUser.canViewTab(AppTab.LOAD_STATS)) {
             rejectForbidden(request, response, "У пользователя нет прав на просмотр раздела нагрузки");

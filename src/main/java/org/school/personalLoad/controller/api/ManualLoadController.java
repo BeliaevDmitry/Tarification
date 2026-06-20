@@ -11,8 +11,10 @@ import org.school.personalLoad.dto.ManualLoadBulkRequest;
 import org.school.personalLoad.dto.ManualLoadEntryRequest;
 import org.school.personalLoad.dto.ManualLoadProcessResult;
 import org.school.personalLoad.dto.ManualLoadHealthResponse;
+import org.school.personalLoad.dto.LoadIssueDtos;
 import org.school.personalLoad.dto.ManualLoadStatsResponse;
 import org.school.personalLoad.model.ManualLoadEntry;
+import org.school.personalLoad.service.LoadIssueService;
 import org.school.personalLoad.service.ManualLoadService;
 import org.school.personalLoad.service.AcademicYearService;
 import org.springframework.http.HttpHeaders;
@@ -37,6 +39,7 @@ import java.util.stream.Stream;
 public class ManualLoadController {
 
     private final ManualLoadService manualLoadService;
+    private final LoadIssueService loadIssueService;
     private final AcademicYearService academicYearService;
     private final ObjectMapper objectMapper;
 
@@ -199,6 +202,20 @@ public class ManualLoadController {
                 academicYearService.resolveRequestedOrDefault(academicYear),
                 building
         ));
+    }
+
+    @GetMapping("/issues")
+    public ResponseEntity<LoadIssueDtos.LoadIssueResponse> issues(@RequestParam(required = false) String academicYear,
+                                                                  @RequestParam(required = false) String building) {
+        return ResponseEntity.ok(loadIssueService.findIssues(
+                academicYearService.resolveRequestedOrDefault(academicYear),
+                building
+        ));
+    }
+
+    @PatchMapping("/issues")
+    public ResponseEntity<LoadIssueDtos.LoadIssueRow> updateIssue(@RequestBody LoadIssueDtos.LoadIssueUpdateRequest request) {
+        return ResponseEntity.ok(loadIssueService.updateState(request));
     }
 
     private ManualLoadBulkRequest parseBulkRequest(JsonNode body) {

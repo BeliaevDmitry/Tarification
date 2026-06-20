@@ -85,6 +85,7 @@ let curriculumRows = [];
 let subjects = [];
 let studyPeriodSettings = [];
 let metaGroups = [];
+let maxLoadLimits = {};
 let sumMismatchKeys = new Set();
 let pendingCreateContext = null;
 
@@ -590,8 +591,12 @@ function buildSummaryRows(selectedClasses) {
         rows.push({ type: "sum", part, title: `Сумма ${PART_META[part].short}` });
     });
 
-    rows.splice(rows.findIndex((r) => r.type === "part" && r.part === "EXTRACURRICULAR"), 0,
-        { type: "sum12", title: "Сумма О+Ф" });
+    const extracurricularIndex = rows.findIndex((r) => r.type === "part" && r.part === "EXTRACURRICULAR");
+    const summaryRows = [{ type: "sum12", title: "Сумма О+Ф" }];
+    if (selectedParallel !== AOOP_TAB_KEY) {
+        summaryRows.push({ type: "maximum", title: "Максимальная нагрузка" });
+    }
+    rows.splice(extracurricularIndex, 0, ...summaryRows);
 
     return rows;
 }
@@ -792,6 +797,22 @@ function renderSummaryTable() {
             tr.innerHTML = `${lead}` + classDescriptors
                 .map((col) => `<td class="hours-cell-wrap">${classCellMarkup(row.perClass[col.classKey], row, col)}</td>`)
                 .join("");
+        } else if (row.type === "maximum") {
+            const maximum = Number(maxLoadLimits[String(selectedParallel)] || 0);
+            const cells = classDescriptors.map((col) => {
+                if (isExplicitMetaGroupClassName(col.className)) return "<td></td>";
+                const values = curriculumRows.filter((entry) =>
+                    makeClassKey(entry.numberSchoolBuilding, entry.className) === col.classKey
+                    && (entry.curriculumPart === "CORE" || entry.curriculumPart === "FORMABLE"));
+                const sumForPeriod = (period) => values
+                    .filter((entry) => entry.studyPeriod === period)
+                    .reduce((sum, entry) => sum + Number(entry.plannedHours || 0), 0);
+                const year = sumForPeriod("YEAR");
+                const exceeded = year + sumForPeriod("H1") > maximum || year + sumForPeriod("H2") > maximum;
+                return `<td class="summary-value ${exceeded ? "maximum-load-exceeded" : ""}">${maximum || ""}</td>`;
+            }).join("");
+            tr.className = "summary-sum-row summary-maximum-row";
+            tr.innerHTML = `<td>${esc(row.title)}</td><td></td>${cells}`;
         } else {
             const calc = classDescriptors.map((col) => {
                 let h1 = 0, h2 = 0;
@@ -991,18 +1012,20 @@ async function exportCurriculumParallelsFile() {
 }
 
 async function reload() {
-    const [curriculum, classRows, buildingRows, subjectRows, settingRows, metaGroupRows] = await Promise.all([
+    const [curriculum, classRows, buildingRows, subjectRows, settingRows, metaGroupRows, loadLimits] = await Promise.all([
         api("/api/curriculum"),
         api("/api/classroom-leadership"),
         api("/api/buildings"),
         api("/api/subjects"),
         api("/api/settings/study-periods"),
-        api("/api/meta-groups")
+        api("/api/meta-groups"),
+        api("/api/curriculum/max-load-limits")
     ]);
     curriculumRows = curriculum || [];
     subjects = subjectRows || [];
     studyPeriodSettings = settingRows || [];
     metaGroups = metaGroupRows || [];
+    maxLoadLimits = loadLimits || {};
     classes = (classRows || []).map((r) => ({
         numberSchoolBuilding: norm(r.numberSchoolBuilding),
         className: norm(r.className),

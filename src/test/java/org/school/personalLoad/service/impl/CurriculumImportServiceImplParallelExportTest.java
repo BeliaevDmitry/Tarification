@@ -109,7 +109,32 @@ class CurriculumImportServiceImplParallelExportTest {
             assertEquals("", sheet.getRow(9).getCell(2).getStringCellValue());
             assertEquals("Итого основная+формируемая часть", sheet.getRow(10).getCell(0).getStringCellValue());
             assertEquals("3/4", sheet.getRow(10).getCell(2).getStringCellValue());
-            assertEquals("Итого внеурочная часть", sheet.getRow(11).getCell(0).getStringCellValue());
+            assertEquals("Максимальная нагрузка", sheet.getRow(11).getCell(0).getStringCellValue());
+            assertEquals("32", sheet.getRow(11).getCell(2).getStringCellValue());
+            assertEquals("Итого внеурочная часть", sheet.getRow(12).getCell(0).getStringCellValue());
+        }
+    }
+
+    @Test
+    void exportParallelWorkbookHighlightsExceededMaximumLoad() throws Exception {
+        CurriculumPlanEntry overloaded = entry("СП1", "7-А", "Алгебра", StudyPeriod.YEAR, 33);
+        when(curriculumRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(overloaded));
+        when(classroomRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
+        when(subjectCatalogRepository.findAll()).thenReturn(List.of(subject("Алгебра", "Математика и информатика")));
+
+        byte[] body = service.exportParallelWorkbook("2026/2027");
+
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
+            var sheet = workbook.getSheet("7 параллель");
+            var maximumRow = java.util.stream.IntStream.rangeClosed(0, sheet.getLastRowNum())
+                    .mapToObj(sheet::getRow)
+                    .filter(java.util.Objects::nonNull)
+                    .filter(row -> row.getCell(0) != null && "Максимальная нагрузка".equals(row.getCell(0).getStringCellValue()))
+                    .findFirst()
+                    .orElseThrow();
+            assertEquals("32", maximumRow.getCell(2).getStringCellValue());
+            assertEquals(org.apache.poi.ss.usermodel.IndexedColors.RED.getIndex(),
+                    maximumRow.getCell(2).getCellStyle().getFillForegroundColor());
         }
     }
 

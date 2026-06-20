@@ -945,6 +945,40 @@ dialog::backdrop {
     z-index: 5;
 }
 
+.load-issues-table {
+    min-width: 1150px;
+}
+
+.load-issues-table textarea {
+    width: 100%;
+    min-height: 54px;
+    resize: vertical;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 8px;
+    font: inherit;
+}
+
+.load-issues-table [data-save-comment] {
+    margin-top: 6px;
+}
+
+.sheet-table td.maximum-load-exceeded,
+.maximum-load-exceeded {
+    background: #ef0000 !important;
+    color: #fff !important;
+    font-weight: 800;
+}
+
+.load-issue-resolved td {
+    background: #f8fafc;
+    color: #64748b;
+}
+
+.center-cell {
+    text-align: center;
+}
+
 #building-load-table thead tr.load-main-head th {
     top: 0;
     z-index: 7;

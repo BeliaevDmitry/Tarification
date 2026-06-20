@@ -10,6 +10,7 @@ import org.school.personalLoad.service.CurriculumImportService;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.AcademicYearService;
 import org.school.personalLoad.repository.MetaGroupRepository;
+import org.school.personalLoad.util.CurriculumLoadStandard;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -88,6 +89,11 @@ public class CurriculumPlanController {
         String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
         List<CurriculumPlanEntry> entries = curriculumPlanService.findAll(effectiveYear, building);
         return ResponseEntity.ok(toResponses(entries));
+    }
+
+    @GetMapping("/max-load-limits")
+    public ResponseEntity<Map<Integer, java.math.BigDecimal>> maxLoadLimits() {
+        return ResponseEntity.ok(CurriculumLoadStandard.maxHoursByParallel());
     }
 
     private List<CurriculumPlanEntryResponse> toResponses(List<CurriculumPlanEntry> entries) {

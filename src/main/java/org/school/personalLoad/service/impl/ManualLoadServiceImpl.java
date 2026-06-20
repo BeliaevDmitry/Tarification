@@ -130,7 +130,12 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         if (request != null && request.getAcademicYear() != null && !request.getAcademicYear().isBlank()) {
             explicitAcademicYears.add(request.getAcademicYear().trim());
         }
-        List<ManualLoadEntry> entries = requests.stream().map(this::toEntity).toList();
+        List<ManualLoadEntry> entries = requests.stream()
+                .map(this::toEntity)
+                .collect(java.util.stream.Collectors.collectingAndThen(
+                        java.util.stream.Collectors.toMap(this::manualLoadDuplicateKey, java.util.function.Function.identity(), (first, second) -> first, LinkedHashMap::new),
+                        map -> new ArrayList<>(map.values())
+                ));
         java.util.Set<String> buildingCodes = entries.stream()
                 .map(ManualLoadEntry::getNumberSchoolBuilding)
                 .filter(java.util.Objects::nonNull)
@@ -1865,6 +1870,28 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 row.getGroupNameEducationalPlan(),
                 row.getStudyPeriod() == null ? StudyPeriod.YEAR : row.getStudyPeriod(),
                 row.getEducationLevel()
+        );
+    }
+
+    private String manualLoadDuplicateKey(ManualLoadEntry row) {
+        return String.join("|",
+                normalizeToken(row.getAcademicYear()),
+                String.valueOf(row.getTeacherId()),
+                normalizeToken(row.getFioTeacher()),
+                normalizeToken(row.getNumberSchoolBuilding()),
+                String.valueOf(row.getSchoolBuildingId()),
+                String.valueOf(row.getSubjectId()),
+                normalizeToken(row.getSubjectName()),
+                String.valueOf(row.getClassId()),
+                String.valueOf(row.getMetaGroupId()),
+                normalizeToken(row.getClassName()),
+                normalizeToken(row.getGroupNameEducationalPlan()),
+                String.valueOf(row.getGroupLoad() == null ? row.getLoad() : row.getGroupLoad()),
+                String.valueOf(row.getLoad()),
+                row.getEducationLevel() == null ? "" : row.getEducationLevel().name(),
+                row.getStudyPeriod() == null ? StudyPeriod.YEAR.name() : row.getStudyPeriod().name(),
+                String.valueOf(row.getLoadFromDate()),
+                String.valueOf(row.getLoadToDate())
         );
     }
 

@@ -7,6 +7,7 @@ const TAB_PATHS = {
     '/curriculum.html': 'CURRICULUM',
     '/load.html': 'LOAD',
     '/people-load.html': 'LOAD',
+    '/load-issues.html': 'LOAD',
     '/load-statistics.html': 'LOAD_STATS',
     '/service-notes.html': 'SERVICE_NOTES',
     '/settings.html': 'SETTINGS',
@@ -78,6 +79,7 @@ const NAV_ORDER = [
     { path: '/curriculum.html', tab: 'CURRICULUM', label: 'Учебный план' },
     { path: '/load.html', tab: 'LOAD', label: 'Нагрузка по корпусам' },
     { path: '/people-load.html', tab: 'LOAD', label: 'Нагрузка по людям' },
+    { path: '/load-issues.html', tab: 'LOAD', label: 'Возможные ошибки' },
     { path: '/load-statistics.html', tab: 'LOAD_STATS', label: 'Статистика нагрузки' },
     { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' },
     { path: '/subject-areas.html', tab: 'SUBJECT_AREAS', label: 'Предметные области' },
@@ -116,6 +118,7 @@ function isLoadModulePage(pathname) {
         || pathname === '/curriculum.html'
         || pathname === '/load.html'
         || pathname === '/people-load.html'
+        || pathname === '/load-issues.html'
         || pathname === '/load-statistics.html'
         || pathname === '/settings.html'
         || pathname === '/subject-areas.html';
@@ -142,7 +145,7 @@ function navItemsForPath(pathname) {
         ];
     }
     if (isLoadModulePage(pathname)) {
-        return NAV_ORDER.filter((tabDef) => tabDef.tab !== 'VSOKO_VIEW');
+        return NAV_ORDER.filter((tabDef) => tabDef.tab !== 'VSOKO_VIEW' && tabDef.tab !== 'EDUCATIONAL_WORK');
     }
     return NAV_ORDER;
 }
@@ -200,7 +203,9 @@ function tabPermissionMap(currentUser) {
 }
 
 function currentTab() {
-    if (window.location.pathname === '/load.html' || window.location.pathname === '/people-load.html') {
+    if (window.location.pathname === '/load.html'
+        || window.location.pathname === '/people-load.html'
+        || window.location.pathname === '/load-issues.html') {
         const hash = String(window.location.hash || '').toLowerCase();
         if (hash === '#stats') return 'LOAD_STATS';
         return 'LOAD';
@@ -224,6 +229,7 @@ function isContingentPage() {
 function isLoadPage() {
     return window.location.pathname === '/load.html'
         || window.location.pathname === '/people-load.html'
+        || window.location.pathname === '/load-issues.html'
         || window.location.pathname === '/load-statistics.html';
 }
 
