@@ -5,9 +5,12 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 
 import javax.persistence.*;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Data
 @Entity
@@ -129,4 +132,14 @@ public class CurriculumPlanEntry {
 
     @Column(name = "excluded_from_manual_load", nullable = false)
     private boolean excludedFromManualLoad = false;
+
+    @Column(name = "modular_system", nullable = false)
+    private boolean modularSystem = false;
+
+    @OneToMany(mappedBy = "curriculumEntry", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OrderBy("moduleOrder ASC")
+    @JsonManagedReference
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private List<CurriculumModule> modules = new ArrayList<>();
 }

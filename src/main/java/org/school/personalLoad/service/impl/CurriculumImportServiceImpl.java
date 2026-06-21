@@ -55,6 +55,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             buildVisualSheet(workbook, "ООО", entries, 5, 9);
             buildVisualSheet(workbook, "СОО", entries, 10, 11);
             buildEditableRowsSheet(workbook, entries);
+            buildModulesSheet(workbook, entries);
             Sheet legacySheet = workbook.createSheet("CURRICULUM_VISUAL");
             Row legacyRow = legacySheet.createRow(0);
             legacyRow.createCell(0).setCellValue("Экспорт перенесен в листы НОО/ООО/СОО. Этот лист оставлен для совместимости импорта.");
@@ -332,6 +333,39 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         rowNum = appendParallelTotalRow(sheet, rowNum, "Итого основная+формируемая часть", entries, classColumns, style, CurriculumPart.CORE, CurriculumPart.FORMABLE);
         rowNum = appendMaximumLoadRow(sheet, rowNum, entries, classColumns, style, exceededStyle, parallel);
         return appendParallelTotalRow(sheet, rowNum, "Итого внеурочная часть", entries, classColumns, style, CurriculumPart.EXTRACURRICULAR);
+    }
+
+    private void buildModulesSheet(Workbook workbook, List<CurriculumPlanEntry> entries) {
+        Sheet sheet = workbook.createSheet("CURRICULUM_MODULES");
+        String[] headers = {
+                "NUMBER_SCHOOL_BUILDING", "CLASS_NAME", "CURRICULUM_PART", "SUBJECT_NAME", "STUDY_PERIOD",
+                "MODULE_ORDER", "MODULE_NAME", "PLANNED_HOURS", "EDUCATION_LEVEL", "SUBGROUP_REQUIRED",
+                "SUBGROUP1_HOURS", "SUBGROUP1_EDUCATION_LEVEL", "SUBGROUP2_HOURS", "SUBGROUP2_EDUCATION_LEVEL"
+        };
+        Row header = sheet.createRow(0);
+        for (int i = 0; i < headers.length; i++) header.createCell(i).setCellValue(headers[i]);
+        int rowNum = 1;
+        for (CurriculumPlanEntry entry : entries) {
+            if (!entry.isModularSystem()) continue;
+            for (CurriculumModule module : entry.getModules()) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(normalizeSubject(entry.getNumberSchoolBuilding()));
+                row.createCell(1).setCellValue(ClassNameNormalizer.normalize(entry.getClassName()));
+                row.createCell(2).setCellValue((entry.getCurriculumPart() == null ? CurriculumPart.CORE : entry.getCurriculumPart()).name());
+                row.createCell(3).setCellValue(normalizeSubject(entry.getSubjectName()));
+                row.createCell(4).setCellValue((entry.getStudyPeriod() == null ? StudyPeriod.YEAR : entry.getStudyPeriod()).name());
+                row.createCell(5).setCellValue(module.getModuleOrder());
+                row.createCell(6).setCellValue(module.getModuleName());
+                row.createCell(7).setCellValue(module.getPlannedHours().doubleValue());
+                row.createCell(8).setCellValue(module.getEducationLevel().name());
+                row.createCell(9).setCellValue(module.isSubgroupRequired());
+                if (module.getSubgroup1Hours() != null) row.createCell(10).setCellValue(module.getSubgroup1Hours());
+                row.createCell(11).setCellValue((module.getSubgroup1EducationLevel() == null ? EducationLevel.BASIC : module.getSubgroup1EducationLevel()).name());
+                if (module.getSubgroup2Hours() != null) row.createCell(12).setCellValue(module.getSubgroup2Hours());
+                row.createCell(13).setCellValue((module.getSubgroup2EducationLevel() == null ? EducationLevel.BASIC : module.getSubgroup2EducationLevel()).name());
+            }
+        }
+        for (int i = 0; i < headers.length; i++) sheet.autoSizeColumn(i);
     }
 
     private int appendMaximumLoadRow(Sheet sheet,
@@ -781,6 +815,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
         try {
             List<EditableImportRow> editableRows = parseEditableRows(file);
+            Map<String, List<ModuleImportRow>> modulesByEntry = parseEditableModules(file).stream()
+                    .collect(Collectors.groupingBy(this::moduleImportKey, LinkedHashMap::new, Collectors.toList()));
             VisualParseResult visualParseResult = null;
             if (editableRows.isEmpty()) {
                 visualParseResult = parseVisualRows(file);
@@ -842,6 +878,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     }
                     entry.setExcludedFromManualLoad(explicitMetaGroupRow ? false : row.excludedFromManualLoad());
                     entry.setMetaGroup(explicitMetaGroupRow || entry.isExcludedFromManualLoad());
+                    applyImportedModules(entry, modulesByEntry.getOrDefault(moduleImportKey(
+                            resolvedBuilding, normalizedClassName, row.curriculumPart(), row.subjectName(), resolvedEditableRule.getStudyPeriod()), List.of()));
 
                     CurriculumPlanEntry saved = curriculumRepository.save(entry);
                     importedIds.add(saved.getId());
@@ -1439,6 +1477,104 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         }
     }
 
+    private List<ModuleImportRow> parseEditableModules(MultipartFile file) {
+        try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
+            Sheet sheet = workbook.getSheet("CURRICULUM_MODULES");
+            if (sheet == null) return List.of();
+            List<ModuleImportRow> rows = new ArrayList<>();
+            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+                Row row = sheet.getRow(i);
+                if (row == null) continue;
+                String building = normalizeSubject(readCell(row.getCell(0)));
+                String className = ClassNameNormalizer.normalize(readCell(row.getCell(1)));
+                CurriculumPart part = parsePart(readCell(row.getCell(2)));
+                String subject = normalizeSubject(readCell(row.getCell(3)));
+                StudyPeriod period = parsePeriod(readCell(row.getCell(4)), className);
+                Integer order = parseInteger(readCell(row.getCell(5)));
+                String name = normalizeSubject(readCell(row.getCell(6)));
+                BigDecimal hours = parseDecimal(readCell(row.getCell(7)));
+                EducationLevel level = parseLevel(readCell(row.getCell(8)));
+                boolean subgroup = Boolean.parseBoolean(normalizeSubject(readCell(row.getCell(9))));
+                if (building.isBlank() || className.isBlank() || subject.isBlank() || name.isBlank()
+                        || order == null || hours == null || hours.compareTo(BigDecimal.ZERO) <= 0) continue;
+                rows.add(new ModuleImportRow(building, className, part, subject, period, order, name, hours,
+                        level == null ? EducationLevel.BASIC : level, subgroup,
+                        parseInteger(readCell(row.getCell(10))), parseLevel(readCell(row.getCell(11))),
+                        parseInteger(readCell(row.getCell(12))), parseLevel(readCell(row.getCell(13)))));
+            }
+            return rows;
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Не удалось прочитать технический лист модулей", e);
+        }
+    }
+
+    private void applyImportedModules(CurriculumPlanEntry entry, List<ModuleImportRow> rows) {
+        List<ModuleImportRow> ordered = rows.stream().sorted(Comparator.comparing(ModuleImportRow::moduleOrder)).toList();
+        validateImportedModules(entry, ordered);
+        entry.setModularSystem(!ordered.isEmpty());
+        entry.getModules().clear();
+        for (ModuleImportRow source : ordered) {
+            CurriculumModule module = new CurriculumModule();
+            module.setCurriculumEntry(entry);
+            module.setModuleOrder(source.moduleOrder());
+            module.setModuleName(source.moduleName());
+            module.setPlannedHours(source.plannedHours());
+            module.setEducationLevel(source.educationLevel());
+            module.setSubgroupRequired(source.subgroupRequired());
+            module.setSubgroupCount(source.subgroupRequired() ? 2 : 0);
+            module.setSubgroup1Hours(source.subgroupRequired() ? source.subgroup1Hours() : null);
+            module.setSubgroup1EducationLevel(source.subgroupRequired() ? Optional.ofNullable(source.subgroup1EducationLevel()).orElse(EducationLevel.BASIC) : null);
+            module.setSubgroup2Hours(source.subgroupRequired() ? source.subgroup2Hours() : null);
+            module.setSubgroup2EducationLevel(source.subgroupRequired() ? Optional.ofNullable(source.subgroup2EducationLevel()).orElse(EducationLevel.BASIC) : null);
+            entry.getModules().add(module);
+        }
+        if (entry.isModularSystem()) {
+            entry.setSubgroupRequired(false);
+            entry.setSubgroupCount(0);
+            entry.setSubgroup1Hours(null);
+            entry.setSubgroup2Hours(null);
+            entry.setSubgroup1EducationLevel(null);
+            entry.setSubgroup2EducationLevel(null);
+        }
+    }
+
+    private void validateImportedModules(CurriculumPlanEntry entry, List<ModuleImportRow> modules) {
+        if (modules.isEmpty()) return;
+        if (modules.size() < 2) {
+            throw new IllegalArgumentException("Модульная система должна содержать не менее двух модулей");
+        }
+        if (modules.stream().map(ModuleImportRow::moduleOrder).distinct().count() != modules.size()) {
+            throw new IllegalArgumentException("Порядковые номера модулей не должны повторяться");
+        }
+        BigDecimal total = BigDecimal.ZERO;
+        for (ModuleImportRow module : modules) {
+            total = total.add(module.plannedHours());
+            if (!module.subgroupRequired()) continue;
+            if (module.subgroup1Hours() == null || module.subgroup1Hours() < 0
+                    || module.subgroup2Hours() == null || module.subgroup2Hours() < 0) {
+                throw new IllegalArgumentException("Для обеих подгрупп модуля должны быть указаны часы");
+            }
+            int effectiveHours = Math.max(module.subgroup1Hours(), module.subgroup2Hours());
+            if (module.plannedHours().compareTo(BigDecimal.valueOf(effectiveHours)) != 0) {
+                throw new IllegalArgumentException("Часы модуля должны совпадать с максимальным количеством часов его подгруппы");
+            }
+        }
+        if (entry.getPlannedHours() == null || total.compareTo(entry.getPlannedHours()) != 0) {
+            throw new IllegalArgumentException("Сумма часов модулей должна быть равна часам основного предмета");
+        }
+    }
+
+    private String moduleImportKey(ModuleImportRow row) {
+        return moduleImportKey(row.numberSchoolBuilding(), row.className(), row.curriculumPart(), row.subjectName(), row.studyPeriod());
+    }
+
+    private String moduleImportKey(String building, String className, CurriculumPart part, String subject, StudyPeriod period) {
+        return String.join("|", normalizeSubject(building).toLowerCase(Locale.ROOT),
+                ClassNameNormalizer.normalize(className).toLowerCase(Locale.ROOT),
+                (part == null ? CurriculumPart.CORE : part).name(), normalizeSubject(subject).toLowerCase(Locale.ROOT),
+                (period == null ? StudyPeriod.YEAR : period).name());
+    }
+
     private String readCell(Cell cell) {
         if (cell == null) return "";
         return switch (cell.getCellType()) {
@@ -1533,6 +1669,23 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     metaGroup && !isExplicitMetaGroupClassName(className));
         }
     }
+
+    private record ModuleImportRow(
+            String numberSchoolBuilding,
+            String className,
+            CurriculumPart curriculumPart,
+            String subjectName,
+            StudyPeriod studyPeriod,
+            Integer moduleOrder,
+            String moduleName,
+            BigDecimal plannedHours,
+            EducationLevel educationLevel,
+            boolean subgroupRequired,
+            Integer subgroup1Hours,
+            EducationLevel subgroup1EducationLevel,
+            Integer subgroup2Hours,
+            EducationLevel subgroup2EducationLevel
+    ) {}
 
     private record ClassHeaderMeta(int colIndex, String building, String className) {}
     private record ClassColumn(String building, String className) {

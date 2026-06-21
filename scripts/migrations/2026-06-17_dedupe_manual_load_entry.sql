@@ -19,6 +19,7 @@
 --                    lower(trim(coalesce(class_name, ''))),
 --                    lower(trim(coalesce(group_name_educational_plan, ''))),
 --                    coalesce(curriculum_part, 'CORE'),
+--                    coalesce(curriculum_module_id, -1),
 --                    coalesce(group_load, load, 0),
 --                    coalesce(load, 0),
 --                    coalesce(study_period, 'YEAR'),
@@ -37,6 +38,8 @@ BEGIN;
 
 ALTER TABLE manual_load_entry
     ADD COLUMN IF NOT EXISTS curriculum_part varchar(32) DEFAULT 'CORE';
+ALTER TABLE manual_load_entry
+    ADD COLUMN IF NOT EXISTS curriculum_module_id bigint;
 
 WITH ranked AS (
     SELECT id,
@@ -55,6 +58,7 @@ WITH ranked AS (
                    lower(trim(coalesce(class_name, ''))),
                    lower(trim(coalesce(group_name_educational_plan, ''))),
                    coalesce(curriculum_part, 'CORE'),
+                   coalesce(curriculum_module_id, -1),
                    coalesce(group_load, load, 0),
                    coalesce(load, 0),
                    coalesce(study_period, 'YEAR'),

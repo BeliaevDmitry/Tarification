@@ -56,6 +56,12 @@ const ui = {
     exportParallelsBtn: document.getElementById("export-curriculum-parallels-btn"),
     subgroupRequired: document.getElementById("subgroup-required"),
     subgroupConfig: document.getElementById("subgroup-config"),
+    modularSystem: document.getElementById("modular-system"),
+    moduleConfig: document.getElementById("module-config"),
+    moduleList: document.getElementById("module-list"),
+    moduleHoursSummary: document.getElementById("module-hours-summary"),
+    addModuleBtn: document.getElementById("add-module-btn"),
+    displayMode: document.getElementById("curriculum-display-mode"),
     subjectExclusionLabel: document.getElementById("subject-exclusion-label"),
     subjectMetaGroupInfo: document.getElementById("subject-meta-group-info"),
     summaryHead: document.getElementById("summary-head"),
@@ -66,6 +72,12 @@ const ui = {
     closeDialogBtn: document.getElementById("close-curriculum-dialog"),
     editExclusionLabel: document.getElementById("edit-exclusion-label"),
     editMetaGroupInfo: document.getElementById("edit-meta-group-info")
+    ,editModuleConfig: document.getElementById("edit-module-config")
+    ,editSubgroupConfig: document.getElementById("edit-subgroup-config")
+    ,editModuleList: document.getElementById("edit-module-list")
+    ,editModuleHoursSummary: document.getElementById("edit-module-hours-summary")
+    ,editAddModuleBtn: document.getElementById("edit-add-module-btn")
+    ,editMainSubjectName: document.getElementById("edit-main-subject-name")
     ,metaGroupCreateDialog: document.getElementById("meta-group-create-dialog")
     ,metaGroupCreateForm: document.getElementById("meta-group-create-form")
     ,metaGroupManageDialog: document.getElementById("meta-group-manage-dialog")
@@ -88,6 +100,7 @@ let metaGroups = [];
 let maxLoadLimits = {};
 let sumMismatchKeys = new Set();
 let pendingCreateContext = null;
+let curriculumDisplayMode = "detailed";
 const issueNavigationParams = new URLSearchParams(window.location.search);
 const issueNavigation = {
     building: issueNavigationParams.get("building") || "",
@@ -491,18 +504,39 @@ function syncStudyPeriodControls() {
 
 function subjectAreaForRow(row) {
     const type = subjectTypeByPart(row?.curriculumPart || "CORE");
-    const name = norm(row?.subjectName);
+    const name = norm(row?.__baseSubjectName || row?.subjectName);
     const match = (subjects || []).find((s) => norm(s.subjectName) === name && s.subjectType === type);
     const area = norm(match?.subjectAreaName) || "Без области";
     const normalized = area.toLowerCase().replaceAll("ё", "е").replace(/[—–-]/g, " ").replaceAll(/\s+/g, " ").trim();
     return CORE_AREA_ALIASES[normalized] || area;
 }
 
-function buildSummaryRows(selectedClasses) {
+function curriculumRowsForDisplay() {
+    if (curriculumDisplayMode === "general") return curriculumRows;
+    return (curriculumRows || []).flatMap((row) => {
+        if (!row.modularSystem || !(row.modules || []).length) return [row];
+        return row.modules.map((module) => ({
+            ...row,
+            subjectName: `${row.subjectName}, ${module.moduleName}`,
+            __baseSubjectName: row.subjectName,
+            __moduleId: module.id,
+            plannedHours: module.plannedHours,
+            educationLevel: module.educationLevel,
+            subgroupRequired: module.subgroupRequired,
+            subgroupCount: module.subgroupCount,
+            subgroup1Hours: module.subgroup1Hours,
+            subgroup1EducationLevel: module.subgroup1EducationLevel,
+            subgroup2Hours: module.subgroup2Hours,
+            subgroup2EducationLevel: module.subgroup2EducationLevel
+        }));
+    });
+}
+
+function buildSummaryRows(selectedClasses, sourceRows = curriculumRows) {
     const byPart = { CORE: [], FORMABLE: [], EXTRACURRICULAR: [], CORRECTIONAL: [] };
     const classSet = new Set(selectedClasses.map((c) => makeClassKey(c.numberSchoolBuilding, c.className)));
 
-    curriculumRows.forEach((r) => {
+    sourceRows.forEach((r) => {
         const key = makeClassKey(r.numberSchoolBuilding, r.className);
         if (!classSet.has(key)) return;
         byPart[r.curriculumPart || "CORE"].push(r);
@@ -611,11 +645,13 @@ function openEditById(id) {
     const existing = curriculumRows.find((r) => r.id === id);
     if (!existing) return;
     pendingCreateContext = null;
+    if (ui.editMainSubjectName) ui.editMainSubjectName.textContent = `Основной предмет: ${existing.subjectName || ""}`;
 
     ui.editForm.elements.id.value = String(existing.id);
     ui.editForm.elements.className.value = existing.className || "";
     ui.editForm.elements.plannedHours.value = String(existing.plannedHours || 1);
     ui.editForm.elements.educationLevel.value = existing.educationLevel || "BASIC";
+    ui.editForm.elements.modularSystem.value = String(Boolean(existing.modularSystem));
     ui.editForm.elements.subgroupRequired.value = String(Boolean(existing.subgroupRequired));
     ui.editForm.elements.studyPeriod.value = String(existing.studyPeriodSettingId || "");
     ui.editForm.elements.excludedFromManualLoad.value = String(Boolean(existing.excludedFromManualLoad));
@@ -624,7 +660,7 @@ function openEditById(id) {
     ui.editForm.elements.subgroup2Hours.value = existing.subgroup2Hours || existing.plannedHours || "";
     ui.editForm.elements.subgroup1EducationLevel.value = existing.subgroup1EducationLevel || existing.educationLevel || "BASIC";
     ui.editForm.elements.subgroup2EducationLevel.value = existing.subgroup2EducationLevel || existing.educationLevel || "BASIC";
-    toggleSubgroupConfig(ui.editForm, ui.editForm.elements.subgroupRequired.value);
+    toggleModuleSystem(ui.editForm, ui.editModuleConfig, ui.editModuleList, ui.editModuleHoursSummary, existing.modules || []);
     syncStudyPeriodControls();
     ui.deleteItemBtn.style.display = "";
     ui.editDialog.showModal();
@@ -632,11 +668,13 @@ function openEditById(id) {
 
 function openCreateByCell(cellCtx) {
     pendingCreateContext = cellCtx;
+    if (ui.editMainSubjectName) ui.editMainSubjectName.textContent = `Основной предмет: ${cellCtx.subjectName || ""}`;
     ui.editForm.reset();
     ui.editForm.elements.id.value = "";
     ui.editForm.elements.className.value = cellCtx.className;
     ui.editForm.elements.plannedHours.value = "";
     ui.editForm.elements.educationLevel.value = cellCtx.educationLevel || "BASIC";
+    ui.editForm.elements.modularSystem.value = "false";
     ui.editForm.elements.subgroupRequired.value = "false";
     ui.editForm.elements.excludedFromManualLoad.value = "false";
     configureExclusionControl(ui.editForm, cellCtx.className, ui.editExclusionLabel, ui.editMetaGroupInfo);
@@ -644,7 +682,8 @@ function openCreateByCell(cellCtx) {
     ui.editForm.elements.subgroup2Hours.value = "";
     ui.editForm.elements.subgroup1EducationLevel.value = ui.editForm.elements.educationLevel.value;
     ui.editForm.elements.subgroup2EducationLevel.value = ui.editForm.elements.educationLevel.value;
-    toggleSubgroupConfig(ui.editForm, ui.editForm.elements.subgroupRequired.value);
+    ui.editModuleList.innerHTML = "";
+    toggleModuleSystem(ui.editForm, ui.editModuleConfig, ui.editModuleList, ui.editModuleHoursSummary);
     syncStudyPeriodControls();
     const options = Array.from(ui.editForm.elements.studyPeriod.options || []);
     const preferredById = options.find((opt) => String(opt.value) === String(cellCtx.studyPeriodSettingId || ""));
@@ -758,7 +797,7 @@ function renderSummaryTable() {
         numberSchoolBuilding: c.numberSchoolBuilding,
         split: hasSemesterSplitForClass(c)
     }));
-    const rows = buildSummaryRows(allColumns);
+    const rows = buildSummaryRows(allColumns, curriculumRowsForDisplay());
     const summaryTable = ui.summaryHead.closest("table");
     if (summaryTable) {
         summaryTable.style.width = `${Math.max(1500, 540 + classDescriptors.length * 120)}px`;
@@ -928,12 +967,15 @@ function renderSubjectOptions() {
 function normalizeForm() {
     const f = new FormData(ui.form);
     const className = norm(f.get("className"));
-    const subgroupRequired = String(f.get("subgroupRequired")) === "true";
+    const modularSystem = String(f.get("modularSystem")) === "true";
+    const subgroupRequired = !modularSystem && String(f.get("subgroupRequired")) === "true";
     const subgroup1Hours = Number(f.get("subgroup1Hours") || 0);
     const subgroup2Hours = Number(f.get("subgroup2Hours") || 0);
     const plannedHours = subgroupRequired
         ? Math.max(subgroup1Hours, subgroup2Hours, 0)
         : Number(f.get("plannedHours") || 0);
+    const modules = modularSystem ? readModuleEditor(ui.moduleList) : [];
+    validateModuleHoursClient(modularSystem, modules, plannedHours);
     return {
         numberSchoolBuilding: norm(f.get("numberSchoolBuilding")),
         className,
@@ -949,8 +991,19 @@ function normalizeForm() {
         curriculumPart: f.get("curriculumPart"),
         studyPeriodSettingId: Number(f.get("studyPeriod") || 0) || null,
         metaGroup: isExplicitMetaGroupClassName(className),
-        excludedFromManualLoad: isExplicitMetaGroupClassName(className) ? false : String(f.get("excludedFromManualLoad")) === "true"
+        excludedFromManualLoad: isExplicitMetaGroupClassName(className) ? false : String(f.get("excludedFromManualLoad")) === "true",
+        modularSystem,
+        modules
     };
+}
+
+function validateModuleHoursClient(modularSystem, modules, plannedHours) {
+    if (!modularSystem) return;
+    if (modules.length < 2) throw new Error("Добавьте не менее двух модулей");
+    const total = modules.reduce((sum, module) => sum + Number(module.plannedHours || 0), 0);
+    if (total !== Number(plannedHours || 0)) {
+        throw new Error(`Сумма часов модулей (${total}) должна быть равна часам предмета (${plannedHours})`);
+    }
 }
 
 async function importCurriculumFile() {
@@ -1029,6 +1082,98 @@ function captureCurriculumScroll() {
         windowX: window.scrollX || 0,
         windowY: window.scrollY || 0
     };
+}
+
+function defaultModule(index = 0) {
+    return {
+        id: null,
+        moduleName: "",
+        plannedHours: "",
+        educationLevel: "BASIC",
+        subgroupRequired: false,
+        subgroup1Hours: "",
+        subgroup1EducationLevel: "BASIC",
+        subgroup2Hours: "",
+        subgroup2EducationLevel: "BASIC",
+        moduleOrder: index + 1
+    };
+}
+
+function moduleCardMarkup(module, index, removable) {
+    const subgroup = Boolean(module?.subgroupRequired);
+    return `<div class="module-card" data-module-card data-module-id="${esc(module?.id || "")}">
+        <div class="module-card-head"><strong>Модуль ${index + 1}</strong><button type="button" class="danger-btn" data-remove-module ${removable ? "" : "disabled"}>Удалить</button></div>
+        <div class="module-fields">
+            <label>Название модуля<input data-module-field="moduleName" value="${esc(module?.moduleName || "")}" required></label>
+            <label>Часов<input data-module-field="plannedHours" type="number" min="0.1" step="0.1" value="${esc(module?.plannedHours ?? "")}" required></label>
+            <label>Уровень<select data-module-field="educationLevel"><option value="BASIC" ${(module?.educationLevel || "BASIC") === "BASIC" ? "selected" : ""}>Базовый</option><option value="ADVANCED" ${module?.educationLevel === "ADVANCED" ? "selected" : ""}>Углублённый</option></select></label>
+            <label>Деление<select data-module-field="subgroupRequired"><option value="false" ${!subgroup ? "selected" : ""}>Без деления</option><option value="true" ${subgroup ? "selected" : ""}>С делением</option></select></label>
+        </div>
+        <div class="module-subgroup-fields ${subgroup ? "" : "hidden"}" data-module-subgroups>
+            <label>1 подгруппа, часов<input data-module-field="subgroup1Hours" type="number" min="0" value="${esc(module?.subgroup1Hours ?? "")}"></label>
+            <label>1 подгруппа, уровень<select data-module-field="subgroup1EducationLevel"><option value="BASIC" ${(module?.subgroup1EducationLevel || "BASIC") === "BASIC" ? "selected" : ""}>Базовый</option><option value="ADVANCED" ${module?.subgroup1EducationLevel === "ADVANCED" ? "selected" : ""}>Углублённый</option></select></label>
+            <label>2 подгруппа, часов<input data-module-field="subgroup2Hours" type="number" min="0" value="${esc(module?.subgroup2Hours ?? "")}"></label>
+            <label>2 подгруппа, уровень<select data-module-field="subgroup2EducationLevel"><option value="BASIC" ${(module?.subgroup2EducationLevel || "BASIC") === "BASIC" ? "selected" : ""}>Базовый</option><option value="ADVANCED" ${module?.subgroup2EducationLevel === "ADVANCED" ? "selected" : ""}>Углублённый</option></select></label>
+        </div>
+    </div>`;
+}
+
+function readModuleEditor(list) {
+    return Array.from(list?.querySelectorAll("[data-module-card]") || []).map((card, index) => {
+        const value = (name) => card.querySelector(`[data-module-field="${name}"]`)?.value ?? "";
+        const subgroupRequired = value("subgroupRequired") === "true";
+        return {
+            id: card.dataset.moduleId ? Number(card.dataset.moduleId) : null,
+            moduleOrder: index + 1,
+            moduleName: String(value("moduleName")).trim(),
+            plannedHours: Number(value("plannedHours") || 0),
+            educationLevel: value("educationLevel") || "BASIC",
+            subgroupRequired,
+            subgroup1Hours: subgroupRequired ? Number(value("subgroup1Hours") || 0) : null,
+            subgroup1EducationLevel: subgroupRequired ? value("subgroup1EducationLevel") : null,
+            subgroup2Hours: subgroupRequired ? Number(value("subgroup2Hours") || 0) : null,
+            subgroup2EducationLevel: subgroupRequired ? value("subgroup2EducationLevel") : null
+        };
+    });
+}
+
+function updateModuleHoursSummary(list, summary, totalInput) {
+    if (!summary) return;
+    const moduleTotal = readModuleEditor(list).reduce((sum, module) => sum + Number(module.plannedHours || 0), 0);
+    const subjectTotal = Number(totalInput?.value || 0);
+    summary.textContent = `Сумма модулей: ${moduleTotal} из ${subjectTotal} ч.`;
+    summary.classList.toggle("module-hours-invalid", moduleTotal !== subjectTotal);
+}
+
+function renderModuleEditor(list, modules, summary, totalInput) {
+    const values = modules?.length ? modules : [defaultModule(0), defaultModule(1)];
+    list.innerHTML = values.map((module, index) => moduleCardMarkup(module, index, values.length > 2)).join("");
+    list.querySelectorAll("[data-module-field=\"subgroupRequired\"]").forEach((select) => {
+        select.addEventListener("change", () => select.closest("[data-module-card]")?.querySelector("[data-module-subgroups]")?.classList.toggle("hidden", select.value !== "true"));
+    });
+    list.querySelectorAll("[data-remove-module]").forEach((button) => button.addEventListener("click", () => {
+        const current = readModuleEditor(list);
+        const index = Array.from(list.querySelectorAll("[data-module-card]")).indexOf(button.closest("[data-module-card]"));
+        current.splice(index, 1);
+        renderModuleEditor(list, current, summary, totalInput);
+    }));
+    list.querySelectorAll("input,select").forEach((control) => control.addEventListener("input", () => updateModuleHoursSummary(list, summary, totalInput)));
+    updateModuleHoursSummary(list, summary, totalInput);
+}
+
+function toggleModuleSystem(form, config, list, summary, modules = null) {
+    const enabled = form?.elements?.modularSystem?.value === "true";
+    config?.classList.toggle("hidden", !enabled);
+    const subgroupSelect = form?.elements?.subgroupRequired;
+    if (subgroupSelect) {
+        subgroupSelect.disabled = enabled;
+        if (enabled) subgroupSelect.value = "false";
+    }
+    if (enabled && list && (!list.children.length || modules)) {
+        renderModuleEditor(list, modules, summary, form.elements.plannedHours);
+    }
+    const subgroupContainer = form === ui.form ? ui.subgroupConfig : ui.editSubgroupConfig;
+    toggleSubgroupConfig(subgroupContainer, enabled ? "false" : subgroupSelect?.value);
 }
 
 function restoreCurriculumScroll(state) {
@@ -1226,8 +1371,31 @@ function bindEvents() {
         }
     });
 
+    ui.modularSystem?.addEventListener("change", () => {
+        toggleModuleSystem(ui.form, ui.moduleConfig, ui.moduleList, ui.moduleHoursSummary);
+    });
+    ui.form.elements.plannedHours?.addEventListener("input", () => updateModuleHoursSummary(ui.moduleList, ui.moduleHoursSummary, ui.form.elements.plannedHours));
+    ui.addModuleBtn?.addEventListener("click", () => {
+        const modules = readModuleEditor(ui.moduleList);
+        modules.push(defaultModule(modules.length));
+        renderModuleEditor(ui.moduleList, modules, ui.moduleHoursSummary, ui.form.elements.plannedHours);
+    });
+    ui.displayMode?.addEventListener("change", () => {
+        curriculumDisplayMode = ui.displayMode.value || "detailed";
+        renderSummaryTable();
+    });
+
     ui.editForm.elements.subgroupRequired.addEventListener("change", () => {
-        toggleSubgroupConfig(ui.editForm, ui.editForm.elements.subgroupRequired.value);
+        toggleSubgroupConfig(ui.editSubgroupConfig, ui.editForm.elements.subgroupRequired.value);
+    });
+    ui.editForm.elements.modularSystem.addEventListener("change", () => {
+        toggleModuleSystem(ui.editForm, ui.editModuleConfig, ui.editModuleList, ui.editModuleHoursSummary);
+    });
+    ui.editForm.elements.plannedHours?.addEventListener("input", () => updateModuleHoursSummary(ui.editModuleList, ui.editModuleHoursSummary, ui.editForm.elements.plannedHours));
+    ui.editAddModuleBtn?.addEventListener("click", () => {
+        const modules = readModuleEditor(ui.editModuleList);
+        modules.push(defaultModule(modules.length));
+        renderModuleEditor(ui.editModuleList, modules, ui.editModuleHoursSummary, ui.editForm.elements.plannedHours);
     });
 
     ui.closeDialogBtn.addEventListener("click", () => ui.editDialog.close());
@@ -1249,12 +1417,15 @@ function bindEvents() {
         const id = Number(ui.editForm.elements.id.value);
         const existing = curriculumRows.find((r) => r.id === id);
 
-        const subgroupRequired = ui.editForm.elements.subgroupRequired.value === "true";
+        const modularSystem = ui.editForm.elements.modularSystem.value === "true";
+        const subgroupRequired = !modularSystem && ui.editForm.elements.subgroupRequired.value === "true";
         const subgroup1Hours = Number(ui.editForm.elements.subgroup1Hours.value || 0);
         const subgroup2Hours = Number(ui.editForm.elements.subgroup2Hours.value || 0);
         const plannedHours = subgroupRequired
             ? Math.max(subgroup1Hours, subgroup2Hours, 0)
             : Number(ui.editForm.elements.plannedHours.value || 0);
+        const modules = modularSystem ? readModuleEditor(ui.editModuleList) : [];
+        validateModuleHoursClient(modularSystem, modules, plannedHours);
         const payload = {
             numberSchoolBuilding: existing?.numberSchoolBuilding || pendingCreateContext?.numberSchoolBuilding,
             className: existing?.className || pendingCreateContext?.className,
@@ -1270,7 +1441,9 @@ function bindEvents() {
             subgroup1Hours: subgroupRequired ? subgroup1Hours : null,
             subgroup2Hours: subgroupRequired ? subgroup2Hours : null,
             subgroup1EducationLevel: subgroupRequired ? ui.editForm.elements.subgroup1EducationLevel.value : null,
-            subgroup2EducationLevel: subgroupRequired ? ui.editForm.elements.subgroup2EducationLevel.value : null
+            subgroup2EducationLevel: subgroupRequired ? ui.editForm.elements.subgroup2EducationLevel.value : null,
+            modularSystem,
+            modules
         };
 
         try {
@@ -1311,5 +1484,7 @@ try {
     ui.exportParallelsBtn?.addEventListener("click", exportCurriculumParallelsFile);
 }
 toggleSubgroupConfig(ui.subgroupConfig, ui.subgroupRequired.value);
+renderModuleEditor(ui.moduleList, [defaultModule(0), defaultModule(1)], ui.moduleHoursSummary, ui.form.elements.plannedHours);
+toggleModuleSystem(ui.form, ui.moduleConfig, ui.moduleList, ui.moduleHoursSummary);
 syncStudyPeriodControls();
 reload().catch((error) => print({ error: error.message }));

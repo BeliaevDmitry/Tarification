@@ -273,6 +273,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                     vacancyEntry.setLoad(loadEntry.getLoad());
                     vacancyEntry.setGroupNameEducationalPlan(loadEntry.getGroupNameEducationalPlan());
                     vacancyEntry.setGroupLoad(loadEntry.getGroupLoad());
+                    vacancyEntry.setCurriculumModuleId(loadEntry.getCurriculumModuleId());
                     vacancyEntry.setCurriculumPart(loadEntry.getCurriculumPart());
                     vacancyEntry.setEducationLevel(loadEntry.getEducationLevel());
                     vacancyEntry.setStudyPeriod(loadEntry.getStudyPeriod());
@@ -505,6 +506,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 && Objects.equals(vacancy.getClassId(), source.getClassId())
                 && Objects.equals(vacancy.getMetaGroupId(), source.getMetaGroupId())
                 && Objects.equals(vacancy.getGroupNameEducationalPlan(), source.getGroupNameEducationalPlan())
+                && Objects.equals(vacancy.getCurriculumModuleId(), source.getCurriculumModuleId())
                 && Objects.equals(vacancy.getCurriculumPart(), source.getCurriculumPart())
                 && Objects.equals(vacancy.getStudyPeriod(), source.getStudyPeriod())
                 && Objects.equals(vacancy.getLoadFromDate(), vacancyFrom)

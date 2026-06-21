@@ -62,7 +62,7 @@
                 <option value="EXTRACURRICULAR">3) Внеурочная деятельность</option>
                 <option value="CORRECTIONAL">4) Коррекционная область</option>
             </select>
-            <select name="subjectName" id="subject-name" required><option value="">Выберите предмет</option></select>
+            <label>Название основного предмета<select name="subjectName" id="subject-name" required><option value="">Выберите предмет</option></select></label>
             <label id="subject-exclusion-label" title="Используйте, если часы этой строки распределяются через отдельную строку метагруппы.">Не переносить в нагрузку<select name="excludedFromManualLoad" id="subject-meta-group" required>
                 <option value="false">Нет</option>
                 <option value="true">Да</option>
@@ -70,6 +70,10 @@
             <div id="subject-meta-group-info" class="muted hidden">Строка метагруппы переносится в нагрузку и распределяется педагогу.</div>
             <label>Период<select name="studyPeriod" id="subject-study-period" required></select></label>
             <input name="plannedHours" type="number" min="0.1" step="0.1" placeholder="Всего часов" required>
+            <label>Модульная система<select name="modularSystem" id="modular-system" required>
+                <option value="false">Нет</option>
+                <option value="true">Модульная система</option>
+            </select></label>
             <label>Уровень<select name="educationLevel" required>
                 <option value="BASIC">Базовый</option>
                 <option value="ADVANCED">Углублённый</option>
@@ -78,7 +82,7 @@
                 <option value="false">Без деления</option>
                 <option value="true">С делением</option>
             </select>
-                        <div id="subgroup-config" class="grid subgroup-config hidden">
+            <div id="subgroup-config" class="grid subgroup-config hidden">
                 <input name="subgroup1Hours" type="number" min="0" placeholder="1 подгруппа, часы">
                 <select name="subgroup1EducationLevel">
                     <option value="BASIC">1 подгруппа: Базовый</option>
@@ -90,12 +94,17 @@
                     <option value="ADVANCED">2 подгруппа: Углублённый</option>
                 </select>
             </div>
+            <div id="module-config" class="module-config hidden">
+                <div class="module-config-head"><strong>Модули предмета</strong><button type="button" id="add-module-btn">Добавить модуль</button></div>
+                <div id="module-list" class="module-list"></div>
+                <div id="module-hours-summary" class="muted"></div>
+            </div>
             <button type="submit">Сохранить предмет</button>
         </form>
     </section>
 
     <section class="card" data-requires-edit>
-        <h2>Сводная таблица УП</h2>
+        <div class="row controls-row"><h2>Сводная таблица УП</h2><label>Отображение<select id="curriculum-display-mode"><option value="detailed">Подробный</option><option value="general">Общий</option></select></label></div>
         <div class="sheet-wrap">
             <table class="sheet-table" id="summary-table">
                 <thead id="summary-head"></thead>
@@ -108,6 +117,7 @@
 <dialog id="curriculum-edit-dialog">
     <form method="dialog" id="curriculum-edit-form" class="grid" data-requires-edit>
         <h3>Редактирование позиции</h3>
+        <div id="edit-main-subject-name" class="muted"></div>
         <input type="hidden" name="id">
         <input type="hidden" name="className">
         <label>Период<select name="studyPeriod" required></select></label>
@@ -117,6 +127,10 @@
         </select></label>
         <div id="edit-meta-group-info" class="muted hidden">Строка метагруппы переносится в нагрузку и распределяется педагогу.</div>
         <input name="plannedHours" type="number" min="0.1" step="0.1" placeholder="Всего часов" required>
+        <label>Модульная система<select name="modularSystem" required>
+            <option value="false">Нет</option>
+            <option value="true">Модульная система</option>
+        </select></label>
         <label>Уровень<select name="educationLevel" required>
             <option value="BASIC">Базовый</option>
             <option value="ADVANCED">Углублённый</option>
@@ -125,7 +139,8 @@
             <option value="false">Без деления</option>
             <option value="true">С делением</option>
         </select></label>
-                <input name="subgroup1Hours" type="number" min="0" placeholder="1 подгруппа, часы">
+        <div id="edit-subgroup-config" class="grid subgroup-config hidden">
+        <input name="subgroup1Hours" type="number" min="0" placeholder="1 подгруппа, часы">
         <select name="subgroup1EducationLevel">
             <option value="BASIC">1 подгруппа: Базовый</option>
             <option value="ADVANCED">1 подгруппа: Углублённый</option>
@@ -135,6 +150,12 @@
             <option value="BASIC">2 подгруппа: Базовый</option>
             <option value="ADVANCED">2 подгруппа: Углублённый</option>
         </select>
+        </div>
+        <div id="edit-module-config" class="module-config hidden">
+            <div class="module-config-head"><strong>Модули предмета</strong><button type="button" id="edit-add-module-btn">Добавить модуль</button></div>
+            <div id="edit-module-list" class="module-list"></div>
+            <div id="edit-module-hours-summary" class="muted"></div>
+        </div>
         <div class="row">
             <button id="save-curriculum-item" type="submit">Сохранить</button>
             <button id="delete-curriculum-item" type="button" class="danger-btn">Удалить</button>

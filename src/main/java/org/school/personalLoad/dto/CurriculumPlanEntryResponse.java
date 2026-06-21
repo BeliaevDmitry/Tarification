@@ -2,6 +2,7 @@ package org.school.personalLoad.dto;
 
 import lombok.Data;
 import org.school.personalLoad.model.CurriculumPart;
+import org.school.personalLoad.model.CurriculumModule;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.CurriculumStage;
 import org.school.personalLoad.model.EducationLevel;
@@ -9,6 +10,7 @@ import org.school.personalLoad.model.StudyPeriod;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class CurriculumPlanEntryResponse {
@@ -37,6 +39,8 @@ public class CurriculumPlanEntryResponse {
     private CurriculumPart curriculumPart;
     private LocalDateTime createdAt;
     private boolean metaGroup;
+    private boolean modularSystem;
+    private List<CurriculumModule> modules;
 
     public static CurriculumPlanEntryResponse from(CurriculumPlanEntry entry, Long schoolBuildingId) {
         CurriculumPlanEntryResponse response = new CurriculumPlanEntryResponse();
@@ -65,6 +69,8 @@ public class CurriculumPlanEntryResponse {
         response.setCurriculumPart(entry.getCurriculumPart());
         response.setCreatedAt(entry.getCreatedAt());
         response.setMetaGroup(entry.isMetaGroup());
+        response.setModularSystem(entry.isModularSystem());
+        response.setModules(entry.getModules());
         return response;
     }
 }
