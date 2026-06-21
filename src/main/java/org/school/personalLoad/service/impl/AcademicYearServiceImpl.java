@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.model.AcademicYearConfig;
 import org.school.personalLoad.model.ContinuityStatus;
 import org.school.personalLoad.model.CurriculumPlanEntry;
+import org.school.personalLoad.model.CurriculumModule;
 import org.school.personalLoad.model.CurriculumPart;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.StudyPeriod;
@@ -110,10 +111,16 @@ public class AcademicYearServiceImpl implements AcademicYearService {
             throw new IllegalArgumentException("Для преемственности не найден предыдущий учебный год: " + sourceYear);
         }
 
-        List<CurriculumPlanEntry> targetCurriculum = curriculumPlanEntryRepository.findAll().stream()
+        List<CurriculumPlanEntry> allCurriculum = curriculumPlanEntryRepository.findAll();
+        List<CurriculumPlanEntry> targetCurriculum = allCurriculum.stream()
                 .filter(entry -> targetYear.equals(entry.getAcademicYear()))
                 .filter(entry -> !entry.isDeprecated())
                 .toList();
+        Map<Long, CurriculumModule> sourceModulesById = allCurriculum.stream()
+                .filter(entry -> sourceYear.equals(entry.getAcademicYear()))
+                .flatMap(entry -> entry.getModules().stream())
+                .filter(module -> module.getId() != null)
+                .collect(Collectors.toMap(CurriculumModule::getId, Function.identity(), (left, right) -> left));
         if (targetCurriculum.isEmpty()) {
             throw new IllegalArgumentException("Невозможно выполнить преемственность: в " + targetYear + " не загружен учебный план");
         }
@@ -152,11 +159,16 @@ public class AcademicYearServiceImpl implements AcademicYearService {
                         if (curriculum == null) {
                             continue;
                         }
-                        String targetKey = joinKey(targetClass, source.getSubjectName(), source.getCurriculumPart(), source.getGroupNameEducationalPlan());
+                        CurriculumModule targetModule = resolveContinuityModule(source, sourceModulesById, curriculum);
+                        if ((source.getCurriculumModuleId() != null || curriculum.isModularSystem()) && targetModule == null) {
+                            continue;
+                        }
+                        String targetKey = joinKey(targetClass, source.getSubjectName(), source.getCurriculumPart(), source.getGroupNameEducationalPlan())
+                                + "|module:" + String.valueOf(targetModule == null ? "" : targetModule.getId());
                         if (targetExisting.containsKey(targetKey)) {
                             return null;
                         }
-                        ManualLoadEntry created = createContinuityEntry(targetYear, curriculum, source);
+                        ManualLoadEntry created = createContinuityEntry(targetYear, curriculum, targetModule, source);
                         targetExisting.put(targetKey, created);
                         return created;
                     }
@@ -182,7 +194,7 @@ public class AcademicYearServiceImpl implements AcademicYearService {
                 entry.getSubjectName(),
                 entry.getCurriculumPart(),
                 entry.getGroupNameEducationalPlan()
-        );
+        ) + "|module:" + String.valueOf(entry.getCurriculumModuleId() == null ? "" : entry.getCurriculumModuleId());
     }
 
     private String continuityKey(CurriculumPlanEntry entry) {
@@ -271,18 +283,29 @@ public class AcademicYearServiceImpl implements AcademicYearService {
         return List.of(nextClass, normalizedSource);
     }
 
-    private ManualLoadEntry createContinuityEntry(String targetYear, CurriculumPlanEntry curriculum, ManualLoadEntry source) {
+    private ManualLoadEntry createContinuityEntry(String targetYear,
+                                                  CurriculumPlanEntry curriculum,
+                                                  CurriculumModule module,
+                                                  ManualLoadEntry source) {
         ManualLoadEntry entry = new ManualLoadEntry();
         entry.setAcademicYear(targetYear);
         entry.setFioTeacher(source.getFioTeacher().trim());
         entry.setNumberSchoolBuilding(curriculum.getNumberSchoolBuilding());
         entry.setSubjectName(curriculum.getSubjectName());
         entry.setClassName(curriculum.getClassName());
-        entry.setLoad(curriculum.getPlannedHours() == null ? 0 : curriculum.getPlannedHours().intValue());
+        int plannedLoad = module == null
+                ? (curriculum.getPlannedHours() == null ? 0 : curriculum.getPlannedHours().intValue())
+                : module.getPlannedHours().intValue();
+        if (module != null && source.getGroupNameEducationalPlan() != null) {
+            if (source.getGroupNameEducationalPlan().contains("1") && module.getSubgroup1Hours() != null) plannedLoad = module.getSubgroup1Hours();
+            if (source.getGroupNameEducationalPlan().contains("2") && module.getSubgroup2Hours() != null) plannedLoad = module.getSubgroup2Hours();
+        }
+        entry.setLoad(plannedLoad);
         entry.setGroupNameEducationalPlan(source.getGroupNameEducationalPlan());
         entry.setGroupLoad(source.getGroupLoad() == null ? entry.getLoad() : source.getGroupLoad());
+        entry.setCurriculumModuleId(module == null ? null : module.getId());
         entry.setCurriculumPart(curriculum.getCurriculumPart());
-        entry.setEducationLevel(curriculum.getEducationLevel());
+        entry.setEducationLevel(module == null ? curriculum.getEducationLevel() : module.getEducationLevel());
         StudyPeriod studyPeriod = curriculum.getStudyPeriod() == null ? StudyPeriod.YEAR : curriculum.getStudyPeriod();
         entry.setStudyPeriod(studyPeriod);
         entry.setLoadFromDate(defaultFromDate(targetYear, studyPeriod));
@@ -291,6 +314,19 @@ public class AcademicYearServiceImpl implements AcademicYearService {
         entry.setDismissalAdjusted(false);
         entry.setContinuityStatus(ContinuityStatus.OK);
         return entry;
+    }
+
+    private CurriculumModule resolveContinuityModule(ManualLoadEntry source,
+                                                     Map<Long, CurriculumModule> sourceModulesById,
+                                                     CurriculumPlanEntry targetCurriculum) {
+        if (source.getCurriculumModuleId() == null) return null;
+        CurriculumModule sourceModule = sourceModulesById.get(source.getCurriculumModuleId());
+        if (sourceModule == null || !targetCurriculum.isModularSystem()) return null;
+        return targetCurriculum.getModules().stream()
+                .filter(module -> Objects.equals(module.getModuleOrder(), sourceModule.getModuleOrder())
+                        || module.getModuleName().equalsIgnoreCase(sourceModule.getModuleName()))
+                .findFirst()
+                .orElse(null);
     }
 
     private LocalDate defaultFromDate(String academicYearCode, StudyPeriod studyPeriod) {

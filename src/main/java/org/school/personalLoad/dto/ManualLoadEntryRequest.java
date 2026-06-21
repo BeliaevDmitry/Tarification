@@ -22,6 +22,7 @@ public class ManualLoadEntryRequest {
     private Integer load;
     private String groupNameEducationalPlan;
     private Integer groupLoad;
+    private Long curriculumModuleId;
     private CurriculumPart curriculumPart;
     private EducationLevel educationLevel;
     private StudyPeriod studyPeriod;

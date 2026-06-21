@@ -106,6 +106,9 @@ public class ManualLoadEntry {
 
     private Integer groupLoad;
 
+    @Column(name = "curriculum_module_id")
+    private Long curriculumModuleId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "curriculum_part")
     private CurriculumPart curriculumPart = CurriculumPart.CORE;

@@ -89,6 +89,27 @@ class TeacherNotificationsControllerTest {
     }
 
     @Test
+    void activeRowsKeepDifferentModulesAndSumThemUnderBaseSubject() {
+        ManualLoadEntry firstModule = row(StudyPeriod.YEAR, 1);
+        fillDuplicateKey(firstModule);
+        firstModule.setSubjectName("Труд");
+        firstModule.setCurriculumModuleId(101L);
+        ManualLoadEntry secondModule = row(StudyPeriod.YEAR, 1);
+        fillDuplicateKey(secondModule);
+        secondModule.setSubjectName("Труд");
+        secondModule.setCurriculumModuleId(102L);
+        when(manualLoadEntryRepository.findAllByAcademicYear("2026/2027"))
+                .thenReturn(List.of(firstModule, secondModule));
+
+        List<ManualLoadEntry> rows = controller().activeRows("2026/2027", LocalDate.of(2026, 9, 1));
+
+        assertEquals(2, rows.size());
+        assertEquals("2 часа", controller().formatNotificationTotalLoad(rows));
+        assertEquals("Труд", rows.get(0).getSubjectName());
+        assertEquals("Труд", rows.get(1).getSubjectName());
+    }
+
+    @Test
     void teacherNameForNotificationUsesDativeNameFromDirectory() {
         TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
         teacher.setFioTeacher("Иванов Иван Иванович");

@@ -657,6 +657,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         row.setLoadFromDate(source.getLoadFromDate());
         row.setLoadToDate(removalToDate);
         row.setGroupNameEducationalPlan(source.getGroupNameEducationalPlan());
+        row.setCurriculumModuleId(source.getCurriculumModuleId());
         row.setCurriculumPart(source.getCurriculumPart());
         row.setEducationLevel(source.getEducationLevel());
         row.setStudyPeriod(source.getStudyPeriod());
@@ -994,6 +995,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 String.valueOf(row.getLoad() == null ? 0 : row.getLoad()),
                 safe(row.getNumberSchoolBuilding()),
                 safe(row.getGroupNameEducationalPlan()),
+                String.valueOf(row.getCurriculumModuleId()),
                 String.valueOf(row.getCurriculumPart() == null ? CurriculumPart.CORE : row.getCurriculumPart()),
                 String.valueOf(row.getStudyPeriod()));
     }

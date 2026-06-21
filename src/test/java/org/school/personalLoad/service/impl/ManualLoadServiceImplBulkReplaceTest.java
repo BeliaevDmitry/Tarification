@@ -612,6 +612,25 @@ class ManualLoadServiceImplBulkReplaceTest {
     }
 
     @Test
+    void importPreviousFkTemplateWithoutModuleColumnsRemainsSupportedForOrdinaryRows() throws Exception {
+        CurriculumPlanEntry ordinaryRule = curriculumRow("СП1", "5-А", "Математика", 5);
+        ordinaryRule.setClassId(101L);
+        ordinaryRule.setSubject(subject(21L, "Математика"));
+        MockMultipartFile file = editableImportFile(true, false, List.of(
+                importRow("СП1", "5-А", "Математика", 5, 101L, null, 10L, 21L)
+        ));
+        when(curriculumPlanEntryRepository.findFirstByAcademicYearAndClassIdAndSubject_IdAndCurriculumPartAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                "2025/2026", 101L, 21L, CurriculumPart.CORE, EducationLevel.BASIC, StudyPeriod.YEAR))
+                .thenReturn(Optional.of(ordinaryRule));
+        when(manualLoadEntryRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<ManualLoadEntry> saved = service.importWorkbook("2025/2026", file);
+
+        assertEquals(1, saved.size());
+        assertNull(saved.get(0).getCurriculumModuleId());
+    }
+
+    @Test
     void importNewTemplateRejectsUnknownForeignKey() throws Exception {
         MockMultipartFile file = editableImportFile(true, List.of(
                 importRow("СП1", "5-А", "Математика", 5, 101L, null, 999L, 21L)
@@ -888,11 +907,17 @@ class ManualLoadServiceImplBulkReplaceTest {
 
 
     private MockMultipartFile editableImportFile(boolean includeFkColumns, List<ImportRow> rows) throws Exception {
+        return editableImportFile(includeFkColumns, true, rows);
+    }
+
+    private MockMultipartFile editableImportFile(boolean includeFkColumns,
+                                                 boolean includeModuleColumns,
+                                                 List<ImportRow> rows) throws Exception {
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             var sheet = workbook.createSheet("LOAD_EDITABLE");
             var header = sheet.createRow(0);
-            String[] headers = {"Учебный год", "Корпус", "Класс", "Предмет", "Группа", "Период", "С", "По", "Часы", "Уровень", "ФИО педагога", "ROW_KEY", "CLASS_ID", "META_GROUP_ID", "TEACHER_ID", "SUBJECT_ID", "CURRICULUM_PART"};
-            int headerCount = includeFkColumns ? headers.length : 12;
+            String[] headers = {"Учебный год", "Корпус", "Класс", "Предмет", "Группа", "Период", "С", "По", "Часы", "Уровень", "ФИО педагога", "ROW_KEY", "CLASS_ID", "META_GROUP_ID", "TEACHER_ID", "SUBJECT_ID", "CURRICULUM_PART", "CURRICULUM_MODULE_ID", "MODULE_NAME"};
+            int headerCount = includeFkColumns ? (includeModuleColumns ? headers.length : 17) : 12;
             for (int i = 0; i < headerCount; i++) {
                 header.createCell(i).setCellValue(headers[i]);
             }
@@ -917,6 +942,10 @@ class ManualLoadServiceImplBulkReplaceTest {
                     if (source.teacherId() != null) row.createCell(14).setCellValue(source.teacherId());
                     if (source.subjectId() != null) row.createCell(15).setCellValue(source.subjectId());
                     row.createCell(16).setCellValue("CORE");
+                    if (includeModuleColumns) {
+                        row.createCell(17).setCellValue("");
+                        row.createCell(18).setCellValue("");
+                    }
                 }
             }
             workbook.write(out);

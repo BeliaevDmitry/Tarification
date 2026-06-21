@@ -60,6 +60,8 @@ public interface CurriculumPlanEntryRepository extends JpaRepository<CurriculumP
             String academicYear, Long classId, Long subjectId, CurriculumPart curriculumPart,
             EducationLevel educationLevel, StudyPeriod studyPeriod
     );
+    Optional<CurriculumPlanEntry> findFirstByAcademicYearAndClassIdAndSubject_IdAndCurriculumPartAndStudyPeriodAndDeprecatedFalse(
+            String academicYear, Long classId, Long subjectId, CurriculumPart curriculumPart, StudyPeriod studyPeriod);
 
     Optional<CurriculumPlanEntry> findFirstByAcademicYearAndMetaGroupIdAndSubjectNameIgnoreCaseAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
             String academicYear,
@@ -80,6 +82,8 @@ public interface CurriculumPlanEntryRepository extends JpaRepository<CurriculumP
             String academicYear, Long metaGroupId, Long subjectId, CurriculumPart curriculumPart,
             EducationLevel educationLevel, StudyPeriod studyPeriod
     );
+    Optional<CurriculumPlanEntry> findFirstByAcademicYearAndMetaGroupIdAndSubject_IdAndCurriculumPartAndStudyPeriodAndDeprecatedFalse(
+            String academicYear, Long metaGroupId, Long subjectId, CurriculumPart curriculumPart, StudyPeriod studyPeriod);
 
     List<CurriculumPlanEntry> findAllByAcademicYearAndStage(String academicYear, CurriculumStage stage);
     List<CurriculumPlanEntry> findAllByAcademicYear(String academicYear);

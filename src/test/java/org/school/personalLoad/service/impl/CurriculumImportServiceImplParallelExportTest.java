@@ -10,6 +10,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.CurriculumPart;
+import org.school.personalLoad.model.CurriculumModule;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.CurriculumStage;
 import org.school.personalLoad.model.EducationLevel;
@@ -202,6 +203,36 @@ class CurriculumImportServiceImplParallelExportTest {
         assertTrue(saved.isMetaGroup());
     }
 
+    @Test
+    void editableExportContainsTechnicalModuleSheetWhileVisualPlanKeepsBaseSubject() throws Exception {
+        CurriculumPlanEntry modular = entry("СП1", "7-А", "Труд", StudyPeriod.YEAR, 2);
+        modular.setModularSystem(true);
+        modular.getModules().add(module(modular, 1, "Черчение"));
+        modular.getModules().add(module(modular, 2, "Программирование"));
+        when(curriculumRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(modular));
+        when(subjectCatalogRepository.findAll()).thenReturn(List.of(subject("Труд", "Технология")));
+
+        byte[] body = service.exportEditableWorkbook("2026/2027");
+
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
+            var modules = workbook.getSheet("CURRICULUM_MODULES");
+            assertNotNull(modules);
+            assertEquals("Черчение", modules.getRow(1).getCell(6).getStringCellValue());
+            assertEquals("Программирование", modules.getRow(2).getCell(6).getStringCellValue());
+            var visual = workbook.getSheet("ООО");
+            boolean containsBaseSubject = false;
+            boolean containsModuleName = false;
+            for (var row : visual) {
+                for (var cell : row) {
+                    if ("Труд".equals(cell.toString())) containsBaseSubject = true;
+                    if ("Черчение".equals(cell.toString())) containsModuleName = true;
+                }
+            }
+            assertTrue(containsBaseSubject);
+            assertFalse(containsModuleName);
+        }
+    }
+
     private CurriculumPlanEntry entry(String building, String className, String subject, StudyPeriod period, int hours) {
         CurriculumPlanEntry entry = new CurriculumPlanEntry();
         entry.setAcademicYear("2026/2027");
@@ -216,6 +247,17 @@ class CurriculumImportServiceImplParallelExportTest {
         entry.setSubgroupRequired(false);
         entry.setSubgroupCount(0);
         return entry;
+    }
+
+    private CurriculumModule module(CurriculumPlanEntry parent, int order, String name) {
+        CurriculumModule module = new CurriculumModule();
+        module.setId((long) order);
+        module.setCurriculumEntry(parent);
+        module.setModuleOrder(order);
+        module.setModuleName(name);
+        module.setPlannedHours(BigDecimal.ONE);
+        module.setEducationLevel(EducationLevel.BASIC);
+        return module;
     }
 
     private StudyPeriodSetting studyPeriodRule() {

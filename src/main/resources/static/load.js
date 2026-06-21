@@ -741,9 +741,19 @@ function displaySubjectName(row) {
 }
 
 function classPeriodHours(rows = []) {
-    const year = rows.filter((r) => rowStudyPeriod(r) === "YEAR").reduce((s, r) => s + Number(r.plannedHours || 0), 0);
-    const h1 = rows.filter((r) => rowStudyPeriod(r) === "H1").reduce((s, r) => s + Number(r.plannedHours || 0), 0);
-    const h2 = rows.filter((r) => rowStudyPeriod(r) === "H2").reduce((s, r) => s + Number(r.plannedHours || 0), 0);
+    const effective = new Map();
+    rows.forEach((row) => {
+        const period = rowStudyPeriod(row);
+        const module = row.__moduleId ? `M:${row.__moduleId}` : "BASE";
+        const key = `${period}|${module}`;
+        effective.set(key, Math.max(effective.get(key) || 0, Number(row.plannedHours || 0)));
+    });
+    const total = (period) => Array.from(effective.entries())
+        .filter(([key]) => key.startsWith(`${period}|`))
+        .reduce((sum, [, hours]) => sum + hours, 0);
+    const year = total("YEAR");
+    const h1 = total("H1");
+    const h2 = total("H2");
     return { year, h1, h2 };
 }
 
@@ -859,6 +869,7 @@ function manualRowDuplicateKey(row) {
         normalizeClassName(row?.className),
         String(row?.subjectName || "").trim().toLowerCase(),
         String(row?.curriculumPart || "CORE"),
+        String(row?.curriculumModuleId || ""),
         String(row?.groupNameEducationalPlan || "").trim().toLowerCase(),
         String(row?.studyPeriod || "YEAR"),
         String(row?.loadFromDate || ""),
@@ -923,11 +934,13 @@ function buildTeacherHoursFromAssignments(buildingCode) {
 }
 
 function apiKeyOfRow(row) {
-    return `${row.className}|${row.subjectName}|${row.curriculumPart || "CORE"}|${rowStudyPeriod(row)}${groupSuffix(row)}`;
+    const moduleToken = row.__moduleId ? `|M:${row.__moduleId}` : "";
+    return `${row.className}|${row.subjectName}|${row.curriculumPart || "CORE"}|${rowStudyPeriod(row)}${moduleToken}${groupSuffix(row)}`;
 }
 
 function subjectKeyOfRow(row) {
     const periodToken = "YEAR";
+    if (row.__moduleId) return `${row.subjectName}|${row.curriculumPart || "CORE"}|${periodToken}|MODULAR`;
     return `${row.subjectName}|${row.curriculumPart || "CORE"}|${periodToken}${groupSuffix(row)}`;
 }
 
@@ -951,6 +964,7 @@ function rowsToSyncForCurriculumRow(curriculumRow) {
         row.className === curriculumRow.className
         && row.subjectName === curriculumRow.subjectName
         && (row.curriculumPart || "CORE") === (curriculumRow.curriculumPart || "CORE")
+        && String(row.__moduleId || "") === String(curriculumRow.__moduleId || "")
         && groupSuffix(row) === groupSuffix(curriculumRow)
     );
     return matched.length ? matched : [curriculumRow];
@@ -1021,30 +1035,46 @@ function rowsForSelectedBuilding() {
 function expandCurriculumRows(rows) {
     const expanded = [];
     rows.forEach((row) => {
-        const subgroupRequired = Boolean(row.subgroupRequired);
-        const subgroupCount = subgroupRequired ? Math.max(Number(row.subgroupCount || 2), 2) : 0;
-
-        if (!subgroupRequired) {
-            expanded.push({ ...row, __groupIndex: null, __groupCount: 0 });
-            return;
-        }
-
-        for (let i = 1; i <= subgroupCount; i += 1) {
-            const subgroupHours = i === 1
-                ? Number(row.subgroup1Hours ?? row.plannedHours ?? 0)
-                : Number(row.subgroup2Hours ?? row.plannedHours ?? 0);
-            const subgroupLevel = i === 1
-                ? (row.subgroup1EducationLevel || row.educationLevel)
-                : (row.subgroup2EducationLevel || row.educationLevel);
-
-            expanded.push({
+        const moduleRows = row.modularSystem && (row.modules || []).length
+            ? row.modules.map((module) => ({
                 ...row,
-                plannedHours: subgroupHours,
-                educationLevel: subgroupLevel,
-                __groupIndex: i,
-                __groupCount: subgroupCount
-            });
-        }
+                plannedHours: module.plannedHours,
+                educationLevel: module.educationLevel,
+                subgroupRequired: module.subgroupRequired,
+                subgroupCount: module.subgroupCount,
+                subgroup1Hours: module.subgroup1Hours,
+                subgroup1EducationLevel: module.subgroup1EducationLevel,
+                subgroup2Hours: module.subgroup2Hours,
+                subgroup2EducationLevel: module.subgroup2EducationLevel,
+                __moduleId: module.id,
+                __moduleName: module.moduleName,
+                __moduleOrder: module.moduleOrder
+            }))
+            : [{ ...row, __moduleId: null, __moduleName: null, __moduleOrder: null }];
+
+        moduleRows.forEach((moduleRow) => {
+            const subgroupRequired = Boolean(moduleRow.subgroupRequired);
+            const subgroupCount = subgroupRequired ? Math.max(Number(moduleRow.subgroupCount || 2), 2) : 0;
+            if (!subgroupRequired) {
+                expanded.push({ ...moduleRow, __groupIndex: null, __groupCount: 0 });
+                return;
+            }
+            for (let i = 1; i <= subgroupCount; i += 1) {
+                const subgroupHours = i === 1
+                    ? Number(moduleRow.subgroup1Hours ?? moduleRow.plannedHours ?? 0)
+                    : Number(moduleRow.subgroup2Hours ?? moduleRow.plannedHours ?? 0);
+                const subgroupLevel = i === 1
+                    ? (moduleRow.subgroup1EducationLevel || moduleRow.educationLevel)
+                    : (moduleRow.subgroup2EducationLevel || moduleRow.educationLevel);
+                expanded.push({
+                    ...moduleRow,
+                    plannedHours: subgroupHours,
+                    educationLevel: subgroupLevel,
+                    __groupIndex: i,
+                    __groupCount: subgroupCount
+                });
+            }
+        });
     });
     return expanded;
 }
@@ -1364,6 +1394,7 @@ function subjectConflictKey(row) {
         normalizeClassName(row.className),
         String(row.subjectName || "").trim().toUpperCase(),
         String(row.curriculumPart || "CORE"),
+        String(row.curriculumModuleId || ""),
         String(manualEntryStudyPeriod(row) || "YEAR"),
         String(row.groupNameEducationalPlan || "").trim().toUpperCase()
     ].join("|");
@@ -1415,6 +1446,7 @@ function prefillFromManualLoad(referenceDate = referencePlanningDate()) {
             && row.className === entry.className
             && row.subjectName === entry.subjectName
             && (!entry.curriculumPart || (row.curriculumPart || "CORE") === entry.curriculumPart)
+            && String(row.__moduleId || "") === String(entry.curriculumModuleId || "")
             && String(row.__groupIndex ? `ГРУППА ${row.__groupIndex}` : "").trim().toUpperCase() === entryGroup
         );
         if (!candidates.length) return null;
@@ -2085,6 +2117,7 @@ function findManualPeriodForClassTeacher(curriculumRow, teacherName) {
         if (normalizeClassName(entry.className) !== normalizeClassName(curriculumRow.className)) return false;
         if (String(entry.subjectName || "").trim() !== String(curriculumRow.subjectName || "").trim()) return false;
         if (entry.curriculumPart && String(entry.curriculumPart) !== String(curriculumRow.curriculumPart || "CORE")) return false;
+        if (String(entry.curriculumModuleId || "") !== String(curriculumRow.__moduleId || "")) return false;
         if (String(manualEntryStudyPeriod(entry) || "YEAR") !== String(targetPeriod || "YEAR")) return false;
         const entryGroup = String(entry.groupNameEducationalPlan || "").trim().toUpperCase();
         return entryGroup === targetGroup;
@@ -2122,7 +2155,9 @@ function openSubgroupDrawer(presentationRow, className, classRows) {
     if (ui.subgroupDrawerTitle) ui.subgroupDrawerTitle.textContent = `${className} — ${presentationRow.subjectName}`;
     ui.subgroupDrawerBody.innerHTML = classRows.map((item, idx) => {
         const apiKey = apiKeyOfRow(item);
-        const subgroupName = item.__groupIndex ? `Подгруппа ${item.__groupIndex}` : `Подгруппа ${idx + 1}`;
+        const moduleLabel = item.__moduleId ? `Модуль ${item.__moduleOrder}: ${item.__moduleName}` : "";
+        const subgroupLabel = item.__groupIndex ? `Подгруппа ${item.__groupIndex}` : "";
+        const subgroupName = [moduleLabel, subgroupLabel].filter(Boolean).join(" — ") || `Подгруппа ${idx + 1}`;
         const teacher = String(assignments[apiKey] || '').trim();
         const period = defaultPeriodForRows([item]);
         const manualPeriod = findManualPeriodForClassTeacher(item, teacher);
@@ -2284,12 +2319,12 @@ function subgroupRowsForClass(presentationRow, className) {
         if (normalizeClassName(row.className) !== normalizeClassName(className)) return false;
         if (String(row.subjectName || '').trim() !== String(presentationRow.subjectName || '').trim()) return false;
         if (String(row.curriculumPart || '') !== String(presentationRow.curriculumPart || '')) return false;
-        const hasGroup = Number(row.__groupCount || 0) > 0 || Number(row.__groupIndex || 0) > 0;
-        return hasGroup;
+        return Boolean(row.__moduleId) || Number(row.__groupCount || 0) > 0 || Number(row.__groupIndex || 0) > 0;
     });
     const ordered = (classRows.length > direct.length ? classRows : direct)
         .slice()
-        .sort((a, b) => Number(a.__groupIndex || 0) - Number(b.__groupIndex || 0));
+        .sort((a, b) => Number(a.__moduleOrder || 0) - Number(b.__moduleOrder || 0)
+            || Number(a.__groupIndex || 0) - Number(b.__groupIndex || 0));
     const seen = new Set();
     return ordered.filter((row) => {
         const key = apiKeyOfRow(row);
@@ -2310,7 +2345,7 @@ function onClassCellClick(presentationRow, className, cellButton = null) {
     const assignments = assignmentsForBuilding(selectedBuilding);
     const rowMeta = findTeacherRowMeta(presentationRow.subjectKey, presentationRow.teacherRowId);
     const classRowsForCell = subgroupRowsForClass(presentationRow, className);
-    if (classRowsForCell.some((item) => Number(item.__groupCount || 0) > 0 || item.__groupIndex)) {
+    if (classRowsForCell.some((item) => item.__moduleId || Number(item.__groupCount || 0) > 0 || item.__groupIndex)) {
         openSubgroupDrawer(presentationRow, className, classRowsForCell);
         return;
     }
@@ -2322,7 +2357,7 @@ function onClassCellClick(presentationRow, className, cellButton = null) {
     }
 
     const classRows = presentationRow.rowsByClassAll?.[className] || [curriculumRow];
-    if (classRows.some((item) => Number(item.__groupCount || 0) > 0 || item.__groupIndex)) {
+    if (classRows.some((item) => item.__moduleId || Number(item.__groupCount || 0) > 0 || item.__groupIndex)) {
         openSubgroupDrawer(presentationRow, className, classRows);
         return;
     }
@@ -2817,6 +2852,7 @@ async function saveBuildingLoad() {
             load: Number(row.plannedHours || 0),
             groupNameEducationalPlan: row.__groupIndex ? `Группа ${row.__groupIndex}` : null,
             groupLoad: row.__groupIndex ? Number(row.plannedHours || 0) : null,
+            curriculumModuleId: row.__moduleId || null,
             curriculumPart: row.curriculumPart || "CORE",
             educationLevel: row.educationLevel,
             studyPeriod: rowStudyPeriod(row),
@@ -2841,6 +2877,7 @@ async function saveBuildingLoad() {
             load: Number(row.plannedHours || 0),
             groupNameEducationalPlan: row.__groupIndex ? `Группа ${row.__groupIndex}` : null,
             groupLoad: row.__groupIndex ? Number(row.plannedHours || 0) : null,
+            curriculumModuleId: row.__moduleId || null,
             curriculumPart: row.curriculumPart || "CORE",
             educationLevel: row.educationLevel,
             studyPeriod: rowStudyPeriod(row),
@@ -2858,6 +2895,7 @@ async function saveBuildingLoad() {
             normalizeClassName(item.className),
             String(item.subjectName || "").trim().toUpperCase(),
             String(item.curriculumPart || "CORE"),
+            String(item.curriculumModuleId || ""),
             String(item.studyPeriod || "YEAR"),
             String(item.groupNameEducationalPlan || "").trim().toUpperCase(),
             String(item.fioTeacher || "").trim().toUpperCase(),

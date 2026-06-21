@@ -730,6 +730,48 @@ dialog::backdrop {
     display: none;
 }
 
+.module-config {
+    grid-column: 1 / -1;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 12px;
+    background: #f8fafc;
+}
+
+.module-config-head,
+.module-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.module-list {
+    display: grid;
+    gap: 10px;
+    margin: 10px 0;
+}
+
+.module-card {
+    border: 1px solid #dbe3ec;
+    border-radius: 9px;
+    padding: 10px;
+    background: #fff;
+}
+
+.module-fields,
+.module-subgroup-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.module-hours-invalid {
+    color: #b91c1c;
+    font-weight: 700;
+}
+
 #save-building-btn {
     position: static;
     top: auto;

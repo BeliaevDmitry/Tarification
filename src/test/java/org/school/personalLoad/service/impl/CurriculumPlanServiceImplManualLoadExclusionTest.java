@@ -23,9 +23,12 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -45,12 +48,12 @@ class CurriculumPlanServiceImplManualLoadExclusionTest {
     @BeforeEach
     void setUp() {
         service = new CurriculumPlanServiceImpl(repository, studyPeriodSettingRepository, studyPeriodSettingService, subjectCatalogRepository);
-        when(studyPeriodSettingService.resolveRuleForClassAndPeriod(anyString(), anyString(), any())).thenReturn(studyPeriodRule());
-        when(subjectCatalogRepository.findAll()).thenReturn(List.of());
-        when(repository.findByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriodAndStudyPeriodSettingId(
+        lenient().when(studyPeriodSettingService.resolveRuleForClassAndPeriod(anyString(), anyString(), any())).thenReturn(studyPeriodRule());
+        lenient().when(subjectCatalogRepository.findAll()).thenReturn(List.of());
+        lenient().when(repository.findByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriodAndStudyPeriodSettingId(
                 anyString(), anyString(), anyString(), anyString(), any(), any(), any(), any()))
                 .thenReturn(Optional.empty());
-        when(repository.save(any(CurriculumPlanEntry.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(repository.save(any(CurriculumPlanEntry.class))).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     @Test
@@ -77,6 +80,33 @@ class CurriculumPlanServiceImplManualLoadExclusionTest {
         assertTrue(saved.isMetaGroup());
     }
 
+    @Test
+    void modularSubjectPersistsTwoOrMoreModulesWithExactTotal() {
+        CurriculumPlanEntryRequest request = request("7-А");
+        request.setSubjectName("Труд");
+        request.setPlannedHours(BigDecimal.valueOf(2));
+        request.setModularSystem(true);
+        request.setModules(List.of(module("Черчение", 1), module("Программирование", 1)));
+
+        service.upsert(request);
+
+        CurriculumPlanEntry saved = captureSaved();
+        assertTrue(saved.isModularSystem());
+        assertFalse(saved.isSubgroupRequired());
+        assertEquals(2, saved.getModules().size());
+        assertEquals("Черчение", saved.getModules().get(0).getModuleName());
+    }
+
+    @Test
+    void modularSubjectRejectsModuleHoursDifferentFromSubjectHours() {
+        CurriculumPlanEntryRequest request = request("7-А");
+        request.setPlannedHours(BigDecimal.valueOf(3));
+        request.setModularSystem(true);
+        request.setModules(List.of(module("Черчение", 1), module("Программирование", 1)));
+
+        assertThrows(IllegalArgumentException.class, () -> service.upsert(request));
+    }
+
     private CurriculumPlanEntry captureSaved() {
         ArgumentCaptor<CurriculumPlanEntry> captor = ArgumentCaptor.forClass(CurriculumPlanEntry.class);
         org.mockito.Mockito.verify(repository).save(captor.capture());
@@ -95,6 +125,14 @@ class CurriculumPlanServiceImplManualLoadExclusionTest {
         request.setStudyPeriod(StudyPeriod.YEAR);
         request.setSubgroupRequired(false);
         return request;
+    }
+
+    private CurriculumPlanEntryRequest.ModuleRequest module(String name, int hours) {
+        CurriculumPlanEntryRequest.ModuleRequest module = new CurriculumPlanEntryRequest.ModuleRequest();
+        module.setModuleName(name);
+        module.setPlannedHours(BigDecimal.valueOf(hours));
+        module.setEducationLevel(EducationLevel.BASIC);
+        return module;
     }
 
     private StudyPeriodSetting studyPeriodRule() {
