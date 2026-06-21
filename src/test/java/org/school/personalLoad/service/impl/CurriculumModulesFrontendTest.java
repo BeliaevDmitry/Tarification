@@ -19,6 +19,7 @@ class CurriculumModulesFrontendTest {
         assertTrue(html.contains("<summary>Добавить/обновить предмет</summary>"));
         assertTrue(html.indexOf("value=\"detailed\"") < html.indexOf("value=\"general\""));
         assertTrue(curriculumJs.contains("modules.push(defaultModule(modules.length))"));
+        assertTrue(curriculumJs.contains("assertModulesPersisted(saved, payload)"));
         assertTrue(curriculumJs.contains("Сумма часов модулей"));
         assertTrue(curriculumJs.contains("subjectName: `${row.subjectName}, ${module.moduleName}`"));
     }

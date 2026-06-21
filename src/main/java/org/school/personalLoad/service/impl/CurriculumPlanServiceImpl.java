@@ -10,6 +10,7 @@ import org.school.personalLoad.model.SubjectCatalogEntry;
 import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.StudyPeriodSetting;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
+import org.school.personalLoad.repository.CurriculumModuleRepository;
 import org.school.personalLoad.repository.StudyPeriodSettingRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.service.CurriculumPlanService;
@@ -31,6 +32,7 @@ import java.util.stream.Collectors;
 public class CurriculumPlanServiceImpl implements CurriculumPlanService {
 
     private final CurriculumPlanEntryRepository repository;
+    private final CurriculumModuleRepository curriculumModuleRepository;
     private final StudyPeriodSettingRepository studyPeriodSettingRepository;
     private final StudyPeriodSettingService studyPeriodSettingService;
     private final SubjectCatalogRepository subjectCatalogRepository;
@@ -58,7 +60,7 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
                 .orElseGet(CurriculumPlanEntry::new);
 
         applyValues(entity, request, curriculumPart, rule);
-        return repository.save(entity);
+        return saveWithModules(entity);
     }
 
     @Override
@@ -99,7 +101,7 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         StudyPeriodSetting rule = resolveRule(request);
         rule = normalizeYearRuleIfNeeded(request, curriculumPart, rule);
         applyValues(entity, request, curriculumPart, rule);
-        return repository.save(entity);
+        return saveWithModules(entity);
     }
 
     @Override
@@ -349,5 +351,18 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
             }
         }
         entity.getModules().sort(java.util.Comparator.comparing(CurriculumModule::getModuleOrder));
+    }
+
+    private CurriculumPlanEntry saveWithModules(CurriculumPlanEntry entity) {
+        CurriculumPlanEntry saved = repository.save(entity);
+        if (saved.isModularSystem()) {
+            saved.getModules().forEach(module -> module.setCurriculumEntry(saved));
+            curriculumModuleRepository.saveAll(saved.getModules());
+        }
+        repository.flush();
+        if (saved.isModularSystem() && saved.getModules().size() < 2) {
+            throw new IllegalStateException("Модули предмета не были сохранены");
+        }
+        return saved;
     }
 }
