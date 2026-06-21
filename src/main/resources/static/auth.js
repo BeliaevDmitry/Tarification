@@ -178,6 +178,17 @@ function setStoredAcademicYear(value) {
     sessionStorage.setItem(ACADEMIC_YEAR_STORAGE_KEY, value);
 }
 
+function academicYearFromLocation() {
+    const requested = new URLSearchParams(window.location.search).get('academicYear') || '';
+    return /^\d{4}\/\d{4}$/.test(requested) ? requested : '';
+}
+
+const linkedAcademicYear = academicYearFromLocation();
+if (linkedAcademicYear) {
+    // Deep links must select their own year before page scripts start loading data.
+    setStoredAcademicYear(linkedAcademicYear);
+}
+
 function withAcademicYear(path) {
     const selectedYear = getStoredAcademicYear();
     if (!selectedYear) return path;
@@ -395,7 +406,14 @@ async function mountAcademicYearSelector() {
     const years = await tarificationApi('/api/academic-years');
     const active = await tarificationApi('/api/academic-years/active');
     const currentStored = getStoredAcademicYear();
-    const effective = currentStored || active.active;
+    const availableCodes = new Set((years || []).map((year) => String(year.code || '')));
+    const requestedFromLink = academicYearFromLocation();
+    const effective = requestedFromLink && availableCodes.has(requestedFromLink)
+        ? requestedFromLink
+        : currentStored || active.active;
+    if (requestedFromLink && availableCodes.has(requestedFromLink)) {
+        setStoredAcademicYear(requestedFromLink);
+    }
     if (!currentStored) {
         setStoredAcademicYear(effective);
     }
