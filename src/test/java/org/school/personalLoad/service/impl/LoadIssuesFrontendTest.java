@@ -31,6 +31,7 @@ class LoadIssuesFrontendTest {
         assertTrue(issuesJs.contains("params.set(\"issueClass\""));
         assertTrue(issuesJs.contains("params.set(\"issueSubject\""));
         assertTrue(loadJs.contains("focusIssueNavigationTarget()"));
+        assertTrue(loadJs.contains("!issueBuildingOption && !canEditSelectedBuildingLoad()"));
         assertTrue(curriculumJs.contains("data-summary-class"));
     }
 }

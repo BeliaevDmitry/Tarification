@@ -3133,7 +3133,7 @@ async function refreshSourceData() {
     if (!selectedBuilding || !buildings.some((row) => (row.value || row.code) === selectedBuilding)) {
         selectedBuilding = preferredBuildingCode(buildings);
     }
-    if (selectedBuilding !== ARCHIVE_BUILDING_CODE && !canEditSelectedBuildingLoad()) {
+    if (selectedBuilding !== ARCHIVE_BUILDING_CODE && !issueBuildingOption && !canEditSelectedBuildingLoad()) {
         const preferred = preferredBuildingCode(buildings);
         if (preferred) selectedBuilding = preferred;
     }
