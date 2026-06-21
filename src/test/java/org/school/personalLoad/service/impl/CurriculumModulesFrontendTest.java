@@ -32,10 +32,20 @@ class CurriculumModulesFrontendTest {
         assertTrue(loadJs.contains("|M:${row.__moduleId}${groupSuffix(row)}`"));
         assertTrue(loadJs.contains("`${row.subjectName} (${row.__moduleName})`"));
         assertTrue(loadJs.contains("displaySubjectName: displaySubjectName(row)"));
-        assertTrue(loadJs.contains("subjectKeyOfRow(row) === presentationRow.subjectKey"));
+        assertTrue(loadJs.contains("subgroupFamilyKey(row) !== familyKey"));
         org.junit.jupiter.api.Assertions.assertFalse(loadJs.contains("|MODULAR`"));
         assertTrue(loadJs.contains("curriculumModuleId: row.__moduleId || null"));
         assertTrue(loadJs.contains("Модуль ${item.__moduleOrder}: ${item.__moduleName}"));
         assertTrue(loadJs.contains("subjectName: row.subjectName"));
+    }
+
+    @Test
+    void subgroupDrawerCombinesBothGroupsButDoesNotCombineDifferentModules() throws Exception {
+        String loadJs = Files.readString(Path.of("src/main/resources/static/load.js"));
+
+        assertTrue(loadJs.contains("function subgroupFamilyKey(row)"));
+        assertTrue(loadJs.contains("const moduleToken = row.__moduleId ? `|M:${row.__moduleId}` : \"\""));
+        assertTrue(loadJs.contains("if (subgroupFamilyKey(row) !== familyKey) return false"));
+        assertTrue(loadJs.contains("presentationRow.displaySubjectName || presentationRow.subjectName"));
     }
 }
