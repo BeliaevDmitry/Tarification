@@ -737,7 +737,10 @@ function periodLabel(studyPeriod) {
 
 function displaySubjectName(row) {
     const suffix = classParallel(row.className) >= 10 ? "" : (rowStudyPeriod(row) !== "YEAR" ? ` · ${periodLabel(rowStudyPeriod(row))}` : "");
-    return row.__groupIndex ? `${row.subjectName} ${row.__groupIndex}Г${suffix}` : `${row.subjectName}${suffix}`;
+    const subject = row.__moduleId && row.__moduleName
+        ? `${row.subjectName}, ${row.__moduleName}`
+        : row.subjectName;
+    return row.__groupIndex ? `${subject} ${row.__groupIndex}Г${suffix}` : `${subject}${suffix}`;
 }
 
 function classPeriodHours(rows = []) {
@@ -940,7 +943,7 @@ function apiKeyOfRow(row) {
 
 function subjectKeyOfRow(row) {
     const periodToken = "YEAR";
-    if (row.__moduleId) return `${row.subjectName}|${row.curriculumPart || "CORE"}|${periodToken}|MODULAR`;
+    if (row.__moduleId) return `${row.subjectName}|${row.curriculumPart || "CORE"}|${periodToken}|M:${row.__moduleId}${groupSuffix(row)}`;
     return `${row.subjectName}|${row.curriculumPart || "CORE"}|${periodToken}${groupSuffix(row)}`;
 }
 
@@ -1753,7 +1756,7 @@ function buildPresentationRows() {
                 subjectKey,
                 subjectName: row.subjectName,
                 subjectAreaName: subjectAreaForRow(row, subjectAreaIndex),
-                displaySubjectName: row.subjectName,
+                displaySubjectName: displaySubjectName(row),
                 curriculumPart: row.curriculumPart,
                 educationLevel: row.educationLevel,
                 groupIndex: row.__groupIndex,
@@ -1793,7 +1796,7 @@ function buildPresentationRows() {
 
             const subjectRowsFlat = Object.values(info.rowsByClassAll).flat();
             const periodTotals = classPeriodHours(subjectRowsFlat);
-            let displayName = info.groupIndex ? `${info.subjectName} ${info.groupIndex}Г` : info.subjectName;
+            let displayName = info.displaySubjectName;
             if (periodTotals.year <= 0 && periodTotals.h1 > 0 && periodTotals.h2 <= 0) displayName = `${displayName} (1П)`;
             else if (periodTotals.year <= 0 && periodTotals.h2 > 0 && periodTotals.h1 <= 0) displayName = `${displayName} (2П)`;
 
@@ -2319,7 +2322,8 @@ function subgroupRowsForClass(presentationRow, className) {
         if (normalizeClassName(row.className) !== normalizeClassName(className)) return false;
         if (String(row.subjectName || '').trim() !== String(presentationRow.subjectName || '').trim()) return false;
         if (String(row.curriculumPart || '') !== String(presentationRow.curriculumPart || '')) return false;
-        return Boolean(row.__moduleId) || Number(row.__groupCount || 0) > 0 || Number(row.__groupIndex || 0) > 0;
+        return subjectKeyOfRow(row) === presentationRow.subjectKey
+            && (Number(row.__groupCount || 0) > 0 || Number(row.__groupIndex || 0) > 0);
     });
     const ordered = (classRows.length > direct.length ? classRows : direct)
         .slice()
@@ -2345,7 +2349,7 @@ function onClassCellClick(presentationRow, className, cellButton = null) {
     const assignments = assignmentsForBuilding(selectedBuilding);
     const rowMeta = findTeacherRowMeta(presentationRow.subjectKey, presentationRow.teacherRowId);
     const classRowsForCell = subgroupRowsForClass(presentationRow, className);
-    if (classRowsForCell.some((item) => item.__moduleId || Number(item.__groupCount || 0) > 0 || item.__groupIndex)) {
+    if (classRowsForCell.some((item) => Number(item.__groupCount || 0) > 0 || item.__groupIndex)) {
         openSubgroupDrawer(presentationRow, className, classRowsForCell);
         return;
     }
@@ -2357,7 +2361,7 @@ function onClassCellClick(presentationRow, className, cellButton = null) {
     }
 
     const classRows = presentationRow.rowsByClassAll?.[className] || [curriculumRow];
-    if (classRows.some((item) => item.__moduleId || Number(item.__groupCount || 0) > 0 || item.__groupIndex)) {
+    if (classRows.some((item) => Number(item.__groupCount || 0) > 0 || item.__groupIndex)) {
         openSubgroupDrawer(presentationRow, className, classRows);
         return;
     }

@@ -1273,6 +1273,10 @@ function bindEvents() {
 
             const saved = await api("/api/curriculum", { method: "POST", headers: jsonHeaders, body: JSON.stringify(payload) });
             assertModulesPersisted(saved, payload);
+            if (payload.modularSystem) {
+                curriculumDisplayMode = "detailed";
+                if (ui.displayMode) ui.displayMode.value = "detailed";
+            }
             sumMismatchKeys = new Set();
             print({ status: "saved", payload });
             await reload();
@@ -1477,6 +1481,10 @@ function bindEvents() {
             }
             sumMismatchKeys = new Set();
             pendingCreateContext = null;
+            if (payload.modularSystem) {
+                curriculumDisplayMode = "detailed";
+                if (ui.displayMode) ui.displayMode.value = "detailed";
+            }
             ui.editDialog.close();
             await reload();
             const persisted = curriculumRows.find((row) => Number(row.id) === Number(id));
