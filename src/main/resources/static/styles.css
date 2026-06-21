@@ -597,6 +597,13 @@ hr {
     font-size: 12px;
 }
 
+.planned-dismissal-note {
+    margin-top: 4px;
+    color: #9a3412;
+    font-size: 12px;
+    font-weight: 600;
+}
+
 .period-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -793,6 +800,24 @@ dialog::backdrop {
 .load-change-row td { background: #f3e8ff; }
 .load-change-row .subject-cell { color: #6b21a8; font-weight: 700; }
 
+td.vacancy-row {
+    background: #ffedd5;
+}
+
+.vacancy-row .teacher-input {
+    background: #fff7ed;
+    border-color: #f97316;
+    color: #9a3412;
+    font-weight: 600;
+}
+
+.hour-pill.vacancy {
+    background: #fed7aa !important;
+    border-color: #f97316 !important;
+    color: #9a3412 !important;
+    font-weight: 700;
+}
+
 .labeled-grid .field-row {
     display: grid;
     grid-template-columns: 220px 1fr;
@@ -959,8 +984,16 @@ dialog::backdrop {
     font: inherit;
 }
 
-.load-issues-table [data-save-comment] {
-    margin-top: 6px;
+.load-issue-save-status {
+    display: block;
+    min-height: 18px;
+    margin-top: 4px;
+    color: #64748b;
+    font-size: 12px;
+}
+
+.load-issues-table .button-link {
+    white-space: nowrap;
 }
 
 .sheet-table td.maximum-load-exceeded,

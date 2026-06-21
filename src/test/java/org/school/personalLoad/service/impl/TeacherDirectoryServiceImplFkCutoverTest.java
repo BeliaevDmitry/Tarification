@@ -51,9 +51,28 @@ class TeacherDirectoryServiceImplFkCutoverTest {
         ManualLoadEntry vacancyRow = savedLoads.getAllValues().get(1);
         assertEquals(99L, vacancyRow.getTeacherId());
         assertEquals("Вакансия", vacancyRow.getFioTeacher());
+        assertEquals("2025/2026", vacancyRow.getAcademicYear());
         assertEquals(load.getClassId(), vacancyRow.getClassId());
         assertEquals(load.getMetaGroupId(), vacancyRow.getMetaGroupId());
         assertTrue(load.isDismissalAdjusted());
+    }
+
+    @Test
+    void plannedDismissalCanBeCancelledWithoutRestoringLoad() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Иванов И.И.");
+        teacher.setPlannedDismissalDate(LocalDate.of(2026, 3, 1));
+        teacher.setPlannedDismissalComment("Переезд");
+        teacher.setPlannedDismissalMarkedBy("admin");
+        TeacherDirectoryServiceImpl service = new TeacherDirectoryServiceImpl(teacherDirectoryRepository, manualLoadEntryRepository);
+        when(teacherDirectoryRepository.findById(1L)).thenReturn(Optional.of(teacher));
+        when(teacherDirectoryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TeacherDirectoryEntry result = service.cancelPlannedDismissal(1L);
+
+        assertEquals(null, result.getPlannedDismissalDate());
+        assertEquals(null, result.getPlannedDismissalComment());
+        assertEquals(null, result.getPlannedDismissalMarkedBy());
+        verify(manualLoadEntryRepository, org.mockito.Mockito.never()).findByTeacherId(anyLong());
     }
 
     @Test
@@ -75,6 +94,27 @@ class TeacherDirectoryServiceImplFkCutoverTest {
         when(manualLoadEntryRepository.existsByTeacherId(1L)).thenReturn(false);
         service.deleteById(1L);
         verify(manualLoadEntryRepository).existsByTeacherId(1L);
+    }
+
+    @Test
+    void restoreRemovesVacancyCreatedByDismissal() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Иванов И.И.");
+        TeacherDirectoryEntry vacancyTeacher = teacher(99L, "Вакансия");
+        ManualLoadEntry load = load(10L, 1L, teacher.getFioTeacher(), LocalDate.of(2025, 9, 1), LocalDate.of(2026, 1, 10));
+        load.setDismissalAdjusted(true);
+        load.setBackupLoadToDate(LocalDate.of(2026, 5, 31));
+        ManualLoadEntry vacancyLoad = load(11L, 99L, vacancyTeacher.getFioTeacher(), LocalDate.of(2026, 1, 11), LocalDate.of(2026, 5, 31));
+        TeacherDirectoryServiceImpl service = new TeacherDirectoryServiceImpl(teacherDirectoryRepository, manualLoadEntryRepository);
+        when(teacherDirectoryRepository.findById(1L)).thenReturn(Optional.of(teacher));
+        when(teacherDirectoryRepository.findByFioTeacherIgnoreCase("Вакансия")).thenReturn(Optional.of(vacancyTeacher));
+        when(manualLoadEntryRepository.findByTeacherId(1L)).thenReturn(List.of(load));
+        when(manualLoadEntryRepository.findByTeacherId(99L)).thenReturn(List.of(vacancyLoad));
+        when(teacherDirectoryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.restore(1L);
+
+        verify(manualLoadEntryRepository).deleteAll(List.of(vacancyLoad));
+        assertEquals(LocalDate.of(2026, 5, 31), load.getLoadToDate());
     }
 
     @Test

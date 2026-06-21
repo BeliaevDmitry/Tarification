@@ -106,7 +106,8 @@ public class LoadIssueServiceImpl implements LoadIssueService {
                     + " ч., максимально допустимо: " + formatHours(maximum) + " ч.";
             String key = String.join("|", "MAXIMUM_CURRICULUM_LOAD", academicYear,
                     normalize(classroom.getNumberSchoolBuilding()), normalize(classroom.getClassName()));
-            rows.add(withState(key, classroom.getNumberSchoolBuilding(), "Превышена максимальная нагрузка", description, states.get(key)));
+            rows.add(withState(key, classroom.getNumberSchoolBuilding(), "Превышена максимальная нагрузка", description,
+                    states.get(key), "curriculum", classroom.getClassName(), ""));
         }
     }
 
@@ -142,7 +143,7 @@ public class LoadIssueServiceImpl implements LoadIssueService {
         }
         state.setUpdatedAt(LocalDateTime.now());
         LoadIssueState saved = stateRepository.save(state);
-        return new LoadIssueDtos.LoadIssueRow(saved.getIssueKey(), "", "", "", saved.getComment(), saved.isResolved());
+        return new LoadIssueDtos.LoadIssueRow(saved.getIssueKey(), "", "", "", saved.getComment(), saved.isResolved(), "", "", "");
     }
 
     private void addClassTeacherSubjectIssue(List<LoadIssueDtos.LoadIssueRow> rows,
@@ -174,7 +175,8 @@ public class LoadIssueServiceImpl implements LoadIssueService {
                 + "; в нагрузке: " + (inLoad.isBlank() ? "не назначено" : inLoad) + ".";
         String key = String.join("|", "CLASS_TEACHER_SUBJECT", academicYear, normalize(classroom.getNumberSchoolBuilding()),
                 normalize(classroom.getClassName()), normalize(subjectName));
-        rows.add(withState(key, classroom.getNumberSchoolBuilding(), type, description, states.get(key)));
+        rows.add(withState(key, classroom.getNumberSchoolBuilding(), type, description, states.get(key),
+                "load", classroom.getClassName(), subjectName));
     }
 
     private void addMetaGroupIssues(List<LoadIssueDtos.LoadIssueRow> rows,
@@ -205,18 +207,29 @@ public class LoadIssueServiceImpl implements LoadIssueService {
                             + ". У " + display(first.getFioTeacher()) + " два класса: " + String.join(", ", classNames)
                             + ". Разговоры о важном и Россия мои горизонты должны стоять на метагруппе.";
                     String key = String.join("|", "METAGROUP_REQUIRED", academicYear, normalize(first.getFioTeacher()), String.join(",", classNames));
-                    rows.add(withState(key, first.getNumberSchoolBuilding(), "Требуется метагруппа", description, states.get(key)));
+                    rows.add(withState(key, first.getNumberSchoolBuilding(), "Требуется метагруппа", description,
+                            states.get(key), "load", first.getClassName(), IMPORTANT_TALKS));
                 });
     }
 
-    private LoadIssueDtos.LoadIssueRow withState(String key, String building, String type, String description, LoadIssueState state) {
+    private LoadIssueDtos.LoadIssueRow withState(String key,
+                                                 String building,
+                                                 String type,
+                                                 String description,
+                                                 LoadIssueState state,
+                                                 String targetPage,
+                                                 String targetClass,
+                                                 String targetSubject) {
         return new LoadIssueDtos.LoadIssueRow(
                 key,
                 display(building),
                 type,
                 description,
                 state == null ? "" : Optional.ofNullable(state.getComment()).orElse(""),
-                state != null && state.isResolved()
+                state != null && state.isResolved(),
+                targetPage,
+                display(targetClass),
+                display(targetSubject)
         );
     }
 

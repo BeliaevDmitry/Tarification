@@ -53,6 +53,13 @@ let sourceRevision = 0;
 let renderTableRaf = null;
 let latestPresentationRows = [];
 const LOAD_SELECTED_BUILDING_KEY = "tarification.load.selectedBuilding";
+const issueNavigationParams = new URLSearchParams(window.location.search);
+const issueNavigation = {
+    building: issueNavigationParams.get("building") || "",
+    className: issueNavigationParams.get("issueClass") || "",
+    subjectName: issueNavigationParams.get("issueSubject") || ""
+};
+let issueNavigationHandled = false;
 
 const ARCHIVE_BUILDING_CODE = "__ARCHIVE__";
 const ARCHIVE_BUILDING_LABEL = "Архив нагрузки";
@@ -1087,8 +1094,19 @@ function dismissalDateOfTeacher(teacherName) {
     return teacher?.dismissalDate || null;
 }
 
+function plannedDismissalDateOfTeacher(teacherName) {
+    const normalized = String(teacherName || "").trim().toLowerCase();
+    const teacher = teacherDirectoryByName.get(normalized);
+    return teacher?.plannedDismissalDate || null;
+}
+
+function formatTeacherStatusDate(value) {
+    const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return match ? `${match[3]}.${match[2]}.${match[1]}` : String(value || "");
+}
+
 function isVacancyTeacherName(teacherName) {
-    return String(teacherName || "").trim().toLowerCase().includes("вакан");
+    return String(teacherName || "").trim().toLocaleLowerCase("ru-RU").includes("вакансия");
 }
 
 function periodSettingsMap() {
@@ -2611,6 +2629,7 @@ function renderTable() {
     presentationRows.forEach((row, index) => {
         const tr = document.createElement("tr");
         tr.dataset.rowKey = rowStableKey(row);
+        const vacancyTeacher = isVacancyTeacherName(row.teacherName);
         if (rowHasPlannedLoadChange(row, referenceDate)) {
             tr.classList.add("load-change-row");
         }
@@ -2623,10 +2642,14 @@ function renderTable() {
                     ${index === 0 || presentationRows[index - 1].subjectKey !== row.subjectKey ? `<button class="inline-plus" type="button" data-plus-subject="${esc(row.subjectKey)}" data-plus-after="${esc(row.teacherRowId)}" title="Добавить строку педагога">+</button>` : ""}
                 </div>
             </td>
-            <td class="${isDismissedTeacher(row.teacherName) ? "dismissal-row" : ""}">
+            <td class="${[isDismissedTeacher(row.teacherName) ? "dismissal-row" : "", vacancyTeacher ? "vacancy-row" : ""].filter(Boolean).join(" ")}">
                 <input type="text" class="teacher-input" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" list="${listId}" value="${esc(row.teacherName)}" placeholder="ФИО педагога">
                 <datalist id="${listId}"></datalist>
-                ${isDismissedTeacher(row.teacherName) ? `<div class="dismissal-note">Увольнение с ${esc(dismissalDateOfTeacher(row.teacherName))}</div>` : ""}${(!teacherExists(row.teacherName) && row.teacherName) ? `<div class="dismissal-note">Ошибка: педагог отсутствует в справочнике</div>` : ""}
+                ${isDismissedTeacher(row.teacherName)
+                    ? `<div class="dismissal-note">Увольнение с ${esc(formatTeacherStatusDate(dismissalDateOfTeacher(row.teacherName)))}</div>`
+                    : plannedDismissalDateOfTeacher(row.teacherName)
+                        ? `<div class="planned-dismissal-note">Планирует уволиться с ${esc(formatTeacherStatusDate(plannedDismissalDateOfTeacher(row.teacherName)))}</div>`
+                        : ""}${(!teacherExists(row.teacherName) && row.teacherName) ? `<div class="dismissal-note">Ошибка: педагог отсутствует в справочнике</div>` : ""}
             </td>
             <td><strong>${esc(row.subjectHours || 0)} ч</strong></td>
             <td><strong>${esc(row.buildingHours)} ч</strong></td>
@@ -2665,7 +2688,8 @@ function renderTable() {
                     isUnassigned ? "unassigned" : "",
                     isPlanned ? "planned" : "",
                     isTransferOut ? "transfer-out" : "",
-                    !isPlanned && !isTransferOut && hasContinuityOk ? "continuity-ok" : ""
+                    !isPlanned && !isTransferOut && hasContinuityOk ? "continuity-ok" : "",
+                    vacancyTeacher ? "vacancy" : ""
                 ].filter(Boolean).join(" ");
                 return `<td><button type="button" class="${classesForCell}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(hoursTotal)}</button></td>`;
             }).join("")}
@@ -2679,6 +2703,27 @@ function renderTable() {
     });
 
     updateLoadEditMode();
+    focusIssueNavigationTarget();
+}
+
+function focusIssueNavigationTarget() {
+    if (issueNavigationHandled || !issueNavigation.className || !issueNavigation.subjectName) return;
+    const targetClass = normalizeClassName(issueNavigation.className);
+    const targetSubject = String(issueNavigation.subjectName).trim().toLowerCase().replaceAll("ё", "е");
+    const row = latestPresentationRows.find((candidate) =>
+        String(candidate.subjectName || "").trim().toLowerCase().replaceAll("ё", "е") === targetSubject
+        && Object.keys(candidate.rowsByClassAll || {}).some((className) => normalizeClassName(className) === targetClass)
+    );
+    if (!row) return;
+    const tr = ui.tableBody.querySelector(`tr[data-row-key="${CSS.escape(rowStableKey(row))}"]`);
+    const cell = tr?.querySelector(`button[data-class-name="${CSS.escape(issueNavigation.className)}"]`)
+        || Array.from(tr?.querySelectorAll("button[data-class-name]") || [])
+            .find((button) => normalizeClassName(button.dataset.className) === targetClass);
+    if (!tr) return;
+    issueNavigationHandled = true;
+    tr.classList.add("error-row-highlight");
+    cell?.classList.add("error-row-highlight");
+    (cell || tr).scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
 }
 
 
@@ -2941,7 +2986,8 @@ async function importLoadWorkbook(file) {
 }
 
 async function refreshSourceData() {
-    const initialBuildingCandidate = normalizeBuildingAccessCode(selectedBuilding) || restoreSelectedBuilding();
+    const requestedIssueBuilding = normalizeBuildingAccessCode(issueNavigation.building);
+    const initialBuildingCandidate = requestedIssueBuilding || normalizeBuildingAccessCode(selectedBuilding) || restoreSelectedBuilding();
     const initialCurriculumQuery = scopedBuildingQuery(initialBuildingCandidate, false);
     const initialManualQuery = scopedBuildingQuery(initialBuildingCandidate, true);
     const initialScopedDataPromise = Promise.all([
@@ -3075,8 +3121,13 @@ async function refreshSourceData() {
             });
         });
 
+    const issueBuildingOption = requestedIssueBuilding
+        ? buildings.find((row) => normalizeBuildingCode(row.value || row.code) === normalizeBuildingCode(requestedIssueBuilding))
+        : null;
     const rememberedBuilding = restoreSelectedBuilding();
-    if (rememberedBuilding && buildings.some((row) => (row.value || row.code) === rememberedBuilding)) {
+    if (issueBuildingOption) {
+        selectedBuilding = issueBuildingOption.value || issueBuildingOption.code;
+    } else if (rememberedBuilding && buildings.some((row) => (row.value || row.code) === rememberedBuilding)) {
         selectedBuilding = rememberedBuilding;
     }
     if (!selectedBuilding || !buildings.some((row) => (row.value || row.code) === selectedBuilding)) {

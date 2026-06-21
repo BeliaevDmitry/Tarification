@@ -12,7 +12,10 @@ public class LoadIssueDtos {
                                String type,
                                String description,
                                String comment,
-                               boolean resolved) {
+                               boolean resolved,
+                               String targetPage,
+                               String targetClass,
+                               String targetSubject) {
     }
 
     public record LoadIssueUpdateRequest(String key, String comment, Boolean resolved) {

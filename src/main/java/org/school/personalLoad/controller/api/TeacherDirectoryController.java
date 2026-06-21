@@ -77,6 +77,11 @@ public class TeacherDirectoryController {
         ));
     }
 
+    @PatchMapping("/{teacherId}/cancel-plan-dismiss")
+    public ResponseEntity<TeacherDirectoryEntry> cancelTeacherPlannedDismissal(@PathVariable Long teacherId) {
+        return ResponseEntity.ok(teacherDirectoryService.cancelPlannedDismissal(teacherId));
+    }
+
 
     @PatchMapping("/{teacherId}/restore")
     public ResponseEntity<TeacherDirectoryEntry> restore(@PathVariable Long teacherId) {

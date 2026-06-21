@@ -171,7 +171,7 @@ public class AuthFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/service-memos")) return AppTab.SERVICE_NOTES;
         if (path.startsWith("/api/settings/")) return AppTab.SETTINGS;
         if (path.startsWith("/api/teachers-notification")) return AppTab.HR_NOTIFICATIONS_VIEW;
-        if (path.matches("^/api/teachers/\\d+/(plan-dismiss|dismiss|restore)$")) return AppTab.TEACHERS_DISMISSALS;
+        if (path.matches("^/api/teachers/\\d+/(plan-dismiss|cancel-plan-dismiss|dismiss|restore)$")) return AppTab.TEACHERS_DISMISSALS;
         if (path.matches("^/api/teachers/\\d+/(archive|unarchive)$")) return AppTab.TEACHERS_ARCHIVE;
         if (path.startsWith("/api/teachers")) return AppTab.TEACHERS;
         if (path.startsWith("/api/admin/users")) return AppTab.USERS;

@@ -19,6 +19,7 @@ public interface TeacherDirectoryService {
 
     TeacherDirectoryEntry markForDismissal(Long teacherId, LocalDate dismissalDate, String markedBy);
     TeacherDirectoryEntry markPlannedDismissal(Long teacherId, LocalDate plannedDismissalDate, String comment, String markedBy);
+    TeacherDirectoryEntry cancelPlannedDismissal(Long teacherId);
 
     TeacherDirectoryEntry restore(Long teacherId);
     TeacherDirectoryEntry archive(Long teacherId);
