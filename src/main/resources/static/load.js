@@ -738,7 +738,7 @@ function periodLabel(studyPeriod) {
 function displaySubjectName(row) {
     const suffix = classParallel(row.className) >= 10 ? "" : (rowStudyPeriod(row) !== "YEAR" ? ` · ${periodLabel(rowStudyPeriod(row))}` : "");
     const subject = row.__moduleId && row.__moduleName
-        ? `${row.subjectName}, ${row.__moduleName}`
+        ? `${row.subjectName} (${row.__moduleName})`
         : row.subjectName;
     return row.__groupIndex ? `${subject} ${row.__groupIndex}Г${suffix}` : `${subject}${suffix}`;
 }

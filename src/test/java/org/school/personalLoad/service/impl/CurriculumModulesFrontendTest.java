@@ -21,7 +21,7 @@ class CurriculumModulesFrontendTest {
         assertTrue(curriculumJs.contains("modules.push(defaultModule(modules.length))"));
         assertTrue(curriculumJs.contains("assertModulesPersisted(saved, payload)"));
         assertTrue(curriculumJs.contains("Сумма часов модулей"));
-        assertTrue(curriculumJs.contains("subjectName: `${row.subjectName}, ${module.moduleName}`"));
+        assertTrue(curriculumJs.contains("subjectName: `${row.subjectName} (${module.moduleName})`"));
     }
 
     @Test
@@ -30,7 +30,7 @@ class CurriculumModulesFrontendTest {
 
         assertTrue(loadJs.contains("`|M:${row.__moduleId}`"));
         assertTrue(loadJs.contains("|M:${row.__moduleId}${groupSuffix(row)}`"));
-        assertTrue(loadJs.contains("`${row.subjectName}, ${row.__moduleName}`"));
+        assertTrue(loadJs.contains("`${row.subjectName} (${row.__moduleName})`"));
         assertTrue(loadJs.contains("displaySubjectName: displaySubjectName(row)"));
         assertTrue(loadJs.contains("subjectKeyOfRow(row) === presentationRow.subjectKey"));
         org.junit.jupiter.api.Assertions.assertFalse(loadJs.contains("|MODULAR`"));
