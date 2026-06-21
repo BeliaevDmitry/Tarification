@@ -88,6 +88,12 @@ let metaGroups = [];
 let maxLoadLimits = {};
 let sumMismatchKeys = new Set();
 let pendingCreateContext = null;
+const issueNavigationParams = new URLSearchParams(window.location.search);
+const issueNavigation = {
+    building: issueNavigationParams.get("building") || "",
+    className: issueNavigationParams.get("issueClass") || ""
+};
+let issueNavigationHandled = false;
 
 async function api(path, options = {}) {
     const scopedPath = window.withAcademicYear ? window.withAcademicYear(path) : path;
@@ -784,7 +790,7 @@ function renderSummaryTable() {
     directionRow.innerHTML = allColumns.map((c) => `<th>${esc(c.classDirection)}</th>`).join("");
     const classRow = document.createElement("tr");
     classRow.className = "summary-class-row";
-    classRow.innerHTML = allColumns.map((c) => `<th>${esc(c.className)}</th>`).join("");
+    classRow.innerHTML = allColumns.map((c) => `<th data-summary-building="${esc(c.numberSchoolBuilding)}" data-summary-class="${esc(c.className)}">${esc(c.className)}</th>`).join("");
     ui.summaryHead.appendChild(buildingRow);
     ui.summaryHead.appendChild(directionRow);
     ui.summaryHead.appendChild(classRow);
@@ -1062,6 +1068,11 @@ async function reload(scrollState = captureCurriculumScroll()) {
 
     buildings = (buildingRows || []).sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"));
 
+    if (!issueNavigationHandled && issueNavigation.className) {
+        const targetParallel = classToParallel(issueNavigation.className);
+        if (Number.isFinite(targetParallel)) selectedParallel = targetParallel;
+        if (issueNavigation.building) selectedBuilding = norm(issueNavigation.building);
+    }
     syncSelectedBuilding();
     renderParallelTabs();
     renderBuildingFilter();
@@ -1069,7 +1080,22 @@ async function reload(scrollState = captureCurriculumScroll()) {
     renderSubjectOptions();
     syncStudyPeriodControls();
     renderSummaryTable();
+    focusIssueNavigationTarget();
     restoreCurriculumScroll(scrollState);
+}
+
+function focusIssueNavigationTarget() {
+    if (issueNavigationHandled || !issueNavigation.className) return;
+    const header = Array.from(ui.summaryHead.querySelectorAll("[data-summary-class]")).find((cell) =>
+        norm(cell.dataset.summaryClass) === norm(issueNavigation.className)
+        && (!issueNavigation.building || norm(cell.dataset.summaryBuilding) === norm(issueNavigation.building))
+    );
+    if (!header) return;
+    issueNavigationHandled = true;
+    header.classList.add("error-row-highlight");
+    const columnIndex = header.cellIndex;
+    ui.summaryBody.querySelectorAll("tr").forEach((row) => row.cells[columnIndex]?.classList.add("error-row-highlight"));
+    requestAnimationFrame(() => header.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" }));
 }
 
 function bindEvents() {

@@ -196,10 +196,11 @@ function renderTeachers(rows) {
                     <div class="row">
                         <button type="button" class="save-teacher-btn" data-id="${row.id}">Сохранить</button>
                         <input type="date" class="dismiss-date-input" value="${escapeHtml(row.dismissalDate || "")}" data-id="${row.id}">
-                        <button type="button" class="mark-dismiss-btn" data-id="${row.id}" ${canEditTeacherPermission("TEACHERS_DISMISSALS") ? "" : "disabled title=\"Требуется право редактирования увольнений\""}>На увольнение</button>
+                        ${row.dismissalDate ? "" : `<button type="button" class="mark-dismiss-btn" data-id="${row.id}" ${canEditTeacherPermission("TEACHERS_DISMISSALS") ? "" : "disabled title=\"Требуется право редактирования увольнений\""}>На увольнение</button>`}
                         <input type="date" class="plan-dismiss-date-input" value="${escapeHtml(row.plannedDismissalDate || "")}" data-id="${row.id}" data-allow-readonly="true">
                         <input type="text" class="plan-dismiss-comment-input" value="${escapeHtml(row.plannedDismissalComment || "")}" data-id="${row.id}" placeholder="Комментарий" data-allow-readonly="true">
-                        <button type="button" class="mark-plan-dismiss-btn" data-id="${row.id}" data-allow-readonly="true" ${canEditTeacherPermission("TEACHERS_DISMISSALS") ? "" : "disabled"}>Планирует уволиться</button>
+                        ${row.dismissalDate ? "" : `<button type="button" class="mark-plan-dismiss-btn" data-id="${row.id}" data-allow-readonly="true" ${canEditTeacherPermission("TEACHERS_DISMISSALS") ? "" : "disabled"}>${row.plannedDismissalDate ? "Обновить план" : "Планирует уволиться"}</button>`}
+                        ${row.plannedDismissalDate && !row.dismissalDate ? `<button type="button" class="cancel-plan-dismiss-btn" data-id="${row.id}" ${canEditTeacherPermission("TEACHERS_DISMISSALS") ? "" : "disabled"}>Передумал</button>` : ""}
                         ${row.dismissalDate ? `<button type="button" class="restore-teacher-btn" data-id="${row.id}" ${canEditTeacherPermission("TEACHERS_DISMISSALS") ? "" : "disabled"}>Восстановить</button>` : ""}
                         <button type="button" class="archive-teacher-btn" data-id="${row.id}" ${canEditTeacherPermission("TEACHERS_ARCHIVE") ? "" : "disabled"}>В архив</button>
                         <button type="button" class="danger-btn delete-teacher-btn" data-id="${row.id}">Удалить</button>
@@ -235,7 +236,7 @@ function renderTeachers(rows) {
 
     ui.tbody.querySelectorAll(".mark-dismiss-btn").forEach((btn) => {
         btn.addEventListener("click", async () => {
-            if (!canEditTeachers()) {
+            if (!canEditTeacherPermission("TEACHERS_DISMISSALS")) {
                 print({ error: "Недостаточно прав: кнопка «На увольнение» доступна только с правом редактирования кадров" });
                 return;
             }
@@ -307,6 +308,22 @@ function renderTeachers(rows) {
                 await loadTeachers();
             } catch (error) {
                 print({ error: error.message, hint: "Если педагог назначен на нагрузку, сначала снимите нагрузку на странице /load.html" });
+            }
+        });
+    });
+
+    ui.tbody.querySelectorAll(".cancel-plan-dismiss-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+            if (!canEditTeacherPermission("TEACHERS_DISMISSALS")) {
+                print({ error: "Недостаточно прав для отмены планируемого увольнения" });
+                return;
+            }
+            try {
+                const result = await api(`/api/teachers/${btn.dataset.id}/cancel-plan-dismiss`, { method: "PATCH" });
+                print(result);
+                await loadTeachers();
+            } catch (error) {
+                print({ error: error.message });
             }
         });
     });

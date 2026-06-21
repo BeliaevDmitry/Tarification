@@ -260,9 +260,11 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 LocalDate vacancyFrom = dismissalDate.plusDays(1);
                 if (!vacancyFrom.isAfter(originalLoadToDate) && !isLoadAlreadyAssigned(loadEntry, vacancyFrom, originalLoadToDate)) {
                     var vacancyEntry = new org.school.personalLoad.model.ManualLoadEntry();
+                    vacancyEntry.setAcademicYear(loadEntry.getAcademicYear());
                     vacancyEntry.setTeacherId(vacancyTeacher.getId());
                     vacancyEntry.setFioTeacher(vacancyTeacher.getFioTeacher());
                     vacancyEntry.setNumberSchoolBuilding(loadEntry.getNumberSchoolBuilding());
+                    vacancyEntry.setSchoolBuildingId(loadEntry.getSchoolBuildingId());
                     vacancyEntry.setSubject(loadEntry.getSubject());
                     vacancyEntry.setSubjectName(loadEntry.getSubjectName());
                     vacancyEntry.setClassName(loadEntry.getClassName());
@@ -298,6 +300,20 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         return teacherDirectoryRepository.save(entry);
     }
 
+    @Override
+    @Transactional
+    public TeacherDirectoryEntry cancelPlannedDismissal(Long teacherId) {
+        TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
+                .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
+        if (entry.getDismissalDate() != null) {
+            throw new IllegalStateException("Фактическое увольнение отменяется действием «Восстановить»");
+        }
+        entry.setPlannedDismissalDate(null);
+        entry.setPlannedDismissalComment(null);
+        entry.setPlannedDismissalMarkedBy(null);
+        return teacherDirectoryRepository.save(entry);
+    }
+
 
     @Override
     @Transactional
@@ -305,15 +321,29 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
                 .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
 
+        TeacherDirectoryEntry vacancyTeacher = teacherDirectoryRepository.findByFioTeacherIgnoreCase(VACANCY_TEACHER).orElse(null);
+        List<org.school.personalLoad.model.ManualLoadEntry> vacancyRows = vacancyTeacher == null
+                ? List.of()
+                : manualLoadEntryRepository.findByTeacherId(vacancyTeacher.getId());
+        List<org.school.personalLoad.model.ManualLoadEntry> generatedVacancies = new ArrayList<>();
+
         manualLoadEntryRepository.findByTeacherId(entry.getId()).forEach(loadEntry -> {
             if (!loadEntry.isDismissalAdjusted() || loadEntry.getBackupLoadToDate() == null) {
                 return;
             }
+            LocalDate vacancyFrom = loadEntry.getLoadToDate() == null ? null : loadEntry.getLoadToDate().plusDays(1);
+            vacancyRows.stream()
+                    .filter(vacancy -> sameGeneratedVacancy(loadEntry, vacancy, vacancyFrom, loadEntry.getBackupLoadToDate()))
+                    .findFirst()
+                    .ifPresent(generatedVacancies::add);
             loadEntry.setLoadToDate(loadEntry.getBackupLoadToDate());
             loadEntry.setBackupLoadToDate(null);
             loadEntry.setDismissalAdjusted(false);
             manualLoadEntryRepository.save(loadEntry);
         });
+        if (!generatedVacancies.isEmpty()) {
+            manualLoadEntryRepository.deleteAll(generatedVacancies);
+        }
 
         entry.setDismissalDate(null);
         entry.setPlannedDismissalDate(null);
@@ -446,17 +476,41 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
             if (existing.getId() != null && existing.getId().equals(source.getId())) {
                 return false;
             }
-            if (existing.getFioTeacher() == null || VACANCY_TEACHER.equalsIgnoreCase(existing.getFioTeacher())) {
-                return false;
-            }
+            if (existing.getFioTeacher() == null) return false;
+            if (!Objects.equals(existing.getAcademicYear(), source.getAcademicYear())) return false;
+            if (!Objects.equals(existing.getNumberSchoolBuilding(), source.getNumberSchoolBuilding())) return false;
+            if (!Objects.equals(existing.getSchoolBuildingId(), source.getSchoolBuildingId())) return false;
             if (!Objects.equals(existing.getSubjectName(), source.getSubjectName())) return false;
             if (!Objects.equals(existing.getClassName(), source.getClassName())) return false;
+            if (!Objects.equals(existing.getClassId(), source.getClassId())) return false;
+            if (!Objects.equals(existing.getMetaGroupId(), source.getMetaGroupId())) return false;
             if (!Objects.equals(existing.getGroupNameEducationalPlan(), source.getGroupNameEducationalPlan())) return false;
-            if (!Objects.equals(existing.getEducationLevel(), source.getEducationLevel())) return false;
+            if (!Objects.equals(existing.getCurriculumPart(), source.getCurriculumPart())) return false;
+            if (!Objects.equals(existing.getStudyPeriod(), source.getStudyPeriod())) return false;
             if (existing.getLoadFromDate() == null || existing.getLoadToDate() == null) return false;
             return !existing.getLoadFromDate().isAfter(toDate) && !existing.getLoadToDate().isBefore(fromDate);
         });
     }
+
+    private boolean sameGeneratedVacancy(org.school.personalLoad.model.ManualLoadEntry source,
+                                         org.school.personalLoad.model.ManualLoadEntry vacancy,
+                                         LocalDate vacancyFrom,
+                                         LocalDate vacancyTo) {
+        return vacancyFrom != null
+                && Objects.equals(vacancy.getAcademicYear(), source.getAcademicYear())
+                && Objects.equals(vacancy.getNumberSchoolBuilding(), source.getNumberSchoolBuilding())
+                && Objects.equals(vacancy.getSchoolBuildingId(), source.getSchoolBuildingId())
+                && Objects.equals(vacancy.getSubjectName(), source.getSubjectName())
+                && Objects.equals(vacancy.getClassName(), source.getClassName())
+                && Objects.equals(vacancy.getClassId(), source.getClassId())
+                && Objects.equals(vacancy.getMetaGroupId(), source.getMetaGroupId())
+                && Objects.equals(vacancy.getGroupNameEducationalPlan(), source.getGroupNameEducationalPlan())
+                && Objects.equals(vacancy.getCurriculumPart(), source.getCurriculumPart())
+                && Objects.equals(vacancy.getStudyPeriod(), source.getStudyPeriod())
+                && Objects.equals(vacancy.getLoadFromDate(), vacancyFrom)
+                && Objects.equals(vacancy.getLoadToDate(), vacancyTo);
+    }
+
     private String normalizePhone(String value) {
         String normalized = normalizeOptional(value);
         if (normalized == null) return null;

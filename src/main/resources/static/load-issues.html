@@ -32,6 +32,12 @@
                     <option value="">Все</option>
                 </select>
             </label>
+            <label>Отображать
+                <select id="load-issues-status-filter">
+                    <option value="unresolved">Только нерешённые</option>
+                    <option value="all">Все</option>
+                </select>
+            </label>
             <button id="load-issues-refresh" type="button">Обновить</button>
             <strong>Нерешённых нестыковок: <span id="load-issues-unresolved">0</span></strong>
         </div>
@@ -44,10 +50,11 @@
                     <th>Описание</th>
                     <th>Комментарий к ошибке</th>
                     <th>Решено</th>
+                    <th>Действие</th>
                 </tr>
                 </thead>
                 <tbody id="load-issues-body">
-                <tr><td colspan="4">Загрузка...</td></tr>
+                <tr><td colspan="5">Загрузка...</td></tr>
                 </tbody>
             </table>
         </div>
