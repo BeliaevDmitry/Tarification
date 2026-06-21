@@ -50,20 +50,26 @@ public class LoadIssueServiceImpl implements LoadIssueService {
         List<ClassroomLeadershipEntry> classes = classroomLeadershipRepository.findAllByAcademicYear(academicYear).stream()
                 .filter(row -> buildingFilter.isBlank() || normalize(row.getNumberSchoolBuilding()).equals(buildingFilter))
                 .toList();
-        List<ManualLoadEntry> activeLoad = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
+        List<ManualLoadEntry> yearLoad = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
                 .filter(row -> buildingFilter.isBlank() || normalize(row.getNumberSchoolBuilding()).equals(buildingFilter))
-                .filter(row -> isActiveOn(row, checkDate))
                 .collect(Collectors.collectingAndThen(
                         Collectors.toMap(this::loadDuplicateKey, row -> row, (first, second) -> first, LinkedHashMap::new),
                         map -> new ArrayList<>(map.values())
                 ));
+        List<ManualLoadEntry> activeLoad = yearLoad.stream()
+                .filter(row -> isActiveOn(row, checkDate))
+                .toList();
+        List<CurriculumPlanEntry> curriculum = curriculumPlanEntryRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(entry -> !entry.isDeprecated())
+                .filter(entry -> buildingFilter.isBlank() || normalize(entry.getNumberSchoolBuilding()).equals(buildingFilter))
+                .toList();
         Map<String, LoadIssueState> states = stateRepository.findAll().stream()
                 .collect(Collectors.toMap(LoadIssueState::getIssueKey, state -> state, (first, second) -> first));
 
         List<LoadIssueDtos.LoadIssueRow> rows = new ArrayList<>();
         for (ClassroomLeadershipEntry classroom : classes) {
-            addClassTeacherSubjectIssue(rows, states, academicYear, classroom, activeLoad, IMPORTANT_TALKS, "Разговоры о важном");
-            addClassTeacherSubjectIssue(rows, states, academicYear, classroom, activeLoad, RUSSIA_HORIZONS, "Россия мои горизонты");
+            addClassTeacherSubjectIssue(rows, states, academicYear, classroom, yearLoad, curriculum, IMPORTANT_TALKS, "Разговоры о важном");
+            addClassTeacherSubjectIssue(rows, states, academicYear, classroom, yearLoad, curriculum, RUSSIA_HORIZONS, "Россия мои горизонты");
         }
         addMetaGroupIssues(rows, states, academicYear, classes, activeLoad);
         addMaximumLoadIssues(rows, states, academicYear, classes);
@@ -151,9 +157,20 @@ public class LoadIssueServiceImpl implements LoadIssueService {
                                              String academicYear,
                                              ClassroomLeadershipEntry classroom,
                                              List<ManualLoadEntry> activeLoad,
+                                             List<CurriculumPlanEntry> curriculum,
                                              String subjectName,
                                              String type) {
+        boolean existsInManualLoadCurriculum = curriculum.stream()
+                .filter(row -> same(row.getNumberSchoolBuilding(), classroom.getNumberSchoolBuilding()))
+                .filter(row -> same(row.getClassName(), classroom.getClassName()))
+                .filter(row -> sameSubject(row.getSubjectName(), subjectName))
+                .filter(this::contributesToManualLoad)
+                .anyMatch(this::hasPositiveHours);
+        if (!existsInManualLoadCurriculum) {
+            return;
+        }
         List<ManualLoadEntry> subjectRows = activeLoad.stream()
+                .filter(row -> same(row.getNumberSchoolBuilding(), classroom.getNumberSchoolBuilding()))
                 .filter(row -> same(row.getClassName(), classroom.getClassName()))
                 .filter(row -> sameSubject(row.getSubjectName(), subjectName))
                 .toList();
@@ -172,11 +189,23 @@ public class LoadIssueServiceImpl implements LoadIssueService {
         String description = "Корпус " + display(classroom.getNumberSchoolBuilding())
                 + ", класс " + display(classroom.getClassName())
                 + ". Классный руководитель: " + display(classroom.getFioTeacher())
-                + "; в нагрузке: " + (inLoad.isBlank() ? "не назначено" : inLoad) + ".";
+                + "; в нагрузке по предмету стоит: " + (inLoad.isBlank() ? "не назначено" : inLoad) + ".";
         String key = String.join("|", "CLASS_TEACHER_SUBJECT", academicYear, normalize(classroom.getNumberSchoolBuilding()),
                 normalize(classroom.getClassName()), normalize(subjectName));
         rows.add(withState(key, classroom.getNumberSchoolBuilding(), type, description, states.get(key),
                 "load", classroom.getClassName(), subjectName));
+    }
+
+    private boolean contributesToManualLoad(CurriculumPlanEntry row) {
+        return row.getMetaGroupId() != null
+                || display(row.getClassName()).toUpperCase(Locale.ROOT).startsWith("МГ:")
+                || !row.isExcludedFromManualLoad();
+    }
+
+    private boolean hasPositiveHours(CurriculumPlanEntry row) {
+        return (row.getPlannedHours() != null && row.getPlannedHours().compareTo(BigDecimal.ZERO) > 0)
+                || (row.getSubgroup1Hours() != null && row.getSubgroup1Hours() > 0)
+                || (row.getSubgroup2Hours() != null && row.getSubgroup2Hours() > 0);
     }
 
     private void addMetaGroupIssues(List<LoadIssueDtos.LoadIssueRow> rows,
