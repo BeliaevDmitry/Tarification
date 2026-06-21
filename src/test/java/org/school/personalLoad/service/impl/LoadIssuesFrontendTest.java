@@ -32,6 +32,8 @@ class LoadIssuesFrontendTest {
         assertTrue(issuesJs.contains("params.set(\"issueSubject\""));
         assertTrue(loadJs.contains("focusIssueNavigationTarget()"));
         assertTrue(loadJs.contains("!issueBuildingOption && !canEditSelectedBuildingLoad()"));
+        assertTrue(loadJs.contains("buildingGroupCode(row.value || row.code) === buildingGroupCode(requestedIssueBuilding)"));
+        assertTrue(loadJs.contains("normalizeClassName(row?.className) === normalizeClassName(issueNavigation.className)"));
         assertTrue(curriculumJs.contains("data-summary-class"));
     }
 }

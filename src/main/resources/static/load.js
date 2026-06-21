@@ -3121,9 +3121,24 @@ async function refreshSourceData() {
             });
         });
 
-    const issueBuildingOption = requestedIssueBuilding
-        ? buildings.find((row) => normalizeBuildingCode(row.value || row.code) === normalizeBuildingCode(requestedIssueBuilding))
+    const issueClassroom = requestedIssueBuilding && issueNavigation.className
+        ? (classRows || []).find((row) =>
+            buildingGroupCode(row?.numberSchoolBuilding) === buildingGroupCode(requestedIssueBuilding)
+            && normalizeClassName(row?.className) === normalizeClassName(issueNavigation.className)
+        )
         : null;
+    const issueSchoolBuildingId = issueClassroom?.schoolBuildingId == null ? null : Number(issueClassroom.schoolBuildingId);
+    const issueCampusAddress = normalizeBuildingAccessCode(issueClassroom?.campusAddress || "");
+    const issueBuildingOptions = requestedIssueBuilding
+        ? buildings.filter((row) => buildingGroupCode(row.value || row.code) === buildingGroupCode(requestedIssueBuilding))
+        : [];
+    const issueBuildingOption = issueBuildingOptions.find((row) =>
+        issueSchoolBuildingId != null && Number(row.schoolBuildingId ?? row.id) === issueSchoolBuildingId
+    ) || issueBuildingOptions.find((row) =>
+        issueCampusAddress && normalizeBuildingAccessCode(row.address) === issueCampusAddress
+    ) || issueBuildingOptions.find((row) => row.scope === "group")
+        || issueBuildingOptions[0]
+        || null;
     const rememberedBuilding = restoreSelectedBuilding();
     if (issueBuildingOption) {
         selectedBuilding = issueBuildingOption.value || issueBuildingOption.code;
