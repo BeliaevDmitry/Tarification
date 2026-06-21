@@ -1,5 +1,6 @@
 package org.school.personalLoad.service.impl;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,6 +14,7 @@ import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.StudyPeriodSetting;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
+import org.school.personalLoad.repository.CurriculumModuleRepository;
 import org.school.personalLoad.repository.StudyPeriodSettingRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.service.StudyPeriodSettingService;
@@ -29,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -36,6 +39,8 @@ class CurriculumPlanServiceImplManualLoadExclusionTest {
 
     @Mock
     private CurriculumPlanEntryRepository repository;
+    @Mock
+    private CurriculumModuleRepository curriculumModuleRepository;
     @Mock
     private StudyPeriodSettingRepository studyPeriodSettingRepository;
     @Mock
@@ -47,7 +52,7 @@ class CurriculumPlanServiceImplManualLoadExclusionTest {
 
     @BeforeEach
     void setUp() {
-        service = new CurriculumPlanServiceImpl(repository, studyPeriodSettingRepository, studyPeriodSettingService, subjectCatalogRepository);
+        service = new CurriculumPlanServiceImpl(repository, curriculumModuleRepository, studyPeriodSettingRepository, studyPeriodSettingService, subjectCatalogRepository);
         lenient().when(studyPeriodSettingService.resolveRuleForClassAndPeriod(anyString(), anyString(), any())).thenReturn(studyPeriodRule());
         lenient().when(subjectCatalogRepository.findAll()).thenReturn(List.of());
         lenient().when(repository.findByAcademicYearAndNumberSchoolBuildingAndClassNameAndSubjectNameAndEducationLevelAndCurriculumPartAndStudyPeriodAndStudyPeriodSettingId(
@@ -112,20 +117,51 @@ class CurriculumPlanServiceImplManualLoadExclusionTest {
         CurriculumPlanEntry existing = new CurriculumPlanEntry();
         existing.setId(42L);
         existing.setSubjectName("Труд");
-        existing.setPlannedHours(BigDecimal.valueOf(2));
+        existing.setPlannedHours(BigDecimal.valueOf(5));
         when(repository.findById(42L)).thenReturn(Optional.of(existing));
         CurriculumPlanEntryRequest request = request("7-А");
         request.setSubjectName("Труд");
-        request.setPlannedHours(BigDecimal.valueOf(2));
+        request.setPlannedHours(BigDecimal.valueOf(5));
         request.setModularSystem(true);
-        request.setModules(List.of(module("Черчение", 1), module("Программирование", 1)));
+        request.setModules(List.of(module("Черчение", 2), module("Программирование", 3)));
 
         CurriculumPlanEntry saved = service.updateById(42L, request);
 
         assertTrue(saved.isModularSystem());
         assertEquals(2, saved.getModules().size());
         assertEquals("Черчение", saved.getModules().get(0).getModuleName());
+        assertEquals(0, BigDecimal.valueOf(2).compareTo(saved.getModules().get(0).getPlannedHours()));
         assertEquals("Программирование", saved.getModules().get(1).getModuleName());
+        assertEquals(0, BigDecimal.valueOf(3).compareTo(saved.getModules().get(1).getPlannedHours()));
+        verify(curriculumModuleRepository).saveAll(saved.getModules());
+    }
+
+    @Test
+    void browserJsonBindsModularFiveHourSubjectAsTwoPlusThree() throws Exception {
+        String json = """
+                {
+                  "academicYear":"2026/2027",
+                  "numberSchoolBuilding":"СП1",
+                  "className":"7-А",
+                  "subjectName":"Труд",
+                  "plannedHours":5,
+                  "educationLevel":"BASIC",
+                  "curriculumPart":"CORE",
+                  "modularSystem":true,
+                  "modules":[
+                    {"moduleOrder":1,"moduleName":"Черчение","plannedHours":2,"educationLevel":"BASIC","subgroupRequired":false},
+                    {"moduleOrder":2,"moduleName":"Программирование","plannedHours":3,"educationLevel":"BASIC","subgroupRequired":false}
+                  ]
+                }
+                """;
+
+        CurriculumPlanEntryRequest request = new ObjectMapper().readValue(json, CurriculumPlanEntryRequest.class);
+
+        assertTrue(request.isModularSystem());
+        assertEquals(2, request.getModules().size());
+        assertEquals(0, BigDecimal.valueOf(5).compareTo(request.getPlannedHours()));
+        assertEquals(0, BigDecimal.valueOf(2).compareTo(request.getModules().get(0).getPlannedHours()));
+        assertEquals(0, BigDecimal.valueOf(3).compareTo(request.getModules().get(1).getPlannedHours()));
     }
 
     private CurriculumPlanEntry captureSaved() {

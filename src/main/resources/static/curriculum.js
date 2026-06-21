@@ -1006,6 +1006,22 @@ function validateModuleHoursClient(modularSystem, modules, plannedHours) {
     }
 }
 
+function assertModulesPersisted(saved, payload) {
+    if (!payload?.modularSystem) return;
+    const expected = payload.modules || [];
+    const actual = saved?.modules || [];
+    if (!saved?.modularSystem || actual.length !== expected.length) {
+        throw new Error("Сервер не сохранил модули предмета. Проверьте миграцию curriculum_module на сервере.");
+    }
+    expected.forEach((module, index) => {
+        const persisted = actual[index];
+        if (String(persisted?.moduleName || "").trim() !== String(module.moduleName || "").trim()
+                || Number(persisted?.plannedHours || 0) !== Number(module.plannedHours || 0)) {
+            throw new Error("Сервер сохранил модули предмета не полностью");
+        }
+    });
+}
+
 async function importCurriculumFile() {
     const file = ui.importFile?.files?.[0];
     if (!file) {
@@ -1255,10 +1271,12 @@ function bindEvents() {
                 throw new Error("Класс/метагруппа не найдены в справочнике");
             }
 
-            await api("/api/curriculum", { method: "POST", headers: jsonHeaders, body: JSON.stringify(payload) });
+            const saved = await api("/api/curriculum", { method: "POST", headers: jsonHeaders, body: JSON.stringify(payload) });
+            assertModulesPersisted(saved, payload);
             sumMismatchKeys = new Set();
             print({ status: "saved", payload });
             await reload();
+            assertModulesPersisted(curriculumRows.find((row) => Number(row.id) === Number(saved.id)), payload);
         } catch (error) {
             print({ error: error.message });
         }
@@ -1448,17 +1466,21 @@ function bindEvents() {
 
         try {
             if (existing) {
-                await api(`/api/curriculum/${id}`, { method: "PATCH", headers: jsonHeaders, body: JSON.stringify(payload) });
+                const saved = await api(`/api/curriculum/${id}`, { method: "PATCH", headers: jsonHeaders, body: JSON.stringify(payload) });
+                assertModulesPersisted(saved, payload);
             } else {
                 if (!payload.numberSchoolBuilding || !payload.className || !payload.subjectName || !payload.curriculumPart) {
                     throw new Error("Недостаточно данных для создания записи");
                 }
-                await api("/api/curriculum", { method: "POST", headers: jsonHeaders, body: JSON.stringify(payload) });
+                const saved = await api("/api/curriculum", { method: "POST", headers: jsonHeaders, body: JSON.stringify(payload) });
+                assertModulesPersisted(saved, payload);
             }
             sumMismatchKeys = new Set();
             pendingCreateContext = null;
             ui.editDialog.close();
             await reload();
+            const persisted = curriculumRows.find((row) => Number(row.id) === Number(id));
+            if (existing) assertModulesPersisted(persisted, payload);
         } catch (error) {
             print({ error: error.message });
         }
