@@ -947,6 +947,11 @@ function subjectKeyOfRow(row) {
     return `${row.subjectName}|${row.curriculumPart || "CORE"}|${periodToken}${groupSuffix(row)}`;
 }
 
+function subgroupFamilyKey(row) {
+    const moduleToken = row.__moduleId ? `|M:${row.__moduleId}` : "";
+    return `${row.subjectName}|${row.curriculumPart || "CORE"}|${rowStudyPeriod(row)}${moduleToken}`;
+}
+
 function highSchoolUnifiedSubject(row) {
     return classParallel(row?.className) >= 10;
 }
@@ -2155,7 +2160,7 @@ function openSubgroupDrawer(presentationRow, className, classRows) {
         rows: classRows,
         subjectName: presentationRow.subjectName
     };
-    if (ui.subgroupDrawerTitle) ui.subgroupDrawerTitle.textContent = `${className} — ${presentationRow.subjectName}`;
+    if (ui.subgroupDrawerTitle) ui.subgroupDrawerTitle.textContent = `${className} — ${presentationRow.displaySubjectName || presentationRow.subjectName}`;
     ui.subgroupDrawerBody.innerHTML = classRows.map((item, idx) => {
         const apiKey = apiKeyOfRow(item);
         const moduleLabel = item.__moduleId ? `Модуль ${item.__moduleOrder}: ${item.__moduleName}` : "";
@@ -2318,12 +2323,12 @@ function applySubgroupDrawerAssignments() {
 
 function subgroupRowsForClass(presentationRow, className) {
     const direct = presentationRow.rowsByClassAll?.[className] || [];
+    const familyRow = direct[0] || presentationRow.rowsByClass?.[className];
+    const familyKey = subgroupFamilyKey(familyRow || {});
     const classRows = expandedRowsForSelectedBuilding().filter((row) => {
         if (normalizeClassName(row.className) !== normalizeClassName(className)) return false;
-        if (String(row.subjectName || '').trim() !== String(presentationRow.subjectName || '').trim()) return false;
-        if (String(row.curriculumPart || '') !== String(presentationRow.curriculumPart || '')) return false;
-        return subjectKeyOfRow(row) === presentationRow.subjectKey
-            && (Number(row.__groupCount || 0) > 0 || Number(row.__groupIndex || 0) > 0);
+        if (subgroupFamilyKey(row) !== familyKey) return false;
+        return Number(row.__groupCount || 0) > 0 || Number(row.__groupIndex || 0) > 0;
     });
     const ordered = (classRows.length > direct.length ? classRows : direct)
         .slice()
