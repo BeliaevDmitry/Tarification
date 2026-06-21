@@ -517,7 +517,7 @@ function curriculumRowsForDisplay() {
         if (!row.modularSystem || !(row.modules || []).length) return [row];
         return row.modules.map((module) => ({
             ...row,
-            subjectName: `${row.subjectName}, ${module.moduleName}`,
+            subjectName: `${row.subjectName} (${module.moduleName})`,
             __baseSubjectName: row.subjectName,
             __moduleId: module.id,
             plannedHours: module.plannedHours,
