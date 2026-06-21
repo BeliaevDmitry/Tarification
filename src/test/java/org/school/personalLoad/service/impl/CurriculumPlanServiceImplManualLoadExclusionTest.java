@@ -107,6 +107,27 @@ class CurriculumPlanServiceImplManualLoadExclusionTest {
         assertThrows(IllegalArgumentException.class, () -> service.upsert(request));
     }
 
+    @Test
+    void existingOrdinarySubjectKeepsNewModulesAfterUpdate() {
+        CurriculumPlanEntry existing = new CurriculumPlanEntry();
+        existing.setId(42L);
+        existing.setSubjectName("Труд");
+        existing.setPlannedHours(BigDecimal.valueOf(2));
+        when(repository.findById(42L)).thenReturn(Optional.of(existing));
+        CurriculumPlanEntryRequest request = request("7-А");
+        request.setSubjectName("Труд");
+        request.setPlannedHours(BigDecimal.valueOf(2));
+        request.setModularSystem(true);
+        request.setModules(List.of(module("Черчение", 1), module("Программирование", 1)));
+
+        CurriculumPlanEntry saved = service.updateById(42L, request);
+
+        assertTrue(saved.isModularSystem());
+        assertEquals(2, saved.getModules().size());
+        assertEquals("Черчение", saved.getModules().get(0).getModuleName());
+        assertEquals("Программирование", saved.getModules().get(1).getModuleName());
+    }
+
     private CurriculumPlanEntry captureSaved() {
         ArgumentCaptor<CurriculumPlanEntry> captor = ArgumentCaptor.forClass(CurriculumPlanEntry.class);
         org.mockito.Mockito.verify(repository).save(captor.capture());

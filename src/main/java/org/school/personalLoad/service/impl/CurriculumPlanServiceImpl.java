@@ -15,6 +15,7 @@ import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,6 +36,7 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
     private final SubjectCatalogRepository subjectCatalogRepository;
 
     @Override
+    @Transactional
     public CurriculumPlanEntry upsert(CurriculumPlanEntryRequest request) {
         validate(request);
         CurriculumPart curriculumPart = request.getCurriculumPart() == null ? CurriculumPart.CORE : request.getCurriculumPart();
@@ -60,6 +62,7 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
     }
 
     @Override
+    @Transactional
     public List<CurriculumPlanEntry> upsertBulk(List<CurriculumPlanEntryRequest> requests) {
         List<CurriculumPlanEntry> result = new ArrayList<>();
         for (CurriculumPlanEntryRequest request : requests) {
@@ -87,6 +90,7 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
     }
 
     @Override
+    @Transactional
     public CurriculumPlanEntry updateById(Long id, CurriculumPlanEntryRequest request) {
         validate(request);
         CurriculumPlanEntry entity = repository.findById(id)
@@ -315,14 +319,20 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         Map<Long, CurriculumModule> existingById = entity.getModules().stream()
                 .filter(module -> module.getId() != null)
                 .collect(Collectors.toMap(CurriculumModule::getId, Function.identity()));
-        List<CurriculumModule> updated = new ArrayList<>();
         List<CurriculumPlanEntryRequest.ModuleRequest> requested = request.getModules();
+        java.util.Set<Long> requestedIds = requested.stream()
+                .map(CurriculumPlanEntryRequest.ModuleRequest::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        for (Long requestedId : requestedIds) {
+            if (!existingById.containsKey(requestedId)) {
+                throw new IllegalArgumentException("Модуль не принадлежит редактируемому предмету: " + requestedId);
+            }
+        }
+        entity.getModules().removeIf(module -> module.getId() != null && !requestedIds.contains(module.getId()));
         for (int index = 0; index < requested.size(); index++) {
             CurriculumPlanEntryRequest.ModuleRequest source = requested.get(index);
             CurriculumModule module = source.getId() == null ? new CurriculumModule() : existingById.get(source.getId());
-            if (module == null) {
-                throw new IllegalArgumentException("Модуль не принадлежит редактируемому предмету: " + source.getId());
-            }
             module.setCurriculumEntry(entity);
             module.setModuleOrder(index + 1);
             module.setModuleName(source.getModuleName().trim());
@@ -334,9 +344,10 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
             module.setSubgroup1EducationLevel(source.isSubgroupRequired() ? source.getSubgroup1EducationLevel() : null);
             module.setSubgroup2Hours(source.isSubgroupRequired() ? source.getSubgroup2Hours() : null);
             module.setSubgroup2EducationLevel(source.isSubgroupRequired() ? source.getSubgroup2EducationLevel() : null);
-            updated.add(module);
+            if (source.getId() == null) {
+                entity.getModules().add(module);
+            }
         }
-        entity.getModules().clear();
-        entity.getModules().addAll(updated);
+        entity.getModules().sort(java.util.Comparator.comparing(CurriculumModule::getModuleOrder));
     }
 }

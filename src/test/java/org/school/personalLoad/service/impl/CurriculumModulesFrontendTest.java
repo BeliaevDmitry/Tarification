@@ -15,6 +15,8 @@ class CurriculumModulesFrontendTest {
         String curriculumJs = Files.readString(Path.of("src/main/resources/static/curriculum.js"));
 
         assertTrue(html.contains("id=\"module-list\""));
+        assertTrue(html.contains("<details id=\"subject-create-panel\""));
+        assertTrue(html.contains("<summary>Добавить/обновить предмет</summary>"));
         assertTrue(html.indexOf("value=\"detailed\"") < html.indexOf("value=\"general\""));
         assertTrue(curriculumJs.contains("modules.push(defaultModule(modules.length))"));
         assertTrue(curriculumJs.contains("Сумма часов модулей"));
