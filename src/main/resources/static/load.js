@@ -2537,6 +2537,7 @@ function patchSiblingCellsForSubjectClass(subjectKey, className) {
         button.classList.toggle("active", isActive);
         button.classList.toggle("muted", isMuted);
         button.classList.toggle("unassigned", isUnassigned);
+        button.classList.toggle("vacancy", isVacancyTeacherName(rowTeacher) && hasRowTeacherAssigned);
     });
 }
 
@@ -2724,7 +2725,7 @@ function renderTable() {
                     isPlanned ? "planned" : "",
                     isTransferOut ? "transfer-out" : "",
                     !isPlanned && !isTransferOut && hasContinuityOk ? "continuity-ok" : "",
-                    vacancyTeacher ? "vacancy" : ""
+                    vacancyTeacher && hasRowTeacherAssigned ? "vacancy" : ""
                 ].filter(Boolean).join(" ");
                 return `<td><button type="button" class="${classesForCell}" data-class-cell="1" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" data-class-name="${esc(className)}">${esc(hoursTotal)}</button></td>`;
             }).join("")}
