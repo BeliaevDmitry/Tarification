@@ -738,6 +738,10 @@ dialog::backdrop {
     background: #f8fafc;
 }
 
+.module-config.hidden {
+    display: none;
+}
+
 .module-config-head,
 .module-card-head {
     display: flex;

@@ -48,4 +48,15 @@ class CurriculumModulesFrontendTest {
         assertTrue(loadJs.contains("if (subgroupFamilyKey(row) !== familyKey) return false"));
         assertTrue(loadJs.contains("presentationRow.displaySubjectName || presentationRow.subjectName"));
     }
+
+    @Test
+    void disabledModuleSystemHidesModuleEditorAndDisablesItsRequiredFields() throws Exception {
+        String styles = Files.readString(Path.of("src/main/resources/static/styles.css"));
+        String curriculumJs = Files.readString(Path.of("src/main/resources/static/curriculum.js"));
+
+        assertTrue(styles.contains(".module-config.hidden"));
+        assertTrue(curriculumJs.contains("config?.classList.toggle(\"hidden\", !enabled)"));
+        assertTrue(curriculumJs.contains("config?.querySelectorAll(\"[data-module-field]\")"));
+        assertTrue(curriculumJs.contains("control.disabled = !enabled"));
+    }
 }

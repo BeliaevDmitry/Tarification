@@ -1188,6 +1188,9 @@ function toggleModuleSystem(form, config, list, summary, modules = null) {
     if (enabled && list && (!list.children.length || modules)) {
         renderModuleEditor(list, modules, summary, form.elements.plannedHours);
     }
+    config?.querySelectorAll("[data-module-field]").forEach((control) => {
+        control.disabled = !enabled;
+    });
     const subgroupContainer = form === ui.form ? ui.subgroupConfig : ui.editSubgroupConfig;
     toggleSubgroupConfig(subgroupContainer, enabled ? "false" : subgroupSelect?.value);
 }
