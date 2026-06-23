@@ -1368,6 +1368,157 @@ td.vacancy-row {
     border-color: #93c5fd;
 }
 
+.login-chat-tile {
+    min-height: 58px;
+    font-size: 34px;
+    line-height: 1;
+}
+
+.public-chat-card {
+    max-width: 760px;
+    margin: 24px auto;
+}
+
+.public-chat-messages {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    height: min(55vh, 520px);
+    min-height: 280px;
+    margin: 16px 0;
+    padding: 14px;
+    overflow-y: auto;
+    border: 1px solid #dbe3ef;
+    border-radius: 14px;
+    background: #f8fafc;
+}
+
+.public-chat-message {
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, .08);
+    overflow-wrap: anywhere;
+}
+
+.public-chat-message-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 5px;
+    color: #64748b;
+    font-size: 12px;
+}
+
+.public-chat-message-author {
+    color: #1e3a8a;
+    font-weight: 700;
+}
+
+.public-chat-form {
+    display: grid;
+    grid-template-columns: minmax(120px, 180px) 1fr auto;
+    gap: 10px;
+    align-items: end;
+}
+
+.public-chat-form label {
+    display: grid;
+    gap: 5px;
+}
+
+.public-chat-form textarea {
+    min-height: 72px;
+    resize: vertical;
+}
+
+.public-chat-status {
+    min-height: 22px;
+    margin-top: 8px;
+}
+
+.public-section-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.public-section-tabs a {
+    padding: 9px 16px;
+    border-radius: 999px;
+    color: #334155;
+    text-decoration: none;
+    font-weight: 700;
+}
+
+.public-section-tabs a:hover,
+.public-section-tabs a.active {
+    color: #1e3a8a;
+    background: #e0e7ff;
+}
+
+.questions-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 10px 0;
+    background: #fff;
+}
+
+.questions-search {
+    width: 100%;
+}
+
+.questions-source {
+    margin-top: 22px;
+}
+
+.question-card {
+    margin: 10px 0;
+    border: 1px solid #dbe3ef;
+    border-radius: 12px;
+    background: #fff;
+    overflow: hidden;
+}
+
+.question-card summary {
+    padding: 13px 15px;
+    cursor: pointer;
+    font-weight: 650;
+    line-height: 1.45;
+}
+
+.question-card summary:hover {
+    background: #f8fafc;
+}
+
+.question-answer {
+    padding: 13px 15px;
+    border-top: 1px solid #e2e8f0;
+    background: #f0fdf4;
+    white-space: pre-wrap;
+    line-height: 1.55;
+}
+
+.question-source-text {
+    padding: 13px 15px;
+    border-top: 1px solid #e2e8f0;
+    white-space: pre-wrap;
+    line-height: 1.55;
+}
+
+.questions-count {
+    margin: 8px 0 0;
+}
+
+@media (max-width: 640px) {
+    .public-chat-form {
+        grid-template-columns: 1fr;
+    }
+}
+
 .admin-card {
     overflow: hidden;
 }
