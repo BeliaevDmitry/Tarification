@@ -1,5 +1,5 @@
 (() => {
-    const data = window.PUBLIC_QUESTIONS_DATA || { questions: [], recognizedPages: [] };
+    const data = window.PUBLIC_QUESTIONS_DATA || { questions: [], firstStageQuestions: [], verifiedAnswers: [] };
     const content = document.getElementById('questions-content');
     const search = document.getElementById('questions-search');
     const count = document.getElementById('questions-count');
@@ -40,14 +40,26 @@
     });
     content.append(answersSection);
 
-    const recognizedSection = heading(
-        'Вопросы 1 этапа — распознанный текст',
-        'Текст и отметки вариантов показаны как в распознанном документе. Искажённые OCR отметки не трактуются автоматически.'
+    const firstStageSection = heading(
+        'Вопросы 1 этапа — вопрос и ответ',
+        'Ответы восстановлены по отметкам и исправлениям в исходном материале.'
     );
-    data.recognizedPages.forEach(item => {
-        recognizedSection.append(card(item.title, item.text, 'question-source-text', `${item.title} ${item.text}`));
+    data.firstStageQuestions.forEach(item => {
+        const page = item.page ? ` · страница ${item.page}` : '';
+        const title = `${item.number} ${item.question}${page}`.trim();
+        firstStageSection.append(card(title, item.answer, 'question-answer', `${title} ${item.answer}`));
     });
-    content.append(recognizedSection);
+    content.append(firstStageSection);
+
+    const verifiedSection = heading(
+        'Проверенные ответы — итоговая версия',
+        'Подробная проверка с пометками о надёжности и необходимости внутреннего подтверждения.'
+    );
+    data.verifiedAnswers.forEach(item => {
+        const title = `${item.number} ${item.question}`.trim();
+        verifiedSection.append(card(title, item.details, 'question-answer', `${title} ${item.details}`));
+    });
+    content.append(verifiedSection);
 
     function filter() {
         const query = search.value.trim().toLocaleLowerCase('ru-RU');
