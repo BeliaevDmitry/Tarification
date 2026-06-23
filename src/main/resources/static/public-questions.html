@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вопросы и ответы</title>
+    <link rel="icon" type="image/png" href="/school-crest.png">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container">
+    <section class="card public-chat-card">
+        <nav class="public-section-tabs" aria-label="Разделы">
+            <a href="/public-chat.html">Чат</a>
+            <a class="active" href="/public-questions.html" aria-current="page">Вопросы</a>
+        </nav>
+        <div class="section-heading compact">
+            <div>
+                <h1>Вопросы и ответы</h1>
+                <p class="muted">Материалы из загруженных документов. Нажмите на вопрос, чтобы увидеть ответ.</p>
+            </div>
+            <a class="home-link" href="/login.html" title="На главную" aria-label="На главную">🏠</a>
+        </div>
+        <div class="questions-toolbar">
+            <input id="questions-search" class="questions-search" type="search" placeholder="Найти вопрос или ответ…" autocomplete="off">
+            <p id="questions-count" class="muted questions-count"></p>
+        </div>
+        <div id="questions-content"></div>
+    </section>
+</main>
+<script src="/public-questions-data.js"></script>
+<script src="/public-questions.js"></script>
+</body>
+</html>

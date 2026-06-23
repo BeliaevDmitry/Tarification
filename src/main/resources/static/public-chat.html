@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Общий чат</title>
+    <link rel="icon" type="image/png" href="/school-crest.png">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container">
+    <section class="card public-chat-card">
+        <nav class="public-section-tabs" aria-label="Разделы">
+            <a class="active" href="/public-chat.html" aria-current="page">Чат</a>
+            <a href="/public-questions.html">Вопросы</a>
+        </nav>
+        <div class="section-heading compact">
+            <div>
+                <h1>Общий чат</h1>
+                <p class="muted">Читать и писать здесь может любой посетитель — вход не требуется.</p>
+            </div>
+            <a class="home-link" href="/login.html" title="На главную" aria-label="На главную">🏠</a>
+        </div>
+
+        <div id="public-chat-messages" class="public-chat-messages" aria-live="polite">
+            <p class="muted">Загрузка сообщений…</p>
+        </div>
+
+        <form id="public-chat-form" class="public-chat-form">
+            <label>
+                Ваше имя
+                <input id="public-chat-author" maxlength="40" autocomplete="nickname" placeholder="Гость" required>
+            </label>
+            <label>
+                Сообщение
+                <textarea id="public-chat-text" maxlength="1000" placeholder="Напишите сообщение…" required></textarea>
+            </label>
+            <button type="submit">Отправить</button>
+        </form>
+        <div id="public-chat-status" class="muted public-chat-status" role="status"></div>
+    </section>
+</main>
+<script src="/public-chat.js"></script>
+</body>
+</html>
