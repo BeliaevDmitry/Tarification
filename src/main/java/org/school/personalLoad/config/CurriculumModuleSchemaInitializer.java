@@ -29,6 +29,14 @@ public class CurriculumModuleSchemaInitializer implements ApplicationRunner {
         if (!"PostgreSQL".equalsIgnoreCase(database)) return;
 
         jdbcTemplate.execute("ALTER TABLE curriculum_plan_entry ADD COLUMN IF NOT EXISTS modular_system boolean NOT NULL DEFAULT false");
+        jdbcTemplate.execute("ALTER TABLE curriculum_plan_entry ADD COLUMN IF NOT EXISTS subject_requirement varchar(32)");
+        jdbcTemplate.execute("UPDATE curriculum_plan_entry SET subject_requirement = CASE WHEN curriculum_part = 'CORE' THEN 'MANDATORY' ELSE 'SCHOOL_CHOICE' END WHERE subject_requirement IS NULL");
+        jdbcTemplate.execute("ALTER TABLE curriculum_plan_entry ALTER COLUMN subject_requirement SET NOT NULL");
+        jdbcTemplate.execute("ALTER TABLE curriculum_plan_entry ALTER COLUMN subject_requirement SET DEFAULT 'MANDATORY'");
+        jdbcTemplate.execute("ALTER TABLE curriculum_plan_entry ADD COLUMN IF NOT EXISTS subgroup_policy varchar(32)");
+        jdbcTemplate.execute("UPDATE curriculum_plan_entry SET subgroup_policy = 'RECOMMENDED' WHERE subgroup_policy IS NULL");
+        jdbcTemplate.execute("ALTER TABLE curriculum_plan_entry ALTER COLUMN subgroup_policy SET NOT NULL");
+        jdbcTemplate.execute("ALTER TABLE curriculum_plan_entry ALTER COLUMN subgroup_policy SET DEFAULT 'RECOMMENDED'");
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS curriculum_module (
                     id bigserial PRIMARY KEY,

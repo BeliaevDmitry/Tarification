@@ -9,6 +9,8 @@ import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.SubjectCatalogEntry;
 import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.StudyPeriodSetting;
+import org.school.personalLoad.model.SubjectRequirement;
+import org.school.personalLoad.model.SubgroupPolicy;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.CurriculumModuleRepository;
 import org.school.personalLoad.repository.StudyPeriodSettingRepository;
@@ -208,6 +210,10 @@ public class CurriculumPlanServiceImpl implements CurriculumPlanService {
         entity.setModularSystem(request.isModularSystem());
         boolean parentSubgroups = !request.isModularSystem() && request.isSubgroupRequired();
         entity.setSubgroupRequired(parentSubgroups);
+        entity.setSubjectRequirement(request.getSubjectRequirement() == null
+                ? (curriculumPart == CurriculumPart.CORE ? SubjectRequirement.MANDATORY : SubjectRequirement.SCHOOL_CHOICE)
+                : request.getSubjectRequirement());
+        entity.setSubgroupPolicy(request.getSubgroupPolicy() == null ? SubgroupPolicy.RECOMMENDED : request.getSubgroupPolicy());
         entity.setSubgroupCount(parentSubgroups ? 2 : 0);
         entity.setEducationLevel(request.getEducationLevel());
         entity.setSubgroup1Hours(parentSubgroups ? request.getSubgroup1Hours() : null);

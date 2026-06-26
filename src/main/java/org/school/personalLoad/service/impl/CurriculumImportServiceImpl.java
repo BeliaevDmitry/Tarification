@@ -82,7 +82,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 "SUBGROUP2_HOURS",
                 "SUBGROUP2_EDUCATION_LEVEL",
                 "META_GROUP",
-                "EXCLUDED_FROM_MANUAL_LOAD"
+                "EXCLUDED_FROM_MANUAL_LOAD",
+                "SUBJECT_REQUIREMENT",
+                "SUBGROUP_POLICY"
         };
         Row header = sheet.createRow(0);
         for (int i = 0; i < headers.length; i++) {
@@ -108,6 +110,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             row.createCell(12).setCellValue((entry.getSubgroup2EducationLevel() == null ? EducationLevel.BASIC : entry.getSubgroup2EducationLevel()).name());
             row.createCell(13).setCellValue(explicitMetaGroup || excludedFromManualLoad);
             row.createCell(14).setCellValue(excludedFromManualLoad);
+            CurriculumPart part = entry.getCurriculumPart() == null ? CurriculumPart.CORE : entry.getCurriculumPart();
+            row.createCell(15).setCellValue(effectiveSubjectRequirement(entry, part).name());
+            row.createCell(16).setCellValue((entry.getSubgroupPolicy() == null ? SubgroupPolicy.RECOMMENDED : entry.getSubgroupPolicy()).name());
         }
         for (int i = 0; i < headers.length; i++) {
             sheet.autoSizeColumn(i);
@@ -128,18 +133,31 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         (left, right) -> left,
                         LinkedHashMap::new
                 ));
+        Set<String> aoopClassKeys = classDirectory.entrySet().stream()
+                .filter(entry -> "AOOP_UO".equalsIgnoreCase(normalizeSubject(entry.getValue().getClassType())))
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toSet());
+        List<CurriculumPlanEntry> regularEntries = entries.stream()
+                .filter(entry -> !aoopClassKeys.contains(classExportKey(entry.getNumberSchoolBuilding(), entry.getClassName())))
+                .toList();
+        List<CurriculumPlanEntry> aoopEntries = entries.stream()
+                .filter(entry -> aoopClassKeys.contains(classExportKey(entry.getNumberSchoolBuilding(), entry.getClassName())))
+                .toList();
 
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            Set<Integer> parallels = entries.stream()
+            Set<Integer> parallels = regularEntries.stream()
                     .map(e -> extractParallelForExportClass(e.getClassName()))
                     .filter(Objects::nonNull)
                     .collect(Collectors.toCollection(TreeSet::new));
-            if (parallels.isEmpty()) {
+            if (parallels.isEmpty() && aoopEntries.isEmpty()) {
                 Sheet sheet = workbook.createSheet("Учебный план");
                 sheet.createRow(0).createCell(0).setCellValue("Нет данных учебного плана за " + academicYear);
             } else {
                 for (Integer parallel : parallels) {
-                    buildParallelSheet(workbook, academicYear, parallel, entries, classDirectory);
+                    buildParallelSheet(workbook, academicYear, parallel, regularEntries, classDirectory);
+                }
+                if (!aoopEntries.isEmpty()) {
+                    buildExportSheet(workbook, academicYear, "АООП УО", "Учебный план АООП УО", aoopEntries, classDirectory);
                 }
             }
             workbook.write(output);
@@ -154,6 +172,167 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                                     Map<String, ClassroomLeadershipEntry> classDirectory) {
         List<CurriculumPlanEntry> entries = allEntries.stream()
                 .filter(e -> Objects.equals(extractParallelForExportClass(e.getClassName()), parallel))
+                .toList();
+        buildExportSheet(workbook, academicYear, parallel + " параллель", "Учебный план по " + parallel + " параллели", entries, classDirectory);
+    }
+
+    @Override
+    public byte[] exportDepartmentWorkbook(String academicYear) throws IOException {
+        List<CurriculumPlanEntry> entries = curriculumRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(entry -> !entry.isDeprecated())
+                .filter(entry -> extractParallelForExportClass(entry.getClassName()) != null)
+                .toList();
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            Set<Integer> parallels = entries.stream()
+                    .map(entry -> extractParallelForExportClass(entry.getClassName()))
+                    .collect(Collectors.toCollection(TreeSet::new));
+            if (parallels.isEmpty()) {
+                workbook.createSheet("Учебный план").createRow(0).createCell(0)
+                        .setCellValue("Нет данных учебного плана за " + academicYear);
+            } else {
+                for (Integer parallel : parallels) {
+                    buildDepartmentSheet(workbook, academicYear, parallel, entries);
+                }
+            }
+            workbook.write(output);
+            return output.toByteArray();
+        }
+    }
+
+    private void buildDepartmentSheet(Workbook workbook,
+                                      String academicYear,
+                                      int parallel,
+                                      List<CurriculumPlanEntry> allEntries) {
+        List<CurriculumPlanEntry> entries = allEntries.stream()
+                .filter(entry -> Objects.equals(parallel, extractParallelForExportClass(entry.getClassName())))
+                .toList();
+        List<ClassColumn> classColumns = entries.stream()
+                .collect(Collectors.toMap(
+                        entry -> classExportKey(entry.getNumberSchoolBuilding(), entry.getClassName()),
+                        entry -> new ClassColumn(normalizeSubject(entry.getNumberSchoolBuilding()), ClassNameNormalizer.normalize(entry.getClassName())),
+                        (left, right) -> left,
+                        LinkedHashMap::new))
+                .values().stream()
+                .sorted((left, right) -> compareClassKeysForExport(left.key(), right.key()))
+                .toList();
+
+        Sheet sheet = workbook.createSheet(org.apache.poi.ss.util.WorkbookUtil.createSafeSheetName(parallel + " параллель"));
+        CellStyle headerStyle = departmentStyle(workbook, true, IndexedColors.GREY_25_PERCENT);
+        CellStyle partStyle = departmentStyle(workbook, true, IndexedColors.LIGHT_CORNFLOWER_BLUE);
+        CellStyle groupStyle = departmentStyle(workbook, true, IndexedColors.LEMON_CHIFFON);
+        CellStyle baseStyle = departmentStyle(workbook, false, null);
+
+        Row title = sheet.createRow(0);
+        title.createCell(0).setCellValue("УП для департамента: " + parallel + " параллель, " + academicYear);
+        title.getCell(0).setCellStyle(headerStyle);
+        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(0, 0, 0, Math.max(1, classColumns.size())));
+        Row classesRow = sheet.createRow(1);
+        classesRow.createCell(0).setCellValue("Раздел / предмет");
+        classesRow.getCell(0).setCellStyle(headerStyle);
+        for (int index = 0; index < classColumns.size(); index++) {
+            Cell cell = classesRow.createCell(index + 1);
+            cell.setCellValue(classColumns.get(index).className());
+            cell.setCellStyle(headerStyle);
+        }
+
+        int rowNum = 2;
+        for (CurriculumPart part : List.of(CurriculumPart.CORE, CurriculumPart.FORMABLE, CurriculumPart.EXTRACURRICULAR, CurriculumPart.CORRECTIONAL)) {
+            List<CurriculumPlanEntry> partEntries = entries.stream()
+                    .filter(entry -> (entry.getCurriculumPart() == null ? CurriculumPart.CORE : entry.getCurriculumPart()) == part)
+                    .toList();
+            if (partEntries.isEmpty()) continue;
+            rowNum = appendDepartmentHeading(sheet, rowNum, departmentPartLabel(part), classColumns.size(), partStyle);
+            for (SubjectRequirement requirement : SubjectRequirement.values()) {
+                List<CurriculumPlanEntry> requirementEntries = partEntries.stream()
+                        .filter(entry -> effectiveSubjectRequirement(entry, part) == requirement)
+                        .toList();
+                if (requirementEntries.isEmpty()) continue;
+                rowNum = appendDepartmentHeading(sheet, rowNum,
+                        requirement == SubjectRequirement.MANDATORY ? "Обязательные" : "По выбору школы",
+                        classColumns.size(), groupStyle);
+                for (int divisionGroup = 0; divisionGroup < 3; divisionGroup++) {
+                    final int group = divisionGroup;
+                    List<CurriculumPlanEntry> divisionEntries = requirementEntries.stream()
+                            .filter(entry -> departmentDivisionGroup(entry) == group)
+                            .toList();
+                    if (divisionEntries.isEmpty()) continue;
+                    String divisionLabel = switch (divisionGroup) {
+                        case 0 -> "Не делится на подгруппы";
+                        case 1 -> "Делится на группы (рекомендовано)";
+                        default -> "Делится на группы (по выбору школы)";
+                    };
+                    rowNum = appendDepartmentHeading(sheet, rowNum, divisionLabel, classColumns.size(), baseStyle);
+                    Map<String, List<CurriculumPlanEntry>> bySubject = divisionEntries.stream()
+                            .collect(Collectors.groupingBy(entry -> normalizeSubject(entry.getSubjectName()), TreeMap::new, Collectors.toList()));
+                    for (Map.Entry<String, List<CurriculumPlanEntry>> subject : bySubject.entrySet()) {
+                        Row row = sheet.createRow(rowNum++);
+                        row.createCell(0).setCellValue(subject.getKey());
+                        row.getCell(0).setCellStyle(baseStyle);
+                        for (int index = 0; index < classColumns.size(); index++) {
+                            Cell cell = row.createCell(index + 1);
+                            cell.setCellValue(renderHoursForColumn(subject.getValue(), classColumns.get(index)));
+                            cell.setCellStyle(baseStyle);
+                        }
+                    }
+                }
+            }
+        }
+        sheet.createFreezePane(1, 2);
+        sheet.setColumnWidth(0, 12000);
+        for (int index = 1; index <= classColumns.size(); index++) sheet.setColumnWidth(index, 3500);
+    }
+
+    private int appendDepartmentHeading(Sheet sheet, int rowNum, String label, int classCount, CellStyle style) {
+        Row row = sheet.createRow(rowNum);
+        row.createCell(0).setCellValue(label);
+        row.getCell(0).setCellStyle(style);
+        for (int column = 1; column <= classCount; column++) row.createCell(column).setCellStyle(style);
+        if (classCount > 0) sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(rowNum, rowNum, 0, classCount));
+        return rowNum + 1;
+    }
+
+    private CellStyle departmentStyle(Workbook workbook, boolean bold, IndexedColors fill) {
+        CellStyle style = workbook.createCellStyle();
+        style.setWrapText(true);
+        style.setVerticalAlignment(VerticalAlignment.CENTER);
+        style.setAlignment(HorizontalAlignment.CENTER);
+        setThinBorders(style);
+        Font font = workbook.createFont();
+        font.setBold(bold);
+        style.setFont(font);
+        if (fill != null) {
+            style.setFillForegroundColor(fill.getIndex());
+            style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        }
+        return style;
+    }
+
+    private SubjectRequirement effectiveSubjectRequirement(CurriculumPlanEntry entry, CurriculumPart part) {
+        if (entry.getSubjectRequirement() != null) return entry.getSubjectRequirement();
+        return part == CurriculumPart.CORE ? SubjectRequirement.MANDATORY : SubjectRequirement.SCHOOL_CHOICE;
+    }
+
+    private String departmentPartLabel(CurriculumPart part) {
+        return switch (part) {
+            case CORE -> "1) Основная часть";
+            case FORMABLE -> "2) Часть, формируемая участниками образовательных отношений";
+            case EXTRACURRICULAR -> "3) Курс ВД (внеурочная деятельность)";
+            case CORRECTIONAL -> "4) Коррекционная область";
+        };
+    }
+
+    private int departmentDivisionGroup(CurriculumPlanEntry entry) {
+        if (!entry.isSubgroupRequired()) return 0;
+        return entry.getSubgroupPolicy() == SubgroupPolicy.SCHOOL_CHOICE ? 2 : 1;
+    }
+
+    private void buildExportSheet(Workbook workbook,
+                                  String academicYear,
+                                  String sheetName,
+                                  String title,
+                                  List<CurriculumPlanEntry> sourceEntries,
+                                  Map<String, ClassroomLeadershipEntry> classDirectory) {
+        List<CurriculumPlanEntry> entries = sourceEntries.stream()
                 .sorted(Comparator
                         .comparing((CurriculumPlanEntry e) -> String.valueOf(e.getNumberSchoolBuilding()), String.CASE_INSENSITIVE_ORDER)
                         .thenComparing(e -> ClassNameNormalizer.normalize(e.getClassName()), String.CASE_INSENSITIVE_ORDER)
@@ -162,9 +341,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         .thenComparing(e -> normalizeSubject(e.getSubjectName()), String.CASE_INSENSITIVE_ORDER)
                         .thenComparing(e -> periodOrder(e.getStudyPeriod())))
                 .toList();
-        Sheet sheet = workbook.createSheet(org.apache.poi.ss.util.WorkbookUtil.createSafeSheetName(parallel + " параллель"));
+        Sheet sheet = workbook.createSheet(org.apache.poi.ss.util.WorkbookUtil.createSafeSheetName(sheetName));
         if (entries.isEmpty()) {
-            sheet.createRow(0).createCell(0).setCellValue("Нет данных по " + parallel + " параллели");
+            sheet.createRow(0).createCell(0).setCellValue("Нет данных: " + title);
             return;
         }
 
@@ -237,7 +416,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
         Row titleRow = sheet.createRow(0);
         titleRow.setHeightInPoints(28);
-        titleRow.createCell(0).setCellValue("Учебный план по " + parallel + " параллели, " + academicYear);
+        titleRow.createCell(0).setCellValue(title + ", " + academicYear);
         titleRow.getCell(0).setCellStyle(titleStyle);
         sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(0, 0, 0, Math.max(2, classColumns.size() + 1)));
 
@@ -301,7 +480,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             }
         }
 
-        rowNum = appendParallelTotalRows(sheet, rowNum, entries, classColumns, summaryStyle, exceededMaximumStyle, parallel);
+        rowNum = appendParallelTotalRows(sheet, rowNum, entries, classColumns, summaryStyle, exceededMaximumStyle);
 
         for (int r = 1; r < rowNum; r++) {
             Row row = sheet.getRow(r);
@@ -325,13 +504,12 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                                         List<CurriculumPlanEntry> entries,
                                         List<ClassColumn> classColumns,
                                         CellStyle style,
-                                        CellStyle exceededStyle,
-                                        int parallel) {
+                                        CellStyle exceededStyle) {
         int rowNum = startRow;
         rowNum = appendParallelTotalRow(sheet, rowNum, "Итого основная часть", entries, classColumns, style, CurriculumPart.CORE);
         rowNum = appendParallelTotalRow(sheet, rowNum, "Итого формируемая часть", entries, classColumns, style, CurriculumPart.FORMABLE);
         rowNum = appendParallelTotalRow(sheet, rowNum, "Итого основная+формируемая часть", entries, classColumns, style, CurriculumPart.CORE, CurriculumPart.FORMABLE);
-        rowNum = appendMaximumLoadRow(sheet, rowNum, entries, classColumns, style, exceededStyle, parallel);
+        rowNum = appendMaximumLoadRow(sheet, rowNum, entries, classColumns, style, exceededStyle);
         return appendParallelTotalRow(sheet, rowNum, "Итого внеурочная часть", entries, classColumns, style, CurriculumPart.EXTRACURRICULAR);
     }
 
@@ -373,9 +551,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                                      List<CurriculumPlanEntry> entries,
                                      List<ClassColumn> classColumns,
                                      CellStyle style,
-                                     CellStyle exceededStyle,
-                                     int parallel) {
-        BigDecimal maximum = CurriculumLoadStandard.maxHours(parallel);
+                                     CellStyle exceededStyle) {
         Row row = sheet.createRow(rowNum);
         row.createCell(0).setCellValue("Максимальная нагрузка");
         row.createCell(1).setCellValue("");
@@ -384,6 +560,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(rowNum, rowNum, 0, 1));
         for (int i = 0; i < classColumns.size(); i++) {
             ClassColumn column = classColumns.get(i);
+            Integer parallel = extractParallelForExportClass(column.className());
+            BigDecimal maximum = CurriculumLoadStandard.maxHours(parallel == null ? 1 : parallel);
             Cell cell = row.createCell(i + 2);
             cell.setCellValue(formatHours(maximum));
             cell.setCellStyle(maximumExceeded(entries, column, maximum) ? exceededStyle : style);
@@ -861,6 +1039,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     entry.setClassName(normalizedClassName);
                     entry.setSubjectName(row.subjectName());
                     entry.setCurriculumPart(row.curriculumPart());
+                    entry.setSubjectRequirement(row.subjectRequirement());
+                    entry.setSubgroupPolicy(row.subgroupPolicy());
                     entry.setEducationLevel(row.educationLevel());
                     entry.setStudyPeriod(resolvedEditableRule.getStudyPeriod());
                     entry.setStudyPeriodSettingId(resolvedEditableRule.getId());
@@ -924,6 +1104,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                     entry.setStudyPeriodSettingId(resolvedRule.getId());
                     entry.setPlannedHours(row.getPlannedHours());
                     entry.setCurriculumPart(row.getCurriculumPart() == null ? CurriculumPart.CORE : row.getCurriculumPart());
+                    entry.setSubjectRequirement(entry.getCurriculumPart() == CurriculumPart.CORE ? SubjectRequirement.MANDATORY : SubjectRequirement.SCHOOL_CHOICE);
+                    entry.setSubgroupPolicy(SubgroupPolicy.RECOMMENDED);
                     entry.setDeprecated(false);
                     entry.setMetaGroup(row.isMetaGroup());
                     entry.setSubgroupRequired(row.isSubgroupRequired());
@@ -1447,6 +1629,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 boolean excludedFromManualLoad = excludedRaw.isBlank()
                         ? legacyMetaGroup && !isExplicitMetaGroupClassName(className)
                         : Boolean.parseBoolean(excludedRaw);
+                CurriculumPart parsedPart = parsePart(partRaw);
+                SubjectRequirement subjectRequirement = parseSubjectRequirement(readCell(row.getCell(15)), parsedPart);
+                SubgroupPolicy subgroupPolicy = parseSubgroupPolicy(readCell(row.getCell(16)));
                 if (building.isBlank() || className.isBlank() || subject.isBlank() || hours == null || hours.compareTo(BigDecimal.ZERO) <= 0) continue;
                 if (isExplicitMetaGroupClassName(className) && excludedFromManualLoad) {
                     throw new IllegalArgumentException("Строка нагрузки метагруппы должна переноситься в нагрузку");
@@ -1455,7 +1640,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         building,
                         className,
                         classDirection,
-                        parsePart(partRaw),
+                        parsedPart,
                         subject,
                         parseLevel(levelRaw),
                         parsePeriod(periodRaw, className),
@@ -1466,7 +1651,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                         subgroup2Hours,
                         subgroup2Level == null ? EducationLevel.BASIC : subgroup2Level,
                         legacyMetaGroup || isExplicitMetaGroupClassName(className),
-                        excludedFromManualLoad
+                        excludedFromManualLoad,
+                        subjectRequirement,
+                        subgroupPolicy
                 ));
             }
             return rows;
@@ -1647,7 +1834,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             Integer subgroup2Hours,
             EducationLevel subgroup2EducationLevel,
             boolean metaGroup,
-            boolean excludedFromManualLoad
+            boolean excludedFromManualLoad,
+            SubjectRequirement subjectRequirement,
+            SubgroupPolicy subgroupPolicy
     ) {
         private EditableImportRow(String numberSchoolBuilding,
                                   String className,
@@ -1666,8 +1855,34 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             this(numberSchoolBuilding, className, classDirection, curriculumPart, subjectName, educationLevel,
                     studyPeriod, plannedHours, subgroupRequired, subgroup1Hours, subgroup1EducationLevel,
                     subgroup2Hours, subgroup2EducationLevel, metaGroup,
-                    metaGroup && !isExplicitMetaGroupClassName(className));
+                    metaGroup && !isExplicitMetaGroupClassName(className),
+                    curriculumPart == CurriculumPart.CORE ? SubjectRequirement.MANDATORY : SubjectRequirement.SCHOOL_CHOICE,
+                    SubgroupPolicy.RECOMMENDED);
         }
+    }
+
+    private SubjectRequirement parseSubjectRequirement(String value, CurriculumPart part) {
+        String normalized = normalizeSubject(value);
+        if (!normalized.isBlank()) {
+            try {
+                return SubjectRequirement.valueOf(normalized.toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException ignored) {
+                // Старые файлы не содержат этот технический столбец.
+            }
+        }
+        return part == CurriculumPart.CORE ? SubjectRequirement.MANDATORY : SubjectRequirement.SCHOOL_CHOICE;
+    }
+
+    private SubgroupPolicy parseSubgroupPolicy(String value) {
+        String normalized = normalizeSubject(value);
+        if (!normalized.isBlank()) {
+            try {
+                return SubgroupPolicy.valueOf(normalized.toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException ignored) {
+                // Для старых файлов действует рекомендованное деление.
+            }
+        }
+        return SubgroupPolicy.RECOMMENDED;
     }
 
     private record ModuleImportRow(
