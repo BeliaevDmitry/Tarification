@@ -5,6 +5,7 @@ const ui = {
     exportConsolidatedLoadBtn: document.getElementById("export-consolidated-load-btn"),
     exportSubjectLoadBtn: document.getElementById("export-subject-load-btn"),
     exportFullLoadSalaryBtn: document.getElementById("export-full-load-salary-btn"),
+    exportSalaryOneLoadBtn: document.getElementById("export-salary-one-load-btn"),
     summary: document.getElementById("people-load-summary"),
     table: document.getElementById("people-load-table"),
     mainTab: document.getElementById("people-load-main-tab"),
@@ -494,6 +495,10 @@ async function exportFullLoadWorkbook(withSalary = false) {
     );
 }
 
+async function exportSalaryOneLoadWorkbook() {
+    return exportLoadWorkbook("/api/manual-load/export-salary-one", "salary-one-load-export.xlsx");
+}
+
 async function exportConsolidatedLoadWorkbook() {
     return exportLoadWorkbook("/api/manual-load/export-consolidated", "primary-subject-load-export.xlsx");
 }
@@ -728,6 +733,9 @@ async function init() {
     if (ui.exportFullLoadSalaryBtn) {
         ui.exportFullLoadSalaryBtn.addEventListener("click", () => exportFullLoadWorkbook(true).catch((error) => alert(`Не удалось скачать полную нагрузку с ЗП: ${error.message}`)));
     }
+    if (ui.exportSalaryOneLoadBtn) {
+        ui.exportSalaryOneLoadBtn.addEventListener("click", () => exportSalaryOneLoadWorkbook().catch((error) => alert(`Не удалось скачать нагрузку для ЗП 1: ${error.message}`)));
+    }
     ui.mainTab?.addEventListener("click", () => showPeopleLoadPanel("main"));
     ui.primaryTab?.addEventListener("click", () => showPeopleLoadPanel("primary"));
     ui.determinePrimarySubjectsBtn?.addEventListener("click", () => determinePrimarySubjects().catch((error) => alert(`Не удалось определить основные предметы: ${error.message}`)));
@@ -761,6 +769,9 @@ async function init() {
     await waitForAuth();
     if (ui.exportFullLoadSalaryBtn) {
         ui.exportFullLoadSalaryBtn.style.display = salaryPermission().canExport ? "" : "none";
+    }
+    if (ui.exportSalaryOneLoadBtn) {
+        ui.exportSalaryOneLoadBtn.style.display = salaryPermission().canExport ? "" : "none";
     }
     loadData().catch(showError);
 }

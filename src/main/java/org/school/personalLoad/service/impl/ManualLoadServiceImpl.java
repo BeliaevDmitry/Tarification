@@ -368,6 +368,112 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
     @Override
+    public byte[] exportSalaryOneWorkbook(String academicYear) throws IOException {
+        List<ManualLoadEntry> rows = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(row -> !normalizeDisplayValue(row.getFioTeacher()).isBlank())
+                .filter(this::isFirstHalfSalaryRow)
+                .sorted(Comparator.comparing(ManualLoadEntry::getFioTeacher, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                        .thenComparing(ManualLoadEntry::getNumberSchoolBuilding, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                        .thenComparing(ManualLoadEntry::getSubjectName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                        .thenComparing(ManualLoadEntry::getClassName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                        .thenComparing(ManualLoadEntry::getGroupNameEducationalPlan, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER)))
+                .toList();
+
+        Map<String, String> buildingNameByCode = schoolBuildingRepository.findAll().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        building -> normalizeToken(building.getCode()),
+                        building -> normalizeDisplayValue(building.getName()).isBlank()
+                                ? normalizeDisplayValue(building.getCode())
+                                : normalizeDisplayValue(building.getName()),
+                        (first, second) -> first
+                ));
+        Map<String, String> classTypeByClassKey = classroomLeadershipRepository.findAllByAcademicYear(academicYear).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        entry -> classAddressKey(entry.getNumberSchoolBuilding(), entry.getClassName()),
+                        entry -> normalizeToken(entry.getClassType()),
+                        (first, second) -> first
+                ));
+        Map<Long, String> classTypeByMetaGroupId = metaGroupRepository.findAll().stream()
+                .filter(metaGroup -> academicYear.equals(metaGroup.getAcademicYear()))
+                .collect(java.util.stream.Collectors.toMap(
+                        MetaGroup::getId,
+                        metaGroup -> normalizeToken(metaGroup.getClassType()),
+                        (first, second) -> first
+                ));
+        Map<String, java.util.Optional<CurriculumPlanEntry>> curriculumCache = new HashMap<>();
+
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            CellStyle header = workbook.createCellStyle();
+            Font bold = workbook.createFont();
+            bold.setBold(true);
+            header.setFont(bold);
+            header.setWrapText(true);
+            header.setAlignment(HorizontalAlignment.CENTER);
+            header.setVerticalAlignment(VerticalAlignment.CENTER);
+
+            CellStyle wrap = workbook.createCellStyle();
+            wrap.setWrapText(true);
+            wrap.setAlignment(HorizontalAlignment.CENTER);
+            wrap.setVerticalAlignment(VerticalAlignment.CENTER);
+
+            Sheet sheet = workbook.createSheet(uniqueSheetName(workbook, "Нагрузка для ЗП 1"));
+            List<String> headers = List.of(
+                    "№",
+                    "ФИО педагога",
+                    "Название корпуса",
+                    "Предмет",
+                    "Класс",
+                    "Группа",
+                    "Период",
+                    "Часы",
+                    "Часть учебного плана",
+                    "Обязательный / по выбору школы",
+                    "Деление на подгруппы"
+            );
+            Row headerRow = sheet.createRow(0);
+            for (int column = 0; column < headers.size(); column++) {
+                headerRow.createCell(column).setCellValue(headers.get(column));
+                headerRow.getCell(column).setCellStyle(header);
+            }
+            sheet.createFreezePane(0, 1);
+            sheet.setAutoFilter(new CellRangeAddress(0, 0, 0, headers.size() - 1));
+
+            int rowNum = 1;
+            int sequence = 1;
+            for (ManualLoadEntry entry : rows) {
+                CurriculumPlanEntry curriculum = resolveCurriculumForSalaryExport(entry, curriculumCache).orElse(null);
+                CurriculumPart part = curriculum == null
+                        ? (entry.getCurriculumPart() == null ? CurriculumPart.CORE : entry.getCurriculumPart())
+                        : (curriculum.getCurriculumPart() == null ? CurriculumPart.CORE : curriculum.getCurriculumPart());
+                boolean aoop = isAoopLoadRow(entry, classTypeByClassKey, classTypeByMetaGroupId);
+
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(sequence++);
+                row.createCell(1).setCellValue(normalizeDisplayValue(entry.getFioTeacher()));
+                row.createCell(2).setCellValue(buildingNameForSalaryExport(entry, buildingNameByCode));
+                row.createCell(3).setCellValue(salaryExportSubject(entry, aoop));
+                row.createCell(4).setCellValue(normalizeDisplayValue(entry.getClassName()));
+                row.createCell(5).setCellValue(salaryExportGroup(entry));
+                row.createCell(6).setCellValue(studyPeriodLabel(entry.getStudyPeriod()));
+                row.createCell(7).setCellValue(manualLoadHours(entry));
+                row.createCell(8).setCellValue(curriculumPartSalaryLabel(part));
+                row.createCell(9).setCellValue(subjectRequirementSalaryLabel(curriculum, part));
+                row.createCell(10).setCellValue(subgroupPolicySalaryLabel(curriculum, entry));
+                for (int column = 0; column < headers.size(); column++) {
+                    row.getCell(column).setCellStyle(wrap);
+                }
+            }
+
+            int[] widths = {8, 32, 26, 28, 12, 24, 12, 10, 24, 26, 26};
+            for (int column = 0; column < widths.length; column++) {
+                sheet.setColumnWidth(column, widths[column] * 256);
+            }
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    @Override
     public byte[] exportConsolidatedWorkbook(String academicYear) throws IOException {
         List<ManualLoadEntry> rows = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
                 .filter(row -> normalizeDisplayValue(row.getFioTeacher()).length() > 0)
@@ -523,6 +629,117 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             return "2П";
         }
         return "ГОД";
+    }
+
+    private java.util.Optional<CurriculumPlanEntry> resolveCurriculumForSalaryExport(
+            ManualLoadEntry entry,
+            Map<String, java.util.Optional<CurriculumPlanEntry>> cache
+    ) {
+        StudyPeriod effectiveStudyPeriod = resolveStudyPeriod(
+                entry.getAcademicYear(),
+                entry.getClassName(),
+                entry.getStudyPeriod(),
+                entry.getLoadFromDate(),
+                entry.getLoadToDate()
+        );
+        String key = String.join("|",
+                normalizeDisplayValue(entry.getAcademicYear()),
+                String.valueOf(entry.getClassId()),
+                String.valueOf(entry.getMetaGroupId()),
+                String.valueOf(entry.getSubjectId()),
+                normalizeToken(entry.getSubjectName()),
+                String.valueOf(entry.getCurriculumPart() == null ? CurriculumPart.CORE : entry.getCurriculumPart()),
+                String.valueOf(entry.getEducationLevel()),
+                String.valueOf(effectiveStudyPeriod),
+                String.valueOf(entry.getCurriculumModuleId())
+        );
+        return cache.computeIfAbsent(key, ignored -> {
+            java.util.Optional<CurriculumPlanEntry> byFk = findRuleByFk(entry, effectiveStudyPeriod);
+            if (byFk.isPresent()) {
+                return byFk;
+            }
+            return curriculumPlanEntryRepository.findFirstByAcademicYearAndClassNameAndSubjectNameAndEducationLevelAndStudyPeriodAndDeprecatedFalse(
+                    entry.getAcademicYear(),
+                    entry.getClassName(),
+                    entry.getSubjectName(),
+                    entry.getEducationLevel(),
+                    effectiveStudyPeriod
+            );
+        });
+    }
+
+    private String buildingNameForSalaryExport(ManualLoadEntry entry, Map<String, String> buildingNameByCode) {
+        String building = normalizeDisplayValue(entry.getNumberSchoolBuilding());
+        return buildingNameByCode.getOrDefault(normalizeToken(building), building);
+    }
+
+    private boolean isAoopLoadRow(ManualLoadEntry entry,
+                                  Map<String, String> classTypeByClassKey,
+                                  Map<Long, String> classTypeByMetaGroupId) {
+        String classType = entry.getMetaGroupId() == null
+                ? classTypeByClassKey.getOrDefault(classAddressKey(entry.getNumberSchoolBuilding(), entry.getClassName()), "")
+                : classTypeByMetaGroupId.getOrDefault(entry.getMetaGroupId(), "");
+        String normalized = normalizeToken(classType);
+        return normalized.contains("AOOP") || normalized.contains("АООП") || normalized.contains("АУОП");
+    }
+
+    private String salaryExportSubject(ManualLoadEntry entry, boolean aoop) {
+        String subject = normalizeDisplayValue(entry.getSubjectName());
+        if (subject.isBlank() || aoop) {
+            return subject;
+        }
+        EducationStage stage = educationStageForClass(entry.getClassName());
+        if (stage == EducationStage.NOO) {
+            return subject + " НОО";
+        }
+        if (stage == EducationStage.OOO) {
+            return subject + " ООО";
+        }
+        if (stage == EducationStage.SOO) {
+            return subject + " СОО";
+        }
+        return subject;
+    }
+
+    private String salaryExportGroup(ManualLoadEntry entry) {
+        String group = normalizeDisplayValue(entry.getGroupNameEducationalPlan());
+        if (group.isBlank()) {
+            return "";
+        }
+        String subject = normalizeDisplayValue(entry.getSubjectName());
+        if (normalizeToken(group).contains(normalizeToken(subject))) {
+            return group;
+        }
+        return subject.isBlank() ? group : subject + " " + group;
+    }
+
+    private String curriculumPartSalaryLabel(CurriculumPart part) {
+        return switch (part == null ? CurriculumPart.CORE : part) {
+            case CORE -> "основная";
+            case FORMABLE -> "формируемая";
+            case EXTRACURRICULAR -> "внеурочная";
+            case CORRECTIONAL -> "коррекционная";
+        };
+    }
+
+    private String subjectRequirementSalaryLabel(CurriculumPlanEntry curriculum, CurriculumPart part) {
+        SubjectRequirement requirement = curriculum == null || curriculum.getSubjectRequirement() == null
+                ? (part == CurriculumPart.CORE ? SubjectRequirement.MANDATORY : SubjectRequirement.SCHOOL_CHOICE)
+                : curriculum.getSubjectRequirement();
+        return requirement == SubjectRequirement.MANDATORY ? "Обязательный" : "По выбору школы";
+    }
+
+    private String subgroupPolicySalaryLabel(CurriculumPlanEntry curriculum, ManualLoadEntry entry) {
+        boolean subgroupRequired = curriculum == null
+                ? !normalizeDisplayValue(entry.getGroupNameEducationalPlan()).isBlank()
+                : curriculum.isSubgroupRequired();
+        if (!subgroupRequired) {
+            return "";
+        }
+        SubgroupPolicy policy = curriculum == null || curriculum.getSubgroupPolicy() == null
+                ? SubgroupPolicy.RECOMMENDED
+                : curriculum.getSubgroupPolicy();
+        return policy == SubgroupPolicy.SCHOOL_CHOICE ? "Выбор школы" : "Рекомендовано";
     }
 
 
