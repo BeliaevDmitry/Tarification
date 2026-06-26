@@ -7,6 +7,8 @@ import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.CurriculumStage;
 import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.StudyPeriod;
+import org.school.personalLoad.model.SubjectRequirement;
+import org.school.personalLoad.model.SubgroupPolicy;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -30,6 +32,8 @@ public class CurriculumPlanEntryResponse {
     private String subjectName;
     private BigDecimal plannedHours;
     private boolean subgroupRequired;
+    private SubjectRequirement subjectRequirement;
+    private SubgroupPolicy subgroupPolicy;
     private Integer subgroupCount;
     private EducationLevel educationLevel;
     private Integer subgroup1Hours;
@@ -60,6 +64,8 @@ public class CurriculumPlanEntryResponse {
         response.setSubjectName(entry.getSubjectName());
         response.setPlannedHours(entry.getPlannedHours());
         response.setSubgroupRequired(entry.isSubgroupRequired());
+        response.setSubjectRequirement(entry.getSubjectRequirement());
+        response.setSubgroupPolicy(entry.getSubgroupPolicy());
         response.setSubgroupCount(entry.getSubgroupCount());
         response.setEducationLevel(entry.getEducationLevel());
         response.setSubgroup1Hours(entry.getSubgroup1Hours());

@@ -103,6 +103,14 @@ public class CurriculumPlanEntry {
     @Column(nullable = false)
     private boolean subgroupRequired;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "subject_requirement", nullable = false, columnDefinition = "varchar(32) default 'MANDATORY'")
+    private SubjectRequirement subjectRequirement = SubjectRequirement.MANDATORY;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "subgroup_policy", nullable = false, columnDefinition = "varchar(32) default 'RECOMMENDED'")
+    private SubgroupPolicy subgroupPolicy = SubgroupPolicy.RECOMMENDED;
+
     @Column(nullable = false)
     private Integer subgroupCount;
 

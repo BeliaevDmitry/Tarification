@@ -48,6 +48,7 @@
             <button id="import-curriculum-btn" type="button">Импортировать учебный план</button>
             <button id="export-curriculum-btn" type="button">Экспортировать учебный план (Excel)</button>
             <button id="export-curriculum-parallels-btn" type="button">Экспорт учебного плана по параллелям</button>
+            <button id="export-curriculum-department-btn" type="button">УП для департамента</button>
         </div>
     </section>
 
@@ -63,6 +64,10 @@
                 <option value="EXTRACURRICULAR">3) Внеурочная деятельность</option>
                 <option value="CORRECTIONAL">4) Коррекционная область</option>
             </select>
+            <label>Статус предмета<select name="subjectRequirement" required>
+                <option value="MANDATORY">Обязательный</option>
+                <option value="SCHOOL_CHOICE">По выбору школы</option>
+            </select></label>
             <label>Название основного предмета<select name="subjectName" id="subject-name" required><option value="">Выберите предмет</option></select></label>
             <label id="subject-exclusion-label" title="Используйте, если часы этой строки распределяются через отдельную строку метагруппы.">Не переносить в нагрузку<select name="excludedFromManualLoad" id="subject-meta-group" required>
                 <option value="false">Нет</option>
@@ -84,6 +89,10 @@
                 <option value="true">С делением</option>
             </select>
             <div id="subgroup-config" class="grid subgroup-config hidden">
+                <label>Основание деления<select name="subgroupPolicy" required>
+                    <option value="RECOMMENDED">Рекомендовано</option>
+                    <option value="SCHOOL_CHOICE">По выбору школы</option>
+                </select></label>
                 <input name="subgroup1Hours" type="number" min="0" placeholder="1 подгруппа, часы">
                 <select name="subgroup1EducationLevel">
                     <option value="BASIC">1 подгруппа: Базовый</option>
@@ -123,6 +132,10 @@
         <input type="hidden" name="id">
         <input type="hidden" name="className">
         <label>Период<select name="studyPeriod" required></select></label>
+        <label>Статус предмета<select name="subjectRequirement" required>
+            <option value="MANDATORY">Обязательный</option>
+            <option value="SCHOOL_CHOICE">По выбору школы</option>
+        </select></label>
         <label id="edit-exclusion-label" title="Используйте, если часы этой строки распределяются через отдельную строку метагруппы.">Не переносить в нагрузку<select name="excludedFromManualLoad" required>
             <option value="false">Нет</option>
             <option value="true">Да</option>
@@ -142,6 +155,10 @@
             <option value="true">С делением</option>
         </select></label>
         <div id="edit-subgroup-config" class="grid subgroup-config hidden">
+        <label>Основание деления<select name="subgroupPolicy" required>
+            <option value="RECOMMENDED">Рекомендовано</option>
+            <option value="SCHOOL_CHOICE">По выбору школы</option>
+        </select></label>
         <input name="subgroup1Hours" type="number" min="0" placeholder="1 подгруппа, часы">
         <select name="subgroup1EducationLevel">
             <option value="BASIC">1 подгруппа: Базовый</option>

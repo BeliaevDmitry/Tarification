@@ -17,6 +17,8 @@ import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.SubjectCatalogEntry;
 import org.school.personalLoad.model.SubjectType;
+import org.school.personalLoad.model.SubjectRequirement;
+import org.school.personalLoad.model.SubgroupPolicy;
 import org.school.personalLoad.model.StudyPeriodSetting;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
@@ -136,6 +138,69 @@ class CurriculumImportServiceImplParallelExportTest {
             assertEquals("32", maximumRow.getCell(2).getStringCellValue());
             assertEquals(org.apache.poi.ss.usermodel.IndexedColors.RED.getIndex(),
                     maximumRow.getCell(2).getCellStyle().getFillForegroundColor());
+        }
+    }
+
+    @Test
+    void exportParallelWorkbookMovesAoopClassesToDedicatedSheet() throws Exception {
+        CurriculumPlanEntry regular = entry("BUILDING", "7-A", "Algebra", StudyPeriod.YEAR, 5);
+        CurriculumPlanEntry aoop = entry("BUILDING", "7-B", "Algebra", StudyPeriod.YEAR, 4);
+        ClassroomLeadershipEntry regularClass = classroom("BUILDING", "7-A", "Regular", "Teacher A");
+        regularClass.setClassType("NORMAL");
+        ClassroomLeadershipEntry aoopClass = classroom("BUILDING", "7-B", "AOOP", "Teacher B");
+        aoopClass.setClassType("AOOP_UO");
+        when(curriculumRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(regular, aoop));
+        when(classroomRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(regularClass, aoopClass));
+        when(subjectCatalogRepository.findAll()).thenReturn(List.of(subject("Algebra", "Mathematics")));
+
+        byte[] body = service.exportParallelWorkbook("2026/2027");
+
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
+            var regularSheet = workbook.getSheet("7 параллель");
+            var aoopSheet = workbook.getSheet("АООП УО");
+            assertNotNull(regularSheet);
+            assertNotNull(aoopSheet);
+            assertEquals("7-A", regularSheet.getRow(5).getCell(2).getStringCellValue());
+            assertEquals(3, regularSheet.getRow(5).getLastCellNum());
+            assertEquals("7-B", aoopSheet.getRow(5).getCell(2).getStringCellValue());
+            assertEquals(3, aoopSheet.getRow(5).getLastCellNum());
+        }
+    }
+
+    @Test
+    void exportDepartmentWorkbookGroupsSubjectsByRequirementAndSubgroupPolicy() throws Exception {
+        CurriculumPlanEntry mandatory = entry("BUILDING", "7-A", "Algebra", StudyPeriod.YEAR, 5);
+        mandatory.setSubjectRequirement(SubjectRequirement.MANDATORY);
+        CurriculumPlanEntry recommended = entry("BUILDING", "7-A", "English", StudyPeriod.YEAR, 3);
+        recommended.setSubjectRequirement(SubjectRequirement.MANDATORY);
+        recommended.setSubgroupRequired(true);
+        recommended.setSubgroupPolicy(SubgroupPolicy.RECOMMENDED);
+        CurriculumPlanEntry schoolChoice = entry("BUILDING", "7-A", "Physics", StudyPeriod.YEAR, 2);
+        schoolChoice.setCurriculumPart(CurriculumPart.FORMABLE);
+        schoolChoice.setSubjectRequirement(SubjectRequirement.SCHOOL_CHOICE);
+        schoolChoice.setSubgroupRequired(true);
+        schoolChoice.setSubgroupPolicy(SubgroupPolicy.SCHOOL_CHOICE);
+        when(curriculumRepository.findAllByAcademicYear("2026/2027"))
+                .thenReturn(List.of(mandatory, recommended, schoolChoice));
+
+        byte[] body = service.exportDepartmentWorkbook("2026/2027");
+
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
+            var sheet = workbook.getSheet("7 параллель");
+            assertNotNull(sheet);
+            List<String> labels = java.util.stream.IntStream.rangeClosed(0, sheet.getLastRowNum())
+                    .mapToObj(sheet::getRow)
+                    .filter(java.util.Objects::nonNull)
+                    .map(row -> row.getCell(0))
+                    .filter(java.util.Objects::nonNull)
+                    .map(cell -> cell.getStringCellValue())
+                    .toList();
+            assertTrue(labels.contains("Обязательные"));
+            assertTrue(labels.contains("По выбору школы"));
+            assertTrue(labels.contains("Не делится на подгруппы"));
+            assertTrue(labels.contains("Делится на группы (рекомендовано)"));
+            assertTrue(labels.contains("Делится на группы (по выбору школы)"));
+            assertTrue(labels.containsAll(List.of("Algebra", "English", "Physics")));
         }
     }
 

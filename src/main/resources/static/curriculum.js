@@ -54,6 +54,7 @@ const ui = {
     importBtn: document.getElementById("import-curriculum-btn"),
     exportBtn: document.getElementById("export-curriculum-btn"),
     exportParallelsBtn: document.getElementById("export-curriculum-parallels-btn"),
+    exportDepartmentBtn: document.getElementById("export-curriculum-department-btn"),
     subgroupRequired: document.getElementById("subgroup-required"),
     subgroupConfig: document.getElementById("subgroup-config"),
     modularSystem: document.getElementById("modular-system"),
@@ -653,6 +654,8 @@ function openEditById(id) {
     ui.editForm.elements.educationLevel.value = existing.educationLevel || "BASIC";
     ui.editForm.elements.modularSystem.value = String(Boolean(existing.modularSystem));
     ui.editForm.elements.subgroupRequired.value = String(Boolean(existing.subgroupRequired));
+    ui.editForm.elements.subjectRequirement.value = existing.subjectRequirement || (existing.curriculumPart === "CORE" ? "MANDATORY" : "SCHOOL_CHOICE");
+    ui.editForm.elements.subgroupPolicy.value = existing.subgroupPolicy || "RECOMMENDED";
     ui.editForm.elements.studyPeriod.value = String(existing.studyPeriodSettingId || "");
     ui.editForm.elements.excludedFromManualLoad.value = String(Boolean(existing.excludedFromManualLoad));
     configureExclusionControl(ui.editForm, existing.className, ui.editExclusionLabel, ui.editMetaGroupInfo);
@@ -676,6 +679,8 @@ function openCreateByCell(cellCtx) {
     ui.editForm.elements.educationLevel.value = cellCtx.educationLevel || "BASIC";
     ui.editForm.elements.modularSystem.value = "false";
     ui.editForm.elements.subgroupRequired.value = "false";
+    ui.editForm.elements.subjectRequirement.value = cellCtx.curriculumPart === "CORE" ? "MANDATORY" : "SCHOOL_CHOICE";
+    ui.editForm.elements.subgroupPolicy.value = "RECOMMENDED";
     ui.editForm.elements.excludedFromManualLoad.value = "false";
     configureExclusionControl(ui.editForm, cellCtx.className, ui.editExclusionLabel, ui.editMetaGroupInfo);
     ui.editForm.elements.subgroup1Hours.value = "";
@@ -983,6 +988,8 @@ function normalizeForm() {
         plannedHours,
         educationLevel: f.get("educationLevel"),
         subgroupRequired,
+        subjectRequirement: f.get("subjectRequirement") || (f.get("curriculumPart") === "CORE" ? "MANDATORY" : "SCHOOL_CHOICE"),
+        subgroupPolicy: subgroupRequired ? (f.get("subgroupPolicy") || "RECOMMENDED") : "RECOMMENDED",
         subgroupCount: 2,
         subgroup1Hours: subgroupRequired ? subgroup1Hours : null,
         subgroup1EducationLevel: f.get("subgroup1EducationLevel") || null,
@@ -1098,6 +1105,26 @@ function captureCurriculumScroll() {
         windowX: window.scrollX || 0,
         windowY: window.scrollY || 0
     };
+}
+
+async function exportCurriculumDepartmentFile() {
+    try {
+        const path = window.withAcademicYear ? window.withAcademicYear("/api/curriculum/export-department") : "/api/curriculum/export-department";
+        const response = await fetch(path);
+        if (!response.ok) throw new Error(await response.text() || `HTTP ${response.status}`);
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "curriculum-for-department.xlsx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        print({ status: "exported", file: "curriculum-for-department.xlsx" });
+    } catch (error) {
+        print({ error: error.message });
+    }
 }
 
 function defaultModule(index = 0) {
@@ -1387,6 +1414,10 @@ function bindEvents() {
     ui.importBtn?.addEventListener("click", importCurriculumFile);
     ui.exportBtn?.addEventListener("click", exportCurriculumFile);
     ui.exportParallelsBtn?.addEventListener("click", exportCurriculumParallelsFile);
+    ui.exportDepartmentBtn?.addEventListener("click", exportCurriculumDepartmentFile);
+    ui.form.elements.curriculumPart.addEventListener("change", () => {
+        ui.form.elements.subjectRequirement.value = ui.form.elements.curriculumPart.value === "CORE" ? "MANDATORY" : "SCHOOL_CHOICE";
+    });
     ui.subgroupRequired.addEventListener("change", () => {
         toggleSubgroupConfig(ui.subgroupConfig, ui.subgroupRequired.value);
         if (ui.subgroupRequired.value === "true") {
@@ -1459,6 +1490,8 @@ function bindEvents() {
             plannedHours,
             educationLevel: ui.editForm.elements.educationLevel.value || existing?.educationLevel || pendingCreateContext?.educationLevel || "BASIC",
             subgroupRequired,
+            subjectRequirement: ui.editForm.elements.subjectRequirement.value || ((existing?.curriculumPart || pendingCreateContext?.curriculumPart) === "CORE" ? "MANDATORY" : "SCHOOL_CHOICE"),
+            subgroupPolicy: subgroupRequired ? (ui.editForm.elements.subgroupPolicy.value || "RECOMMENDED") : "RECOMMENDED",
             subgroupCount: 2,
             studyPeriodSettingId: Number(ui.editForm.elements.studyPeriod.value || 0) || null,
             metaGroup: isExplicitMetaGroupClassName(existing?.className || pendingCreateContext?.className),
@@ -1515,6 +1548,7 @@ try {
     ui.importBtn?.addEventListener("click", importCurriculumFile);
     ui.exportBtn?.addEventListener("click", exportCurriculumFile);
     ui.exportParallelsBtn?.addEventListener("click", exportCurriculumParallelsFile);
+    ui.exportDepartmentBtn?.addEventListener("click", exportCurriculumDepartmentFile);
 }
 toggleSubgroupConfig(ui.subgroupConfig, ui.subgroupRequired.value);
 renderModuleEditor(ui.moduleList, [defaultModule(0), defaultModule(1)], ui.moduleHoursSummary, ui.form.elements.plannedHours);

@@ -75,6 +75,14 @@ public class CurriculumPlanController {
         return workbookResponse(body, fileName);
     }
 
+    @GetMapping("/export-department")
+    public ResponseEntity<byte[]> exportCurriculumForDepartment(@RequestParam(required = false) String academicYear) throws Exception {
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        byte[] body = curriculumImportService.exportDepartmentWorkbook(effectiveYear);
+        String date = LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"));
+        return workbookResponse(body, "УП для департамента " + effectiveYear + " от " + date + ".xlsx");
+    }
+
     private ResponseEntity<byte[]> workbookResponse(byte[] body, String fileName) {
         String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()

@@ -4,6 +4,8 @@ import lombok.Data;
 import org.school.personalLoad.model.CurriculumPart;
 import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.StudyPeriod;
+import org.school.personalLoad.model.SubjectRequirement;
+import org.school.personalLoad.model.SubgroupPolicy;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,6 +18,8 @@ public class CurriculumPlanEntryRequest {
     private String subjectName;
     private java.math.BigDecimal plannedHours;
     private boolean subgroupRequired;
+    private SubjectRequirement subjectRequirement;
+    private SubgroupPolicy subgroupPolicy;
     private Integer subgroupCount;
     private EducationLevel educationLevel;
     private Integer subgroup1Hours;
