@@ -182,16 +182,36 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 .filter(entry -> !entry.isDeprecated())
                 .filter(entry -> extractParallelForExportClass(entry.getClassName()) != null)
                 .toList();
+        Map<String, ClassroomLeadershipEntry> classDirectory = classroomRepository.findAllByAcademicYear(academicYear).stream()
+                .collect(Collectors.toMap(
+                        c -> classExportKey(c.getNumberSchoolBuilding(), c.getClassName()),
+                        c -> c,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+        Set<String> aoopClassKeys = classDirectory.entrySet().stream()
+                .filter(entry -> "AOOP_UO".equalsIgnoreCase(normalizeSubject(entry.getValue().getClassType())))
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toSet());
+        List<CurriculumPlanEntry> regularEntries = entries.stream()
+                .filter(entry -> !aoopClassKeys.contains(classExportKey(entry.getNumberSchoolBuilding(), entry.getClassName())))
+                .toList();
+        List<CurriculumPlanEntry> aoopEntries = entries.stream()
+                .filter(entry -> aoopClassKeys.contains(classExportKey(entry.getNumberSchoolBuilding(), entry.getClassName())))
+                .toList();
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            Set<Integer> parallels = entries.stream()
+            Set<Integer> parallels = regularEntries.stream()
                     .map(entry -> extractParallelForExportClass(entry.getClassName()))
                     .collect(Collectors.toCollection(TreeSet::new));
-            if (parallels.isEmpty()) {
+            if (parallels.isEmpty() && aoopEntries.isEmpty()) {
                 workbook.createSheet("Учебный план").createRow(0).createCell(0)
                         .setCellValue("Нет данных учебного плана за " + academicYear);
             } else {
                 for (Integer parallel : parallels) {
-                    buildDepartmentSheet(workbook, academicYear, parallel, entries);
+                    buildDepartmentSheet(workbook, academicYear, parallel, regularEntries);
+                }
+                if (!aoopEntries.isEmpty()) {
+                    buildDepartmentSheet(workbook, academicYear, "АООП УО", "УП для департамента: АООП УО", aoopEntries);
                 }
             }
             workbook.write(output);
@@ -206,6 +226,14 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         List<CurriculumPlanEntry> entries = allEntries.stream()
                 .filter(entry -> Objects.equals(parallel, extractParallelForExportClass(entry.getClassName())))
                 .toList();
+        buildDepartmentSheet(workbook, academicYear, parallel + " параллель", "УП для департамента: " + parallel + " параллель", entries);
+    }
+
+    private void buildDepartmentSheet(Workbook workbook,
+                                      String academicYear,
+                                      String sheetName,
+                                      String titleText,
+                                      List<CurriculumPlanEntry> entries) {
         List<ClassColumn> classColumns = entries.stream()
                 .collect(Collectors.toMap(
                         entry -> classExportKey(entry.getNumberSchoolBuilding(), entry.getClassName()),
@@ -216,14 +244,14 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 .sorted((left, right) -> compareClassKeysForExport(left.key(), right.key()))
                 .toList();
 
-        Sheet sheet = workbook.createSheet(org.apache.poi.ss.util.WorkbookUtil.createSafeSheetName(parallel + " параллель"));
+        Sheet sheet = workbook.createSheet(org.apache.poi.ss.util.WorkbookUtil.createSafeSheetName(sheetName));
         CellStyle headerStyle = departmentStyle(workbook, true, IndexedColors.GREY_25_PERCENT);
         CellStyle partStyle = departmentStyle(workbook, true, IndexedColors.LIGHT_CORNFLOWER_BLUE);
         CellStyle groupStyle = departmentStyle(workbook, true, IndexedColors.LEMON_CHIFFON);
         CellStyle baseStyle = departmentStyle(workbook, false, null);
 
         Row title = sheet.createRow(0);
-        title.createCell(0).setCellValue("УП для департамента: " + parallel + " параллель, " + academicYear);
+        title.createCell(0).setCellValue(titleText + ", " + academicYear);
         title.getCell(0).setCellStyle(headerStyle);
         sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(0, 0, 0, Math.max(1, classColumns.size())));
         Row classesRow = sheet.createRow(1);
