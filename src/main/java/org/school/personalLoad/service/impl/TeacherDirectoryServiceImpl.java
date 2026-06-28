@@ -28,7 +28,9 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
     private static final String VACANCY_TEACHER = "Вакансия";
+    private static final int EXCEL_CELL_TEXT_LIMIT = 32_767;
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern INVALID_EXCEL_TEXT_CHARS = Pattern.compile("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]");
 
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final ManualLoadEntryRepository manualLoadEntryRepository;
@@ -155,17 +157,16 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 example.createCell(5).setCellValue("Классное руководство");
                 example.createCell(6).setCellValue("СП1");
             } else {
-                rows.sort(Comparator.comparing(TeacherDirectoryEntry::getFioTeacher, String.CASE_INSENSITIVE_ORDER));
                 int rowIndex = 1;
                 for (TeacherDirectoryEntry entry : rows) {
                     Row row = sheet.createRow(rowIndex++);
-                    row.createCell(0).setCellValue(entry.getFioTeacher());
-                    row.createCell(1).setCellValue(Objects.toString(entry.getInitials(), ""));
-                    row.createCell(2).setCellValue(Objects.toString(entry.getFioTeacherDative(), ""));
-                    row.createCell(3).setCellValue(Objects.toString(entry.getPhone(), ""));
-                    row.createCell(4).setCellValue(Objects.toString(entry.getEmail(), ""));
-                    row.createCell(5).setCellValue(Objects.toString(entry.getAdditionalDuties(), ""));
-                    row.createCell(6).setCellValue(Objects.toString(entry.getNumberSchoolBuilding(), ""));
+                    row.createCell(0).setCellValue(excelText(entry.getFioTeacher()));
+                    row.createCell(1).setCellValue(excelText(entry.getInitials()));
+                    row.createCell(2).setCellValue(excelText(entry.getFioTeacherDative()));
+                    row.createCell(3).setCellValue(excelText(entry.getPhone()));
+                    row.createCell(4).setCellValue(excelText(entry.getEmail()));
+                    row.createCell(5).setCellValue(excelText(entry.getAdditionalDuties()));
+                    row.createCell(6).setCellValue(excelText(entry.getNumberSchoolBuilding()));
                 }
             }
 
@@ -398,7 +399,10 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
     public List<TeacherDirectoryEntry> findArchived() {
         return teacherDirectoryRepository.findAll().stream()
                 .filter(TeacherDirectoryEntry::isArchived)
-                .sorted(Comparator.comparing(TeacherDirectoryEntry::getFioTeacher, String.CASE_INSENSITIVE_ORDER))
+                .sorted(Comparator.comparing(
+                        teacher -> Objects.toString(teacher.getFioTeacher(), ""),
+                        String.CASE_INSENSITIVE_ORDER
+                ))
                 .toList();
     }
 
@@ -448,6 +452,13 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         return normalized.isBlank() ? null : normalized;
     }
 
+    private String excelText(String value) {
+        String normalized = INVALID_EXCEL_TEXT_CHARS.matcher(Objects.toString(value, "")).replaceAll(" ");
+        return normalized.length() > EXCEL_CELL_TEXT_LIMIT
+                ? normalized.substring(0, EXCEL_CELL_TEXT_LIMIT)
+                : normalized;
+    }
+
     private TeacherDirectoryEntry ensureVacancyTeacher() {
         TeacherDirectoryEntry vacancy = teacherDirectoryRepository.findByFioTeacherIgnoreCase(VACANCY_TEACHER).orElseGet(() -> {
             TeacherDirectoryEntry entry = new TeacherDirectoryEntry();
@@ -466,7 +477,10 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
     private List<TeacherDirectoryEntry> activeTeachers() {
         return teacherDirectoryRepository.findAll().stream()
                 .filter(teacher -> !teacher.isArchived())
-                .sorted(Comparator.comparing(TeacherDirectoryEntry::getFioTeacher, String.CASE_INSENSITIVE_ORDER))
+                .sorted(Comparator.comparing(
+                        teacher -> Objects.toString(teacher.getFioTeacher(), ""),
+                        String.CASE_INSENSITIVE_ORDER
+                ))
                 .toList();
     }
 
