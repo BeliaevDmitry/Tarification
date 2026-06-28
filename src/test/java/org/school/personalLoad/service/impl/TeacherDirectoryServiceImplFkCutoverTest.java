@@ -15,6 +15,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -133,6 +134,17 @@ class TeacherDirectoryServiceImplFkCutoverTest {
         TeacherDirectoryEntry restored = service.unarchive(1L);
         assertFalse(restored.isArchived());
         assertEquals(null, restored.getArchivedAt());
+    }
+
+    @Test
+    void exportToleratesUnsafeTextValues() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Иванов И.И.");
+        teacher.setAdditionalDuties("\u0000".repeat(4) + "x".repeat(40_000));
+        TeacherDirectoryEntry nullName = teacher(2L, null);
+        TeacherDirectoryServiceImpl service = new TeacherDirectoryServiceImpl(teacherDirectoryRepository, manualLoadEntryRepository);
+        when(teacherDirectoryRepository.findAll()).thenReturn(List.of(teacher, nullName));
+
+        assertDoesNotThrow(() -> assertTrue(service.buildImportTemplate().contentLength() > 0));
     }
 
     private TeacherDirectoryEntry teacher(Long id, String fio) {
