@@ -1,0 +1,157 @@
+package org.school.personalLoad.service.impl;
+
+import lombok.RequiredArgsConstructor;
+import org.school.personalLoad.model.ClassSizeSource;
+import org.school.personalLoad.model.ContingentClassSizeOverride;
+import org.school.personalLoad.model.ContingentClassSizeSourceSetting;
+import org.school.personalLoad.model.ContingentStudent;
+import org.school.personalLoad.model.CurriculumPlanEntry;
+import org.school.personalLoad.repository.ClassroomLeadershipRepository;
+import org.school.personalLoad.repository.ContingentClassSizeOverrideRepository;
+import org.school.personalLoad.repository.ContingentClassSizeSourceSettingRepository;
+import org.school.personalLoad.repository.ContingentSnapshotRepository;
+import org.school.personalLoad.repository.ContingentStudentRepository;
+import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
+import org.school.personalLoad.service.ClassSizeService;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+public class ClassSizeServiceImpl implements ClassSizeService {
+
+    private final ContingentSnapshotRepository snapshotRepository;
+    private final ContingentStudentRepository studentRepository;
+    private final ContingentClassSizeOverrideRepository overrideRepository;
+    private final ContingentClassSizeSourceSettingRepository sourceSettingRepository;
+    private final ClassroomLeadershipRepository classroomLeadershipRepository;
+    private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
+
+    @Override
+    public Map<String, Integer> aisClassSizes(String academicYear) {
+        return snapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear)
+                .map(snapshot -> studentRepository.findAllBySnapshotId(snapshot.getId()).stream()
+                        .collect(Collectors.groupingBy(
+                                student -> normalizeClass(student.getClassName()),
+                                LinkedHashMap::new,
+                                Collectors.summingInt(student -> 1)
+                        )))
+                .orElseGet(LinkedHashMap::new);
+    }
+
+    @Override
+    public Map<String, Integer> effectiveClassSizes(String academicYear) {
+        Map<String, Integer> ais = aisClassSizes(academicYear);
+        if (source(academicYear) != ClassSizeSource.MANUAL) {
+            return ais;
+        }
+        Map<String, Integer> effective = new LinkedHashMap<>(ais);
+        overrideRepository.findAllByAcademicYear(academicYear).forEach(row -> {
+            if (row.getManualStudents() != null) {
+                effective.put(normalizeClass(row.getClassName()), row.getManualStudents());
+            }
+        });
+        return effective;
+    }
+
+    @Override
+    public ClassSizeSource source(String academicYear) {
+        return sourceSettingRepository.findByAcademicYear(academicYear)
+                .map(ContingentClassSizeSourceSetting::getSource)
+                .orElse(ClassSizeSource.AIS);
+    }
+
+    @Override
+    @Transactional
+    public ClassSizeSource setSource(String academicYear, ClassSizeSource source) {
+        ContingentClassSizeSourceSetting setting = sourceSettingRepository.findByAcademicYear(academicYear)
+                .orElseGet(() -> {
+                    ContingentClassSizeSourceSetting created = new ContingentClassSizeSourceSetting();
+                    created.setAcademicYear(academicYear);
+                    return created;
+                });
+        setting.setSource(source == null ? ClassSizeSource.AIS : source);
+        setting.setUpdatedAt(LocalDateTime.now());
+        return sourceSettingRepository.save(setting).getSource();
+    }
+
+    @Override
+    public List<ClassSizeRow> manualRows(String academicYear) {
+        Map<String, Integer> ais = aisClassSizes(academicYear);
+        Map<String, Integer> manual = new LinkedHashMap<>();
+        overrideRepository.findAllByAcademicYear(academicYear).forEach(row ->
+                manual.putIfAbsent(normalizeClass(row.getClassName()), row.getManualStudents()));
+        TreeSet<String> classes = new TreeSet<>(this::compareClassNames);
+        classes.addAll(ais.keySet());
+        classes.addAll(manual.keySet());
+        classroomLeadershipRepository.findAllByAcademicYear(academicYear).stream()
+                .map(entry -> normalizeClass(entry.getClassName()))
+                .filter(value -> !value.isBlank())
+                .forEach(classes::add);
+        curriculumPlanEntryRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(entry -> !entry.isDeprecated())
+                .map(CurriculumPlanEntry::getClassName)
+                .map(this::normalizeClass)
+                .filter(value -> !value.isBlank() && !value.startsWith("МГ:"))
+                .forEach(classes::add);
+
+        List<ClassSizeRow> result = new ArrayList<>();
+        for (String className : classes) {
+            Integer aisStudents = ais.get(className);
+            Integer manualStudents = manual.get(className);
+            result.add(new ClassSizeRow(className, aisStudents, manualStudents, Objects.equals(aisStudents, manualStudents)));
+        }
+        return result;
+    }
+
+    @Override
+    @Transactional
+    public void saveManualRows(String academicYear, List<ManualClassSizeUpdate> rows) {
+        if (rows == null) {
+            return;
+        }
+        for (ManualClassSizeUpdate row : rows) {
+            String className = normalizeClass(row.className());
+            if (className.isBlank()) {
+                continue;
+            }
+            ContingentClassSizeOverride entity = overrideRepository.findByAcademicYearAndClassName(academicYear, className)
+                    .orElseGet(() -> {
+                        ContingentClassSizeOverride created = new ContingentClassSizeOverride();
+                        created.setAcademicYear(academicYear);
+                        created.setClassName(className);
+                        return created;
+                    });
+            Integer manualStudents = row.manualStudents();
+            entity.setManualStudents(manualStudents == null || manualStudents < 0 ? null : manualStudents);
+            entity.setUpdatedAt(LocalDateTime.now());
+            overrideRepository.save(entity);
+        }
+    }
+
+    private String normalizeClass(String className) {
+        return ClassNameNormalizer.normalize(className);
+    }
+
+    private int compareClassNames(String first, String second) {
+        Integer firstParallel = ClassNameNormalizer.extractParallel(first);
+        Integer secondParallel = ClassNameNormalizer.extractParallel(second);
+        if (firstParallel != null && secondParallel != null && !Objects.equals(firstParallel, secondParallel)) {
+            return Integer.compare(firstParallel, secondParallel);
+        }
+        if (firstParallel != null) return -1;
+        if (secondParallel != null) return 1;
+        return String.valueOf(first).compareToIgnoreCase(String.valueOf(second));
+    }
+}

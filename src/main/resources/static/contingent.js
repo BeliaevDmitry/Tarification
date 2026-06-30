@@ -10,20 +10,31 @@ const ui = {
     statsExportBtn: document.getElementById('contingent-stats-export-btn'),
     statsViewMode: document.getElementById('contingent-stats-view-mode'),
     statsTable: document.getElementById('contingent-stats-table'),
-    statsSummary: document.getElementById('contingent-stats-summary')
+    statsSummary: document.getElementById('contingent-stats-summary'),
+    manualSourceSelect: document.getElementById('contingent-class-size-source'),
+    manualSourceSaveBtn: document.getElementById('contingent-class-size-source-save-btn'),
+    manualFileInput: document.getElementById('contingent-manual-file'),
+    manualImportBtn: document.getElementById('contingent-manual-import-btn'),
+    manualExportBtn: document.getElementById('contingent-manual-export-btn'),
+    manualSaveBtn: document.getElementById('contingent-manual-save-btn'),
+    manualRefreshBtn: document.getElementById('contingent-manual-refresh-btn'),
+    manualSummary: document.getElementById('contingent-manual-summary'),
+    manualTable: document.getElementById('contingent-manual-table')
 };
 
 const esc = (v) => String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 let currentStats = null;
+let currentManualRows = [];
 
 function contingentPermissions() {
     const permissions = window.tarificationTabPermissions || {};
     if (window.tarificationAuth?.admin) {
-        return { canImportView: true, canStatsView: true };
+        return { canImportView: true, canStatsView: true, canManualView: true };
     }
     return {
         canImportView: Boolean(permissions.CONTINGENT_IMPORT?.canView),
-        canStatsView: Boolean(permissions.CONTINGENT_STATS?.canView)
+        canStatsView: Boolean(permissions.CONTINGENT_STATS?.canView),
+        canManualView: Boolean(permissions.CONTINGENT_STATS?.canView)
     };
 }
 
@@ -36,14 +47,15 @@ async function waitForAuthContext() {
 }
 
 function applyTabAccess() {
-    const { canImportView, canStatsView } = contingentPermissions();
+    const { canImportView, canStatsView, canManualView } = contingentPermissions();
     ui.tabs.forEach((tab) => {
         const tabName = tab.dataset.contingentTab;
-        const allowed = tabName === 'import' ? canImportView : canStatsView;
+        const allowed = tabName === 'import' ? canImportView : (tabName === 'manual' ? canManualView : canStatsView);
         tab.style.display = allowed ? '' : 'none';
     });
 
     if (canStatsView) return 'stats';
+    if (canManualView) return 'manual';
     if (canImportView) return 'import';
     return null;
 }
@@ -56,6 +68,21 @@ async function api(path, options = {}) {
     try { body = text ? JSON.parse(text) : null; } catch { body = text ? { message: text } : null; }
     if (!response.ok) throw new Error(body?.message || body?.error || `HTTP ${response.status}`);
     return body;
+}
+
+async function downloadWorkbook(path, fallbackName) {
+    const scopedPath = window.withAcademicYear ? window.withAcademicYear(path) : path;
+    const response = await fetch(scopedPath);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    const fileName = response.headers.get('Content-Disposition')?.split("filename*=UTF-8''")[1] || fallbackName;
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = decodeURIComponent(fileName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
 }
 
 function showTab(name) {
@@ -235,6 +262,71 @@ function renderStatsAddressTable(stats) {
     ui.statsTable.innerHTML = `${thead}<tbody>${tbodyRows.join('')}${footerTotalRow}${footerClassRow}</tbody>`;
 }
 
+function renderManualTable(response) {
+    currentManualRows = response?.rows || [];
+    if (ui.manualSourceSelect) ui.manualSourceSelect.value = response?.source || 'AIS';
+    const sourceLabel = response?.source === 'MANUAL' ? 'Ручной ввод' : 'АИС';
+    const changed = currentManualRows.filter((row) => !row.matches).length;
+    ui.manualSummary.textContent = `Источник сейчас: ${sourceLabel}. Несовпадений АИС и ручного ввода: ${changed}.`;
+    const rows = currentManualRows.map((row, index) => {
+        const statusClass = row.matches ? 'manual-size-match' : 'manual-size-mismatch';
+        const status = row.matches ? 'Совпадает' : 'Не совпадает';
+        return `<tr>
+            <td>${esc(row.className)}</td>
+            <td>${esc(row.aisStudents ?? '')}</td>
+            <td><input type="number" min="0" step="1" data-manual-size-index="${index}" value="${esc(row.manualStudents ?? '')}"></td>
+            <td class="${statusClass}">${status}</td>
+        </tr>`;
+    }).join('');
+    ui.manualTable.innerHTML = `
+        <thead><tr><th>Класс</th><th>Численность по АИС</th><th>Ручной ввод</th><th>Статус</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="4" class="muted">Классы пока не найдены.</td></tr>'}</tbody>`;
+}
+
+async function refreshManualClassSizes() {
+    const response = await api('/api/contingent/manual-class-sizes');
+    renderManualTable(response);
+}
+
+async function saveManualClassSizes() {
+    const rows = currentManualRows.map((row, index) => {
+        const input = ui.manualTable.querySelector(`[data-manual-size-index="${index}"]`);
+        const raw = String(input?.value || '').trim();
+        return {
+            className: row.className,
+            manualStudents: raw === '' ? null : Number(raw)
+        };
+    });
+    const response = await api('/api/contingent/manual-class-sizes', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows })
+    });
+    renderManualTable(response);
+}
+
+async function saveClassSizeSource() {
+    const response = await api('/api/contingent/class-size-source', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: ui.manualSourceSelect.value })
+    });
+    renderManualTable(response);
+}
+
+async function importManualClassSizes() {
+    const file = ui.manualFileInput.files?.[0];
+    if (!file) {
+        ui.manualSummary.textContent = 'Выберите Excel-файл для импорта.';
+        return;
+    }
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api('/api/contingent/manual-class-sizes/import', { method: 'POST', body: form });
+    ui.manualFileInput.value = '';
+    renderManualTable(response);
+}
+
 async function loadSnapshots() {
     const snapshots = await api('/api/contingent/snapshots');
     ui.snapshotDateSelect.innerHTML = '';
@@ -262,7 +354,12 @@ async function refreshStats() {
 ui.tabs.forEach((tab) => tab.addEventListener('click', () => {
     const tabName = tab.dataset.contingentTab;
     showTab(tabName);
-    window.location.hash = tabName === 'import' ? '#import' : '#stats';
+    window.location.hash = tabName === 'import' ? '#import' : (tabName === 'manual' ? '#manual' : '#stats');
+    if (tabName === 'manual') {
+        refreshManualClassSizes().catch((error) => {
+            ui.manualSummary.textContent = `Ошибка: ${error.message}`;
+        });
+    }
 }));
 
 ui.importBtn.addEventListener('click', async () => {
@@ -304,23 +401,31 @@ ui.statsExportBtn?.addEventListener('click', async () => {
     try {
         const selectedDate = ui.snapshotDateSelect.value;
         const query = selectedDate ? `?snapshotDate=${encodeURIComponent(selectedDate)}` : '';
-        const scopedPath = window.withAcademicYear ? window.withAcademicYear(`/api/contingent/stats/export${query}`) : `/api/contingent/stats/export${query}`;
-        const response = await fetch(scopedPath);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const blob = await response.blob();
-        const fileName = response.headers.get('Content-Disposition')?.split("filename*=UTF-8''")[1] || `contingent_${selectedDate || 'latest'}.xlsx`;
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = decodeURIComponent(fileName);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(link.href);
+        await downloadWorkbook(`/api/contingent/stats/export${query}`, `contingent_${selectedDate || 'latest'}.xlsx`);
     } catch (error) {
         ui.statsSummary.textContent = `Ошибка экспорта: ${error.message}`;
     }
 });
+
+ui.manualRefreshBtn?.addEventListener('click', () => refreshManualClassSizes().catch((error) => {
+    ui.manualSummary.textContent = `Ошибка: ${error.message}`;
+}));
+
+ui.manualSaveBtn?.addEventListener('click', () => saveManualClassSizes().catch((error) => {
+    ui.manualSummary.textContent = `Ошибка сохранения: ${error.message}`;
+}));
+
+ui.manualSourceSaveBtn?.addEventListener('click', () => saveClassSizeSource().catch((error) => {
+    ui.manualSummary.textContent = `Ошибка переключения источника: ${error.message}`;
+}));
+
+ui.manualImportBtn?.addEventListener('click', () => importManualClassSizes().catch((error) => {
+    ui.manualSummary.textContent = `Ошибка импорта: ${error.message}`;
+}));
+
+ui.manualExportBtn?.addEventListener('click', () => downloadWorkbook('/api/contingent/manual-class-sizes/export', 'manual-class-sizes.xlsx').catch((error) => {
+    ui.manualSummary.textContent = `Ошибка экспорта: ${error.message}`;
+}));
 
 (async function init() {
     try {
@@ -332,8 +437,11 @@ ui.statsExportBtn?.addEventListener('click', async () => {
         }
 
         const hash = String(window.location.hash || '').toLowerCase();
-        const requestedTab = hash === '#import' ? 'import' : (hash === '#stats' ? 'stats' : defaultTab);
-        const finalTab = (requestedTab === 'import' && contingentPermissions().canImportView) || (requestedTab === 'stats' && contingentPermissions().canStatsView)
+        const requestedTab = hash === '#import' ? 'import' : (hash === '#manual' ? 'manual' : (hash === '#stats' ? 'stats' : defaultTab));
+        const permissions = contingentPermissions();
+        const finalTab = (requestedTab === 'import' && permissions.canImportView)
+            || (requestedTab === 'manual' && permissions.canManualView)
+            || (requestedTab === 'stats' && permissions.canStatsView)
             ? requestedTab
             : defaultTab;
         showTab(finalTab);
@@ -350,6 +458,9 @@ ui.statsExportBtn?.addEventListener('click', async () => {
         } else if (contingentPermissions().canStatsView) {
             ui.statsSummary.textContent = 'Данные контингента пока не загружены.';
             ui.statsTable.innerHTML = '';
+        }
+        if (finalTab === 'manual' || contingentPermissions().canManualView) {
+            await refreshManualClassSizes();
         }
     } catch (error) {
         printImportResult({ error: error.message });

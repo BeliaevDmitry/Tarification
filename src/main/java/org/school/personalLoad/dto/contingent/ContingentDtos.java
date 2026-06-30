@@ -1,6 +1,7 @@
 package org.school.personalLoad.dto.contingent;
 
 import lombok.Data;
+import org.school.personalLoad.model.ClassSizeSource;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -72,5 +73,35 @@ public final class ContingentDtos {
         private List<Integer> parallels;
         private List<BuildingColumn> columns;
         private List<ParallelTotal> parallelTotals;
+    }
+
+    @Data
+    public static class ManualClassSizeRow {
+        private String className;
+        private Integer aisStudents;
+        private Integer manualStudents;
+        private Boolean matches;
+    }
+
+    @Data
+    public static class ManualClassSizeResponse {
+        private ClassSizeSource source;
+        private List<ManualClassSizeRow> rows;
+    }
+
+    @Data
+    public static class ManualClassSizeUpdate {
+        private String className;
+        private Integer manualStudents;
+    }
+
+    @Data
+    public static class ManualClassSizeSaveRequest {
+        private List<ManualClassSizeUpdate> rows;
+    }
+
+    @Data
+    public static class ClassSizeSourceRequest {
+        private ClassSizeSource source;
     }
 }
