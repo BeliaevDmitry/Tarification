@@ -224,6 +224,7 @@ function currentTab() {
     if (window.location.pathname === '/contingent.html') {
         const hash = String(window.location.hash || '').toLowerCase();
         if (hash === '#import') return 'CONTINGENT_IMPORT';
+        if (hash === '#manual') return 'CONTINGENT_STATS';
         return 'CONTINGENT_STATS';
     }
     return TAB_PATHS[window.location.pathname] || null;

@@ -1,6 +1,7 @@
 package org.school.personalLoad.service;
 
 import org.school.personalLoad.dto.contingent.ContingentDtos;
+import org.school.personalLoad.model.ClassSizeSource;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
@@ -18,4 +19,14 @@ public interface ContingentService {
     byte[] exportStats(String academicYear, LocalDate snapshotDate);
 
     List<ContingentDtos.ImportProblem> getProblems(String academicYear, Long snapshotId);
+
+    ContingentDtos.ManualClassSizeResponse getManualClassSizes(String academicYear);
+
+    ContingentDtos.ManualClassSizeResponse saveManualClassSizes(String academicYear, ContingentDtos.ManualClassSizeSaveRequest request);
+
+    ContingentDtos.ManualClassSizeResponse importManualClassSizes(String academicYear, MultipartFile file);
+
+    byte[] exportManualClassSizes(String academicYear);
+
+    ContingentDtos.ManualClassSizeResponse setClassSizeSource(String academicYear, ClassSizeSource source);
 }

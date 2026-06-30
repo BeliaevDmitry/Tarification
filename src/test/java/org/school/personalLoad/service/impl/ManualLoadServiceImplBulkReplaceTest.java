@@ -26,6 +26,7 @@ import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.repository.SubjectLevelCoefficientRepository;
 import org.school.personalLoad.repository.MetaGroupRepository;
+import org.school.personalLoad.service.ClassSizeService;
 import org.school.personalLoad.service.PrimarySubjectService;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.DatabaseService;
@@ -88,6 +89,8 @@ class ManualLoadServiceImplBulkReplaceTest {
     private MetaGroupRepository metaGroupRepository;
     @Mock
     private PrimarySubjectService primarySubjectService;
+    @Mock
+    private ClassSizeService classSizeService;
 
     private ManualLoadServiceImpl service;
 
@@ -133,7 +136,8 @@ class ManualLoadServiceImplBulkReplaceTest {
                 schoolBuildingRepository,
                 salarySettingsRepository,
                 metaGroupRepository,
-                primarySubjectService
+                primarySubjectService,
+                classSizeService
         );
     }
 
@@ -758,8 +762,7 @@ class ManualLoadServiceImplBulkReplaceTest {
         when(teacherDirectoryRepository.findAll()).thenReturn(List.of());
         when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(firstClass, secondClass));
         when(schoolBuildingRepository.findAll()).thenReturn(List.of());
-        when(contingentSnapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc("2025/2026"))
-                .thenReturn(Optional.empty());
+        when(classSizeService.effectiveClassSizes("2025/2026")).thenReturn(Map.of());
 
         byte[] body = service.exportFullWorkbook("2025/2026");
 
@@ -792,8 +795,7 @@ class ManualLoadServiceImplBulkReplaceTest {
         when(schoolBuildingRepository.findAll()).thenReturn(List.of());
         SalarySettings settings = new SalarySettings();
         settings.setStudentHourRate(java.math.BigDecimal.valueOf(40));
-        when(contingentSnapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc("2025/2026"))
-                .thenReturn(Optional.empty());
+        when(classSizeService.effectiveClassSizes("2025/2026")).thenReturn(Map.of());
         when(salarySettingsRepository.findById(SalarySettings.DEFAULT_ID)).thenReturn(Optional.of(settings));
 
         byte[] body = service.exportFullWorkbookWithSalary("2025/2026");
@@ -890,8 +892,7 @@ class ManualLoadServiceImplBulkReplaceTest {
         when(schoolBuildingRepository.findAll()).thenReturn(List.of());
         SalarySettings settings = new SalarySettings();
         settings.setStudentHourRate(java.math.BigDecimal.valueOf(40));
-        when(contingentSnapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc("2025/2026"))
-                .thenReturn(Optional.empty());
+        when(classSizeService.effectiveClassSizes("2025/2026")).thenReturn(Map.of());
         when(salarySettingsRepository.findById(SalarySettings.DEFAULT_ID)).thenReturn(Optional.of(settings));
 
         byte[] body = service.exportFullWorkbookWithSalary("2025/2026");

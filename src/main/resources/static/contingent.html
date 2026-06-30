@@ -19,6 +19,7 @@
         <nav class="contingent-tabs">
             <a class="nav-link nav-home-link" href="/" title="Главная" aria-label="Главная">🏠</a>
             <button type="button" class="nav-link active" data-contingent-tab="stats">Численность</button>
+            <button type="button" class="nav-link" data-contingent-tab="manual">Ручная правка</button>
             <button type="button" class="nav-link" data-contingent-tab="import">Импорт</button>
         </nav>
     </section>
@@ -65,6 +66,31 @@
         <div id="contingent-stats-summary" class="muted"></div>
         <div class="sheet-wrap">
             <table class="sheet-table" id="contingent-stats-table"></table>
+        </div>
+    </section>
+
+    <section class="card" data-contingent-pane="manual" style="display:none;">
+        <h2>Ручная правка численности классов</h2>
+        <p class="muted">Здесь можно временно задать численность вручную. Она будет использоваться в расчётах и выгрузках, если выбран источник «Ручной ввод».</p>
+        <div class="row controls-row" data-requires-edit>
+            <label>Источник численности:
+                <select id="contingent-class-size-source">
+                    <option value="AIS">АИС</option>
+                    <option value="MANUAL">Ручной ввод</option>
+                </select>
+            </label>
+            <button id="contingent-class-size-source-save-btn" type="button">Применить источник</button>
+        </div>
+        <div class="row controls-row" data-requires-edit>
+            <input id="contingent-manual-file" type="file" accept=".xlsx,.xls">
+            <button id="contingent-manual-import-btn" type="button">Импорт ручного ввода</button>
+            <button id="contingent-manual-export-btn" type="button" data-allow-readonly="true">Экспорт</button>
+            <button id="contingent-manual-save-btn" type="button">Сохранить</button>
+            <button id="contingent-manual-refresh-btn" type="button" data-allow-readonly="true">Обновить</button>
+        </div>
+        <div id="contingent-manual-summary" class="muted"></div>
+        <div class="sheet-wrap">
+            <table class="sheet-table" id="contingent-manual-table"></table>
         </div>
     </section>
 </main>

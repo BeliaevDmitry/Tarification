@@ -69,6 +69,26 @@ public class CurriculumModuleSchemaInitializer implements ApplicationRunner {
                 END $$
                 """);
         jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_manual_load_curriculum_module ON manual_load_entry(curriculum_module_id)");
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS contingent_class_size_override (
+                    id bigserial PRIMARY KEY,
+                    academic_year varchar(255) NOT NULL,
+                    class_name varchar(255) NOT NULL,
+                    manual_students integer,
+                    updated_at timestamp NOT NULL DEFAULT now(),
+                    CONSTRAINT uk_contingent_class_size_override UNIQUE (academic_year, class_name)
+                )
+                """);
+        jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_contingent_class_size_override_year ON contingent_class_size_override(academic_year)");
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS contingent_class_size_source_setting (
+                    id bigserial PRIMARY KEY,
+                    academic_year varchar(255) NOT NULL,
+                    source varchar(32) NOT NULL DEFAULT 'AIS',
+                    updated_at timestamp NOT NULL DEFAULT now(),
+                    CONSTRAINT uk_contingent_class_size_source_year UNIQUE (academic_year)
+                )
+                """);
         log.info("Схема модульных предметов проверена");
     }
 }

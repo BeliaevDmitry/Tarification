@@ -2068,6 +2068,18 @@ td.vacancy-row {
     background: #f1f5f9;
 }
 
+.manual-size-match {
+    background: #dcfce7;
+    color: #166534;
+    font-weight: 700;
+}
+
+.manual-size-mismatch {
+    background: #fee2e2;
+    color: #991b1b;
+    font-weight: 700;
+}
+
 .year-status-ok {
     background: #d8f7dd;
     color: #1f6a2a;

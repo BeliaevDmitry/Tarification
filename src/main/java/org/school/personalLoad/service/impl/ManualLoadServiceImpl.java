@@ -35,6 +35,7 @@ import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.repository.SubjectLevelCoefficientRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.MetaGroupRepository;
+import org.school.personalLoad.service.ClassSizeService;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.DatabaseService;
 import org.school.personalLoad.service.ManualLoadService;
@@ -87,6 +88,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private final SalarySettingsRepository salarySettingsRepository;
     private final MetaGroupRepository metaGroupRepository;
     private final PrimarySubjectService primarySubjectService;
+    private final ClassSizeService classSizeService;
 
     @Override
     public ManualLoadEntry create(ManualLoadEntryRequest request) {
@@ -876,14 +878,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
     private Map<String, Integer> latestClassSizeByClass(String academicYear) {
-        return contingentSnapshotRepository
-                .findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear)
-                .map(snapshot -> contingentStudentRepository.findAllBySnapshotId(snapshot.getId()).stream()
-                        .collect(java.util.stream.Collectors.groupingBy(
-                                student -> normalizeToken(ClassNameNormalizer.normalize(student.getClassName())),
-                                java.util.stream.Collectors.summingInt(student -> 1)
-                        )))
-                .orElseGet(HashMap::new);
+        return classSizeService.effectiveClassSizes(academicYear);
     }
 
     private int departmentGroupSize(int classSize, String groupName) {
@@ -1169,14 +1164,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         Map<String, List<ManualLoadEntry>> rowsByTeacher = rows.stream().collect(java.util.stream.Collectors.groupingBy(
                 r -> String.valueOf(r.getFioTeacher()).trim().toLowerCase(Locale.ROOT)
         ));
-        Map<String, Integer> classSizeByClass = contingentSnapshotRepository
-                .findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear)
-                .map(snapshot -> contingentStudentRepository.findAllBySnapshotId(snapshot.getId()).stream()
-                        .collect(java.util.stream.Collectors.groupingBy(
-                                s -> normalizeToken(s.getClassName()),
-                                java.util.stream.Collectors.summingInt(x -> 1)
-                        )))
-                .orElseGet(HashMap::new);
+        Map<String, Integer> classSizeByClass = latestClassSizeByClass(academicYear);
 
         BigDecimal studentHourRate = includeSalary ? resolveStudentHourRate() : SalarySettings.DEFAULT_STUDENT_HOUR_RATE;
         SalarySummary salarySummary = includeSalary

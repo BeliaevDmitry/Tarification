@@ -6,6 +6,7 @@ import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.ss.util.RegionUtil;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.contingent.ContingentDtos;
+import org.school.personalLoad.model.ClassSizeSource;
 import org.school.personalLoad.model.ContingentSnapshot;
 import org.school.personalLoad.model.ContingentStudent;
 import org.school.personalLoad.model.CurriculumPlanEntry;
@@ -14,6 +15,7 @@ import org.school.personalLoad.repository.ContingentSnapshotRepository;
 import org.school.personalLoad.repository.ContingentStudentRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
+import org.school.personalLoad.service.ClassSizeService;
 import org.school.personalLoad.service.ContingentService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -37,6 +39,7 @@ public class ContingentServiceImpl implements ContingentService {
     private final ClassroomLeadershipRepository classroomLeadershipRepository;
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     private final SchoolBuildingRepository schoolBuildingRepository;
+    private final ClassSizeService classSizeService;
 
     @Override
     public ContingentDtos.ImportResponse importSnapshot(String academicYear, MultipartFile file) {
@@ -633,6 +636,125 @@ public class ContingentServiceImpl implements ContingentService {
         return problems;
     }
 
+    @Override
+    public ContingentDtos.ManualClassSizeResponse getManualClassSizes(String academicYear) {
+        return manualClassSizeResponse(academicYear);
+    }
+
+    @Override
+    public ContingentDtos.ManualClassSizeResponse saveManualClassSizes(String academicYear, ContingentDtos.ManualClassSizeSaveRequest request) {
+        List<ClassSizeService.ManualClassSizeUpdate> rows = request == null || request.getRows() == null
+                ? List.of()
+                : request.getRows().stream()
+                .map(row -> new ClassSizeService.ManualClassSizeUpdate(row.getClassName(), row.getManualStudents()))
+                .toList();
+        classSizeService.saveManualRows(academicYear, rows);
+        return manualClassSizeResponse(academicYear);
+    }
+
+    @Override
+    public ContingentDtos.ManualClassSizeResponse importManualClassSizes(String academicYear, MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Файл обязателен");
+        }
+        List<ClassSizeService.ManualClassSizeUpdate> updates = new ArrayList<>();
+        try (InputStream inputStream = file.getInputStream(); Workbook workbook = WorkbookFactory.create(inputStream)) {
+            Sheet sheet = workbook.getNumberOfSheets() > 0 ? workbook.getSheetAt(0) : null;
+            if (sheet == null) {
+                throw new IllegalArgumentException("Не найден первый лист");
+            }
+            DataFormatter formatter = new DataFormatter();
+            int headerRowIndex = findManualClassSizeHeaderRow(sheet, formatter);
+            Row header = sheet.getRow(headerRowIndex);
+            Map<String, Integer> indices = extractHeaderIndices(header, formatter);
+            int classColumn = resolveColumnIndex(indices, "класс");
+            int manualColumn = resolveColumnIndex(indices, "ручной ввод", "ручная численность", "manual");
+            if (classColumn < 0 || manualColumn < 0) {
+                throw new IllegalArgumentException("В файле нужны колонки: Класс и Ручной ввод");
+            }
+            for (int rowIndex = headerRowIndex + 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+                Row row = sheet.getRow(rowIndex);
+                String className = ClassNameNormalizer.normalize(getCellValue(row, classColumn, formatter));
+                if (className.isBlank()) {
+                    continue;
+                }
+                Integer manual = parseInteger(getCellValue(row, manualColumn, formatter));
+                updates.add(new ClassSizeService.ManualClassSizeUpdate(className, manual));
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Не удалось импортировать ручную численность", e);
+        }
+        classSizeService.saveManualRows(academicYear, updates);
+        return manualClassSizeResponse(academicYear);
+    }
+
+    @Override
+    public byte[] exportManualClassSizes(String academicYear) {
+        ContingentDtos.ManualClassSizeResponse response = manualClassSizeResponse(academicYear);
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            CellStyle header = baseContingentStyle(workbook);
+            Font bold = workbook.createFont();
+            bold.setBold(true);
+            header.setFont(bold);
+            header.setFillForegroundColor(IndexedColors.PALE_BLUE.getIndex());
+            header.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            CellStyle base = baseContingentStyle(workbook);
+            CellStyle green = baseContingentStyle(workbook);
+            green.setFillForegroundColor(IndexedColors.LIGHT_GREEN.getIndex());
+            green.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            CellStyle red = baseContingentStyle(workbook);
+            red.setFillForegroundColor(IndexedColors.ROSE.getIndex());
+            red.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+            Sheet sheet = workbook.createSheet("Ручная численность");
+            Row title = sheet.createRow(0);
+            createCell(title, 0, "Источник численности", header);
+            createCell(title, 1, response.getSource() == ClassSizeSource.MANUAL ? "Ручной ввод" : "АИС", base);
+            Row headerRow = sheet.createRow(2);
+            List<String> headers = List.of("Класс", "Численность по АИС", "Ручной ввод", "Статус");
+            for (int i = 0; i < headers.size(); i++) {
+                createCell(headerRow, i, headers.get(i), header);
+            }
+            int rowIndex = 3;
+            for (ContingentDtos.ManualClassSizeRow item : response.getRows()) {
+                Row row = sheet.createRow(rowIndex++);
+                createCell(row, 0, item.getClassName(), base);
+                createCell(row, 1, item.getAisStudents() == null ? "" : item.getAisStudents(), base);
+                createCell(row, 2, item.getManualStudents() == null ? "" : item.getManualStudents(), base);
+                boolean matches = Boolean.TRUE.equals(item.getMatches());
+                createCell(row, 3, matches ? "Совпадает" : "Не совпадает", matches ? green : red);
+            }
+            sheet.createFreezePane(0, 3);
+            for (int i = 0; i < headers.size(); i++) {
+                sheet.autoSizeColumn(i);
+            }
+            workbook.write(out);
+            return out.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("Не удалось экспортировать ручную численность", e);
+        }
+    }
+
+    @Override
+    public ContingentDtos.ManualClassSizeResponse setClassSizeSource(String academicYear, ClassSizeSource source) {
+        classSizeService.setSource(academicYear, source);
+        return manualClassSizeResponse(academicYear);
+    }
+
+    private ContingentDtos.ManualClassSizeResponse manualClassSizeResponse(String academicYear) {
+        ContingentDtos.ManualClassSizeResponse response = new ContingentDtos.ManualClassSizeResponse();
+        response.setSource(classSizeService.source(academicYear));
+        response.setRows(classSizeService.manualRows(academicYear).stream().map(row -> {
+            ContingentDtos.ManualClassSizeRow dto = new ContingentDtos.ManualClassSizeRow();
+            dto.setClassName(row.className());
+            dto.setAisStudents(row.aisStudents());
+            dto.setManualStudents(row.manualStudents());
+            dto.setMatches(row.matches());
+            return dto;
+        }).toList());
+        return response;
+    }
+
     private Map<String, Integer> extractHeaderIndices(Row header, DataFormatter formatter) {
         Map<String, Integer> indexByHeader = new LinkedHashMap<>();
         for (int i = 0; i < header.getLastCellNum(); i++) {
@@ -722,6 +844,34 @@ public class ContingentServiceImpl implements ContingentService {
             }
         }
         return -1;
+    }
+
+    private int findManualClassSizeHeaderRow(Sheet sheet, DataFormatter formatter) {
+        int max = Math.min(sheet.getLastRowNum(), 30);
+        for (int i = 0; i <= max; i++) {
+            Row row = sheet.getRow(i);
+            if (row == null) {
+                continue;
+            }
+            Map<String, Integer> headers = extractHeaderIndices(row, formatter);
+            if (resolveColumnIndex(headers, "класс") >= 0
+                    && resolveColumnIndex(headers, "ручной ввод", "ручная численность", "manual") >= 0) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    private Integer parseInteger(String value) {
+        String normalized = normalize(value);
+        if (normalized.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(normalized.replaceAll("[^0-9-]", ""));
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private LocalDate parseSnapshotDate(String value, LocalDate fallback) {

@@ -14,6 +14,7 @@ import org.school.personalLoad.repository.ContingentSnapshotRepository;
 import org.school.personalLoad.repository.ContingentStudentRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
+import org.school.personalLoad.service.ClassSizeService;
 
 import java.io.ByteArrayInputStream;
 import java.time.LocalDate;
@@ -37,6 +38,8 @@ class ContingentServiceImplExportTest {
     private CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     @Mock
     private SchoolBuildingRepository schoolBuildingRepository;
+    @Mock
+    private ClassSizeService classSizeService;
 
     private ContingentServiceImpl service;
 
@@ -47,7 +50,8 @@ class ContingentServiceImplExportTest {
                 studentRepository,
                 classroomLeadershipRepository,
                 curriculumPlanEntryRepository,
-                schoolBuildingRepository
+                schoolBuildingRepository,
+                classSizeService
         );
     }
 
