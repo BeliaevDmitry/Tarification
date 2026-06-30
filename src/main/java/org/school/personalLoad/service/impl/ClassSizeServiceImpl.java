@@ -43,7 +43,7 @@ public class ClassSizeServiceImpl implements ClassSizeService {
         return snapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear)
                 .map(snapshot -> studentRepository.findAllBySnapshotId(snapshot.getId()).stream()
                         .collect(Collectors.groupingBy(
-                                student -> normalizeClass(student.getClassName()),
+                                student -> classSizeKey(student.getClassName()),
                                 LinkedHashMap::new,
                                 Collectors.summingInt(student -> 1)
                         )))
@@ -59,7 +59,7 @@ public class ClassSizeServiceImpl implements ClassSizeService {
         Map<String, Integer> effective = new LinkedHashMap<>(ais);
         overrideRepository.findAllByAcademicYear(academicYear).forEach(row -> {
             if (row.getManualStudents() != null) {
-                effective.put(normalizeClass(row.getClassName()), row.getManualStudents());
+                effective.put(classSizeKey(row.getClassName()), row.getManualStudents());
             }
         });
         return effective;
@@ -90,26 +90,33 @@ public class ClassSizeServiceImpl implements ClassSizeService {
     public List<ClassSizeRow> manualRows(String academicYear) {
         Map<String, Integer> ais = aisClassSizes(academicYear);
         Map<String, Integer> manual = new LinkedHashMap<>();
+        Map<String, String> displayByKey = new LinkedHashMap<>();
         overrideRepository.findAllByAcademicYear(academicYear).forEach(row ->
-                manual.putIfAbsent(normalizeClass(row.getClassName()), row.getManualStudents()));
-        TreeSet<String> classes = new TreeSet<>(this::compareClassNames);
-        classes.addAll(ais.keySet());
-        classes.addAll(manual.keySet());
+        {
+            String key = classSizeKey(row.getClassName());
+            manual.putIfAbsent(key, row.getManualStudents());
+            displayByKey.putIfAbsent(key, normalizeClass(row.getClassName()));
+        });
+        ais.keySet().forEach(key -> displayByKey.putIfAbsent(key, normalizeClass(key)));
         classroomLeadershipRepository.findAllByAcademicYear(academicYear).stream()
                 .map(entry -> normalizeClass(entry.getClassName()))
                 .filter(value -> !value.isBlank())
-                .forEach(classes::add);
+                .forEach(value -> displayByKey.putIfAbsent(classSizeKey(value), value));
         curriculumPlanEntryRepository.findAllByAcademicYear(academicYear).stream()
                 .filter(entry -> !entry.isDeprecated())
                 .map(CurriculumPlanEntry::getClassName)
                 .map(this::normalizeClass)
                 .filter(value -> !value.isBlank() && !value.startsWith("МГ:"))
-                .forEach(classes::add);
+                .forEach(value -> displayByKey.putIfAbsent(classSizeKey(value), value));
+
+        TreeSet<String> classes = new TreeSet<>((left, right) -> compareClassNames(displayByKey.get(left), displayByKey.get(right)));
+        classes.addAll(displayByKey.keySet());
 
         List<ClassSizeRow> result = new ArrayList<>();
-        for (String className : classes) {
-            Integer aisStudents = ais.get(className);
-            Integer manualStudents = manual.get(className);
+        for (String key : classes) {
+            String className = displayByKey.getOrDefault(key, normalizeClass(key));
+            Integer aisStudents = ais.get(key);
+            Integer manualStudents = manual.get(key);
             result.add(new ClassSizeRow(className, aisStudents, manualStudents, Objects.equals(aisStudents, manualStudents)));
         }
         return result;
@@ -126,7 +133,11 @@ public class ClassSizeServiceImpl implements ClassSizeService {
             if (className.isBlank()) {
                 continue;
             }
-            ContingentClassSizeOverride entity = overrideRepository.findByAcademicYearAndClassName(academicYear, className)
+            String key = classSizeKey(className);
+            ContingentClassSizeOverride entity = overrideRepository.findAllByAcademicYear(academicYear).stream()
+                    .filter(existing -> classSizeKey(existing.getClassName()).equals(key))
+                    .findFirst()
+                    .or(() -> overrideRepository.findByAcademicYearAndClassName(academicYear, className))
                     .orElseGet(() -> {
                         ContingentClassSizeOverride created = new ContingentClassSizeOverride();
                         created.setAcademicYear(academicYear);
@@ -142,6 +153,15 @@ public class ClassSizeServiceImpl implements ClassSizeService {
 
     private String normalizeClass(String className) {
         return ClassNameNormalizer.normalize(className);
+    }
+
+    private String classSizeKey(String className) {
+        return normalizeClass(className)
+                .toLowerCase(java.util.Locale.ROOT)
+                .replace('ё', 'е')
+                .replaceAll("\\s+", "")
+                .replace('–', '-')
+                .replace('—', '-');
     }
 
     private int compareClassNames(String first, String second) {

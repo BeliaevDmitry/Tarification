@@ -815,7 +815,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             String metaGroupName = metaGroup
                     ? metaGroupNameById.getOrDefault(entry.metaGroupId(), normalizeDisplayValue(entry.className()))
                     : "";
-            int classSize = metaGroup ? 25 : classSizeByClass.getOrDefault(normalizeToken(entry.className()), 30);
+            int classSize = metaGroup ? 25 : classSizeFor(classSizeByClass, entry.className());
             int groupSize = metaGroup ? 25 : departmentGroupSize(classSize, entry.groupNameEducationalPlan());
 
             Row row = sheet.createRow(rowNum++);
@@ -866,7 +866,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             Integer parallel = ClassNameNormalizer.extractParallel(className);
             row.createCell(0).setCellValue(parallel == null ? "" : String.valueOf(parallel));
             row.createCell(1).setCellValue(departmentClassLetter(className));
-            row.createCell(2).setCellValue(classSizeByClass.getOrDefault(normalizeToken(className), 30));
+            row.createCell(2).setCellValue(classSizeFor(classSizeByClass, className));
             for (int column = 0; column < headers.size(); column++) {
                 row.getCell(column).setCellStyle(wrap);
             }
@@ -879,6 +879,32 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
     private Map<String, Integer> latestClassSizeByClass(String academicYear) {
         return classSizeService.effectiveClassSizes(academicYear);
+    }
+
+    private int classSizeFor(Map<String, Integer> classSizeByClass, String className) {
+        if (classSizeByClass == null || classSizeByClass.isEmpty()) {
+            return 30;
+        }
+        String key = classSizeKey(className);
+        Integer value = classSizeByClass.get(key);
+        if (value != null) {
+            return value;
+        }
+        value = classSizeByClass.get(ClassNameNormalizer.normalize(className));
+        if (value != null) {
+            return value;
+        }
+        value = classSizeByClass.get(normalizeToken(className));
+        return value == null ? 30 : value;
+    }
+
+    private String classSizeKey(String className) {
+        return ClassNameNormalizer.normalize(className)
+                .toLowerCase(Locale.ROOT)
+                .replace('ё', 'е')
+                .replaceAll("\\s+", "")
+                .replace('–', '-')
+                .replace('—', '-');
     }
 
     private int departmentGroupSize(int classSize, String groupName) {
@@ -1288,7 +1314,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     String periodLabel = e.getStudyPeriod() == StudyPeriod.H1 ? "1П"
                             : e.getStudyPeriod() == StudyPeriod.H2 ? "2П" : "ГОД";
                     String hoursSummary = formatScopedTotalHours(t[0], t[1], t[2], t[3]);
-                    int classSize = classSizeByClass.getOrDefault(normalizeToken(e.getClassName()), 30);
+                    int classSize = classSizeFor(classSizeByClass, e.getClassName());
                     String group = String.valueOf(e.getGroupNameEducationalPlan() == null ? "" : e.getGroupNameEducationalPlan()).toLowerCase(Locale.ROOT);
                     int firstGroupSize = (classSize + 1) / 2;
                     int secondGroupSize = classSize - firstGroupSize;
@@ -1709,7 +1735,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 continue;
             }
             String building = buildingKey(entry.getNumberSchoolBuilding());
-            int classSize = classSizeByClass.getOrDefault(normalizeToken(entry.getClassName()), 30);
+            int classSize = classSizeFor(classSizeByClass, entry.getClassName());
             BigDecimal leadershipSalary = CLASS_LEADERSHIP_PER_STUDENT
                     .multiply(BigDecimal.valueOf(classSize))
                     .add(CLASS_LEADERSHIP_BASE);
@@ -1729,7 +1755,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                                            Map<String, Integer> classSizeByClass,
                                            Map<String, BigDecimal> subjectCoefficientByLevel,
                                            BigDecimal studentHourRate) {
-        int classSize = classSizeByClass.getOrDefault(normalizeToken(row.getClassName()), 30);
+        int classSize = classSizeFor(classSizeByClass, row.getClassName());
         String group = String.valueOf(row.getGroupNameEducationalPlan() == null ? "" : row.getGroupNameEducationalPlan()).toLowerCase(Locale.ROOT);
         int firstGroupSize = (classSize + 1) / 2;
         int secondGroupSize = classSize - firstGroupSize;
