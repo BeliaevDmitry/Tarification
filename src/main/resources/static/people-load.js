@@ -6,6 +6,7 @@ const ui = {
     exportSubjectLoadBtn: document.getElementById("export-subject-load-btn"),
     exportFullLoadSalaryBtn: document.getElementById("export-full-load-salary-btn"),
     exportSalaryOneLoadBtn: document.getElementById("export-salary-one-load-btn"),
+    exportDepartmentLoadBtn: document.getElementById("export-department-load-btn"),
     summary: document.getElementById("people-load-summary"),
     table: document.getElementById("people-load-table"),
     mainTab: document.getElementById("people-load-main-tab"),
@@ -499,6 +500,10 @@ async function exportSalaryOneLoadWorkbook() {
     return exportLoadWorkbook("/api/manual-load/export-salary-one", "salary-one-load-export.xlsx");
 }
 
+async function exportDepartmentLoadWorkbook() {
+    return exportLoadWorkbook("/api/manual-load/export-department-load", "department-load-export.xlsx");
+}
+
 async function exportConsolidatedLoadWorkbook() {
     return exportLoadWorkbook("/api/manual-load/export-consolidated", "primary-subject-load-export.xlsx");
 }
@@ -736,6 +741,7 @@ async function init() {
     if (ui.exportSalaryOneLoadBtn) {
         ui.exportSalaryOneLoadBtn.addEventListener("click", () => exportSalaryOneLoadWorkbook().catch((error) => alert(`Не удалось скачать нагрузку для ЗП 1: ${error.message}`)));
     }
+    ui.exportDepartmentLoadBtn?.addEventListener("click", () => exportDepartmentLoadWorkbook().catch((error) => alert(`Не удалось скачать нагрузку ДЕП: ${error.message}`)));
     ui.mainTab?.addEventListener("click", () => showPeopleLoadPanel("main"));
     ui.primaryTab?.addEventListener("click", () => showPeopleLoadPanel("primary"));
     ui.determinePrimarySubjectsBtn?.addEventListener("click", () => determinePrimarySubjects().catch((error) => alert(`Не удалось определить основные предметы: ${error.message}`)));

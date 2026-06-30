@@ -176,6 +176,13 @@ public class ManualLoadController {
         return workbookResponse(body, "Нагрузка для ЗП 1 " + effectiveYear + " " + LocalDate.now() + ".xlsx");
     }
 
+    @GetMapping("/export-department-load")
+    public ResponseEntity<byte[]> exportDepartmentLoadWorkbook(@RequestParam(required = false) String academicYear) throws Exception {
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        byte[] body = manualLoadService.exportDepartmentLoadWorkbook(effectiveYear);
+        return workbookResponse(body, "Нагрузка ДЕП " + effectiveYear + " " + LocalDate.now() + ".xlsx");
+    }
+
     private ResponseEntity<byte[]> workbookResponse(byte[] body, String fileName) {
         String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()

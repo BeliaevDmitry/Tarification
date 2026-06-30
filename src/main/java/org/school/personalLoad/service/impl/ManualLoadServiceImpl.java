@@ -474,6 +474,40 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     }
 
     @Override
+    public byte[] exportDepartmentLoadWorkbook(String academicYear) throws IOException {
+        List<ManualLoadTemplateRow> rows = buildTemplateRows(academicYear);
+        Map<String, Integer> classSizeByClass = latestClassSizeByClass(academicYear);
+        Map<Long, String> metaGroupNameById = metaGroupRepository.findAll().stream()
+                .filter(metaGroup -> academicYear.equals(metaGroup.getAcademicYear()))
+                .collect(java.util.stream.Collectors.toMap(
+                        MetaGroup::getId,
+                        metaGroup -> normalizeDisplayValue(metaGroup.getName()),
+                        (first, second) -> first
+                ));
+
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            CellStyle header = workbook.createCellStyle();
+            Font bold = workbook.createFont();
+            bold.setBold(true);
+            header.setFont(bold);
+            header.setWrapText(true);
+            header.setAlignment(HorizontalAlignment.CENTER);
+            header.setVerticalAlignment(VerticalAlignment.CENTER);
+
+            CellStyle wrap = workbook.createCellStyle();
+            wrap.setWrapText(true);
+            wrap.setAlignment(HorizontalAlignment.CENTER);
+            wrap.setVerticalAlignment(VerticalAlignment.CENTER);
+
+            buildDepartmentFinanceSheet(workbook, rows, classSizeByClass, metaGroupNameById, header, wrap);
+            buildDepartmentClassesSheet(workbook, rows, classSizeByClass, header, wrap);
+
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    @Override
     public byte[] exportConsolidatedWorkbook(String academicYear) throws IOException {
         List<ManualLoadEntry> rows = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
                 .filter(row -> normalizeDisplayValue(row.getFioTeacher()).length() > 0)
@@ -740,6 +774,153 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 ? SubgroupPolicy.RECOMMENDED
                 : curriculum.getSubgroupPolicy();
         return policy == SubgroupPolicy.SCHOOL_CHOICE ? "Выбор школы" : "Рекомендовано";
+    }
+
+    private void buildDepartmentFinanceSheet(Workbook workbook,
+                                             List<ManualLoadTemplateRow> rows,
+                                             Map<String, Integer> classSizeByClass,
+                                             Map<Long, String> metaGroupNameById,
+                                             CellStyle header,
+                                             CellStyle wrap) {
+        Sheet sheet = workbook.createSheet(uniqueSheetName(workbook, "Справочник финансов"));
+        List<String> headers = List.of(
+                "Класс",
+                "Тип предмета",
+                "Название предмета",
+                "Название метагруппы",
+                "Кол-во учеников в группе",
+                "Кол-во часов в неделю"
+        );
+        Row headerRow = sheet.createRow(0);
+        for (int column = 0; column < headers.size(); column++) {
+            headerRow.createCell(column).setCellValue(headers.get(column));
+            headerRow.getCell(column).setCellStyle(header);
+        }
+        sheet.createFreezePane(0, 1);
+        sheet.setAutoFilter(new CellRangeAddress(0, 0, 0, headers.size() - 1));
+
+        List<ManualLoadTemplateRow> sortedRows = rows.stream()
+                .sorted(Comparator.comparing(ManualLoadTemplateRow::className, this::compareClassNames)
+                        .thenComparing(ManualLoadTemplateRow::curriculumPart, Comparator.nullsFirst(Comparator.comparing(Enum::name)))
+                        .thenComparing(ManualLoadTemplateRow::subjectName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                        .thenComparing(row -> row.groupNameEducationalPlan() == null ? "" : row.groupNameEducationalPlan()))
+                .toList();
+
+        int rowNum = 1;
+        for (ManualLoadTemplateRow entry : sortedRows) {
+            boolean metaGroup = entry.metaGroupId() != null;
+            String className = metaGroup ? "" : ClassNameNormalizer.normalize(entry.className());
+            String metaGroupName = metaGroup
+                    ? metaGroupNameById.getOrDefault(entry.metaGroupId(), normalizeDisplayValue(entry.className()))
+                    : "";
+            int classSize = metaGroup ? 25 : classSizeByClass.getOrDefault(normalizeToken(entry.className()), 30);
+            int groupSize = metaGroup ? 25 : departmentGroupSize(classSize, entry.groupNameEducationalPlan());
+
+            Row row = sheet.createRow(rowNum++);
+            row.createCell(0).setCellValue(className);
+            row.createCell(1).setCellValue(departmentSubjectType(entry.curriculumPart()));
+            row.createCell(2).setCellValue(departmentSubjectName(entry.subjectName()));
+            row.createCell(3).setCellValue(metaGroupName);
+            row.createCell(4).setCellValue(groupSize);
+            row.createCell(5).setCellValue(entry.load() == null ? 0 : entry.load());
+            for (int column = 0; column < headers.size(); column++) {
+                row.getCell(column).setCellStyle(wrap);
+            }
+        }
+
+        int[] widths = {14, 24, 34, 30, 22, 22};
+        for (int column = 0; column < widths.length; column++) {
+            sheet.setColumnWidth(column, widths[column] * 256);
+        }
+    }
+
+    private void buildDepartmentClassesSheet(Workbook workbook,
+                                             List<ManualLoadTemplateRow> rows,
+                                             Map<String, Integer> classSizeByClass,
+                                             CellStyle header,
+                                             CellStyle wrap) {
+        Sheet sheet = workbook.createSheet(uniqueSheetName(workbook, "Справочник классов"));
+        List<String> headers = List.of("Параллель", "Литера", "Кол-во учеников в классе");
+        Row headerRow = sheet.createRow(0);
+        for (int column = 0; column < headers.size(); column++) {
+            headerRow.createCell(column).setCellValue(headers.get(column));
+            headerRow.getCell(column).setCellStyle(header);
+        }
+        sheet.createFreezePane(0, 1);
+        sheet.setAutoFilter(new CellRangeAddress(0, 0, 0, headers.size() - 1));
+
+        List<String> classes = rows.stream()
+                .filter(row -> row.metaGroupId() == null)
+                .map(ManualLoadTemplateRow::className)
+                .map(ClassNameNormalizer::normalize)
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .sorted(this::compareClassNames)
+                .toList();
+
+        int rowNum = 1;
+        for (String className : classes) {
+            Row row = sheet.createRow(rowNum++);
+            Integer parallel = ClassNameNormalizer.extractParallel(className);
+            row.createCell(0).setCellValue(parallel == null ? "" : String.valueOf(parallel));
+            row.createCell(1).setCellValue(departmentClassLetter(className));
+            row.createCell(2).setCellValue(classSizeByClass.getOrDefault(normalizeToken(className), 30));
+            for (int column = 0; column < headers.size(); column++) {
+                row.getCell(column).setCellStyle(wrap);
+            }
+        }
+
+        sheet.setColumnWidth(0, 16 * 256);
+        sheet.setColumnWidth(1, 16 * 256);
+        sheet.setColumnWidth(2, 24 * 256);
+    }
+
+    private Map<String, Integer> latestClassSizeByClass(String academicYear) {
+        return contingentSnapshotRepository
+                .findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear)
+                .map(snapshot -> contingentStudentRepository.findAllBySnapshotId(snapshot.getId()).stream()
+                        .collect(java.util.stream.Collectors.groupingBy(
+                                student -> normalizeToken(ClassNameNormalizer.normalize(student.getClassName())),
+                                java.util.stream.Collectors.summingInt(student -> 1)
+                        )))
+                .orElseGet(HashMap::new);
+    }
+
+    private int departmentGroupSize(int classSize, String groupName) {
+        String group = normalizeToken(groupName);
+        if (group.isBlank()) {
+            return classSize;
+        }
+        int firstGroupSize = (classSize + 1) / 2;
+        int secondGroupSize = classSize - firstGroupSize;
+        if (group.contains("2")) {
+            return secondGroupSize;
+        }
+        return firstGroupSize;
+    }
+
+    private String departmentSubjectType(CurriculumPart part) {
+        return switch (part == null ? CurriculumPart.CORE : part) {
+            case CORE -> "Основной предмет";
+            case FORMABLE -> "Учебный курс";
+            case EXTRACURRICULAR -> "Курс ВД";
+            case CORRECTIONAL -> "Коррекционная область";
+        };
+    }
+
+    private String departmentSubjectName(String subjectName) {
+        return normalizeDisplayValue(subjectName)
+                .replaceFirst("(?iu)\\s+(НОО|ООО|СОО)(\\s+[0-9.,\\s]+)?$", "")
+                .trim();
+    }
+
+    private String departmentClassLetter(String className) {
+        String normalized = ClassNameNormalizer.normalize(className);
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("^\\d{1,2}\\s*[- ]?\\s*(.+)$").matcher(normalized);
+        if (!matcher.matches()) {
+            return "";
+        }
+        return matcher.group(1).trim();
     }
 
 
