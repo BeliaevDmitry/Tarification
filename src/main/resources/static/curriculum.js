@@ -805,7 +805,19 @@ function renderSummaryTable() {
     const rows = buildSummaryRows(allColumns, curriculumRowsForDisplay());
     const summaryTable = ui.summaryHead.closest("table");
     if (summaryTable) {
-        summaryTable.style.width = `${Math.max(1500, 540 + classDescriptors.length * 120)}px`;
+        summaryTable.style.width = `${Math.max(1500, 390 + classDescriptors.length * 150)}px`;
+        summaryTable.querySelector("colgroup")?.remove();
+        const colgroup = document.createElement("colgroup");
+        [
+            { width: "150px" },
+            { width: "240px" },
+            ...classDescriptors.map(() => ({ width: "150px" }))
+        ].forEach((config) => {
+            const col = document.createElement("col");
+            col.style.width = config.width;
+            colgroup.appendChild(col);
+        });
+        summaryTable.insertBefore(colgroup, summaryTable.firstChild);
     }
 
     ui.summaryHead.innerHTML = "";
@@ -838,6 +850,12 @@ function renderSummaryTable() {
     ui.summaryHead.appendChild(buildingRow);
     ui.summaryHead.appendChild(directionRow);
     ui.summaryHead.appendChild(classRow);
+    if (summaryTable) {
+        requestAnimationFrame(() => {
+            summaryTable.style.setProperty("--summary-building-head-height", `${buildingRow.getBoundingClientRect().height}px`);
+            summaryTable.style.setProperty("--summary-direction-head-height", `${directionRow.getBoundingClientRect().height}px`);
+        });
+    }
 
     rows.forEach((row) => {
         const tr = document.createElement("tr");
