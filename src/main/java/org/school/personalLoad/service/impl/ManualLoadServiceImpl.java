@@ -477,7 +477,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
     @Override
     public byte[] exportDepartmentLoadWorkbook(String academicYear) throws IOException {
-        List<ManualLoadTemplateRow> rows = buildTemplateRows(academicYear);
+        List<ManualLoadTemplateRow> rows = buildTemplateRows(academicYear).stream()
+                .filter(this::includeInDepartmentLoadExport)
+                .toList();
         Map<String, Integer> classSizeByClass = latestClassSizeByClass(academicYear);
         Map<Long, String> metaGroupNameById = metaGroupRepository.findAll().stream()
                 .filter(metaGroup -> academicYear.equals(metaGroup.getAcademicYear()))
@@ -507,6 +509,11 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             workbook.write(out);
             return out.toByteArray();
         }
+    }
+
+    private boolean includeInDepartmentLoadExport(ManualLoadTemplateRow row) {
+        StudyPeriod period = row == null || row.studyPeriod() == null ? StudyPeriod.YEAR : row.studyPeriod();
+        return period != StudyPeriod.H2;
     }
 
     @Override
