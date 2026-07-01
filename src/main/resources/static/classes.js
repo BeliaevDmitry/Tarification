@@ -122,7 +122,7 @@ function buildingChoiceKey(code, address) {
 
 function physicalSiteChoices() {
     return (buildings || [])
-        .filter((b) => b?.id && norm(b.address))
+        .filter((b) => b?.id)
         .map((b) => ({
             id: Number(b.id),
             buildingGroupId: Number(b.buildingGroupId) || null,
@@ -183,6 +183,7 @@ function buildingLabel(code) {
 }
 
 function siteLabel(site) {
+    if (site && !norm(site.address)) return `${site.name || site.code} (без отдельной площадки)`;
     return site ? `${site.name || site.code} — ${site.address}` : "";
 }
 

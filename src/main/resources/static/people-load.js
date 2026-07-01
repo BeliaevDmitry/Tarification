@@ -34,6 +34,8 @@ const state = {
     coefficients: [],
     primarySubjectAssignments: [],
     primarySubjectRules: [],
+    classSizeSource: "AIS",
+    classSizeByClass: new Map(),
     studentHourRate: 37
 };
 
@@ -101,6 +103,35 @@ function buildingAddressToken(value) {
 
 function classKey(className, buildingCode) {
     return `${normalizeKey(className)}|${buildingGroupCode(buildingCode)}`;
+}
+
+function classSizeLookupKey(className) {
+    return normalizeText(className)
+        .toLowerCase()
+        .replaceAll("ё", "е")
+        .replace(/[–—]/g, "-")
+        .replace(/\s+/g, "");
+}
+
+function applyClassSizeResponse(response) {
+    state.classSizeSource = response?.source || "AIS";
+    state.classSizeByClass = new Map();
+    (response?.rows || []).forEach((row) => {
+        const key = classSizeLookupKey(row.className);
+        if (!key) return;
+        const manual = Number(row.manualStudents);
+        const ais = Number(row.aisStudents);
+        const value = state.classSizeSource === "MANUAL"
+            ? (Number.isFinite(manual) && manual > 0 ? manual : ais)
+            : ais;
+        if (Number.isFinite(value) && value > 0) {
+            state.classSizeByClass.set(key, value);
+        }
+    });
+}
+
+function classSizeFor(className) {
+    return state.classSizeByClass?.get(classSizeLookupKey(className)) || 30;
 }
 
 
@@ -291,10 +322,14 @@ function fioKey(value) {
 }
 
 function childrenCount(row) {
+    const classSize = classSizeFor(row.className);
     const name = normalizeText(row.groupNameEducationalPlan || "").toLowerCase();
-    if (name.includes("2")) return 15;
-    if (name.includes("1")) return 15;
-    return 30;
+    if (!name) return classSize;
+    const firstGroupSize = Math.ceil(classSize / 2);
+    const secondGroupSize = classSize - firstGroupSize;
+    if (name.includes("2")) return secondGroupSize;
+    if (name.includes("1")) return firstGroupSize;
+    return classSize;
 }
 
 function salaryPermission() {
@@ -338,7 +373,7 @@ function rowSalary(row) {
 function classLeadershipSalary(fio) {
     const key = fioKey(fio);
     return (state.leadershipByTeacher?.get(key) || [])
-        .reduce((sum) => sum + 500 * 30 + 5000, 0);
+        .reduce((sum, entry) => sum + 500 * classSizeFor(entry.className) + 5000, 0);
 }
 
 function isFirstHalfSalaryRow(row) {
@@ -682,7 +717,7 @@ function rebuildIndexes() {
 async function loadData() {
     ui.summary.textContent = "Загрузка данных…";
     const salaryAccess = salaryPermission().canView;
-    const [buildings, manualRows, classes, teachers, subjects, coefficients, salarySettings, primaryAssignments, primaryRules] = await Promise.all([
+    const [buildings, manualRows, classes, teachers, subjects, coefficients, salarySettings, primaryAssignments, primaryRules, classSizes] = await Promise.all([
         api("/api/buildings"),
         api("/api/manual-load"),
         api("/api/classroom-leadership"),
@@ -691,7 +726,8 @@ async function loadData() {
         api("/api/subjects/coefficients"),
         salaryAccess ? api("/api/salary-settings") : Promise.resolve(null),
         api("/api/primary-subjects/teachers"),
-        api("/api/primary-subjects/rules")
+        api("/api/primary-subjects/rules"),
+        api("/api/contingent/manual-class-sizes").catch(() => ({ source: "AIS", rows: [] }))
     ]);
     state.manualRows = manualRows || [];
     state.classes = classes || [];
@@ -701,6 +737,7 @@ async function loadData() {
     state.coefficients = coefficients || [];
     state.primarySubjectAssignments = primaryAssignments || [];
     state.primarySubjectRules = primaryRules || [];
+    applyClassSizeResponse(classSizes);
     const rate = Number(salarySettings?.studentHourRate ?? 37);
     state.studentHourRate = Number.isFinite(rate) && rate > 0 ? rate : 37;
     rebuildIndexes();
