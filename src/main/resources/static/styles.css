@@ -1194,6 +1194,7 @@ td.vacancy-row {
     --summary-class-width: 150px;
     --summary-building-head-height: 38px;
     --summary-direction-head-height: 38px;
+    --summary-class-head-height: 38px;
     min-width: 1500px;
     width: 1500px;
     table-layout: fixed;
@@ -1271,6 +1272,13 @@ td.vacancy-row {
     background: #f1f5f9;
 }
 
+#summary-table .summary-class-size-row th {
+    position: sticky;
+    top: calc(var(--summary-building-head-height) + var(--summary-direction-head-height) + var(--summary-class-head-height));
+    z-index: 18;
+    background: #eef2ff;
+}
+
 #summary-table .summary-building-row > th {
     position: sticky;
     top: 0;
@@ -1279,7 +1287,8 @@ td.vacancy-row {
 }
 
 #summary-table .summary-direction-row th,
-#summary-table .summary-class-row th {
+#summary-table .summary-class-row th,
+#summary-table .summary-class-size-row th {
     white-space: normal;
     overflow-wrap: anywhere;
     word-break: break-word;

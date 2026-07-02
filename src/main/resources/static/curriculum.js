@@ -99,6 +99,7 @@ let subjects = [];
 let studyPeriodSettings = [];
 let metaGroups = [];
 let maxLoadLimits = {};
+let classSizeByClass = new Map();
 let sumMismatchKeys = new Set();
 let pendingCreateContext = null;
 let curriculumDisplayMode = "detailed";
@@ -533,6 +534,35 @@ function curriculumRowsForDisplay() {
     });
 }
 
+function classSizeLookupKey(className) {
+    return norm(className)
+        .toLowerCase()
+        .replaceAll("ё", "е")
+        .replace(/[–—]/g, "-")
+        .replace(/\s+/g, "");
+}
+
+function applyClassSizeResponse(response) {
+    classSizeByClass = new Map();
+    const source = response?.source || "AIS";
+    (response?.rows || []).forEach((row) => {
+        const key = classSizeLookupKey(row.className);
+        if (!key) return;
+        const manual = Number(row.manualStudents);
+        const ais = Number(row.aisStudents);
+        const value = source === "MANUAL"
+            ? (Number.isFinite(manual) && manual > 0 ? manual : ais)
+            : ais;
+        if (Number.isFinite(value) && value > 0) {
+            classSizeByClass.set(key, value);
+        }
+    });
+}
+
+function classSizeFor(className) {
+    return classSizeByClass.get(classSizeLookupKey(className)) || 30;
+}
+
 function buildSummaryRows(selectedClasses, sourceRows = curriculumRows) {
     const byPart = { CORE: [], FORMABLE: [], EXTRACURRICULAR: [], CORRECTIONAL: [] };
     const classSet = new Set(selectedClasses.map((c) => makeClassKey(c.numberSchoolBuilding, c.className)));
@@ -800,6 +830,7 @@ function renderSummaryTable() {
         className: c.className,
         classDirection: c.classDirection,
         numberSchoolBuilding: c.numberSchoolBuilding,
+        classSize: isExplicitMetaGroupClassName(c.className) ? "" : classSizeFor(c.className),
         split: hasSemesterSplitForClass(c)
     }));
     const rows = buildSummaryRows(allColumns, curriculumRowsForDisplay());
@@ -834,7 +865,7 @@ function renderSummaryTable() {
             groupsByBuilding.push({ code: col.numberSchoolBuilding, count: 1 });
         }
     });
-    buildingRow.innerHTML = `<th rowspan="3">Блок / область</th><th rowspan="3">Предмет</th>${
+    buildingRow.innerHTML = `<th rowspan="4">Блок / область</th><th rowspan="4">Предмет</th>${
         groupsByBuilding.map((group) => {
             const b = buildings.find((row) => row.code === group.code);
             const label = b?.name ? `${group.code} — ${b.name}` : group.code;
@@ -847,13 +878,18 @@ function renderSummaryTable() {
     const classRow = document.createElement("tr");
     classRow.className = "summary-class-row";
     classRow.innerHTML = allColumns.map((c) => `<th data-summary-building="${esc(c.numberSchoolBuilding)}" data-summary-class="${esc(c.className)}">${esc(c.className)}</th>`).join("");
+    const classSizeRow = document.createElement("tr");
+    classSizeRow.className = "summary-class-size-row";
+    classSizeRow.innerHTML = classDescriptors.map((c) => `<th>${esc(c.classSize)}</th>`).join("");
     ui.summaryHead.appendChild(buildingRow);
     ui.summaryHead.appendChild(directionRow);
     ui.summaryHead.appendChild(classRow);
+    ui.summaryHead.appendChild(classSizeRow);
     if (summaryTable) {
         requestAnimationFrame(() => {
             summaryTable.style.setProperty("--summary-building-head-height", `${buildingRow.getBoundingClientRect().height}px`);
             summaryTable.style.setProperty("--summary-direction-head-height", `${directionRow.getBoundingClientRect().height}px`);
+            summaryTable.style.setProperty("--summary-class-head-height", `${classRow.getBoundingClientRect().height}px`);
         });
     }
 
@@ -1254,20 +1290,22 @@ function restoreCurriculumScroll(state) {
 }
 
 async function reload(scrollState = captureCurriculumScroll()) {
-    const [curriculum, classRows, buildingRows, subjectRows, settingRows, metaGroupRows, loadLimits] = await Promise.all([
+    const [curriculum, classRows, buildingRows, subjectRows, settingRows, metaGroupRows, loadLimits, classSizes] = await Promise.all([
         api("/api/curriculum"),
         api("/api/classroom-leadership"),
         api("/api/buildings"),
         api("/api/subjects"),
         api("/api/settings/study-periods"),
         api("/api/meta-groups"),
-        api("/api/curriculum/max-load-limits")
+        api("/api/curriculum/max-load-limits"),
+        api("/api/contingent/manual-class-sizes").catch(() => ({ source: "AIS", rows: [] }))
     ]);
     curriculumRows = curriculum || [];
     subjects = subjectRows || [];
     studyPeriodSettings = settingRows || [];
     metaGroups = metaGroupRows || [];
     maxLoadLimits = loadLimits || {};
+    applyClassSizeResponse(classSizes);
     classes = (classRows || []).map((r) => ({
         numberSchoolBuilding: norm(r.numberSchoolBuilding),
         className: norm(r.className),

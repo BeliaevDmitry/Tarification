@@ -41,6 +41,7 @@ public final class ContingentDtos {
     public static class ParallelTotal {
         private Integer parallel;
         private Integer totalStudents;
+        private Integer totalClasses;
     }
 
     @Data
@@ -70,6 +71,9 @@ public final class ContingentDtos {
         private Long snapshotId;
         private LocalDate snapshotDate;
         private Integer totalStudents;
+        private Integer totalClassesNoo;
+        private Integer totalClassesOoo;
+        private Integer totalClassesSoo;
         private List<Integer> parallels;
         private List<BuildingColumn> columns;
         private List<ParallelTotal> parallelTotals;
