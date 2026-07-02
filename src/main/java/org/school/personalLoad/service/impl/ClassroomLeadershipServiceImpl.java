@@ -158,7 +158,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
 
         TeacherDirectoryEntry teacher = resolveRequiredTeacher(request);
         ensureBuildingExists(building);
-        SchoolBuilding schoolBuilding = resolveSchoolBuilding(request, building);
+        SchoolBuilding schoolBuilding = resolveSchoolBuildingForUpdate(request, building, entry);
 
         entry.setNumberSchoolBuilding(building);
         entry.setClassName(className);
@@ -551,7 +551,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     }
 
     private void ensureBuildingExists(String code) {
-        if (findKnownBuilding(code).isEmpty()) {
+        if (findKnownBuilding(code).isEmpty() && findKnownBuildingGroup(code).isEmpty()) {
             throw new IllegalArgumentException("Корпус не найден: " + code);
         }
     }
@@ -608,6 +608,19 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         return resolveSchoolBuildingByAddressOrDefault(buildingCode, request.getCampusAddress());
     }
 
+    private SchoolBuilding resolveSchoolBuildingForUpdate(ClassroomLeadershipEntryRequest request,
+                                                          String buildingCode,
+                                                          ClassroomLeadershipEntry existing) {
+        boolean physicalSiteSpecified = request.getSchoolBuildingId() != null
+                || !normalize(request.getCampusAddress()).isBlank();
+        boolean sameBuilding = existing != null
+                && normalizeBuildingCode(existing.getNumberSchoolBuilding()).equals(normalizeBuildingCode(buildingCode));
+        if (!physicalSiteSpecified && sameBuilding && existing.getSchoolBuilding() != null) {
+            return existing.getSchoolBuilding();
+        }
+        return resolveSchoolBuilding(request, buildingCode);
+    }
+
     private SchoolBuilding resolveSchoolBuildingByAddressOrDefault(String buildingCode, String requestedAddress) {
         String normalizedAddress = normalizeAddress(requestedAddress);
         if (!normalizedAddress.isBlank()) {
@@ -635,6 +648,14 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         return schoolBuildingRepository.findByCode(normalizedCode)
                 .or(() -> schoolBuildingRepository.findAll().stream()
                         .filter(building -> normalizeBuildingCode(building.getCode()).equals(normalizedCode))
+                        .findFirst());
+    }
+
+    private Optional<BuildingGroup> findKnownBuildingGroup(String code) {
+        String normalizedCode = normalizeBuildingCode(code);
+        return buildingGroupRepository.findByCodeIgnoreCase(normalizedCode)
+                .or(() -> buildingGroupRepository.findAll().stream()
+                        .filter(group -> normalizeBuildingCode(group.getCode()).equals(normalizedCode))
                         .findFirst());
     }
 
