@@ -75,6 +75,45 @@ class TeacherNotificationsControllerTest {
     }
 
     @Test
+    void activeRowsKeepSecondHalfRowsForAnnualNotification() {
+        ManualLoadEntry firstHalf = row(StudyPeriod.H1, 15);
+        fillDuplicateKey(firstHalf);
+        firstHalf.setLoadFromDate(LocalDate.of(2026, 9, 1));
+        firstHalf.setLoadToDate(LocalDate.of(2026, 12, 31));
+        ManualLoadEntry secondHalf = row(StudyPeriod.H2, 22);
+        fillDuplicateKey(secondHalf);
+        secondHalf.setLoadFromDate(LocalDate.of(2027, 1, 1));
+        secondHalf.setLoadToDate(LocalDate.of(2027, 5, 31));
+        when(manualLoadEntryRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(firstHalf, secondHalf));
+
+        List<ManualLoadEntry> rows = controller().activeRows("2026/2027", LocalDate.of(2026, 9, 1));
+
+        assertEquals(List.of(firstHalf, secondHalf), rows);
+        assertEquals(
+                "\u0432 1 \u043f\u043e\u043b\u0443\u0433\u043e\u0434\u0438\u0435: 15 \u0447\u0430\u0441\u043e\u0432 \u0438 \u0432\u043e 2 \u043f\u043e\u043b\u0443\u0433\u043e\u0434\u0438\u0435: 22 \u0447\u0430\u0441\u0430",
+                controller().formatNotificationTotalLoad(rows)
+        );
+    }
+
+    @Test
+    void activeRowsKeepNullPeriodRowsThatStartAtAcademicYearBeginning() {
+        ManualLoadEntry art = row(null, 1);
+        fillDuplicateKey(art);
+        art.setSubjectName("РР·РѕР±СЂР°Р·РёС‚РµР»СЊРЅРѕРµ РёСЃРєСѓСЃСЃС‚РІРѕ");
+        art.setLoadFromDate(LocalDate.of(2025, 9, 1));
+        art.setLoadToDate(LocalDate.of(2025, 11, 10));
+        when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(art));
+
+        List<ManualLoadEntry> rows = controller().activeRows("2025/2026", LocalDate.of(2026, 1, 1));
+
+        assertEquals(List.of(art), rows);
+        assertEquals(
+                "\u0432 1 \u043f\u043e\u043b\u0443\u0433\u043e\u0434\u0438\u0435: 1 \u0447\u0430\u0441 \u0438 \u0432\u043e 2 \u043f\u043e\u043b\u0443\u0433\u043e\u0434\u0438\u0435: 0 \u0447\u0430\u0441\u043e\u0432",
+                controller().formatNotificationTotalLoad(rows)
+        );
+    }
+
+    @Test
     void activeRowsCollapseDuplicateRows() {
         ManualLoadEntry first = row(StudyPeriod.YEAR, 2);
         fillDuplicateKey(first);
