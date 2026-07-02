@@ -200,9 +200,10 @@ public class TeacherNotificationsController {
         int totalH2 = 0;
         for (ManualLoadEntry row : rows) {
             int hours = notificationLoadHours(row);
-            if (row.getStudyPeriod() == org.school.personalLoad.model.StudyPeriod.H1) {
+            org.school.personalLoad.model.StudyPeriod period = notificationStudyPeriod(row);
+            if (period == org.school.personalLoad.model.StudyPeriod.H1) {
                 totalH1 += hours;
-            } else if (row.getStudyPeriod() == org.school.personalLoad.model.StudyPeriod.H2) {
+            } else if (period == org.school.personalLoad.model.StudyPeriod.H2) {
                 totalH2 += hours;
             } else {
                 totalH1 += hours;
@@ -262,8 +263,9 @@ public class TeacherNotificationsController {
             String key = row.getSubjectName() + "|" + row.getClassName();
             SubjectLoad sl = map.computeIfAbsent(key, k -> new SubjectLoad(row.getSubjectName(), row.getClassName()));
             int hours = notificationLoadHours(row);
-            if (row.getStudyPeriod() == org.school.personalLoad.model.StudyPeriod.H1) sl.h1 += hours;
-            else if (row.getStudyPeriod() == org.school.personalLoad.model.StudyPeriod.H2) sl.h2 += hours;
+            org.school.personalLoad.model.StudyPeriod period = notificationStudyPeriod(row);
+            if (period == org.school.personalLoad.model.StudyPeriod.H1) sl.h1 += hours;
+            else if (period == org.school.personalLoad.model.StudyPeriod.H2) sl.h2 += hours;
             else { sl.h1 += hours; sl.h2 += hours; }
         }
         map.values().forEach(SubjectLoad::finalizeDisplay);
@@ -283,6 +285,24 @@ public class TeacherNotificationsController {
         }
         return Optional.ofNullable(row.getGroupLoad())
                 .orElseGet(() -> Optional.ofNullable(row.getLoad()).orElse(0));
+    }
+
+    private org.school.personalLoad.model.StudyPeriod notificationStudyPeriod(ManualLoadEntry row) {
+        if (row == null || row.getStudyPeriod() != null) {
+            return row == null ? org.school.personalLoad.model.StudyPeriod.YEAR : row.getStudyPeriod();
+        }
+        LocalDate from = row.getLoadFromDate();
+        LocalDate to = row.getLoadToDate();
+        if (from == null || to == null) {
+            return org.school.personalLoad.model.StudyPeriod.YEAR;
+        }
+        if (from.getMonthValue() >= 9 && to.getMonthValue() <= 12 && from.getYear() == to.getYear()) {
+            return org.school.personalLoad.model.StudyPeriod.H1;
+        }
+        if (from.getMonthValue() >= 1 && to.getMonthValue() <= 5 && from.getYear() == to.getYear()) {
+            return org.school.personalLoad.model.StudyPeriod.H2;
+        }
+        return org.school.personalLoad.model.StudyPeriod.YEAR;
     }
 
     private LocalDate defaultLoadDate(String academicYear, String loadDate) {
@@ -336,12 +356,44 @@ public class TeacherNotificationsController {
     List<ManualLoadEntry> activeRows(String year, LocalDate d) {
         return manualLoadEntryRepository.findAllByAcademicYear(year).stream()
                 .filter(r -> notificationLoadHours(r) > 0)
-                .filter(r -> r.getLoadFromDate() == null || !r.getLoadFromDate().isAfter(d))
-                .filter(r -> r.getLoadToDate() == null || !r.getLoadToDate().isBefore(d))
+                .filter(r -> isPeriodScopedNotificationRow(year, r) || r.getLoadFromDate() == null || !r.getLoadFromDate().isAfter(d))
+                .filter(r -> isPeriodScopedNotificationRow(year, r) || r.getLoadToDate() == null || !r.getLoadToDate().isBefore(d))
                 .collect(Collectors.collectingAndThen(
                         Collectors.toMap(this::notificationRowKey, r -> r, (first, second) -> first, LinkedHashMap::new),
                         map -> new ArrayList<>(map.values())
                 ));
+    }
+
+    private boolean isPeriodScopedNotificationRow(String academicYear, ManualLoadEntry row) {
+        if (row == null) {
+            return false;
+        }
+        org.school.personalLoad.model.StudyPeriod period = notificationStudyPeriod(row);
+        if (period == org.school.personalLoad.model.StudyPeriod.H1 || period == org.school.personalLoad.model.StudyPeriod.H2) {
+            return true;
+        }
+        LocalDate from = row.getLoadFromDate();
+        LocalDate to = row.getLoadToDate();
+        LocalDate yearStart = academicYearStart(academicYear);
+        LocalDate yearEnd = academicYearEnd(academicYear);
+        return from != null && to != null && yearStart != null && yearEnd != null
+                && !from.isAfter(yearStart) && !to.isBefore(yearStart) && !to.isAfter(yearEnd);
+    }
+
+    private LocalDate academicYearStart(String academicYear) {
+        try {
+            return LocalDate.of(Integer.parseInt(String.valueOf(academicYear).substring(0, 4)), 9, 1);
+        } catch (RuntimeException ex) {
+            return null;
+        }
+    }
+
+    private LocalDate academicYearEnd(String academicYear) {
+        try {
+            return LocalDate.of(Integer.parseInt(String.valueOf(academicYear).substring(5)), 5, 31);
+        } catch (RuntimeException ex) {
+            return null;
+        }
     }
 
     private String notificationRowKey(ManualLoadEntry row) {
