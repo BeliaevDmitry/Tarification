@@ -209,6 +209,7 @@ public class ContingentServiceImpl implements ContingentService {
         allClassNames.addAll(importedCountByClass.keySet());
 
         Map<Integer, Integer> totalByParallel = new TreeMap<>();
+        Map<Integer, Integer> classCountByParallel = new TreeMap<>();
         Map<String, Integer> totalByAddress = new LinkedHashMap<>();
         Map<String, List<ContingentDtos.ClassTotal>> classesByAddress = new LinkedHashMap<>();
 
@@ -230,6 +231,7 @@ public class ContingentServiceImpl implements ContingentService {
             classTotals.add(created);
 
             totalByParallel.merge(parallel, students, Integer::sum);
+            classCountByParallel.merge(parallel, 1, Integer::sum);
             totalByAddress.merge(addressKey, students, Integer::sum);
         }
 
@@ -276,6 +278,7 @@ public class ContingentServiceImpl implements ContingentService {
             ContingentDtos.ParallelTotal total = new ContingentDtos.ParallelTotal();
             total.setParallel(entry.getKey());
             total.setTotalStudents(entry.getValue());
+            total.setTotalClasses(classCountByParallel.getOrDefault(entry.getKey(), 0));
             return total;
         }).toList();
 
@@ -283,10 +286,23 @@ public class ContingentServiceImpl implements ContingentService {
         response.setSnapshotId(snapshot.getId());
         response.setSnapshotDate(snapshot.getSnapshotDate());
         response.setTotalStudents(totalByParallel.values().stream().mapToInt(Integer::intValue).sum());
+        response.setTotalClassesNoo(classCountByStage(classCountByParallel, 1, 4));
+        response.setTotalClassesOoo(classCountByStage(classCountByParallel, 5, 9));
+        response.setTotalClassesSoo(classCountByStage(classCountByParallel, 10, 11));
         response.setParallels(new ArrayList<>(totalByParallel.keySet()));
         response.setColumns(columns);
         response.setParallelTotals(parallelTotals);
         return response;
+    }
+
+    private int classCountByStage(Map<Integer, Integer> classCountByParallel, int from, int to) {
+        if (classCountByParallel == null) {
+            return 0;
+        }
+        return classCountByParallel.entrySet().stream()
+                .filter(entry -> entry.getKey() != null && entry.getKey() >= from && entry.getKey() <= to)
+                .mapToInt(entry -> entry.getValue() == null ? 0 : entry.getValue())
+                .sum();
     }
 
 
@@ -315,7 +331,7 @@ public class ContingentServiceImpl implements ContingentService {
 
     private void writeBuildingStatsSheet(Workbook workbook, ContingentDtos.StatsResponse stats, ContingentWorkbookStyles styles) {
         Sheet sheet = workbook.createSheet("По СП");
-        int lastCol = Math.max(3, 1 + stats.getColumns().stream()
+        int lastCol = Math.max(4, 2 + stats.getColumns().stream()
                 .mapToInt(building -> Math.max(0, building.getAddresses().size()) * 2)
                 .sum());
 
@@ -330,10 +346,13 @@ public class ContingentServiceImpl implements ContingentService {
         createCell(h1, 1, "Всего детей", styles.header());
         createCell(h2, 0, "", styles.header());
         createCell(h2, 1, "", styles.header());
+        createCell(h1, 2, "Всего классов", styles.header());
+        createCell(h2, 2, "", styles.header());
         merge(sheet, new CellRangeAddress(1, 2, 0, 0));
         merge(sheet, new CellRangeAddress(1, 2, 1, 1));
+        merge(sheet, new CellRangeAddress(1, 2, 2, 2));
 
-        int col = 2;
+        int col = 3;
         for (ContingentDtos.BuildingColumn building : stats.getColumns()) {
             int start = col;
             for (ContingentDtos.AddressColumn address : building.getAddresses()) {
@@ -353,6 +372,8 @@ public class ContingentServiceImpl implements ContingentService {
 
         Map<Integer, Integer> totalByParallel = stats.getParallelTotals().stream()
                 .collect(java.util.stream.Collectors.toMap(ContingentDtos.ParallelTotal::getParallel, ContingentDtos.ParallelTotal::getTotalStudents));
+        Map<Integer, Integer> classCountByParallel = stats.getParallelTotals().stream()
+                .collect(java.util.stream.Collectors.toMap(ContingentDtos.ParallelTotal::getParallel, total -> total.getTotalClasses() == null ? 0 : total.getTotalClasses()));
 
         for (Integer parallel : stats.getParallels()) {
             List<List<ContingentDtos.ClassTotal>> perAddress = new ArrayList<>();
@@ -361,13 +382,14 @@ public class ContingentServiceImpl implements ContingentService {
                     perAddress.add(classesForParallel(address.getClasses(), parallel));
                 }
             }
-            rowIdx = writeParallelRows(sheet, rowIdx, parallel, totalByParallel.getOrDefault(parallel, 0), perAddress, styles);
+            rowIdx = writeParallelRows(sheet, rowIdx, parallel, totalByParallel.getOrDefault(parallel, 0), classCountByParallel.getOrDefault(parallel, 0), perAddress, styles);
         }
 
         Row totalRow = sheet.createRow(rowIdx);
         createCell(totalRow, 0, "ИТОГО", styles.total());
         createCell(totalRow, 1, stats.getTotalStudents(), styles.total());
-        int totalCol = 2;
+        createCell(totalRow, 2, stats.getParallelTotals().stream().mapToInt(total -> total.getTotalClasses() == null ? 0 : total.getTotalClasses()).sum(), styles.total());
+        int totalCol = 3;
         for (ContingentDtos.BuildingColumn building : stats.getColumns()) {
             for (ContingentDtos.AddressColumn address : building.getAddresses()) {
                 createCell(totalRow, totalCol, "", styles.total());
@@ -376,13 +398,14 @@ public class ContingentServiceImpl implements ContingentService {
             }
         }
 
+        writeStageClassSummaryRow(sheet, rowIdx + 1, totalCol, stats, styles);
         finishContingentSheet(sheet, Math.max(totalCol, 4), 3);
     }
 
     private void writeAddressStatsSheet(Workbook workbook, ContingentDtos.StatsResponse stats, ContingentWorkbookStyles styles) {
         Sheet sheet = workbook.createSheet("По адресам");
         List<AddressStatsColumn> addresses = addressStatsColumns(stats);
-        int lastCol = Math.max(3, 1 + addresses.size() * 2);
+        int lastCol = Math.max(4, 2 + addresses.size() * 2);
 
         int rowIdx = 0;
         Row title = sheet.createRow(rowIdx++);
@@ -392,7 +415,8 @@ public class ContingentServiceImpl implements ContingentService {
         Row header = sheet.createRow(rowIdx++);
         createCell(header, 0, "Параллель", styles.header());
         createCell(header, 1, "Всего детей", styles.header());
-        int col = 2;
+        createCell(header, 2, "Всего классов", styles.header());
+        int col = 3;
         for (AddressStatsColumn address : addresses) {
             createCell(header, col, address.address(), styles.header());
             createCell(header, col + 1, "", styles.header());
@@ -402,31 +426,60 @@ public class ContingentServiceImpl implements ContingentService {
 
         Map<Integer, Integer> totalByParallel = stats.getParallelTotals().stream()
                 .collect(java.util.stream.Collectors.toMap(ContingentDtos.ParallelTotal::getParallel, ContingentDtos.ParallelTotal::getTotalStudents));
+        Map<Integer, Integer> classCountByParallel = stats.getParallelTotals().stream()
+                .collect(java.util.stream.Collectors.toMap(ContingentDtos.ParallelTotal::getParallel, total -> total.getTotalClasses() == null ? 0 : total.getTotalClasses()));
 
         for (Integer parallel : stats.getParallels()) {
             List<List<ContingentDtos.ClassTotal>> perAddress = addresses.stream()
                     .map(address -> classesForParallel(address.classes(), parallel))
                     .toList();
-            rowIdx = writeParallelRows(sheet, rowIdx, parallel, totalByParallel.getOrDefault(parallel, 0), perAddress, styles);
+            rowIdx = writeParallelRows(sheet, rowIdx, parallel, totalByParallel.getOrDefault(parallel, 0), classCountByParallel.getOrDefault(parallel, 0), perAddress, styles);
         }
 
         Row totalRow = sheet.createRow(rowIdx);
         createCell(totalRow, 0, "ИТОГО", styles.total());
         createCell(totalRow, 1, stats.getTotalStudents(), styles.total());
-        int totalCol = 2;
+        createCell(totalRow, 2, stats.getParallelTotals().stream().mapToInt(total -> total.getTotalClasses() == null ? 0 : total.getTotalClasses()).sum(), styles.total());
+        int totalCol = 3;
         for (AddressStatsColumn address : addresses) {
             createCell(totalRow, totalCol, "", styles.total());
             createCell(totalRow, totalCol + 1, address.totalStudents(), styles.total());
             totalCol += 2;
         }
 
+        writeStageClassSummaryRow(sheet, rowIdx + 1, totalCol, stats, styles);
         finishContingentSheet(sheet, Math.max(totalCol, 4), 2);
+    }
+
+    private void writeStageClassSummaryRow(Sheet sheet,
+                                           int rowIdx,
+                                           int totalCol,
+                                           ContingentDtos.StatsResponse stats,
+                                           ContingentWorkbookStyles styles) {
+        Row stageRow = sheet.createRow(rowIdx);
+        createCell(stageRow, 0, "Классов по уровням", styles.total());
+        createCell(stageRow, 1, "", styles.total());
+        createCell(stageRow, 2, stageClassSummary(stats), styles.total());
+        for (int col = 3; col < totalCol; col++) {
+            createCell(stageRow, col, "", styles.total());
+        }
+    }
+
+    private String stageClassSummary(ContingentDtos.StatsResponse stats) {
+        return "НОО: " + zeroIfNull(stats.getTotalClassesNoo())
+                + "; ООО: " + zeroIfNull(stats.getTotalClassesOoo())
+                + "; СОО: " + zeroIfNull(stats.getTotalClassesSoo());
+    }
+
+    private int zeroIfNull(Integer value) {
+        return value == null ? 0 : value;
     }
 
     private int writeParallelRows(Sheet sheet,
                                   int rowIdx,
                                   Integer parallel,
                                   Integer totalStudents,
+                                  Integer totalClasses,
                                   List<List<ContingentDtos.ClassTotal>> groupedClasses,
                                   ContingentWorkbookStyles styles) {
         int lines = Math.max(1, groupedClasses.stream().mapToInt(List::size).max().orElse(1));
@@ -436,11 +489,13 @@ public class ContingentServiceImpl implements ContingentService {
             if (i == 0) {
                 createCell(row, 0, parallel, styles.number());
                 createCell(row, 1, totalStudents, styles.number());
+                createCell(row, 2, totalClasses, styles.number());
             } else {
                 createCell(row, 0, "", styles.number());
                 createCell(row, 1, "", styles.number());
+                createCell(row, 2, "", styles.number());
             }
-            int dataCol = 2;
+            int dataCol = 3;
             for (List<ContingentDtos.ClassTotal> rows : groupedClasses) {
                 ContingentDtos.ClassTotal item = i < rows.size() ? rows.get(i) : null;
                 createCell(row, dataCol, item == null ? "" : item.getClassName(), styles.text());
@@ -452,6 +507,7 @@ public class ContingentServiceImpl implements ContingentService {
         if (lines > 1) {
             merge(sheet, new CellRangeAddress(startRow, rowIdx - 1, 0, 0));
             merge(sheet, new CellRangeAddress(startRow, rowIdx - 1, 1, 1));
+            merge(sheet, new CellRangeAddress(startRow, rowIdx - 1, 2, 2));
         }
         return rowIdx;
     }
@@ -489,12 +545,12 @@ public class ContingentServiceImpl implements ContingentService {
     }
 
     private void finishContingentSheet(Sheet sheet, int columns, int headerRows) {
-        sheet.createFreezePane(2, headerRows);
+        sheet.createFreezePane(3, headerRows);
         for (int i = 0; i < columns; i++) {
             sheet.autoSizeColumn(i);
             int width = sheet.getColumnWidth(i);
-            int minWidth = i < 2 ? 14 * 256 : 12 * 256;
-            int maxWidth = i < 2 ? 18 * 256 : 28 * 256;
+            int minWidth = i < 3 ? 14 * 256 : 12 * 256;
+            int maxWidth = i < 3 ? 18 * 256 : 28 * 256;
             sheet.setColumnWidth(i, Math.min(Math.max(width + 512, minWidth), maxWidth));
         }
     }

@@ -13,6 +13,7 @@ import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.service.CurriculumImportService;
+import org.school.personalLoad.service.ClassSizeService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.school.personalLoad.util.CurriculumLoadStandard;
 import org.springframework.stereotype.Service;
@@ -35,6 +36,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     private final TeacherDirectoryRepository teacherRepository;
     private final SubjectCatalogRepository subjectCatalogRepository;
     private final StudyPeriodSettingService studyPeriodSettingService;
+    private final ClassSizeService classSizeService;
 
 
     @Override
@@ -243,6 +245,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 .values().stream()
                 .sorted((left, right) -> compareClassKeysForExport(left.key(), right.key()))
                 .toList();
+        Map<String, Integer> classSizes = classSizeService.effectiveClassSizes(academicYear);
 
         Sheet sheet = workbook.createSheet(org.apache.poi.ss.util.WorkbookUtil.createSafeSheetName(sheetName));
         CellStyle headerStyle = departmentStyle(workbook, true, IndexedColors.GREY_25_PERCENT);
@@ -262,8 +265,16 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             cell.setCellValue(classColumns.get(index).className());
             cell.setCellStyle(headerStyle);
         }
+        Row classSizeRow = sheet.createRow(2);
+        classSizeRow.createCell(0).setCellValue("Численность");
+        classSizeRow.getCell(0).setCellStyle(headerStyle);
+        for (int index = 0; index < classColumns.size(); index++) {
+            Cell cell = classSizeRow.createCell(index + 1);
+            cell.setCellValue(classSizeFor(classSizes, classColumns.get(index).className()));
+            cell.setCellStyle(headerStyle);
+        }
 
-        int rowNum = 2;
+        int rowNum = 3;
         for (CurriculumPart part : List.of(CurriculumPart.CORE, CurriculumPart.FORMABLE, CurriculumPart.EXTRACURRICULAR, CurriculumPart.CORRECTIONAL)) {
             List<CurriculumPlanEntry> partEntries = entries.stream()
                     .filter(entry -> (entry.getCurriculumPart() == null ? CurriculumPart.CORE : entry.getCurriculumPart()) == part)
@@ -305,7 +316,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 }
             }
         }
-        sheet.createFreezePane(1, 2);
+        sheet.createFreezePane(1, 3);
         sheet.setColumnWidth(0, 12000);
         for (int index = 1; index <= classColumns.size(); index++) sheet.setColumnWidth(index, 3500);
     }
@@ -385,6 +396,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 .values().stream()
                 .sorted((left, right) -> compareClassKeysForExport(left.key(), right.key()))
                 .toList();
+        Map<String, Integer> exportClassSizes = classSizeService.effectiveClassSizes(academicYear);
 
         CellStyle titleStyle = workbook.createCellStyle();
         Font titleFont = workbook.createFont();
@@ -464,7 +476,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         writeMetaRow(sheet, 4, "ФИО классного руководителя", classColumns, column -> Optional.ofNullable(classDirectory.get(column.key())).map(ClassroomLeadershipEntry::getFioTeacher).orElse(""), metaStyle);
         writeMetaRow(sheet, 5, "Класс", classColumns, ClassColumn::className, metaStyle);
 
-        int rowNum = 6;
+        writeMetaRow(sheet, 6, "Численность", classColumns, column -> classSizeFor(exportClassSizes, column.className()), metaStyle);
+
+        int rowNum = 7;
         for (CurriculumPart part : List.of(CurriculumPart.CORE, CurriculumPart.FORMABLE, CurriculumPart.EXTRACURRICULAR, CurriculumPart.CORRECTIONAL)) {
             List<CurriculumPlanEntry> partEntries = entries.stream()
                     .filter(e -> (e.getCurriculumPart() == null ? CurriculumPart.CORE : e.getCurriculumPart()) == part)
@@ -519,7 +533,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 if (cell.getCellStyle() == null || cell.getCellStyle().getIndex() == 0) cell.setCellStyle(baseStyle);
             }
         }
-        sheet.createFreezePane(2, 6);
+        sheet.createFreezePane(2, 7);
         sheet.setColumnWidth(0, 8500);
         sheet.setColumnWidth(1, 9000);
         for (int c = 2; c <= classColumns.size() + 1; c++) {
@@ -752,6 +766,23 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         return value.stripTrailingZeros().toPlainString();
     }
 
+    private String classSizeFor(Map<String, Integer> classSizes, String className) {
+        if (isExplicitMetaGroupClassName(className)) {
+            return "";
+        }
+        Integer value = classSizes == null ? null : classSizes.get(classSizeKey(className));
+        return String.valueOf(value == null ? 30 : value);
+    }
+
+    private String classSizeKey(String className) {
+        return ClassNameNormalizer.normalize(className)
+                .toLowerCase(Locale.ROOT)
+                .replace('ё', 'е')
+                .replaceAll("\\s+", "")
+                .replace('–', '-')
+                .replace('—', '-');
+    }
+
     private void setThinBorders(CellStyle style) {
         style.setBorderTop(BorderStyle.THIN);
         style.setBorderBottom(BorderStyle.THIN);
@@ -776,6 +807,12 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 .distinct()
                 .sorted(this::compareClassKeysForExport)
                 .toList();
+        Map<String, Integer> classSizes = entries.stream()
+                .map(CurriculumPlanEntry::getAcademicYear)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .map(classSizeService::effectiveClassSizes)
+                .orElseGet(Map::of);
 
         CellStyle headerStyle = workbook.createCellStyle();
         Font bold = workbook.createFont();
@@ -802,10 +839,15 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
 
         Row buildingRow = sheet.createRow(1);
         Row classRow = sheet.createRow(2);
+        Row classSizeRow = sheet.createRow(3);
         classRow.createCell(0).setCellValue("Блок / область");
         classRow.createCell(1).setCellValue("Предмет");
         classRow.getCell(0).setCellStyle(headerStyle);
         classRow.getCell(1).setCellStyle(headerStyle);
+        classSizeRow.createCell(0).setCellValue("Численность");
+        classSizeRow.createCell(1).setCellValue("");
+        classSizeRow.getCell(0).setCellStyle(headerStyle);
+        classSizeRow.getCell(1).setCellStyle(headerStyle);
 
         String prevBuilding = null;
         int buildingStart = 1;
@@ -816,7 +858,9 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             int col = i + 2;
             buildingRow.createCell(col).setCellValue(building);
             classRow.createCell(col).setCellValue(className);
+            classSizeRow.createCell(col).setCellValue(classSizeFor(classSizes, className));
             classRow.getCell(col).setCellStyle(headerStyle);
+            classSizeRow.getCell(col).setCellStyle(headerStyle);
             if (!Objects.equals(prevBuilding, building)) {
                 if (prevBuilding != null && col - 1 > buildingStart) {
                     sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(1, 1, buildingStart, col - 1));
@@ -829,7 +873,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
             sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(1, 1, buildingStart, classes.size()));
         }
 
-        int rowNum = 3;
+        int rowNum = 4;
         Map<String, List<CurriculumPlanEntry>> byPartSubject = new LinkedHashMap<>();
         entries.forEach(e -> {
             String key = (e.getCurriculumPart() == null ? CurriculumPart.CORE : e.getCurriculumPart()) + "|" + normalizeSubject(e.getSubjectName());
@@ -952,6 +996,7 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
         for (int i = 2; i <= classes.size() + 1; i++) {
             sheet.setColumnWidth(i, 2600);
         }
+        sheet.createFreezePane(2, 4);
         return rowNum;
     }
 

@@ -26,6 +26,10 @@ const esc = (v) => String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt
 let currentStats = null;
 let currentManualRows = [];
 
+function stageClassSummary(stats) {
+    return `НОО: ${Number(stats?.totalClassesNoo || 0)}; ООО: ${Number(stats?.totalClassesOoo || 0)}; СОО: ${Number(stats?.totalClassesSoo || 0)}`;
+}
+
 function contingentPermissions() {
     const permissions = window.tarificationTabPermissions || {};
     if (window.tarificationAuth?.admin) {
@@ -118,6 +122,8 @@ function renderStatsTable(stats) {
     const columns = stats?.columns || [];
     const parallels = stats?.parallels || [];
     const totalByParallel = Object.fromEntries((stats?.parallelTotals || []).map((x) => [x.parallel, x.totalStudents]));
+    const classCountByParallel = Object.fromEntries((stats?.parallelTotals || []).map((x) => [x.parallel, x.totalClasses || 0]));
+    const totalClasses = (stats?.parallelTotals || []).reduce((sum, x) => sum + Number(x.totalClasses || 0), 0);
 
     const buildingHeader = columns.map((building) => {
         const addressSpan = Math.max((building.addresses || []).length * 2, 0);
@@ -134,6 +140,7 @@ function renderStatsTable(stats) {
             <tr>
                 <th rowspan="2">Параллель</th>
                 <th rowspan="2">Всего детей</th>
+                <th rowspan="2">Всего классов</th>
                 ${buildingHeader}
             </tr>
             <tr>${addressHeader}</tr>
@@ -155,6 +162,7 @@ function renderStatsTable(stats) {
             if (i === 0) {
                 row += `<th rowspan="${rowCount}">${esc(parallel)}</th>`;
                 row += `<th rowspan="${rowCount}">${esc(totalByParallel[parallel] || 0)}</th>`;
+                row += `<th rowspan="${rowCount}">${esc(classCountByParallel[parallel] || 0)}</th>`;
             }
 
             perBuilding.forEach((buildingData) => {
@@ -183,11 +191,18 @@ function renderStatsTable(stats) {
         const buildingClasses = (building.addresses || []).reduce((sum, address) => sum + (address.classes || []).length, 0);
         return `${addressCells}<th>${esc(buildingClasses)}</th>`;
     }).join('');
+    const footerStageCells = columns.map((building) => {
+        const addressCells = (building.addresses || []).map(() => '<th></th><th></th>').join('');
+        return `${addressCells}<th></th>`;
+    }).join('');
 
     const footerTotalRow = `<tr><th>ИТОГО</th><th>${esc(stats?.totalStudents || 0)}</th>${footerTotals}</tr>`;
     const footerClassRow = `<tr><th>Классов</th><th></th>${footerClasses}</tr>`;
 
-    ui.statsTable.innerHTML = `${thead}<tbody>${tbodyRows.join('')}${footerTotalRow}${footerClassRow}</tbody>`;
+    const footerTotalRowWithClasses = `<tr><th>ИТОГО</th><th>${esc(stats?.totalStudents || 0)}</th><th>${esc(totalClasses)}</th>${footerTotals}</tr>`;
+    const footerClassRowWithClasses = `<tr><th>Классов</th><th></th><th>${esc(totalClasses)}</th>${footerClasses}</tr>`;
+    const footerStageRow = `<tr><th>По уровням</th><th></th><th>${esc(stageClassSummary(stats))}</th>${footerStageCells}</tr>`;
+    ui.statsTable.innerHTML = `${thead}<tbody>${tbodyRows.join('')}${footerTotalRowWithClasses}${footerClassRowWithClasses}${footerStageRow}</tbody>`;
 }
 
 
@@ -222,6 +237,8 @@ function renderStatsAddressTable(stats) {
     const addresses = addressColumns(stats);
     const parallels = stats?.parallels || [];
     const totalByParallel = Object.fromEntries((stats?.parallelTotals || []).map((x) => [x.parallel, x.totalStudents]));
+    const classCountByParallel = Object.fromEntries((stats?.parallelTotals || []).map((x) => [x.parallel, x.totalClasses || 0]));
+    const totalClasses = (stats?.parallelTotals || []).reduce((sum, x) => sum + Number(x.totalClasses || 0), 0);
 
     const addressHeader = addresses.map((address) => `<th colspan="2">${esc(address.address)}</th>`).join('');
 
@@ -230,6 +247,7 @@ function renderStatsAddressTable(stats) {
             <tr>
                 <th>Параллель</th>
                 <th>Всего детей</th>
+                <th>Всего классов</th>
                 ${addressHeader}
             </tr>
         </thead>`;
@@ -243,6 +261,7 @@ function renderStatsAddressTable(stats) {
             if (i === 0) {
                 row += `<th rowspan="${rowCount}">${esc(parallel)}</th>`;
                 row += `<th rowspan="${rowCount}">${esc(totalByParallel[parallel] || 0)}</th>`;
+                row += `<th rowspan="${rowCount}">${esc(classCountByParallel[parallel] || 0)}</th>`;
             }
             perAddress.forEach((rows) => {
                 const item = rows[i];
@@ -256,10 +275,14 @@ function renderStatsAddressTable(stats) {
 
     const footerTotals = addresses.map((address) => `<th></th><th>${esc(address.totalStudents || 0)}</th>`).join('');
     const footerClasses = addresses.map((address) => `<th></th><th>${esc((address.classes || []).length)}</th>`).join('');
+    const footerStageCells = addresses.map(() => '<th></th><th></th>').join('');
     const footerTotalRow = `<tr><th>ИТОГО</th><th>${esc(stats?.totalStudents || 0)}</th>${footerTotals}</tr>`;
     const footerClassRow = `<tr><th>Классов</th><th></th>${footerClasses}</tr>`;
 
-    ui.statsTable.innerHTML = `${thead}<tbody>${tbodyRows.join('')}${footerTotalRow}${footerClassRow}</tbody>`;
+    const footerTotalRowWithClasses = `<tr><th>ИТОГО</th><th>${esc(stats?.totalStudents || 0)}</th><th>${esc(totalClasses)}</th>${footerTotals}</tr>`;
+    const footerClassRowWithClasses = `<tr><th>Классов</th><th></th><th>${esc(totalClasses)}</th>${footerClasses}</tr>`;
+    const footerStageRow = `<tr><th>По уровням</th><th></th><th>${esc(stageClassSummary(stats))}</th>${footerStageCells}</tr>`;
+    ui.statsTable.innerHTML = `${thead}<tbody>${tbodyRows.join('')}${footerTotalRowWithClasses}${footerClassRowWithClasses}${footerStageRow}</tbody>`;
 }
 
 function renderManualTable(response) {
@@ -347,7 +370,8 @@ async function refreshStats() {
     const selectedDate = ui.snapshotDateSelect.value;
     const query = selectedDate ? `?snapshotDate=${encodeURIComponent(selectedDate)}` : '';
     currentStats = await api(`/api/contingent/stats${query}`);
-    ui.statsSummary.textContent = `Данные по состоянию на ${currentStats.snapshotDate}. Всего учащихся: ${currentStats.totalStudents}. Для классов без численности применяется значение 30 человек.`;
+    const totalClasses = (currentStats?.parallelTotals || []).reduce((sum, x) => sum + Number(x.totalClasses || 0), 0);
+    ui.statsSummary.textContent = `Данные по состоянию на ${currentStats.snapshotDate}. Всего учащихся: ${currentStats.totalStudents}. Всего классов: ${totalClasses} (${stageClassSummary(currentStats)}). Для классов без численности применяется значение 30 человек.`;
     renderStatsTable(currentStats);
 }
 

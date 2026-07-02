@@ -25,6 +25,7 @@ import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
+import org.school.personalLoad.service.ClassSizeService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
 
 import java.io.ByteArrayInputStream;
@@ -58,6 +59,8 @@ class CurriculumImportServiceImplParallelExportTest {
     private SubjectCatalogRepository subjectCatalogRepository;
     @Mock
     private StudyPeriodSettingService studyPeriodSettingService;
+    @Mock
+    private ClassSizeService classSizeService;
 
     private CurriculumImportServiceImpl service;
 
@@ -70,7 +73,8 @@ class CurriculumImportServiceImplParallelExportTest {
                 manualLoadRepository,
                 teacherRepository,
                 subjectCatalogRepository,
-                studyPeriodSettingService
+                studyPeriodSettingService,
+                classSizeService
         );
     }
 
@@ -100,21 +104,23 @@ class CurriculumImportServiceImplParallelExportTest {
             assertEquals("Математический", sheet.getRow(3).getCell(2).getStringCellValue());
             assertEquals("Иванов И.И.", sheet.getRow(4).getCell(2).getStringCellValue());
             assertEquals("7-А", sheet.getRow(5).getCell(2).getStringCellValue());
-            assertEquals("Обязательная часть", sheet.getRow(6).getCell(0).getStringCellValue());
-            assertEquals("Математика и информатика", sheet.getRow(7).getCell(0).getStringCellValue());
-            assertEquals("Алгебра", sheet.getRow(7).getCell(1).getStringCellValue());
-            assertEquals("3/4", sheet.getRow(7).getCell(2).getStringCellValue());
-            assertEquals("5", sheet.getRow(7).getCell(3).getStringCellValue());
-            assertEquals("Итого основная часть", sheet.getRow(8).getCell(0).getStringCellValue());
+            assertEquals("Численность", sheet.getRow(6).getCell(0).getStringCellValue());
+            assertEquals("30", sheet.getRow(6).getCell(2).getStringCellValue());
+            assertEquals("Обязательная часть", sheet.getRow(7).getCell(0).getStringCellValue());
+            assertEquals("Математика и информатика", sheet.getRow(8).getCell(0).getStringCellValue());
+            assertEquals("Алгебра", sheet.getRow(8).getCell(1).getStringCellValue());
             assertEquals("3/4", sheet.getRow(8).getCell(2).getStringCellValue());
             assertEquals("5", sheet.getRow(8).getCell(3).getStringCellValue());
-            assertEquals("Итого формируемая часть", sheet.getRow(9).getCell(0).getStringCellValue());
-            assertEquals("", sheet.getRow(9).getCell(2).getStringCellValue());
-            assertEquals("Итого основная+формируемая часть", sheet.getRow(10).getCell(0).getStringCellValue());
-            assertEquals("3/4", sheet.getRow(10).getCell(2).getStringCellValue());
-            assertEquals("Максимальная нагрузка", sheet.getRow(11).getCell(0).getStringCellValue());
-            assertEquals("32", sheet.getRow(11).getCell(2).getStringCellValue());
-            assertEquals("Итого внеурочная часть", sheet.getRow(12).getCell(0).getStringCellValue());
+            assertEquals("Итого основная часть", sheet.getRow(9).getCell(0).getStringCellValue());
+            assertEquals("3/4", sheet.getRow(9).getCell(2).getStringCellValue());
+            assertEquals("5", sheet.getRow(9).getCell(3).getStringCellValue());
+            assertEquals("Итого формируемая часть", sheet.getRow(10).getCell(0).getStringCellValue());
+            assertEquals("", sheet.getRow(10).getCell(2).getStringCellValue());
+            assertEquals("Итого основная+формируемая часть", sheet.getRow(11).getCell(0).getStringCellValue());
+            assertEquals("3/4", sheet.getRow(11).getCell(2).getStringCellValue());
+            assertEquals("Максимальная нагрузка", sheet.getRow(12).getCell(0).getStringCellValue());
+            assertEquals("32", sheet.getRow(12).getCell(2).getStringCellValue());
+            assertEquals("Итого внеурочная часть", sheet.getRow(13).getCell(0).getStringCellValue());
         }
     }
 

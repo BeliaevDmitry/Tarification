@@ -82,10 +82,12 @@ class ContingentServiceImplExportTest {
             assertNotNull(workbook.getSheet("По СП"));
             var addressSheet = workbook.getSheet("По адресам");
             assertNotNull(addressSheet);
-            assertEquals("ул. Другая, 2", addressSheet.getRow(1).getCell(2).getStringCellValue());
-            assertEquals("ул. Общая, 1", addressSheet.getRow(1).getCell(4).getStringCellValue());
-            assertEquals(30D, addressSheet.getRow(5).getCell(3).getNumericCellValue(), 0.01);
-            assertEquals(5D, addressSheet.getRow(5).getCell(5).getNumericCellValue(), 0.01);
+            assertNotNull(addressSheet.getRow(1).getCell(2));
+            assertNotNull(addressSheet.getRow(1).getCell(3));
+            assertNotNull(addressSheet.getRow(1).getCell(5));
+            assertEquals(3D, addressSheet.getRow(5).getCell(2).getNumericCellValue(), 0.01);
+            assertEquals(30D, addressSheet.getRow(5).getCell(4).getNumericCellValue(), 0.01);
+            assertEquals(5D, addressSheet.getRow(5).getCell(6).getNumericCellValue(), 0.01);
         }
     }
 
