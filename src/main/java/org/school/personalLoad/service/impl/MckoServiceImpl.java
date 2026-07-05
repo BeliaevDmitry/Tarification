@@ -79,7 +79,7 @@ public class MckoServiceImpl implements MckoService {
             for (int i = header.headerRow() + 1; i <= sheet.getLastRowNum(); i++) {
                 Row row = sheet.getRow(i);
                 if (row == null) continue;
-                String fio = cell(row, header.required("фио педагогов"));
+                String fio = cell(row, header.requiredAny("фио педагогов", "фио"));
                 if (fio.isBlank()) continue;
                 total++;
                 String examType = cell(row, header.required("тип экзамена"));
@@ -89,6 +89,7 @@ public class MckoServiceImpl implements MckoService {
                 boolean published = parsePublished(cell(row, header.required("публикация результатов")));
                 if (!ALLOWED_EXAM_TYPES.contains(normalize(examType))) {
                     skipped++;
+                    addWarning(warnings, "Строка " + (i + 1) + ": пропущен тип экзамена «" + examType + "»");
                     continue;
                 }
                 TeacherDirectoryEntry teacher = teachers.get(normalize(fio));
@@ -335,7 +336,7 @@ public class MckoServiceImpl implements MckoService {
                 String value = normalize(cell(row, c));
                 if (!value.isBlank()) index.put(value, c);
             }
-            if (index.containsKey("фио педагогов") && index.containsKey("дата диагностики")) {
+            if ((index.containsKey("фио педагогов") || index.containsKey("фио")) && index.containsKey("дата диагностики")) {
                 return new HeaderIndex(r, index);
             }
         }
@@ -355,8 +356,11 @@ public class MckoServiceImpl implements MckoService {
 
     private LocalDate dateCell(Row row, int index) {
         Cell cell = row.getCell(index);
-        if (cell != null && cell.getCellType() == CellType.NUMERIC && DateUtil.isCellDateFormatted(cell)) {
-            return cell.getDateCellValue().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+        if (cell != null && cell.getCellType() == CellType.NUMERIC) {
+            double value = cell.getNumericCellValue();
+            if (DateUtil.isCellDateFormatted(cell) || value > 10_000) {
+                return DateUtil.getJavaDate(value).toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+            }
         }
         String text = cell(row, index).trim();
         if (text.isBlank()) return null;
@@ -368,7 +372,11 @@ public class MckoServiceImpl implements MckoService {
 
     private boolean parsePublished(String value) {
         String normalized = normalize(value);
-        return normalized.equals("да") || normalized.equals("опубликовано") || normalized.equals("true") || normalized.equals("1");
+        return normalized.equals("да")
+                || normalized.equals("опубликован")
+                || normalized.equals("опубликовано")
+                || normalized.equals("true")
+                || normalized.equals("1");
     }
 
     private int levelRank(String level) {
@@ -391,11 +399,25 @@ public class MckoServiceImpl implements MckoService {
         return value == null ? "" : value;
     }
 
+    private void addWarning(List<String> warnings, String message) {
+        if (warnings.size() < 30) {
+            warnings.add(message);
+        }
+    }
+
     private record HeaderIndex(int headerRow, Map<String, Integer> columns) {
         int required(String name) {
             Integer index = columns.get(name);
             if (index == null) throw new IllegalArgumentException("Нет колонки: " + name);
             return index;
+        }
+
+        int requiredAny(String... names) {
+            for (String name : names) {
+                Integer index = columns.get(name);
+                if (index != null) return index;
+            }
+            throw new IllegalArgumentException("Нет колонки: " + String.join(" / ", names));
         }
     }
 }
