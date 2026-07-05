@@ -68,6 +68,26 @@ let teacherRows = [];
 let subjectCatalogRows = [];
 let mckoMappings = [];
 let mckoCertificates = [];
+const PRIMARY_MCKO_SUBJECT = "Метапредметные умения (начальное образование)";
+const PRIMARY_MCKO_LABEL = "Начальная школа";
+
+function mckoSubjectCanonical(value) {
+    const text = String(value || "").trim();
+    return text === PRIMARY_MCKO_LABEL ? PRIMARY_MCKO_SUBJECT : text;
+}
+
+function mckoSubjectLabel(value) {
+    const text = String(value || "").trim();
+    return text === PRIMARY_MCKO_SUBJECT ? PRIMARY_MCKO_LABEL : text;
+}
+
+function mckoSubjectCompareKey(value) {
+    return mckoSubjectLabel(value).toLocaleLowerCase("ru");
+}
+
+function sameMckoSubject(left, right) {
+    return mckoSubjectCompareKey(left) === mckoSubjectCompareKey(right);
+}
 
 function currentAuthUser() {
     return window.tarificationAuth || null;
@@ -454,11 +474,14 @@ function renderMckoLoadSubjectOptions() {
 }
 
 function knownMckoSubjects() {
-    return Array.from(new Set([
+    const subjects = new Map();
+    [
+        PRIMARY_MCKO_LABEL,
         ...(mckoMappings || []).map((row) => row.mckoSubject),
         ...(mckoCertificates || []).map((row) => row.mckoSubject)
-    ].map((value) => String(value || "").trim()).filter(Boolean)))
-        .sort((a, b) => a.localeCompare(b, "ru"));
+    ].map(mckoSubjectLabel).map((value) => String(value || "").trim()).filter(Boolean)
+        .forEach((value) => subjects.set(mckoSubjectCompareKey(value), value));
+    return Array.from(subjects.values()).sort((a, b) => a.localeCompare(b, "ru"));
 }
 
 function renderMckoSubjectSelectors() {
@@ -516,7 +539,7 @@ async function reloadMckoMappings() {
     if (!ui.mckoSubjectsBody) return;
     const rows = knownMckoSubjects().map((mckoSubject) => ({
         mckoSubject,
-        mappings: mckoMappings.filter((row) => String(row.mckoSubject || "") === mckoSubject)
+        mappings: mckoMappings.filter((row) => sameMckoSubject(row.mckoSubject, mckoSubject))
     }));
     const optionsHtml = renderMckoLoadSubjectOptions();
     ui.mckoSubjectsBody.innerHTML = rows.map((row, index) => `
@@ -566,7 +589,7 @@ async function importMckoCertificates() {
 async function saveManualMcko(event) {
     event.preventDefault();
     const teacherId = Number(ui.mckoTeacherSelect?.value || 0);
-    const mckoSubject = String(ui.mckoSubjectSelect?.value || "").trim();
+    const mckoSubject = mckoSubjectCanonical(ui.mckoSubjectSelect?.value || "");
     const examType = String(ui.mckoExamType?.value || "").trim();
     const diagnosticDate = ui.mckoDate?.value || "";
     if (!teacherId || !mckoSubject || !examType || !diagnosticDate) {
@@ -594,11 +617,11 @@ async function saveManualMcko(event) {
 async function saveMckoMappingSet(mckoSubject) {
     const subject = String(mckoSubject || "").trim();
     const rows = knownMckoSubjects();
-    const index = rows.findIndex((item) => item === subject);
+    const index = rows.findIndex((item) => sameMckoSubject(item, subject));
     const select = ui.mckoSubjectsBody?.querySelector(`.mcko-load-subjects-multiselect[data-mcko-index="${index}"]`);
     if (!subject || !select) return;
     const selectedIds = new Set(Array.from(select.selectedOptions).map((option) => String(option.value)));
-    const existing = (mckoMappings || []).filter((row) => String(row.mckoSubject || "") === subject);
+    const existing = (mckoMappings || []).filter((row) => sameMckoSubject(row.mckoSubject, subject));
     for (const row of existing) {
         if (!selectedIds.has(String(row.subjectId || ""))) {
             await api(`/api/mcko/subjects/${encodeURIComponent(row.id)}`, { method: "DELETE" });
@@ -610,7 +633,7 @@ async function saveMckoMappingSet(mckoSubject) {
             await api("/api/mcko/subjects", {
                 method: "POST",
                 headers: jsonHeaders,
-                body: JSON.stringify({ mckoSubject: subject, subjectId: Number(subjectId) })
+                body: JSON.stringify({ mckoSubject: mckoSubjectCanonical(subject), subjectId: Number(subjectId) })
             });
         }
     }
