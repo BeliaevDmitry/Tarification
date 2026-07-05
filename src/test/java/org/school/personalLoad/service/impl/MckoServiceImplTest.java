@@ -137,14 +137,49 @@ class MckoServiceImplTest {
     }
 
     @Test
-    void primaryMetaSubjectAllowsAnyCoreSubjectInGradesOneToFour() {
+    void primaryMetaSubjectAllowsMappedCoreSubjectInGradesOneToFour() {
         TeacherDirectoryEntry teacher = teacher(1L, "Иванов Иван Иванович");
         LocalDate today = LocalDate.now();
         MckoCertificate meta = certificate(teacher, "Метапредметные умения (начальное образование)", "Высокий",
                 true, today.minusMonths(1), MckoCertificateSource.IMPORT);
+        MckoSubjectMapping mapping = mapping("Метапредметные умения (начальное образование)", 20L, "Русский язык");
 
         when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(load(teacher, 20L, "Русский язык", "2-Б")));
-        when(mappingRepository.findAll()).thenReturn(List.of());
+        when(mappingRepository.findAll()).thenReturn(List.of(mapping));
+        when(certificateRepository.findAll()).thenReturn(List.of(meta));
+
+        List<MckoDtos.EligibilityRow> rows = service.eligibility("2026/2027");
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).status()).isEqualTo("OK");
+        assertThat(rows.get(0).subjectName()).isEqualTo("Начальная школа");
+    }
+
+    @Test
+    void primaryCoreSubjectWithoutPrimaryMappingIsNotChecked() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Хидирян Армен Кароевич");
+        MckoSubjectMapping mapping = mapping("Метапредметные умения (начальное образование)", 20L, "Русский язык");
+
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027"))
+                .thenReturn(List.of(load(teacher, 31L, "Музыка", "2-Б")));
+        when(mappingRepository.findAll()).thenReturn(List.of(mapping));
+        when(certificateRepository.findAll()).thenReturn(List.of());
+
+        List<MckoDtos.EligibilityRow> rows = service.eligibility("2026/2027");
+
+        assertThat(rows).isEmpty();
+    }
+
+    @Test
+    void primaryAliasMappingUsesMetaSubjectCertificate() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Иванов Иван Иванович");
+        LocalDate today = LocalDate.now();
+        MckoCertificate meta = certificate(teacher, "Метапредметные умения (начальное образование)", "Высокий",
+                true, today.minusMonths(1), MckoCertificateSource.IMPORT);
+        MckoSubjectMapping mapping = mapping("Начальная школа", 20L, "Русский язык");
+
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(load(teacher, 20L, "Русский язык", "2-Б")));
+        when(mappingRepository.findAll()).thenReturn(List.of(mapping));
         when(certificateRepository.findAll()).thenReturn(List.of(meta));
 
         List<MckoDtos.EligibilityRow> rows = service.eligibility("2026/2027");
