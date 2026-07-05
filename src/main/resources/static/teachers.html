@@ -18,7 +18,7 @@
             <a class="nav-link active" href="/teachers.html" data-tab="TEACHERS">Персонал</a>
             <a class="nav-link" href="/teachers.html#archive" data-tab="TEACHERS_ARCHIVE">Архив</a>
             <a class="nav-link" href="/teachers.html#dismissals" data-tab="TEACHERS_DISMISSALS">Увольнения</a>
-            <a class="nav-link" href="/teachers.html#settings" data-tab="TEACHERS_SETTINGS">Настройки</a>
+            <a class="nav-link" href="/teachers.html#settings" data-tab="TEACHERS_SETTINGS">Настройки расчёта ЗП</a>
             <a class="nav-link" href="/service-notes.html" data-tab="SERVICE_NOTES">Служебные записки</a>
             <a class="nav-link" href="/teachers-notification.html" data-tab="HR_NOTIFICATIONS_VIEW">Уведомления</a>
         </nav>
@@ -53,7 +53,7 @@
     <section class="card" id="teachers-content-card" data-requires-edit>
         <h2 id="teachers-section-title">Список педагогов</h2>
         <p class="muted">Если педагог назначен на нагрузку, удаление будет запрещено — сначала снимите назначение в разделе «Нагрузка по корпусам».</p>
-        <div class="sheet-wrap" id="teachers-main-panel">
+        <div class="sheet-wrap" id="teachers-main-panel" data-scroll-controls="off">
             <table class="sheet-table teachers-table">
                 <thead>
                 <tr>
@@ -71,7 +71,7 @@
                 <tbody id="teachers-table-body"></tbody>
             </table>
         </div>
-        <div class="sheet-wrap" id="teachers-dismissals-panel" style="display:none;">
+        <div class="sheet-wrap" id="teachers-dismissals-panel" data-scroll-controls="off" style="display:none;">
             <table class="sheet-table">
                 <thead>
                 <tr>
@@ -85,7 +85,7 @@
                 <tbody id="teachers-dismissals-body"></tbody>
             </table>
         </div>
-        <div class="sheet-wrap" id="teachers-archive-panel" style="display:none;">
+        <div class="sheet-wrap" id="teachers-archive-panel" data-scroll-controls="off" style="display:none;">
             <table class="sheet-table teachers-table">
                 <thead>
                 <tr>
@@ -112,44 +112,44 @@
             </form>
             <p id="salary-settings-status" class="muted"></p>
             <div class="people-load-subtabs" style="margin-top:12px;">
-                <a class="nav-link" href="/teachers.html#coefficients">РџСЂРµРґРјРµС‚РЅС‹Рµ РєРѕСЌС„С„РёС†РёРµРЅС‚С‹</a>
-                <a class="nav-link" href="/teachers.html#group-coefficients">РљРѕСЌС„С„РёС†РёРµРЅС‚ РґРµР»РµРЅРёСЏ РЅР° РїРѕРґРіСЂСѓРїРїС‹</a>
+                <a class="nav-link" href="/teachers.html#coefficients">Предметные коэффициенты</a>
+                <a class="nav-link" href="/teachers.html#group-coefficients">Коэффициент деления на подгруппы</a>
             </div>
             <section id="teachers-coefficients-panel" style="display:none;">
-                <h3>РџСЂРµРґРјРµС‚РЅС‹Рµ РєРѕСЌС„С„РёС†РёРµРЅС‚С‹</h3>
+                <h3>Предметные коэффициенты</h3>
                 <div class="row">
                     <input id="coefficient-file" type="file" accept=".xls,.xlsx">
-                    <button id="import-coefficients-btn" type="button">РРјРїРѕСЂС‚РёСЂРѕРІР°С‚СЊ</button>
-                    <a id="export-coefficients-link" href="/api/subjects/coefficients/export" class="nav-link" data-allow-readonly="true">Р­РєСЃРїРѕСЂС‚</a>
+                    <button id="import-coefficients-btn" type="button">Импортировать</button>
+                    <a id="export-coefficients-link" href="/api/subjects/coefficients/export" class="nav-link" data-allow-readonly="true">Экспорт</a>
                 </div>
                 <form id="coefficient-form" class="row">
-                    <input id="coefficient-subject-name" placeholder="РџСЂРµРґРјРµС‚" required>
+                    <input id="coefficient-subject-name" placeholder="Предмет" required>
                     <select id="coefficient-education-stage" required>
-                        <option value="NOO">РќРћРћ (1-4)</option>
-                        <option value="OOO">РћРћРћ (5-9)</option>
-                        <option value="SOO">РЎРћРћ (10-11)</option>
+                        <option value="NOO">НОО (1-4)</option>
+                        <option value="OOO">ООО (5-9)</option>
+                        <option value="SOO">СОО (10-11)</option>
                     </select>
-                    <input id="coefficient-value" type="number" step="0.01" min="0" value="1" placeholder="РљРѕСЌС„С„РёС†РёРµРЅС‚">
-                    <button type="submit">РЎРѕС…СЂР°РЅРёС‚СЊ</button>
-                    <button id="refresh-coefficients-btn" type="button" data-allow-readonly="true">РћР±РЅРѕРІРёС‚СЊ</button>
+                    <input id="coefficient-value" type="number" step="0.01" min="0" value="1" placeholder="Коэффициент">
+                    <button type="submit">Сохранить</button>
+                    <button id="refresh-coefficients-btn" type="button" data-allow-readonly="true">Обновить</button>
                 </form>
-                <div class="sheet-wrap">
+                <div class="sheet-wrap" data-scroll-controls="off">
                     <table class="sheet-table">
-                        <thead><tr><th>РџСЂРµРґРјРµС‚ + СѓСЂРѕРІРµРЅСЊ</th><th>Р”Р»СЏ СЂР°СЃС‡РµС‚Р°</th><th>Р”РµР№СЃС‚РІРёРµ</th></tr></thead>
+                        <thead><tr><th>Предмет + уровень</th><th>Для расчёта</th><th>Действие</th></tr></thead>
                         <tbody id="coefficients-body"></tbody>
                     </table>
                 </div>
             </section>
             <section id="teachers-group-coefficients-panel" style="display:none;">
-                <h3>РљРѕСЌС„С„РёС†РёРµРЅС‚ РґРµР»РµРЅРёСЏ РЅР° РїРѕРґРіСЂСѓРїРїС‹</h3>
+                <h3>Коэффициент деления на подгруппы</h3>
                 <form id="group-coefficient-form" class="row">
                     <select id="group-coefficient-subject-name" required></select>
-                    <button type="submit">Р”РѕР±Р°РІРёС‚СЊ</button>
-                    <button id="refresh-group-coefficients-btn" type="button" data-allow-readonly="true">РћР±РЅРѕРІРёС‚СЊ</button>
+                    <button type="submit">Добавить</button>
+                    <button id="refresh-group-coefficients-btn" type="button" data-allow-readonly="true">Обновить</button>
                 </form>
-                <div class="sheet-wrap">
+                <div class="sheet-wrap" data-scroll-controls="off">
                     <table class="sheet-table">
-                        <thead><tr><th><button type="button" id="sort-group-coefficients-btn" class="link-button">РџСЂРµРґРјРµС‚</button></th><th>РљРѕСЌС„С„РёС†РёРµРЅС‚</th><th>Р”РµР№СЃС‚РІРёРµ</th></tr></thead>
+                        <thead><tr><th><button type="button" id="sort-group-coefficients-btn" class="link-button">Предмет</button></th><th>Коэффициент</th><th>Действие</th></tr></thead>
                         <tbody id="group-coefficients-body"></tbody>
                     </table>
                 </div>

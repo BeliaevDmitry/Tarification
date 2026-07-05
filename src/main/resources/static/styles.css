@@ -2355,10 +2355,17 @@ td.vacancy-row {
     font-size: 12px;
 }
 
+.people-load-table th:nth-child(n+11) {
+    min-width: 112px;
+    white-space: normal;
+    overflow-wrap: normal;
+    word-break: normal;
+}
+
 .people-load-money {
-    width: 96px;
-    min-width: 96px;
-    max-width: 96px;
+    width: 112px;
+    min-width: 112px;
+    max-width: 112px;
     font-weight: 600;
     text-align: right;
     white-space: nowrap;

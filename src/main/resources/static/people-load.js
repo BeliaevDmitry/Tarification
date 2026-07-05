@@ -71,6 +71,22 @@ async function apiRequest(path, options = {}) {
     return response.json();
 }
 
+let tableFitFrame = 0;
+
+function fitPeopleLoadTables() {
+    if (tableFitFrame) return;
+    tableFitFrame = window.requestAnimationFrame(() => {
+        tableFitFrame = 0;
+        document.querySelectorAll(".people-load-wrap").forEach((wrap) => {
+            const panel = wrap.closest("section");
+            if (panel?.hidden) return;
+            const rect = wrap.getBoundingClientRect();
+            const available = Math.floor(window.innerHeight - rect.top - 18);
+            wrap.style.maxHeight = `${Math.max(220, available)}px`;
+        });
+    });
+}
+
 function normalizeText(value) {
     return String(value || "")
         .replace(/\s+/g, " ")
@@ -471,12 +487,7 @@ function renderTable() {
     const showSalary = salaryPermission().canView;
     const headers = ["ФИО", "Предмет", "Класс", "Группа", "Количество детей", "Часы по предмету", "Период нагрузки", "Часы в корпусе/всего", "Корпус", "Классное руководство"];
     if (showSalary) {
-        headers.push("За часы", "Кл. рук., руб.", "Итого");
-    }
-    if (showSalary) {
-        headers.splice(headers.length - 3, 3,
-            "РџСЂРµРґРјРµС‚РЅС‹Р№ РєРѕСЌС„.", "РљРѕСЌС„. РіСЂСѓРїРїС‹", "Р—Р° С‡Р°СЃС‹",
-            "Р—Р° С‡Р°СЃС‹ РёС‚РѕРі", "РљР». СЂСѓРє., СЂСѓР±.", "РС‚РѕРіРѕ");
+        headers.push("Предметный коэф.", "Коэф. группы", "За часы", "За часы итог", "Кл. рук., руб.", "Итого");
     }
     let html = `<thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>`;
 
@@ -537,6 +548,7 @@ function renderTable() {
     ui.table.innerHTML = html;
     const label = state.buildings.find((building) => building.value === selected);
     ui.summary.textContent = `Показано строк: ${displayRows.length} (в выбранном корпусе: ${selectedRows.length}). Выбрано: ${buildingLabel(label) || "корпус не выбран"}.`;
+    fitPeopleLoadTables();
 }
 
 async function exportLoadWorkbook(path, fallbackName) {
@@ -583,6 +595,7 @@ function showPeopleLoadPanel(panel) {
     ui.primaryPanel.hidden = !primary;
     ui.mainTab.classList.toggle("active", !primary);
     ui.primaryTab.classList.toggle("active", primary);
+    fitPeopleLoadTables();
 }
 
 function primarySubjectOptions(selectedValue) {
@@ -619,6 +632,7 @@ function renderPrimarySubjectTeachers() {
     ui.primarySubjectTeachersTable.innerHTML = html;
     const assigned = state.primarySubjectAssignments.filter((row) => normalizeText(row.primarySubject)).length;
     ui.primarySubjectSummary.textContent = `Основной предмет задан у ${assigned} из ${state.primarySubjectAssignments.length} педагогов.`;
+    fitPeopleLoadTables();
 }
 
 async function loadPrimarySubjects() {
@@ -819,6 +833,8 @@ async function init() {
     ui.exportDepartmentLoadBtn?.addEventListener("click", () => exportDepartmentLoadWorkbook().catch((error) => alert(`Не удалось скачать нагрузку ДЕП: ${error.message}`)));
     ui.mainTab?.addEventListener("click", () => showPeopleLoadPanel("main"));
     ui.primaryTab?.addEventListener("click", () => showPeopleLoadPanel("primary"));
+    window.addEventListener("resize", fitPeopleLoadTables);
+    window.addEventListener("scroll", fitPeopleLoadTables, { passive: true });
     ui.determinePrimarySubjectsBtn?.addEventListener("click", () => determinePrimarySubjects().catch((error) => alert(`Не удалось определить основные предметы: ${error.message}`)));
     ui.managePrimarySubjectsBtn?.addEventListener("click", () => ui.primarySubjectRulesDialog?.showModal());
     ui.primarySubjectRulesDialog?.addEventListener("click", (event) => {
