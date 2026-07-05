@@ -10,6 +10,7 @@ import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.CurriculumPart;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.EducationLevel;
+import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
@@ -69,6 +70,16 @@ class LoadIssueServiceImplTest {
         assertTrue(issue.description().contains("в нагрузке по предмету стоит: не назначено"));
     }
 
+    @Test
+    void doesNotReportRussiaHorizonsAssignedToClassTeacher() {
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(manualLoad("Россия мои горизонты")));
+        when(curriculumRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(curriculum("Россия мои горизонты")));
+
+        LoadIssueDtos.LoadIssueResponse response = service.findIssues("2026/2027", "");
+
+        assertTrue(response.rows().stream().noneMatch(row -> row.type().equals("Россия мои горизонты")));
+    }
+
     private ClassroomLeadershipEntry classroom() {
         ClassroomLeadershipEntry row = new ClassroomLeadershipEntry();
         row.setAcademicYear("2026/2027");
@@ -89,6 +100,21 @@ class LoadIssueServiceImplTest {
         row.setClassName("3-Б");
         row.setSubjectName(subjectName);
         row.setPlannedHours(BigDecimal.ONE);
+        row.setCurriculumPart(CurriculumPart.EXTRACURRICULAR);
+        row.setEducationLevel(EducationLevel.BASIC);
+        row.setStudyPeriod(StudyPeriod.YEAR);
+        return row;
+    }
+
+    private ManualLoadEntry manualLoad(String subjectName) {
+        ManualLoadEntry row = new ManualLoadEntry();
+        row.setAcademicYear("2026/2027");
+        row.setNumberSchoolBuilding("СП1");
+        row.setClassName("3-Б");
+        row.setSubjectName(subjectName);
+        row.setFioTeacher("Белогур Кристина Игоревна");
+        row.setTeacherId(1L);
+        row.setLoad(1);
         row.setCurriculumPart(CurriculumPart.EXTRACURRICULAR);
         row.setEducationLevel(EducationLevel.BASIC);
         row.setStudyPeriod(StudyPeriod.YEAR);

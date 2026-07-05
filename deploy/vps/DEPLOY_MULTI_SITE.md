@@ -24,7 +24,7 @@
 cd ~/Tarification
 
 # 0) Выбрать сайт
-SITE=7           # варианты: 7 | 1811 | demo
+SITE=7          # варианты: 7 | 1811 | demo
 STACK="schadmin${SITE}"
 ENV_FILE="deploy/vps/env-presets/${STACK}.env"
 

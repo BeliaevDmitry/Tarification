@@ -25,11 +25,27 @@ const ui = {
     salarySettingsForm: document.getElementById("salary-settings-form"),
     salaryStudentHourRate: document.getElementById("salary-student-hour-rate"),
     salarySettingsStatus: document.getElementById("salary-settings-status"),
+    coefficientsPanel: document.getElementById("teachers-coefficients-panel"),
+    groupCoefficientsPanel: document.getElementById("teachers-group-coefficients-panel"),
+    coefficientFileInput: document.getElementById("coefficient-file"),
+    coefficientImportBtn: document.getElementById("import-coefficients-btn"),
+    coefficientForm: document.getElementById("coefficient-form"),
+    coefficientSubjectName: document.getElementById("coefficient-subject-name"),
+    coefficientEducationStage: document.getElementById("coefficient-education-stage"),
+    coefficientValue: document.getElementById("coefficient-value"),
+    coefficientRefreshBtn: document.getElementById("refresh-coefficients-btn"),
+    coefficientsBody: document.getElementById("coefficients-body"),
+    groupCoefficientForm: document.getElementById("group-coefficient-form"),
+    groupCoefficientSubjectName: document.getElementById("group-coefficient-subject-name"),
+    groupCoefficientRefreshBtn: document.getElementById("refresh-group-coefficients-btn"),
+    groupCoefficientSortBtn: document.getElementById("sort-group-coefficients-btn"),
+    groupCoefficientsBody: document.getElementById("group-coefficients-body"),
     dismissalsBody: document.getElementById("teachers-dismissals-body"),
     result: document.getElementById("teachers-result"),
     tbody: document.getElementById("teachers-table-body")
 };
 let buildings = [];
+let groupCoefficientSubjectCatalog = [];
 
 function currentAuthUser() {
     return window.tarificationAuth || null;
@@ -46,7 +62,7 @@ function canEditTeachers() {
     const tab = teachersTabFromHash();
     const permissionKey = tab === "archive" ? "TEACHERS_ARCHIVE"
         : tab === "dismissals" ? "TEACHERS_DISMISSALS"
-            : tab === "settings" ? "TEACHERS_SETTINGS" : "TEACHERS";
+            : isSettingsLikeTab(tab) ? "TEACHERS_SETTINGS" : "TEACHERS";
     return canEditTeacherPermission(permissionKey);
 }
 
@@ -56,13 +72,17 @@ function settingsPermission() {
     return Boolean(user.admin || permissions.TEACHERS_SETTINGS?.canView);
 }
 
+function isSettingsLikeTab(tab) {
+    return tab === "settings" || tab === "coefficients" || tab === "group-coefficients";
+}
+
 function canViewTeachersTab(tab) {
     const user = currentAuthUser() || {};
     if (user.admin) return true;
     const permissions = window.tarificationTabPermissions || {};
     const permissionKey = tab === "archive" ? "TEACHERS_ARCHIVE"
         : tab === "dismissals" ? "TEACHERS_DISMISSALS"
-            : tab === "settings" ? "TEACHERS_SETTINGS" : "TEACHERS";
+            : isSettingsLikeTab(tab) ? "TEACHERS_SETTINGS" : "TEACHERS";
     return Boolean(permissions[permissionKey]?.canView);
 }
 
@@ -123,6 +143,8 @@ function teachersTabFromHash() {
     if (hash === "#archive") return "archive";
     if (hash === "#dismissals") return "dismissals";
     if (hash === "#settings") return "settings";
+    if (hash === "#coefficients") return "coefficients";
+    if (hash === "#group-coefficients") return "group-coefficients";
     return "main";
 }
 
@@ -132,7 +154,9 @@ function updateHeaderNavActive(tab) {
         const active = (tab === "main" && href === "/teachers.html")
             || (tab === "archive" && href === "/teachers.html#archive")
             || (tab === "dismissals" && href === "/teachers.html#dismissals")
-            || (tab === "settings" && href === "/teachers.html#settings");
+            || (tab === "settings" && href === "/teachers.html#settings")
+            || (tab === "coefficients" && href === "/teachers.html#coefficients")
+            || (tab === "group-coefficients" && href === "/teachers.html#group-coefficients");
         if (active) {
             link.classList.add('active');
         } else if (href.startsWith('/teachers.html')) {
@@ -144,7 +168,7 @@ function updateHeaderNavActive(tab) {
 function showTeachersTab(tab = teachersTabFromHash()) {
     const safeTab = canViewTeachersTab(tab)
         ? tab
-        : ["main", "archive", "dismissals", "settings"].find(canViewTeachersTab) || "main";
+        : ["main", "archive", "dismissals", "settings", "coefficients", "group-coefficients"].find(canViewTeachersTab) || "main";
     if (safeTab !== tab) {
         history.replaceState(null, '', '/teachers.html');
     }
@@ -152,7 +176,9 @@ function showTeachersTab(tab = teachersTabFromHash()) {
     if (ui.mainPanel) ui.mainPanel.style.display = safeTab === "main" ? "" : "none";
     if (ui.archivePanel) ui.archivePanel.style.display = safeTab === "archive" ? "" : "none";
     if (ui.dismissalsPanel) ui.dismissalsPanel.style.display = safeTab === "dismissals" ? "" : "none";
-    if (ui.settingsPanel) ui.settingsPanel.style.display = safeTab === "settings" ? "" : "none";
+    if (ui.settingsPanel) ui.settingsPanel.style.display = isSettingsLikeTab(safeTab) ? "" : "none";
+    if (ui.coefficientsPanel) ui.coefficientsPanel.style.display = safeTab === "coefficients" ? "" : "none";
+    if (ui.groupCoefficientsPanel) ui.groupCoefficientsPanel.style.display = safeTab === "group-coefficients" ? "" : "none";
     if (ui.sectionTitle) {
         ui.sectionTitle.textContent = safeTab === "archive" ? "Архив" : safeTab === "dismissals" ? "Увольнения" : safeTab === "settings" ? "Настройки" : "Кадры";
     }
@@ -501,6 +527,132 @@ async function saveSalarySettings(event) {
     }
 }
 
+const stageLabel = (value) => {
+    if (value === "NOO") return "РќРћРћ";
+    if (value === "OOO") return "РћРћРћ";
+    if (value === "SOO") return "РЎРћРћ";
+    return value || "";
+};
+
+function parseCoefficient(value) {
+    const parsed = Number(String(value ?? "").trim().replace(",", "."));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function formatCoefficient(value) {
+    const safe = parseCoefficient(value);
+    const text = safe.toFixed(4);
+    return text.replace(/0+$/, "").replace(/\.$/, "");
+}
+
+async function reloadCoefficients() {
+    if (!settingsPermission() || !ui.coefficientsBody) return;
+    const rows = await api("/api/subjects/coefficients");
+    ui.coefficientsBody.innerHTML = (rows || [])
+        .slice()
+        .sort((a, b) => String(a.subjectName || "").localeCompare(String(b.subjectName || ""), "ru") || String(a.educationStage || "").localeCompare(String(b.educationStage || "")))
+        .map((row) => `
+            <tr>
+                <td>${escapeHtml(`${row.subjectName || ""} ${stageLabel(row.educationStage)}`.trim())}</td>
+                <td>${escapeHtml(formatCoefficient(row.coefficient))}</td>
+                <td><button type="button" class="danger-btn" data-delete-coefficient="${escapeHtml(row.id)}">РЈРґР°Р»РёС‚СЊ</button></td>
+            </tr>
+        `).join("") || `<tr><td colspan="3">Р—Р°РїРёСЃРµР№ РЅРµС‚</td></tr>`;
+    ui.coefficientsBody.querySelectorAll("[data-delete-coefficient]").forEach((button) => {
+        button.addEventListener("click", async () => {
+            await api(`/api/subjects/coefficients/${encodeURIComponent(button.dataset.deleteCoefficient)}`, { method: "DELETE" });
+            await reloadCoefficients();
+        });
+    });
+}
+
+async function importCoefficients() {
+    const file = ui.coefficientFileInput?.files?.[0];
+    if (!file) return print({ error: "Р’С‹Р±РµСЂРёС‚Рµ С„Р°Р№Р» РєРѕСЌС„С„РёС†РёРµРЅС‚РѕРІ" });
+    const form = new FormData();
+    form.append("file", file);
+    const result = await api("/api/subjects/coefficients/import", { method: "POST", body: form });
+    print(result);
+    await reloadCoefficients();
+}
+
+async function saveCoefficient(event) {
+    event.preventDefault();
+    const result = await api("/api/subjects/coefficients", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+            subjectName: ui.coefficientSubjectName.value.trim(),
+            educationStage: ui.coefficientEducationStage.value,
+            coefficient: parseCoefficient(ui.coefficientValue.value)
+        })
+    });
+    print(result);
+    ui.coefficientValue.value = "1";
+    await reloadCoefficients();
+}
+
+let groupCoefficientSortAsc = true;
+
+async function reloadGroupCoefficients() {
+    if (!settingsPermission() || !ui.groupCoefficientsBody) return;
+    const [subjects, rows] = await Promise.all([
+        api("/api/subjects"),
+        api("/api/salary-group-coefficient-subjects")
+    ]);
+    groupCoefficientSubjectCatalog = (subjects || []).slice().sort((a, b) => String(a.subjectName || "").localeCompare(String(b.subjectName || ""), "ru"));
+    renderGroupCoefficientSubjectOptions(rows || []);
+    const sorted = (rows || []).slice().sort((a, b) => {
+        const result = String(a.subjectName || "").localeCompare(String(b.subjectName || ""), "ru");
+        return groupCoefficientSortAsc ? result : -result;
+    });
+    ui.groupCoefficientsBody.innerHTML = sorted.map((row) => `
+        <tr>
+            <td>${escapeHtml(row.subjectName || "")}</td>
+            <td>${escapeHtml(formatCoefficient(25))} / РґРµС‚Рё</td>
+            <td><button type="button" class="danger-btn" data-delete-group-coefficient="${escapeHtml(row.id)}">РЈРґР°Р»РёС‚СЊ</button></td>
+        </tr>
+    `).join("") || `<tr><td colspan="3">Р—Р°РїРёСЃРµР№ РЅРµС‚</td></tr>`;
+    ui.groupCoefficientsBody.querySelectorAll("[data-delete-group-coefficient]").forEach((button) => {
+        button.addEventListener("click", async () => {
+            await api(`/api/salary-group-coefficient-subjects/${encodeURIComponent(button.dataset.deleteGroupCoefficient)}`, { method: "DELETE" });
+            await reloadGroupCoefficients();
+        });
+    });
+}
+
+function renderGroupCoefficientSubjectOptions(enabledRows = []) {
+    if (!ui.groupCoefficientSubjectName) return;
+    const enabledIds = new Set((enabledRows || []).map((row) => String(row.subjectId || "")).filter(Boolean));
+    const options = groupCoefficientSubjectCatalog
+        .filter((subject) => !enabledIds.has(String(subject.id)))
+        .map((subject) => `<option value="${escapeHtml(subject.id)}">${escapeHtml(subject.subjectName || "")}</option>`);
+    ui.groupCoefficientSubjectName.innerHTML = options.join("") || `<option value="">Р’СЃРµ РїСЂРµРґРјРµС‚С‹ СѓР¶Рµ РґРѕР±Р°РІР»РµРЅС‹</option>`;
+}
+
+async function saveGroupCoefficientSubject(event) {
+    event.preventDefault();
+    const subjectId = Number(ui.groupCoefficientSubjectName.value || 0);
+    if (!Number.isFinite(subjectId) || subjectId <= 0) {
+        print({ error: "Р’С‹Р±РµСЂРёС‚Рµ РїСЂРµРґРјРµС‚ РёР· СЃРїРёСЃРєР°" });
+        return;
+    }
+    const result = await api("/api/salary-group-coefficient-subjects", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({ subjectId })
+    });
+    print(result);
+    ui.groupCoefficientForm.reset();
+    await reloadGroupCoefficients();
+}
+
+async function loadSettingsTabData(tab = teachersTabFromHash()) {
+    if (tab === "settings") await loadSalarySettings();
+    if (tab === "coefficients") await reloadCoefficients();
+    if (tab === "group-coefficients") await reloadGroupCoefficients();
+}
+
 function bindEvents() {
     ui.importBtn.addEventListener('click', importTeachers);
     ui.downloadBtn.addEventListener('click', downloadTeachers);
@@ -510,9 +662,18 @@ function bindEvents() {
     window.addEventListener("hashchange", async () => {
         const tab = teachersTabFromHash();
         showTeachersTab(tab);
-        if (tab === "settings") await loadSalarySettings();
+        await loadSettingsTabData(tab);
     });
     ui.salarySettingsForm?.addEventListener("submit", saveSalarySettings);
+    ui.coefficientImportBtn?.addEventListener("click", () => importCoefficients().catch((error) => print({ error: error.message })));
+    ui.coefficientForm?.addEventListener("submit", (event) => saveCoefficient(event).catch((error) => print({ error: error.message })));
+    ui.coefficientRefreshBtn?.addEventListener("click", () => reloadCoefficients().catch((error) => print({ error: error.message })));
+    ui.groupCoefficientForm?.addEventListener("submit", (event) => saveGroupCoefficientSubject(event).catch((error) => print({ error: error.message })));
+    ui.groupCoefficientRefreshBtn?.addEventListener("click", () => reloadGroupCoefficients().catch((error) => print({ error: error.message })));
+    ui.groupCoefficientSortBtn?.addEventListener("click", () => {
+        groupCoefficientSortAsc = !groupCoefficientSortAsc;
+        reloadGroupCoefficients().catch((error) => print({ error: error.message }));
+    });
 }
 
 async function init() {
@@ -523,7 +684,7 @@ async function init() {
     try {
         await loadBuildings();
         await loadTeachers();
-        if (teachersTabFromHash() === "settings") await loadSalarySettings();
+        await loadSettingsTabData(teachersTabFromHash());
     } catch (error) {
         print({ error: error.message });
     }

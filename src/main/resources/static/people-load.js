@@ -36,6 +36,9 @@ const state = {
     primarySubjectRules: [],
     classSizeSource: "AIS",
     classSizeByClass: new Map(),
+    groupCoefficientSubjects: [],
+    groupCoefficientSubjectIds: new Set(),
+    groupCoefficientSubjectNames: new Set(),
     studentHourRate: 37
 };
 
@@ -360,14 +363,25 @@ function subjectCoefficient(subjectName, className) {
 }
 
 function rowSalary(row) {
+    return rowSalaryDetails(row).hoursSalary;
+}
+
+function rowGroupCoefficient(row) {
+    if (!normalizeText(row.groupNameEducationalPlan || "")) return 1;
+    const subjectId = row.subjectId == null ? "" : String(row.subjectId);
+    const enabled = subjectId
+        ? state.groupCoefficientSubjectIds?.has(subjectId)
+        : state.groupCoefficientSubjectNames?.has(normalizeKey(row.subjectName));
+    return enabled ? 25 / Math.max(childrenCount(row), 1) : 1;
+}
+
+function rowSalaryDetails(row) {
     const children = Math.max(childrenCount(row), 1);
     const hours = Math.max(loadValue(row), 0);
-    const coefficient = subjectCoefficient(row.subjectName, row.className);
-    let value = state.studentHourRate * children * hours * 2.8333333 * coefficient;
-    if (normalizeText(row.groupNameEducationalPlan || "")) {
-        value *= 25 / children;
-    }
-    return value;
+    const subjectCoef = subjectCoefficient(row.subjectName, row.className);
+    const groupCoef = rowGroupCoefficient(row);
+    const value = state.studentHourRate * children * hours * (34 / 12) * subjectCoef * groupCoef;
+    return { subjectCoef, groupCoef, hoursSalary: value };
 }
 
 function classLeadershipSalary(fio) {
@@ -390,6 +404,13 @@ function teacherSalary(fio, allTeacherRows) {
 
 function formatMoney(value) {
     return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value || 0);
+}
+
+function formatCoefficient(value) {
+    const parsed = Number(value ?? 1);
+    const safe = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+    const text = safe.toFixed(4);
+    return text.replace(/0+$/, "").replace(/\.$/, "");
 }
 
 function teacherLeadershipClasses(fio) {
@@ -452,6 +473,11 @@ function renderTable() {
     if (showSalary) {
         headers.push("За часы", "Кл. рук., руб.", "Итого");
     }
+    if (showSalary) {
+        headers.splice(headers.length - 3, 3,
+            "РџСЂРµРґРјРµС‚РЅС‹Р№ РєРѕСЌС„.", "РљРѕСЌС„. РіСЂСѓРїРїС‹", "Р—Р° С‡Р°СЃС‹",
+            "Р—Р° С‡Р°СЃС‹ РёС‚РѕРі", "РљР». СЂСѓРє., СЂСѓР±.", "РС‚РѕРіРѕ");
+    }
     let html = `<thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>`;
 
     if (!displayRows.length) {
@@ -488,6 +514,14 @@ function renderTable() {
                 html += `<td class="people-load-building">${escapeHtml(rowBuildingLabel(row))}</td>`;
                 if (index === 0) {
                     html += `<td rowspan="${rows.length}" class="people-load-leadership">${escapeHtml(leadership)}</td>`;
+                }
+                if (showSalary) {
+                    const rowSalary = rowSalaryDetails(row);
+                    html += `<td class="people-load-money">${escapeHtml(formatCoefficient(rowSalary.subjectCoef))}</td>`;
+                    html += `<td class="people-load-money">${escapeHtml(formatCoefficient(rowSalary.groupCoef))}</td>`;
+                    html += `<td class="people-load-money">${escapeHtml(formatMoney(rowSalary.hoursSalary))}</td>`;
+                }
+                if (index === 0) {
                     if (showSalary) {
                         html += `<td rowspan="${rows.length}" class="people-load-money">${escapeHtml(formatMoney(salary.hours))}</td>`;
                         html += `<td rowspan="${rows.length}" class="people-load-money people-load-money-leadership">${escapeHtml(formatMoney(salary.leadership))}</td>`;
@@ -712,12 +746,14 @@ function rebuildIndexes() {
         const key = `${normalizeKey(entry.subjectName)}|${entry.educationStage || ""}`;
         state.subjectCoefficientByKey.set(key, Number.isFinite(coefficient) && coefficient > 0 ? coefficient : 1);
     });
+    state.groupCoefficientSubjectIds = new Set((state.groupCoefficientSubjects || []).map((entry) => String(entry.subjectId || "")).filter(Boolean));
+    state.groupCoefficientSubjectNames = new Set((state.groupCoefficientSubjects || []).map((entry) => normalizeKey(entry.subjectName)));
 }
 
 async function loadData() {
     ui.summary.textContent = "Загрузка данных…";
     const salaryAccess = salaryPermission().canView;
-    const [buildings, manualRows, classes, teachers, subjects, coefficients, salarySettings, primaryAssignments, primaryRules, classSizes] = await Promise.all([
+    const [buildings, manualRows, classes, teachers, subjects, coefficients, salarySettings, groupCoefficientSubjects, primaryAssignments, primaryRules, classSizes] = await Promise.all([
         api("/api/buildings"),
         api("/api/manual-load"),
         api("/api/classroom-leadership"),
@@ -725,6 +761,7 @@ async function loadData() {
         api("/api/subjects"),
         api("/api/subjects/coefficients"),
         salaryAccess ? api("/api/salary-settings") : Promise.resolve(null),
+        salaryAccess ? api("/api/salary-group-coefficient-subjects") : Promise.resolve([]),
         api("/api/primary-subjects/teachers"),
         api("/api/primary-subjects/rules"),
         api("/api/contingent/manual-class-sizes").catch(() => ({ source: "AIS", rows: [] }))
@@ -735,6 +772,7 @@ async function loadData() {
     state.teachers = teachers || [];
     state.subjects = subjects || [];
     state.coefficients = coefficients || [];
+    state.groupCoefficientSubjects = groupCoefficientSubjects || [];
     state.primarySubjectAssignments = primaryAssignments || [];
     state.primarySubjectRules = primaryRules || [];
     applyClassSizeResponse(classSizes);
