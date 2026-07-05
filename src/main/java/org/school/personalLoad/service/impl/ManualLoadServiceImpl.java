@@ -1815,12 +1815,13 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         int subjectHours = row.getGroupLoad() != null ? row.getGroupLoad() : (row.getLoad() == null ? 0 : row.getLoad());
         BigDecimal coefficient = subjectCoefficient(row, subjectCoefficientByLevel);
         BigDecimal groupCoefficient = groupCoefficient(row, group, safeChildrenCount, groupCoefficientSubjects);
-        BigDecimal result = studentHourRate
+        BigDecimal baseSalary = studentHourRate
                 .multiply(BigDecimal.valueOf(safeChildrenCount))
                 .multiply(BigDecimal.valueOf(Math.max(subjectHours, 0)))
-                .multiply(STUDENT_HOUR_MULTIPLIER)
-                .multiply(coefficient)
-                .multiply(groupCoefficient);
+                .multiply(STUDENT_HOUR_MULTIPLIER);
+        BigDecimal subjectBonus = baseSalary.multiply(coefficient.subtract(BigDecimal.ONE));
+        BigDecimal groupBonus = baseSalary.multiply(groupCoefficient.subtract(BigDecimal.ONE));
+        BigDecimal result = baseSalary.add(subjectBonus).add(groupBonus);
         return new SalaryRowDetails(coefficient, groupCoefficient, result);
     }
 

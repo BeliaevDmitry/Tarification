@@ -34,7 +34,7 @@ const TAB_GROUPS = [
             { key: 'TEACHERS', label: 'Персонал' },
             { key: 'TEACHERS_ARCHIVE', label: 'Архив' },
             { key: 'TEACHERS_DISMISSALS', label: 'Увольнения' },
-            { key: 'TEACHERS_SETTINGS', label: 'Настройки' },
+            { key: 'TEACHERS_SETTINGS', label: 'Настройки расчёта ЗП' },
             { key: 'SERVICE_NOTES', label: 'Служебные записки' },
             { key: 'HR_NOTIFICATIONS_VIEW', label: 'Уведомления' }
         ]
