@@ -111,6 +111,49 @@
                 <button id="save-salary-settings-btn" type="submit" data-allow-readonly="true">Сохранить</button>
             </form>
             <p id="salary-settings-status" class="muted"></p>
+            <div class="people-load-subtabs" style="margin-top:12px;">
+                <a class="nav-link" href="/teachers.html#coefficients">РџСЂРµРґРјРµС‚РЅС‹Рµ РєРѕСЌС„С„РёС†РёРµРЅС‚С‹</a>
+                <a class="nav-link" href="/teachers.html#group-coefficients">РљРѕСЌС„С„РёС†РёРµРЅС‚ РґРµР»РµРЅРёСЏ РЅР° РїРѕРґРіСЂСѓРїРїС‹</a>
+            </div>
+            <section id="teachers-coefficients-panel" style="display:none;">
+                <h3>РџСЂРµРґРјРµС‚РЅС‹Рµ РєРѕСЌС„С„РёС†РёРµРЅС‚С‹</h3>
+                <div class="row">
+                    <input id="coefficient-file" type="file" accept=".xls,.xlsx">
+                    <button id="import-coefficients-btn" type="button">РРјРїРѕСЂС‚РёСЂРѕРІР°С‚СЊ</button>
+                    <a id="export-coefficients-link" href="/api/subjects/coefficients/export" class="nav-link" data-allow-readonly="true">Р­РєСЃРїРѕСЂС‚</a>
+                </div>
+                <form id="coefficient-form" class="row">
+                    <input id="coefficient-subject-name" placeholder="РџСЂРµРґРјРµС‚" required>
+                    <select id="coefficient-education-stage" required>
+                        <option value="NOO">РќРћРћ (1-4)</option>
+                        <option value="OOO">РћРћРћ (5-9)</option>
+                        <option value="SOO">РЎРћРћ (10-11)</option>
+                    </select>
+                    <input id="coefficient-value" type="number" step="0.01" min="0" value="1" placeholder="РљРѕСЌС„С„РёС†РёРµРЅС‚">
+                    <button type="submit">РЎРѕС…СЂР°РЅРёС‚СЊ</button>
+                    <button id="refresh-coefficients-btn" type="button" data-allow-readonly="true">РћР±РЅРѕРІРёС‚СЊ</button>
+                </form>
+                <div class="sheet-wrap">
+                    <table class="sheet-table">
+                        <thead><tr><th>РџСЂРµРґРјРµС‚ + СѓСЂРѕРІРµРЅСЊ</th><th>Р”Р»СЏ СЂР°СЃС‡РµС‚Р°</th><th>Р”РµР№СЃС‚РІРёРµ</th></tr></thead>
+                        <tbody id="coefficients-body"></tbody>
+                    </table>
+                </div>
+            </section>
+            <section id="teachers-group-coefficients-panel" style="display:none;">
+                <h3>РљРѕСЌС„С„РёС†РёРµРЅС‚ РґРµР»РµРЅРёСЏ РЅР° РїРѕРґРіСЂСѓРїРїС‹</h3>
+                <form id="group-coefficient-form" class="row">
+                    <select id="group-coefficient-subject-name" required></select>
+                    <button type="submit">Р”РѕР±Р°РІРёС‚СЊ</button>
+                    <button id="refresh-group-coefficients-btn" type="button" data-allow-readonly="true">РћР±РЅРѕРІРёС‚СЊ</button>
+                </form>
+                <div class="sheet-wrap">
+                    <table class="sheet-table">
+                        <thead><tr><th><button type="button" id="sort-group-coefficients-btn" class="link-button">РџСЂРµРґРјРµС‚</button></th><th>РљРѕСЌС„С„РёС†РёРµРЅС‚</th><th>Р”РµР№СЃС‚РІРёРµ</th></tr></thead>
+                        <tbody id="group-coefficients-body"></tbody>
+                    </table>
+                </div>
+            </section>
         </div>
     </section>
 </main>
