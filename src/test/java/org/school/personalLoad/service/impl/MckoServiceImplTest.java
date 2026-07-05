@@ -116,7 +116,24 @@ class MckoServiceImplTest {
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).status()).isEqualTo("MISSING");
         assertThat(rows.get(0).message()).isEqualTo("НЕТ МЦКО");
-        assertThat(rows.get(0).subjectId()).isEqualTo(10L);
+        assertThat(rows.get(0).subjectName()).isEqualTo("Математика");
+    }
+
+    @Test
+    void algebraAndCalculusIsGroupedAsMath() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Иванов Иван Иванович");
+        MckoSubjectMapping mapping = mapping("Математика профильная", 40L, "Алгебра и начала математического анализа");
+
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027"))
+                .thenReturn(List.of(load(teacher, 40L, "Алгебра и начала математического анализа", "10-А")));
+        when(mappingRepository.findAll()).thenReturn(List.of(mapping));
+        when(certificateRepository.findAll()).thenReturn(List.of());
+
+        List<MckoDtos.EligibilityRow> rows = service.eligibility("2026/2027");
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).subjectName()).isEqualTo("Математика");
+        assertThat(rows.get(0).status()).isEqualTo("MISSING");
     }
 
     @Test
@@ -134,7 +151,21 @@ class MckoServiceImplTest {
 
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).status()).isEqualTo("OK");
-        assertThat(rows.get(0).subjectName()).isEqualTo("Русский язык");
+        assertThat(rows.get(0).subjectName()).isEqualTo("Начальная школа");
+    }
+
+    @Test
+    void coreSubjectWithoutMckoMappingIsNotChecked() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Иванов Иван Иванович");
+
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027"))
+                .thenReturn(List.of(load(teacher, 30L, "Индивидуальный проект", "10-А")));
+        when(mappingRepository.findAll()).thenReturn(List.of());
+        when(certificateRepository.findAll()).thenReturn(List.of());
+
+        List<MckoDtos.EligibilityRow> rows = service.eligibility("2026/2027");
+
+        assertThat(rows).isEmpty();
     }
 
     @Test

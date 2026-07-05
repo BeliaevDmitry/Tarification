@@ -57,9 +57,6 @@ const ui = {
     mckoComment: document.getElementById("mcko-comment"),
     mckoScan: document.getElementById("mcko-scan"),
     mckoEligibilityBody: document.getElementById("mcko-eligibility-body"),
-    mckoSubjectForm: document.getElementById("mcko-subject-form"),
-    mckoMappingSubjectName: document.getElementById("mcko-mapping-subject-name"),
-    mckoLoadSubjectSelect: document.getElementById("mcko-load-subject-select"),
     mckoSubjectsBody: document.getElementById("mcko-subjects-body"),
     dismissalsBody: document.getElementById("teachers-dismissals-body"),
     result: document.getElementById("teachers-result"),
@@ -448,16 +445,12 @@ async function ensureSubjectCatalog() {
 }
 
 function renderMckoLoadSubjectOptions() {
-    if (!ui.mckoLoadSubjectSelect) return;
-    const used = new Set((mckoMappings || []).map((row) => `${String(row.mckoSubject || "").toLowerCase()}|${row.subjectId}`));
-    const mckoSubject = String(ui.mckoMappingSubjectName?.value || "").trim().toLowerCase();
-    ui.mckoLoadSubjectSelect.innerHTML = (subjectCatalogRows || [])
+    return (subjectCatalogRows || [])
         .filter((subject) => !subject.subjectType || subject.subjectType === "CORE")
-        .filter((subject) => !mckoSubject || !used.has(`${mckoSubject}|${subject.id}`))
         .slice()
         .sort((a, b) => String(a.subjectName || "").localeCompare(String(b.subjectName || ""), "ru"))
         .map((subject) => `<option value="${escapeHtml(subject.id)}">${escapeHtml(subject.subjectName || "")}</option>`)
-        .join("") || `<option value="">Все предметы уже добавлены</option>`;
+        .join("");
 }
 
 function knownMckoSubjects() {
@@ -470,17 +463,11 @@ function knownMckoSubjects() {
 
 function renderMckoSubjectSelectors() {
     const subjects = knownMckoSubjects();
-    if (ui.mckoMappingSubjectName) {
-        ui.mckoMappingSubjectName.innerHTML = subjects
-            .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
-            .join("") || `<option value="">Сначала загрузите выгрузку МЦКО</option>`;
-    }
     if (ui.mckoSubjectSelect) {
         ui.mckoSubjectSelect.innerHTML = subjects
             .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
             .join("") || `<option value="">Сначала загрузите выгрузку МЦКО</option>`;
     }
-    renderMckoLoadSubjectOptions();
 }
 
 function updateMckoExportLink() {
@@ -527,22 +514,37 @@ async function reloadMckoMappings() {
     mckoMappings = await api("/api/mcko/subjects") || [];
     renderMckoSubjectSelectors();
     if (!ui.mckoSubjectsBody) return;
-    const rows = mckoMappings.slice().sort((a, b) =>
-        String(a.mckoSubject || "").localeCompare(String(b.mckoSubject || ""), "ru")
-        || String(a.subjectName || "").localeCompare(String(b.subjectName || ""), "ru")
-    );
-    ui.mckoSubjectsBody.innerHTML = rows.map((row) => `
+    const rows = knownMckoSubjects().map((mckoSubject) => ({
+        mckoSubject,
+        mappings: mckoMappings.filter((row) => String(row.mckoSubject || "") === mckoSubject)
+    }));
+    const optionsHtml = renderMckoLoadSubjectOptions();
+    ui.mckoSubjectsBody.innerHTML = rows.map((row, index) => `
         <tr>
             <td>${escapeHtml(row.mckoSubject || "")}</td>
-            <td>${escapeHtml(row.subjectName || "")}</td>
-            <td><button type="button" class="danger-btn" data-delete-mcko-mapping="${escapeHtml(row.id)}">Удалить</button></td>
+            <td>
+                <select class="mcko-load-subjects-multiselect" data-mcko-index="${index}" multiple size="6">
+                    ${optionsHtml}
+                </select>
+            </td>
+            <td><button type="button" data-save-mcko-mapping="${index}">Сохранить</button></td>
         </tr>
-    `).join("") || `<tr><td colspan="3">Соответствий пока нет</td></tr>`;
-    ui.mckoSubjectsBody.querySelectorAll("[data-delete-mcko-mapping]").forEach((button) => {
+    `).join("") || `<tr><td colspan="3">Сначала загрузите выгрузку МЦКО</td></tr>`;
+    rows.forEach((row, index) => {
+        const select = ui.mckoSubjectsBody.querySelector(`.mcko-load-subjects-multiselect[data-mcko-index="${index}"]`);
+        if (!select) return;
+        const selectedIds = new Set(row.mappings.map((mapping) => String(mapping.subjectId || "")));
+        Array.from(select.options).forEach((option) => {
+            option.selected = selectedIds.has(String(option.value));
+        });
+    });
+    ui.mckoSubjectsBody.querySelectorAll("[data-save-mcko-mapping]").forEach((button) => {
         button.addEventListener("click", async () => {
-            await api(`/api/mcko/subjects/${encodeURIComponent(button.dataset.deleteMckoMapping)}`, { method: "DELETE" });
+            const row = rows[Number(button.dataset.saveMckoMapping)];
+            await saveMckoMappingSet(row?.mckoSubject || "");
             await reloadMckoMappings();
             await reloadMckoCertificates();
+            await reloadMckoEligibility();
         });
     });
 }
@@ -589,21 +591,30 @@ async function saveManualMcko(event) {
     await reloadMckoEligibility();
 }
 
-async function saveMckoMapping(event) {
-    event.preventDefault();
-    const subjectId = Number(ui.mckoLoadSubjectSelect.value || 0);
-    const mckoSubject = String(ui.mckoMappingSubjectName.value || "").trim();
-    if (!mckoSubject || !Number.isFinite(subjectId) || subjectId <= 0) {
-        return print({ error: "Выберите предмет МЦКО и предмет нагрузки из списка" });
+async function saveMckoMappingSet(mckoSubject) {
+    const subject = String(mckoSubject || "").trim();
+    const rows = knownMckoSubjects();
+    const index = rows.findIndex((item) => item === subject);
+    const select = ui.mckoSubjectsBody?.querySelector(`.mcko-load-subjects-multiselect[data-mcko-index="${index}"]`);
+    if (!subject || !select) return;
+    const selectedIds = new Set(Array.from(select.selectedOptions).map((option) => String(option.value)));
+    const existing = (mckoMappings || []).filter((row) => String(row.mckoSubject || "") === subject);
+    for (const row of existing) {
+        if (!selectedIds.has(String(row.subjectId || ""))) {
+            await api(`/api/mcko/subjects/${encodeURIComponent(row.id)}`, { method: "DELETE" });
+        }
     }
-    const result = await api("/api/mcko/subjects", {
-        method: "POST",
-        headers: jsonHeaders,
-        body: JSON.stringify({ mckoSubject, subjectId })
-    });
-    print(result);
-    ui.mckoSubjectForm.reset();
-    await reloadMckoMappings();
+    const existingIds = new Set(existing.map((row) => String(row.subjectId || "")));
+    for (const subjectId of selectedIds) {
+        if (!existingIds.has(subjectId)) {
+            await api("/api/mcko/subjects", {
+                method: "POST",
+                headers: jsonHeaders,
+                body: JSON.stringify({ mckoSubject: subject, subjectId: Number(subjectId) })
+            });
+        }
+    }
+    print({ status: "mcko mapping saved", mckoSubject: subject, subjectIds: Array.from(selectedIds) });
 }
 
 async function loadMckoTabData(tab = teachersTabFromHash()) {
@@ -920,8 +931,6 @@ function bindEvents() {
     });
     ui.mckoImportBtn?.addEventListener("click", () => importMckoCertificates().catch((error) => print({ error: error.message })));
     ui.mckoManualForm?.addEventListener("submit", (event) => saveManualMcko(event).catch((error) => print({ error: error.message })));
-    ui.mckoSubjectForm?.addEventListener("submit", (event) => saveMckoMapping(event).catch((error) => print({ error: error.message })));
-    ui.mckoMappingSubjectName?.addEventListener("input", renderMckoLoadSubjectOptions);
 }
 
 async function init() {

@@ -41,6 +41,8 @@ public class MckoServiceImpl implements MckoService {
             "комплексный тренинг ноо"
     );
     private static final String PRIMARY_META_SUBJECT = "Метапредметные умения (начальное образование)";
+    private static final long PRIMARY_GROUP_SUBJECT_ID = -1L;
+    private static final long MATH_GROUP_SUBJECT_ID = -2L;
     private static final DateTimeFormatter RU_DATE = DateTimeFormatter.ofPattern("dd.MM.yyyy");
 
     private final MckoCertificateRepository certificateRepository;
@@ -249,15 +251,16 @@ public class MckoServiceImpl implements MckoService {
                                                    List<MckoSubjectMapping> mappings) {
         Long teacherId = load.getTeacherId();
         String teacherFio = load.getFioTeacher();
-        Long subjectId = load.getSubjectId();
-        String subjectName = load.getSubjectName();
+        SubjectGroup subjectGroup = subjectGroup(load);
         if (teacherId == null) return null;
-        List<String> mckoSubjects = new ArrayList<>(mappings.stream()
-                .filter(row -> Objects.equals(row.getSubjectId(), subjectId))
-                .map(MckoSubjectMapping::getMckoSubject)
-                .toList());
-        if (isPrimaryClass(load.getClassName())) {
+        List<String> mckoSubjects = new ArrayList<>();
+        if (subjectGroup.primary()) {
             mckoSubjects.add(PRIMARY_META_SUBJECT);
+        } else {
+            mckoSubjects.addAll(mappings.stream()
+                    .filter(row -> Objects.equals(row.getSubjectId(), load.getSubjectId()))
+                    .map(MckoSubjectMapping::getMckoSubject)
+                    .toList());
         }
         if (mckoSubjects.isEmpty()) {
             return null;
@@ -267,12 +270,12 @@ public class MckoServiceImpl implements MckoService {
                 .filter(this::isActivePassing)
                 .max(this::compareCertificates);
         if (best.isEmpty()) {
-            return new MckoDtos.EligibilityRow(teacherId, teacherFio, subjectId, subjectName, "MISSING", "НЕТ МЦКО", null, null, null);
+            return new MckoDtos.EligibilityRow(teacherId, teacherFio, subjectGroup.subjectId(), subjectGroup.subjectName(), "MISSING", "НЕТ МЦКО", null, null, null);
         }
         MckoCertificate cert = best.get();
         String status = certificateStatus(cert);
         String message = certificateWarning(cert);
-        return new MckoDtos.EligibilityRow(teacherId, teacherFio, subjectId, subjectName, status, message,
+        return new MckoDtos.EligibilityRow(teacherId, teacherFio, subjectGroup.subjectId(), subjectGroup.subjectName(), status, message,
                 cert.getLevel(), cert.getDiagnosticDate(), cert.getExpiresAt());
     }
 
@@ -289,6 +292,25 @@ public class MckoServiceImpl implements MckoService {
         } catch (NumberFormatException ex) {
             return false;
         }
+    }
+
+    private SubjectGroup subjectGroup(ManualLoadEntry load) {
+        if (isPrimaryClass(load.getClassName())) {
+            return new SubjectGroup(PRIMARY_GROUP_SUBJECT_ID, "Начальная школа", true);
+        }
+        if (isMathSubject(load.getSubjectName())) {
+            return new SubjectGroup(MATH_GROUP_SUBJECT_ID, "Математика", false);
+        }
+        return new SubjectGroup(load.getSubjectId(), load.getSubjectName(), false);
+    }
+
+    private boolean isMathSubject(String subjectName) {
+        String value = normalize(subjectName);
+        return value.contains("математ")
+                || value.contains("алгебр")
+                || value.contains("геометр")
+                || value.contains("вероят")
+                || value.contains("статист");
     }
 
     private MckoDtos.EligibilityRow worseEligibility(MckoDtos.EligibilityRow a, MckoDtos.EligibilityRow b) {
@@ -459,4 +481,6 @@ public class MckoServiceImpl implements MckoService {
             throw new IllegalArgumentException("Нет колонки: " + String.join(" / ", names));
         }
     }
+
+    private record SubjectGroup(Long subjectId, String subjectName, boolean primary) {}
 }
