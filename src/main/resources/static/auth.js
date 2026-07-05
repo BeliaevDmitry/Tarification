@@ -140,6 +140,7 @@ function navItemsForPath(pathname) {
             { path: '/teachers.html#archive', tab: 'TEACHERS_ARCHIVE', label: 'Архив' },
             { path: '/teachers.html#dismissals', tab: 'TEACHERS_DISMISSALS', label: 'Увольнения' },
             { path: '/teachers.html#settings', tab: 'TEACHERS_SETTINGS', label: 'Настройки расчёта ЗП' },
+            { path: '/teachers.html#mcko', tab: 'TEACHERS_MCKO', label: 'МЦКО' },
             { path: '/service-notes.html', tab: 'SERVICE_NOTES', label: 'Служебные записки' },
             { path: '/teachers-notification.html', tab: 'HR_NOTIFICATIONS_VIEW', label: 'Уведомления' }
         ];

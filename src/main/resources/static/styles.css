@@ -604,6 +604,33 @@ hr {
     font-weight: 600;
 }
 
+.mcko-load-missing,
+.mcko-load-warning {
+    margin-top: 4px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.mcko-load-missing {
+    color: #b91c1c;
+}
+
+.mcko-load-warning {
+    color: #a16207;
+}
+
+.mcko-status-missing td {
+    background: #fee2e2;
+}
+
+.mcko-status-warning td {
+    background: #fef3c7;
+}
+
+.mcko-status-ok td {
+    background: #f0fdf4;
+}
+
 .period-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
