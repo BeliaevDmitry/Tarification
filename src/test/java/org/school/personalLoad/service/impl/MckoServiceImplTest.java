@@ -14,6 +14,11 @@ import org.school.personalLoad.model.MckoCertificate;
 import org.school.personalLoad.model.MckoCertificateSource;
 import org.school.personalLoad.model.MckoImportBatch;
 import org.school.personalLoad.model.MckoSubjectMapping;
+import org.school.personalLoad.model.CurriculumPart;
+import org.school.personalLoad.model.EducationLevel;
+import org.school.personalLoad.model.ManualLoadEntry;
+import org.school.personalLoad.model.SubjectCatalogEntry;
+import org.school.personalLoad.model.SubjectType;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.*;
 import org.springframework.mock.web.MockMultipartFile;
@@ -61,7 +66,7 @@ class MckoServiceImplTest {
         MckoCertificate manualExpertUnpublished = certificate(teacher, "Математика профильная", "Экспертный",
                 false, today.minusMonths(2), MckoCertificateSource.MANUAL);
 
-        when(teacherRepository.findAll()).thenReturn(List.of(teacher));
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(load(teacher, 10L, "Алгебра", "7-А")));
         when(mappingRepository.findAll()).thenReturn(List.of(mapping));
         when(certificateRepository.findAll()).thenReturn(List.of(importedHigh, manualExpertUnpublished));
 
@@ -85,7 +90,7 @@ class MckoServiceImplTest {
         MckoCertificate activeHigh = certificate(teacher, "Математика профильная", "Высокий",
                 true, today.minusMonths(1), MckoCertificateSource.MANUAL);
 
-        when(teacherRepository.findAll()).thenReturn(List.of(teacher));
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(load(teacher, 10L, "Алгебра", "7-А")));
         when(mappingRepository.findAll()).thenReturn(List.of(mapping));
         when(certificateRepository.findAll()).thenReturn(List.of(expiredExpert, activeHigh));
 
@@ -102,7 +107,7 @@ class MckoServiceImplTest {
         TeacherDirectoryEntry teacher = teacher(1L, "Иванов Иван Иванович");
         MckoSubjectMapping mapping = mapping("Математика профильная", 10L, "Алгебра");
 
-        when(teacherRepository.findAll()).thenReturn(List.of(teacher));
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(load(teacher, 10L, "Алгебра", "7-А")));
         when(mappingRepository.findAll()).thenReturn(List.of(mapping));
         when(certificateRepository.findAll()).thenReturn(List.of());
 
@@ -112,6 +117,24 @@ class MckoServiceImplTest {
         assertThat(rows.get(0).status()).isEqualTo("MISSING");
         assertThat(rows.get(0).message()).isEqualTo("НЕТ МЦКО");
         assertThat(rows.get(0).subjectId()).isEqualTo(10L);
+    }
+
+    @Test
+    void primaryMetaSubjectAllowsAnyCoreSubjectInGradesOneToFour() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Иванов Иван Иванович");
+        LocalDate today = LocalDate.now();
+        MckoCertificate meta = certificate(teacher, "Метапредметные умения (начальное образование)", "Высокий",
+                true, today.minusMonths(1), MckoCertificateSource.IMPORT);
+
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(load(teacher, 20L, "Русский язык", "2-Б")));
+        when(mappingRepository.findAll()).thenReturn(List.of());
+        when(certificateRepository.findAll()).thenReturn(List.of(meta));
+
+        List<MckoDtos.EligibilityRow> rows = service.eligibility("2026/2027");
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).status()).isEqualTo("OK");
+        assertThat(rows.get(0).subjectName()).isEqualTo("Русский язык");
     }
 
     @Test
@@ -167,6 +190,25 @@ class MckoServiceImplTest {
         certificate.setPublished(published);
         certificate.setSource(source);
         return certificate;
+    }
+
+    private ManualLoadEntry load(TeacherDirectoryEntry teacher, Long subjectId, String subjectName, String className) {
+        SubjectCatalogEntry subject = new SubjectCatalogEntry();
+        subject.setId(subjectId);
+        subject.setSubjectName(subjectName);
+        subject.setSubjectType(SubjectType.CORE);
+        ManualLoadEntry load = new ManualLoadEntry();
+        load.setAcademicYear("2026/2027");
+        load.setTeacherId(teacher.getId());
+        load.setFioTeacher(teacher.getFioTeacher());
+        load.setSubject(subject);
+        load.setSubjectName(subjectName);
+        load.setClassName(className);
+        load.setCurriculumPart(CurriculumPart.CORE);
+        load.setEducationLevel(EducationLevel.BASIC);
+        load.setNumberSchoolBuilding("СП1");
+        load.setLoad(1);
+        return load;
     }
 
     private byte[] workbookBytes() throws Exception {

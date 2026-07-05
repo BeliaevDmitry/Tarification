@@ -56,11 +56,9 @@ const ui = {
     mckoPublished: document.getElementById("mcko-published"),
     mckoComment: document.getElementById("mcko-comment"),
     mckoScan: document.getElementById("mcko-scan"),
-    mckoCertificatesBody: document.getElementById("mcko-certificates-body"),
     mckoEligibilityBody: document.getElementById("mcko-eligibility-body"),
     mckoSubjectForm: document.getElementById("mcko-subject-form"),
     mckoMappingSubjectName: document.getElementById("mcko-mapping-subject-name"),
-    mckoKnownSubjects: document.getElementById("mcko-known-subjects"),
     mckoLoadSubjectSelect: document.getElementById("mcko-load-subject-select"),
     mckoSubjectsBody: document.getElementById("mcko-subjects-body"),
     dismissalsBody: document.getElementById("teachers-dismissals-body"),
@@ -454,6 +452,7 @@ function renderMckoLoadSubjectOptions() {
     const used = new Set((mckoMappings || []).map((row) => `${String(row.mckoSubject || "").toLowerCase()}|${row.subjectId}`));
     const mckoSubject = String(ui.mckoMappingSubjectName?.value || "").trim().toLowerCase();
     ui.mckoLoadSubjectSelect.innerHTML = (subjectCatalogRows || [])
+        .filter((subject) => !subject.subjectType || subject.subjectType === "CORE")
         .filter((subject) => !mckoSubject || !used.has(`${mckoSubject}|${subject.id}`))
         .slice()
         .sort((a, b) => String(a.subjectName || "").localeCompare(String(b.subjectName || ""), "ru"))
@@ -471,15 +470,15 @@ function knownMckoSubjects() {
 
 function renderMckoSubjectSelectors() {
     const subjects = knownMckoSubjects();
+    if (ui.mckoMappingSubjectName) {
+        ui.mckoMappingSubjectName.innerHTML = subjects
+            .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
+            .join("") || `<option value="">Сначала загрузите выгрузку МЦКО</option>`;
+    }
     if (ui.mckoSubjectSelect) {
         ui.mckoSubjectSelect.innerHTML = subjects
             .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
-            .join("") || `<option value="">Сначала добавьте предмет МЦКО</option>`;
-    }
-    if (ui.mckoKnownSubjects) {
-        ui.mckoKnownSubjects.innerHTML = subjects
-            .map((name) => `<option value="${escapeHtml(name)}"></option>`)
-            .join("");
+            .join("") || `<option value="">Сначала загрузите выгрузку МЦКО</option>`;
     }
     renderMckoLoadSubjectOptions();
 }
@@ -497,35 +496,10 @@ function mckoStatusClass(status) {
 }
 
 async function reloadMckoCertificates() {
-    if (!canViewTeachersTab("mcko") || !ui.mckoCertificatesBody) return;
     updateMckoExportLink();
     const mode = ui.mckoModeSelect?.value || "all";
     mckoCertificates = await api(`/api/mcko/certificates?mode=${encodeURIComponent(mode)}`) || [];
     renderMckoSubjectSelectors();
-    ui.mckoCertificatesBody.innerHTML = mckoCertificates.map((row) => `
-        <tr class="${mckoStatusClass(row.status)}">
-            <td>${escapeHtml(row.teacherFio || "")}</td>
-            <td>${escapeHtml(row.mckoSubject || "")}</td>
-            <td>${escapeHtml(row.examType || "")}</td>
-            <td>${escapeHtml(row.level || "")}</td>
-            <td>${row.published ? "Да" : "Нет"}</td>
-            <td>${escapeHtml(row.diagnosticDate || "")}</td>
-            <td>${escapeHtml(row.expiresAt || "")}</td>
-            <td>${escapeHtml(row.warning || row.status || "")}</td>
-            <td>${escapeHtml(row.source === "IMPORT" ? "Выгрузка" : "Ручной ввод")}</td>
-            <td>
-                ${row.hasScan ? `<a class="nav-link" href="/api/mcko/certificates/${escapeHtml(row.id)}/scan" data-allow-readonly="true">Скан</a>` : ""}
-                <button type="button" class="danger-btn" data-delete-mcko="${escapeHtml(row.id)}">Удалить</button>
-            </td>
-        </tr>
-    `).join("") || `<tr><td colspan="10">Записей МЦКО пока нет</td></tr>`;
-    ui.mckoCertificatesBody.querySelectorAll("[data-delete-mcko]").forEach((button) => {
-        button.addEventListener("click", async () => {
-            await api(`/api/mcko/certificates/${encodeURIComponent(button.dataset.deleteMcko)}`, { method: "DELETE" });
-            await reloadMckoCertificates();
-        });
-    });
-    await reloadMckoEligibility();
 }
 
 async function reloadMckoEligibility() {
@@ -582,26 +556,37 @@ async function importMckoCertificates() {
     print(result);
     alert(`МЦКО: импортировано ${result?.importedRows ?? 0}, пропущено ${result?.skippedRows ?? 0}`);
     ui.mckoImportFile.value = "";
-    await reloadMckoMappings();
     await reloadMckoCertificates();
+    await reloadMckoMappings();
+    await reloadMckoEligibility();
 }
 
 async function saveManualMcko(event) {
     event.preventDefault();
+    const teacherId = Number(ui.mckoTeacherSelect?.value || 0);
+    const mckoSubject = String(ui.mckoSubjectSelect?.value || "").trim();
+    const examType = String(ui.mckoExamType?.value || "").trim();
+    const diagnosticDate = ui.mckoDate?.value || "";
+    if (!teacherId || !mckoSubject || !examType || !diagnosticDate) {
+        return print({ error: "Заполните педагога, предмет МЦКО, тип экзамена и дату" });
+    }
     const form = new FormData();
-    form.append("teacherId", ui.mckoTeacherSelect.value);
-    form.append("mckoSubject", ui.mckoSubjectSelect.value);
-    form.append("examType", ui.mckoExamType.value.trim());
-    form.append("diagnosticDate", ui.mckoDate.value);
-    form.append("level", ui.mckoLevel.value);
-    form.append("published", ui.mckoPublished.checked ? "true" : "false");
-    form.append("comment", ui.mckoComment.value.trim());
-    if (ui.mckoScan.files?.[0]) form.append("scan", ui.mckoScan.files[0]);
+    form.append("teacherId", String(teacherId));
+    form.append("mckoSubject", mckoSubject);
+    form.append("examType", examType);
+    form.append("diagnosticDate", diagnosticDate);
+    form.append("level", ui.mckoLevel?.value || "Высокий");
+    form.append("published", ui.mckoPublished?.checked ? "true" : "false");
+    form.append("comment", String(ui.mckoComment?.value || "").trim());
+    if (ui.mckoScan?.files?.[0]) {
+        form.append("scan", ui.mckoScan.files[0]);
+    }
     const result = await api("/api/mcko/certificates", { method: "POST", body: form });
     print(result);
     ui.mckoManualForm.reset();
     if (ui.mckoPublished) ui.mckoPublished.checked = true;
     await reloadMckoCertificates();
+    await reloadMckoEligibility();
 }
 
 async function saveMckoMapping(event) {
@@ -623,8 +608,9 @@ async function saveMckoMapping(event) {
 
 async function loadMckoTabData(tab = teachersTabFromHash()) {
     if (!isMckoTab(tab)) return;
+    await reloadMckoCertificates();
     await reloadMckoMappings();
-    if (tab === "mcko") await reloadMckoCertificates();
+    if (tab === "mcko") await reloadMckoEligibility();
 }
 
 function renderArchive(rows) {
@@ -924,7 +910,14 @@ function bindEvents() {
         groupCoefficientSortAsc = !groupCoefficientSortAsc;
         reloadGroupCoefficients().catch((error) => print({ error: error.message }));
     });
-    ui.mckoModeSelect?.addEventListener("change", () => reloadMckoCertificates().catch((error) => print({ error: error.message })));
+    ui.mckoModeSelect?.addEventListener("change", async () => {
+        try {
+            await reloadMckoCertificates();
+            await reloadMckoEligibility();
+        } catch (error) {
+            print({ error: error.message });
+        }
+    });
     ui.mckoImportBtn?.addEventListener("click", () => importMckoCertificates().catch((error) => print({ error: error.message })));
     ui.mckoManualForm?.addEventListener("submit", (event) => saveManualMcko(event).catch((error) => print({ error: error.message })));
     ui.mckoSubjectForm?.addEventListener("submit", (event) => saveMckoMapping(event).catch((error) => print({ error: error.message })));
