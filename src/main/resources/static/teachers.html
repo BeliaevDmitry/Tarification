@@ -172,6 +172,7 @@
                     <button id="mcko-import-btn" type="button">Загрузить выгрузку</button>
                     <a id="mcko-export-link" class="nav-link" href="/api/mcko/certificates/export" data-allow-readonly="true">Скачать Excel</a>
                 </div>
+                <h3>Ручной ввод МЦКО</h3>
                 <form id="mcko-manual-form" class="row">
                     <select id="mcko-teacher-select" required></select>
                     <select id="mcko-subject-select" required></select>
@@ -197,15 +198,11 @@
                     </select>
                     <label><input id="mcko-published" type="checkbox" checked> опубликован</label>
                     <input id="mcko-comment" placeholder="Комментарий">
-                    <input id="mcko-scan" type="file">
+                    <label class="file-label">Подгрузить сертификат
+                        <input id="mcko-scan" type="file" accept=".pdf,.jpg,.jpeg,.png">
+                    </label>
                     <button type="submit">Сохранить</button>
                 </form>
-                <div class="sheet-wrap" data-scroll-controls="off">
-                    <table class="sheet-table">
-                        <thead><tr><th>Учитель</th><th>Предмет МЦКО</th><th>Тип</th><th>Уровень</th><th>Опубликован</th><th>Дата</th><th>Окончание</th><th>Статус</th><th>Источник</th><th>Действие</th></tr></thead>
-                        <tbody id="mcko-certificates-body"></tbody>
-                    </table>
-                </div>
                 <h3>Допуск по предметам нагрузки</h3>
                 <div class="sheet-wrap" data-scroll-controls="off">
                     <table class="sheet-table">
@@ -217,8 +214,7 @@
             <section id="mcko-subjects-panel" style="display:none;">
                 <h3>Предметы МЦКО</h3>
                 <form id="mcko-subject-form" class="row">
-                    <input id="mcko-mapping-subject-name" list="mcko-known-subjects" placeholder="Предмет МЦКО" required>
-                    <datalist id="mcko-known-subjects"></datalist>
+                    <select id="mcko-mapping-subject-name" required></select>
                     <select id="mcko-load-subject-select" required></select>
                     <button type="submit">Добавить</button>
                 </form>
