@@ -4,18 +4,27 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.MckoDtos;
 import org.school.personalLoad.model.MckoCertificate;
 import org.school.personalLoad.model.MckoCertificateSource;
+import org.school.personalLoad.model.MckoImportBatch;
 import org.school.personalLoad.model.MckoSubjectMapping;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.*;
+import org.springframework.mock.web.MockMultipartFile;
 
+import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -105,6 +114,31 @@ class MckoServiceImplTest {
         assertThat(rows.get(0).subjectId()).isEqualTo(10L);
     }
 
+    @Test
+    void importAcceptsRealExportHeaderAndExcelSerialDate() throws Exception {
+        TeacherDirectoryEntry teacher = teacher(1L, "Алфёров Александр Викторович");
+        when(teacherRepository.findAll()).thenReturn(List.of(teacher));
+        when(importBatchRepository.save(any(MckoImportBatch.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(certificateRepository.findFirstByTeacherIdAndMckoSubjectIgnoreCaseAndDiagnosticDateAndExamTypeIgnoreCaseAndSource(
+                any(), any(), any(), any(), any())).thenReturn(Optional.empty());
+        when(certificateRepository.save(any(MckoCertificate.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MockMultipartFile file = new MockMultipartFile("file", "mcko.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", workbookBytes());
+
+        MckoDtos.ImportResult result = service.importCertificates(file);
+
+        assertThat(result.importedRows()).isEqualTo(1);
+        assertThat(result.skippedRows()).isZero();
+        ArgumentCaptor<MckoCertificate> captor = ArgumentCaptor.forClass(MckoCertificate.class);
+        org.mockito.Mockito.verify(certificateRepository).save(captor.capture());
+        MckoCertificate saved = captor.getValue();
+        assertThat(saved.getTeacherId()).isEqualTo(1L);
+        assertThat(saved.getMckoSubject()).isEqualTo("Математика (профильный уровень)");
+        assertThat(saved.getDiagnosticDate()).isEqualTo(LocalDate.of(2025, 11, 29));
+        assertThat(saved.isPublished()).isTrue();
+    }
+
     private TeacherDirectoryEntry teacher(Long id, String fio) {
         TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
         teacher.setId(id);
@@ -133,5 +167,24 @@ class MckoServiceImplTest {
         certificate.setPublished(published);
         certificate.setSource(source);
         return certificate;
+    }
+
+    private byte[] workbookBytes() throws Exception {
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Row header = workbook.createSheet("mcko").createRow(0);
+            String[] headers = {"ФИО", "Дата диагностики", "Тип экзамена", "Предмет", "Достигнутый уровень", "Публикация результатов"};
+            for (int i = 0; i < headers.length; i++) {
+                header.createCell(i).setCellValue(headers[i]);
+            }
+            Row row = workbook.getSheetAt(0).createRow(1);
+            row.createCell(0).setCellValue("Алфёров Александр Викторович");
+            row.createCell(1).setCellValue(45990);
+            row.createCell(2).setCellValue("Комплексная диагностика ЕГЭ (29.11.2025 - 13.12.2025)");
+            row.createCell(3).setCellValue("Математика (профильный уровень)");
+            row.createCell(4).setCellValue("Экспертный");
+            row.createCell(5).setCellValue("Опубликован");
+            workbook.write(out);
+            return out.toByteArray();
+        }
     }
 }

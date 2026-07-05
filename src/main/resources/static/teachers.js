@@ -580,6 +580,7 @@ async function importMckoCertificates() {
     form.append("file", file);
     const result = await api("/api/mcko/certificates/import", { method: "POST", body: form });
     print(result);
+    alert(`МЦКО: импортировано ${result?.importedRows ?? 0}, пропущено ${result?.skippedRows ?? 0}`);
     ui.mckoImportFile.value = "";
     await reloadMckoMappings();
     await reloadMckoCertificates();
