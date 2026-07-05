@@ -180,7 +180,7 @@ function showTeachersTab(tab = teachersTabFromHash()) {
     if (ui.coefficientsPanel) ui.coefficientsPanel.style.display = safeTab === "coefficients" ? "" : "none";
     if (ui.groupCoefficientsPanel) ui.groupCoefficientsPanel.style.display = safeTab === "group-coefficients" ? "" : "none";
     if (ui.sectionTitle) {
-        ui.sectionTitle.textContent = safeTab === "archive" ? "Архив" : safeTab === "dismissals" ? "Увольнения" : safeTab === "settings" ? "Настройки" : "Кадры";
+        ui.sectionTitle.textContent = safeTab === "archive" ? "Архив" : safeTab === "dismissals" ? "Увольнения" : isSettingsLikeTab(safeTab) ? "Настройки расчёта ЗП" : "Кадры";
     }
     updateHeaderNavActive(safeTab);
 }
@@ -528,9 +528,9 @@ async function saveSalarySettings(event) {
 }
 
 const stageLabel = (value) => {
-    if (value === "NOO") return "РќРћРћ";
-    if (value === "OOO") return "РћРћРћ";
-    if (value === "SOO") return "РЎРћРћ";
+    if (value === "NOO") return "НОО";
+    if (value === "OOO") return "ООО";
+    if (value === "SOO") return "СОО";
     return value || "";
 };
 
@@ -555,9 +555,9 @@ async function reloadCoefficients() {
             <tr>
                 <td>${escapeHtml(`${row.subjectName || ""} ${stageLabel(row.educationStage)}`.trim())}</td>
                 <td>${escapeHtml(formatCoefficient(row.coefficient))}</td>
-                <td><button type="button" class="danger-btn" data-delete-coefficient="${escapeHtml(row.id)}">РЈРґР°Р»РёС‚СЊ</button></td>
+                <td><button type="button" class="danger-btn" data-delete-coefficient="${escapeHtml(row.id)}">Удалить</button></td>
             </tr>
-        `).join("") || `<tr><td colspan="3">Р—Р°РїРёСЃРµР№ РЅРµС‚</td></tr>`;
+        `).join("") || `<tr><td colspan="3">Записей нет</td></tr>`;
     ui.coefficientsBody.querySelectorAll("[data-delete-coefficient]").forEach((button) => {
         button.addEventListener("click", async () => {
             await api(`/api/subjects/coefficients/${encodeURIComponent(button.dataset.deleteCoefficient)}`, { method: "DELETE" });
@@ -568,7 +568,7 @@ async function reloadCoefficients() {
 
 async function importCoefficients() {
     const file = ui.coefficientFileInput?.files?.[0];
-    if (!file) return print({ error: "Р’С‹Р±РµСЂРёС‚Рµ С„Р°Р№Р» РєРѕСЌС„С„РёС†РёРµРЅС‚РѕРІ" });
+    if (!file) return print({ error: "Выберите файл коэффициентов" });
     const form = new FormData();
     form.append("file", file);
     const result = await api("/api/subjects/coefficients/import", { method: "POST", body: form });
@@ -609,10 +609,10 @@ async function reloadGroupCoefficients() {
     ui.groupCoefficientsBody.innerHTML = sorted.map((row) => `
         <tr>
             <td>${escapeHtml(row.subjectName || "")}</td>
-            <td>${escapeHtml(formatCoefficient(25))} / РґРµС‚Рё</td>
-            <td><button type="button" class="danger-btn" data-delete-group-coefficient="${escapeHtml(row.id)}">РЈРґР°Р»РёС‚СЊ</button></td>
+            <td>${escapeHtml(formatCoefficient(25))} / дети</td>
+            <td><button type="button" class="danger-btn" data-delete-group-coefficient="${escapeHtml(row.id)}">Удалить</button></td>
         </tr>
-    `).join("") || `<tr><td colspan="3">Р—Р°РїРёСЃРµР№ РЅРµС‚</td></tr>`;
+    `).join("") || `<tr><td colspan="3">Записей нет</td></tr>`;
     ui.groupCoefficientsBody.querySelectorAll("[data-delete-group-coefficient]").forEach((button) => {
         button.addEventListener("click", async () => {
             await api(`/api/salary-group-coefficient-subjects/${encodeURIComponent(button.dataset.deleteGroupCoefficient)}`, { method: "DELETE" });
@@ -627,14 +627,14 @@ function renderGroupCoefficientSubjectOptions(enabledRows = []) {
     const options = groupCoefficientSubjectCatalog
         .filter((subject) => !enabledIds.has(String(subject.id)))
         .map((subject) => `<option value="${escapeHtml(subject.id)}">${escapeHtml(subject.subjectName || "")}</option>`);
-    ui.groupCoefficientSubjectName.innerHTML = options.join("") || `<option value="">Р’СЃРµ РїСЂРµРґРјРµС‚С‹ СѓР¶Рµ РґРѕР±Р°РІР»РµРЅС‹</option>`;
+    ui.groupCoefficientSubjectName.innerHTML = options.join("") || `<option value="">Все предметы уже добавлены</option>`;
 }
 
 async function saveGroupCoefficientSubject(event) {
     event.preventDefault();
     const subjectId = Number(ui.groupCoefficientSubjectName.value || 0);
     if (!Number.isFinite(subjectId) || subjectId <= 0) {
-        print({ error: "Р’С‹Р±РµСЂРёС‚Рµ РїСЂРµРґРјРµС‚ РёР· СЃРїРёСЃРєР°" });
+        print({ error: "Выберите предмет из списка" });
         return;
     }
     const result = await api("/api/salary-group-coefficient-subjects", {
