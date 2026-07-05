@@ -825,6 +825,43 @@ class ManualLoadServiceImplBulkReplaceTest {
         }
     }
 
+    @Test
+    void exportFullWorkbookWithSalaryAddsSubjectAndGroupBonusesFromBaseSalary() throws Exception {
+        ManualLoadEntry row = manualRow("Иванов И.И.", "СП1", "5-А", "Алгебра", 6);
+        row.setSubject(subject(20L, "Алгебра"));
+        row.setGroupNameEducationalPlan("1 группа");
+
+        SalaryGroupCoefficientSubject groupSubject = new SalaryGroupCoefficientSubject();
+        groupSubject.setSubjectId(20L);
+        groupSubject.setSubjectName("Алгебра");
+
+        when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(row));
+        when(teacherDirectoryRepository.findAll()).thenReturn(List.of());
+        when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of());
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of());
+        when(classSizeService.effectiveClassSizes("2025/2026")).thenReturn(Map.of("5-А", 30));
+        when(subjectLevelCoefficientRepository.findAll()).thenReturn(List.of(coefficient("Алгебра", EducationStage.OOO, "1.5")));
+        when(salaryGroupCoefficientSubjectRepository.findAll()).thenReturn(List.of(groupSubject));
+        SalarySettings settings = new SalarySettings();
+        settings.setStudentHourRate(java.math.BigDecimal.valueOf(40));
+        when(salarySettingsRepository.findById(SalarySettings.DEFAULT_ID)).thenReturn(Optional.of(settings));
+
+        byte[] body = service.exportFullWorkbookWithSalary("2025/2026");
+
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
+            var loadSheet = workbook.getSheet("СП1");
+            double base = 40 * 15 * 6 * (34.0 / 12.0);
+            double subjectBonus = base * (1.5 - 1);
+            double groupBonus = base * ((25.0 / 15.0) - 1);
+            double expected = base + subjectBonus + groupBonus;
+            assertEquals(1.5D, loadSheet.getRow(1).getCell(10).getNumericCellValue(), 0.01);
+            assertEquals(25.0 / 15.0, loadSheet.getRow(1).getCell(11).getNumericCellValue(), 0.01);
+            assertEquals(expected, loadSheet.getRow(1).getCell(12).getNumericCellValue(), 0.01);
+            assertEquals(expected, loadSheet.getRow(1).getCell(13).getNumericCellValue(), 0.01);
+            assertEquals(expected, loadSheet.getRow(1).getCell(15).getNumericCellValue(), 0.01);
+        }
+    }
+
 
     @Test
     void exportSubjectLoadWorkbookSeparatesHalfYearHoursWithPipe() throws Exception {

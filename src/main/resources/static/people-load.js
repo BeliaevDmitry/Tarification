@@ -396,7 +396,8 @@ function rowSalaryDetails(row) {
     const hours = Math.max(loadValue(row), 0);
     const subjectCoef = subjectCoefficient(row.subjectName, row.className);
     const groupCoef = rowGroupCoefficient(row);
-    const value = state.studentHourRate * children * hours * (34 / 12) * subjectCoef * groupCoef;
+    const baseSalary = state.studentHourRate * children * hours * (34 / 12);
+    const value = baseSalary + (baseSalary * (subjectCoef - 1)) + (baseSalary * (groupCoef - 1));
     return { subjectCoef, groupCoef, hoursSalary: value };
 }
 
