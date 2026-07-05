@@ -43,6 +43,7 @@ let complexManualRows = [];
 let teacherNames = [];
 let teacherDirectory = [];
 let teacherDirectoryByName = new Map();
+let mckoEligibilityByTeacherSubject = new Map();
 let buildings = [];
 let classroomRows = [];
 let studyPeriodSettings = [];
@@ -1126,6 +1127,28 @@ function teacherExists(teacherName) {
     return teacherDirectoryByName.has(normalized);
 }
 
+function mckoEligibilityKey(teacherName, subjectId) {
+    return `${String(teacherName || "").trim().toLowerCase()}|${String(subjectId || "").trim()}`;
+}
+
+function setupMckoEligibility(rows) {
+    mckoEligibilityByTeacherSubject = new Map();
+    (rows || []).forEach((row) => {
+        if (!row.teacherFio || !row.subjectId) return;
+        mckoEligibilityByTeacherSubject.set(mckoEligibilityKey(row.teacherFio, row.subjectId), row);
+    });
+}
+
+function mckoNoteForRow(row) {
+    const teacherName = String(row.teacherName || "").trim();
+    if (!teacherName || isVacancyTeacherName(teacherName) || !teacherExists(teacherName)) return null;
+    if (String(row.curriculumPart || "CORE").toUpperCase() !== "CORE") return null;
+    const eligibility = mckoEligibilityByTeacherSubject.get(mckoEligibilityKey(teacherName, row.subjectId));
+    if (!eligibility) return null;
+    if (eligibility.status === "OK") return null;
+    return eligibility;
+}
+
 function dismissalDateOfTeacher(teacherName) {
     const normalized = String(teacherName || "").trim().toLowerCase();
     const teacher = teacherDirectoryByName.get(normalized);
@@ -1759,6 +1782,7 @@ function buildPresentationRows() {
         if (!subjectInfo.has(subjectKey)) {
             subjectInfo.set(subjectKey, {
                 subjectKey,
+                subjectId: row.subjectId,
                 subjectName: row.subjectName,
                 subjectAreaName: subjectAreaForRow(row, subjectAreaIndex),
                 displaySubjectName: displaySubjectName(row),
@@ -1811,6 +1835,7 @@ function buildPresentationRows() {
             const complexHoursPair = complexTeacherHours[teacherHoursLookupKey] || { h1: 0, h2: 0 };
             result.push({
                 subjectKey: info.subjectKey,
+                subjectId: info.subjectId,
                 teacherRowId: teacherRow.id,
                 subjectName: info.subjectName,
                 subjectAreaName: info.subjectAreaName || "Без области",
@@ -2679,6 +2704,7 @@ function renderTable() {
             tr.classList.add("load-change-row");
         }
         const listId = `teacher-list-${row.teacherRowId}`;
+        const mckoNote = mckoNoteForRow(row);
 
         tr.innerHTML = `
             <td>
@@ -2695,6 +2721,7 @@ function renderTable() {
                     : plannedDismissalDateOfTeacher(row.teacherName)
                         ? `<div class="planned-dismissal-note">Планирует уволиться с ${esc(formatTeacherStatusDate(plannedDismissalDateOfTeacher(row.teacherName)))}</div>`
                         : ""}${(!teacherExists(row.teacherName) && row.teacherName) ? `<div class="dismissal-note">Ошибка: педагог отсутствует в справочнике</div>` : ""}
+                ${mckoNote ? `<div class="${mckoNote.status === "MISSING" ? "mcko-load-missing" : "mcko-load-warning"}">${esc(mckoNote.message || "НЕТ МЦКО")}</div>` : ""}
             </td>
             <td><strong>${esc(row.subjectHours || 0)} ч</strong></td>
             <td><strong>${esc(row.buildingHours)} ч</strong></td>
@@ -3044,8 +3071,9 @@ async function refreshSourceData() {
     ]);
     const complexManualPromise = api("/api/manual-load");
     const allCurriculumPromise = api("/api/curriculum");
+    const mckoEligibilityPromise = api("/api/mcko/eligibility").catch(() => []);
 
-    const [teachers, buildingRows, organizationalBuildingRows, classRows, periodSettings, yearResolve, subjectRows, allCurriculumRows] = await Promise.all([
+    const [teachers, buildingRows, organizationalBuildingRows, classRows, periodSettings, yearResolve, subjectRows, allCurriculumRows, mckoEligibilityRows] = await Promise.all([
         api("/api/teachers"),
         api("/api/buildings"),
         api("/api/building-groups"),
@@ -3053,7 +3081,8 @@ async function refreshSourceData() {
         api("/api/settings/study-periods"),
         api("/api/academic-years/active"),
         api("/api/subjects"),
-        allCurriculumPromise
+        allCurriculumPromise,
+        mckoEligibilityPromise
     ]);
 
     const buildingGroups = new Map();
@@ -3223,6 +3252,7 @@ async function refreshSourceData() {
     invalidateBuildingDataCache();
     buildingDataCache.set(buildingCacheKey(selectedBuilding), { ts: Date.now(), curriculum: curriculumRows, manual: manualRows, complexManual: complexManualRows });
     teacherDirectory = teachers || [];
+    setupMckoEligibility(mckoEligibilityRows || []);
     teacherNames = sortRu(Array.from(new Set(teacherDirectory.map((t) => String(t.fioTeacher || "").trim()).filter(Boolean))));
     teacherDirectoryByName = new Map(
         teacherDirectory

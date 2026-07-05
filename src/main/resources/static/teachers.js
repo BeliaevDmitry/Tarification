@@ -40,12 +40,39 @@ const ui = {
     groupCoefficientRefreshBtn: document.getElementById("refresh-group-coefficients-btn"),
     groupCoefficientSortBtn: document.getElementById("sort-group-coefficients-btn"),
     groupCoefficientsBody: document.getElementById("group-coefficients-body"),
+    mckoPanel: document.getElementById("teachers-mcko-panel"),
+    mckoCertificatesPanel: document.getElementById("mcko-certificates-panel"),
+    mckoSubjectsPanel: document.getElementById("mcko-subjects-panel"),
+    mckoModeSelect: document.getElementById("mcko-mode-select"),
+    mckoImportFile: document.getElementById("mcko-import-file"),
+    mckoImportBtn: document.getElementById("mcko-import-btn"),
+    mckoExportLink: document.getElementById("mcko-export-link"),
+    mckoManualForm: document.getElementById("mcko-manual-form"),
+    mckoTeacherSelect: document.getElementById("mcko-teacher-select"),
+    mckoSubjectSelect: document.getElementById("mcko-subject-select"),
+    mckoExamType: document.getElementById("mcko-exam-type"),
+    mckoDate: document.getElementById("mcko-date"),
+    mckoLevel: document.getElementById("mcko-level"),
+    mckoPublished: document.getElementById("mcko-published"),
+    mckoComment: document.getElementById("mcko-comment"),
+    mckoScan: document.getElementById("mcko-scan"),
+    mckoCertificatesBody: document.getElementById("mcko-certificates-body"),
+    mckoEligibilityBody: document.getElementById("mcko-eligibility-body"),
+    mckoSubjectForm: document.getElementById("mcko-subject-form"),
+    mckoMappingSubjectName: document.getElementById("mcko-mapping-subject-name"),
+    mckoKnownSubjects: document.getElementById("mcko-known-subjects"),
+    mckoLoadSubjectSelect: document.getElementById("mcko-load-subject-select"),
+    mckoSubjectsBody: document.getElementById("mcko-subjects-body"),
     dismissalsBody: document.getElementById("teachers-dismissals-body"),
     result: document.getElementById("teachers-result"),
     tbody: document.getElementById("teachers-table-body")
 };
 let buildings = [];
 let groupCoefficientSubjectCatalog = [];
+let teacherRows = [];
+let subjectCatalogRows = [];
+let mckoMappings = [];
+let mckoCertificates = [];
 
 function currentAuthUser() {
     return window.tarificationAuth || null;
@@ -62,7 +89,8 @@ function canEditTeachers() {
     const tab = teachersTabFromHash();
     const permissionKey = tab === "archive" ? "TEACHERS_ARCHIVE"
         : tab === "dismissals" ? "TEACHERS_DISMISSALS"
-            : isSettingsLikeTab(tab) ? "TEACHERS_SETTINGS" : "TEACHERS";
+            : isSettingsLikeTab(tab) ? "TEACHERS_SETTINGS"
+                : isMckoTab(tab) ? "TEACHERS_MCKO" : "TEACHERS";
     return canEditTeacherPermission(permissionKey);
 }
 
@@ -76,13 +104,18 @@ function isSettingsLikeTab(tab) {
     return tab === "settings" || tab === "coefficients" || tab === "group-coefficients";
 }
 
+function isMckoTab(tab) {
+    return tab === "mcko" || tab === "mcko-subjects";
+}
+
 function canViewTeachersTab(tab) {
     const user = currentAuthUser() || {};
     if (user.admin) return true;
     const permissions = window.tarificationTabPermissions || {};
     const permissionKey = tab === "archive" ? "TEACHERS_ARCHIVE"
         : tab === "dismissals" ? "TEACHERS_DISMISSALS"
-            : isSettingsLikeTab(tab) ? "TEACHERS_SETTINGS" : "TEACHERS";
+            : isSettingsLikeTab(tab) ? "TEACHERS_SETTINGS"
+                : isMckoTab(tab) ? "TEACHERS_MCKO" : "TEACHERS";
     return Boolean(permissions[permissionKey]?.canView);
 }
 
@@ -145,6 +178,8 @@ function teachersTabFromHash() {
     if (hash === "#settings") return "settings";
     if (hash === "#coefficients") return "coefficients";
     if (hash === "#group-coefficients") return "group-coefficients";
+    if (hash === "#mcko") return "mcko";
+    if (hash === "#mcko-subjects") return "mcko-subjects";
     return "main";
 }
 
@@ -156,7 +191,9 @@ function updateHeaderNavActive(tab) {
             || (tab === "dismissals" && href === "/teachers.html#dismissals")
             || (tab === "settings" && href === "/teachers.html#settings")
             || (tab === "coefficients" && href === "/teachers.html#coefficients")
-            || (tab === "group-coefficients" && href === "/teachers.html#group-coefficients");
+            || (tab === "group-coefficients" && href === "/teachers.html#group-coefficients")
+            || (tab === "mcko" && href === "/teachers.html#mcko")
+            || (tab === "mcko-subjects" && href === "/teachers.html#mcko-subjects");
         if (active) {
             link.classList.add('active');
         } else if (href.startsWith('/teachers.html')) {
@@ -168,7 +205,7 @@ function updateHeaderNavActive(tab) {
 function showTeachersTab(tab = teachersTabFromHash()) {
     const safeTab = canViewTeachersTab(tab)
         ? tab
-        : ["main", "archive", "dismissals", "settings", "coefficients", "group-coefficients"].find(canViewTeachersTab) || "main";
+        : ["main", "archive", "dismissals", "settings", "coefficients", "group-coefficients", "mcko", "mcko-subjects"].find(canViewTeachersTab) || "main";
     if (safeTab !== tab) {
         history.replaceState(null, '', '/teachers.html');
     }
@@ -179,8 +216,11 @@ function showTeachersTab(tab = teachersTabFromHash()) {
     if (ui.settingsPanel) ui.settingsPanel.style.display = isSettingsLikeTab(safeTab) ? "" : "none";
     if (ui.coefficientsPanel) ui.coefficientsPanel.style.display = safeTab === "coefficients" ? "" : "none";
     if (ui.groupCoefficientsPanel) ui.groupCoefficientsPanel.style.display = safeTab === "group-coefficients" ? "" : "none";
+    if (ui.mckoPanel) ui.mckoPanel.style.display = isMckoTab(safeTab) ? "" : "none";
+    if (ui.mckoCertificatesPanel) ui.mckoCertificatesPanel.style.display = safeTab === "mcko" ? "" : "none";
+    if (ui.mckoSubjectsPanel) ui.mckoSubjectsPanel.style.display = safeTab === "mcko-subjects" ? "" : "none";
     if (ui.sectionTitle) {
-        ui.sectionTitle.textContent = safeTab === "archive" ? "Архив" : safeTab === "dismissals" ? "Увольнения" : isSettingsLikeTab(safeTab) ? "Настройки расчёта ЗП" : "Кадры";
+        ui.sectionTitle.textContent = safeTab === "archive" ? "Архив" : safeTab === "dismissals" ? "Увольнения" : isSettingsLikeTab(safeTab) ? "Настройки расчёта ЗП" : isMckoTab(safeTab) ? "МЦКО" : "Кадры";
     }
     updateHeaderNavActive(safeTab);
 }
@@ -191,6 +231,18 @@ function applySalarySettingsVisibility() {
         link.style.display = allowed ? '' : 'none';
     });
     if (!allowed && ui.settingsPanel?.style.display !== "none") {
+        showTeachersTab("main");
+    }
+}
+
+function applyMckoVisibility() {
+    const user = currentAuthUser() || {};
+    const permissions = window.tarificationTabPermissions || {};
+    const allowed = Boolean(user.admin || permissions.TEACHERS_MCKO?.canView);
+    document.querySelectorAll('a[href="/teachers.html#mcko"], a[href="/teachers.html#mcko-subjects"]').forEach((link) => {
+        link.style.display = allowed ? '' : 'none';
+    });
+    if (!allowed && ui.mckoPanel?.style.display !== "none") {
         showTeachersTab("main");
     }
 }
@@ -372,10 +424,206 @@ async function loadTeachers() {
         api('/api/teachers'),
         api('/api/teachers/archive')
     ]);
+    teacherRows = rows || [];
     renderTeachers(rows || []);
     renderDismissals(rows || []);
     renderArchive(archivedRows || []);
+    renderMckoTeacherOptions();
     return rows;
+}
+
+function renderMckoTeacherOptions() {
+    if (!ui.mckoTeacherSelect) return;
+    ui.mckoTeacherSelect.innerHTML = (teacherRows || [])
+        .filter((row) => !row.dismissalDate)
+        .slice()
+        .sort((a, b) => String(a.fioTeacher || "").localeCompare(String(b.fioTeacher || ""), "ru"))
+        .map((row) => `<option value="${escapeHtml(row.id)}">${escapeHtml(row.fioTeacher || "")}</option>`)
+        .join("") || `<option value="">Нет педагогов</option>`;
+}
+
+async function ensureSubjectCatalog() {
+    if (subjectCatalogRows.length) return subjectCatalogRows;
+    subjectCatalogRows = await api("/api/subjects") || [];
+    renderMckoLoadSubjectOptions();
+    return subjectCatalogRows;
+}
+
+function renderMckoLoadSubjectOptions() {
+    if (!ui.mckoLoadSubjectSelect) return;
+    const used = new Set((mckoMappings || []).map((row) => `${String(row.mckoSubject || "").toLowerCase()}|${row.subjectId}`));
+    const mckoSubject = String(ui.mckoMappingSubjectName?.value || "").trim().toLowerCase();
+    ui.mckoLoadSubjectSelect.innerHTML = (subjectCatalogRows || [])
+        .filter((subject) => !mckoSubject || !used.has(`${mckoSubject}|${subject.id}`))
+        .slice()
+        .sort((a, b) => String(a.subjectName || "").localeCompare(String(b.subjectName || ""), "ru"))
+        .map((subject) => `<option value="${escapeHtml(subject.id)}">${escapeHtml(subject.subjectName || "")}</option>`)
+        .join("") || `<option value="">Все предметы уже добавлены</option>`;
+}
+
+function knownMckoSubjects() {
+    return Array.from(new Set([
+        ...(mckoMappings || []).map((row) => row.mckoSubject),
+        ...(mckoCertificates || []).map((row) => row.mckoSubject)
+    ].map((value) => String(value || "").trim()).filter(Boolean)))
+        .sort((a, b) => a.localeCompare(b, "ru"));
+}
+
+function renderMckoSubjectSelectors() {
+    const subjects = knownMckoSubjects();
+    if (ui.mckoSubjectSelect) {
+        ui.mckoSubjectSelect.innerHTML = subjects
+            .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
+            .join("") || `<option value="">Сначала добавьте предмет МЦКО</option>`;
+    }
+    if (ui.mckoKnownSubjects) {
+        ui.mckoKnownSubjects.innerHTML = subjects
+            .map((name) => `<option value="${escapeHtml(name)}"></option>`)
+            .join("");
+    }
+    renderMckoLoadSubjectOptions();
+}
+
+function updateMckoExportLink() {
+    if (!ui.mckoExportLink) return;
+    const mode = ui.mckoModeSelect?.value || "all";
+    ui.mckoExportLink.href = `/api/mcko/certificates/export?mode=${encodeURIComponent(mode)}`;
+}
+
+function mckoStatusClass(status) {
+    if (status === "MISSING") return "mcko-status-missing";
+    if (status === "WARNING") return "mcko-status-warning";
+    return "mcko-status-ok";
+}
+
+async function reloadMckoCertificates() {
+    if (!canViewTeachersTab("mcko") || !ui.mckoCertificatesBody) return;
+    updateMckoExportLink();
+    const mode = ui.mckoModeSelect?.value || "all";
+    mckoCertificates = await api(`/api/mcko/certificates?mode=${encodeURIComponent(mode)}`) || [];
+    renderMckoSubjectSelectors();
+    ui.mckoCertificatesBody.innerHTML = mckoCertificates.map((row) => `
+        <tr class="${mckoStatusClass(row.status)}">
+            <td>${escapeHtml(row.teacherFio || "")}</td>
+            <td>${escapeHtml(row.mckoSubject || "")}</td>
+            <td>${escapeHtml(row.examType || "")}</td>
+            <td>${escapeHtml(row.level || "")}</td>
+            <td>${row.published ? "Да" : "Нет"}</td>
+            <td>${escapeHtml(row.diagnosticDate || "")}</td>
+            <td>${escapeHtml(row.expiresAt || "")}</td>
+            <td>${escapeHtml(row.warning || row.status || "")}</td>
+            <td>${escapeHtml(row.source === "IMPORT" ? "Выгрузка" : "Ручной ввод")}</td>
+            <td>
+                ${row.hasScan ? `<a class="nav-link" href="/api/mcko/certificates/${escapeHtml(row.id)}/scan" data-allow-readonly="true">Скан</a>` : ""}
+                <button type="button" class="danger-btn" data-delete-mcko="${escapeHtml(row.id)}">Удалить</button>
+            </td>
+        </tr>
+    `).join("") || `<tr><td colspan="10">Записей МЦКО пока нет</td></tr>`;
+    ui.mckoCertificatesBody.querySelectorAll("[data-delete-mcko]").forEach((button) => {
+        button.addEventListener("click", async () => {
+            await api(`/api/mcko/certificates/${encodeURIComponent(button.dataset.deleteMcko)}`, { method: "DELETE" });
+            await reloadMckoCertificates();
+        });
+    });
+    await reloadMckoEligibility();
+}
+
+async function reloadMckoEligibility() {
+    if (!ui.mckoEligibilityBody) return;
+    const rows = await api("/api/mcko/eligibility") || [];
+    ui.mckoEligibilityBody.innerHTML = rows
+        .slice()
+        .sort((a, b) => String(a.teacherFio || "").localeCompare(String(b.teacherFio || ""), "ru")
+            || String(a.subjectName || "").localeCompare(String(b.subjectName || ""), "ru"))
+        .map((row) => `
+            <tr class="${mckoStatusClass(row.status)}">
+                <td>${escapeHtml(row.teacherFio || "")}</td>
+                <td>${escapeHtml(row.subjectName || "")}</td>
+                <td>${escapeHtml(row.message || (row.status === "OK" ? "Есть" : "НЕТ МЦКО"))}</td>
+                <td>${escapeHtml(row.level || "")}</td>
+                <td>${escapeHtml(row.diagnosticDate || "")}</td>
+                <td>${escapeHtml(row.expiresAt || "")}</td>
+            </tr>
+        `).join("") || `<tr><td colspan="6">Сначала добавьте соответствия предметов МЦКО</td></tr>`;
+}
+
+async function reloadMckoMappings() {
+    if (!canViewTeachersTab("mcko-subjects") && !canViewTeachersTab("mcko")) return;
+    await ensureSubjectCatalog();
+    mckoMappings = await api("/api/mcko/subjects") || [];
+    renderMckoSubjectSelectors();
+    if (!ui.mckoSubjectsBody) return;
+    const rows = mckoMappings.slice().sort((a, b) =>
+        String(a.mckoSubject || "").localeCompare(String(b.mckoSubject || ""), "ru")
+        || String(a.subjectName || "").localeCompare(String(b.subjectName || ""), "ru")
+    );
+    ui.mckoSubjectsBody.innerHTML = rows.map((row) => `
+        <tr>
+            <td>${escapeHtml(row.mckoSubject || "")}</td>
+            <td>${escapeHtml(row.subjectName || "")}</td>
+            <td><button type="button" class="danger-btn" data-delete-mcko-mapping="${escapeHtml(row.id)}">Удалить</button></td>
+        </tr>
+    `).join("") || `<tr><td colspan="3">Соответствий пока нет</td></tr>`;
+    ui.mckoSubjectsBody.querySelectorAll("[data-delete-mcko-mapping]").forEach((button) => {
+        button.addEventListener("click", async () => {
+            await api(`/api/mcko/subjects/${encodeURIComponent(button.dataset.deleteMckoMapping)}`, { method: "DELETE" });
+            await reloadMckoMappings();
+            await reloadMckoCertificates();
+        });
+    });
+}
+
+async function importMckoCertificates() {
+    const file = ui.mckoImportFile?.files?.[0];
+    if (!file) return print({ error: "Выберите Excel-файл МЦКО" });
+    const form = new FormData();
+    form.append("file", file);
+    const result = await api("/api/mcko/certificates/import", { method: "POST", body: form });
+    print(result);
+    ui.mckoImportFile.value = "";
+    await reloadMckoMappings();
+    await reloadMckoCertificates();
+}
+
+async function saveManualMcko(event) {
+    event.preventDefault();
+    const form = new FormData();
+    form.append("teacherId", ui.mckoTeacherSelect.value);
+    form.append("mckoSubject", ui.mckoSubjectSelect.value);
+    form.append("examType", ui.mckoExamType.value.trim());
+    form.append("diagnosticDate", ui.mckoDate.value);
+    form.append("level", ui.mckoLevel.value);
+    form.append("published", ui.mckoPublished.checked ? "true" : "false");
+    form.append("comment", ui.mckoComment.value.trim());
+    if (ui.mckoScan.files?.[0]) form.append("scan", ui.mckoScan.files[0]);
+    const result = await api("/api/mcko/certificates", { method: "POST", body: form });
+    print(result);
+    ui.mckoManualForm.reset();
+    if (ui.mckoPublished) ui.mckoPublished.checked = true;
+    await reloadMckoCertificates();
+}
+
+async function saveMckoMapping(event) {
+    event.preventDefault();
+    const subjectId = Number(ui.mckoLoadSubjectSelect.value || 0);
+    const mckoSubject = String(ui.mckoMappingSubjectName.value || "").trim();
+    if (!mckoSubject || !Number.isFinite(subjectId) || subjectId <= 0) {
+        return print({ error: "Выберите предмет МЦКО и предмет нагрузки из списка" });
+    }
+    const result = await api("/api/mcko/subjects", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({ mckoSubject, subjectId })
+    });
+    print(result);
+    ui.mckoSubjectForm.reset();
+    await reloadMckoMappings();
+}
+
+async function loadMckoTabData(tab = teachersTabFromHash()) {
+    if (!isMckoTab(tab)) return;
+    await reloadMckoMappings();
+    if (tab === "mcko") await reloadMckoCertificates();
 }
 
 function renderArchive(rows) {
@@ -663,6 +911,7 @@ function bindEvents() {
         const tab = teachersTabFromHash();
         showTeachersTab(tab);
         await loadSettingsTabData(tab);
+        await loadMckoTabData(tab);
     });
     ui.salarySettingsForm?.addEventListener("submit", saveSalarySettings);
     ui.coefficientImportBtn?.addEventListener("click", () => importCoefficients().catch((error) => print({ error: error.message })));
@@ -674,17 +923,24 @@ function bindEvents() {
         groupCoefficientSortAsc = !groupCoefficientSortAsc;
         reloadGroupCoefficients().catch((error) => print({ error: error.message }));
     });
+    ui.mckoModeSelect?.addEventListener("change", () => reloadMckoCertificates().catch((error) => print({ error: error.message })));
+    ui.mckoImportBtn?.addEventListener("click", () => importMckoCertificates().catch((error) => print({ error: error.message })));
+    ui.mckoManualForm?.addEventListener("submit", (event) => saveManualMcko(event).catch((error) => print({ error: error.message })));
+    ui.mckoSubjectForm?.addEventListener("submit", (event) => saveMckoMapping(event).catch((error) => print({ error: error.message })));
+    ui.mckoMappingSubjectName?.addEventListener("input", renderMckoLoadSubjectOptions);
 }
 
 async function init() {
     await waitForAuth();
     bindEvents();
     applySalarySettingsVisibility();
+    applyMckoVisibility();
     showTeachersTab(teachersTabFromHash());
     try {
         await loadBuildings();
         await loadTeachers();
         await loadSettingsTabData(teachersTabFromHash());
+        await loadMckoTabData(teachersTabFromHash());
     } catch (error) {
         print({ error: error.message });
     }

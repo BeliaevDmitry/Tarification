@@ -827,20 +827,23 @@ class ManualLoadServiceImplBulkReplaceTest {
 
     @Test
     void exportFullWorkbookWithSalaryAddsSubjectAndGroupBonusesFromBaseSalary() throws Exception {
-        ManualLoadEntry row = manualRow("Иванов И.И.", "СП1", "5-А", "Алгебра", 6);
-        row.setSubject(subject(20L, "Алгебра"));
+        ManualLoadEntry row = manualRow("Иванов И.И.", "СП1", "5-А", "Труд (технология)", 6);
+        row.setSubject(subject(20L, "Труд (технология)"));
         row.setGroupNameEducationalPlan("1 группа");
 
         SalaryGroupCoefficientSubject groupSubject = new SalaryGroupCoefficientSubject();
         groupSubject.setSubjectId(20L);
-        groupSubject.setSubjectName("Алгебра");
+        groupSubject.setSubjectName("Труд (технология)");
 
         when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(row));
         when(teacherDirectoryRepository.findAll()).thenReturn(List.of());
         when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of());
         when(schoolBuildingRepository.findAll()).thenReturn(List.of());
         when(classSizeService.effectiveClassSizes("2025/2026")).thenReturn(Map.of("5-А", 30));
-        when(subjectLevelCoefficientRepository.findAll()).thenReturn(List.of(coefficient("Алгебра", EducationStage.OOO, "1.5")));
+        when(subjectLevelCoefficientRepository.findAll()).thenReturn(List.of(
+                coefficient("Труд (технология)", EducationStage.NOO, "1.1"),
+                coefficient("Труд (технология)", EducationStage.OOO, "1.5")
+        ));
         when(salaryGroupCoefficientSubjectRepository.findAll()).thenReturn(List.of(groupSubject));
         SalarySettings settings = new SalarySettings();
         settings.setStudentHourRate(java.math.BigDecimal.valueOf(40));

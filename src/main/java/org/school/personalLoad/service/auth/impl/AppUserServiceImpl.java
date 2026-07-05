@@ -374,7 +374,7 @@ public class AppUserServiceImpl implements AppUserService {
         if (tab == AppTab.PEOPLE_LOAD || tab == AppTab.LOAD_ISSUES || tab == AppTab.LOAD_STATS) {
             return AppTab.LOAD;
         }
-        if (tab == AppTab.TEACHERS_ARCHIVE || tab == AppTab.TEACHERS_DISMISSALS || tab == AppTab.TEACHERS_SETTINGS) {
+        if (tab == AppTab.TEACHERS_ARCHIVE || tab == AppTab.TEACHERS_DISMISSALS || tab == AppTab.TEACHERS_SETTINGS || tab == AppTab.TEACHERS_MCKO) {
             return AppTab.TEACHERS;
         }
         return tab;

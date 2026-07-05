@@ -19,6 +19,7 @@
             <a class="nav-link" href="/teachers.html#archive" data-tab="TEACHERS_ARCHIVE">Архив</a>
             <a class="nav-link" href="/teachers.html#dismissals" data-tab="TEACHERS_DISMISSALS">Увольнения</a>
             <a class="nav-link" href="/teachers.html#settings" data-tab="TEACHERS_SETTINGS">Настройки расчёта ЗП</a>
+            <a class="nav-link" href="/teachers.html#mcko" data-tab="TEACHERS_MCKO">МЦКО</a>
             <a class="nav-link" href="/service-notes.html" data-tab="SERVICE_NOTES">Служебные записки</a>
             <a class="nav-link" href="/teachers-notification.html" data-tab="HR_NOTIFICATIONS_VIEW">Уведомления</a>
         </nav>
@@ -151,6 +152,80 @@
                     <table class="sheet-table">
                         <thead><tr><th><button type="button" id="sort-group-coefficients-btn" class="link-button">Предмет</button></th><th>Коэффициент</th><th>Действие</th></tr></thead>
                         <tbody id="group-coefficients-body"></tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+        <div id="teachers-mcko-panel" style="display:none;">
+            <div class="people-load-subtabs" style="margin-top:12px;">
+                <a class="nav-link" href="/teachers.html#mcko">Диагностики</a>
+                <a class="nav-link" href="/teachers.html#mcko-subjects">Предметы</a>
+            </div>
+            <section id="mcko-certificates-panel">
+                <h3>МЦКО</h3>
+                <div class="row">
+                    <select id="mcko-mode-select" data-allow-readonly="true">
+                        <option value="all">Все педагоги</option>
+                        <option value="load">Текущее и будущее назначение в учебном году</option>
+                    </select>
+                    <input id="mcko-import-file" type="file" accept=".xls,.xlsx">
+                    <button id="mcko-import-btn" type="button">Загрузить выгрузку</button>
+                    <a id="mcko-export-link" class="nav-link" href="/api/mcko/certificates/export" data-allow-readonly="true">Скачать Excel</a>
+                </div>
+                <form id="mcko-manual-form" class="row">
+                    <select id="mcko-teacher-select" required></select>
+                    <select id="mcko-subject-select" required></select>
+                    <input id="mcko-exam-type" list="mcko-exam-types" placeholder="Тип экзамена" required>
+                    <datalist id="mcko-exam-types">
+                        <option value="Комплексная диагностика НОО"></option>
+                        <option value="Комплексная диагностика ЕГЭ (29.11.2025 - 13.12.2025)"></option>
+                        <option value="Диагностика ЕГЭ"></option>
+                        <option value="Комплексная диагностика ЕГЭ"></option>
+                        <option value="Предметная и метапредметная диагностика"></option>
+                        <option value="Комплексный тренинг ЕГЭ"></option>
+                        <option value="Ознакомительный тренинг в формате ЕГЭ"></option>
+                        <option value="Комплексная диагностика ОГЭ"></option>
+                        <option value="Комплексная диагностика ЕГЭ при приеме на работу"></option>
+                        <option value="Онлайн-тренинг в формате ЕГЭ"></option>
+                        <option value="Комплексная диагностика ЕГЭ для кандидатов в члены ПК"></option>
+                        <option value="Комплексный тренинг НОО"></option>
+                    </datalist>
+                    <input id="mcko-date" type="date" required>
+                    <select id="mcko-level" required>
+                        <option value="Высокий">Высокий</option>
+                        <option value="Экспертный">Экспертный</option>
+                    </select>
+                    <label><input id="mcko-published" type="checkbox" checked> опубликован</label>
+                    <input id="mcko-comment" placeholder="Комментарий">
+                    <input id="mcko-scan" type="file">
+                    <button type="submit">Сохранить</button>
+                </form>
+                <div class="sheet-wrap" data-scroll-controls="off">
+                    <table class="sheet-table">
+                        <thead><tr><th>Учитель</th><th>Предмет МЦКО</th><th>Тип</th><th>Уровень</th><th>Опубликован</th><th>Дата</th><th>Окончание</th><th>Статус</th><th>Источник</th><th>Действие</th></tr></thead>
+                        <tbody id="mcko-certificates-body"></tbody>
+                    </table>
+                </div>
+                <h3>Допуск по предметам нагрузки</h3>
+                <div class="sheet-wrap" data-scroll-controls="off">
+                    <table class="sheet-table">
+                        <thead><tr><th>Учитель</th><th>Предмет нагрузки</th><th>Наличие сертификата</th><th>Уровень</th><th>Дата сдачи</th><th>Дата конца</th></tr></thead>
+                        <tbody id="mcko-eligibility-body"></tbody>
+                    </table>
+                </div>
+            </section>
+            <section id="mcko-subjects-panel" style="display:none;">
+                <h3>Предметы МЦКО</h3>
+                <form id="mcko-subject-form" class="row">
+                    <input id="mcko-mapping-subject-name" list="mcko-known-subjects" placeholder="Предмет МЦКО" required>
+                    <datalist id="mcko-known-subjects"></datalist>
+                    <select id="mcko-load-subject-select" required></select>
+                    <button type="submit">Добавить</button>
+                </form>
+                <div class="sheet-wrap" data-scroll-controls="off">
+                    <table class="sheet-table">
+                        <thead><tr><th>Предмет МЦКО</th><th>Даёт право вести</th><th>Действие</th></tr></thead>
+                        <tbody id="mcko-subjects-body"></tbody>
                     </table>
                 </div>
             </section>

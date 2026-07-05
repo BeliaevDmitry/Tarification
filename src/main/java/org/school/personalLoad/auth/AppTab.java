@@ -21,6 +21,7 @@ public enum AppTab {
     TEACHERS_ARCHIVE("Архив", "/teachers.html#archive"),
     TEACHERS_DISMISSALS("Увольнения", "/teachers.html#dismissals"),
     TEACHERS_SETTINGS("Настройки кадров", "/teachers.html#settings"),
+    TEACHERS_MCKO("МЦКО", "/teachers.html#mcko"),
     CONTINGENT_IMPORT("Контингент: импорт", "/contingent.html#import"),
     CONTINGENT_STATS("Контингент: численность", "/contingent.html#stats"),
     SUBJECT_AREAS("Предметные области", "/subject-areas.html"),
@@ -56,7 +57,7 @@ public enum AppTab {
     public static List<AppTab> navigableTabs() {
         return Arrays.asList(BUILDINGS, CLASSES, SUBJECTS, CURRICULUM, LOAD, PEOPLE_LOAD, LOAD_ISSUES, LOAD_STATS,
                 LOAD_SALARY, SETTINGS, SUBJECT_AREAS, TEACHERS, TEACHERS_ARCHIVE, TEACHERS_DISMISSALS,
-                TEACHERS_SETTINGS, SERVICE_NOTES, HR_NOTIFICATIONS_VIEW, CONTINGENT_IMPORT, CONTINGENT_STATS,
+                TEACHERS_SETTINGS, TEACHERS_MCKO, SERVICE_NOTES, HR_NOTIFICATIONS_VIEW, CONTINGENT_IMPORT, CONTINGENT_STATS,
                 EDUCATIONAL_WORK, VSOKO_VIEW, VSOKO_EDIT, OGE_UPLOAD_VIEW, OGE_MISMATCH_VIEW,
                 OGE_EXTERNAL_WORKS_VIEW, OGE_TEACHER_BINDING_VIEW, OGE_SCORE_VIEW, OGE_EVALUATION_VIEW,
                 OGE_GIA_UPLOAD, OGE_WORK_UPLOAD, USERS);
