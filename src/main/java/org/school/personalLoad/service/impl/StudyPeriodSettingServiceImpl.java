@@ -161,7 +161,7 @@ public class StudyPeriodSettingServiceImpl implements StudyPeriodSettingService 
         LocalDate defaultYearStart = LocalDate.of(yearStart, 9, 1);
         LocalDate defaultYearEnd = LocalDate.of(yearEnd, 5, 31);
         LocalDate defaultH1End = LocalDate.of(yearStart, 12, 31);
-        LocalDate defaultH2Start = LocalDate.of(yearEnd, 1, 10);
+        LocalDate defaultH2Start = LocalDate.of(yearEnd, 1, 11);
         LocalDate default11H1End = LocalDate.of(yearEnd, 1, 31);
         LocalDate default11H2Start = LocalDate.of(yearEnd, 2, 1);
 
