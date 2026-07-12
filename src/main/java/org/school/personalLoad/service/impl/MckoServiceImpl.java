@@ -168,24 +168,47 @@ public class MckoServiceImpl implements MckoService {
     public List<MckoDtos.SubjectMappingRow> mappings() {
         return mappingRepository.findAll().stream()
                 .sorted(Comparator.comparing(MckoSubjectMapping::getMckoSubject, String.CASE_INSENSITIVE_ORDER)
-                        .thenComparing(MckoSubjectMapping::getSubjectName, String.CASE_INSENSITIVE_ORDER))
+                        .thenComparing(MckoSubjectMapping::getGradeBand, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
+                        .thenComparing(MckoSubjectMapping::getSubjectName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
                 .map(this::toMappingRow)
                 .toList();
     }
 
     @Override
     @Transactional
-    public MckoDtos.SubjectMappingRow createMapping(String mckoSubject, Long subjectId) {
+    public MckoDtos.SubjectMappingRow createMapping(String mckoSubject, Long subjectId, String gradeBand) {
         SubjectCatalogEntry subject = subjectRepository.findById(subjectId)
                 .orElseThrow(() -> new IllegalArgumentException("Предмет не найден"));
         String mcko = canonicalMckoSubject(required(mckoSubject, "Предмет МЦКО"));
-        if (mappingRepository.existsByMckoSubjectIgnoreCaseAndSubjectId(mcko, subjectId)) {
+        String band = canonicalGradeBand(gradeBand);
+        if (mappingRepository.existsByMckoSubjectIgnoreCaseAndSubjectIdAndGradeBandIgnoreCase(mcko, subjectId, band)) {
             throw new IllegalArgumentException("Такое соответствие уже есть");
         }
         MckoSubjectMapping row = new MckoSubjectMapping();
         row.setMckoSubject(mcko);
         row.setSubjectId(subjectId);
         row.setSubjectName(subject.getSubjectName());
+        row.setGradeBand(band);
+        row.setIgnored(false);
+        return toMappingRow(mappingRepository.save(row));
+    }
+
+    @Override
+    @Transactional
+    public MckoDtos.SubjectMappingRow ignoreSubject(String mckoSubject) {
+        String mcko = canonicalMckoSubject(required(mckoSubject, "Предмет МЦКО"));
+        List<MckoSubjectMapping> existing = mappingRepository.findAllByMckoSubjectIgnoreCase(mcko);
+        existing.stream()
+                .filter(row -> !row.isIgnored())
+                .forEach(row -> mappingRepository.deleteById(row.getId()));
+        Optional<MckoSubjectMapping> ignored = existing.stream().filter(MckoSubjectMapping::isIgnored).findFirst();
+        if (ignored.isPresent()) {
+            return toMappingRow(ignored.get());
+        }
+        MckoSubjectMapping row = new MckoSubjectMapping();
+        row.setMckoSubject(mcko);
+        row.setGradeBand("ALL");
+        row.setIgnored(true);
         return toMappingRow(mappingRepository.save(row));
     }
 
@@ -199,10 +222,18 @@ public class MckoServiceImpl implements MckoService {
         Map<String, List<MckoCertificate>> byTeacherSubject = certificateRepository.findAll().stream()
                 .collect(Collectors.groupingBy(row -> row.getTeacherId() + "|" + mckoSubjectKey(row.getMckoSubject())));
         List<MckoSubjectMapping> mappings = mappingRepository.findAll();
+        Set<String> ignoredMckoSubjects = mappings.stream()
+                .filter(MckoSubjectMapping::isIgnored)
+                .map(row -> mckoSubjectKey(row.getMckoSubject()))
+                .collect(Collectors.toSet());
+        List<MckoSubjectMapping> activeMappings = mappings.stream()
+                .filter(row -> !row.isIgnored())
+                .filter(row -> !ignoredMckoSubjects.contains(mckoSubjectKey(row.getMckoSubject())))
+                .toList();
         return manualLoadRepository.findAllByAcademicYear(academicYear).stream()
                 .filter(this::isCoreLoad)
                 .filter(row -> row.getTeacherId() != null)
-                .map(row -> eligibilityForLoad(row, byTeacherSubject, mappings))
+                .map(row -> eligibilityForLoad(row, byTeacherSubject, activeMappings))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toMap(
                         r -> r.teacherId() + "|" + r.subjectId() + "|" + normalize(r.subjectName()),
@@ -257,14 +288,14 @@ public class MckoServiceImpl implements MckoService {
         List<String> mckoSubjects = new ArrayList<>();
         if (subjectGroup.primary()) {
             mckoSubjects.addAll(mappings.stream()
-                    .filter(row -> Objects.equals(row.getSubjectId(), load.getSubjectId()))
+                    .filter(row -> mappingAppliesToLoad(row, load))
                     .map(MckoSubjectMapping::getMckoSubject)
                     .filter(this::isPrimaryMckoSubject)
                     .map(this::canonicalMckoSubject)
                     .toList());
         } else {
             mckoSubjects.addAll(mappings.stream()
-                    .filter(row -> Objects.equals(row.getSubjectId(), load.getSubjectId()))
+                    .filter(row -> mappingAppliesToLoad(row, load))
                     .map(MckoSubjectMapping::getMckoSubject)
                     .map(this::canonicalMckoSubject)
                     .toList());
@@ -272,16 +303,25 @@ public class MckoServiceImpl implements MckoService {
         if (mckoSubjects.isEmpty()) {
             return null;
         }
-        Optional<MckoCertificate> best = mckoSubjects.stream()
+        List<MckoCertificate> candidates = mckoSubjects.stream()
                 .flatMap(mcko -> byTeacherSubject.getOrDefault(teacherId + "|" + mckoSubjectKey(mcko), List.of()).stream())
+                .filter(this::isActiveCertificate)
+                .toList();
+        Optional<MckoCertificate> best = candidates.stream()
                 .filter(this::isActivePassing)
                 .max(this::compareCertificates);
         if (best.isEmpty()) {
-            return new MckoDtos.EligibilityRow(teacherId, teacherFio, subjectGroup.subjectId(), subjectGroup.subjectName(), "MISSING", "НЕТ МЦКО", null, null, null);
+            Optional<MckoCertificate> nonPassing = candidates.stream().max(this::compareCertificates);
+            String message = nonPassing
+                    .map(cert -> "МЦКО уровень " + nvl(cert.getLevel()))
+                    .orElse("НЕТ МЦКО");
+            MckoCertificate cert = nonPassing.orElse(null);
+            return new MckoDtos.EligibilityRow(teacherId, teacherFio, subjectGroup.subjectId(), subjectGroup.subjectName(),
+                    "MISSING", message, cert == null ? null : cert.getLevel(), cert == null ? null : cert.getDiagnosticDate(), cert == null ? null : cert.getExpiresAt());
         }
         MckoCertificate cert = best.get();
         String status = certificateStatus(cert);
-        String message = certificateWarning(cert);
+        String message = eligibilityMessage(cert);
         return new MckoDtos.EligibilityRow(teacherId, teacherFio, subjectGroup.subjectId(), subjectGroup.subjectName(), status, message,
                 cert.getLevel(), cert.getDiagnosticDate(), cert.getExpiresAt());
     }
@@ -291,13 +331,18 @@ public class MckoServiceImpl implements MckoService {
     }
 
     private boolean isPrimaryClass(String className) {
+        Integer grade = gradeOfClass(className);
+        return grade != null && grade >= 1 && grade <= 4;
+    }
+
+    private Integer gradeOfClass(String className) {
         String value = String.valueOf(className == null ? "" : className).trim();
-        if (value.isBlank()) return false;
+        if (value.isBlank()) return null;
         try {
             int grade = Integer.parseInt(value.replaceAll("[^0-9].*$", ""));
-            return grade >= 1 && grade <= 4;
+            return grade;
         } catch (NumberFormatException ex) {
-            return false;
+            return null;
         }
     }
 
@@ -335,6 +380,27 @@ public class MckoServiceImpl implements MckoService {
         return normalize(canonicalMckoSubject(mckoSubject));
     }
 
+    private boolean mappingAppliesToLoad(MckoSubjectMapping mapping, ManualLoadEntry load) {
+        return Objects.equals(mapping.getSubjectId(), load.getSubjectId())
+                && gradeBandMatches(mapping.getGradeBand(), load.getClassName());
+    }
+
+    private boolean gradeBandMatches(String gradeBand, String className) {
+        String band = canonicalGradeBand(gradeBand);
+        if ("ALL".equals(band)) return true;
+        Integer grade = gradeOfClass(className);
+        if (grade == null) return false;
+        if ("1-4".equals(band)) return grade >= 1 && grade <= 4;
+        if ("5-11".equals(band)) return grade >= 5 && grade <= 11;
+        return true;
+    }
+
+    private String canonicalGradeBand(String gradeBand) {
+        String value = String.valueOf(gradeBand == null ? "" : gradeBand).trim();
+        if (value.equals("1-4") || value.equals("5-11")) return value;
+        return "ALL";
+    }
+
     private MckoDtos.EligibilityRow worseEligibility(MckoDtos.EligibilityRow a, MckoDtos.EligibilityRow b) {
         int status = Integer.compare(statusRank(a.status()), statusRank(b.status()));
         if (status != 0) return status >= 0 ? a : b;
@@ -352,9 +418,14 @@ public class MckoServiceImpl implements MckoService {
     }
 
     private boolean isActivePassing(MckoCertificate cert) {
-        return cert.getDiagnosticDate() != null
-                && !cert.getExpiresAt().isBefore(LocalDate.now())
+        return isActiveCertificate(cert)
                 && levelRank(cert.getLevel()) > 0;
+    }
+
+    private boolean isActiveCertificate(MckoCertificate cert) {
+        return cert.getDiagnosticDate() != null
+                && cert.getExpiresAt() != null
+                && !cert.getExpiresAt().isBefore(LocalDate.now());
     }
 
     private int compareCertificates(MckoCertificate a, MckoCertificate b) {
@@ -396,8 +467,17 @@ public class MckoServiceImpl implements MckoService {
         return String.join("; ", warnings);
     }
 
+    private String eligibilityMessage(MckoCertificate cert) {
+        String date = cert.getExpiresAt() == null ? "" : RU_DATE.format(cert.getExpiresAt());
+        String base = date.isBlank() ? "МЦКО есть" : "МЦКО до " + date;
+        String warning = certificateWarning(cert);
+        if (warning == null || warning.isBlank()) return base;
+        return warning.contains("МЦКО до") ? warning : base + "; " + warning;
+    }
+
     private MckoDtos.SubjectMappingRow toMappingRow(MckoSubjectMapping row) {
-        return new MckoDtos.SubjectMappingRow(row.getId(), row.getMckoSubject(), row.getSubjectId(), row.getSubjectName());
+        return new MckoDtos.SubjectMappingRow(row.getId(), row.getMckoSubject(), row.getSubjectId(), row.getSubjectName(),
+                row.getGradeBand() == null ? "ALL" : row.getGradeBand(), row.isIgnored());
     }
 
     private Set<Long> teacherIdsForMode(String academicYear, String mode) {

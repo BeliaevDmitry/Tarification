@@ -25,9 +25,6 @@ class PublicChatControllerTest {
         for (MockHttpServletRequest request : new MockHttpServletRequest[]{
                 new MockHttpServletRequest("GET", "/public-chat.html"),
                 new MockHttpServletRequest("GET", "/public-chat.js"),
-                new MockHttpServletRequest("GET", "/public-questions.html"),
-                new MockHttpServletRequest("GET", "/public-questions.js"),
-                new MockHttpServletRequest("GET", "/public-questions-data.js"),
                 new MockHttpServletRequest("GET", "/api/public/chat/messages"),
                 new MockHttpServletRequest("POST", "/api/public/chat/messages")
         }) {

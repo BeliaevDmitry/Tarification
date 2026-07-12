@@ -120,6 +120,45 @@ class MckoServiceImplTest {
     }
 
     @Test
+    void eligibilityReportsBasicLevelAsMissingWithLevelMessage() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Ярочкина Татьяна Ивановна");
+        MckoSubjectMapping mapping = mapping("Математика профильная", 10L, "Математика");
+        LocalDate today = LocalDate.now();
+        MckoCertificate basic = certificate(teacher, "Математика профильная", "Базовый",
+                true, today.minusMonths(1), MckoCertificateSource.IMPORT);
+
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(load(teacher, 10L, "Математика", "7-А")));
+        when(mappingRepository.findAll()).thenReturn(List.of(mapping));
+        when(certificateRepository.findAll()).thenReturn(List.of(basic));
+
+        List<MckoDtos.EligibilityRow> rows = service.eligibility("2026/2027");
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).status()).isEqualTo("MISSING");
+        assertThat(rows.get(0).message()).isEqualTo("МЦКО уровень Базовый");
+        assertThat(rows.get(0).level()).isEqualTo("Базовый");
+    }
+
+    @Test
+    void okEligibilityShowsExpirationMessage() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Иванов Иван Иванович");
+        MckoSubjectMapping mapping = mapping("Математика профильная", 10L, "Алгебра");
+        LocalDate today = LocalDate.now();
+        MckoCertificate activeHigh = certificate(teacher, "Математика профильная", "Высокий",
+                true, today.minusMonths(1), MckoCertificateSource.MANUAL);
+
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(load(teacher, 10L, "Алгебра", "7-А")));
+        when(mappingRepository.findAll()).thenReturn(List.of(mapping));
+        when(certificateRepository.findAll()).thenReturn(List.of(activeHigh));
+
+        List<MckoDtos.EligibilityRow> rows = service.eligibility("2026/2027");
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).status()).isEqualTo("OK");
+        assertThat(rows.get(0).message()).contains("МЦКО до");
+    }
+
+    @Test
     void algebraAndCalculusIsGroupedAsMath() {
         TeacherDirectoryEntry teacher = teacher(1L, "Иванов Иван Иванович");
         MckoSubjectMapping mapping = mapping("Математика профильная", 40L, "Алгебра и начала математического анализа");
@@ -190,6 +229,50 @@ class MckoServiceImplTest {
     }
 
     @Test
+    void gradeBandLimitsMappingToSelectedClasses() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Иванов Иван Иванович");
+        MckoSubjectMapping primaryMath = mapping("Метапредметные умения (начальное образование)", 10L, "Математика", "1-4");
+        MckoSubjectMapping secondaryMath = mapping("Математика профильная", 10L, "Математика", "5-11");
+        LocalDate today = LocalDate.now();
+        MckoCertificate primaryCert = certificate(teacher, "Метапредметные умения (начальное образование)", "Высокий",
+                true, today.minusMonths(1), MckoCertificateSource.IMPORT);
+
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027"))
+                .thenReturn(List.of(load(teacher, 10L, "Математика", "2-Б"), load(teacher, 10L, "Математика", "6-А")));
+        when(mappingRepository.findAll()).thenReturn(List.of(primaryMath, secondaryMath));
+        when(certificateRepository.findAll()).thenReturn(List.of(primaryCert));
+
+        List<MckoDtos.EligibilityRow> rows = service.eligibility("2026/2027");
+
+        assertThat(rows).hasSize(2);
+        assertThat(rows).anySatisfy(row -> {
+            assertThat(row.subjectName()).isEqualTo("Начальная школа");
+            assertThat(row.status()).isEqualTo("OK");
+        });
+        assertThat(rows).anySatisfy(row -> {
+            assertThat(row.subjectName()).isEqualTo("Математика");
+            assertThat(row.status()).isEqualTo("MISSING");
+        });
+    }
+
+    @Test
+    void ignoredMckoSubjectIsNotChecked() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Иванов Иван Иванович");
+        MckoSubjectMapping ignored = mapping("Тестовая диагностика", null, null);
+        ignored.setIgnored(true);
+        MckoSubjectMapping oldMapping = mapping("Тестовая диагностика", 10L, "Математика");
+
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027"))
+                .thenReturn(List.of(load(teacher, 10L, "Математика", "7-А")));
+        when(mappingRepository.findAll()).thenReturn(List.of(ignored, oldMapping));
+        when(certificateRepository.findAll()).thenReturn(List.of());
+
+        List<MckoDtos.EligibilityRow> rows = service.eligibility("2026/2027");
+
+        assertThat(rows).isEmpty();
+    }
+
+    @Test
     void coreSubjectWithoutMckoMappingIsNotChecked() {
         TeacherDirectoryEntry teacher = teacher(1L, "Иванов Иван Иванович");
 
@@ -236,10 +319,15 @@ class MckoServiceImplTest {
     }
 
     private MckoSubjectMapping mapping(String mckoSubject, Long subjectId, String subjectName) {
+        return mapping(mckoSubject, subjectId, subjectName, "ALL");
+    }
+
+    private MckoSubjectMapping mapping(String mckoSubject, Long subjectId, String subjectName, String gradeBand) {
         MckoSubjectMapping mapping = new MckoSubjectMapping();
         mapping.setMckoSubject(mckoSubject);
         mapping.setSubjectId(subjectId);
         mapping.setSubjectName(subjectName);
+        mapping.setGradeBand(gradeBand);
         return mapping;
     }
 

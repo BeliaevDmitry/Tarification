@@ -6,7 +6,9 @@ import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.LoadIssueState;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.StudyPeriod;
+import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
+import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.LoadIssueStateRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
@@ -36,11 +38,13 @@ public class LoadIssueServiceImpl implements LoadIssueService {
 
     private static final String IMPORTANT_TALKS = "Разговоры о важном";
     private static final String RUSSIA_HORIZONS = "Россия мои горизонты";
+    private static final String VACANCY_TEACHER = "Вакансия";
 
     private final ClassroomLeadershipRepository classroomLeadershipRepository;
     private final ManualLoadEntryRepository manualLoadEntryRepository;
     private final LoadIssueStateRepository stateRepository;
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
+    private final TeacherDirectoryRepository teacherDirectoryRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -73,6 +77,7 @@ public class LoadIssueServiceImpl implements LoadIssueService {
         }
         addMetaGroupIssues(rows, states, academicYear, classes, activeLoad);
         addMaximumLoadIssues(rows, states, academicYear, classes);
+        addDismissalHandoffIssues(rows, states, academicYear, yearLoad);
         rows.sort(Comparator.comparing(LoadIssueDtos.LoadIssueRow::building, String.CASE_INSENSITIVE_ORDER)
                 .thenComparing(LoadIssueDtos.LoadIssueRow::type, String.CASE_INSENSITIVE_ORDER)
                 .thenComparing(LoadIssueDtos.LoadIssueRow::description, String.CASE_INSENSITIVE_ORDER));
@@ -206,6 +211,142 @@ public class LoadIssueServiceImpl implements LoadIssueService {
         return (row.getPlannedHours() != null && row.getPlannedHours().compareTo(BigDecimal.ZERO) > 0)
                 || (row.getSubgroup1Hours() != null && row.getSubgroup1Hours() > 0)
                 || (row.getSubgroup2Hours() != null && row.getSubgroup2Hours() > 0);
+    }
+
+    private void addDismissalHandoffIssues(List<LoadIssueDtos.LoadIssueRow> rows,
+                                           Map<String, LoadIssueState> states,
+                                           String academicYear,
+                                           List<ManualLoadEntry> yearLoad) {
+        List<TeacherDirectoryEntry> teachers = teacherDirectoryRepository.findAll();
+        Map<Long, TeacherDirectoryEntry> teachersById = teachers.stream()
+                .filter(teacher -> teacher.getId() != null)
+                .collect(Collectors.toMap(TeacherDirectoryEntry::getId, teacher -> teacher, (first, second) -> first));
+        Map<String, TeacherDirectoryEntry> teachersByName = teachers.stream()
+                .filter(teacher -> !normalize(teacher.getFioTeacher()).isBlank())
+                .collect(Collectors.toMap(teacher -> normalize(teacher.getFioTeacher()), teacher -> teacher, (first, second) -> first));
+
+        for (ManualLoadEntry source : yearLoad) {
+            TeacherDirectoryEntry teacher = resolveTeacher(source, teachersById, teachersByName);
+            LocalDate dismissalDate = dismissalDate(teacher);
+            LocalDate periodEnd = originalLoadToDate(source);
+            if (dismissalDate == null || periodEnd == null || !periodEnd.isAfter(dismissalDate)) {
+                continue;
+            }
+            LocalDate handoffFrom = dismissalDate.plusDays(1);
+            if (isLoadCoveredAfterDismissal(source, yearLoad, handoffFrom, periodEnd)) {
+                continue;
+            }
+
+            String description = "Корпус " + display(source.getNumberSchoolBuilding())
+                    + ", класс " + display(source.getClassName())
+                    + ", предмет " + display(source.getSubjectName())
+                    + ". " + display(source.getFioTeacher()) + " увольняется " + dismissalDate
+                    + ", нагрузка не закрыта другим педагогом с " + handoffFrom + " по " + periodEnd + ".";
+            String key = String.join("|", "DISMISSAL_LOAD_HANDOFF", academicYear,
+                    normalize(source.getNumberSchoolBuilding()), normalize(source.getClassName()), normalize(source.getSubjectName()),
+                    normalize(source.getGroupNameEducationalPlan()), String.valueOf(source.getCurriculumModuleId()),
+                    source.getCurriculumPart() == null ? "" : source.getCurriculumPart().name(),
+                    source.getStudyPeriod() == null ? "" : source.getStudyPeriod().name(),
+                    normalize(source.getFioTeacher()), String.valueOf(dismissalDate), String.valueOf(periodEnd));
+            rows.add(withState(key, source.getNumberSchoolBuilding(), "Не закрыта нагрузка после увольнения", description,
+                    states.get(key), "load", source.getClassName(), source.getSubjectName()));
+        }
+    }
+
+    private TeacherDirectoryEntry resolveTeacher(ManualLoadEntry row,
+                                                 Map<Long, TeacherDirectoryEntry> teachersById,
+                                                 Map<String, TeacherDirectoryEntry> teachersByName) {
+        if (row.getTeacherId() != null && teachersById.containsKey(row.getTeacherId())) {
+            return teachersById.get(row.getTeacherId());
+        }
+        return teachersByName.get(normalize(row.getFioTeacher()));
+    }
+
+    private LocalDate dismissalDate(TeacherDirectoryEntry teacher) {
+        if (teacher == null) {
+            return null;
+        }
+        return teacher.getDismissalDate() == null ? teacher.getPlannedDismissalDate() : teacher.getDismissalDate();
+    }
+
+    private LocalDate originalLoadToDate(ManualLoadEntry row) {
+        return row.getBackupLoadToDate() == null ? row.getLoadToDate() : row.getBackupLoadToDate();
+    }
+
+    private boolean isLoadCoveredAfterDismissal(ManualLoadEntry source,
+                                                List<ManualLoadEntry> yearLoad,
+                                                LocalDate requiredFrom,
+                                                LocalDate requiredTo) {
+        List<ManualLoadEntry> handoffRows = yearLoad.stream()
+                .filter(row -> row.getLoadFromDate() != null && row.getLoadToDate() != null)
+                .filter(row -> sameLoadAssignment(source, row))
+                .filter(row -> !sameManualLoadRow(source, row))
+                .filter(row -> !sameLoadTeacher(source, row))
+                .filter(row -> !isVacancyTeacher(row))
+                .filter(row -> !row.getLoadToDate().isBefore(requiredFrom))
+                .filter(row -> !row.getLoadFromDate().isAfter(requiredTo))
+                .sorted(Comparator.comparing(ManualLoadEntry::getLoadFromDate))
+                .toList();
+
+        LocalDate cursor = requiredFrom;
+        for (ManualLoadEntry row : handoffRows) {
+            if (row.getLoadFromDate().isAfter(cursor)) {
+                return false;
+            }
+            if (!row.getLoadToDate().isBefore(cursor)) {
+                cursor = row.getLoadToDate().plusDays(1);
+            }
+            if (cursor.isAfter(requiredTo)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean sameLoadAssignment(ManualLoadEntry left, ManualLoadEntry right) {
+        return same(left.getAcademicYear(), right.getAcademicYear())
+                && sameBuilding(left, right)
+                && sameClassScope(left, right)
+                && Objects.equals(left.getMetaGroupId(), right.getMetaGroupId())
+                && sameSubject(left.getSubjectName(), right.getSubjectName())
+                && same(left.getGroupNameEducationalPlan(), right.getGroupNameEducationalPlan())
+                && Objects.equals(left.getCurriculumPart(), right.getCurriculumPart())
+                && Objects.equals(left.getStudyPeriod(), right.getStudyPeriod());
+    }
+
+    private boolean sameBuilding(ManualLoadEntry left, ManualLoadEntry right) {
+        Long leftId = left.getSchoolBuildingId();
+        Long rightId = right.getSchoolBuildingId();
+        if (leftId != null && rightId != null) {
+            return leftId.equals(rightId);
+        }
+        return same(left.getNumberSchoolBuilding(), right.getNumberSchoolBuilding());
+    }
+
+    private boolean sameClassScope(ManualLoadEntry left, ManualLoadEntry right) {
+        Long leftId = left.getClassId();
+        Long rightId = right.getClassId();
+        if (leftId != null && rightId != null) {
+            return leftId.equals(rightId);
+        }
+        return same(left.getClassName(), right.getClassName());
+    }
+
+    private boolean sameManualLoadRow(ManualLoadEntry left, ManualLoadEntry right) {
+        return left.getId() != null && left.getId().equals(right.getId());
+    }
+
+    private boolean sameLoadTeacher(ManualLoadEntry left, ManualLoadEntry right) {
+        Long leftId = left.getTeacherId();
+        Long rightId = right.getTeacherId();
+        if (leftId != null && rightId != null) {
+            return leftId.equals(rightId);
+        }
+        return same(left.getFioTeacher(), right.getFioTeacher());
+    }
+
+    private boolean isVacancyTeacher(ManualLoadEntry row) {
+        return same(row.getFioTeacher(), VACANCY_TEACHER);
     }
 
     private void addMetaGroupIssues(List<LoadIssueDtos.LoadIssueRow> rows,

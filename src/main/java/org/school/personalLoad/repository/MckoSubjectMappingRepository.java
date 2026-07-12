@@ -7,5 +7,6 @@ import java.util.List;
 
 public interface MckoSubjectMappingRepository extends JpaRepository<MckoSubjectMapping, Long> {
     List<MckoSubjectMapping> findAllByMckoSubjectIgnoreCase(String mckoSubject);
-    boolean existsByMckoSubjectIgnoreCaseAndSubjectId(String mckoSubject, Long subjectId);
+    boolean existsByMckoSubjectIgnoreCaseAndSubjectIdAndGradeBandIgnoreCase(String mckoSubject, Long subjectId, String gradeBand);
+    boolean existsByMckoSubjectIgnoreCaseAndIgnoredTrue(String mckoSubject);
 }

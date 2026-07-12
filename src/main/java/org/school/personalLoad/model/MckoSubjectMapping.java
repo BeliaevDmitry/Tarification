@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 @Data
 @Entity
 @Table(name = "mcko_subject_mapping", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_mcko_subject_mapping", columnNames = {"mcko_subject", "subject_id"})
+        @UniqueConstraint(name = "uk_mcko_subject_mapping", columnNames = {"mcko_subject", "subject_id", "grade_band"})
 })
 public class MckoSubjectMapping {
     @Id
@@ -21,7 +21,7 @@ public class MckoSubjectMapping {
     @Column(name = "mcko_subject", nullable = false)
     private String mckoSubject;
 
-    @Column(name = "subject_id", nullable = false)
+    @Column(name = "subject_id")
     private Long subjectId;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -31,8 +31,14 @@ public class MckoSubjectMapping {
     @EqualsAndHashCode.Exclude
     private SubjectCatalogEntry subject;
 
-    @Column(name = "subject_name", nullable = false)
+    @Column(name = "subject_name")
     private String subjectName;
+
+    @Column(name = "grade_band", nullable = false)
+    private String gradeBand = "ALL";
+
+    @Column(name = "ignored", nullable = false)
+    private boolean ignored;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
