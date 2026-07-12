@@ -17,7 +17,8 @@ public interface MckoService {
     void deleteCertificate(Long id);
     MckoCertificate certificate(Long id);
     List<MckoDtos.SubjectMappingRow> mappings();
-    MckoDtos.SubjectMappingRow createMapping(String mckoSubject, Long subjectId);
+    MckoDtos.SubjectMappingRow createMapping(String mckoSubject, Long subjectId, String gradeBand);
+    MckoDtos.SubjectMappingRow ignoreSubject(String mckoSubject);
     void deleteMapping(Long id);
     List<MckoDtos.EligibilityRow> eligibility(String academicYear);
     Resource exportCertificates(String academicYear, String mode);

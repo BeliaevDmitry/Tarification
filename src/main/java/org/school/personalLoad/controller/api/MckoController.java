@@ -86,8 +86,12 @@ public class MckoController {
     @PostMapping("/subjects")
     public MckoDtos.SubjectMappingRow createMapping(@RequestBody Map<String, Object> body) {
         String mckoSubject = String.valueOf(body.getOrDefault("mckoSubject", ""));
+        if (Boolean.parseBoolean(String.valueOf(body.getOrDefault("ignored", "false")))) {
+            return mckoService.ignoreSubject(mckoSubject);
+        }
         Long subjectId = Long.valueOf(String.valueOf(body.get("subjectId")));
-        return mckoService.createMapping(mckoSubject, subjectId);
+        String gradeBand = String.valueOf(body.getOrDefault("gradeBand", "ALL"));
+        return mckoService.createMapping(mckoSubject, subjectId, gradeBand);
     }
 
     @DeleteMapping("/subjects/{id}")

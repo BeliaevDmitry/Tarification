@@ -1145,8 +1145,13 @@ function mckoNoteForRow(row) {
     if (String(row.curriculumPart || "CORE").toUpperCase() !== "CORE") return null;
     const eligibility = mckoEligibilityByTeacherSubject.get(mckoEligibilityKey(teacherName, row.subjectId));
     if (!eligibility) return null;
-    if (eligibility.status === "OK") return null;
     return eligibility;
+}
+
+function mckoLoadNoteClass(status) {
+    if (status === "OK") return "mcko-load-ok";
+    if (status === "WARNING") return "mcko-load-warning";
+    return "mcko-load-missing";
 }
 
 function dismissalDateOfTeacher(teacherName) {
@@ -2721,7 +2726,7 @@ function renderTable() {
                     : plannedDismissalDateOfTeacher(row.teacherName)
                         ? `<div class="planned-dismissal-note">Планирует уволиться с ${esc(formatTeacherStatusDate(plannedDismissalDateOfTeacher(row.teacherName)))}</div>`
                         : ""}${(!teacherExists(row.teacherName) && row.teacherName) ? `<div class="dismissal-note">Ошибка: педагог отсутствует в справочнике</div>` : ""}
-                ${mckoNote ? `<div class="${mckoNote.status === "MISSING" ? "mcko-load-missing" : "mcko-load-warning"}">${esc(mckoNote.message || "НЕТ МЦКО")}</div>` : ""}
+                ${mckoNote ? `<div class="${mckoLoadNoteClass(mckoNote.status)}">${esc(mckoNote.message || (mckoNote.status === "OK" ? "МЦКО есть" : "НЕТ МЦКО"))}</div>` : ""}
             </td>
             <td><strong>${esc(row.subjectHours || 0)} ч</strong></td>
             <td><strong>${esc(row.buildingHours)} ч</strong></td>

@@ -23,7 +23,7 @@ public final class MckoDtos {
             String warning
     ) {}
 
-    public record SubjectMappingRow(Long id, String mckoSubject, Long subjectId, String subjectName) {}
+    public record SubjectMappingRow(Long id, String mckoSubject, Long subjectId, String subjectName, String gradeBand, boolean ignored) {}
 
     public record ImportResult(int totalRows, int importedRows, int skippedRows, List<String> warnings) {}
 

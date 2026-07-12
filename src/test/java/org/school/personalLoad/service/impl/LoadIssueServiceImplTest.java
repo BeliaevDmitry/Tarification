@@ -17,8 +17,10 @@ import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.LoadIssueStateRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.TeacherDirectoryRepository;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -36,15 +38,18 @@ class LoadIssueServiceImplTest {
     private LoadIssueStateRepository stateRepository;
     @Mock
     private CurriculumPlanEntryRepository curriculumRepository;
+    @Mock
+    private TeacherDirectoryRepository teacherRepository;
 
     private LoadIssueServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new LoadIssueServiceImpl(classroomRepository, manualLoadRepository, stateRepository, curriculumRepository);
+        service = new LoadIssueServiceImpl(classroomRepository, manualLoadRepository, stateRepository, curriculumRepository, teacherRepository);
         when(classroomRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(classroom()));
         when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
         when(stateRepository.findAll()).thenReturn(List.of());
+        when(teacherRepository.findAll()).thenReturn(List.of(teacher(1L, "Белогур Кристина Игоревна")));
     }
 
     @Test
@@ -80,17 +85,59 @@ class LoadIssueServiceImplTest {
         assertTrue(response.rows().stream().noneMatch(row -> row.type().equals("Россия мои горизонты")));
     }
 
+    @Test
+    void reportsDismissedTeacherLoadWithoutHandoff() {
+        TeacherDirectoryEntry dismissed = teacher(2L, "Иванов Иван Иванович");
+        dismissed.setDismissalDate(LocalDate.of(2026, 1, 10));
+        ManualLoadEntry source = manualLoad("Алгебра", dismissed.getFioTeacher(), 2L,
+                LocalDate.of(2025, 9, 1), LocalDate.of(2026, 5, 31));
+        when(teacherRepository.findAll()).thenReturn(List.of(teacher(1L, "Белогур Кристина Игоревна"), dismissed));
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(source));
+        when(curriculumRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
+
+        LoadIssueDtos.LoadIssueResponse response = service.findIssues("2026/2027", "");
+
+        LoadIssueDtos.LoadIssueRow issue = response.rows().stream()
+                .filter(row -> row.type().equals("Не закрыта нагрузка после увольнения"))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("3-Б", issue.targetClass());
+        assertEquals("Алгебра", issue.targetSubject());
+        assertTrue(issue.description().contains("с 2026-01-11 по 2026-05-31"));
+    }
+
+    @Test
+    void doesNotReportDismissedTeacherLoadFullyHandedOff() {
+        TeacherDirectoryEntry dismissed = teacher(2L, "Иванов Иван Иванович");
+        dismissed.setDismissalDate(LocalDate.of(2026, 1, 10));
+        ManualLoadEntry source = manualLoad("Алгебра", dismissed.getFioTeacher(), 2L,
+                LocalDate.of(2025, 9, 1), LocalDate.of(2026, 5, 31));
+        ManualLoadEntry handoff = manualLoad("Алгебра", "Петров Петр Петрович", 3L,
+                LocalDate.of(2026, 1, 11), LocalDate.of(2026, 5, 31));
+        when(teacherRepository.findAll()).thenReturn(List.of(teacher(1L, "Белогур Кристина Игоревна"), dismissed));
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(source, handoff));
+        when(curriculumRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
+
+        LoadIssueDtos.LoadIssueResponse response = service.findIssues("2026/2027", "");
+
+        assertTrue(response.rows().stream().noneMatch(row -> row.type().equals("Не закрыта нагрузка после увольнения")));
+    }
+
     private ClassroomLeadershipEntry classroom() {
         ClassroomLeadershipEntry row = new ClassroomLeadershipEntry();
         row.setAcademicYear("2026/2027");
         row.setNumberSchoolBuilding("СП1");
         row.setClassName("3-Б");
         row.setFioTeacher("Белогур Кристина Игоревна");
-        TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
-        teacher.setId(1L);
-        teacher.setFioTeacher(row.getFioTeacher());
-        row.setTeacher(teacher);
+        row.setTeacher(teacher(1L, row.getFioTeacher()));
         return row;
+    }
+
+    private TeacherDirectoryEntry teacher(Long id, String fio) {
+        TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
+        teacher.setId(id);
+        teacher.setFioTeacher(fio);
+        return teacher;
     }
 
     private CurriculumPlanEntry curriculum(String subjectName) {
@@ -107,17 +154,23 @@ class LoadIssueServiceImplTest {
     }
 
     private ManualLoadEntry manualLoad(String subjectName) {
+        return manualLoad(subjectName, "Белогур Кристина Игоревна", 1L, null, null);
+    }
+
+    private ManualLoadEntry manualLoad(String subjectName, String fioTeacher, Long teacherId, LocalDate loadFromDate, LocalDate loadToDate) {
         ManualLoadEntry row = new ManualLoadEntry();
         row.setAcademicYear("2026/2027");
         row.setNumberSchoolBuilding("СП1");
         row.setClassName("3-Б");
         row.setSubjectName(subjectName);
-        row.setFioTeacher("Белогур Кристина Игоревна");
-        row.setTeacherId(1L);
+        row.setFioTeacher(fioTeacher);
+        row.setTeacherId(teacherId);
         row.setLoad(1);
         row.setCurriculumPart(CurriculumPart.EXTRACURRICULAR);
         row.setEducationLevel(EducationLevel.BASIC);
         row.setStudyPeriod(StudyPeriod.YEAR);
+        row.setLoadFromDate(loadFromDate);
+        row.setLoadToDate(loadToDate);
         return row;
     }
 }
