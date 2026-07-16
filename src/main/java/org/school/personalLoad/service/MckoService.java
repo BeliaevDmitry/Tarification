@@ -14,6 +14,9 @@ public interface MckoService {
     MckoDtos.ImportResult importCertificates(MultipartFile file);
     MckoDtos.CertificateRow createManualCertificate(Long teacherId, String mckoSubject, String examType, LocalDate diagnosticDate,
                                                     String level, boolean published, String comment, MultipartFile scan) throws IOException;
+    MckoDtos.CertificateRow updateCertificate(Long id, Long teacherId, String mckoSubject, String examType, LocalDate diagnosticDate,
+                                              String level, boolean published, String comment, MultipartFile scan,
+                                              boolean removeScan) throws IOException;
     void deleteCertificate(Long id);
     MckoCertificate certificate(Long id);
     List<MckoDtos.SubjectMappingRow> mappings();
