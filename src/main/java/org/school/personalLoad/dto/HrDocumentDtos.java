@@ -1,0 +1,30 @@
+package org.school.personalLoad.dto;
+
+import org.school.personalLoad.model.*;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+
+public final class HrDocumentDtos {
+    private HrDocumentDtos() {}
+    public record ContractRequest(Long teacherId, String contractNumber, LocalDate contractDate, String positionName,
+                                  LocalDate startDate, LocalDate endDate, Boolean primaryContract, Boolean active) {}
+    public record PersonalDataRequest(Long teacherId, LocalDate birthDate, String passportSeries, String passportNumber,
+            String passportIssuedBy, LocalDate passportIssueDate, String passportDepartmentCode,
+            String registrationAddress, String actualAddress, String phone, String inn, String snils) {}
+    public record MemoRequest(String academicYear, String title, LocalDate documentDate, String itemsJson) {}
+    public record AgreementRequest(Long contractId, Long serviceMemoId, String academicYear, LocalDate documentDate,
+            LocalDate validFrom, LocalDate validTo, AdditionalAgreement.Kind kind,
+            AdditionalAgreement.ChangeMode changeMode, String summary, String conditionsJson,
+            BigDecimal totalAmount, Long replacesAgreementId) {}
+    public record BatchAgreementRequest(String academicYear, LocalDate documentDate, LocalDate validFrom,
+            List<Long> contractIds, Long serviceMemoId) {}
+    public record AnnulRequest(String reason) {}
+    public record StatusRequest(String status) {}
+    public record JournalRow(Long teacherId, String fio, Long contractId, String contractNumber, String position,
+            boolean personalDataComplete, List<AgreementView> agreements, String actionRequired) {}
+    public record AgreementView(Long id, String internalNumber, String visibleNumber, int revision,
+            String kind, String status, LocalDate validFrom, LocalDate validTo, String summary,
+            BigDecimal totalAmount, Long serviceMemoId, LocalDateTime issuedAt) {}
+}

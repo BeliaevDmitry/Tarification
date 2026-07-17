@@ -220,6 +220,7 @@ function currentTab() {
         if (hash === '#archive') return 'TEACHERS_ARCHIVE';
         if (hash === '#dismissals') return 'TEACHERS_DISMISSALS';
         if (hash === '#settings') return 'TEACHERS_SETTINGS';
+        if (hash === '#mcko' || hash === '#mcko-subjects') return 'TEACHERS_MCKO';
         return 'TEACHERS';
     }
     if (window.location.pathname === '/contingent.html') {

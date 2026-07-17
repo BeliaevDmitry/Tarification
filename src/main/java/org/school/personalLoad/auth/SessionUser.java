@@ -38,12 +38,14 @@ public class SessionUser implements Serializable {
     public boolean canViewTab(AppTab tab) {
         if (isAdmin()) return true;
         if (tab == null || !canView) return false;
+        if (tab == AppTab.HR_DOCUMENTS && tabPermissions.stream().anyMatch(p -> p.getTab() == AppTab.HR_NOTIFICATIONS_VIEW && p.isCanView())) return true;
         return tabPermissions.stream().anyMatch(permission -> permission.getTab() == tab && permission.isCanView());
     }
 
     public boolean canEditTab(AppTab tab) {
         if (isAdmin()) return true;
         if (tab == null || !canView || !canEdit) return false;
+        if (tab == AppTab.HR_DOCUMENTS && tabPermissions.stream().anyMatch(p -> p.getTab() == AppTab.HR_NOTIFICATIONS_VIEW && p.isCanEdit())) return true;
         return tabPermissions.stream().anyMatch(permission -> permission.getTab() == tab && permission.isCanEdit());
     }
 
@@ -57,6 +59,12 @@ public class SessionUser implements Serializable {
         if (isAdmin()) return true;
         if (!canView) return false;
         return tabPermissions.stream().anyMatch(permission -> permission.getTab() == AppTab.LOAD_SALARY && permission.isCanExport());
+    }
+
+    public boolean canExportTab(AppTab tab) {
+        if (isAdmin()) return true;
+        if (tab == null || !canView) return false;
+        return tabPermissions.stream().anyMatch(permission -> permission.getTab() == tab && permission.isCanExport());
     }
 
     public boolean canEditLoadBuilding(String buildingCode) {

@@ -56,6 +56,8 @@ const ui = {
     mckoPublished: document.getElementById("mcko-published"),
     mckoComment: document.getElementById("mcko-comment"),
     mckoScan: document.getElementById("mcko-scan"),
+    mckoCancelEditBtn: document.getElementById("mcko-cancel-edit-btn"),
+    mckoCertificatesBody: document.getElementById("mcko-certificates-body"),
     mckoEligibilityBody: document.getElementById("mcko-eligibility-body"),
     mckoSubjectsBody: document.getElementById("mcko-subjects-body"),
     dismissalsBody: document.getElementById("teachers-dismissals-body"),
@@ -68,6 +70,7 @@ let teacherRows = [];
 let subjectCatalogRows = [];
 let mckoMappings = [];
 let mckoCertificates = [];
+let editingMckoCertificateId = null;
 const PRIMARY_MCKO_SUBJECT = "Метапредметные умения (начальное образование)";
 const PRIMARY_MCKO_LABEL = "Начальная школа";
 
@@ -522,6 +525,60 @@ async function reloadMckoCertificates() {
     const mode = ui.mckoModeSelect?.value || "all";
     mckoCertificates = await api(`/api/mcko/certificates?mode=${encodeURIComponent(mode)}`) || [];
     renderMckoSubjectSelectors();
+    renderMckoCertificates();
+}
+
+function canEditMcko() {
+    const user = window.tarificationAuth || {};
+    return Boolean(user.admin || window.tarificationTabPermissions?.TEACHERS_MCKO?.canEdit);
+}
+
+function renderMckoCertificates() {
+    if (!ui.mckoCertificatesBody) return;
+    ui.mckoCertificatesBody.innerHTML = mckoCertificates.map((row) => `
+        <tr>
+            <td>${escapeHtml(row.teacherFio || "")}</td><td>${escapeHtml(mckoSubjectLabel(row.mckoSubject) || "")}</td>
+            <td>${escapeHtml(row.examType || "")}</td><td>${escapeHtml(row.diagnosticDate || "")}</td>
+            <td>${escapeHtml(row.level || "")}</td><td>${row.published ? "Да" : "Нет"}</td>
+            <td>${row.hasScan ? `<a href="/api/mcko/certificates/${encodeURIComponent(row.id)}/scan" target="_blank">Есть</a>` : "Нет"}</td>
+            <td>${escapeHtml(row.comment || "")}</td><td>${escapeHtml(row.source || "")}</td>
+            <td>${canEditMcko() ? `<button type="button" data-edit-mcko="${row.id}">Редактировать</button> <button type="button" data-delete-mcko="${row.id}">Удалить</button>` : ""}</td>
+        </tr>`).join("") || `<tr><td colspan="10">Сертификаты не добавлены</td></tr>`;
+    ui.mckoCertificatesBody.querySelectorAll("[data-edit-mcko]").forEach((button) => button.addEventListener("click", () => startMckoEdit(Number(button.dataset.editMcko))));
+    ui.mckoCertificatesBody.querySelectorAll("[data-delete-mcko]").forEach((button) => button.addEventListener("click", () => deleteMckoCertificate(Number(button.dataset.deleteMcko))));
+}
+
+function startMckoEdit(id) {
+    const row = mckoCertificates.find((item) => Number(item.id) === Number(id));
+    if (!row) return;
+    editingMckoCertificateId = row.id;
+    ui.mckoTeacherSelect.value = String(row.teacherId || "");
+    const subjectOption = [...ui.mckoSubjectSelect.options].find((option) => sameMckoSubject(option.value, row.mckoSubject));
+    if (!subjectOption) ui.mckoSubjectSelect.add(new Option(mckoSubjectLabel(row.mckoSubject), mckoSubjectLabel(row.mckoSubject)));
+    ui.mckoSubjectSelect.value = subjectOption?.value || mckoSubjectLabel(row.mckoSubject);
+    ui.mckoExamType.value = row.examType || "";
+    ui.mckoDate.value = row.diagnosticDate || "";
+    if (![...ui.mckoLevel.options].some((option) => option.value === row.level)) ui.mckoLevel.add(new Option(row.level, row.level));
+    ui.mckoLevel.value = row.level || "";
+    ui.mckoPublished.checked = Boolean(row.published);
+    ui.mckoComment.value = row.comment || "";
+    ui.mckoCancelEditBtn.style.display = "";
+    ui.mckoManualForm.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function cancelMckoEdit() {
+    editingMckoCertificateId = null;
+    ui.mckoManualForm?.reset();
+    if (ui.mckoPublished) ui.mckoPublished.checked = true;
+    if (ui.mckoCancelEditBtn) ui.mckoCancelEditBtn.style.display = "none";
+}
+
+async function deleteMckoCertificate(id) {
+    if (!confirm("Удалить сертификат МЦКО?")) return;
+    await api(`/api/mcko/certificates/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (Number(editingMckoCertificateId) === Number(id)) cancelMckoEdit();
+    await reloadMckoCertificates();
+    await reloadMckoEligibility();
 }
 
 async function reloadMckoEligibility() {
@@ -643,10 +700,11 @@ async function saveManualMcko(event) {
     if (ui.mckoScan?.files?.[0]) {
         form.append("scan", ui.mckoScan.files[0]);
     }
-    const result = await api("/api/mcko/certificates", { method: "POST", body: form });
+    const editing = editingMckoCertificateId;
+    const path = editing ? `/api/mcko/certificates/${encodeURIComponent(editing)}` : "/api/mcko/certificates";
+    const result = await api(path, { method: editing ? "PUT" : "POST", body: form });
     print(result);
-    ui.mckoManualForm.reset();
-    if (ui.mckoPublished) ui.mckoPublished.checked = true;
+    cancelMckoEdit();
     await reloadMckoCertificates();
     await reloadMckoEligibility();
 }
@@ -1013,6 +1071,7 @@ function bindEvents() {
     });
     ui.mckoImportBtn?.addEventListener("click", () => importMckoCertificates().catch((error) => print({ error: error.message })));
     ui.mckoManualForm?.addEventListener("submit", (event) => saveManualMcko(event).catch((error) => print({ error: error.message })));
+    ui.mckoCancelEditBtn?.addEventListener("click", cancelMckoEdit);
 }
 
 async function init() {
