@@ -4,6 +4,8 @@ import java.util.Arrays;
 import java.util.List;
 
 public enum AppTab {
+    HR_DOCUMENTS("Кадры: документы", "/teachers-notification.html"),
+    HR_PERSONAL_DATA("Кадры: персональные данные", "/teachers-notification.html"),
     BUILDINGS("Корпуса", "/buildings.html"),
     CLASSES("Классы", "/classes.html"),
     SUBJECTS("Предметы", "/subjects.html"),
@@ -55,7 +57,7 @@ public enum AppTab {
     }
 
     public static List<AppTab> navigableTabs() {
-        return Arrays.asList(BUILDINGS, CLASSES, SUBJECTS, CURRICULUM, LOAD, PEOPLE_LOAD, LOAD_ISSUES, LOAD_STATS,
+        return Arrays.asList(HR_DOCUMENTS, HR_PERSONAL_DATA, BUILDINGS, CLASSES, SUBJECTS, CURRICULUM, LOAD, PEOPLE_LOAD, LOAD_ISSUES, LOAD_STATS,
                 LOAD_SALARY, SETTINGS, SUBJECT_AREAS, TEACHERS, TEACHERS_ARCHIVE, TEACHERS_DISMISSALS,
                 TEACHERS_SETTINGS, TEACHERS_MCKO, SERVICE_NOTES, HR_NOTIFICATIONS_VIEW, CONTINGENT_IMPORT, CONTINGENT_STATS,
                 EDUCATIONAL_WORK, VSOKO_VIEW, VSOKO_EDIT, OGE_UPLOAD_VIEW, OGE_MISMATCH_VIEW,

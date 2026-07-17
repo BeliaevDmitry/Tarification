@@ -57,7 +57,7 @@ public class AuthFilter extends OncePerRequestFilter {
             Map.entry("/service-notes.html", AppTab.SERVICE_NOTES),
             Map.entry("/settings.html", AppTab.SETTINGS),
             Map.entry("/subject-areas.html", AppTab.SUBJECT_AREAS),
-            Map.entry("/teachers-notification.html", AppTab.HR_NOTIFICATIONS_VIEW),
+            Map.entry("/teachers-notification.html", AppTab.HR_DOCUMENTS),
             Map.entry("/educational-work.html", AppTab.EDUCATIONAL_WORK),
             Map.entry("/vsoko.html", AppTab.VSOKO_VIEW),
             Map.entry("/vsoko-oge.html", AppTab.VSOKO_VIEW),
@@ -175,6 +175,8 @@ public class AuthFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/service-memos")) return AppTab.SERVICE_NOTES;
         if (path.startsWith("/api/settings/")) return AppTab.SETTINGS;
         if (path.startsWith("/api/teachers-notification")) return AppTab.HR_NOTIFICATIONS_VIEW;
+        if (path.startsWith("/api/hr-documents/personal-data")) return AppTab.HR_PERSONAL_DATA;
+        if (path.startsWith("/api/hr-documents")) return AppTab.HR_DOCUMENTS;
         if (path.startsWith("/api/mcko")) return AppTab.TEACHERS_MCKO;
         if (path.startsWith("/api/salary-group-coefficient-subjects")) return AppTab.TEACHERS_SETTINGS;
         if (path.matches("^/api/teachers/\\d+/(plan-dismiss|cancel-plan-dismiss|dismiss|restore)$")) return AppTab.TEACHERS_DISMISSALS;

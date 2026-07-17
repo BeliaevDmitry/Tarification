@@ -155,6 +155,36 @@ public class MckoServiceImpl implements MckoService {
     }
 
     @Override
+    @Transactional
+    public MckoDtos.CertificateRow updateCertificate(Long id, Long teacherId, String mckoSubject, String examType,
+                                                      LocalDate diagnosticDate, String level, boolean published, String comment,
+                                                      MultipartFile scan, boolean removeScan) throws IOException {
+        MckoCertificate cert = certificate(id);
+        TeacherDirectoryEntry teacher = teacherRepository.findById(teacherId)
+                .orElseThrow(() -> new IllegalArgumentException("Педагог не найден"));
+        cert.setTeacherId(teacher.getId());
+        cert.setTeacherFioSnapshot(teacher.getFioTeacher());
+        cert.setMckoSubject(canonicalMckoSubject(required(mckoSubject, "Предмет МЦКО")));
+        cert.setExamType(required(examType, "Тип экзамена"));
+        cert.setDiagnosticDate(Objects.requireNonNull(diagnosticDate, "Дата диагностики обязательна"));
+        cert.setExpiresAt(diagnosticDate.plusYears(3));
+        cert.setLevel(required(level, "Уровень"));
+        cert.setPublished(published);
+        cert.setComment(comment);
+        if (removeScan) {
+            cert.setScanFileName(null);
+            cert.setScanContentType(null);
+            cert.setScanContent(null);
+        }
+        if (scan != null && !scan.isEmpty()) {
+            cert.setScanFileName(scan.getOriginalFilename());
+            cert.setScanContentType(scan.getContentType());
+            cert.setScanContent(scan.getBytes());
+        }
+        return toRow(certificateRepository.save(cert));
+    }
+
+    @Override
     public void deleteCertificate(Long id) {
         certificateRepository.deleteById(id);
     }

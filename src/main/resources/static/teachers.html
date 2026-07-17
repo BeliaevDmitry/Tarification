@@ -202,7 +202,15 @@
                         <input id="mcko-scan" type="file" accept=".pdf,.jpg,.jpeg,.png">
                     </label>
                     <button type="submit">Сохранить</button>
+                    <button id="mcko-cancel-edit-btn" type="button" style="display:none;">Отменить редактирование</button>
                 </form>
+                <h3>Сертификаты МЦКО</h3>
+                <div class="sheet-wrap" data-scroll-controls="off">
+                    <table class="sheet-table">
+                        <thead><tr><th>Педагог</th><th>Предмет МЦКО</th><th>Тип экзамена</th><th>Дата</th><th>Уровень</th><th>Опубликован</th><th>PDF / сертификат</th><th>Комментарий</th><th>Источник</th><th>Действия</th></tr></thead>
+                        <tbody id="mcko-certificates-body"></tbody>
+                    </table>
+                </div>
                 <h3>Допуск по предметам нагрузки</h3>
                 <div class="sheet-wrap" data-scroll-controls="off">
                     <table class="sheet-table">

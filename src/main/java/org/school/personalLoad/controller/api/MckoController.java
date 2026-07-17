@@ -49,6 +49,21 @@ public class MckoController {
         return mckoService.createManualCertificate(teacherId, mckoSubject, examType, diagnosticDate, level, published, comment, scan);
     }
 
+    @PutMapping(value = "/certificates/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public MckoDtos.CertificateRow updateCertificate(@PathVariable Long id,
+                                                     @RequestParam Long teacherId,
+                                                     @RequestParam String mckoSubject,
+                                                     @RequestParam String examType,
+                                                     @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate diagnosticDate,
+                                                     @RequestParam String level,
+                                                     @RequestParam(defaultValue = "false") boolean published,
+                                                     @RequestParam(required = false) String comment,
+                                                     @RequestPart(required = false) MultipartFile scan,
+                                                     @RequestParam(defaultValue = "false") boolean removeScan) throws Exception {
+        return mckoService.updateCertificate(id, teacherId, mckoSubject, examType, diagnosticDate, level,
+                published, comment, scan, removeScan);
+    }
+
     @DeleteMapping("/certificates/{id}")
     public ResponseEntity<Void> deleteCertificate(@PathVariable Long id) {
         mckoService.deleteCertificate(id);
