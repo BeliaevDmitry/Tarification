@@ -32,6 +32,11 @@ public class MckoController {
         return mckoService.certificates(academicYearService.resolveRequestedOrDefault(academicYear), mode);
     }
 
+    @GetMapping("/overview")
+    public List<MckoDtos.OverviewRow> overview(@RequestParam(required = false) String academicYear) {
+        return mckoService.overview(academicYearService.resolveRequestedOrDefault(academicYear));
+    }
+
     @PostMapping("/certificates/import")
     public MckoDtos.ImportResult importCertificates(@RequestParam("file") MultipartFile file) {
         return mckoService.importCertificates(file);

@@ -171,8 +171,51 @@ class MckoServiceImplTest {
         List<MckoDtos.EligibilityRow> rows = service.eligibility("2026/2027");
 
         assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).subjectId()).isEqualTo(40L);
         assertThat(rows.get(0).subjectName()).isEqualTo("Математика");
         assertThat(rows.get(0).status()).isEqualTo("MISSING");
+    }
+
+    @Test
+    void overviewCombinesCurriculumSubjectsThatRequireTheSameMcko() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Teacher One");
+        MckoSubjectMapping algebra = mapping("Math profile", 10L, "Algebra");
+        MckoSubjectMapping geometry = mapping("Math profile", 11L, "Geometry");
+        MckoCertificate certificate = certificate(teacher, "Math profile", "Высокий",
+                true, LocalDate.now().minusMonths(1), MckoCertificateSource.IMPORT);
+        certificate.setId(77L);
+
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(
+                load(teacher, 10L, "Algebra", "7-A"),
+                load(teacher, 11L, "Geometry", "7-A")
+        ));
+        when(mappingRepository.findAll()).thenReturn(List.of(algebra, geometry));
+        when(certificateRepository.findAll()).thenReturn(List.of(certificate));
+
+        List<MckoDtos.OverviewRow> rows = service.overview("2026/2027");
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).certificateId()).isEqualTo(77L);
+        assertThat(rows.get(0).curriculumSubjects()).contains("Algebra", "Geometry");
+        assertThat(rows.get(0).status()).isEqualTo("OK");
+    }
+
+    @Test
+    void overviewShowsMissingRequirementWithoutCertificate() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Teacher One");
+        MckoSubjectMapping chemistry = mapping("Chemistry MCKO", 12L, "Chemistry");
+
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027"))
+                .thenReturn(List.of(load(teacher, 12L, "Chemistry", "8-A")));
+        when(mappingRepository.findAll()).thenReturn(List.of(chemistry));
+        when(certificateRepository.findAll()).thenReturn(List.of());
+
+        List<MckoDtos.OverviewRow> rows = service.overview("2026/2027");
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).certificateId()).isNull();
+        assertThat(rows.get(0).status()).isEqualTo("MISSING");
+        assertThat(rows.get(0).curriculumSubjects()).isEqualTo("Chemistry");
     }
 
     @Test

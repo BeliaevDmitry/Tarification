@@ -9,6 +9,7 @@ import java.util.List;
 
 @Repository
 public interface ServiceMemoRepository extends JpaRepository<ServiceMemo, Long> {
+    List<ServiceMemo> findAllByAcademicYearOrderByCreatedAtDesc(String academicYear);
     List<ServiceMemo> findAllByStatusOrderByCreatedAtDesc(ServiceMemo.Status status);
     List<ServiceMemo> findAllByAcademicYearAndStatusOrderByCreatedAtDesc(String academicYear, ServiceMemo.Status status);
 

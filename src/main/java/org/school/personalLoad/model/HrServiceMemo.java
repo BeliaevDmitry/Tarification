@@ -12,7 +12,19 @@ public class HrServiceMemo {
     public enum Status { DRAFT, ISSUED, RECEIVED_BY_HR, EXECUTED, ANNULLED }
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(nullable = false) private String academicYear;
+    // The database may already contain legacy memos created before employee binding was introduced.
+    // New memos are required to have a teacher by HrDocumentService validation.
+    @Column(name = "teacher_id") private Long teacherId;
+    @Column(name = "contract_id") private Long contractId;
+    private Long catalogItemId;
     @Column(nullable = false) private String title;
+    private String assignmentName;
+    @Column(length = 4000) private String assignmentText;
+    @Lob private String dutiesText;
+    private java.math.BigDecimal amount;
+    private LocalDate validFrom;
+    private LocalDate validTo;
+    @Column(nullable = false) private boolean separateAgreement;
     @Lob private String itemsJson;
     private LocalDate documentDate;
     @Enumerated(EnumType.STRING) @Column(nullable = false) private Status status = Status.DRAFT;

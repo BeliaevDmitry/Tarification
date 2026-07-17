@@ -72,8 +72,8 @@ function renderPending(rows) {
 function actionButtons(row, archived = false) {
     const download = `<button type="button" data-download-id="${row.id}">Скачать служебку</button>`;
     if (archived) return download;
-    return `${download}
-        <button type="button" data-archive-id="${row.id}">Отправить в архив</button>
+    const archive = ['RECEIVED_BY_HR','EXECUTED'].includes(row.status) ? `<button type="button" data-archive-id="${row.id}">Отправить в архив</button>` : '';
+    return `${download} ${archive}
         <label class="file-upload-inline">Подгрузить файл с правками<input type="file" data-upload-id="${row.id}" accept=".doc,.docx"></label>`;
 }
 
@@ -82,6 +82,7 @@ function renderProcessed(target, rows, archived = false) {
         <tr>
             <td>${esc(row.fioTeacher)}</td>
             <td>${esc(row.startDate || '')}</td>
+            <td>${esc({PROCESSED:'Выпущена, ожидает кадров',RECEIVED_BY_HR:'Получена кадрами',EXECUTED:'Исполнена',ANNULLED:'Аннулирована',ARCHIVED:'Архив'}[row.status] || row.status)}</td>
             <td>${esc(row.createdBy)}</td>
             <td>${esc(String(row.createdAt || '').replace('T', ' ').slice(0, 16))}</td>
             <td>${actionButtons(row, archived)}</td>

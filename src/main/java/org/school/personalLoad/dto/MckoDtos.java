@@ -27,6 +27,24 @@ public final class MckoDtos {
 
     public record ImportResult(int totalRows, int importedRows, int skippedRows, List<String> warnings) {}
 
+    public record OverviewRow(
+            Long certificateId,
+            Long teacherId,
+            String teacherFio,
+            String curriculumSubjects,
+            String mckoSubject,
+            String examType,
+            LocalDate diagnosticDate,
+            LocalDate expiresAt,
+            String level,
+            boolean published,
+            String source,
+            String comment,
+            boolean hasScan,
+            String status,
+            String message
+    ) {}
+
     public record EligibilityRow(
             Long teacherId,
             String teacherFio,

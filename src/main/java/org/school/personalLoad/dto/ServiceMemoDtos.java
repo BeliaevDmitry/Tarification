@@ -40,6 +40,8 @@ public class ServiceMemoDtos {
     @Builder
     public static class ProcessedMemo {
         Long id;
+        Long teacherId;
+        Long contractId;
         String fioTeacher;
         LocalDate startDate;
         String status;

@@ -11,6 +11,7 @@ import java.util.List;
 
 public interface MckoService {
     List<MckoDtos.CertificateRow> certificates(String academicYear, String mode);
+    List<MckoDtos.OverviewRow> overview(String academicYear);
     MckoDtos.ImportResult importCertificates(MultipartFile file);
     MckoDtos.CertificateRow createManualCertificate(Long teacherId, String mckoSubject, String examType, LocalDate diagnosticDate,
                                                     String level, boolean published, String comment, MultipartFile scan) throws IOException;

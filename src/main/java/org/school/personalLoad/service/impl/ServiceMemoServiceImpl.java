@@ -1,5 +1,7 @@
 package org.school.personalLoad.service.impl;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.xwpf.usermodel.*;
@@ -8,13 +10,17 @@ import org.school.personalLoad.dto.ServiceMemoSettingsDto;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.CurriculumPart;
 import org.school.personalLoad.model.ServiceMemo;
+import org.school.personalLoad.model.EmploymentContract;
+import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.model.StudyPeriodSettingKey;
 import org.school.personalLoad.model.TarifficationChanges;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.ServiceMemoRepository;
+import org.school.personalLoad.repository.EmploymentContractRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.ServiceMemoService;
 import org.school.personalLoad.service.ServiceMemoSettingsService;
+import org.school.personalLoad.service.HrDocumentService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,6 +57,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     private static final String PLACEHOLDER_TABLE = "{TABLE}";
     private static final String PLACEHOLDER_RATIONALE = "{RATIONALE}";
     private static final String OLD_RATIONALE_INTRO = "В связи с производственной необходимостью направляю на утверждение изменение учебной нагрузки.";
+    private static final ObjectMapper SNAPSHOT_MAPPER = new ObjectMapper();
 
     private final org.school.personalLoad.dao.TarifficationChangesDAO changesDAO;
     private final ManualLoadEntryRepository manualLoadEntryRepository;
@@ -58,6 +65,8 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     private final ServiceMemoRepository serviceMemoRepository;
     private final StudyPeriodSettingService studyPeriodSettingService;
     private final ServiceMemoSettingsService serviceMemoSettingsService;
+    private final EmploymentContractRepository employmentContractRepository;
+    private final HrDocumentService hrDocumentService;
 
     @Override
     @Transactional(readOnly = true)
@@ -91,11 +100,22 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     @Override
     @Transactional(readOnly = true)
     public List<ServiceMemoDtos.ProcessedMemo> findProcessed(String academicYear) {
+        List<ServiceMemo.Status> visible = List.of(ServiceMemo.Status.PROCESSED, ServiceMemo.Status.RECEIVED_BY_HR, ServiceMemo.Status.EXECUTED);
         java.util.List<ServiceMemo> items = (academicYear == null || academicYear.isBlank())
-                ? serviceMemoRepository.findAllByStatusOrderByCreatedAtDesc(ServiceMemo.Status.PROCESSED)
-                : serviceMemoRepository.findAllByAcademicYearAndStatusOrderByCreatedAtDesc(academicYear, ServiceMemo.Status.PROCESSED);
+                ? serviceMemoRepository.findAllByStatusInOrderByCreatedAtDesc(visible)
+                : serviceMemoRepository.findAllByAcademicYearAndStatusInOrderByCreatedAtDesc(academicYear, visible);
         return items
                 .stream()
+                .map(this::toProcessedDto)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ServiceMemoDtos.ProcessedMemo> findForHr(String academicYear) {
+        if (academicYear == null || academicYear.isBlank()) return List.of();
+        return serviceMemoRepository.findAllByAcademicYearOrderByCreatedAtDesc(academicYear).stream()
+                .filter(memo -> memo.getStatus() != ServiceMemo.Status.ARCHIVED)
                 .map(this::toProcessedDto)
                 .toList();
     }
@@ -152,14 +172,20 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     }
                 }
 
+                TeacherDirectoryEntry teacher = resolveTeacher(aggregate);
+                EmploymentContract contract = resolvePrimaryContract(teacher);
                 ServiceMemo entity = new ServiceMemo();
                 entity.setAcademicYear(resolveMemoAcademicYear(academicYear));
                 entity.setFioTeacher(aggregate.teacherDisplay());
+                entity.setTeacherId(teacher.getId());
+                entity.setContractId(contract.getId());
                 entity.setChangeStartDate(aggregate.startDate());
                 entity.setCreatedBy(createdBy);
                 entity.setGeneratedFilename("служебка по нагрузке " + safeName(aggregate.teacherDisplay())
                         + " " + aggregate.startDate() + ".docx");
                 entity.setLoadSignature(signature);
+                entity.setBeforeSnapshotJson(loadSnapshot(aggregate, true));
+                entity.setAfterSnapshotJson(loadSnapshot(aggregate, false));
                 entity.setGeneratedDocument(buildDocx(
                         aggregate.teacherDisplay(),
                         aggregate,
@@ -167,8 +193,10 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         teacherDativeByFio
                 ));
 
-                created.add(serviceMemoRepository.save(entity));
-                latestMemoBySelection.put(selectionKey, entity);
+                ServiceMemo saved = serviceMemoRepository.save(entity);
+                hrDocumentService.createLoadChangeDraft(saved, contract, createdBy);
+                created.add(saved);
+                latestMemoBySelection.put(selectionKey, saved);
             }
         }
 
@@ -189,9 +217,52 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     @Override
     public ServiceMemo archive(Long id) {
         ServiceMemo memo = getById(id);
+        if (memo.getStatus() != ServiceMemo.Status.RECEIVED_BY_HR && memo.getStatus() != ServiceMemo.Status.EXECUTED)
+            throw new IllegalStateException("Служебную записку можно архивировать после получения кадрами");
         memo.setStatus(ServiceMemo.Status.ARCHIVED);
         memo.setArchivedAt(LocalDateTime.now());
         return serviceMemoRepository.save(memo);
+    }
+
+    @Override
+    public ServiceMemo receiveByHr(Long id, String username) {
+        ServiceMemo memo = getById(id);
+        if (memo.getStatus() == ServiceMemo.Status.ARCHIVED || memo.getStatus() == ServiceMemo.Status.ANNULLED) {
+            throw new IllegalStateException("Нельзя принять архивную или аннулированную служебную записку");
+        }
+        if (memo.getStatus() != ServiceMemo.Status.PROCESSED && memo.getStatus() != ServiceMemo.Status.RECEIVED_BY_HR)
+            throw new IllegalStateException("Служебная записка ещё не выпущена");
+        TeacherDirectoryEntry teacher = memo.getTeacherId() == null
+                ? teacherDirectoryRepository.findByFioTeacherIgnoreCase(memo.getFioTeacher())
+                    .orElseThrow(() -> new IllegalStateException("Не найден ID работника: " + memo.getFioTeacher()))
+                : teacherDirectoryRepository.findById(memo.getTeacherId())
+                    .orElseThrow(() -> new IllegalStateException("Работник служебной записки не найден"));
+        EmploymentContract contract = memo.getContractId() == null
+                ? resolvePrimaryContract(teacher)
+                : employmentContractRepository.findById(memo.getContractId())
+                    .filter(item -> Objects.equals(item.getTeacherId(),teacher.getId()))
+                    .orElseGet(() -> resolvePrimaryContract(teacher));
+        memo.setTeacherId(teacher.getId()); memo.setContractId(contract.getId());
+        hrDocumentService.ensureLoadChangeDraft(memo,contract,username);
+        memo.setStatus(ServiceMemo.Status.RECEIVED_BY_HR);
+        memo.setReceivedAt(LocalDateTime.now());
+        memo.setReceivedBy(username);
+        ServiceMemo saved = serviceMemoRepository.save(memo);
+        hrDocumentService.onLoadMemoReceived(saved);
+        return saved;
+    }
+
+    @Override
+    public ServiceMemo annul(Long id, String reason, String username) {
+        ServiceMemo memo = getById(id);
+        memo.setStatus(ServiceMemo.Status.ANNULLED);
+        memo.setAnnulReason(String.valueOf(reason == null ? "" : reason).trim());
+        if (memo.getAnnulReason().isBlank()) throw new IllegalArgumentException("Укажите причину аннулирования");
+        memo.setAnnulledAt(LocalDateTime.now());
+        memo.setAnnulledBy(username);
+        ServiceMemo saved = serviceMemoRepository.save(memo);
+        hrDocumentService.onLoadMemoAnnulled(saved);
+        return saved;
     }
 
     @Override
@@ -205,6 +276,8 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     private ServiceMemoDtos.ProcessedMemo toProcessedDto(ServiceMemo memo) {
         return ServiceMemoDtos.ProcessedMemo.builder()
                 .id(memo.getId())
+                .teacherId(memo.getTeacherId())
+                .contractId(memo.getContractId())
                 .fioTeacher(memo.getFioTeacher())
                 .startDate(memo.getChangeStartDate())
                 .status(memo.getStatus().name())
@@ -755,9 +828,11 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private Map<String, ServiceMemo> latestMemoBySelectionKey(String academicYear) {
+        List<ServiceMemo.Status> completed = List.of(ServiceMemo.Status.PROCESSED, ServiceMemo.Status.RECEIVED_BY_HR,
+                ServiceMemo.Status.EXECUTED, ServiceMemo.Status.ARCHIVED);
         List<ServiceMemo> source = (academicYear == null || academicYear.isBlank())
-                ? serviceMemoRepository.findAllByStatusInOrderByCreatedAtDesc(List.of(ServiceMemo.Status.PROCESSED, ServiceMemo.Status.ARCHIVED))
-                : serviceMemoRepository.findAllByAcademicYearAndStatusInOrderByCreatedAtDesc(academicYear, List.of(ServiceMemo.Status.PROCESSED, ServiceMemo.Status.ARCHIVED));
+                ? serviceMemoRepository.findAllByStatusInOrderByCreatedAtDesc(completed)
+                : serviceMemoRepository.findAllByAcademicYearAndStatusInOrderByCreatedAtDesc(academicYear, completed);
         return source.stream()
                 .filter(memo -> normalize(memo.getFioTeacher()) != null && memo.getChangeStartDate() != null)
                 .collect(Collectors.toMap(
@@ -1372,6 +1447,47 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private record TeacherDateKey(String teacherKey, LocalDate changeDate) {
+    }
+
+    private TeacherDirectoryEntry resolveTeacher(TeacherChangeAggregate aggregate) {
+        Optional<Long> teacherId = aggregate.rows().stream().map(ManualLoadEntry::getTeacherId).filter(Objects::nonNull).findFirst();
+        if (teacherId.isPresent()) {
+            Optional<TeacherDirectoryEntry> byId = teacherDirectoryRepository.findById(teacherId.get());
+            if (byId.isPresent()) return byId.get();
+        }
+        return teacherDirectoryRepository.findByFioTeacherIgnoreCase(aggregate.teacherDisplay())
+                .orElseThrow(() -> new IllegalStateException("Не найден ID работника для служебной записки: " + aggregate.teacherDisplay()));
+    }
+
+    private EmploymentContract resolvePrimaryContract(TeacherDirectoryEntry teacher) {
+        List<EmploymentContract> available = employmentContractRepository
+                .findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(teacher.getId());
+        return available.stream().filter(EmploymentContract::isActive).filter(EmploymentContract::isPrimaryContract).findFirst()
+                .or(() -> available.stream().filter(EmploymentContract::isActive).findFirst())
+                .orElseThrow(() -> new IllegalStateException("Не найден действующий трудовой договор: " + teacher.getFioTeacher()));
+    }
+
+    private String loadSnapshot(TeacherChangeAggregate aggregate, boolean before) {
+        List<Map<String, Object>> rows = aggregate.rows().stream().filter(Objects::nonNull)
+                .filter(row -> {
+                    String status = resolveStatus(aggregate, row);
+                    return before ? !"Добавить".equalsIgnoreCase(status) : !"Снять".equalsIgnoreCase(status);
+                })
+                .map(row -> {
+                    Map<String, Object> value = new LinkedHashMap<>();
+                    value.put("teacherId", row.getTeacherId());
+                    value.put("subject", row.getSubjectName());
+                    value.put("className", row.getClassName());
+                    value.put("hours", row.getLoad());
+                    value.put("validFrom", Objects.toString(row.getLoadFromDate(), ""));
+                    value.put("validTo", Objects.toString(row.getLoadToDate(), ""));
+                    return value;
+                }).toList();
+        try {
+            return SNAPSHOT_MAPPER.writeValueAsString(Map.of("effectiveDate", aggregate.startDate().toString(), "rows", rows));
+        } catch (Exception e) {
+            throw new IllegalStateException("Не удалось сохранить снимок нагрузки", e);
+        }
     }
 
     private enum MemoReason {

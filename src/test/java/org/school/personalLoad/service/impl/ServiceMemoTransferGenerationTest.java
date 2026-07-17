@@ -16,8 +16,10 @@ import org.school.personalLoad.model.TarifficationChanges;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.ServiceMemoRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
+import org.school.personalLoad.repository.EmploymentContractRepository;
 import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.school.personalLoad.service.ServiceMemoSettingsService;
+import org.school.personalLoad.service.HrDocumentService;
 
 import java.io.ByteArrayInputStream;
 import java.time.LocalDate;
@@ -52,6 +54,10 @@ class ServiceMemoTransferGenerationTest {
     private StudyPeriodSettingService studyPeriodSettingService;
     @Mock
     private ServiceMemoSettingsService serviceMemoSettingsService;
+    @Mock
+    private EmploymentContractRepository employmentContractRepository;
+    @Mock
+    private HrDocumentService hrDocumentService;
 
     private ServiceMemoServiceImpl service;
     private List<ServiceMemo> savedMemos;
@@ -65,7 +71,9 @@ class ServiceMemoTransferGenerationTest {
                 teacherDirectoryRepository,
                 serviceMemoRepository,
                 studyPeriodSettingService,
-                serviceMemoSettingsService
+                serviceMemoSettingsService,
+                employmentContractRepository,
+                hrDocumentService
         );
 
         lenient().when(studyPeriodSettingService.rangesByKey()).thenReturn(Map.of(
@@ -86,6 +94,13 @@ class ServiceMemoTransferGenerationTest {
             );
         });
         lenient().when(teacherDirectoryRepository.findAll()).thenReturn(List.of());
+        lenient().when(teacherDirectoryRepository.findByFioTeacherIgnoreCase(anyString())).thenAnswer(invocation -> {
+            org.school.personalLoad.model.TeacherDirectoryEntry teacher = new org.school.personalLoad.model.TeacherDirectoryEntry();
+            teacher.setId(1L); teacher.setFioTeacher(invocation.getArgument(0)); return java.util.Optional.of(teacher);
+        });
+        org.school.personalLoad.model.EmploymentContract contract = new org.school.personalLoad.model.EmploymentContract();
+        contract.setId(10L); contract.setTeacherId(1L); contract.setContractNumber("ТД-1"); contract.setPrimaryContract(true); contract.setActive(true);
+        lenient().when(employmentContractRepository.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(1L)).thenReturn(List.of(contract));
         lenient().when(serviceMemoRepository.findAllByStatusInOrderByCreatedAtDesc(any())).thenReturn(List.of());
         lenient().when(serviceMemoRepository.findAllByAcademicYearAndStatusInOrderByCreatedAtDesc(anyString(), any())).thenReturn(List.of());
         lenient().when(changesDAO.findAll()).thenReturn(List.of());
@@ -116,6 +131,41 @@ class ServiceMemoTransferGenerationTest {
                 && LocalDate.of(2025, 10, 11).equals(p.getStartDate())));
         assertTrue(pending.stream().anyMatch(p -> "Петров П.П.".equals(p.getFioTeacher())
                 && LocalDate.of(2025, 10, 11).equals(p.getStartDate())));
+    }
+
+    @Test
+    void generatedLoadMemoIsBoundToContractAndCreatesAgreementDraft() {
+        ManualLoadEntry row = row("Сидоров С.С.", "Математика", "5-А", 5,
+                LocalDate.of(2025, 10, 11), LocalDate.of(2026, 5, 31));
+        when(manualLoadEntryRepository.findAll()).thenReturn(List.of(row));
+        ServiceMemoDtos.PendingTeacher pending = service.findPendingTeachers().get(0);
+
+        service.generateForTeachers(null, List.of(pending.getTeacherKey()), "Автор");
+
+        ServiceMemo memo = savedMemos.get(savedMemos.size() - 1);
+        assertTrue(Objects.equals(1L, memo.getTeacherId()));
+        assertTrue(Objects.equals(10L, memo.getContractId()));
+        assertTrue(memo.getBeforeSnapshotJson().contains("rows"));
+        assertTrue(memo.getAfterSnapshotJson().contains("Математика"));
+        org.mockito.Mockito.verify(hrDocumentService).createLoadChangeDraft(
+                org.mockito.ArgumentMatchers.same(memo), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("Автор"));
+    }
+
+    @Test
+    void hrReceiptBackfillsLegacyBindingAndReleasesAgreement() {
+        ServiceMemo memo = new ServiceMemo(); memo.setId(77L); memo.setFioTeacher("Сидоров С.С.");
+        memo.setStatus(ServiceMemo.Status.PROCESSED); memo.setAcademicYear("2025/2026");
+        memo.setChangeStartDate(LocalDate.of(2025,10,11));
+        when(serviceMemoRepository.findById(77L)).thenReturn(java.util.Optional.of(memo));
+
+        service.receiveByHr(77L,"Кадры");
+
+        assertTrue(memo.getStatus()==ServiceMemo.Status.RECEIVED_BY_HR);
+        assertTrue(Objects.equals(1L,memo.getTeacherId()));
+        assertTrue(Objects.equals(10L,memo.getContractId()));
+        org.mockito.Mockito.verify(hrDocumentService).ensureLoadChangeDraft(
+                org.mockito.ArgumentMatchers.same(memo),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.eq("Кадры"));
+        org.mockito.Mockito.verify(hrDocumentService).onLoadMemoReceived(memo);
     }
 
     @Test
