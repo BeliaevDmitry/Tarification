@@ -66,6 +66,84 @@ public class MckoServiceImpl implements MckoService {
     }
 
     @Override
+    public List<MckoDtos.OverviewRow> overview(String academicYear) {
+        List<MckoSubjectMapping> mappings = mappingRepository.findAll();
+        Set<String> ignoredMckoSubjects = mappings.stream()
+                .filter(MckoSubjectMapping::isIgnored)
+                .map(row -> mckoSubjectKey(row.getMckoSubject()))
+                .collect(Collectors.toSet());
+        List<MckoSubjectMapping> activeMappings = mappings.stream()
+                .filter(row -> !row.isIgnored())
+                .filter(row -> !ignoredMckoSubjects.contains(mckoSubjectKey(row.getMckoSubject())))
+                .toList();
+
+        Map<String, OverviewRequirement> requirements = new LinkedHashMap<>();
+        manualLoadRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(this::isCoreLoad)
+                .filter(load -> load.getTeacherId() != null)
+                .forEach(load -> activeMappings.stream()
+                        .filter(mapping -> mappingAppliesToLoad(mapping, load))
+                        .filter(mapping -> !isPrimaryClass(load.getClassName()) || isPrimaryMckoSubject(mapping.getMckoSubject()))
+                        .forEach(mapping -> {
+                            String mckoSubject = canonicalMckoSubject(mapping.getMckoSubject());
+                            String key = load.getTeacherId() + "|" + mckoSubjectKey(mckoSubject);
+                            OverviewRequirement requirement = requirements.computeIfAbsent(key,
+                                    ignored -> new OverviewRequirement(load.getTeacherId(), load.getFioTeacher(), mckoSubject));
+                            String rawSubjectName = load.getSubjectName() == null ? mapping.getSubjectName() : load.getSubjectName();
+                            String subjectName = rawSubjectName == null ? "" : rawSubjectName.trim();
+                            if (!subjectName.isBlank()) requirement.curriculumSubjects.add(subjectName);
+                        }));
+
+        Map<String, List<MckoCertificate>> certificates = certificateRepository.findAll().stream()
+                .collect(Collectors.groupingBy(row -> row.getTeacherId() + "|" + mckoSubjectKey(row.getMckoSubject())));
+
+        return requirements.entrySet().stream()
+                .map(entry -> toOverviewRow(entry.getValue(), bestCertificateForOverview(certificates.getOrDefault(entry.getKey(), List.of()))))
+                .sorted(Comparator.comparing(MckoDtos.OverviewRow::teacherFio, Comparator.nullsLast(String::compareToIgnoreCase))
+                        .thenComparing(MckoDtos.OverviewRow::mckoSubject, Comparator.nullsLast(String::compareToIgnoreCase)))
+                .toList();
+    }
+
+    private MckoCertificate bestCertificateForOverview(List<MckoCertificate> candidates) {
+        Optional<MckoCertificate> activePassing = candidates.stream()
+                .filter(this::isActivePassing)
+                .max(this::compareCertificates);
+        return activePassing.orElseGet(() -> candidates.stream()
+                .max(Comparator.comparing(MckoCertificate::getDiagnosticDate, Comparator.nullsFirst(LocalDate::compareTo)))
+                .orElse(null));
+    }
+
+    private MckoDtos.OverviewRow toOverviewRow(OverviewRequirement requirement, MckoCertificate cert) {
+        if (cert == null) {
+            return new MckoDtos.OverviewRow(null, requirement.teacherId, requirement.teacherFio,
+                    String.join(", ", requirement.curriculumSubjects), requirement.mckoSubject,
+                    null, null, null, null, false, null, null, false, "MISSING", "НЕТ МЦКО");
+        }
+        String status = certificateStatus(cert);
+        String message = "MISSING".equals(status)
+                ? "НЕТ МЦКО" + (cert.getExpiresAt() == null ? "" : " (последний до " + RU_DATE.format(cert.getExpiresAt()) + ")")
+                : eligibilityMessage(cert);
+        return new MckoDtos.OverviewRow(cert.getId(), requirement.teacherId, requirement.teacherFio,
+                String.join(", ", requirement.curriculumSubjects), requirement.mckoSubject,
+                cert.getExamType(), cert.getDiagnosticDate(), cert.getExpiresAt(), cert.getLevel(), cert.isPublished(),
+                cert.getSource().name(), cert.getComment(), cert.getScanFileName() != null,
+                status, message);
+    }
+
+    private static final class OverviewRequirement {
+        private final Long teacherId;
+        private final String teacherFio;
+        private final String mckoSubject;
+        private final Set<String> curriculumSubjects = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+
+        private OverviewRequirement(Long teacherId, String teacherFio, String mckoSubject) {
+            this.teacherId = teacherId;
+            this.teacherFio = teacherFio;
+            this.mckoSubject = mckoSubject;
+        }
+    }
+
+    @Override
     @Transactional
     public MckoDtos.ImportResult importCertificates(MultipartFile file) {
         List<String> warnings = new ArrayList<>();
@@ -346,13 +424,13 @@ public class MckoServiceImpl implements MckoService {
                     .map(cert -> "МЦКО уровень " + nvl(cert.getLevel()))
                     .orElse("НЕТ МЦКО");
             MckoCertificate cert = nonPassing.orElse(null);
-            return new MckoDtos.EligibilityRow(teacherId, teacherFio, subjectGroup.subjectId(), subjectGroup.subjectName(),
+            return new MckoDtos.EligibilityRow(teacherId, teacherFio, load.getSubjectId(), subjectGroup.subjectName(),
                     "MISSING", message, cert == null ? null : cert.getLevel(), cert == null ? null : cert.getDiagnosticDate(), cert == null ? null : cert.getExpiresAt());
         }
         MckoCertificate cert = best.get();
         String status = certificateStatus(cert);
         String message = eligibilityMessage(cert);
-        return new MckoDtos.EligibilityRow(teacherId, teacherFio, subjectGroup.subjectId(), subjectGroup.subjectName(), status, message,
+        return new MckoDtos.EligibilityRow(teacherId, teacherFio, load.getSubjectId(), subjectGroup.subjectName(), status, message,
                 cert.getLevel(), cert.getDiagnosticDate(), cert.getExpiresAt());
     }
 

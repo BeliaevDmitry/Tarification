@@ -12,6 +12,8 @@ public interface ServiceMemoService {
 
     List<ServiceMemoDtos.ProcessedMemo> findArchived(String academicYear);
 
+    List<ServiceMemoDtos.ProcessedMemo> findForHr(String academicYear);
+
     List<ServiceMemoDtos.ProcessedMemo> generateForTeachers(String academicYear, List<String> fioTeachers, String createdBy);
 
     default List<ServiceMemoDtos.PendingTeacher> findPendingTeachers() {
@@ -33,6 +35,10 @@ public interface ServiceMemoService {
     ServiceMemo getById(Long id);
 
     ServiceMemo archive(Long id);
+
+    ServiceMemo receiveByHr(Long id, String username);
+
+    ServiceMemo annul(Long id, String reason, String username);
 
     ServiceMemo uploadCorrected(Long id, String filename, byte[] content);
 

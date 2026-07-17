@@ -164,10 +164,7 @@
             <section id="mcko-certificates-panel">
                 <h3>МЦКО</h3>
                 <div class="row">
-                    <select id="mcko-mode-select" data-allow-readonly="true">
-                        <option value="all">Все педагоги</option>
-                        <option value="load">Текущее и будущее назначение в учебном году</option>
-                    </select>
+                    <span class="muted">Проверка по нагрузке выбранного учебного года</span>
                     <input id="mcko-import-file" type="file" accept=".xls,.xlsx">
                     <button id="mcko-import-btn" type="button">Загрузить выгрузку</button>
                     <a id="mcko-export-link" class="nav-link" href="/api/mcko/certificates/export" data-allow-readonly="true">Скачать Excel</a>
@@ -207,15 +204,22 @@
                 <h3>Сертификаты МЦКО</h3>
                 <div class="sheet-wrap" data-scroll-controls="off">
                     <table class="sheet-table">
-                        <thead><tr><th>Педагог</th><th>Предмет МЦКО</th><th>Тип экзамена</th><th>Дата</th><th>Уровень</th><th>Опубликован</th><th>PDF / сертификат</th><th>Комментарий</th><th>Источник</th><th>Действия</th></tr></thead>
+                        <thead><tr>
+                            <th><button type="button" class="link-button" data-sort-mcko="teacherFio">Педагог</button></th>
+                            <th><button type="button" class="link-button" data-sort-mcko="curriculumSubjects">Предметы основной части</button></th>
+                            <th><button type="button" class="link-button" data-sort-mcko="mckoSubject">Предмет МЦКО</button></th>
+                            <th><button type="button" class="link-button" data-sort-mcko="status">Статус</button></th>
+                            <th><button type="button" class="link-button" data-sort-mcko="examType">Тип экзамена</button></th>
+                            <th><button type="button" class="link-button" data-sort-mcko="diagnosticDate">Дата сдачи</button></th>
+                            <th><button type="button" class="link-button" data-sort-mcko="expiresAt">Дата конца</button></th>
+                            <th><button type="button" class="link-button" data-sort-mcko="level">Уровень</button></th>
+                            <th><button type="button" class="link-button" data-sort-mcko="published">Опубликован</button></th>
+                            <th><button type="button" class="link-button" data-sort-mcko="hasScan">PDF / сертификат</button></th>
+                            <th><button type="button" class="link-button" data-sort-mcko="comment">Комментарий</button></th>
+                            <th><button type="button" class="link-button" data-sort-mcko="source">Источник</button></th>
+                            <th>Действия</th>
+                        </tr></thead>
                         <tbody id="mcko-certificates-body"></tbody>
-                    </table>
-                </div>
-                <h3>Допуск по предметам нагрузки</h3>
-                <div class="sheet-wrap" data-scroll-controls="off">
-                    <table class="sheet-table">
-                        <thead><tr><th>Учитель</th><th>Предмет нагрузки</th><th>Наличие сертификата</th><th>Уровень</th><th>Дата сдачи</th><th>Дата конца</th></tr></thead>
-                        <tbody id="mcko-eligibility-body"></tbody>
                     </table>
                 </div>
             </section>

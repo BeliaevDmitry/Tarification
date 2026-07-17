@@ -13,7 +13,10 @@ public final class HrDocumentDtos {
     public record PersonalDataRequest(Long teacherId, LocalDate birthDate, String passportSeries, String passportNumber,
             String passportIssuedBy, LocalDate passportIssueDate, String passportDepartmentCode,
             String registrationAddress, String actualAddress, String phone, String inn, String snils) {}
-    public record MemoRequest(String academicYear, String title, LocalDate documentDate, String itemsJson) {}
+    public record MemoRequest(String academicYear, Long teacherId, Long contractId, Long catalogItemId,
+            String title, LocalDate documentDate, String assignmentName, String assignmentText,
+            String dutiesText, BigDecimal amount, LocalDate validFrom, LocalDate validTo,
+            Boolean separateAgreement, Boolean saveAsTemplate, String itemsJson) {}
     public record AgreementRequest(Long contractId, Long serviceMemoId, String academicYear, LocalDate documentDate,
             LocalDate validFrom, LocalDate validTo, AdditionalAgreement.Kind kind,
             AdditionalAgreement.ChangeMode changeMode, String summary, String conditionsJson,
@@ -22,9 +25,11 @@ public final class HrDocumentDtos {
             List<Long> contractIds, Long serviceMemoId) {}
     public record AnnulRequest(String reason) {}
     public record StatusRequest(String status) {}
+    public record ChangeModeRequest(String changeMode, Long replacesAgreementId) {}
     public record JournalRow(Long teacherId, String fio, Long contractId, String contractNumber, String position,
             boolean personalDataComplete, List<AgreementView> agreements, String actionRequired) {}
     public record AgreementView(Long id, String internalNumber, String visibleNumber, int revision,
-            String kind, String status, LocalDate validFrom, LocalDate validTo, String summary,
-            BigDecimal totalAmount, Long serviceMemoId, LocalDateTime issuedAt) {}
+            String kind, String status, String changeMode, Long replacesAgreementId,
+            LocalDate documentDate, LocalDate validFrom, LocalDate validTo, String summary,
+            BigDecimal totalAmount, Long serviceMemoId, Long loadServiceMemoId, LocalDateTime issuedAt) {}
 }

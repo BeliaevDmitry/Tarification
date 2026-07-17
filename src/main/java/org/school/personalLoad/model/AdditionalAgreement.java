@@ -10,13 +10,14 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "additional_agreement")
 public class AdditionalAgreement {
-    public enum Status { DRAFT, READY, ISSUED, SIGNING, SIGNED, EXPIRED, CANCELLED, ANNULLED, REQUIRES_DECISION }
+    public enum Status { WAITING_FOR_MEMO, DRAFT, READY, ISSUED, SIGNING, SIGNED, EXPIRED, CANCELLED, ANNULLED, REQUIRES_DECISION }
     public enum ChangeMode { AMEND, CANCEL_AND_RESTATE }
     public enum Kind { PAY_TERMS, ADDITIONAL_WORK }
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(name = "contract_id", nullable = false) private Long contractId;
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "contract_id", insertable = false, updatable = false) private EmploymentContract contract;
     private Long serviceMemoId;
+    private Long loadServiceMemoId;
     @Column(nullable = false) private String academicYear;
     @Column(nullable = false) private String internalNumber;
     private String visibleNumber;

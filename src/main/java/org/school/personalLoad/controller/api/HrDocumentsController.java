@@ -22,10 +22,13 @@ import java.util.*;
 @RequiredArgsConstructor
 public class HrDocumentsController {
     private final HrDocumentService service;
+    private final ServiceMemoService loadMemoService;
     private final HrPersonalDataRepository personalRepository;
     private final TeacherDirectoryRepository teacherRepository;
     private final HrCatalogItemRepository catalogRepository;
     private final UserActionLogService audit;
+
+    @GetMapping("/teachers") public Object teachers(){return teacherRepository.findAll().stream().filter(t->!t.isArchived()).map(t->Map.of("id",t.getId(),"fio",t.getFioTeacher())).toList();}
 
     @GetMapping("/journal") public Object journal(@RequestParam String academicYear,HttpServletRequest req){boolean allowed=user(req).canViewTab(AppTab.HR_PERSONAL_DATA);return service.journal(academicYear).stream().map(x->allowed?x:new JournalRow(x.teacherId(),x.fio(),x.contractId(),x.contractNumber(),x.position(),true,x.agreements(),"Заполнить данные".equals(x.actionRequired())?"":x.actionRequired())).toList();}
     @GetMapping("/contracts") public Object contracts(@RequestParam Long teacherId){return service.contracts(teacherId);}
@@ -61,18 +64,23 @@ public class HrDocumentsController {
     }
 
     @GetMapping("/memos") public Object memos(@RequestParam String academicYear){return service.memos(academicYear);}
+    @GetMapping("/load-memos") public Object loadMemos(@RequestParam String academicYear){return loadMemoService.findForHr(academicYear);}
     @PostMapping("/memos") public Object memo(@RequestBody MemoRequest r,HttpServletRequest req){return service.createMemo(r,user(req).getUsername());}
     @PostMapping("/memos/{id}/status") public Object memoStatus(@PathVariable Long id,@RequestBody StatusRequest r,HttpServletRequest req){return service.memoStatus(id,HrServiceMemo.Status.valueOf(r.status()),user(req).getUsername());}
     @PostMapping("/memos/{id}/annul") public Object memoAnnul(@PathVariable Long id,@RequestBody AnnulRequest r,HttpServletRequest req){return service.annulMemo(id,r.reason(),user(req).getUsername());}
     @GetMapping("/memos/{id}/download") public ResponseEntity<byte[]> memoDownload(@PathVariable Long id){HrServiceMemo m=service.memo(id);return file(m.getDocumentContent(),m.getDocumentFilename());}
+    @PostMapping("/load-memos/{id}/receive") public Object loadMemoReceive(@PathVariable Long id,HttpServletRequest req){ServiceMemo m=loadMemoService.receiveByHr(id,user(req).getUsername());return Map.of("id",m.getId(),"status",m.getStatus().name());}
+    @PostMapping("/load-memos/{id}/annul") public Object loadMemoAnnul(@PathVariable Long id,@RequestBody AnnulRequest r,HttpServletRequest req){ServiceMemo m=loadMemoService.annul(id,r.reason(),user(req).getUsername());return Map.of("id",m.getId(),"status",m.getStatus().name());}
+    @GetMapping("/load-memos/{id}/download") public ResponseEntity<byte[]> loadMemoDownload(@PathVariable Long id){ServiceMemo m=loadMemoService.getById(id);boolean corrected=m.getCorrectedDocument()!=null;return file(corrected?m.getCorrectedDocument():m.getGeneratedDocument(),corrected?m.getCorrectedFilename():m.getGeneratedFilename());}
 
     @PostMapping("/agreements") public Object agreement(@RequestBody AgreementRequest r,HttpServletRequest req){return service.createAgreement(r,user(req).getUsername());}
     @PostMapping("/agreements/batch-annual") public Object annual(@RequestBody BatchAgreementRequest r,HttpServletRequest req){return service.createAnnualDrafts(r,user(req).getUsername());}
     @PostMapping("/agreements/{id}/issue") public Object issue(@PathVariable Long id,HttpServletRequest req){return service.issue(id,user(req).getUsername());}
     @PostMapping("/agreements/{id}/status") public Object agreementStatus(@PathVariable Long id,@RequestBody StatusRequest r){return service.agreementStatus(id,AdditionalAgreement.Status.valueOf(r.status()));}
+    @PostMapping("/agreements/{id}/change-mode") public Object agreementChangeMode(@PathVariable Long id,@RequestBody ChangeModeRequest r,HttpServletRequest req){return service.chooseChangeMode(id,AdditionalAgreement.ChangeMode.valueOf(r.changeMode()),r.replacesAgreementId(),user(req).getUsername());}
     @PostMapping("/agreements/{id}/annul") public Object agreementAnnul(@PathVariable Long id,@RequestBody AnnulRequest r,HttpServletRequest req){return service.annulAgreement(id,r.reason(),user(req).getUsername());}
     @PostMapping("/agreements/{id}/upload") public Object agreementUpload(@PathVariable Long id,@RequestParam("file") MultipartFile f,HttpServletRequest req)throws Exception{if(f.getOriginalFilename()==null||!f.getOriginalFilename().toLowerCase(Locale.ROOT).endsWith(".docx"))throw new IllegalArgumentException("На первом этапе можно загрузить только DOCX");return service.upload(id,f.getOriginalFilename(),f.getBytes(),user(req).getUsername());}
-    @GetMapping("/agreements/{id}/download") public ResponseEntity<byte[]> agreementDownload(@PathVariable Long id,HttpServletRequest req){AdditionalAgreement a=service.agreement(id);if(a.getStatus()==AdditionalAgreement.Status.DRAFT||a.getStatus()==AdditionalAgreement.Status.READY)a=service.issue(id,user(req).getUsername());return file(a.getCurrentDocument(),a.getCurrentFilename());}
+    @GetMapping("/agreements/{id}/download") public ResponseEntity<byte[]> agreementDownload(@PathVariable Long id,HttpServletRequest req){AdditionalAgreement a=service.agreement(id);if(a.getStatus()!=AdditionalAgreement.Status.ISSUED&&a.getStatus()!=AdditionalAgreement.Status.SIGNING&&a.getStatus()!=AdditionalAgreement.Status.SIGNED)a=service.issue(id,user(req).getUsername());return file(a.getCurrentDocument(),a.getCurrentFilename());}
     @GetMapping("/agreements/{id}/versions") public Object versions(@PathVariable Long id){return service.versions(id).stream().map(v->Map.of("id",v.getId(),"revision",v.getRevision(),"filename",v.getFilename(),"source",v.getSource(),"createdAt",v.getCreatedAt(),"createdBy",v.getCreatedBy())).toList();}
 
     @GetMapping("/catalog") public Object catalog(){return catalogRepository.findAllBySchoolCodeAndActiveTrueOrderByName(org.school.personalLoad.config.SchoolCodeResolver.resolve());}

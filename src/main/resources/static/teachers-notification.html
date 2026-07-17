@@ -1,11 +1,67 @@
-<!doctype html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Кадровые документы</title><link rel="stylesheet" href="/styles.css"></head>
-<body><main class="container"><header class="card"><h1>Кадровые документы</h1><nav class="page-nav"></nav></header>
-<section class="card"><div class="hr-tabs"><button data-tab="journal">Журнал</button><button data-tab="memos">Служебные записки</button><button data-tab="notifications">Уведомления</button><button data-tab="catalog">Справочники</button><button data-tab="personal">Персональные данные</button></div></section>
-<section id="journal" class="card hr-panel"><div class="toolbar"><input id="journal-search" placeholder="ФИО, договор или статус"><select id="journal-status"><option value="">Все статусы</option><option>Заполнить данные</option><option>Создать черновик</option><option>Требуется решение</option></select><button id="add-contract">Добавить договор</button><button id="reload-journal">Обновить</button></div><div class="table-scroll"><table class="sheet-table"><thead><tr><th>ФИО</th><th>Трудовой договор</th><th>Должность</th><th>Действующие документы</th><th>Требуется</th><th>Действия</th></tr></thead><tbody id="journal-body"></tbody></table></div></section>
-<section id="memos" class="card hr-panel" hidden><div class="toolbar"><button id="add-memo">Создать общую служебку</button></div><table class="sheet-table"><thead><tr><th>Дата</th><th>Название</th><th>Статус</th><th>Действия</th></tr></thead><tbody id="memo-body"></tbody></table></section>
-<section id="notifications" class="card hr-panel" hidden><div class="toolbar"><label>Дата уведомления <input id="notification-date" type="date"></label><label>Дата нагрузки <input id="load-date" type="date"></label><button id="all">Сформировать все и скачать ZIP</button></div><table class="sheet-table"><thead><tr><th>ФИО</th><th>Статус</th><th></th></tr></thead><tbody id="tb"></tbody></table></section>
-<section id="catalog" class="card hr-panel" hidden><div class="toolbar"><button id="add-catalog">Добавить выплату или работу</button></div><table class="sheet-table"><thead><tr><th>Название</th><th>Категория</th><th>Пункт</th><th>Сумма</th><th>Отдельный допник</th></tr></thead><tbody id="catalog-body"></tbody></table></section>
-<section id="personal" class="card hr-panel" hidden><p>Импорт соединяет строки по постоянному ID педагога и может заполнять или обновлять данные.</p><div class="toolbar"><a class="button" href="/api/hr-documents/personal-data/template">Скачать шаблон</a><a class="button" href="/api/hr-documents/personal-data/export">Экспорт</a><label class="button">Импорт Excel<input id="personal-import" type="file" accept=".xlsx,.xls" hidden></label></div></section>
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Кадровые документы</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .hr-tabs,.hr-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+        .hr-form-grid{display:grid;grid-template-columns:minmax(190px,260px) minmax(320px,1fr);gap:14px 18px;align-items:start}
+        .hr-form-grid .field-label{font-weight:600;padding-top:9px;line-height:1.25}
+        .hr-form-grid .field-control{min-width:0}
+        .hr-form-grid input,.hr-form-grid select,.hr-form-grid textarea{width:100%;box-sizing:border-box}
+        .hr-form-grid .hr-toolbar input,.hr-form-grid .hr-toolbar select{flex:1 1 220px;width:auto}
+        .hr-form-grid textarea{min-height:96px;resize:vertical}
+        .hr-form-grid .field-help{display:block;margin-top:5px;color:#64748b;font-size:.88rem}
+        #editor{width:min(860px,calc(100vw - 32px));max-height:90vh;border:0;border-radius:14px;padding:0;box-shadow:0 20px 70px #0005}
+        #editor::backdrop{background:#0f172a88}
+        #editor-form{padding:24px;overflow:auto;max-height:calc(90vh - 48px)}
+        #editor-title{margin-top:0}
+        .hr-dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px;padding-top:16px;border-top:1px solid #e2e8f0}
+        .inline-choice{display:flex;gap:18px;align-items:center;min-height:40px}
+        .inline-choice label{display:flex;gap:7px;align-items:center}
+        .inline-choice input{width:auto}
+        .hidden{display:none!important}
+        @media(max-width:700px){.hr-form-grid{grid-template-columns:1fr;gap:6px}.hr-form-grid .field-label{padding-top:8px}.hr-form-grid .field-control{margin-bottom:8px}}
+    </style>
+</head>
+<body><main class="container">
+<header class="card"><h1>Кадровые документы</h1><nav class="page-nav"></nav></header>
+<section class="card"><div class="hr-tabs">
+    <button data-tab="journal">Журнал</button>
+    <button data-tab="memos">Служебные записки</button>
+    <button data-tab="notifications">Предварительная нагрузка (уведомления)</button>
+    <button data-tab="catalog">Справочники</button>
+    <button data-tab="personal">Персональные данные</button>
+</div></section>
+
+<section id="journal" class="card hr-panel">
+    <div class="hr-toolbar"><input id="journal-search" placeholder="ФИО, договор или статус"><select id="journal-status"><option value="">Все статусы</option><option>Заполнить данные</option><option>Создать черновик</option><option>Ожидает служебку</option><option>Требуется решение</option></select><button id="add-contract">Добавить договор</button><button id="batch-annual">Черновики всем с нагрузкой</button><button id="reload-journal">Обновить</button></div>
+    <div class="table-scroll"><table class="sheet-table"><thead><tr><th>ФИО</th><th>Трудовой договор</th><th>Должность</th><th>Действующие документы</th><th>Требуется</th><th>Действия</th></tr></thead><tbody id="journal-body"></tbody></table></div>
+</section>
+
+<section id="memos" class="card hr-panel" hidden>
+    <div class="hr-toolbar"><button id="add-memo">Создать служебную записку</button></div>
+    <table class="sheet-table"><thead><tr><th>Дата</th><th>Работник</th><th>Вид</th><th>Назначение</th><th>Статус</th><th>Действия</th></tr></thead><tbody id="memo-body"></tbody></table>
+</section>
+
+<section id="notifications" class="card hr-panel" hidden>
+    <h2>Предварительная нагрузка (уведомления)</h2>
+    <div class="hr-toolbar"><label>Дата уведомления <input id="notification-date" type="date"></label><label>Дата нагрузки <input id="load-date" type="date"></label><button id="all">Сформировать все и скачать ZIP</button></div>
+    <table class="sheet-table"><thead><tr><th>ФИО</th><th>Статус</th><th></th></tr></thead><tbody id="tb"></tbody></table>
+</section>
+
+<section id="catalog" class="card hr-panel" hidden>
+    <div class="hr-toolbar"><button id="add-catalog">Добавить выплату или работу</button></div>
+    <table class="sheet-table"><thead><tr><th>Название</th><th>Категория</th><th>Пункт</th><th>Сумма</th><th>Отдельный допник</th><th>Действия</th></tr></thead><tbody id="catalog-body"></tbody></table>
+</section>
+
+<section id="personal" class="card hr-panel" hidden>
+    <p>Импорт соединяет строки по постоянному ID педагога и заполняет либо обновляет данные.</p>
+    <div class="hr-toolbar"><a class="button" href="/api/hr-documents/personal-data/template">Скачать шаблон</a><a class="button" href="/api/hr-documents/personal-data/export">Экспортировать</a><button id="personal-import-button" type="button">Импортировать Excel</button><input id="personal-import" type="file" accept=".xlsx,.xls" hidden></div>
+</section>
 </main>
-<dialog id="editor"><form method="dialog" id="editor-form"><h2 id="editor-title"></h2><div id="editor-fields" class="form-grid"></div><p id="editor-error" class="error"></p><div class="toolbar"><button value="cancel">Отмена</button><button id="editor-save" value="default">Сохранить</button></div></form></dialog>
+
+<dialog id="editor"><form method="dialog" id="editor-form"><h2 id="editor-title"></h2><div id="editor-fields" class="hr-form-grid"></div><p id="editor-error" class="error"></p><div class="hr-dialog-actions"><button value="cancel">Отмена</button><button id="editor-save" value="default">Сохранить</button></div></form></dialog>
 <script src="/auth.js"></script><script src="/teachers-notification.js"></script></body></html>
