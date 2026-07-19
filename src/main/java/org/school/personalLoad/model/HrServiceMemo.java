@@ -20,6 +20,8 @@ public class HrServiceMemo {
     @Column(nullable = false) private String title;
     private String assignmentName;
     @Column(length = 4000) private String assignmentText;
+    @Column(length = 4000) private String agreementText;
+    private String contractClause;
     @Lob private String dutiesText;
     private java.math.BigDecimal amount;
     private LocalDate validFrom;

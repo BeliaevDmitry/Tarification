@@ -11,6 +11,7 @@ import org.school.personalLoad.dao.TarifficationChangesDAO;
 import org.school.personalLoad.dto.ServiceMemoDtos;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.ServiceMemo;
+import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.StudyPeriodSettingKey;
 import org.school.personalLoad.model.TarifficationChanges;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
@@ -32,6 +33,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -85,7 +87,15 @@ class ServiceMemoTransferGenerationTest {
             if ("2026/2027".equals(academicYear)) {
                 return Map.of(
                         StudyPeriodSettingKey.YEAR_1_9,
-                        new StudyPeriodSettingService.DateRange(LocalDate.of(2026, 9, 1), LocalDate.of(2027, 5, 31))
+                        new StudyPeriodSettingService.DateRange(LocalDate.of(2026, 9, 1), LocalDate.of(2027, 5, 31)),
+                        StudyPeriodSettingKey.H1_1_9,
+                        new StudyPeriodSettingService.DateRange(LocalDate.of(2026, 9, 1), LocalDate.of(2026, 12, 31)),
+                        StudyPeriodSettingKey.H2_1_9,
+                        new StudyPeriodSettingService.DateRange(LocalDate.of(2027, 1, 11), LocalDate.of(2027, 5, 31)),
+                        StudyPeriodSettingKey.H1_11,
+                        new StudyPeriodSettingService.DateRange(LocalDate.of(2026, 9, 1), LocalDate.of(2027, 1, 31)),
+                        StudyPeriodSettingKey.H2_11,
+                        new StudyPeriodSettingService.DateRange(LocalDate.of(2027, 2, 1), LocalDate.of(2027, 5, 31))
                 );
             }
             return Map.of(
@@ -311,30 +321,58 @@ class ServiceMemoTransferGenerationTest {
         ManualLoadEntry firstHalf = row(fio, subject, "4-А", 1,
                 LocalDate.of(2026, 9, 1), LocalDate.of(2026, 12, 31));
         ManualLoadEntry secondHalf = row(fio, subject, "4-А", 2,
-                secondHalfStart, LocalDate.of(2027, 5, 31));
+                LocalDate.of(2027, 1, 10), LocalDate.of(2027, 5, 31));
+        firstHalf.setStudyPeriod(StudyPeriod.H1);
+        secondHalf.setStudyPeriod(StudyPeriod.H2);
 
         when(manualLoadEntryRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(firstHalf, secondHalf));
         when(changesDAO.findAll()).thenReturn(List.of(
-                change(fio, subject, "4-А", 2,
+                change(fio, subject, "4-А", 1,
                         TarifficationChanges.ChangeType.REMOVED, LocalDateTime.of(2027, 1, 11, 9, 0))
         ));
 
         List<ServiceMemoDtos.PendingTeacher> pending = service.findPendingTeachers("2026/2027");
 
-        assertTrue(pending.stream().noneMatch(p -> fio.equals(p.getFioTeacher())
-                && secondHalfStart.equals(p.getStartDate())
-                && p.getRows().stream().anyMatch(r -> Objects.equals(r.getLoad(), 2)
-                && "Снять".equals(r.getStatus()))));
-
         ServiceMemoDtos.PendingTeacher memo = pending.stream()
                 .filter(p -> fio.equals(p.getFioTeacher()) && secondHalfStart.equals(p.getStartDate()))
                 .findFirst()
                 .orElseThrow();
+        assertEquals(2, memo.getRows().size());
+        assertEquals(2, memo.getTotalHours());
+        assertEquals(1, memo.getRows().get(0).getLoad());
+        assertEquals("Снять", memo.getRows().get(0).getStatus());
+        assertEquals(2, memo.getRows().get(1).getLoad());
+        assertEquals("Добавить", memo.getRows().get(1).getStatus());
+        assertTrue(memo.getRows().stream().anyMatch(r -> Objects.equals(r.getLoad(), 1)
+                && "Снять".equals(r.getStatus())));
+        assertTrue(memo.getRows().stream().anyMatch(r -> Objects.equals(r.getLoad(), 2)
+                && "Добавить".equals(r.getStatus())));
+        assertFalse(memo.getRows().stream().anyMatch(r -> Objects.equals(r.getLoad(), 2)
+                && "Снять".equals(r.getStatus())));
         String text = generatedMemoText("2026/2027", memo.getTeacherKey());
 
         assertTrue(text.contains("В связи с необходимостью приведения учебной нагрузки в соответствие с учебным планом на 2026/2027 учебный год"));
         assertTrue(text.contains("с 11.01.2027"));
+        assertTrue(text.contains("Снять"));
+        assertTrue(text.contains("Добавить"));
         assertFalse(text.contains("производственной необходимостью"));
+    }
+
+    @Test
+    void equalHoursAcrossCurriculumHalvesDoNotProduceServiceMemo() {
+        String fio = "Иванова И.И.";
+        String subject = "Занимательная математика юного москвича";
+
+        ManualLoadEntry firstHalf = row(fio, subject, "4-А", 1,
+                LocalDate.of(2026, 9, 1), LocalDate.of(2026, 12, 31));
+        ManualLoadEntry secondHalf = row(fio, subject, "4-А", 1,
+                LocalDate.of(2027, 1, 11), LocalDate.of(2027, 5, 31));
+        firstHalf.setStudyPeriod(StudyPeriod.H1);
+        secondHalf.setStudyPeriod(StudyPeriod.H2);
+
+        when(manualLoadEntryRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(firstHalf, secondHalf));
+
+        assertTrue(service.findPendingTeachers("2026/2027").isEmpty());
     }
 
     @Test

@@ -15,7 +15,7 @@ public final class HrDocumentDtos {
             String registrationAddress, String actualAddress, String phone, String inn, String snils) {}
     public record MemoRequest(String academicYear, Long teacherId, Long contractId, Long catalogItemId,
             String title, LocalDate documentDate, String assignmentName, String assignmentText,
-            String dutiesText, BigDecimal amount, LocalDate validFrom, LocalDate validTo,
+            String agreementText, String contractClause, String dutiesText, BigDecimal amount, LocalDate validFrom, LocalDate validTo,
             Boolean separateAgreement, Boolean saveAsTemplate, String itemsJson) {}
     public record AgreementRequest(Long contractId, Long serviceMemoId, String academicYear, LocalDate documentDate,
             LocalDate validFrom, LocalDate validTo, AdditionalAgreement.Kind kind,

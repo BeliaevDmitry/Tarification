@@ -60,13 +60,27 @@ class HrDocumentServiceTest {
 
     @Test void serviceMemoIsBoundToTeacherAndCreatesSeparateAgreementDraft(){
         MemoRequest request=new MemoRequest("2025/2026",1L,10L,null,null,LocalDate.of(2025,9,1),"Куратор здания",
-                "Назначить куратором здания","Контролирует работу здания",new BigDecimal("15000"),
+                null,null,"2.4","Контролирует работу здания",new BigDecimal("15000"),
                 LocalDate.of(2025,9,1),LocalDate.of(2026,8,31),true,true,null);
         when(catalog.save(any())).thenAnswer(x->{HrCatalogItem item=x.getArgument(0);item.setId(7L);return item;});
         HrServiceMemo memo=service.createMemo(request,"deputy");
         assertEquals(1L,memo.getTeacherId()); assertTrue(memo.isSeparateAgreement()); assertEquals(7L,memo.getCatalogItemId());
+        assertTrue(memo.getAssignmentText().contains("Прошу Вас согласовать поручение работнику Иванов Иван Иванович"));
+        assertTrue(memo.getAssignmentText().contains("15000.00 руб."));
         verify(agreements,atLeastOnce()).save(argThat(a->a.getKind()==AdditionalAgreement.Kind.ADDITIONAL_WORK
                 && Objects.equals(a.getServiceMemoId(),50L) && a.getStatus()==AdditionalAgreement.Status.WAITING_FOR_MEMO));
+    }
+
+    @Test void selectedContractClauseIsUsedInAutomaticallyCreatedAgreement(){
+        MemoRequest request=new MemoRequest("2025/2026",1L,10L,null,null,LocalDate.of(2025,9,1),"Заведование кабинетом",
+                null,null,"2.5",null,new BigDecimal("5000"),LocalDate.of(2025,9,1),LocalDate.of(2026,8,31),false,false,null);
+
+        HrServiceMemo memo=service.createMemo(request,"deputy");
+
+        assertEquals("2.5",memo.getContractClause());
+        assertTrue(memo.getAssignmentText().contains("за увеличение объема работ"));
+        verify(agreements,atLeastOnce()).save(argThat(a->a.getConditionsJson()!=null
+                && a.getConditionsJson().contains("пункт 2.5 трудового договора")));
     }
 
     @Test void receivingDutyMemoReleasesLinkedAgreementDraft(){
@@ -83,7 +97,7 @@ class HrDocumentServiceTest {
 
     @Test void dutyMemoRequiresEmploymentContract(){
         MemoRequest request=new MemoRequest("2025/2026",1L,null,null,null,LocalDate.of(2025,9,1),"Кабинет",
-                "Назначить ответственным",null,new BigDecimal("5000"),LocalDate.of(2025,9,1),LocalDate.of(2026,8,31),false,false,null);
+                "Назначить ответственным",null,"2.4",null,new BigDecimal("5000"),LocalDate.of(2025,9,1),LocalDate.of(2026,8,31),false,false,null);
         assertThrows(ResponseStatusException.class,()->service.createMemo(request,"deputy"));
     }
 
