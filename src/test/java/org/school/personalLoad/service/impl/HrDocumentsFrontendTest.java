@@ -17,7 +17,11 @@ class HrDocumentsFrontendTest {
         assertTrue(html.contains("Импортировать Excel"));
         assertTrue(html.contains("hr-form-grid"));
         assertTrue(js.contains("Обязанность из справочника"));
-        assertTrue(js.contains("Нет — пункт 2.4"));
+        assertTrue(js.contains("Добавить вручную"));
+        assertTrue(js.contains("STANDARD_CONTRACT_CLAUSES = ['2.1','2.4','2.5']"));
+        assertTrue(js.contains("Проверить или изменить автоматический текст"));
+        assertTrue(js.contains("Если оставить пустым, система сама составит служебную записку"));
+        assertTrue(js.contains("Нет — изменить выбранный пункт"));
         assertTrue(js.contains("Да — отдельное соглашение"));
         assertTrue(js.contains("data-issue-memo"));
         assertTrue(js.contains("Ожидает служебку"));

@@ -12,6 +12,7 @@ import org.school.personalLoad.model.CurriculumPart;
 import org.school.personalLoad.model.ServiceMemo;
 import org.school.personalLoad.model.EmploymentContract;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
+import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.StudyPeriodSettingKey;
 import org.school.personalLoad.model.TarifficationChanges;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
@@ -317,8 +318,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private Map<TeacherDateKey, TeacherChangeAggregate> loadTeacherChangesByDate(String academicYear) {
-        LocalDate start = academicStart(academicYear);
-        LocalDate end = academicEnd(academicYear);
+        Map<StudyPeriodSettingKey, StudyPeriodSettingService.DateRange> periodRanges =
+                (academicYear == null || academicYear.isBlank())
+                        ? studyPeriodSettingService.rangesByKey()
+                        : studyPeriodSettingService.rangesByKey(academicYear);
+        LocalDate start = academicStart(periodRanges);
+        LocalDate end = academicEnd(periodRanges);
 
         List<ManualLoadEntry> sourceRows = (academicYear == null || academicYear.isBlank())
                 ? manualLoadEntryRepository.findAll()
@@ -345,12 +350,13 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         rowsByTeacher.forEach((teacher, rows) -> {
             NavigableSet<LocalDate> dates = candidateDatesByTeacher.computeIfAbsent(teacher, t -> new TreeSet<>());
             for (ManualLoadEntry row : rows) {
-                if (!row.getLoadFromDate().isBefore(start)
-                        && !row.getLoadFromDate().isAfter(end)
-                        && !row.getLoadFromDate().isEqual(start)) {
-                    dates.add(row.getLoadFromDate());
+                LocalDate rowStartDate = curriculumAwareStartDate(row, periodRanges);
+                if (!rowStartDate.isBefore(start)
+                        && !rowStartDate.isAfter(end)
+                        && !rowStartDate.isEqual(start)) {
+                    dates.add(rowStartDate);
                 }
-                LocalDate nextDay = row.getLoadToDate().plusDays(1);
+                LocalDate nextDay = curriculumAwareEndDate(row, periodRanges).plusDays(1);
                 if (!nextDay.isBefore(start) && !nextDay.isAfter(end) && !hasFutureContinuation(rows, row, nextDay)) {
                     dates.add(nextDay);
                 }
@@ -400,13 +406,24 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
 
             for (LocalDate changeDate : entry.getValue()) {
                 List<ManualLoadEntry> rowsBeforeDate = normalizeActiveRows(teacherRows.stream()
-                        .filter(row -> isActiveAt(row, changeDate.minusDays(1)))
+                        .filter(row -> isActiveAt(row, changeDate.minusDays(1), periodRanges))
+                        .map(row -> copyWithCurriculumBoundaries(row, periodRanges))
                         .toList());
                 List<ManualLoadEntry> rowsOnDate = normalizeActiveRows(teacherRows.stream()
-                        .filter(row -> isActiveAt(row, changeDate))
+                        .filter(row -> isActiveAt(row, changeDate, periodRanges))
+                        .map(row -> copyWithCurriculumBoundaries(row, periodRanges))
                         .toList());
 
-                Map<String, Integer> beforeCounts = countRows(rowsBeforeDate);
+                CurriculumTransition curriculumTransition = curriculumTransition(
+                        changeDate,
+                        teacherRows,
+                        rowsBeforeDate,
+                        rowsOnDate,
+                        periodRanges
+                );
+                List<ManualLoadEntry> rowsBeforeComparison = curriculumTransition.rowsBeforeComparison();
+
+                Map<String, Integer> beforeCounts = countRows(rowsBeforeComparison);
                 Map<String, Integer> afterCounts = countRows(rowsOnDate);
                 Map<String, Integer> removedCounts = diffCounts(beforeCounts, afterCounts);
                 Map<String, Integer> addedCounts = diffCounts(afterCounts, beforeCounts);
@@ -438,21 +455,37 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                             .map(this::shortKeyOf)
                             .collect(Collectors.toSet());
                     if (!removedShortKeys.isEmpty()) {
-                        removedCounts = filterCountsByShortKeys(removedCounts, removedShortKeys);
+                        removedCounts = filterCountsByShortKeys(
+                                removedCounts,
+                                removedShortKeys,
+                                curriculumTransition.preservedShortKeys()
+                        );
                     } else if (!anyShortKeys.isEmpty()) {
-                        removedCounts = filterCountsByShortKeys(removedCounts, anyShortKeys);
+                        removedCounts = filterCountsByShortKeys(
+                                removedCounts,
+                                anyShortKeys,
+                                curriculumTransition.preservedShortKeys()
+                        );
                     }
                     if (!addedShortKeys.isEmpty()) {
-                        addedCounts = filterCountsByShortKeys(addedCounts, addedShortKeys);
+                        addedCounts = filterCountsByShortKeys(
+                                addedCounts,
+                                addedShortKeys,
+                                curriculumTransition.preservedShortKeys()
+                        );
                     } else if (!anyShortKeys.isEmpty()) {
-                        addedCounts = filterCountsByShortKeys(addedCounts, anyShortKeys);
+                        addedCounts = filterCountsByShortKeys(
+                                addedCounts,
+                                anyShortKeys,
+                                curriculumTransition.preservedShortKeys()
+                        );
                     }
                 }
                 if (removedCounts.isEmpty() && addedCounts.isEmpty()) {
                     continue;
                 }
 
-                List<ManualLoadEntry> removedRows = selectRowsByCount(rowsBeforeDate, removedCounts).stream()
+                List<ManualLoadEntry> removedRows = selectRowsByCount(rowsBeforeComparison, removedCounts).stream()
                         .map(row -> copyForRemoval(row, changeDate.minusDays(1)))
                         .toList();
                 List<ManualLoadEntry> addedRows = selectRowsByCount(rowsOnDate, addedCounts);
@@ -464,7 +497,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     log.warn("memo-debug all rows marked as removed for teacher={} date={} before={} onDate={} removed={} added={} dayChanges={}",
                             teacherKey,
                             changeDate,
-                            rowsBeforeDate.stream().map(this::debugRow).toList(),
+                            rowsBeforeComparison.stream().map(this::debugRow).toList(),
                             rowsOnDate.stream().map(this::debugRow).toList(),
                             removedRows.stream().map(this::debugRow).toList(),
                             addedRows.stream().map(this::debugRow).toList(),
@@ -485,7 +518,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         teacherKey,
                         changeDate,
                         teacherRows,
-                        rowsBeforeDate,
+                        rowsBeforeComparison,
                         removedRows,
                         addedRows,
                         periodRows,
@@ -726,6 +759,170 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 .anyMatch(sourceKey::equals);
     }
 
+    private CurriculumTransition curriculumTransition(
+            LocalDate changeDate,
+            List<ManualLoadEntry> teacherRows,
+            List<ManualLoadEntry> rowsBeforeDate,
+            List<ManualLoadEntry> rowsOnDate,
+            Map<StudyPeriodSettingKey, StudyPeriodSettingService.DateRange> periodRanges
+    ) {
+        List<ManualLoadEntry> comparisonRows = new ArrayList<>(
+                Optional.ofNullable(rowsBeforeDate).orElseGet(List::of)
+        );
+        Set<String> preservedShortKeys = new LinkedHashSet<>();
+
+        for (ManualLoadEntry secondHalfRow : Optional.ofNullable(rowsOnDate).orElseGet(List::of)) {
+            if (secondHalfRow == null || secondHalfRow.getStudyPeriod() != StudyPeriod.H2) {
+                continue;
+            }
+
+            StudyPeriodSettingService.DateRange secondHalfRange = periodRangeForClass(
+                    secondHalfRow.getClassName(),
+                    StudyPeriod.H2,
+                    periodRanges
+            );
+            if (secondHalfRange == null || !Objects.equals(secondHalfRange.startDate(), changeDate)) {
+                continue;
+            }
+
+            StudyPeriodSettingService.DateRange firstHalfRange = periodRangeForClass(
+                    secondHalfRow.getClassName(),
+                    StudyPeriod.H1,
+                    periodRanges
+            );
+            if (firstHalfRange == null || firstHalfRange.endDate() == null) {
+                continue;
+            }
+
+            String transitionKey = curriculumContinuityKeyOf(secondHalfRow);
+            List<ManualLoadEntry> predecessors = Optional.ofNullable(teacherRows).orElseGet(List::of).stream()
+                    .filter(Objects::nonNull)
+                    .filter(row -> row.getStudyPeriod() == StudyPeriod.H1)
+                    .filter(row -> Objects.equals(transitionKey, curriculumContinuityKeyOf(row)))
+                    .filter(row -> isActiveAt(row, firstHalfRange.endDate()))
+                    .toList();
+            if (predecessors.isEmpty()) {
+                continue;
+            }
+
+            comparisonRows.addAll(predecessors);
+            preservedShortKeys.add(shortKeyOf(secondHalfRow));
+            predecessors.stream().map(this::shortKeyOf).forEach(preservedShortKeys::add);
+        }
+
+        return new CurriculumTransition(normalizeActiveRows(comparisonRows), preservedShortKeys);
+    }
+
+    private StudyPeriodSettingService.DateRange periodRangeForClass(
+            String className,
+            StudyPeriod studyPeriod,
+            Map<StudyPeriodSettingKey, StudyPeriodSettingService.DateRange> periodRanges
+    ) {
+        if (studyPeriod == null || periodRanges == null || periodRanges.isEmpty()) {
+            return null;
+        }
+        Integer parallel = ClassNameNormalizer.extractParallel(className);
+        StudyPeriodSettingKey key;
+        if (parallel == null || parallel <= 9) {
+            key = studyPeriod == StudyPeriod.H2
+                    ? StudyPeriodSettingKey.H2_1_9
+                    : StudyPeriodSettingKey.H1_1_9;
+        } else if (parallel == 10) {
+            key = studyPeriod == StudyPeriod.H2
+                    ? StudyPeriodSettingKey.H2_10
+                    : StudyPeriodSettingKey.H1_10;
+        } else {
+            key = studyPeriod == StudyPeriod.H2
+                    ? StudyPeriodSettingKey.H2_11
+                    : StudyPeriodSettingKey.H1_11;
+        }
+        return periodRanges.get(key);
+    }
+
+    private LocalDate curriculumAwareStartDate(
+            ManualLoadEntry row,
+            Map<StudyPeriodSettingKey, StudyPeriodSettingService.DateRange> periodRanges
+    ) {
+        LocalDate storedStart = row.getLoadFromDate();
+        if (storedStart == null || row.getStudyPeriod() == null || row.getStudyPeriod() == StudyPeriod.YEAR) {
+            return storedStart;
+        }
+        StudyPeriodSettingService.DateRange configuredRange = periodRangeForClass(
+                row.getClassName(),
+                row.getStudyPeriod(),
+                periodRanges
+        );
+        if (configuredRange == null || configuredRange.startDate() == null) {
+            return storedStart;
+        }
+        return storedStart.isBefore(configuredRange.startDate())
+                ? configuredRange.startDate()
+                : storedStart;
+    }
+
+    private LocalDate curriculumAwareEndDate(
+            ManualLoadEntry row,
+            Map<StudyPeriodSettingKey, StudyPeriodSettingService.DateRange> periodRanges
+    ) {
+        LocalDate storedEnd = row.getLoadToDate();
+        if (storedEnd == null || row.getStudyPeriod() == null || row.getStudyPeriod() == StudyPeriod.YEAR) {
+            return storedEnd;
+        }
+        StudyPeriodSettingService.DateRange configuredRange = periodRangeForClass(
+                row.getClassName(),
+                row.getStudyPeriod(),
+                periodRanges
+        );
+        if (configuredRange == null || configuredRange.endDate() == null) {
+            return storedEnd;
+        }
+        return storedEnd.isAfter(configuredRange.endDate())
+                ? configuredRange.endDate()
+                : storedEnd;
+    }
+
+    private boolean isActiveAt(
+            ManualLoadEntry row,
+            LocalDate date,
+            Map<StudyPeriodSettingKey, StudyPeriodSettingService.DateRange> periodRanges
+    ) {
+        if (row == null || date == null) {
+            return false;
+        }
+        LocalDate effectiveStart = curriculumAwareStartDate(row, periodRanges);
+        LocalDate effectiveEnd = curriculumAwareEndDate(row, periodRanges);
+        if (effectiveStart == null || effectiveEnd == null) {
+            return false;
+        }
+        return !effectiveStart.isAfter(date) && !effectiveEnd.isBefore(date);
+    }
+
+    private ManualLoadEntry copyWithCurriculumBoundaries(
+            ManualLoadEntry row,
+            Map<StudyPeriodSettingKey, StudyPeriodSettingService.DateRange> periodRanges
+    ) {
+        LocalDate effectiveStart = curriculumAwareStartDate(row, periodRanges);
+        LocalDate effectiveEnd = curriculumAwareEndDate(row, periodRanges);
+        if (Objects.equals(effectiveStart, row.getLoadFromDate())
+                && Objects.equals(effectiveEnd, row.getLoadToDate())) {
+            return row;
+        }
+        return copyLoadRow(row, effectiveStart, effectiveEnd);
+    }
+
+    private String curriculumContinuityKeyOf(ManualLoadEntry row) {
+        return String.join("|",
+                safe(row.getSubjectName()),
+                safe(row.getClassName()),
+                safe(row.getNumberSchoolBuilding()),
+                String.valueOf(row.getSchoolBuildingId()),
+                String.valueOf(row.getClassId()),
+                String.valueOf(row.getMetaGroupId()),
+                safe(row.getGroupNameEducationalPlan()),
+                String.valueOf(row.getCurriculumModuleId()),
+                String.valueOf(row.getCurriculumPart() == null ? CurriculumPart.CORE : row.getCurriculumPart()));
+    }
+
     private String subjectClassKeyOf(ManualLoadEntry row) {
         return String.join("|", safe(row.getSubjectName()), safe(row.getClassName()));
     }
@@ -801,7 +998,11 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         return String.join("|",
                 safe(row.getSubjectName()),
                 safe(row.getClassName()),
-                String.valueOf(row.getLoad() == null ? 0 : row.getLoad()));
+                String.valueOf(row.getLoad() == null ? 0 : row.getLoad()),
+                safe(row.getNumberSchoolBuilding()),
+                safe(row.getGroupNameEducationalPlan()),
+                String.valueOf(row.getCurriculumModuleId()),
+                String.valueOf(row.getCurriculumPart() == null ? CurriculumPart.CORE : row.getCurriculumPart()));
     }
 
     private boolean isActiveAt(ManualLoadEntry row, LocalDate date) {
@@ -878,19 +1079,31 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private ManualLoadEntry copyForRemoval(ManualLoadEntry source, LocalDate removalToDate) {
+        return copyLoadRow(source, source.getLoadFromDate(), removalToDate);
+    }
+
+    private ManualLoadEntry copyLoadRow(ManualLoadEntry source, LocalDate loadFromDate, LocalDate loadToDate) {
         ManualLoadEntry row = new ManualLoadEntry();
+        row.setId(source.getId());
+        row.setAcademicYear(source.getAcademicYear());
         row.setFioTeacher(source.getFioTeacher());
+        row.setTeacherId(source.getTeacherId());
         row.setSubjectName(source.getSubjectName());
         row.setClassName(source.getClassName());
+        row.setClassId(source.getClassId());
+        row.setMetaGroupId(source.getMetaGroupId());
         row.setLoad(source.getLoad());
-        row.setLoadFromDate(source.getLoadFromDate());
-        row.setLoadToDate(removalToDate);
+        row.setLoadFromDate(loadFromDate);
+        row.setLoadToDate(loadToDate);
         row.setGroupNameEducationalPlan(source.getGroupNameEducationalPlan());
+        row.setGroupLoad(source.getGroupLoad());
         row.setCurriculumModuleId(source.getCurriculumModuleId());
         row.setCurriculumPart(source.getCurriculumPart());
         row.setEducationLevel(source.getEducationLevel());
         row.setStudyPeriod(source.getStudyPeriod());
         row.setNumberSchoolBuilding(source.getNumberSchoolBuilding());
+        row.setSchoolBuildingId(source.getSchoolBuildingId());
+        row.setContinuityStatus(source.getContinuityStatus());
         return row;
     }
 
@@ -899,10 +1112,10 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                                                    List<ManualLoadEntry> addedRows) {
         LinkedHashMap<String, ManualLoadEntry> merged = new LinkedHashMap<>();
 
-        for (ManualLoadEntry row : Optional.ofNullable(activeRows).orElseGet(List::of)) {
+        for (ManualLoadEntry row : Optional.ofNullable(removedRows).orElseGet(List::of)) {
             merged.put(memoRowKey(row), row);
         }
-        for (ManualLoadEntry row : Optional.ofNullable(removedRows).orElseGet(List::of)) {
+        for (ManualLoadEntry row : Optional.ofNullable(activeRows).orElseGet(List::of)) {
             merged.putIfAbsent(memoRowKey(row), row);
         }
         for (ManualLoadEntry row : Optional.ofNullable(addedRows).orElseGet(List::of)) {
@@ -932,12 +1145,20 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         return diff;
     }
 
-    private Map<String, Integer> filterCountsByShortKeys(Map<String, Integer> counts, Set<String> allowedShortKeys) {
+    private Map<String, Integer> filterCountsByShortKeys(
+            Map<String, Integer> counts,
+            Set<String> allowedShortKeys,
+            Set<String> preservedShortKeys
+    ) {
         if (counts == null || counts.isEmpty() || allowedShortKeys == null || allowedShortKeys.isEmpty()) {
             return counts == null ? Map.of() : counts;
         }
         return counts.entrySet().stream()
-                .filter(entry -> allowedShortKeys.contains(shortKeyFromTransferKey(entry.getKey())))
+                .filter(entry -> {
+                    String shortKey = shortKeyFromTransferKey(entry.getKey());
+                    return allowedShortKeys.contains(shortKey)
+                            || Optional.ofNullable(preservedShortKeys).orElseGet(Set::of).contains(shortKey);
+                })
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
                         Map.Entry::getValue,
@@ -1211,19 +1432,13 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         run.setBold(bold);
     }
 
-    private LocalDate academicStart(String academicYear) {
-        var ranges = (academicYear == null || academicYear.isBlank())
-                ? studyPeriodSettingService.rangesByKey()
-                : studyPeriodSettingService.rangesByKey(academicYear);
+    private LocalDate academicStart(Map<StudyPeriodSettingKey, StudyPeriodSettingService.DateRange> ranges) {
         return Optional.ofNullable(ranges.get(StudyPeriodSettingKey.YEAR_1_9))
                 .map(StudyPeriodSettingService.DateRange::startDate)
                 .orElse(LocalDate.of(LocalDate.now().getYear(), 9, 1));
     }
 
-    private LocalDate academicEnd(String academicYear) {
-        var ranges = (academicYear == null || academicYear.isBlank())
-                ? studyPeriodSettingService.rangesByKey()
-                : studyPeriodSettingService.rangesByKey(academicYear);
+    private LocalDate academicEnd(Map<StudyPeriodSettingKey, StudyPeriodSettingService.DateRange> ranges) {
         return Optional.ofNullable(ranges.get(StudyPeriodSettingKey.YEAR_1_9))
                 .map(StudyPeriodSettingService.DateRange::endDate)
                 .orElse(LocalDate.of(LocalDate.now().plusYears(1).getYear(), 5, 31));
@@ -1243,7 +1458,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private String keyOf(ManualLoadEntry row) {
-        return transferKeyOf(row);
+        return memoCompareKeyOf(row);
     }
 
     private String transferKeyOf(ManualLoadEntry row) {
@@ -1441,6 +1656,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 Map.entry("memoCompareKey", memoCompareKeyOf(row)),
                 Map.entry("transferKey", transferKeyOf(row))
         );
+    }
+
+    private record CurriculumTransition(
+            List<ManualLoadEntry> rowsBeforeComparison,
+            Set<String> preservedShortKeys
+    ) {
     }
 
     private record SelectionRequest(String teacherKey, LocalDate changeDate) {

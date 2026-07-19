@@ -15,6 +15,29 @@ function row(label, control, help = '') {
     return `<div class="field-label">${label}</div><div class="field-control">${control}${help ? `<span class="field-help">${help}</span>` : ''}</div>`;
 }
 function option(value, label, selected = false) { return `<option value="${esc(value)}"${selected ? ' selected' : ''}>${esc(label)}</option>`; }
+const STANDARD_CONTRACT_CLAUSES = ['2.1','2.4','2.5'];
+function clausePicker(prefix, value = '2.4') {
+    const current = String(value || '2.4');
+    const manual = !STANDARD_CONTRACT_CLAUSES.includes(current);
+    return `<div class="clause-picker"><select id="${prefix}-clause-choice" name="${prefix}ClauseChoice" required>${STANDARD_CONTRACT_CLAUSES.map(clause=>option(clause,clause,!manual&&clause===current)).join('')}<option value="MANUAL"${manual?' selected':''}>Добавить вручную</option></select><input id="${prefix}-clause-manual" name="${prefix}ClauseManual" value="${manual?esc(current):''}" placeholder="Введите пункт, например 3.2" class="${manual?'':'hidden'}"></div>`;
+}
+function bindClausePicker(prefix) {
+    const choice = $(`#${prefix}-clause-choice`), manual = $(`#${prefix}-clause-manual`);
+    const update = () => { const show=choice.value==='MANUAL'; manual.classList.toggle('hidden',!show); manual.required=show; if(show)manual.focus(); };
+    choice.addEventListener('change',update); update();
+}
+function setClausePicker(prefix, value) {
+    const current=String(value||'2.4'), choice=$(`#${prefix}-clause-choice`), manual=$(`#${prefix}-clause-manual`);
+    const custom=!STANDARD_CONTRACT_CLAUSES.includes(current); choice.value=custom?'MANUAL':current; manual.value=custom?current:'';
+    manual.classList.toggle('hidden',!custom); manual.required=custom;
+}
+function readClause(form, prefix) {
+    return form.get(`${prefix}ClauseChoice`)==='MANUAL' ? form.get(`${prefix}ClauseManual`) : form.get(`${prefix}ClauseChoice`);
+}
+function documentTextOverrides(memoText = '', agreementText = '', prefix = 'memo') {
+    const hasText=Boolean(memoText||agreementText);
+    return `<details class="advanced-text"${hasText?' open':''}><summary>Проверить или изменить автоматический текст</summary><label for="${prefix}-text">Текст служебной записки (необязательно)</label><textarea id="${prefix}-text" name="${prefix==='memo'?'assignmentText':'memo'}" placeholder="Пример: Прошу Вас согласовать работнику Иванову И.И. ежемесячную доплату в размере 15 000 рублей за увеличение объема работ (заведование кабинетом) с 01.09.2026 по 31.08.2027.">${esc(memoText)}</textarea><span class="field-help">Если оставить пустым, система сама составит служебную записку по выбранному работнику, обязанности, сумме и периоду.</span><label for="${prefix}-agreement">Текст для дополнительного соглашения (необязательно)</label><textarea id="${prefix}-agreement" name="${prefix==='memo'?'agreementText':'agreement'}" placeholder="Пример: Изложить пункт 2.4 трудового договора в части выплаты за увеличение объема работ («заведование кабинетом») в новой редакции.">${esc(agreementText)}</textarea><span class="field-help">Это юридическое условие допсоглашения. Пустое поле также будет заполнено автоматически.</span></details>`;
+}
 
 document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => {
     document.querySelectorAll('.hr-panel').forEach(panel => panel.hidden = true);
@@ -165,20 +188,21 @@ $('#add-memo').addEventListener('click', async () => {
         row('Работник', `<select id="memo-teacher" name="teacherId" required><option value="">Выберите работника</option>${teachersCache.map(t=>option(t.id,t.fio)).join('')}</select>`,'Служебная записка будет связана с постоянным ID педагога.') +
         row('Трудовой договор', '<select id="memo-contract" name="contractId" required><option value="">Сначала выберите работника</option></select>','Без действующего договора служебку и допсоглашение создать нельзя.') +
         row('Обязанность из справочника', `<div class="hr-toolbar"><select id="memo-catalog" name="catalogItemId"><option value="">Добавить вручную</option>${catalogCache.map(c=>option(c.id,`${c.name} — ${CATEGORY_LABELS[c.category]||c.category}`)).join('')}</select><button id="memo-manual" type="button">Добавить вручную</button></div>`,'Готовый вариант можно отредактировать для конкретного работника.') +
-        row('Название назначения', '<input id="memo-assignment" name="assignmentName" required placeholder="Например: заведование кабинетом">') +
-        row('Формулировка для служебки', '<textarea id="memo-text" name="assignmentText" required></textarea>') +
-        row('Отдельный дополнительный функционал?', '<div class="inline-choice"><label><input type="radio" name="separate" value="false" checked> Нет — пункт 2.4</label><label><input type="radio" name="separate" value="true"> Да — отдельное соглашение</label></div>','При выборе «Да» появится перечень дополнительных обязанностей.') +
+        row('Обязанность или работа', '<input id="memo-assignment" name="assignmentName" required placeholder="Например: заведование кабинетом">','Этого названия достаточно: текст служебной записки система сформирует автоматически.') +
+        row('Пункт трудового договора', clausePicker('memo','2.4'),'Выберите 2.1, 2.4, 2.5 или вариант «Добавить вручную».') +
+        row('Есть отдельный функционал?', '<div class="inline-choice"><label><input type="radio" name="separate" value="false" checked> Нет — изменить выбранный пункт</label><label><input type="radio" name="separate" value="true"> Да — отдельное соглашение</label></div>','Выберите «Да», если кроме названия работы нужно закрепить отдельный перечень обязанностей.') +
         `<div id="duties-label" class="field-label hidden">Дополнительные обязанности</div><div id="duties-control" class="field-control hidden"><textarea id="memo-duties" name="dutiesText" placeholder="Перечислите обязанности отдельными строками"></textarea><span class="field-help">Текст попадёт в отдельное дополнительное соглашение и может быть сохранён как шаблон.</span></div>` +
         row('Сумма в месяц', '<input id="memo-amount" name="amount" type="number" min="0" step="0.01" required>') +
         row('Период', `<div class="hr-toolbar"><input name="validFrom" type="date" value="${period.from}" required><span>—</span><input name="validTo" type="date" value="${period.to}" required></div>`) +
         row('Дата служебной записки', `<input name="documentDate" type="date" value="${new Date().toISOString().slice(0,10)}">`) +
+        row('Текст документов', documentTextOverrides('','','memo'),'Обычно этот раздел открывать не нужно: ниже находятся только ручные исправления и примеры.') +
         row('Справочник', '<label><input id="memo-save-template" name="saveTemplate" type="checkbox"> Сохранить ручной вариант для дальнейшего выбора</label>'),
         async form => {
-            await api('/api/hr-documents/memos', json('POST',{academicYear:academicYear(),teacherId:+form.get('teacherId'),contractId:form.get('contractId')?+form.get('contractId'):null,catalogItemId:form.get('catalogItemId')?+form.get('catalogItemId'):null,title:null,documentDate:form.get('documentDate')||null,assignmentName:form.get('assignmentName'),assignmentText:form.get('assignmentText'),dutiesText:form.get('dutiesText'),amount:form.get('amount')||null,validFrom:form.get('validFrom'),validTo:form.get('validTo'),separateAgreement:form.get('separate')==='true',saveAsTemplate:form.get('saveTemplate')==='on',itemsJson:null}));
+            await api('/api/hr-documents/memos', json('POST',{academicYear:academicYear(),teacherId:+form.get('teacherId'),contractId:form.get('contractId')?+form.get('contractId'):null,catalogItemId:form.get('catalogItemId')?+form.get('catalogItemId'):null,title:null,documentDate:form.get('documentDate')||null,assignmentName:form.get('assignmentName'),assignmentText:form.get('assignmentText'),agreementText:form.get('agreementText'),contractClause:readClause(form,'memo'),dutiesText:form.get('dutiesText'),amount:form.get('amount')||null,validFrom:form.get('validFrom'),validTo:form.get('validTo'),separateAgreement:form.get('separate')==='true',saveAsTemplate:form.get('saveTemplate')==='on',itemsJson:null}));
             loadMemos();
         },
         () => {
-            const teacherSelect = $('#memo-teacher'), contractSelect = $('#memo-contract'), catalogSelect = $('#memo-catalog');
+            const teacherSelect = $('#memo-teacher'), contractSelect = $('#memo-contract'), catalogSelect = $('#memo-catalog'); bindClausePicker('memo');
             async function updateContracts() {
                 const teacherId = teacherSelect.value; contractSelect.innerHTML = '<option value="">Выберите действующий договор</option>';
                 if (!teacherId) return;
@@ -194,12 +218,12 @@ $('#add-memo').addEventListener('click', async () => {
             function applyCatalog() {
                 const item = catalogCache.find(c=>String(c.id)===catalogSelect.value);
                 if (!item) return;
-                $('#memo-assignment').value=item.name||''; $('#memo-text').value=item.memoText||item.agreementText||item.name||'';
+                $('#memo-assignment').value=item.name||''; $('#memo-text').value=item.memoText||''; $('#memo-agreement').value=item.agreementText||''; setClausePicker('memo',item.contractClause||'2.4');
                 $('#memo-duties').value=item.dutiesText||''; $('#memo-amount').value=item.defaultAmount??''; setSeparate(String(Boolean(item.separateAgreement)));
                 $('#memo-save-template').checked=false;
             }
             teacherSelect.addEventListener('change',updateContracts); catalogSelect.addEventListener('change',applyCatalog);
-            $('#memo-manual').addEventListener('click',()=>{catalogSelect.value='';$('#memo-assignment').value='';$('#memo-text').value='';$('#memo-duties').value='';$('#memo-amount').value='';$('#memo-save-template').checked=true;$('#memo-assignment').focus();});
+            $('#memo-manual').addEventListener('click',()=>{catalogSelect.value='';$('#memo-assignment').value='';$('#memo-text').value='';$('#memo-agreement').value='';$('#memo-duties').value='';$('#memo-amount').value='';setClausePicker('memo','2.4');$('#memo-save-template').checked=true;$('#memo-assignment').focus();});
             document.querySelectorAll('input[name="separate"]').forEach(r=>r.addEventListener('change',()=>setSeparate(r.value)));
         }
     );
@@ -219,15 +243,17 @@ async function loadCatalog() {
 }
 function editCatalog(item = null) {
     openEditor(item ? 'Изменить выплату или работу' : 'Добавить выплату или работу',
-        row('Название', `<input name="name" value="${esc(item?.name)}" required>`) +
+        row('Название обязанности или выплаты', `<input name="name" value="${esc(item?.name)}" required placeholder="Например: заведование кабинетом">`) +
         row('Категория', `<select name="category"><option value="COMPENSATION" ${item?.category==='COMPENSATION'?'selected':''}>Компенсационная выплата</option><option value="INCENTIVE" ${item?.category==='INCENTIVE'?'selected':''}>Стимулирующая выплата</option><option value="ADDITIONAL_WORK" ${item?.category==='ADDITIONAL_WORK'?'selected':''}>Дополнительная работа</option></select>`) +
-        row('Пункт трудового договора', `<input name="clause" value="${esc(item?.contractClause)}" placeholder="Например: 2.4">`) + row('Стандартная сумма', `<input name="amount" type="number" min="0" step="0.01" value="${esc(item?.defaultAmount)}">`) +
-        row('Текст служебной записки', `<textarea name="memo">${esc(item?.memoText)}</textarea>`) + row('Формулировка соглашения', `<textarea name="agreement">${esc(item?.agreementText)}</textarea>`) +
-        row('Дополнительные обязанности', `<textarea name="duties">${esc(item?.dutiesText)}</textarea>`) + row('Отдельное соглашение', `<label><input name="separate" type="checkbox" ${item?.separateAgreement?'checked':''}> Формировать отдельный допник с обязанностями</label>`),
+        row('Пункт трудового договора', clausePicker('catalog',item?.contractClause||'2.4'),'Выберите 2.1, 2.4, 2.5 или добавьте другой пункт вручную.') + row('Стандартная сумма', `<input name="amount" type="number" min="0" step="0.01" value="${esc(item?.defaultAmount)}">`) +
+        row('Отдельное соглашение', `<label><input name="separate" type="checkbox" ${item?.separateAgreement?'checked':''}> Есть отдельный перечень дополнительных обязанностей</label>`,'Если флажок снят, выплата изменяет выбранный пункт договора. Если установлен — создаётся отдельный допник с функционалом.') +
+        row('Дополнительные обязанности', `<textarea name="duties" placeholder="Например: контролировать состояние кабинета; вести журнал инструктажей; обеспечивать сохранность оборудования.">${esc(item?.dutiesText)}</textarea>`,'Заполняется, когда выбран отдельный функционал.') +
+        row('Текст документов', documentTextOverrides(item?.memoText,item?.agreementText,'catalog'),'Оставьте поля пустыми для автоматического формирования; примеры находятся внутри.'),
         async form => {
-            await api(item ? `/api/hr-documents/catalog/${item.id}` : '/api/hr-documents/catalog',json(item ? 'PUT' : 'POST',{name:form.get('name'),category:form.get('category'),contractClause:form.get('clause'),defaultAmount:form.get('amount')||null,memoText:form.get('memo'),agreementText:form.get('agreement'),dutiesText:form.get('duties'),separateAgreement:form.get('separate')==='on',active:true}));
+            await api(item ? `/api/hr-documents/catalog/${item.id}` : '/api/hr-documents/catalog',json(item ? 'PUT' : 'POST',{name:form.get('name'),category:form.get('category'),contractClause:readClause(form,'catalog'),defaultAmount:form.get('amount')||null,memoText:form.get('memo'),agreementText:form.get('agreement'),dutiesText:form.get('duties'),separateAgreement:form.get('separate')==='on',active:true}));
             await loadCatalog();
-        }
+        },
+        () => bindClausePicker('catalog')
     );
 }
 $('#add-catalog').addEventListener('click', () => editCatalog());

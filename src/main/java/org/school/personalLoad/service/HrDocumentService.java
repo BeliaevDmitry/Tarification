@@ -15,6 +15,7 @@ import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.*;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 import static org.springframework.http.HttpStatus.*;
@@ -89,30 +90,35 @@ public class HrDocumentService {
                 .orElseThrow(() -> new ResponseStatusException(BAD_REQUEST, "Элемент справочника недоступен"));
         boolean separate = Boolean.TRUE.equals(r.separateAgreement());
         String assignmentName = firstPresent(r.assignmentName(), catalog == null ? null : catalog.getName());
-        String assignmentText = firstPresent(r.assignmentText(), catalog == null ? null : catalog.getMemoText(), assignmentName);
         String duties = firstPresent(r.dutiesText(), catalog == null ? null : catalog.getDutiesText());
         if (separate && !present(duties)) throw new ResponseStatusException(BAD_REQUEST, "Укажите дополнительные обязанности");
         BigDecimal amount = r.amount() != null ? r.amount() : catalog == null ? null : catalog.getDefaultAmount();
+        if (r.validFrom() == null || r.validTo() == null) throw new ResponseStatusException(BAD_REQUEST, "Укажите период действия");
+        String clause = firstPresent(r.contractClause(), catalog == null ? null : catalog.getContractClause(), "2.4");
+        String assignmentText = firstPresent(r.assignmentText(), catalog == null ? null : catalog.getMemoText(),
+                automaticMemoText(teacher, assignmentName, amount, r.validFrom(), r.validTo(), separate));
+        String agreementText = firstPresent(r.agreementText(), catalog == null ? null : catalog.getAgreementText(),
+                automaticAgreementText(assignmentName, duties, clause, separate));
         if (Boolean.TRUE.equals(r.saveAsTemplate()) && r.catalogItemId() == null) {
             HrCatalogItem saved = new HrCatalogItem(); saved.setSchoolCode(SchoolCodeResolver.resolve()); saved.setName(required(assignmentName, "Название основания"));
             saved.setCategory(separate ? HrCatalogItem.Category.ADDITIONAL_WORK : HrCatalogItem.Category.COMPENSATION);
-            saved.setContractClause(separate ? null : "2.4"); saved.setDefaultAmount(amount); saved.setMemoText(assignmentText);
-            saved.setAgreementText(assignmentText); saved.setDutiesText(duties); saved.setSeparateAgreement(separate); catalog = catalogItems.save(saved);
+            saved.setContractClause(clause); saved.setDefaultAmount(amount); saved.setMemoText(assignmentText);
+            saved.setAgreementText(agreementText); saved.setDutiesText(duties); saved.setSeparateAgreement(separate); catalog = catalogItems.save(saved);
         }
         HrServiceMemo m = new HrServiceMemo(); m.setAcademicYear(required(r.academicYear(), "Учебный год"));
         m.setTeacherId(teacher.getId()); m.setContractId(contract.getId()); m.setCatalogItemId(catalog == null ? null : catalog.getId());
         m.setTitle(firstPresent(r.title(), "О назначении: " + assignmentName)); m.setDocumentDate(r.documentDate());
-        m.setAssignmentName(required(assignmentName, "Основание или обязанность")); m.setAssignmentText(assignmentText); m.setDutiesText(duties);
+        m.setAssignmentName(required(assignmentName, "Основание или обязанность")); m.setAssignmentText(assignmentText);
+        m.setAgreementText(agreementText); m.setContractClause(clause); m.setDutiesText(duties);
         m.setAmount(amount); m.setValidFrom(r.validFrom()); m.setValidTo(r.validTo()); m.setSeparateAgreement(separate);
         m.setItemsJson(json(Map.of("teacherId", teacher.getId(), "fio", teacher.getFioTeacher(), "assignment", assignmentName,
-                "separateAgreement", separate, "amount", amount == null ? "" : amount.toPlainString())));
+                "contractClause", clause, "separateAgreement", separate, "amount", amount == null ? "" : amount.toPlainString())));
         m.setCreatedBy(username); m.setDocumentFilename("Служебная_записка_" + teacher.getFioTeacher().replace(' ', '_') + ".docx");
         m.setDocumentContent(generateMemo(m)); m = memos.save(m);
-        if (r.validFrom() == null || r.validTo() == null) throw new ResponseStatusException(BAD_REQUEST, "Укажите период действия");
         AdditionalAgreement agreement = createAgreement(new AgreementRequest(contract.getId(), m.getId(), m.getAcademicYear(), m.getDocumentDate(),
                 m.getValidFrom(), m.getValidTo(), separate ? AdditionalAgreement.Kind.ADDITIONAL_WORK : AdditionalAgreement.Kind.PAY_TERMS,
                 AdditionalAgreement.ChangeMode.AMEND, assignmentName,
-                separate ? firstPresent(duties, assignmentText) : "Изложить пункт 2.4 в части выплаты «" + assignmentName + "» в новой редакции. " + firstPresent(assignmentText),
+                agreementText,
                 amount, null), username);
         agreement.setStatus(AdditionalAgreement.Status.WAITING_FOR_MEMO);
         agreements.save(agreement);
@@ -288,14 +294,9 @@ public class HrDocumentService {
 
     private byte[] generateMemo(HrServiceMemo m) {
         try(XWPFDocument d=new XWPFDocument(); ByteArrayOutputStream out=new ByteArrayOutputStream()){
-            TeacherDirectoryEntry teacher=teachers.findById(m.getTeacherId()).orElseThrow();
-            title(d,"СЛУЖЕБНАЯ ЗАПИСКА"); paragraph(d,m.getTitle(),true); paragraph(d,"Дата: "+Objects.toString(m.getDocumentDate(),""),false);
-            paragraph(d,"Прошу установить работнику: " + teacher.getFioTeacher() + " (ID " + teacher.getId() + ") «" + m.getAssignmentName() + "».",false);
+            title(d,"СЛУЖЕБНАЯ ЗАПИСКА"); paragraph(d,m.getTitle(),true); paragraph(d,"Дата: "+formatDate(m.getDocumentDate()),false);
             paragraph(d,Objects.toString(m.getAssignmentText(),""),false);
             if(m.isSeparateAgreement() && present(m.getDutiesText())) { paragraph(d,"Дополнительные обязанности:",true); paragraph(d,m.getDutiesText(),false); }
-            if(m.getAmount()!=null) paragraph(d,"Размер ежемесячной выплаты: "+money(m.getAmount())+" ("+moneyWords(m.getAmount())+").",false);
-            if(m.getValidFrom()!=null || m.getValidTo()!=null) paragraph(d,"Период: с "+Objects.toString(m.getValidFrom(),"")+" по "+Objects.toString(m.getValidTo(),""),false);
-            paragraph(d,m.isSeparateAgreement()?"Требуется отдельное дополнительное соглашение о дополнительной работе.":"Условие включается в пункт 2.4 дополнительного соглашения.",true);
             d.write(out); return out.toByteArray();
         }catch(Exception e){throw new IllegalStateException(e);}
     }
@@ -324,6 +325,40 @@ public class HrDocumentService {
     }
     private void title(XWPFDocument d,String s){XWPFParagraph p=d.createParagraph();p.setAlignment(ParagraphAlignment.CENTER);XWPFRun r=p.createRun();r.setBold(true);r.setFontFamily("Times New Roman");r.setFontSize(14);r.setText(s);}
     private void paragraph(XWPFDocument d,String s,boolean bold){XWPFParagraph p=d.createParagraph();p.setAlignment(ParagraphAlignment.BOTH);XWPFRun r=p.createRun();r.setBold(bold);r.setFontFamily("Times New Roman");r.setFontSize(12);r.setText(Objects.toString(s,""));}
+
+    private String automaticMemoText(TeacherDirectoryEntry teacher, String assignmentName, BigDecimal amount,
+                                     LocalDate from, LocalDate to, boolean separate) {
+        String period = " с " + formatDate(from) + " по " + formatDate(to);
+        String payment = amount == null ? "" : " и установить ежемесячную доплату в размере "
+                + money(amount) + " (" + moneyWords(amount) + ")";
+        if (separate) {
+            return "Прошу Вас согласовать поручение работнику " + teacher.getFioTeacher()
+                    + " дополнительной работы «" + required(assignmentName, "Основание или обязанность") + "»"
+                    + payment + period + ".";
+        }
+        if (amount != null) {
+            return "Прошу Вас согласовать работнику " + teacher.getFioTeacher()
+                    + " ежемесячную доплату в размере " + money(amount) + " (" + moneyWords(amount) + ")"
+                    + " за увеличение объема работ («" + required(assignmentName, "Основание или обязанность") + "»)"
+                    + period + ".";
+        }
+        return "Прошу Вас согласовать назначение работника " + teacher.getFioTeacher()
+                + " для выполнения работы «" + required(assignmentName, "Основание или обязанность") + "»"
+                + period + ".";
+    }
+
+    private String automaticAgreementText(String assignmentName, String duties, String clause, boolean separate) {
+        if (separate) {
+            return "Работнику поручается выполнение дополнительной работы «" + assignmentName
+                    + "» без освобождения от основной работы. Дополнительные обязанности: " + firstPresent(duties);
+        }
+        return "Изложить пункт " + clause + " трудового договора в части выплаты за увеличение объема работ («"
+                + assignmentName + "») в новой редакции.";
+    }
+
+    private String formatDate(LocalDate date) {
+        return date == null ? "" : date.format(DateTimeFormatter.ofPattern("dd.MM.yyyy"));
+    }
 
     private void appendLoadAnnex(XWPFDocument d, Long teacherId, String year, LocalDate date) {
         List<LoadDetail> rows = loadDetails(teacherId, year, date);
