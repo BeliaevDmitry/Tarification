@@ -40,6 +40,7 @@ class HrDocumentServiceTest {
         contract.setContractDate(LocalDate.of(2025,1,1)); contract.setPositionName("Учитель");
         teacher=new TeacherDirectoryEntry(); teacher.setId(1L); teacher.setFioTeacher("Иванов Иван Иванович");
         when(contracts.findById(10L)).thenReturn(Optional.of(contract)); when(teachers.findById(1L)).thenReturn(Optional.of(teacher));
+        when(contracts.save(any())).thenAnswer(x->x.getArgument(0));
         when(loads.findAllByAcademicYear(anyString())).thenReturn(List.of()); when(sizes.effectiveClassSizes(anyString())).thenReturn(Map.of());
         when(agreements.save(any())).thenAnswer(x->{AdditionalAgreement a=x.getArgument(0);if(a.getId()==null)a.setId(100L);return a;});
         when(memos.save(any())).thenAnswer(x->{HrServiceMemo m=x.getArgument(0);if(m.getId()==null)m.setId(50L);return m;});
@@ -95,10 +96,35 @@ class HrDocumentServiceTest {
         assertEquals(HrServiceMemo.Status.RECEIVED_BY_HR,memo.getStatus());
     }
 
-    @Test void dutyMemoRequiresEmploymentContract(){
+    @Test void dutyMemoCanBeCreatedBeforeEmploymentContractIsFilled(){
         MemoRequest request=new MemoRequest("2025/2026",1L,null,null,null,LocalDate.of(2025,9,1),"Кабинет",
                 "Назначить ответственным",null,"2.4",null,new BigDecimal("5000"),LocalDate.of(2025,9,1),LocalDate.of(2026,8,31),false,false,null);
-        assertThrows(ResponseStatusException.class,()->service.createMemo(request,"deputy"));
+
+        HrServiceMemo memo=service.createMemo(request,"deputy");
+
+        assertNull(memo.getContractId());
+        assertNotNull(memo.getDocumentContent());
+        verify(agreements,never()).save(any());
+    }
+
+    @Test void savingPrimaryContractAttachesMemosCreatedEarlier(){
+        HrServiceMemo duty=new HrServiceMemo(); duty.setId(51L); duty.setTeacherId(1L); duty.setAcademicYear("2025/2026");
+        duty.setAssignmentName("Заведование кабинетом"); duty.setAgreementText("Изложить пункт 2.4"); duty.setAmount(new BigDecimal("5000"));
+        duty.setValidFrom(LocalDate.of(2025,9,1)); duty.setValidTo(LocalDate.of(2026,8,31)); duty.setCreatedBy("deputy");
+        ServiceMemo load=new ServiceMemo(); load.setId(61L); load.setTeacherId(1L); load.setAcademicYear("2025/2026");
+        load.setChangeStartDate(LocalDate.of(2025,10,1)); load.setCreatedBy("deputy");
+        when(memos.findAllByTeacherIdAndContractIdIsNullOrderByCreatedAtDesc(1L)).thenReturn(List.of(duty));
+        when(loadMemos.findAllByTeacherIdAndContractIdIsNullOrderByCreatedAtDesc(1L)).thenReturn(List.of(load));
+        when(agreements.findAllByServiceMemoId(51L)).thenReturn(List.of());
+        when(agreements.findAllByLoadServiceMemoId(61L)).thenReturn(List.of());
+
+        service.saveContract(10L,new org.school.personalLoad.dto.HrDocumentDtos.ContractRequest(1L,"1-ТД",
+                LocalDate.of(2025,1,1),"Учитель",LocalDate.of(2025,1,1),null,true,true));
+
+        assertEquals(10L,duty.getContractId());
+        assertEquals(10L,load.getContractId());
+        verify(agreements,atLeastOnce()).save(argThat(a->Objects.equals(a.getServiceMemoId(),51L)));
+        verify(agreements,atLeastOnce()).save(argThat(a->Objects.equals(a.getLoadServiceMemoId(),61L)));
     }
 
     @Test void loadMemoCreatesWaitingAgreementLinkedByMemoId(){
