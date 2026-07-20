@@ -65,9 +65,9 @@ public class HrDocumentsController {
 
     @GetMapping("/memos") public Object memos(@RequestParam String academicYear){return service.memos(academicYear);}
     @GetMapping("/load-memos") public Object loadMemos(@RequestParam String academicYear){return loadMemoService.findForHr(academicYear);}
-    @PostMapping("/memos") public Object memo(@RequestBody MemoRequest r,HttpServletRequest req){return service.createMemo(r,user(req).getUsername());}
-    @PostMapping("/memos/{id}/status") public Object memoStatus(@PathVariable Long id,@RequestBody StatusRequest r,HttpServletRequest req){return service.memoStatus(id,HrServiceMemo.Status.valueOf(r.status()),user(req).getUsername());}
-    @PostMapping("/memos/{id}/annul") public Object memoAnnul(@PathVariable Long id,@RequestBody AnnulRequest r,HttpServletRequest req){return service.annulMemo(id,r.reason(),user(req).getUsername());}
+    @PostMapping("/memos") public Object memo(@RequestBody MemoRequest r,HttpServletRequest req){return service.memoView(service.createMemo(r,user(req).getUsername()));}
+    @PostMapping("/memos/{id}/status") public Object memoStatus(@PathVariable Long id,@RequestBody StatusRequest r,HttpServletRequest req){return service.memoView(service.memoStatus(id,HrServiceMemo.Status.valueOf(r.status()),user(req).getUsername()));}
+    @PostMapping("/memos/{id}/annul") public Object memoAnnul(@PathVariable Long id,@RequestBody AnnulRequest r,HttpServletRequest req){return service.memoView(service.annulMemo(id,r.reason(),user(req).getUsername()));}
     @GetMapping("/memos/{id}/download") public ResponseEntity<byte[]> memoDownload(@PathVariable Long id){HrServiceMemo m=service.memo(id);return file(m.getDocumentContent(),m.getDocumentFilename());}
     @PostMapping("/load-memos/{id}/receive") public Object loadMemoReceive(@PathVariable Long id,HttpServletRequest req){ServiceMemo m=loadMemoService.receiveByHr(id,user(req).getUsername());return Map.of("id",m.getId(),"status",m.getStatus().name());}
     @PostMapping("/load-memos/{id}/annul") public Object loadMemoAnnul(@PathVariable Long id,@RequestBody AnnulRequest r,HttpServletRequest req){ServiceMemo m=loadMemoService.annul(id,r.reason(),user(req).getUsername());return Map.of("id",m.getId(),"status",m.getStatus().name());}
@@ -83,7 +83,7 @@ public class HrDocumentsController {
     @GetMapping("/agreements/{id}/download") public ResponseEntity<byte[]> agreementDownload(@PathVariable Long id,HttpServletRequest req){AdditionalAgreement a=service.agreement(id);if(a.getStatus()!=AdditionalAgreement.Status.ISSUED&&a.getStatus()!=AdditionalAgreement.Status.SIGNING&&a.getStatus()!=AdditionalAgreement.Status.SIGNED)a=service.issue(id,user(req).getUsername());return file(a.getCurrentDocument(),a.getCurrentFilename());}
     @GetMapping("/agreements/{id}/versions") public Object versions(@PathVariable Long id){return service.versions(id).stream().map(v->Map.of("id",v.getId(),"revision",v.getRevision(),"filename",v.getFilename(),"source",v.getSource(),"createdAt",v.getCreatedAt(),"createdBy",v.getCreatedBy())).toList();}
 
-    @GetMapping("/catalog") public Object catalog(){return catalogRepository.findAllBySchoolCodeAndActiveTrueOrderByName(org.school.personalLoad.config.SchoolCodeResolver.resolve());}
+    @GetMapping("/catalog") public Object catalog(){return service.catalog();}
     @PostMapping("/catalog") public Object catalog(@RequestBody HrCatalogItem x){x.setId(null);x.setSchoolCode(org.school.personalLoad.config.SchoolCodeResolver.resolve());return catalogRepository.save(x);}
     @PutMapping("/catalog/{id}") public Object catalog(@PathVariable Long id,@RequestBody HrCatalogItem x){HrCatalogItem old=catalogRepository.findById(id).orElseThrow();x.setId(old.getId());x.setSchoolCode(old.getSchoolCode());return catalogRepository.save(x);}
 

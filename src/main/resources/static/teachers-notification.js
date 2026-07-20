@@ -22,6 +22,11 @@ function row(label, control, help = '') {
     return `<div class="field-label">${label}</div><div class="field-control">${control}${help ? `<span class="field-help">${help}</span>` : ''}</div>`;
 }
 function option(value, label, selected = false) { return `<option value="${esc(value)}"${selected ? ' selected' : ''}>${esc(label)}</option>`; }
+function showNotice(message, error = false) {
+    document.querySelector('.hr-toast')?.remove();
+    const notice=document.createElement('div'); notice.className=`hr-toast${error?' error':''}`; notice.textContent=message;
+    document.body.appendChild(notice); setTimeout(()=>notice.remove(),7000);
+}
 const STANDARD_CONTRACT_CLAUSES = ['2.1','2.4','2.5'];
 function clausePicker(prefix, value = '2.4') {
     const current = String(value || '2.4');
@@ -90,8 +95,8 @@ function openEditor(title, fields, onSave, afterOpen) {
         event.preventDefault();
         try {
             await onSave(new FormData($('#editor-form')));
+            try { await loadJournal(); } catch (error) { console.error('Не удалось обновить журнал',error); }
             dialog.close();
-            await loadJournal();
         } catch (error) { $('#editor-error').textContent = error.message; }
     };
 }
@@ -201,7 +206,7 @@ async function loadMemos() {
     const [dutyMemos, loadMemos, teachers] = await Promise.all([
         api(`/api/hr-documents/memos?academicYear=${encodeURIComponent(academicYear())}`),
         api(`/api/hr-documents/load-memos?academicYear=${encodeURIComponent(academicYear())}`),
-        api('/api/hr-documents/teachers')
+        loadTeachersForDocuments()
     ]);
     const teacherNames = new Map(teachers.map(t => [t.id,t.fio]));
     const dutyRows = dutyMemos.map(memo => ({sortDate:memo.documentDate||memo.createdAt,type:'Дополнительная обязанность',html:`<tr><td>${esc(memo.documentDate)}</td><td>${esc(teacherNames.get(memo.teacherId) || memo.teacherId || 'Не указан')}</td><td>Дополнительная обязанность</td><td>${esc(memo.assignmentName || memo.title)}</td><td>${esc(STATUS_LABELS[memo.status] || memo.status)}${memo.contractId?'':' · ожидает договор'}</td><td><a href="/api/hr-documents/memos/${memo.id}/download">DOCX</a>${memo.status==='DRAFT'?` <button data-issue-memo="${memo.id}">Выпустить</button>`:''}${memo.status==='ISSUED'?` <button data-receive-memo="${memo.id}">Получена кадрами</button>`:''} ${memo.status!=='ANNULLED'?`<button data-annul-memo="${memo.id}">Аннулировать</button>`:''}</td></tr>`}));
@@ -232,8 +237,13 @@ $('#add-memo').addEventListener('click', async () => {
         row('Текст документов', documentTextOverrides('','','memo'),'Обычно этот раздел открывать не нужно: ниже находятся только ручные исправления и примеры.') +
         row('Справочник', '<label><input id="memo-save-template" name="saveTemplate" type="checkbox"> Сохранить ручной вариант для дальнейшего выбора</label>'),
         async form => {
-            await api('/api/hr-documents/memos', json('POST',{academicYear:academicYear(),teacherId:+form.get('teacherId'),contractId:form.get('contractId')?+form.get('contractId'):null,catalogItemId:form.get('catalogItemId')?+form.get('catalogItemId'):null,title:null,documentDate:form.get('documentDate')||null,assignmentName:form.get('assignmentName'),assignmentText:form.get('assignmentText'),agreementText:form.get('agreementText'),contractClause:readClause(form,'memo'),dutiesText:form.get('dutiesText'),amount:form.get('amount')||null,validFrom:form.get('validFrom'),validTo:form.get('validTo'),separateAgreement:form.get('separate')==='true',saveAsTemplate:form.get('saveTemplate')==='on',itemsJson:null}));
-            loadMemos();
+            const created=await api('/api/hr-documents/memos', json('POST',{academicYear:academicYear(),teacherId:+form.get('teacherId'),contractId:form.get('contractId')?+form.get('contractId'):null,catalogItemId:form.get('catalogItemId')?+form.get('catalogItemId'):null,title:null,documentDate:form.get('documentDate')||null,assignmentName:form.get('assignmentName'),assignmentText:form.get('assignmentText'),agreementText:form.get('agreementText'),contractClause:readClause(form,'memo'),dutiesText:form.get('dutiesText'),amount:form.get('amount')||null,validFrom:form.get('validFrom'),validTo:form.get('validTo'),separateAgreement:form.get('separate')==='true',saveAsTemplate:form.get('saveTemplate')==='on',itemsJson:null}));
+            try {
+                await loadMemos();
+                showNotice(`Служебная записка создана и добавлена в таблицу${created?.id ? ` (ID ${created.id})` : ''}.`);
+            } catch (error) {
+                showNotice(`Служебная записка создана${created?.id ? ` (ID ${created.id})` : ''}, но таблица не обновилась: ${error.message}`,true);
+            }
         },
         () => {
             const teacherSelect = $('#memo-teacher'), contractSelect = $('#memo-contract'), catalogSelect = $('#memo-catalog'); bindClausePicker('memo');
