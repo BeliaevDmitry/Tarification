@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.*;
@@ -51,6 +52,15 @@ public class HrDocumentService {
             return new JournalRow(c.getTeacherId(), teacher == null ? "" : teacher.getFioTeacher(), c.getId(),
                     c.getContractNumber(), c.getPositionName(), complete, docs, action);
         }).sorted(Comparator.comparing(JournalRow::fio, String.CASE_INSENSITIVE_ORDER)).toList();
+    }
+
+    @Transactional(readOnly = true) public List<AgreementListRow> agreementRows(String academicYear){
+        return agreements.findAllByAcademicYearOrderByCreatedAtDesc(academicYear).stream().map(agreement->{
+            EmploymentContract contract=contracts.findById(agreement.getContractId()).orElse(null);
+            TeacherDirectoryEntry teacher=contract==null?null:teachers.findById(contract.getTeacherId()).orElse(null);
+            return new AgreementListRow(contract==null?null:contract.getTeacherId(),teacher==null?"":teacher.getFioTeacher(),
+                    agreement.getContractId(),contract==null?"":contract.getContractNumber(),contract==null?"":contract.getPositionName(),view(agreement));
+        }).toList();
     }
 
     @Transactional public EmploymentContract saveContract(Long id, ContractRequest r) {
@@ -108,7 +118,7 @@ public class HrDocumentService {
         }
         HrServiceMemo m = new HrServiceMemo(); m.setAcademicYear(required(r.academicYear(), "Учебный год"));
         m.setTeacherId(teacher.getId()); m.setContractId(contract == null ? null : contract.getId()); m.setCatalogItemId(catalog == null ? null : catalog.getId());
-        m.setTitle(firstPresent(r.title(), "О назначении: " + assignmentName)); m.setDocumentDate(r.documentDate());
+        m.setTitle(firstPresent(r.title(), assignmentName)); m.setDocumentDate(r.documentDate());
         m.setAssignmentName(required(assignmentName, "Основание или обязанность")); m.setAssignmentText(assignmentText);
         m.setAgreementText(agreementText); m.setContractClause(clause); m.setDutiesText(duties);
         m.setAmount(amount); m.setValidFrom(r.validFrom()); m.setValidTo(r.validTo()); m.setSeparateAgreement(separate);
@@ -134,6 +144,10 @@ public class HrDocumentService {
     }
 
     @Transactional public HrServiceMemo memoStatus(Long id, HrServiceMemo.Status status, String username) {
+        return memoStatus(id,status,username,username,"сотрудника");
+    }
+
+    @Transactional public HrServiceMemo memoStatus(Long id, HrServiceMemo.Status status, String username, String fullName, String position) {
         HrServiceMemo m = memo(id);
         if (m.getStatus() == HrServiceMemo.Status.ANNULLED) throw new ResponseStatusException(CONFLICT, "Служебка аннулирована");
         if (status == HrServiceMemo.Status.ISSUED && m.getStatus() != HrServiceMemo.Status.DRAFT)
@@ -142,6 +156,11 @@ public class HrDocumentService {
                 && m.getStatus() != HrServiceMemo.Status.RECEIVED_BY_HR)
             throw new ResponseStatusException(CONFLICT,"Сначала выпустите служебную записку");
         m.setStatus(status);
+        if (status == HrServiceMemo.Status.ISSUED) {
+            m.setIssuedAt(LocalDateTime.now()); m.setIssuedBy(username);
+            m.setIssuedByFullName(firstPresent(fullName,username)); m.setIssuedByPosition(firstPresent(position,"сотрудника"));
+            m.setDocumentContent(generateMemo(m));
+        }
         if (status == HrServiceMemo.Status.RECEIVED_BY_HR) {
             m.setReceivedAt(LocalDateTime.now()); m.setReceivedBy(username);
             releaseWaiting(agreements.findAllByServiceMemoId(id));
@@ -155,6 +174,46 @@ public class HrDocumentService {
                 .filter(a -> a.getStatus() != AdditionalAgreement.Status.ANNULLED)
                 .forEach(a -> { a.setStatus(AdditionalAgreement.Status.REQUIRES_DECISION); agreements.save(a); });
         return m;
+    }
+
+    @Transactional public void deleteAnnulledMemo(Long id, String username) {
+        HrServiceMemo memo=memo(id);
+        if(memo.getStatus()!=HrServiceMemo.Status.ANNULLED)
+            throw new ResponseStatusException(CONFLICT,"Удалить можно только аннулированную служебную записку");
+        List<AdditionalAgreement> linked=agreements.findAllByServiceMemoId(id);
+        boolean hasIssuedAgreement=linked.stream().anyMatch(a->!EnumSet.of(AdditionalAgreement.Status.WAITING_FOR_MEMO,
+                AdditionalAgreement.Status.DRAFT,AdditionalAgreement.Status.READY,AdditionalAgreement.Status.REQUIRES_DECISION,
+                AdditionalAgreement.Status.ANNULLED).contains(a.getStatus()));
+        if(hasIssuedAgreement)throw new ResponseStatusException(CONFLICT,"Нельзя удалить служебную записку: по ней уже оформлено дополнительное соглашение");
+        linked.forEach(a->{
+            a.setServiceMemoId(null); a.setStatus(AdditionalAgreement.Status.ANNULLED);
+            if(a.getAnnulledAt()==null){a.setAnnulledAt(LocalDateTime.now());a.setAnnulledBy(username);a.setAnnulReason("Удалена аннулированная служебная записка");}
+            agreements.save(a);
+        });
+        memos.delete(memo);
+    }
+
+    @Transactional public void deleteAnnulledLoadMemo(Long id,String username){
+        ServiceMemo memo=loadMemos.findById(id).orElseThrow(()->new ResponseStatusException(NOT_FOUND,"Служебная записка не найдена"));
+        if(memo.getStatus()!=ServiceMemo.Status.ANNULLED)
+            throw new ResponseStatusException(CONFLICT,"Удалить можно только аннулированную служебную записку");
+        List<AdditionalAgreement> linked=agreements.findAllByLoadServiceMemoId(id);
+        boolean hasIssuedAgreement=linked.stream().anyMatch(a->!EnumSet.of(AdditionalAgreement.Status.WAITING_FOR_MEMO,
+                AdditionalAgreement.Status.DRAFT,AdditionalAgreement.Status.READY,AdditionalAgreement.Status.REQUIRES_DECISION,
+                AdditionalAgreement.Status.ANNULLED).contains(a.getStatus()));
+        if(hasIssuedAgreement)throw new ResponseStatusException(CONFLICT,"Нельзя удалить служебную записку: по ней уже оформлено дополнительное соглашение");
+        linked.forEach(a->{
+            a.setLoadServiceMemoId(null);a.setStatus(AdditionalAgreement.Status.ANNULLED);
+            if(a.getAnnulledAt()==null){a.setAnnulledAt(LocalDateTime.now());a.setAnnulledBy(username);a.setAnnulReason("Удалена аннулированная служебная записка по нагрузке");}
+            agreements.save(a);
+        });
+        loadMemos.delete(memo);
+    }
+
+    @Transactional public void deleteCatalogItem(Long id) {
+        HrCatalogItem item=catalogItems.findById(id).filter(x->Objects.equals(x.getSchoolCode(),SchoolCodeResolver.resolve()))
+                .orElseThrow(()->new ResponseStatusException(NOT_FOUND,"Позиция справочника не найдена"));
+        item.setActive(false); item.setUpdatedAt(LocalDateTime.now()); catalogItems.save(item);
     }
 
     @Transactional public AdditionalAgreement createAgreement(AgreementRequest r, String username) {
@@ -329,13 +388,91 @@ public class HrDocumentService {
     private String json(Object x){try{return objectMapper.writeValueAsString(x);}catch(Exception e){throw new IllegalStateException(e);}}
 
     private byte[] generateMemo(HrServiceMemo m) {
-        try(XWPFDocument d=new XWPFDocument(); ByteArrayOutputStream out=new ByteArrayOutputStream()){
-            title(d,"СЛУЖЕБНАЯ ЗАПИСКА"); paragraph(d,m.getTitle(),true); paragraph(d,"Дата: "+formatDate(m.getDocumentDate()),false);
-            paragraph(d,Objects.toString(m.getAssignmentText(),""),false);
-            if(m.isSeparateAgreement() && present(m.getDutiesText())) { paragraph(d,"Дополнительные обязанности:",true); paragraph(d,m.getDutiesText(),false); }
-            d.write(out); return out.toByteArray();
+        String school=SchoolCodeResolver.resolve();
+        String templatePath="templates/hr-service-memo/memo-"+(present(school)?school:"demo")+".docx";
+        InputStream resource=getClass().getClassLoader().getResourceAsStream(templatePath);
+        if(resource==null)resource=getClass().getClassLoader().getResourceAsStream("templates/hr-service-memo/memo-demo.docx");
+        if(resource==null)return generateMemoFallback(m);
+        try(InputStream template=resource;XWPFDocument d=new XWPFDocument(template);ByteArrayOutputStream out=new ByteArrayOutputStream()){
+            MemoRecipient recipient=memoRecipient();
+            String body=memoBody(m);
+            LocalDate date=m.getDocumentDate()!=null?m.getDocumentDate():m.getIssuedAt()==null?null:m.getIssuedAt().toLocalDate();
+            Map<String,String> replacements=new LinkedHashMap<>();
+            replacements.put("{RECIPIENT_TITLE}",recipient.title()); replacements.put("{RECIPIENT_NAME}",recipient.name());
+            replacements.put("{AUTHOR_POSITION}",firstPresent(m.getIssuedByPosition(),"__________________"));
+            replacements.put("{AUTHOR_NAME}",firstPresent(m.getIssuedByFullName(),"__________________"));
+            replacements.put("{MEMO_TEXT}",body); replacements.put("{DOCUMENT_DATE}",formatDate(date));
+            allDocumentParagraphs(d).forEach(p->replaceMemoTemplateParagraph(p,replacements));
+            d.write(out);return out.toByteArray();
+        }catch(Exception e){throw new IllegalStateException("Не удалось сформировать служебную записку по шаблону "+templatePath,e);}
+    }
+
+    private byte[] generateMemoFallback(HrServiceMemo m) {
+        try(XWPFDocument d=new XWPFDocument();ByteArrayOutputStream out=new ByteArrayOutputStream()){
+            MemoRecipient recipient=memoRecipient();
+            memoParagraph(d,recipient.title(),ParagraphAlignment.RIGHT);memoParagraph(d,recipient.name(),ParagraphAlignment.RIGHT);
+            memoParagraph(d,"от "+firstPresent(m.getIssuedByPosition(),"__________________"),ParagraphAlignment.RIGHT);
+            memoParagraph(d,firstPresent(m.getIssuedByFullName(),"__________________"),ParagraphAlignment.RIGHT);
+            memoParagraph(d,"служебная записка.",ParagraphAlignment.CENTER);
+            String body=memoBody(m);
+            memoParagraph(d,body,ParagraphAlignment.BOTH);
+            LocalDate date=m.getDocumentDate()!=null?m.getDocumentDate():m.getIssuedAt()==null?null:m.getIssuedAt().toLocalDate();
+            memoParagraph(d,formatDate(date)+"\t\t\t\t"+firstPresent(m.getIssuedByFullName(),"__________________"),ParagraphAlignment.LEFT);
+            d.write(out);return out.toByteArray();
         }catch(Exception e){throw new IllegalStateException(e);}
     }
+
+    private List<XWPFParagraph> allDocumentParagraphs(XWPFDocument document){
+        List<XWPFParagraph> result=new ArrayList<>(document.getParagraphs());
+        document.getTables().forEach(table->table.getRows().forEach(row->row.getTableCells().forEach(cell->result.addAll(cell.getParagraphs()))));
+        document.getHeaderList().forEach(header->result.addAll(header.getParagraphs()));
+        document.getFooterList().forEach(footer->result.addAll(footer.getParagraphs()));
+        return result;
+    }
+
+    private void replaceMemoTemplateParagraph(XWPFParagraph paragraph,Map<String,String> replacements){
+        String original=paragraph.getText();if(original==null||original.isEmpty())return;
+        String replaced=original;for(Map.Entry<String,String> entry:replacements.entrySet())replaced=replaced.replace(entry.getKey(),entry.getValue());
+        if(Objects.equals(original,replaced))return;
+        XWPFRun source=paragraph.getRuns().isEmpty()?null:paragraph.getRuns().get(0);
+        String font=source==null?"Times New Roman":firstPresent(source.getFontFamily(),"Times New Roman");
+        int size=source==null||source.getFontSize()<=0?14:source.getFontSize();boolean bold=source!=null&&source.isBold();boolean italic=source!=null&&source.isItalic();
+        while(!paragraph.getRuns().isEmpty())paragraph.removeRun(0);
+        XWPFRun run=paragraph.createRun();run.setFontFamily(font);run.setFontSize(size);run.setBold(bold);run.setItalic(italic);appendRunText(run,replaced);
+    }
+
+    private void appendRunText(XWPFRun run,String value){
+        StringBuilder text=new StringBuilder();
+        for(int i=0;i<value.length();i++){
+            char c=value.charAt(i);if(c!='\n'&&c!='\t'){text.append(c);continue;}
+            if(text.length()>0){run.setText(text.toString());text.setLength(0);}if(c=='\n')run.addBreak();else run.addTab();
+        }
+        if(text.length()>0)run.setText(text.toString());
+    }
+
+    private void memoParagraph(XWPFDocument document,String value,ParagraphAlignment alignment){
+        XWPFParagraph paragraph=document.createParagraph();paragraph.setAlignment(alignment);XWPFRun run=paragraph.createRun();
+        run.setFontFamily("Times New Roman");run.setFontSize(14);appendRunText(run,Objects.toString(value,""));
+    }
+
+    private String memoBody(HrServiceMemo memo){
+        String body=Objects.toString(memo.getAssignmentText(),"").replaceAll("\\R+"," ").trim();
+        if(memo.isSeparateAgreement()&&present(memo.getDutiesText())){
+            String duties=memo.getDutiesText().trim().replaceAll("\\s*\\R+\\s*","; ").replaceAll("[;.]?\\s*$","");
+            body=body+" Дополнительные обязанности: "+duties+".";
+        }
+        return body;
+    }
+
+    private MemoRecipient memoRecipient(){
+        return switch(SchoolCodeResolver.resolve()){
+            case "1811" -> new MemoRecipient("Директору ГБОУ Школы №1811 «Восточное Измайлово»","Тихонову В.А.");
+            case "7" -> new MemoRecipient("Директору ГБОУ Школы №7","Ждановой И.Д.");
+            default -> new MemoRecipient("Директору образовательной организации","");
+        };
+    }
+
+    private record MemoRecipient(String title,String name){}
     private byte[] generateAgreement(AdditionalAgreement a, EmploymentContract c) {
         TeacherDirectoryEntry t=teachers.findById(c.getTeacherId()).orElseThrow(); HrPersonalData p=personalData.findByTeacherId(c.getTeacherId()).orElse(null);
         try(XWPFDocument d=new XWPFDocument(); ByteArrayOutputStream out=new ByteArrayOutputStream()){
@@ -419,7 +556,11 @@ public class HrDocumentService {
     private String normalizeClass(String s){return Objects.toString(s,"").trim().toUpperCase(Locale.ROOT).replaceAll("\\s+","");}
     private EducationStage stage(String s){java.util.regex.Matcher m=java.util.regex.Pattern.compile("\\d+").matcher(Objects.toString(s,""));if(!m.find())return EducationStage.OOO;int g=Integer.parseInt(m.group());return g<=4?EducationStage.NOO:g<=9?EducationStage.OOO:EducationStage.SOO;}
     private record LoadDetail(String subject,String className,int hours,int children,BigDecimal rate,BigDecimal subjectCoefficient,BigDecimal groupCoefficient,BigDecimal amount){}
-    private String money(BigDecimal v){return v.setScale(2,RoundingMode.HALF_UP).toPlainString()+" руб.";}
+    private String money(BigDecimal v){
+        BigDecimal value=v.setScale(2,RoundingMode.HALF_UP);String[] parts=value.abs().toPlainString().split("\\.");
+        String grouped=parts[0].replaceAll("\\B(?=(\\d{3})+(?!\\d))"," ");
+        return (value.signum()<0?"-":"")+grouped+","+parts[1]+" руб.";
+    }
     private String firstPresent(String... values){for(String value:values)if(present(value))return value.trim();return "";}
     private String employerIntro(){return "1811".equals(SchoolCodeResolver.resolve())?"Государственное бюджетное общеобразовательное учреждение города Москвы «Школа № 1811 «Восточное Измайлово», именуемое «Работодатель», в лице директора Тихонова Валерия Анатольевича":"Государственное бюджетное общеобразовательное учреждение города Москвы «Школа № 7», именуемое «Работодатель», в лице директора Ждановой Ирины Дмитриевны";}
     private String employerDetails(){return "1811".equals(SchoolCodeResolver.resolve())?"Работодатель: ГБОУ Школа № 1811 «Восточное Измайлово», 105203, г. Москва, ул. Первомайская, д. 109/2, ИНН/КПП 7719894832/771901001":"Работодатель: ГБОУ Школа № 7, 119331, г. Москва, ул. Крупской, д. 17, ИНН 7736050780";}

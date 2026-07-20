@@ -264,6 +264,7 @@ class AppUserServiceImplTest {
         CreateUserRequest request = new CreateUserRequest();
         request.setUsername("ivanov");
         request.setFullName("Иванов Иван Иванович");
+        request.setDocumentPosition("руководителя корпуса");
         request.setRole(UserRole.BUILDING_HEAD);
         request.setManagedBuildingCode("МЕХМАТ");
         request.setCanView(true);
@@ -272,6 +273,7 @@ class AppUserServiceImplTest {
         AppUser created = service.createUser(request);
 
         assertEquals("МЕХМАТ", created.getManagedBuildingCode());
+        assertEquals("руководителя корпуса",created.getDocumentPosition());
     }
 
     @Test

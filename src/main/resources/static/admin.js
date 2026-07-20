@@ -965,6 +965,7 @@ function renderUsers(rows) {
         <tr>
             <td>${esc(user.username)}</td>
             <td>${esc(user.fullName)}</td>
+            <td>${esc(user.documentPosition || '—')}</td>
             <td>${esc(roleLabel(user.role))}</td>
             <td>${esc(user.managedBuildingCode || '—')}</td>
             <td><span class="table-badge load-scope-badge">${esc(loadScopeLabel(user))}</span></td>
@@ -999,6 +1000,7 @@ function openEditDialog(userId) {
     if (!user) return;
     editingUserId = userId;
     ui.editForm.elements.fullName.value = user.fullName || '';
+    ui.editForm.elements.documentPosition.value = user.documentPosition || '';
     ui.editForm.elements.email.value = user.email || '';
     ui.editForm.elements.active.checked = Boolean(user.active);
     ui.editForm.elements.canView.checked = Boolean(user.canView);
@@ -1072,6 +1074,7 @@ ui.form.addEventListener('submit', async (event) => {
             body: JSON.stringify({
                 username: String(form.get('username') || '').trim(),
                 fullName: String(form.get('fullName') || '').trim(),
+                documentPosition: String(form.get('documentPosition') || '').trim(),
                 email: String(form.get('email') || '').trim(),
                 managedBuildingCode: String(form.get('managedBuildingCode') || '').trim(),
                 role: String(form.get('role') || ''),
@@ -1101,6 +1104,7 @@ ui.editForm.addEventListener('submit', async (event) => {
             headers: jsonHeaders,
             body: JSON.stringify({
                 fullName: String(form.get('fullName') || '').trim(),
+                documentPosition: String(form.get('documentPosition') || '').trim(),
                 email: String(form.get('email') || '').trim(),
                 managedBuildingCode: String(form.get('managedBuildingCode') || '').trim(),
                 role: String(form.get('role') || ''),

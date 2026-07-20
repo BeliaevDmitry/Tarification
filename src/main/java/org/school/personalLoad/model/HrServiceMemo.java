@@ -34,6 +34,10 @@ public class HrServiceMemo {
     private String documentFilename;
     @Column(nullable = false) private LocalDateTime createdAt = LocalDateTime.now();
     @Column(nullable = false) private String createdBy;
+    private LocalDateTime issuedAt;
+    private String issuedBy;
+    private String issuedByFullName;
+    private String issuedByPosition;
     private LocalDateTime receivedAt;
     private String receivedBy;
     private LocalDateTime annulledAt;

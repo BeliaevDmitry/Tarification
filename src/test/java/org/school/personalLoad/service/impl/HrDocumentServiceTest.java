@@ -3,6 +3,7 @@ package org.school.personalLoad.service.impl;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.school.personalLoad.dto.HrDocumentDtos.AgreementRequest;
 import org.school.personalLoad.dto.HrDocumentDtos.MemoRequest;
 import org.school.personalLoad.model.*;
@@ -12,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.io.ByteArrayInputStream;
 import java.time.LocalDate;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -67,8 +69,9 @@ class HrDocumentServiceTest {
         when(catalog.save(any())).thenAnswer(x->{HrCatalogItem item=x.getArgument(0);item.setId(7L);return item;});
         HrServiceMemo memo=service.createMemo(request,"deputy");
         assertEquals(1L,memo.getTeacherId()); assertTrue(memo.isSeparateAgreement()); assertEquals(7L,memo.getCatalogItemId());
+        assertFalse(memo.getTitle().startsWith("О назначении:"));
         assertTrue(memo.getAssignmentText().contains("Прошу Вас согласовать поручение работнику Иванов Иван Иванович"));
-        assertTrue(memo.getAssignmentText().contains("15000.00 руб."));
+        assertTrue(memo.getAssignmentText().contains("15 000,00 руб."));
         verify(agreements,atLeastOnce()).save(argThat(a->a.getKind()==AdditionalAgreement.Kind.ADDITIONAL_WORK
                 && Objects.equals(a.getServiceMemoId(),50L) && a.getStatus()==AdditionalAgreement.Status.WAITING_FOR_MEMO));
     }
@@ -147,6 +150,55 @@ class HrDocumentServiceTest {
         assertTrue(catalogTransaction.readOnly());
         assertNotNull(memoTransaction);
         assertTrue(memoTransaction.readOnly());
+    }
+
+    @Test void issuedMemoUsesSchoolTemplateAndIssuingAccountAsSigner() throws Exception {
+        HrServiceMemo memo=new HrServiceMemo();memo.setId(50L);memo.setStatus(HrServiceMemo.Status.DRAFT);
+        memo.setAssignmentName("Заведование кабинетом");memo.setAssignmentText("Прошу Вас согласовать заведование кабинетом.");
+        memo.setDocumentDate(LocalDate.of(2026,9,1));when(memos.findById(50L)).thenReturn(Optional.of(memo));
+
+        HrServiceMemo issued=service.memoStatus(50L,HrServiceMemo.Status.ISSUED,"belyaev","Беляев Д.А.","старшего методиста");
+
+        assertEquals("Беляев Д.А.",issued.getIssuedByFullName());
+        assertEquals("старшего методиста",issued.getIssuedByPosition());
+        try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(issued.getDocumentContent()))){
+            String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(a,b)->a+"\n"+b);
+            assertTrue(text.contains("Директору"));
+            assertTrue(text.contains("от старшего методиста"));
+            assertTrue(text.contains("Беляев Д.А."));
+            assertTrue(text.contains("01.09.2026"));
+            assertTrue(text.contains("Прошу Вас согласовать заведование кабинетом."));
+            assertFalse(text.contains("О назначении:"));
+        }
+    }
+
+    @Test void catalogDeleteHidesPositionInsteadOfBreakingOldMemos() {
+        HrCatalogItem item=new HrCatalogItem();item.setId(7L);item.setSchoolCode(org.school.personalLoad.config.SchoolCodeResolver.resolve());item.setActive(true);
+        when(catalog.findById(7L)).thenReturn(Optional.of(item));
+
+        service.deleteCatalogItem(7L);
+
+        assertFalse(item.isActive());
+        verify(catalog).save(item);
+    }
+
+    @Test void onlyAnnulledMemoCanBeDeleted() {
+        HrServiceMemo memo=new HrServiceMemo();memo.setId(50L);memo.setStatus(HrServiceMemo.Status.ANNULLED);
+        when(memos.findById(50L)).thenReturn(Optional.of(memo));when(agreements.findAllByServiceMemoId(50L)).thenReturn(List.of());
+
+        service.deleteAnnulledMemo(50L,"hr");
+
+        verify(memos).delete(memo);
+    }
+
+    @Test void agreementListIncludesDocumentsFromInactiveContracts() {
+        contract.setActive(false);AdditionalAgreement agreement=new AdditionalAgreement();agreement.setId(90L);agreement.setContractId(10L);
+        agreement.setAcademicYear("2025/2026");agreement.setInternalNumber("1 / 2025-2026");agreement.setValidFrom(LocalDate.of(2025,9,1));agreement.setValidTo(LocalDate.of(2026,8,31));
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026")).thenReturn(List.of(agreement));
+
+        var rows=service.agreementRows("2025/2026");
+
+        assertEquals(1,rows.size());assertEquals(10L,rows.get(0).contractId());assertEquals(teacher.getFioTeacher(),rows.get(0).fio());
     }
 
     private AgreementRequest request(Long old){return new AgreementRequest(10L,null,"2025/2026",LocalDate.of(2025,9,1),LocalDate.of(2025,9,1),LocalDate.of(2026,8,31),AdditionalAgreement.Kind.PAY_TERMS,AdditionalAgreement.ChangeMode.AMEND,"Нагрузка","Пункт 2.1",null,old);}

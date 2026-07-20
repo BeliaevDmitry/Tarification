@@ -41,6 +41,11 @@
             </label>
             <datalist id="teacher-fio-options-create"></datalist>
             <label class="field-stack">
+                <span>Должность для документов</span>
+                <input name="documentPosition" placeholder="Например: старшего методиста">
+                <small class="muted">Укажите в форме после слова «от»: старшего методиста, заместителя директора.</small>
+            </label>
+            <label class="field-stack">
                 <span>Email</span>
                 <input name="email" placeholder="Email (необязательно)">
             </label>
@@ -144,6 +149,7 @@
                 <tr>
                     <th>Логин</th>
                     <th>ФИО</th>
+                    <th>Должность в документах</th>
                     <th>Роль</th>
                     <th>Основной корпус</th>
                     <th>Нагрузка</th>
@@ -206,6 +212,7 @@
 
         <label class="field-row"><span>ФИО</span><input name="fullName" id="edit-full-name" list="teacher-fio-options-edit" required></label>
         <datalist id="teacher-fio-options-edit"></datalist>
+        <label class="field-row"><span>Должность для документов</span><input name="documentPosition" placeholder="Например: старшего методиста"><small class="muted">В форме после слова «от».</small></label>
         <label class="field-row"><span>Email</span><input name="email"></label>
         <label class="field-row"><span>Роль</span>
             <select name="role" id="edit-role" required>
