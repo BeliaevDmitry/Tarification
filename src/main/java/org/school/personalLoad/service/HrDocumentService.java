@@ -38,7 +38,7 @@ public class HrDocumentService {
     private final ClassSizeService classSizeService;
     private final ObjectMapper objectMapper;
 
-    public List<JournalRow> journal(String academicYear) {
+    @Transactional(readOnly = true) public List<JournalRow> journal(String academicYear) {
         Map<Long,List<AdditionalAgreement>> byContract = agreements.findAllByAcademicYearOrderByCreatedAtDesc(academicYear)
                 .stream().collect(Collectors.groupingBy(AdditionalAgreement::getContractId));
         return contracts.findAllByActiveTrueOrderByTeacherIdAsc().stream().map(c -> {
@@ -119,7 +119,19 @@ public class HrDocumentService {
         if (contract != null) ensureDutyAgreement(m, contract, username);
         return m;
     }
-    public List<HrServiceMemo> memos(String year) { return memos.findAllByAcademicYearOrderByCreatedAtDesc(year); }
+    @Transactional(readOnly = true) public List<MemoView> memos(String year) {
+        return memos.findAllByAcademicYearOrderByCreatedAtDesc(year).stream().map(this::memoView).toList();
+    }
+
+    public MemoView memoView(HrServiceMemo memo) {
+        return new MemoView(memo.getId(),memo.getAcademicYear(),memo.getTeacherId(),memo.getContractId(),memo.getCatalogItemId(),
+                memo.getTitle(),memo.getDocumentDate(),memo.getAssignmentName(),memo.getAmount(),memo.getValidFrom(),memo.getValidTo(),
+                memo.isSeparateAgreement(),memo.getStatus().name(),memo.getCreatedAt(),memo.getCreatedBy());
+    }
+
+    @Transactional(readOnly = true) public List<HrCatalogItem> catalog() {
+        return catalogItems.findAllBySchoolCodeAndActiveTrueOrderByName(SchoolCodeResolver.resolve());
+    }
 
     @Transactional public HrServiceMemo memoStatus(Long id, HrServiceMemo.Status status, String username) {
         HrServiceMemo m = memo(id);
@@ -295,9 +307,9 @@ public class HrDocumentService {
         byte[] doc = generateAgreement(a, contract); a.setGeneratedDocument(doc); a.setCurrentDocument(doc);
         a = agreements.save(a); saveVersion(a,doc,a.getCurrentFilename(),"REGENERATED",username); return a;
     }
-    public AdditionalAgreement agreement(Long id) { return agreements.findById(id).orElseThrow(() -> new ResponseStatusException(NOT_FOUND)); }
-    public HrServiceMemo memo(Long id) { return memos.findById(id).orElseThrow(() -> new ResponseStatusException(NOT_FOUND)); }
-    public List<HrDocumentVersion> versions(Long id) { return versions.findAllByDocumentTypeAndDocumentIdOrderByRevisionDesc("AGREEMENT",id); }
+    @Transactional(readOnly = true) public AdditionalAgreement agreement(Long id) { return agreements.findById(id).orElseThrow(() -> new ResponseStatusException(NOT_FOUND)); }
+    @Transactional(readOnly = true) public HrServiceMemo memo(Long id) { return memos.findById(id).orElseThrow(() -> new ResponseStatusException(NOT_FOUND)); }
+    @Transactional(readOnly = true) public List<HrDocumentVersion> versions(Long id) { return versions.findAllByDocumentTypeAndDocumentIdOrderByRevisionDesc("AGREEMENT",id); }
 
     private void saveVersion(AdditionalAgreement a, byte[] content, String filename, String source, String user) {
         HrDocumentVersion v=new HrDocumentVersion(); v.setDocumentType("AGREEMENT"); v.setDocumentId(a.getId()); v.setRevision(a.getRevision());

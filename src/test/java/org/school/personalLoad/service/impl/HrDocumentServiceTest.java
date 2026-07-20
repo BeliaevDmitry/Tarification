@@ -8,6 +8,7 @@ import org.school.personalLoad.dto.HrDocumentDtos.MemoRequest;
 import org.school.personalLoad.model.*;
 import org.school.personalLoad.repository.*;
 import org.school.personalLoad.service.*;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
@@ -136,6 +137,16 @@ class HrDocumentServiceTest {
         assertEquals(60L,agreement.getLoadServiceMemoId());
         assertEquals(AdditionalAgreement.Status.WAITING_FOR_MEMO,agreement.getStatus());
         assertEquals(AdditionalAgreement.Kind.PAY_TERMS,agreement.getKind());
+    }
+
+    @Test void lobBackedListsAreReadInsideReadOnlyTransactions() throws Exception {
+        Transactional catalogTransaction=HrDocumentService.class.getMethod("catalog").getAnnotation(Transactional.class);
+        Transactional memoTransaction=HrDocumentService.class.getMethod("memos",String.class).getAnnotation(Transactional.class);
+
+        assertNotNull(catalogTransaction);
+        assertTrue(catalogTransaction.readOnly());
+        assertNotNull(memoTransaction);
+        assertTrue(memoTransaction.readOnly());
     }
 
     private AgreementRequest request(Long old){return new AgreementRequest(10L,null,"2025/2026",LocalDate.of(2025,9,1),LocalDate.of(2025,9,1),LocalDate.of(2026,8,31),AdditionalAgreement.Kind.PAY_TERMS,AdditionalAgreement.ChangeMode.AMEND,"Нагрузка","Пункт 2.1",null,old);}
