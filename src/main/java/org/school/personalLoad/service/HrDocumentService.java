@@ -60,7 +60,9 @@ public class HrDocumentService {
         c.setContractDate(Objects.requireNonNull(r.contractDate(), "Дата договора обязательна"));
         c.setPositionName(required(r.positionName(), "Должность")); c.setStartDate(r.startDate()); c.setEndDate(r.endDate());
         c.setPrimaryContract(r.primaryContract() == null || r.primaryContract()); c.setActive(r.active() == null || r.active());
-        return contracts.save(c);
+        EmploymentContract saved = contracts.save(c);
+        if (saved.getId() != null && saved.isActive() && saved.isPrimaryContract()) attachWaitingMemos(saved);
+        return saved;
     }
 
     public List<EmploymentContract> contracts(Long teacherId) { return contracts.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(teacherId); }
@@ -81,8 +83,7 @@ public class HrDocumentService {
         if (r.teacherId() == null) throw new ResponseStatusException(BAD_REQUEST, "Выберите работника");
         TeacherDirectoryEntry teacher = teachers.findById(r.teacherId())
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Педагог не найден"));
-        if (r.contractId() == null) throw new ResponseStatusException(BAD_REQUEST, "Выберите трудовой договор");
-        EmploymentContract contract = contracts.findById(r.contractId())
+        EmploymentContract contract = r.contractId() == null ? null : contracts.findById(r.contractId())
                 .filter(c -> Objects.equals(c.getTeacherId(), teacher.getId()))
                 .orElseThrow(() -> new ResponseStatusException(BAD_REQUEST, "Трудовой договор не принадлежит выбранному педагогу"));
         HrCatalogItem catalog = r.catalogItemId() == null ? null : catalogItems.findById(r.catalogItemId())
@@ -106,7 +107,7 @@ public class HrDocumentService {
             saved.setAgreementText(agreementText); saved.setDutiesText(duties); saved.setSeparateAgreement(separate); catalog = catalogItems.save(saved);
         }
         HrServiceMemo m = new HrServiceMemo(); m.setAcademicYear(required(r.academicYear(), "Учебный год"));
-        m.setTeacherId(teacher.getId()); m.setContractId(contract.getId()); m.setCatalogItemId(catalog == null ? null : catalog.getId());
+        m.setTeacherId(teacher.getId()); m.setContractId(contract == null ? null : contract.getId()); m.setCatalogItemId(catalog == null ? null : catalog.getId());
         m.setTitle(firstPresent(r.title(), "О назначении: " + assignmentName)); m.setDocumentDate(r.documentDate());
         m.setAssignmentName(required(assignmentName, "Основание или обязанность")); m.setAssignmentText(assignmentText);
         m.setAgreementText(agreementText); m.setContractClause(clause); m.setDutiesText(duties);
@@ -115,13 +116,7 @@ public class HrDocumentService {
                 "contractClause", clause, "separateAgreement", separate, "amount", amount == null ? "" : amount.toPlainString())));
         m.setCreatedBy(username); m.setDocumentFilename("Служебная_записка_" + teacher.getFioTeacher().replace(' ', '_') + ".docx");
         m.setDocumentContent(generateMemo(m)); m = memos.save(m);
-        AdditionalAgreement agreement = createAgreement(new AgreementRequest(contract.getId(), m.getId(), m.getAcademicYear(), m.getDocumentDate(),
-                m.getValidFrom(), m.getValidTo(), separate ? AdditionalAgreement.Kind.ADDITIONAL_WORK : AdditionalAgreement.Kind.PAY_TERMS,
-                AdditionalAgreement.ChangeMode.AMEND, assignmentName,
-                agreementText,
-                amount, null), username);
-        agreement.setStatus(AdditionalAgreement.Status.WAITING_FOR_MEMO);
-        agreements.save(agreement);
+        if (contract != null) ensureDutyAgreement(m, contract, username);
         return m;
     }
     public List<HrServiceMemo> memos(String year) { return memos.findAllByAcademicYearOrderByCreatedAtDesc(year); }
@@ -190,6 +185,35 @@ public class HrDocumentService {
         agreement.setLoadServiceMemoId(memo.getId());
         agreement.setStatus(AdditionalAgreement.Status.WAITING_FOR_MEMO);
         return agreements.save(agreement);
+    }
+
+    private AdditionalAgreement ensureDutyAgreement(HrServiceMemo memo, EmploymentContract contract, String username) {
+        return agreements.findAllByServiceMemoId(memo.getId()).stream().findFirst().orElseGet(() -> {
+            AdditionalAgreement agreement = createAgreement(new AgreementRequest(contract.getId(), memo.getId(), memo.getAcademicYear(),
+                    memo.getDocumentDate(), memo.getValidFrom(), memo.getValidTo(),
+                    memo.isSeparateAgreement() ? AdditionalAgreement.Kind.ADDITIONAL_WORK : AdditionalAgreement.Kind.PAY_TERMS,
+                    AdditionalAgreement.ChangeMode.AMEND, memo.getAssignmentName(), memo.getAgreementText(), memo.getAmount(), null), username);
+            boolean memoReceived = memo.getStatus() == HrServiceMemo.Status.RECEIVED_BY_HR || memo.getStatus() == HrServiceMemo.Status.EXECUTED;
+            agreement.setStatus(memoReceived ? AdditionalAgreement.Status.DRAFT : AdditionalAgreement.Status.WAITING_FOR_MEMO);
+            return agreements.save(agreement);
+        });
+    }
+
+    private void attachWaitingMemos(EmploymentContract contract) {
+        memos.findAllByTeacherIdAndContractIdIsNullOrderByCreatedAtDesc(contract.getTeacherId()).stream()
+                .filter(memo -> memo.getStatus() != HrServiceMemo.Status.ANNULLED)
+                .forEach(memo -> {
+                    memo.setContractId(contract.getId()); memos.save(memo);
+                    ensureDutyAgreement(memo, contract, firstPresent(memo.getCreatedBy(), "system"));
+                });
+        loadMemos.findAllByTeacherIdAndContractIdIsNullOrderByCreatedAtDesc(contract.getTeacherId()).stream()
+                .filter(memo -> memo.getStatus() != ServiceMemo.Status.ANNULLED && memo.getStatus() != ServiceMemo.Status.ARCHIVED)
+                .forEach(memo -> {
+                    memo.setContractId(contract.getId()); loadMemos.save(memo);
+                    ensureLoadChangeDraft(memo, contract, firstPresent(memo.getCreatedBy(), "system"));
+                    if (memo.getStatus() == ServiceMemo.Status.RECEIVED_BY_HR || memo.getStatus() == ServiceMemo.Status.EXECUTED)
+                        onLoadMemoReceived(memo);
+                });
     }
 
     @Transactional public AdditionalAgreement ensureLoadChangeDraft(ServiceMemo memo, EmploymentContract contract, String username) {

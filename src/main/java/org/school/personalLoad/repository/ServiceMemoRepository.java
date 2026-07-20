@@ -17,4 +17,5 @@ public interface ServiceMemoRepository extends JpaRepository<ServiceMemo, Long> 
     List<ServiceMemo> findAllByAcademicYearAndStatusInOrderByCreatedAtDesc(String academicYear, Collection<ServiceMemo.Status> statuses);
 
     List<ServiceMemo> findAllByFioTeacherInAndStatusIn(Collection<String> fioTeachers, Collection<ServiceMemo.Status> statuses);
+    List<ServiceMemo> findAllByTeacherIdAndContractIdIsNullOrderByCreatedAtDesc(Long teacherId);
 }

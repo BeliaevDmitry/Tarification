@@ -162,6 +162,23 @@ class ServiceMemoTransferGenerationTest {
     }
 
     @Test
+    void generatedLoadMemoDoesNotRequireEmploymentContract() {
+        ManualLoadEntry row = row("Сидоров С.С.", "Математика", "5-А", 5,
+                LocalDate.of(2025, 10, 11), LocalDate.of(2026, 5, 31));
+        when(manualLoadEntryRepository.findAll()).thenReturn(List.of(row));
+        when(employmentContractRepository.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(1L)).thenReturn(List.of());
+        ServiceMemoDtos.PendingTeacher pending = service.findPendingTeachers().get(0);
+
+        service.generateForTeachers(null, List.of(pending.getTeacherKey()), "Автор");
+
+        ServiceMemo memo = savedMemos.get(savedMemos.size() - 1);
+        assertTrue(Objects.equals(1L, memo.getTeacherId()));
+        assertTrue(memo.getContractId() == null);
+        assertTrue(memo.getGeneratedDocument().length > 0);
+        org.mockito.Mockito.verify(hrDocumentService,org.mockito.Mockito.never()).createLoadChangeDraft(any(),any(),anyString());
+    }
+
+    @Test
     void hrReceiptBackfillsLegacyBindingAndReleasesAgreement() {
         ServiceMemo memo = new ServiceMemo(); memo.setId(77L); memo.setFioTeacher("Сидоров С.С.");
         memo.setStatus(ServiceMemo.Status.PROCESSED); memo.setAcademicYear("2025/2026");
@@ -176,6 +193,23 @@ class ServiceMemoTransferGenerationTest {
         org.mockito.Mockito.verify(hrDocumentService).ensureLoadChangeDraft(
                 org.mockito.ArgumentMatchers.same(memo),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.eq("Кадры"));
         org.mockito.Mockito.verify(hrDocumentService).onLoadMemoReceived(memo);
+    }
+
+    @Test
+    void hrCanReceiveLoadMemoBeforeEmploymentContractIsFilled() {
+        ServiceMemo memo = new ServiceMemo(); memo.setId(78L); memo.setFioTeacher("Сидоров С.С.");
+        memo.setStatus(ServiceMemo.Status.PROCESSED); memo.setAcademicYear("2025/2026");
+        memo.setChangeStartDate(LocalDate.of(2025,10,11));
+        when(serviceMemoRepository.findById(78L)).thenReturn(java.util.Optional.of(memo));
+        when(employmentContractRepository.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(1L)).thenReturn(List.of());
+
+        service.receiveByHr(78L,"Кадры");
+
+        assertTrue(memo.getStatus()==ServiceMemo.Status.RECEIVED_BY_HR);
+        assertTrue(Objects.equals(1L,memo.getTeacherId()));
+        assertTrue(memo.getContractId()==null);
+        org.mockito.Mockito.verify(hrDocumentService,org.mockito.Mockito.never()).ensureLoadChangeDraft(any(),any(),anyString());
+        org.mockito.Mockito.verify(hrDocumentService,org.mockito.Mockito.never()).onLoadMemoReceived(any());
     }
 
     @Test

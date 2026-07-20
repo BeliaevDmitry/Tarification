@@ -174,12 +174,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 }
 
                 TeacherDirectoryEntry teacher = resolveTeacher(aggregate);
-                EmploymentContract contract = resolvePrimaryContract(teacher);
+                EmploymentContract contract = findPrimaryContract(teacher).orElse(null);
                 ServiceMemo entity = new ServiceMemo();
                 entity.setAcademicYear(resolveMemoAcademicYear(academicYear));
                 entity.setFioTeacher(aggregate.teacherDisplay());
                 entity.setTeacherId(teacher.getId());
-                entity.setContractId(contract.getId());
+                entity.setContractId(contract == null ? null : contract.getId());
                 entity.setChangeStartDate(aggregate.startDate());
                 entity.setCreatedBy(createdBy);
                 entity.setGeneratedFilename("служебка по нагрузке " + safeName(aggregate.teacherDisplay())
@@ -195,7 +195,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 ));
 
                 ServiceMemo saved = serviceMemoRepository.save(entity);
-                hrDocumentService.createLoadChangeDraft(saved, contract, createdBy);
+                if (contract != null) hrDocumentService.createLoadChangeDraft(saved, contract, createdBy);
                 created.add(saved);
                 latestMemoBySelection.put(selectionKey, saved);
             }
@@ -239,17 +239,17 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 : teacherDirectoryRepository.findById(memo.getTeacherId())
                     .orElseThrow(() -> new IllegalStateException("Работник служебной записки не найден"));
         EmploymentContract contract = memo.getContractId() == null
-                ? resolvePrimaryContract(teacher)
+                ? findPrimaryContract(teacher).orElse(null)
                 : employmentContractRepository.findById(memo.getContractId())
                     .filter(item -> Objects.equals(item.getTeacherId(),teacher.getId()))
-                    .orElseGet(() -> resolvePrimaryContract(teacher));
-        memo.setTeacherId(teacher.getId()); memo.setContractId(contract.getId());
-        hrDocumentService.ensureLoadChangeDraft(memo,contract,username);
+                    .orElseGet(() -> findPrimaryContract(teacher).orElse(null));
+        memo.setTeacherId(teacher.getId()); memo.setContractId(contract == null ? null : contract.getId());
+        if (contract != null) hrDocumentService.ensureLoadChangeDraft(memo,contract,username);
         memo.setStatus(ServiceMemo.Status.RECEIVED_BY_HR);
         memo.setReceivedAt(LocalDateTime.now());
         memo.setReceivedBy(username);
         ServiceMemo saved = serviceMemoRepository.save(memo);
-        hrDocumentService.onLoadMemoReceived(saved);
+        if (contract != null) hrDocumentService.onLoadMemoReceived(saved);
         return saved;
     }
 
@@ -1680,12 +1680,11 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 .orElseThrow(() -> new IllegalStateException("Не найден ID работника для служебной записки: " + aggregate.teacherDisplay()));
     }
 
-    private EmploymentContract resolvePrimaryContract(TeacherDirectoryEntry teacher) {
+    private Optional<EmploymentContract> findPrimaryContract(TeacherDirectoryEntry teacher) {
         List<EmploymentContract> available = employmentContractRepository
                 .findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(teacher.getId());
         return available.stream().filter(EmploymentContract::isActive).filter(EmploymentContract::isPrimaryContract).findFirst()
-                .or(() -> available.stream().filter(EmploymentContract::isActive).findFirst())
-                .orElseThrow(() -> new IllegalStateException("Не найден действующий трудовой договор: " + teacher.getFioTeacher()));
+                .or(() -> available.stream().filter(EmploymentContract::isActive).findFirst());
     }
 
     private String loadSnapshot(TeacherChangeAggregate aggregate, boolean before) {

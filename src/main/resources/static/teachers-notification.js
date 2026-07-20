@@ -7,7 +7,14 @@ const STATUS_LABELS = {WAITING_FOR_MEMO:'Ожидает служебку',DRAFT:
 
 async function api(url, options = {}) {
     const response = await fetch(url, options);
-    if (!response.ok) throw new Error(await response.text());
+    if (!response.ok) {
+        const raw = await response.text();
+        let message = raw;
+        try { const parsed=JSON.parse(raw); message=parsed.error||parsed.message||raw; } catch (_) {
+            if (/<(?:!doctype|html|body)\b/i.test(raw)) message=`Ошибка ${response.status} при обращении к ${url}`;
+        }
+        throw new Error(message || `Ошибка ${response.status}`);
+    }
     return response.headers.get('content-type')?.includes('json') ? response.json() : response;
 }
 function json(method, body) { return {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}; }
@@ -76,6 +83,7 @@ function openEditor(title, fields, onSave, afterOpen) {
     $('#editor-fields').innerHTML = fields;
     $('#editor-error').textContent = '';
     const dialog = $('#editor');
+    $('#editor-save').hidden = false;
     dialog.showModal();
     if (afterOpen) afterOpen();
     $('#editor-save').onclick = async event => {
@@ -90,8 +98,28 @@ function openEditor(title, fields, onSave, afterOpen) {
 
 let teachersCache = [];
 let catalogCache = [];
+async function loadTeachersForDocuments() {
+    try { return await api('/api/hr-documents/teachers'); }
+    catch (primaryError) {
+        try {
+            const teachers = await api('/api/teachers');
+            return teachers.filter(teacher=>!teacher.archived).map(teacher=>({id:teacher.id,fio:teacher.fioTeacher}));
+        } catch (_) { throw primaryError; }
+    }
+}
 async function loadReferenceData() {
-    [teachersCache, catalogCache] = await Promise.all([api('/api/hr-documents/teachers'), api('/api/hr-documents/catalog')]);
+    const [teachersResult, catalogResult] = await Promise.allSettled([loadTeachersForDocuments(), api('/api/hr-documents/catalog')]);
+    if (teachersResult.status === 'rejected') throw new Error(`Не удалось загрузить список работников: ${teachersResult.reason?.message || teachersResult.reason}`);
+    teachersCache = teachersResult.value;
+    catalogCache = catalogResult.status === 'fulfilled' ? catalogResult.value : [];
+    return catalogResult.status === 'rejected' ? 'Справочник обязанностей временно недоступен. Можно создать служебную записку вручную.' : '';
+}
+
+function showReferenceLoadError(error) {
+    openEditor('Создание служебной записки',
+        row('Не удалось открыть форму', `<div class="error">${esc(error.message || error)}</div>`,'Обновите страницу и повторите попытку. Если ошибка останется, передайте этот текст администратору.'),
+        async () => {});
+    $('#editor-save').hidden = true;
 }
 
 $('#add-contract').addEventListener('click', async () => {
@@ -176,17 +204,23 @@ async function loadMemos() {
         api('/api/hr-documents/teachers')
     ]);
     const teacherNames = new Map(teachers.map(t => [t.id,t.fio]));
-    const dutyRows = dutyMemos.map(memo => ({sortDate:memo.documentDate||memo.createdAt,type:'Дополнительная обязанность',html:`<tr><td>${esc(memo.documentDate)}</td><td>${esc(teacherNames.get(memo.teacherId) || memo.teacherId || 'Не указан')}</td><td>Дополнительная обязанность</td><td>${esc(memo.assignmentName || memo.title)}</td><td>${esc(STATUS_LABELS[memo.status] || memo.status)}</td><td><a href="/api/hr-documents/memos/${memo.id}/download">DOCX</a>${memo.status==='DRAFT'?` <button data-issue-memo="${memo.id}">Выпустить</button>`:''}${memo.status==='ISSUED'?` <button data-receive-memo="${memo.id}">Получена кадрами</button>`:''} ${memo.status!=='ANNULLED'?`<button data-annul-memo="${memo.id}">Аннулировать</button>`:''}</td></tr>`}));
-    const loadRows = loadMemos.map(memo => ({sortDate:memo.startDate||memo.createdAt,type:'Изменение нагрузки',html:`<tr><td>${esc(memo.startDate)}</td><td>${esc(teacherNames.get(memo.teacherId) || memo.fioTeacher || 'Не указан')}</td><td>Изменение нагрузки</td><td>Нагрузка с ${esc(memo.startDate)}</td><td>${esc(STATUS_LABELS[memo.status] || memo.status)}</td><td><a href="/api/hr-documents/load-memos/${memo.id}/download">DOCX</a>${memo.status==='PROCESSED'?` <button data-receive-load-memo="${memo.id}">Получена кадрами</button>`:''} ${!['ANNULLED','ARCHIVED'].includes(memo.status)?`<button data-annul-load-memo="${memo.id}">Аннулировать</button>`:''}</td></tr>`}));
+    const dutyRows = dutyMemos.map(memo => ({sortDate:memo.documentDate||memo.createdAt,type:'Дополнительная обязанность',html:`<tr><td>${esc(memo.documentDate)}</td><td>${esc(teacherNames.get(memo.teacherId) || memo.teacherId || 'Не указан')}</td><td>Дополнительная обязанность</td><td>${esc(memo.assignmentName || memo.title)}</td><td>${esc(STATUS_LABELS[memo.status] || memo.status)}${memo.contractId?'':' · ожидает договор'}</td><td><a href="/api/hr-documents/memos/${memo.id}/download">DOCX</a>${memo.status==='DRAFT'?` <button data-issue-memo="${memo.id}">Выпустить</button>`:''}${memo.status==='ISSUED'?` <button data-receive-memo="${memo.id}">Получена кадрами</button>`:''} ${memo.status!=='ANNULLED'?`<button data-annul-memo="${memo.id}">Аннулировать</button>`:''}</td></tr>`}));
+    const loadRows = loadMemos.map(memo => ({sortDate:memo.startDate||memo.createdAt,type:'Изменение нагрузки',html:`<tr><td>${esc(memo.startDate)}</td><td>${esc(teacherNames.get(memo.teacherId) || memo.fioTeacher || 'Не указан')}</td><td>Изменение нагрузки</td><td>Нагрузка с ${esc(memo.startDate)}</td><td>${esc(STATUS_LABELS[memo.status] || memo.status)}${memo.contractId?'':' · ожидает договор'}</td><td><a href="/api/hr-documents/load-memos/${memo.id}/download">DOCX</a>${memo.status==='PROCESSED'?` <button data-receive-load-memo="${memo.id}">Получена кадрами</button>`:''} ${!['ANNULLED','ARCHIVED'].includes(memo.status)?`<button data-annul-load-memo="${memo.id}">Аннулировать</button>`:''}</td></tr>`}));
     $('#memo-body').innerHTML = [...dutyRows,...loadRows].sort((a,b)=>String(b.sortDate).localeCompare(String(a.sortDate))).map(row=>row.html).join('');
 }
 
 $('#add-memo').addEventListener('click', async () => {
-    await loadReferenceData();
+    const trigger = $('#add-memo'), originalText = trigger.textContent;
+    trigger.disabled = true; trigger.textContent = 'Загрузка…';
+    let referenceWarning = '';
+    try { referenceWarning = await loadReferenceData(); }
+    catch (error) { showReferenceLoadError(error); return; }
+    finally { trigger.disabled = false; trigger.textContent = originalText; }
     const period = defaultPeriod();
     openEditor('Создание служебной записки',
+        (referenceWarning ? row('Внимание', `<div class="muted">${esc(referenceWarning)}</div>`) : '') +
         row('Работник', `<select id="memo-teacher" name="teacherId" required><option value="">Выберите работника</option>${teachersCache.map(t=>option(t.id,t.fio)).join('')}</select>`,'Служебная записка будет связана с постоянным ID педагога.') +
-        row('Трудовой договор', '<select id="memo-contract" name="contractId" required><option value="">Сначала выберите работника</option></select>','Без действующего договора служебку и допсоглашение создать нельзя.') +
+        row('Трудовой договор', '<select id="memo-contract" name="contractId"><option value="">Можно заполнить позже</option></select>','Договор необязателен для служебной записки. После его заполнения система автоматически создаст и привяжет допсоглашение.') +
         row('Обязанность из справочника', `<div class="hr-toolbar"><select id="memo-catalog" name="catalogItemId"><option value="">Добавить вручную</option>${catalogCache.map(c=>option(c.id,`${c.name} — ${CATEGORY_LABELS[c.category]||c.category}`)).join('')}</select><button id="memo-manual" type="button">Добавить вручную</button></div>`,'Готовый вариант можно отредактировать для конкретного работника.') +
         row('Обязанность или работа', '<input id="memo-assignment" name="assignmentName" required placeholder="Например: заведование кабинетом">','Этого названия достаточно: текст служебной записки система сформирует автоматически.') +
         row('Пункт трудового договора', clausePicker('memo','2.4'),'Выберите 2.1, 2.4, 2.5 или вариант «Добавить вручную».') +
@@ -204,12 +238,12 @@ $('#add-memo').addEventListener('click', async () => {
         () => {
             const teacherSelect = $('#memo-teacher'), contractSelect = $('#memo-contract'), catalogSelect = $('#memo-catalog'); bindClausePicker('memo');
             async function updateContracts() {
-                const teacherId = teacherSelect.value; contractSelect.innerHTML = '<option value="">Выберите действующий договор</option>';
+                const teacherId = teacherSelect.value; contractSelect.innerHTML = '<option value="">Можно заполнить позже</option>';
                 if (!teacherId) return;
                 const contracts = await api(`/api/hr-documents/contracts?teacherId=${teacherId}`);
                 const activeContracts = contracts.filter(c=>c.active);
                 contractSelect.innerHTML += activeContracts.map(c=>option(c.id,`№ ${c.contractNumber} от ${c.contractDate} — ${c.positionName}`,c.primaryContract)).join('');
-                if (!activeContracts.length) contractSelect.innerHTML = '<option value="">Нет действующего трудового договора</option>';
+                if (!activeContracts.length) contractSelect.innerHTML = '<option value="">Пока нет договора — служебка всё равно сформируется</option>';
             }
             function setSeparate(value) {
                 const radio = document.querySelector(`input[name="separate"][value="${value}"]`); if (radio) radio.checked = true;
