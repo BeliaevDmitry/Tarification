@@ -1,6 +1,9 @@
 package org.school.personalLoad.model;
 
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import javax.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -10,11 +13,18 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "additional_agreement")
 public class AdditionalAgreement {
-    public enum Status { WAITING_FOR_MEMO, DRAFT, READY, ISSUED, SIGNING, SIGNED, EXPIRED, CANCELLED, ANNULLED, REQUIRES_DECISION }
+    public enum Status { WAITING_FOR_MEMO, DRAFT, READY, ISSUED, SIGNING, SIGNED, EXPIRED, CANCELLED, ANNULLED, REJECTED, REQUIRES_DECISION }
     public enum ChangeMode { AMEND, CANCEL_AND_RESTATE }
     public enum Kind { PAY_TERMS, ADDITIONAL_WORK }
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
-    @Column(name = "contract_id", nullable = false) private Long contractId;
+    @Column(name = "teacher_id") private Long teacherId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "teacher_id", insertable = false, updatable = false)
+    @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private TeacherDirectoryEntry teacher;
+    @Column(name = "contract_id") private Long contractId;
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "contract_id", insertable = false, updatable = false) private EmploymentContract contract;
     private Long serviceMemoId;
     private Long loadServiceMemoId;

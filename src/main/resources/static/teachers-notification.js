@@ -3,7 +3,7 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp
 const academicYear = () => window.getStoredAcademicYear ? window.getStoredAcademicYear() : '';
 const canViewPersonal = () => Boolean(window.tarificationAuth?.admin || window.tarificationTabPermissions?.HR_PERSONAL_DATA?.canView);
 const CATEGORY_LABELS = {COMPENSATION:'Компенсационная выплата', INCENTIVE:'Стимулирующая выплата', ADDITIONAL_WORK:'Дополнительная работа'};
-const STATUS_LABELS = {WAITING_FOR_MEMO:'Ожидает служебку',DRAFT:'Черновик',READY:'Готов',PROCESSED:'Выпущена',ISSUED:'Выпущена',RECEIVED_BY_HR:'Получена кадрами',EXECUTED:'Исполнена',SIGNED:'Подписано',REQUIRES_DECISION:'Требуется решение',ANNULLED:'Аннулирована'};
+const STATUS_LABELS = {WAITING_FOR_MEMO:'Ожидает служебку',DRAFT:'Черновик',READY:'Готов',PROCESSED:'Выпущена',ISSUED:'Выпущена',RECEIVED_BY_HR:'Получена кадрами',EXECUTED:'Исполнена',SIGNED:'Подписано',REJECTED:'Отклонено',REQUIRES_DECISION:'Требуется решение',ANNULLED:'Аннулирована'};
 
 async function api(url, options = {}) {
     const response = await fetch(url, options);
@@ -78,20 +78,22 @@ function renderAgreement(agreement, contractId) {
 }
 function renderAgreementActions(agreement, contractId) {
     if (agreement.status === 'ANNULLED') return '<span class="muted">Документ аннулирован</span>';
+    if (agreement.status === 'REJECTED') return '<span class="muted">Черновик отклонён; связанную служебку можно удалить</span>';
     const waiting = agreement.status === 'WAITING_FOR_MEMO';
     const changeMode = (agreement.serviceMemoId || agreement.loadServiceMemoId) && ['WAITING_FOR_MEMO','DRAFT','READY','REQUIRES_DECISION'].includes(agreement.status)
         ? `<button data-change-mode="${agreement.id}" data-contract="${contractId}">Способ изменения</button>` : '';
     const actions = waiting
         ? '<span class="muted">Выпуск заблокирован до получения служебки</span>'
         : `<button data-download="${agreement.id}">DOCX</button> <button data-upload="${agreement.id}">Заменить</button> <button data-sign="${agreement.id}">Подписано</button>`;
-    return `${changeMode} ${actions} ${agreement.status!=='ANNULLED'?`<button data-annul="${agreement.id}">Аннулировать</button>`:''}`;
+    const reject=['WAITING_FOR_MEMO','DRAFT','READY','REQUIRES_DECISION'].includes(agreement.status)?`<button data-reject="${agreement.id}">Отклонить</button>`:'';
+    return `${changeMode} ${actions} ${reject} ${agreement.status!=='ANNULLED'?`<button data-annul="${agreement.id}">Аннулировать</button>`:''}`;
 }
 function renderAgreements() {
     const body=$('#agreement-body');if(!body)return;
     const query=$('#agreement-search').value.trim().toLowerCase(),status=$('#agreement-status').value;
     const rows=agreementRows.filter(row=>(!status||row.agreement.status===status)&&(!query||JSON.stringify(row).toLowerCase().includes(query)))
         .sort((a,b)=>String(b.agreement.documentDate||b.agreement.issuedAt||'').localeCompare(String(a.agreement.documentDate||a.agreement.issuedAt||'')));
-    body.innerHTML=rows.length?rows.map(row=>{const agreement=row.agreement;return `<tr><td>${esc(row.fio||`ID ${row.teacherId}`)}</td><td>№ ${esc(row.contractNumber||row.contractId)}<br><span class="muted">${esc(row.position)}</span></td><td><b>${esc(agreement.visibleNumber||agreement.internalNumber)}</b><br><span class="muted">от ${esc(agreement.documentDate||'—')}</span></td><td>${esc(agreement.validFrom)} — ${esc(agreement.validTo)}</td><td>${esc(agreement.summary||agreement.kind)}${agreement.serviceMemoId?`<br><span class="muted">Служебка ID ${agreement.serviceMemoId}</span>`:''}${agreement.loadServiceMemoId?`<br><span class="muted">Служебка по нагрузке ID ${agreement.loadServiceMemoId}</span>`:''}</td><td>${esc(STATUS_LABELS[agreement.status]||agreement.status)}</td><td>${renderAgreementActions(agreement,row.contractId)}</td></tr>`}).join(''):'<tr><td colspan="7">Дополнительных соглашений по выбранным условиям нет</td></tr>';
+    body.innerHTML=rows.length?rows.map(row=>{const agreement=row.agreement;const contract=row.contractId?`№ ${esc(row.contractNumber||row.contractId)}<br><span class="muted">${esc(row.position)}</span>`:'<span class="muted">Не заполнен — черновик уже сформирован</span>';return `<tr><td>${esc(row.fio||`ID ${row.teacherId}`)}</td><td>${contract}</td><td><b>${esc(agreement.visibleNumber||agreement.internalNumber)}</b><br><span class="muted">от ${esc(agreement.documentDate||'—')}</span></td><td>${esc(agreement.validFrom)} — ${esc(agreement.validTo)}</td><td>${esc(agreement.summary||agreement.kind)}${agreement.serviceMemoId?`<br><span class="muted">Служебка ID ${agreement.serviceMemoId}</span>`:''}${agreement.loadServiceMemoId?`<br><span class="muted">Служебка по нагрузке ID ${agreement.loadServiceMemoId}</span>`:''}</td><td>${esc(STATUS_LABELS[agreement.status]||agreement.status)}</td><td>${renderAgreementActions(agreement,row.contractId)}</td></tr>`}).join(''):'<tr><td colspan="7">Дополнительных соглашений по выбранным условиям нет</td></tr>';
 }
 $('#journal-search').addEventListener('input', renderJournal);
 $('#journal-status').addEventListener('change', renderJournal);
@@ -211,16 +213,20 @@ async function handleAgreementAction(event) {
         input.click();
     }
     if (target.dataset.sign) { await api(`/api/hr-documents/agreements/${target.dataset.sign}/status`, json('POST',{status:'SIGNED'})); await Promise.all([loadJournal(),loadAgreements()]); }
+    if (target.dataset.reject && confirm('Отклонить этот черновик дополнительного соглашения?')) { await api(`/api/hr-documents/agreements/${target.dataset.reject}/status`, json('POST',{status:'REJECTED'})); await Promise.all([loadJournal(),loadAgreements(),loadMemos()]); }
     if (target.dataset.annul) { const reason = prompt('Причина аннулирования'); if (reason) { await api(`/api/hr-documents/agreements/${target.dataset.annul}/annul`, json('POST',{reason})); await Promise.all([loadJournal(),loadAgreements()]); } }
 }
 $('#journal-body').addEventListener('click',handleAgreementAction);
 $('#agreement-body').addEventListener('click',handleAgreementAction);
 
-$('#batch-annual').addEventListener('click', async () => {
+async function createAnnualAgreements() {
     if (!confirm('Создать черновики всем сотрудникам с основной нагрузкой?')) return;
-    await api('/api/hr-documents/agreements/batch-annual', json('POST',{academicYear:academicYear(),documentDate:new Date().toISOString().slice(0,10),contractIds:[]}));
-    loadJournal();
-});
+    const result=await api('/api/hr-documents/agreements/batch-annual', json('POST',{academicYear:academicYear(),documentDate:new Date().toISOString().slice(0,10),contractIds:[]}));
+    await Promise.all([loadJournal(),loadAgreements()]);
+    showNotice(result.created?`Создано допсоглашений: ${result.created}.`:'Все допсоглашения на 1 сентября уже сформированы.');
+}
+$('#batch-annual').addEventListener('click',createAnnualAgreements);
+$('#batch-annual-agreements').addEventListener('click',createAnnualAgreements);
 
 async function loadMemos() {
     const [dutyMemos, loadMemos, teachers] = await Promise.all([
@@ -229,7 +235,7 @@ async function loadMemos() {
         loadTeachersForDocuments()
     ]);
     const teacherNames = new Map(teachers.map(t => [t.id,t.fio]));
-    const dutyRows = dutyMemos.map(memo => ({sortDate:memo.documentDate||memo.createdAt,type:'Дополнительная обязанность',html:`<tr><td>${esc(memo.documentDate)}</td><td>${esc(teacherNames.get(memo.teacherId) || memo.teacherId || 'Не указан')}</td><td>Дополнительная обязанность</td><td>${esc(memo.assignmentName || memo.title)}</td><td>${esc(STATUS_LABELS[memo.status] || memo.status)}${memo.contractId?'':' · ожидает договор'}</td><td><a href="/api/hr-documents/memos/${memo.id}/download">DOCX</a>${memo.status==='DRAFT'?` <button data-issue-memo="${memo.id}">Выпустить</button>`:''}${memo.status==='ISSUED'?` <button data-receive-memo="${memo.id}">Получена кадрами</button>`:''} ${memo.status!=='ANNULLED'?`<button data-annul-memo="${memo.id}">Аннулировать</button>`:`<button data-delete-memo="${memo.id}">Удалить</button>`}</td></tr>`}));
+    const dutyRows = dutyMemos.map(memo => ({sortDate:memo.documentDate||memo.createdAt,type:'Дополнительная обязанность',html:`<tr><td>${esc(memo.documentDate)}</td><td>${esc(teacherNames.get(memo.teacherId) || memo.teacherId || 'Не указан')}</td><td>Дополнительная обязанность</td><td>${esc(memo.assignmentName || memo.title)}</td><td>${esc(STATUS_LABELS[memo.status] || memo.status)}${memo.contractId?'':' · ожидает договор'}</td><td><a href="/api/hr-documents/memos/${memo.id}/download">DOCX</a>${memo.status==='DRAFT'?` <button data-issue-memo="${memo.id}">Выпустить</button>`:''}${memo.status==='ISSUED'?` <button data-receive-memo="${memo.id}">Получена кадрами</button>`:''} ${memo.deletable?`<button data-delete-memo="${memo.id}">Удалить</button>`:memo.status!=='ANNULLED'?`<button data-annul-memo="${memo.id}">Аннулировать</button>`:''}</td></tr>`}));
     const loadRows = loadMemos.map(memo => ({sortDate:memo.startDate||memo.createdAt,type:'Изменение нагрузки',html:`<tr><td>${esc(memo.startDate)}</td><td>${esc(teacherNames.get(memo.teacherId) || memo.fioTeacher || 'Не указан')}</td><td>Изменение нагрузки</td><td>Нагрузка с ${esc(memo.startDate)}</td><td>${esc(STATUS_LABELS[memo.status] || memo.status)}${memo.contractId?'':' · ожидает договор'}</td><td><a href="/api/hr-documents/load-memos/${memo.id}/download">DOCX</a>${memo.status==='PROCESSED'?` <button data-receive-load-memo="${memo.id}">Получена кадрами</button>`:''} ${!['ANNULLED','ARCHIVED'].includes(memo.status)?`<button data-annul-load-memo="${memo.id}">Аннулировать</button>`:memo.status==='ANNULLED'?`<button data-delete-load-memo="${memo.id}">Удалить</button>`:''}</td></tr>`}));
     $('#memo-body').innerHTML = [...dutyRows,...loadRows].sort((a,b)=>String(b.sortDate).localeCompare(String(a.sortDate))).map(row=>row.html).join('');
 }
@@ -297,7 +303,7 @@ $('#memo-body').addEventListener('click', async event => {
     if (event.target.dataset.issueMemo) { await api(`/api/hr-documents/memos/${event.target.dataset.issueMemo}/status`,json('POST',{status:'ISSUED'})); loadMemos(); }
     if (event.target.dataset.receiveMemo) { await api(`/api/hr-documents/memos/${event.target.dataset.receiveMemo}/status`,json('POST',{status:'RECEIVED_BY_HR'})); await Promise.all([loadMemos(),loadJournal()]); }
     if (event.target.dataset.annulMemo) { const reason=prompt('Причина аннулирования'); if(reason){await api(`/api/hr-documents/memos/${event.target.dataset.annulMemo}/annul`,json('POST',{reason}));loadMemos();} }
-    if (event.target.dataset.deleteMemo && confirm('Удалить аннулированную служебную записку без возможности восстановления?')) { await api(`/api/hr-documents/memos/${event.target.dataset.deleteMemo}`,{method:'DELETE'}); await Promise.all([loadMemos(),loadJournal()]); showNotice('Аннулированная служебная записка удалена.'); }
+    if (event.target.dataset.deleteMemo && confirm('Удалить служебную записку без возможности восстановления?')) { await api(`/api/hr-documents/memos/${event.target.dataset.deleteMemo}`,{method:'DELETE'}); await Promise.all([loadMemos(),loadJournal(),loadAgreements()]); showNotice('Служебная записка удалена.'); }
     if (event.target.dataset.receiveLoadMemo) { await api(`/api/hr-documents/load-memos/${event.target.dataset.receiveLoadMemo}/receive`,{method:'POST'}); await Promise.all([loadMemos(),loadJournal()]); }
     if (event.target.dataset.annulLoadMemo) { const reason=prompt('Причина аннулирования'); if(reason){await api(`/api/hr-documents/load-memos/${event.target.dataset.annulLoadMemo}/annul`,json('POST',{reason}));await Promise.all([loadMemos(),loadJournal()]);} }
     if (event.target.dataset.deleteLoadMemo && confirm('Удалить аннулированную служебную записку по нагрузке без возможности восстановления?')) { await api(`/api/hr-documents/load-memos/${event.target.dataset.deleteLoadMemo}`,{method:'DELETE'}); await Promise.all([loadMemos(),loadJournal()]); showNotice('Аннулированная служебная записка удалена.'); }

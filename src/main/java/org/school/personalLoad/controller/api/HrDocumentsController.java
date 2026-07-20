@@ -79,7 +79,7 @@ public class HrDocumentsController {
 
     @GetMapping("/agreements") public Object agreements(@RequestParam String academicYear){return service.agreementRows(academicYear);}
     @PostMapping("/agreements") public Object agreement(@RequestBody AgreementRequest r,HttpServletRequest req){return service.createAgreement(r,user(req).getUsername());}
-    @PostMapping("/agreements/batch-annual") public Object annual(@RequestBody BatchAgreementRequest r,HttpServletRequest req){return service.createAnnualDrafts(r,user(req).getUsername());}
+    @PostMapping("/agreements/batch-annual") public Object annual(@RequestBody BatchAgreementRequest r,HttpServletRequest req){return Map.of("created",service.createAnnualDrafts(r,user(req).getUsername()).size());}
     @PostMapping("/agreements/{id}/issue") public Object issue(@PathVariable Long id,HttpServletRequest req){return service.issue(id,user(req).getUsername());}
     @PostMapping("/agreements/{id}/status") public Object agreementStatus(@PathVariable Long id,@RequestBody StatusRequest r){return service.agreementStatus(id,AdditionalAgreement.Status.valueOf(r.status()));}
     @PostMapping("/agreements/{id}/change-mode") public Object agreementChangeMode(@PathVariable Long id,@RequestBody ChangeModeRequest r,HttpServletRequest req){return service.chooseChangeMode(id,AdditionalAgreement.ChangeMode.valueOf(r.changeMode()),r.replacesAgreementId(),user(req).getUsername());}

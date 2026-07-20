@@ -41,7 +41,7 @@ public class HrDocumentService {
 
     @Transactional(readOnly = true) public List<JournalRow> journal(String academicYear) {
         Map<Long,List<AdditionalAgreement>> byContract = agreements.findAllByAcademicYearOrderByCreatedAtDesc(academicYear)
-                .stream().collect(Collectors.groupingBy(AdditionalAgreement::getContractId));
+                .stream().filter(a -> a.getContractId() != null).collect(Collectors.groupingBy(AdditionalAgreement::getContractId));
         return contracts.findAllByActiveTrueOrderByTeacherIdAsc().stream().map(c -> {
             TeacherDirectoryEntry teacher = teachers.findById(c.getTeacherId()).orElse(null);
             boolean complete = personalData.findByTeacherId(c.getTeacherId()).map(this::isComplete).orElse(false);
@@ -56,9 +56,10 @@ public class HrDocumentService {
 
     @Transactional(readOnly = true) public List<AgreementListRow> agreementRows(String academicYear){
         return agreements.findAllByAcademicYearOrderByCreatedAtDesc(academicYear).stream().map(agreement->{
-            EmploymentContract contract=contracts.findById(agreement.getContractId()).orElse(null);
-            TeacherDirectoryEntry teacher=contract==null?null:teachers.findById(contract.getTeacherId()).orElse(null);
-            return new AgreementListRow(contract==null?null:contract.getTeacherId(),teacher==null?"":teacher.getFioTeacher(),
+            EmploymentContract contract=agreement.getContractId()==null?null:contracts.findById(agreement.getContractId()).orElse(null);
+            Long teacherId=agreementTeacherId(agreement,contract);
+            TeacherDirectoryEntry teacher=teacherId==null?null:teachers.findById(teacherId).orElse(null);
+            return new AgreementListRow(teacherId,teacher==null?"":teacher.getFioTeacher(),
                     agreement.getContractId(),contract==null?"":contract.getContractNumber(),contract==null?"":contract.getPositionName(),view(agreement));
         }).toList();
     }
@@ -126,17 +127,25 @@ public class HrDocumentService {
                 "contractClause", clause, "separateAgreement", separate, "amount", amount == null ? "" : amount.toPlainString())));
         m.setCreatedBy(username); m.setDocumentFilename("Служебная_записка_" + teacher.getFioTeacher().replace(' ', '_') + ".docx");
         m.setDocumentContent(generateMemo(m)); m = memos.save(m);
-        if (contract != null) ensureDutyAgreement(m, contract, username);
+        ensureDutyAgreement(m, contract, username);
         return m;
     }
-    @Transactional(readOnly = true) public List<MemoView> memos(String year) {
-        return memos.findAllByAcademicYearOrderByCreatedAtDesc(year).stream().map(this::memoView).toList();
+    @Transactional public List<MemoView> memos(String year) {
+        List<HrServiceMemo> result=memos.findAllByAcademicYearOrderByCreatedAtDesc(year);
+        result.stream().filter(memo->memo.getStatus()!=HrServiceMemo.Status.ANNULLED)
+                .filter(memo->agreements.findAllByServiceMemoId(memo.getId()).isEmpty())
+                .forEach(memo->ensureDutyAgreement(memo,primaryContract(memo.getTeacherId()),firstPresent(memo.getCreatedBy(),"system")));
+        return result.stream().map(this::memoView).toList();
     }
 
+    @Transactional(readOnly = true)
     public MemoView memoView(HrServiceMemo memo) {
+        List<AdditionalAgreement> linked=memo.getId()==null?List.of():agreements.findAllByServiceMemoId(memo.getId());
+        boolean deletable=memo.getStatus()==HrServiceMemo.Status.ANNULLED
+                || (!linked.isEmpty()&&linked.stream().allMatch(a->a.getStatus()==AdditionalAgreement.Status.REJECTED));
         return new MemoView(memo.getId(),memo.getAcademicYear(),memo.getTeacherId(),memo.getContractId(),memo.getCatalogItemId(),
                 memo.getTitle(),memo.getDocumentDate(),memo.getAssignmentName(),memo.getAmount(),memo.getValidFrom(),memo.getValidTo(),
-                memo.isSeparateAgreement(),memo.getStatus().name(),memo.getCreatedAt(),memo.getCreatedBy());
+                memo.isSeparateAgreement(),memo.getStatus().name(),memo.getCreatedAt(),memo.getCreatedBy(),deletable);
     }
 
     @Transactional(readOnly = true) public List<HrCatalogItem> catalog() {
@@ -163,6 +172,7 @@ public class HrDocumentService {
         }
         if (status == HrServiceMemo.Status.RECEIVED_BY_HR) {
             m.setReceivedAt(LocalDateTime.now()); m.setReceivedBy(username);
+            ensureDutyAgreement(m,primaryContract(m.getTeacherId()),username);
             releaseWaiting(agreements.findAllByServiceMemoId(id));
         }
         return memos.save(m);
@@ -178,16 +188,20 @@ public class HrDocumentService {
 
     @Transactional public void deleteAnnulledMemo(Long id, String username) {
         HrServiceMemo memo=memo(id);
-        if(memo.getStatus()!=HrServiceMemo.Status.ANNULLED)
-            throw new ResponseStatusException(CONFLICT,"Удалить можно только аннулированную служебную записку");
         List<AdditionalAgreement> linked=agreements.findAllByServiceMemoId(id);
+        boolean allRejected=!linked.isEmpty()&&linked.stream().allMatch(a->a.getStatus()==AdditionalAgreement.Status.REJECTED);
+        if(memo.getStatus()!=HrServiceMemo.Status.ANNULLED&&!allRejected)
+            throw new ResponseStatusException(CONFLICT,"Удалить можно аннулированную служебную записку либо служебку с отклонённым допсоглашением");
         boolean hasIssuedAgreement=linked.stream().anyMatch(a->!EnumSet.of(AdditionalAgreement.Status.WAITING_FOR_MEMO,
                 AdditionalAgreement.Status.DRAFT,AdditionalAgreement.Status.READY,AdditionalAgreement.Status.REQUIRES_DECISION,
-                AdditionalAgreement.Status.ANNULLED).contains(a.getStatus()));
+                AdditionalAgreement.Status.REJECTED,AdditionalAgreement.Status.ANNULLED).contains(a.getStatus()));
         if(hasIssuedAgreement)throw new ResponseStatusException(CONFLICT,"Нельзя удалить служебную записку: по ней уже оформлено дополнительное соглашение");
         linked.forEach(a->{
-            a.setServiceMemoId(null); a.setStatus(AdditionalAgreement.Status.ANNULLED);
-            if(a.getAnnulledAt()==null){a.setAnnulledAt(LocalDateTime.now());a.setAnnulledBy(username);a.setAnnulReason("Удалена аннулированная служебная записка");}
+            a.setServiceMemoId(null);
+            if(a.getStatus()!=AdditionalAgreement.Status.REJECTED){
+                a.setStatus(AdditionalAgreement.Status.ANNULLED);
+                if(a.getAnnulledAt()==null){a.setAnnulledAt(LocalDateTime.now());a.setAnnulledBy(username);a.setAnnulReason("Удалена аннулированная служебная записка");}
+            }
             agreements.save(a);
         });
         memos.delete(memo);
@@ -200,11 +214,14 @@ public class HrDocumentService {
         List<AdditionalAgreement> linked=agreements.findAllByLoadServiceMemoId(id);
         boolean hasIssuedAgreement=linked.stream().anyMatch(a->!EnumSet.of(AdditionalAgreement.Status.WAITING_FOR_MEMO,
                 AdditionalAgreement.Status.DRAFT,AdditionalAgreement.Status.READY,AdditionalAgreement.Status.REQUIRES_DECISION,
-                AdditionalAgreement.Status.ANNULLED).contains(a.getStatus()));
+                AdditionalAgreement.Status.REJECTED,AdditionalAgreement.Status.ANNULLED).contains(a.getStatus()));
         if(hasIssuedAgreement)throw new ResponseStatusException(CONFLICT,"Нельзя удалить служебную записку: по ней уже оформлено дополнительное соглашение");
         linked.forEach(a->{
-            a.setLoadServiceMemoId(null);a.setStatus(AdditionalAgreement.Status.ANNULLED);
-            if(a.getAnnulledAt()==null){a.setAnnulledAt(LocalDateTime.now());a.setAnnulledBy(username);a.setAnnulReason("Удалена аннулированная служебная записка по нагрузке");}
+            a.setLoadServiceMemoId(null);
+            if(a.getStatus()!=AdditionalAgreement.Status.REJECTED){
+                a.setStatus(AdditionalAgreement.Status.ANNULLED);
+                if(a.getAnnulledAt()==null){a.setAnnulledAt(LocalDateTime.now());a.setAnnulledBy(username);a.setAnnulReason("Удалена аннулированная служебная записка по нагрузке");}
+            }
             agreements.save(a);
         });
         loadMemos.delete(memo);
@@ -217,9 +234,15 @@ public class HrDocumentService {
     }
 
     @Transactional public AdditionalAgreement createAgreement(AgreementRequest r, String username) {
+        if(r.contractId()==null)throw new ResponseStatusException(BAD_REQUEST,"Выберите трудовой договор");
         EmploymentContract c = contracts.findById(r.contractId()).orElseThrow(() -> new ResponseStatusException(NOT_FOUND,"Договор не найден"));
+        return createAgreementForTeacher(r,c.getTeacherId(),c,username);
+    }
+
+    private AdditionalAgreement createAgreementForTeacher(AgreementRequest r,Long teacherId,EmploymentContract c,String username) {
+        teachers.findById(teacherId).orElseThrow(() -> new ResponseStatusException(NOT_FOUND,"Работник не найден"));
         AdditionalAgreement old = r.replacesAgreementId() == null ? null : agreement(r.replacesAgreementId());
-        AdditionalAgreement a = new AdditionalAgreement(); a.setContractId(c.getId()); a.setServiceMemoId(r.serviceMemoId());
+        AdditionalAgreement a = new AdditionalAgreement(); a.setTeacherId(teacherId); a.setContractId(c==null?null:c.getId()); a.setServiceMemoId(r.serviceMemoId());
         a.setAcademicYear(required(r.academicYear(),"Учебный год")); a.setDocumentDate(r.documentDate());
         a.setValidFrom(Objects.requireNonNull(r.validFrom(),"Начало периода обязательно"));
         a.setValidTo(Objects.requireNonNull(r.validTo(),"Конец периода обязателен"));
@@ -227,19 +250,20 @@ public class HrDocumentService {
         a.setChangeMode(r.changeMode() == null ? AdditionalAgreement.ChangeMode.AMEND : r.changeMode());
         a.setSummary(r.summary()); a.setConditionsJson(r.conditionsJson()); a.setTotalAmount(r.totalAmount()); a.setCreatedBy(username);
         if (a.getKind() == AdditionalAgreement.Kind.PAY_TERMS && a.getTotalAmount() == null) {
-            BigDecimal calculated = loadDetails(c.getTeacherId(), a.getAcademicYear(), a.getValidFrom()).stream()
+            BigDecimal calculated = loadDetails(teacherId, a.getAcademicYear(), a.getValidFrom()).stream()
                     .map(LoadDetail::amount).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
             if (calculated.signum() > 0) a.setTotalAmount(calculated);
         }
         if (old != null && old.getStatus() == AdditionalAgreement.Status.ANNULLED) {
             a.setInternalNumber(old.getInternalNumber()); a.setVisibleNumber(old.getVisibleNumber()); a.setRevision(old.getRevision() + 1); a.setReplacesAgreementId(old.getId());
         } else {
-            a.setInternalNumber(nextNumber(c, r.academicYear()));
-            if ("1811".equals(SchoolCodeResolver.resolve())) a.setVisibleNumber(a.getInternalNumber());
+            a.setInternalNumber(c==null?temporaryNumber(teacherId,r.academicYear()):nextNumber(c, r.academicYear()));
+            if (c!=null&&"1811".equals(SchoolCodeResolver.resolve())) a.setVisibleNumber(a.getInternalNumber());
         }
-        HrPersonalData snapshotData = personalData.findByTeacherId(c.getTeacherId()).orElse(null);
+        HrPersonalData snapshotData = personalData.findByTeacherId(teacherId).orElse(null);
         if (snapshotData != null) a.setPersonalDataSnapshotJson(json(snapshotData));
-        a.setSourceSnapshotJson(json(Map.of("contractId", c.getId(), "createdAt", LocalDateTime.now().toString())));
+        Map<String,Object> source=new LinkedHashMap<>();source.put("teacherId",teacherId);source.put("contractId",c==null?null:c.getId());source.put("createdAt",LocalDateTime.now().toString());
+        a.setSourceSnapshotJson(json(source));
         byte[] doc = generateAgreement(a, c); a.setGeneratedDocument(doc); a.setCurrentDocument(doc);
         a.setCurrentFilename("Дополнительное_соглашение_" + a.getInternalNumber().replace('/','-') + ".docx");
         a = agreements.save(a); saveVersion(a, doc, a.getCurrentFilename(), "GENERATED", username); return a;
@@ -247,12 +271,12 @@ public class HrDocumentService {
 
     @Transactional public AdditionalAgreement createLoadChangeDraft(ServiceMemo memo, EmploymentContract contract, String username) {
         int startYear = Integer.parseInt(memo.getAcademicYear().substring(0, 4));
-        AdditionalAgreement agreement = createAgreement(new AgreementRequest(contract.getId(), null, memo.getAcademicYear(),
+        AdditionalAgreement agreement = createAgreementForTeacher(new AgreementRequest(contract==null?null:contract.getId(), null, memo.getAcademicYear(),
                 memo.getCreatedAt() == null ? LocalDate.now() : memo.getCreatedAt().toLocalDate(), memo.getChangeStartDate(),
                 LocalDate.of(startYear + 1, 8, 31), AdditionalAgreement.Kind.PAY_TERMS,
                 AdditionalAgreement.ChangeMode.AMEND, "Изменение учебной нагрузки с " + memo.getChangeStartDate(),
                 "Изложить условия оплаты труда и пункт 2.1 в новой редакции согласно актуальной нагрузке и Приложению № 1.",
-                null, null), username);
+                null, null),memo.getTeacherId(),contract,username);
         agreement.setLoadServiceMemoId(memo.getId());
         agreement.setStatus(AdditionalAgreement.Status.WAITING_FOR_MEMO);
         return agreements.save(agreement);
@@ -260,10 +284,10 @@ public class HrDocumentService {
 
     private AdditionalAgreement ensureDutyAgreement(HrServiceMemo memo, EmploymentContract contract, String username) {
         return agreements.findAllByServiceMemoId(memo.getId()).stream().findFirst().orElseGet(() -> {
-            AdditionalAgreement agreement = createAgreement(new AgreementRequest(contract.getId(), memo.getId(), memo.getAcademicYear(),
+            AdditionalAgreement agreement = createAgreementForTeacher(new AgreementRequest(contract==null?null:contract.getId(), memo.getId(), memo.getAcademicYear(),
                     memo.getDocumentDate(), memo.getValidFrom(), memo.getValidTo(),
                     memo.isSeparateAgreement() ? AdditionalAgreement.Kind.ADDITIONAL_WORK : AdditionalAgreement.Kind.PAY_TERMS,
-                    AdditionalAgreement.ChangeMode.AMEND, memo.getAssignmentName(), memo.getAgreementText(), memo.getAmount(), null), username);
+                    AdditionalAgreement.ChangeMode.AMEND, memo.getAssignmentName(), memo.getAgreementText(), memo.getAmount(), null),memo.getTeacherId(),contract,username);
             boolean memoReceived = memo.getStatus() == HrServiceMemo.Status.RECEIVED_BY_HR || memo.getStatus() == HrServiceMemo.Status.EXECUTED;
             agreement.setStatus(memoReceived ? AdditionalAgreement.Status.DRAFT : AdditionalAgreement.Status.WAITING_FOR_MEMO);
             return agreements.save(agreement);
@@ -271,6 +295,17 @@ public class HrDocumentService {
     }
 
     private void attachWaitingMemos(EmploymentContract contract) {
+        agreements.findAllByTeacherIdAndContractIdIsNullOrderByCreatedAtDesc(contract.getTeacherId()).forEach(agreement->{
+            agreement.setContractId(contract.getId());
+            if(agreement.getInternalNumber()!=null&&agreement.getInternalNumber().startsWith("БД-")){
+                agreement.setInternalNumber(nextNumber(contract,agreement.getAcademicYear()));
+                agreement.setVisibleNumber("1811".equals(SchoolCodeResolver.resolve())?agreement.getInternalNumber():null);
+            }
+            byte[] doc=generateAgreement(agreement,contract);agreement.setGeneratedDocument(doc);agreement.setCurrentDocument(doc);
+            agreement.setRevision(agreement.getRevision()+1);
+            agreement.setCurrentFilename("Дополнительное_соглашение_"+agreement.getInternalNumber().replace('/','-')+".docx");
+            AdditionalAgreement saved=agreements.save(agreement);saveVersion(saved,doc,saved.getCurrentFilename(),"CONTRACT_ATTACHED",firstPresent(saved.getCreatedBy(),"system"));
+        });
         memos.findAllByTeacherIdAndContractIdIsNullOrderByCreatedAtDesc(contract.getTeacherId()).stream()
                 .filter(memo -> memo.getStatus() != HrServiceMemo.Status.ANNULLED)
                 .forEach(memo -> {
@@ -304,17 +339,27 @@ public class HrDocumentService {
 
     @Transactional public List<AdditionalAgreement> createAnnualDrafts(BatchAgreementRequest r, String username) {
         int startYear=Integer.parseInt(r.academicYear().substring(0,4));LocalDate from=r.validFrom()==null?firstWorkingDay(LocalDate.of(startYear,9,1)):r.validFrom();LocalDate to=LocalDate.of(startYear+1,8,31);
-        Set<Long> requested=r.contractIds()==null?Set.of():new HashSet<>(r.contractIds());List<AdditionalAgreement> result=new ArrayList<>();
-        for(EmploymentContract c:contracts.findAllByActiveTrueOrderByTeacherIdAsc()){
-            if(!c.isPrimaryContract()||(!requested.isEmpty()&&!requested.contains(c.getId())))continue;
-            boolean hasLoad=loadRepository.findAllByAcademicYear(r.academicYear()).stream().anyMatch(x->Objects.equals(x.getTeacherId(),c.getTeacherId()));if(!hasLoad)continue;
-            result.add(createAgreement(new AgreementRequest(c.getId(),r.serviceMemoId(),r.academicYear(),r.documentDate(),from,to,AdditionalAgreement.Kind.PAY_TERMS,AdditionalAgreement.ChangeMode.AMEND,"Нагрузка и должностной оклад","Изложить пункт 2.1 раздела «Оплата труда» в новой редакции согласно Приложению № 1.",null,null),username));
+        Set<Long> requestedContracts=r.contractIds()==null?Set.of():new HashSet<>(r.contractIds());
+        Set<Long> requestedTeachers=requestedContracts.stream().map(contracts::findById).flatMap(Optional::stream).map(EmploymentContract::getTeacherId).collect(Collectors.toSet());
+        Set<Long> teacherIds=loadRepository.findAllByAcademicYear(r.academicYear()).stream().map(ManualLoadEntry::getTeacherId).filter(Objects::nonNull).collect(Collectors.toCollection(LinkedHashSet::new));
+        if(!requestedTeachers.isEmpty())teacherIds.retainAll(requestedTeachers);
+        List<AdditionalAgreement> existing=agreements.findAllByAcademicYearOrderByCreatedAtDesc(r.academicYear());List<AdditionalAgreement> result=new ArrayList<>();
+        for(Long teacherId:teacherIds){
+            EmploymentContract contract=primaryContract(teacherId);
+            boolean alreadyExists=existing.stream().anyMatch(a->Objects.equals(agreementTeacherId(a,null),teacherId)
+                    &&a.getKind()==AdditionalAgreement.Kind.PAY_TERMS&&a.getStatus()!=AdditionalAgreement.Status.ANNULLED
+                    &&Objects.equals(a.getValidFrom(),from)&&Objects.equals(a.getSummary(),"Нагрузка и должностной оклад"));
+            if(alreadyExists)continue;
+            AdditionalAgreement created=createAgreementForTeacher(new AgreementRequest(contract==null?null:contract.getId(),r.serviceMemoId(),r.academicYear(),r.documentDate(),from,to,AdditionalAgreement.Kind.PAY_TERMS,AdditionalAgreement.ChangeMode.AMEND,"Нагрузка и должностной оклад","Изложить пункт 2.1 раздела «Оплата труда» в новой редакции согласно Приложению № 1.",null,null),teacherId,contract,username);
+            result.add(created);existing.add(created);
         }return result;
     }
     private LocalDate firstWorkingDay(LocalDate d){while(d.getDayOfWeek()==DayOfWeek.SATURDAY||d.getDayOfWeek()==DayOfWeek.SUNDAY)d=d.plusDays(1);return d;}
 
     @Transactional public AdditionalAgreement issue(Long id, String username) {
-        AdditionalAgreement a = agreement(id); EmploymentContract c = contracts.findById(a.getContractId()).orElseThrow();
+        AdditionalAgreement a = agreement(id);
+        if(a.getContractId()==null)throw new ResponseStatusException(CONFLICT,"Заполните действующий трудовой договор работника перед выпуском допсоглашения");
+        EmploymentContract c = contracts.findById(a.getContractId()).orElseThrow(()->new ResponseStatusException(CONFLICT,"Трудовой договор допсоглашения не найден"));
         if (a.getStatus() == AdditionalAgreement.Status.ISSUED || a.getStatus() == AdditionalAgreement.Status.SIGNING || a.getStatus() == AdditionalAgreement.Status.SIGNED) return a;
         if (a.getStatus() == AdditionalAgreement.Status.WAITING_FOR_MEMO)
             throw new ResponseStatusException(CONFLICT,"Дополнительное соглашение ожидает получения служебной записки");
@@ -345,7 +390,9 @@ public class HrDocumentService {
     }
     @Transactional public AdditionalAgreement agreementStatus(Long id, AdditionalAgreement.Status status) {
         AdditionalAgreement a=agreement(id); if(a.getStatus()==AdditionalAgreement.Status.ANNULLED) throw new ResponseStatusException(CONFLICT,"Документ аннулирован");
-        if(a.getStatus()==AdditionalAgreement.Status.WAITING_FOR_MEMO && status!=AdditionalAgreement.Status.REQUIRES_DECISION)
+        if(status==AdditionalAgreement.Status.REJECTED&&EnumSet.of(AdditionalAgreement.Status.ISSUED,AdditionalAgreement.Status.SIGNING,AdditionalAgreement.Status.SIGNED).contains(a.getStatus()))
+            throw new ResponseStatusException(CONFLICT,"Выпущенное допсоглашение нужно аннулировать, а не отклонять");
+        if(a.getStatus()==AdditionalAgreement.Status.WAITING_FOR_MEMO && status!=AdditionalAgreement.Status.REQUIRES_DECISION&&status!=AdditionalAgreement.Status.REJECTED)
             throw new ResponseStatusException(CONFLICT,"Сначала отметьте получение служебной записки кадрами");
         if(status==AdditionalAgreement.Status.SIGNED && a.getStatus()!=AdditionalAgreement.Status.ISSUED && a.getStatus()!=AdditionalAgreement.Status.SIGNING)
             throw new ResponseStatusException(CONFLICT,"Сначала выпустите дополнительное соглашение");
@@ -356,13 +403,13 @@ public class HrDocumentService {
         if (a.getStatus() == AdditionalAgreement.Status.ISSUED || a.getStatus() == AdditionalAgreement.Status.SIGNED || a.getStatus() == AdditionalAgreement.Status.ANNULLED)
             throw new ResponseStatusException(CONFLICT,"Способ изменения можно выбрать только до выпуска документа");
         AdditionalAgreement previous = replacesId == null ? null : agreement(replacesId);
-        if (previous != null && (!Objects.equals(previous.getContractId(),a.getContractId()) || Objects.equals(previous.getId(),a.getId())))
+        if (previous != null && (!Objects.equals(agreementTeacherId(previous,null),agreementTeacherId(a,null)) || Objects.equals(previous.getId(),a.getId())))
             throw new ResponseStatusException(BAD_REQUEST,"Выбран документ по другому трудовому договору");
         if (mode == AdditionalAgreement.ChangeMode.CANCEL_AND_RESTATE && previous == null)
             throw new ResponseStatusException(BAD_REQUEST,"Выберите отменяемое дополнительное соглашение");
         a.setChangeMode(mode == null ? AdditionalAgreement.ChangeMode.AMEND : mode);
         a.setReplacesAgreementId(previous == null ? null : previous.getId());
-        EmploymentContract contract = contracts.findById(a.getContractId()).orElseThrow();
+        EmploymentContract contract = a.getContractId()==null?null:contracts.findById(a.getContractId()).orElse(null);
         byte[] doc = generateAgreement(a, contract); a.setGeneratedDocument(doc); a.setCurrentDocument(doc);
         a = agreements.save(a); saveVersion(a,doc,a.getCurrentFilename(),"REGENERATED",username); return a;
     }
@@ -381,6 +428,20 @@ public class HrDocumentService {
     private String nextNumber(EmploymentContract c, String year) {
         long n = agreements.countByContractIdAndAcademicYear(c.getId(), year) + 1;
         return "7".equals(SchoolCodeResolver.resolve()) ? n + " / " + year.replace('/','-') : String.valueOf(n);
+    }
+    private String temporaryNumber(Long teacherId,String year){
+        long n=agreements.countByTeacherIdAndAcademicYear(teacherId,year)+1;
+        return "БД-"+teacherId+"-"+n;
+    }
+    private EmploymentContract primaryContract(Long teacherId){
+        if(teacherId==null)return null;
+        return contracts.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(teacherId).stream()
+                .filter(EmploymentContract::isPrimaryContract).filter(EmploymentContract::isActive).findFirst().orElse(null);
+    }
+    private Long agreementTeacherId(AdditionalAgreement agreement,EmploymentContract knownContract){
+        if(agreement.getTeacherId()!=null)return agreement.getTeacherId();
+        if(knownContract!=null)return knownContract.getTeacherId();
+        return agreement.getContractId()==null?null:contracts.findById(agreement.getContractId()).map(EmploymentContract::getTeacherId).orElse(null);
     }
     private AgreementView view(AdditionalAgreement a) { return new AgreementView(a.getId(),a.getInternalNumber(),a.getVisibleNumber(),a.getRevision(),a.getKind().name(),a.getStatus().name(),a.getChangeMode().name(),a.getReplacesAgreementId(),a.getDocumentDate(),a.getValidFrom(),a.getValidTo(),a.getSummary(),a.getTotalAmount(),a.getServiceMemoId(),a.getLoadServiceMemoId(),a.getIssuedAt()); }
     private boolean isComplete(HrPersonalData p) { return present(p.getPassportSeries()) && present(p.getPassportNumber()) && present(p.getPassportIssuedBy()) && p.getPassportIssueDate()!=null && present(p.getPassportDepartmentCode()) && present(p.getRegistrationAddress()); }
@@ -474,12 +535,13 @@ public class HrDocumentService {
 
     private record MemoRecipient(String title,String name){}
     private byte[] generateAgreement(AdditionalAgreement a, EmploymentContract c) {
-        TeacherDirectoryEntry t=teachers.findById(c.getTeacherId()).orElseThrow(); HrPersonalData p=personalData.findByTeacherId(c.getTeacherId()).orElse(null);
+        Long teacherId=agreementTeacherId(a,c);
+        TeacherDirectoryEntry t=teachers.findById(teacherId).orElseThrow(); HrPersonalData p=personalData.findByTeacherId(teacherId).orElse(null);
         try(XWPFDocument d=new XWPFDocument(); ByteArrayOutputStream out=new ByteArrayOutputStream()){
             String number=a.getVisibleNumber()==null?"": " № "+a.getVisibleNumber(); title(d,"ДОПОЛНИТЕЛЬНОЕ СОГЛАШЕНИЕ"+number);
-            paragraph(d,"к трудовому договору № "+c.getContractNumber()+" от "+c.getContractDate(),true);
+            paragraph(d,"к трудовому договору № "+(c==null?"________________":c.getContractNumber())+" от "+(c==null?"____________":c.getContractDate()),true);
             paragraph(d,"г. Москва                                      "+Objects.toString(a.getDocumentDate(),""),false);
-            paragraph(d,employerIntro()+" и "+t.getFioTeacher()+", занимающий(ая) должность «"+c.getPositionName()+"», заключили настоящее дополнительное соглашение.",false);
+            paragraph(d,employerIntro()+" и "+t.getFioTeacher()+", занимающий(ая) должность «"+(c==null?"________________":c.getPositionName())+"», заключили настоящее дополнительное соглашение.",false);
             if(a.getReplacesAgreementId()!=null) {
                 AdditionalAgreement previous=agreement(a.getReplacesAgreementId());
                 String reference="дополнительное соглашение "+(present(previous.getVisibleNumber())?"№ "+previous.getVisibleNumber()+" ":"")+"от "+Objects.toString(previous.getDocumentDate(),"даты выпуска");
@@ -490,7 +552,7 @@ public class HrDocumentService {
             paragraph(d,Objects.toString(a.getConditionsJson(),a.getSummary()),false);
             if(a.getTotalAmount()!=null) paragraph(d,"Ежемесячная сумма: "+money(a.getTotalAmount())+" ("+moneyWords(a.getTotalAmount())+").",false);
             paragraph(d,"Срок действия: с "+a.getValidFrom()+" по "+a.getValidTo()+".",false);
-            if (a.getKind() == AdditionalAgreement.Kind.PAY_TERMS) appendLoadAnnex(d, c.getTeacherId(), a.getAcademicYear(), a.getValidFrom());
+            if (a.getKind() == AdditionalAgreement.Kind.PAY_TERMS) appendLoadAnnex(d, teacherId, a.getAcademicYear(), a.getValidFrom());
             paragraph(d,"Реквизиты работника: паспорт "+(p==null?"":Objects.toString(p.getPassportSeries(),"")+" "+Objects.toString(p.getPassportNumber(),""))+
                     ", выдан "+(p==null?"":Objects.toString(p.getPassportIssuedBy(),""))+", адрес регистрации: "+(p==null?"":Objects.toString(p.getRegistrationAddress(),"")),false);
             paragraph(d,employerDetails(),false); paragraph(d,"Работодатель ____________________     Работник ____________________",false); d.write(out); return out.toByteArray();

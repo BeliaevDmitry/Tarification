@@ -195,7 +195,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 ));
 
                 ServiceMemo saved = serviceMemoRepository.save(entity);
-                if (contract != null) hrDocumentService.createLoadChangeDraft(saved, contract, createdBy);
+                hrDocumentService.createLoadChangeDraft(saved, contract, createdBy);
                 created.add(saved);
                 latestMemoBySelection.put(selectionKey, saved);
             }
@@ -244,12 +244,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     .filter(item -> Objects.equals(item.getTeacherId(),teacher.getId()))
                     .orElseGet(() -> findPrimaryContract(teacher).orElse(null));
         memo.setTeacherId(teacher.getId()); memo.setContractId(contract == null ? null : contract.getId());
-        if (contract != null) hrDocumentService.ensureLoadChangeDraft(memo,contract,username);
+        hrDocumentService.ensureLoadChangeDraft(memo,contract,username);
         memo.setStatus(ServiceMemo.Status.RECEIVED_BY_HR);
         memo.setReceivedAt(LocalDateTime.now());
         memo.setReceivedBy(username);
         ServiceMemo saved = serviceMemoRepository.save(memo);
-        if (contract != null) hrDocumentService.onLoadMemoReceived(saved);
+        hrDocumentService.onLoadMemoReceived(saved);
         return saved;
     }
 

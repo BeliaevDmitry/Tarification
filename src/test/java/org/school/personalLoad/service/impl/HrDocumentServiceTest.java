@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.school.personalLoad.dto.HrDocumentDtos.AgreementRequest;
+import org.school.personalLoad.dto.HrDocumentDtos.BatchAgreementRequest;
 import org.school.personalLoad.dto.HrDocumentDtos.MemoRequest;
 import org.school.personalLoad.model.*;
 import org.school.personalLoad.repository.*;
@@ -108,7 +109,8 @@ class HrDocumentServiceTest {
 
         assertNull(memo.getContractId());
         assertNotNull(memo.getDocumentContent());
-        verify(agreements,never()).save(any());
+        verify(agreements,atLeastOnce()).save(argThat(a->Objects.equals(a.getTeacherId(),1L)
+                &&a.getContractId()==null&&a.getStatus()==AdditionalAgreement.Status.WAITING_FOR_MEMO));
     }
 
     @Test void savingPrimaryContractAttachesMemosCreatedEarlier(){
@@ -133,6 +135,7 @@ class HrDocumentServiceTest {
 
     @Test void loadMemoCreatesWaitingAgreementLinkedByMemoId(){
         ServiceMemo memo=new ServiceMemo();memo.setId(60L);memo.setAcademicYear("2025/2026");
+        memo.setTeacherId(1L);
         memo.setChangeStartDate(LocalDate.of(2025,10,1));memo.setCreatedAt(java.time.LocalDateTime.of(2025,9,25,10,0));
 
         AdditionalAgreement agreement=service.createLoadChangeDraft(memo,contract,"deputy");
@@ -149,7 +152,7 @@ class HrDocumentServiceTest {
         assertNotNull(catalogTransaction);
         assertTrue(catalogTransaction.readOnly());
         assertNotNull(memoTransaction);
-        assertTrue(memoTransaction.readOnly());
+        assertFalse(memoTransaction.readOnly());
     }
 
     @Test void issuedMemoUsesSchoolTemplateAndIssuingAccountAsSigner() throws Exception {
@@ -189,6 +192,31 @@ class HrDocumentServiceTest {
         service.deleteAnnulledMemo(50L,"hr");
 
         verify(memos).delete(memo);
+    }
+
+    @Test void memoCanBeDeletedWhenItsAgreementWasRejected() {
+        HrServiceMemo memo=new HrServiceMemo();memo.setId(50L);memo.setStatus(HrServiceMemo.Status.RECEIVED_BY_HR);
+        AdditionalAgreement agreement=new AdditionalAgreement();agreement.setId(70L);agreement.setServiceMemoId(50L);
+        agreement.setStatus(AdditionalAgreement.Status.REJECTED);
+        when(memos.findById(50L)).thenReturn(Optional.of(memo));when(agreements.findAllByServiceMemoId(50L)).thenReturn(List.of(agreement));
+
+        service.deleteAnnulledMemo(50L,"hr");
+
+        assertNull(agreement.getServiceMemoId());assertEquals(AdditionalAgreement.Status.REJECTED,agreement.getStatus());
+        verify(memos).delete(memo);
+    }
+
+    @Test void annualLoadAgreementIsCreatedWithoutEmploymentContract() {
+        ManualLoadEntry load=new ManualLoadEntry();load.setTeacherId(1L);load.setAcademicYear("2025/2026");
+        load.setSubjectName("Математика");load.setClassName("5А");load.setLoad(1);load.setNumberSchoolBuilding("1");
+        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load));
+        when(contracts.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(1L)).thenReturn(List.of());
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026")).thenReturn(new ArrayList<>());
+
+        var created=service.createAnnualDrafts(new BatchAgreementRequest("2025/2026",LocalDate.of(2025,9,1),null,List.of(),null),"hr");
+
+        assertEquals(1,created.size());assertEquals(1L,created.get(0).getTeacherId());assertNull(created.get(0).getContractId());
+        assertTrue(created.get(0).getInternalNumber().startsWith("БД-1-"));
     }
 
     @Test void agreementListIncludesDocumentsFromInactiveContracts() {
