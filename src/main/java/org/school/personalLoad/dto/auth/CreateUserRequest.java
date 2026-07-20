@@ -9,6 +9,7 @@ import java.util.List;
 public class CreateUserRequest {
     private String username;
     private String fullName;
+    private String documentPosition;
     private String email;
     private String phone;
     private String managedBuildingCode;

@@ -25,6 +25,9 @@ public class AppUser {
     private String fullName;
 
     @Column(length = 255)
+    private String documentPosition;
+
+    @Column(length = 255)
     private String email;
 
     @Column(length = 32)

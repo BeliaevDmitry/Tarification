@@ -7,6 +7,7 @@ import org.school.personalLoad.auth.*;
 import org.school.personalLoad.dto.HrDocumentDtos.*;
 import org.school.personalLoad.model.*;
 import org.school.personalLoad.repository.*;
+import org.school.personalLoad.repository.auth.AppUserRepository;
 import org.school.personalLoad.service.*;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
@@ -26,6 +27,7 @@ public class HrDocumentsController {
     private final HrPersonalDataRepository personalRepository;
     private final TeacherDirectoryRepository teacherRepository;
     private final HrCatalogItemRepository catalogRepository;
+    private final AppUserRepository appUserRepository;
     private final UserActionLogService audit;
 
     @GetMapping("/teachers") public Object teachers(){return teacherRepository.findAll().stream().filter(t->!t.isArchived()).map(t->Map.of("id",t.getId(),"fio",t.getFioTeacher())).toList();}
@@ -66,13 +68,16 @@ public class HrDocumentsController {
     @GetMapping("/memos") public Object memos(@RequestParam String academicYear){return service.memos(academicYear);}
     @GetMapping("/load-memos") public Object loadMemos(@RequestParam String academicYear){return loadMemoService.findForHr(academicYear);}
     @PostMapping("/memos") public Object memo(@RequestBody MemoRequest r,HttpServletRequest req){return service.memoView(service.createMemo(r,user(req).getUsername()));}
-    @PostMapping("/memos/{id}/status") public Object memoStatus(@PathVariable Long id,@RequestBody StatusRequest r,HttpServletRequest req){return service.memoView(service.memoStatus(id,HrServiceMemo.Status.valueOf(r.status()),user(req).getUsername()));}
+    @PostMapping("/memos/{id}/status") public Object memoStatus(@PathVariable Long id,@RequestBody StatusRequest r,HttpServletRequest req){SessionUser actor=user(req);return service.memoView(service.memoStatus(id,HrServiceMemo.Status.valueOf(r.status()),actor.getUsername(),actor.getFullName(),documentPosition(actor)));}
     @PostMapping("/memos/{id}/annul") public Object memoAnnul(@PathVariable Long id,@RequestBody AnnulRequest r,HttpServletRequest req){return service.memoView(service.annulMemo(id,r.reason(),user(req).getUsername()));}
+    @DeleteMapping("/memos/{id}") public void memoDelete(@PathVariable Long id,HttpServletRequest req){service.deleteAnnulledMemo(id,user(req).getUsername());}
     @GetMapping("/memos/{id}/download") public ResponseEntity<byte[]> memoDownload(@PathVariable Long id){HrServiceMemo m=service.memo(id);return file(m.getDocumentContent(),m.getDocumentFilename());}
     @PostMapping("/load-memos/{id}/receive") public Object loadMemoReceive(@PathVariable Long id,HttpServletRequest req){ServiceMemo m=loadMemoService.receiveByHr(id,user(req).getUsername());return Map.of("id",m.getId(),"status",m.getStatus().name());}
     @PostMapping("/load-memos/{id}/annul") public Object loadMemoAnnul(@PathVariable Long id,@RequestBody AnnulRequest r,HttpServletRequest req){ServiceMemo m=loadMemoService.annul(id,r.reason(),user(req).getUsername());return Map.of("id",m.getId(),"status",m.getStatus().name());}
+    @DeleteMapping("/load-memos/{id}") public void loadMemoDelete(@PathVariable Long id,HttpServletRequest req){service.deleteAnnulledLoadMemo(id,user(req).getUsername());}
     @GetMapping("/load-memos/{id}/download") public ResponseEntity<byte[]> loadMemoDownload(@PathVariable Long id){ServiceMemo m=loadMemoService.getById(id);boolean corrected=m.getCorrectedDocument()!=null;return file(corrected?m.getCorrectedDocument():m.getGeneratedDocument(),corrected?m.getCorrectedFilename():m.getGeneratedFilename());}
 
+    @GetMapping("/agreements") public Object agreements(@RequestParam String academicYear){return service.agreementRows(academicYear);}
     @PostMapping("/agreements") public Object agreement(@RequestBody AgreementRequest r,HttpServletRequest req){return service.createAgreement(r,user(req).getUsername());}
     @PostMapping("/agreements/batch-annual") public Object annual(@RequestBody BatchAgreementRequest r,HttpServletRequest req){return service.createAnnualDrafts(r,user(req).getUsername());}
     @PostMapping("/agreements/{id}/issue") public Object issue(@PathVariable Long id,HttpServletRequest req){return service.issue(id,user(req).getUsername());}
@@ -86,6 +91,7 @@ public class HrDocumentsController {
     @GetMapping("/catalog") public Object catalog(){return service.catalog();}
     @PostMapping("/catalog") public Object catalog(@RequestBody HrCatalogItem x){x.setId(null);x.setSchoolCode(org.school.personalLoad.config.SchoolCodeResolver.resolve());return catalogRepository.save(x);}
     @PutMapping("/catalog/{id}") public Object catalog(@PathVariable Long id,@RequestBody HrCatalogItem x){HrCatalogItem old=catalogRepository.findById(id).orElseThrow();x.setId(old.getId());x.setSchoolCode(old.getSchoolCode());return catalogRepository.save(x);}
+    @DeleteMapping("/catalog/{id}") public void catalogDelete(@PathVariable Long id){service.deleteCatalogItem(id);}
 
     private ResponseEntity<byte[]> excel(boolean includeData,HttpServletRequest req)throws Exception{
         boolean full=user(req).canExportTab(AppTab.HR_PERSONAL_DATA); try(Workbook wb=new XSSFWorkbook();ByteArrayOutputStream out=new ByteArrayOutputStream()){
@@ -100,6 +106,19 @@ public class HrDocumentsController {
         }
     }
     private SessionUser user(HttpServletRequest r){return AuthSessionUtils.requiredUser(r);} private String z(String s){return s==null?"":s;}
+    private String documentPosition(SessionUser actor){
+        String configured=appUserRepository.findById(actor.getId()).map(AppUser::getDocumentPosition).orElse(null);
+        if(configured!=null&&!configured.isBlank())return configured.trim();
+        if(actor.getRole()==null)return "сотрудника";
+        return switch(actor.getRole()){
+            case ADMIN -> "администратора";
+            case DIRECTOR -> "директора";
+            case DEPUTY_DIRECTOR -> "заместителя директора";
+            case BUILDING_HEAD -> "руководителя корпуса";
+            case METHODIST -> "методиста";
+            case HR -> "специалиста по кадрам";
+        };
+    }
     private String str(Row r,int i){Cell c=r.getCell(i);return c==null?null:new DataFormatter().formatCellValue(c).trim();}
     private Long longCell(Cell c){if(c==null)return null;try{return c.getCellType()==CellType.NUMERIC?(long)c.getNumericCellValue():Long.valueOf(new DataFormatter().formatCellValue(c).trim());}catch(Exception e){return null;}}
     private java.time.LocalDate date(Row r,int i){String s=str(r,i);try{return s==null||s.isBlank()?null:java.time.LocalDate.parse(s);}catch(Exception e){return null;}}

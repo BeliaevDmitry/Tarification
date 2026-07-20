@@ -109,6 +109,7 @@ public class AppUserServiceImpl implements AppUserService {
         AppUser user = new AppUser();
         user.setUsername(username);
         user.setFullName(normalizedFio);
+        user.setDocumentPosition(normalizeOptional(request.getDocumentPosition()));
         user.setEmail(normalizeOptional(request.getEmail()));
         user.setPhone(normalizePhone(request.getPhone()));
         user.setManagedBuildingCode(normalizeKnownBuildingScopeCode(request.getManagedBuildingCode(), knownBuildingGroupCodes, knownBuildingAccessCodes));
@@ -139,6 +140,9 @@ public class AppUserServiceImpl implements AppUserService {
             String normalizedFio = normalizeTeacherFio(request.getFullName());
             ensureUniqueTeacherFioUser(normalizedFio, user.getId());
             user.setFullName(normalizedFio);
+        }
+        if (request.getDocumentPosition() != null) {
+            user.setDocumentPosition(normalizeOptional(request.getDocumentPosition()));
         }
         if (request.getEmail() != null) {
             user.setEmail(normalizeOptional(request.getEmail()));

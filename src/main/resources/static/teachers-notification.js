@@ -54,15 +54,18 @@ function documentTextOverrides(memoText = '', agreementText = '', prefix = 'memo
 document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => {
     document.querySelectorAll('.hr-panel').forEach(panel => panel.hidden = true);
     $('#' + button.dataset.tab).hidden = false;
+    if (button.dataset.tab === 'agreements') loadAgreements();
     if (button.dataset.tab === 'memos') loadMemos();
     if (button.dataset.tab === 'catalog') loadCatalog();
 }));
 
 let journal = [];
+let agreementRows = [];
 async function loadJournal() {
     journal = await api(`/api/hr-documents/journal?academicYear=${encodeURIComponent(academicYear())}`);
     renderJournal();
 }
+async function loadAgreements() { agreementRows=await api(`/api/hr-documents/agreements?academicYear=${encodeURIComponent(academicYear())}`);renderAgreements(); }
 function renderJournal() {
     const query = $('#journal-search').value.toLowerCase();
     const status = $('#journal-status').value;
@@ -71,17 +74,31 @@ function renderJournal() {
         .map(item => `<tr><td>${esc(item.fio)}</td><td>№ ${esc(item.contractNumber)}</td><td>${esc(item.position)}</td><td>${item.agreements.length ? item.agreements.map(agreement=>renderAgreement(agreement,item.contractId)).join('') : 'Нет'}</td><td>${esc(item.actionRequired)}</td><td>${canViewPersonal() ? `<button data-personal="${item.teacherId}">Данные</button>` : ''}<button data-agreement="${item.contractId}">Черновик допника</button></td></tr>`).join('');
 }
 function renderAgreement(agreement, contractId) {
+    return `<div><b>${esc(agreement.internalNumber)}</b> · ${esc(agreement.summary || agreement.kind)} · ${esc(STATUS_LABELS[agreement.status] || agreement.status)} ${renderAgreementActions(agreement,contractId)}</div>`;
+}
+function renderAgreementActions(agreement, contractId) {
+    if (agreement.status === 'ANNULLED') return '<span class="muted">Документ аннулирован</span>';
     const waiting = agreement.status === 'WAITING_FOR_MEMO';
     const changeMode = (agreement.serviceMemoId || agreement.loadServiceMemoId) && ['WAITING_FOR_MEMO','DRAFT','READY','REQUIRES_DECISION'].includes(agreement.status)
         ? `<button data-change-mode="${agreement.id}" data-contract="${contractId}">Способ изменения</button>` : '';
     const actions = waiting
         ? '<span class="muted">Выпуск заблокирован до получения служебки</span>'
         : `<button data-download="${agreement.id}">DOCX</button> <button data-upload="${agreement.id}">Заменить</button> <button data-sign="${agreement.id}">Подписано</button>`;
-    return `<div><b>${esc(agreement.internalNumber)}</b> · ${esc(agreement.summary || agreement.kind)} · ${esc(STATUS_LABELS[agreement.status] || agreement.status)} ${changeMode} ${actions} <button data-annul="${agreement.id}">Аннулировать</button></div>`;
+    return `${changeMode} ${actions} ${agreement.status!=='ANNULLED'?`<button data-annul="${agreement.id}">Аннулировать</button>`:''}`;
+}
+function renderAgreements() {
+    const body=$('#agreement-body');if(!body)return;
+    const query=$('#agreement-search').value.trim().toLowerCase(),status=$('#agreement-status').value;
+    const rows=agreementRows.filter(row=>(!status||row.agreement.status===status)&&(!query||JSON.stringify(row).toLowerCase().includes(query)))
+        .sort((a,b)=>String(b.agreement.documentDate||b.agreement.issuedAt||'').localeCompare(String(a.agreement.documentDate||a.agreement.issuedAt||'')));
+    body.innerHTML=rows.length?rows.map(row=>{const agreement=row.agreement;return `<tr><td>${esc(row.fio||`ID ${row.teacherId}`)}</td><td>№ ${esc(row.contractNumber||row.contractId)}<br><span class="muted">${esc(row.position)}</span></td><td><b>${esc(agreement.visibleNumber||agreement.internalNumber)}</b><br><span class="muted">от ${esc(agreement.documentDate||'—')}</span></td><td>${esc(agreement.validFrom)} — ${esc(agreement.validTo)}</td><td>${esc(agreement.summary||agreement.kind)}${agreement.serviceMemoId?`<br><span class="muted">Служебка ID ${agreement.serviceMemoId}</span>`:''}${agreement.loadServiceMemoId?`<br><span class="muted">Служебка по нагрузке ID ${agreement.loadServiceMemoId}</span>`:''}</td><td>${esc(STATUS_LABELS[agreement.status]||agreement.status)}</td><td>${renderAgreementActions(agreement,row.contractId)}</td></tr>`}).join(''):'<tr><td colspan="7">Дополнительных соглашений по выбранным условиям нет</td></tr>';
 }
 $('#journal-search').addEventListener('input', renderJournal);
 $('#journal-status').addEventListener('change', renderJournal);
 $('#reload-journal').addEventListener('click', loadJournal);
+$('#agreement-search').addEventListener('input',renderAgreements);
+$('#agreement-status').addEventListener('change',renderAgreements);
+$('#reload-agreements').addEventListener('click',loadAgreements);
 
 function openEditor(title, fields, onSave, afterOpen) {
     $('#editor-title').textContent = title;
@@ -167,12 +184,13 @@ function editAgreement(contractId) {
 
 function editChangeMode(agreementId, contractId) {
     const contractRow = journal.find(item => String(item.contractId) === String(contractId));
-    const agreement = contractRow?.agreements.find(item => String(item.id) === String(agreementId));
-    const previous = (contractRow?.agreements || []).filter(item => String(item.id) !== String(agreementId) && item.status !== 'ANNULLED');
+    const allForContract=contractRow?.agreements||agreementRows.filter(item=>String(item.contractId)===String(contractId)).map(item=>item.agreement);
+    const agreement = allForContract.find(item => String(item.id) === String(agreementId));
+    const previous = allForContract.filter(item => String(item.id) !== String(agreementId) && item.status !== 'ANNULLED');
     openEditor('Способ оформления изменения',
         row('Юридическая формулировка', `<select id="change-mode" name="mode"><option value="AMEND" ${agreement?.changeMode==='AMEND'?'selected':''}>Внести изменение в предыдущее соглашение</option><option value="CANCEL_AND_RESTATE" ${agreement?.changeMode==='CANCEL_AND_RESTATE'?'selected':''}>Отменить предыдущее и считать условия действующими в новой редакции</option></select>`) +
         row('Предыдущее соглашение', `<select id="change-source" name="source"><option value="">Не выбрано — изменение трудового договора</option>${previous.map(item=>option(item.id,`№ ${item.internalNumber} от ${item.documentDate || 'без даты'} — ${item.summary || item.kind}`,String(item.id)===String(agreement?.replacesAgreementId))).join('')}</select>`,'Для отмены и новой редакции выбор предыдущего соглашения обязателен.'),
-        form => api(`/api/hr-documents/agreements/${agreementId}/change-mode`,json('POST',{changeMode:form.get('mode'),replacesAgreementId:form.get('source')?+form.get('source'):null})),
+        async form => {await api(`/api/hr-documents/agreements/${agreementId}/change-mode`,json('POST',{changeMode:form.get('mode'),replacesAgreementId:form.get('source')?+form.get('source'):null}));await loadAgreements();},
         () => {
             const mode=$('#change-mode'),source=$('#change-source');
             const updateRequired=()=>source.required=mode.value==='CANCEL_AND_RESTATE';
@@ -181,20 +199,22 @@ function editChangeMode(agreementId, contractId) {
     );
 }
 
-$('#journal-body').addEventListener('click', async event => {
+async function handleAgreementAction(event) {
     const target = event.target;
-    if (target.dataset.download) location.href = `/api/hr-documents/agreements/${target.dataset.download}/download`;
+    if (target.dataset.download) { location.href = `/api/hr-documents/agreements/${target.dataset.download}/download`; setTimeout(()=>Promise.all([loadJournal(),loadAgreements()]),1200); }
     if (target.dataset.personal) editPersonal(+target.dataset.personal);
     if (target.dataset.agreement) editAgreement(+target.dataset.agreement);
     if (target.dataset.changeMode) editChangeMode(+target.dataset.changeMode,+target.dataset.contract);
     if (target.dataset.upload) {
         const input = document.createElement('input'); input.type = 'file'; input.accept = '.docx';
-        input.onchange = async () => { const form = new FormData(); form.append('file', input.files[0]); await api(`/api/hr-documents/agreements/${target.dataset.upload}/upload`, {method:'POST',body:form}); loadJournal(); };
+        input.onchange = async () => { const form = new FormData(); form.append('file', input.files[0]); await api(`/api/hr-documents/agreements/${target.dataset.upload}/upload`, {method:'POST',body:form}); await Promise.all([loadJournal(),loadAgreements()]); };
         input.click();
     }
-    if (target.dataset.sign) { await api(`/api/hr-documents/agreements/${target.dataset.sign}/status`, json('POST',{status:'SIGNED'})); loadJournal(); }
-    if (target.dataset.annul) { const reason = prompt('Причина аннулирования'); if (reason) { await api(`/api/hr-documents/agreements/${target.dataset.annul}/annul`, json('POST',{reason})); loadJournal(); } }
-});
+    if (target.dataset.sign) { await api(`/api/hr-documents/agreements/${target.dataset.sign}/status`, json('POST',{status:'SIGNED'})); await Promise.all([loadJournal(),loadAgreements()]); }
+    if (target.dataset.annul) { const reason = prompt('Причина аннулирования'); if (reason) { await api(`/api/hr-documents/agreements/${target.dataset.annul}/annul`, json('POST',{reason})); await Promise.all([loadJournal(),loadAgreements()]); } }
+}
+$('#journal-body').addEventListener('click',handleAgreementAction);
+$('#agreement-body').addEventListener('click',handleAgreementAction);
 
 $('#batch-annual').addEventListener('click', async () => {
     if (!confirm('Создать черновики всем сотрудникам с основной нагрузкой?')) return;
@@ -209,8 +229,8 @@ async function loadMemos() {
         loadTeachersForDocuments()
     ]);
     const teacherNames = new Map(teachers.map(t => [t.id,t.fio]));
-    const dutyRows = dutyMemos.map(memo => ({sortDate:memo.documentDate||memo.createdAt,type:'Дополнительная обязанность',html:`<tr><td>${esc(memo.documentDate)}</td><td>${esc(teacherNames.get(memo.teacherId) || memo.teacherId || 'Не указан')}</td><td>Дополнительная обязанность</td><td>${esc(memo.assignmentName || memo.title)}</td><td>${esc(STATUS_LABELS[memo.status] || memo.status)}${memo.contractId?'':' · ожидает договор'}</td><td><a href="/api/hr-documents/memos/${memo.id}/download">DOCX</a>${memo.status==='DRAFT'?` <button data-issue-memo="${memo.id}">Выпустить</button>`:''}${memo.status==='ISSUED'?` <button data-receive-memo="${memo.id}">Получена кадрами</button>`:''} ${memo.status!=='ANNULLED'?`<button data-annul-memo="${memo.id}">Аннулировать</button>`:''}</td></tr>`}));
-    const loadRows = loadMemos.map(memo => ({sortDate:memo.startDate||memo.createdAt,type:'Изменение нагрузки',html:`<tr><td>${esc(memo.startDate)}</td><td>${esc(teacherNames.get(memo.teacherId) || memo.fioTeacher || 'Не указан')}</td><td>Изменение нагрузки</td><td>Нагрузка с ${esc(memo.startDate)}</td><td>${esc(STATUS_LABELS[memo.status] || memo.status)}${memo.contractId?'':' · ожидает договор'}</td><td><a href="/api/hr-documents/load-memos/${memo.id}/download">DOCX</a>${memo.status==='PROCESSED'?` <button data-receive-load-memo="${memo.id}">Получена кадрами</button>`:''} ${!['ANNULLED','ARCHIVED'].includes(memo.status)?`<button data-annul-load-memo="${memo.id}">Аннулировать</button>`:''}</td></tr>`}));
+    const dutyRows = dutyMemos.map(memo => ({sortDate:memo.documentDate||memo.createdAt,type:'Дополнительная обязанность',html:`<tr><td>${esc(memo.documentDate)}</td><td>${esc(teacherNames.get(memo.teacherId) || memo.teacherId || 'Не указан')}</td><td>Дополнительная обязанность</td><td>${esc(memo.assignmentName || memo.title)}</td><td>${esc(STATUS_LABELS[memo.status] || memo.status)}${memo.contractId?'':' · ожидает договор'}</td><td><a href="/api/hr-documents/memos/${memo.id}/download">DOCX</a>${memo.status==='DRAFT'?` <button data-issue-memo="${memo.id}">Выпустить</button>`:''}${memo.status==='ISSUED'?` <button data-receive-memo="${memo.id}">Получена кадрами</button>`:''} ${memo.status!=='ANNULLED'?`<button data-annul-memo="${memo.id}">Аннулировать</button>`:`<button data-delete-memo="${memo.id}">Удалить</button>`}</td></tr>`}));
+    const loadRows = loadMemos.map(memo => ({sortDate:memo.startDate||memo.createdAt,type:'Изменение нагрузки',html:`<tr><td>${esc(memo.startDate)}</td><td>${esc(teacherNames.get(memo.teacherId) || memo.fioTeacher || 'Не указан')}</td><td>Изменение нагрузки</td><td>Нагрузка с ${esc(memo.startDate)}</td><td>${esc(STATUS_LABELS[memo.status] || memo.status)}${memo.contractId?'':' · ожидает договор'}</td><td><a href="/api/hr-documents/load-memos/${memo.id}/download">DOCX</a>${memo.status==='PROCESSED'?` <button data-receive-load-memo="${memo.id}">Получена кадрами</button>`:''} ${!['ANNULLED','ARCHIVED'].includes(memo.status)?`<button data-annul-load-memo="${memo.id}">Аннулировать</button>`:memo.status==='ANNULLED'?`<button data-delete-load-memo="${memo.id}">Удалить</button>`:''}</td></tr>`}));
     $('#memo-body').innerHTML = [...dutyRows,...loadRows].sort((a,b)=>String(b.sortDate).localeCompare(String(a.sortDate))).map(row=>row.html).join('');
 }
 
@@ -275,15 +295,17 @@ $('#add-memo').addEventListener('click', async () => {
 
 $('#memo-body').addEventListener('click', async event => {
     if (event.target.dataset.issueMemo) { await api(`/api/hr-documents/memos/${event.target.dataset.issueMemo}/status`,json('POST',{status:'ISSUED'})); loadMemos(); }
-    if (event.target.dataset.receiveMemo) { await api(`/api/hr-documents/memos/${event.target.dataset.receiveMemo}/status`,json('POST',{status:'RECEIVED_BY_HR'})); loadMemos(); }
+    if (event.target.dataset.receiveMemo) { await api(`/api/hr-documents/memos/${event.target.dataset.receiveMemo}/status`,json('POST',{status:'RECEIVED_BY_HR'})); await Promise.all([loadMemos(),loadJournal()]); }
     if (event.target.dataset.annulMemo) { const reason=prompt('Причина аннулирования'); if(reason){await api(`/api/hr-documents/memos/${event.target.dataset.annulMemo}/annul`,json('POST',{reason}));loadMemos();} }
+    if (event.target.dataset.deleteMemo && confirm('Удалить аннулированную служебную записку без возможности восстановления?')) { await api(`/api/hr-documents/memos/${event.target.dataset.deleteMemo}`,{method:'DELETE'}); await Promise.all([loadMemos(),loadJournal()]); showNotice('Аннулированная служебная записка удалена.'); }
     if (event.target.dataset.receiveLoadMemo) { await api(`/api/hr-documents/load-memos/${event.target.dataset.receiveLoadMemo}/receive`,{method:'POST'}); await Promise.all([loadMemos(),loadJournal()]); }
     if (event.target.dataset.annulLoadMemo) { const reason=prompt('Причина аннулирования'); if(reason){await api(`/api/hr-documents/load-memos/${event.target.dataset.annulLoadMemo}/annul`,json('POST',{reason}));await Promise.all([loadMemos(),loadJournal()]);} }
+    if (event.target.dataset.deleteLoadMemo && confirm('Удалить аннулированную служебную записку по нагрузке без возможности восстановления?')) { await api(`/api/hr-documents/load-memos/${event.target.dataset.deleteLoadMemo}`,{method:'DELETE'}); await Promise.all([loadMemos(),loadJournal()]); showNotice('Аннулированная служебная записка удалена.'); }
 });
 
 async function loadCatalog() {
     catalogCache = await api('/api/hr-documents/catalog');
-    $('#catalog-body').innerHTML = catalogCache.map(item=>`<tr><td>${esc(item.name)}</td><td>${esc(CATEGORY_LABELS[item.category]||item.category)}</td><td>${esc(item.contractClause)}</td><td>${esc(item.defaultAmount)}</td><td>${item.separateAgreement?'Да':'Нет'}</td><td><button data-edit-catalog="${item.id}">Изменить</button></td></tr>`).join('');
+    $('#catalog-body').innerHTML = catalogCache.map(item=>`<tr><td>${esc(item.name)}</td><td>${esc(CATEGORY_LABELS[item.category]||item.category)}</td><td>${esc(item.contractClause)}</td><td>${esc(item.defaultAmount)}</td><td>${item.separateAgreement?'Да':'Нет'}</td><td><button data-edit-catalog="${item.id}">Изменить</button> <button data-delete-catalog="${item.id}">Удалить</button></td></tr>`).join('');
 }
 function editCatalog(item = null) {
     openEditor(item ? 'Изменить выплату или работу' : 'Добавить выплату или работу',
@@ -301,7 +323,10 @@ function editCatalog(item = null) {
     );
 }
 $('#add-catalog').addEventListener('click', () => editCatalog());
-$('#catalog-body').addEventListener('click', event => { const item=catalogCache.find(x=>String(x.id)===event.target.dataset.editCatalog); if(item)editCatalog(item); });
+$('#catalog-body').addEventListener('click', async event => {
+    const item=catalogCache.find(x=>String(x.id)===event.target.dataset.editCatalog);if(item)editCatalog(item);
+    if(event.target.dataset.deleteCatalog&&confirm('Удалить эту позицию из справочника?')){await api(`/api/hr-documents/catalog/${event.target.dataset.deleteCatalog}`,{method:'DELETE'});await loadCatalog();showNotice('Позиция удалена из справочника.');}
+});
 
 $('#personal-import-button').addEventListener('click', () => $('#personal-import').click());
 $('#personal-import').addEventListener('change', async event => {

@@ -8,6 +8,7 @@ import java.util.List;
 @Data
 public class UpdateUserRequest {
     private String fullName;
+    private String documentPosition;
     private String email;
     private String phone;
     private String managedBuildingCode;
