@@ -175,7 +175,8 @@ class ServiceMemoTransferGenerationTest {
         assertTrue(Objects.equals(1L, memo.getTeacherId()));
         assertTrue(memo.getContractId() == null);
         assertTrue(memo.getGeneratedDocument().length > 0);
-        org.mockito.Mockito.verify(hrDocumentService,org.mockito.Mockito.never()).createLoadChangeDraft(any(),any(),anyString());
+        org.mockito.Mockito.verify(hrDocumentService).createLoadChangeDraft(
+                org.mockito.ArgumentMatchers.same(memo),org.mockito.ArgumentMatchers.isNull(),org.mockito.ArgumentMatchers.eq("Автор"));
     }
 
     @Test
@@ -208,8 +209,9 @@ class ServiceMemoTransferGenerationTest {
         assertTrue(memo.getStatus()==ServiceMemo.Status.RECEIVED_BY_HR);
         assertTrue(Objects.equals(1L,memo.getTeacherId()));
         assertTrue(memo.getContractId()==null);
-        org.mockito.Mockito.verify(hrDocumentService,org.mockito.Mockito.never()).ensureLoadChangeDraft(any(),any(),anyString());
-        org.mockito.Mockito.verify(hrDocumentService,org.mockito.Mockito.never()).onLoadMemoReceived(any());
+        org.mockito.Mockito.verify(hrDocumentService).ensureLoadChangeDraft(
+                org.mockito.ArgumentMatchers.same(memo),org.mockito.ArgumentMatchers.isNull(),org.mockito.ArgumentMatchers.eq("Кадры"));
+        org.mockito.Mockito.verify(hrDocumentService).onLoadMemoReceived(memo);
     }
 
     @Test
