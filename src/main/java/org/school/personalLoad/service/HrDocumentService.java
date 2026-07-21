@@ -3,6 +3,7 @@ package org.school.personalLoad.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.xwpf.usermodel.*;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.*;
 import org.school.personalLoad.config.SchoolCodeResolver;
 import org.school.personalLoad.dto.HrDocumentDtos.*;
 import org.school.personalLoad.model.*;
@@ -14,6 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
@@ -59,8 +61,9 @@ public class HrDocumentService {
             EmploymentContract contract=agreement.getContractId()==null?null:contracts.findById(agreement.getContractId()).orElse(null);
             Long teacherId=agreementTeacherId(agreement,contract);
             TeacherDirectoryEntry teacher=teacherId==null?null:teachers.findById(teacherId).orElse(null);
+            boolean complete=teacherId!=null&&personalData.findByTeacherId(teacherId).map(this::isComplete).orElse(false);
             return new AgreementListRow(teacherId,teacher==null?"":teacher.getFioTeacher(),
-                    agreement.getContractId(),contract==null?"":contract.getContractNumber(),contract==null?"":contract.getPositionName(),view(agreement));
+                    agreement.getContractId(),contract==null?"":contract.getContractNumber(),contract==null?"":contract.getPositionName(),complete,view(agreement));
         }).toList();
     }
 
@@ -264,9 +267,8 @@ public class HrDocumentService {
         if (snapshotData != null) a.setPersonalDataSnapshotJson(json(snapshotData));
         Map<String,Object> source=new LinkedHashMap<>();source.put("teacherId",teacherId);source.put("contractId",c==null?null:c.getId());source.put("createdAt",LocalDateTime.now().toString());
         a.setSourceSnapshotJson(json(source));
-        byte[] doc = generateAgreement(a, c); a.setGeneratedDocument(doc); a.setCurrentDocument(doc);
         a.setCurrentFilename("Дополнительное_соглашение_" + a.getInternalNumber().replace('/','-') + ".docx");
-        a = agreements.save(a); saveVersion(a, doc, a.getCurrentFilename(), "GENERATED", username); return a;
+        return agreements.save(a);
     }
 
     @Transactional public AdditionalAgreement createLoadChangeDraft(ServiceMemo memo, EmploymentContract contract, String username) {
@@ -301,10 +303,8 @@ public class HrDocumentService {
                 agreement.setInternalNumber(nextNumber(contract,agreement.getAcademicYear()));
                 agreement.setVisibleNumber("1811".equals(SchoolCodeResolver.resolve())?agreement.getInternalNumber():null);
             }
-            byte[] doc=generateAgreement(agreement,contract);agreement.setGeneratedDocument(doc);agreement.setCurrentDocument(doc);
-            agreement.setRevision(agreement.getRevision()+1);
             agreement.setCurrentFilename("Дополнительное_соглашение_"+agreement.getInternalNumber().replace('/','-')+".docx");
-            AdditionalAgreement saved=agreements.save(agreement);saveVersion(saved,doc,saved.getCurrentFilename(),"CONTRACT_ATTACHED",firstPresent(saved.getCreatedBy(),"system"));
+            agreements.save(agreement);
         });
         memos.findAllByTeacherIdAndContractIdIsNullOrderByCreatedAtDesc(contract.getTeacherId()).stream()
                 .filter(memo -> memo.getStatus() != HrServiceMemo.Status.ANNULLED)
@@ -356,26 +356,73 @@ public class HrDocumentService {
     }
     private LocalDate firstWorkingDay(LocalDate d){while(d.getDayOfWeek()==DayOfWeek.SATURDAY||d.getDayOfWeek()==DayOfWeek.SUNDAY)d=d.plusDays(1);return d;}
 
+    @Transactional public AdditionalAgreement editAgreement(Long id, AgreementEditRequest request, String username) {
+        AdditionalAgreement agreement=agreement(id);
+        if(!EnumSet.of(AdditionalAgreement.Status.WAITING_FOR_MEMO,AdditionalAgreement.Status.DRAFT,
+                AdditionalAgreement.Status.READY,AdditionalAgreement.Status.REQUIRES_DECISION).contains(agreement.getStatus()))
+            throw new ResponseStatusException(CONFLICT,"Редактировать можно только невыпущенное дополнительное соглашение");
+        Long teacherId=agreementTeacherId(agreement,null);
+        if(request.contractId()!=null){
+            EmploymentContract contract=contracts.findById(request.contractId())
+                    .orElseThrow(()->new ResponseStatusException(NOT_FOUND,"Трудовой договор не найден"));
+            if(!Objects.equals(contract.getTeacherId(),teacherId))
+                throw new ResponseStatusException(BAD_REQUEST,"Трудовой договор принадлежит другому работнику");
+            agreement.setContractId(contract.getId());
+            if(agreement.getInternalNumber()!=null&&agreement.getInternalNumber().startsWith("БД-")){
+                agreement.setInternalNumber(nextNumber(contract,agreement.getAcademicYear()));
+                agreement.setVisibleNumber("1811".equals(SchoolCodeResolver.resolve())?agreement.getInternalNumber():null);
+                agreement.setCurrentFilename("Дополнительное_соглашение_"+agreement.getInternalNumber().replace('/','-')+".docx");
+            }
+        }
+        agreement.setDocumentDate(request.documentDate());
+        agreement.setValidFrom(Objects.requireNonNull(request.validFrom(),"Начало периода обязательно"));
+        agreement.setValidTo(Objects.requireNonNull(request.validTo(),"Окончание периода обязательно"));
+        if(agreement.getValidTo().isBefore(agreement.getValidFrom()))
+            throw new ResponseStatusException(BAD_REQUEST,"Окончание периода не может быть раньше начала");
+        agreement.setSummary(request.summary()==null?null:request.summary().trim());
+        agreement.setConditionsJson(request.conditionsJson()==null?null:request.conditionsJson().trim());
+        agreement.setTotalAmount(request.totalAmount());
+        if(agreement.getServiceMemoId()!=null){
+            HrServiceMemo memo=memo(agreement.getServiceMemoId());
+            memo.setAgreementText(agreement.getConditionsJson());memos.save(memo);
+        }
+        if(Boolean.TRUE.equals(request.saveAsTemplate()))saveAgreementTemplate(agreement,request.templateName());
+        clearGenerated(agreement);
+        if(agreement.getStatus()!=AdditionalAgreement.Status.WAITING_FOR_MEMO)agreement.setStatus(AdditionalAgreement.Status.DRAFT);
+        return agreements.save(agreement);
+    }
+
+    @Transactional public AdditionalAgreement prepare(Long id,String username){
+        AdditionalAgreement agreement=agreement(id);
+        if(!EnumSet.of(AdditionalAgreement.Status.DRAFT,AdditionalAgreement.Status.READY,
+                AdditionalAgreement.Status.REQUIRES_DECISION).contains(agreement.getStatus()))
+            throw new ResponseStatusException(CONFLICT,agreement.getStatus()==AdditionalAgreement.Status.WAITING_FOR_MEMO
+                    ?"Дополнительное соглашение ожидает получения служебной записки":"Документ нельзя сформировать в текущем статусе");
+        EmploymentContract contract=validateAgreementData(agreement);
+        if(!present(agreement.getSummary()))throw new ResponseStatusException(CONFLICT,"Заполните краткое содержание дополнительного соглашения");
+        if(!present(agreement.getConditionsJson()))throw new ResponseStatusException(CONFLICT,"Заполните юридическую формулировку дополнительного соглашения");
+        if(agreement.getDocumentDate()==null)agreement.setDocumentDate(LocalDate.now());
+        HrPersonalData snapshot=personalData.findByTeacherId(contract.getTeacherId()).orElseThrow();
+        agreement.setPersonalDataSnapshotJson(json(snapshot));
+        byte[] document=generateAgreement(agreement,contract);
+        agreement.setGeneratedDocument(document);agreement.setCurrentDocument(document);
+        agreement.setRevision(agreement.getRevision()+1);agreement.setStatus(AdditionalAgreement.Status.READY);
+        agreement.setCurrentFilename("Дополнительное_соглашение_"+agreement.getInternalNumber().replace('/','-')+".docx");
+        AdditionalAgreement saved=agreements.save(agreement);
+        saveVersion(saved,document,saved.getCurrentFilename(),"PREPARED",username);
+        return saved;
+    }
+
     @Transactional public AdditionalAgreement issue(Long id, String username) {
         AdditionalAgreement a = agreement(id);
-        if(a.getContractId()==null)throw new ResponseStatusException(CONFLICT,"Заполните действующий трудовой договор работника перед выпуском допсоглашения");
-        EmploymentContract c = contracts.findById(a.getContractId()).orElseThrow(()->new ResponseStatusException(CONFLICT,"Трудовой договор допсоглашения не найден"));
         if (a.getStatus() == AdditionalAgreement.Status.ISSUED || a.getStatus() == AdditionalAgreement.Status.SIGNING || a.getStatus() == AdditionalAgreement.Status.SIGNED) return a;
         if (a.getStatus() == AdditionalAgreement.Status.WAITING_FOR_MEMO)
             throw new ResponseStatusException(CONFLICT,"Дополнительное соглашение ожидает получения служебной записки");
-        if (a.getStatus() != AdditionalAgreement.Status.DRAFT && a.getStatus() != AdditionalAgreement.Status.READY)
-            throw new ResponseStatusException(CONFLICT,"Документ нельзя выпустить в текущем статусе");
-        if (!personalData.findByTeacherId(c.getTeacherId()).map(this::isComplete).orElse(false))
-            throw new ResponseStatusException(CONFLICT,"Заполните обязательные персональные данные");
-        if (a.getServiceMemoId() != null && memo(a.getServiceMemoId()).getStatus() != HrServiceMemo.Status.RECEIVED_BY_HR
-                && memo(a.getServiceMemoId()).getStatus() != HrServiceMemo.Status.EXECUTED)
-            throw new ResponseStatusException(CONFLICT,"Служебная записка не получена кадрами");
-        if (a.getLoadServiceMemoId() != null) {
-            ServiceMemo loadMemo = loadMemos.findById(a.getLoadServiceMemoId())
-                    .orElseThrow(() -> new ResponseStatusException(CONFLICT,"Служебная записка по нагрузке не найдена"));
-            if (loadMemo.getStatus() != ServiceMemo.Status.RECEIVED_BY_HR && loadMemo.getStatus() != ServiceMemo.Status.EXECUTED)
-                throw new ResponseStatusException(CONFLICT,"Служебная записка по нагрузке не получена кадрами");
-        }
+        if (a.getStatus() != AdditionalAgreement.Status.READY)
+            throw new ResponseStatusException(CONFLICT,"Сначала отредактируйте и сформируйте дополнительное соглашение");
+        validateAgreementData(a);
+        if(a.getCurrentDocument()==null||a.getCurrentDocument().length==0)
+            throw new ResponseStatusException(CONFLICT,"Файл дополнительного соглашения ещё не сформирован");
         a.setStatus(AdditionalAgreement.Status.ISSUED); a.setIssuedAt(LocalDateTime.now()); a.setIssuedBy(username); return agreements.save(a);
     }
 
@@ -409,9 +456,51 @@ public class HrDocumentService {
             throw new ResponseStatusException(BAD_REQUEST,"Выберите отменяемое дополнительное соглашение");
         a.setChangeMode(mode == null ? AdditionalAgreement.ChangeMode.AMEND : mode);
         a.setReplacesAgreementId(previous == null ? null : previous.getId());
-        EmploymentContract contract = a.getContractId()==null?null:contracts.findById(a.getContractId()).orElse(null);
-        byte[] doc = generateAgreement(a, contract); a.setGeneratedDocument(doc); a.setCurrentDocument(doc);
-        a = agreements.save(a); saveVersion(a,doc,a.getCurrentFilename(),"REGENERATED",username); return a;
+        clearGenerated(a);if(a.getStatus()!=AdditionalAgreement.Status.WAITING_FOR_MEMO)a.setStatus(AdditionalAgreement.Status.DRAFT);
+        return agreements.save(a);
+    }
+
+    private EmploymentContract validateAgreementData(AdditionalAgreement agreement){
+        if(agreement.getContractId()==null)
+            throw new ResponseStatusException(CONFLICT,"Заполните действующий трудовой договор работника перед формированием допсоглашения");
+        EmploymentContract contract=contracts.findById(agreement.getContractId())
+                .orElseThrow(()->new ResponseStatusException(CONFLICT,"Трудовой договор допсоглашения не найден"));
+        if(!personalData.findByTeacherId(contract.getTeacherId()).map(this::isComplete).orElse(false))
+            throw new ResponseStatusException(CONFLICT,"Заполните обязательные персональные данные работника");
+        if(agreement.getServiceMemoId()!=null){
+            HrServiceMemo memo=memo(agreement.getServiceMemoId());
+            if(memo.getStatus()!=HrServiceMemo.Status.RECEIVED_BY_HR&&memo.getStatus()!=HrServiceMemo.Status.EXECUTED)
+                throw new ResponseStatusException(CONFLICT,"Служебная записка не получена кадрами");
+        }
+        if(agreement.getLoadServiceMemoId()!=null){
+            ServiceMemo memo=loadMemos.findById(agreement.getLoadServiceMemoId())
+                    .orElseThrow(()->new ResponseStatusException(CONFLICT,"Служебная записка по нагрузке не найдена"));
+            if(memo.getStatus()!=ServiceMemo.Status.RECEIVED_BY_HR&&memo.getStatus()!=ServiceMemo.Status.EXECUTED)
+                throw new ResponseStatusException(CONFLICT,"Служебная записка по нагрузке не получена кадрами");
+        }
+        return contract;
+    }
+
+    private void clearGenerated(AdditionalAgreement agreement){
+        agreement.setGeneratedDocument(null);agreement.setCurrentDocument(null);
+    }
+
+    private void saveAgreementTemplate(AdditionalAgreement agreement,String requestedName){
+        String name=firstPresent(requestedName,agreement.getSummary());
+        if(!present(name))throw new ResponseStatusException(BAD_REQUEST,"Укажите название шаблона");
+        String schoolCode=SchoolCodeResolver.resolve();HrServiceMemo memo=null;HrCatalogItem item=null;
+        if(agreement.getServiceMemoId()!=null){
+            memo=memo(agreement.getServiceMemoId());
+            if(memo.getCatalogItemId()!=null)item=catalogItems.findById(memo.getCatalogItemId()).orElse(null);
+        }
+        if(item==null)item=catalogItems.findFirstBySchoolCodeAndNameIgnoreCase(schoolCode,name).orElseGet(HrCatalogItem::new);
+        item.setSchoolCode(schoolCode);item.setName(name);
+        item.setCategory(agreement.getKind()==AdditionalAgreement.Kind.ADDITIONAL_WORK
+                ?HrCatalogItem.Category.ADDITIONAL_WORK:HrCatalogItem.Category.COMPENSATION);
+        item.setDefaultAmount(agreement.getTotalAmount());item.setAgreementText(agreement.getConditionsJson());
+        item.setSeparateAgreement(agreement.getKind()==AdditionalAgreement.Kind.ADDITIONAL_WORK);
+        item.setActive(true);item.setUpdatedAt(LocalDateTime.now());item=catalogItems.save(item);
+        if(memo!=null){memo.setCatalogItemId(item.getId());memo.setAgreementText(agreement.getConditionsJson());memos.save(memo);}
     }
     @Transactional(readOnly = true) public AdditionalAgreement agreement(Long id) { return agreements.findById(id).orElseThrow(() -> new ResponseStatusException(NOT_FOUND)); }
     @Transactional(readOnly = true) public HrServiceMemo memo(Long id) { return memos.findById(id).orElseThrow(() -> new ResponseStatusException(NOT_FOUND)); }
@@ -443,7 +532,7 @@ public class HrDocumentService {
         if(knownContract!=null)return knownContract.getTeacherId();
         return agreement.getContractId()==null?null:contracts.findById(agreement.getContractId()).map(EmploymentContract::getTeacherId).orElse(null);
     }
-    private AgreementView view(AdditionalAgreement a) { return new AgreementView(a.getId(),a.getInternalNumber(),a.getVisibleNumber(),a.getRevision(),a.getKind().name(),a.getStatus().name(),a.getChangeMode().name(),a.getReplacesAgreementId(),a.getDocumentDate(),a.getValidFrom(),a.getValidTo(),a.getSummary(),a.getTotalAmount(),a.getServiceMemoId(),a.getLoadServiceMemoId(),a.getIssuedAt()); }
+    private AgreementView view(AdditionalAgreement a) { return new AgreementView(a.getId(),a.getInternalNumber(),a.getVisibleNumber(),a.getRevision(),a.getKind().name(),a.getStatus().name(),a.getChangeMode().name(),a.getReplacesAgreementId(),a.getDocumentDate(),a.getValidFrom(),a.getValidTo(),a.getSummary(),a.getConditionsJson(),a.getTotalAmount(),a.getServiceMemoId(),a.getLoadServiceMemoId(),a.getIssuedAt()); }
     private boolean isComplete(HrPersonalData p) { return present(p.getPassportSeries()) && present(p.getPassportNumber()) && present(p.getPassportIssuedBy()) && p.getPassportIssueDate()!=null && present(p.getPassportDepartmentCode()) && present(p.getRegistrationAddress()); }
     private boolean present(String s){return s!=null&&!s.isBlank();} private String required(String s,String name){if(!present(s))throw new ResponseStatusException(BAD_REQUEST,name+" обязательно");return s.trim();}
     private String json(Object x){try{return objectMapper.writeValueAsString(x);}catch(Exception e){throw new IllegalStateException(e);}}
@@ -534,7 +623,78 @@ public class HrDocumentService {
     }
 
     private record MemoRecipient(String title,String name){}
-    private byte[] generateAgreement(AdditionalAgreement a, EmploymentContract c) {
+
+    private byte[] generateAgreement(AdditionalAgreement a,EmploymentContract c){
+        Long teacherId=agreementTeacherId(a,c);TeacherDirectoryEntry teacher=teachers.findById(teacherId).orElseThrow();
+        HrPersonalData personal=personalData.findByTeacherId(teacherId).orElse(null);
+        try(XWPFDocument document=new XWPFDocument();ByteArrayOutputStream out=new ByteArrayOutputStream()){
+            configureAgreementPage(document);String number=present(a.getVisibleNumber())?" № "+a.getVisibleNumber():"";
+            agreementTitle(document,"ДОПОЛНИТЕЛЬНОЕ СОГЛАШЕНИЕ"+number,12);
+            agreementCentered(document,"к трудовому договору № "+(c==null?"________________":c.getContractNumber())+" от "+(c==null?"____________":legalDate(c.getContractDate())),true,11);
+            if(a.getKind()==AdditionalAgreement.Kind.ADDITIONAL_WORK)agreementCentered(document,"об увеличении объема работ",true,11);
+            addCityAndDate(document,a.getDocumentDate());
+            agreementBody(document,employerIntro()+", "+employerAuthorityPhrase()+" на основании Устава, с одной стороны, и "+teacher.getFioTeacher()+", занимающий(ая) должность «"+(c==null?"________________":c.getPositionName())+"», именуемый(ая) в дальнейшем «Работник», с другой стороны, совместно именуемые «Стороны», заключили настоящее дополнительное соглашение о нижеследующем:",false);
+            if(a.getReplacesAgreementId()!=null){
+                AdditionalAgreement previous=agreement(a.getReplacesAgreementId());String reference="дополнительное соглашение "+(present(previous.getVisibleNumber())?"№ "+previous.getVisibleNumber()+" ":"")+"от "+legalDate(previous.getDocumentDate());
+                agreementBody(document,"1. "+(a.getChangeMode()==AdditionalAgreement.ChangeMode.CANCEL_AND_RESTATE?"Признать утратившим силу с "+legalDate(a.getValidFrom())+" "+reference+" и считать соответствующие условия трудового договора действующими в редакции настоящего дополнительного соглашения.":"Внести с "+legalDate(a.getValidFrom())+" изменения в "+reference+"."),false);
+            }
+            int point=a.getReplacesAgreementId()==null?1:2;
+            point=a.getKind()==AdditionalAgreement.Kind.ADDITIONAL_WORK?appendAdditionalWorkTerms(document,a,point):appendPayTerms(document,a,point);
+            agreementBody(document,(point++)+". Настоящее дополнительное соглашение является неотъемлемой частью трудового договора.",false);
+            agreementBody(document,(point++)+". Остальные условия трудового договора, не затронутые настоящим дополнительным соглашением, остаются без изменений.",false);
+            agreementBody(document,(point++)+". Настоящее дополнительное соглашение составлено в двух экземплярах, имеющих одинаковую юридическую силу, по одному для каждой из Сторон.",false);
+            addAgreementSignatures(document,teacher,personal);
+            if(a.getKind()==AdditionalAgreement.Kind.PAY_TERMS)appendLoadAnnex(document,teacherId,a.getAcademicYear(),a.getValidFrom(),a,c);
+            document.write(out);return out.toByteArray();
+        }catch(Exception e){throw new IllegalStateException("Не удалось сформировать дополнительное соглашение",e);}
+    }
+
+    private int appendAdditionalWorkTerms(XWPFDocument document,AdditionalAgreement agreement,int point){
+        HrServiceMemo memo=agreement.getServiceMemoId()==null?null:memos.findById(agreement.getServiceMemoId()).orElse(null);
+        String condition=firstPresent(agreement.getConditionsJson(),agreement.getSummary());String embeddedDuties="";int marker=condition.indexOf("Дополнительные обязанности:");
+        if(marker>=0){embeddedDuties=condition.substring(marker+"Дополнительные обязанности:".length()).trim();condition=condition.substring(0,marker).trim();}
+        String assignment=memo==null?agreement.getSummary():firstPresent(memo.getAssignmentName(),agreement.getSummary());
+        if(!present(condition))condition="Работнику поручается без освобождения от работы, определенной трудовым договором, выполнение дополнительной работы «"+assignment+"» в порядке увеличения объема работ.";
+        agreementBody(document,(point++)+". "+finishSentence(condition),false);
+        String duties=memo==null?embeddedDuties:firstPresent(memo.getDutiesText(),embeddedDuties);
+        if(present(duties)){agreementBody(document,(point++)+". При выполнении дополнительной работы Работник исполняет следующие обязанности:",false);for(String duty:duties.split("(?:\\R|;)+"))if(present(duty))agreementBody(document,"– "+finishSentence(duty.trim()),false,991);}
+        agreementBody(document,(point++)+". Дополнительная работа выполняется без освобождения от основной работы в период с "+legalDate(agreement.getValidFrom())+" по "+legalDate(agreement.getValidTo())+".",false);
+        if(agreement.getTotalAmount()!=null)agreementBody(document,(point++)+". За выполнение дополнительной работы Работнику устанавливается ежемесячная доплата в размере "+money(agreement.getTotalAmount())+" ("+moneyWords(agreement.getTotalAmount())+") до удержания налогов и иных обязательных платежей.",false);
+        agreementBody(document,(point++)+". Работник вправе досрочно отказаться от выполнения дополнительной работы, а Работодатель — досрочно отменить поручение о ее выполнении, предупредив другую Сторону в письменной форме не позднее чем за три рабочих дня.",false);return point;
+    }
+
+    private int appendPayTerms(XWPFDocument document,AdditionalAgreement agreement,int point){
+        agreementBody(document,(point++)+". "+finishSentence(firstPresent(agreement.getConditionsJson(),agreement.getSummary())),false);
+        if(agreement.getTotalAmount()!=null)agreementBody(document,(point++)+". Размер оплаты труда с учетом условий настоящего дополнительного соглашения составляет "+money(agreement.getTotalAmount())+" ("+moneyWords(agreement.getTotalAmount())+") в месяц до удержания налогов и иных обязательных платежей. Подробный расчет приведен в Приложении № 1.",false);
+        agreementBody(document,(point++)+". Условия настоящего дополнительного соглашения действуют с "+legalDate(agreement.getValidFrom())+" по "+legalDate(agreement.getValidTo())+".",false);return point;
+    }
+
+    private void configureAgreementPage(XWPFDocument document){
+        CTSectPr section=document.getDocument().getBody().isSetSectPr()?document.getDocument().getBody().getSectPr():document.getDocument().getBody().addNewSectPr();CTPageSz size=section.isSetPgSz()?section.getPgSz():section.addNewPgSz();size.setW(BigInteger.valueOf(11906));size.setH(BigInteger.valueOf(16838));
+        CTPageMar margin=section.isSetPgMar()?section.getPgMar():section.addNewPgMar();margin.setTop(BigInteger.valueOf(850));margin.setBottom(BigInteger.valueOf(850));margin.setLeft(BigInteger.valueOf(1134));margin.setRight(BigInteger.valueOf(850));margin.setHeader(BigInteger.valueOf(360));margin.setFooter(BigInteger.valueOf(360));margin.setGutter(BigInteger.ZERO);
+    }
+    private void agreementTitle(XWPFDocument document,String text,int size){XWPFParagraph p=document.createParagraph();p.setAlignment(ParagraphAlignment.CENTER);p.setSpacingAfter(0);agreementRun(p,text,true,size);}
+    private void agreementCentered(XWPFDocument document,String text,boolean bold,int size){XWPFParagraph p=document.createParagraph();p.setAlignment(ParagraphAlignment.CENTER);p.setSpacingAfter(0);agreementRun(p,text,bold,size);}
+    private void agreementBody(XWPFDocument document,String text,boolean bold){agreementBody(document,text,bold,708);}
+    private void agreementBody(XWPFDocument document,String text,boolean bold,int indent){XWPFParagraph p=document.createParagraph();p.setAlignment(ParagraphAlignment.BOTH);p.setIndentationFirstLine(indent);p.setSpacingAfter(0);p.setSpacingBefore(0);p.setSpacingBetween(1.0);agreementRun(p,Objects.toString(text,""),bold,11);}
+    private XWPFRun agreementRun(XWPFParagraph paragraph,String text,boolean bold,int size){XWPFRun run=paragraph.createRun();run.setBold(bold);run.setFontFamily("Times New Roman");run.setFontFamily("Times New Roman",XWPFRun.FontCharRange.eastAsia);run.setFontSize(size);appendRunText(run,Objects.toString(text,""));return run;}
+    private void addCityAndDate(XWPFDocument document,LocalDate date){XWPFTable table=document.createTable(1,2);table.setWidth("100%");setTableBorders(table,STBorder.NIL);agreementCell(table.getRow(0).getCell(0),"г. Москва",false,ParagraphAlignment.LEFT,11);agreementCell(table.getRow(0).getCell(1),legalDate(date),false,ParagraphAlignment.RIGHT,11);}
+    private void addAgreementSignatures(XWPFDocument document,TeacherDirectoryEntry teacher,HrPersonalData personal){
+        agreementCentered(document,"Адреса и реквизиты сторон",true,11);XWPFTable table=document.createTable(2,2);table.setWidth("100%");setTableBorders(table,STBorder.SINGLE);
+        agreementCell(table.getRow(0).getCell(0),"РАБОТОДАТЕЛЬ",true,ParagraphAlignment.CENTER,10);agreementCell(table.getRow(0).getCell(1),"РАБОТНИК",true,ParagraphAlignment.CENTER,10);
+        String employer=employerDetails()+"\n\nДиректор\n______________ / "+directorInitials()+" /\n\n«____» ____________ 20___ г.";
+        String passport=personal==null?"":("Паспорт: серия "+Objects.toString(personal.getPassportSeries(),"")+" № "+Objects.toString(personal.getPassportNumber(),"")+"\nвыдан "+Objects.toString(personal.getPassportIssuedBy(),"")+"\nдата выдачи "+formatDate(personal.getPassportIssueDate())+", код подразделения "+Objects.toString(personal.getPassportDepartmentCode(),""));
+        String employee=teacher.getFioTeacher()+"\nАдрес регистрации: "+(personal==null?"":Objects.toString(personal.getRegistrationAddress(),""))+"\nФактический адрес: "+(personal==null?"":Objects.toString(personal.getActualAddress(),""))+"\nТелефон: "+(personal==null?"":Objects.toString(personal.getPhone(),""))+"\n"+passport+"\n\n______________ / "+teacherInitials(teacher)+" /\n\n«____» ____________ 20___ г.";
+        agreementCell(table.getRow(1).getCell(0),employer,false,ParagraphAlignment.LEFT,9);agreementCell(table.getRow(1).getCell(1),employee,false,ParagraphAlignment.LEFT,9);agreementBody(document,"Экземпляр дополнительного соглашения получил(а): «____» ____________ 20___ г.  __________________ / "+teacherInitials(teacher)+" /",false,0);
+    }
+    private void agreementCell(XWPFTableCell cell,String text,boolean bold,ParagraphAlignment alignment,int size){cell.setVerticalAlignment(XWPFTableCell.XWPFVertAlign.TOP);XWPFParagraph p=cell.getParagraphs().get(0);p.setAlignment(alignment);p.setSpacingAfter(0);agreementRun(p,text,bold,size);}
+    private void setTableBorders(XWPFTable table,STBorder.Enum style){CTTblPr properties=table.getCTTbl().getTblPr();CTTblBorders borders=properties.isSetTblBorders()?properties.getTblBorders():properties.addNewTblBorders();for(CTBorder border:List.of(borders.addNewTop(),borders.addNewLeft(),borders.addNewBottom(),borders.addNewRight(),borders.addNewInsideH(),borders.addNewInsideV())){border.setVal(style);border.setSz(BigInteger.valueOf(style==STBorder.NIL?0:4));border.setColor("000000");}}
+    private String teacherInitials(TeacherDirectoryEntry teacher){if(present(teacher.getInitials()))return teacher.getInitials();String[] parts=teacher.getFioTeacher().trim().split("\\s+");return parts[0]+(parts.length>1?" "+parts[1].charAt(0)+".":"")+(parts.length>2?parts[2].charAt(0)+".":"");}
+    private String directorInitials(){return "1811".equals(SchoolCodeResolver.resolve())?"В.А. Тихонов":"И.Д. Жданова";}
+    private String finishSentence(String value){String text=Objects.toString(value,"").trim();return text.isEmpty()?text:text.matches(".*[.!?]$")?text:text+".";}
+    private String legalDate(LocalDate date){if(date==null)return "«____» ____________ 20___ г.";String[] months={"января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"};return "«"+String.format("%02d",date.getDayOfMonth())+"» "+months[date.getMonthValue()-1]+" "+date.getYear()+" г.";}
+
+    private byte[] generateAgreementLegacy(AdditionalAgreement a, EmploymentContract c) {
         Long teacherId=agreementTeacherId(a,c);
         TeacherDirectoryEntry t=teachers.findById(teacherId).orElseThrow(); HrPersonalData p=personalData.findByTeacherId(teacherId).orElse(null);
         try(XWPFDocument d=new XWPFDocument(); ByteArrayOutputStream out=new ByteArrayOutputStream()){
@@ -595,6 +755,18 @@ public class HrDocumentService {
         return date == null ? "" : date.format(DateTimeFormatter.ofPattern("dd.MM.yyyy"));
     }
 
+    private void appendLoadAnnex(XWPFDocument document,Long teacherId,String year,LocalDate date,
+                                 AdditionalAgreement agreement,EmploymentContract contract){
+        if(loadDetails(teacherId,year,date).isEmpty())return;
+        XWPFParagraph pageBreak=document.createParagraph();pageBreak.createRun().addBreak(BreakType.PAGE);
+        XWPFParagraph reference=document.createParagraph();reference.setAlignment(ParagraphAlignment.RIGHT);
+        agreementRun(reference,"Приложение № 1\nк дополнительному соглашению\nк трудовому договору № "+
+                (contract==null?"________":contract.getContractNumber())+" от "+
+                (contract==null?"________":legalDate(contract.getContractDate())),false,10);
+        appendLoadAnnex(document,teacherId,year,date);
+        agreementBody(document,"Итоговая сумма: "+(agreement.getTotalAmount()==null?"по расчету выше":money(agreement.getTotalAmount())+" ("+moneyWords(agreement.getTotalAmount())+")"),false,0);
+    }
+
     private void appendLoadAnnex(XWPFDocument d, Long teacherId, String year, LocalDate date) {
         List<LoadDetail> rows = loadDetails(teacherId, year, date);
         if (rows.isEmpty()) return;
@@ -624,7 +796,8 @@ public class HrDocumentService {
         return (value.signum()<0?"-":"")+grouped+","+parts[1]+" руб.";
     }
     private String firstPresent(String... values){for(String value:values)if(present(value))return value.trim();return "";}
-    private String employerIntro(){return "1811".equals(SchoolCodeResolver.resolve())?"Государственное бюджетное общеобразовательное учреждение города Москвы «Школа № 1811 «Восточное Измайлово», именуемое «Работодатель», в лице директора Тихонова Валерия Анатольевича":"Государственное бюджетное общеобразовательное учреждение города Москвы «Школа № 7», именуемое «Работодатель», в лице директора Ждановой Ирины Дмитриевны";}
+    private String employerIntro(){return "1811".equals(SchoolCodeResolver.resolve())?"Государственное бюджетное общеобразовательное учреждение города Москвы «Школа № 1811 «Восточное Измайлово»», именуемое «Работодатель», в лице директора Тихонова Валерия Анатольевича":"Государственное бюджетное общеобразовательное учреждение города Москвы «Школа № 7», именуемое «Работодатель», в лице директора Ждановой Ирины Дмитриевны";}
+    private String employerAuthorityPhrase(){return "1811".equals(SchoolCodeResolver.resolve())?"действующего":"действующей";}
     private String employerDetails(){return "1811".equals(SchoolCodeResolver.resolve())?"Работодатель: ГБОУ Школа № 1811 «Восточное Измайлово», 105203, г. Москва, ул. Первомайская, д. 109/2, ИНН/КПП 7719894832/771901001":"Работодатель: ГБОУ Школа № 7, 119331, г. Москва, ул. Крупской, д. 17, ИНН 7736050780";}
     private String moneyWords(BigDecimal v){BigDecimal x=v.setScale(2,RoundingMode.HALF_UP); long rub=x.longValue(); int kop=x.remainder(BigDecimal.ONE).movePointRight(2).abs().intValue(); return numberWords(rub)+" "+form(rub,"рубль","рубля","рублей")+" "+String.format("%02d",kop)+" "+form(kop,"копейка","копейки","копеек");}
     private String form(long n,String a,String b,String c){long m=Math.abs(n)%100;if(m>=11&&m<=14)return c;return switch((int)(Math.abs(n)%10)){case 1->a;case 2,3,4->b;default->c;};}

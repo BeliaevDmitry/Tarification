@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.school.personalLoad.dto.HrDocumentDtos.AgreementRequest;
+import org.school.personalLoad.dto.HrDocumentDtos.AgreementEditRequest;
 import org.school.personalLoad.dto.HrDocumentDtos.BatchAgreementRequest;
 import org.school.personalLoad.dto.HrDocumentDtos.MemoRequest;
 import org.school.personalLoad.model.*;
@@ -15,6 +16,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.io.ByteArrayInputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -39,7 +42,7 @@ class HrDocumentServiceTest {
     TeacherDirectoryEntry teacher;
 
     @BeforeEach void setUp(){
-        service=new HrDocumentService(contracts,personal,memos,loadMemos,agreements,versions,catalog,teachers,loads,salary,coefficients,groups,sizes,new ObjectMapper());
+        service=new HrDocumentService(contracts,personal,memos,loadMemos,agreements,versions,catalog,teachers,loads,salary,coefficients,groups,sizes,new ObjectMapper().findAndRegisterModules());
         contract=new EmploymentContract(); contract.setId(10L); contract.setTeacherId(1L); contract.setContractNumber("1-ТД");
         contract.setContractDate(LocalDate.of(2025,1,1)); contract.setPositionName("Учитель");
         teacher=new TeacherDirectoryEntry(); teacher.setId(1L); teacher.setFioTeacher("Иванов Иван Иванович");
@@ -54,7 +57,8 @@ class HrDocumentServiceTest {
         AdditionalAgreement old=new AdditionalAgreement(); old.setId(9L); old.setStatus(AdditionalAgreement.Status.ANNULLED);
         old.setInternalNumber("3 / 2025-2026"); old.setRevision(2); when(agreements.findById(9L)).thenReturn(Optional.of(old));
         AdditionalAgreement a=service.createAgreement(request(9L),"hr");
-        assertEquals("3 / 2025-2026",a.getInternalNumber()); assertEquals(3,a.getRevision()); assertEquals(9L,a.getReplacesAgreementId()); verify(versions).save(any());
+        assertEquals("3 / 2025-2026",a.getInternalNumber()); assertEquals(3,a.getRevision()); assertEquals(9L,a.getReplacesAgreementId());
+        assertNull(a.getCurrentDocument(),"Черновик формируется только после ручной проверки");verifyNoInteractions(versions);
     }
 
     @Test void issueIsBlockedUntilPersonalDataIsComplete(){
@@ -227,6 +231,87 @@ class HrDocumentServiceTest {
         var rows=service.agreementRows("2025/2026");
 
         assertEquals(1,rows.size());assertEquals(10L,rows.get(0).contractId());assertEquals(teacher.getFioTeacher(),rows.get(0).fio());
+    }
+
+    @Test void contractlessAgreementCanBeEditedButCannotBePrepared() {
+        AdditionalAgreement agreement=draftAgreement();agreement.setContractId(null);agreement.setInternalNumber("БД-1-1");
+        when(agreements.findById(100L)).thenReturn(Optional.of(agreement));
+
+        service.editAgreement(100L,new AgreementEditRequest(null,LocalDate.of(2025,9,1),
+                LocalDate.of(2025,9,1),LocalDate.of(2026,8,31),"Нагрузка",
+                "Изложить пункт 2.1 в новой редакции.",new BigDecimal("50000"),false,null),"hr");
+
+        assertEquals("Изложить пункт 2.1 в новой редакции.",agreement.getConditionsJson());
+        assertNull(agreement.getCurrentDocument());
+        ResponseStatusException error=assertThrows(ResponseStatusException.class,()->service.prepare(100L,"hr"));
+        assertTrue(error.getReason().contains("трудовой договор"));
+    }
+
+    @Test void editedAgreementCanUpdateReusableCatalogTemplate() {
+        AdditionalAgreement agreement=draftAgreement();agreement.setServiceMemoId(50L);
+        HrServiceMemo memo=new HrServiceMemo();memo.setId(50L);memo.setStatus(HrServiceMemo.Status.RECEIVED_BY_HR);
+        when(agreements.findById(100L)).thenReturn(Optional.of(agreement));when(memos.findById(50L)).thenReturn(Optional.of(memo));
+        when(catalog.findFirstBySchoolCodeAndNameIgnoreCase(anyString(),eq("Заведование кабинетом"))).thenReturn(Optional.empty());
+        when(catalog.save(any())).thenAnswer(invocation->{HrCatalogItem item=invocation.getArgument(0);item.setId(77L);return item;});
+
+        service.editAgreement(100L,new AgreementEditRequest(10L,LocalDate.of(2025,9,1),
+                agreement.getValidFrom(),agreement.getValidTo(),"Заведование кабинетом",
+                "Работнику поручается заведование кабинетом.",new BigDecimal("15000"),true,"Заведование кабинетом"),"hr");
+
+        assertEquals(77L,memo.getCatalogItemId());
+        verify(catalog).save(argThat(item->"Работнику поручается заведование кабинетом.".equals(item.getAgreementText())
+                &&item.getCategory()==HrCatalogItem.Category.COMPENSATION));
+    }
+
+    @Test void preparationCreatesSchoolAgreementDocxAndMovesDraftToReady() throws Exception {
+        AdditionalAgreement agreement=draftAgreement();agreement.setTotalAmount(new BigDecimal("50000"));
+        when(agreements.findById(100L)).thenReturn(Optional.of(agreement));when(personal.findByTeacherId(1L)).thenReturn(Optional.of(completePersonal()));
+
+        AdditionalAgreement prepared=service.prepare(100L,"hr");
+
+        assertEquals(AdditionalAgreement.Status.READY,prepared.getStatus());assertNotNull(prepared.getCurrentDocument());
+        try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(prepared.getCurrentDocument()))){
+            String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right)
+                    +document.getTables().stream().map(table->table.getText()).reduce("",String::concat);
+            assertTrue(text.contains("ДОПОЛНИТЕЛЬНОЕ СОГЛАШЕНИЕ"));
+            assertTrue(text.contains("Изложить пункт 2.1"));assertTrue(text.contains("пятьдесят тысяч рублей"));
+            assertTrue(text.contains("Адреса и реквизиты сторон"));
+        }
+        String qaOutput=System.getProperty("hr.agreement.qa.output");
+        if(qaOutput!=null&&!qaOutput.isBlank()){Path path=Path.of(qaOutput);Files.createDirectories(path.getParent());Files.write(path,prepared.getCurrentDocument());}
+        verify(versions).save(argThat(version->"PREPARED".equals(version.getSource())));
+    }
+
+    @Test void additionalWorkAgreementFollowsSchoolSampleStructure() throws Exception {
+        AdditionalAgreement agreement=draftAgreement();agreement.setKind(AdditionalAgreement.Kind.ADDITIONAL_WORK);
+        agreement.setServiceMemoId(50L);agreement.setSummary("Заведование кабинетом");agreement.setTotalAmount(new BigDecimal("15000"));
+        agreement.setConditionsJson("Работнику поручается выполнение дополнительной работы «Заведование кабинетом» без освобождения от основной работы.");
+        HrServiceMemo memo=new HrServiceMemo();memo.setId(50L);memo.setStatus(HrServiceMemo.Status.RECEIVED_BY_HR);
+        memo.setAssignmentName("Заведование кабинетом");memo.setDutiesText("Обеспечивает сохранность имущества\nКонтролирует доступ в кабинет");
+        when(agreements.findById(100L)).thenReturn(Optional.of(agreement));when(memos.findById(50L)).thenReturn(Optional.of(memo));
+        when(personal.findByTeacherId(1L)).thenReturn(Optional.of(completePersonal()));
+
+        AdditionalAgreement prepared=service.prepare(100L,"hr");
+
+        try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(prepared.getCurrentDocument()))){
+            String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right)
+                    +document.getTables().stream().map(table->table.getText()).reduce("",String::concat);
+            assertTrue(text.contains("об увеличении объема работ"));assertTrue(text.contains("Обеспечивает сохранность имущества"));
+            assertTrue(text.contains("три рабочих дня"));assertTrue(text.contains("15 000,00 руб."));
+        }
+    }
+
+    private AdditionalAgreement draftAgreement(){
+        AdditionalAgreement agreement=new AdditionalAgreement();agreement.setId(100L);agreement.setTeacherId(1L);agreement.setContractId(10L);
+        agreement.setAcademicYear("2025/2026");agreement.setInternalNumber("1 / 2025-2026");agreement.setStatus(AdditionalAgreement.Status.DRAFT);
+        agreement.setKind(AdditionalAgreement.Kind.PAY_TERMS);agreement.setSummary("Нагрузка");agreement.setConditionsJson("Изложить пункт 2.1 раздела «Оплата труда» в новой редакции.");
+        agreement.setDocumentDate(LocalDate.of(2025,9,1));agreement.setValidFrom(LocalDate.of(2025,9,1));agreement.setValidTo(LocalDate.of(2026,8,31));agreement.setCreatedBy("hr");return agreement;
+    }
+
+    private HrPersonalData completePersonal(){
+        HrPersonalData data=new HrPersonalData();data.setTeacherId(1L);data.setPassportSeries("4510");data.setPassportNumber("123456");
+        data.setPassportIssuedBy("ОВД района");data.setPassportIssueDate(LocalDate.of(2015,1,1));data.setPassportDepartmentCode("770-001");
+        data.setRegistrationAddress("г. Москва, ул. Примерная, д. 1");data.setActualAddress("г. Москва, ул. Примерная, д. 1");data.setPhone("+7 999 000-00-00");return data;
     }
 
     private AgreementRequest request(Long old){return new AgreementRequest(10L,null,"2025/2026",LocalDate.of(2025,9,1),LocalDate.of(2025,9,1),LocalDate.of(2026,8,31),AdditionalAgreement.Kind.PAY_TERMS,AdditionalAgreement.ChangeMode.AMEND,"Нагрузка","Пункт 2.1",null,old);}

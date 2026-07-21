@@ -25,6 +25,9 @@ public final class HrDocumentDtos {
             LocalDate validFrom, LocalDate validTo, AdditionalAgreement.Kind kind,
             AdditionalAgreement.ChangeMode changeMode, String summary, String conditionsJson,
             BigDecimal totalAmount, Long replacesAgreementId) {}
+    public record AgreementEditRequest(Long contractId, LocalDate documentDate, LocalDate validFrom,
+            LocalDate validTo, String summary, String conditionsJson, BigDecimal totalAmount,
+            Boolean saveAsTemplate, String templateName) {}
     public record BatchAgreementRequest(String academicYear, LocalDate documentDate, LocalDate validFrom,
             List<Long> contractIds, Long serviceMemoId) {}
     public record AnnulRequest(String reason) {}
@@ -34,8 +37,8 @@ public final class HrDocumentDtos {
             boolean personalDataComplete, List<AgreementView> agreements, String actionRequired) {}
     public record AgreementView(Long id, String internalNumber, String visibleNumber, int revision,
             String kind, String status, String changeMode, Long replacesAgreementId,
-            LocalDate documentDate, LocalDate validFrom, LocalDate validTo, String summary,
+            LocalDate documentDate, LocalDate validFrom, LocalDate validTo, String summary, String conditionsJson,
             BigDecimal totalAmount, Long serviceMemoId, Long loadServiceMemoId, LocalDateTime issuedAt) {}
     public record AgreementListRow(Long teacherId, String fio, Long contractId, String contractNumber,
-            String position, AgreementView agreement) {}
+            String position, boolean personalDataComplete, AgreementView agreement) {}
 }

@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 import javax.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
@@ -28,6 +29,14 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleConflict(IllegalStateException e, HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(
                 new ApiErrorResponse("error", e.getMessage(), request.getRequestURI(), LocalDateTime.now())
+        );
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ApiErrorResponse> handleResponseStatus(ResponseStatusException e, HttpServletRequest request) {
+        String message = e.getReason() == null || e.getReason().isBlank() ? e.getMessage() : e.getReason();
+        return ResponseEntity.status(e.getStatus()).body(
+                new ApiErrorResponse("error", message, request.getRequestURI(), LocalDateTime.now())
         );
     }
     @ExceptionHandler(UnauthorizedException.class)
