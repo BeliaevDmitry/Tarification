@@ -28,10 +28,15 @@ function showNotice(message, error = false) {
     document.body.appendChild(notice); setTimeout(()=>notice.remove(),7000);
 }
 const STANDARD_CONTRACT_CLAUSES = ['2.1','2.4','2.5'];
+const CONTRACT_CLAUSE_LABELS = {
+    '2.1':'2.1 — учебная нагрузка',
+    '2.4':'2.4 — дополнительные функции',
+    '2.5':'2.5 — стимулирующие выплаты'
+};
 function clausePicker(prefix, value = '2.4') {
     const current = String(value || '2.4');
     const manual = !STANDARD_CONTRACT_CLAUSES.includes(current);
-    return `<div class="clause-picker"><select id="${prefix}-clause-choice" name="${prefix}ClauseChoice" required>${STANDARD_CONTRACT_CLAUSES.map(clause=>option(clause,clause,!manual&&clause===current)).join('')}<option value="MANUAL"${manual?' selected':''}>Добавить вручную</option></select><input id="${prefix}-clause-manual" name="${prefix}ClauseManual" value="${manual?esc(current):''}" placeholder="Введите пункт, например 3.2" class="${manual?'':'hidden'}"></div>`;
+    return `<div class="clause-picker"><select id="${prefix}-clause-choice" name="${prefix}ClauseChoice" required>${STANDARD_CONTRACT_CLAUSES.map(clause=>option(clause,CONTRACT_CLAUSE_LABELS[clause],!manual&&clause===current)).join('')}<option value="MANUAL"${manual?' selected':''}>Добавить вручную</option></select><input id="${prefix}-clause-manual" name="${prefix}ClauseManual" value="${manual?esc(current):''}" placeholder="Введите пункт, например 3.2" class="${manual?'':'hidden'}"></div>`;
 }
 function bindClausePicker(prefix) {
     const choice = $(`#${prefix}-clause-choice`), manual = $(`#${prefix}-clause-manual`);
@@ -48,7 +53,7 @@ function readClause(form, prefix) {
 }
 function documentTextOverrides(memoText = '', agreementText = '', prefix = 'memo') {
     const hasText=Boolean(memoText||agreementText);
-    return `<details class="advanced-text"${hasText?' open':''}><summary>Проверить или изменить автоматический текст</summary><label for="${prefix}-text">Текст служебной записки (необязательно)</label><textarea id="${prefix}-text" name="${prefix==='memo'?'assignmentText':'memo'}" placeholder="Пример: Прошу Вас согласовать работнику Иванову И.И. ежемесячную доплату в размере 15 000 рублей за увеличение объема работ (заведование кабинетом) с 01.09.2026 по 31.08.2027.">${esc(memoText)}</textarea><span class="field-help">Если оставить пустым, система сама составит служебную записку по выбранному работнику, обязанности, сумме и периоду.</span><label for="${prefix}-agreement">Текст для дополнительного соглашения (необязательно)</label><textarea id="${prefix}-agreement" name="${prefix==='memo'?'agreementText':'agreement'}" placeholder="Пример: Изложить пункт 2.4 трудового договора в части выплаты за увеличение объема работ («заведование кабинетом») в новой редакции.">${esc(agreementText)}</textarea><span class="field-help">Это юридическое условие допсоглашения. Пустое поле также будет заполнено автоматически.</span></details>`;
+    return `<details class="advanced-text"${hasText?' open':''}><summary>Проверить или изменить автоматический текст</summary><label for="${prefix}-text">Текст служебной записки (необязательно)</label><textarea id="${prefix}-text" name="${prefix==='memo'?'assignmentText':'memo'}" placeholder="Для пункта 2.4 система сформирует: Внести изменения в пункт 2.4. раздела 2 «Оплата труда», изложив его в следующей редакции… Ниже будут перечислены все актуальные функции работника и суммы цифрами и прописью.">${esc(memoText)}</textarea><span class="field-help">Оставьте поле пустым: система сама соберёт полную актуальную редакцию пункта по выбранному работнику, обязанности и сумме.</span><label for="${prefix}-agreement">Текст для дополнительного соглашения (необязательно)</label><textarea id="${prefix}-agreement" name="${prefix==='memo'?'agreementText':'agreement'}" placeholder="Пример строки: - возложена функция «заведование кабинетом технологии», в размере 15 000 рублей 00 коп. (пятнадцать тысяч рублей 00 коп.) в месяц.">${esc(agreementText)}</textarea><span class="field-help">Этот блок попадёт в дополнительное соглашение. Для пункта 2.4 его также лучше оставить пустым — система перенесёт готовую редакцию из служебки.</span></details>`;
 }
 
 document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => {
@@ -330,7 +335,7 @@ $('#add-memo').addEventListener('click', async () => {
         row('Трудовой договор', '<select id="memo-contract" name="contractId"><option value="">Можно заполнить позже</option></select>','Договор необязателен для служебной записки. После его заполнения система автоматически создаст и привяжет допсоглашение.') +
         row('Обязанность из справочника', `<div class="hr-toolbar"><select id="memo-catalog" name="catalogItemId"><option value="">Добавить вручную</option>${catalogCache.map(c=>option(c.id,`${c.name} — ${CATEGORY_LABELS[c.category]||c.category}`)).join('')}</select><button id="memo-manual" type="button">Добавить вручную</button></div>`,'Готовый вариант можно отредактировать для конкретного работника.') +
         row('Обязанность или работа', '<input id="memo-assignment" name="assignmentName" required placeholder="Например: заведование кабинетом">','Этого названия достаточно: текст служебной записки система сформирует автоматически.') +
-        row('Пункт трудового договора', clausePicker('memo','2.4'),'Выберите 2.1, 2.4, 2.5 или вариант «Добавить вручную».') +
+        row('Пункт трудового договора', clausePicker('memo','2.4'),'2.1 формируется из нагрузки, 2.4 — из дополнительных функций, 2.5 будет формироваться из отдельной таблицы стимулирующих выплат.') +
         row('Есть отдельный функционал?', '<div class="inline-choice"><label><input type="radio" name="separate" value="false" checked> Нет — изменить выбранный пункт</label><label><input type="radio" name="separate" value="true"> Да — отдельное соглашение</label></div>','Выберите «Да», если кроме названия работы нужно закрепить отдельный перечень обязанностей.') +
         `<div id="duties-label" class="field-label hidden">Дополнительные обязанности</div><div id="duties-control" class="field-control hidden"><textarea id="memo-duties" name="dutiesText" placeholder="Перечислите обязанности отдельными строками"></textarea><span class="field-help">Текст попадёт в отдельное дополнительное соглашение и может быть сохранён как шаблон.</span></div>` +
         row('Сумма в месяц', '<input id="memo-amount" name="amount" type="number" min="0" step="0.01" required>') +
@@ -393,7 +398,7 @@ function editCatalog(item = null) {
     openEditor(item ? 'Изменить выплату или работу' : 'Добавить выплату или работу',
         row('Название обязанности или выплаты', `<input name="name" value="${esc(item?.name)}" required placeholder="Например: заведование кабинетом">`) +
         row('Категория', `<select name="category"><option value="COMPENSATION" ${item?.category==='COMPENSATION'?'selected':''}>Компенсационная выплата</option><option value="INCENTIVE" ${item?.category==='INCENTIVE'?'selected':''}>Стимулирующая выплата</option><option value="ADDITIONAL_WORK" ${item?.category==='ADDITIONAL_WORK'?'selected':''}>Дополнительная работа</option></select>`) +
-        row('Пункт трудового договора', clausePicker('catalog',item?.contractClause||'2.4'),'Выберите 2.1, 2.4, 2.5 или добавьте другой пункт вручную.') + row('Стандартная сумма', `<input name="amount" type="number" min="0" step="0.01" value="${esc(item?.defaultAmount)}">`) +
+        row('Пункт трудового договора', clausePicker('catalog',item?.contractClause||'2.4'),'Источники разделены: 2.1 — нагрузка, 2.4 — дополнительные функции, 2.5 — стимулирующие выплаты из отдельной таблицы.') + row('Стандартная сумма', `<input name="amount" type="number" min="0" step="0.01" value="${esc(item?.defaultAmount)}">`) +
         row('Отдельное соглашение', `<label><input name="separate" type="checkbox" ${item?.separateAgreement?'checked':''}> Есть отдельный перечень дополнительных обязанностей</label>`,'Если флажок снят, выплата изменяет выбранный пункт договора. Если установлен — создаётся отдельный допник с функционалом.') +
         row('Дополнительные обязанности', `<textarea name="duties" placeholder="Например: контролировать состояние кабинета; вести журнал инструктажей; обеспечивать сохранность оборудования.">${esc(item?.dutiesText)}</textarea>`,'Заполняется, когда выбран отдельный функционал.') +
         row('Текст документов', documentTextOverrides(item?.memoText,item?.agreementText,'catalog'),'Оставьте поля пустыми для автоматического формирования; примеры находятся внутри.'),
