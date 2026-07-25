@@ -36,18 +36,20 @@ class HrDocumentServiceTest {
     SalarySettingsRepository salary=mock(SalarySettingsRepository.class);
     SubjectLevelCoefficientRepository coefficients=mock(SubjectLevelCoefficientRepository.class);
     SalaryGroupCoefficientSubjectRepository groups=mock(SalaryGroupCoefficientSubjectRepository.class);
+    ClassroomLeadershipRepository classroomLeadership=mock(ClassroomLeadershipRepository.class);
     ClassSizeService sizes=mock(ClassSizeService.class);
     HrDocumentService service;
     EmploymentContract contract;
     TeacherDirectoryEntry teacher;
 
     @BeforeEach void setUp(){
-        service=new HrDocumentService(contracts,personal,memos,loadMemos,agreements,versions,catalog,teachers,loads,salary,coefficients,groups,sizes,new ObjectMapper().findAndRegisterModules());
+        service=new HrDocumentService(contracts,personal,memos,loadMemos,agreements,versions,catalog,teachers,loads,salary,coefficients,groups,classroomLeadership,sizes,new ObjectMapper().findAndRegisterModules());
         contract=new EmploymentContract(); contract.setId(10L); contract.setTeacherId(1L); contract.setContractNumber("1-ТД");
         contract.setContractDate(LocalDate.of(2025,1,1)); contract.setPositionName("Учитель");
         teacher=new TeacherDirectoryEntry(); teacher.setId(1L); teacher.setFioTeacher("Иванов Иван Иванович");
         when(contracts.findById(10L)).thenReturn(Optional.of(contract)); when(teachers.findById(1L)).thenReturn(Optional.of(teacher));
         when(contracts.save(any())).thenAnswer(x->x.getArgument(0));
+        when(classroomLeadership.findAllByAcademicYear(anyString())).thenReturn(List.of());
         when(loads.findAllByAcademicYear(anyString())).thenReturn(List.of()); when(sizes.effectiveClassSizes(anyString())).thenReturn(Map.of());
         when(agreements.save(any())).thenAnswer(x->{AdditionalAgreement a=x.getArgument(0);if(a.getId()==null)a.setId(100L);return a;});
         when(memos.save(any())).thenAnswer(x->{HrServiceMemo m=x.getArgument(0);if(m.getId()==null)m.setId(50L);return m;});
@@ -113,6 +115,53 @@ class HrDocumentServiceTest {
         assertTrue(memo.getAssignmentText().contains("за увеличение объема работ"));
         verify(agreements,atLeastOnce()).save(argThat(a->a.getConditionsJson()!=null
                 && a.getConditionsJson().contains("пункт 2.5 трудового договора")));
+    }
+
+    @Test void clause24MemoRestatesAllCurrentFunctionsWithAmountsInDigitsAndWords() throws Exception {
+        ClassroomLeadershipEntry classroom=new ClassroomLeadershipEntry();classroom.setAcademicYear("2025/2026");
+        classroom.setClassName("5-А");classroom.setTeacher(teacher);
+        when(classroomLeadership.findAllByAcademicYear("2025/2026")).thenReturn(List.of(classroom));
+        when(sizes.effectiveClassSizes("2025/2026")).thenReturn(Map.of("5-А",22));
+        MemoRequest request=new MemoRequest("2025/2026",1L,10L,null,null,LocalDate.of(2025,9,1),
+                "Заведование кабинетом технологии",null,null,"2.4",null,new BigDecimal("15000"),
+                LocalDate.of(2025,9,1),LocalDate.of(2026,8,31),false,false,null);
+
+        HrServiceMemo memo=service.createMemo(request,"deputy");
+
+        assertTrue(memo.getAssignmentText().startsWith("Внести изменения в пункт 2.4. раздела 2 «Оплата труда»"));
+        assertTrue(memo.getAssignmentText().contains("«2.4. Работнику выплачиваются ежемесячные компенсационные выплаты"));
+        assertTrue(memo.getAssignmentText().contains("- возложена функция классного руководителя, в размере 5 000 рублей 00 коп. за 1 класс"));
+        assertTrue(memo.getAssignmentText().contains("500 рублей 00 коп. за 1 обучающегося"));
+        assertTrue(memo.getAssignmentText().contains("16 000 рублей 00 коп. (шестнадцать тысяч рублей 00 коп.) в месяц;"));
+        assertTrue(memo.getAssignmentText().contains("- возложена функция «заведование кабинетом технологии», в размере 15 000 рублей 00 коп. (пятнадцать тысяч рублей 00 коп.) в месяц»."));
+        assertEquals(memo.getAssignmentText(),memo.getAgreementText());
+
+        org.mockito.ArgumentCaptor<AdditionalAgreement> agreementCaptor=org.mockito.ArgumentCaptor.forClass(AdditionalAgreement.class);
+        verify(agreements,atLeastOnce()).save(agreementCaptor.capture());
+        AdditionalAgreement linked=agreementCaptor.getAllValues().stream()
+                .filter(agreement->Objects.equals(agreement.getServiceMemoId(),50L)).reduce((left,right)->right).orElseThrow();
+        when(memos.findById(50L)).thenReturn(Optional.of(memo));
+        HrServiceMemo issued=service.memoStatus(50L,HrServiceMemo.Status.ISSUED,"deputy",
+                "Беляев Дмитрий Алексеевич","заместителя директора");
+        when(agreements.findAllByServiceMemoId(50L)).thenReturn(List.of(linked));
+        service.memoStatus(50L,HrServiceMemo.Status.RECEIVED_BY_HR,"hr");
+        try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(issued.getDocumentContent()))){
+            String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right);
+            assertTrue(text.contains("Внести изменения в пункт 2.4."));
+            assertTrue(text.contains("возложена функция «заведование кабинетом технологии»"));
+        }
+        String qaOutput=System.getProperty("hr.memo.qa.output");
+        if(qaOutput!=null&&!qaOutput.isBlank()){Path path=Path.of(qaOutput);Files.createDirectories(path.getParent());Files.write(path,issued.getDocumentContent());}
+        when(agreements.findById(linked.getId())).thenReturn(Optional.of(linked));
+        when(personal.findByTeacherId(1L)).thenReturn(Optional.of(completePersonal()));
+        AdditionalAgreement prepared=service.prepare(linked.getId(),"hr");
+        try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(prepared.getCurrentDocument()))){
+            String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right);
+            assertTrue(text.contains("возложена функция классного руководителя"));
+            assertTrue(text.contains("возложена функция «заведование кабинетом технологии»"));
+        }
+        String fullAgreementQa=System.getProperty("hr.compensation.full.qa.output");
+        if(fullAgreementQa!=null&&!fullAgreementQa.isBlank()){Path path=Path.of(fullAgreementQa);Files.createDirectories(path.getParent());Files.write(path,prepared.getCurrentDocument());}
     }
 
     @Test void receivingDutyMemoReleasesLinkedAgreementDraft(){
@@ -368,9 +417,36 @@ class HrDocumentServiceTest {
         if(qaOutput!=null&&!qaOutput.isBlank()){Path path=Path.of(qaOutput);Files.createDirectories(path.getParent());Files.write(path,prepared.getCurrentDocument());}
     }
 
+    @Test void clause24AgreementFollowsSampleAndDoesNotDuplicateCompensationAmount() throws Exception {
+        AdditionalAgreement agreement=draftAgreement();agreement.setServiceMemoId(50L);
+        agreement.setSummary("Заведование кабинетом технологии");agreement.setTotalAmount(new BigDecimal("15000"));
+        agreement.setConditionsJson("Внести изменения в пункт 2.4. раздела 2 «Оплата труда», изложив его в следующей редакции:\n"
+                +"«2.4. Работнику выплачиваются ежемесячные компенсационные выплаты при условии, если на Работника:\n"
+                +"- возложена функция «заведование кабинетом технологии», в размере 15 000 рублей 00 коп. "
+                +"(пятнадцать тысяч рублей 00 коп.) в месяц».");
+        HrServiceMemo memo=new HrServiceMemo();memo.setId(50L);memo.setStatus(HrServiceMemo.Status.RECEIVED_BY_HR);
+        when(agreements.findById(100L)).thenReturn(Optional.of(agreement));when(memos.findById(50L)).thenReturn(Optional.of(memo));
+        when(personal.findByTeacherId(1L)).thenReturn(Optional.of(completePersonal()));
+
+        AdditionalAgreement prepared=service.prepare(100L,"hr");
+
+        try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(prepared.getCurrentDocument()))){
+            String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right)
+                    +document.getTables().stream().map(table->table.getText()).reduce("",String::concat);
+            assertTrue(text.contains("к Трудовому договору от 01.01.2025 г. № 1-ТД"));
+            assertTrue(text.contains("Внести изменения в пункт 2.4. раздела 2 «Оплата труда»"));
+            assertTrue(text.contains("Работнику выплачиваются ежемесячные компенсационные выплаты"));
+            assertEquals(1,text.split(java.util.regex.Pattern.quote("15 000 рублей 00 коп."),-1).length-1);
+            assertTrue(text.contains("Другие положения Трудового договора"));
+        }
+        String qaOutput=System.getProperty("hr.compensation.agreement.qa.output");
+        if(qaOutput!=null&&!qaOutput.isBlank()){Path path=Path.of(qaOutput);Files.createDirectories(path.getParent());Files.write(path,prepared.getCurrentDocument());}
+    }
+
     @Test void dutyCompensationAgreementDoesNotReceiveUnrelatedLoadAnnex() throws Exception {
         AdditionalAgreement agreement=draftAgreement();agreement.setServiceMemoId(50L);
         agreement.setSummary("Заведование кабинетом");agreement.setTotalAmount(new BigDecimal("5000"));
+        agreement.setConditionsJson("Изложить пункт 2.4 раздела «Оплата труда» в новой редакции.");
         HrServiceMemo memo=new HrServiceMemo();memo.setId(50L);memo.setStatus(HrServiceMemo.Status.RECEIVED_BY_HR);
         ManualLoadEntry load=new ManualLoadEntry();load.setTeacherId(1L);load.setAcademicYear("2025/2026");
         load.setSubjectName("Математика");load.setClassName("5А");load.setLoad(2);
@@ -384,6 +460,29 @@ class HrDocumentServiceTest {
         try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(prepared.getCurrentDocument()))){
             String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right)
                     +document.getTables().stream().map(table->table.getText()).reduce("",String::concat);
+            assertFalse(text.contains("Подробный расчет приведен в Приложении № 1"));
+            assertFalse(text.contains("Расчёт должностного оклада по педагогической нагрузке"));
+        }
+    }
+
+    @Test void incentiveAgreementDoesNotReceiveLoadAnnexEvenWhenTeacherHasLoad() throws Exception {
+        AdditionalAgreement agreement=draftAgreement();
+        agreement.setSummary("Стимулирующая выплата");
+        agreement.setConditionsJson("Изложить пункт 2.5 раздела «Оплата труда» в новой редакции.");
+        agreement.setTotalAmount(new BigDecimal("5000"));
+        ManualLoadEntry load=new ManualLoadEntry();load.setTeacherId(1L);load.setAcademicYear("2025/2026");
+        load.setSubjectName("Математика");load.setClassName("5А");load.setLoad(2);
+        when(agreements.findById(100L)).thenReturn(Optional.of(agreement));
+        when(personal.findByTeacherId(1L)).thenReturn(Optional.of(completePersonal()));
+        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load));
+        when(sizes.effectiveClassSizes("2025/2026")).thenReturn(Map.of("5А",25));
+
+        AdditionalAgreement prepared=service.prepare(100L,"hr");
+
+        try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(prepared.getCurrentDocument()))){
+            String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right)
+                    +document.getTables().stream().map(table->table.getText()).reduce("",String::concat);
+            assertTrue(text.contains("пункт 2.5"));
             assertFalse(text.contains("Подробный расчет приведен в Приложении № 1"));
             assertFalse(text.contains("Расчёт должностного оклада по педагогической нагрузке"));
         }
