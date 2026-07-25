@@ -1,6 +1,9 @@
 package org.school.personalLoad.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 import javax.persistence.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -11,7 +14,11 @@ import java.time.LocalDateTime;
 public class HrPersonalData {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(name = "teacher_id", nullable = false) private Long teacherId;
-    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "teacher_id", insertable = false, updatable = false) private TeacherDirectoryEntry teacher;
+    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "teacher_id", insertable = false, updatable = false)
+    @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private TeacherDirectoryEntry teacher;
     private LocalDate birthDate;
     private String passportSeries;
     private String passportNumber;

@@ -25,7 +25,12 @@ public class AdditionalAgreement {
     @EqualsAndHashCode.Exclude
     private TeacherDirectoryEntry teacher;
     @Column(name = "contract_id") private Long contractId;
-    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "contract_id", insertable = false, updatable = false) private EmploymentContract contract;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "contract_id", insertable = false, updatable = false)
+    @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private EmploymentContract contract;
     private Long serviceMemoId;
     private Long loadServiceMemoId;
     @Column(nullable = false) private String academicYear;

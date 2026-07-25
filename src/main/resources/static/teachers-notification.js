@@ -53,14 +53,17 @@ function documentTextOverrides(memoText = '', agreementText = '', prefix = 'memo
 
 document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => {
     document.querySelectorAll('.hr-panel').forEach(panel => panel.hidden = true);
+    document.querySelectorAll('.hr-tabs [data-tab]').forEach(tab => tab.classList.toggle('active',tab===button));
     $('#' + button.dataset.tab).hidden = false;
-    if (button.dataset.tab === 'agreements') loadAgreements();
-    if (button.dataset.tab === 'memos') loadMemos();
-    if (button.dataset.tab === 'catalog') loadCatalog();
+    if (button.dataset.tab === 'agreements') loadAgreements().catch(error=>showNotice(error.message,true));
+    if (button.dataset.tab === 'memos') loadMemos().catch(error=>showNotice(error.message,true));
+    if (button.dataset.tab === 'catalog') loadCatalog().catch(error=>showNotice(error.message,true));
+    if (button.dataset.tab === 'personal') loadPersonalData().catch(error=>showNotice(error.message,true));
 }));
 
 let journal = [];
 let agreementRows = [];
+let personalRows = [];
 async function loadJournal() {
     journal = await api(`/api/hr-documents/journal?academicYear=${encodeURIComponent(academicYear())}`);
     renderJournal();
@@ -71,7 +74,10 @@ function renderJournal() {
     const status = $('#journal-status').value;
     $('#journal-body').innerHTML = journal
         .filter(item => (!query || JSON.stringify(item).toLowerCase().includes(query)) && (!status || item.actionRequired === status))
-        .map(item => `<tr><td>${esc(item.fio)}</td><td>№ ${esc(item.contractNumber)}</td><td>${esc(item.position)}</td><td>${item.agreements.length ? item.agreements.map(agreement=>renderAgreement(agreement,item)).join('') : 'Нет'}</td><td>${esc(item.actionRequired)}</td><td>${canViewPersonal() ? `<button data-personal="${item.teacherId}">Данные</button>` : ''}<button data-agreement="${item.contractId}">Черновик допника</button></td></tr>`).join('');
+        .map(item => {
+            const manualAgreement = item.agreements.length ? '' : `<button data-agreement="${item.contractId}">Создать допсоглашение вне служебки</button>`;
+            return `<tr><td>${esc(item.fio)}</td><td>№ ${esc(item.contractNumber)}</td><td>${esc(item.position)}</td><td>${item.agreements.length ? item.agreements.map(agreement=>renderAgreement(agreement,item)).join('') : 'Нет'}</td><td>${esc(item.actionRequired)}</td><td>${canViewPersonal() ? `<button data-personal="${item.teacherId}">Персональные данные</button> <button data-edit-contract="${item.contractId}" data-teacher="${item.teacherId}">Изменить договор</button>` : ''} ${manualAgreement}</td></tr>`;
+        }).join('');
 }
 function renderAgreement(agreement, rowInfo) {
     return `<div><b>${esc(agreement.internalNumber)}</b> · ${esc(agreement.summary || agreement.kind)} · ${esc(STATUS_LABELS[agreement.status] || agreement.status)} ${renderAgreementActions(agreement,rowInfo)}</div>`;
@@ -103,7 +109,7 @@ function renderAgreements() {
     const query=$('#agreement-search').value.trim().toLowerCase(),status=$('#agreement-status').value;
     const rows=agreementRows.filter(row=>(!status||row.agreement.status===status)&&(!query||JSON.stringify(row).toLowerCase().includes(query)))
         .sort((a,b)=>String(b.agreement.documentDate||b.agreement.issuedAt||'').localeCompare(String(a.agreement.documentDate||a.agreement.issuedAt||'')));
-    body.innerHTML=rows.length?rows.map(row=>{const agreement=row.agreement;const contract=row.contractId?`№ ${esc(row.contractNumber||row.contractId)}<br><span class="muted">${esc(row.position)}</span>`:'<span class="muted">Не заполнен — черновик уже сформирован</span>';return `<tr><td>${esc(row.fio||`ID ${row.teacherId}`)}</td><td>${contract}</td><td><b>${esc(agreement.visibleNumber||agreement.internalNumber)}</b><br><span class="muted">от ${esc(agreement.documentDate||'—')}</span></td><td>${esc(agreement.validFrom)} — ${esc(agreement.validTo)}</td><td>${esc(agreement.summary||agreement.kind)}${agreement.serviceMemoId?`<br><span class="muted">Служебка ID ${agreement.serviceMemoId}</span>`:''}${agreement.loadServiceMemoId?`<br><span class="muted">Служебка по нагрузке ID ${agreement.loadServiceMemoId}</span>`:''}</td><td>${esc(STATUS_LABELS[agreement.status]||agreement.status)}</td><td>${renderAgreementActions(agreement,row)}</td></tr>`}).join(''):'<tr><td colspan="7">Дополнительных соглашений по выбранным условиям нет</td></tr>';
+    body.innerHTML=rows.length?rows.map(row=>{const agreement=row.agreement;const contract=row.contractId?`№ ${esc(row.contractNumber||row.contractId)}<br><span class="muted">${esc(row.position)}</span>`:'<span class="muted">Не заполнен — черновик уже сформирован</span>';const source=agreement.serviceMemoId?'<br><span class="muted">Создано автоматически из служебной записки</span>':agreement.loadServiceMemoId?'<br><span class="muted">Создано автоматически после изменения нагрузки</span>':'';return `<tr><td>${esc(row.fio||`ID ${row.teacherId}`)}</td><td>${contract}</td><td><b>${esc(agreement.visibleNumber||agreement.internalNumber)}</b><br><span class="muted">от ${esc(agreement.documentDate||'—')}</span></td><td>${esc(agreement.validFrom)} — ${esc(agreement.validTo)}</td><td>${esc(agreement.summary||agreement.kind)}${source}</td><td>${esc(STATUS_LABELS[agreement.status]||agreement.status)}</td><td>${renderAgreementActions(agreement,row)}</td></tr>`}).join(''):'<tr><td colspan="7">Дополнительных соглашений по выбранным условиям нет</td></tr>';
 }
 $('#journal-search').addEventListener('input', renderJournal);
 $('#journal-status').addEventListener('change', renderJournal);
@@ -156,13 +162,25 @@ function showReferenceLoadError(error) {
     $('#editor-save').hidden = true;
 }
 
-async function openContractEditor(selectedTeacherId = null) {
-    await loadReferenceData();
-    openEditor('Трудовой договор',
-        row('Работник', `<select name="teacherId" required><option value="">Выберите работника</option>${teachersCache.map(t => option(t.id, t.fio,String(t.id)===String(selectedTeacherId))).join('')}</select>`) +
-        row('Номер договора', '<input name="number" required>') + row('Дата договора', '<input name="date" type="date" required>') +
-        row('Должность', '<input name="position" required>') + row('Начало работы', '<input name="start" type="date">') + row('Окончание', '<input name="end" type="date">'),
-        async form => {await api('/api/hr-documents/contracts', json('POST', {teacherId:+form.get('teacherId'),contractNumber:form.get('number'),contractDate:form.get('date'),positionName:form.get('position'),startDate:form.get('start')||null,endDate:form.get('end')||null,primaryContract:true,active:true}));await loadAgreements();showNotice('Трудовой договор сохранён и привязан к ожидающим документам.');}
+async function openContractEditor(selectedTeacherId = null, contractId = null) {
+    if (!teachersCache.length) teachersCache = await loadTeachersForDocuments();
+    const contracts = selectedTeacherId ? await api(`/api/hr-documents/contracts?teacherId=${selectedTeacherId}`) : [];
+    const current = contracts.find(item=>String(item.id)===String(contractId)) || null;
+    openEditor(current ? 'Редактирование трудового договора' : 'Трудовой договор',
+        row('Работник', `<select name="teacherId" required ${current?'disabled':''}><option value="">Выберите работника</option>${teachersCache.map(t => option(t.id, t.fio,String(t.id)===String(selectedTeacherId))).join('')}</select>`,'Договор всегда связан с постоянным ID работника.') +
+        row('Номер договора', `<input name="number" value="${esc(current?.contractNumber)}" required>`) +
+        row('Дата договора', `<input name="date" type="date" value="${esc(current?.contractDate)}" required>`) +
+        row('Должность', `<input name="position" value="${esc(current?.positionName)}" required>`) +
+        row('Начало работы', `<input name="start" type="date" value="${esc(current?.startDate)}">`) +
+        row('Окончание', `<input name="end" type="date" value="${esc(current?.endDate)}">`) +
+        row('Состояние', `<div class="inline-choice"><label><input name="primary" type="checkbox" ${current?.primaryContract!==false?'checked':''}> Основной договор</label><label><input name="active" type="checkbox" ${current?.active!==false?'checked':''}> Действует</label></div>`),
+        async form => {
+            const teacherId=current?.teacherId || +form.get('teacherId');
+            await api(current ? `/api/hr-documents/contracts/${current.id}` : '/api/hr-documents/contracts',
+                json(current ? 'PUT' : 'POST', {teacherId,contractNumber:form.get('number'),contractDate:form.get('date'),positionName:form.get('position'),startDate:form.get('start')||null,endDate:form.get('end')||null,primaryContract:form.get('primary')==='on',active:form.get('active')==='on'}));
+            await Promise.all([loadAgreements(),canViewPersonal()?loadPersonalData():Promise.resolve()]);
+            showNotice('Трудовой договор сохранён и автоматически привязан к ожидающим документам.');
+        }
     );
 }
 $('#add-contract').addEventListener('click',()=>openContractEditor());
@@ -170,12 +188,17 @@ $('#add-contract').addEventListener('click',()=>openContractEditor());
 async function editPersonal(teacherId) {
     const data = await api(`/api/hr-documents/personal-data/${teacherId}`) || {};
     openEditor('Персональные данные',
+        row('Дата рождения', `<input name="birthDate" type="date" value="${esc(data.birthDate)}">`) +
         row('Серия паспорта', `<input name="series" value="${esc(data.passportSeries)}">`) + row('Номер паспорта', `<input name="number" value="${esc(data.passportNumber)}">`) +
         row('Кем выдан', `<input name="issuedBy" value="${esc(data.passportIssuedBy)}">`) + row('Дата выдачи', `<input name="issueDate" type="date" value="${esc(data.passportIssueDate)}">`) +
         row('Код подразделения', `<input name="code" value="${esc(data.passportDepartmentCode)}">`) + row('Адрес регистрации', `<textarea name="registration">${esc(data.registrationAddress)}</textarea>`) +
         row('Фактический адрес', `<textarea name="actual">${esc(data.actualAddress)}</textarea>`) + row('Телефон', `<input name="phone" value="${esc(data.phone)}">`) +
         row('ИНН', `<input name="inn" value="${esc(data.inn)}">`) + row('СНИЛС', `<input name="snils" value="${esc(data.snils)}">`),
-        form => api(`/api/hr-documents/personal-data/${teacherId}`, json('PUT', {teacherId,passportSeries:form.get('series'),passportNumber:form.get('number'),passportIssuedBy:form.get('issuedBy'),passportIssueDate:form.get('issueDate')||null,passportDepartmentCode:form.get('code'),registrationAddress:form.get('registration'),actualAddress:form.get('actual'),phone:form.get('phone'),inn:form.get('inn'),snils:form.get('snils')}))
+        async form => {
+            await api(`/api/hr-documents/personal-data/${teacherId}`, json('PUT', {teacherId,birthDate:form.get('birthDate')||null,passportSeries:form.get('series'),passportNumber:form.get('number'),passportIssuedBy:form.get('issuedBy'),passportIssueDate:form.get('issueDate')||null,passportDepartmentCode:form.get('code'),registrationAddress:form.get('registration'),actualAddress:form.get('actual'),phone:form.get('phone'),inn:form.get('inn'),snils:form.get('snils')}));
+            await Promise.all([loadAgreements(),canViewPersonal()?loadPersonalData():Promise.resolve()]);
+            showNotice('Персональные данные сохранены на сервере.');
+        }
     );
 }
 
@@ -185,13 +208,13 @@ function defaultPeriod() {
 }
 function editAgreement(contractId) {
     const period = defaultPeriod();
-    openEditor('Черновик дополнительного соглашения',
-        row('ID полученной служебки', '<input name="memoId" type="number">','Без полученной служебки выпустить документ будет нельзя.') +
+    openEditor('Дополнительное соглашение вне служебной записки',
+        row('Когда использовать', '<div class="muted">Допсоглашение по дополнительной обязанности или изменению нагрузки создаётся автоматически. Эта форма нужна только для исключительного изменения условий оплаты, которому не требуется служебная записка.</div>') +
         row('Дата документа', '<input name="date" type="date">') + row('Начало действия', `<input name="from" type="date" value="${period.from}" required>`) + row('Окончание', `<input name="to" type="date" value="${period.to}" required>`) +
-        row('Тип соглашения', '<select name="kind"><option value="PAY_TERMS">Условия оплаты труда</option><option value="ADDITIONAL_WORK">Дополнительная работа</option></select>') +
+        row('Тип соглашения', '<input value="Условия оплаты труда" disabled>') +
         row('Способ изменения', '<select name="mode"><option value="AMEND">Внести изменение</option><option value="CANCEL_AND_RESTATE">Отменить и изложить заново</option></select>') +
         row('Краткое содержание', '<input name="summary">') + row('Сумма в месяц', '<input name="amount" type="number" step="0.01">') + row('Условия и обязанности', '<textarea name="conditions"></textarea>'),
-        form => api('/api/hr-documents/agreements', json('POST', {contractId,serviceMemoId:form.get('memoId')?+form.get('memoId'):null,academicYear:academicYear(),documentDate:form.get('date')||null,validFrom:form.get('from'),validTo:form.get('to'),kind:form.get('kind'),changeMode:form.get('mode'),summary:form.get('summary'),conditionsJson:form.get('conditions'),totalAmount:form.get('amount')||null}))
+        form => api('/api/hr-documents/agreements', json('POST', {contractId,serviceMemoId:null,academicYear:academicYear(),documentDate:form.get('date')||null,validFrom:form.get('from'),validTo:form.get('to'),kind:'PAY_TERMS',changeMode:form.get('mode'),summary:form.get('summary'),conditionsJson:form.get('conditions'),totalAmount:form.get('amount')||null}))
     );
 }
 
@@ -247,9 +270,11 @@ function editChangeMode(agreementId, contractId) {
 
 async function handleAgreementAction(event) {
     const target = event.target;
+    try {
     if (target.dataset.download) { location.href = `/api/hr-documents/agreements/${target.dataset.download}/download`; setTimeout(()=>Promise.all([loadJournal(),loadAgreements()]),1200); }
-    if (target.dataset.personal) editPersonal(+target.dataset.personal);
-    if (target.dataset.contractMissing) openContractEditor(+target.dataset.contractMissing);
+    if (target.dataset.personal) await editPersonal(+target.dataset.personal);
+    if (target.dataset.contractMissing) await openContractEditor(+target.dataset.contractMissing);
+    if (target.dataset.editContract) await openContractEditor(+target.dataset.teacher,+target.dataset.editContract);
     if (target.dataset.agreement) editAgreement(+target.dataset.agreement);
     if (target.dataset.editAgreement) editExistingAgreement(+target.dataset.editAgreement).catch(error=>showNotice(error.message,true));
     if (target.dataset.prepare) {
@@ -265,6 +290,7 @@ async function handleAgreementAction(event) {
     if (target.dataset.sign) { await api(`/api/hr-documents/agreements/${target.dataset.sign}/status`, json('POST',{status:'SIGNED'})); await Promise.all([loadJournal(),loadAgreements()]); }
     if (target.dataset.reject && confirm('Отклонить этот черновик дополнительного соглашения?')) { await api(`/api/hr-documents/agreements/${target.dataset.reject}/status`, json('POST',{status:'REJECTED'})); await Promise.all([loadJournal(),loadAgreements(),loadMemos()]); }
     if (target.dataset.annul) { const reason = prompt('Причина аннулирования'); if (reason) { await api(`/api/hr-documents/agreements/${target.dataset.annul}/annul`, json('POST',{reason})); await Promise.all([loadJournal(),loadAgreements()]); } }
+    } catch (error) { showNotice(error.message,true); }
 }
 $('#journal-body').addEventListener('click',handleAgreementAction);
 $('#agreement-body').addEventListener('click',handleAgreementAction);
@@ -384,12 +410,46 @@ $('#catalog-body').addEventListener('click', async event => {
     if(event.target.dataset.deleteCatalog&&confirm('Удалить эту позицию из справочника?')){await api(`/api/hr-documents/catalog/${event.target.dataset.deleteCatalog}`,{method:'DELETE'});await loadCatalog();showNotice('Позиция удалена из справочника.');}
 });
 
+async function loadPersonalData() {
+    if (!canViewPersonal() || !$('#personal-body')) return;
+    personalRows = await api('/api/hr-documents/personal-data');
+    renderPersonalData();
+}
+function renderPersonalData() {
+    const body=$('#personal-body');if(!body)return;
+    const query=$('#personal-search').value.trim().toLowerCase();
+    const rows=personalRows.filter(item=>!query||JSON.stringify(item).toLowerCase().includes(query));
+    body.innerHTML=rows.length?rows.map(item=>{
+        const data=item.personalData;
+        const passport=data
+            ? `<b>${esc([data.passportSeries,data.passportNumber].filter(Boolean).join(' ')||'Не заполнен')}</b><br><span class="muted">${esc(data.passportIssuedBy||'')} ${data.passportIssueDate?`от ${esc(data.passportIssueDate)}`:''}${data.passportDepartmentCode?` · код ${esc(data.passportDepartmentCode)}`:''}</span>`
+            : '<span class="muted">Не заполнен</span>';
+        const contacts=data
+            ? `${esc(data.registrationAddress||'Адрес регистрации не заполнен')}<br><span class="muted">${esc(data.actualAddress||'Фактический адрес не заполнен')}${data.phone?` · ${esc(data.phone)}`:''}${data.inn?` · ИНН ${esc(data.inn)}`:''}${data.snils?` · СНИЛС ${esc(data.snils)}`:''}</span>`
+            : '<span class="muted">Не заполнены</span>';
+        const activeContracts=(item.contracts||[]).filter(contract=>contract.active);
+        const contractHtml=activeContracts.length?activeContracts.map(contract=>`<div><b>№ ${esc(contract.contractNumber)}</b> от ${esc(contract.contractDate)}<br><span class="muted">${esc(contract.positionName)}${contract.primaryContract?' · основной':''}</span></div>`).join(''):'<span class="muted">Не заполнен</span>';
+        const contractButtons=activeContracts.map(contract=>`<button data-personal-contract="${contract.id}" data-teacher="${item.teacherId}">Изменить договор № ${esc(contract.contractNumber)}</button>`).join(' ');
+        return `<tr><td><b>${esc(item.fio)}</b><br><span class="muted">ID ${item.teacherId}</span></td><td>${passport}</td><td>${contacts}</td><td>${contractHtml}</td><td>${data?.complete?'<span class="success">Достаточно для DOCX</span>':'Нужно заполнить обязательные данные'}${data?.updatedAt?`<br><span class="muted">Обновлено ${esc(data.updatedAt.replace('T',' '))}</span>`:''}</td><td><button data-personal-edit="${item.teacherId}">${data?'Изменить данные':'Заполнить данные'}</button> ${contractButtons||`<button data-personal-contract="" data-teacher="${item.teacherId}">Добавить договор</button>`}</td></tr>`;
+    }).join(''):'<tr><td colspan="6">Работники не найдены</td></tr>';
+}
+$('#personal-search').addEventListener('input',renderPersonalData);
+$('#reload-personal').addEventListener('click',()=>loadPersonalData().catch(error=>showNotice(error.message,true)));
+$('#personal-body').addEventListener('click',event=>{
+    if(event.target.dataset.personalEdit)editPersonal(+event.target.dataset.personalEdit).catch(error=>showNotice(error.message,true));
+    if(Object.prototype.hasOwnProperty.call(event.target.dataset,'personalContract')){
+        const contractId=event.target.dataset.personalContract?+event.target.dataset.personalContract:null;
+        openContractEditor(+event.target.dataset.teacher,contractId).catch(error=>showNotice(error.message,true));
+    }
+});
+
 $('#personal-import-button').addEventListener('click', () => $('#personal-import').click());
 $('#personal-import').addEventListener('change', async event => {
     if (!event.target.files[0]) return;
     const form = new FormData(); form.append('file',event.target.files[0]);
     const result = await api('/api/hr-documents/personal-data/import',{method:'POST',body:form});
-    alert(`Обновлено: ${result.updated}, пропущено: ${result.skipped}`); event.target.value=''; loadJournal();
+    showNotice(`Обновлено: ${result.updated}, пропущено: ${result.skipped}`); event.target.value='';
+    await Promise.all([loadJournal(),loadPersonalData(),loadAgreements()]);
 });
 
 const notificationDate = $('#notification-date'), loadDate = $('#load-date'), notificationBody = $('#tb');

@@ -33,14 +33,15 @@ public class HrDocumentsController {
     @GetMapping("/teachers") public Object teachers(){return teacherRepository.findAll().stream().filter(t->!t.isArchived()).map(t->Map.of("id",t.getId(),"fio",t.getFioTeacher())).toList();}
 
     @GetMapping("/journal") public Object journal(@RequestParam String academicYear,HttpServletRequest req){boolean allowed=user(req).canViewTab(AppTab.HR_PERSONAL_DATA);return service.journal(academicYear).stream().map(x->allowed?x:new JournalRow(x.teacherId(),x.fio(),x.contractId(),x.contractNumber(),x.position(),true,x.agreements(),"Заполнить данные".equals(x.actionRequired())?"":x.actionRequired())).toList();}
-    @GetMapping("/contracts") public Object contracts(@RequestParam Long teacherId){return service.contracts(teacherId);}
-    @PostMapping("/contracts") public Object contract(@RequestBody ContractRequest r){return service.saveContract(null,r);}
-    @PutMapping("/contracts/{id}") public Object contract(@PathVariable Long id,@RequestBody ContractRequest r){return service.saveContract(id,r);}
+    @GetMapping("/contracts") public Object contracts(@RequestParam Long teacherId){return service.contractViews(teacherId);}
+    @PostMapping("/contracts") public Object contract(@RequestBody ContractRequest r){return service.contractView(service.saveContract(null,r));}
+    @PutMapping("/contracts/{id}") public Object contract(@PathVariable Long id,@RequestBody ContractRequest r){return service.contractView(service.saveContract(id,r));}
 
-    @GetMapping("/personal-data/{teacherId}") public Object personal(@PathVariable Long teacherId){return service.personal(teacherId).orElse(null);}
+    @GetMapping("/personal-data") public Object personal(){return service.personalRows();}
+    @GetMapping("/personal-data/{teacherId}") public Object personal(@PathVariable Long teacherId){return service.personalView(teacherId).orElse(null);}
     @PutMapping("/personal-data/{teacherId}") public Object personal(@PathVariable Long teacherId,@RequestBody PersonalDataRequest r,HttpServletRequest req){
         if(!Objects.equals(teacherId,r.teacherId())) throw new IllegalArgumentException("ID педагога не совпадает");
-        return service.savePersonal(r,user(req).getUsername());
+        return service.personalView(service.savePersonal(r,user(req).getUsername()));
     }
 
     @GetMapping("/personal-data/template") public ResponseEntity<byte[]> personalTemplate(HttpServletRequest req)throws Exception{return excel(false,req);}
@@ -78,15 +79,15 @@ public class HrDocumentsController {
     @GetMapping("/load-memos/{id}/download") public ResponseEntity<byte[]> loadMemoDownload(@PathVariable Long id){ServiceMemo m=loadMemoService.getById(id);boolean corrected=m.getCorrectedDocument()!=null;return file(corrected?m.getCorrectedDocument():m.getGeneratedDocument(),corrected?m.getCorrectedFilename():m.getGeneratedFilename());}
 
     @GetMapping("/agreements") public Object agreements(@RequestParam String academicYear){return service.agreementRows(academicYear);}
-    @PostMapping("/agreements") public Object agreement(@RequestBody AgreementRequest r,HttpServletRequest req){return service.createAgreement(r,user(req).getUsername());}
-    @PutMapping("/agreements/{id}") public Object agreementEdit(@PathVariable Long id,@RequestBody AgreementEditRequest r,HttpServletRequest req){return service.editAgreement(id,r,user(req).getUsername());}
+    @PostMapping("/agreements") public Object agreement(@RequestBody AgreementRequest r,HttpServletRequest req){return service.agreementView(service.createAgreement(r,user(req).getUsername()));}
+    @PutMapping("/agreements/{id}") public Object agreementEdit(@PathVariable Long id,@RequestBody AgreementEditRequest r,HttpServletRequest req){return service.agreementView(service.editAgreement(id,r,user(req).getUsername()));}
     @PostMapping("/agreements/batch-annual") public Object annual(@RequestBody BatchAgreementRequest r,HttpServletRequest req){return Map.of("created",service.createAnnualDrafts(r,user(req).getUsername()).size());}
-    @PostMapping("/agreements/{id}/prepare") public Object prepare(@PathVariable Long id,HttpServletRequest req){return service.prepare(id,user(req).getUsername());}
-    @PostMapping("/agreements/{id}/issue") public Object issue(@PathVariable Long id,HttpServletRequest req){return service.issue(id,user(req).getUsername());}
-    @PostMapping("/agreements/{id}/status") public Object agreementStatus(@PathVariable Long id,@RequestBody StatusRequest r){return service.agreementStatus(id,AdditionalAgreement.Status.valueOf(r.status()));}
-    @PostMapping("/agreements/{id}/change-mode") public Object agreementChangeMode(@PathVariable Long id,@RequestBody ChangeModeRequest r,HttpServletRequest req){return service.chooseChangeMode(id,AdditionalAgreement.ChangeMode.valueOf(r.changeMode()),r.replacesAgreementId(),user(req).getUsername());}
-    @PostMapping("/agreements/{id}/annul") public Object agreementAnnul(@PathVariable Long id,@RequestBody AnnulRequest r,HttpServletRequest req){return service.annulAgreement(id,r.reason(),user(req).getUsername());}
-    @PostMapping("/agreements/{id}/upload") public Object agreementUpload(@PathVariable Long id,@RequestParam("file") MultipartFile f,HttpServletRequest req)throws Exception{if(f.getOriginalFilename()==null||!f.getOriginalFilename().toLowerCase(Locale.ROOT).endsWith(".docx"))throw new IllegalArgumentException("На первом этапе можно загрузить только DOCX");return service.upload(id,f.getOriginalFilename(),f.getBytes(),user(req).getUsername());}
+    @PostMapping("/agreements/{id}/prepare") public Object prepare(@PathVariable Long id,HttpServletRequest req){return service.agreementView(service.prepare(id,user(req).getUsername()));}
+    @PostMapping("/agreements/{id}/issue") public Object issue(@PathVariable Long id,HttpServletRequest req){return service.agreementView(service.issue(id,user(req).getUsername()));}
+    @PostMapping("/agreements/{id}/status") public Object agreementStatus(@PathVariable Long id,@RequestBody StatusRequest r){return service.agreementView(service.agreementStatus(id,AdditionalAgreement.Status.valueOf(r.status())));}
+    @PostMapping("/agreements/{id}/change-mode") public Object agreementChangeMode(@PathVariable Long id,@RequestBody ChangeModeRequest r,HttpServletRequest req){return service.agreementView(service.chooseChangeMode(id,AdditionalAgreement.ChangeMode.valueOf(r.changeMode()),r.replacesAgreementId(),user(req).getUsername()));}
+    @PostMapping("/agreements/{id}/annul") public Object agreementAnnul(@PathVariable Long id,@RequestBody AnnulRequest r,HttpServletRequest req){return service.agreementView(service.annulAgreement(id,r.reason(),user(req).getUsername()));}
+    @PostMapping("/agreements/{id}/upload") public Object agreementUpload(@PathVariable Long id,@RequestParam("file") MultipartFile f,HttpServletRequest req)throws Exception{if(f.getOriginalFilename()==null||!f.getOriginalFilename().toLowerCase(Locale.ROOT).endsWith(".docx"))throw new IllegalArgumentException("На первом этапе можно загрузить только DOCX");return service.agreementView(service.upload(id,f.getOriginalFilename(),f.getBytes(),user(req).getUsername()));}
     @GetMapping("/agreements/{id}/download") public ResponseEntity<byte[]> agreementDownload(@PathVariable Long id,HttpServletRequest req){AdditionalAgreement a=service.agreement(id);if(a.getStatus()==AdditionalAgreement.Status.READY)a=service.issue(id,user(req).getUsername());else if(a.getStatus()!=AdditionalAgreement.Status.ISSUED&&a.getStatus()!=AdditionalAgreement.Status.SIGNING&&a.getStatus()!=AdditionalAgreement.Status.SIGNED)throw new org.springframework.web.server.ResponseStatusException(HttpStatus.CONFLICT,"Сначала отредактируйте и сформируйте дополнительное соглашение");if(a.getCurrentDocument()==null||a.getCurrentDocument().length==0)throw new org.springframework.web.server.ResponseStatusException(HttpStatus.CONFLICT,"Файл дополнительного соглашения ещё не сформирован");return file(a.getCurrentDocument(),a.getCurrentFilename());}
     @GetMapping("/agreements/{id}/versions") public Object versions(@PathVariable Long id){return service.versions(id).stream().map(v->Map.of("id",v.getId(),"revision",v.getRevision(),"filename",v.getFilename(),"source",v.getSource(),"createdAt",v.getCreatedAt(),"createdBy",v.getCreatedBy())).toList();}
 
