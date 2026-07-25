@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="/styles.css">
     <style>
         .hr-tabs,.hr-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+        .hr-tabs button.active{background:#245be7;border-color:#245be7;color:#fff;font-weight:600}
         .hr-form-grid{display:grid;grid-template-columns:minmax(190px,260px) minmax(320px,1fr);gap:14px 18px;align-items:start}
         .hr-form-grid .field-label{font-weight:600;padding-top:9px;line-height:1.25}
         .hr-form-grid .field-control{min-width:0}
@@ -36,9 +37,9 @@
 <body><main class="container">
 <header class="card"><h1>Кадровые документы</h1><nav class="page-nav"></nav></header>
 <section class="card"><div class="hr-tabs">
-    <button data-tab="journal">Журнал</button>
-    <button data-tab="agreements">Дополнительные соглашения</button>
+    <button data-tab="journal" class="active">Журнал</button>
     <button data-tab="memos">Служебные записки</button>
+    <button data-tab="agreements">Дополнительные соглашения</button>
     <button data-tab="notifications">Предварительная нагрузка (уведомления)</button>
     <button data-tab="catalog">Справочники</button>
     <button data-tab="personal">Персональные данные</button>
@@ -73,10 +74,12 @@
 </section>
 
 <section id="personal" class="card hr-panel" hidden>
-    <p>Импорт соединяет строки по постоянному ID педагога и заполняет либо обновляет данные.</p>
-    <div class="hr-toolbar"><a class="button" href="/api/hr-documents/personal-data/template">Скачать шаблон</a><a class="button" href="/api/hr-documents/personal-data/export">Экспортировать</a><button id="personal-import-button" type="button">Импортировать Excel</button><input id="personal-import" type="file" accept=".xlsx,.xls" hidden></div>
+    <h2>Персональные данные и трудовые договоры</h2>
+    <p class="muted">Данные хранятся на сервере и доступны здесь только пользователям с правом просмотра персональных данных. Импорт соединяет строки по постоянному ID педагога.</p>
+    <div class="hr-toolbar"><input id="personal-search" placeholder="ФИО, паспорт, договор или статус"><button id="reload-personal" type="button">Обновить</button><a class="button" href="/api/hr-documents/personal-data/template">Скачать шаблон</a><a class="button" href="/api/hr-documents/personal-data/export">Экспортировать</a><button id="personal-import-button" type="button">Импортировать Excel</button><input id="personal-import" type="file" accept=".xlsx,.xls" hidden></div>
+    <div class="table-scroll"><table class="sheet-table"><thead><tr><th>Работник</th><th>Паспорт</th><th>Адреса и контакты</th><th>Трудовой договор</th><th>Состояние</th><th>Действия</th></tr></thead><tbody id="personal-body"></tbody></table></div>
 </section>
 </main>
 
 <dialog id="editor"><form method="dialog" id="editor-form"><h2 id="editor-title"></h2><div id="editor-fields" class="hr-form-grid"></div><p id="editor-error" class="error"></p><div class="hr-dialog-actions"><button value="cancel">Отмена</button><button id="editor-save" value="default">Сохранить</button></div></form></dialog>
-<script src="/auth.js"></script><script src="/teachers-notification.js?v=20260720-4"></script></body></html>
+<script src="/auth.js"></script><script src="/teachers-notification.js?v=20260725-1"></script></body></html>

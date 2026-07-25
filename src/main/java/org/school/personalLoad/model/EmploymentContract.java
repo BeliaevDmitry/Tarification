@@ -1,6 +1,9 @@
 package org.school.personalLoad.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 import javax.persistence.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -15,6 +18,9 @@ public class EmploymentContract {
     @Column(name = "teacher_id", nullable = false)
     private Long teacherId;
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "teacher_id", insertable = false, updatable = false)
+    @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     private TeacherDirectoryEntry teacher;
     @Column(nullable = false) private String contractNumber;
     @Column(nullable = false) private LocalDate contractDate;

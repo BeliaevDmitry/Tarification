@@ -61,6 +61,28 @@ class HrDocumentServiceTest {
         assertNull(a.getCurrentDocument(),"Черновик формируется только после ручной проверки");verifyNoInteractions(versions);
     }
 
+    @Test void contractsAreExposedAsScalarViewsWithoutJpaTeacherAssociation() throws Exception {
+        when(contracts.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(1L)).thenReturn(List.of(contract));
+
+        var view=service.contractViews(1L).get(0);
+        String json=new ObjectMapper().findAndRegisterModules().writeValueAsString(view);
+
+        assertEquals(1L,view.teacherId());
+        assertTrue(json.contains("\"contractNumber\":\"1-ТД\""));
+        assertFalse(json.contains("\"teacher\""));
+    }
+
+    @Test void manualAdditionalWorkAgreementIsRejectedBecauseMemoCreatesItAutomatically() {
+        AgreementRequest manualDuty=new AgreementRequest(10L,null,"2025/2026",LocalDate.of(2025,9,1),
+                LocalDate.of(2025,9,1),LocalDate.of(2026,8,31),AdditionalAgreement.Kind.ADDITIONAL_WORK,
+                AdditionalAgreement.ChangeMode.AMEND,"Заведование кабинетом","Обязанности",new BigDecimal("15000"),null);
+
+        ResponseStatusException error=assertThrows(ResponseStatusException.class,()->service.createAgreement(manualDuty,"hr"));
+
+        assertTrue(error.getReason().contains("служебную записку"));
+        verify(agreements,never()).save(any());
+    }
+
     @Test void issueIsBlockedUntilPersonalDataIsComplete(){
         AdditionalAgreement a=new AdditionalAgreement();a.setId(5L);a.setContractId(10L);a.setStatus(AdditionalAgreement.Status.DRAFT);
         when(agreements.findById(5L)).thenReturn(Optional.of(a));when(personal.findByTeacherId(1L)).thenReturn(Optional.empty());
@@ -103,6 +125,44 @@ class HrDocumentServiceTest {
 
         assertEquals(AdditionalAgreement.Status.DRAFT,agreement.getStatus());
         assertEquals(HrServiceMemo.Status.RECEIVED_BY_HR,memo.getStatus());
+    }
+
+    @Test void dutyMemoLifecycleEndsWithIssuableAgreementDocxWithoutManualMemoId() {
+        List<AdditionalAgreement> storedAgreements=new ArrayList<>();
+        doAnswer(invocation->{
+            AdditionalAgreement agreement=invocation.getArgument(0);
+            if(agreement.getId()==null)agreement.setId(100L);
+            if(!storedAgreements.contains(agreement))storedAgreements.add(agreement);
+            return agreement;
+        }).when(agreements).save(any());
+        when(agreements.findAllByServiceMemoId(50L)).thenAnswer(invocation->storedAgreements.stream()
+                .filter(agreement->Objects.equals(agreement.getServiceMemoId(),50L)).toList());
+        when(agreements.findById(100L)).thenAnswer(invocation->storedAgreements.stream()
+                .filter(agreement->Objects.equals(agreement.getId(),100L)).findFirst());
+        MemoRequest request=new MemoRequest("2025/2026",1L,10L,null,null,LocalDate.of(2025,9,1),
+                "Заведование кабинетом",null,null,"2.4","Контролирует состояние кабинета",
+                new BigDecimal("15000"),LocalDate.of(2025,9,1),LocalDate.of(2026,8,31),true,false,null);
+
+        HrServiceMemo memo=service.createMemo(request,"deputy");
+        when(memos.findById(50L)).thenReturn(Optional.of(memo));
+        AdditionalAgreement linked=storedAgreements.get(0);
+        assertEquals(50L,linked.getServiceMemoId());
+        assertEquals(AdditionalAgreement.Status.WAITING_FOR_MEMO,linked.getStatus());
+
+        service.memoStatus(50L,HrServiceMemo.Status.ISSUED,"deputy","Заместитель Директора","заместителя директора");
+        service.memoStatus(50L,HrServiceMemo.Status.RECEIVED_BY_HR,"hr","Кадровик","специалиста по кадрам");
+        assertEquals(AdditionalAgreement.Status.DRAFT,linked.getStatus());
+
+        service.editAgreement(linked.getId(),new AgreementEditRequest(10L,LocalDate.of(2025,9,2),
+                linked.getValidFrom(),linked.getValidTo(),linked.getSummary(),linked.getConditionsJson(),
+                linked.getTotalAmount(),false,null),"hr");
+        when(personal.findByTeacherId(1L)).thenReturn(Optional.of(completePersonal()));
+        AdditionalAgreement prepared=service.prepare(linked.getId(),"hr");
+        AdditionalAgreement issued=service.issue(linked.getId(),"hr");
+
+        assertNotNull(prepared.getCurrentDocument());
+        assertEquals(AdditionalAgreement.Status.ISSUED,issued.getStatus());
+        assertEquals(50L,issued.getServiceMemoId());
     }
 
     @Test void dutyMemoCanBeCreatedBeforeEmploymentContractIsFilled(){
@@ -265,6 +325,10 @@ class HrDocumentServiceTest {
 
     @Test void preparationCreatesSchoolAgreementDocxAndMovesDraftToReady() throws Exception {
         AdditionalAgreement agreement=draftAgreement();agreement.setTotalAmount(new BigDecimal("50000"));
+        ManualLoadEntry load=new ManualLoadEntry();load.setTeacherId(1L);load.setAcademicYear("2025/2026");
+        load.setSubjectName("Математика");load.setClassName("5А");load.setLoad(2);
+        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load));
+        when(sizes.effectiveClassSizes("2025/2026")).thenReturn(Map.of("5А",25));
         when(agreements.findById(100L)).thenReturn(Optional.of(agreement));when(personal.findByTeacherId(1L)).thenReturn(Optional.of(completePersonal()));
 
         AdditionalAgreement prepared=service.prepare(100L,"hr");
@@ -276,6 +340,7 @@ class HrDocumentServiceTest {
             assertTrue(text.contains("ДОПОЛНИТЕЛЬНОЕ СОГЛАШЕНИЕ"));
             assertTrue(text.contains("Изложить пункт 2.1"));assertTrue(text.contains("пятьдесят тысяч рублей"));
             assertTrue(text.contains("Адреса и реквизиты сторон"));
+            assertTrue(text.contains("Приложение № 1"));assertTrue(text.contains("Математика"));assertTrue(text.contains("Численность"));
         }
         String qaOutput=System.getProperty("hr.agreement.qa.output");
         if(qaOutput!=null&&!qaOutput.isBlank()){Path path=Path.of(qaOutput);Files.createDirectories(path.getParent());Files.write(path,prepared.getCurrentDocument());}
@@ -298,6 +363,29 @@ class HrDocumentServiceTest {
                     +document.getTables().stream().map(table->table.getText()).reduce("",String::concat);
             assertTrue(text.contains("об увеличении объема работ"));assertTrue(text.contains("Обеспечивает сохранность имущества"));
             assertTrue(text.contains("три рабочих дня"));assertTrue(text.contains("15 000,00 руб."));
+        }
+        String qaOutput=System.getProperty("hr.additional.agreement.qa.output");
+        if(qaOutput!=null&&!qaOutput.isBlank()){Path path=Path.of(qaOutput);Files.createDirectories(path.getParent());Files.write(path,prepared.getCurrentDocument());}
+    }
+
+    @Test void dutyCompensationAgreementDoesNotReceiveUnrelatedLoadAnnex() throws Exception {
+        AdditionalAgreement agreement=draftAgreement();agreement.setServiceMemoId(50L);
+        agreement.setSummary("Заведование кабинетом");agreement.setTotalAmount(new BigDecimal("5000"));
+        HrServiceMemo memo=new HrServiceMemo();memo.setId(50L);memo.setStatus(HrServiceMemo.Status.RECEIVED_BY_HR);
+        ManualLoadEntry load=new ManualLoadEntry();load.setTeacherId(1L);load.setAcademicYear("2025/2026");
+        load.setSubjectName("Математика");load.setClassName("5А");load.setLoad(2);
+        when(agreements.findById(100L)).thenReturn(Optional.of(agreement));when(memos.findById(50L)).thenReturn(Optional.of(memo));
+        when(personal.findByTeacherId(1L)).thenReturn(Optional.of(completePersonal()));
+        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load));
+        when(sizes.effectiveClassSizes("2025/2026")).thenReturn(Map.of("5А",25));
+
+        AdditionalAgreement prepared=service.prepare(100L,"hr");
+
+        try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(prepared.getCurrentDocument()))){
+            String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right)
+                    +document.getTables().stream().map(table->table.getText()).reduce("",String::concat);
+            assertFalse(text.contains("Подробный расчет приведен в Приложении № 1"));
+            assertFalse(text.contains("Расчёт должностного оклада по педагогической нагрузке"));
         }
     }
 

@@ -15,6 +15,12 @@ class HrDocumentsFrontendTest {
 
         assertTrue(html.contains("Предварительная нагрузка (уведомления)"));
         assertTrue(html.contains("Импортировать Excel"));
+        assertTrue(html.indexOf("data-tab=\"journal\"") < html.indexOf("data-tab=\"memos\""));
+        assertTrue(html.indexOf("data-tab=\"memos\"") < html.indexOf("data-tab=\"agreements\""));
+        assertTrue(html.contains("data-tab=\"journal\" class=\"active\""));
+        assertTrue(html.contains(".hr-tabs button.active"));
+        assertTrue(html.contains("personal-body"));
+        assertTrue(html.contains("Данные хранятся на сервере"));
         assertTrue(html.contains("hr-form-grid"));
         assertTrue(js.contains("Обязанность из справочника"));
         assertTrue(js.contains("Добавить вручную"));
@@ -27,7 +33,7 @@ class HrDocumentsFrontendTest {
         assertTrue(js.contains("Не удалось загрузить список работников"));
         assertTrue(js.contains("loadTeachersForDocuments"));
         assertTrue(js.contains("api('/api/teachers')"));
-        assertTrue(html.contains("teachers-notification.js?v=20260720-4"));
+        assertTrue(html.contains("teachers-notification.js?v=20260725-1"));
         assertTrue(js.contains("Служебная записка создана и добавлена в таблицу"));
         assertTrue(js.contains("await loadMemos()"));
         assertTrue(html.contains("Дополнительные соглашения"));
@@ -50,5 +56,10 @@ class HrDocumentsFrontendTest {
         assertTrue(js.contains("Заполнить договор"));
         assertTrue(js.contains("Сохранить как шаблон"));
         assertTrue(js.contains("/prepare"));
+        assertTrue(js.contains("loadPersonalData"));
+        assertTrue(js.contains("api('/api/hr-documents/personal-data')"));
+        assertTrue(js.contains("Создано автоматически из служебной записки"));
+        assertTrue(js.contains("Дополнительное соглашение вне служебной записки"));
+        assertTrue(!js.contains("ID полученной служебки"));
     }
 }

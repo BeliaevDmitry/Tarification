@@ -10,9 +10,18 @@ public final class HrDocumentDtos {
     private HrDocumentDtos() {}
     public record ContractRequest(Long teacherId, String contractNumber, LocalDate contractDate, String positionName,
                                   LocalDate startDate, LocalDate endDate, Boolean primaryContract, Boolean active) {}
+    public record ContractView(Long id, Long teacherId, String contractNumber, LocalDate contractDate,
+            String positionName, LocalDate startDate, LocalDate endDate,
+            boolean primaryContract, boolean active, LocalDateTime createdAt) {}
     public record PersonalDataRequest(Long teacherId, LocalDate birthDate, String passportSeries, String passportNumber,
             String passportIssuedBy, LocalDate passportIssueDate, String passportDepartmentCode,
             String registrationAddress, String actualAddress, String phone, String inn, String snils) {}
+    public record PersonalDataView(Long teacherId, LocalDate birthDate, String passportSeries, String passportNumber,
+            String passportIssuedBy, LocalDate passportIssueDate, String passportDepartmentCode,
+            String registrationAddress, String actualAddress, String phone, String inn, String snils,
+            boolean complete, int revision, LocalDateTime updatedAt, String updatedBy) {}
+    public record PersonalDataRow(Long teacherId, String fio, PersonalDataView personalData,
+            List<ContractView> contracts) {}
     public record MemoRequest(String academicYear, Long teacherId, Long contractId, Long catalogItemId,
             String title, LocalDate documentDate, String assignmentName, String assignmentText,
             String agreementText, String contractClause, String dutiesText, BigDecimal amount, LocalDate validFrom, LocalDate validTo,
