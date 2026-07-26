@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ГБОУ школа — Педагогические советы</title>
+  <link rel="icon" type="image/png" href="/school-crest.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container pedagogical-councils-page">
+  <header class="card">
+    <h1>Педагогические советы</h1>
+    <p class="muted">Протоколы, приложения и выписки хранятся отдельно по каждому учебному году.</p>
+    <nav class="page-nav"></nav>
+    <div class="row pedagogical-year-row">
+      <label for="academic-year-select">Учебный год</label>
+      <select id="academic-year-select"></select>
+    </div>
+  </header>
+
+  <section class="card">
+    <div class="pedagogical-toolbar">
+      <div>
+        <h2>Протоколы педагогических советов</h2>
+        <p class="muted">Можно создать протокол в конструкторе или загрузить старый готовый Word-файл.</p>
+      </div>
+      <div class="row" data-requires-edit>
+        <button type="button" id="new-protocol-btn">Создать протокол</button>
+        <button type="button" id="upload-archive-btn">Загрузить старый Word</button>
+      </div>
+    </div>
+    <p id="protocol-list-feedback" class="muted" role="status"></p>
+    <div class="table-wrapper">
+      <table class="pedagogical-protocol-table">
+        <thead>
+        <tr>
+          <th>№ и дата</th>
+          <th>Вид</th>
+          <th>Статус</th>
+          <th>Пункты</th>
+          <th>Приложения</th>
+          <th>Добавил</th>
+          <th>Действия</th>
+        </tr>
+        </thead>
+        <tbody id="protocol-list-body"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<dialog id="protocol-editor-dialog" class="pedagogical-dialog">
+  <form id="protocol-editor-form" method="dialog">
+    <div class="dialog-hero">
+      <div>
+        <h2 id="protocol-editor-title">Новый протокол</h2>
+        <p class="muted">Заполните форму — Word-протокол сформируется автоматически.</p>
+      </div>
+      <button type="button" id="protocol-editor-close" aria-label="Закрыть">Закрыть</button>
+    </div>
+
+    <div class="pedagogical-editor-grid">
+      <div>
+        <section class="dialog-section">
+          <h3>Реквизиты заседания</h3>
+          <div class="grid">
+            <label>Учебный год
+              <input id="protocol-academic-year" name="academicYear" required pattern="\d{4}/\d{4}">
+            </label>
+            <label>Номер протокола
+              <input id="protocol-number" name="protocolNumber" required>
+            </label>
+            <label>Дата
+              <input id="protocol-date" name="meetingDate" type="date" required>
+            </label>
+            <label>Время начала
+              <input id="protocol-time" name="agendaTime" type="time">
+            </label>
+            <label>Число присутствующих
+              <input id="protocol-attendee-count" name="attendeeCount" type="number" min="0" value="0" required>
+            </label>
+            <label>Статус
+              <select id="protocol-status" name="status">
+                <option value="DRAFT">Черновик</option>
+                <option value="REVIEW">На проверке</option>
+                <option value="REGISTERED">Зарегистрирован</option>
+                <option value="CORRECTED">Исправленная версия</option>
+              </select>
+            </label>
+            <label>Председатель
+              <select id="protocol-chair" name="chairTeacherId">
+                <option value="">Выберите сотрудника</option>
+              </select>
+            </label>
+            <label>Секретарь
+              <select id="protocol-secretary" name="secretaryTeacherId">
+                <option value="">Выберите сотрудника</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="dialog-section">
+          <div class="pedagogical-section-heading">
+            <div>
+              <h3>Повестка педагогического совета</h3>
+              <p class="muted">Время и докладчик указываются отдельно для каждого пункта.</p>
+            </div>
+            <button type="button" id="add-protocol-item">Добавить пункт</button>
+          </div>
+          <div id="protocol-items"></div>
+        </section>
+      </div>
+
+      <aside class="pedagogical-preview">
+        <h3>Предварительный просмотр</h3>
+        <div id="protocol-preview-paper"></div>
+      </aside>
+    </div>
+
+    <p id="protocol-editor-feedback" class="muted" role="status"></p>
+    <div class="dialog-actions sticky-dialog-actions">
+      <button type="button" id="protocol-editor-cancel">Отмена</button>
+      <button type="submit" id="protocol-editor-save">Сохранить протокол</button>
+    </div>
+  </form>
+</dialog>
+
+<template id="protocol-item-template">
+  <article class="pedagogical-item" data-item>
+    <div class="pedagogical-item-heading">
+      <h4 data-item-title>Пункт</h4>
+      <button type="button" data-remove-item>Удалить пункт</button>
+    </div>
+    <input type="hidden" data-field="id">
+    <label>Вопрос повестки
+      <input data-field="agendaTitle" required placeholder="Например: О допуске обучающихся к ГИА в форме ОГЭ">
+    </label>
+    <div class="grid">
+      <label>Время по повестке
+        <input data-field="agendaTime" type="time">
+      </label>
+      <label>Докладчик
+        <select data-field="speakerTeacherId">
+          <option value="">Выберите сотрудника</option>
+        </select>
+      </label>
+    </div>
+    <label>Содержание выступления
+      <textarea data-field="speechContent" rows="5" placeholder="Кратко изложите, что сообщил выступающий: предмет обсуждения, основные сведения, выводы и предложения. Не повторяйте должность и ФИО — система добавит их сама."></textarea>
+    </label>
+    <label>Решили
+      <textarea data-field="decisionText" rows="4" required placeholder="Запишите принятое решение полностью: что сделать, кому поручено и при необходимости срок исполнения."></textarea>
+    </label>
+    <div class="pedagogical-attachments">
+      <div class="pedagogical-section-heading">
+        <div>
+          <strong>Приложения к этому пункту</strong>
+          <p class="muted">Номер присваивается системой. Разрешены только файлы .docx.</p>
+        </div>
+        <label class="button-file">
+          Добавить Word
+          <input data-attachment-upload type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+        </label>
+      </div>
+      <div data-attachment-list class="pedagogical-attachment-list"></div>
+    </div>
+    <fieldset class="pedagogical-vote">
+      <legend>Голосование</legend>
+      <label>За
+        <input data-field="votesFor" type="number" min="0" value="0">
+      </label>
+      <label>Против
+        <input data-field="votesAgainst" type="number" min="0" value="0">
+      </label>
+      <label>Воздержались
+        <input data-field="votesAbstained" type="number" min="0" value="0">
+      </label>
+    </fieldset>
+  </article>
+</template>
+
+<dialog id="archive-upload-dialog" class="pedagogical-small-dialog">
+  <form id="archive-upload-form">
+    <div class="dialog-hero">
+      <div>
+        <h2>Загрузить старый протокол</h2>
+        <p class="muted">Файл сохранится в выбранном учебном году без разбора на пункты.</p>
+      </div>
+      <button type="button" id="archive-upload-close">Закрыть</button>
+    </div>
+    <label>Учебный год
+      <input id="archive-academic-year" name="academicYear" required pattern="\d{4}/\d{4}" placeholder="2023/2024">
+    </label>
+    <label>Номер протокола
+      <input name="protocolNumber" required>
+    </label>
+    <label>Дата педагогического совета
+      <input name="meetingDate" type="date" required>
+    </label>
+    <label>Готовый протокол Word
+      <input name="file" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
+    </label>
+    <p class="muted">Для учебного года 2023/2024 допустимы даты с 01.08.2023 по 31.07.2024.</p>
+    <p id="archive-upload-feedback" class="muted" role="status"></p>
+    <div class="dialog-actions">
+      <button type="button" id="archive-upload-cancel">Отмена</button>
+      <button type="submit">Загрузить и сохранить</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="extract-dialog" class="pedagogical-small-dialog">
+  <form id="extract-form">
+    <div class="dialog-hero">
+      <div>
+        <h2>Сформировать выписку</h2>
+        <p class="muted">Выбранные пункты и связанные приложения попадут в один Word-файл.</p>
+      </div>
+      <button type="button" id="extract-close">Закрыть</button>
+    </div>
+    <div>
+      <h3>Пункты протокола</h3>
+      <div id="extract-items" class="pedagogical-choice-list"></div>
+    </div>
+    <div>
+      <h3>Кто заверяет выписку</h3>
+      <p class="muted">Можно выбрать одного или нескольких сотрудников. Сформировавший документ автоматически подписантом не становится.</p>
+      <div id="extract-certifiers" class="pedagogical-choice-list"></div>
+    </div>
+    <label class="pedagogical-check">
+      <input id="extract-external" type="checkbox">
+      Выписка выдаётся во внешнюю организацию
+    </label>
+    <label id="extract-storage-row" hidden>Где хранится подлинник
+      <input id="extract-storage" placeholder="ГБОУ Школа №…, дело №… за … год">
+    </label>
+    <label class="pedagogical-check">
+      <input id="extract-approval" type="checkbox">
+      Требуется отдельное утверждение выписки
+    </label>
+    <label id="extract-approver-row" hidden>Кто утверждает
+      <select id="extract-approver"></select>
+    </label>
+    <p class="muted">Отдельное утверждение выключено по умолчанию и применяется только по локальному правилу школы или требованию получателя.</p>
+    <p id="extract-feedback" class="muted" role="status"></p>
+    <div class="dialog-actions">
+      <button type="button" id="extract-cancel">Отмена</button>
+      <button type="submit">Скачать выписку Word</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="/branding.js"></script>
+<script src="/auth.js"></script>
+<script src="/pedagogical-councils.js"></script>
+</body>
+</html>
