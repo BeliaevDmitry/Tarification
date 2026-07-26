@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "hr_service_memo")
 public class HrServiceMemo {
-    public enum Status { DRAFT, ISSUED, RECEIVED_BY_HR, EXECUTED, ANNULLED }
+    public enum Status { DRAFT, ISSUED, SIGNED, RECEIVED_BY_HR, EXECUTED, ANNULLED, ARCHIVED }
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(nullable = false) private String academicYear;
     // The database may already contain legacy memos created before employee binding was introduced.
@@ -38,9 +38,14 @@ public class HrServiceMemo {
     private String issuedBy;
     private String issuedByFullName;
     private String issuedByPosition;
+    private LocalDateTime signedAt;
+    private String signedBy;
     private LocalDateTime receivedAt;
     private String receivedBy;
     private LocalDateTime annulledAt;
     private String annulledBy;
     @Column(length = 2000) private String annulReason;
+    private LocalDateTime archivedAt;
+    private String archivedBy;
+    @Column(length = 2000) private String archiveReason;
 }

@@ -5,6 +5,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.HrDocumentDtos.AgreementRequest;
 import org.school.personalLoad.dto.HrDocumentDtos.AgreementEditRequest;
@@ -151,6 +153,7 @@ class HrDocumentServiceTest {
         HrServiceMemo issued=service.memoStatus(50L,HrServiceMemo.Status.ISSUED,"deputy",
                 "Беляев Дмитрий Алексеевич","заместителя директора");
         when(agreements.findAllByServiceMemoId(50L)).thenReturn(List.of(linked));
+        service.memoStatus(50L,HrServiceMemo.Status.SIGNED,"director");
         service.memoStatus(50L,HrServiceMemo.Status.RECEIVED_BY_HR,"hr");
         try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(issued.getDocumentContent()))){
             String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right);
@@ -172,7 +175,7 @@ class HrDocumentServiceTest {
     }
 
     @Test void receivingDutyMemoReleasesLinkedAgreementDraft(){
-        HrServiceMemo memo=new HrServiceMemo();memo.setId(50L);memo.setStatus(HrServiceMemo.Status.ISSUED);
+        HrServiceMemo memo=new HrServiceMemo();memo.setId(50L);memo.setStatus(HrServiceMemo.Status.SIGNED);
         AdditionalAgreement agreement=new AdditionalAgreement();agreement.setStatus(AdditionalAgreement.Status.WAITING_FOR_MEMO);
         when(memos.findById(50L)).thenReturn(Optional.of(memo));
         when(agreements.findAllByServiceMemoId(50L)).thenReturn(List.of(agreement));
@@ -181,6 +184,70 @@ class HrDocumentServiceTest {
 
         assertEquals(AdditionalAgreement.Status.DRAFT,agreement.getStatus());
         assertEquals(HrServiceMemo.Status.RECEIVED_BY_HR,memo.getStatus());
+    }
+
+    @Test void hrCannotReceiveDutyMemoBeforeDirectorSignature(){
+        HrServiceMemo memo=new HrServiceMemo();memo.setId(50L);memo.setStatus(HrServiceMemo.Status.ISSUED);
+        when(memos.findById(50L)).thenReturn(Optional.of(memo));
+
+        ResponseStatusException error=assertThrows(ResponseStatusException.class,
+                ()->service.memoStatus(50L,HrServiceMemo.Status.RECEIVED_BY_HR,"hr"));
+
+        assertTrue(error.getReason().contains("подписанную"));
+        assertEquals(HrServiceMemo.Status.ISSUED,memo.getStatus());
+    }
+
+    @Test void editingIssuedDutyMemoUpdatesLinkedDraftAndRequiresReissue(){
+        HrServiceMemo memo=new HrServiceMemo();memo.setId(50L);memo.setStatus(HrServiceMemo.Status.ISSUED);
+        memo.setAcademicYear("2025/2026");memo.setTeacherId(1L);memo.setContractId(10L);
+        memo.setTitle("Заведование кабинетом");memo.setAssignmentName("Заведование кабинетом");
+        memo.setAssignmentText("Старый автоматический текст");memo.setAgreementText("Старый текст соглашения");
+        memo.setContractClause("2.4");memo.setAmount(new BigDecimal("15000"));
+        memo.setValidFrom(LocalDate.of(2025,9,1));memo.setValidTo(LocalDate.of(2026,8,31));
+        memo.setDocumentDate(LocalDate.of(2025,9,1));memo.setDocumentFilename("memo.docx");
+        memo.setDocumentContent(new byte[]{1,2,3});memo.setIssuedBy("deputy");
+        AdditionalAgreement linked=new AdditionalAgreement();linked.setId(100L);
+        linked.setStatus(AdditionalAgreement.Status.DRAFT);linked.setServiceMemoId(50L);
+        when(memos.findById(50L)).thenReturn(Optional.of(memo));
+        when(agreements.findAllByServiceMemoId(50L)).thenReturn(List.of(linked));
+        when(versions.findAllByDocumentTypeAndDocumentIdOrderByRevisionDesc("SERVICE_MEMO",50L))
+                .thenReturn(List.of());
+        MemoRequest update=new MemoRequest("2025/2026",1L,10L,null,null,LocalDate.of(2025,9,1),
+                "Заведование кабинетом",memo.getAssignmentText(),memo.getAgreementText(),"2.4",null,
+                new BigDecimal("17000"),LocalDate.of(2025,9,1),LocalDate.of(2026,8,31),
+                false,false,null);
+
+        HrServiceMemo edited=service.editMemo(50L,update,"director");
+
+        assertEquals(HrServiceMemo.Status.DRAFT,edited.getStatus());
+        assertNull(edited.getIssuedBy());
+        assertNull(edited.getSignedAt());
+        assertEquals(new BigDecimal("17000"),linked.getTotalAmount());
+        assertEquals(AdditionalAgreement.Status.WAITING_FOR_MEMO,linked.getStatus());
+        assertTrue(edited.getAssignmentText().contains("17 000"));
+        verify(versions).save(argThat(version->"SERVICE_MEMO".equals(version.getDocumentType())
+                &&"ISSUED_BEFORE_EDIT".equals(version.getSource())));
+    }
+
+    @Test void annullingAgreementArchivesLinkedServiceMemosWithReason(){
+        HrServiceMemo duty=new HrServiceMemo();duty.setId(50L);duty.setStatus(HrServiceMemo.Status.RECEIVED_BY_HR);
+        ServiceMemo load=new ServiceMemo();load.setId(60L);load.setStatus(ServiceMemo.Status.RECEIVED_BY_HR);
+        AdditionalAgreement agreement=new AdditionalAgreement();agreement.setId(100L);
+        agreement.setInternalNumber("1 / 2025-2026");agreement.setServiceMemoId(50L);
+        agreement.setLoadServiceMemoId(60L);agreement.setStatus(AdditionalAgreement.Status.ISSUED);
+        when(agreements.findById(100L)).thenReturn(Optional.of(agreement));
+        when(memos.findById(50L)).thenReturn(Optional.of(duty));
+        when(loadMemos.findById(60L)).thenReturn(Optional.of(load));
+
+        service.annulAgreement(100L,"ошибочная сумма","hr");
+
+        assertEquals(AdditionalAgreement.Status.ANNULLED,agreement.getStatus());
+        assertEquals(HrServiceMemo.Status.ARCHIVED,duty.getStatus());
+        assertEquals(ServiceMemo.Status.ARCHIVED,load.getStatus());
+        assertTrue(duty.getArchiveReason().contains("1 / 2025-2026"));
+        assertTrue(load.getArchiveReason().contains("ошибочная сумма"));
+        verify(memos).save(duty);
+        verify(loadMemos).save(load);
     }
 
     @Test void dutyMemoLifecycleEndsWithIssuableAgreementDocxWithoutManualMemoId() {
@@ -206,6 +273,7 @@ class HrDocumentServiceTest {
         assertEquals(AdditionalAgreement.Status.WAITING_FOR_MEMO,linked.getStatus());
 
         service.memoStatus(50L,HrServiceMemo.Status.ISSUED,"deputy","Заместитель Директора","заместителя директора");
+        service.memoStatus(50L,HrServiceMemo.Status.SIGNED,"director","Директор","директора");
         service.memoStatus(50L,HrServiceMemo.Status.RECEIVED_BY_HR,"hr","Кадровик","специалиста по кадрам");
         assertEquals(AdditionalAgreement.Status.DRAFT,linked.getStatus());
 
@@ -292,6 +360,10 @@ class HrDocumentServiceTest {
             assertTrue(text.contains("01.09.2026"));
             assertTrue(text.contains("Прошу Вас согласовать заведование кабинетом."));
             assertFalse(text.contains("О назначении:"));
+            assertTrue(document.getParagraphs().stream().flatMap(paragraph->paragraph.getRuns().stream())
+                    .filter(run->run.text()!=null&&!run.text().isBlank())
+                    .allMatch(run->run.getFontSize()>=14),
+                    "Текст служебной записки должен быть не мельче 14 пунктов");
         }
     }
 
@@ -603,13 +675,16 @@ class HrDocumentServiceTest {
         AdditionalAgreement prepared=service.prepare(100L,"hr");
 
         assertEquals(AdditionalAgreement.Status.READY,prepared.getStatus());assertNotNull(prepared.getCurrentDocument());
+        assertEquals(new BigDecimal("5241.67"),prepared.getTotalAmount(),
+                "Для пункта 2.1 сохранённая сумма заменяется итогом всех строк приложения");
         try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(prepared.getCurrentDocument()))){
             String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right)
                     +document.getTables().stream().map(table->table.getText()).reduce("",String::concat);
             assertTrue(text.contains("ДОПОЛНИТЕЛЬНОЕ СОГЛАШЕНИЕ"));
             assertTrue(text.contains("Внести изменения в пункт 2.1. раздела 2 «Оплата труда»"));
             assertTrue(text.contains("За исполнение трудовых (должностных) обязанностей"));
-            assertTrue(text.contains("должностного оклада в размере 50 000 рублей 00 коп. (пятьдесят тысяч рублей 00 коп.)"));
+            assertTrue(text.contains("должностного оклада в размере 5 241 рубль 67 коп. "
+                    +"(пять тысяч двести сорок один рубль 67 коп.)"));
             assertTrue(text.contains("на основании «ученико-часа» в размере 37 рублей"));
             assertTrue(text.contains("педагогической нагрузки в размере 2 часа"));
             assertTrue(text.contains("2. Срок действия настоящего дополнительного соглашения: с «01» сентября 2025 года по «31» августа 2026 года."));
@@ -620,6 +695,26 @@ class HrDocumentServiceTest {
             assertTrue(text.contains("РАБОТОДАТЕЛЬ"));assertTrue(text.contains("РАБОТНИК"));
             assertTrue(text.contains("Приложение № 1"));assertTrue(text.contains("Математика"));assertTrue(text.contains("Численность"));
             assertTrue(text.contains("25"));
+            XWPFTable details=document.getTables().stream()
+                    .filter(table->table.getText().contains("РАБОТОДАТЕЛЬ")).findFirst().orElseThrow();
+            assertEquals(2,details.getCTTbl().getTblGrid().sizeOfGridColArray());
+            assertEquals(details.getCTTbl().getTblGrid().getGridColArray(0).getW(),
+                    details.getCTTbl().getTblGrid().getGridColArray(1).getW(),
+                    "Колонки реквизитов работодателя и работника должны быть одинаковой ширины");
+            assertTrue(details.getRows().stream().allMatch(row->
+                            row.getCell(0).getCTTc().getTcPr().getTcW().getW()
+                                    .equals(row.getCell(1).getCTTc().getTcPr().getTcW().getW())),
+                    "Одинаковая ширина должна быть закреплена у ячеек каждой строки");
+            XWPFParagraph receipt=document.getParagraphs().stream()
+                    .filter(paragraph->paragraph.getText().startsWith("Экземпляр дополнительного соглашения получил(а)"))
+                    .findFirst().orElseThrow();
+            assertTrue(receipt.getIndentationLeft()>0);
+            assertFalse(receipt.getText().contains("дата и подпись работника"),
+                    "Подпись к строке получения должна быть отдельным выровненным абзацем");
+            XWPFParagraph receiptCaption=document.getParagraphs().stream()
+                    .filter(paragraph->paragraph.getText().equals("(дата и подпись работника)"))
+                    .findFirst().orElseThrow();
+            assertEquals(org.apache.poi.xwpf.usermodel.ParagraphAlignment.RIGHT,receiptCaption.getAlignment());
         }
         String qaOutput=System.getProperty("hr.agreement.qa.output");
         if(qaOutput!=null&&!qaOutput.isBlank()){Path path=Path.of(qaOutput);Files.createDirectories(path.getParent());Files.write(path,prepared.getCurrentDocument());}
@@ -650,12 +745,13 @@ class HrDocumentServiceTest {
 
         AdditionalAgreement prepared=service.prepare(100L,"hr");
 
+        assertEquals(new BigDecimal("78625.00"),prepared.getTotalAmount());
         try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(prepared.getCurrentDocument()))){
             String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right)
                     +document.getTables().stream().map(table->table.getText()).reduce("",String::concat);
             assertTrue(text.contains("1. Внести изменения в пункт 2.1. раздела 2 «Оплата труда»"));
-            assertTrue(text.contains("должностного оклада в размере 133 348 рублей 00 коп. "
-                    +"(сто тридцать три тысячи триста сорок восемь рублей 00 коп.)"));
+            assertTrue(text.contains("должностного оклада в размере 78 625 рублей 00 коп. "
+                    +"(семьдесят восемь тысяч шестьсот двадцать пять рублей 00 коп.)"));
             assertTrue(text.contains("педагогической нагрузки в размере 30 часов"));
             assertTrue(text.contains("2. Внести изменения в пункт 2.4. раздела 2 «Оплата труда»"));
             assertTrue(text.contains("500 рублей за 1 обучающегося"));
@@ -669,6 +765,79 @@ class HrDocumentServiceTest {
         }
         String qaOutput=System.getProperty("hr.sample.agreement.qa.output");
         if(qaOutput!=null&&!qaOutput.isBlank()){Path path=Path.of(qaOutput);Files.createDirectories(path.getParent());Files.write(path,prepared.getCurrentDocument());}
+    }
+
+    @Test void existingExpandedLoadClauseAndAnnexUseSameRecalculatedTotal() throws Exception {
+        AdditionalAgreement agreement=draftAgreement();
+        agreement.setTotalAmount(new BigDecimal("4298.17"));
+        agreement.setConditionsJson("Внести изменения в пункт 2.1. раздела 2 «Оплата труда», изложив его в следующей редакции:\n"
+                +"«2.1. За исполнение трудовых (должностных) обязанностей, предусмотренных должностной инструкцией "
+                +"и настоящим Трудовым договором, Работнику выплачивается заработная плата, которая состоит из:\n"
+                +"- должностного оклада в размере 4 298 рублей 17 коп. "
+                +"(четыре тысячи двести девяносто восемь рублей 17 коп.) в месяц, определяемого исходя из учебной "
+                +"нагрузки по формуле, установленной в п. 2.3. настоящего договора, на основании «ученико-часа» "
+                +"в размере 37 рублей и педагогической нагрузки в размере 32 часа».");
+        ManualLoadEntry common=new ManualLoadEntry();common.setTeacherId(1L);common.setAcademicYear("2025/2026");
+        common.setSubjectName("Россия – мои горизонты");common.setClassName("9-Е");common.setLoad(2);
+        ManualLoadEntry biology=new ManualLoadEntry();biology.setTeacherId(1L);biology.setAcademicYear("2025/2026");
+        biology.setSubjectName("Биология");biology.setClassName("9-Б");biology.setLoad(43);
+        SubjectLevelCoefficientEntry biologyCoefficient=new SubjectLevelCoefficientEntry();
+        biologyCoefficient.setSubjectName("Биология");biologyCoefficient.setEducationStage(EducationStage.OOO);
+        biologyCoefficient.setCoefficient(new BigDecimal("1.3"));
+        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(common,biology));
+        when(sizes.effectiveClassSizes("2025/2026")).thenReturn(Map.of("9-е",23,"9-б",17));
+        when(coefficients.findBySubjectNameIgnoreCaseAndEducationStage("Биология",EducationStage.OOO))
+                .thenReturn(Optional.of(biologyCoefficient));
+        when(agreements.findById(100L)).thenReturn(Optional.of(agreement));
+        when(personal.findByTeacherId(1L)).thenReturn(Optional.of(completePersonal()));
+
+        AdditionalAgreement prepared=service.prepare(100L,"hr");
+
+        assertEquals(new BigDecimal("104445.45"),prepared.getTotalAmount());
+        try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(prepared.getCurrentDocument()))){
+            String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right)
+                    +document.getTables().stream().map(table->table.getText()).reduce("",String::concat);
+            assertTrue(text.contains("должностного оклада в размере 104 445 рублей 45 коп. "
+                    +"(сто четыре тысячи четыреста сорок пять рублей 45 коп.)"));
+            assertTrue(text.contains("Итоговая сумма: 104 445,45 руб. "
+                    +"(сто четыре тысячи четыреста сорок пять рублей 45 копеек)"));
+            assertEquals(2,text.split(java.util.regex.Pattern.quote("104 445,45"),-1).length-1,
+                    "Одинаковый итог должен быть и в строке таблицы, и под приложением");
+            assertFalse(text.contains("4 298 рублей 17 коп."));
+        }
+        String qaOutput=System.getProperty("hr.load-total.qa.output");
+        if(qaOutput!=null&&!qaOutput.isBlank()){
+            Path path=Path.of(qaOutput);Files.createDirectories(path.getParent());Files.write(path,prepared.getCurrentDocument());
+        }
+    }
+
+    @Test void issuedUnsignedAgreementCanBeReopenedForCorrectionAndReissue() {
+        AdditionalAgreement agreement=draftAgreement();agreement.setStatus(AdditionalAgreement.Status.ISSUED);
+        agreement.setIssuedAt(java.time.LocalDateTime.of(2026,7,25,10,0));agreement.setIssuedBy("hr");
+        agreement.setCurrentDocument(new byte[]{4,2,9,8});agreement.setGeneratedDocument(new byte[]{4,2,9,8});
+        agreement.setCurrentFilename("issued.docx");agreement.setRevision(2);
+        when(agreements.findById(100L)).thenReturn(Optional.of(agreement));
+        when(versions.findAllByDocumentTypeAndDocumentIdOrderByRevisionDesc("AGREEMENT",100L)).thenReturn(List.of());
+
+        AdditionalAgreement reopened=service.reopenIssuedAgreement(100L,"hr");
+
+        assertEquals(AdditionalAgreement.Status.DRAFT,reopened.getStatus());
+        assertNull(reopened.getIssuedAt());assertNull(reopened.getIssuedBy());
+        assertNull(reopened.getGeneratedDocument());assertNull(reopened.getCurrentDocument());
+        verify(versions).save(argThat(version->"ISSUED_BEFORE_REISSUE".equals(version.getSource())
+                &&Arrays.equals(new byte[]{4,2,9,8},version.getContent())));
+        verify(agreements).save(agreement);
+    }
+
+    @Test void signedAgreementCannotBeReopenedForCorrection() {
+        AdditionalAgreement agreement=draftAgreement();agreement.setStatus(AdditionalAgreement.Status.SIGNED);
+        when(agreements.findById(100L)).thenReturn(Optional.of(agreement));
+
+        ResponseStatusException error=assertThrows(ResponseStatusException.class,
+                ()->service.reopenIssuedAgreement(100L,"hr"));
+
+        assertTrue(error.getReason().contains("Подписанное"));
+        verify(agreements,never()).save(any());
     }
 
     @Test void additionalWorkAgreementFollowsSchoolSampleStructure() throws Exception {

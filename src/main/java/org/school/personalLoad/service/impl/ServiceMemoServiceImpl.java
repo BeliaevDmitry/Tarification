@@ -25,6 +25,7 @@ import org.school.personalLoad.service.HrDocumentService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -101,7 +102,8 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     @Override
     @Transactional(readOnly = true)
     public List<ServiceMemoDtos.ProcessedMemo> findProcessed(String academicYear) {
-        List<ServiceMemo.Status> visible = List.of(ServiceMemo.Status.PROCESSED, ServiceMemo.Status.RECEIVED_BY_HR, ServiceMemo.Status.EXECUTED);
+        List<ServiceMemo.Status> visible = List.of(ServiceMemo.Status.PROCESSED, ServiceMemo.Status.SIGNED,
+                ServiceMemo.Status.RECEIVED_BY_HR, ServiceMemo.Status.EXECUTED);
         java.util.List<ServiceMemo> items = (academicYear == null || academicYear.isBlank())
                 ? serviceMemoRepository.findAllByStatusInOrderByCreatedAtDesc(visible)
                 : serviceMemoRepository.findAllByAcademicYearAndStatusInOrderByCreatedAtDesc(academicYear, visible);
@@ -226,13 +228,27 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     @Override
+    public ServiceMemo signByDirector(Long id,String username){
+        ServiceMemo memo=getById(id);
+        if(memo.getStatus()!=ServiceMemo.Status.PROCESSED&&memo.getStatus()!=ServiceMemo.Status.SIGNED)
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+                    "Подписать можно только выпущенную служебную записку");
+        memo.setStatus(ServiceMemo.Status.SIGNED);
+        memo.setSignedAt(LocalDateTime.now());
+        memo.setSignedBy(username);
+        return serviceMemoRepository.save(memo);
+    }
+
+    @Override
     public ServiceMemo receiveByHr(Long id, String username) {
         ServiceMemo memo = getById(id);
         if (memo.getStatus() == ServiceMemo.Status.ARCHIVED || memo.getStatus() == ServiceMemo.Status.ANNULLED) {
-            throw new IllegalStateException("Нельзя принять архивную или аннулированную служебную записку");
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+                    "Нельзя принять архивную или аннулированную служебную записку");
         }
-        if (memo.getStatus() != ServiceMemo.Status.PROCESSED && memo.getStatus() != ServiceMemo.Status.RECEIVED_BY_HR)
-            throw new IllegalStateException("Служебная записка ещё не выпущена");
+        if (memo.getStatus() != ServiceMemo.Status.SIGNED && memo.getStatus() != ServiceMemo.Status.RECEIVED_BY_HR)
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+                    "Сначала отметьте служебную записку как подписанную");
         TeacherDirectoryEntry teacher = memo.getTeacherId() == null
                 ? teacherDirectoryRepository.findByFioTeacherIgnoreCase(memo.getFioTeacher())
                     .orElseThrow(() -> new IllegalStateException("Не найден ID работника: " + memo.getFioTeacher()))
@@ -271,6 +287,11 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         ServiceMemo memo = getById(id);
         memo.setCorrectedFilename(filename);
         memo.setCorrectedDocument(content);
+        if(memo.getStatus()==ServiceMemo.Status.SIGNED){
+            memo.setStatus(ServiceMemo.Status.PROCESSED);
+            memo.setSignedAt(null);
+            memo.setSignedBy(null);
+        }
         return serviceMemoRepository.save(memo);
     }
 
@@ -286,6 +307,8 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 .createdAt(memo.getCreatedAt())
                 .generatedFilename(memo.getGeneratedFilename())
                 .correctedFilename(memo.getCorrectedFilename())
+                .signedAt(memo.getSignedAt())
+                .archiveReason(memo.getArchiveReason())
                 .build();
     }
 
@@ -1029,7 +1052,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private Map<String, ServiceMemo> latestMemoBySelectionKey(String academicYear) {
-        List<ServiceMemo.Status> completed = List.of(ServiceMemo.Status.PROCESSED, ServiceMemo.Status.RECEIVED_BY_HR,
+        List<ServiceMemo.Status> completed = List.of(ServiceMemo.Status.PROCESSED, ServiceMemo.Status.SIGNED, ServiceMemo.Status.RECEIVED_BY_HR,
                 ServiceMemo.Status.EXECUTED, ServiceMemo.Status.ARCHIVED);
         List<ServiceMemo> source = (academicYear == null || academicYear.isBlank())
                 ? serviceMemoRepository.findAllByStatusInOrderByCreatedAtDesc(completed)
@@ -1213,6 +1236,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             try (InputStream template = in; XWPFDocument doc = new XWPFDocument(template); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             var memoSettings = serviceMemoSettingsService.get();
             replaceMemoTemplateAndInsertTable(doc, aggregate, createdBy, teacherDative, memoSettings);
+            enforceMemoTypography(doc,14);
             doc.write(out);
             return out.toByteArray();
         } catch (IOException e) {
@@ -1222,19 +1246,19 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
 
         try (XWPFDocument doc = new XWPFDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             var memoSettings = serviceMemoSettingsService.get();
-            paragraph(doc, memoSettings.directorTitle(), false, ParagraphAlignment.RIGHT, 12, 0, 0, 0);
-            paragraph(doc, memoSettings.directorName(), false, ParagraphAlignment.RIGHT, 12, 0, 160, 0);
-            paragraph(doc, "от заместителя директора", false, ParagraphAlignment.RIGHT, 12, 0, 0, 0);
-            paragraph(doc, createdBy, false, ParagraphAlignment.RIGHT, 12, 0, 220, 0);
+            paragraph(doc, memoSettings.directorTitle(), false, ParagraphAlignment.RIGHT, 14, 0, 0, 0);
+            paragraph(doc, memoSettings.directorName(), false, ParagraphAlignment.RIGHT, 14, 0, 160, 0);
+            paragraph(doc, "от заместителя директора", false, ParagraphAlignment.RIGHT, 14, 0, 0, 0);
+            paragraph(doc, createdBy, false, ParagraphAlignment.RIGHT, 14, 0, 220, 0);
 
-            paragraph(doc, "СЛУЖЕБНАЯ ЗАПИСКА", true, ParagraphAlignment.CENTER, 14, 0, 220, 0);
-            paragraph(doc, buildRationaleText(aggregate, teacherDative), false, ParagraphAlignment.BOTH, 12, 0, 120, 420);
+            paragraph(doc, "СЛУЖЕБНАЯ ЗАПИСКА", true, ParagraphAlignment.CENTER, 16, 0, 220, 0);
+            paragraph(doc, buildRationaleText(aggregate, teacherDative), false, ParagraphAlignment.BOTH, 14, 0, 120, 420);
 
             int totalRemainingHours = appendTable(doc, aggregate.rows(), aggregate, aggregate.newEmployeeMemo());
-            paragraph(doc, "", false, ParagraphAlignment.LEFT, 12, 120, 0, 0);
-            paragraph(doc, "Итого: " + totalRemainingHours + " ч.", true, ParagraphAlignment.LEFT, 12, 0, 160, 0);
-            paragraph(doc, createdBy, false, ParagraphAlignment.RIGHT, 12, 220, 0, 0);
-            paragraph(doc, RU_DATE.format(LocalDate.now()), false, ParagraphAlignment.RIGHT, 12, 0, 0, 0);
+            paragraph(doc, "", false, ParagraphAlignment.LEFT, 14, 120, 0, 0);
+            paragraph(doc, "Итого: " + totalRemainingHours + " ч.", true, ParagraphAlignment.LEFT, 14, 0, 160, 0);
+            paragraph(doc, createdBy, false, ParagraphAlignment.RIGHT, 14, 220, 0, 0);
+            paragraph(doc, RU_DATE.format(LocalDate.now()), false, ParagraphAlignment.RIGHT, 14, 0, 0, 0);
             doc.write(out);
             return out.toByteArray();
         } catch (IOException e) {
@@ -1296,8 +1320,15 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             XWPFRun run = paragraph.createRun();
             run.setText(replaced);
             run.setFontFamily("Times New Roman");
-            run.setFontSize(12);
+            run.setFontSize(14);
         }
+    }
+
+    private void enforceMemoTypography(XWPFDocument document,int minimumSize){
+        allDocumentParagraphs(document).forEach(paragraph->paragraph.getRuns().forEach(run->{
+            run.setFontFamily("Times New Roman");
+            if(run.getFontSize()<minimumSize)run.setFontSize(minimumSize);
+        }));
     }
 
     private void insertMemoTable(XWPFDocument doc, TeacherChangeAggregate aggregate) {
@@ -1406,7 +1437,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         paragraph.setAlignment(ParagraphAlignment.CENTER);
         XWPFRun run = paragraph.createRun();
         run.setFontFamily("Times New Roman");
-        run.setFontSize(12);
+        run.setFontSize(14);
         run.setBold(bold);
         run.setText(text == null ? "" : text);
     }

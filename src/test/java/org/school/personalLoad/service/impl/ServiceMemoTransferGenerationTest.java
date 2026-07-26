@@ -1,6 +1,7 @@
 package org.school.personalLoad.service.impl;
 
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,8 @@ import org.school.personalLoad.service.HrDocumentService;
 import java.io.ByteArrayInputStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
@@ -35,6 +38,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -144,7 +148,7 @@ class ServiceMemoTransferGenerationTest {
     }
 
     @Test
-    void generatedLoadMemoIsBoundToContractAndCreatesAgreementDraft() {
+    void generatedLoadMemoIsBoundToContractAndCreatesAgreementDraft() throws Exception {
         ManualLoadEntry row = row("Сидоров С.С.", "Математика", "5-А", 5,
                 LocalDate.of(2025, 10, 11), LocalDate.of(2026, 5, 31));
         when(manualLoadEntryRepository.findAll()).thenReturn(List.of(row));
@@ -157,6 +161,19 @@ class ServiceMemoTransferGenerationTest {
         assertTrue(Objects.equals(10L, memo.getContractId()));
         assertTrue(memo.getBeforeSnapshotJson().contains("rows"));
         assertTrue(memo.getAfterSnapshotJson().contains("Математика"));
+        try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(memo.getGeneratedDocument()))){
+            List<XWPFParagraph> paragraphs=new ArrayList<>(document.getParagraphs());
+            document.getTables().forEach(table->table.getRows().forEach(tableRow->
+                    tableRow.getTableCells().forEach(cell->paragraphs.addAll(cell.getParagraphs()))));
+            assertTrue(paragraphs.stream().flatMap(paragraph->paragraph.getRuns().stream())
+                    .filter(run->run.text()!=null&&!run.text().isBlank())
+                    .allMatch(run->run.getFontSize()>=14),
+                    "Текст служебной записки и таблицы должен быть не мельче 14 пунктов");
+        }
+        String qaOutput=System.getProperty("load.memo.qa.output");
+        if(qaOutput!=null&&!qaOutput.isBlank()){
+            Path path=Path.of(qaOutput);Files.createDirectories(path.getParent());Files.write(path,memo.getGeneratedDocument());
+        }
         org.mockito.Mockito.verify(hrDocumentService).createLoadChangeDraft(
                 org.mockito.ArgumentMatchers.same(memo), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("Автор"));
     }
@@ -182,7 +199,7 @@ class ServiceMemoTransferGenerationTest {
     @Test
     void hrReceiptBackfillsLegacyBindingAndReleasesAgreement() {
         ServiceMemo memo = new ServiceMemo(); memo.setId(77L); memo.setFioTeacher("Сидоров С.С.");
-        memo.setStatus(ServiceMemo.Status.PROCESSED); memo.setAcademicYear("2025/2026");
+        memo.setStatus(ServiceMemo.Status.SIGNED); memo.setAcademicYear("2025/2026");
         memo.setChangeStartDate(LocalDate.of(2025,10,11));
         when(serviceMemoRepository.findById(77L)).thenReturn(java.util.Optional.of(memo));
 
@@ -199,7 +216,7 @@ class ServiceMemoTransferGenerationTest {
     @Test
     void hrCanReceiveLoadMemoBeforeEmploymentContractIsFilled() {
         ServiceMemo memo = new ServiceMemo(); memo.setId(78L); memo.setFioTeacher("Сидоров С.С.");
-        memo.setStatus(ServiceMemo.Status.PROCESSED); memo.setAcademicYear("2025/2026");
+        memo.setStatus(ServiceMemo.Status.SIGNED); memo.setAcademicYear("2025/2026");
         memo.setChangeStartDate(LocalDate.of(2025,10,11));
         when(serviceMemoRepository.findById(78L)).thenReturn(java.util.Optional.of(memo));
         when(employmentContractRepository.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(1L)).thenReturn(List.of());
@@ -212,6 +229,17 @@ class ServiceMemoTransferGenerationTest {
         org.mockito.Mockito.verify(hrDocumentService).ensureLoadChangeDraft(
                 org.mockito.ArgumentMatchers.same(memo),org.mockito.ArgumentMatchers.isNull(),org.mockito.ArgumentMatchers.eq("Кадры"));
         org.mockito.Mockito.verify(hrDocumentService).onLoadMemoReceived(memo);
+    }
+
+    @Test
+    void hrCannotReceiveLoadMemoBeforeDirectorSignature() {
+        ServiceMemo memo=new ServiceMemo();memo.setId(79L);memo.setStatus(ServiceMemo.Status.PROCESSED);
+        when(serviceMemoRepository.findById(79L)).thenReturn(java.util.Optional.of(memo));
+
+        assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                ()->service.receiveByHr(79L,"Кадры"));
+
+        assertEquals(ServiceMemo.Status.PROCESSED,memo.getStatus());
     }
 
     @Test

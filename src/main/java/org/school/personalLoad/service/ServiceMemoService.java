@@ -36,6 +36,8 @@ public interface ServiceMemoService {
 
     ServiceMemo archive(Long id);
 
+    ServiceMemo signByDirector(Long id, String username);
+
     ServiceMemo receiveByHr(Long id, String username);
 
     ServiceMemo annul(Long id, String reason, String username);
