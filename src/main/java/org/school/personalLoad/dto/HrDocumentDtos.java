@@ -39,6 +39,12 @@ public final class HrDocumentDtos {
             Boolean saveAsTemplate, String templateName) {}
     public record BatchAgreementRequest(String academicYear, LocalDate documentDate, LocalDate validFrom,
             List<Long> contractIds, Long serviceMemoId) {}
+    public record MergeAgreementsRequest(List<Long> agreementIds) {}
+    public record DeleteAgreementRequest(String confirmation, String reason) {}
+    public record IncentiveRequest(Long teacherId, BigDecimal amount) {}
+    public record IncentiveRow(Long id, Long teacherId, String fio, BigDecimal amount,
+            boolean hasLoad, LocalDateTime updatedAt, String updatedBy) {}
+    public record IncentiveImportResult(int updated, int skipped) {}
     public record AnnulRequest(String reason) {}
     public record StatusRequest(String status) {}
     public record ChangeModeRequest(String changeMode, Long replacesAgreementId) {}

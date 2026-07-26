@@ -2744,3 +2744,269 @@ td.vacancy-row {
         display: none;
     }
 }
+
+.documents-menu-grid {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 420px));
+}
+
+.pedagogical-year-row {
+    align-items: center;
+    margin-top: 12px;
+}
+
+.pedagogical-year-row label {
+    font-weight: 700;
+}
+
+.pedagogical-toolbar,
+.pedagogical-section-heading,
+.pedagogical-item-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.pedagogical-toolbar h2,
+.pedagogical-section-heading h3,
+.pedagogical-item-heading h4 {
+    margin-top: 0;
+    margin-bottom: 4px;
+}
+
+.pedagogical-actions {
+    min-width: 230px;
+}
+
+.pedagogical-protocol-table td:first-child {
+    white-space: nowrap;
+}
+
+.ped-status-draft {
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.ped-status-review {
+    background: #fff7ed;
+    color: #9a3412;
+}
+
+.ped-status-registered {
+    background: #ecfdf5;
+    color: #047857;
+}
+
+.ped-status-corrected {
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.pedagogical-dialog {
+    width: min(1500px, calc(100vw - 32px));
+    max-width: none;
+    max-height: calc(100vh - 28px);
+    padding: 0;
+    overflow: auto;
+}
+
+.pedagogical-dialog > form,
+.pedagogical-small-dialog > form {
+    padding: 20px;
+}
+
+.pedagogical-small-dialog {
+    width: min(680px, calc(100vw - 32px));
+    max-width: none;
+    max-height: calc(100vh - 28px);
+}
+
+.pedagogical-small-dialog label,
+.pedagogical-dialog label {
+    display: grid;
+    gap: 6px;
+    margin-bottom: 12px;
+    font-weight: 600;
+}
+
+.pedagogical-dialog textarea,
+.pedagogical-small-dialog input,
+.pedagogical-small-dialog select,
+.pedagogical-dialog input,
+.pedagogical-dialog select {
+    width: 100%;
+}
+
+.pedagogical-dialog textarea {
+    resize: vertical;
+    padding: 9px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font: inherit;
+}
+
+.pedagogical-editor-grid {
+    display: grid;
+    grid-template-columns: minmax(560px, 1.15fr) minmax(360px, .85fr);
+    gap: 20px;
+    align-items: start;
+}
+
+.pedagogical-item {
+    border-top: 2px solid #dbe5f1;
+    padding: 18px 0 4px;
+    margin-top: 12px;
+}
+
+.pedagogical-item:first-child {
+    margin-top: 0;
+}
+
+.pedagogical-attachments {
+    background: #f8fafc;
+    border-left: 4px solid #93c5fd;
+    padding: 12px;
+    margin: 14px 0;
+}
+
+.button-file {
+    display: inline-flex !important;
+    align-items: center;
+    cursor: pointer;
+    padding: 8px 12px;
+    border: 1px solid #c7d2fe;
+    background: #eef2ff;
+    border-radius: 8px;
+    font-weight: 400 !important;
+}
+
+.button-file input {
+    position: absolute;
+    width: 1px !important;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.pedagogical-attachment-list {
+    display: grid;
+    gap: 8px;
+}
+
+.pedagogical-attachment-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.pedagogical-vote {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    margin: 14px 0;
+}
+
+.pedagogical-vote legend {
+    font-weight: 700;
+}
+
+.pedagogical-preview {
+    position: sticky;
+    top: 0;
+    background: #eef2f7;
+    padding: 14px;
+    border-radius: 10px;
+}
+
+.pedagogical-preview h3 {
+    margin-top: 0;
+}
+
+#protocol-preview-paper {
+    background: #fff;
+    color: #111;
+    min-height: 660px;
+    padding: 38px 42px;
+    font-family: "Times New Roman", serif;
+    font-size: 14px;
+    line-height: 1.45;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .08);
+}
+
+#protocol-preview-paper h4,
+.ped-preview-center,
+.ped-preview-school {
+    text-align: center;
+}
+
+.ped-preview-item {
+    border-top: 1px solid #ddd;
+    margin-top: 14px;
+    padding-top: 8px;
+}
+
+.pedagogical-choice-list {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.pedagogical-check {
+    display: flex !important;
+    grid-template-columns: none !important;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 9px !important;
+    padding: 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-weight: 400 !important;
+}
+
+.pedagogical-check input {
+    width: auto !important;
+    margin-top: 3px;
+}
+
+@media (max-width: 960px) {
+    .pedagogical-editor-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .pedagogical-preview {
+        position: static;
+    }
+}
+
+@media (max-width: 640px) {
+    .pedagogical-dialog,
+    .pedagogical-small-dialog {
+        width: calc(100vw - 12px);
+        max-height: calc(100vh - 12px);
+    }
+
+    .pedagogical-dialog > form,
+    .pedagogical-small-dialog > form {
+        padding: 12px;
+    }
+
+    .pedagogical-vote {
+        grid-template-columns: 1fr;
+    }
+
+    .pedagogical-attachment-row {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    #protocol-preview-paper {
+        min-height: 0;
+        padding: 24px 18px;
+    }
+}

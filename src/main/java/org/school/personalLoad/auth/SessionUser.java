@@ -67,6 +67,12 @@ public class SessionUser implements Serializable {
         return tabPermissions.stream().anyMatch(permission -> permission.getTab() == tab && permission.isCanExport());
     }
 
+    public boolean canImportTab(AppTab tab) {
+        if (isAdmin()) return true;
+        if (tab == null || !canView || !canEdit) return false;
+        return tabPermissions.stream().anyMatch(permission -> permission.getTab() == tab && permission.isCanImport());
+    }
+
     public boolean canEditLoadBuilding(String buildingCode) {
         if (!canEditTab(AppTab.LOAD)) {
             return false;

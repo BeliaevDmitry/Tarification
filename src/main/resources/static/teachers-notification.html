@@ -30,6 +30,9 @@
         .advanced-text label{display:block;font-weight:600;margin:12px 0 6px}
         .hr-toast{position:fixed;right:24px;bottom:24px;z-index:10000;max-width:min(480px,calc(100vw - 48px));padding:14px 18px;border-radius:10px;background:#166534;color:#fff;box-shadow:0 12px 35px #0004}
         .hr-toast.error{background:#991b1b}
+        .agreement-item{padding:8px 0;border-bottom:1px solid #e2e8f0}
+        .agreement-item:last-child{border-bottom:0}
+        .agreement-item .agreement-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}
         .hidden{display:none!important}
         @media(max-width:700px){.hr-form-grid{grid-template-columns:1fr;gap:6px}.hr-form-grid .field-label{padding-top:8px}.hr-form-grid .field-control{margin-bottom:8px}.clause-picker{grid-template-columns:1fr}}
     </style>
@@ -40,21 +43,37 @@
     <button data-tab="journal" class="active">Журнал</button>
     <button data-tab="memos">Служебные записки</button>
     <button data-tab="agreements">Дополнительные соглашения</button>
+    <button data-tab="incentives">Стимул</button>
     <button data-tab="notifications">Предварительная нагрузка (уведомления)</button>
     <button data-tab="catalog">Справочники</button>
     <button data-tab="personal">Персональные данные</button>
 </div></section>
 
 <section id="journal" class="card hr-panel">
+    <p class="muted">Сводный контроль по работникам: здесь видны только действующие документы и то, что требует внимания. Оформление выполняется во вкладке «Дополнительные соглашения».</p>
     <div class="hr-toolbar"><input id="journal-search" placeholder="ФИО, договор или статус"><select id="journal-status"><option value="">Все статусы</option><option>Заполнить данные</option><option>Создать черновик</option><option>Ожидает служебку</option><option>Требуется решение</option></select><button id="add-contract">Добавить договор</button><button id="batch-annual">Сформировать на 1 сентября</button><button id="reload-journal">Обновить</button></div>
     <div class="table-scroll"><table class="sheet-table"><thead><tr><th>ФИО</th><th>Трудовой договор</th><th>Должность</th><th>Действующие документы</th><th>Требуется</th><th>Действия</th></tr></thead><tbody id="journal-body"></tbody></table></div>
 </section>
 
 <section id="agreements" class="card hr-panel" hidden>
     <h2>Дополнительные соглашения</h2>
-    <p class="muted">Все дополнительные соглашения за выбранный учебный год — отдельным общим списком.</p>
+    <p class="muted">Основное рабочее место кадров: все соглашения сгруппированы по работнику и трудовому договору, включая отклонённые и аннулированные.</p>
     <div class="hr-toolbar"><input id="agreement-search" placeholder="ФИО, договор, номер или содержание"><select id="agreement-status"><option value="">Все статусы</option><option value="WAITING_FOR_MEMO">Ожидает служебку</option><option value="DRAFT">Черновик</option><option value="READY">Готов</option><option value="ISSUED">Выпущено</option><option value="SIGNED">Подписано</option><option value="REJECTED">Отклонено</option><option value="REQUIRES_DECISION">Требуется решение</option><option value="ANNULLED">Аннулировано</option></select><button id="batch-annual-agreements">Сформировать на 1 сентября</button><button id="reload-agreements">Обновить</button></div>
-    <div class="table-scroll"><table class="sheet-table"><thead><tr><th>Работник</th><th>Трудовой договор</th><th>Допсоглашение</th><th>Период</th><th>Содержание</th><th>Статус</th><th>Действия</th></tr></thead><tbody id="agreement-body"></tbody></table></div>
+    <div class="table-scroll"><table class="sheet-table"><thead><tr><th>Работник</th><th>Трудовой договор</th><th>Должность</th><th>Все дополнительные соглашения</th><th>Требуется</th><th>Действия</th></tr></thead><tbody id="agreement-body"></tbody></table></div>
+</section>
+
+<section id="incentives" class="card hr-panel" hidden>
+    <h2>Стимул</h2>
+    <p class="muted">Итоговая ежемесячная стимулирующая выплата за выбранный учебный год. Работники с нагрузкой добавляются автоматически по ID педагога. Ненулевая сумма включается в пункт 2.5 невыпущенного годового дополнительного соглашения и не изменяет служебные записки.</p>
+    <div class="hr-toolbar">
+        <input id="incentive-search" placeholder="ФИО">
+        <button id="add-incentive" type="button">Добавить сотрудника</button>
+        <button id="reload-incentives" type="button">Обновить</button>
+        <button id="export-incentives" type="button">Экспортировать Excel</button>
+        <button id="import-incentives-button" type="button">Импортировать Excel</button>
+        <input id="import-incentives" type="file" accept=".xlsx,.xls" hidden>
+    </div>
+    <div class="table-scroll"><table class="sheet-table"><thead><tr><th>№</th><th>ФИО</th><th>Стимул, руб.</th></tr></thead><tbody id="incentive-body"></tbody></table></div>
 </section>
 
 <section id="memos" class="card hr-panel" hidden>
@@ -82,4 +101,4 @@
 </main>
 
 <dialog id="editor"><form method="dialog" id="editor-form"><h2 id="editor-title"></h2><div id="editor-fields" class="hr-form-grid"></div><p id="editor-error" class="error"></p><div class="hr-dialog-actions"><button value="cancel">Отмена</button><button id="editor-save" value="default">Сохранить</button></div></form></dialog>
-<script src="/auth.js"></script><script src="/teachers-notification.js?v=20260725-3"></script></body></html>
+<script src="/auth.js"></script><script src="/teachers-notification.js?v=20260726-2"></script></body></html>

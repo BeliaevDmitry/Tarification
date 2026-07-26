@@ -66,6 +66,32 @@ public class HrDocumentsController {
         log(req,"IMPORT","HR_PERSONAL_DATA","Обновлено: "+updated+", пропущено: "+skipped,true); return Map.of("updated",updated,"skipped",skipped);
     }
 
+    @GetMapping("/incentives") public Object incentives(@RequestParam String academicYear,HttpServletRequest req){
+        return service.incentiveRows(academicYear,user(req).getUsername());
+    }
+    @PostMapping("/incentives") public Object incentive(@RequestParam String academicYear,@RequestBody IncentiveRequest r,HttpServletRequest req){
+        IncentiveRow saved=service.saveIncentive(academicYear,r.teacherId(),r.amount(),user(req).getUsername());
+        log(req,"CREATE","HR_INCENTIVE","Добавлен стимул для teacher_id "+saved.teacherId(),true);return saved;
+    }
+    @PutMapping("/incentives/{teacherId}") public Object incentive(@PathVariable Long teacherId,@RequestParam String academicYear,
+                                                                   @RequestBody IncentiveRequest r,HttpServletRequest req){
+        if(r.teacherId()!=null&&!Objects.equals(teacherId,r.teacherId()))throw new IllegalArgumentException("ID педагога не совпадает");
+        IncentiveRow saved=service.saveIncentive(academicYear,teacherId,r.amount(),user(req).getUsername());
+        log(req,"UPDATE","HR_INCENTIVE","Обновлён стимул для teacher_id "+teacherId,true);return saved;
+    }
+    @GetMapping("/incentives/export") public ResponseEntity<byte[]> incentiveExport(@RequestParam String academicYear,HttpServletRequest req)throws Exception{
+        byte[] content=service.exportIncentives(academicYear,user(req).getUsername());
+        log(req,"EXPORT","HR_INCENTIVE","Экспорт за "+academicYear,true);
+        return file(content,"стимул_"+academicYear.replace('/','-')+".xlsx");
+    }
+    @PostMapping("/incentives/import") public IncentiveImportResult incentiveImport(@RequestParam String academicYear,
+                                                                                     @RequestParam("file") MultipartFile file,
+                                                                                     HttpServletRequest req)throws Exception{
+        IncentiveImportResult result=service.importIncentives(academicYear,file,user(req).getUsername());
+        log(req,"IMPORT","HR_INCENTIVE","Обновлено: "+result.updated()+", пропущено: "+result.skipped(),true);
+        return result;
+    }
+
     @GetMapping("/memos") public Object memos(@RequestParam String academicYear){return service.memos(academicYear);}
     @GetMapping("/load-memos") public Object loadMemos(@RequestParam String academicYear){return loadMemoService.findForHr(academicYear);}
     @PostMapping("/memos") public Object memo(@RequestBody MemoRequest r,HttpServletRequest req){return service.memoView(service.createMemo(r,user(req).getUsername()));}
@@ -82,11 +108,39 @@ public class HrDocumentsController {
     @PostMapping("/agreements") public Object agreement(@RequestBody AgreementRequest r,HttpServletRequest req){return service.agreementView(service.createAgreement(r,user(req).getUsername()));}
     @PutMapping("/agreements/{id}") public Object agreementEdit(@PathVariable Long id,@RequestBody AgreementEditRequest r,HttpServletRequest req){return service.agreementView(service.editAgreement(id,r,user(req).getUsername()));}
     @PostMapping("/agreements/batch-annual") public Object annual(@RequestBody BatchAgreementRequest r,HttpServletRequest req){return Map.of("created",service.createAnnualDrafts(r,user(req).getUsername()).size());}
+    @PostMapping("/agreements/merge") public Object agreementMerge(@RequestBody MergeAgreementsRequest r,HttpServletRequest req){
+        List<AdditionalAgreement> sources=Optional.ofNullable(r.agreementIds()).orElse(List.of()).stream()
+                .filter(Objects::nonNull).distinct().map(service::agreement).toList();
+        boolean reissue=sources.stream().anyMatch(item->item.getStatus()==AdditionalAgreement.Status.ISSUED
+                ||item.getStatus()==AdditionalAgreement.Status.SIGNING);
+        String sourceDetails=sources.stream().map(item->"ID "+item.getId()+" № "+item.getInternalNumber()
+                +" ("+item.getStatus()+")").collect(java.util.stream.Collectors.joining(", "));
+        AdditionalAgreement result=service.mergeAgreements(r.agreementIds(),user(req).getUsername());
+        log(req,reissue?"REISSUE_MERGE":"MERGE","ADDITIONAL_AGREEMENT",
+                (reissue?"Объединение и перевыпуск":"Объединение черновиков")+" ["+sourceDetails
+                        +"] в документ ID "+result.getId()+" № "+result.getInternalNumber(),true);
+        return service.agreementView(result);
+    }
     @PostMapping("/agreements/{id}/prepare") public Object prepare(@PathVariable Long id,HttpServletRequest req){return service.agreementView(service.prepare(id,user(req).getUsername()));}
     @PostMapping("/agreements/{id}/issue") public Object issue(@PathVariable Long id,HttpServletRequest req){return service.agreementView(service.issue(id,user(req).getUsername()));}
     @PostMapping("/agreements/{id}/status") public Object agreementStatus(@PathVariable Long id,@RequestBody StatusRequest r){return service.agreementView(service.agreementStatus(id,AdditionalAgreement.Status.valueOf(r.status())));}
     @PostMapping("/agreements/{id}/change-mode") public Object agreementChangeMode(@PathVariable Long id,@RequestBody ChangeModeRequest r,HttpServletRequest req){return service.agreementView(service.chooseChangeMode(id,AdditionalAgreement.ChangeMode.valueOf(r.changeMode()),r.replacesAgreementId(),user(req).getUsername()));}
     @PostMapping("/agreements/{id}/annul") public Object agreementAnnul(@PathVariable Long id,@RequestBody AnnulRequest r,HttpServletRequest req){return service.agreementView(service.annulAgreement(id,r.reason(),user(req).getUsername()));}
+    @DeleteMapping("/agreements/{id}") public void agreementDelete(@PathVariable Long id,
+                                                                    @RequestBody DeleteAgreementRequest r,
+                                                                    HttpServletRequest req){
+        if(r==null||!"УДАЛИТЬ".equals(r.confirmation()))
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Для удаления требуется повторное подтверждение словом УДАЛИТЬ");
+        String reason=r.reason()==null?"":r.reason().trim();
+        if(reason.isBlank())throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Укажите причину удаления");
+        AdditionalAgreement target=service.agreement(id);
+        String details="Удалён невыпущенный документ ID "+target.getId()+" № "+target.getInternalNumber()
+                +", teacher_id="+target.getTeacherId()+", contract_id="+target.getContractId()
+                +", статус="+target.getStatus()+", причина: "+reason;
+        service.deleteAgreement(id);log(req,"DELETE_CONFIRMED","ADDITIONAL_AGREEMENT",details,true);
+    }
     @PostMapping("/agreements/{id}/upload") public Object agreementUpload(@PathVariable Long id,@RequestParam("file") MultipartFile f,HttpServletRequest req)throws Exception{if(f.getOriginalFilename()==null||!f.getOriginalFilename().toLowerCase(Locale.ROOT).endsWith(".docx"))throw new IllegalArgumentException("На первом этапе можно загрузить только DOCX");return service.agreementView(service.upload(id,f.getOriginalFilename(),f.getBytes(),user(req).getUsername()));}
     @GetMapping("/agreements/{id}/download") public ResponseEntity<byte[]> agreementDownload(@PathVariable Long id,HttpServletRequest req){AdditionalAgreement a=service.agreement(id);if(a.getStatus()==AdditionalAgreement.Status.READY)a=service.issue(id,user(req).getUsername());else if(a.getStatus()!=AdditionalAgreement.Status.ISSUED&&a.getStatus()!=AdditionalAgreement.Status.SIGNING&&a.getStatus()!=AdditionalAgreement.Status.SIGNED)throw new org.springframework.web.server.ResponseStatusException(HttpStatus.CONFLICT,"Сначала отредактируйте и сформируйте дополнительное соглашение");if(a.getCurrentDocument()==null||a.getCurrentDocument().length==0)throw new org.springframework.web.server.ResponseStatusException(HttpStatus.CONFLICT,"Файл дополнительного соглашения ещё не сформирован");return file(a.getCurrentDocument(),a.getCurrentFilename());}
     @GetMapping("/agreements/{id}/versions") public Object versions(@PathVariable Long id){return service.versions(id).stream().map(v->Map.of("id",v.getId(),"revision",v.getRevision(),"filename",v.getFilename(),"source",v.getSource(),"createdAt",v.getCreatedAt(),"createdBy",v.getCreatedBy())).toList();}

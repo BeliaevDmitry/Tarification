@@ -59,6 +59,8 @@ public class AuthFilter extends OncePerRequestFilter {
             Map.entry("/subject-areas.html", AppTab.SUBJECT_AREAS),
             Map.entry("/teachers-notification.html", AppTab.HR_DOCUMENTS),
             Map.entry("/educational-work.html", AppTab.EDUCATIONAL_WORK),
+            Map.entry("/documents.html", AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS),
+            Map.entry("/pedagogical-councils.html", AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS),
             Map.entry("/vsoko.html", AppTab.VSOKO_VIEW),
             Map.entry("/vsoko-oge.html", AppTab.VSOKO_VIEW),
             Map.entry("/vsoko-ege.html", AppTab.VSOKO_VIEW),
@@ -184,6 +186,7 @@ public class AuthFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/teachers")) return AppTab.TEACHERS;
         if (path.startsWith("/api/admin/users")) return AppTab.USERS;
         if (path.startsWith("/api/educational-work")) return AppTab.EDUCATIONAL_WORK;
+        if (path.startsWith("/api/pedagogical-councils")) return AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS;
         if (path.startsWith("/api/pa")) return AppTab.VSOKO_EDIT;
         return null;
     }
@@ -193,6 +196,9 @@ public class AuthFilter extends OncePerRequestFilter {
             return false;
         }
         if (path.startsWith("/api/auth/")) {
+            return false;
+        }
+        if (path.matches("^/api/pedagogical-councils/\\d+/extract$")) {
             return false;
         }
         return !(HttpMethod.GET.matches(request.getMethod())
