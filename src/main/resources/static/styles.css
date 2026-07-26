@@ -2916,6 +2916,25 @@ td.vacancy-row {
     font-weight: 700;
 }
 
+.pedagogical-vote-hint {
+    grid-column: 1 / -1;
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: #f1f5f9;
+}
+
+.pedagogical-vote-hint.is-complete {
+    color: #166534;
+    background: #dcfce7;
+}
+
+.pedagogical-vote-hint.is-over {
+    color: #991b1b;
+    background: #fee2e2;
+    font-weight: 700;
+}
+
 .pedagogical-preview {
     position: sticky;
     top: 0;

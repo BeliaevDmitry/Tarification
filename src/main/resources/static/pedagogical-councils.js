@@ -16,8 +16,10 @@ const pedUi = {
     time: document.getElementById('protocol-time'),
     attendeeCount: document.getElementById('protocol-attendee-count'),
     status: document.getElementById('protocol-status'),
-    chair: document.getElementById('protocol-chair'),
-    secretary: document.getElementById('protocol-secretary'),
+    chairPosition: document.getElementById('protocol-chair-position'),
+    chairFio: document.getElementById('protocol-chair-fio'),
+    secretaryPosition: document.getElementById('protocol-secretary-position'),
+    secretaryFio: document.getElementById('protocol-secretary-fio'),
     addItem: document.getElementById('add-protocol-item'),
     items: document.getElementById('protocol-items'),
     itemTemplate: document.getElementById('protocol-item-template'),
@@ -25,6 +27,8 @@ const pedUi = {
     archiveDialog: document.getElementById('archive-upload-dialog'),
     archiveForm: document.getElementById('archive-upload-form'),
     archiveYear: document.getElementById('archive-academic-year'),
+    archiveDate: document.getElementById('archive-meeting-date'),
+    archiveYearDateHint: document.getElementById('archive-year-date-hint'),
     archiveFeedback: document.getElementById('archive-upload-feedback'),
     archiveClose: document.getElementById('archive-upload-close'),
     archiveCancel: document.getElementById('archive-upload-cancel'),
@@ -47,6 +51,8 @@ const pedState = {
     protocols: [],
     staff: [],
     certifiers: [],
+    academicYears: [],
+    branding: null,
     editing: null,
     extractProtocol: null,
     permissions: { canView: false, canEdit: false, canImport: false, canExport: false }
@@ -85,6 +91,41 @@ async function pedApi(path, options = {}) {
 
 function selectedAcademicYear() {
     return sessionStorage.getItem('tarification.academicYear') || '';
+}
+
+function academicYearCodes(selectedYear = '') {
+    const codes = (pedState.academicYears || [])
+        .map((year) => String(year?.code || '').trim())
+        .filter((year) => /^\d{4}\/\d{4}$/.test(year));
+    if (selectedYear && !codes.includes(selectedYear)) {
+        codes.push(selectedYear);
+    }
+    return [...new Set(codes)].sort((a, b) => a.localeCompare(b, 'ru'));
+}
+
+function fillAcademicYearSelect(select, selectedYear) {
+    const codes = academicYearCodes(selectedYear);
+    select.innerHTML = codes
+        .map((year) => `<option value="${pedEsc(year)}">${pedEsc(year)}</option>`)
+        .join('');
+    select.value = codes.includes(selectedYear) ? selectedYear : (codes.at(-1) || '');
+}
+
+function updateArchiveYearBounds() {
+    const match = /^(\d{4})\/(\d{4})$/.exec(pedUi.archiveYear.value);
+    if (!match || Number(match[2]) !== Number(match[1]) + 1) {
+        pedUi.archiveDate.removeAttribute('min');
+        pedUi.archiveDate.removeAttribute('max');
+        pedUi.archiveYearDateHint.textContent = '';
+        return;
+    }
+    const start = Number(match[1]);
+    const from = `${start}-08-01`;
+    const to = `${start + 1}-07-31`;
+    pedUi.archiveDate.min = from;
+    pedUi.archiveDate.max = to;
+    pedUi.archiveYearDateHint.textContent =
+        `Для учебного года ${pedUi.archiveYear.value} допустимы даты с 01.08.${start} по 31.07.${start + 1}.`;
 }
 
 function statusClass(status) {
@@ -149,6 +190,22 @@ function staffOptions(selectedId = null) {
     ).join('');
 }
 
+function signerPositionForForm(position) {
+    const normalized = String(position || '').trim().toLocaleLowerCase('ru');
+    if (normalized.includes('замест') && normalized.includes('директор')) return 'Заместитель директора';
+    if (normalized.includes('директор')) return 'Директор';
+    if (normalized.includes('методист')) return 'Методист';
+    if (normalized.includes('учитель')) return 'Учитель';
+    return '';
+}
+
+function currentSchoolName() {
+    if (pedState.editing?.schoolName) return pedState.editing.schoolName;
+    const code = String(pedState.branding?.schoolCode || '').trim();
+    if (code && code.toLowerCase() !== 'demo') return `ГБОУ Школа № ${code}`;
+    return pedState.branding?.appTitle || 'ГБОУ Школа';
+}
+
 function setEditorHeader(protocol) {
     pedUi.editorTitle.textContent = protocol?.id
         ? `Протокол № ${protocol.protocolNumber}`
@@ -161,8 +218,10 @@ function setEditorHeader(protocol) {
     pedUi.attendeeCount.value = protocol?.attendeeCount ?? 0;
     pedUi.status.value = protocol?.status || 'DRAFT';
     pedUi.status.disabled = !protocol?.id;
-    pedUi.chair.innerHTML = staffOptions(protocol?.chairTeacherId);
-    pedUi.secretary.innerHTML = staffOptions(protocol?.secretaryTeacherId);
+    pedUi.chairPosition.value = signerPositionForForm(protocol?.chairPosition);
+    pedUi.chairFio.value = protocol?.chairFio || '';
+    pedUi.secretaryPosition.value = signerPositionForForm(protocol?.secretaryPosition);
+    pedUi.secretaryFio.value = protocol?.secretaryFio || '';
 }
 
 function itemValues(node) {
@@ -170,7 +229,7 @@ function itemValues(node) {
     return {
         id: value('id') ? Number(value('id')) : null,
         agendaTitle: value('agendaTitle').trim(),
-        agendaTime: value('agendaTime') || null,
+        agendaDurationMinutes: Number(value('agendaDurationMinutes') || 10),
         speakerTeacherId: value('speakerTeacherId') ? Number(value('speakerTeacherId')) : null,
         speechContent: value('speechContent').trim(),
         decisionText: value('decisionText').trim(),
@@ -178,6 +237,48 @@ function itemValues(node) {
         votesAgainst: Number(value('votesAgainst') || 0),
         votesAbstained: Number(value('votesAbstained') || 0)
     };
+}
+
+function updateVoteHint(node) {
+    const total = Math.max(0, Number(pedUi.attendeeCount.value || 0));
+    const voteControls = [
+        node.querySelector('[data-field="votesFor"]'),
+        node.querySelector('[data-field="votesAgainst"]'),
+        node.querySelector('[data-field="votesAbstained"]')
+    ].filter(Boolean);
+    const distributed = voteControls.reduce(
+        (sum, control) => sum + Math.max(0, Number(control.value || 0)),
+        0
+    );
+    const remaining = total - distributed;
+    const hint = node.querySelector('[data-vote-hint]');
+    if (!hint) return;
+
+    hint.classList.remove('is-complete', 'is-over');
+    voteControls.forEach((control) => control.setCustomValidity(''));
+    if (total === 0 && distributed === 0) {
+        hint.textContent = 'Укажите число присутствующих — система посчитает оставшиеся голоса.';
+        return;
+    }
+    if (remaining > 0) {
+        hint.textContent = `Всего: ${total}. Распределено: ${distributed}. Осталось: ${remaining}.`;
+        return;
+    }
+    if (remaining === 0) {
+        hint.textContent = `Всего: ${total}. Все ${distributed} голосов распределены.`;
+        hint.classList.add('is-complete');
+        return;
+    }
+
+    const exceeded = Math.abs(remaining);
+    const message = `Голосов больше числа присутствующих на ${exceeded}. Проверьте значения.`;
+    hint.textContent = `Всего: ${total}. Распределено: ${distributed}. Превышение: ${exceeded}.`;
+    hint.classList.add('is-over');
+    voteControls.forEach((control) => control.setCustomValidity(message));
+}
+
+function updateAllVoteHints() {
+    pedUi.items.querySelectorAll('[data-item]').forEach(updateVoteHint);
 }
 
 function collectItems() {
@@ -193,8 +294,8 @@ function speakerDescription(itemNode) {
 
 function renderPreview() {
     const items = Array.from(pedUi.items.querySelectorAll('[data-item]'));
-    const chair = pedUi.chair.options[pedUi.chair.selectedIndex];
-    const secretary = pedUi.secretary.options[pedUi.secretary.selectedIndex];
+    const chair = [pedUi.chairPosition.value, pedUi.chairFio.value.trim()].filter(Boolean).join(' ');
+    const secretary = [pedUi.secretaryPosition.value, pedUi.secretaryFio.value.trim()].filter(Boolean).join(' ');
     const agenda = items.map((itemNode, index) => {
         const item = itemValues(itemNode);
         const attachments = itemNode.querySelectorAll('[data-attachment-id]').length;
@@ -203,7 +304,7 @@ function renderPreview() {
             : '';
         return `
             <div class="ped-preview-item">
-                <p><strong>${index + 1}. ${pedEsc(item.agendaTitle || 'Вопрос повестки')}</strong>${item.agendaTime ? ` — ${pedEsc(item.agendaTime)}` : ''}</p>
+                <p><strong>${index + 1}. ${pedEsc(item.agendaTitle || 'Вопрос повестки')}</strong> — ${item.agendaDurationMinutes} минут</p>
                 <p><strong>Слушали:</strong> ${pedEsc(speakerDescription(itemNode))}${item.speechContent ? ` ${pedEsc(item.speechContent)}` : ''}</p>
                 <p><strong>Решили:</strong> ${pedEsc(item.decisionText || 'Текст решения')}</p>
                 ${attachmentText}
@@ -211,12 +312,12 @@ function renderPreview() {
             </div>`;
     }).join('');
     pedUi.preview.innerHTML = `
-        <div class="ped-preview-school">ГБОУ Школа · данные сервера</div>
+        <div class="ped-preview-school">${pedEsc(currentSchoolName())}</div>
         <h4>ПРОТОКОЛ № ${pedEsc(pedUi.number.value || '—')}</h4>
         <p class="ped-preview-center">заседания педагогического совета<br>от ${pedEsc(formatDate(pedUi.date.value))}</p>
         <p>Присутствовали: ${Number(pedUi.attendeeCount.value || 0)} чел.</p>
-        <p>Председатель: ${chair?.value ? pedEsc(`${chair.dataset.position} ${chair.dataset.fio}`) : 'не выбран'}</p>
-        <p>Секретарь: ${secretary?.value ? pedEsc(`${secretary.dataset.position} ${secretary.dataset.fio}`) : 'не выбран'}</p>
+        <p>Председатель: ${chair ? pedEsc(chair) : 'не указан'}</p>
+        <p>Секретарь: ${secretary ? pedEsc(secretary) : 'не указан'}</p>
         <h4>Повестка педагогического совета</h4>
         ${agenda || '<p class="muted">Добавьте пункт протокола.</p>'}`;
 }
@@ -246,7 +347,7 @@ function addItemNode(item = {}) {
     };
     set('id', item.id);
     set('agendaTitle', item.agendaTitle);
-    set('agendaTime', item.agendaTime);
+    set('agendaDurationMinutes', item.agendaDurationMinutes ?? 10);
     const speaker = node.querySelector('[data-field="speakerTeacherId"]');
     speaker.innerHTML = staffOptions(item.speakerTeacherId);
     set('speechContent', item.speechContent);
@@ -261,9 +362,14 @@ function addItemNode(item = {}) {
         renumberItems();
         renderPreview();
     });
+    updateVoteHint(node);
     node.querySelectorAll('input, select, textarea').forEach((control) => {
-        control.addEventListener('input', renderPreview);
-        control.addEventListener('change', renderPreview);
+        const refresh = () => {
+            updateVoteHint(node);
+            renderPreview();
+        };
+        control.addEventListener('input', refresh);
+        control.addEventListener('change', refresh);
     });
     node.querySelector('[data-attachment-upload]').addEventListener('change', async (event) => {
         const file = event.target.files?.[0];
@@ -351,8 +457,10 @@ function editorPayload() {
         meetingDate: pedUi.date.value,
         agendaTime: pedUi.time.value || null,
         attendeeCount: Number(pedUi.attendeeCount.value || 0),
-        chairTeacherId: pedUi.chair.value ? Number(pedUi.chair.value) : null,
-        secretaryTeacherId: pedUi.secretary.value ? Number(pedUi.secretary.value) : null,
+        chairPosition: pedUi.chairPosition.value || null,
+        chairFio: pedUi.chairFio.value.trim() || null,
+        secretaryPosition: pedUi.secretaryPosition.value || null,
+        secretaryFio: pedUi.secretaryFio.value.trim() || null,
         status: pedUi.status.value,
         version: pedState.editing?.version ?? null,
         items: collectItems()
@@ -412,7 +520,8 @@ async function uploadArchive(event) {
 
 function openArchiveDialog() {
     pedUi.archiveForm.reset();
-    pedUi.archiveYear.value = selectedAcademicYear();
+    fillAcademicYearSelect(pedUi.archiveYear, selectedAcademicYear());
+    updateArchiveYearBounds();
     pedUi.archiveFeedback.textContent = '';
     pedUi.archiveDialog.showModal();
 }
@@ -539,6 +648,7 @@ pedUi.addItem.addEventListener('click', () => {
 });
 pedUi.editorForm.addEventListener('submit', saveProtocol);
 pedUi.archiveForm.addEventListener('submit', uploadArchive);
+pedUi.archiveYear.addEventListener('change', updateArchiveYearBounds);
 pedUi.extractForm.addEventListener('submit', downloadExtract);
 pedUi.editorClose.addEventListener('click', () => pedUi.editor.close());
 pedUi.editorCancel.addEventListener('click', () => pedUi.editor.close());
@@ -556,11 +666,17 @@ pedUi.extractApproval.addEventListener('change', () => {
     pedUi.number,
     pedUi.date,
     pedUi.attendeeCount,
-    pedUi.chair,
-    pedUi.secretary
+    pedUi.chairPosition,
+    pedUi.chairFio,
+    pedUi.secretaryPosition,
+    pedUi.secretaryFio
 ].forEach((control) => {
-    control.addEventListener('input', renderPreview);
-    control.addEventListener('change', renderPreview);
+    const refresh = () => {
+        if (control === pedUi.attendeeCount) updateAllVoteHints();
+        renderPreview();
+    };
+    control.addEventListener('input', refresh);
+    control.addEventListener('change', refresh);
 });
 
 pedUi.listBody.addEventListener('click', async (event) => {
@@ -597,14 +713,18 @@ pedUi.items.addEventListener('click', async (event) => {
 
 (async function initPedagogicalCouncils() {
     try {
-        const [user, staff, certifiers] = await Promise.all([
+        const [user, staff, certifiers, academicYears, branding] = await Promise.all([
             pedApi('/api/auth/me'),
             pedApi('/api/pedagogical-councils/staff'),
-            pedApi('/api/pedagogical-councils/certifiers')
+            pedApi('/api/pedagogical-councils/certifiers'),
+            pedApi('/api/academic-years'),
+            pedApi('/api/public/branding')
         ]);
         pedState.permissions = currentPermissions(user);
         pedState.staff = staff || [];
         pedState.certifiers = certifiers || [];
+        pedState.academicYears = academicYears || [];
+        pedState.branding = branding || null;
         pedUi.newButton.hidden = !pedState.permissions.canEdit;
         pedUi.uploadArchiveButton.hidden = !pedState.permissions.canImport;
         await reloadProtocols();

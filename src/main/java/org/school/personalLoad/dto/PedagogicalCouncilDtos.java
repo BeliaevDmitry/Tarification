@@ -62,7 +62,7 @@ public final class PedagogicalCouncilDtos {
             Long id,
             int itemOrder,
             String agendaTitle,
-            LocalTime agendaTime,
+            Integer agendaDurationMinutes,
             Long speakerTeacherId,
             String speakerPosition,
             String speakerFio,
@@ -106,8 +106,10 @@ public final class PedagogicalCouncilDtos {
             LocalDate meetingDate,
             LocalTime agendaTime,
             Integer attendeeCount,
-            Long chairTeacherId,
-            Long secretaryTeacherId,
+            String chairPosition,
+            String chairFio,
+            String secretaryPosition,
+            String secretaryFio,
             List<ItemRequest> items
     ) {
     }
@@ -117,8 +119,10 @@ public final class PedagogicalCouncilDtos {
             LocalDate meetingDate,
             LocalTime agendaTime,
             Integer attendeeCount,
-            Long chairTeacherId,
-            Long secretaryTeacherId,
+            String chairPosition,
+            String chairFio,
+            String secretaryPosition,
+            String secretaryFio,
             PedagogicalCouncilProtocol.Status status,
             Long version,
             List<ItemRequest> items
@@ -128,7 +132,7 @@ public final class PedagogicalCouncilDtos {
     public record ItemRequest(
             Long id,
             String agendaTitle,
-            LocalTime agendaTime,
+            Integer agendaDurationMinutes,
             Long speakerTeacherId,
             String speechContent,
             String decisionText,

@@ -11,6 +11,7 @@ import org.school.personalLoad.service.PedagogicalCouncilService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -68,7 +69,9 @@ public class PedagogicalCouncilController {
     @PostMapping(value = "/archive", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public PedagogicalCouncilDtos.ProtocolDetails uploadArchive(@RequestParam String academicYear,
                                                                 @RequestParam String protocolNumber,
-                                                                @RequestParam LocalDate meetingDate,
+                                                                @RequestParam
+                                                                @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+                                                                LocalDate meetingDate,
                                                                 @RequestPart("file") MultipartFile file,
                                                                 HttpServletRequest request) throws IOException {
         SessionUser user = AuthSessionUtils.requiredUser(request);

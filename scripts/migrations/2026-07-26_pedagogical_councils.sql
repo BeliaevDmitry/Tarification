@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS pedagogical_council_item (
     item_order INTEGER NOT NULL,
     agenda_title VARCHAR(2000) NOT NULL,
     agenda_time TIME,
+    agenda_duration_minutes INTEGER DEFAULT 10,
     speaker_teacher_id BIGINT,
     speaker_position_snapshot VARCHAR(255),
     speaker_fio_snapshot VARCHAR(255),
@@ -48,6 +49,14 @@ CREATE TABLE IF NOT EXISTS pedagogical_council_item (
     votes_against INTEGER NOT NULL DEFAULT 0,
     votes_abstained INTEGER NOT NULL DEFAULT 0
 );
+
+ALTER TABLE pedagogical_council_item
+    ADD COLUMN IF NOT EXISTS agenda_duration_minutes INTEGER;
+UPDATE pedagogical_council_item
+   SET agenda_duration_minutes = 10
+ WHERE agenda_duration_minutes IS NULL;
+ALTER TABLE pedagogical_council_item
+    ALTER COLUMN agenda_duration_minutes SET DEFAULT 10;
 
 CREATE INDEX IF NOT EXISTS idx_ped_council_item_protocol
     ON pedagogical_council_item (protocol_id, item_order);

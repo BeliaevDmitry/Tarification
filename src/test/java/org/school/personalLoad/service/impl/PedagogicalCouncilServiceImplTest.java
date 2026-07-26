@@ -105,6 +105,91 @@ class PedagogicalCouncilServiceImplTest {
     }
 
     @Test
+    void constructorStoresManualChairAndSecretaryAndDefaultsAgendaDurationToTenMinutes() {
+        AcademicYearConfig year = new AcademicYearConfig();
+        year.setCode("2025/2026");
+        when(academicYears.findAll()).thenReturn(List.of(year));
+        when(protocols.save(any())).thenAnswer(invocation -> {
+            PedagogicalCouncilProtocol protocol = invocation.getArgument(0);
+            protocol.setId(43L);
+            return protocol;
+        });
+
+        PedagogicalCouncilDtos.ProtocolDetails result = service.create(
+                new PedagogicalCouncilDtos.CreateProtocolRequest(
+                        "2025/2026",
+                        "9",
+                        LocalDate.of(2026, 4, 15),
+                        null,
+                        25,
+                        "Директор",
+                        "Иванова Ирина Ивановна",
+                        "Методист",
+                        "Петрова П.П.",
+                        List.of(new PedagogicalCouncilDtos.ItemRequest(
+                                null,
+                                "О результатах обучения",
+                                null,
+                                null,
+                                "представила результаты.",
+                                "Принять информацию к сведению.",
+                                25,
+                                0,
+                                0
+                        ))
+                ),
+                user()
+        );
+
+        assertNull(result.chairTeacherId());
+        assertEquals("Директор", result.chairPosition());
+        assertEquals("Иванова Ирина Ивановна", result.chairFio());
+        assertNull(result.secretaryTeacherId());
+        assertEquals("Методист", result.secretaryPosition());
+        assertEquals("Петрова П.П.", result.secretaryFio());
+        assertEquals(10, result.items().get(0).agendaDurationMinutes());
+        verifyNoInteractions(teachers);
+    }
+
+    @Test
+    void constructorRejectsMoreVotesThanAttendees() {
+        AcademicYearConfig year = new AcademicYearConfig();
+        year.setCode("2025/2026");
+        when(academicYears.findAll()).thenReturn(List.of(year));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () ->
+                service.create(
+                        new PedagogicalCouncilDtos.CreateProtocolRequest(
+                                "2025/2026",
+                                "10",
+                                LocalDate.of(2026, 4, 15),
+                                null,
+                                56,
+                                "Директор",
+                                "Иванова И.И.",
+                                "Методист",
+                                "Петрова П.П.",
+                                List.of(new PedagogicalCouncilDtos.ItemRequest(
+                                        null,
+                                        "О результатах обучения",
+                                        10,
+                                        null,
+                                        null,
+                                        "Принять информацию к сведению.",
+                                        57,
+                                        0,
+                                        0
+                                ))
+                        ),
+                        user()
+                )
+        );
+
+        assertTrue(error.getMessage().contains("57 голосов при 56 присутствующих"));
+        verify(protocols, never()).save(any());
+    }
+
+    @Test
     void attachmentNumberIsAssignedAcrossWholeProtocol() throws Exception {
         PedagogicalCouncilProtocol protocol = baseProtocol();
         PedagogicalCouncilItem first = item(protocol, 10L, 1);
@@ -187,6 +272,7 @@ class PedagogicalCouncilServiceImplTest {
         assertFalse(text.contains("КОМУ"));
         assertFalse(text.contains("И.Д. Жданова"));
         assertTrue(text.contains("Заместитель директора Власова Ю.С."));
+        assertTrue(text.contains("О допуске обучающихся к ГИА (10 минут)"));
         assertTrue(text.contains("Таблица обучающихся"));
         assertTrue(text.indexOf("Приложение № 1 к пункту 1") < text.indexOf("Голосовали: за — 35"));
         assertEquals(2, pictureCount);
@@ -221,7 +307,9 @@ class PedagogicalCouncilServiceImplTest {
         protocol.setSchoolCodeSnapshot("1811");
         protocol.setSchoolNameSnapshot("ГБОУ Школа № 1811");
         protocol.setChairFioSnapshot("Петрова И.И.");
+        protocol.setChairPositionSnapshot("Директор");
         protocol.setSecretaryFioSnapshot("Беляев Д.А.");
+        protocol.setSecretaryPositionSnapshot("Методист");
         PedagogicalCouncilItem item = item(protocol, 10L, 1);
         protocol.getItems().add(item);
         when(protocols.findById(1L)).thenReturn(Optional.of(protocol));
@@ -274,7 +362,9 @@ class PedagogicalCouncilServiceImplTest {
         protocol.setSchoolCodeSnapshot("1811");
         protocol.setSchoolNameSnapshot("ГБОУ Школа № 1811");
         protocol.setChairFioSnapshot("Иванова И.И.");
+        protocol.setChairPositionSnapshot("Директор");
         protocol.setSecretaryFioSnapshot("Петрова П.П.");
+        protocol.setSecretaryPositionSnapshot("Учитель");
         protocol.setAttendeeCount(20);
         protocol.getItems().add(item(protocol, 10L, 1));
         when(protocols.findById(1L)).thenReturn(Optional.of(protocol));
@@ -298,7 +388,9 @@ class PedagogicalCouncilServiceImplTest {
     void generatedSchool7ExtractUsesCleanLetterheadWithoutLetterFields() throws Exception {
         PedagogicalCouncilProtocol protocol = baseProtocol();
         protocol.setChairFioSnapshot("Петрова И.И.");
+        protocol.setChairPositionSnapshot("Директор");
         protocol.setSecretaryFioSnapshot("Беляев Д.А.");
+        protocol.setSecretaryPositionSnapshot("Методист");
         protocol.getItems().add(item(protocol, 10L, 1));
         when(protocols.findById(1L)).thenReturn(Optional.of(protocol));
 
