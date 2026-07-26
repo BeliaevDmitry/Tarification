@@ -13,6 +13,7 @@ public class ServiceMemo {
 
     public enum Status {
         PROCESSED,
+        SIGNED,
         RECEIVED_BY_HR,
         EXECUTED,
         ANNULLED,
@@ -70,6 +71,15 @@ public class ServiceMemo {
     private LocalDateTime createdAt = LocalDateTime.now();
 
     private LocalDateTime archivedAt;
+
+    private String archivedBy;
+
+    @Column(length = 2000)
+    private String archiveReason;
+
+    private LocalDateTime signedAt;
+
+    private String signedBy;
 
     private LocalDateTime receivedAt;
 

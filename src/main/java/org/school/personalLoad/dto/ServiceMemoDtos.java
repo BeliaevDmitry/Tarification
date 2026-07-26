@@ -49,5 +49,7 @@ public class ServiceMemoDtos {
         LocalDateTime createdAt;
         String generatedFilename;
         String correctedFilename;
+        LocalDateTime signedAt;
+        String archiveReason;
     }
 }

@@ -93,12 +93,31 @@ public class HrDocumentsController {
     }
 
     @GetMapping("/memos") public Object memos(@RequestParam String academicYear){return service.memos(academicYear);}
+    @GetMapping("/memos/archive") public Object memoArchive(@RequestParam String academicYear){return service.archivedMemos(academicYear);}
     @GetMapping("/load-memos") public Object loadMemos(@RequestParam String academicYear){return loadMemoService.findForHr(academicYear);}
+    @GetMapping("/load-memos/archive") public Object loadMemoArchive(@RequestParam String academicYear){return loadMemoService.findArchived(academicYear);}
     @PostMapping("/memos") public Object memo(@RequestBody MemoRequest r,HttpServletRequest req){return service.memoView(service.createMemo(r,user(req).getUsername()));}
-    @PostMapping("/memos/{id}/status") public Object memoStatus(@PathVariable Long id,@RequestBody StatusRequest r,HttpServletRequest req){SessionUser actor=user(req);return service.memoView(service.memoStatus(id,HrServiceMemo.Status.valueOf(r.status()),actor.getUsername(),actor.getFullName(),documentPosition(actor)));}
+    @PutMapping("/memos/{id}") public Object memoEdit(@PathVariable Long id,@RequestBody MemoRequest r,HttpServletRequest req){
+        HrServiceMemo edited=service.editMemo(id,r,user(req).getUsername());
+        log(req,"EDIT_REISSUE_REQUIRED","HR_SERVICE_MEMO",
+                "Служебная записка ID "+id+" изменена и возвращена в черновик для повторного выпуска и подписи",true);
+        return service.memoView(edited);
+    }
+    @PostMapping("/memos/{id}/status") public Object memoStatus(@PathVariable Long id,@RequestBody StatusRequest r,HttpServletRequest req){
+        SessionUser actor=user(req);HrServiceMemo.Status status=HrServiceMemo.Status.valueOf(r.status());
+        HrServiceMemo changed=service.memoStatus(id,status,actor.getUsername(),actor.getFullName(),documentPosition(actor));
+        log(req,"MEMO_"+status.name(),"HR_SERVICE_MEMO",
+                "Статус служебной записки ID "+id+" изменён на "+status.name(),true);
+        return service.memoView(changed);
+    }
     @PostMapping("/memos/{id}/annul") public Object memoAnnul(@PathVariable Long id,@RequestBody AnnulRequest r,HttpServletRequest req){return service.memoView(service.annulMemo(id,r.reason(),user(req).getUsername()));}
     @DeleteMapping("/memos/{id}") public void memoDelete(@PathVariable Long id,HttpServletRequest req){service.deleteAnnulledMemo(id,user(req).getUsername());}
     @GetMapping("/memos/{id}/download") public ResponseEntity<byte[]> memoDownload(@PathVariable Long id){HrServiceMemo m=service.memo(id);return file(m.getDocumentContent(),m.getDocumentFilename());}
+    @PostMapping("/load-memos/{id}/sign") public Object loadMemoSign(@PathVariable Long id,HttpServletRequest req){
+        ServiceMemo m=loadMemoService.signByDirector(id,user(req).getUsername());
+        log(req,"MEMO_SIGNED","LOAD_SERVICE_MEMO","Служебная записка по нагрузке ID "+id+" отмечена подписанной",true);
+        return Map.of("id",m.getId(),"status",m.getStatus().name());
+    }
     @PostMapping("/load-memos/{id}/receive") public Object loadMemoReceive(@PathVariable Long id,HttpServletRequest req){ServiceMemo m=loadMemoService.receiveByHr(id,user(req).getUsername());return Map.of("id",m.getId(),"status",m.getStatus().name());}
     @PostMapping("/load-memos/{id}/annul") public Object loadMemoAnnul(@PathVariable Long id,@RequestBody AnnulRequest r,HttpServletRequest req){ServiceMemo m=loadMemoService.annul(id,r.reason(),user(req).getUsername());return Map.of("id",m.getId(),"status",m.getStatus().name());}
     @DeleteMapping("/load-memos/{id}") public void loadMemoDelete(@PathVariable Long id,HttpServletRequest req){service.deleteAnnulledLoadMemo(id,user(req).getUsername());}
@@ -123,9 +142,27 @@ public class HrDocumentsController {
     }
     @PostMapping("/agreements/{id}/prepare") public Object prepare(@PathVariable Long id,HttpServletRequest req){return service.agreementView(service.prepare(id,user(req).getUsername()));}
     @PostMapping("/agreements/{id}/issue") public Object issue(@PathVariable Long id,HttpServletRequest req){return service.agreementView(service.issue(id,user(req).getUsername()));}
+    @PostMapping("/agreements/{id}/reopen") public Object agreementReopen(@PathVariable Long id,
+                                                                          @RequestBody Map<String,String> request,
+                                                                          HttpServletRequest req){
+        if(request==null||!"ПЕРЕВЫПУСТИТЬ".equals(request.get("confirmation")))
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Для исправления требуется повторное подтверждение словом ПЕРЕВЫПУСТИТЬ");
+        AdditionalAgreement target=service.agreement(id);
+        AdditionalAgreement reopened=service.reopenIssuedAgreement(id,user(req).getUsername());
+        log(req,"REOPEN_FOR_REISSUE","ADDITIONAL_AGREEMENT",
+                "Выпущенный неподписанный документ ID "+target.getId()+" № "+target.getInternalNumber()
+                        +" возвращён в черновик для исправления и перевыпуска",true);
+        return service.agreementView(reopened);
+    }
     @PostMapping("/agreements/{id}/status") public Object agreementStatus(@PathVariable Long id,@RequestBody StatusRequest r){return service.agreementView(service.agreementStatus(id,AdditionalAgreement.Status.valueOf(r.status())));}
     @PostMapping("/agreements/{id}/change-mode") public Object agreementChangeMode(@PathVariable Long id,@RequestBody ChangeModeRequest r,HttpServletRequest req){return service.agreementView(service.chooseChangeMode(id,AdditionalAgreement.ChangeMode.valueOf(r.changeMode()),r.replacesAgreementId(),user(req).getUsername()));}
-    @PostMapping("/agreements/{id}/annul") public Object agreementAnnul(@PathVariable Long id,@RequestBody AnnulRequest r,HttpServletRequest req){return service.agreementView(service.annulAgreement(id,r.reason(),user(req).getUsername()));}
+    @PostMapping("/agreements/{id}/annul") public Object agreementAnnul(@PathVariable Long id,@RequestBody AnnulRequest r,HttpServletRequest req){
+        AdditionalAgreement annulled=service.annulAgreement(id,r.reason(),user(req).getUsername());
+        log(req,"ANNUL_AND_ARCHIVE_SOURCE_MEMO","ADDITIONAL_AGREEMENT",
+                "Дополнительное соглашение ID "+id+" аннулировано; связанные служебные записки перенесены в архив",true);
+        return service.agreementView(annulled);
+    }
     @DeleteMapping("/agreements/{id}") public void agreementDelete(@PathVariable Long id,
                                                                     @RequestBody DeleteAgreementRequest r,
                                                                     HttpServletRequest req){

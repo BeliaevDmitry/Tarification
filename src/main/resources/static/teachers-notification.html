@@ -28,6 +28,13 @@
         .advanced-text summary{cursor:pointer;font-weight:600;color:#334155}
         .advanced-text[open] summary{margin-bottom:12px}
         .advanced-text label{display:block;font-weight:600;margin:12px 0 6px}
+        .hr-wide-dialog{width:min(1240px,calc(100vw - 32px));max-height:90vh;border:0;border-radius:14px;padding:0;box-shadow:0 20px 70px #0005}
+        .hr-wide-dialog::backdrop{background:#0f172a88}
+        .hr-wide-dialog>div{padding:24px;overflow:auto;max-height:calc(90vh - 48px)}
+        .hr-wide-dialog h2{margin-top:0}
+        .hr-wide-dialog .dialog-header{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px}
+        .hr-wide-dialog .dialog-header h2{margin:0}
+        .hr-wide-dialog table{width:100%}
         .hr-toast{position:fixed;right:24px;bottom:24px;z-index:10000;max-width:min(480px,calc(100vw - 48px));padding:14px 18px;border-radius:10px;background:#166534;color:#fff;box-shadow:0 12px 35px #0004}
         .hr-toast.error{background:#991b1b}
         .agreement-item{padding:8px 0;border-bottom:1px solid #e2e8f0}
@@ -57,9 +64,9 @@
 
 <section id="agreements" class="card hr-panel" hidden>
     <h2>Дополнительные соглашения</h2>
-    <p class="muted">Основное рабочее место кадров: все соглашения сгруппированы по работнику и трудовому договору, включая отклонённые и аннулированные.</p>
-    <div class="hr-toolbar"><input id="agreement-search" placeholder="ФИО, договор, номер или содержание"><select id="agreement-status"><option value="">Все статусы</option><option value="WAITING_FOR_MEMO">Ожидает служебку</option><option value="DRAFT">Черновик</option><option value="READY">Готов</option><option value="ISSUED">Выпущено</option><option value="SIGNED">Подписано</option><option value="REJECTED">Отклонено</option><option value="REQUIRES_DECISION">Требуется решение</option><option value="ANNULLED">Аннулировано</option></select><button id="batch-annual-agreements">Сформировать на 1 сентября</button><button id="reload-agreements">Обновить</button></div>
-    <div class="table-scroll"><table class="sheet-table"><thead><tr><th>Работник</th><th>Трудовой договор</th><th>Должность</th><th>Все дополнительные соглашения</th><th>Требуется</th><th>Действия</th></tr></thead><tbody id="agreement-body"></tbody></table></div>
+    <p class="muted">Рабочий список кадров: действующие, будущие и требующие обработки соглашения. Аннулированные, отклонённые и завершившиеся документы находятся в окне «Все допники».</p>
+    <div class="hr-toolbar"><input id="agreement-search" placeholder="ФИО, договор, номер или содержание"><select id="agreement-status"><option value="">Все рабочие статусы</option><option value="WAITING_FOR_MEMO">Ожидает служебку</option><option value="DRAFT">Черновик</option><option value="READY">Готов</option><option value="ISSUED">Выпущено</option><option value="SIGNED">Подписано</option><option value="REQUIRES_DECISION">Требуется решение</option></select><button id="batch-annual-agreements">Сформировать на 1 сентября</button><button id="all-agreements">Все допники</button><button id="reload-agreements" title="Повторно загрузить актуальные данные с сервера. Документы не создаются и не изменяются.">Обновить список</button></div>
+    <div class="table-scroll"><table class="sheet-table"><thead><tr><th>Работник</th><th>Трудовой договор</th><th>Должность</th><th>Рабочие дополнительные соглашения</th><th>Требуется</th><th>Действия</th></tr></thead><tbody id="agreement-body"></tbody></table></div>
 </section>
 
 <section id="incentives" class="card hr-panel" hidden>
@@ -77,7 +84,7 @@
 </section>
 
 <section id="memos" class="card hr-panel" hidden>
-    <div class="hr-toolbar"><button id="add-memo">Создать служебную записку</button></div>
+    <div class="hr-toolbar"><button id="add-memo">Создать служебную записку</button><button id="memo-archive">Архив служебных записок</button></div>
     <table class="sheet-table"><thead><tr><th>Дата</th><th>Работник</th><th>Вид</th><th>Назначение</th><th>Статус</th><th>Действия</th></tr></thead><tbody id="memo-body"></tbody></table>
 </section>
 
@@ -101,4 +108,15 @@
 </main>
 
 <dialog id="editor"><form method="dialog" id="editor-form"><h2 id="editor-title"></h2><div id="editor-fields" class="hr-form-grid"></div><p id="editor-error" class="error"></p><div class="hr-dialog-actions"><button value="cancel">Отмена</button><button id="editor-save" value="default">Сохранить</button></div></form></dialog>
-<script src="/auth.js"></script><script src="/teachers-notification.js?v=20260726-2"></script></body></html>
+<dialog id="all-agreements-dialog" class="hr-wide-dialog"><div>
+    <div class="dialog-header"><h2>Все дополнительные соглашения</h2><button id="close-all-agreements" type="button">Закрыть</button></div>
+    <p class="muted">Полная история за выбранный учебный год: будущие, действующие, завершившиеся, отклонённые и аннулированные документы.</p>
+    <div class="hr-toolbar"><input id="all-agreement-search" placeholder="ФИО, договор, номер, содержание или статус"></div>
+    <div class="table-scroll"><table class="sheet-table"><thead><tr><th>Работник</th><th>Договор</th><th>Допсоглашение</th><th>Период</th><th>Содержание</th><th>Состояние</th><th>Действия</th></tr></thead><tbody id="all-agreement-body"></tbody></table></div>
+</div></dialog>
+<dialog id="memo-archive-dialog" class="hr-wide-dialog"><div>
+    <div class="dialog-header"><h2>Архив служебных записок</h2><button id="close-memo-archive" type="button">Закрыть</button></div>
+    <p class="muted">Здесь сохраняются служебные записки, связанные с аннулированными дополнительными соглашениями.</p>
+    <div class="table-scroll"><table class="sheet-table"><thead><tr><th>Дата</th><th>Работник</th><th>Вид</th><th>Назначение</th><th>Причина переноса в архив</th><th>Документ</th></tr></thead><tbody id="memo-archive-body"></tbody></table></div>
+</div></dialog>
+<script src="/auth.js"></script><script src="/teachers-notification.js?v=20260726-4"></script></body></html>

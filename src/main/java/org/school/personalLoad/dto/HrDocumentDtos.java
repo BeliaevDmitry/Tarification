@@ -29,7 +29,9 @@ public final class HrDocumentDtos {
     public record MemoView(Long id, String academicYear, Long teacherId, Long contractId, Long catalogItemId,
             String title, LocalDate documentDate, String assignmentName, BigDecimal amount,
             LocalDate validFrom, LocalDate validTo, boolean separateAgreement, String status,
-            LocalDateTime createdAt, String createdBy, boolean deletable) {}
+            String assignmentText, String agreementText, String contractClause, String dutiesText,
+            LocalDateTime createdAt, String createdBy, LocalDateTime issuedAt, LocalDateTime signedAt,
+            String archiveReason, boolean deletable) {}
     public record AgreementRequest(Long contractId, Long serviceMemoId, String academicYear, LocalDate documentDate,
             LocalDate validFrom, LocalDate validTo, AdditionalAgreement.Kind kind,
             AdditionalAgreement.ChangeMode changeMode, String summary, String conditionsJson,

@@ -53,6 +53,10 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
 
     private static final long MAX_DOCX_SIZE = 30L * 1024L * 1024L;
     private static final DateTimeFormatter RUSSIAN_DATE = DateTimeFormatter.ofPattern("dd.MM.yyyy");
+    private static final int DEFAULT_AGENDA_DURATION_MINUTES = 10;
+    private static final int MAX_AGENDA_DURATION_MINUTES = 720;
+    private static final List<String> PROTOCOL_SIGNER_POSITIONS =
+            List.of("Директор", "Заместитель директора", "Методист", "Учитель");
     private static final String SCHOOL_7_CREST =
             "/templates/pedagogical-councils/school-7-crest.jpg";
     private static final String SCHOOL_1811_HEADER =
@@ -104,8 +108,13 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
         protocol.setAttendeeCount(nonNegative(request.attendeeCount(), "Количество присутствующих"));
         protocol.setCreatedByUsername(user.getUsername());
         protocol.setCreatedByFio(user.getFullName());
-        applyProtocolSigners(protocol, request.chairTeacherId(), request.secretaryTeacherId(), false);
-        protocolRepository.save(protocol);
+        applyProtocolSigners(
+                protocol,
+                request.chairPosition(),
+                request.chairFio(),
+                request.secretaryPosition(),
+                request.secretaryFio()
+        );
         applyItems(protocol, Optional.ofNullable(request.items()).orElseGet(List::of));
         return details(protocolRepository.save(protocol));
     }
@@ -130,7 +139,13 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
         protocol.setMeetingDate(requireMeetingDate(request.meetingDate(), protocol.getAcademicYear()));
         protocol.setAgendaTime(request.agendaTime());
         protocol.setAttendeeCount(nonNegative(request.attendeeCount(), "Количество присутствующих"));
-        applyProtocolSigners(protocol, request.chairTeacherId(), request.secretaryTeacherId(), false);
+        applyProtocolSigners(
+                protocol,
+                request.chairPosition(),
+                request.chairFio(),
+                request.secretaryPosition(),
+                request.secretaryFio()
+        );
         applyItems(protocol, Optional.ofNullable(request.items()).orElseGet(List::of));
 
         PedagogicalCouncilProtocol.Status requestedStatus =
@@ -323,17 +338,18 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
     }
 
     private void applyProtocolSigners(PedagogicalCouncilProtocol protocol,
-                                      Long chairTeacherId,
-                                      Long secretaryTeacherId,
-                                      boolean required) {
-        StaffSnapshot chair = resolveStaff(chairTeacherId, required, "председателя");
-        StaffSnapshot secretary = resolveStaff(secretaryTeacherId, required, "секретаря");
-        protocol.setChairTeacherId(chair == null ? null : chair.teacherId());
+                                      String chairPosition,
+                                      String chairFio,
+                                      String secretaryPosition,
+                                      String secretaryFio) {
+        ManualSigner chair = normalizeManualSigner(chairPosition, chairFio, "председателя");
+        ManualSigner secretary = normalizeManualSigner(secretaryPosition, secretaryFio, "секретаря");
+        protocol.setChairTeacherId(null);
         protocol.setChairPositionSnapshot(chair == null ? null : chair.position());
-        protocol.setChairFioSnapshot(chair == null ? null : chair.shortFio());
-        protocol.setSecretaryTeacherId(secretary == null ? null : secretary.teacherId());
+        protocol.setChairFioSnapshot(chair == null ? null : chair.fio());
+        protocol.setSecretaryTeacherId(null);
         protocol.setSecretaryPositionSnapshot(secretary == null ? null : secretary.position());
-        protocol.setSecretaryFioSnapshot(secretary == null ? null : secretary.shortFio());
+        protocol.setSecretaryFioSnapshot(secretary == null ? null : secretary.fio());
     }
 
     private void applyItems(PedagogicalCouncilProtocol protocol,
@@ -352,11 +368,26 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
             if (request == null) {
                 continue;
             }
+            String agendaTitle = requireText(request.agendaTitle(), "Укажите вопрос повестки");
+            int agendaDuration = normalizeAgendaDuration(request.agendaDurationMinutes());
+            StaffSnapshot speaker = resolveStaff(request.speakerTeacherId(), false, "выступающего");
+            String speechContent = normalizeOptional(request.speechContent());
+            String decisionText = requireText(request.decisionText(), "Укажите текст решения");
+            int votesFor = nonNegative(request.votesFor(), "Количество голосов «за»");
+            int votesAgainst = nonNegative(request.votesAgainst(), "Количество голосов «против»");
+            int votesAbstained = nonNegative(request.votesAbstained(), "Количество воздержавшихся");
+            long distributedVotes = (long) votesFor + votesAgainst + votesAbstained;
+            if (distributedVotes > protocol.getAttendeeCount()) {
+                throw new IllegalArgumentException("По пункту «" + agendaTitle + "» распределено "
+                        + distributedVotes + " голосов при " + protocol.getAttendeeCount()
+                        + " присутствующих");
+            }
+
             PedagogicalCouncilItem item;
-            if (request.id() == null) {
+            boolean newItem = request.id() == null;
+            if (newItem) {
                 item = new PedagogicalCouncilItem();
                 item.setProtocol(protocol);
-                protocol.getItems().add(item);
             } else {
                 item = existingById.get(request.id());
                 if (item == null) {
@@ -364,17 +395,19 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
                 }
             }
             item.setItemOrder(order++);
-            item.setAgendaTitle(requireText(request.agendaTitle(), "Укажите вопрос повестки"));
-            item.setAgendaTime(request.agendaTime());
-            StaffSnapshot speaker = resolveStaff(request.speakerTeacherId(), false, "выступающего");
+            item.setAgendaTitle(agendaTitle);
+            item.setAgendaDurationMinutes(agendaDuration);
             item.setSpeakerTeacherId(speaker == null ? null : speaker.teacherId());
             item.setSpeakerPositionSnapshot(speaker == null ? null : speaker.position());
             item.setSpeakerFioSnapshot(speaker == null ? null : speaker.shortFio());
-            item.setSpeechContent(normalizeOptional(request.speechContent()));
-            item.setDecisionText(requireText(request.decisionText(), "Укажите текст решения"));
-            item.setVotesFor(nonNegative(request.votesFor(), "Количество голосов «за»"));
-            item.setVotesAgainst(nonNegative(request.votesAgainst(), "Количество голосов «против»"));
-            item.setVotesAbstained(nonNegative(request.votesAbstained(), "Количество воздержавшихся"));
+            item.setSpeechContent(speechContent);
+            item.setDecisionText(decisionText);
+            item.setVotesFor(votesFor);
+            item.setVotesAgainst(votesAgainst);
+            item.setVotesAbstained(votesAbstained);
+            if (newItem) {
+                protocol.getItems().add(item);
+            }
         }
     }
 
@@ -392,10 +425,16 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
             throw new IllegalStateException("Добавьте хотя бы один пункт протокола");
         }
         if (isBlank(protocol.getChairFioSnapshot())) {
-            throw new IllegalStateException("Выберите председателя педагогического совета");
+            throw new IllegalStateException("Укажите ФИО председателя педагогического совета");
+        }
+        if (isBlank(protocol.getChairPositionSnapshot())) {
+            throw new IllegalStateException("Выберите должность председателя педагогического совета");
         }
         if (isBlank(protocol.getSecretaryFioSnapshot())) {
-            throw new IllegalStateException("Выберите секретаря педагогического совета");
+            throw new IllegalStateException("Укажите ФИО секретаря педагогического совета");
+        }
+        if (isBlank(protocol.getSecretaryPositionSnapshot())) {
+            throw new IllegalStateException("Выберите должность секретаря педагогического совета");
         }
         for (PedagogicalCouncilItem item : protocol.getItems()) {
             requireText(item.getAgendaTitle(), "Укажите вопрос повестки");
@@ -471,7 +510,7 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
                 item.getId(),
                 item.getItemOrder(),
                 item.getAgendaTitle(),
-                item.getAgendaTime(),
+                agendaDurationMinutes(item),
                 item.getSpeakerTeacherId(),
                 item.getSpeakerPositionSnapshot(),
                 item.getSpeakerFioSnapshot(),
@@ -613,8 +652,8 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
 
             paragraph(document, "Повестка педагогического совета", true, ParagraphAlignment.CENTER);
             for (PedagogicalCouncilItem item : sortedItems(protocol)) {
-                String time = item.getAgendaTime() == null ? "" : " (" + item.getAgendaTime() + ")";
-                paragraph(document, item.getItemOrder() + ". " + item.getAgendaTitle() + time, false, ParagraphAlignment.LEFT);
+                String duration = " (" + agendaDurationMinutes(item) + " минут)";
+                paragraph(document, item.getItemOrder() + ". " + item.getAgendaTitle() + duration, false, ParagraphAlignment.LEFT);
             }
             blank(document);
 
@@ -1035,6 +1074,43 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
         return normalizedPosition + " " + normalizedFio;
     }
 
+    private ManualSigner normalizeManualSigner(String position, String fio, String role) {
+        String normalizedPosition = normalizeOptional(position);
+        String normalizedFio = normalizeOptional(fio);
+        if (normalizedPosition == null && normalizedFio == null) {
+            return null;
+        }
+        if (normalizedPosition == null) {
+            throw new IllegalArgumentException("Выберите должность " + role);
+        }
+        if (normalizedFio == null) {
+            throw new IllegalArgumentException("Укажите ФИО " + role);
+        }
+        String allowedPosition = PROTOCOL_SIGNER_POSITIONS.stream()
+                .filter(candidate -> candidate.equalsIgnoreCase(normalizedPosition))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Должность " + role + " должна быть выбрана из списка: "
+                                + String.join(", ", PROTOCOL_SIGNER_POSITIONS)
+                ));
+        return new ManualSigner(allowedPosition, normalizedFio);
+    }
+
+    private int normalizeAgendaDuration(Integer value) {
+        int normalized = value == null ? DEFAULT_AGENDA_DURATION_MINUTES : value;
+        if (normalized < 1 || normalized > MAX_AGENDA_DURATION_MINUTES) {
+            throw new IllegalArgumentException("Продолжительность выступления должна быть от 1 до "
+                    + MAX_AGENDA_DURATION_MINUTES + " минут");
+        }
+        return normalized;
+    }
+
+    private int agendaDurationMinutes(PedagogicalCouncilItem item) {
+        return item.getAgendaDurationMinutes() == null
+                ? DEFAULT_AGENDA_DURATION_MINUTES
+                : item.getAgendaDurationMinutes();
+    }
+
     private String ensureAcademicYear(String value) {
         String normalized = normalizeAcademicYear(value);
         boolean exists = academicYearService.findAll().stream().anyMatch(year -> normalized.equals(year.getCode()));
@@ -1155,5 +1231,8 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
     }
 
     private record StaffSnapshot(Long teacherId, String shortFio, String position) {
+    }
+
+    private record ManualSigner(String position, String fio) {
     }
 }

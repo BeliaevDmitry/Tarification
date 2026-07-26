@@ -88,15 +88,29 @@
                 <option value="CORRECTED">Исправленная версия</option>
               </select>
             </label>
-            <label>Председатель
-              <select id="protocol-chair" name="chairTeacherId">
-                <option value="">Выберите сотрудника</option>
+            <label>Должность председателя
+              <select id="protocol-chair-position" name="chairPosition">
+                <option value="">Выберите должность</option>
+                <option value="Директор">Директор</option>
+                <option value="Заместитель директора">Заместитель директора</option>
+                <option value="Методист">Методист</option>
+                <option value="Учитель">Учитель</option>
               </select>
             </label>
-            <label>Секретарь
-              <select id="protocol-secretary" name="secretaryTeacherId">
-                <option value="">Выберите сотрудника</option>
+            <label>ФИО председателя
+              <input id="protocol-chair-fio" name="chairFio" placeholder="Фамилия И.О. или ФИО полностью">
+            </label>
+            <label>Должность секретаря
+              <select id="protocol-secretary-position" name="secretaryPosition">
+                <option value="">Выберите должность</option>
+                <option value="Директор">Директор</option>
+                <option value="Заместитель директора">Заместитель директора</option>
+                <option value="Методист">Методист</option>
+                <option value="Учитель">Учитель</option>
               </select>
+            </label>
+            <label>ФИО секретаря
+              <input id="protocol-secretary-fio" name="secretaryFio" placeholder="Фамилия И.О. или ФИО полностью">
             </label>
           </div>
         </section>
@@ -105,7 +119,7 @@
           <div class="pedagogical-section-heading">
             <div>
               <h3>Повестка педагогического совета</h3>
-              <p class="muted">Время и докладчик указываются отдельно для каждого пункта.</p>
+              <p class="muted">Продолжительность выступления и докладчик указываются отдельно для каждого пункта.</p>
             </div>
             <button type="button" id="add-protocol-item">Добавить пункт</button>
           </div>
@@ -138,8 +152,8 @@
       <input data-field="agendaTitle" required placeholder="Например: О допуске обучающихся к ГИА в форме ОГЭ">
     </label>
     <div class="grid">
-      <label>Время по повестке
-        <input data-field="agendaTime" type="time">
+      <label>Продолжительность выступления, минут
+        <input data-field="agendaDurationMinutes" type="number" min="1" max="720" value="10" required>
       </label>
       <label>Докладчик
         <select data-field="speakerTeacherId">
@@ -177,6 +191,7 @@
       <label>Воздержались
         <input data-field="votesAbstained" type="number" min="0" value="0">
       </label>
+      <p data-vote-hint class="pedagogical-vote-hint muted" role="status"></p>
     </fieldset>
   </article>
 </template>
@@ -191,18 +206,18 @@
       <button type="button" id="archive-upload-close">Закрыть</button>
     </div>
     <label>Учебный год
-      <input id="archive-academic-year" name="academicYear" required pattern="\d{4}/\d{4}" placeholder="2023/2024">
+      <select id="archive-academic-year" name="academicYear" required></select>
     </label>
     <label>Номер протокола
       <input name="protocolNumber" required>
     </label>
     <label>Дата педагогического совета
-      <input name="meetingDate" type="date" required>
+      <input id="archive-meeting-date" name="meetingDate" type="date" required>
     </label>
     <label>Готовый протокол Word
       <input name="file" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
     </label>
-    <p class="muted">Для учебного года 2023/2024 допустимы даты с 01.08.2023 по 31.07.2024.</p>
+    <p id="archive-year-date-hint" class="muted"></p>
     <p id="archive-upload-feedback" class="muted" role="status"></p>
     <div class="dialog-actions">
       <button type="button" id="archive-upload-cancel">Отмена</button>

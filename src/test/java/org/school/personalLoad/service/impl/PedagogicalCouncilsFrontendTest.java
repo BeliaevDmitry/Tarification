@@ -29,9 +29,28 @@ class PedagogicalCouncilsFrontendTest {
 
         assertTrue(html.contains("Создать протокол"));
         assertTrue(html.contains("Загрузить старый Word"));
+        assertTrue(html.contains("<select id=\"archive-academic-year\" name=\"academicYear\" required>"));
+        assertTrue(html.contains("id=\"archive-year-date-hint\""));
+        assertTrue(html.contains("id=\"protocol-chair-position\""));
+        assertTrue(html.contains("id=\"protocol-chair-fio\""));
+        assertTrue(html.contains("id=\"protocol-secretary-position\""));
+        assertTrue(html.contains("id=\"protocol-secretary-fio\""));
+        assertTrue(html.contains("value=\"Заместитель директора\""));
+        assertTrue(html.contains("data-field=\"agendaDurationMinutes\""));
+        assertTrue(html.contains("value=\"10\" required"));
+        assertTrue(html.contains("data-vote-hint"));
         assertTrue(html.contains("Приложения к этому пункту"));
         assertTrue(html.contains("Можно выбрать одного или нескольких сотрудников"));
         assertTrue(js.contains("/api/pedagogical-councils/archive"));
+        assertTrue(js.contains("pedApi('/api/academic-years')"));
+        assertTrue(js.contains("pedApi('/api/public/branding')"));
+        assertTrue(js.contains("function currentSchoolName()"));
+        assertTrue(js.contains("function updateVoteHint(node)"));
+        assertTrue(js.contains("Осталось: ${remaining}"));
+        assertTrue(js.contains("Превышение: ${exceeded}"));
+        assertTrue(js.contains("updateArchiveYearBounds"));
+        assertTrue(js.contains("pedUi.archiveDate.min = from"));
+        assertTrue(js.contains("pedUi.archiveDate.max = to"));
         assertTrue(js.contains("/extract"));
         assertTrue(js.contains("certifierUserIds"));
     }

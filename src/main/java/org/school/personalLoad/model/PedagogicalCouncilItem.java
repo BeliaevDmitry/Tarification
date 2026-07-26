@@ -6,7 +6,6 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
 import javax.persistence.*;
-import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -34,8 +33,8 @@ public class PedagogicalCouncilItem {
     @Column(name = "agenda_title", nullable = false, length = 2000)
     private String agendaTitle;
 
-    @Column(name = "agenda_time")
-    private LocalTime agendaTime;
+    @Column(name = "agenda_duration_minutes")
+    private Integer agendaDurationMinutes;
 
     @Column(name = "speaker_teacher_id")
     private Long speakerTeacherId;
