@@ -247,6 +247,7 @@ class AppUserServiceImplTest {
         BuildingGroup buildingGroup = new BuildingGroup();
         buildingGroup.setCode("МЕХМАТ");
         org.school.personalLoad.model.TeacherDirectoryEntry teacher = new org.school.personalLoad.model.TeacherDirectoryEntry();
+        teacher.setId(41L);
         teacher.setFioTeacher("Иванов Иван Иванович");
 
         when(appUserRepository.existsByUsernameIgnoreCase("ivanov")).thenReturn(false);
@@ -274,6 +275,7 @@ class AppUserServiceImplTest {
 
         assertEquals("МЕХМАТ", created.getManagedBuildingCode());
         assertEquals("руководителя корпуса",created.getDocumentPosition());
+        assertEquals(41L, created.getTeacherId());
     }
 
     @Test

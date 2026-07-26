@@ -94,6 +94,7 @@ public final class PedagogicalCouncilDtos {
 
     public record CertifierView(
             Long userId,
+            Long teacherId,
             String fio,
             String shortFio,
             String position
@@ -134,12 +135,25 @@ public final class PedagogicalCouncilDtos {
             String agendaTitle,
             Integer agendaDurationMinutes,
             Long speakerTeacherId,
+            String speakerPosition,
             String speechContent,
             String decisionText,
             Integer votesFor,
             Integer votesAgainst,
             Integer votesAbstained
     ) {
+        public ItemRequest(Long id,
+                           String agendaTitle,
+                           Integer agendaDurationMinutes,
+                           Long speakerTeacherId,
+                           String speechContent,
+                           String decisionText,
+                           Integer votesFor,
+                           Integer votesAgainst,
+                           Integer votesAbstained) {
+            this(id, agendaTitle, agendaDurationMinutes, speakerTeacherId, null,
+                    speechContent, decisionText, votesFor, votesAgainst, votesAbstained);
+        }
     }
 
     public record StatusRequest(PedagogicalCouncilProtocol.Status status) {
@@ -148,10 +162,28 @@ public final class PedagogicalCouncilDtos {
     public record ExtractRequest(
             List<Long> itemIds,
             List<Long> certifierUserIds,
+            List<SignerRequest> certifiers,
             boolean externalRecipient,
             String originalStorageLocation,
+            boolean includeSourceSigners,
             boolean separateApproval,
-            Long approverTeacherId
+            Long approverTeacherId,
+            String approverPosition
+    ) {
+        public ExtractRequest(List<Long> itemIds,
+                              List<Long> certifierUserIds,
+                              boolean externalRecipient,
+                              String originalStorageLocation,
+                              boolean separateApproval,
+                              Long approverTeacherId) {
+            this(itemIds, certifierUserIds, List.of(), externalRecipient, originalStorageLocation,
+                    false, separateApproval, approverTeacherId, null);
+        }
+    }
+
+    public record SignerRequest(
+            Long userId,
+            String position
     ) {
     }
 

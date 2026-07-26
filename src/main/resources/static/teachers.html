@@ -33,6 +33,12 @@
             <button id="import-teachers-btn" type="button">Импортировать</button>
             <button id="download-teachers-template-btn" type="button" data-allow-readonly="true">Скачать педагогов</button>
         </div>
+        <h2>Сверка с выгрузкой 1С</h2>
+        <p class="muted">Сначала система покажет изменения. Увольнение или переход с основного места на совместительство применяется только после вашего подтверждения.</p>
+        <div class="row" data-requires-edit>
+            <input id="teacher-1c-file" type="file" accept=".xls,.xlsx">
+            <button id="preview-teachers-1c-btn" type="button">Проверить выгрузку 1С</button>
+        </div>
         <h2>Ручное добавление</h2>
         <form id="teacher-create-form" class="row" data-requires-edit>
             <input id="teacher-fio" name="fioTeacher" placeholder="ФИО педагога" required>
@@ -65,6 +71,8 @@
                     <th>Email</th>
                     <th>Дополнительные обязанности</th>
                     <th>Корпус</th>
+                    <th>Основная должность</th>
+                    <th>Вид занятости</th>
                     <th>Статус</th>
                     <th>Действия<br><span class="muted">Планируемое увольнение — доступно всем, увольнение — только с правом редактирования</span></th>
                 </tr>
@@ -234,6 +242,37 @@
             </section>
         </div>
     </section>
+
+    <dialog id="teacher-1c-dialog" class="teacher-1c-dialog">
+        <form method="dialog">
+            <div class="dialog-hero">
+                <div>
+                    <h2>Сверка кадров с 1С</h2>
+                    <p id="teacher-1c-summary" class="muted"></p>
+                </div>
+                <button id="teacher-1c-close" type="button">Закрыть</button>
+            </div>
+            <div class="sheet-wrap" data-scroll-controls="off">
+                <table class="sheet-table">
+                    <thead>
+                    <tr>
+                        <th>ФИО</th>
+                        <th>Сейчас</th>
+                        <th>По данным 1С</th>
+                        <th>Пояснение</th>
+                        <th>Решение</th>
+                    </tr>
+                    </thead>
+                    <tbody id="teacher-1c-preview-body"></tbody>
+                </table>
+            </div>
+            <p id="teacher-1c-feedback" class="muted" role="status"></p>
+            <div class="dialog-actions">
+                <button id="teacher-1c-cancel" type="button">Отмена</button>
+                <button id="teacher-1c-apply" type="button">Применить выбранные решения</button>
+            </div>
+        </form>
+    </dialog>
 </main>
 <script src="/auth.js"></script>
 <script src="/table-scroll.js"></script>

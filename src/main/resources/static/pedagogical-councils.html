@@ -98,7 +98,9 @@
               </select>
             </label>
             <label>ФИО председателя
-              <input id="protocol-chair-fio" name="chairFio" placeholder="Фамилия И.О. или ФИО полностью">
+              <select id="protocol-chair-fio" name="chairFio">
+                <option value="">Выберите сотрудника</option>
+              </select>
             </label>
             <label>Должность секретаря
               <select id="protocol-secretary-position" name="secretaryPosition">
@@ -110,7 +112,9 @@
               </select>
             </label>
             <label>ФИО секретаря
-              <input id="protocol-secretary-fio" name="secretaryFio" placeholder="Фамилия И.О. или ФИО полностью">
+              <select id="protocol-secretary-fio" name="secretaryFio">
+                <option value="">Выберите сотрудника</option>
+              </select>
             </label>
           </div>
         </section>
@@ -155,7 +159,12 @@
       <label>Продолжительность выступления, минут
         <input data-field="agendaDurationMinutes" type="number" min="1" max="720" value="10" required>
       </label>
-      <label>Докладчик
+      <label>Должность докладчика
+        <select data-field="speakerPosition">
+          <option value="">Выберите должность</option>
+        </select>
+      </label>
+      <label>ФИО докладчика
         <select data-field="speakerTeacherId">
           <option value="">Выберите сотрудника</option>
         </select>
@@ -171,11 +180,11 @@
       <div class="pedagogical-section-heading">
         <div>
           <strong>Приложения к этому пункту</strong>
-          <p class="muted">Номер присваивается системой. Разрешены только файлы .docx.</p>
+          <p class="muted">Следующий свободный номер: <strong data-next-attachment-number>№ 1</strong>. Используйте его в тексте решения. Файлы загрузятся при сохранении протокола.</p>
         </div>
         <label class="button-file">
           Добавить Word
-          <input data-attachment-upload type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+          <input data-attachment-upload type="file" multiple accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
         </label>
       </div>
       <div data-attachment-list class="pedagogical-attachment-list"></div>
@@ -241,23 +250,30 @@
     </div>
     <div>
       <h3>Кто заверяет выписку</h3>
-      <p class="muted">Можно выбрать одного или нескольких сотрудников. Сформировавший документ автоматически подписантом не становится.</p>
+      <p class="muted">Сотрудник, который формирует выписку, добавляется автоматически. Можно добавить других заверителей.</p>
       <div id="extract-certifiers" class="pedagogical-choice-list"></div>
+      <button type="button" id="extract-add-certifier">Добавить заверителя</button>
     </div>
     <label class="pedagogical-check">
       <input id="extract-external" type="checkbox">
       Выписка выдаётся во внешнюю организацию
     </label>
-    <label id="extract-storage-row" hidden>Где хранится подлинник
-      <input id="extract-storage" placeholder="ГБОУ Школа №…, дело №… за … год">
+    <label class="pedagogical-check">
+      <input id="extract-source-signers" type="checkbox">
+      Указать председателя и секретаря информационно, без строк для подписи
     </label>
     <label class="pedagogical-check">
       <input id="extract-approval" type="checkbox">
       Требуется отдельное утверждение выписки
     </label>
-    <label id="extract-approver-row" hidden>Кто утверждает
-      <select id="extract-approver"></select>
-    </label>
+    <div id="extract-approver-row" class="grid" hidden>
+      <label>Должность утверждающего
+        <select id="extract-approver-position"></select>
+      </label>
+      <label>ФИО утверждающего
+        <select id="extract-approver"></select>
+      </label>
+    </div>
     <p class="muted">Отдельное утверждение выключено по умолчанию и применяется только по локальному правилу школы или требованию получателя.</p>
     <p id="extract-feedback" class="muted" role="status"></p>
     <div class="dialog-actions">

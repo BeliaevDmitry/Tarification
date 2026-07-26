@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.TeacherCreateRequest;
+import org.school.personalLoad.dto.TeacherOneCImportDtos;
 import org.school.personalLoad.dto.TeacherUpdateRequest;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
@@ -20,6 +21,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.regex.Pattern;
 
@@ -303,6 +307,387 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public TeacherOneCImportDtos.Preview previewOneCImport(MultipartFile file) {
+        OneCWorkbookData workbookData = parseOneCWorkbook(file);
+        LocalDate effectiveDate = LocalDate.now();
+        Map<String, TeacherDirectoryEntry> teachersByFio = teacherDirectoryRepository.findAll().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        teacher -> normalizeFioKey(teacher.getFioTeacher()),
+                        teacher -> teacher,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+        List<TeacherOneCImportDtos.PreviewRow> changes = new ArrayList<>();
+        for (Map.Entry<String, List<OneCEmploymentRow>> group : workbookData.rowsByFio().entrySet()) {
+            List<OneCEmploymentRow> rows = group.getValue();
+            OneCEmploymentRow activePrimary = rows.stream()
+                    .filter(row -> row.isActiveOn(effectiveDate) && row.isPrimaryEmployment())
+                    .max(Comparator.comparing(OneCEmploymentRow::employmentDate,
+                            Comparator.nullsFirst(Comparator.naturalOrder())))
+                    .orElse(null);
+            OneCEmploymentRow activeAdditional = rows.stream()
+                    .filter(row -> row.isActiveOn(effectiveDate) && !row.isPrimaryEmployment())
+                    .max(Comparator
+                            .comparingInt(OneCEmploymentRow::additionalPriority)
+                            .thenComparing(OneCEmploymentRow::employmentDate,
+                                    Comparator.nullsFirst(Comparator.naturalOrder())))
+                    .orElse(null);
+            OneCEmploymentRow endedPrimary = rows.stream()
+                    .filter(OneCEmploymentRow::isPrimaryEmployment)
+                    .filter(row -> row.dismissalDate() != null && !row.dismissalDate().isAfter(effectiveDate))
+                    .max(Comparator.comparing(OneCEmploymentRow::dismissalDate))
+                    .orElse(null);
+            TeacherDirectoryEntry teacher = teachersByFio.get(group.getKey());
+            TeacherOneCImportDtos.PreviewRow previewRow = buildOneCPreviewRow(
+                    teacher,
+                    activePrimary,
+                    activeAdditional,
+                    endedPrimary
+            );
+            if (previewRow != null) {
+                changes.add(previewRow);
+            }
+        }
+        changes.sort(Comparator.comparing(TeacherOneCImportDtos.PreviewRow::fio, String.CASE_INSENSITIVE_ORDER));
+        return new TeacherOneCImportDtos.Preview(workbookData.sourceRowCount(), effectiveDate, changes);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> applyOneCImport(MultipartFile file,
+                                               TeacherOneCImportDtos.ApplyRequest request,
+                                               String processedBy) {
+        TeacherOneCImportDtos.Preview preview = previewOneCImport(file);
+        Map<String, TeacherOneCImportDtos.PreviewRow> previewByFio = preview.rows().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        row -> normalizeFioKey(row.fio()),
+                        row -> row,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+        Map<String, String> decisions = Optional.ofNullable(request)
+                .map(TeacherOneCImportDtos.ApplyRequest::decisions)
+                .orElseGet(List::of)
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(decision -> decision.fio() != null && decision.action() != null)
+                .collect(java.util.stream.Collectors.toMap(
+                        decision -> normalizeFioKey(decision.fio()),
+                        decision -> decision.action().trim().toUpperCase(Locale.ROOT),
+                        (left, right) -> right,
+                        LinkedHashMap::new
+                ));
+
+        int added = 0;
+        int updated = 0;
+        int dismissed = 0;
+        int restored = 0;
+        int ignored = 0;
+        for (TeacherOneCImportDtos.PreviewRow row : preview.rows()) {
+            String action = decisions.getOrDefault(normalizeFioKey(row.fio()), "IGNORE");
+            if (!row.allowedActions().contains(action)) {
+                throw new IllegalArgumentException("Действие «" + action + "» недоступно для " + row.fio());
+            }
+            if ("IGNORE".equals(action)) {
+                ignored++;
+                continue;
+            }
+            TeacherDirectoryEntry teacher = row.teacherId() == null
+                    ? null
+                    : teacherDirectoryRepository.findById(row.teacherId()).orElse(null);
+            switch (action) {
+                case "ADD", "ACCEPT_ADDITIONAL" -> {
+                    if (teacher == null) {
+                        teacher = new TeacherDirectoryEntry();
+                        teacher.setFioTeacher(row.fio());
+                        teacher.setInitials(shortFioFromFull(row.fio()));
+                        added++;
+                    } else {
+                        if (teacher.isArchived()) {
+                            teacher.setArchived(false);
+                            teacher.setArchivedAt(null);
+                        }
+                        if (teacher.getDismissalDate() != null) {
+                            restore(teacher.getId());
+                            teacher = teacherDirectoryRepository.findById(teacher.getId()).orElseThrow();
+                            restored++;
+                        } else {
+                            updated++;
+                        }
+                    }
+                    applyOneCEmploymentSnapshot(teacher, row);
+                    teacherDirectoryRepository.save(teacher);
+                }
+                case "UPDATE" -> {
+                    if (teacher == null) {
+                        throw new IllegalArgumentException("Сотрудник " + row.fio() + " не найден для обновления");
+                    }
+                    applyOneCEmploymentSnapshot(teacher, row);
+                    teacherDirectoryRepository.save(teacher);
+                    updated++;
+                }
+                case "RESTORE" -> {
+                    if (teacher == null) {
+                        throw new IllegalArgumentException("Сотрудник " + row.fio() + " не найден для восстановления");
+                    }
+                    if (teacher.isArchived()) {
+                        teacher.setArchived(false);
+                        teacher.setArchivedAt(null);
+                        teacherDirectoryRepository.save(teacher);
+                    }
+                    if (teacher.getDismissalDate() != null) {
+                        restore(teacher.getId());
+                    }
+                    teacher = teacherDirectoryRepository.findById(teacher.getId()).orElseThrow();
+                    applyOneCEmploymentSnapshot(teacher, row);
+                    teacherDirectoryRepository.save(teacher);
+                    restored++;
+                }
+                case "DISMISS" -> {
+                    if (teacher == null) {
+                        throw new IllegalArgumentException("Сотрудник " + row.fio() + " не найден для увольнения");
+                    }
+                    LocalDate dismissalDate = Optional.ofNullable(row.dismissalDate())
+                            .orElseThrow(() -> new IllegalArgumentException(
+                                    "В выгрузке 1С не указана дата увольнения для " + row.fio()));
+                    markForDismissal(teacher.getId(), dismissalDate, processedBy);
+                    dismissed++;
+                }
+                default -> throw new IllegalArgumentException("Неизвестное действие импорта: " + action);
+            }
+        }
+        return Map.of(
+                "status", "ok",
+                "sourceRows", preview.sourceRowCount(),
+                "added", added,
+                "updated", updated,
+                "dismissed", dismissed,
+                "restored", restored,
+                "ignored", ignored
+        );
+    }
+
+    private TeacherOneCImportDtos.PreviewRow buildOneCPreviewRow(TeacherDirectoryEntry teacher,
+                                                                 OneCEmploymentRow activePrimary,
+                                                                 OneCEmploymentRow activeAdditional,
+                                                                 OneCEmploymentRow endedPrimary) {
+        OneCEmploymentRow proposed = activePrimary != null ? activePrimary
+                : activeAdditional != null ? activeAdditional : endedPrimary;
+        if (proposed == null) {
+            return null;
+        }
+        List<String> allowedActions;
+        String recommendedAction;
+        String message;
+        if (teacher == null) {
+            if (activePrimary != null) {
+                allowedActions = List.of("ADD", "IGNORE");
+                recommendedAction = "ADD";
+                message = "Новый сотрудник с действующим основным местом работы.";
+            } else if (activeAdditional != null) {
+                allowedActions = List.of("ACCEPT_ADDITIONAL", "IGNORE");
+                recommendedAction = "IGNORE";
+                message = "В 1С есть только действующее совместительство. Требуется подтверждение приёма.";
+            } else {
+                return null;
+            }
+        } else if (activePrimary != null) {
+            boolean requiresRestore = teacher.isArchived() || teacher.getDismissalDate() != null;
+            if (requiresRestore) {
+                allowedActions = List.of("RESTORE", "IGNORE");
+                recommendedAction = "IGNORE";
+                message = "В 1С основное место действует, а в программе сотрудник уволен или находится в архиве.";
+            } else if (oneCEmploymentDiffers(teacher, activePrimary)) {
+                allowedActions = List.of("UPDATE", "IGNORE");
+                recommendedAction = "UPDATE";
+                message = "Основная должность или кадровые реквизиты отличаются от выгрузки 1С.";
+            } else {
+                return null;
+            }
+        } else if (activeAdditional != null) {
+            allowedActions = teacher.getDismissalDate() == null && !teacher.isArchived()
+                    ? List.of("DISMISS", "ACCEPT_ADDITIONAL", "IGNORE")
+                    : List.of("ACCEPT_ADDITIONAL", "IGNORE");
+            recommendedAction = "IGNORE";
+            message = "Основное место завершено, но найдено действующее совместительство. Подтвердите увольнение или продолжение работы.";
+        } else {
+            if (teacher.getDismissalDate() != null || teacher.isArchived()) {
+                return null;
+            }
+            allowedActions = List.of("DISMISS", "IGNORE");
+            recommendedAction = "IGNORE";
+            message = "В 1С основное место работы завершено. Увольнение требует подтверждения.";
+        }
+        return new TeacherOneCImportDtos.PreviewRow(
+                proposed.fio(),
+                teacher == null ? null : teacher.getId(),
+                teacher == null ? null : teacher.getPrimaryPosition(),
+                proposed.position(),
+                proposed.personnelNumber(),
+                proposed.employmentType(),
+                proposed.employmentDate(),
+                endedPrimary == null ? proposed.dismissalDate() : endedPrimary.dismissalDate(),
+                activePrimary != null,
+                activeAdditional != null,
+                message,
+                allowedActions,
+                recommendedAction
+        );
+    }
+
+    private boolean oneCEmploymentDiffers(TeacherDirectoryEntry teacher, OneCEmploymentRow row) {
+        return !Objects.equals(normalizeOptional(teacher.getPrimaryPosition()), normalizeOptional(row.position()))
+                || !Objects.equals(normalizeOptional(teacher.getPersonnelNumber()), normalizeOptional(row.personnelNumber()))
+                || !Objects.equals(normalizeOptional(teacher.getEmploymentType()), normalizeOptional(row.employmentType()))
+                || !Objects.equals(teacher.getEmploymentDate(), row.employmentDate());
+    }
+
+    private void applyOneCEmploymentSnapshot(TeacherDirectoryEntry teacher,
+                                             TeacherOneCImportDtos.PreviewRow row) {
+        teacher.setPrimaryPosition(normalizeOptional(row.proposedPosition()));
+        teacher.setPersonnelNumber(normalizeOptional(row.personnelNumber()));
+        teacher.setEmploymentType(normalizeOptional(row.employmentType()));
+        teacher.setEmploymentDate(row.employmentDate());
+        teacher.setLastOneCSyncAt(LocalDateTime.now());
+        if (isBlank(teacher.getInitials())) {
+            teacher.setInitials(shortFioFromFull(teacher.getFioTeacher()));
+        }
+    }
+
+    private OneCWorkbookData parseOneCWorkbook(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Выберите выгрузку 1С в формате .xls или .xlsx");
+        }
+        String filename = Objects.toString(file.getOriginalFilename(), "").toLowerCase(Locale.ROOT);
+        if (!filename.endsWith(".xls") && !filename.endsWith(".xlsx")) {
+            throw new IllegalArgumentException("Выгрузка 1С должна быть файлом .xls или .xlsx");
+        }
+        try (InputStream inputStream = file.getInputStream();
+             Workbook workbook = WorkbookFactory.create(inputStream)) {
+            if (workbook.getNumberOfSheets() == 0) {
+                throw new IllegalArgumentException("В выгрузке 1С нет листов");
+            }
+            Sheet sheet = workbook.getSheetAt(0);
+            DataFormatter formatter = new DataFormatter(new Locale("ru", "RU"));
+            HeaderMapping header = findOneCHeader(sheet, formatter);
+            Map<String, List<OneCEmploymentRow>> rowsByFio = new LinkedHashMap<>();
+            int sourceRows = 0;
+            for (int rowIndex = header.rowIndex() + 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+                Row row = sheet.getRow(rowIndex);
+                if (row == null) continue;
+                String fio = formattedCell(row.getCell(header.fio()), formatter);
+                if (fio.isBlank()) continue;
+                sourceRows++;
+                OneCEmploymentRow employment = new OneCEmploymentRow(
+                        fio.trim(),
+                        formattedCell(row.getCell(header.personnelNumber()), formatter),
+                        cleanOneCPosition(formattedCell(row.getCell(header.position()), formatter)),
+                        formattedCell(row.getCell(header.employmentType()), formatter),
+                        readOneCDate(row.getCell(header.employmentDate()), formatter),
+                        readOneCDate(row.getCell(header.dismissalDate()), formatter)
+                );
+                rowsByFio.computeIfAbsent(normalizeFioKey(fio), ignored -> new ArrayList<>()).add(employment);
+            }
+            if (sourceRows == 0) {
+                throw new IllegalArgumentException("В выгрузке 1С не найдено ни одной кадровой строки");
+            }
+            return new OneCWorkbookData(sourceRows, rowsByFio);
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Ошибка чтения выгрузки 1С", e);
+            throw new IllegalArgumentException("Не удалось прочитать выгрузку 1С: " + e.getMessage(), e);
+        }
+    }
+
+    private HeaderMapping findOneCHeader(Sheet sheet, DataFormatter formatter) {
+        for (int rowIndex = 0; rowIndex <= Math.min(sheet.getLastRowNum(), 20); rowIndex++) {
+            Row row = sheet.getRow(rowIndex);
+            if (row == null) continue;
+            Map<String, Integer> columns = new LinkedHashMap<>();
+            for (int columnIndex = 0; columnIndex < row.getLastCellNum(); columnIndex++) {
+                String header = normalizeOneCHeader(formattedCell(row.getCell(columnIndex), formatter));
+                if (!header.isBlank()) columns.put(header, columnIndex);
+            }
+            Integer fio = firstHeader(columns, "имя", "фио");
+            Integer personnelNumber = firstHeader(columns, "табномер", "табельныйномер");
+            Integer position = firstHeader(columns, "должностьпоштатномурасписанию", "должность");
+            Integer employmentDate = firstHeader(columns, "датаприема", "датаприёма");
+            Integer dismissalDate = firstHeader(columns, "датаувольнения");
+            Integer employmentType = firstHeader(columns, "видзанятости");
+            if (fio != null && personnelNumber != null && position != null
+                    && employmentDate != null && dismissalDate != null && employmentType != null) {
+                return new HeaderMapping(
+                        rowIndex, fio, personnelNumber, position, employmentDate, dismissalDate, employmentType);
+            }
+        }
+        throw new IllegalArgumentException(
+                "Не найдены обязательные колонки выгрузки 1С: Имя, Таб. номер, Должность, даты приёма/увольнения, Вид занятости");
+    }
+
+    private Integer firstHeader(Map<String, Integer> columns, String... aliases) {
+        for (String alias : aliases) {
+            Integer index = columns.get(alias);
+            if (index != null) return index;
+        }
+        return null;
+    }
+
+    private String formattedCell(Cell cell, DataFormatter formatter) {
+        return cell == null ? "" : formatter.formatCellValue(cell).trim();
+    }
+
+    private String normalizeOneCHeader(String value) {
+        return Objects.toString(value, "")
+                .toLowerCase(Locale.ROOT)
+                .replace('ё', 'е')
+                .replaceAll("[^а-яa-z0-9]+", "");
+    }
+
+    private String cleanOneCPosition(String value) {
+        return normalizeOptional(Objects.toString(value, "")
+                .replaceFirst("\\s*/[^/]+/\\s*$", "")
+                .trim());
+    }
+
+    private LocalDate readOneCDate(Cell cell, DataFormatter formatter) {
+        if (cell == null) return null;
+        if (cell.getCellType() == CellType.NUMERIC && DateUtil.isCellDateFormatted(cell)) {
+            return cell.getDateCellValue().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+        }
+        String value = formattedCell(cell, formatter);
+        if (value.isBlank()) return null;
+        for (DateTimeFormatter dateFormat : List.of(
+                DateTimeFormatter.ofPattern("dd.MM.yyyy"),
+                DateTimeFormatter.ISO_LOCAL_DATE
+        )) {
+            try {
+                return LocalDate.parse(value, dateFormat);
+            } catch (DateTimeParseException ignored) {
+                // try the next supported format
+            }
+        }
+        throw new IllegalArgumentException("Не удалось распознать дату в выгрузке 1С: " + value);
+    }
+
+    private String normalizeFioKey(String fio) {
+        return Objects.toString(fio, "").trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    private String shortFioFromFull(String fio) {
+        String[] parts = Objects.toString(fio, "").trim().split("\\s+");
+        if (parts.length < 2) return Objects.toString(fio, "").trim();
+        StringBuilder result = new StringBuilder(parts[0]);
+        for (int i = 1; i < Math.min(parts.length, 3); i++) {
+            if (!parts[i].isBlank()) {
+                result.append(' ').append(Character.toUpperCase(parts[i].charAt(0))).append('.');
+            }
+        }
+        return result.toString();
+    }
+
+    @Override
     @Transactional
     public TeacherDirectoryEntry cancelPlannedDismissal(Long teacherId) {
         TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
@@ -452,6 +837,10 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         return normalized.isBlank() ? null : normalized;
     }
 
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
     private String excelText(String value) {
         String normalized = INVALID_EXCEL_TEXT_CHARS.matcher(Objects.toString(value, "")).replaceAll(" ");
         return normalized.length() > EXCEL_CELL_TEXT_LIMIT
@@ -556,6 +945,50 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 throw new IllegalStateException("Педагог с таким email уже существует");
             }
         }
+    }
+
+    private record HeaderMapping(
+            int rowIndex,
+            int fio,
+            int personnelNumber,
+            int position,
+            int employmentDate,
+            int dismissalDate,
+            int employmentType
+    ) {
+    }
+
+    private record OneCEmploymentRow(
+            String fio,
+            String personnelNumber,
+            String position,
+            String employmentType,
+            LocalDate employmentDate,
+            LocalDate dismissalDate
+    ) {
+        private boolean isActiveOn(LocalDate date) {
+            return (employmentDate == null || !employmentDate.isAfter(date))
+                    && (dismissalDate == null || dismissalDate.isAfter(date));
+        }
+
+        private boolean isPrimaryEmployment() {
+            return Objects.toString(employmentType, "")
+                    .toLowerCase(Locale.ROOT)
+                    .contains("основное место");
+        }
+
+        private int additionalPriority() {
+            String normalized = Objects.toString(employmentType, "").toLowerCase(Locale.ROOT);
+            if (normalized.contains("внутреннее")) return 2;
+            if (normalized.contains("внешнее")) return 1;
+            return 0;
+        }
+    }
+
+    private record OneCWorkbookData(
+            int sourceRowCount,
+            Map<String, List<OneCEmploymentRow>> rowsByFio
+    ) {
     }
 
 }

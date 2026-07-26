@@ -316,6 +316,7 @@ class PedagogicalCouncilServiceImplTest {
 
         AppUser first = appUser(11L, "Беляев Дмитрий Александрович");
         AppUser second = appUser(12L, "Власова Юлия Сергеевна");
+        when(users.findById(1L)).thenReturn(Optional.of(appUser(1L, "Секретарь")));
         when(users.findById(11L)).thenReturn(Optional.of(first));
         when(users.findById(12L)).thenReturn(Optional.of(second));
         when(teachers.findByFioTeacherIgnoreCase(anyString())).thenReturn(Optional.empty());
@@ -351,7 +352,7 @@ class PedagogicalCouncilServiceImplTest {
         assertFalse(text.contains("ГБОУ Школа № 1811"));
         assertTrue(text.contains("Беляев Дмитрий Александрович"));
         assertTrue(text.contains("Власова Юлия Сергеевна"));
-        assertEquals(2, text.split("Верно", -1).length - 1);
+        assertEquals(3, text.split("Верно", -1).length - 1);
         assertEquals(1, pictureCount);
         assertEquals("png", pictureExtension);
     }
@@ -395,6 +396,7 @@ class PedagogicalCouncilServiceImplTest {
         when(protocols.findById(1L)).thenReturn(Optional.of(protocol));
 
         AppUser certifier = appUser(11L, "Беляев Дмитрий Александрович");
+        when(users.findById(1L)).thenReturn(Optional.of(appUser(1L, "Секретарь")));
         when(users.findById(11L)).thenReturn(Optional.of(certifier));
         when(teachers.findByFioTeacherIgnoreCase(anyString())).thenReturn(Optional.empty());
         when(permissions.findAllByTabAndCanExportTrue(AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS))
@@ -519,7 +521,7 @@ class PedagogicalCouncilServiceImplTest {
     private void writeVisualQaSample(PedagogicalCouncilDtos.FilePayload file, String filename) throws Exception {
         String outputDirectory = System.getProperty("pedagogicalCouncil.visualQaDir");
         if (outputDirectory == null || outputDirectory.isBlank()) {
-            return;
+            outputDirectory = "target/pedagogical-council-visual-qa";
         }
         Path directory = Path.of(outputDirectory);
         Files.createDirectories(directory);

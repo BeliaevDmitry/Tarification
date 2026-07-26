@@ -850,6 +850,7 @@ public class HrDocumentService {
                     ?"Дополнительное соглашение ожидает получения служебной записки":"Документ нельзя сформировать в текущем статусе");
         applyCurrentIncentive(agreement);
         applyAutomaticLoadClause(agreement,agreementTeacherId(agreement,null));
+        applyAutomaticCompensationClause(agreement,agreementTeacherId(agreement,null));
         EmploymentContract contract=validateAgreementData(agreement);
         if(!present(agreement.getSummary()))throw new ResponseStatusException(CONFLICT,"Заполните краткое содержание дополнительного соглашения");
         if(!present(agreement.getConditionsJson()))throw new ResponseStatusException(CONFLICT,"Заполните юридическую формулировку дополнительного соглашения");
@@ -951,6 +952,19 @@ public class HrDocumentService {
         a.setReplacesAgreementId(previous == null ? null : previous.getId());
         clearGenerated(a);if(a.getStatus()!=AdditionalAgreement.Status.WAITING_FOR_MEMO)a.setStatus(AdditionalAgreement.Status.DRAFT);
         return agreements.save(a);
+    }
+
+    @Transactional(readOnly = true)
+    public String agreementDownloadFilename(AdditionalAgreement agreement){
+        Long teacherId=agreementTeacherId(agreement,null);
+        String fio=teacherId==null?"Работник":teachers.findById(teacherId)
+                .map(TeacherDirectoryEntry::getFioTeacher).filter(this::present).orElse("Работник");
+        String number=present(agreement.getVisibleNumber())?agreement.getVisibleNumber().trim()
+                :agreementNumber(agreement).isPresent()?String.valueOf(agreementNumber(agreement).getAsInt())
+                :firstPresent(agreement.getInternalNumber(),"б/н");
+        String date=agreement.getDocumentDate()==null?"без даты":formatDate(agreement.getDocumentDate());
+        return (fio+" доп согл № "+number+" от "+date+".docx")
+                .replaceAll("[<>:\"/\\\\|?*\\p{Cntrl}]","-").replaceAll("\\s+"," ").trim();
     }
 
     private EmploymentContract validateAgreementData(AdditionalAgreement agreement){
@@ -1481,20 +1495,54 @@ public class HrDocumentService {
 
     private String clause24Text(List<CompensationFunction> functions) {
         List<CompensationFunction> actual=functions==null?List.of():functions;
-        StringBuilder text=new StringBuilder("Внести изменения в пункт 2.4. раздела 2 «Оплата труда», изложив его в следующей редакции:\n")
-                .append("«2.4. Работнику выплачиваются ежемесячные компенсационные выплаты при условии, если на Работника:");
+        StringBuilder text=new StringBuilder("Внести изменения в пункт 2.4 раздела 2 \"Оплата труда\", изложив его в следующей редакции:\n")
+                .append("\"2.4. Работнику выплачиваются ежемесячные компенсационные выплаты при условии, если на Работника:");
         for(int i=0;i<actual.size();i++){
             CompensationFunction function=actual.get(i);
             text.append("\n- ");
             if(present(function.legalLine()))text.append(function.legalLine());
-            else text.append("возложена функция «").append(lowercaseInitial(function.name())).append("», в размере ")
+            else text.append("возложена функция \"").append(lowercaseInitial(function.name())).append("\", в размере ")
                         .append(function.amount()==null
                                 ?"________ рублей __ коп. (________________ рублей __ коп.)"
                                 :moneyLegal(function.amount())+" ("+moneyWordsLegal(function.amount())+")")
                         .append(" в месяц");
-            text.append(i+1<actual.size()?";":"».");
+            text.append(i+1<actual.size()?";":"\".");
         }
         return text.toString();
+    }
+
+    private void applyAutomaticCompensationClause(AdditionalAgreement agreement,Long teacherId){
+        if(agreement.getKind()!=AdditionalAgreement.Kind.PAY_TERMS||teacherId==null
+                ||agreement.getServiceMemoId()==null)return;
+        HrServiceMemo memo=memos.findById(agreement.getServiceMemoId()).orElse(null);
+        if(memo==null||memo.isSeparateAgreement()
+                ||!"2.4".equals(firstPresent(memo.getContractClause(),"2.4")))return;
+        String assignment=firstPresent(memo.getAssignmentName(),agreement.getSummary());
+        BigDecimal amount=memo.getAmount()==null?agreement.getTotalAmount():memo.getAmount();
+        LocalDate effectiveDate=agreement.getValidFrom()==null?memo.getValidFrom():agreement.getValidFrom();
+        String exactClause=clause24Text(compensationFunctions(agreement.getAcademicYear(),teacherId,
+                "2.4",false,assignment,amount,effectiveDate));
+        agreement.setConditionsJson(replaceClause24Block(agreement.getConditionsJson(),exactClause));
+    }
+
+    private String replaceClause24Block(String conditions,String replacement){
+        String normalized=Objects.toString(conditions,"").replace("\r\n","\n").replace('\r','\n').trim();
+        if(normalized.isEmpty())return replacement;
+        List<String> result=new ArrayList<>();boolean replaced=false;
+        for(String block:normalized.split("\\n\\s*\\n(?=(?:Внести|Изложить))")){
+            String current=block.trim();
+            if(isClause24Block(current)){
+                if(!replaced)result.add(replacement);
+                replaced=true;
+            }else if(present(current))result.add(current);
+        }
+        if(!replaced)result.add(replacement);
+        return String.join("\n\n",result);
+    }
+
+    private boolean isClause24Block(String block){
+        return block.contains("пункт 2.4")||block.contains("пункта 2.4")
+                ||block.contains("\"2.4.")||block.contains("«2.4.");
     }
 
     private void applyAutomaticLoadClause(AdditionalAgreement agreement,Long teacherId){
@@ -1604,9 +1652,9 @@ public class HrDocumentService {
         XWPFTable table=d.createTable(1,8);configureAnnexTable(table,widths);
         String[] headers={"Предмет","Класс/группа","Часы","Численность","Ученико-час","Предм. коэф.","Коэф. группы","Сумма"};
         for(int i=0;i<headers.length;i++) cell(table.getRow(0).getCell(i),headers[i],true,widths[i]);
-        BigDecimal total=BigDecimal.ZERO;
-        for(LoadDetail x:rows){XWPFTableRow r=table.createRow();String[] v={x.subject(),x.className(),String.valueOf(x.hours()),String.valueOf(x.children()),decimal(x.rate()),decimal(x.subjectCoefficient()),decimal(x.groupCoefficient().setScale(4,RoundingMode.HALF_UP)),money(x.amount()).replace(" руб.","")};for(int i=0;i<v.length;i++)cell(r.getCell(i),v[i],false,widths[i]);total=total.add(x.amount());}
-        XWPFTableRow tr=table.createRow();cell(tr.getCell(0),"Итого",true,widths[0]);for(int i=1;i<7;i++)cell(tr.getCell(i),"",false,widths[i]);cell(tr.getCell(7),money(total).replace(" руб.",""),true,widths[7]);
+        BigDecimal total=BigDecimal.ZERO;int totalHours=0;
+        for(LoadDetail x:rows){XWPFTableRow r=table.createRow();String[] v={x.subject(),x.className(),String.valueOf(x.hours()),String.valueOf(x.children()),decimal(x.rate()),decimal(x.subjectCoefficient()),decimal(x.groupCoefficient().setScale(4,RoundingMode.HALF_UP)),money(x.amount()).replace(" руб.","")};for(int i=0;i<v.length;i++)cell(r.getCell(i),v[i],false,widths[i]);total=total.add(x.amount());totalHours+=x.hours();}
+        XWPFTableRow tr=table.createRow();cell(tr.getCell(0),"Итого",true,widths[0]);cell(tr.getCell(1),"",false,widths[1]);cell(tr.getCell(2),String.valueOf(totalHours),true,widths[2]);for(int i=3;i<7;i++)cell(tr.getCell(i),"",false,widths[i]);cell(tr.getCell(7),money(total).replace(" руб.",""),true,widths[7]);
     }
     private void configureAnnexTable(XWPFTable table,int[] widths){
         int total=Arrays.stream(widths).sum();table.setWidthType(TableWidthType.DXA);table.setWidth(String.valueOf(total));table.setCellMargins(80,70,80,70);

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PedagogicalCouncilsFrontendTest {
@@ -32,19 +33,27 @@ class PedagogicalCouncilsFrontendTest {
         assertTrue(html.contains("<select id=\"archive-academic-year\" name=\"academicYear\" required>"));
         assertTrue(html.contains("id=\"archive-year-date-hint\""));
         assertTrue(html.contains("id=\"protocol-chair-position\""));
-        assertTrue(html.contains("id=\"protocol-chair-fio\""));
+        assertTrue(html.contains("<select id=\"protocol-chair-fio\" name=\"chairFio\">"));
         assertTrue(html.contains("id=\"protocol-secretary-position\""));
-        assertTrue(html.contains("id=\"protocol-secretary-fio\""));
+        assertTrue(html.contains("<select id=\"protocol-secretary-fio\" name=\"secretaryFio\">"));
         assertTrue(html.contains("value=\"Заместитель директора\""));
         assertTrue(html.contains("data-field=\"agendaDurationMinutes\""));
         assertTrue(html.contains("value=\"10\" required"));
         assertTrue(html.contains("data-vote-hint"));
         assertTrue(html.contains("Приложения к этому пункту"));
-        assertTrue(html.contains("Можно выбрать одного или нескольких сотрудников"));
+        assertTrue(html.contains("data-field=\"speakerPosition\""));
+        assertTrue(html.contains("ФИО докладчика"));
+        assertTrue(html.contains("Следующий свободный номер"));
+        assertTrue(html.contains("Файлы загрузятся при сохранении протокола"));
+        assertTrue(html.contains("Сотрудник, который формирует выписку, добавляется автоматически"));
+        assertTrue(html.contains("id=\"extract-approver-position\""));
+        assertFalse(html.contains("Где хранится подлинник"));
         assertTrue(js.contains("/api/pedagogical-councils/archive"));
         assertTrue(js.contains("pedApi('/api/academic-years')"));
         assertTrue(js.contains("pedApi('/api/public/branding')"));
         assertTrue(js.contains("function currentSchoolName()"));
+        assertTrue(js.contains("function staffFioOptions(selectedFio = '')"));
+        assertTrue(js.contains("person.shortFio || person.fio"));
         assertTrue(js.contains("function updateVoteHint(node)"));
         assertTrue(js.contains("Осталось: ${remaining}"));
         assertTrue(js.contains("Превышение: ${exceeded}"));
@@ -52,7 +61,9 @@ class PedagogicalCouncilsFrontendTest {
         assertTrue(js.contains("pedUi.archiveDate.min = from"));
         assertTrue(js.contains("pedUi.archiveDate.max = to"));
         assertTrue(js.contains("/extract"));
-        assertTrue(js.contains("certifierUserIds"));
+        assertTrue(js.contains("async function uploadPendingAttachments"));
+        assertTrue(js.contains("includeSourceSigners"));
+        assertTrue(js.contains("approverPosition"));
     }
 
     @Test

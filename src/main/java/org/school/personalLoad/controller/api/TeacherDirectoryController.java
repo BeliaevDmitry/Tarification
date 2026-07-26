@@ -6,6 +6,7 @@ import org.school.personalLoad.auth.SessionUser;
 import org.school.personalLoad.dto.TeacherCreateRequest;
 import org.school.personalLoad.dto.TeacherDismissRequest;
 import org.school.personalLoad.dto.TeacherPlannedDismissRequest;
+import org.school.personalLoad.dto.TeacherOneCImportDtos;
 import org.school.personalLoad.dto.TeacherUpdateRequest;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.service.TeacherDirectoryService;
@@ -30,6 +31,20 @@ public class TeacherDirectoryController {
     @PostMapping("/import")
     public ResponseEntity<Map<String, Object>> importFromExcel(@RequestParam("file") MultipartFile file) {
         return ResponseEntity.ok(teacherDirectoryService.importFromExcel(file));
+    }
+
+    @PostMapping(value = "/import-1c/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<TeacherOneCImportDtos.Preview> previewOneCImport(@RequestPart("file") MultipartFile file) {
+        return ResponseEntity.ok(teacherDirectoryService.previewOneCImport(file));
+    }
+
+    @PostMapping(value = "/import-1c/apply", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, Object>> applyOneCImport(
+            @RequestPart("file") MultipartFile file,
+            @RequestPart("request") TeacherOneCImportDtos.ApplyRequest request,
+            HttpServletRequest httpServletRequest) {
+        SessionUser user = AuthSessionUtils.requiredUser(httpServletRequest);
+        return ResponseEntity.ok(teacherDirectoryService.applyOneCImport(file, request, user.getFullName()));
     }
 
     @GetMapping({"/template", "/export"})

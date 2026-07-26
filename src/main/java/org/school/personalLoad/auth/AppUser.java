@@ -24,6 +24,9 @@ public class AppUser {
     @Column(nullable = false, length = 255)
     private String fullName;
 
+    @Column(name = "teacher_id")
+    private Long teacherId;
+
     @Column(length = 255)
     private String documentPosition;
 
