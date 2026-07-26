@@ -89,8 +89,11 @@ public class AcademicYearServiceImpl implements AcademicYearService {
 
     @Override
     public String currentByDate() {
-        LocalDate now = LocalDate.now();
-        int startYear = now.getMonthValue() >= 7 ? now.getYear() : now.getYear() - 1;
+        return academicYearForDate(LocalDate.now());
+    }
+
+    static String academicYearForDate(LocalDate date) {
+        int startYear = date.getMonthValue() >= 8 ? date.getYear() : date.getYear() - 1;
         return startYear + "/" + (startYear + 1);
     }
 

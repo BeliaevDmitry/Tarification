@@ -12,6 +12,7 @@ class HrDocumentsFrontendTest {
     void pageContainsReworkedMemoAndPersonalDataControls() throws Exception {
         String html = Files.readString(Path.of("src/main/resources/static/teachers-notification.html"));
         String js = Files.readString(Path.of("src/main/resources/static/teachers-notification.js"));
+        String controller = Files.readString(Path.of("src/main/java/org/school/personalLoad/controller/api/HrDocumentsController.java"));
 
         assertTrue(html.contains("Предварительная нагрузка (уведомления)"));
         assertTrue(html.contains("Импортировать Excel"));
@@ -36,7 +37,7 @@ class HrDocumentsFrontendTest {
         assertTrue(js.contains("Не удалось загрузить список работников"));
         assertTrue(js.contains("loadTeachersForDocuments"));
         assertTrue(js.contains("api('/api/teachers')"));
-        assertTrue(html.contains("teachers-notification.js?v=20260725-3"));
+        assertTrue(html.contains("teachers-notification.js?v=20260726-2"));
         assertTrue(js.contains("Служебная записка создана и добавлена в таблицу"));
         assertTrue(js.contains("await loadMemos()"));
         assertTrue(html.contains("Дополнительные соглашения"));
@@ -52,17 +53,38 @@ class HrDocumentsFrontendTest {
         assertTrue(js.contains("CATEGORY_LABELS"));
         assertTrue(js.contains("personal-data/import"));
         assertTrue(js.contains("data-reject"));
+        assertTrue(js.contains("data-delete-agreement"));
+        assertTrue(js.contains("data-merge-agreements"));
+        assertTrue(js.contains("data-merge-reissue"));
+        assertTrue(js.contains("/api/hr-documents/agreements/merge"));
+        assertTrue(js.contains("Объединить и перевыпустить"));
+        assertTrue(js.contains("ПЕРЕВЫПУСТИТЬ"));
+        assertTrue(js.contains("введите слово УДАЛИТЬ"));
+        assertTrue(js.contains("json('DELETE',{confirmation,reason:reason.trim()})"));
+        assertTrue(controller.contains("\"УДАЛИТЬ\".equals(r.confirmation())"));
+        assertTrue(controller.contains("\"DELETE_CONFIRMED\""));
+        assertTrue(controller.contains("\"REISSUE_MERGE\""));
+        assertTrue(controller.contains("причина: "));
+        assertTrue(html.contains("Сводный контроль по работникам"));
+        assertTrue(html.contains("все соглашения сгруппированы по работнику"));
         assertTrue(html.contains("Сформировать на 1 сентября"));
-        assertTrue(js.contains("черновик уже сформирован"));
+        assertTrue(js.contains("Не заполнен"));
         assertTrue(js.contains("data-edit-agreement"));
         assertTrue(js.contains("Сформировать DOCX"));
         assertTrue(js.contains("Заполнить договор"));
         assertTrue(js.contains("Сохранить как шаблон"));
+        assertTrue(js.contains("Автоматический текст сформирован по образцу допсоглашения школы"));
         assertTrue(js.contains("/prepare"));
         assertTrue(js.contains("loadPersonalData"));
         assertTrue(js.contains("api('/api/hr-documents/personal-data')"));
-        assertTrue(js.contains("Создано автоматически из служебной записки"));
+        assertTrue(js.contains("из служебной записки"));
         assertTrue(js.contains("Дополнительное соглашение вне служебной записки"));
+        assertTrue(html.contains("data-tab=\"incentives\""));
+        assertTrue(html.contains("id=\"incentive-body\""));
+        assertTrue(html.contains("Стимул, руб."));
+        assertTrue(js.contains("/api/hr-documents/incentives?academicYear="));
+        assertTrue(js.contains("/api/hr-documents/incentives/import?academicYear="));
+        assertTrue(js.contains("data-save-incentive"));
         assertTrue(!js.contains("ID полученной служебки"));
     }
 }

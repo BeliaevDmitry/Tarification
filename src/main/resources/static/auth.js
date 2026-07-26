@@ -15,6 +15,8 @@ const TAB_PATHS = {
     '/teachers-notification.html': 'HR_NOTIFICATIONS_VIEW',
     '/contingent.html': 'CONTINGENT_STATS',
     '/educational-work.html': 'EDUCATIONAL_WORK',
+    '/documents.html': 'DOCUMENTS_PEDAGOGICAL_COUNCILS',
+    '/pedagogical-councils.html': 'DOCUMENTS_PEDAGOGICAL_COUNCILS',
     '/vsoko.html': 'VSOKO_VIEW',
     '/vsoko-oge.html': 'VSOKO_VIEW',
     '/vsoko-ege.html': 'VSOKO_VIEW',
@@ -125,6 +127,12 @@ function isLoadModulePage(pathname) {
 }
 
 function navItemsForPath(pathname) {
+    if (pathname === '/documents.html' || pathname === '/pedagogical-councils.html') {
+        return [
+            { path: '/documents.html', tab: 'DOCUMENTS_PEDAGOGICAL_COUNCILS', label: 'Документы' },
+            { path: '/pedagogical-councils.html', tab: 'DOCUMENTS_PEDAGOGICAL_COUNCILS', label: 'Педагогические советы' }
+        ];
+    }
     if (pathname === '/educational-work.html') {
         return [];
     }
@@ -277,6 +285,11 @@ function hasLoadAccess(currentUser) {
 function hasEducationalWorkAccess(currentUser) {
     if (currentUser.admin) return true;
     return Boolean(tabPermissionMap(currentUser).EDUCATIONAL_WORK?.canView);
+}
+
+function hasDocumentsAccess(currentUser) {
+    if (currentUser.admin) return true;
+    return Boolean(tabPermissionMap(currentUser).DOCUMENTS_PEDAGOGICAL_COUNCILS?.canView);
 }
 
 function showAccessDenied(sectionTitle = 'раздела') {
@@ -556,6 +569,11 @@ function enrichMainMenu(currentUser) {
     const educationalWorkCard = document.querySelector('[data-educational-work-card]');
     if (educationalWorkCard) {
         educationalWorkCard.style.display = hasEducationalWorkAccess(currentUser) ? '' : 'none';
+    }
+
+    const documentsCard = document.querySelector('[data-documents-card]');
+    if (documentsCard) {
+        documentsCard.style.display = hasDocumentsAccess(currentUser) ? '' : 'none';
     }
 }
 

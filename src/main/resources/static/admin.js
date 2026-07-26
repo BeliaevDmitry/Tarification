@@ -64,6 +64,13 @@ const TAB_GROUPS = [
         ]
     },
     {
+        key: 'DOCUMENTS',
+        label: 'Документы',
+        tabs: [
+            { key: 'DOCUMENTS_PEDAGOGICAL_COUNCILS', label: 'Педагогические советы' }
+        ]
+    },
+    {
         key: 'VSOKO',
         label: 'ВСОКО / ОГЭ / ПА',
         tabs: [

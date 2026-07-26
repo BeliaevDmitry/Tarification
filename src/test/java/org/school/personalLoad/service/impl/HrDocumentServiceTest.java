@@ -3,7 +3,9 @@ package org.school.personalLoad.service.impl;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.HrDocumentDtos.AgreementRequest;
 import org.school.personalLoad.dto.HrDocumentDtos.AgreementEditRequest;
 import org.school.personalLoad.dto.HrDocumentDtos.BatchAgreementRequest;
@@ -12,10 +14,12 @@ import org.school.personalLoad.model.*;
 import org.school.personalLoad.repository.*;
 import org.school.personalLoad.service.*;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -38,12 +42,13 @@ class HrDocumentServiceTest {
     SalaryGroupCoefficientSubjectRepository groups=mock(SalaryGroupCoefficientSubjectRepository.class);
     ClassroomLeadershipRepository classroomLeadership=mock(ClassroomLeadershipRepository.class);
     ClassSizeService sizes=mock(ClassSizeService.class);
+    HrIncentiveRepository incentives=mock(HrIncentiveRepository.class);
     HrDocumentService service;
     EmploymentContract contract;
     TeacherDirectoryEntry teacher;
 
     @BeforeEach void setUp(){
-        service=new HrDocumentService(contracts,personal,memos,loadMemos,agreements,versions,catalog,teachers,loads,salary,coefficients,groups,classroomLeadership,sizes,new ObjectMapper().findAndRegisterModules());
+        service=new HrDocumentService(contracts,personal,memos,loadMemos,agreements,versions,catalog,teachers,loads,salary,coefficients,groups,classroomLeadership,sizes,incentives,new ObjectMapper().findAndRegisterModules());
         contract=new EmploymentContract(); contract.setId(10L); contract.setTeacherId(1L); contract.setContractNumber("1-ТД");
         contract.setContractDate(LocalDate.of(2025,1,1)); contract.setPositionName("Учитель");
         teacher=new TeacherDirectoryEntry(); teacher.setId(1L); teacher.setFioTeacher("Иванов Иван Иванович");
@@ -51,6 +56,8 @@ class HrDocumentServiceTest {
         when(contracts.save(any())).thenAnswer(x->x.getArgument(0));
         when(classroomLeadership.findAllByAcademicYear(anyString())).thenReturn(List.of());
         when(loads.findAllByAcademicYear(anyString())).thenReturn(List.of()); when(sizes.effectiveClassSizes(anyString())).thenReturn(Map.of());
+        when(incentives.findAllByAcademicYear(anyString())).thenReturn(List.of());
+        when(incentives.save(any())).thenAnswer(x->{HrIncentive incentive=x.getArgument(0);if(incentive.getId()==null)incentive.setId(200L);return incentive;});
         when(agreements.save(any())).thenAnswer(x->{AdditionalAgreement a=x.getArgument(0);if(a.getId()==null)a.setId(100L);return a;});
         when(memos.save(any())).thenAnswer(x->{HrServiceMemo m=x.getArgument(0);if(m.getId()==null)m.setId(50L);return m;});
     }
@@ -119,9 +126,9 @@ class HrDocumentServiceTest {
 
     @Test void clause24MemoRestatesAllCurrentFunctionsWithAmountsInDigitsAndWords() throws Exception {
         ClassroomLeadershipEntry classroom=new ClassroomLeadershipEntry();classroom.setAcademicYear("2025/2026");
-        classroom.setClassName("5-А");classroom.setTeacher(teacher);
+        classroom.setClassName("5 А");classroom.setTeacher(teacher);
         when(classroomLeadership.findAllByAcademicYear("2025/2026")).thenReturn(List.of(classroom));
-        when(sizes.effectiveClassSizes("2025/2026")).thenReturn(Map.of("5-А",22));
+        when(sizes.effectiveClassSizes("2025/2026")).thenReturn(Map.of("5-а",22));
         MemoRequest request=new MemoRequest("2025/2026",1L,10L,null,null,LocalDate.of(2025,9,1),
                 "Заведование кабинетом технологии",null,null,"2.4",null,new BigDecimal("15000"),
                 LocalDate.of(2025,9,1),LocalDate.of(2026,8,31),false,false,null);
@@ -131,7 +138,7 @@ class HrDocumentServiceTest {
         assertTrue(memo.getAssignmentText().startsWith("Внести изменения в пункт 2.4. раздела 2 «Оплата труда»"));
         assertTrue(memo.getAssignmentText().contains("«2.4. Работнику выплачиваются ежемесячные компенсационные выплаты"));
         assertTrue(memo.getAssignmentText().contains("- возложена функция классного руководителя, в размере 5 000 рублей 00 коп. за 1 класс"));
-        assertTrue(memo.getAssignmentText().contains("500 рублей 00 коп. за 1 обучающегося"));
+        assertTrue(memo.getAssignmentText().contains("500 рублей за 1 обучающегося"));
         assertTrue(memo.getAssignmentText().contains("16 000 рублей 00 коп. (шестнадцать тысяч рублей 00 коп.) в месяц;"));
         assertTrue(memo.getAssignmentText().contains("- возложена функция «заведование кабинетом технологии», в размере 15 000 рублей 00 коп. (пятнадцать тысяч рублей 00 коп.) в месяц»."));
         assertEquals(memo.getAssignmentText(),memo.getAgreementText());
@@ -315,8 +322,20 @@ class HrDocumentServiceTest {
 
         service.deleteAnnulledMemo(50L,"hr");
 
-        assertNull(agreement.getServiceMemoId());assertEquals(AdditionalAgreement.Status.REJECTED,agreement.getStatus());
+        verify(agreements).delete(agreement);
         verify(memos).delete(memo);
+    }
+
+    @Test void schoolSevenUsesFirstFreeNumberAndIgnoresAnnulledDrafts() {
+        AdditionalAgreement annulled=new AdditionalAgreement();annulled.setId(80L);annulled.setAcademicYear("2025/2026");
+        annulled.setInternalNumber("1 / 2025-2026");annulled.setStatus(AdditionalAgreement.Status.ANNULLED);
+        AdditionalAgreement active=new AdditionalAgreement();active.setId(81L);active.setAcademicYear("2025/2026");
+        active.setInternalNumber("2 / 2025-2026");active.setStatus(AdditionalAgreement.Status.DRAFT);
+        when(agreements.findAllByContractIdOrderByCreatedAtDesc(10L)).thenReturn(List.of(active,annulled));
+
+        AdditionalAgreement created=service.createAgreement(request(null),"hr");
+
+        assertEquals("1 / 2025-2026",created.getInternalNumber());
     }
 
     @Test void annualLoadAgreementIsCreatedWithoutEmploymentContract() {
@@ -332,6 +351,95 @@ class HrDocumentServiceTest {
         assertTrue(created.get(0).getInternalNumber().startsWith("БД-1-"));
     }
 
+    @Test void teachersWithLoadAreAutomaticallyAddedToIncentiveTableByForeignKey() {
+        ManualLoadEntry load=new ManualLoadEntry();load.setTeacherId(1L);load.setAcademicYear("2025/2026");
+        load.setLoad(2);when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load));
+
+        var rows=service.incentiveRows("2025/2026","hr");
+
+        assertEquals(1,rows.size());assertEquals(1L,rows.get(0).teacherId());
+        assertEquals(BigDecimal.ZERO.setScale(2),rows.get(0).amount());assertTrue(rows.get(0).hasLoad());
+        verify(incentives).save(argThat(item->Objects.equals(item.getTeacherId(),1L)
+                &&Objects.equals(item.getAcademicYear(),"2025/2026")));
+    }
+
+    @Test void nonZeroIncentiveIsIncludedInAnnualAgreementWithoutChangingMemos() {
+        ManualLoadEntry load=new ManualLoadEntry();load.setTeacherId(1L);load.setAcademicYear("2025/2026");
+        load.setSubjectName("Математика");load.setClassName("5А");load.setLoad(1);load.setNumberSchoolBuilding("1");
+        HrIncentive incentive=new HrIncentive();incentive.setAcademicYear("2025/2026");incentive.setTeacherId(1L);
+        incentive.setAmount(new BigDecimal("7500"));
+        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load));
+        when(incentives.findByAcademicYearAndTeacherId("2025/2026",1L)).thenReturn(Optional.of(incentive));
+        when(contracts.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(1L)).thenReturn(List.of());
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026")).thenReturn(new ArrayList<>());
+
+        AdditionalAgreement created=service.createAnnualDrafts(new BatchAgreementRequest("2025/2026",
+                LocalDate.of(2025,9,1),null,List.of(),null),"hr").get(0);
+
+        assertTrue(created.getConditionsJson().contains("пункт 2.5"));
+        assertTrue(created.getConditionsJson().contains("Устанавливаются ежемесячные стимулирующие выплаты за результаты обучающихся по итогам учебного года"));
+        assertTrue(created.getConditionsJson().contains("7 500 рублей 00 коп."));
+        assertTrue(created.getConditionsJson().contains("Внести изменения в пункт 2.1. раздела 2 «Оплата труда»"));
+        assertTrue(created.getConditionsJson().contains("За исполнение трудовых (должностных) обязанностей"));
+        assertTrue(created.getSummary().contains("Стимулирующая выплата"));
+        verify(memos,never()).save(any());
+    }
+
+    @Test void manuallyAddedTeacherWithoutLoadReceivesIncentiveOnlyAnnualAgreement() {
+        HrIncentive incentive=new HrIncentive();incentive.setAcademicYear("2025/2026");incentive.setTeacherId(1L);
+        incentive.setAmount(new BigDecimal("6000"));
+        when(incentives.findAllByAcademicYear("2025/2026")).thenReturn(List.of(incentive));
+        when(incentives.findByAcademicYearAndTeacherId("2025/2026",1L)).thenReturn(Optional.of(incentive));
+        when(contracts.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(1L)).thenReturn(List.of());
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026")).thenReturn(new ArrayList<>());
+
+        AdditionalAgreement created=service.createAnnualDrafts(new BatchAgreementRequest("2025/2026",
+                LocalDate.of(2025,9,1),null,List.of(),null),"hr").get(0);
+
+        assertEquals("Стимулирующая выплата",created.getSummary());
+        assertTrue(created.getConditionsJson().contains("пункт 2.5"));
+        assertFalse(created.getConditionsJson().contains("пункт 2.1"));
+        assertNull(created.getTotalAmount());
+    }
+
+    @Test void changingIncentiveUpdatesExistingUnissuedAnnualAgreementButNotServiceMemo() {
+        AdditionalAgreement annual=draftAgreement();annual.setSummary("Нагрузка и должностной оклад");
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026")).thenReturn(List.of(annual));
+
+        service.saveIncentive("2025/2026",1L,new BigDecimal("8100"),"hr");
+
+        assertTrue(annual.getConditionsJson().contains("пункт 2.5"));
+        assertTrue(annual.getConditionsJson().contains("8 100 рублей 00 коп."));
+        verify(agreements).save(annual);
+        verify(memos,never()).save(any());
+    }
+
+    @Test void incentiveExcelExportAndImportUseTeacherId() throws Exception {
+        HrIncentive incentive=new HrIncentive();incentive.setId(200L);incentive.setAcademicYear("2025/2026");
+        incentive.setTeacherId(1L);incentive.setAmount(new BigDecimal("3500.00"));
+        when(incentives.findAllByAcademicYear("2025/2026")).thenReturn(List.of(incentive));
+
+        byte[] exported=service.exportIncentives("2025/2026","hr");
+        try(Workbook workbook=new XSSFWorkbook(new ByteArrayInputStream(exported))){
+            assertEquals("ID педагога",workbook.getSheetAt(0).getRow(0).getCell(1).getStringCellValue());
+            assertEquals(1D,workbook.getSheetAt(0).getRow(1).getCell(1).getNumericCellValue());
+            assertEquals(3500D,workbook.getSheetAt(0).getRow(1).getCell(3).getNumericCellValue());
+        }
+
+        byte[] imported;
+        try(Workbook workbook=new XSSFWorkbook();ByteArrayOutputStream out=new ByteArrayOutputStream()){
+            var sheet=workbook.createSheet("Стимул");sheet.createRow(0);
+            var row=sheet.createRow(1);row.createCell(1).setCellValue(1);row.createCell(2).setCellValue(teacher.getFioTeacher());
+            row.createCell(3).setCellValue(9200.50);workbook.write(out);imported=out.toByteArray();
+        }
+        when(incentives.findByAcademicYearAndTeacherId("2025/2026",1L)).thenReturn(Optional.of(incentive));
+        var result=service.importIncentives("2025/2026",
+                new MockMultipartFile("file","stimulus.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",imported),"hr");
+
+        assertEquals(1,result.updated());assertEquals(0,result.skipped());
+        assertEquals(new BigDecimal("9200.50"),incentive.getAmount());
+    }
+
     @Test void agreementListIncludesDocumentsFromInactiveContracts() {
         contract.setActive(false);AdditionalAgreement agreement=new AdditionalAgreement();agreement.setId(90L);agreement.setContractId(10L);
         agreement.setAcademicYear("2025/2026");agreement.setInternalNumber("1 / 2025-2026");agreement.setValidFrom(LocalDate.of(2025,9,1));agreement.setValidTo(LocalDate.of(2026,8,31));
@@ -340,6 +448,118 @@ class HrDocumentServiceTest {
         var rows=service.agreementRows("2025/2026");
 
         assertEquals(1,rows.size());assertEquals(10L,rows.get(0).contractId());assertEquals(teacher.getFioTeacher(),rows.get(0).fio());
+    }
+
+    @Test void journalShowsOnlyActiveDocumentsWhileAgreementListKeepsHistory() {
+        AdditionalAgreement active=draftAgreement();active.setId(91L);active.setInternalNumber("1 / 2025-2026");
+        AdditionalAgreement annulled=draftAgreement();annulled.setId(92L);annulled.setInternalNumber("2 / 2025-2026");
+        annulled.setStatus(AdditionalAgreement.Status.ANNULLED);
+        when(contracts.findAllByActiveTrueOrderByTeacherIdAsc()).thenReturn(List.of(contract));
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026")).thenReturn(List.of(annulled,active));
+
+        var journalRows=service.journal("2025/2026");
+        var historyRows=service.agreementRows("2025/2026");
+
+        assertEquals(1,journalRows.size());assertEquals(1,journalRows.get(0).agreements().size());
+        assertEquals("1 / 2025-2026",journalRows.get(0).agreements().get(0).internalNumber());
+        assertEquals(2,historyRows.size());
+    }
+
+    @Test void unissuedManualAgreementCanBeDeletedAndItsNumberFreed() {
+        AdditionalAgreement agreement=draftAgreement();
+        when(agreements.findById(100L)).thenReturn(Optional.of(agreement));
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026")).thenReturn(List.of(agreement));
+
+        service.deleteAgreement(100L);
+
+        verify(agreements).delete(agreement);
+        verify(versions).deleteAll(anyList());
+    }
+
+    @Test void loadAndCompensationDraftsCanBeMergedIntoOneAgreement() throws Exception {
+        AdditionalAgreement load=draftAgreement();load.setId(101L);load.setInternalNumber("3 / 2025-2026");
+        load.setTotalAmount(new BigDecimal("50000"));
+        AdditionalAgreement function=draftAgreement();function.setId(102L);function.setInternalNumber("4 / 2025-2026");
+        function.setSummary("Заведование кабинетом");function.setServiceMemoId(50L);
+        function.setConditionsJson("Внести изменения в пункт 2.4. раздела 2 «Оплата труда», изложив его в следующей редакции:\n"
+                +"«2.4. Работнику выплачиваются ежемесячные компенсационные выплаты:\n"
+                +"- возложена функция «заведование кабинетом», в размере 15 000 рублей 00 коп. в месяц».");
+        function.setTotalAmount(new BigDecimal("15000"));
+        AdditionalAgreement annulled=new AdditionalAgreement();annulled.setId(90L);annulled.setAcademicYear("2025/2026");
+        annulled.setInternalNumber("1 / 2025-2026");annulled.setStatus(AdditionalAgreement.Status.ANNULLED);
+        HrServiceMemo memo=new HrServiceMemo();memo.setId(50L);memo.setStatus(HrServiceMemo.Status.RECEIVED_BY_HR);
+        when(agreements.findById(101L)).thenReturn(Optional.of(load));when(agreements.findById(102L)).thenReturn(Optional.of(function));
+        when(agreements.findAllByContractIdOrderByCreatedAtDesc(10L)).thenReturn(List.of(function,load,annulled));
+        when(memos.findById(50L)).thenReturn(Optional.of(memo));
+        when(personal.findByTeacherId(1L)).thenReturn(Optional.of(completePersonal()));
+        ManualLoadEntry row=new ManualLoadEntry();row.setTeacherId(1L);row.setAcademicYear("2025/2026");
+        row.setSubjectName("Математика");row.setClassName("5 А");row.setLoad(2);
+        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(row));
+        when(sizes.effectiveClassSizes("2025/2026")).thenReturn(Map.of("5-а",25));
+
+        AdditionalAgreement merged=service.mergeAgreements(List.of(101L,102L),"hr");
+
+        assertEquals(101L,merged.getId());assertEquals("1 / 2025-2026",merged.getInternalNumber());
+        assertEquals(50L,merged.getServiceMemoId());assertEquals(new BigDecimal("50000"),merged.getTotalAmount());
+        assertTrue(merged.getConditionsJson().contains("пункт 2.1"));
+        assertTrue(merged.getConditionsJson().contains("пункт 2.4"));
+        verify(agreements).delete(function);
+
+        AdditionalAgreement prepared=service.prepare(101L,"hr");
+        try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(prepared.getCurrentDocument()))){
+            String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right);
+            assertTrue(text.contains("пункт 2.1"));assertTrue(text.contains("пункт 2.4"));
+            assertTrue(text.contains("Приложение № 1"));
+        }
+    }
+
+    @Test void issuedUnsignedAgreementCanBeMergedWithNewMemoAndReissued() {
+        AdditionalAgreement issued=draftAgreement();issued.setId(201L);issued.setInternalNumber("1 / 2025-2026");
+        issued.setConditionsJson("Изложить пункт 2.1 раздела «Оплата труда» в новой редакции.");
+        issued.setTotalAmount(new BigDecimal("50000"));issued.setStatus(AdditionalAgreement.Status.ISSUED);
+        issued.setRevision(2);issued.setIssuedAt(java.time.LocalDateTime.of(2025,9,1,10,30));
+        issued.setIssuedBy("hr");issued.setCurrentDocument(new byte[]{1,2,3});
+        issued.setCurrentFilename("issued.docx");
+        AdditionalAgreement function=draftAgreement();function.setId(202L);function.setInternalNumber("2 / 2025-2026");
+        function.setStatus(AdditionalAgreement.Status.WAITING_FOR_MEMO);function.setServiceMemoId(50L);
+        function.setSummary("Заведование кабинетом");
+        function.setConditionsJson("Изложить пункт 2.4 раздела «Оплата труда» в новой редакции.");
+        when(agreements.findById(201L)).thenReturn(Optional.of(issued));
+        when(agreements.findById(202L)).thenReturn(Optional.of(function));
+        when(versions.findAllByDocumentTypeAndDocumentIdOrderByRevisionDesc("AGREEMENT",201L)).thenReturn(List.of());
+        when(versions.findAllByDocumentTypeAndDocumentIdOrderByRevisionDesc("AGREEMENT",202L)).thenReturn(List.of());
+
+        AdditionalAgreement merged=service.mergeAgreements(List.of(201L,202L),"hr");
+
+        assertSame(issued,merged);
+        assertEquals("1 / 2025-2026",merged.getInternalNumber(),"При перевыпуске сохраняется номер выпущенного документа");
+        assertEquals(AdditionalAgreement.Status.WAITING_FOR_MEMO,merged.getStatus());
+        assertEquals(50L,merged.getServiceMemoId());
+        assertNull(merged.getIssuedAt());assertNull(merged.getIssuedBy());
+        assertNull(merged.getCurrentDocument(),"После объединения нужно сформировать новую редакцию DOCX");
+        assertTrue(merged.getConditionsJson().contains("2.1"));assertTrue(merged.getConditionsJson().contains("2.4"));
+        assertTrue(merged.getSourceSnapshotJson().contains("\"reissue\":true"));
+        assertTrue(merged.getSourceSnapshotJson().contains("\"previousRevision\":2"));
+        verify(versions).save(argThat(version->version.getDocumentId().equals(201L)
+                &&"ISSUED_BEFORE_REISSUE".equals(version.getSource())
+                &&Arrays.equals(new byte[]{1,2,3},version.getContent())));
+        verify(agreements).delete(function);
+        verify(agreements).save(issued);
+    }
+
+    @Test void signedAgreementCannotBeMergedForReissue() {
+        AdditionalAgreement signed=draftAgreement();signed.setId(211L);
+        signed.setStatus(AdditionalAgreement.Status.SIGNED);
+        AdditionalAgreement draft=draftAgreement();draft.setId(212L);
+        draft.setConditionsJson("Изложить пункт 2.4 в новой редакции.");
+        when(agreements.findById(211L)).thenReturn(Optional.of(signed));
+        when(agreements.findById(212L)).thenReturn(Optional.of(draft));
+
+        ResponseStatusException error=assertThrows(ResponseStatusException.class,
+                ()->service.mergeAgreements(List.of(211L,212L),"hr"));
+
+        assertTrue(error.getReason().contains("Подписанное"));
+        verify(agreements,never()).delete(any());
     }
 
     @Test void contractlessAgreementCanBeEditedButCannotBePrepared() {
@@ -377,7 +597,7 @@ class HrDocumentServiceTest {
         ManualLoadEntry load=new ManualLoadEntry();load.setTeacherId(1L);load.setAcademicYear("2025/2026");
         load.setSubjectName("Математика");load.setClassName("5А");load.setLoad(2);
         when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load));
-        when(sizes.effectiveClassSizes("2025/2026")).thenReturn(Map.of("5А",25));
+        when(sizes.effectiveClassSizes("2025/2026")).thenReturn(Map.of("5-а",25));
         when(agreements.findById(100L)).thenReturn(Optional.of(agreement));when(personal.findByTeacherId(1L)).thenReturn(Optional.of(completePersonal()));
 
         AdditionalAgreement prepared=service.prepare(100L,"hr");
@@ -387,13 +607,68 @@ class HrDocumentServiceTest {
             String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right)
                     +document.getTables().stream().map(table->table.getText()).reduce("",String::concat);
             assertTrue(text.contains("ДОПОЛНИТЕЛЬНОЕ СОГЛАШЕНИЕ"));
-            assertTrue(text.contains("Изложить пункт 2.1"));assertTrue(text.contains("пятьдесят тысяч рублей"));
-            assertTrue(text.contains("Адреса и реквизиты сторон"));
+            assertTrue(text.contains("Внести изменения в пункт 2.1. раздела 2 «Оплата труда»"));
+            assertTrue(text.contains("За исполнение трудовых (должностных) обязанностей"));
+            assertTrue(text.contains("должностного оклада в размере 50 000 рублей 00 коп. (пятьдесят тысяч рублей 00 коп.)"));
+            assertTrue(text.contains("на основании «ученико-часа» в размере 37 рублей"));
+            assertTrue(text.contains("педагогической нагрузки в размере 2 часа"));
+            assertTrue(text.contains("2. Срок действия настоящего дополнительного соглашения: с «01» сентября 2025 года по «31» августа 2026 года."));
+            assertTrue(text.contains("3. Настоящее дополнительное соглашение является неотъемлемой частью Трудового договора"));
+            assertTrue(text.contains("4. Другие положения Трудового договора"));
+            assertFalse(text.contains("Размер оплаты труда с учетом условий настоящего дополнительного соглашения"));
+            assertFalse(text.contains("Адреса и реквизиты сторон"));
+            assertTrue(text.contains("РАБОТОДАТЕЛЬ"));assertTrue(text.contains("РАБОТНИК"));
             assertTrue(text.contains("Приложение № 1"));assertTrue(text.contains("Математика"));assertTrue(text.contains("Численность"));
+            assertTrue(text.contains("25"));
         }
         String qaOutput=System.getProperty("hr.agreement.qa.output");
         if(qaOutput!=null&&!qaOutput.isBlank()){Path path=Path.of(qaOutput);Files.createDirectories(path.getParent());Files.write(path,prepared.getCurrentDocument());}
         verify(versions).save(argThat(version->"PREPARED".equals(version.getSource())));
+    }
+
+    @Test void combinedPayAgreementUsesAllWordingFromProvidedSchoolSample() throws Exception {
+        AdditionalAgreement agreement=draftAgreement();agreement.setSummary("Нагрузка, дополнительные функции и стимул");
+        agreement.setTotalAmount(new BigDecimal("133348"));
+        agreement.setConditionsJson("Изложить пункт 2.1 раздела «Оплата труда» в новой редакции.\n\n"
+                +"Внести изменения в пункт 2.4. раздела 2 «Оплата труда», изложив его в следующей редакции:\n"
+                +"«2.4. Работнику выплачиваются ежемесячные компенсационные выплаты при условии, если на Работника:\n"
+                +"- возложена функция классного руководителя, в размере 5 000 рублей 00 коп. за 1 класс "
+                +"(но не более чем за 2 класса) за счет федерального бюджета и 500 рублей за 1 обучающегося "
+                +"в классе за счет бюджета города Москвы - 16 000 рублей 00 коп. "
+                +"(шестнадцать тысяч рублей 00 коп.) в месяц;\n"
+                +"- возложена работа с обучающимися с ограниченными возможностями здоровья, детьми-инвалидами "
+                +"и инвалидами, в размере 6 134 рубля 01 коп. (шесть тысяч сто тридцать четыре рубля 01 коп.) в месяц».");
+        ManualLoadEntry load=new ManualLoadEntry();load.setTeacherId(1L);load.setAcademicYear("2025/2026");
+        load.setSubjectName("Технология");load.setClassName("5А");load.setLoad(30);
+        HrIncentive incentive=new HrIncentive();incentive.setAcademicYear("2025/2026");incentive.setTeacherId(1L);
+        incentive.setAmount(new BigDecimal("21504.78"));
+        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load));
+        when(sizes.effectiveClassSizes("2025/2026")).thenReturn(Map.of("5-а",25));
+        when(incentives.findByAcademicYearAndTeacherId("2025/2026",1L)).thenReturn(Optional.of(incentive));
+        when(agreements.findById(100L)).thenReturn(Optional.of(agreement));
+        when(personal.findByTeacherId(1L)).thenReturn(Optional.of(completePersonal()));
+
+        AdditionalAgreement prepared=service.prepare(100L,"hr");
+
+        try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(prepared.getCurrentDocument()))){
+            String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right)
+                    +document.getTables().stream().map(table->table.getText()).reduce("",String::concat);
+            assertTrue(text.contains("1. Внести изменения в пункт 2.1. раздела 2 «Оплата труда»"));
+            assertTrue(text.contains("должностного оклада в размере 133 348 рублей 00 коп. "
+                    +"(сто тридцать три тысячи триста сорок восемь рублей 00 коп.)"));
+            assertTrue(text.contains("педагогической нагрузки в размере 30 часов"));
+            assertTrue(text.contains("2. Внести изменения в пункт 2.4. раздела 2 «Оплата труда»"));
+            assertTrue(text.contains("500 рублей за 1 обучающегося"));
+            assertTrue(text.contains("3. Внести изменения в пункт 2.5. раздела 2 «Оплата труда»"));
+            assertTrue(text.contains("Устанавливаются ежемесячные стимулирующие выплаты за результаты обучающихся "
+                    +"по итогам учебного года - 21 504 рубля 78 коп."));
+            assertTrue(text.contains("4. Срок действия настоящего дополнительного соглашения"));
+            assertTrue(text.contains("5. Настоящее дополнительное соглашение является неотъемлемой частью"));
+            assertTrue(text.contains("6. Другие положения Трудового договора"));
+            assertTrue(text.contains("И.И. Иванов"));
+        }
+        String qaOutput=System.getProperty("hr.sample.agreement.qa.output");
+        if(qaOutput!=null&&!qaOutput.isBlank()){Path path=Path.of(qaOutput);Files.createDirectories(path.getParent());Files.write(path,prepared.getCurrentDocument());}
     }
 
     @Test void additionalWorkAgreementFollowsSchoolSampleStructure() throws Exception {
