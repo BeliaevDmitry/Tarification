@@ -82,8 +82,12 @@ class PedagogicalCouncilsFrontendTest {
         assertTrue(js.contains("function workflowStatus(status)"));
         assertTrue(js.contains("Сохранить и перевыпустить"));
         assertTrue(js.contains("editorPayload('DRAFT')"));
-        assertTrue(js.contains("editorPayload('REGISTERED')"));
+        assertTrue(js.contains("/release"));
         assertTrue(js.contains("Протокол перевыпущен."));
+        assertTrue(js.contains("baseHeaderFingerprint"));
+        assertTrue(js.contains("baseFingerprint"));
+        assertTrue(js.contains("data-delete-protocol"));
+        assertTrue(js.contains("Восстановить протокол после удаления нельзя"));
         assertTrue(js.contains("editorSaved: false"));
         assertTrue(js.contains("event.target !== pedUi.editor"));
         assertTrue(js.contains("pedState.editorSaved"));

@@ -18,6 +18,10 @@ public interface PedagogicalCouncilService {
 
     PedagogicalCouncilDtos.ProtocolDetails update(Long id, PedagogicalCouncilDtos.UpdateProtocolRequest request, SessionUser user);
 
+    PedagogicalCouncilDtos.ProtocolDetails release(Long id, SessionUser user);
+
+    void deleteProtocol(Long id);
+
     PedagogicalCouncilDtos.ProtocolDetails uploadArchive(String academicYear,
                                                          String protocolNumber,
                                                          LocalDate meetingDate,

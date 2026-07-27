@@ -55,6 +55,7 @@ public class AdditionalAgreement {
     @Column(nullable = false) private String createdBy;
     private LocalDateTime issuedAt;
     private String issuedBy;
+    private boolean registryManaged;
     private boolean reissueRequired;
     private LocalDateTime annulledAt;
     private String annulledBy;

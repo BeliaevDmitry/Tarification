@@ -57,6 +57,7 @@ const pedState = {
     branding: null,
     user: null,
     editing: null,
+    removedItems: [],
     editorSaved: false,
     extractProtocol: null,
     permissions: { canView: false, canEdit: false, canImport: false, canExport: false }
@@ -191,6 +192,9 @@ function renderList() {
         const downloadAction = pedState.permissions.canExport
             ? `<button type="button" data-download-protocol="${protocol.id}">Скачать Word</button>`
             : '';
+        const deleteAction = pedState.permissions.canEdit
+            ? `<button type="button" class="danger-btn" data-delete-protocol="${protocol.id}" data-protocol-label="№ ${pedEsc(protocol.protocolNumber)} от ${formatDate(protocol.meetingDate)}">Удалить</button>`
+            : '';
         return `
             <tr>
                 <td><strong>№ ${pedEsc(protocol.protocolNumber)}</strong><br><span class="muted">${formatDate(protocol.meetingDate)}</span></td>
@@ -199,7 +203,7 @@ function renderList() {
                 <td>${protocol.sourceType === 'ARCHIVE_WORD' ? '—' : protocol.itemCount}</td>
                 <td>${protocol.sourceType === 'ARCHIVE_WORD' ? '—' : protocol.attachmentCount}</td>
                 <td>${pedEsc(protocol.createdByFio || '—')}</td>
-                <td><div class="row compact-row pedagogical-actions">${editAction}${downloadAction}${extractAction}</div></td>
+                <td><div class="row compact-row pedagogical-actions">${editAction}${downloadAction}${extractAction}${deleteAction}</div></td>
             </tr>`;
     }).join('');
 }
@@ -473,7 +477,8 @@ function itemValues(node) {
         decisionText: value('decisionText').trim(),
         votesFor: Number(value('votesFor') || 0),
         votesAgainst: Number(value('votesAgainst') || 0),
-        votesAbstained: Number(value('votesAbstained') || 0)
+        votesAbstained: Number(value('votesAbstained') || 0),
+        baseFingerprint: node.dataset.baseFingerprint || null
     };
 }
 
@@ -606,6 +611,7 @@ function addItemNode(item = {}) {
     const fragment = pedUi.itemTemplate.content.cloneNode(true);
     const node = fragment.querySelector('[data-item]');
     node.dataset.itemId = item.id || '';
+    node.dataset.baseFingerprint = item.fingerprint || '';
     const set = (field, value) => {
         const control = node.querySelector(`[data-field="${field}"]`);
         if (control) control.value = value ?? '';
@@ -632,6 +638,13 @@ function addItemNode(item = {}) {
     node._pendingAttachments = [];
     renderAttachments(node, item);
     node.querySelector('[data-remove-item]').addEventListener('click', () => {
+        const itemId = Number(node.dataset.itemId || 0);
+        if (itemId) {
+            pedState.removedItems.push({
+                id: itemId,
+                baseFingerprint: node.dataset.baseFingerprint || null
+            });
+        }
         node.remove();
         pedState.editorSaved = false;
         renumberItems();
@@ -691,6 +704,7 @@ function newProtocolDate(year) {
 
 function openNewProtocol() {
     pedState.editing = null;
+    pedState.removedItems = [];
     const year = selectedAcademicYear();
     setEditorHeader({
         academicYear: year,
@@ -708,6 +722,7 @@ function openNewProtocol() {
 async function openProtocol(id) {
     try {
         pedState.editing = await pedApi(`/api/pedagogical-councils/${id}`);
+        pedState.removedItems = [];
         setEditorHeader(pedState.editing);
         renderEditorItems(pedState.editing.items);
         pedState.editorSaved = true;
@@ -731,7 +746,9 @@ function editorPayload(status = pedUi.status.value) {
         secretaryFio: pedUi.secretaryFio.value.trim() || null,
         status: workflowStatus(status),
         version: pedState.editing?.version ?? null,
-        items: collectItems()
+        items: collectItems(),
+        baseHeaderFingerprint: pedState.editing?.headerFingerprint || null,
+        removedItems: [...pedState.removedItems]
     };
 }
 
@@ -743,21 +760,36 @@ function pendingAttachmentGroups() {
     })).filter((group) => group.files.length);
 }
 
-function syncSavedItemIds(items) {
+function syncSavedItemMetadata(items) {
     const nodes = Array.from(pedUi.items.querySelectorAll('[data-item]'));
-    (items || []).forEach((item, index) => {
-        const node = nodes[index];
-        if (!node) return;
+    const existingIds = new Set(nodes
+        .map((node) => Number(node.dataset.itemId || 0))
+        .filter(Boolean));
+    const assign = (node, item) => {
+        if (!node || !item) return;
         node.dataset.itemId = item.id || '';
+        node.dataset.baseFingerprint = item.fingerprint || '';
         const idField = node.querySelector('[data-field="id"]');
         if (idField) idField.value = item.id || '';
+    };
+
+    nodes.filter((node) => Number(node.dataset.itemId || 0)).forEach((node) => {
+        const existingId = Number(node.dataset.itemId || 0);
+        assign(node, (items || []).find((candidate) => Number(candidate.id) === existingId));
     });
+
+    const newNodes = nodes.filter((node) => !Number(node.dataset.itemId || 0));
+    const newCandidates = (items || [])
+        .filter((item) => !existingIds.has(Number(item.id)))
+        .slice(-newNodes.length);
+    newNodes.forEach((node, index) => assign(node, newCandidates[index]));
 }
 
 async function uploadPendingAttachments(protocol, pendingGroups) {
     let uploaded = 0;
     for (const group of pendingGroups) {
-        const savedItem = protocol.items?.[group.index];
+        const savedItemId = Number(group.node.dataset.itemId || 0);
+        const savedItem = protocol.items?.find((item) => Number(item.id) === savedItemId);
         if (!savedItem?.id) {
             throw new Error(`Не удалось определить сохранённый пункт ${group.index + 1} для приложения.`);
         }
@@ -797,7 +829,8 @@ async function saveProtocol(event) {
             body: JSON.stringify(payload)
         });
         protocolSaved = true;
-        syncSavedItemIds(pedState.editing.items);
+        syncSavedItemMetadata(pedState.editing.items);
+        pedState.removedItems = [];
         savePhase = 'attachments';
         const uploadedCount = await uploadPendingAttachments(pedState.editing, pendingGroups);
         if (uploadedCount) {
@@ -807,10 +840,8 @@ async function saveProtocol(event) {
 
         if (targetStatus === 'REGISTERED') {
             savePhase = 'release';
-            pedState.editing = await pedApi(`/api/pedagogical-councils/${pedState.editing.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(editorPayload('REGISTERED'))
+            pedState.editing = await pedApi(`/api/pedagogical-councils/${pedState.editing.id}/release`, {
+                method: 'POST'
             });
         }
         setEditorHeader(pedState.editing);
@@ -1034,12 +1065,34 @@ async function deleteAttachment(attachmentId) {
     try {
         await pedApi(`/api/pedagogical-councils/${pedState.editing.id}/attachments/${attachmentId}`, { method: 'DELETE' });
         pedState.editing = await pedApi(`/api/pedagogical-councils/${pedState.editing.id}`);
+        pedState.removedItems = [];
         renderEditorItems(pedState.editing.items);
         pedState.editorSaved = true;
         pedUi.editorFeedback.textContent = 'Приложение удалено.';
         await reloadProtocols();
     } catch (error) {
         pedUi.editorFeedback.textContent = error.message;
+    }
+}
+
+async function deleteProtocol(id, label) {
+    const confirmed = window.confirm(
+        `Удалить протокол ${label || ''}?\n\n`
+        + 'Будут удалены все его пункты, приложения и готовый Word-файл. '
+        + 'Восстановить протокол после удаления нельзя.'
+    );
+    if (!confirmed) return;
+    pedUi.listFeedback.textContent = 'Удаляем протокол…';
+    try {
+        await pedApi(`/api/pedagogical-councils/${id}`, { method: 'DELETE' });
+        if (Number(pedState.editing?.id) === Number(id)) {
+            pedUi.editor.close();
+            pedState.editing = null;
+        }
+        await reloadProtocols();
+        pedUi.listFeedback.textContent = 'Протокол удалён.';
+    } catch (error) {
+        pedUi.listFeedback.textContent = error.message;
     }
 }
 
@@ -1116,6 +1169,14 @@ pedUi.listBody.addEventListener('click', async (event) => {
     const edit = event.target.closest('[data-edit-protocol]');
     const download = event.target.closest('[data-download-protocol]');
     const extract = event.target.closest('[data-extract-protocol]');
+    const remove = event.target.closest('[data-delete-protocol]');
+    if (remove) {
+        await deleteProtocol(
+            Number(remove.dataset.deleteProtocol),
+            remove.dataset.protocolLabel
+        );
+        return;
+    }
     if (edit) await openProtocol(Number(edit.dataset.editProtocol));
     if (extract) await openExtract(Number(extract.dataset.extractProtocol));
     if (download) {

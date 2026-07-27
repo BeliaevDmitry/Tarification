@@ -163,7 +163,13 @@ function renderAgreements() {
     rows.forEach(row=>{const key=row.contractId?`contract-${row.contractId}`:`teacher-${row.teacherId}`;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row);});
     body.innerHTML=groups.size?[...groups.values()].map(group=>{
         const first=group[0],contract=first.contractId?`№ ${esc(first.contractNumber||first.contractId)}`:'<span class="muted">Не заполнен</span>';
-        const documents=group.map(row=>{const agreement=row.agreement;const source=agreement.serviceMemoId?' · из служебной записки':agreement.loadServiceMemoId?' · из изменения нагрузки':'';return `<div class="agreement-item"><b>${esc(agreement.visibleNumber||agreement.internalNumber)}</b> от ${esc(agreement.documentDate||'—')} · ${esc(STATUS_LABELS[agreement.status]||agreement.status)}<br>${esc(agreement.summary||agreement.kind)}<br><span class="muted">${esc(agreement.validFrom)} — ${esc(agreement.validTo)}${source}</span><div class="agreement-actions">${renderAgreementActions(agreement,row)}</div></div>`;}).join('');
+        const documents=group.map(row=>{
+            const agreement=row.agreement;
+            const source=agreement.registryManaged
+                ?agreement.serviceMemoId||agreement.loadServiceMemoId?' · сводный + служебная записка':' · сводный из справочников'
+                :agreement.serviceMemoId?' · из служебной записки':agreement.loadServiceMemoId?' · из изменения нагрузки':'';
+            return `<div class="agreement-item"><b>${esc(agreement.visibleNumber||agreement.internalNumber)}</b> от ${esc(agreement.documentDate||'—')} · ${esc(STATUS_LABELS[agreement.status]||agreement.status)}<br>${esc(agreement.summary||agreement.kind)}<br><span class="muted">${esc(agreement.validFrom)} — ${esc(agreement.validTo)}${source}</span><div class="agreement-actions">${renderAgreementActions(agreement,row)}</div></div>`;
+        }).join('');
         const merge=mergeCandidate(group);
         const reissue=group.find(row=>row.agreement.reissueRequired&&['ISSUED','SIGNING'].includes(row.agreement.status))?.agreement;
         const required=!first.personalDataComplete?'Заполнить персональные данные'
@@ -186,7 +192,9 @@ function renderAllAgreements(teacherId = null, contractId = null) {
         .sort((a,b)=>String(b.agreement.documentDate||b.agreement.issuedAt||'').localeCompare(String(a.agreement.documentDate||a.agreement.issuedAt||'')));
     body.innerHTML=rows.length?rows.map(row=>{
         const agreement=row.agreement;
-        const source=agreement.serviceMemoId?`Служебная записка ID ${agreement.serviceMemoId}`:agreement.loadServiceMemoId?`Служебная записка по нагрузке ID ${agreement.loadServiceMemoId}`:'Без служебной записки';
+        const source=agreement.registryManaged
+            ?agreement.serviceMemoId||agreement.loadServiceMemoId?'Сводный из справочников + служебная записка':'Сводный из справочников'
+            :agreement.serviceMemoId?`Служебная записка ID ${agreement.serviceMemoId}`:agreement.loadServiceMemoId?`Служебная записка по нагрузке ID ${agreement.loadServiceMemoId}`:'Без служебной записки';
         return `<tr><td>${esc(row.fio||`ID ${row.teacherId}`)}</td><td>${row.contractId?`№ ${esc(row.contractNumber||row.contractId)}`:'Не заполнен'}</td><td><b>${esc(agreement.visibleNumber||agreement.internalNumber)}</b><br>${esc(agreement.documentDate||'Без даты')}</td><td>${esc(agreement.validFrom||'—')} — ${esc(agreement.validTo||'—')}</td><td>${esc(agreement.summary||agreement.kind)}<br><span class="muted">${esc(source)}</span></td><td>${esc(STATUS_LABELS[agreement.status]||agreement.status)}<br><span class="muted">${esc(agreementTimelineLabel(agreement))}</span></td><td><div class="agreement-actions">${renderAgreementActions(agreement,row)}</div></td></tr>`;
     }).join(''):'<tr><td colspan="7">Дополнительные соглашения не найдены</td></tr>';
 }

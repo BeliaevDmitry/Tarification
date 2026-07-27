@@ -38,6 +38,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -116,7 +119,7 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
                 request.secretaryFio()
         );
         applyItems(protocol, Optional.ofNullable(request.items()).orElseGet(List::of));
-        return details(protocolRepository.save(protocol));
+        return saveAndDetails(protocol);
     }
 
     @Override
@@ -126,26 +129,28 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
         if (request == null) {
             throw new IllegalArgumentException("Данные протокола не переданы");
         }
-        PedagogicalCouncilProtocol protocol = requiredProtocol(id);
+        PedagogicalCouncilProtocol protocol = requiredProtocolForUpdate(id);
         if (protocol.getSourceType() == PedagogicalCouncilProtocol.SourceType.ARCHIVE_WORD) {
             throw new IllegalStateException("Архивный Word-протокол нельзя редактировать в конструкторе");
         }
-        if (request.version() != null && request.version() != protocol.getVersion()) {
+
+        boolean mergeAwareRequest = !isBlank(request.baseHeaderFingerprint());
+        if (!mergeAwareRequest && request.version() != null && request.version() != protocol.getVersion()) {
             throw new IllegalStateException("Протокол был изменён другим пользователем. Обновите страницу");
         }
 
-        protocol.setProtocolNumber(requireText(request.protocolNumber(), "Укажите номер протокола"));
-        protocol.setMeetingDate(requireMeetingDate(request.meetingDate(), protocol.getAcademicYear()));
-        protocol.setAgendaTime(request.agendaTime());
-        protocol.setAttendeeCount(nonNegative(request.attendeeCount(), "Количество присутствующих"));
-        applyProtocolSigners(
-                protocol,
-                request.chairPosition(),
-                request.chairFio(),
-                request.secretaryPosition(),
-                request.secretaryFio()
-        );
-        applyItems(protocol, Optional.ofNullable(request.items()).orElseGet(List::of));
+        if (mergeAwareRequest) {
+            mergeHeader(protocol, request);
+            mergeItems(
+                    protocol,
+                    Optional.ofNullable(request.items()).orElseGet(List::of),
+                    Optional.ofNullable(request.removedItems()).orElseGet(List::of)
+            );
+        } else {
+            applyHeader(protocol, request);
+            applyItems(protocol, Optional.ofNullable(request.items()).orElseGet(List::of));
+        }
+        validateVoteTotals(protocol);
 
         PedagogicalCouncilProtocol.Status requestedStatus =
                 workflowStatus(Optional.ofNullable(request.status()).orElse(protocol.getStatus()));
@@ -155,7 +160,26 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
             protocol.setRegisteredAt(LocalDateTime.now());
             protocol.setRegisteredBy(user.getFullName());
         }
-        return details(protocolRepository.save(protocol));
+        return saveAndDetails(protocol);
+    }
+
+    @Override
+    public PedagogicalCouncilDtos.ProtocolDetails release(Long id, SessionUser user) {
+        PedagogicalCouncilProtocol protocol = requiredProtocolForUpdate(id);
+        if (protocol.getSourceType() == PedagogicalCouncilProtocol.SourceType.ARCHIVE_WORD) {
+            throw new IllegalStateException("Архивный Word-протокол уже хранится как выпущенный документ");
+        }
+        validateReadyForStatus(protocol, PedagogicalCouncilProtocol.Status.REGISTERED);
+        protocol.setStatus(PedagogicalCouncilProtocol.Status.REGISTERED);
+        protocol.setRegisteredAt(LocalDateTime.now());
+        protocol.setRegisteredBy(user.getFullName());
+        return saveAndDetails(protocol);
+    }
+
+    @Override
+    public void deleteProtocol(Long id) {
+        protocolRepository.delete(requiredProtocolForUpdate(id));
+        protocolRepository.flush();
     }
 
     @Override
@@ -184,7 +208,7 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
         protocol.setCreatedByFio(user.getFullName());
         protocol.setRegisteredAt(LocalDateTime.now());
         protocol.setRegisteredBy(user.getFullName());
-        return details(protocolRepository.save(protocol));
+        return saveAndDetails(protocol);
     }
 
     @Override
@@ -192,7 +216,7 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
                                                                Long itemId,
                                                                MultipartFile file,
                                                                SessionUser user) throws IOException {
-        PedagogicalCouncilProtocol protocol = requiredProtocol(protocolId);
+        PedagogicalCouncilProtocol protocol = requiredProtocolForUpdate(protocolId);
         if (protocol.getSourceType() != PedagogicalCouncilProtocol.SourceType.CONSTRUCTOR) {
             throw new IllegalStateException("К архивному Word-протоколу нельзя добавлять приложения конструктора");
         }
@@ -220,7 +244,7 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
 
     @Override
     public void deleteAttachment(Long protocolId, Long attachmentId) {
-        PedagogicalCouncilProtocol protocol = requiredProtocol(protocolId);
+        PedagogicalCouncilProtocol protocol = requiredProtocolForUpdate(protocolId);
         PedagogicalCouncilAttachment attachment = protocol.getItems().stream()
                 .flatMap(item -> item.getAttachments().stream())
                 .filter(candidate -> Objects.equals(candidate.getId(), attachmentId))
@@ -352,6 +376,65 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
         protocol.setSecretaryFioSnapshot(secretary == null ? null : secretary.fio());
     }
 
+    private void applyHeader(PedagogicalCouncilProtocol protocol,
+                             PedagogicalCouncilDtos.UpdateProtocolRequest request) {
+        applyPreparedHeader(protocol, prepareHeader(protocol, request));
+    }
+
+    private void mergeHeader(PedagogicalCouncilProtocol protocol,
+                             PedagogicalCouncilDtos.UpdateProtocolRequest request) {
+        PreparedHeader incoming = prepareHeader(protocol, request);
+        String currentFingerprint = headerFingerprint(protocol);
+        String incomingFingerprint = headerFingerprint(incoming);
+        String baseFingerprint = request.baseHeaderFingerprint();
+
+        if (Objects.equals(currentFingerprint, baseFingerprint)
+                || Objects.equals(currentFingerprint, incomingFingerprint)) {
+            applyPreparedHeader(protocol, incoming);
+            return;
+        }
+        if (Objects.equals(incomingFingerprint, baseFingerprint)) {
+            return;
+        }
+        throw new IllegalStateException(
+                "Реквизиты протокола уже изменил другой пользователь. "
+                        + "Обновите протокол и повторите правку"
+        );
+    }
+
+    private PreparedHeader prepareHeader(PedagogicalCouncilProtocol protocol,
+                                         PedagogicalCouncilDtos.UpdateProtocolRequest request) {
+        ManualSigner chair = normalizeManualSigner(request.chairPosition(), request.chairFio(), "председателя");
+        ManualSigner secretary = normalizeManualSigner(
+                request.secretaryPosition(),
+                request.secretaryFio(),
+                "секретаря"
+        );
+        return new PreparedHeader(
+                requireText(request.protocolNumber(), "Укажите номер протокола"),
+                requireMeetingDate(request.meetingDate(), protocol.getAcademicYear()),
+                request.agendaTime(),
+                nonNegative(request.attendeeCount(), "Количество присутствующих"),
+                chair == null ? null : chair.position(),
+                chair == null ? null : chair.fio(),
+                secretary == null ? null : secretary.position(),
+                secretary == null ? null : secretary.fio()
+        );
+    }
+
+    private void applyPreparedHeader(PedagogicalCouncilProtocol protocol, PreparedHeader header) {
+        protocol.setProtocolNumber(header.protocolNumber());
+        protocol.setMeetingDate(header.meetingDate());
+        protocol.setAgendaTime(header.agendaTime());
+        protocol.setAttendeeCount(header.attendeeCount());
+        protocol.setChairTeacherId(null);
+        protocol.setChairPositionSnapshot(header.chairPosition());
+        protocol.setChairFioSnapshot(header.chairFio());
+        protocol.setSecretaryTeacherId(null);
+        protocol.setSecretaryPositionSnapshot(header.secretaryPosition());
+        protocol.setSecretaryFioSnapshot(header.secretaryFio());
+    }
+
     private void applyItems(PedagogicalCouncilProtocol protocol,
                             List<PedagogicalCouncilDtos.ItemRequest> requests) {
         Map<Long, PedagogicalCouncilItem> existingById = protocol.getItems().stream()
@@ -368,24 +451,7 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
             if (request == null) {
                 continue;
             }
-            String agendaTitle = requireText(request.agendaTitle(), "Укажите вопрос повестки");
-            int agendaDuration = normalizeAgendaDuration(request.agendaDurationMinutes());
-            StaffSnapshot speaker = resolveStaff(request.speakerTeacherId(), false, "выступающего");
-            String speakerPosition = normalizeOptional(request.speakerPosition());
-            if (speaker == null && speakerPosition != null) {
-                throw new IllegalArgumentException("Выберите ФИО выступающего");
-            }
-            String speechContent = normalizeOptional(request.speechContent());
-            String decisionText = requireText(request.decisionText(), "Укажите текст решения");
-            int votesFor = nonNegative(request.votesFor(), "Количество голосов «за»");
-            int votesAgainst = nonNegative(request.votesAgainst(), "Количество голосов «против»");
-            int votesAbstained = nonNegative(request.votesAbstained(), "Количество воздержавшихся");
-            long distributedVotes = (long) votesFor + votesAgainst + votesAbstained;
-            if (distributedVotes > protocol.getAttendeeCount()) {
-                throw new IllegalArgumentException("По пункту «" + agendaTitle + "» распределено "
-                        + distributedVotes + " голосов при " + protocol.getAttendeeCount()
-                        + " присутствующих");
-            }
+            PreparedItem prepared = prepareItem(request, protocol.getAttendeeCount());
 
             PedagogicalCouncilItem item;
             boolean newItem = request.id() == null;
@@ -399,20 +465,155 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
                 }
             }
             item.setItemOrder(order++);
-            item.setAgendaTitle(agendaTitle);
-            item.setAgendaDurationMinutes(agendaDuration);
-            item.setSpeakerTeacherId(speaker == null ? null : speaker.teacherId());
-            item.setSpeakerPositionSnapshot(speaker == null
-                    ? null
-                    : Optional.ofNullable(speakerPosition).orElse(speaker.position()));
-            item.setSpeakerFioSnapshot(speaker == null ? null : speaker.shortFio());
-            item.setSpeechContent(speechContent);
-            item.setDecisionText(decisionText);
-            item.setVotesFor(votesFor);
-            item.setVotesAgainst(votesAgainst);
-            item.setVotesAbstained(votesAbstained);
+            applyPreparedItem(item, prepared);
             if (newItem) {
                 protocol.getItems().add(item);
+            }
+        }
+    }
+
+    private void mergeItems(PedagogicalCouncilProtocol protocol,
+                            List<PedagogicalCouncilDtos.ItemRequest> requests,
+                            List<PedagogicalCouncilDtos.RemovedItemRequest> removedItems) {
+        Map<Long, PedagogicalCouncilItem> existingById = protocol.getItems().stream()
+                .filter(item -> item.getId() != null)
+                .collect(Collectors.toMap(PedagogicalCouncilItem::getId, Function.identity()));
+        Set<Long> submittedIds = new HashSet<>();
+        int nextOrder = protocol.getItems().stream()
+                .mapToInt(PedagogicalCouncilItem::getItemOrder)
+                .max()
+                .orElse(0) + 1;
+
+        for (PedagogicalCouncilDtos.ItemRequest request : requests) {
+            if (request == null) {
+                continue;
+            }
+            PreparedItem prepared = prepareItem(request, protocol.getAttendeeCount());
+            if (request.id() == null) {
+                PedagogicalCouncilItem item = new PedagogicalCouncilItem();
+                item.setProtocol(protocol);
+                item.setItemOrder(nextOrder++);
+                applyPreparedItem(item, prepared);
+                protocol.getItems().add(item);
+                continue;
+            }
+            if (!submittedIds.add(request.id())) {
+                throw new IllegalArgumentException("Пункт протокола №" + request.id() + " передан дважды");
+            }
+            String baseFingerprint = request.baseFingerprint();
+            if (isBlank(baseFingerprint)) {
+                throw new IllegalStateException("Данные пункта устарели. Обновите протокол");
+            }
+            String incomingFingerprint = itemFingerprint(prepared);
+            PedagogicalCouncilItem item = existingById.get(request.id());
+            if (item == null) {
+                if (Objects.equals(incomingFingerprint, baseFingerprint)) {
+                    continue;
+                }
+                throw new IllegalStateException(
+                        "Пункт «" + prepared.agendaTitle()
+                                + "» уже удалил другой пользователь. Обновите протокол"
+                );
+            }
+            String currentFingerprint = itemFingerprint(item);
+            if (Objects.equals(currentFingerprint, baseFingerprint)
+                    || Objects.equals(currentFingerprint, incomingFingerprint)) {
+                applyPreparedItem(item, prepared);
+            } else if (!Objects.equals(incomingFingerprint, baseFingerprint)) {
+                throw new IllegalStateException(
+                        "Пункт «" + item.getAgendaTitle()
+                                + "» одновременно изменил другой пользователь. "
+                                + "Его правки сохранены; обновите протокол и внесите изменение повторно"
+                );
+            }
+        }
+
+        Set<Long> removedIds = new HashSet<>();
+        for (PedagogicalCouncilDtos.RemovedItemRequest removed : removedItems) {
+            if (removed == null || removed.id() == null || !removedIds.add(removed.id())) {
+                continue;
+            }
+            PedagogicalCouncilItem item = existingById.get(removed.id());
+            if (item == null) {
+                continue;
+            }
+            if (!Objects.equals(itemFingerprint(item), removed.baseFingerprint())) {
+                throw new IllegalStateException(
+                        "Пункт «" + item.getAgendaTitle()
+                                + "» изменил другой пользователь, поэтому удалить его нельзя. "
+                                + "Обновите протокол"
+                );
+            }
+            protocol.getItems().remove(item);
+        }
+        renumberStoredItems(protocol);
+    }
+
+    private PreparedItem prepareItem(PedagogicalCouncilDtos.ItemRequest request, int attendeeCount) {
+        String agendaTitle = requireText(request.agendaTitle(), "Укажите вопрос повестки");
+        int agendaDuration = normalizeAgendaDuration(request.agendaDurationMinutes());
+        StaffSnapshot speaker = resolveStaff(request.speakerTeacherId(), false, "выступающего");
+        String requestedPosition = normalizeOptional(request.speakerPosition());
+        if (speaker == null && requestedPosition != null) {
+            throw new IllegalArgumentException("Выберите ФИО выступающего");
+        }
+        String speakerPosition = speaker == null
+                ? null
+                : Optional.ofNullable(requestedPosition).orElse(speaker.position());
+        String speechContent = normalizeOptional(request.speechContent());
+        String decisionText = requireText(request.decisionText(), "Укажите текст решения");
+        int votesFor = nonNegative(request.votesFor(), "Количество голосов «за»");
+        int votesAgainst = nonNegative(request.votesAgainst(), "Количество голосов «против»");
+        int votesAbstained = nonNegative(request.votesAbstained(), "Количество воздержавшихся");
+        long distributedVotes = (long) votesFor + votesAgainst + votesAbstained;
+        if (distributedVotes > attendeeCount) {
+            throw new IllegalArgumentException("По пункту «" + agendaTitle + "» распределено "
+                    + distributedVotes + " голосов при " + attendeeCount + " присутствующих");
+        }
+        return new PreparedItem(
+                agendaTitle,
+                agendaDuration,
+                speaker == null ? null : speaker.teacherId(),
+                speakerPosition,
+                speaker == null ? null : speaker.shortFio(),
+                speechContent,
+                decisionText,
+                votesFor,
+                votesAgainst,
+                votesAbstained
+        );
+    }
+
+    private void applyPreparedItem(PedagogicalCouncilItem item, PreparedItem prepared) {
+        item.setAgendaTitle(prepared.agendaTitle());
+        item.setAgendaDurationMinutes(prepared.agendaDurationMinutes());
+        item.setSpeakerTeacherId(prepared.speakerTeacherId());
+        item.setSpeakerPositionSnapshot(prepared.speakerPosition());
+        item.setSpeakerFioSnapshot(prepared.speakerFio());
+        item.setSpeechContent(prepared.speechContent());
+        item.setDecisionText(prepared.decisionText());
+        item.setVotesFor(prepared.votesFor());
+        item.setVotesAgainst(prepared.votesAgainst());
+        item.setVotesAbstained(prepared.votesAbstained());
+    }
+
+    private void renumberStoredItems(PedagogicalCouncilProtocol protocol) {
+        List<PedagogicalCouncilItem> ordered = protocol.getItems().stream()
+                .sorted(Comparator.comparingInt(PedagogicalCouncilItem::getItemOrder)
+                        .thenComparing(item -> Optional.ofNullable(item.getId()).orElse(Long.MAX_VALUE)))
+                .toList();
+        for (int index = 0; index < ordered.size(); index++) {
+            ordered.get(index).setItemOrder(index + 1);
+        }
+    }
+
+    private void validateVoteTotals(PedagogicalCouncilProtocol protocol) {
+        for (PedagogicalCouncilItem item : protocol.getItems()) {
+            long distributedVotes = (long) item.getVotesFor() + item.getVotesAgainst() + item.getVotesAbstained();
+            if (distributedVotes > protocol.getAttendeeCount()) {
+                throw new IllegalArgumentException("По пункту «" + item.getAgendaTitle() + "» распределено "
+                        + distributedVotes + " голосов при " + protocol.getAttendeeCount()
+                        + " присутствующих");
             }
         }
     }
@@ -459,6 +660,90 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
         }
         return protocolRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Протокол не найден"));
+    }
+
+    private PedagogicalCouncilProtocol requiredProtocolForUpdate(Long id) {
+        if (id == null) {
+            throw new IllegalArgumentException("Идентификатор протокола не передан");
+        }
+        return protocolRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new IllegalArgumentException("Протокол не найден"));
+    }
+
+    private PedagogicalCouncilDtos.ProtocolDetails saveAndDetails(PedagogicalCouncilProtocol protocol) {
+        protocolRepository.save(protocol);
+        protocolRepository.flush();
+        return details(protocol);
+    }
+
+    private String headerFingerprint(PedagogicalCouncilProtocol protocol) {
+        return fingerprint(
+                protocol.getProtocolNumber(),
+                protocol.getMeetingDate(),
+                protocol.getAgendaTime(),
+                protocol.getAttendeeCount(),
+                protocol.getChairPositionSnapshot(),
+                protocol.getChairFioSnapshot(),
+                protocol.getSecretaryPositionSnapshot(),
+                protocol.getSecretaryFioSnapshot()
+        );
+    }
+
+    private String headerFingerprint(PreparedHeader header) {
+        return fingerprint(
+                header.protocolNumber(),
+                header.meetingDate(),
+                header.agendaTime(),
+                header.attendeeCount(),
+                header.chairPosition(),
+                header.chairFio(),
+                header.secretaryPosition(),
+                header.secretaryFio()
+        );
+    }
+
+    private String itemFingerprint(PedagogicalCouncilItem item) {
+        return fingerprint(
+                item.getAgendaTitle(),
+                agendaDurationMinutes(item),
+                item.getSpeakerTeacherId(),
+                item.getSpeakerPositionSnapshot(),
+                item.getSpeechContent(),
+                item.getDecisionText(),
+                item.getVotesFor(),
+                item.getVotesAgainst(),
+                item.getVotesAbstained()
+        );
+    }
+
+    private String itemFingerprint(PreparedItem item) {
+        return fingerprint(
+                item.agendaTitle(),
+                item.agendaDurationMinutes(),
+                item.speakerTeacherId(),
+                item.speakerPosition(),
+                item.speechContent(),
+                item.decisionText(),
+                item.votesFor(),
+                item.votesAgainst(),
+                item.votesAbstained()
+        );
+    }
+
+    private String fingerprint(Object... values) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            for (Object value : values) {
+                byte[] bytes = Objects.toString(value, "").trim().getBytes(StandardCharsets.UTF_8);
+                digest.update(Integer.toString(bytes.length).getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) ':');
+                digest.update(bytes);
+                digest.update((byte) ';');
+            }
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(digest.digest());
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 недоступен", e);
+        }
     }
 
     private PedagogicalCouncilDtos.ProtocolSummary summary(PedagogicalCouncilProtocol protocol) {
@@ -512,7 +797,8 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
                 protocol.getItems().stream()
                         .sorted(Comparator.comparingInt(PedagogicalCouncilItem::getItemOrder))
                         .map(this::itemView)
-                        .toList()
+                        .toList(),
+                headerFingerprint(protocol)
         );
     }
 
@@ -533,7 +819,8 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
                 item.getAttachments().stream()
                         .sorted(Comparator.comparingInt(PedagogicalCouncilAttachment::getAttachmentNumber))
                         .map(this::attachmentView)
-                        .toList()
+                        .toList(),
+                itemFingerprint(item)
         );
     }
 
@@ -1321,5 +1608,31 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
     }
 
     private record ManualSigner(String position, String fio) {
+    }
+
+    private record PreparedHeader(
+            String protocolNumber,
+            LocalDate meetingDate,
+            LocalTime agendaTime,
+            int attendeeCount,
+            String chairPosition,
+            String chairFio,
+            String secretaryPosition,
+            String secretaryFio
+    ) {
+    }
+
+    private record PreparedItem(
+            String agendaTitle,
+            int agendaDurationMinutes,
+            Long speakerTeacherId,
+            String speakerPosition,
+            String speakerFio,
+            String speechContent,
+            String decisionText,
+            int votesFor,
+            int votesAgainst,
+            int votesAbstained
+    ) {
     }
 }

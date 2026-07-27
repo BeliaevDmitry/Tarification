@@ -54,7 +54,8 @@ public final class PedagogicalCouncilDtos {
             LocalDateTime registeredAt,
             String registeredBy,
             long version,
-            List<ItemView> items
+            List<ItemView> items,
+            String headerFingerprint
     ) {
     }
 
@@ -71,7 +72,8 @@ public final class PedagogicalCouncilDtos {
             int votesFor,
             int votesAgainst,
             int votesAbstained,
-            List<AttachmentView> attachments
+            List<AttachmentView> attachments,
+            String fingerprint
     ) {
     }
 
@@ -126,8 +128,24 @@ public final class PedagogicalCouncilDtos {
             String secretaryFio,
             PedagogicalCouncilProtocol.Status status,
             Long version,
-            List<ItemRequest> items
+            List<ItemRequest> items,
+            String baseHeaderFingerprint,
+            List<RemovedItemRequest> removedItems
     ) {
+        public UpdateProtocolRequest(String protocolNumber,
+                                     LocalDate meetingDate,
+                                     LocalTime agendaTime,
+                                     Integer attendeeCount,
+                                     String chairPosition,
+                                     String chairFio,
+                                     String secretaryPosition,
+                                     String secretaryFio,
+                                     PedagogicalCouncilProtocol.Status status,
+                                     Long version,
+                                     List<ItemRequest> items) {
+            this(protocolNumber, meetingDate, agendaTime, attendeeCount, chairPosition, chairFio,
+                    secretaryPosition, secretaryFio, status, version, items, null, List.of());
+        }
     }
 
     public record ItemRequest(
@@ -140,8 +158,23 @@ public final class PedagogicalCouncilDtos {
             String decisionText,
             Integer votesFor,
             Integer votesAgainst,
-            Integer votesAbstained
+            Integer votesAbstained,
+            String baseFingerprint
     ) {
+        public ItemRequest(Long id,
+                           String agendaTitle,
+                           Integer agendaDurationMinutes,
+                           Long speakerTeacherId,
+                           String speakerPosition,
+                           String speechContent,
+                           String decisionText,
+                           Integer votesFor,
+                           Integer votesAgainst,
+                           Integer votesAbstained) {
+            this(id, agendaTitle, agendaDurationMinutes, speakerTeacherId, speakerPosition,
+                    speechContent, decisionText, votesFor, votesAgainst, votesAbstained, null);
+        }
+
         public ItemRequest(Long id,
                            String agendaTitle,
                            Integer agendaDurationMinutes,
@@ -152,11 +185,11 @@ public final class PedagogicalCouncilDtos {
                            Integer votesAgainst,
                            Integer votesAbstained) {
             this(id, agendaTitle, agendaDurationMinutes, speakerTeacherId, null,
-                    speechContent, decisionText, votesFor, votesAgainst, votesAbstained);
+                    speechContent, decisionText, votesFor, votesAgainst, votesAbstained, null);
         }
     }
 
-    public record StatusRequest(PedagogicalCouncilProtocol.Status status) {
+    public record RemovedItemRequest(Long id, String baseFingerprint) {
     }
 
     public record ExtractRequest(

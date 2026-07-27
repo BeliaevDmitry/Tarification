@@ -117,7 +117,7 @@ class PedagogicalCouncilServiceImplTest {
         protocol.setSecretaryFioSnapshot("Петрова П.П.");
         protocol.setAttendeeCount(25);
         protocol.getItems().add(item(protocol, 10L, 1));
-        when(protocols.findById(1L)).thenReturn(Optional.of(protocol));
+        when(protocols.findByIdForUpdate(1L)).thenReturn(Optional.of(protocol));
         when(protocols.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         PedagogicalCouncilDtos.ProtocolDetails result = service.update(
@@ -152,6 +152,132 @@ class PedagogicalCouncilServiceImplTest {
         assertEquals(PedagogicalCouncilProtocol.Status.REGISTERED, result.status());
         assertEquals("Секретарь", result.registeredBy());
         assertTrue(result.registeredAt().isAfter(LocalDateTime.of(2026, 3, 31, 12, 0)));
+    }
+
+    @Test
+    void differentAgendaItemsEditedByTwoUsersAreMerged() {
+        PedagogicalCouncilProtocol protocol = baseProtocol();
+        protocol.setChairPositionSnapshot("Директор");
+        protocol.setChairFioSnapshot("Иванова И.И.");
+        protocol.setSecretaryPositionSnapshot("Методист");
+        protocol.setSecretaryFioSnapshot("Петрова П.П.");
+        protocol.setAttendeeCount(25);
+        PedagogicalCouncilItem first = item(protocol, 10L, 1);
+        PedagogicalCouncilItem second = item(protocol, 20L, 2);
+        first.setAgendaTitle("Первый вопрос");
+        second.setAgendaTitle("Второй вопрос");
+        protocol.getItems().addAll(List.of(first, second));
+        when(protocols.findById(1L)).thenReturn(Optional.of(protocol));
+        when(protocols.findByIdForUpdate(1L)).thenReturn(Optional.of(protocol));
+        when(protocols.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        PedagogicalCouncilDtos.ProtocolDetails opened = service.get(1L);
+        PedagogicalCouncilDtos.ItemView openedFirst = opened.items().get(0);
+        PedagogicalCouncilDtos.ItemView openedSecond = opened.items().get(1);
+
+        first.setDecisionText("Решение первого пользователя");
+
+        PedagogicalCouncilDtos.ProtocolDetails merged = service.update(
+                1L,
+                new PedagogicalCouncilDtos.UpdateProtocolRequest(
+                        opened.protocolNumber(),
+                        opened.meetingDate(),
+                        opened.agendaTime(),
+                        opened.attendeeCount(),
+                        opened.chairPosition(),
+                        opened.chairFio(),
+                        opened.secretaryPosition(),
+                        opened.secretaryFio(),
+                        PedagogicalCouncilProtocol.Status.DRAFT,
+                        opened.version(),
+                        List.of(
+                                itemRequest(openedFirst, openedFirst.decisionText()),
+                                itemRequest(openedSecond, "Решение второго пользователя")
+                        ),
+                        opened.headerFingerprint(),
+                        List.of()
+                ),
+                user()
+        );
+
+        assertEquals("Решение первого пользователя", merged.items().get(0).decisionText());
+        assertEquals("Решение второго пользователя", merged.items().get(1).decisionText());
+    }
+
+    @Test
+    void sameAgendaItemEditedByTwoUsersProducesFocusedConflict() {
+        PedagogicalCouncilProtocol protocol = baseProtocol();
+        protocol.setChairPositionSnapshot("Директор");
+        protocol.setChairFioSnapshot("Иванова И.И.");
+        protocol.setSecretaryPositionSnapshot("Методист");
+        protocol.setSecretaryFioSnapshot("Петрова П.П.");
+        protocol.setAttendeeCount(25);
+        PedagogicalCouncilItem first = item(protocol, 10L, 1);
+        first.setAgendaTitle("Спорный вопрос");
+        protocol.getItems().add(first);
+        when(protocols.findById(1L)).thenReturn(Optional.of(protocol));
+        when(protocols.findByIdForUpdate(1L)).thenReturn(Optional.of(protocol));
+
+        PedagogicalCouncilDtos.ProtocolDetails opened = service.get(1L);
+        PedagogicalCouncilDtos.ItemView openedFirst = opened.items().get(0);
+        first.setDecisionText("Решение первого пользователя");
+
+        IllegalStateException error = assertThrows(IllegalStateException.class, () ->
+                service.update(
+                        1L,
+                        new PedagogicalCouncilDtos.UpdateProtocolRequest(
+                                opened.protocolNumber(),
+                                opened.meetingDate(),
+                                opened.agendaTime(),
+                                opened.attendeeCount(),
+                                opened.chairPosition(),
+                                opened.chairFio(),
+                                opened.secretaryPosition(),
+                                opened.secretaryFio(),
+                                PedagogicalCouncilProtocol.Status.DRAFT,
+                                opened.version(),
+                                List.of(itemRequest(openedFirst, "Другое решение второго пользователя")),
+                                opened.headerFingerprint(),
+                                List.of()
+                        ),
+                        user()
+                )
+        );
+
+        assertTrue(error.getMessage().contains("одновременно изменил другой пользователь"));
+        assertEquals("Решение первого пользователя", first.getDecisionText());
+        verify(protocols, never()).save(any());
+    }
+
+    @Test
+    void releaseUsesLatestStoredProtocolWithoutSecondContentUpdate() {
+        PedagogicalCouncilProtocol protocol = baseProtocol();
+        protocol.setChairPositionSnapshot("Директор");
+        protocol.setChairFioSnapshot("Иванова И.И.");
+        protocol.setSecretaryPositionSnapshot("Методист");
+        protocol.setSecretaryFioSnapshot("Петрова П.П.");
+        protocol.setAttendeeCount(25);
+        protocol.getItems().add(item(protocol, 10L, 1));
+        when(protocols.findByIdForUpdate(1L)).thenReturn(Optional.of(protocol));
+        when(protocols.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        PedagogicalCouncilDtos.ProtocolDetails released = service.release(1L, user());
+
+        assertEquals(PedagogicalCouncilProtocol.Status.REGISTERED, released.status());
+        assertEquals("Секретарь", released.registeredBy());
+        assertNotNull(released.registeredAt());
+        verify(protocols).flush();
+    }
+
+    @Test
+    void deleteProtocolRemovesWholeAggregate() {
+        PedagogicalCouncilProtocol protocol = baseProtocol();
+        when(protocols.findByIdForUpdate(1L)).thenReturn(Optional.of(protocol));
+
+        service.deleteProtocol(1L);
+
+        verify(protocols).delete(protocol);
+        verify(protocols).flush();
     }
 
     @Test
@@ -253,7 +379,7 @@ class PedagogicalCouncilServiceImplTest {
         existing.setUploadedBy("Секретарь");
         first.getAttachments().add(existing);
         protocol.getItems().addAll(List.of(first, second));
-        when(protocols.findById(1L)).thenReturn(Optional.of(protocol));
+        when(protocols.findByIdForUpdate(1L)).thenReturn(Optional.of(protocol));
         when(attachments.save(any())).thenAnswer(invocation -> {
             PedagogicalCouncilAttachment attachment = invocation.getArgument(0);
             attachment.setId(101L);
@@ -542,6 +668,23 @@ class PedagogicalCouncilServiceImplTest {
         item.setAgendaTitle("Вопрос");
         item.setDecisionText("Решение");
         return item;
+    }
+
+    private PedagogicalCouncilDtos.ItemRequest itemRequest(PedagogicalCouncilDtos.ItemView item,
+                                                           String decisionText) {
+        return new PedagogicalCouncilDtos.ItemRequest(
+                item.id(),
+                item.agendaTitle(),
+                item.agendaDurationMinutes(),
+                item.speakerTeacherId(),
+                item.speakerPosition(),
+                item.speechContent(),
+                decisionText,
+                item.votesFor(),
+                item.votesAgainst(),
+                item.votesAbstained(),
+                item.fingerprint()
+        );
     }
 
     private SessionUser user() {
