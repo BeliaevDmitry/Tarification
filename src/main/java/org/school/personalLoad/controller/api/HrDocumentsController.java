@@ -112,7 +112,7 @@ public class HrDocumentsController {
     }
     @PostMapping("/memos/{id}/annul") public Object memoAnnul(@PathVariable Long id,@RequestBody AnnulRequest r,HttpServletRequest req){return service.memoView(service.annulMemo(id,r.reason(),user(req).getUsername()));}
     @DeleteMapping("/memos/{id}") public void memoDelete(@PathVariable Long id,HttpServletRequest req){service.deleteAnnulledMemo(id,user(req).getUsername());}
-    @GetMapping("/memos/{id}/download") public ResponseEntity<byte[]> memoDownload(@PathVariable Long id){HrServiceMemo m=service.memo(id);return file(m.getDocumentContent(),m.getDocumentFilename());}
+    @GetMapping("/memos/{id}/download") public ResponseEntity<byte[]> memoDownload(@PathVariable Long id){HrServiceMemo m=service.memoForDownload(id);return file(m.getDocumentContent(),m.getDocumentFilename());}
     @PostMapping("/load-memos/{id}/sign") public Object loadMemoSign(@PathVariable Long id,HttpServletRequest req){
         ServiceMemo m=loadMemoService.signByDirector(id,user(req).getUsername());
         log(req,"MEMO_SIGNED","LOAD_SERVICE_MEMO","Служебная записка по нагрузке ID "+id+" отмечена подписанной",true);

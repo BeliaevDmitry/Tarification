@@ -246,17 +246,21 @@ public class HrDocumentService {
         String clause = firstPresent(r.contractClause(), catalog == null ? null : catalog.getContractClause(), "2.4");
         List<CompensationFunction> compensationFunctions = compensationFunctions(
                 academicYear, teacher.getId(), clause, separate, assignmentName, amount, r.validFrom());
-        String assignmentText = firstPresent(r.assignmentText(), catalog == null ? null : catalog.getMemoText(),
+        boolean automaticClause24=!separate&&"2.4".equals(clause);
+        String exactClause24=automaticClause24?clause24Text(compensationFunctions):null;
+        String assignmentText = automaticClause24?exactClause24
+                :firstPresent(r.assignmentText(), catalog == null ? null : catalog.getMemoText(),
                 automaticMemoText(teacher, assignmentName, amount, r.validFrom(), r.validTo(), separate, clause,
                         compensationFunctions));
-        String agreementText = firstPresent(r.agreementText(), catalog == null ? null : catalog.getAgreementText(),
+        String agreementText = automaticClause24?exactClause24
+                :firstPresent(r.agreementText(), catalog == null ? null : catalog.getAgreementText(),
                 automaticAgreementText(assignmentName, duties, clause, separate, amount, compensationFunctions));
         if (Boolean.TRUE.equals(r.saveAsTemplate()) && r.catalogItemId() == null) {
             HrCatalogItem saved = new HrCatalogItem(); saved.setSchoolCode(SchoolCodeResolver.resolve()); saved.setName(required(assignmentName, "Название основания"));
             saved.setCategory(separate ? HrCatalogItem.Category.ADDITIONAL_WORK : HrCatalogItem.Category.COMPENSATION);
             saved.setContractClause(clause); saved.setDefaultAmount(amount);
-            saved.setMemoText(present(r.assignmentText()) ? r.assignmentText().trim() : null);
-            saved.setAgreementText(present(r.agreementText()) ? r.agreementText().trim() : null);
+            saved.setMemoText(automaticClause24?null:present(r.assignmentText()) ? r.assignmentText().trim() : null);
+            saved.setAgreementText(automaticClause24?null:present(r.agreementText()) ? r.agreementText().trim() : null);
             saved.setDutiesText(duties); saved.setSeparateAgreement(separate); catalog = catalogItems.save(saved);
         }
         HrServiceMemo m = new HrServiceMemo(); m.setAcademicYear(academicYear);
@@ -302,21 +306,23 @@ public class HrDocumentService {
         String clause=firstPresent(r.contractClause(),catalog==null?null:catalog.getContractClause(),"2.4");
         List<CompensationFunction> functions=compensationFunctions(academicYear,teacher.getId(),clause,separate,
                 assignmentName,amount,r.validFrom());
-        String automaticMemo=firstPresent(catalog==null?null:catalog.getMemoText(),
+        boolean automaticClause24=!separate&&"2.4".equals(clause);
+        String exactClause24=automaticClause24?clause24Text(functions):null;
+        String automaticMemo=automaticClause24?exactClause24:firstPresent(catalog==null?null:catalog.getMemoText(),
                 automaticMemoText(teacher,assignmentName,amount,r.validFrom(),r.validTo(),separate,clause,functions));
-        String automaticAgreement=firstPresent(catalog==null?null:catalog.getAgreementText(),
+        String automaticAgreement=automaticClause24?exactClause24:firstPresent(catalog==null?null:catalog.getAgreementText(),
                 automaticAgreementText(assignmentName,duties,clause,separate,amount,functions));
-        String assignmentText=unchangedOrBlank(r.assignmentText(),memo.getAssignmentText())
-                ?automaticMemo:r.assignmentText().trim();
-        String agreementText=unchangedOrBlank(r.agreementText(),memo.getAgreementText())
-                ?automaticAgreement:r.agreementText().trim();
+        String assignmentText=automaticClause24?exactClause24:
+                unchangedOrBlank(r.assignmentText(),memo.getAssignmentText())?automaticMemo:r.assignmentText().trim();
+        String agreementText=automaticClause24?exactClause24:
+                unchangedOrBlank(r.agreementText(),memo.getAgreementText())?automaticAgreement:r.agreementText().trim();
         if(Boolean.TRUE.equals(r.saveAsTemplate())&&r.catalogItemId()==null){
             HrCatalogItem saved=new HrCatalogItem();saved.setSchoolCode(SchoolCodeResolver.resolve());
             saved.setName(required(assignmentName,"Название основания"));
             saved.setCategory(separate?HrCatalogItem.Category.ADDITIONAL_WORK:HrCatalogItem.Category.COMPENSATION);
             saved.setContractClause(clause);saved.setDefaultAmount(amount);
-            saved.setMemoText(present(r.assignmentText())?r.assignmentText().trim():null);
-            saved.setAgreementText(present(r.agreementText())?r.agreementText().trim():null);
+            saved.setMemoText(automaticClause24?null:present(r.assignmentText())?r.assignmentText().trim():null);
+            saved.setAgreementText(automaticClause24?null:present(r.agreementText())?r.agreementText().trim():null);
             saved.setDutiesText(duties);saved.setSeparateAgreement(separate);catalog=catalogItems.save(saved);
         }
         if(memo.getStatus()!=HrServiceMemo.Status.DRAFT&&memo.getDocumentContent()!=null)
@@ -390,6 +396,7 @@ public class HrDocumentService {
         if (status == HrServiceMemo.Status.RECEIVED_BY_HR && m.getStatus() != HrServiceMemo.Status.SIGNED
                 && m.getStatus() != HrServiceMemo.Status.RECEIVED_BY_HR)
             throw new ResponseStatusException(CONFLICT,"Сначала отметьте служебную записку как подписанную");
+        if(status==HrServiceMemo.Status.ISSUED)refreshAutomaticClause24Memo(m);
         m.setStatus(status);
         if (status == HrServiceMemo.Status.ISSUED) {
             m.setIssuedAt(LocalDateTime.now()); m.setIssuedBy(username);
@@ -405,6 +412,16 @@ public class HrDocumentService {
             releaseWaiting(agreements.findAllByServiceMemoId(id));
         }
         return memos.save(m);
+    }
+
+    @Transactional public HrServiceMemo memoForDownload(Long id){
+        HrServiceMemo memo=memo(id);
+        if(memo.getStatus()==HrServiceMemo.Status.DRAFT){
+            refreshAutomaticClause24Memo(memo);
+            memo.setDocumentContent(generateMemo(memo));
+            memo=memos.save(memo);
+        }
+        return memo;
     }
     @Transactional public HrServiceMemo annulMemo(Long id, String reason, String username) {
         HrServiceMemo m = memo(id); m.setStatus(HrServiceMemo.Status.ANNULLED); m.setAnnulReason(required(reason,"Причина"));
@@ -1509,6 +1526,15 @@ public class HrDocumentService {
             text.append(i+1<actual.size()?";":"\".");
         }
         return text.toString();
+    }
+
+    private void refreshAutomaticClause24Memo(HrServiceMemo memo){
+        if(memo==null||memo.isSeparateAgreement()
+                ||!"2.4".equals(memo.getContractClause()))return;
+        String exactClause=clause24Text(compensationFunctions(memo.getAcademicYear(),memo.getTeacherId(),
+                "2.4",false,memo.getAssignmentName(),memo.getAmount(),memo.getValidFrom()));
+        memo.setAssignmentText(exactClause);
+        memo.setAgreementText(exactClause);
     }
 
     private void applyAutomaticCompensationClause(AdditionalAgreement agreement,Long teacherId){

@@ -9,6 +9,7 @@ import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.apache.poi.xwpf.usermodel.XWPFTableRow;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.school.personalLoad.config.SchoolCodeResolver;
 import org.school.personalLoad.dto.HrDocumentDtos.AgreementRequest;
 import org.school.personalLoad.dto.HrDocumentDtos.AgreementEditRequest;
 import org.school.personalLoad.dto.HrDocumentDtos.BatchAgreementRequest;
@@ -186,6 +187,49 @@ class HrDocumentServiceTest {
                 +"\"2.4. Работнику выплачиваются ежемесячные компенсационные выплаты при условии, если на Работника:\n"
                 +"- возложена функция \"заведование кабинетом технологии\", в размере 15 000 рублей 00 коп. "
                 +"(пятнадцать тысяч рублей 00 коп.) в месяц\".",memo.getAgreementText());
+    }
+
+    @Test void clause24IgnoresLegacyTextSubmittedFromCatalog() {
+        HrCatalogItem item=new HrCatalogItem();item.setId(7L);item.setActive(true);
+        item.setSchoolCode(SchoolCodeResolver.resolve());item.setName("Заведование кабинетом технологии");
+        item.setContractClause("2.4");item.setDefaultAmount(new BigDecimal("15000"));
+        item.setMemoText("Прошу Вас согласовать работнику старую формулировку.");
+        item.setAgreementText("Изложить пункт 2.4 трудового договора в старой редакции.");
+        when(catalog.findById(7L)).thenReturn(Optional.of(item));
+        MemoRequest request=new MemoRequest("2025/2026",1L,10L,7L,null,LocalDate.of(2025,9,1),
+                item.getName(),item.getMemoText(),item.getAgreementText(),"2.4",null,new BigDecimal("15000"),
+                LocalDate.of(2025,9,1),LocalDate.of(2026,8,31),false,false,null);
+
+        HrServiceMemo memo=service.createMemo(request,"deputy");
+
+        assertTrue(memo.getAssignmentText().startsWith(
+                "Внести изменения в пункт 2.4 раздела 2 \"Оплата труда\", изложив его в следующей редакции:"));
+        assertEquals(memo.getAssignmentText(),memo.getAgreementText());
+        assertFalse(memo.getAssignmentText().contains("Прошу Вас согласовать"));
+        assertFalse(memo.getAgreementText().contains("старой редакции"));
+    }
+
+    @Test void legacyClause24DraftIsRebuiltBeforeDownloadAndIssue() throws Exception {
+        HrServiceMemo legacy=new HrServiceMemo();legacy.setId(50L);legacy.setStatus(HrServiceMemo.Status.DRAFT);
+        legacy.setAcademicYear("2025/2026");legacy.setTeacherId(1L);legacy.setContractId(10L);
+        legacy.setAssignmentName("Заведование кабинетом технологии");legacy.setContractClause("2.4");
+        legacy.setAmount(new BigDecimal("15000"));legacy.setValidFrom(LocalDate.of(2025,9,1));
+        legacy.setValidTo(LocalDate.of(2026,8,31));legacy.setAssignmentText("Прошу Вас согласовать старый текст");
+        legacy.setAgreementText("Изложить пункт 2.4 трудового договора");
+        when(memos.findById(50L)).thenReturn(Optional.of(legacy));
+
+        HrServiceMemo downloaded=service.memoForDownload(50L);
+        HrServiceMemo issued=service.memoStatus(50L,HrServiceMemo.Status.ISSUED,"deputy");
+
+        assertTrue(downloaded.getAssignmentText().startsWith(
+                "Внести изменения в пункт 2.4 раздела 2 \"Оплата труда\""));
+        assertEquals(downloaded.getAssignmentText(),downloaded.getAgreementText());
+        try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(issued.getDocumentContent()))){
+            String text=document.getParagraphs().stream().map(XWPFParagraph::getText)
+                    .reduce("",(left,right)->left+"\n"+right);
+            assertTrue(text.contains("Внести изменения в пункт 2.4 раздела 2 \"Оплата труда\""));
+            assertFalse(text.contains("Прошу Вас согласовать старый текст"));
+        }
     }
 
     @Test void agreementDownloadNameContainsEmployeeNumberAndDocumentDate() {
