@@ -55,7 +55,8 @@ public final class HrDocumentDtos {
     public record AgreementView(Long id, String internalNumber, String visibleNumber, int revision,
             String kind, String status, String changeMode, Long replacesAgreementId,
             LocalDate documentDate, LocalDate validFrom, LocalDate validTo, String summary, String conditionsJson,
-            BigDecimal totalAmount, Long serviceMemoId, Long loadServiceMemoId, LocalDateTime issuedAt) {}
+            BigDecimal totalAmount, Long serviceMemoId, Long loadServiceMemoId, LocalDateTime issuedAt,
+            boolean reissueRequired) {}
     public record AgreementListRow(Long teacherId, String fio, Long contractId, String contractNumber,
             String position, boolean personalDataComplete, AgreementView agreement) {}
 }

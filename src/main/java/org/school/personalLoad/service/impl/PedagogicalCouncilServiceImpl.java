@@ -134,7 +134,6 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
             throw new IllegalStateException("Протокол был изменён другим пользователем. Обновите страницу");
         }
 
-        PedagogicalCouncilProtocol.Status previousStatus = protocol.getStatus();
         protocol.setProtocolNumber(requireText(request.protocolNumber(), "Укажите номер протокола"));
         protocol.setMeetingDate(requireMeetingDate(request.meetingDate(), protocol.getAcademicYear()));
         protocol.setAgendaTime(request.agendaTime());
@@ -149,14 +148,10 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
         applyItems(protocol, Optional.ofNullable(request.items()).orElseGet(List::of));
 
         PedagogicalCouncilProtocol.Status requestedStatus =
-                Optional.ofNullable(request.status()).orElse(protocol.getStatus());
-        if (previousStatus == PedagogicalCouncilProtocol.Status.REGISTERED
-                && requestedStatus == PedagogicalCouncilProtocol.Status.REGISTERED) {
-            requestedStatus = PedagogicalCouncilProtocol.Status.CORRECTED;
-        }
+                workflowStatus(Optional.ofNullable(request.status()).orElse(protocol.getStatus()));
         validateReadyForStatus(protocol, requestedStatus);
         protocol.setStatus(requestedStatus);
-        if (requestedStatus == PedagogicalCouncilProtocol.Status.REGISTERED && protocol.getRegisteredAt() == null) {
+        if (requestedStatus == PedagogicalCouncilProtocol.Status.REGISTERED) {
             protocol.setRegisteredAt(LocalDateTime.now());
             protocol.setRegisteredBy(user.getFullName());
         }
@@ -424,11 +419,16 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
 
     private void validateReadyForStatus(PedagogicalCouncilProtocol protocol,
                                         PedagogicalCouncilProtocol.Status status) {
-        if (status == PedagogicalCouncilProtocol.Status.REGISTERED
-                || status == PedagogicalCouncilProtocol.Status.REVIEW
-                || status == PedagogicalCouncilProtocol.Status.CORRECTED) {
+        if (workflowStatus(status) == PedagogicalCouncilProtocol.Status.REGISTERED) {
             validateReadyForExport(protocol);
         }
+    }
+
+    private PedagogicalCouncilProtocol.Status workflowStatus(PedagogicalCouncilProtocol.Status status) {
+        return status == PedagogicalCouncilProtocol.Status.REGISTERED
+                || status == PedagogicalCouncilProtocol.Status.CORRECTED
+                ? PedagogicalCouncilProtocol.Status.REGISTERED
+                : PedagogicalCouncilProtocol.Status.DRAFT;
     }
 
     private void validateReadyForExport(PedagogicalCouncilProtocol protocol) {
@@ -641,10 +641,12 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
         if (currentUserId == null) {
             throw new IllegalStateException("Не удалось определить пользователя, который формирует выписку");
         }
-        String currentPositionOverride = requestedPositions.remove(currentUserId);
         LinkedHashMap<Long, String> ordered = new LinkedHashMap<>();
-        ordered.put(currentUserId, currentPositionOverride);
-        ordered.putAll(requestedPositions);
+        if (requestedPositions.isEmpty()) {
+            ordered.put(currentUserId, null);
+        } else {
+            ordered.putAll(requestedPositions);
+        }
 
         Set<Long> allowedIds = permissionRepository.findAllByTabAndCanExportTrue(AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS)
                 .stream()
@@ -784,9 +786,7 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
                 paragraph(document, "«____» ____________ 20__ г.", false, ParagraphAlignment.LEFT);
                 blank(document);
             }
-            if (request.externalRecipient()) {
-                paragraph(document, "М.П.", false, ParagraphAlignment.LEFT);
-            }
+            paragraph(document, "М.П.", false, ParagraphAlignment.LEFT);
 
             appendAllAttachments(document, protocol, selectedItems);
             document.write(output);

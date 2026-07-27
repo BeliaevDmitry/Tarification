@@ -143,11 +143,7 @@ public class HrDocumentsController {
     @PostMapping("/agreements/{id}/prepare") public Object prepare(@PathVariable Long id,HttpServletRequest req){return service.agreementView(service.prepare(id,user(req).getUsername()));}
     @PostMapping("/agreements/{id}/issue") public Object issue(@PathVariable Long id,HttpServletRequest req){return service.agreementView(service.issue(id,user(req).getUsername()));}
     @PostMapping("/agreements/{id}/reopen") public Object agreementReopen(@PathVariable Long id,
-                                                                          @RequestBody Map<String,String> request,
                                                                           HttpServletRequest req){
-        if(request==null||!"ПЕРЕВЫПУСТИТЬ".equals(request.get("confirmation")))
-            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Для исправления требуется повторное подтверждение словом ПЕРЕВЫПУСТИТЬ");
         AdditionalAgreement target=service.agreement(id);
         AdditionalAgreement reopened=service.reopenIssuedAgreement(id,user(req).getUsername());
         log(req,"REOPEN_FOR_REISSUE","ADDITIONAL_AGREEMENT",

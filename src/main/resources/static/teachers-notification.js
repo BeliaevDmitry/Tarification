@@ -89,7 +89,11 @@ function renderJournal() {
     $('#journal-body').innerHTML = journal
         .filter(item => (!query || JSON.stringify(item).toLowerCase().includes(query)) && (!status || item.actionRequired === status))
         .map(item => {
-            return `<tr><td>${esc(item.fio)}</td><td>№ ${esc(item.contractNumber)}</td><td>${esc(item.position)}</td><td>${item.agreements.length ? item.agreements.map(renderAgreement).join('') : 'Нет действующих документов'}</td><td>${esc(item.actionRequired)}</td><td>${canViewPersonal() ? `<button data-personal="${item.teacherId}">Персональные данные</button> <button data-edit-contract="${item.contractId}" data-teacher="${item.teacherId}">Изменить договор</button>` : ''} <button data-open-agreements="${item.contractId}">Открыть соглашения</button></td></tr>`;
+            const reissue=item.agreements.find(agreement=>agreement.reissueRequired&&['ISSUED','SIGNING'].includes(agreement.status));
+            const required=reissue
+                ?`<span class="error">В выпущенный документ добавлены изменения</span><br><button data-reopen-agreement="${reissue.id}">Перевыпустить</button>`
+                :esc(item.actionRequired);
+            return `<tr><td>${esc(item.fio)}</td><td>№ ${esc(item.contractNumber)}</td><td>${esc(item.position)}</td><td>${item.agreements.length ? item.agreements.map(renderAgreement).join('') : 'Нет действующих документов'}</td><td>${required}</td><td>${canViewPersonal() ? `<button data-personal="${item.teacherId}">Персональные данные</button> <button data-edit-contract="${item.contractId}" data-teacher="${item.teacherId}">Изменить договор</button>` : ''} <button data-open-agreements="${item.contractId}">Открыть соглашения</button></td></tr>`;
         }).join('');
 }
 function renderAgreement(agreement) {
@@ -117,17 +121,18 @@ function renderAgreementActions(agreement, rowInfo = {}) {
     const contractId=rowInfo.contractId;
     const teacherId=rowInfo.teacherId;
     const personalComplete=rowInfo.personalDataComplete !== false;
-    const editable=['WAITING_FOR_MEMO','DRAFT','READY','REQUIRES_DECISION'].includes(agreement.status);
+    const editable=['WAITING_FOR_MEMO','DRAFT','READY','REQUIRES_DECISION','ISSUED','SIGNING'].includes(agreement.status);
     const waiting = agreement.status === 'WAITING_FOR_MEMO';
     const changeMode = (agreement.serviceMemoId || agreement.loadServiceMemoId) && editable
         ? `<button data-change-mode="${agreement.id}" data-contract="${contractId}">Способ изменения</button>` : '';
     const edit=editable?`<button data-edit-agreement="${agreement.id}">Редактировать</button>`:'';
     let actions='';
     if(['ISSUED','SIGNING','SIGNED'].includes(agreement.status)){
+        const downloadLabel=agreement.reissueRequired?'DOCX (старая версия)':'DOCX';
         const reopen=['ISSUED','SIGNING'].includes(agreement.status)
-            ?` <button data-reopen-agreement="${agreement.id}">Исправить и перевыпустить</button>`:'';
+            ?` <button data-reopen-agreement="${agreement.id}">${agreement.reissueRequired?'Перевыпустить':'Исправить и перевыпустить'}</button>`:'';
         const signed=agreement.status!=='SIGNED'?` <button data-sign="${agreement.id}">Подписано</button>`:'';
-        actions=`<button data-download="${agreement.id}">DOCX</button> <button data-upload="${agreement.id}">Заменить</button>${reopen}${signed}`;
+        actions=`<button data-download="${agreement.id}">${downloadLabel}</button> <button data-upload="${agreement.id}">Заменить</button>${reopen}${signed}`;
     }
     else if(waiting)actions='<span class="muted">Выпуск заблокирован до получения служебки</span>';
     else if(!contractId)actions=`<button data-contract-missing="${teacherId}">Заполнить договор</button> <span class="muted">DOCX пока недоступен</span>`;
@@ -160,10 +165,15 @@ function renderAgreements() {
         const first=group[0],contract=first.contractId?`№ ${esc(first.contractNumber||first.contractId)}`:'<span class="muted">Не заполнен</span>';
         const documents=group.map(row=>{const agreement=row.agreement;const source=agreement.serviceMemoId?' · из служебной записки':agreement.loadServiceMemoId?' · из изменения нагрузки':'';return `<div class="agreement-item"><b>${esc(agreement.visibleNumber||agreement.internalNumber)}</b> от ${esc(agreement.documentDate||'—')} · ${esc(STATUS_LABELS[agreement.status]||agreement.status)}<br>${esc(agreement.summary||agreement.kind)}<br><span class="muted">${esc(agreement.validFrom)} — ${esc(agreement.validTo)}${source}</span><div class="agreement-actions">${renderAgreementActions(agreement,row)}</div></div>`;}).join('');
         const merge=mergeCandidate(group);
-        const required=!first.personalDataComplete?'Заполнить персональные данные':group.some(row=>row.agreement.status==='REQUIRES_DECISION')?'Требуется решение':group.some(row=>row.agreement.status==='WAITING_FOR_MEMO')?'Ожидает служебную записку':merge?.reissue?'Можно объединить и перевыпустить':merge?'Можно объединить черновики':'';
+        const reissue=group.find(row=>row.agreement.reissueRequired&&['ISSUED','SIGNING'].includes(row.agreement.status))?.agreement;
+        const required=!first.personalDataComplete?'Заполнить персональные данные'
+            :group.some(row=>row.agreement.status==='REQUIRES_DECISION')?'Требуется решение'
+            :reissue?`<span class="error">В документ добавлены новые пункты</span><br><button data-reopen-agreement="${reissue.id}">Перевыпустить</button>`
+            :group.some(row=>row.agreement.status==='WAITING_FOR_MEMO')?'Ожидает служебную записку'
+            :merge?.reissue?'Можно объединить и перевыпустить':merge?'Можно объединить черновики':'';
         const contractAction=first.contractId?`<button data-edit-contract="${first.contractId}" data-teacher="${first.teacherId}">Изменить договор</button>`:`<button data-contract-missing="${first.teacherId}">Заполнить договор</button>`;
         const management=`${canViewPersonal()?`<button data-personal="${first.teacherId}">Персональные данные</button> ${contractAction}`:''} ${first.contractId?`<button data-agreement="${first.contractId}">Создать вне служебки</button>`:''} <button data-all-agreements-teacher="${first.teacherId}" data-all-agreements-contract="${first.contractId||''}">Все допники работника</button> ${merge?`<button data-merge-agreements="${merge.ids.join(',')}" data-merge-reissue="${merge.reissue}">${merge.reissue?'Объединить и перевыпустить':'Объединить пункты в один допник'}</button>`:''}`;
-        return `<tr><td>${esc(first.fio||`ID ${first.teacherId}`)}</td><td>${contract}</td><td>${esc(first.position)}</td><td>${documents}</td><td>${esc(required)}</td><td>${management}</td></tr>`;
+        return `<tr><td>${esc(first.fio||`ID ${first.teacherId}`)}</td><td>${contract}</td><td>${esc(first.position)}</td><td>${documents}</td><td>${required}</td><td>${management}</td></tr>`;
     }).join(''):'<tr><td colspan="6">Дополнительных соглашений по выбранным условиям нет</td></tr>';
 }
 function renderAllAgreements(teacherId = null, contractId = null) {
@@ -243,7 +253,7 @@ $('#incentive-body').addEventListener('click',async event=>{
         await api(`/api/hr-documents/incentives/${teacherId}?academicYear=${encodeURIComponent(academicYear())}`,
             json('PUT',{teacherId:+teacherId,amount:input.value||0}));
         await Promise.all([loadIncentives(),loadAgreements(),loadJournal()]);
-        showNotice('Сумма сохранена. Невыпущенный годовой допник обновлён.');
+        showNotice('Сумма сохранена. Черновик обновлён; для выпущенного неподписанного допсоглашения в колонке «Требуется» появилась кнопка «Перевыпустить».');
     }catch(error){showNotice(error.message,true);}
 });
 $('#export-incentives').addEventListener('click',()=>{
@@ -372,6 +382,7 @@ async function editExistingAgreement(agreementId) {
     }
     if(!found)throw new Error('Дополнительное соглашение не найдено в текущем списке');
     const agreement=found.agreement;
+    const issuedUnsigned=['ISSUED','SIGNING'].includes(agreement.status);
     const contracts=await api(`/api/hr-documents/contracts?teacherId=${found.teacherId}`);
     openEditor('Редактирование дополнительного соглашения',
         row('Работник', `<b>${esc(found.fio || journal.find(row=>row.teacherId===found.teacherId)?.fio || `ID ${found.teacherId}`)}</b>`,'Документ связан с постоянным ID работника.') +
@@ -385,7 +396,7 @@ async function editExistingAgreement(agreementId) {
         row('Юридическая формулировка и обязанности', `<textarea name="conditions" required placeholder="Например: Внести изменения в пункт 2.1. раздела 2 «Оплата труда», изложив его в следующей редакции…">${esc(agreement.conditionsJson)}</textarea>`,'Автоматический текст сформирован по образцу допсоглашения школы. Его можно проверить и поправить до формирования DOCX.') +
         row('Сохранить как шаблон', '<label><input id="agreement-save-template" name="saveTemplate" type="checkbox"> Добавить эту формулировку в справочник</label>') +
         `<div id="agreement-template-label" class="field-label hidden">Название шаблона</div><div id="agreement-template-control" class="field-control hidden"><input name="templateName" value="${esc(agreement.summary)}" placeholder="Название для дальнейшего выбора"><span class="field-help">Если шаблон с таким названием уже есть, его формулировка и сумма обновятся.</span></div>`,
-        async form => {await api(`/api/hr-documents/agreements/${agreementId}`,json('PUT',{contractId:form.get('contractId')?+form.get('contractId'):null,documentDate:form.get('date')||null,validFrom:form.get('from'),validTo:form.get('to'),summary:form.get('summary'),conditionsJson:form.get('conditions'),totalAmount:form.get('amount')||null,saveAsTemplate:form.get('saveTemplate')==='on',templateName:form.get('templateName')}));await loadAgreements();showNotice('Изменения сохранены. Теперь документ можно сформировать после заполнения обязательных данных.');},
+        async form => {await api(`/api/hr-documents/agreements/${agreementId}`,json('PUT',{contractId:form.get('contractId')?+form.get('contractId'):null,documentDate:form.get('date')||null,validFrom:form.get('from'),validTo:form.get('to'),summary:form.get('summary'),conditionsJson:form.get('conditions'),totalAmount:form.get('amount')||null,saveAsTemplate:form.get('saveTemplate')==='on',templateName:form.get('templateName')}));await loadAgreements();showNotice(issuedUnsigned?'Изменения сохранены. В колонке «Требуется» нажмите «Перевыпустить».':'Изменения сохранены. Теперь документ можно сформировать после заполнения обязательных данных.');},
         () => {
             const checkbox=$('#agreement-save-template'),label=$('#agreement-template-label'),control=$('#agreement-template-control');
             const update=()=>{label.classList.toggle('hidden',!checkbox.checked);control.classList.toggle('hidden',!checkbox.checked);};checkbox.addEventListener('change',update);update();
@@ -436,10 +447,8 @@ async function handleAgreementAction(event) {
     }
     if(target.dataset.reopenAgreement){
         if(!confirm('Вернуть выпущенное, но неподписанное соглашение в черновик для исправления? Текущая версия останется в истории.'))return;
-        const confirmation=prompt('Для подтверждения введите ПЕРЕВЫПУСТИТЬ заглавными буквами.');
-        if(confirmation!=='ПЕРЕВЫПУСТИТЬ'){showNotice('Исправление отменено: контрольное слово введено неверно.',true);return;}
         await api(`/api/hr-documents/agreements/${target.dataset.reopenAgreement}/reopen`,
-            json('POST',{confirmation}));
+            json('POST',{}));
         await Promise.all([loadJournal(),loadAgreements()]);
         showNotice('Документ возвращён в черновик. Сумма нагрузки обновлена; проверьте текст и сформируйте DOCX заново.');
     }
@@ -464,9 +473,6 @@ async function handleAgreementAction(event) {
             ?'Объединить новый черновик с выпущенным, но неподписанным соглашением? Выпущенная версия останется в истории, а документ вернётся в черновик для перевыпуска.'
             :'Объединить выбранные пункты в одно дополнительное соглашение?';
         if(!confirm(question))return;
-        if(reissue&&prompt('Для подтверждения перевыпуска введите ПЕРЕВЫПУСТИТЬ заглавными буквами.')!=='ПЕРЕВЫПУСТИТЬ'){
-            showNotice('Перевыпуск отменён: контрольное слово введено неверно.',true);return;
-        }
         const agreementIds=target.dataset.mergeAgreements.split(',').map(Number);
         await api('/api/hr-documents/agreements/merge',json('POST',{agreementIds}));
         await Promise.all([loadJournal(),loadAgreements()]);
@@ -481,10 +487,10 @@ $('#agreement-body').addEventListener('click',handleAgreementAction);
 $('#all-agreement-body').addEventListener('click',handleAgreementAction);
 
 async function createAnnualAgreements() {
-    if (!confirm('Создать черновики всем сотрудникам с основной нагрузкой?')) return;
+    if (!confirm('Сформировать или обновить годовые черновики: нагрузка (пункт 2.1), классное руководство (пункт 2.4) и стимул (пункт 2.5)?')) return;
     const result=await api('/api/hr-documents/agreements/batch-annual', json('POST',{academicYear:academicYear(),documentDate:new Date().toISOString().slice(0,10),contractIds:[]}));
     await Promise.all([loadJournal(),loadAgreements()]);
-    showNotice(result.created?`Создано допсоглашений: ${result.created}.`:'Все допсоглашения на 1 сентября уже сформированы.');
+    showNotice(result.created?`Создано годовых допсоглашений: ${result.created}. Нагрузка, классное руководство и стимул объединены по каждому работнику.`:'Годовые допсоглашения уже созданы; невыпущенные черновики обновлены актуальной нагрузкой, классным руководством и стимулом.');
 }
 $('#batch-annual').addEventListener('click',createAnnualAgreements);
 $('#batch-annual-agreements').addEventListener('click',createAnnualAgreements);

@@ -10,12 +10,14 @@ const pedUi = {
     editorClose: document.getElementById('protocol-editor-close'),
     editorCancel: document.getElementById('protocol-editor-cancel'),
     editorSave: document.getElementById('protocol-editor-save'),
+    editorSaveDraft: document.getElementById('protocol-editor-save-draft'),
     academicYear: document.getElementById('protocol-academic-year'),
     number: document.getElementById('protocol-number'),
     date: document.getElementById('protocol-date'),
     time: document.getElementById('protocol-time'),
     attendeeCount: document.getElementById('protocol-attendee-count'),
     status: document.getElementById('protocol-status'),
+    statusView: document.getElementById('protocol-status-view'),
     chairPosition: document.getElementById('protocol-chair-position'),
     chairFio: document.getElementById('protocol-chair-fio'),
     secretaryPosition: document.getElementById('protocol-secretary-position'),
@@ -37,7 +39,6 @@ const pedUi = {
     extractItems: document.getElementById('extract-items'),
     extractCertifiers: document.getElementById('extract-certifiers'),
     extractAddCertifier: document.getElementById('extract-add-certifier'),
-    extractExternal: document.getElementById('extract-external'),
     extractSourceSigners: document.getElementById('extract-source-signers'),
     extractApproval: document.getElementById('extract-approval'),
     extractApproverRow: document.getElementById('extract-approver-row'),
@@ -56,15 +57,16 @@ const pedState = {
     branding: null,
     user: null,
     editing: null,
+    editorSaved: false,
     extractProtocol: null,
     permissions: { canView: false, canEdit: false, canImport: false, canExport: false }
 };
 
 const pedStatusLabels = {
     DRAFT: 'Черновик',
-    REVIEW: 'На проверке',
-    REGISTERED: 'Зарегистрирован',
-    CORRECTED: 'Исправленная версия'
+    REVIEW: 'Черновик',
+    REGISTERED: 'Выпущен',
+    CORRECTED: 'Выпущен'
 };
 
 function pedEsc(value) {
@@ -131,7 +133,23 @@ function updateArchiveYearBounds() {
 }
 
 function statusClass(status) {
-    return `ped-status-${String(status || '').toLowerCase()}`;
+    return workflowStatus(status) === 'REGISTERED' ? 'ped-status-released' : 'ped-status-draft';
+}
+
+function workflowStatus(status) {
+    return ['REGISTERED', 'CORRECTED'].includes(String(status || '').toUpperCase())
+        ? 'REGISTERED'
+        : 'DRAFT';
+}
+
+function setWorkflowStatus(status) {
+    const normalized = workflowStatus(status);
+    pedUi.status.value = normalized;
+    pedUi.statusView.textContent = pedStatusLabels[normalized];
+    pedUi.statusView.className = `table-badge ${statusClass(normalized)}`;
+    pedUi.editorSave.textContent = normalized === 'REGISTERED'
+        ? 'Сохранить и перевыпустить'
+        : 'Сохранить и выпустить';
 }
 
 function sourceLabel(sourceType) {
@@ -188,7 +206,7 @@ function renderList() {
 
 function staffOptions(selectedId = null) {
     return '<option value="">Выберите сотрудника</option>' + pedState.staff.map((person) =>
-        `<option value="${person.id}" data-position="${pedEsc(person.position)}" data-fio="${pedEsc(person.shortFio)}" ${String(person.id) === String(selectedId) ? 'selected' : ''}>${pedEsc(person.shortFio || person.fio)}</option>`
+        `<option value="${person.id}" data-position="${pedEsc(person.position)}" data-fio="${pedEsc(person.shortFio)}" data-search="${pedEsc(`${person.shortFio || ''} ${person.fio || ''}`)}" ${String(person.id) === String(selectedId) ? 'selected' : ''}>${pedEsc(person.shortFio || person.fio)}</option>`
     ).join('');
 }
 
@@ -210,8 +228,168 @@ function staffFioOptions(selectedFio = '') {
     const uniqueValues = [...new Map(options.map((person) => [person.value, person])).values()]
         .sort((a, b) => a.value.localeCompare(b.value, 'ru'));
     return '<option value="">Выберите сотрудника</option>' + uniqueValues.map((person) =>
-        `<option value="${pedEsc(person.value)}" data-position="${pedEsc(person.position)}" ${person.value === effectiveSelected ? 'selected' : ''}>${pedEsc(person.value)}</option>`
+        `<option value="${pedEsc(person.value)}" data-position="${pedEsc(person.position)}" data-search="${pedEsc(`${person.value} ${person.fullFio || ''}`)}" ${person.value === effectiveSelected ? 'selected' : ''}>${pedEsc(person.value)}</option>`
     ).join('');
+}
+
+let personComboboxSequence = 0;
+
+function normalizePersonSearch(value) {
+    return String(value || '')
+        .trim()
+        .toLocaleLowerCase('ru')
+        .replaceAll('ё', 'е')
+        .replace(/\s+/g, ' ');
+}
+
+function makePersonSelectSearchable(select, placeholder = 'Начните вводить фамилию') {
+    if (!select) return;
+    if (select._personSearchRefresh) {
+        select._personSearchRefresh();
+        return;
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'pedagogical-person-combobox';
+    select.parentNode.insertBefore(wrapper, select);
+    wrapper.appendChild(select);
+
+    const input = document.createElement('input');
+    input.type = 'search';
+    input.className = 'pedagogical-person-search';
+    input.placeholder = placeholder;
+    input.autocomplete = 'off';
+    input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-autocomplete', 'list');
+    input.setAttribute('aria-expanded', 'false');
+
+    const results = document.createElement('div');
+    results.className = 'pedagogical-person-results';
+    results.id = `pedagogical-person-results-${++personComboboxSequence}`;
+    results.setAttribute('role', 'listbox');
+    results.hidden = true;
+    input.setAttribute('aria-controls', results.id);
+
+    wrapper.insertBefore(input, select);
+    wrapper.appendChild(results);
+    select.classList.add('pedagogical-person-native-select');
+
+    let visibleOptions = [];
+    let activeIndex = -1;
+
+    const selectableOptions = () => Array.from(select.options).filter((option) => option.value);
+    const optionSearchText = (option) => normalizePersonSearch(
+        `${option.textContent || ''} ${option.dataset.search || ''}`
+    );
+    const closeResults = () => {
+        results.hidden = true;
+        input.setAttribute('aria-expanded', 'false');
+        activeIndex = -1;
+    };
+    const highlight = (index) => {
+        const buttons = Array.from(results.querySelectorAll('[data-person-option]'));
+        buttons.forEach((button, buttonIndex) => {
+            button.classList.toggle('is-active', buttonIndex === index);
+            button.setAttribute('aria-selected', buttonIndex === index ? 'true' : 'false');
+        });
+        activeIndex = index;
+        buttons[index]?.scrollIntoView({ block: 'nearest' });
+    };
+    const choose = (option) => {
+        if (!option) return;
+        select.value = option.value;
+        input.value = String(option.textContent || '').trim();
+        input.setCustomValidity('');
+        closeResults();
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const renderResults = () => {
+        if (select.disabled || input.readOnly) {
+            closeResults();
+            return;
+        }
+        const query = normalizePersonSearch(input.value);
+        visibleOptions = selectableOptions()
+            .filter((option) => !query || optionSearchText(option).includes(query))
+            .sort((left, right) => {
+                const leftStarts = optionSearchText(left).startsWith(query) ? 0 : 1;
+                const rightStarts = optionSearchText(right).startsWith(query) ? 0 : 1;
+                return leftStarts - rightStarts
+                    || String(left.textContent || '').localeCompare(String(right.textContent || ''), 'ru');
+            })
+            .slice(0, 12);
+        results.replaceChildren();
+        visibleOptions.forEach((option, index) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.dataset.personOption = option.value;
+            button.setAttribute('role', 'option');
+            button.setAttribute('aria-selected', 'false');
+            button.textContent = String(option.textContent || '').trim();
+            button.addEventListener('mousedown', (event) => {
+                event.preventDefault();
+                choose(option);
+            });
+            button.addEventListener('mousemove', () => highlight(index));
+            results.appendChild(button);
+        });
+        if (!visibleOptions.length) {
+            const empty = document.createElement('div');
+            empty.className = 'pedagogical-person-empty';
+            empty.textContent = 'Сотрудник не найден';
+            results.appendChild(empty);
+        }
+        results.hidden = false;
+        input.setAttribute('aria-expanded', 'true');
+        highlight(visibleOptions.length ? 0 : -1);
+    };
+
+    input.addEventListener('focus', renderResults);
+    input.addEventListener('input', () => {
+        select.value = '';
+        input.setCustomValidity(input.value.trim() ? 'Выберите сотрудника из найденного списка' : '');
+        renderResults();
+    });
+    input.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            closeResults();
+            return;
+        }
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            if (results.hidden) renderResults();
+            if (!visibleOptions.length) return;
+            const direction = event.key === 'ArrowDown' ? 1 : -1;
+            highlight((activeIndex + direction + visibleOptions.length) % visibleOptions.length);
+            return;
+        }
+        if (event.key === 'Enter' && !results.hidden && visibleOptions.length) {
+            event.preventDefault();
+            choose(visibleOptions[Math.max(activeIndex, 0)]);
+        }
+    });
+    input.addEventListener('blur', () => {
+        const query = normalizePersonSearch(input.value);
+        const exact = selectableOptions().find((option) =>
+            normalizePersonSearch(option.textContent) === query
+        );
+        if (exact) {
+            choose(exact);
+        } else if (query && visibleOptions.length === 1) {
+            choose(visibleOptions[0]);
+        } else {
+            closeResults();
+        }
+    });
+
+    select._personSearchRefresh = () => {
+        const selected = select.options[select.selectedIndex];
+        input.value = selected?.value ? String(selected.textContent || '').trim() : '';
+        input.readOnly = Boolean(select.disabled);
+        input.setCustomValidity('');
+        closeResults();
+    };
+    select._personSearchRefresh();
 }
 
 function positionOptions(selectedPosition = '') {
@@ -274,12 +452,13 @@ function setEditorHeader(protocol) {
     pedUi.date.value = protocol?.meetingDate || '';
     pedUi.time.value = protocol?.agendaTime || '';
     pedUi.attendeeCount.value = protocol?.attendeeCount ?? 0;
-    pedUi.status.value = protocol?.status || 'DRAFT';
-    pedUi.status.disabled = !protocol?.id;
+    setWorkflowStatus(protocol?.status);
     pedUi.chairPosition.value = signerPositionForForm(protocol?.chairPosition);
     pedUi.chairFio.innerHTML = staffFioOptions(protocol?.chairFio);
+    makePersonSelectSearchable(pedUi.chairFio);
     pedUi.secretaryPosition.value = signerPositionForForm(protocol?.secretaryPosition);
     pedUi.secretaryFio.innerHTML = staffFioOptions(protocol?.secretaryFio);
+    makePersonSelectSearchable(pedUi.secretaryFio);
 }
 
 function itemValues(node) {
@@ -436,6 +615,7 @@ function addItemNode(item = {}) {
     set('agendaDurationMinutes', item.agendaDurationMinutes ?? 10);
     const speaker = node.querySelector('[data-field="speakerTeacherId"]');
     speaker.innerHTML = staffOptions(item.speakerTeacherId);
+    makePersonSelectSearchable(speaker);
     const speakerPosition = node.querySelector('[data-field="speakerPosition"]');
     speakerPosition.innerHTML = positionOptions(item.speakerPosition);
     speakerPosition.value = item.speakerPosition || '';
@@ -453,6 +633,7 @@ function addItemNode(item = {}) {
     renderAttachments(node, item);
     node.querySelector('[data-remove-item]').addEventListener('click', () => {
         node.remove();
+        pedState.editorSaved = false;
         renumberItems();
         renderPreview();
     });
@@ -519,6 +700,7 @@ function openNewProtocol() {
         items: []
     });
     renderEditorItems([]);
+    pedState.editorSaved = false;
     pedUi.editorFeedback.textContent = '';
     pedUi.editor.showModal();
 }
@@ -528,6 +710,7 @@ async function openProtocol(id) {
         pedState.editing = await pedApi(`/api/pedagogical-councils/${id}`);
         setEditorHeader(pedState.editing);
         renderEditorItems(pedState.editing.items);
+        pedState.editorSaved = true;
         pedUi.editorFeedback.textContent = '';
         pedUi.editor.showModal();
     } catch (error) {
@@ -535,7 +718,7 @@ async function openProtocol(id) {
     }
 }
 
-function editorPayload() {
+function editorPayload(status = pedUi.status.value) {
     return {
         academicYear: pedUi.academicYear.value.trim(),
         protocolNumber: pedUi.number.value.trim(),
@@ -546,7 +729,7 @@ function editorPayload() {
         chairFio: pedUi.chairFio.value.trim() || null,
         secretaryPosition: pedUi.secretaryPosition.value || null,
         secretaryFio: pedUi.secretaryFio.value.trim() || null,
-        status: pedUi.status.value,
+        status: workflowStatus(status),
         version: pedState.editing?.version ?? null,
         items: collectItems()
     };
@@ -594,11 +777,15 @@ async function uploadPendingAttachments(protocol, pendingGroups) {
 
 async function saveProtocol(event) {
     event.preventDefault();
+    const targetStatus = workflowStatus(event.submitter?.dataset.saveStatus || 'DRAFT');
+    const reissuing = workflowStatus(pedState.editing?.status) === 'REGISTERED';
     pedUi.editorFeedback.textContent = 'Сохраняем…';
     pedUi.editorSave.disabled = true;
+    pedUi.editorSaveDraft.disabled = true;
     let protocolSaved = false;
+    let savePhase = 'protocol';
     try {
-        const payload = editorPayload();
+        const payload = editorPayload('DRAFT');
         const pendingGroups = pendingAttachmentGroups();
         const created = !pedState.editing?.id;
         const path = created
@@ -611,22 +798,46 @@ async function saveProtocol(event) {
         });
         protocolSaved = true;
         syncSavedItemIds(pedState.editing.items);
+        savePhase = 'attachments';
         const uploadedCount = await uploadPendingAttachments(pedState.editing, pendingGroups);
         if (uploadedCount) {
             pedState.editing = await pedApi(`/api/pedagogical-councils/${pedState.editing.id}`);
         }
+        pedState.editorSaved = true;
+
+        if (targetStatus === 'REGISTERED') {
+            savePhase = 'release';
+            pedState.editing = await pedApi(`/api/pedagogical-councils/${pedState.editing.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(editorPayload('REGISTERED'))
+            });
+        }
         setEditorHeader(pedState.editing);
         renderEditorItems(pedState.editing.items);
+        pedState.editorSaved = true;
+        const actionMessage = targetStatus === 'REGISTERED'
+            ? (reissuing ? 'Протокол перевыпущен.' : 'Протокол выпущен.')
+            : 'Черновик сохранён.';
         pedUi.editorFeedback.textContent = uploadedCount
-            ? `Протокол сохранён. Приложений загружено: ${uploadedCount}.`
-            : 'Протокол сохранён.';
+            ? `${actionMessage} Приложений загружено: ${uploadedCount}.`
+            : actionMessage;
         await reloadProtocols();
     } catch (error) {
-        pedUi.editorFeedback.textContent = protocolSaved
-            ? `Протокол сохранён, но одно из приложений не загрузилось: ${error.message}`
-            : error.message;
+        if (protocolSaved && savePhase === 'release') {
+            setWorkflowStatus('DRAFT');
+            pedState.editorSaved = true;
+            pedUi.editorFeedback.textContent =
+                `Изменения сохранены как черновик, но выпустить протокол не удалось: ${error.message}`;
+        } else if (protocolSaved) {
+            pedUi.editorFeedback.textContent =
+                `Черновик сохранён, но одно из приложений не загрузилось: ${error.message}`;
+        } else {
+            pedUi.editorFeedback.textContent = error.message;
+        }
     } finally {
         pedUi.editorSave.disabled = false;
+        pedUi.editorSaveDraft.disabled = false;
     }
 }
 
@@ -697,11 +908,11 @@ async function downloadWord(path, options = {}, fallback = 'Документ.doc
 
 function certifierOptions(selectedUserId = null) {
     return '<option value="">Выберите сотрудника</option>' + (pedState.certifiers || []).map((person) =>
-        `<option value="${person.userId}" data-position="${pedEsc(person.position)}" ${String(person.userId) === String(selectedUserId) ? 'selected' : ''}>${pedEsc(person.shortFio || person.fio)}</option>`
+        `<option value="${person.userId}" data-position="${pedEsc(person.position)}" data-search="${pedEsc(`${person.shortFio || ''} ${person.fio || ''}`)}" ${String(person.userId) === String(selectedUserId) ? 'selected' : ''}>${pedEsc(person.shortFio || person.fio)}</option>`
     ).join('');
 }
 
-function addCertifierRow(selectedUserId = null, selectedPosition = '', locked = false) {
+function addCertifierRow(selectedUserId = null, selectedPosition = '', locked = false, primary = false) {
     const row = document.createElement('div');
     row.className = 'pedagogical-signer-row';
     row.innerHTML = `
@@ -711,14 +922,17 @@ function addCertifierRow(selectedUserId = null, selectedPosition = '', locked = 
         <label>ФИО
             <select data-certifier-user ${locked ? 'disabled' : ''}>${certifierOptions(selectedUserId)}</select>
         </label>
-        ${locked
-            ? '<span class="muted pedagogical-signer-note">Формирует выписку</span>'
-            : '<button type="button" data-remove-certifier>Убрать</button>'}`;
+        ${primary
+            ? '<span class="muted pedagogical-signer-note">По умолчанию — сотрудник, формирующий выписку. Можно заменить.</span>'
+            : locked
+                ? '<span class="muted pedagogical-signer-note">Формирует выписку</span>'
+                : '<button type="button" data-remove-certifier>Убрать</button>'}`;
     const userSelect = row.querySelector('[data-certifier-user]');
     const positionSelect = row.querySelector('[data-certifier-position]');
     userSelect.value = selectedUserId || '';
     positionSelect.value = selectedPosition || '';
     userSelect.addEventListener('change', () => fillPositionFromPerson(userSelect, positionSelect));
+    makePersonSelectSearchable(userSelect);
     row.querySelector('[data-remove-certifier]')?.addEventListener('click', () => row.remove());
     pedUi.extractCertifiers.appendChild(row);
 }
@@ -750,7 +964,7 @@ async function openExtract(id) {
         }).join('');
         pedUi.extractCertifiers.innerHTML = '';
         const current = currentCertifier();
-        addCertifierRow(current.userId, current.position, true);
+        addCertifierRow(current.userId, current.position, false, true);
         pedUi.extractApprover.innerHTML = staffOptions();
         pedUi.extractApproverPosition.innerHTML = positionOptions();
         const director = (pedState.staff || []).find((person) =>
@@ -759,8 +973,8 @@ async function openExtract(id) {
             pedUi.extractApprover.value = director.id;
             fillPositionFromPerson(pedUi.extractApprover, pedUi.extractApproverPosition);
         }
-        pedUi.extractExternal.checked = false;
-        pedUi.extractSourceSigners.checked = false;
+        makePersonSelectSearchable(pedUi.extractApprover);
+        pedUi.extractSourceSigners.checked = true;
         pedUi.extractApproval.checked = false;
         pedUi.extractApproverRow.hidden = true;
         pedUi.extractFeedback.textContent = '';
@@ -783,7 +997,7 @@ async function downloadExtract(event) {
     const payload = {
         itemIds,
         certifiers,
-        externalRecipient: pedUi.extractExternal.checked,
+        externalRecipient: true,
         includeSourceSigners: pedUi.extractSourceSigners.checked,
         separateApproval: pedUi.extractApproval.checked,
         approverTeacherId: pedUi.extractApprover.value ? Number(pedUi.extractApprover.value) : null,
@@ -821,6 +1035,7 @@ async function deleteAttachment(attachmentId) {
         await pedApi(`/api/pedagogical-councils/${pedState.editing.id}/attachments/${attachmentId}`, { method: 'DELETE' });
         pedState.editing = await pedApi(`/api/pedagogical-councils/${pedState.editing.id}`);
         renderEditorItems(pedState.editing.items);
+        pedState.editorSaved = true;
         pedUi.editorFeedback.textContent = 'Приложение удалено.';
         await reloadProtocols();
     } catch (error) {
@@ -832,9 +1047,30 @@ pedUi.newButton.addEventListener('click', openNewProtocol);
 pedUi.uploadArchiveButton.addEventListener('click', openArchiveDialog);
 pedUi.addItem.addEventListener('click', () => {
     addItemNode();
+    pedState.editorSaved = false;
     renderPreview();
 });
 pedUi.editorForm.addEventListener('submit', saveProtocol);
+pedUi.editorForm.addEventListener('input', () => {
+    pedState.editorSaved = false;
+});
+pedUi.editorForm.addEventListener('change', () => {
+    pedState.editorSaved = false;
+});
+pedUi.editor.addEventListener('click', (event) => {
+    if (event.target !== pedUi.editor) return;
+    const bounds = pedUi.editor.getBoundingClientRect();
+    const outside = event.clientX < bounds.left
+        || event.clientX > bounds.right
+        || event.clientY < bounds.top
+        || event.clientY > bounds.bottom;
+    if (!outside) return;
+    if (pedState.editorSaved) {
+        pedUi.editor.close();
+        return;
+    }
+    pedUi.editorFeedback.textContent = 'Есть несохранённые изменения. Сначала сохраните протокол или нажмите «Отмена».';
+});
 pedUi.archiveForm.addEventListener('submit', uploadArchive);
 pedUi.archiveYear.addEventListener('change', updateArchiveYearBounds);
 pedUi.extractForm.addEventListener('submit', downloadExtract);
@@ -911,6 +1147,7 @@ pedUi.items.addEventListener('click', async (event) => {
         const node = removePending.closest('[data-item]');
         const index = Number(removePending.dataset.removePendingAttachment);
         node._pendingAttachments.splice(index, 1);
+        pedState.editorSaved = false;
         renderAttachments(node, { attachments: node._savedAttachments || [] });
         renderPreview();
     }

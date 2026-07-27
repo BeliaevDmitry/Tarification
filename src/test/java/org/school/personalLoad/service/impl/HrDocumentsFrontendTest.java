@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HrDocumentsFrontendTest {
@@ -37,7 +38,7 @@ class HrDocumentsFrontendTest {
         assertTrue(js.contains("Не удалось загрузить список работников"));
         assertTrue(js.contains("loadTeachersForDocuments"));
         assertTrue(js.contains("api('/api/teachers')"));
-        assertTrue(html.contains("teachers-notification.js?v=20260727-1"));
+        assertTrue(html.contains("teachers-notification.js?v=20260727-3"));
         assertTrue(js.contains("const automaticClause24=clause==='2.4'&&!item.separateAgreement"));
         assertTrue(js.contains("$('#memo-text').value=automaticClause24?'':item.memoText||''"));
         assertTrue(js.contains("memoText:automaticClause24?null:form.get('memo')"));
@@ -64,7 +65,12 @@ class HrDocumentsFrontendTest {
         assertTrue(js.contains("data-reopen-agreement"));
         assertTrue(js.contains("/reopen"));
         assertTrue(js.contains("Исправить и перевыпустить"));
-        assertTrue(js.contains("ПЕРЕВЫПУСТИТЬ"));
+        assertTrue(js.contains("agreement.reissueRequired"));
+        assertTrue(js.contains("В документ добавлены новые пункты"));
+        assertTrue(js.contains("DOCX (старая версия)"));
+        assertTrue(html.contains("<option>Перевыпустить</option>"));
+        assertFalse(js.contains("ПЕРЕВЫПУСТИТЬ"));
+        assertTrue(js.contains("классное руководство (пункт 2.4)"));
         assertTrue(js.contains("введите слово УДАЛИТЬ"));
         assertTrue(js.contains("json('DELETE',{confirmation,reason:reason.trim()})"));
         assertTrue(controller.contains("\"УДАЛИТЬ\".equals(r.confirmation())"));
@@ -91,6 +97,7 @@ class HrDocumentsFrontendTest {
         assertTrue(html.contains("Сформировать на 1 сентября"));
         assertTrue(js.contains("Не заполнен"));
         assertTrue(js.contains("data-edit-agreement"));
+        assertTrue(js.contains("'ISSUED','SIGNING'].includes(agreement.status)"));
         assertTrue(js.contains("Сформировать DOCX"));
         assertTrue(js.contains("Заполнить договор"));
         assertTrue(js.contains("Сохранить как шаблон"));
