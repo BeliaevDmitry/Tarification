@@ -2788,6 +2788,24 @@ td.vacancy-row {
     color: #475569;
 }
 
+.ped-status-released {
+    background: #ecfdf5;
+    color: #047857;
+}
+
+.pedagogical-status-field {
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    font-weight: 600;
+}
+
+.pedagogical-status-field output {
+    justify-self: start;
+    padding: 7px 12px;
+    font-weight: 700;
+}
+
 .ped-status-review {
     background: #fff7ed;
     color: #9a3412;
@@ -3014,6 +3032,71 @@ td.vacancy-row {
 
 .pedagogical-signer-row label {
     margin-bottom: 0;
+}
+
+.pedagogical-person-combobox {
+    position: relative;
+    width: 100%;
+}
+
+.pedagogical-person-search {
+    width: 100%;
+}
+
+.pedagogical-person-search[readonly] {
+    background: #f8fafc;
+    color: #475569;
+    cursor: default;
+}
+
+.pedagogical-person-native-select {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.pedagogical-person-results {
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    max-height: 260px;
+    overflow-y: auto;
+    padding: 4px;
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, .18);
+}
+
+.pedagogical-person-results[hidden] {
+    display: none;
+}
+
+.pedagogical-person-results button {
+    display: block;
+    width: 100%;
+    padding: 8px 10px;
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    color: #0f172a;
+    text-align: left;
+}
+
+.pedagogical-person-results button:hover,
+.pedagogical-person-results button.is-active {
+    background: #eaf2ff;
+}
+
+.pedagogical-person-empty {
+    padding: 9px 10px;
+    color: #64748b;
 }
 
 .pedagogical-signer-note {

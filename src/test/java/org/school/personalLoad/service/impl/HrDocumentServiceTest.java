@@ -490,6 +490,47 @@ class HrDocumentServiceTest {
         assertTrue(created.get(0).getInternalNumber().startsWith("БД-1-"));
     }
 
+    @Test void annualAgreementIncludesClassroomLeadershipWithoutCabinetMemo() {
+        ManualLoadEntry load=new ManualLoadEntry();load.setTeacherId(1L);load.setAcademicYear("2025/2026");
+        load.setSubjectName("Математика");load.setClassName("5А");load.setLoad(1);load.setNumberSchoolBuilding("1");
+        ClassroomLeadershipEntry classroom=new ClassroomLeadershipEntry();classroom.setAcademicYear("2025/2026");
+        classroom.setClassName("5 А");classroom.setTeacher(teacher);
+        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load));
+        when(classroomLeadership.findAllByAcademicYear("2025/2026")).thenReturn(List.of(classroom));
+        when(sizes.effectiveClassSizes("2025/2026")).thenReturn(Map.of("5-а",25));
+        when(contracts.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(1L)).thenReturn(List.of());
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026")).thenReturn(new ArrayList<>());
+
+        AdditionalAgreement created=service.createAnnualDrafts(new BatchAgreementRequest("2025/2026",
+                LocalDate.of(2025,9,1),null,List.of(),null),"hr").get(0);
+
+        assertTrue(created.getConditionsJson().contains("пункт 2.1"));
+        assertTrue(created.getConditionsJson().contains("пункт 2.4"));
+        assertTrue(created.getConditionsJson().contains("возложена функция классного руководителя"));
+        assertTrue(created.getConditionsJson().contains("17 500 рублей 00 коп."));
+        assertTrue(created.getSummary().contains("Нагрузка и должностной оклад"));
+        assertTrue(created.getSummary().contains("Классное руководство"));
+        verify(memos,never()).save(any());
+    }
+
+    @Test void repeatedAnnualGenerationAddsClassroomLeadershipToExistingDraft() {
+        AdditionalAgreement annual=draftAgreement();annual.setSummary("Нагрузка и должностной оклад");
+        ClassroomLeadershipEntry classroom=new ClassroomLeadershipEntry();classroom.setAcademicYear("2025/2026");
+        classroom.setClassName("5 А");classroom.setTeacher(teacher);
+        when(classroomLeadership.findAllByAcademicYear("2025/2026")).thenReturn(List.of(classroom));
+        when(sizes.effectiveClassSizes("2025/2026")).thenReturn(Map.of("5-а",20));
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026")).thenReturn(List.of(annual));
+
+        List<AdditionalAgreement> created=service.createAnnualDrafts(new BatchAgreementRequest("2025/2026",
+                LocalDate.of(2025,9,1),null,List.of(),null),"hr");
+
+        assertTrue(created.isEmpty());
+        assertTrue(annual.getConditionsJson().contains("пункт 2.4"));
+        assertTrue(annual.getConditionsJson().contains("15 000 рублей 00 коп."));
+        assertTrue(annual.getSummary().contains("Классное руководство"));
+        verify(agreements).save(annual);
+    }
+
     @Test void teachersWithLoadAreAutomaticallyAddedToIncentiveTableByForeignKey() {
         ManualLoadEntry load=new ManualLoadEntry();load.setTeacherId(1L);load.setAcademicYear("2025/2026");
         load.setLoad(2);when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load));
@@ -551,6 +592,25 @@ class HrDocumentServiceTest {
         assertTrue(annual.getConditionsJson().contains("8 100 рублей 00 коп."));
         verify(agreements).save(annual);
         verify(memos,never()).save(any());
+    }
+
+    @Test void changingIncentiveMarksIssuedUnsignedAgreementForReissueAndKeepsOldFile() {
+        AdditionalAgreement annual=draftAgreement();annual.setSummary("Нагрузка и должностной оклад");
+        annual.setStatus(AdditionalAgreement.Status.ISSUED);
+        annual.setIssuedAt(java.time.LocalDateTime.of(2026,7,27,10,0));
+        annual.setCurrentDocument(new byte[]{1,2,3});annual.setGeneratedDocument(new byte[]{1,2,3});
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026")).thenReturn(List.of(annual));
+
+        service.saveIncentive("2025/2026",1L,new BigDecimal("8100"),"hr");
+
+        assertTrue(annual.getConditionsJson().contains("пункт 2.5"));
+        assertTrue(annual.getConditionsJson().contains("8 100 рублей 00 коп."));
+        assertEquals(AdditionalAgreement.Status.ISSUED,annual.getStatus());
+        assertTrue(annual.isReissueRequired());
+        assertArrayEquals(new byte[]{1,2,3},annual.getCurrentDocument(),
+                "Старая выпущенная редакция хранится до подтверждённого перевыпуска");
+        assertTrue(service.agreementView(annual).reissueRequired());
+        verify(agreements).save(annual);
     }
 
     @Test void incentiveExcelExportAndImportUseTeacherId() throws Exception {
@@ -713,6 +773,22 @@ class HrDocumentServiceTest {
         assertNull(agreement.getCurrentDocument());
         ResponseStatusException error=assertThrows(ResponseStatusException.class,()->service.prepare(100L,"hr"));
         assertTrue(error.getReason().contains("трудовой договор"));
+    }
+
+    @Test void issuedUnsignedAgreementCanBeEditedAndIsMarkedForReissue() {
+        AdditionalAgreement agreement=draftAgreement();agreement.setStatus(AdditionalAgreement.Status.ISSUED);
+        agreement.setIssuedAt(java.time.LocalDateTime.of(2026,7,27,10,0));
+        agreement.setCurrentDocument(new byte[]{4,5,6});agreement.setGeneratedDocument(new byte[]{4,5,6});
+        when(agreements.findById(100L)).thenReturn(Optional.of(agreement));
+
+        service.editAgreement(100L,new AgreementEditRequest(10L,LocalDate.of(2025,9,1),
+                agreement.getValidFrom(),agreement.getValidTo(),"Нагрузка и стимул",
+                "Изложить пункт 2.1 в новой редакции.\n\nВнести изменения в пункт 2.5.",
+                new BigDecimal("85000"),false,null),"hr");
+
+        assertEquals(AdditionalAgreement.Status.ISSUED,agreement.getStatus());
+        assertTrue(agreement.isReissueRequired());
+        assertArrayEquals(new byte[]{4,5,6},agreement.getCurrentDocument());
     }
 
     @Test void editedAgreementCanUpdateReusableCatalogTemplate() {
@@ -896,6 +972,7 @@ class HrDocumentServiceTest {
         AdditionalAgreement reopened=service.reopenIssuedAgreement(100L,"hr");
 
         assertEquals(AdditionalAgreement.Status.DRAFT,reopened.getStatus());
+        assertFalse(reopened.isReissueRequired());
         assertNull(reopened.getIssuedAt());assertNull(reopened.getIssuedBy());
         assertNull(reopened.getGeneratedDocument());assertNull(reopened.getCurrentDocument());
         verify(versions).save(argThat(version->"ISSUED_BEFORE_REISSUE".equals(version.getSource())
@@ -911,6 +988,18 @@ class HrDocumentServiceTest {
                 ()->service.reopenIssuedAgreement(100L,"hr"));
 
         assertTrue(error.getReason().contains("Подписанное"));
+        verify(agreements,never()).save(any());
+    }
+
+    @Test void staleIssuedAgreementCannotBeMarkedSignedBeforeReissue() {
+        AdditionalAgreement agreement=draftAgreement();agreement.setStatus(AdditionalAgreement.Status.ISSUED);
+        agreement.setReissueRequired(true);
+        when(agreements.findById(100L)).thenReturn(Optional.of(agreement));
+
+        ResponseStatusException error=assertThrows(ResponseStatusException.class,
+                ()->service.agreementStatus(100L,AdditionalAgreement.Status.SIGNED));
+
+        assertTrue(error.getReason().contains("перевыпустите"));
         verify(agreements,never()).save(any());
     }
 

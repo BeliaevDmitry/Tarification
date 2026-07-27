@@ -80,14 +80,11 @@
             <label>Число присутствующих
               <input id="protocol-attendee-count" name="attendeeCount" type="number" min="0" value="0" required>
             </label>
-            <label>Статус
-              <select id="protocol-status" name="status">
-                <option value="DRAFT">Черновик</option>
-                <option value="REVIEW">На проверке</option>
-                <option value="REGISTERED">Зарегистрирован</option>
-                <option value="CORRECTED">Исправленная версия</option>
-              </select>
-            </label>
+            <div class="pedagogical-status-field">
+              <span>Статус</span>
+              <output id="protocol-status-view" class="table-badge ped-status-draft">Черновик</output>
+              <input id="protocol-status" name="status" type="hidden" value="DRAFT">
+            </div>
             <label>Должность председателя
               <select id="protocol-chair-position" name="chairPosition">
                 <option value="">Выберите должность</option>
@@ -140,7 +137,8 @@
     <p id="protocol-editor-feedback" class="muted" role="status"></p>
     <div class="dialog-actions sticky-dialog-actions">
       <button type="button" id="protocol-editor-cancel">Отмена</button>
-      <button type="submit" id="protocol-editor-save">Сохранить протокол</button>
+      <button type="submit" id="protocol-editor-save-draft" data-save-status="DRAFT">Сохранить черновик</button>
+      <button type="submit" id="protocol-editor-save" data-save-status="REGISTERED">Сохранить и выпустить</button>
     </div>
   </form>
 </dialog>
@@ -255,11 +253,7 @@
       <button type="button" id="extract-add-certifier">Добавить заверителя</button>
     </div>
     <label class="pedagogical-check">
-      <input id="extract-external" type="checkbox">
-      Выписка выдаётся во внешнюю организацию
-    </label>
-    <label class="pedagogical-check">
-      <input id="extract-source-signers" type="checkbox">
+      <input id="extract-source-signers" type="checkbox" checked>
       Указать председателя и секретаря информационно, без строк для подписи
     </label>
     <label class="pedagogical-check">

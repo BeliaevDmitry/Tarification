@@ -28,6 +28,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -102,6 +103,55 @@ class PedagogicalCouncilServiceImplTest {
                 java.util.Arrays.equals(word, protocol.getArchiveDocument())
                         && "2023/2024".equals(protocol.getAcademicYear())
         ));
+    }
+
+    @Test
+    void releasedProtocolCanBeEditedAndReissuedWithoutCorrectedStatus() {
+        PedagogicalCouncilProtocol protocol = baseProtocol();
+        protocol.setStatus(PedagogicalCouncilProtocol.Status.REGISTERED);
+        protocol.setRegisteredAt(LocalDateTime.of(2026, 3, 31, 12, 0));
+        protocol.setRegisteredBy("Старый пользователь");
+        protocol.setChairPositionSnapshot("Директор");
+        protocol.setChairFioSnapshot("Иванова И.И.");
+        protocol.setSecretaryPositionSnapshot("Методист");
+        protocol.setSecretaryFioSnapshot("Петрова П.П.");
+        protocol.setAttendeeCount(25);
+        protocol.getItems().add(item(protocol, 10L, 1));
+        when(protocols.findById(1L)).thenReturn(Optional.of(protocol));
+        when(protocols.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        PedagogicalCouncilDtos.ProtocolDetails result = service.update(
+                1L,
+                new PedagogicalCouncilDtos.UpdateProtocolRequest(
+                        "8",
+                        LocalDate.of(2026, 3, 31),
+                        null,
+                        25,
+                        "Директор",
+                        "Иванова И.И.",
+                        "Методист",
+                        "Петрова П.П.",
+                        PedagogicalCouncilProtocol.Status.REGISTERED,
+                        0L,
+                        List.of(new PedagogicalCouncilDtos.ItemRequest(
+                                10L,
+                                "Вопрос с дополнением",
+                                10,
+                                null,
+                                null,
+                                null,
+                                "Обновлённое решение",
+                                25,
+                                0,
+                                0
+                        ))
+                ),
+                user()
+        );
+
+        assertEquals(PedagogicalCouncilProtocol.Status.REGISTERED, result.status());
+        assertEquals("Секретарь", result.registeredBy());
+        assertTrue(result.registeredAt().isAfter(LocalDateTime.of(2026, 3, 31, 12, 0)));
     }
 
     @Test
@@ -352,9 +402,49 @@ class PedagogicalCouncilServiceImplTest {
         assertFalse(text.contains("ГБОУ Школа № 1811"));
         assertTrue(text.contains("Беляев Дмитрий Александрович"));
         assertTrue(text.contains("Власова Юлия Сергеевна"));
-        assertEquals(3, text.split("Верно", -1).length - 1);
+        assertEquals(2, text.split("Верно", -1).length - 1);
+        assertTrue(text.contains("М.П."));
         assertEquals(1, pictureCount);
         assertEquals("png", pictureExtension);
+    }
+
+    @Test
+    void extractDefaultsToGeneratingUserAndIncludesSourceSignersAndStamp() throws Exception {
+        PedagogicalCouncilProtocol protocol = baseProtocol();
+        protocol.setChairFioSnapshot("Петрова И.И.");
+        protocol.setChairPositionSnapshot("Директор");
+        protocol.setSecretaryFioSnapshot("Беляев Д.А.");
+        protocol.setSecretaryPositionSnapshot("Методист");
+        protocol.getItems().add(item(protocol, 10L, 1));
+        when(protocols.findById(1L)).thenReturn(Optional.of(protocol));
+        when(users.findById(1L)).thenReturn(Optional.of(appUser(1L, "Секретарь С.С.")));
+        when(teachers.findByFioTeacherIgnoreCase(anyString())).thenReturn(Optional.empty());
+
+        PedagogicalCouncilDtos.FilePayload file = service.buildExtract(
+                1L,
+                new PedagogicalCouncilDtos.ExtractRequest(
+                        List.of(10L),
+                        List.of(),
+                        List.of(),
+                        false,
+                        null,
+                        true,
+                        false,
+                        null,
+                        null
+                ),
+                user()
+        );
+
+        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(file.content()));
+             XWPFWordExtractor extractor = new XWPFWordExtractor(document)) {
+            String text = extractor.getText();
+            assertTrue(text.contains("Секретарь С.С."));
+            assertTrue(text.contains("Председатель педагогического совета: Директор Петрова И.И."));
+            assertTrue(text.contains("Секретарь: Методист Беляев Д.А."));
+            assertTrue(text.contains("М.П."));
+            assertEquals(1, text.split("Верно", -1).length - 1);
+        }
     }
 
     @Test
@@ -423,6 +513,7 @@ class PedagogicalCouncilServiceImplTest {
             assertTrue(text.contains("ГОРОДА МОСКВЫ «ШКОЛА № 7»"));
             assertFalse(text.contains("КОМУ"));
             assertFalse(text.contains("И.Д. Жданова"));
+            assertTrue(text.contains("М.П."));
             assertEquals(1, document.getAllPictures().size());
             assertEquals("jpeg", document.getAllPictures().get(0).suggestFileExtension());
         }
