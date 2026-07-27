@@ -2811,6 +2811,24 @@ td.vacancy-row {
     overflow: auto;
 }
 
+.teacher-1c-dialog {
+    width: min(1180px, calc(100vw - 32px));
+    max-width: none;
+    max-height: calc(100vh - 28px);
+}
+
+.teacher-1c-dialog > form {
+    padding: 20px;
+}
+
+.teacher-1c-dialog .sheet-wrap {
+    max-height: 62vh;
+}
+
+.teacher-1c-dialog select {
+    min-width: 210px;
+}
+
 .pedagogical-dialog > form,
 .pedagogical-small-dialog > form {
     padding: 20px;
@@ -2901,6 +2919,14 @@ td.vacancy-row {
     gap: 10px;
     padding-top: 8px;
     border-top: 1px solid #e2e8f0;
+    font-size: 12pt;
+    line-height: 1.15;
+}
+
+.pedagogical-attachment-row.is-pending {
+    color: #475569;
+    border-left: 3px solid #f59e0b;
+    padding-left: 8px;
 }
 
 .pedagogical-vote {
@@ -2976,6 +3002,31 @@ td.vacancy-row {
     margin-bottom: 16px;
 }
 
+.pedagogical-signer-row {
+    display: grid;
+    grid-template-columns: minmax(170px, .9fr) minmax(210px, 1.1fr) auto;
+    gap: 10px;
+    align-items: end;
+    padding: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+}
+
+.pedagogical-signer-row label {
+    margin-bottom: 0;
+}
+
+.pedagogical-signer-note {
+    align-self: center;
+}
+
+.ped-preview-attachment {
+    font-size: 12pt;
+    line-height: 1.15;
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+
 .pedagogical-check {
     display: flex !important;
     grid-template-columns: none !important;
@@ -3022,6 +3073,10 @@ td.vacancy-row {
     .pedagogical-attachment-row {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .pedagogical-signer-row {
+        grid-template-columns: 1fr;
     }
 
     #protocol-preview-paper {

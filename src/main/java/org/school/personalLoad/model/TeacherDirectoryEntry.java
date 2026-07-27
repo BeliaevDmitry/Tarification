@@ -31,6 +31,12 @@ public class TeacherDirectoryEntry {
     private String email;
     private String additionalDuties;
     private String numberSchoolBuilding;
+    private String primaryPosition;
+    private String personnelNumber;
+    private String employmentType;
+    private LocalDate employmentDate;
+    @Column(name = "last_one_c_sync_at")
+    private LocalDateTime lastOneCSyncAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "building_group_id", insertable = false, updatable = false)

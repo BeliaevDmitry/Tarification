@@ -36,12 +36,13 @@ const pedUi = {
     extractForm: document.getElementById('extract-form'),
     extractItems: document.getElementById('extract-items'),
     extractCertifiers: document.getElementById('extract-certifiers'),
+    extractAddCertifier: document.getElementById('extract-add-certifier'),
     extractExternal: document.getElementById('extract-external'),
-    extractStorageRow: document.getElementById('extract-storage-row'),
-    extractStorage: document.getElementById('extract-storage'),
+    extractSourceSigners: document.getElementById('extract-source-signers'),
     extractApproval: document.getElementById('extract-approval'),
     extractApproverRow: document.getElementById('extract-approver-row'),
     extractApprover: document.getElementById('extract-approver'),
+    extractApproverPosition: document.getElementById('extract-approver-position'),
     extractFeedback: document.getElementById('extract-feedback'),
     extractClose: document.getElementById('extract-close'),
     extractCancel: document.getElementById('extract-cancel')
@@ -53,6 +54,7 @@ const pedState = {
     certifiers: [],
     academicYears: [],
     branding: null,
+    user: null,
     editing: null,
     extractProtocol: null,
     permissions: { canView: false, canEdit: false, canImport: false, canExport: false }
@@ -186,8 +188,64 @@ function renderList() {
 
 function staffOptions(selectedId = null) {
     return '<option value="">Выберите сотрудника</option>' + pedState.staff.map((person) =>
-        `<option value="${person.id}" data-position="${pedEsc(person.position)}" data-fio="${pedEsc(person.shortFio)}" ${String(person.id) === String(selectedId) ? 'selected' : ''}>${pedEsc(person.fio)} — ${pedEsc(person.position)}</option>`
+        `<option value="${person.id}" data-position="${pedEsc(person.position)}" data-fio="${pedEsc(person.shortFio)}" ${String(person.id) === String(selectedId) ? 'selected' : ''}>${pedEsc(person.shortFio || person.fio)}</option>`
     ).join('');
+}
+
+function staffFioOptions(selectedFio = '') {
+    const normalizedSelected = String(selectedFio || '').trim();
+    const options = (pedState.staff || []).map((person) => ({
+        value: String(person.shortFio || person.fio || '').trim(),
+        fullFio: String(person.fio || '').trim(),
+        position: String(person.position || '').trim()
+    })).filter((person) => person.value);
+    const selectedPerson = options.find((person) =>
+        person.value.toLocaleLowerCase('ru') === normalizedSelected.toLocaleLowerCase('ru')
+        || person.fullFio.toLocaleLowerCase('ru') === normalizedSelected.toLocaleLowerCase('ru')
+    );
+    const effectiveSelected = selectedPerson?.value || normalizedSelected;
+    if (effectiveSelected && !options.some((person) => person.value === effectiveSelected)) {
+        options.push({ value: effectiveSelected, fullFio: effectiveSelected });
+    }
+    const uniqueValues = [...new Map(options.map((person) => [person.value, person])).values()]
+        .sort((a, b) => a.value.localeCompare(b.value, 'ru'));
+    return '<option value="">Выберите сотрудника</option>' + uniqueValues.map((person) =>
+        `<option value="${pedEsc(person.value)}" data-position="${pedEsc(person.position)}" ${person.value === effectiveSelected ? 'selected' : ''}>${pedEsc(person.value)}</option>`
+    ).join('');
+}
+
+function positionOptions(selectedPosition = '') {
+    const normalizedSelected = String(selectedPosition || '').trim();
+    const positions = [
+        'Директор',
+        'Заместитель директора',
+        'Методист',
+        'Учитель',
+        ...(pedState.staff || []).map((person) => person.position),
+        ...(pedState.certifiers || []).map((person) => person.position)
+    ].map((value) => String(value || '').trim()).filter(Boolean);
+    if (normalizedSelected) positions.push(normalizedSelected);
+    const unique = [...new Set(positions)].sort((a, b) => a.localeCompare(b, 'ru'));
+    return '<option value="">Выберите должность</option>' + unique.map((position) =>
+        `<option value="${pedEsc(position)}" ${position === normalizedSelected ? 'selected' : ''}>${pedEsc(position)}</option>`
+    ).join('');
+}
+
+function selectedOptionPosition(select) {
+    const option = select?.options?.[select.selectedIndex];
+    return String(option?.dataset?.position || '').trim();
+}
+
+function fillPositionFromPerson(personSelect, positionSelect, roleOnly = false) {
+    const position = selectedOptionPosition(personSelect);
+    if (!position || !positionSelect) return;
+    if (roleOnly) {
+        const role = signerPositionForForm(position);
+        if (role) positionSelect.value = role;
+        return;
+    }
+    positionSelect.innerHTML = positionOptions(position);
+    positionSelect.value = position;
 }
 
 function signerPositionForForm(position) {
@@ -219,9 +277,9 @@ function setEditorHeader(protocol) {
     pedUi.status.value = protocol?.status || 'DRAFT';
     pedUi.status.disabled = !protocol?.id;
     pedUi.chairPosition.value = signerPositionForForm(protocol?.chairPosition);
-    pedUi.chairFio.value = protocol?.chairFio || '';
+    pedUi.chairFio.innerHTML = staffFioOptions(protocol?.chairFio);
     pedUi.secretaryPosition.value = signerPositionForForm(protocol?.secretaryPosition);
-    pedUi.secretaryFio.value = protocol?.secretaryFio || '';
+    pedUi.secretaryFio.innerHTML = staffFioOptions(protocol?.secretaryFio);
 }
 
 function itemValues(node) {
@@ -231,6 +289,7 @@ function itemValues(node) {
         agendaTitle: value('agendaTitle').trim(),
         agendaDurationMinutes: Number(value('agendaDurationMinutes') || 10),
         speakerTeacherId: value('speakerTeacherId') ? Number(value('speakerTeacherId')) : null,
+        speakerPosition: value('speakerPosition').trim(),
         speechContent: value('speechContent').trim(),
         decisionText: value('decisionText').trim(),
         votesFor: Number(value('votesFor') || 0),
@@ -286,10 +345,11 @@ function collectItems() {
 }
 
 function speakerDescription(itemNode) {
-    const select = itemNode.querySelector('[data-field="speakerTeacherId"]');
-    const selected = select?.options[select.selectedIndex];
+    const personSelect = itemNode.querySelector('[data-field="speakerTeacherId"]');
+    const selected = personSelect?.options[personSelect.selectedIndex];
     if (!selected?.value) return 'докладчик не выбран';
-    return `${selected.dataset.position || ''} ${selected.dataset.fio || ''}`.trim();
+    const position = itemNode.querySelector('[data-field="speakerPosition"]')?.value || '';
+    return `${position} ${selected.dataset.fio || ''}`.trim();
 }
 
 function renderPreview() {
@@ -298,9 +358,12 @@ function renderPreview() {
     const secretary = [pedUi.secretaryPosition.value, pedUi.secretaryFio.value.trim()].filter(Boolean).join(' ');
     const agenda = items.map((itemNode, index) => {
         const item = itemValues(itemNode);
-        const attachments = itemNode.querySelectorAll('[data-attachment-id]').length;
-        const attachmentText = attachments
-            ? `<p><em>Связано приложений: ${attachments}</em></p>`
+        const attachmentNumbers = Array.from(itemNode.querySelectorAll(
+            '[data-attachment-number], [data-pending-attachment-number]'
+        )).map((element) => element.dataset.attachmentNumber
+            || String(element.textContent || '').replace(/\D+/g, '')).filter(Boolean);
+        const attachmentText = attachmentNumbers.length
+            ? `<p class="ped-preview-attachment"><em>Приложения: № ${attachmentNumbers.join(', № ')}.</em></p>`
             : '';
         return `
             <div class="ped-preview-item">
@@ -325,16 +388,39 @@ function renderPreview() {
 function renderAttachments(node, item) {
     const list = node.querySelector('[data-attachment-list]');
     const attachments = item?.attachments || [];
-    list.innerHTML = attachments.length
-        ? attachments.map((attachment) => `
-            <div class="pedagogical-attachment-row" data-attachment-id="${attachment.id}">
+    node._savedAttachments = attachments;
+    const pending = node._pendingAttachments || [];
+    const savedHtml = attachments.map((attachment) => `
+            <div class="pedagogical-attachment-row" data-attachment-id="${attachment.id}" data-attachment-number="${attachment.attachmentNumber}">
                 <span><strong>Приложение № ${attachment.attachmentNumber}</strong> · ${pedEsc(attachment.originalFilename)}</span>
                 <span>
                     <button type="button" data-download-attachment="${attachment.id}">Скачать</button>
                     ${pedState.permissions.canEdit ? `<button type="button" data-delete-attachment="${attachment.id}">Удалить</button>` : ''}
                 </span>
-            </div>`).join('')
-        : '<span class="muted">Приложений пока нет.</span>';
+            </div>`).join('');
+    const pendingHtml = pending.map((file, index) => `
+            <div class="pedagogical-attachment-row is-pending" data-pending-attachment="${index}">
+                <span><strong data-pending-attachment-number>Ожидает номера</strong> · ${pedEsc(file.name)}</span>
+                <button type="button" data-remove-pending-attachment="${index}">Убрать</button>
+            </div>`).join('');
+    list.innerHTML = savedHtml + pendingHtml
+        || '<span class="muted">Приложений пока нет.</span>';
+    updateAttachmentNumbers();
+}
+
+function updateAttachmentNumbers() {
+    const existingNumbers = Array.from(pedUi.items.querySelectorAll('[data-attachment-number]'))
+        .map((row) => Number(row.dataset.attachmentNumber || 0))
+        .filter((value) => value > 0);
+    let nextNumber = Math.max(0, ...existingNumbers) + 1;
+    pedUi.items.querySelectorAll('[data-item]').forEach((node) => {
+        node.querySelectorAll('[data-pending-attachment-number]').forEach((label) => {
+            label.textContent = `Приложение № ${nextNumber++}`;
+        });
+    });
+    pedUi.items.querySelectorAll('[data-next-attachment-number]').forEach((label) => {
+        label.textContent = `№ ${nextNumber}`;
+    });
 }
 
 function addItemNode(item = {}) {
@@ -350,12 +436,20 @@ function addItemNode(item = {}) {
     set('agendaDurationMinutes', item.agendaDurationMinutes ?? 10);
     const speaker = node.querySelector('[data-field="speakerTeacherId"]');
     speaker.innerHTML = staffOptions(item.speakerTeacherId);
+    const speakerPosition = node.querySelector('[data-field="speakerPosition"]');
+    speakerPosition.innerHTML = positionOptions(item.speakerPosition);
+    speakerPosition.value = item.speakerPosition || '';
+    speaker.addEventListener('change', () => {
+        fillPositionFromPerson(speaker, speakerPosition);
+        renderPreview();
+    });
     set('speechContent', item.speechContent);
     set('decisionText', item.decisionText);
     set('votesFor', item.votesFor ?? 0);
     set('votesAgainst', item.votesAgainst ?? 0);
     set('votesAbstained', item.votesAbstained ?? 0);
 
+    node._pendingAttachments = [];
     renderAttachments(node, item);
     node.querySelector('[data-remove-item]').addEventListener('click', () => {
         node.remove();
@@ -371,34 +465,25 @@ function addItemNode(item = {}) {
         control.addEventListener('input', refresh);
         control.addEventListener('change', refresh);
     });
-    node.querySelector('[data-attachment-upload]').addEventListener('change', async (event) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-        const itemId = Number(node.dataset.itemId || 0);
-        if (!pedState.editing?.id || !itemId) {
+    node.querySelector('[data-attachment-upload]').addEventListener('change', (event) => {
+        const files = Array.from(event.target.files || []);
+        const invalid = files.find((file) => !file.name.toLocaleLowerCase('ru').endsWith('.docx'));
+        if (invalid) {
+            pedUi.editorFeedback.textContent = `Файл «${invalid.name}» не является документом Word .docx.`;
             event.target.value = '';
-            pedUi.editorFeedback.textContent = 'Сначала сохраните протокол и пункт, затем загрузите приложение.';
             return;
         }
-        try {
-            const form = new FormData();
-            form.append('file', file);
-            await pedApi(`/api/pedagogical-councils/${pedState.editing.id}/items/${itemId}/attachments`, {
-                method: 'POST',
-                body: form
-            });
-            pedState.editing = await pedApi(`/api/pedagogical-councils/${pedState.editing.id}`);
-            renderEditorItems(pedState.editing.items);
-            pedUi.editorFeedback.textContent = 'Приложение загружено. Номер присвоен автоматически.';
-            await reloadProtocols();
-        } catch (error) {
-            pedUi.editorFeedback.textContent = error.message;
-        } finally {
-            event.target.value = '';
-        }
+        node._pendingAttachments.push(...files);
+        renderAttachments(node, { attachments: node._savedAttachments || [] });
+        renderPreview();
+        pedUi.editorFeedback.textContent = files.length
+            ? 'Приложения готовы к загрузке и попадут на сервер при сохранении протокола.'
+            : '';
+        event.target.value = '';
     });
     pedUi.items.appendChild(fragment);
     renumberItems();
+    updateAttachmentNumbers();
 }
 
 function renderEditorItems(items) {
@@ -467,12 +552,54 @@ function editorPayload() {
     };
 }
 
+function pendingAttachmentGroups() {
+    return Array.from(pedUi.items.querySelectorAll('[data-item]')).map((node, index) => ({
+        index,
+        node,
+        files: [...(node._pendingAttachments || [])]
+    })).filter((group) => group.files.length);
+}
+
+function syncSavedItemIds(items) {
+    const nodes = Array.from(pedUi.items.querySelectorAll('[data-item]'));
+    (items || []).forEach((item, index) => {
+        const node = nodes[index];
+        if (!node) return;
+        node.dataset.itemId = item.id || '';
+        const idField = node.querySelector('[data-field="id"]');
+        if (idField) idField.value = item.id || '';
+    });
+}
+
+async function uploadPendingAttachments(protocol, pendingGroups) {
+    let uploaded = 0;
+    for (const group of pendingGroups) {
+        const savedItem = protocol.items?.[group.index];
+        if (!savedItem?.id) {
+            throw new Error(`Не удалось определить сохранённый пункт ${group.index + 1} для приложения.`);
+        }
+        for (const file of group.files) {
+            const form = new FormData();
+            form.append('file', file);
+            await pedApi(`/api/pedagogical-councils/${protocol.id}/items/${savedItem.id}/attachments`, {
+                method: 'POST',
+                body: form
+            });
+            uploaded += 1;
+        }
+        group.node._pendingAttachments = [];
+    }
+    return uploaded;
+}
+
 async function saveProtocol(event) {
     event.preventDefault();
     pedUi.editorFeedback.textContent = 'Сохраняем…';
     pedUi.editorSave.disabled = true;
+    let protocolSaved = false;
     try {
         const payload = editorPayload();
+        const pendingGroups = pendingAttachmentGroups();
         const created = !pedState.editing?.id;
         const path = created
             ? '/api/pedagogical-councils'
@@ -482,12 +609,22 @@ async function saveProtocol(event) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
+        protocolSaved = true;
+        syncSavedItemIds(pedState.editing.items);
+        const uploadedCount = await uploadPendingAttachments(pedState.editing, pendingGroups);
+        if (uploadedCount) {
+            pedState.editing = await pedApi(`/api/pedagogical-councils/${pedState.editing.id}`);
+        }
         setEditorHeader(pedState.editing);
         renderEditorItems(pedState.editing.items);
-        pedUi.editorFeedback.textContent = 'Протокол сохранён. Теперь к пунктам можно добавлять Word-приложения.';
+        pedUi.editorFeedback.textContent = uploadedCount
+            ? `Протокол сохранён. Приложений загружено: ${uploadedCount}.`
+            : 'Протокол сохранён.';
         await reloadProtocols();
     } catch (error) {
-        pedUi.editorFeedback.textContent = error.message;
+        pedUi.editorFeedback.textContent = protocolSaved
+            ? `Протокол сохранён, но одно из приложений не загрузилось: ${error.message}`
+            : error.message;
     } finally {
         pedUi.editorSave.disabled = false;
     }
@@ -558,6 +695,50 @@ async function downloadWord(path, options = {}, fallback = 'Документ.doc
     URL.revokeObjectURL(url);
 }
 
+function certifierOptions(selectedUserId = null) {
+    return '<option value="">Выберите сотрудника</option>' + (pedState.certifiers || []).map((person) =>
+        `<option value="${person.userId}" data-position="${pedEsc(person.position)}" ${String(person.userId) === String(selectedUserId) ? 'selected' : ''}>${pedEsc(person.shortFio || person.fio)}</option>`
+    ).join('');
+}
+
+function addCertifierRow(selectedUserId = null, selectedPosition = '', locked = false) {
+    const row = document.createElement('div');
+    row.className = 'pedagogical-signer-row';
+    row.innerHTML = `
+        <label>Должность
+            <select data-certifier-position>${positionOptions(selectedPosition)}</select>
+        </label>
+        <label>ФИО
+            <select data-certifier-user ${locked ? 'disabled' : ''}>${certifierOptions(selectedUserId)}</select>
+        </label>
+        ${locked
+            ? '<span class="muted pedagogical-signer-note">Формирует выписку</span>'
+            : '<button type="button" data-remove-certifier>Убрать</button>'}`;
+    const userSelect = row.querySelector('[data-certifier-user]');
+    const positionSelect = row.querySelector('[data-certifier-position]');
+    userSelect.value = selectedUserId || '';
+    positionSelect.value = selectedPosition || '';
+    userSelect.addEventListener('change', () => fillPositionFromPerson(userSelect, positionSelect));
+    row.querySelector('[data-remove-certifier]')?.addEventListener('click', () => row.remove());
+    pedUi.extractCertifiers.appendChild(row);
+}
+
+function currentCertifier() {
+    const currentId = pedState.user?.id;
+    const fromAccounts = (pedState.certifiers || []).find((person) => String(person.userId) === String(currentId));
+    if (fromAccounts) return fromAccounts;
+    const currentFio = String(pedState.user?.fullName || '').trim().toLocaleLowerCase('ru');
+    const staff = (pedState.staff || []).find((person) =>
+        String(person.fio || '').trim().toLocaleLowerCase('ru') === currentFio);
+    return {
+        userId: currentId,
+        teacherId: staff?.id || null,
+        fio: staff?.fio || pedState.user?.fullName || '',
+        shortFio: staff?.shortFio || pedState.user?.fullName || '',
+        position: staff?.position || 'Уполномоченный сотрудник'
+    };
+}
+
 async function openExtract(id) {
     try {
         pedState.extractProtocol = await pedApi(`/api/pedagogical-councils/${id}`);
@@ -567,20 +748,21 @@ async function openExtract(id) {
                 : '';
             return `<label class="pedagogical-check"><input type="checkbox" name="extractItem" value="${item.id}">Пункт ${item.itemOrder}. ${pedEsc(item.agendaTitle)}${pedEsc(attachments)}</label>`;
         }).join('');
-        pedUi.extractCertifiers.innerHTML = pedState.certifiers.length
-            ? pedState.certifiers.map((person) => `<label class="pedagogical-check"><input type="checkbox" name="certifier" value="${person.userId}">${pedEsc(person.fio)} — ${pedEsc(person.position)}</label>`).join('')
-            : '<p class="text-destructive">В настройках пользователей никому не выдано право на скачивание и заверение документов.</p>';
-        pedUi.extractApprover.innerHTML = '<option value="">Выберите сотрудника</option>' + pedState.staff
-            .map((person) => `<option value="${person.id}">${pedEsc(person.fio)} — ${pedEsc(person.position)}</option>`)
-            .join('');
-        const directorOption = Array.from(pedUi.extractApprover.options)
-            .find((option) => String(option.textContent || '').split('—').pop().trim().toLowerCase().startsWith('директор'));
-        if (directorOption) pedUi.extractApprover.value = directorOption.value;
+        pedUi.extractCertifiers.innerHTML = '';
+        const current = currentCertifier();
+        addCertifierRow(current.userId, current.position, true);
+        pedUi.extractApprover.innerHTML = staffOptions();
+        pedUi.extractApproverPosition.innerHTML = positionOptions();
+        const director = (pedState.staff || []).find((person) =>
+            String(person.position || '').trim().toLocaleLowerCase('ru') === 'директор');
+        if (director) {
+            pedUi.extractApprover.value = director.id;
+            fillPositionFromPerson(pedUi.extractApprover, pedUi.extractApproverPosition);
+        }
         pedUi.extractExternal.checked = false;
+        pedUi.extractSourceSigners.checked = false;
         pedUi.extractApproval.checked = false;
-        pedUi.extractStorageRow.hidden = true;
         pedUi.extractApproverRow.hidden = true;
-        pedUi.extractStorage.value = '';
         pedUi.extractFeedback.textContent = '';
         pedUi.extractDialog.showModal();
     } catch (error) {
@@ -592,14 +774,20 @@ async function downloadExtract(event) {
     event.preventDefault();
     if (!pedState.extractProtocol) return;
     const itemIds = Array.from(pedUi.extractItems.querySelectorAll('input:checked')).map((input) => Number(input.value));
-    const certifierUserIds = Array.from(pedUi.extractCertifiers.querySelectorAll('input:checked')).map((input) => Number(input.value));
+    const certifiers = Array.from(pedUi.extractCertifiers.querySelectorAll('.pedagogical-signer-row'))
+        .map((row) => ({
+            userId: Number(row.querySelector('[data-certifier-user]')?.value || 0),
+            position: row.querySelector('[data-certifier-position]')?.value || ''
+        }))
+        .filter((row) => row.userId);
     const payload = {
         itemIds,
-        certifierUserIds,
+        certifiers,
         externalRecipient: pedUi.extractExternal.checked,
-        originalStorageLocation: pedUi.extractStorage.value.trim(),
+        includeSourceSigners: pedUi.extractSourceSigners.checked,
         separateApproval: pedUi.extractApproval.checked,
-        approverTeacherId: pedUi.extractApprover.value ? Number(pedUi.extractApprover.value) : null
+        approverTeacherId: pedUi.extractApprover.value ? Number(pedUi.extractApprover.value) : null,
+        approverPosition: pedUi.extractApproverPosition.value || null
     };
     pedUi.extractFeedback.textContent = 'Формируем выписку…';
     try {
@@ -656,11 +844,20 @@ pedUi.archiveClose.addEventListener('click', () => pedUi.archiveDialog.close());
 pedUi.archiveCancel.addEventListener('click', () => pedUi.archiveDialog.close());
 pedUi.extractClose.addEventListener('click', () => pedUi.extractDialog.close());
 pedUi.extractCancel.addEventListener('click', () => pedUi.extractDialog.close());
-pedUi.extractExternal.addEventListener('change', () => {
-    pedUi.extractStorageRow.hidden = !pedUi.extractExternal.checked;
-});
+pedUi.extractAddCertifier.addEventListener('click', () => addCertifierRow());
 pedUi.extractApproval.addEventListener('change', () => {
     pedUi.extractApproverRow.hidden = !pedUi.extractApproval.checked;
+});
+pedUi.extractApprover.addEventListener('change', () => {
+    fillPositionFromPerson(pedUi.extractApprover, pedUi.extractApproverPosition);
+});
+pedUi.chairFio.addEventListener('change', () => {
+    fillPositionFromPerson(pedUi.chairFio, pedUi.chairPosition, true);
+    renderPreview();
+});
+pedUi.secretaryFio.addEventListener('change', () => {
+    fillPositionFromPerson(pedUi.secretaryFio, pedUi.secretaryPosition, true);
+    renderPreview();
 });
 [
     pedUi.number,
@@ -699,6 +896,7 @@ pedUi.listBody.addEventListener('click', async (event) => {
 pedUi.items.addEventListener('click', async (event) => {
     const download = event.target.closest('[data-download-attachment]');
     const remove = event.target.closest('[data-delete-attachment]');
+    const removePending = event.target.closest('[data-remove-pending-attachment]');
     if (download && pedState.editing?.id) {
         try {
             await downloadWord(`/api/pedagogical-councils/${pedState.editing.id}/attachments/${download.dataset.downloadAttachment}/download`);
@@ -708,6 +906,13 @@ pedUi.items.addEventListener('click', async (event) => {
     }
     if (remove) {
         await deleteAttachment(Number(remove.dataset.deleteAttachment));
+    }
+    if (removePending) {
+        const node = removePending.closest('[data-item]');
+        const index = Number(removePending.dataset.removePendingAttachment);
+        node._pendingAttachments.splice(index, 1);
+        renderAttachments(node, { attachments: node._savedAttachments || [] });
+        renderPreview();
     }
 });
 
@@ -720,6 +925,7 @@ pedUi.items.addEventListener('click', async (event) => {
             pedApi('/api/academic-years'),
             pedApi('/api/public/branding')
         ]);
+        pedState.user = user;
         pedState.permissions = currentPermissions(user);
         pedState.staff = staff || [];
         pedState.certifiers = certifiers || [];

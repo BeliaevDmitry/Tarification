@@ -106,9 +106,13 @@ public class AppUserServiceImpl implements AppUserService {
 
         String normalizedFio = normalizeTeacherFio(request.getFullName());
         ensureUniqueTeacherFioUser(normalizedFio, null);
+        Long teacherId = teacherDirectoryRepository.findByFioTeacherIgnoreCase(normalizedFio)
+                .map(org.school.personalLoad.model.TeacherDirectoryEntry::getId)
+                .orElseThrow(() -> new IllegalArgumentException("ФИО должно быть выбрано из справочника «Кадры»"));
         AppUser user = new AppUser();
         user.setUsername(username);
         user.setFullName(normalizedFio);
+        user.setTeacherId(teacherId);
         user.setDocumentPosition(normalizeOptional(request.getDocumentPosition()));
         user.setEmail(normalizeOptional(request.getEmail()));
         user.setPhone(normalizePhone(request.getPhone()));
@@ -140,6 +144,9 @@ public class AppUserServiceImpl implements AppUserService {
             String normalizedFio = normalizeTeacherFio(request.getFullName());
             ensureUniqueTeacherFioUser(normalizedFio, user.getId());
             user.setFullName(normalizedFio);
+            user.setTeacherId(teacherDirectoryRepository.findByFioTeacherIgnoreCase(normalizedFio)
+                    .map(org.school.personalLoad.model.TeacherDirectoryEntry::getId)
+                    .orElseThrow(() -> new IllegalArgumentException("ФИО должно быть выбрано из справочника «Кадры»")));
         }
         if (request.getDocumentPosition() != null) {
             user.setDocumentPosition(normalizeOptional(request.getDocumentPosition()));
@@ -608,7 +615,13 @@ public class AppUserServiceImpl implements AppUserService {
         if (user == null || user.getRole() == UserRole.ADMIN) return user;
         String fio = normalizeOptional(user.getFullName());
         if (fio == null) return user;
-        org.school.personalLoad.model.TeacherDirectoryEntry teacher = teacherDirectoryRepository.findByFioTeacherIgnoreCase(fio).orElse(null);
+        org.school.personalLoad.model.TeacherDirectoryEntry teacher = user.getTeacherId() == null
+                ? teacherDirectoryRepository.findByFioTeacherIgnoreCase(fio).orElse(null)
+                : teacherDirectoryRepository.findById(user.getTeacherId()).orElse(null);
+        if (teacher != null && !Objects.equals(user.getTeacherId(), teacher.getId())) {
+            user.setTeacherId(teacher.getId());
+            user = appUserRepository.save(user);
+        }
         boolean shouldDisable = teacher == null || teacher.getDismissalDate() != null;
         if (shouldDisable && user.isActive()) {
             user.setActive(false);

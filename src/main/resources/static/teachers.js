@@ -3,6 +3,15 @@ const jsonHeaders = { "Content-Type": "application/json" };
 const ui = {
     fileInput: document.getElementById("teacher-file"),
     importBtn: document.getElementById("import-teachers-btn"),
+    oneCFileInput: document.getElementById("teacher-1c-file"),
+    oneCPreviewBtn: document.getElementById("preview-teachers-1c-btn"),
+    oneCDialog: document.getElementById("teacher-1c-dialog"),
+    oneCSummary: document.getElementById("teacher-1c-summary"),
+    oneCPreviewBody: document.getElementById("teacher-1c-preview-body"),
+    oneCFeedback: document.getElementById("teacher-1c-feedback"),
+    oneCClose: document.getElementById("teacher-1c-close"),
+    oneCCancel: document.getElementById("teacher-1c-cancel"),
+    oneCApply: document.getElementById("teacher-1c-apply"),
     downloadBtn: document.getElementById("download-teachers-template-btn"),
     createForm: document.getElementById("teacher-create-form"),
     fioInput: document.getElementById("teacher-fio"),
@@ -69,6 +78,8 @@ let subjectCatalogRows = [];
 let mckoMappings = [];
 let mckoCertificates = [];
 let mckoOverviewRows = [];
+let oneCPreview = null;
+let oneCPreviewFile = null;
 let editingMckoCertificateId = null;
 let mckoCertificateSort = { key: "teacherFio", ascending: true };
 const PRIMARY_MCKO_SUBJECT = "Метапредметные умения (начальное образование)";
@@ -287,6 +298,8 @@ function renderTeachers(rows) {
                 <td><input class="teacher-email-input" data-id="${row.id}" value="${escapeHtml(row.email || "")}" placeholder="email"></td>
                 <td><input class="teacher-duties-input" data-id="${row.id}" value="${escapeHtml(row.additionalDuties || "")}" placeholder="Доп. обязанности"></td>
                 <td><select class="teacher-building-input" data-id="${row.id}">${renderBuildingOptions(row.numberSchoolBuilding)}</select></td>
+                <td>${escapeHtml(row.primaryPosition || "—")}</td>
+                <td>${escapeHtml(row.employmentType || "—")}</td>
                 <td>${escapeHtml(statusLabel(row))}</td>
                 <td>
                     <div class="row">
@@ -879,6 +892,90 @@ async function importTeachers() {
     }
 }
 
+const oneCActionLabels = {
+    ADD: "Принять на работу",
+    UPDATE: "Обновить должность",
+    RESTORE: "Восстановить / принять",
+    ACCEPT_ADDITIONAL: "Принять по дополнительной должности",
+    DISMISS: "Подтвердить увольнение",
+    IGNORE: "Не менять"
+};
+
+function renderOneCPreview(preview) {
+    const rows = preview?.rows || [];
+    ui.oneCSummary.textContent = `Прочитано строк: ${preview?.sourceRowCount || 0}. Изменений и решений: ${rows.length}. Сверка на ${preview?.effectiveDate || "текущую дату"}.`;
+    ui.oneCPreviewBody.innerHTML = rows.length
+        ? rows.map((row) => `
+            <tr>
+                <td><strong>${escapeHtml(row.fio || "")}</strong></td>
+                <td>${escapeHtml(row.currentPosition || "Нет в программе")}</td>
+                <td>
+                    <strong>${escapeHtml(row.proposedPosition || "—")}</strong><br>
+                    <span class="muted">${escapeHtml(row.employmentType || "")}${row.dismissalDate ? `; увольнение ${escapeHtml(row.dismissalDate)}` : ""}</span>
+                </td>
+                <td>${escapeHtml(row.message || "")}</td>
+                <td>
+                    <select data-one-c-decision="${escapeHtml(row.fio || "")}">
+                        ${(row.allowedActions || []).map((action) =>
+                            `<option value="${escapeHtml(action)}" ${action === row.recommendedAction ? "selected" : ""}>${escapeHtml(oneCActionLabels[action] || action)}</option>`
+                        ).join("")}
+                    </select>
+                </td>
+            </tr>`).join("")
+        : '<tr><td colspan="5">Расхождений не найдено. Применять нечего.</td></tr>';
+    ui.oneCApply.disabled = rows.length === 0;
+}
+
+async function previewOneCImport() {
+    const file = ui.oneCFileInput?.files?.[0];
+    if (!file) {
+        print({ error: "Выберите выгрузку 1С в формате .xls или .xlsx" });
+        return;
+    }
+    ui.oneCPreviewBtn.disabled = true;
+    print({ status: "Читаем выгрузку 1С…" });
+    try {
+        const form = new FormData();
+        form.append("file", file);
+        oneCPreview = await api("/api/teachers/import-1c/preview", { method: "POST", body: form });
+        oneCPreviewFile = file;
+        ui.oneCFeedback.textContent = "";
+        renderOneCPreview(oneCPreview);
+        ui.oneCDialog.showModal();
+    } catch (error) {
+        print({ error: error.message });
+    } finally {
+        ui.oneCPreviewBtn.disabled = false;
+    }
+}
+
+async function applyOneCImport() {
+    if (!oneCPreviewFile || !oneCPreview) return;
+    const decisions = Array.from(ui.oneCPreviewBody.querySelectorAll("[data-one-c-decision]"))
+        .map((select) => ({ fio: select.dataset.oneCDecision, action: select.value }));
+    const form = new FormData();
+    form.append("file", oneCPreviewFile);
+    form.append("request", new Blob(
+        [JSON.stringify({ decisions })],
+        { type: "application/json" }
+    ));
+    ui.oneCApply.disabled = true;
+    ui.oneCFeedback.textContent = "Применяем подтверждённые решения…";
+    try {
+        const result = await api("/api/teachers/import-1c/apply", { method: "POST", body: form });
+        ui.oneCFeedback.textContent = `Готово: принято ${result.added || 0}, обновлено ${result.updated || 0}, восстановлено ${result.restored || 0}, уволено ${result.dismissed || 0}.`;
+        print(result);
+        await loadTeachers();
+        oneCPreview = null;
+        oneCPreviewFile = null;
+        ui.oneCFileInput.value = "";
+    } catch (error) {
+        ui.oneCFeedback.textContent = error.message;
+    } finally {
+        ui.oneCApply.disabled = false;
+    }
+}
+
 function downloadTeachers() {
     window.location.href = '/api/teachers/export';
 }
@@ -1081,6 +1178,10 @@ async function loadSettingsTabData(tab = teachersTabFromHash()) {
 
 function bindEvents() {
     ui.importBtn.addEventListener('click', importTeachers);
+    ui.oneCPreviewBtn?.addEventListener('click', previewOneCImport);
+    ui.oneCApply?.addEventListener('click', applyOneCImport);
+    ui.oneCClose?.addEventListener('click', () => ui.oneCDialog.close());
+    ui.oneCCancel?.addEventListener('click', () => ui.oneCDialog.close());
     ui.downloadBtn.addEventListener('click', downloadTeachers);
     ui.createForm.addEventListener('submit', createTeacher);
     ui.refreshBtn.addEventListener('click', () => loadTeachers().catch((e) => print({ error: e.message })));

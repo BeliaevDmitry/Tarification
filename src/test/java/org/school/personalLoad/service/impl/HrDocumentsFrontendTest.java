@@ -37,7 +37,7 @@ class HrDocumentsFrontendTest {
         assertTrue(js.contains("Не удалось загрузить список работников"));
         assertTrue(js.contains("loadTeachersForDocuments"));
         assertTrue(js.contains("api('/api/teachers')"));
-        assertTrue(html.contains("teachers-notification.js?v=20260726-4"));
+        assertTrue(html.contains("teachers-notification.js?v=20260726-5"));
         assertTrue(js.contains("Служебная записка создана и добавлена в таблицу"));
         assertTrue(js.contains("await loadMemos()"));
         assertTrue(html.contains("Дополнительные соглашения"));

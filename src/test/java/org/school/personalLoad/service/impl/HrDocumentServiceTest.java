@@ -7,6 +7,7 @@ import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
+import org.apache.poi.xwpf.usermodel.XWPFTableRow;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.HrDocumentDtos.AgreementRequest;
 import org.school.personalLoad.dto.HrDocumentDtos.AgreementEditRequest;
@@ -137,12 +138,12 @@ class HrDocumentServiceTest {
 
         HrServiceMemo memo=service.createMemo(request,"deputy");
 
-        assertTrue(memo.getAssignmentText().startsWith("Внести изменения в пункт 2.4. раздела 2 «Оплата труда»"));
-        assertTrue(memo.getAssignmentText().contains("«2.4. Работнику выплачиваются ежемесячные компенсационные выплаты"));
+        assertTrue(memo.getAssignmentText().startsWith("Внести изменения в пункт 2.4 раздела 2 \"Оплата труда\""));
+        assertTrue(memo.getAssignmentText().contains("\"2.4. Работнику выплачиваются ежемесячные компенсационные выплаты"));
         assertTrue(memo.getAssignmentText().contains("- возложена функция классного руководителя, в размере 5 000 рублей 00 коп. за 1 класс"));
         assertTrue(memo.getAssignmentText().contains("500 рублей за 1 обучающегося"));
         assertTrue(memo.getAssignmentText().contains("16 000 рублей 00 коп. (шестнадцать тысяч рублей 00 коп.) в месяц;"));
-        assertTrue(memo.getAssignmentText().contains("- возложена функция «заведование кабинетом технологии», в размере 15 000 рублей 00 коп. (пятнадцать тысяч рублей 00 коп.) в месяц»."));
+        assertTrue(memo.getAssignmentText().contains("- возложена функция \"заведование кабинетом технологии\", в размере 15 000 рублей 00 коп. (пятнадцать тысяч рублей 00 коп.) в месяц\"."));
         assertEquals(memo.getAssignmentText(),memo.getAgreementText());
 
         org.mockito.ArgumentCaptor<AdditionalAgreement> agreementCaptor=org.mockito.ArgumentCaptor.forClass(AdditionalAgreement.class);
@@ -157,8 +158,8 @@ class HrDocumentServiceTest {
         service.memoStatus(50L,HrServiceMemo.Status.RECEIVED_BY_HR,"hr");
         try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(issued.getDocumentContent()))){
             String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right);
-            assertTrue(text.contains("Внести изменения в пункт 2.4."));
-            assertTrue(text.contains("возложена функция «заведование кабинетом технологии»"));
+            assertTrue(text.contains("Внести изменения в пункт 2.4 раздела 2 \"Оплата труда\""));
+            assertTrue(text.contains("возложена функция \"заведование кабинетом технологии\""));
         }
         String qaOutput=System.getProperty("hr.memo.qa.output");
         if(qaOutput!=null&&!qaOutput.isBlank()){Path path=Path.of(qaOutput);Files.createDirectories(path.getParent());Files.write(path,issued.getDocumentContent());}
@@ -168,10 +169,32 @@ class HrDocumentServiceTest {
         try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(prepared.getCurrentDocument()))){
             String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right);
             assertTrue(text.contains("возложена функция классного руководителя"));
-            assertTrue(text.contains("возложена функция «заведование кабинетом технологии»"));
+            assertTrue(text.contains("возложена функция \"заведование кабинетом технологии\""));
         }
         String fullAgreementQa=System.getProperty("hr.compensation.full.qa.output");
         if(fullAgreementQa!=null&&!fullAgreementQa.isBlank()){Path path=Path.of(fullAgreementQa);Files.createDirectories(path.getParent());Files.write(path,prepared.getCurrentDocument());}
+    }
+
+    @Test void clause24UsesRequiredAgreementWordingVerbatim() {
+        MemoRequest request=new MemoRequest("2025/2026",1L,10L,null,null,LocalDate.of(2025,9,1),
+                "Заведование кабинетом технологии",null,null,"2.4",null,new BigDecimal("15000"),
+                LocalDate.of(2025,9,1),LocalDate.of(2026,8,31),false,false,null);
+
+        HrServiceMemo memo=service.createMemo(request,"deputy");
+
+        assertEquals("Внести изменения в пункт 2.4 раздела 2 \"Оплата труда\", изложив его в следующей редакции:\n"
+                +"\"2.4. Работнику выплачиваются ежемесячные компенсационные выплаты при условии, если на Работника:\n"
+                +"- возложена функция \"заведование кабинетом технологии\", в размере 15 000 рублей 00 коп. "
+                +"(пятнадцать тысяч рублей 00 коп.) в месяц\".",memo.getAgreementText());
+    }
+
+    @Test void agreementDownloadNameContainsEmployeeNumberAndDocumentDate() {
+        AdditionalAgreement agreement=draftAgreement();
+        agreement.setInternalNumber("1 / 2025-2026");
+        agreement.setDocumentDate(LocalDate.of(2025,9,1));
+
+        assertEquals("Иванов Иван Иванович доп согл № 1 от 01.09.2025.docx",
+                service.agreementDownloadFilename(agreement));
     }
 
     @Test void receivingDutyMemoReleasesLinkedAgreementDraft(){
@@ -695,6 +718,13 @@ class HrDocumentServiceTest {
             assertTrue(text.contains("РАБОТОДАТЕЛЬ"));assertTrue(text.contains("РАБОТНИК"));
             assertTrue(text.contains("Приложение № 1"));assertTrue(text.contains("Математика"));assertTrue(text.contains("Численность"));
             assertTrue(text.contains("25"));
+            XWPFTable annex=document.getTables().stream()
+                    .filter(table->table.getText().contains("Предмет")
+                            &&table.getText().contains("Класс/группа")).findFirst().orElseThrow();
+            XWPFTableRow annexTotal=annex.getRow(annex.getNumberOfRows()-1);
+            assertEquals("Итого",annexTotal.getCell(0).getText());
+            assertEquals("2",annexTotal.getCell(2).getText(),
+                    "В строке «Итого» приложения должна суммироваться учебная нагрузка");
             XWPFTable details=document.getTables().stream()
                     .filter(table->table.getText().contains("РАБОТОДАТЕЛЬ")).findFirst().orElseThrow();
             assertEquals(2,details.getCTTbl().getTblGrid().sizeOfGridColArray());
@@ -864,10 +894,10 @@ class HrDocumentServiceTest {
     @Test void clause24AgreementFollowsSampleAndDoesNotDuplicateCompensationAmount() throws Exception {
         AdditionalAgreement agreement=draftAgreement();agreement.setServiceMemoId(50L);
         agreement.setSummary("Заведование кабинетом технологии");agreement.setTotalAmount(new BigDecimal("15000"));
-        agreement.setConditionsJson("Внести изменения в пункт 2.4. раздела 2 «Оплата труда», изложив его в следующей редакции:\n"
-                +"«2.4. Работнику выплачиваются ежемесячные компенсационные выплаты при условии, если на Работника:\n"
-                +"- возложена функция «заведование кабинетом технологии», в размере 15 000 рублей 00 коп. "
-                +"(пятнадцать тысяч рублей 00 коп.) в месяц».");
+        agreement.setConditionsJson("Внести изменения в пункт 2.4 раздела 2 \"Оплата труда\", изложив его в следующей редакции:\n"
+                +"\"2.4. Работнику выплачиваются ежемесячные компенсационные выплаты при условии, если на Работника:\n"
+                +"- возложена функция \"заведование кабинетом технологии\", в размере 15 000 рублей 00 коп. "
+                +"(пятнадцать тысяч рублей 00 коп.) в месяц\".");
         HrServiceMemo memo=new HrServiceMemo();memo.setId(50L);memo.setStatus(HrServiceMemo.Status.RECEIVED_BY_HR);
         when(agreements.findById(100L)).thenReturn(Optional.of(agreement));when(memos.findById(50L)).thenReturn(Optional.of(memo));
         when(personal.findByTeacherId(1L)).thenReturn(Optional.of(completePersonal()));
@@ -878,7 +908,7 @@ class HrDocumentServiceTest {
             String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right)
                     +document.getTables().stream().map(table->table.getText()).reduce("",String::concat);
             assertTrue(text.contains("к Трудовому договору от 01.01.2025 г. № 1-ТД"));
-            assertTrue(text.contains("Внести изменения в пункт 2.4. раздела 2 «Оплата труда»"));
+            assertTrue(text.contains("Внести изменения в пункт 2.4 раздела 2 \"Оплата труда\""));
             assertTrue(text.contains("Работнику выплачиваются ежемесячные компенсационные выплаты"));
             assertEquals(1,text.split(java.util.regex.Pattern.quote("15 000 рублей 00 коп."),-1).length-1);
             assertTrue(text.contains("Другие положения Трудового договора"));

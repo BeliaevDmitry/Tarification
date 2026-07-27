@@ -1,6 +1,7 @@
 package org.school.personalLoad.service;
 
 import org.school.personalLoad.dto.TeacherCreateRequest;
+import org.school.personalLoad.dto.TeacherOneCImportDtos;
 import org.school.personalLoad.dto.TeacherUpdateRequest;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.springframework.core.io.Resource;
@@ -12,6 +13,10 @@ import java.util.Map;
 
 public interface TeacherDirectoryService {
     Map<String, Object> importFromExcel(MultipartFile file);
+    TeacherOneCImportDtos.Preview previewOneCImport(MultipartFile file);
+    Map<String, Object> applyOneCImport(MultipartFile file,
+                                        TeacherOneCImportDtos.ApplyRequest request,
+                                        String processedBy);
     Resource buildImportTemplate();
 
     TeacherDirectoryEntry create(TeacherCreateRequest request);

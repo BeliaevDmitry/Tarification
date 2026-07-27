@@ -288,16 +288,17 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
             throw new IllegalArgumentException("Один из выбранных пунктов не относится к этому протоколу");
         }
 
-        List<AppUser> signers = resolveCertifiers(request.certifierUserIds());
+        List<CertifierSnapshot> signers = resolveCertifiers(request, user);
         StaffSnapshot approver = null;
         if (request.separateApproval()) {
             if (request.approverTeacherId() == null) {
                 throw new IllegalArgumentException("Выберите сотрудника, который утверждает выписку");
             }
             approver = resolveStaff(request.approverTeacherId(), true, "утверждающего");
-        }
-        if (request.externalRecipient() && isBlank(request.originalStorageLocation())) {
-            throw new IllegalArgumentException("Для внешней организации укажите место хранения подлинника");
+            String approverPosition = normalizeOptional(request.approverPosition());
+            if (approverPosition != null) {
+                approver = new StaffSnapshot(approver.teacherId(), approver.shortFio(), approverPosition);
+            }
         }
 
         String filename = safeFilename(
@@ -324,9 +325,13 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
     @Override
     @Transactional(readOnly = true)
     public List<PedagogicalCouncilDtos.CertifierView> certifiers() {
-        return permissionRepository.findAllByTabAndCanExportTrue(AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS)
-                .stream()
-                .map(permission -> permission.getUser())
+        return java.util.stream.Stream.concat(
+                        permissionRepository.findAllByTabAndCanExportTrue(AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS)
+                                .stream()
+                                .map(permission -> permission.getUser()),
+                        appUserRepository.findAll().stream()
+                                .filter(user -> user.getRole() == org.school.personalLoad.auth.UserRole.ADMIN)
+                )
                 .filter(AppUser::isActive)
                 .filter(AppUser::isCanView)
                 .collect(Collectors.toMap(AppUser::getId, Function.identity(), (left, right) -> left, LinkedHashMap::new))
@@ -371,6 +376,10 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
             String agendaTitle = requireText(request.agendaTitle(), "Укажите вопрос повестки");
             int agendaDuration = normalizeAgendaDuration(request.agendaDurationMinutes());
             StaffSnapshot speaker = resolveStaff(request.speakerTeacherId(), false, "выступающего");
+            String speakerPosition = normalizeOptional(request.speakerPosition());
+            if (speaker == null && speakerPosition != null) {
+                throw new IllegalArgumentException("Выберите ФИО выступающего");
+            }
             String speechContent = normalizeOptional(request.speechContent());
             String decisionText = requireText(request.decisionText(), "Укажите текст решения");
             int votesFor = nonNegative(request.votesFor(), "Количество голосов «за»");
@@ -398,7 +407,9 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
             item.setAgendaTitle(agendaTitle);
             item.setAgendaDurationMinutes(agendaDuration);
             item.setSpeakerTeacherId(speaker == null ? null : speaker.teacherId());
-            item.setSpeakerPositionSnapshot(speaker == null ? null : speaker.position());
+            item.setSpeakerPositionSnapshot(speaker == null
+                    ? null
+                    : Optional.ofNullable(speakerPosition).orElse(speaker.position()));
             item.setSpeakerFioSnapshot(speaker == null ? null : speaker.shortFio());
             item.setSpeechContent(speechContent);
             item.setDecisionText(decisionText);
@@ -546,14 +557,22 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
     }
 
     private PedagogicalCouncilDtos.CertifierView certifierView(AppUser user) {
-        Optional<TeacherDirectoryEntry> teacher = teacherRepository.findByFioTeacherIgnoreCase(user.getFullName());
+        Optional<TeacherDirectoryEntry> teacher = user.getTeacherId() == null
+                ? teacherRepository.findByFioTeacherIgnoreCase(user.getFullName())
+                : teacherRepository.findById(user.getTeacherId());
         String position = teacher
                 .map(row -> positionForTeacher(row.getId()))
                 .filter(value -> !isBlank(value))
                 .orElseGet(() -> isBlank(user.getDocumentPosition()) ? "Уполномоченный сотрудник" : user.getDocumentPosition().trim());
         String fio = teacher.map(TeacherDirectoryEntry::getFioTeacher).orElse(user.getFullName());
         String shortFio = teacher.map(this::shortFio).orElse(user.getFullName());
-        return new PedagogicalCouncilDtos.CertifierView(user.getId(), fio, shortFio, position);
+        return new PedagogicalCouncilDtos.CertifierView(
+                user.getId(),
+                teacher.map(TeacherDirectoryEntry::getId).orElse(null),
+                fio,
+                shortFio,
+                position
+        );
     }
 
     private StaffSnapshot resolveStaff(Long teacherId, boolean required, String roleName) {
@@ -589,6 +608,10 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
     }
 
     private String positionForTeacher(Long teacherId) {
+        TeacherDirectoryEntry teacher = teacherRepository.findById(teacherId).orElse(null);
+        if (teacher != null && !isBlank(teacher.getPrimaryPosition())) {
+            return teacher.getPrimaryPosition().trim();
+        }
         return contractRepository.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(teacherId).stream()
                 .filter(EmploymentContract::isActive)
                 .map(EmploymentContract::getPositionName)
@@ -603,26 +626,46 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
                 && (teacher.getDismissalDate() == null || teacher.getDismissalDate().isAfter(today));
     }
 
-    private List<AppUser> resolveCertifiers(List<Long> userIds) {
-        List<Long> distinctIds = Optional.ofNullable(userIds).orElseGet(List::of).stream()
+    private List<CertifierSnapshot> resolveCertifiers(PedagogicalCouncilDtos.ExtractRequest request,
+                                                      SessionUser currentSessionUser) {
+        LinkedHashMap<Long, String> requestedPositions = new LinkedHashMap<>();
+        Optional.ofNullable(request.certifiers()).orElseGet(List::of).stream()
                 .filter(Objects::nonNull)
-                .distinct()
-                .toList();
-        if (distinctIds.isEmpty()) {
-            throw new IllegalArgumentException("Выберите хотя бы одного сотрудника для заверения выписки");
+                .filter(signer -> signer.userId() != null)
+                .forEach(signer -> requestedPositions.put(signer.userId(), normalizeOptional(signer.position())));
+        Optional.ofNullable(request.certifierUserIds()).orElseGet(List::of).stream()
+                .filter(Objects::nonNull)
+                .forEach(userId -> requestedPositions.putIfAbsent(userId, null));
+
+        Long currentUserId = currentSessionUser.getId();
+        if (currentUserId == null) {
+            throw new IllegalStateException("Не удалось определить пользователя, который формирует выписку");
         }
+        String currentPositionOverride = requestedPositions.remove(currentUserId);
+        LinkedHashMap<Long, String> ordered = new LinkedHashMap<>();
+        ordered.put(currentUserId, currentPositionOverride);
+        ordered.putAll(requestedPositions);
+
         Set<Long> allowedIds = permissionRepository.findAllByTabAndCanExportTrue(AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS)
                 .stream()
                 .map(permission -> permission.getUser().getId())
                 .collect(Collectors.toSet());
-        return distinctIds.stream()
-                .map(this::requiredActiveUser)
-                .peek(user -> {
-                    if (user.getRole() != org.school.personalLoad.auth.UserRole.ADMIN && !allowedIds.contains(user.getId())) {
-                        throw new IllegalStateException("У сотрудника " + user.getFullName() + " нет права заверять выписки");
-                    }
-                })
-                .toList();
+        List<CertifierSnapshot> result = new ArrayList<>();
+        for (Map.Entry<Long, String> requested : ordered.entrySet()) {
+            AppUser user = requiredActiveUser(requested.getKey());
+            boolean currentUser = Objects.equals(user.getId(), currentUserId);
+            if (!currentUser
+                    && user.getRole() != org.school.personalLoad.auth.UserRole.ADMIN
+                    && !allowedIds.contains(user.getId())) {
+                throw new IllegalStateException("У сотрудника " + user.getFullName() + " нет права заверять выписки");
+            }
+            PedagogicalCouncilDtos.CertifierView view = certifierView(user);
+            String position = Optional.ofNullable(requested.getValue())
+                    .filter(value -> !value.isBlank())
+                    .orElse(view.position());
+            result.add(new CertifierSnapshot(user.getId(), view.shortFio(), position));
+        }
+        return result;
     }
 
     private AppUser requiredActiveUser(Long userId) {
@@ -666,8 +709,8 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
                 paragraph(document, heard, false, ParagraphAlignment.BOTH);
                 paragraph(document, "Решили: " + item.getDecisionText().trim(), false, ParagraphAlignment.BOTH);
                 for (PedagogicalCouncilAttachment attachment : sortedAttachments(item)) {
-                    paragraph(document, "Приложение № " + attachment.getAttachmentNumber()
-                            + " к пункту " + item.getItemOrder() + ".", false, ParagraphAlignment.LEFT);
+                    compactParagraph(document, "Приложение № " + attachment.getAttachmentNumber()
+                            + " к пункту " + item.getItemOrder() + ".", false, ParagraphAlignment.LEFT, 12);
                 }
                 paragraph(document, votesText(item), false, ParagraphAlignment.LEFT);
                 blank(document);
@@ -684,7 +727,7 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
 
     private byte[] generateExtract(PedagogicalCouncilProtocol protocol,
                                    List<PedagogicalCouncilItem> selectedItems,
-                                   List<AppUser> signers,
+                                   List<CertifierSnapshot> signers,
                                    StaffSnapshot approver,
                                    PedagogicalCouncilDtos.ExtractRequest request) {
         try (XWPFDocument document = new XWPFDocument(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
@@ -703,6 +746,15 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
             centered(document, "от " + formatDateLong(protocol.getMeetingDate())
                     + " № " + protocol.getProtocolNumber(), false, 14);
             blank(document);
+            if (request.includeSourceSigners()) {
+                paragraph(document, "Председатель педагогического совета: "
+                        + signerText(protocol.getChairPositionSnapshot(), protocol.getChairFioSnapshot()),
+                        false, ParagraphAlignment.LEFT);
+                paragraph(document, "Секретарь: "
+                        + signerText(protocol.getSecretaryPositionSnapshot(), protocol.getSecretaryFioSnapshot()),
+                        false, ParagraphAlignment.LEFT);
+                blank(document);
+            }
 
             for (PedagogicalCouncilItem item : selectedItems) {
                 paragraph(document, item.getItemOrder() + ". " + item.getAgendaTitle(), true, ParagraphAlignment.LEFT);
@@ -713,17 +765,14 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
                 paragraph(document, heard, false, ParagraphAlignment.BOTH);
                 paragraph(document, "Решили: " + item.getDecisionText().trim(), false, ParagraphAlignment.BOTH);
                 for (PedagogicalCouncilAttachment attachment : sortedAttachments(item)) {
-                    paragraph(document, "Приложение № " + attachment.getAttachmentNumber()
-                            + " к пункту " + item.getItemOrder() + ".", false, ParagraphAlignment.LEFT);
+                    compactParagraph(document, "Приложение № " + attachment.getAttachmentNumber()
+                            + " к пункту " + item.getItemOrder() + ".", false, ParagraphAlignment.LEFT, 12);
                 }
                 paragraph(document, votesText(item), false, ParagraphAlignment.LEFT);
                 blank(document);
             }
 
-            appendSourceSignatures(document, protocol);
-            blank(document);
-            for (AppUser signer : signers) {
-                PedagogicalCouncilDtos.CertifierView certifier = certifierView(signer);
+            for (CertifierSnapshot certifier : signers) {
                 paragraph(document, "Верно", true, ParagraphAlignment.LEFT);
                 XWPFTable table = document.createTable(1, 3);
                 table.setWidth("100%");
@@ -731,12 +780,11 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
                 setCellText(table.getRow(0).getCell(1), "________________", false);
                 setCellText(table.getRow(0).getCell(2), certifier.shortFio(), false);
                 removeTableBorders(table);
+                formatSignatureTable(table);
                 paragraph(document, "«____» ____________ 20__ г.", false, ParagraphAlignment.LEFT);
                 blank(document);
             }
             if (request.externalRecipient()) {
-                paragraph(document, "Подлинник документа находится в "
-                        + request.originalStorageLocation().trim() + ".", false, ParagraphAlignment.LEFT);
                 paragraph(document, "М.П.", false, ParagraphAlignment.LEFT);
             }
 
@@ -758,6 +806,7 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
         setCellText(table.getRow(1).getCell(1), "________________", false);
         setCellText(table.getRow(1).getCell(2), protocol.getSecretaryFioSnapshot(), false);
         removeTableBorders(table);
+        formatSignatureTable(table);
     }
 
     private void appendAllAttachments(XWPFDocument target,
@@ -770,14 +819,17 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
         for (PedagogicalCouncilAttachment attachment : attachments) {
             XWPFParagraph pageBreak = target.createParagraph();
             pageBreak.createRun().addBreak(BreakType.PAGE);
-            paragraph(target, "Приложение № " + attachment.getAttachmentNumber(), true, ParagraphAlignment.RIGHT);
-            paragraph(target, "к протоколу педагогического совета", false, ParagraphAlignment.RIGHT);
-            paragraph(
+            compactParagraph(target, "Приложение № " + attachment.getAttachmentNumber(),
+                    true, ParagraphAlignment.RIGHT, 12);
+            compactParagraph(target, "к протоколу педагогического совета",
+                    false, ParagraphAlignment.RIGHT, 12);
+            compactParagraph(
                     target,
                     "от " + formatDateLong(protocol.getMeetingDate()) + " № " + protocol.getProtocolNumber()
                             + ", пункт " + attachment.getItem().getItemOrder(),
                     false,
-                    ParagraphAlignment.RIGHT
+                    ParagraphAlignment.RIGHT,
+                    12
             );
             try (XWPFDocument source = new XWPFDocument(new ByteArrayInputStream(attachment.getContent()))) {
                 Map<String, String> pictureRelations = copyPictureRelations(source, target);
@@ -1005,6 +1057,24 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
         return paragraph;
     }
 
+    private XWPFParagraph compactParagraph(XWPFDocument document,
+                                           String text,
+                                           boolean bold,
+                                           ParagraphAlignment alignment,
+                                           int fontSize) {
+        XWPFParagraph paragraph = document.createParagraph();
+        paragraph.setAlignment(alignment);
+        paragraph.setSpacingBefore(0);
+        paragraph.setSpacingAfter(0);
+        paragraph.setSpacingBetween(1.0);
+        XWPFRun run = paragraph.createRun();
+        run.setText(Optional.ofNullable(text).orElse(""));
+        run.setBold(bold);
+        run.setFontFamily("Times New Roman");
+        run.setFontSize(fontSize);
+        return paragraph;
+    }
+
     private void appendLine(XWPFParagraph paragraph, String text, boolean bold) {
         XWPFRun run = paragraph.createRun();
         run.addBreak();
@@ -1021,12 +1091,26 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
     private void setCellText(XWPFTableCell cell, String value, boolean bold) {
         cell.removeParagraph(0);
         XWPFParagraph paragraph = cell.addParagraph();
-        paragraph.setSpacingAfter(0);
+        paragraph.setSpacingBefore(180);
+        paragraph.setSpacingAfter(120);
         XWPFRun run = paragraph.createRun();
         run.setText(Optional.ofNullable(value).orElse(""));
         run.setBold(bold);
         run.setFontFamily("Times New Roman");
         run.setFontSize(12);
+    }
+
+    private void formatSignatureTable(XWPFTable table) {
+        for (XWPFTableRow row : table.getRows()) {
+            var rowProperties = row.getCtRow().isSetTrPr()
+                    ? row.getCtRow().getTrPr()
+                    : row.getCtRow().addNewTrPr();
+            var height = rowProperties.sizeOfTrHeightArray() > 0
+                    ? rowProperties.getTrHeightArray(0)
+                    : rowProperties.addNewTrHeight();
+            height.setVal(BigInteger.valueOf(720));
+            height.setHRule(org.openxmlformats.schemas.wordprocessingml.x2006.main.STHeightRule.AT_LEAST);
+        }
     }
 
     private void removeTableBorders(XWPFTable table) {
@@ -1231,6 +1315,9 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
     }
 
     private record StaffSnapshot(Long teacherId, String shortFio, String position) {
+    }
+
+    private record CertifierSnapshot(Long userId, String shortFio, String position) {
     }
 
     private record ManualSigner(String position, String fio) {
