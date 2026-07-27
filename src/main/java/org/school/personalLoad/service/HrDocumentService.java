@@ -64,9 +64,11 @@ public class HrDocumentService {
     private final HrIncentiveRepository incentiveRepository;
     private final ObjectMapper objectMapper;
 
-    @Transactional(readOnly = true) public List<JournalRow> journal(String academicYear) {
-        Map<Long,List<AdditionalAgreement>> byContract = agreements.findAllByAcademicYearOrderByCreatedAtDesc(academicYear)
-                .stream().filter(a -> a.getContractId() != null).collect(Collectors.groupingBy(AdditionalAgreement::getContractId));
+    @Transactional public List<JournalRow> journal(String academicYear) {
+        List<AdditionalAgreement> allAgreements=agreements.findAllByAcademicYearOrderByCreatedAtDesc(academicYear);
+        repairMisappliedRegistryIncentives(allAgreements);
+        Map<Long,List<AdditionalAgreement>> byContract = allAgreements.stream().filter(a -> a.getContractId() != null)
+                .collect(Collectors.groupingBy(AdditionalAgreement::getContractId));
         return contracts.findAllByActiveTrueOrderByTeacherIdAsc().stream().map(c -> {
             TeacherDirectoryEntry teacher = teachers.findById(c.getTeacherId()).orElse(null);
             boolean complete = personalData.findByTeacherId(c.getTeacherId()).map(this::isComplete).orElse(false);
@@ -81,8 +83,10 @@ public class HrDocumentService {
         }).sorted(Comparator.comparing(JournalRow::fio, String.CASE_INSENSITIVE_ORDER)).toList();
     }
 
-    @Transactional(readOnly = true) public List<AgreementListRow> agreementRows(String academicYear){
-        return agreements.findAllByAcademicYearOrderByCreatedAtDesc(academicYear).stream().map(agreement->{
+    @Transactional public List<AgreementListRow> agreementRows(String academicYear){
+        List<AdditionalAgreement> allAgreements=agreements.findAllByAcademicYearOrderByCreatedAtDesc(academicYear);
+        repairMisappliedRegistryIncentives(allAgreements);
+        return allAgreements.stream().map(agreement->{
             EmploymentContract contract=agreement.getContractId()==null?null:contracts.findById(agreement.getContractId()).orElse(null);
             Long teacherId=agreementTeacherId(agreement,contract);
             TeacherDirectoryEntry teacher=teacherId==null?null:teachers.findById(teacherId).orElse(null);
@@ -609,9 +613,11 @@ public class HrDocumentService {
             EmploymentContract contract=primaryContract(teacherId);
             Optional<AdditionalAgreement> existingAnnual=existing.stream().filter(a->Objects.equals(agreementTeacherId(a,null),teacherId)
                     &&a.getKind()==AdditionalAgreement.Kind.PAY_TERMS&&isActiveAgreement(a)
-                    &&Objects.equals(a.getValidFrom(),from)&&isAnnualManagedAgreement(a)).findFirst();
+                    &&Objects.equals(a.getValidFrom(),from)&&isAnnualRegistryAgreement(a)).findFirst();
             if(existingAnnual.isPresent()){
                 AdditionalAgreement annual=existingAnnual.get();
+                boolean sourceMarked=!annual.isRegistryManaged();
+                annual.setRegistryManaged(true);
                 if(EnumSet.of(AdditionalAgreement.Status.WAITING_FOR_MEMO,AdditionalAgreement.Status.DRAFT,
                         AdditionalAgreement.Status.READY,AdditionalAgreement.Status.REQUIRES_DECISION,
                         AdditionalAgreement.Status.ISSUED,AdditionalAgreement.Status.SIGNING)
@@ -626,6 +632,7 @@ public class HrDocumentService {
                         markAgreementContentChanged(annual);
                         agreements.save(annual);
                     }
+                    else if(sourceMarked)agreements.save(annual);
                 }
                 continue;
             }
@@ -636,7 +643,8 @@ public class HrDocumentService {
                 conditions=upsertClause24Block(conditions,clause24Text(classroomFunctions));
             conditions=withIncentiveClause(conditions,incentiveAmount);
             String summary=annualSummary(hasLoad,!classroomFunctions.isEmpty(),incentiveAmount.signum()>0);
-            AdditionalAgreement created=createAgreementForTeacher(new AgreementRequest(contract==null?null:contract.getId(),r.serviceMemoId(),r.academicYear(),r.documentDate(),from,to,AdditionalAgreement.Kind.PAY_TERMS,AdditionalAgreement.ChangeMode.AMEND,summary,conditions,null,null),teacherId,contract,username);
+            AdditionalAgreement created=createAgreementForTeacher(new AgreementRequest(contract==null?null:contract.getId(),null,r.academicYear(),r.documentDate(),from,to,AdditionalAgreement.Kind.PAY_TERMS,AdditionalAgreement.ChangeMode.AMEND,summary,conditions,null,null),teacherId,contract,username);
+            created.setRegistryManaged(true);agreements.save(created);
             result.add(created);existing.add(created);
         }return result;
     }
@@ -669,6 +677,7 @@ public class HrDocumentService {
         if(differentPeriod)throw new ResponseStatusException(BAD_REQUEST,"Для объединения периоды действия документов должны совпадать");
         Set<Long> dutyMemos=selected.stream().map(AdditionalAgreement::getServiceMemoId).filter(Objects::nonNull).collect(Collectors.toSet());
         Set<Long> changeMemos=selected.stream().map(AdditionalAgreement::getLoadServiceMemoId).filter(Objects::nonNull).collect(Collectors.toSet());
+        boolean registryManaged=selected.stream().anyMatch(this::isAnnualRegistryAgreement);
         if(dutyMemos.size()>1||changeMemos.size()>1)
             throw new ResponseStatusException(CONFLICT,"В один документ пока можно объединить нагрузку и одну служебную записку по дополнительным функциям");
 
@@ -695,6 +704,7 @@ public class HrDocumentService {
         primary.setTotalAmount(loadAmount);
         primary.setServiceMemoId(dutyMemos.stream().findFirst().orElse(null));
         primary.setLoadServiceMemoId(changeMemos.stream().findFirst().orElse(null));
+        primary.setRegistryManaged(registryManaged);
         if(!reissue)primary.setDocumentDate(ordered.stream().map(AdditionalAgreement::getDocumentDate).filter(Objects::nonNull)
                 .min(LocalDate::compareTo).orElse(primary.getDocumentDate()));
         primary.setStatus(ordered.stream().anyMatch(item->item.getStatus()==AdditionalAgreement.Status.WAITING_FOR_MEMO)
@@ -755,7 +765,7 @@ public class HrDocumentService {
                                            Long teacherId,BigDecimal amount){
         candidates.stream().filter(agreement->Objects.equals(agreement.getAcademicYear(),academicYear))
                 .filter(agreement->Objects.equals(agreementTeacherId(agreement,null),teacherId))
-                .filter(this::isAnnualManagedAgreement)
+                .filter(this::isAnnualRegistryAgreement)
                 .filter(agreement->EnumSet.of(AdditionalAgreement.Status.WAITING_FOR_MEMO,
                         AdditionalAgreement.Status.DRAFT,AdditionalAgreement.Status.READY,
                         AdditionalAgreement.Status.REQUIRES_DECISION,AdditionalAgreement.Status.ISSUED,
@@ -775,7 +785,7 @@ public class HrDocumentService {
     }
 
     private void applyCurrentIncentive(AdditionalAgreement agreement){
-        if(isAnnualManagedAgreement(agreement))
+        if(isAnnualRegistryAgreement(agreement))
             applyIncentive(agreement,incentiveAmount(agreement.getAcademicYear(),agreementTeacherId(agreement,null)));
     }
 
@@ -793,12 +803,41 @@ public class HrDocumentService {
         return changed;
     }
 
-    private boolean isAnnualManagedAgreement(AdditionalAgreement agreement){
+    private boolean isAnnualRegistryAgreement(AdditionalAgreement agreement){
         if(!isAnnualPeriod(agreement))return false;
+        if(agreement.isRegistryManaged())return true;
+        String source=Objects.toString(agreement.getSourceSnapshotJson(),"");
+        if(source.contains("\"mergedAgreementIds\"")&&isLoadAgreement(agreement))return true;
+        if(agreement.getServiceMemoId()!=null||agreement.getLoadServiceMemoId()!=null)return false;
         String conditions=Objects.toString(agreement.getConditionsJson(),"").toLowerCase(Locale.ROOT);
         return isLoadAgreement(agreement)
                 ||(conditions.contains("2.4")&&conditions.contains("классного руководителя"))
                 ||(conditions.contains("2.5")&&conditions.contains("стимулиру"));
+    }
+
+    private void repairMisappliedRegistryIncentives(List<AdditionalAgreement> candidates){
+        EnumSet<AdditionalAgreement.Status> repairable=EnumSet.of(AdditionalAgreement.Status.WAITING_FOR_MEMO,
+                AdditionalAgreement.Status.DRAFT,AdditionalAgreement.Status.READY,
+                AdditionalAgreement.Status.REQUIRES_DECISION,AdditionalAgreement.Status.ISSUED,
+                AdditionalAgreement.Status.SIGNING);
+        candidates.stream()
+                .filter(agreement->repairable.contains(agreement.getStatus()))
+                .filter(agreement->!isAnnualRegistryAgreement(agreement))
+                .filter(agreement->agreement.getServiceMemoId()!=null||agreement.getLoadServiceMemoId()!=null)
+                .filter(agreement->!isExplicitIncentiveMemoAgreement(agreement))
+                .forEach(agreement->{
+                    if(applyIncentive(agreement,BigDecimal.ZERO)){
+                        markAgreementContentChanged(agreement);
+                        agreements.save(agreement);
+                    }
+                });
+    }
+
+    private boolean isExplicitIncentiveMemoAgreement(AdditionalAgreement agreement){
+        if(agreement.getServiceMemoId()==null)return false;
+        return memos.findById(agreement.getServiceMemoId())
+                .map(memo->"2.5".equals(firstPresent(memo.getContractClause(),"2.4")))
+                .orElse(false);
     }
 
     private boolean isAnnualPeriod(AdditionalAgreement agreement){
@@ -1183,7 +1222,7 @@ public class HrDocumentService {
         return agreement.getContractId()==null?null:contracts.findById(agreement.getContractId()).map(EmploymentContract::getTeacherId).orElse(null);
     }
     public AgreementView agreementView(AdditionalAgreement agreement) { return view(agreement); }
-    private AgreementView view(AdditionalAgreement a) { return new AgreementView(a.getId(),a.getInternalNumber(),a.getVisibleNumber(),a.getRevision(),a.getKind().name(),a.getStatus().name(),a.getChangeMode().name(),a.getReplacesAgreementId(),a.getDocumentDate(),a.getValidFrom(),a.getValidTo(),a.getSummary(),a.getConditionsJson(),a.getTotalAmount(),a.getServiceMemoId(),a.getLoadServiceMemoId(),a.getIssuedAt(),a.isReissueRequired()); }
+    private AgreementView view(AdditionalAgreement a) { return new AgreementView(a.getId(),a.getInternalNumber(),a.getVisibleNumber(),a.getRevision(),a.getKind().name(),a.getStatus().name(),a.getChangeMode().name(),a.getReplacesAgreementId(),a.getDocumentDate(),a.getValidFrom(),a.getValidTo(),a.getSummary(),a.getConditionsJson(),a.getTotalAmount(),a.getServiceMemoId(),a.getLoadServiceMemoId(),a.getIssuedAt(),isAnnualRegistryAgreement(a),a.isReissueRequired()); }
     private boolean isComplete(HrPersonalData p) { return present(p.getPassportSeries()) && present(p.getPassportNumber()) && present(p.getPassportIssuedBy()) && p.getPassportIssueDate()!=null && present(p.getPassportDepartmentCode()) && present(p.getRegistrationAddress()); }
     private boolean present(String s){return s!=null&&!s.isBlank();} private String required(String s,String name){if(!present(s))throw new ResponseStatusException(BAD_REQUEST,name+" обязательно");return s.trim();}
     private String json(Object x){try{return objectMapper.writeValueAsString(x);}catch(Exception e){throw new IllegalStateException(e);}}

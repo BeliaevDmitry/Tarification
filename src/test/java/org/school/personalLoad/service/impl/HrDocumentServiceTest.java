@@ -510,6 +510,7 @@ class HrDocumentServiceTest {
         assertTrue(created.getConditionsJson().contains("17 500 рублей 00 коп."));
         assertTrue(created.getSummary().contains("Нагрузка и должностной оклад"));
         assertTrue(created.getSummary().contains("Классное руководство"));
+        assertTrue(created.isRegistryManaged());
         verify(memos,never()).save(any());
     }
 
@@ -528,6 +529,7 @@ class HrDocumentServiceTest {
         assertTrue(annual.getConditionsJson().contains("пункт 2.4"));
         assertTrue(annual.getConditionsJson().contains("15 000 рублей 00 коп."));
         assertTrue(annual.getSummary().contains("Классное руководство"));
+        assertTrue(annual.isRegistryManaged());
         verify(agreements).save(annual);
     }
 
@@ -592,6 +594,58 @@ class HrDocumentServiceTest {
         assertTrue(annual.getConditionsJson().contains("8 100 рублей 00 коп."));
         verify(agreements).save(annual);
         verify(memos,never()).save(any());
+    }
+
+    @Test void registryIncentiveUpdatesOnlyAnnualRegistryAgreementAndNotSeparateMemoAgreement() {
+        AdditionalAgreement annual=draftAgreement();annual.setId(101L);
+        AdditionalAgreement cabinet=draftAgreement();cabinet.setId(102L);cabinet.setServiceMemoId(50L);
+        cabinet.setSummary("Заведование кабинетом");
+        cabinet.setConditionsJson("Внести изменения в пункт 2.4 раздела 2 «Оплата труда».");
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026"))
+                .thenReturn(List.of(annual,cabinet));
+
+        service.saveIncentive("2025/2026",1L,new BigDecimal("8100"),"hr");
+
+        assertTrue(annual.getConditionsJson().contains("пункт 2.5"));
+        assertTrue(annual.getSummary().contains("Стимулирующая выплата"));
+        assertFalse(cabinet.getConditionsJson().contains("2.5"));
+        assertEquals("Заведование кабинетом",cabinet.getSummary());
+        verify(agreements).save(annual);
+        verify(agreements,never()).save(cabinet);
+    }
+
+    @Test void agreementListRepairsPreviouslyMisappliedIncentiveInSeparateMemoDraft() {
+        AdditionalAgreement cabinet=draftAgreement();cabinet.setId(102L);cabinet.setServiceMemoId(50L);
+        cabinet.setSummary("Заведование кабинетом · Стимулирующая выплата");
+        cabinet.setConditionsJson("Внести изменения в пункт 2.4 раздела 2 «Оплата труда».\n\n"
+                +"Внести изменения в пункт 2.5 раздела 2 «Оплата труда»: стимулирующая выплата 8 100 рублей.");
+        HrServiceMemo memo=new HrServiceMemo();memo.setId(50L);memo.setContractClause("2.4");
+        when(memos.findById(50L)).thenReturn(Optional.of(memo));
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026")).thenReturn(List.of(cabinet));
+
+        var rows=service.agreementRows("2025/2026");
+
+        assertEquals(1,rows.size());
+        assertFalse(cabinet.getConditionsJson().contains("2.5"));
+        assertEquals("Заведование кабинетом",cabinet.getSummary());
+        assertFalse(rows.get(0).agreement().registryManaged());
+        verify(agreements).save(cabinet);
+    }
+
+    @Test void agreementListKeepsIncentiveInLegacyExplicitlyMergedRegistryDocument() {
+        AdditionalAgreement merged=draftAgreement();merged.setId(103L);merged.setServiceMemoId(50L);
+        merged.setSummary("Нагрузка · Заведование кабинетом · Стимулирующая выплата");
+        merged.setConditionsJson("Изложить пункт 2.1 раздела 2 «Оплата труда».\n\n"
+                +"Внести изменения в пункт 2.4 раздела 2 «Оплата труда».\n\n"
+                +"Внести изменения в пункт 2.5 раздела 2 «Оплата труда»: стимулирующая выплата 8 100 рублей.");
+        merged.setSourceSnapshotJson("{\"mergedAgreementIds\":[1,2]}");
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026")).thenReturn(List.of(merged));
+
+        var rows=service.agreementRows("2025/2026");
+
+        assertTrue(merged.getConditionsJson().contains("2.5"));
+        assertTrue(rows.get(0).agreement().registryManaged());
+        verify(agreements,never()).save(merged);
     }
 
     @Test void changingIncentiveMarksIssuedUnsignedAgreementForReissueAndKeepsOldFile() {
@@ -700,6 +754,7 @@ class HrDocumentServiceTest {
 
         assertEquals(101L,merged.getId());assertEquals("1 / 2025-2026",merged.getInternalNumber());
         assertEquals(50L,merged.getServiceMemoId());assertEquals(new BigDecimal("50000"),merged.getTotalAmount());
+        assertTrue(merged.isRegistryManaged(),"После явного объединения документ остаётся сводным");
         assertTrue(merged.getConditionsJson().contains("пункт 2.1"));
         assertTrue(merged.getConditionsJson().contains("пункт 2.4"));
         verify(agreements).delete(function);

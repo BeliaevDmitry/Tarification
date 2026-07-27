@@ -29,8 +29,12 @@ public class HrDocumentSchemaInitializer implements ApplicationRunner {
         if (!"PostgreSQL".equalsIgnoreCase(database)) return;
 
         jdbcTemplate.execute("ALTER TABLE additional_agreement ADD COLUMN IF NOT EXISTS teacher_id bigint");
+        jdbcTemplate.execute("ALTER TABLE additional_agreement ADD COLUMN IF NOT EXISTS registry_managed boolean DEFAULT false");
         jdbcTemplate.execute("ALTER TABLE additional_agreement ADD COLUMN IF NOT EXISTS reissue_required boolean DEFAULT false");
+        jdbcTemplate.execute("UPDATE additional_agreement SET registry_managed = false WHERE registry_managed IS NULL");
         jdbcTemplate.execute("UPDATE additional_agreement SET reissue_required = false WHERE reissue_required IS NULL");
+        jdbcTemplate.execute("ALTER TABLE additional_agreement ALTER COLUMN registry_managed SET DEFAULT false");
+        jdbcTemplate.execute("ALTER TABLE additional_agreement ALTER COLUMN registry_managed SET NOT NULL");
         jdbcTemplate.execute("ALTER TABLE additional_agreement ALTER COLUMN reissue_required SET DEFAULT false");
         jdbcTemplate.execute("ALTER TABLE additional_agreement ALTER COLUMN reissue_required SET NOT NULL");
         jdbcTemplate.execute("ALTER TABLE additional_agreement ALTER COLUMN contract_id DROP NOT NULL");

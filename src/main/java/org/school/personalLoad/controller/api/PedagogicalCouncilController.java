@@ -56,14 +56,33 @@ public class PedagogicalCouncilController {
     @PostMapping
     public PedagogicalCouncilDtos.ProtocolDetails create(@RequestBody PedagogicalCouncilDtos.CreateProtocolRequest request,
                                                          HttpServletRequest httpRequest) {
-        return service.create(request, AuthSessionUtils.requiredUser(httpRequest));
+        SessionUser user = AuthSessionUtils.requiredUser(httpRequest);
+        ensureEdit(user);
+        return service.create(request, user);
     }
 
     @PutMapping("/{id}")
     public PedagogicalCouncilDtos.ProtocolDetails update(@PathVariable Long id,
                                                          @RequestBody PedagogicalCouncilDtos.UpdateProtocolRequest request,
                                                          HttpServletRequest httpRequest) {
-        return service.update(id, request, AuthSessionUtils.requiredUser(httpRequest));
+        SessionUser user = AuthSessionUtils.requiredUser(httpRequest);
+        ensureEdit(user);
+        return service.update(id, request, user);
+    }
+
+    @PostMapping("/{id}/release")
+    public PedagogicalCouncilDtos.ProtocolDetails release(@PathVariable Long id,
+                                                          HttpServletRequest httpRequest) {
+        SessionUser user = AuthSessionUtils.requiredUser(httpRequest);
+        ensureEdit(user);
+        return service.release(id, user);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id, HttpServletRequest httpRequest) {
+        ensureEdit(AuthSessionUtils.requiredUser(httpRequest));
+        service.deleteProtocol(id);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping(value = "/archive", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -91,7 +110,9 @@ public class PedagogicalCouncilController {
 
     @DeleteMapping("/{protocolId}/attachments/{attachmentId}")
     public ResponseEntity<Void> deleteAttachment(@PathVariable Long protocolId,
-                                                 @PathVariable Long attachmentId) {
+                                                 @PathVariable Long attachmentId,
+                                                 HttpServletRequest request) {
+        ensureEdit(AuthSessionUtils.requiredUser(request));
         service.deleteAttachment(protocolId, attachmentId);
         return ResponseEntity.noContent().build();
     }
@@ -125,6 +146,12 @@ public class PedagogicalCouncilController {
     private void ensureImport(SessionUser user) {
         if (!user.canImportTab(AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS)) {
             throw new AuthExceptions.ForbiddenException("Нет права загружать Word-файлы педагогических советов");
+        }
+    }
+
+    private void ensureEdit(SessionUser user) {
+        if (!user.canEditTab(AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS)) {
+            throw new AuthExceptions.ForbiddenException("Нет права изменять протоколы педагогических советов");
         }
     }
 

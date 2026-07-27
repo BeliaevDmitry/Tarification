@@ -38,7 +38,7 @@ class HrDocumentsFrontendTest {
         assertTrue(js.contains("Не удалось загрузить список работников"));
         assertTrue(js.contains("loadTeachersForDocuments"));
         assertTrue(js.contains("api('/api/teachers')"));
-        assertTrue(html.contains("teachers-notification.js?v=20260727-3"));
+        assertTrue(html.contains("teachers-notification.js?v=20260727-4"));
         assertTrue(js.contains("const automaticClause24=clause==='2.4'&&!item.separateAgreement"));
         assertTrue(js.contains("$('#memo-text').value=automaticClause24?'':item.memoText||''"));
         assertTrue(js.contains("memoText:automaticClause24?null:form.get('memo')"));
@@ -66,6 +66,8 @@ class HrDocumentsFrontendTest {
         assertTrue(js.contains("/reopen"));
         assertTrue(js.contains("Исправить и перевыпустить"));
         assertTrue(js.contains("agreement.reissueRequired"));
+        assertTrue(js.contains("agreement.registryManaged"));
+        assertTrue(js.contains("сводный из справочников"));
         assertTrue(js.contains("В документ добавлены новые пункты"));
         assertTrue(js.contains("DOCX (старая версия)"));
         assertTrue(html.contains("<option>Перевыпустить</option>"));

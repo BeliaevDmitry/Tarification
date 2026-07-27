@@ -102,4 +102,82 @@ class PedagogicalCouncilPersistenceTest {
         assertEquals(10, saved.getItems().get(0).getAgendaDurationMinutes());
         assertEquals(54, saved.getItems().get(0).getVotesFor());
     }
+
+    @Test
+    void releasedProtocolCanBeSavedAsDraftAndImmediatelyReissued() {
+        AcademicYearConfig year = new AcademicYearConfig();
+        year.setCode("2025/2026");
+        when(academicYearService.findAll()).thenReturn(List.of(year));
+
+        SessionUser user = new SessionUser();
+        user.setUsername("secretary");
+        user.setFullName("Секретарь");
+
+        PedagogicalCouncilDtos.ProtocolDetails created = service.create(
+                new PedagogicalCouncilDtos.CreateProtocolRequest(
+                        "2025/2026",
+                        "2",
+                        LocalDate.of(2026, 4, 15),
+                        null,
+                        25,
+                        "Директор",
+                        "Иванова И.И.",
+                        "Методист",
+                        "Петрова П.П.",
+                        List.of(new PedagogicalCouncilDtos.ItemRequest(
+                                null,
+                                "О результатах обучения",
+                                10,
+                                null,
+                                null,
+                                "Принять информацию к сведению.",
+                                25,
+                                0,
+                                0
+                        ))
+                ),
+                user
+        );
+        service.release(created.id(), user);
+        PedagogicalCouncilDtos.ProtocolDetails opened = service.get(created.id());
+        PedagogicalCouncilDtos.ItemView item = opened.items().get(0);
+
+        PedagogicalCouncilDtos.ProtocolDetails draft = service.update(
+                opened.id(),
+                new PedagogicalCouncilDtos.UpdateProtocolRequest(
+                        opened.protocolNumber(),
+                        opened.meetingDate(),
+                        opened.agendaTime(),
+                        opened.attendeeCount(),
+                        opened.chairPosition(),
+                        opened.chairFio(),
+                        opened.secretaryPosition(),
+                        opened.secretaryFio(),
+                        PedagogicalCouncilProtocol.Status.DRAFT,
+                        opened.version(),
+                        List.of(new PedagogicalCouncilDtos.ItemRequest(
+                                item.id(),
+                                item.agendaTitle(),
+                                item.agendaDurationMinutes(),
+                                item.speakerTeacherId(),
+                                item.speakerPosition(),
+                                item.speechContent(),
+                                "Обновлённое решение.",
+                                item.votesFor(),
+                                item.votesAgainst(),
+                                item.votesAbstained(),
+                                item.fingerprint()
+                        )),
+                        opened.headerFingerprint(),
+                        List.of()
+                ),
+                user
+        );
+        PedagogicalCouncilDtos.ProtocolDetails reissued = service.release(draft.id(), user);
+
+        assertEquals(PedagogicalCouncilProtocol.Status.DRAFT, draft.status());
+        assertEquals(PedagogicalCouncilProtocol.Status.REGISTERED, reissued.status());
+        assertEquals("Обновлённое решение.", reissued.items().get(0).decisionText());
+        assertEquals("Секретарь", reissued.registeredBy());
+    }
 }
