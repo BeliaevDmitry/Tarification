@@ -53,7 +53,7 @@ function readClause(form, prefix) {
 }
 function documentTextOverrides(memoText = '', agreementText = '', prefix = 'memo') {
     const hasText=Boolean(memoText||agreementText);
-    return `<details class="advanced-text"${hasText?' open':''}><summary>Проверить или изменить автоматический текст</summary><label for="${prefix}-text">Текст служебной записки (необязательно)</label><textarea id="${prefix}-text" name="${prefix==='memo'?'assignmentText':'memo'}" placeholder='Для пункта 2.4 система сформирует: Внести изменения в пункт 2.4 раздела 2 "Оплата труда", изложив его в следующей редакции. Ниже будут перечислены все актуальные функции работника и суммы цифрами и прописью.'>${esc(memoText)}</textarea><span class="field-help">Оставьте поле пустым: система сама соберёт полную актуальную редакцию пункта по выбранному работнику, обязанности и сумме.</span><label for="${prefix}-agreement">Текст для дополнительного соглашения (необязательно)</label><textarea id="${prefix}-agreement" name="${prefix==='memo'?'agreementText':'agreement'}" placeholder='Пример строки: - возложена функция "заведование кабинетом технологии", в размере 15 000 рублей 00 коп. (пятнадцать тысяч рублей 00 коп.) в месяц.'>${esc(agreementText)}</textarea><span class="field-help">Этот блок попадёт в дополнительное соглашение. Для пункта 2.4 его также лучше оставить пустым — система перенесёт готовую редакцию из служебки.</span></details>`;
+    return `<details class="advanced-text"${hasText?' open':''}><summary>Проверить или изменить автоматический текст</summary><label for="${prefix}-text">Текст служебной записки (необязательно)</label><textarea id="${prefix}-text" name="${prefix==='memo'?'assignmentText':'memo'}" placeholder='Для пункта 2.4 система сформирует: Внести изменения в пункт 2.4 раздела 2 "Оплата труда", изложив его в следующей редакции. Ниже будут перечислены все актуальные функции работника и суммы цифрами и прописью.'>${esc(memoText)}</textarea><span class="field-help">Для обычного изменения пункта 2.4 без отдельного функционала ручной текст не применяется: система всегда собирает утверждённую полную редакцию по работнику, обязанности и сумме.</span><label for="${prefix}-agreement">Текст для дополнительного соглашения (необязательно)</label><textarea id="${prefix}-agreement" name="${prefix==='memo'?'agreementText':'agreement'}" placeholder='Пример строки: - возложена функция "заведование кабинетом технологии", в размере 15 000 рублей 00 коп. (пятнадцать тысяч рублей 00 коп.) в месяц.'>${esc(agreementText)}</textarea><span class="field-help">Для обычного пункта 2.4 этот блок также формируется автоматически и совпадает с текстом служебной записки.</span></details>`;
 }
 
 document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => {
@@ -523,6 +523,7 @@ async function editIssuedMemo(memoId) {
     const memo=dutyMemoRows.find(item=>String(item.id)===String(memoId));
     if(!memo)throw new Error('Служебная записка не найдена в текущем списке');
     await loadReferenceData();
+    const automaticClause24=!memo.separateAgreement&&(memo.contractClause||'2.4')==='2.4';
     const teacher=teachersCache.find(item=>String(item.id)===String(memo.teacherId));
     const contracts=await api(`/api/hr-documents/contracts?teacherId=${memo.teacherId}`);
     openEditor('Редактирование служебной записки',
@@ -536,7 +537,7 @@ async function editIssuedMemo(memoId) {
         row('Сумма в месяц',`<input name="amount" type="number" min="0" step="0.01" value="${esc(memo.amount)}" required>`,'Например, если директор изменил сумму, укажите новую сумму и сохраните.')+
         row('Период',`<div class="hr-toolbar"><input name="validFrom" type="date" value="${esc(memo.validFrom)}" required><span>—</span><input name="validTo" type="date" value="${esc(memo.validTo)}" required></div>`)+
         row('Дата служебной записки',`<input name="documentDate" type="date" value="${esc(memo.documentDate)}">`)+
-        row('Текст документов',documentTextOverrides(memo.assignmentText,memo.agreementText,'memo-edit'),'Если автоматический текст не правили вручную, система пересоберёт его с новой суммой.')+
+        row('Текст документов',documentTextOverrides(automaticClause24?'':memo.assignmentText,automaticClause24?'':memo.agreementText,'memo-edit'),automaticClause24?'Для пункта 2.4 текст будет заново собран строго по утверждённому образцу.':'Если автоматический текст не правили вручную, система пересоберёт его с новой суммой.')+
         row('Справочник','<label><input name="saveTemplate" type="checkbox"> Сохранить этот вариант как шаблон</label>'),
         async form=>{
             await api(`/api/hr-documents/memos/${memo.id}`,json('PUT',{
@@ -621,7 +622,12 @@ $('#add-memo').addEventListener('click', async () => {
             function applyCatalog() {
                 const item = catalogCache.find(c=>String(c.id)===catalogSelect.value);
                 if (!item) return;
-                $('#memo-assignment').value=item.name||''; $('#memo-text').value=item.memoText||''; $('#memo-agreement').value=item.agreementText||''; setClausePicker('memo',item.contractClause||'2.4');
+                const clause=item.contractClause||'2.4';
+                const automaticClause24=clause==='2.4'&&!item.separateAgreement;
+                $('#memo-assignment').value=item.name||'';
+                $('#memo-text').value=automaticClause24?'':item.memoText||'';
+                $('#memo-agreement').value=automaticClause24?'':item.agreementText||'';
+                setClausePicker('memo',clause);
                 $('#memo-duties').value=item.dutiesText||''; $('#memo-amount').value=item.defaultAmount??''; setSeparate(String(Boolean(item.separateAgreement)));
                 $('#memo-save-template').checked=false;
             }
@@ -654,15 +660,19 @@ async function loadCatalog() {
     $('#catalog-body').innerHTML = catalogCache.map(item=>`<tr><td>${esc(item.name)}</td><td>${esc(CATEGORY_LABELS[item.category]||item.category)}</td><td>${esc(item.contractClause)}</td><td>${esc(item.defaultAmount)}</td><td>${item.separateAgreement?'Да':'Нет'}</td><td><button data-edit-catalog="${item.id}">Изменить</button> <button data-delete-catalog="${item.id}">Удалить</button></td></tr>`).join('');
 }
 function editCatalog(item = null) {
+    const automaticClause24=Boolean(item)&&!item.separateAgreement&&(item.contractClause||'2.4')==='2.4';
     openEditor(item ? 'Изменить выплату или работу' : 'Добавить выплату или работу',
         row('Название обязанности или выплаты', `<input name="name" value="${esc(item?.name)}" required placeholder="Например: заведование кабинетом">`) +
         row('Категория', `<select name="category"><option value="COMPENSATION" ${item?.category==='COMPENSATION'?'selected':''}>Компенсационная выплата</option><option value="INCENTIVE" ${item?.category==='INCENTIVE'?'selected':''}>Стимулирующая выплата</option><option value="ADDITIONAL_WORK" ${item?.category==='ADDITIONAL_WORK'?'selected':''}>Дополнительная работа</option></select>`) +
         row('Пункт трудового договора', clausePicker('catalog',item?.contractClause||'2.4'),'Источники разделены: 2.1 — нагрузка, 2.4 — дополнительные функции, 2.5 — стимулирующие выплаты из отдельной таблицы.') + row('Стандартная сумма', `<input name="amount" type="number" min="0" step="0.01" value="${esc(item?.defaultAmount)}">`) +
         row('Отдельное соглашение', `<label><input name="separate" type="checkbox" ${item?.separateAgreement?'checked':''}> Есть отдельный перечень дополнительных обязанностей</label>`,'Если флажок снят, выплата изменяет выбранный пункт договора. Если установлен — создаётся отдельный допник с функционалом.') +
         row('Дополнительные обязанности', `<textarea name="duties" placeholder="Например: контролировать состояние кабинета; вести журнал инструктажей; обеспечивать сохранность оборудования.">${esc(item?.dutiesText)}</textarea>`,'Заполняется, когда выбран отдельный функционал.') +
-        row('Текст документов', documentTextOverrides(item?.memoText,item?.agreementText,'catalog'),'Оставьте поля пустыми для автоматического формирования; примеры находятся внутри.'),
+        row('Текст документов', documentTextOverrides(automaticClause24?'':item?.memoText,automaticClause24?'':item?.agreementText,'catalog'),'Для стандартного пункта 2.4 старые ручные формулировки не используются.'),
         async form => {
-            await api(item ? `/api/hr-documents/catalog/${item.id}` : '/api/hr-documents/catalog',json(item ? 'PUT' : 'POST',{name:form.get('name'),category:form.get('category'),contractClause:readClause(form,'catalog'),defaultAmount:form.get('amount')||null,memoText:form.get('memo'),agreementText:form.get('agreement'),dutiesText:form.get('duties'),separateAgreement:form.get('separate')==='on',active:true}));
+            const clause=readClause(form,'catalog');
+            const separate=form.get('separate')==='on';
+            const automaticClause24=clause==='2.4'&&!separate;
+            await api(item ? `/api/hr-documents/catalog/${item.id}` : '/api/hr-documents/catalog',json(item ? 'PUT' : 'POST',{name:form.get('name'),category:form.get('category'),contractClause:clause,defaultAmount:form.get('amount')||null,memoText:automaticClause24?null:form.get('memo'),agreementText:automaticClause24?null:form.get('agreement'),dutiesText:form.get('duties'),separateAgreement:separate,active:true}));
             await loadCatalog();
         },
         () => bindClausePicker('catalog')
