@@ -38,7 +38,11 @@ class HrDocumentsFrontendTest {
         assertTrue(js.contains("Не удалось загрузить список работников"));
         assertTrue(js.contains("loadTeachersForDocuments"));
         assertTrue(js.contains("api('/api/teachers')"));
-        assertTrue(html.contains("teachers-notification.js?v=20260727-4"));
+        assertTrue(html.contains("teachers-notification.js?v=20260727-7"));
+        assertTrue(js.contains("function formatDate(value, fallback = '—')"));
+        assertTrue(js.contains("`${match[3]}.${match[2]}.${match[1]}`"));
+        assertTrue(js.contains("formatDate(agreement.validFrom)"));
+        assertTrue(js.contains("formatDate(agreement.validTo)"));
         assertTrue(js.contains("const automaticClause24=clause==='2.4'&&!item.separateAgreement"));
         assertTrue(js.contains("$('#memo-text').value=automaticClause24?'':item.memoText||''"));
         assertTrue(js.contains("memoText:automaticClause24?null:form.get('memo')"));
@@ -96,7 +100,11 @@ class HrDocumentsFrontendTest {
         assertTrue(js.contains("возвращена в черновик"));
         assertTrue(js.contains("/memos/archive?academicYear="));
         assertTrue(js.contains("/load-memos/archive?academicYear="));
-        assertTrue(html.contains("Сформировать на 1 сентября"));
+        assertTrue(html.contains(">Сформировать</button>"));
+        assertFalse(html.contains("Сформировать на 1 сентября"));
+        assertTrue(js.contains("if(annualGenerationInProgress)return"));
+        assertTrue(js.contains("buttons.forEach(button=>button.disabled=true)"));
+        assertTrue(js.contains("$('#agreement-status').value=''"));
         assertTrue(js.contains("Не заполнен"));
         assertTrue(js.contains("data-edit-agreement"));
         assertTrue(js.contains("'ISSUED','SIGNING'].includes(agreement.status)"));

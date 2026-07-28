@@ -128,7 +128,7 @@ class HrDocumentServiceTest {
                 && a.getConditionsJson().contains("пункт 2.5 трудового договора")));
     }
 
-    @Test void clause24MemoRestatesAllCurrentFunctionsWithAmountsInDigitsAndWords() throws Exception {
+    @Test void clause24MemoContainsOnlyFunctionFromThisServiceMemo() throws Exception {
         ClassroomLeadershipEntry classroom=new ClassroomLeadershipEntry();classroom.setAcademicYear("2025/2026");
         classroom.setClassName("5 А");classroom.setTeacher(teacher);
         when(classroomLeadership.findAllByAcademicYear("2025/2026")).thenReturn(List.of(classroom));
@@ -139,12 +139,10 @@ class HrDocumentServiceTest {
 
         HrServiceMemo memo=service.createMemo(request,"deputy");
 
-        assertTrue(memo.getAssignmentText().startsWith("Внести изменения в пункт 2.4 раздела 2 \"Оплата труда\""));
-        assertTrue(memo.getAssignmentText().contains("\"2.4. Работнику выплачиваются ежемесячные компенсационные выплаты"));
-        assertTrue(memo.getAssignmentText().contains("- возложена функция классного руководителя, в размере 5 000 рублей 00 коп. за 1 класс"));
-        assertTrue(memo.getAssignmentText().contains("500 рублей за 1 обучающегося"));
-        assertTrue(memo.getAssignmentText().contains("16 000 рублей 00 коп. (шестнадцать тысяч рублей 00 коп.) в месяц;"));
-        assertTrue(memo.getAssignmentText().contains("- возложена функция \"заведование кабинетом технологии\", в размере 15 000 рублей 00 коп. (пятнадцать тысяч рублей 00 коп.) в месяц\"."));
+        assertTrue(memo.getAssignmentText().startsWith("Внести изменения в пункт 2.4 раздела 2 «Оплата труда»"));
+        assertTrue(memo.getAssignmentText().contains("«2.4. Работнику выплачиваются ежемесячные компенсационные выплаты"));
+        assertFalse(memo.getAssignmentText().contains("классного руководителя"));
+        assertTrue(memo.getAssignmentText().contains("- возложена функция «заведование кабинетом технологии», в размере 15 000 рублей 00 коп. (пятнадцать тысяч рублей 00 коп.) в месяц»."));
         assertEquals(memo.getAssignmentText(),memo.getAgreementText());
 
         org.mockito.ArgumentCaptor<AdditionalAgreement> agreementCaptor=org.mockito.ArgumentCaptor.forClass(AdditionalAgreement.class);
@@ -159,8 +157,8 @@ class HrDocumentServiceTest {
         service.memoStatus(50L,HrServiceMemo.Status.RECEIVED_BY_HR,"hr");
         try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(issued.getDocumentContent()))){
             String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right);
-            assertTrue(text.contains("Внести изменения в пункт 2.4 раздела 2 \"Оплата труда\""));
-            assertTrue(text.contains("возложена функция \"заведование кабинетом технологии\""));
+            assertTrue(text.contains("Внести изменения в пункт 2.4 раздела 2 «Оплата труда»"));
+            assertTrue(text.contains("возложена функция «заведование кабинетом технологии»"));
         }
         String qaOutput=System.getProperty("hr.memo.qa.output");
         if(qaOutput!=null&&!qaOutput.isBlank()){Path path=Path.of(qaOutput);Files.createDirectories(path.getParent());Files.write(path,issued.getDocumentContent());}
@@ -169,8 +167,8 @@ class HrDocumentServiceTest {
         AdditionalAgreement prepared=service.prepare(linked.getId(),"hr");
         try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(prepared.getCurrentDocument()))){
             String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right);
-            assertTrue(text.contains("возложена функция классного руководителя"));
-            assertTrue(text.contains("возложена функция \"заведование кабинетом технологии\""));
+            assertFalse(text.contains("возложена функция классного руководителя"));
+            assertTrue(text.contains("возложена функция «заведование кабинетом технологии»"));
         }
         String fullAgreementQa=System.getProperty("hr.compensation.full.qa.output");
         if(fullAgreementQa!=null&&!fullAgreementQa.isBlank()){Path path=Path.of(fullAgreementQa);Files.createDirectories(path.getParent());Files.write(path,prepared.getCurrentDocument());}
@@ -183,10 +181,10 @@ class HrDocumentServiceTest {
 
         HrServiceMemo memo=service.createMemo(request,"deputy");
 
-        assertEquals("Внести изменения в пункт 2.4 раздела 2 \"Оплата труда\", изложив его в следующей редакции:\n"
-                +"\"2.4. Работнику выплачиваются ежемесячные компенсационные выплаты при условии, если на Работника:\n"
-                +"- возложена функция \"заведование кабинетом технологии\", в размере 15 000 рублей 00 коп. "
-                +"(пятнадцать тысяч рублей 00 коп.) в месяц\".",memo.getAgreementText());
+        assertEquals("Внести изменения в пункт 2.4 раздела 2 «Оплата труда», изложив его в следующей редакции:\n"
+                +"«2.4. Работнику выплачиваются ежемесячные компенсационные выплаты при условии, если на Работника:\n"
+                +"- возложена функция «заведование кабинетом технологии», в размере 15 000 рублей 00 коп. "
+                +"(пятнадцать тысяч рублей 00 коп.) в месяц».",memo.getAgreementText());
     }
 
     @Test void clause24IgnoresLegacyTextSubmittedFromCatalog() {
@@ -203,7 +201,7 @@ class HrDocumentServiceTest {
         HrServiceMemo memo=service.createMemo(request,"deputy");
 
         assertTrue(memo.getAssignmentText().startsWith(
-                "Внести изменения в пункт 2.4 раздела 2 \"Оплата труда\", изложив его в следующей редакции:"));
+                "Внести изменения в пункт 2.4 раздела 2 «Оплата труда», изложив его в следующей редакции:"));
         assertEquals(memo.getAssignmentText(),memo.getAgreementText());
         assertFalse(memo.getAssignmentText().contains("Прошу Вас согласовать"));
         assertFalse(memo.getAgreementText().contains("старой редакции"));
@@ -222,12 +220,12 @@ class HrDocumentServiceTest {
         HrServiceMemo issued=service.memoStatus(50L,HrServiceMemo.Status.ISSUED,"deputy");
 
         assertTrue(downloaded.getAssignmentText().startsWith(
-                "Внести изменения в пункт 2.4 раздела 2 \"Оплата труда\""));
+                "Внести изменения в пункт 2.4 раздела 2 «Оплата труда»"));
         assertEquals(downloaded.getAssignmentText(),downloaded.getAgreementText());
         try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(issued.getDocumentContent()))){
             String text=document.getParagraphs().stream().map(XWPFParagraph::getText)
                     .reduce("",(left,right)->left+"\n"+right);
-            assertTrue(text.contains("Внести изменения в пункт 2.4 раздела 2 \"Оплата труда\""));
+            assertTrue(text.contains("Внести изменения в пункт 2.4 раздела 2 «Оплата труда»"));
             assertFalse(text.contains("Прошу Вас согласовать старый текст"));
         }
     }
@@ -533,6 +531,64 @@ class HrDocumentServiceTest {
         verify(agreements).save(annual);
     }
 
+    @Test void repeatedAnnualGenerationKeepsFirstDraftAndDeletesOnlyDuplicateUnissuedRegistryDraft() {
+        ManualLoadEntry load=new ManualLoadEntry();load.setTeacherId(1L);load.setAcademicYear("2025/2026");
+        load.setSubjectName("Математика");load.setClassName("5А");load.setLoad(1);
+        AdditionalAgreement first=draftAgreement();first.setId(101L);first.setInternalNumber("1 / 2025-2026");
+        first.setRegistryManaged(true);
+        AdditionalAgreement duplicate=draftAgreement();duplicate.setId(102L);duplicate.setInternalNumber("2 / 2025-2026");
+        duplicate.setRegistryManaged(true);
+        List<AdditionalAgreement> existing=new ArrayList<>(List.of(duplicate,first));
+        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load));
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026")).thenReturn(existing);
+
+        List<AdditionalAgreement> created=service.createAnnualDrafts(new BatchAgreementRequest("2025/2026",
+                LocalDate.of(2025,9,1),null,List.of(),null),"hr");
+
+        assertTrue(created.isEmpty());
+        verify(agreements).delete(duplicate);
+        verify(agreements,never()).delete(first);
+        verify(versions).deleteAll(anyList());
+    }
+
+    @Test void annualAgreementIsCreatedAgainWhenAllPreviousAgreementsAreAnnulled() {
+        ManualLoadEntry load=new ManualLoadEntry();load.setTeacherId(1L);load.setAcademicYear("2025/2026");
+        load.setSubjectName("Математика");load.setClassName("5А");load.setLoad(2);
+        ClassroomLeadershipEntry classroom=new ClassroomLeadershipEntry();classroom.setAcademicYear("2025/2026");
+        classroom.setClassName("5 А");classroom.setTeacher(teacher);
+        HrIncentive incentive=new HrIncentive();incentive.setAcademicYear("2025/2026");
+        incentive.setTeacherId(1L);incentive.setAmount(new BigDecimal("7000"));
+        AdditionalAgreement annulled=draftAgreement();annulled.setId(101L);
+        annulled.setInternalNumber("1 / 2025-2026");annulled.setRegistryManaged(true);
+        annulled.setStatus(AdditionalAgreement.Status.ANNULLED);
+        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load));
+        when(classroomLeadership.findAllByAcademicYear("2025/2026")).thenReturn(List.of(classroom));
+        when(incentives.findAllByAcademicYear("2025/2026")).thenReturn(List.of(incentive));
+        when(incentives.findByAcademicYearAndTeacherId("2025/2026",1L)).thenReturn(Optional.of(incentive));
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026"))
+                .thenReturn(new ArrayList<>(List.of(annulled)));
+        when(agreements.findAllByContractIdOrderByCreatedAtDesc(10L)).thenReturn(List.of(annulled));
+        when(agreements.findById(101L)).thenReturn(Optional.of(annulled));
+        contract.setPrimaryContract(true);contract.setActive(true);
+        when(contracts.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(1L))
+                .thenReturn(List.of(contract));
+
+        List<AdditionalAgreement> created=service.createAnnualDrafts(new BatchAgreementRequest("2025/2026",
+                LocalDate.of(2025,9,1),null,List.of(),null),"hr");
+
+        assertEquals(1,created.size());
+        AdditionalAgreement replacement=created.get(0);
+        assertEquals(AdditionalAgreement.Status.DRAFT,replacement.getStatus());
+        assertEquals("1 / 2025-2026",replacement.getInternalNumber());
+        assertEquals(2,replacement.getRevision());
+        assertEquals(101L,replacement.getReplacesAgreementId());
+        assertTrue(replacement.isRegistryManaged());
+        assertTrue(replacement.getConditionsJson().contains("пункт 2.1"));
+        assertTrue(replacement.getConditionsJson().contains("пункт 2.4"));
+        assertTrue(replacement.getConditionsJson().contains("пункт 2.5"));
+        assertNotEquals(annulled.getId(),replacement.getId());
+    }
+
     @Test void teachersWithLoadAreAutomaticallyAddedToIncentiveTableByForeignKey() {
         ManualLoadEntry load=new ManualLoadEntry();load.setTeacherId(1L);load.setAcademicYear("2025/2026");
         load.setLoad(2);when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load));
@@ -629,6 +685,25 @@ class HrDocumentServiceTest {
         assertFalse(cabinet.getConditionsJson().contains("2.5"));
         assertEquals("Заведование кабинетом",cabinet.getSummary());
         assertFalse(rows.get(0).agreement().registryManaged());
+        verify(agreements).save(cabinet);
+    }
+
+    @Test void agreementListRemovesRegistryClassroomLeadershipFromExistingCabinetMemoDraft() {
+        AdditionalAgreement cabinet=draftAgreement();cabinet.setId(104L);cabinet.setServiceMemoId(50L);
+        cabinet.setSummary("Заведование кабинетом");
+        cabinet.setConditionsJson("Внести изменения в пункт 2.4 раздела 2 \"Оплата труда\", изложив его в следующей редакции:\n"
+                +"\"2.4. Работнику выплачиваются ежемесячные компенсационные выплаты при условии, если на Работника:\n"
+                +"- возложена функция классного руководителя, в размере 16 500 рублей 00 коп. в месяц;\n"
+                +"- возложена функция \"заведование кабинетом\", в размере 10 000 рублей 00 коп. в месяц\".");
+        HrServiceMemo memo=new HrServiceMemo();memo.setId(50L);memo.setContractClause("2.4");
+        memo.setAssignmentName("Заведование кабинетом");memo.setAmount(new BigDecimal("10000"));
+        when(memos.findById(50L)).thenReturn(Optional.of(memo));
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026")).thenReturn(List.of(cabinet));
+
+        service.agreementRows("2025/2026");
+
+        assertFalse(cabinet.getConditionsJson().contains("классного руководителя"));
+        assertTrue(cabinet.getConditionsJson().contains("«заведование кабинетом»"));
         verify(agreements).save(cabinet);
     }
 
@@ -741,9 +816,14 @@ class HrDocumentServiceTest {
         AdditionalAgreement annulled=new AdditionalAgreement();annulled.setId(90L);annulled.setAcademicYear("2025/2026");
         annulled.setInternalNumber("1 / 2025-2026");annulled.setStatus(AdditionalAgreement.Status.ANNULLED);
         HrServiceMemo memo=new HrServiceMemo();memo.setId(50L);memo.setStatus(HrServiceMemo.Status.RECEIVED_BY_HR);
+        memo.setAssignmentName("Заведование кабинетом");memo.setAmount(new BigDecimal("15000"));
+        memo.setContractClause("2.4");memo.setValidFrom(LocalDate.of(2025,9,1));
+        ClassroomLeadershipEntry classroom=new ClassroomLeadershipEntry();classroom.setAcademicYear("2025/2026");
+        classroom.setClassName("5 А");classroom.setTeacher(teacher);
         when(agreements.findById(101L)).thenReturn(Optional.of(load));when(agreements.findById(102L)).thenReturn(Optional.of(function));
         when(agreements.findAllByContractIdOrderByCreatedAtDesc(10L)).thenReturn(List.of(function,load,annulled));
         when(memos.findById(50L)).thenReturn(Optional.of(memo));
+        when(classroomLeadership.findAllByAcademicYear("2025/2026")).thenReturn(List.of(classroom));
         when(personal.findByTeacherId(1L)).thenReturn(Optional.of(completePersonal()));
         ManualLoadEntry row=new ManualLoadEntry();row.setTeacherId(1L);row.setAcademicYear("2025/2026");
         row.setSubjectName("Математика");row.setClassName("5 А");row.setLoad(2);
@@ -763,6 +843,8 @@ class HrDocumentServiceTest {
         try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(prepared.getCurrentDocument()))){
             String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right);
             assertTrue(text.contains("пункт 2.1"));assertTrue(text.contains("пункт 2.4"));
+            assertTrue(text.contains("возложена функция классного руководителя"));
+            assertTrue(text.contains("возложена функция «заведование кабинетом»"));
             assertTrue(text.contains("Приложение № 1"));
         }
     }
@@ -1096,7 +1178,7 @@ class HrDocumentServiceTest {
             String text=document.getParagraphs().stream().map(p->p.getText()).reduce("",(left,right)->left+"\n"+right)
                     +document.getTables().stream().map(table->table.getText()).reduce("",String::concat);
             assertTrue(text.contains("к Трудовому договору от 01.01.2025 г. № 1-ТД"));
-            assertTrue(text.contains("Внести изменения в пункт 2.4 раздела 2 \"Оплата труда\""));
+            assertTrue(text.contains("Внести изменения в пункт 2.4 раздела 2 «Оплата труда»"));
             assertTrue(text.contains("Работнику выплачиваются ежемесячные компенсационные выплаты"));
             assertEquals(1,text.split(java.util.regex.Pattern.quote("15 000 рублей 00 коп."),-1).length-1);
             assertTrue(text.contains("Другие положения Трудового договора"));

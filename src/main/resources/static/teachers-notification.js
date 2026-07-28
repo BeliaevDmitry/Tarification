@@ -1,5 +1,10 @@
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+function formatDate(value, fallback = '—') {
+    const raw=String(value||'').slice(0,10);
+    const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+    return match?`${match[3]}.${match[2]}.${match[1]}`:(value||fallback);
+}
 const academicYear = () => window.getStoredAcademicYear ? window.getStoredAcademicYear() : '';
 const canViewPersonal = () => Boolean(window.tarificationAuth?.admin || window.tarificationTabPermissions?.HR_PERSONAL_DATA?.canView);
 const CATEGORY_LABELS = {COMPENSATION:'Компенсационная выплата', INCENTIVE:'Стимулирующая выплата', ADDITIONAL_WORK:'Дополнительная работа'};
@@ -103,8 +108,8 @@ function agreementTimelineLabel(agreement) {
     if(agreement.status==='ANNULLED')return 'Аннулировано';
     if(agreement.status==='REJECTED')return 'Отклонено';
     const today=new Date().toISOString().slice(0,10);
-    if(agreement.validFrom&&agreement.validFrom>today)return `Действие начнётся ${agreement.validFrom}`;
-    if(agreement.validTo&&agreement.validTo<today)return `Срок действия завершён ${agreement.validTo}`;
+    if(agreement.validFrom&&agreement.validFrom>today)return `Действие начнётся ${formatDate(agreement.validFrom)}`;
+    if(agreement.validTo&&agreement.validTo<today)return `Срок действия завершён ${formatDate(agreement.validTo)}`;
     return ['SIGNED','ISSUED','SIGNING'].includes(agreement.status)?'Действует':'Требует обработки';
 }
 function isHistoricalAgreement(row) {
@@ -168,7 +173,7 @@ function renderAgreements() {
             const source=agreement.registryManaged
                 ?agreement.serviceMemoId||agreement.loadServiceMemoId?' · сводный + служебная записка':' · сводный из справочников'
                 :agreement.serviceMemoId?' · из служебной записки':agreement.loadServiceMemoId?' · из изменения нагрузки':'';
-            return `<div class="agreement-item"><b>${esc(agreement.visibleNumber||agreement.internalNumber)}</b> от ${esc(agreement.documentDate||'—')} · ${esc(STATUS_LABELS[agreement.status]||agreement.status)}<br>${esc(agreement.summary||agreement.kind)}<br><span class="muted">${esc(agreement.validFrom)} — ${esc(agreement.validTo)}${source}</span><div class="agreement-actions">${renderAgreementActions(agreement,row)}</div></div>`;
+            return `<div class="agreement-item"><b>${esc(agreement.visibleNumber||agreement.internalNumber)}</b> от ${esc(formatDate(agreement.documentDate))} · ${esc(STATUS_LABELS[agreement.status]||agreement.status)}<br>${esc(agreement.summary||agreement.kind)}<br><span class="muted">${esc(formatDate(agreement.validFrom))} — ${esc(formatDate(agreement.validTo))}${source}</span><div class="agreement-actions">${renderAgreementActions(agreement,row)}</div></div>`;
         }).join('');
         const merge=mergeCandidate(group);
         const reissue=group.find(row=>row.agreement.reissueRequired&&['ISSUED','SIGNING'].includes(row.agreement.status))?.agreement;
@@ -195,7 +200,7 @@ function renderAllAgreements(teacherId = null, contractId = null) {
         const source=agreement.registryManaged
             ?agreement.serviceMemoId||agreement.loadServiceMemoId?'Сводный из справочников + служебная записка':'Сводный из справочников'
             :agreement.serviceMemoId?`Служебная записка ID ${agreement.serviceMemoId}`:agreement.loadServiceMemoId?`Служебная записка по нагрузке ID ${agreement.loadServiceMemoId}`:'Без служебной записки';
-        return `<tr><td>${esc(row.fio||`ID ${row.teacherId}`)}</td><td>${row.contractId?`№ ${esc(row.contractNumber||row.contractId)}`:'Не заполнен'}</td><td><b>${esc(agreement.visibleNumber||agreement.internalNumber)}</b><br>${esc(agreement.documentDate||'Без даты')}</td><td>${esc(agreement.validFrom||'—')} — ${esc(agreement.validTo||'—')}</td><td>${esc(agreement.summary||agreement.kind)}<br><span class="muted">${esc(source)}</span></td><td>${esc(STATUS_LABELS[agreement.status]||agreement.status)}<br><span class="muted">${esc(agreementTimelineLabel(agreement))}</span></td><td><div class="agreement-actions">${renderAgreementActions(agreement,row)}</div></td></tr>`;
+        return `<tr><td>${esc(row.fio||`ID ${row.teacherId}`)}</td><td>${row.contractId?`№ ${esc(row.contractNumber||row.contractId)}`:'Не заполнен'}</td><td><b>${esc(agreement.visibleNumber||agreement.internalNumber)}</b><br>${esc(formatDate(agreement.documentDate,'Без даты'))}</td><td>${esc(formatDate(agreement.validFrom))} — ${esc(formatDate(agreement.validTo))}</td><td>${esc(agreement.summary||agreement.kind)}<br><span class="muted">${esc(source)}</span></td><td>${esc(STATUS_LABELS[agreement.status]||agreement.status)}<br><span class="muted">${esc(agreementTimelineLabel(agreement))}</span></td><td><div class="agreement-actions">${renderAgreementActions(agreement,row)}</div></td></tr>`;
     }).join(''):'<tr><td colspan="7">Дополнительные соглашения не найдены</td></tr>';
 }
 function openAllAgreements(teacherId = null, contractId = null) {
@@ -494,11 +499,24 @@ $('#journal-body').addEventListener('click',handleAgreementAction);
 $('#agreement-body').addEventListener('click',handleAgreementAction);
 $('#all-agreement-body').addEventListener('click',handleAgreementAction);
 
+let annualGenerationInProgress=false;
 async function createAnnualAgreements() {
+    if(annualGenerationInProgress)return;
     if (!confirm('Сформировать или обновить годовые черновики: нагрузка (пункт 2.1), классное руководство (пункт 2.4) и стимул (пункт 2.5)?')) return;
-    const result=await api('/api/hr-documents/agreements/batch-annual', json('POST',{academicYear:academicYear(),documentDate:new Date().toISOString().slice(0,10),contractIds:[]}));
-    await Promise.all([loadJournal(),loadAgreements()]);
-    showNotice(result.created?`Создано годовых допсоглашений: ${result.created}. Нагрузка, классное руководство и стимул объединены по каждому работнику.`:'Годовые допсоглашения уже созданы; невыпущенные черновики обновлены актуальной нагрузкой, классным руководством и стимулом.');
+    const buttons=[$('#batch-annual'),$('#batch-annual-agreements')];
+    annualGenerationInProgress=true;
+    buttons.forEach(button=>button.disabled=true);
+    try{
+        const result=await api('/api/hr-documents/agreements/batch-annual', json('POST',{academicYear:academicYear(),documentDate:new Date().toISOString().slice(0,10),contractIds:[]}));
+        await Promise.all([loadJournal(),loadAgreements()]);
+        $('#agreement-status').value='';
+        renderAgreements();
+        showNotice(result.created?`Создано годовых допсоглашений: ${result.created}. Нагрузка, классное руководство и стимул объединены по каждому работнику.`:'Годовые допсоглашения уже созданы; невыпущенные черновики обновлены актуальной нагрузкой, классным руководством и стимулом.');
+    }catch(error){showNotice(error.message,true);}
+    finally{
+        annualGenerationInProgress=false;
+        buttons.forEach(button=>button.disabled=false);
+    }
 }
 $('#batch-annual').addEventListener('click',createAnnualAgreements);
 $('#batch-annual-agreements').addEventListener('click',createAnnualAgreements);
@@ -520,7 +538,7 @@ async function loadMemos() {
         const remove=memo.deletable?` <button data-delete-memo="${memo.id}">Удалить</button>`
             :!['ANNULLED','ARCHIVED'].includes(memo.status)?` <button data-annul-memo="${memo.id}">Аннулировать</button>`:'';
         const statusLabel=memo.status==='SIGNED'?'Подписана':STATUS_LABELS[memo.status]||memo.status;
-        return {sortDate:memo.documentDate||memo.createdAt,type:'Дополнительная обязанность',html:`<tr><td>${esc(memo.documentDate)}</td><td>${esc(teacherNames.get(memo.teacherId) || memo.teacherId || 'Не указан')}</td><td>Дополнительная обязанность</td><td>${esc(memo.assignmentName || memo.title)}</td><td>${esc(statusLabel)}${memo.contractId?'':' · ожидает договор'}</td><td><a href="/api/hr-documents/memos/${memo.id}/download">DOCX</a>${edit}${next}${remove}</td></tr>`};
+        return {sortDate:memo.documentDate||memo.createdAt,type:'Дополнительная обязанность',html:`<tr><td>${esc(formatDate(memo.documentDate))}</td><td>${esc(teacherNames.get(memo.teacherId) || memo.teacherId || 'Не указан')}</td><td>Дополнительная обязанность</td><td>${esc(memo.assignmentName || memo.title)}</td><td>${esc(statusLabel)}${memo.contractId?'':' · ожидает договор'}</td><td><a href="/api/hr-documents/memos/${memo.id}/download">DOCX</a>${edit}${next}${remove}</td></tr>`};
     });
     const loadRows = loadMemos.map(memo => {
         const next=memo.status==='PROCESSED'?` <button data-sign-load-memo="${memo.id}">Подписана</button>`
@@ -528,7 +546,7 @@ async function loadMemos() {
         const remove=!['ANNULLED','ARCHIVED'].includes(memo.status)?` <button data-annul-load-memo="${memo.id}">Аннулировать</button>`
             :memo.status==='ANNULLED'?` <button data-delete-load-memo="${memo.id}">Удалить</button>`:'';
         const statusLabel=memo.status==='SIGNED'?'Подписана':STATUS_LABELS[memo.status]||memo.status;
-        return {sortDate:memo.startDate||memo.createdAt,type:'Изменение нагрузки',html:`<tr><td>${esc(memo.startDate)}</td><td>${esc(teacherNames.get(memo.teacherId) || memo.fioTeacher || 'Не указан')}</td><td>Изменение нагрузки</td><td>Нагрузка с ${esc(memo.startDate)}</td><td>${esc(statusLabel)}${memo.contractId?'':' · ожидает договор'}</td><td><a href="/api/hr-documents/load-memos/${memo.id}/download">DOCX</a>${next}${remove}</td></tr>`};
+        return {sortDate:memo.startDate||memo.createdAt,type:'Изменение нагрузки',html:`<tr><td>${esc(formatDate(memo.startDate))}</td><td>${esc(teacherNames.get(memo.teacherId) || memo.fioTeacher || 'Не указан')}</td><td>Изменение нагрузки</td><td>Нагрузка с ${esc(formatDate(memo.startDate))}</td><td>${esc(statusLabel)}${memo.contractId?'':' · ожидает договор'}</td><td><a href="/api/hr-documents/load-memos/${memo.id}/download">DOCX</a>${next}${remove}</td></tr>`};
     });
     $('#memo-body').innerHTML = [...dutyRows,...loadRows].sort((a,b)=>String(b.sortDate).localeCompare(String(a.sortDate))).map(row=>row.html).join('');
 }
@@ -582,9 +600,9 @@ async function openMemoArchive() {
     const names=new Map(teachers.map(item=>[item.id,item.fio]));
     const rows=[
         ...dutyArchive.map(memo=>({date:memo.documentDate||memo.createdAt,teacher:names.get(memo.teacherId)||`ID ${memo.teacherId}`,type:'Дополнительная обязанность',assignment:memo.assignmentName||memo.title,reason:memo.archiveReason,download:`/api/hr-documents/memos/${memo.id}/download`})),
-        ...loadArchive.map(memo=>({date:memo.startDate||memo.createdAt,teacher:names.get(memo.teacherId)||memo.fioTeacher||`ID ${memo.teacherId}`,type:'Изменение нагрузки',assignment:`Нагрузка с ${memo.startDate||'—'}`,reason:memo.archiveReason,download:`/api/hr-documents/load-memos/${memo.id}/download`}))
+        ...loadArchive.map(memo=>({date:memo.startDate||memo.createdAt,teacher:names.get(memo.teacherId)||memo.fioTeacher||`ID ${memo.teacherId}`,type:'Изменение нагрузки',assignment:`Нагрузка с ${formatDate(memo.startDate)}`,reason:memo.archiveReason,download:`/api/hr-documents/load-memos/${memo.id}/download`}))
     ].sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
-    $('#memo-archive-body').innerHTML=rows.length?rows.map(item=>`<tr><td>${esc(item.date||'—')}</td><td>${esc(item.teacher)}</td><td>${esc(item.type)}</td><td>${esc(item.assignment)}</td><td>${esc(item.reason||'Дополнительное соглашение аннулировано')}</td><td><a href="${item.download}">DOCX</a></td></tr>`).join(''):'<tr><td colspan="6">В архиве пока нет служебных записок</td></tr>';
+    $('#memo-archive-body').innerHTML=rows.length?rows.map(item=>`<tr><td>${esc(formatDate(item.date))}</td><td>${esc(item.teacher)}</td><td>${esc(item.type)}</td><td>${esc(item.assignment)}</td><td>${esc(item.reason||'Дополнительное соглашение аннулировано')}</td><td><a href="${item.download}">DOCX</a></td></tr>`).join(''):'<tr><td colspan="6">В архиве пока нет служебных записок</td></tr>';
     $('#memo-archive-dialog').showModal();
 }
 
@@ -710,13 +728,13 @@ function renderPersonalData() {
     body.innerHTML=rows.length?rows.map(item=>{
         const data=item.personalData;
         const passport=data
-            ? `<b>${esc([data.passportSeries,data.passportNumber].filter(Boolean).join(' ')||'Не заполнен')}</b><br><span class="muted">${esc(data.passportIssuedBy||'')} ${data.passportIssueDate?`от ${esc(data.passportIssueDate)}`:''}${data.passportDepartmentCode?` · код ${esc(data.passportDepartmentCode)}`:''}</span>`
+            ? `<b>${esc([data.passportSeries,data.passportNumber].filter(Boolean).join(' ')||'Не заполнен')}</b><br><span class="muted">${esc(data.passportIssuedBy||'')} ${data.passportIssueDate?`от ${esc(formatDate(data.passportIssueDate))}`:''}${data.passportDepartmentCode?` · код ${esc(data.passportDepartmentCode)}`:''}</span>`
             : '<span class="muted">Не заполнен</span>';
         const contacts=data
             ? `${esc(data.registrationAddress||'Адрес регистрации не заполнен')}<br><span class="muted">${esc(data.actualAddress||'Фактический адрес не заполнен')}${data.phone?` · ${esc(data.phone)}`:''}${data.inn?` · ИНН ${esc(data.inn)}`:''}${data.snils?` · СНИЛС ${esc(data.snils)}`:''}</span>`
             : '<span class="muted">Не заполнены</span>';
         const activeContracts=(item.contracts||[]).filter(contract=>contract.active);
-        const contractHtml=activeContracts.length?activeContracts.map(contract=>`<div><b>№ ${esc(contract.contractNumber)}</b> от ${esc(contract.contractDate)}<br><span class="muted">${esc(contract.positionName)}${contract.primaryContract?' · основной':''}</span></div>`).join(''):'<span class="muted">Не заполнен</span>';
+        const contractHtml=activeContracts.length?activeContracts.map(contract=>`<div><b>№ ${esc(contract.contractNumber)}</b> от ${esc(formatDate(contract.contractDate))}<br><span class="muted">${esc(contract.positionName)}${contract.primaryContract?' · основной':''}</span></div>`).join(''):'<span class="muted">Не заполнен</span>';
         const contractButtons=activeContracts.map(contract=>`<button data-personal-contract="${contract.id}" data-teacher="${item.teacherId}">Изменить договор № ${esc(contract.contractNumber)}</button>`).join(' ');
         return `<tr><td><b>${esc(item.fio)}</b><br><span class="muted">ID ${item.teacherId}</span></td><td>${passport}</td><td>${contacts}</td><td>${contractHtml}</td><td>${data?.complete?'<span class="success">Достаточно для DOCX</span>':'Нужно заполнить обязательные данные'}${data?.updatedAt?`<br><span class="muted">Обновлено ${esc(data.updatedAt.replace('T',' '))}</span>`:''}</td><td><button data-personal-edit="${item.teacherId}">${data?'Изменить данные':'Заполнить данные'}</button> ${contractButtons||`<button data-personal-contract="" data-teacher="${item.teacherId}">Добавить договор</button>`}</td></tr>`;
     }).join(''):'<tr><td colspan="6">Работники не найдены</td></tr>';
