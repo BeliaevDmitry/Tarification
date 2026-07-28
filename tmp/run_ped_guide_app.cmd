@@ -1,0 +1,17 @@
+@echo off
+setlocal
+set "JAVA_HOME=C:\Program Files\JetBrains\IntelliJ IDEA Community Edition 2025.1.3\jbr"
+set "SPRING_DATASOURCE_URL=jdbc:h2:mem:pedguide;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH"
+set "SPRING_DATASOURCE_USERNAME=sa"
+set "SPRING_DATASOURCE_PASSWORD="
+set "SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.h2.Driver"
+set "SPRING_JPA_DATABASE_PLATFORM=org.hibernate.dialect.H2Dialect"
+set "SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.H2Dialect"
+set "SPRING_JPA_HIBERNATE_DDL_AUTO=create-drop"
+set "SERVER_PORT=8090"
+set "SCHOOL_CODE=7"
+set "SERVER_SERVLET_SESSION_COOKIE_SECURE=false"
+set "APP_ADMIN_USERNAME=admin"
+set "APP_ADMIN_PASSWORD=admin"
+set "APP_ADMIN_FULL_NAME=Методист Петрова Анна Сергеевна"
+"C:\Program Files\JetBrains\IntelliJ IDEA Community Edition 2025.1.3\plugins\maven\lib\maven3\bin\mvn.cmd" -q -DskipTests -Dspring-boot.run.useTestClasspath=true spring-boot:run 1>"C:\Users\dimah\IdeaProjects\Tarification\tmp\ped-guide-app.out.log" 2>"C:\Users\dimah\IdeaProjects\Tarification\tmp\ped-guide-app.err.log"

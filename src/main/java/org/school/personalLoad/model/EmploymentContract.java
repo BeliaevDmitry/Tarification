@@ -29,5 +29,11 @@ public class EmploymentContract {
     private LocalDate endDate;
     @Column(nullable = false) private boolean primaryContract = true;
     @Column(nullable = false) private boolean active = true;
+    @Column(name = "load_hours_may_be_included_in_rate", nullable = false)
+    private boolean loadHoursMayBeIncludedInRate = false;
+    @Column(name = "load_in_rate_rule_id")
+    private Long loadInRateRuleId;
+    @Column(name = "load_in_rate_document_label", length = 1000)
+    private String loadInRateDocumentLabel;
     @Column(nullable = false) private LocalDateTime createdAt = LocalDateTime.now();
 }

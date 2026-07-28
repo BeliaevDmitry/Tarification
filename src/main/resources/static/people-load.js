@@ -11,8 +11,24 @@ const ui = {
     table: document.getElementById("people-load-table"),
     mainTab: document.getElementById("people-load-main-tab"),
     primaryTab: document.getElementById("people-load-primary-tab"),
+    inRateTab: document.getElementById("people-load-in-rate-tab"),
     mainPanel: document.getElementById("people-load-main-panel"),
     primaryPanel: document.getElementById("people-load-primary-panel"),
+    inRatePanel: document.getElementById("people-load-in-rate-panel"),
+    inRateTable: document.getElementById("in-rate-hours-table"),
+    inRateSummary: document.getElementById("in-rate-summary"),
+    saveInRateBtn: document.getElementById("save-in-rate-hours-btn"),
+    applyInRateSuggestionsBtn: document.getElementById("apply-in-rate-suggestions-btn"),
+    manageInRateRulesBtn: document.getElementById("manage-in-rate-rules-btn"),
+    inRateRulesDialog: document.getElementById("in-rate-rules-dialog"),
+    inRateRulesList: document.getElementById("in-rate-rules-list"),
+    addInRateRuleBtn: document.getElementById("add-in-rate-rule-btn"),
+    newInRateRuleName: document.getElementById("new-in-rate-rule-name"),
+    newInRateRuleLabel: document.getElementById("new-in-rate-rule-label"),
+    newInRateRuleMin: document.getElementById("new-in-rate-rule-min"),
+    newInRateRuleMax: document.getElementById("new-in-rate-rule-max"),
+    newInRateRuleIncluded: document.getElementById("new-in-rate-rule-included"),
+    newInRateRuleFraction: document.getElementById("new-in-rate-rule-fraction"),
     determinePrimarySubjectsBtn: document.getElementById("determine-primary-subjects-btn"),
     managePrimarySubjectsBtn: document.getElementById("manage-primary-subjects-btn"),
     primarySubjectSummary: document.getElementById("primary-subject-summary"),
@@ -39,6 +55,9 @@ const state = {
     groupCoefficientSubjects: [],
     groupCoefficientSubjectIds: new Set(),
     groupCoefficientSubjectNames: new Set(),
+    salaryByRowId: new Map(),
+    inRateOverview: { rows: [], teachers: [], hasUnresolvedRows: false },
+    inRateRules: [],
     studentHourRate: 37
 };
 
@@ -340,6 +359,10 @@ function fioKey(value) {
     return normalizeKey(value || "Вакансия");
 }
 
+function teacherRowKey(row) {
+    return row?.teacherId != null ? `id:${row.teacherId}` : `fio:${fioKey(row?.fioTeacher)}`;
+}
+
 function childrenCount(row) {
     const classSize = classSizeFor(row.className);
     const name = normalizeText(row.groupNameEducationalPlan || "").toLowerCase();
@@ -356,7 +379,8 @@ function salaryPermission() {
     const permissions = window.tarificationTabPermissions || {};
     return {
         canView: Boolean(user.admin || permissions.LOAD_SALARY?.canView),
-        canExport: Boolean(user.admin || permissions.LOAD_SALARY?.canExport)
+        canExport: Boolean(user.admin || permissions.LOAD_SALARY?.canExport),
+        canEdit: Boolean(user.admin || permissions.LOAD_SALARY?.canEdit)
     };
 }
 
@@ -392,17 +416,29 @@ function rowGroupCoefficient(row) {
 }
 
 function rowSalaryDetails(row) {
+    const server = state.salaryByRowId?.get(String(row.id));
+    if (server) {
+        return {
+            subjectCoef: Number(server.subjectCoefficient ?? 1),
+            groupCoef: Number(server.groupCoefficient ?? 1),
+            hoursSalary: Number(server.amount ?? 0),
+            totalHours: Number(server.totalHours ?? loadValue(row)),
+            includedHours: Number(server.includedHours ?? 0),
+            paidHours: Number(server.paidHours ?? loadValue(row)),
+            reason: server.reason || ""
+        };
+    }
     const children = Math.max(childrenCount(row), 1);
     const hours = Math.max(loadValue(row), 0);
     const subjectCoef = subjectCoefficient(row.subjectName, row.className);
     const groupCoef = rowGroupCoefficient(row);
     const baseSalary = state.studentHourRate * children * hours * (34 / 12);
     const value = baseSalary + (baseSalary * (subjectCoef - 1)) + (baseSalary * (groupCoef - 1));
-    return { subjectCoef, groupCoef, hoursSalary: value };
+    return { subjectCoef, groupCoef, hoursSalary: value, totalHours: hours, includedHours: 0, paidHours: hours, reason: "" };
 }
 
-function classLeadershipSalary(fio) {
-    const key = fioKey(fio);
+function classLeadershipSalary(teacherRow) {
+    const key = teacherRowKey(teacherRow);
     return (state.leadershipByTeacher?.get(key) || [])
         .reduce((sum, entry) => sum + 500 * classSizeFor(entry.className) + 5000, 0);
 }
@@ -411,16 +447,20 @@ function isFirstHalfSalaryRow(row) {
     return row.studyPeriod !== "H2" && row.studyPeriod !== "SECOND_HALF";
 }
 
-function teacherSalary(fio, allTeacherRows) {
+function teacherSalary(teacherRow, allTeacherRows) {
     const hours = allTeacherRows
         .filter(isFirstHalfSalaryRow)
         .reduce((sum, row) => sum + rowSalary(row), 0);
-    const leadership = classLeadershipSalary(fio);
+    const leadership = classLeadershipSalary(teacherRow);
     return { hours, leadership, total: hours + leadership };
 }
 
 function formatMoney(value) {
     return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value || 0);
+}
+
+function formatNumber(value) {
+    return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(Number(value || 0));
 }
 
 function formatCoefficient(value) {
@@ -430,8 +470,8 @@ function formatCoefficient(value) {
     return text.replace(/0+$/, "").replace(/\.$/, "");
 }
 
-function teacherLeadershipClasses(fio) {
-    const key = fioKey(fio);
+function teacherLeadershipClasses(teacherRow) {
+    const key = teacherRowKey(teacherRow);
     return (state.leadershipByTeacher?.get(key) || [])
         .map((entry) => normalizeText(entry.className))
         .filter(Boolean)
@@ -451,9 +491,9 @@ function fioHtml(fio) {
 function renderTable() {
     const selected = ui.buildingSelect?.value || state.buildings[0]?.value || "";
     const selectedRows = state.manualRows.filter((row) => rowMatchesBuildingAccess(row, selected));
-    const selectedTeacherKeys = new Set(selectedRows.map((row) => fioKey(row.fioTeacher)));
+    const selectedTeacherKeys = new Set(selectedRows.map(teacherRowKey));
     const displayRows = state.manualRows
-        .filter((row) => selectedTeacherKeys.has(fioKey(row.fioTeacher)))
+        .filter((row) => selectedTeacherKeys.has(teacherRowKey(row)))
         .sort((a, b) => {
             const fioCompare = normalizeText(a.fioTeacher).localeCompare(normalizeText(b.fioTeacher), "ru");
             if (fioCompare) return fioCompare;
@@ -467,7 +507,7 @@ function renderTable() {
 
     const allRowsByTeacher = new Map();
     state.manualRows.forEach((row) => {
-        const key = fioKey(row.fioTeacher);
+        const key = teacherRowKey(row);
         if (!allRowsByTeacher.has(key)) allRowsByTeacher.set(key, []);
         allRowsByTeacher.get(key).push(row);
     });
@@ -475,12 +515,12 @@ function renderTable() {
     const selectedTotals = new Map();
     const allTotals = new Map();
     selectedRows.forEach((row) => {
-        const key = fioKey(row.fioTeacher);
+        const key = teacherRowKey(row);
         if (!selectedTotals.has(key)) selectedTotals.set(key, { year: 0, h1: 0, h2: 0 });
         addHours(selectedTotals.get(key), row);
     });
     state.manualRows.forEach((row) => {
-        const key = fioKey(row.fioTeacher);
+        const key = teacherRowKey(row);
         if (!allTotals.has(key)) allTotals.set(key, { year: 0, h1: 0, h2: 0 });
         addHours(allTotals.get(key), row);
     });
@@ -488,7 +528,7 @@ function renderTable() {
     const showSalary = salaryPermission().canView;
     const headers = ["ФИО", "Предмет", "Класс", "Группа", "Количество детей", "Часы по предмету", "Период нагрузки", "Часы в корпусе/всего", "Корпус", "Классное руководство"];
     if (showSalary) {
-        headers.push("Предметный коэф.", "Коэф. группы", "За часы", "За часы итог", "Кл. рук., руб.", "Итого");
+        headers.push("В ставке", "К оплате", "Основание", "Предметный коэф.", "Коэф. группы", "За строку", "За оплачиваемые часы итог", "Кл. рук., руб.", "Итого");
     }
     let html = `<thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>`;
 
@@ -497,7 +537,7 @@ function renderTable() {
     } else {
         const rowsByTeacher = new Map();
         displayRows.forEach((row) => {
-            const key = fioKey(row.fioTeacher);
+            const key = teacherRowKey(row);
             if (!rowsByTeacher.has(key)) rowsByTeacher.set(key, []);
             rowsByTeacher.get(key).push(row);
         });
@@ -506,9 +546,9 @@ function renderTable() {
             const scoped = selectedTotals.get(key) || { year: 0, h1: 0, h2: 0 };
             const total = allTotals.get(key) || { year: 0, h1: 0, h2: 0 };
             const hours = formatScopedTotalHours(scoped, total);
-            const leadership = teacherLeadershipClasses(fio);
+            const leadership = teacherLeadershipClasses(rows[0]);
             const teacherRowsAcrossAllClasses = allRowsByTeacher.get(key) || rows;
-            const salary = showSalary ? teacherSalary(fio, teacherRowsAcrossAllClasses) : null;
+            const salary = showSalary ? teacherSalary(rows[0], teacherRowsAcrossAllClasses) : null;
             rows.forEach((row, index) => {
                 html += "<tr>";
                 if (index === 0) {
@@ -529,6 +569,9 @@ function renderTable() {
                 }
                 if (showSalary) {
                     const rowSalary = rowSalaryDetails(row);
+                    html += `<td class="people-load-money">${escapeHtml(formatNumber(rowSalary.includedHours))}</td>`;
+                    html += `<td class="people-load-money">${escapeHtml(formatNumber(rowSalary.paidHours))}</td>`;
+                    html += `<td>${escapeHtml(rowSalary.includedHours > 0 ? (rowSalary.reason || "Внутри должностного оклада") : "")}</td>`;
                     html += `<td class="people-load-money">${escapeHtml(formatCoefficient(rowSalary.subjectCoef))}</td>`;
                     html += `<td class="people-load-money">${escapeHtml(formatCoefficient(rowSalary.groupCoef))}</td>`;
                     html += `<td class="people-load-money">${escapeHtml(formatMoney(rowSalary.hoursSalary))}</td>`;
@@ -590,12 +633,190 @@ async function exportConsolidatedLoadWorkbook() {
     return exportLoadWorkbook("/api/manual-load/export-consolidated", "primary-subject-load-export.xlsx");
 }
 
+function renderInRateOverview() {
+    if (!ui.inRateTable) return;
+    const overview = state.inRateOverview || { rows: [], teachers: [] };
+    const summaryByKey = new Map((overview.teachers || []).map((item) => [`${item.teacherId}|${item.contractId}`, item]));
+    const rows = overview.rows || [];
+    let html = `<thead><tr>
+        <th>Работник и договор</th><th>Предмет</th><th>Класс/группа</th><th>Период</th>
+        <th>Часы всего</th><th>Внутри ставки</th><th>К оплате</th><th>Основание</th><th>Сумма</th>
+    </tr></thead><tbody>`;
+    if (!rows.length) {
+        html += '<tr><td colspan="9" class="muted">Нет работников, у которых в трудовом договоре включён режим «Часы могут входить в ставку».</td></tr>';
+    } else {
+        let previousKey = "";
+        rows.forEach((row) => {
+            const key = `${row.teacherId}|${row.contractId}`;
+            const teacher = summaryByKey.get(key);
+            const first = key !== previousKey;
+            previousKey = key;
+            html += `<tr class="${row.allocationConfirmed ? "" : "load-in-rate-unresolved"}" data-in-rate-row="${row.manualLoadEntryId}" data-contract-id="${row.contractId}" data-teacher-key="${key}" data-study-period="${escapeHtml(row.studyPeriod || "YEAR")}">`;
+            html += `<td>${first ? `<b>${escapeHtml(row.fio)}</b><br>№ ${escapeHtml(row.contractNumber)} · ${escapeHtml(row.positionName)}
+                <br><span class="muted">Всего ${escapeHtml(formatNumber(teacher?.totalHoursH1))}/${escapeHtml(formatNumber(teacher?.totalHoursH2))};
+                в ставке ${escapeHtml(formatNumber(teacher?.includedHoursH1))}/${escapeHtml(formatNumber(teacher?.includedHoursH2))};
+                к оплате ${escapeHtml(formatNumber(teacher?.paidHoursH1))}/${escapeHtml(formatNumber(teacher?.paidHoursH2))}</span>` : ""}</td>`;
+            html += `<td>${escapeHtml(row.subject)}</td><td>${escapeHtml([row.className, row.groupName].filter(Boolean).join(" "))}</td>`;
+            html += `<td>${escapeHtml(row.studyPeriod === "H1" ? "1П" : row.studyPeriod === "H2" ? "2П" : "ГОД")}</td>`;
+            html += `<td>${escapeHtml(formatNumber(row.totalHours))}</td>`;
+            html += `<td><input class="in-rate-hours-input" data-included-hours type="number" min="0" max="${escapeHtml(row.totalHours)}" step="0.01" value="${escapeHtml(row.includedHours)}" ${salaryPermission().canEdit ? "" : "disabled"}></td>`;
+            html += `<td data-paid-hours>${escapeHtml(formatNumber(row.paidHours))}</td>`;
+            html += `<td><input data-in-rate-reason value="${escapeHtml(row.reason || row.documentLabel)}" ${salaryPermission().canEdit ? "" : "disabled"}></td>`;
+            html += `<td data-in-rate-amount>${escapeHtml(formatMoney(row.amount))}</td></tr>`;
+        });
+    }
+    html += "</tbody>";
+    ui.inRateTable.innerHTML = html;
+    const unresolved = (overview.teachers || []).reduce((sum, row) => sum + Number(row.unresolvedRows || 0), 0);
+    ui.inRateSummary.textContent = unresolved
+        ? `Требуется распределить строк: ${unresolved}. До завершения распределения документы и выгрузки с ЗП требуют проверки.`
+        : `Распределение подтверждено для ${overview.teachers?.length || 0} работников.`;
+    ui.inRateSummary.classList.toggle("error-text", unresolved > 0);
+    fitPeopleLoadTables();
+}
+
+function updateInRateRowPreview(tableRow) {
+    const input = tableRow.querySelector("[data-included-hours]");
+    const total = Number(input?.max || 0);
+    const included = Math.min(total, Math.max(0, Number(input?.value || 0)));
+    input.value = String(included);
+    tableRow.querySelector("[data-paid-hours]").textContent = formatNumber(total - included);
+    const source = (state.inRateOverview.rows || []).find((row) => String(row.manualLoadEntryId) === tableRow.dataset.inRateRow);
+    if (source) {
+        const perHour = Number(source.paidHours || 0) > 0 ? Number(source.amount || 0) / Number(source.paidHours) : 0;
+        tableRow.querySelector("[data-in-rate-amount]").textContent = formatMoney(perHour * (total - included));
+    }
+}
+
+function applyInRateSuggestions() {
+    const suggestions = new Map((state.inRateOverview.teachers || [])
+        .map((row) => [`${row.teacherId}|${row.contractId}`, Number(row.suggestedIncludedHours || 0)]));
+    const remaining = new Map();
+    suggestions.forEach((value, key) => {
+        remaining.set(`${key}|H1`, value);
+        remaining.set(`${key}|H2`, value);
+    });
+    const rows = Array.from(ui.inRateTable.querySelectorAll("[data-in-rate-row]"))
+        .sort((left, right) => (left.dataset.studyPeriod === "YEAR" ? 0 : 1)
+            - (right.dataset.studyPeriod === "YEAR" ? 0 : 1));
+    rows.forEach((row) => {
+        const key = row.dataset.teacherKey;
+        const input = row.querySelector("[data-included-hours]");
+        const total = Number(input.max || 0);
+        const period = row.dataset.studyPeriod || "YEAR";
+        const halfKeys = period === "H1" ? [`${key}|H1`]
+            : period === "H2" ? [`${key}|H2`] : [`${key}|H1`, `${key}|H2`];
+        const available = Math.min(...halfKeys.map((halfKey) => Math.max(0, remaining.get(halfKey) || 0)));
+        const value = Math.min(total, available);
+        input.value = String(value);
+        halfKeys.forEach((halfKey) => remaining.set(halfKey, Math.max(0, (remaining.get(halfKey) || 0) - value)));
+        updateInRateRowPreview(row);
+    });
+}
+
+async function saveInRateAllocations() {
+    const rows = Array.from(ui.inRateTable.querySelectorAll("[data-in-rate-row]")).map((row) => ({
+        manualLoadEntryId: Number(row.dataset.inRateRow),
+        contractId: Number(row.dataset.contractId),
+        includedHours: Number(row.querySelector("[data-included-hours]").value || 0),
+        reason: row.querySelector("[data-in-rate-reason]").value
+    }));
+    ui.saveInRateBtn.disabled = true;
+    try {
+        const result = await apiRequest("/api/manual-load/in-rate", { method: "PUT", body: JSON.stringify({ rows }) });
+        await loadData();
+        alert(result.agreementsRequireReissue
+            ? "Распределение сохранено. Неподписанные выпущенные допсоглашения отмечены для перевыпуска."
+            : "Распределение сохранено.");
+    } finally {
+        ui.saveInRateBtn.disabled = false;
+    }
+}
+
+function inRateBandRow(band = {}) {
+    return `<tr data-in-rate-band>
+        <td><input data-band-min type="number" min="0" step="0.01" value="${escapeHtml(band.minTotalHours ?? 0)}"></td>
+        <td><input data-band-max type="number" min="0" step="0.01" value="${escapeHtml(band.maxTotalHours ?? "")}"></td>
+        <td><input data-band-included type="number" min="0" step="0.01" value="${escapeHtml(band.suggestedIncludedHours ?? 0)}"></td>
+        <td><input data-band-fraction type="number" min="0" step="0.01" value="${escapeHtml(band.rateFraction ?? "")}"></td>
+        <td><button type="button" data-remove-in-rate-band>Удалить</button></td></tr>`;
+}
+
+function renderInRateRules() {
+    if (!ui.inRateRulesList) return;
+    ui.inRateRulesList.innerHTML = (state.inRateRules || []).map((rule) => `
+        <div class="card in-rate-rule-card" data-in-rate-rule="${rule.id}">
+            <div class="form-grid">
+                <label>Название<input data-rule-name value="${escapeHtml(rule.name)}"></label>
+                <label>Пояснение для документов<input data-rule-label value="${escapeHtml(rule.documentLabel)}"></label>
+                <label><input data-rule-active type="checkbox" ${rule.active ? "checked" : ""}> Правило действует</label>
+            </div>
+            <table class="sheet-table"><thead><tr><th>От часов</th><th>До часов</th><th>Внутри ставки</th><th>Доля ставки</th><th></th></tr></thead>
+            <tbody data-rule-bands>${(rule.bands || []).map((band) => inRateBandRow(band)).join("")}</tbody></table>
+            <div class="row"><button type="button" data-add-in-rate-band>Добавить диапазон</button>
+            <button type="button" data-save-in-rate-rule>Сохранить</button>
+            <button type="button" class="danger" data-delete-in-rate-rule>Удалить</button></div>
+        </div>
+    `).join("") || '<p class="muted">Правила ещё не созданы.</p>';
+}
+
+function inRateRuleRequest(card) {
+    return {
+        name: card.querySelector("[data-rule-name]").value,
+        documentLabel: card.querySelector("[data-rule-label]").value,
+        active: card.querySelector("[data-rule-active]").checked,
+        bands: Array.from(card.querySelectorAll("[data-in-rate-band]")).map((row) => ({
+            minTotalHours: Number(row.querySelector("[data-band-min]").value || 0),
+            maxTotalHours: row.querySelector("[data-band-max]").value === "" ? null : Number(row.querySelector("[data-band-max]").value),
+            suggestedIncludedHours: Number(row.querySelector("[data-band-included]").value || 0),
+            rateFraction: row.querySelector("[data-band-fraction]").value === "" ? null : Number(row.querySelector("[data-band-fraction]").value)
+        }))
+    };
+}
+
+async function saveInRateRule(card) {
+    await apiRequest(`/api/manual-load/in-rate/rules/${card.dataset.inRateRule}`, {
+        method: "PUT", body: JSON.stringify(inRateRuleRequest(card))
+    });
+    await loadInRateData();
+}
+
+async function addInRateRule() {
+    const request = {
+        name: ui.newInRateRuleName.value,
+        documentLabel: ui.newInRateRuleLabel.value,
+        active: true,
+        bands: [{
+            minTotalHours: Number(ui.newInRateRuleMin.value || 0),
+            maxTotalHours: ui.newInRateRuleMax.value === "" ? null : Number(ui.newInRateRuleMax.value),
+            suggestedIncludedHours: Number(ui.newInRateRuleIncluded.value || 0),
+            rateFraction: ui.newInRateRuleFraction.value === "" ? null : Number(ui.newInRateRuleFraction.value)
+        }]
+    };
+    await apiRequest("/api/manual-load/in-rate/rules", { method: "POST", body: JSON.stringify(request) });
+    ui.newInRateRuleName.value = "";
+    ui.newInRateRuleLabel.value = "";
+    await loadInRateData();
+}
+
+async function loadInRateData() {
+    if (!salaryPermission().canView) return;
+    const [overview, rules] = await Promise.all([api("/api/manual-load/in-rate"), api("/api/manual-load/in-rate/rules")]);
+    state.inRateOverview = overview || { rows: [], teachers: [] };
+    state.inRateRules = rules || [];
+    renderInRateOverview();
+    renderInRateRules();
+}
+
 function showPeopleLoadPanel(panel) {
     const primary = panel === "primary";
-    ui.mainPanel.hidden = primary;
+    const inRate = panel === "inRate";
+    ui.mainPanel.hidden = primary || inRate;
     ui.primaryPanel.hidden = !primary;
-    ui.mainTab.classList.toggle("active", !primary);
+    ui.inRatePanel.hidden = !inRate;
+    ui.mainTab.classList.toggle("active", !primary && !inRate);
     ui.primaryTab.classList.toggle("active", primary);
+    ui.inRateTab?.classList.toggle("active", inRate);
     fitPeopleLoadTables();
 }
 
@@ -750,7 +971,7 @@ function rebuildIndexes() {
 
     state.leadershipByTeacher = new Map();
     state.classes.forEach((entry) => {
-        const key = fioKey(entry.fioTeacher);
+        const key = teacherRowKey(entry);
         if (!state.leadershipByTeacher.has(key)) state.leadershipByTeacher.set(key, []);
         state.leadershipByTeacher.get(key).push(entry);
     });
@@ -768,7 +989,8 @@ function rebuildIndexes() {
 async function loadData() {
     ui.summary.textContent = "Загрузка данных…";
     const salaryAccess = salaryPermission().canView;
-    const [buildings, manualRows, classes, teachers, subjects, coefficients, salarySettings, groupCoefficientSubjects, primaryAssignments, primaryRules, classSizes] = await Promise.all([
+    const [buildings, manualRows, classes, teachers, subjects, coefficients, salarySettings, groupCoefficientSubjects,
+        primaryAssignments, primaryRules, classSizes, salaryBreakdown, inRateOverview, inRateRules] = await Promise.all([
         api("/api/buildings"),
         api("/api/manual-load"),
         api("/api/classroom-leadership"),
@@ -779,7 +1001,10 @@ async function loadData() {
         salaryAccess ? api("/api/salary-group-coefficient-subjects") : Promise.resolve([]),
         api("/api/primary-subjects/teachers"),
         api("/api/primary-subjects/rules"),
-        api("/api/contingent/manual-class-sizes").catch(() => ({ source: "AIS", rows: [] }))
+        api("/api/contingent/manual-class-sizes").catch(() => ({ source: "AIS", rows: [] })),
+        salaryAccess ? api("/api/manual-load/salary-breakdown") : Promise.resolve([]),
+        salaryAccess ? api("/api/manual-load/in-rate") : Promise.resolve({ rows: [], teachers: [], hasUnresolvedRows: false }),
+        salaryAccess ? api("/api/manual-load/in-rate/rules") : Promise.resolve([])
     ]);
     state.manualRows = manualRows || [];
     state.classes = classes || [];
@@ -790,6 +1015,9 @@ async function loadData() {
     state.groupCoefficientSubjects = groupCoefficientSubjects || [];
     state.primarySubjectAssignments = primaryAssignments || [];
     state.primarySubjectRules = primaryRules || [];
+    state.salaryByRowId = new Map((salaryBreakdown || []).map((row) => [String(row.manualLoadEntryId), row]));
+    state.inRateOverview = inRateOverview || { rows: [], teachers: [], hasUnresolvedRows: false };
+    state.inRateRules = inRateRules || [];
     applyClassSizeResponse(classSizes);
     const rate = Number(salarySettings?.studentHourRate ?? 37);
     state.studentHourRate = Number.isFinite(rate) && rate > 0 ? rate : 37;
@@ -798,6 +1026,8 @@ async function loadData() {
     renderTable();
     renderPrimarySubjectTeachers();
     renderPrimarySubjectRules();
+    renderInRateOverview();
+    renderInRateRules();
 }
 
 function showError(error) {
@@ -834,6 +1064,36 @@ async function init() {
     ui.exportDepartmentLoadBtn?.addEventListener("click", () => exportDepartmentLoadWorkbook().catch((error) => alert(`Не удалось скачать нагрузку ДЕП: ${error.message}`)));
     ui.mainTab?.addEventListener("click", () => showPeopleLoadPanel("main"));
     ui.primaryTab?.addEventListener("click", () => showPeopleLoadPanel("primary"));
+    ui.inRateTab?.addEventListener("click", () => showPeopleLoadPanel("inRate"));
+    ui.inRateTable?.addEventListener("input", (event) => {
+        const row = event.target.closest("[data-in-rate-row]");
+        if (row && event.target.matches("[data-included-hours]")) updateInRateRowPreview(row);
+    });
+    ui.saveInRateBtn?.addEventListener("click", () => saveInRateAllocations()
+        .catch((error) => alert(`Не удалось сохранить распределение: ${error.message}`)));
+    ui.applyInRateSuggestionsBtn?.addEventListener("click", applyInRateSuggestions);
+    ui.manageInRateRulesBtn?.addEventListener("click", () => ui.inRateRulesDialog?.showModal());
+    ui.addInRateRuleBtn?.addEventListener("click", () => addInRateRule()
+        .catch((error) => alert(`Не удалось добавить правило: ${error.message}`)));
+    ui.inRateRulesList?.addEventListener("click", (event) => {
+        const card = event.target.closest("[data-in-rate-rule]");
+        if (!card) return;
+        if (event.target.closest("[data-add-in-rate-band]")) {
+            card.querySelector("[data-rule-bands]").insertAdjacentHTML("beforeend", inRateBandRow());
+        }
+        if (event.target.closest("[data-remove-in-rate-band]")) {
+            event.target.closest("[data-in-rate-band]")?.remove();
+        }
+        if (event.target.closest("[data-save-in-rate-rule]")) {
+            saveInRateRule(card).catch((error) => alert(`Не удалось сохранить правило: ${error.message}`));
+        }
+        if (event.target.closest("[data-delete-in-rate-rule]")
+            && confirm("Удалить правило часов в ставке?")) {
+            apiRequest(`/api/manual-load/in-rate/rules/${card.dataset.inRateRule}`, { method: "DELETE" })
+                .then(loadInRateData)
+                .catch((error) => alert(`Не удалось удалить правило: ${error.message}`));
+        }
+    });
     window.addEventListener("resize", fitPeopleLoadTables);
     window.addEventListener("scroll", fitPeopleLoadTables, { passive: true });
     ui.determinePrimarySubjectsBtn?.addEventListener("click", () => determinePrimarySubjects().catch((error) => alert(`Не удалось определить основные предметы: ${error.message}`)));
@@ -865,11 +1125,19 @@ async function init() {
     });
     ui.addPrimarySubjectRuleBtn?.addEventListener("click", () => addPrimarySubjectRule().catch((error) => alert(`Не удалось добавить правило: ${error.message}`)));
     await waitForAuth();
+    if (ui.inRateTab) ui.inRateTab.hidden = !salaryPermission().canView;
+    if (ui.saveInRateBtn) ui.saveInRateBtn.hidden = !salaryPermission().canEdit;
+    if (ui.applyInRateSuggestionsBtn) ui.applyInRateSuggestionsBtn.hidden = !salaryPermission().canEdit;
+    if (ui.manageInRateRulesBtn) ui.manageInRateRulesBtn.hidden = !salaryPermission().canEdit;
     if (ui.exportFullLoadSalaryBtn) {
         ui.exportFullLoadSalaryBtn.style.display = salaryPermission().canExport ? "" : "none";
     }
     if (ui.exportSalaryOneLoadBtn) {
         ui.exportSalaryOneLoadBtn.style.display = salaryPermission().canExport ? "" : "none";
+    }
+    const requestedPanel = new URLSearchParams(window.location.search).get("panel");
+    if (requestedPanel === "inRate" && salaryPermission().canView) {
+        showPeopleLoadPanel("inRate");
     }
     loadData().catch(showError);
 }

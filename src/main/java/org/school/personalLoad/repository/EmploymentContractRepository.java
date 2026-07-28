@@ -5,4 +5,6 @@ import java.util.List;
 public interface EmploymentContractRepository extends JpaRepository<EmploymentContract, Long> {
     List<EmploymentContract> findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(Long teacherId);
     List<EmploymentContract> findAllByActiveTrueOrderByTeacherIdAsc();
+    List<EmploymentContract> findAllByActiveTrueAndLoadHoursMayBeIncludedInRateTrueOrderByTeacherIdAsc();
+    boolean existsByLoadInRateRuleId(Long loadInRateRuleId);
 }

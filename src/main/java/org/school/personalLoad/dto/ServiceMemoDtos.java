@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.Value;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -28,6 +29,9 @@ public class ServiceMemoDtos {
         String subjectName;
         String className;
         Integer load;
+        BigDecimal includedInRateHours;
+        BigDecimal paidHours;
+        String inRateReason;
         String status;
     }
 

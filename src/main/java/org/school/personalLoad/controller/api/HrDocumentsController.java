@@ -58,7 +58,16 @@ public class HrDocumentsController {
                 String contractNumber=str(row,12), position=str(row,14);
                 if(contractNumber!=null&&!contractNumber.isBlank()&&position!=null&&!position.isBlank()){
                     EmploymentContract existing=service.contracts(teacherId).stream().filter(c->contractNumber.equalsIgnoreCase(c.getContractNumber())).findFirst().orElse(null);
-                    ContractRequest cr=new ContractRequest(teacherId,contractNumber,date(row,13),position,date(row,15),date(row,16),true,true);
+                    String inRateCell=str(row,17);
+                    boolean inRate=inRateCell==null||inRateCell.isBlank()
+                            ?existing!=null&&existing.isLoadHoursMayBeIncludedInRate()
+                            :List.of("да","yes","true","1").contains(inRateCell.trim().toLowerCase(Locale.ROOT));
+                    Long inRateRuleId=longCell(row.getCell(18));
+                    String inRateLabel=str(row,19);
+                    ContractRequest cr=new ContractRequest(teacherId,contractNumber,date(row,13),position,date(row,15),date(row,16),true,true,
+                            inRate,inRateRuleId==null&&existing!=null?existing.getLoadInRateRuleId():inRateRuleId,
+                            inRateLabel==null||inRateLabel.isBlank()
+                                    ?existing==null?null:existing.getLoadInRateDocumentLabel():inRateLabel);
                     service.saveContract(existing==null?null:existing.getId(),cr);
                 }
             }
@@ -169,7 +178,9 @@ public class HrDocumentsController {
         if(reason.isBlank())throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST,
                 "Укажите причину удаления");
         AdditionalAgreement target=service.agreement(id);
-        String details="Удалён невыпущенный документ ID "+target.getId()+" № "+target.getInternalNumber()
+        String documentType=target.getStatus()==AdditionalAgreement.Status.ANNULLED
+                ?"аннулированный документ":"невыпущенный документ";
+        String details="Удалён "+documentType+" ID "+target.getId()+" № "+target.getInternalNumber()
                 +", teacher_id="+target.getTeacherId()+", contract_id="+target.getContractId()
                 +", статус="+target.getStatus()+", причина: "+reason;
         service.deleteAgreement(id);log(req,"DELETE_CONFIRMED","ADDITIONAL_AGREEMENT",details,true);
@@ -185,12 +196,12 @@ public class HrDocumentsController {
 
     private ResponseEntity<byte[]> excel(boolean includeData,HttpServletRequest req)throws Exception{
         boolean full=user(req).canExportTab(AppTab.HR_PERSONAL_DATA); try(Workbook wb=new XSSFWorkbook();ByteArrayOutputStream out=new ByteArrayOutputStream()){
-            Sheet sh=wb.createSheet("Персональные данные");String[] h={"ID педагога","ФИО","Серия паспорта","Номер паспорта","Кем выдан","Дата выдачи","Код подразделения","Регистрация","Фактический адрес","Телефон","ИНН","СНИЛС","Номер трудового договора","Дата договора","Должность","Начало договора","Окончание договора"};
+            Sheet sh=wb.createSheet("Персональные данные");String[] h={"ID педагога","ФИО","Серия паспорта","Номер паспорта","Кем выдан","Дата выдачи","Код подразделения","Регистрация","Фактический адрес","Телефон","ИНН","СНИЛС","Номер трудового договора","Дата договора","Должность","Начало договора","Окончание договора","Часы могут входить в ставку","ID правила часов в ставке","Пояснение для документов"};
             Row hr=sh.createRow(0);for(int i=0;i<h.length;i++)hr.createCell(i).setCellValue(h[i]);int n=1;
             for(TeacherDirectoryEntry t:teacherRepository.findAll()){
                 Row r=sh.createRow(n++);r.createCell(0).setCellValue(t.getId());r.createCell(1).setCellValue(t.getFioTeacher());
                 if(includeData&&full){HrPersonalData p=personalRepository.findByTeacherId(t.getId()).orElse(null);if(p!=null){r.createCell(2).setCellValue(z(p.getPassportSeries()));r.createCell(3).setCellValue(z(p.getPassportNumber()));r.createCell(4).setCellValue(z(p.getPassportIssuedBy()));r.createCell(5).setCellValue(p.getPassportIssueDate()==null?"":p.getPassportIssueDate().toString());r.createCell(6).setCellValue(z(p.getPassportDepartmentCode()));r.createCell(7).setCellValue(z(p.getRegistrationAddress()));r.createCell(8).setCellValue(z(p.getActualAddress()));r.createCell(9).setCellValue(z(p.getPhone()));r.createCell(10).setCellValue(z(p.getInn()));r.createCell(11).setCellValue(z(p.getSnils()));}}
-                EmploymentContract c=service.contracts(t.getId()).stream().filter(EmploymentContract::isPrimaryContract).findFirst().orElse(null);if(c!=null){r.createCell(12).setCellValue(c.getContractNumber());r.createCell(13).setCellValue(c.getContractDate().toString());r.createCell(14).setCellValue(c.getPositionName());r.createCell(15).setCellValue(c.getStartDate()==null?"":c.getStartDate().toString());r.createCell(16).setCellValue(c.getEndDate()==null?"":c.getEndDate().toString());}
+                EmploymentContract c=service.contracts(t.getId()).stream().filter(EmploymentContract::isPrimaryContract).findFirst().orElse(null);if(c!=null){r.createCell(12).setCellValue(c.getContractNumber());r.createCell(13).setCellValue(c.getContractDate().toString());r.createCell(14).setCellValue(c.getPositionName());r.createCell(15).setCellValue(c.getStartDate()==null?"":c.getStartDate().toString());r.createCell(16).setCellValue(c.getEndDate()==null?"":c.getEndDate().toString());r.createCell(17).setCellValue(c.isLoadHoursMayBeIncludedInRate()?"Да":"Нет");if(c.getLoadInRateRuleId()!=null)r.createCell(18).setCellValue(c.getLoadInRateRuleId());r.createCell(19).setCellValue(z(c.getLoadInRateDocumentLabel()));}
             }for(int i=0;i<h.length;i++)sh.setColumnWidth(i,Math.min(60,Math.max(14,h[i].length()+4))*256);wb.write(out);
             log(req,"EXPORT","HR_PERSONAL_DATA",full?"Полный экспорт":"Экспорт открытых данных",true);return file(out.toByteArray(),includeData?"персональные_данные.xlsx":"шаблон_персональных_данных.xlsx");
         }

@@ -41,6 +41,7 @@ public class HrDocumentService {
     private static final String ANNUAL_LOAD_SUMMARY = "Нагрузка и должностной оклад";
     private static final String CLASSROOM_SUMMARY_SUFFIX = " · Классное руководство";
     private static final String INCENTIVE_SUMMARY_SUFFIX = " · Стимулирующая выплата";
+    private static final Set<String> STANDARD_CONTRACT_CLAUSES = Set.of("2.1","2.4","2.5");
     private static final String ANNUAL_LOAD_PLACEHOLDER =
             "Изложить пункт 2.1 раздела «Оплата труда» в новой редакции согласно Приложению № 1.";
     private static final String LOAD_CHANGE_PLACEHOLDER =
@@ -61,6 +62,7 @@ public class HrDocumentService {
     private final SalaryGroupCoefficientSubjectRepository groupSubjectRepository;
     private final ClassroomLeadershipRepository classroomLeadershipRepository;
     private final ClassSizeService classSizeService;
+    private final LoadSalaryCalculationService loadSalaryCalculationService;
     private final HrIncentiveRepository incentiveRepository;
     private final ObjectMapper objectMapper;
 
@@ -101,11 +103,28 @@ public class HrDocumentService {
     @Transactional public EmploymentContract saveContract(Long id, ContractRequest r) {
         teachers.findById(r.teacherId()).orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Педагог не найден"));
         EmploymentContract c = id == null ? new EmploymentContract() : contracts.findById(id).orElseThrow(() -> new ResponseStatusException(NOT_FOUND));
+        boolean previouslyIncluded=c.isLoadHoursMayBeIncludedInRate();
         c.setTeacherId(r.teacherId()); c.setContractNumber(required(r.contractNumber(), "Номер договора"));
         c.setContractDate(Objects.requireNonNull(r.contractDate(), "Дата договора обязательна"));
         c.setPositionName(required(r.positionName(), "Должность")); c.setStartDate(r.startDate()); c.setEndDate(r.endDate());
         c.setPrimaryContract(r.primaryContract() == null || r.primaryContract()); c.setActive(r.active() == null || r.active());
+        c.setLoadHoursMayBeIncludedInRate(Boolean.TRUE.equals(r.loadHoursMayBeIncludedInRate()));
+        c.setLoadInRateRuleId(c.isLoadHoursMayBeIncludedInRate()?r.loadInRateRuleId():null);
+        c.setLoadInRateDocumentLabel(c.isLoadHoursMayBeIncludedInRate()
+                ?Objects.toString(r.loadInRateDocumentLabel(),"").trim():null);
         EmploymentContract saved = contracts.save(c);
+        if(previouslyIncluded&&!saved.isLoadHoursMayBeIncludedInRate()){
+            Map<String,Set<Long>> affected=new LinkedHashMap<>();
+            List<ManualLoadEntry> rows=loadRepository.findByTeacherId(saved.getTeacherId()).stream()
+                    .filter(row->Objects.equals(row.getEmploymentContractId(),saved.getId())).toList();
+            rows.forEach(row->{
+                row.setIncludedInRateHours(BigDecimal.ZERO);row.setInRateAllocationConfirmed(false);
+                row.setInRateReason(null);row.setInRateUpdatedAt(LocalDateTime.now());
+                affected.computeIfAbsent(row.getAcademicYear(),key->new LinkedHashSet<>()).add(row.getTeacherId());
+            });
+            loadRepository.saveAll(rows);
+            affected.forEach(this::markAnnualLoadAgreementsChanged);
+        }
         if (saved.getId() != null && saved.isActive() && saved.isPrimaryContract()) attachWaitingMemos(saved);
         return saved;
     }
@@ -118,7 +137,8 @@ public class HrDocumentService {
     public ContractView contractView(EmploymentContract contract) {
         return new ContractView(contract.getId(), contract.getTeacherId(), contract.getContractNumber(),
                 contract.getContractDate(), contract.getPositionName(), contract.getStartDate(), contract.getEndDate(),
-                contract.isPrimaryContract(), contract.isActive(), contract.getCreatedAt());
+                contract.isPrimaryContract(), contract.isActive(), contract.isLoadHoursMayBeIncludedInRate(),
+                contract.getLoadInRateRuleId(), contract.getLoadInRateDocumentLabel(), contract.getCreatedAt());
     }
     public Optional<HrPersonalData> personal(Long teacherId) { return personalData.findByTeacherId(teacherId); }
     @Transactional(readOnly = true)
@@ -251,7 +271,8 @@ public class HrDocumentService {
         BigDecimal amount = r.amount() != null ? r.amount() : catalog == null ? null : catalog.getDefaultAmount();
         if (r.validFrom() == null || r.validTo() == null) throw new ResponseStatusException(BAD_REQUEST, "Укажите период действия");
         String academicYear=required(r.academicYear(),"Учебный год");
-        String clause = firstPresent(r.contractClause(), catalog == null ? null : catalog.getContractClause(), "2.4");
+        String clause = separate ? null
+                : standardContractClause(r.contractClause(),catalog == null ? null : catalog.getContractClause());
         List<CompensationFunction> compensationFunctions = compensationFunctions(
                 academicYear, teacher.getId(), clause, separate, assignmentName, amount, r.validFrom());
         boolean automaticClause24=!separate&&"2.4".equals(clause);
@@ -278,7 +299,8 @@ public class HrDocumentService {
         m.setAgreementText(agreementText); m.setContractClause(clause); m.setDutiesText(duties);
         m.setAmount(amount); m.setValidFrom(r.validFrom()); m.setValidTo(r.validTo()); m.setSeparateAgreement(separate);
         m.setItemsJson(json(Map.of("teacherId", teacher.getId(), "fio", teacher.getFioTeacher(), "assignment", assignmentName,
-                "contractClause", clause, "separateAgreement", separate, "amount", amount == null ? "" : amount.toPlainString())));
+                "contractClause", Objects.toString(clause,""), "separateAgreement", separate,
+                "amount", amount == null ? "" : amount.toPlainString())));
         m.setCreatedBy(username); m.setDocumentFilename("Служебная_записка_" + teacher.getFioTeacher().replace(' ', '_') + ".docx");
         m.setDocumentContent(generateMemo(m)); m = memos.save(m);
         ensureDutyAgreement(m, contract, username);
@@ -311,7 +333,8 @@ public class HrDocumentService {
         if(r.validFrom()==null||r.validTo()==null)
             throw new ResponseStatusException(BAD_REQUEST,"Укажите период действия");
         String academicYear=required(r.academicYear(),"Учебный год");
-        String clause=firstPresent(r.contractClause(),catalog==null?null:catalog.getContractClause(),"2.4");
+        String clause=separate?null
+                :standardContractClause(r.contractClause(),catalog==null?null:catalog.getContractClause());
         List<CompensationFunction> functions=compensationFunctions(academicYear,teacher.getId(),clause,separate,
                 assignmentName,amount,r.validFrom());
         boolean automaticClause24=!separate&&"2.4".equals(clause);
@@ -342,7 +365,7 @@ public class HrDocumentService {
         memo.setDutiesText(duties);memo.setAmount(amount);memo.setValidFrom(r.validFrom());memo.setValidTo(r.validTo());
         memo.setSeparateAgreement(separate);
         memo.setItemsJson(json(Map.of("teacherId",teacher.getId(),"fio",teacher.getFioTeacher(),
-                "assignment",assignmentName,"contractClause",clause,"separateAgreement",separate,
+                "assignment",assignmentName,"contractClause",Objects.toString(clause,""),"separateAgreement",separate,
                 "amount",amount==null?"":amount.toPlainString())));
         memo.setStatus(HrServiceMemo.Status.DRAFT);memo.setIssuedAt(null);memo.setIssuedBy(null);
         memo.setIssuedByFullName(null);memo.setIssuedByPosition(null);memo.setSignedAt(null);memo.setSignedBy(null);
@@ -469,13 +492,15 @@ public class HrDocumentService {
 
     @Transactional public void deleteAgreement(Long id) {
         AdditionalAgreement agreement=agreement(id);
-        if(agreement.getIssuedAt()!=null||EnumSet.of(AdditionalAgreement.Status.ISSUED,
+        boolean annulled=agreement.getStatus()==AdditionalAgreement.Status.ANNULLED;
+        if(!annulled&&(agreement.getIssuedAt()!=null||EnumSet.of(AdditionalAgreement.Status.ISSUED,
                 AdditionalAgreement.Status.SIGNING,AdditionalAgreement.Status.SIGNED,
-                AdditionalAgreement.Status.EXPIRED,AdditionalAgreement.Status.CANCELLED).contains(agreement.getStatus()))
+                AdditionalAgreement.Status.EXPIRED,AdditionalAgreement.Status.CANCELLED).contains(agreement.getStatus())))
             throw new ResponseStatusException(CONFLICT,"Выпущенное дополнительное соглашение нельзя удалить — его можно только аннулировать");
         if(agreement.getServiceMemoId()!=null){
             HrServiceMemo source=memos.findById(agreement.getServiceMemoId()).orElse(null);
-            if(source!=null&&source.getStatus()!=HrServiceMemo.Status.ANNULLED)
+            if(source!=null&&source.getStatus()!=HrServiceMemo.Status.ANNULLED
+                    &&source.getStatus()!=HrServiceMemo.Status.ARCHIVED)
                 throw new ResponseStatusException(CONFLICT,"Сначала аннулируйте или удалите связанную служебную записку");
         }
         if(agreement.getLoadServiceMemoId()!=null){
@@ -483,9 +508,12 @@ public class HrDocumentService {
             if(source!=null&&source.getStatus()!=ServiceMemo.Status.ANNULLED&&source.getStatus()!=ServiceMemo.Status.ARCHIVED)
                 throw new ResponseStatusException(CONFLICT,"Сначала аннулируйте или удалите связанную служебную записку по нагрузке");
         }
-        boolean referenced=agreements.findAllByAcademicYearOrderByCreatedAtDesc(agreement.getAcademicYear()).stream()
-                .anyMatch(candidate->Objects.equals(candidate.getReplacesAgreementId(),id));
-        if(referenced)throw new ResponseStatusException(CONFLICT,"Документ нельзя удалить: на него ссылается следующее дополнительное соглашение");
+        List<AdditionalAgreement> sameYear=agreements.findAllByAcademicYearOrderByCreatedAtDesc(agreement.getAcademicYear());
+        List<AdditionalAgreement> referencing=sameYear.stream()
+                .filter(candidate->Objects.equals(candidate.getReplacesAgreementId(),id)).toList();
+        if(!annulled&&!referencing.isEmpty())
+            throw new ResponseStatusException(CONFLICT,"Документ нельзя удалить: на него ссылается следующее дополнительное соглашение");
+        referencing.forEach(candidate->{candidate.setReplacesAgreementId(null);agreements.save(candidate);});
         deleteUnissuedAgreement(agreement);
     }
 
@@ -832,6 +860,27 @@ public class HrDocumentService {
                 academicYear,teacherId,amount);
     }
 
+    @Transactional
+    public void markAnnualLoadAgreementsChanged(String academicYear,Collection<Long> teacherIds){
+        Set<Long> affected=Optional.ofNullable(teacherIds).orElse(List.of()).stream()
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        if(affected.isEmpty())return;
+        agreements.findAllByAcademicYearOrderByCreatedAtDesc(academicYear).stream()
+                .filter(this::isAnnualRegistryAgreement)
+                .filter(agreement->affected.contains(agreementTeacherId(agreement,null)))
+                .filter(agreement->EnumSet.of(AdditionalAgreement.Status.WAITING_FOR_MEMO,
+                        AdditionalAgreement.Status.DRAFT,AdditionalAgreement.Status.READY,
+                        AdditionalAgreement.Status.REQUIRES_DECISION,AdditionalAgreement.Status.ISSUED,
+                        AdditionalAgreement.Status.SIGNING).contains(agreement.getStatus()))
+                .forEach(agreement->{
+                    Long teacherId=agreementTeacherId(agreement,null);
+                    List<LoadDetail> details=loadDetails(teacherId,academicYear,agreement.getValidFrom());
+                    agreement.setTotalAmount(calculatedLoadAmount(details));
+                    markAgreementContentChanged(agreement);
+                    agreements.save(agreement);
+                });
+    }
+
     private void syncAnnualIncentiveDrafts(List<AdditionalAgreement> candidates,String academicYear,
                                            Long teacherId,BigDecimal amount){
         candidates.stream().filter(agreement->Objects.equals(agreement.getAcademicYear(),academicYear))
@@ -1013,6 +1062,7 @@ public class HrDocumentService {
         applyAutomaticAnnualClassroomLeadershipClause(agreement,agreementTeacherId(agreement,null),false);
         applyAutomaticCompensationClause(agreement,agreementTeacherId(agreement,null));
         EmploymentContract contract=validateAgreementData(agreement);
+        validateInRateAllocation(agreement,contract);
         if(!present(agreement.getSummary()))throw new ResponseStatusException(CONFLICT,"Заполните краткое содержание дополнительного соглашения");
         if(!present(agreement.getConditionsJson()))throw new ResponseStatusException(CONFLICT,"Заполните юридическую формулировку дополнительного соглашения");
         if(agreement.getDocumentDate()==null)agreement.setDocumentDate(LocalDate.now());
@@ -1035,11 +1085,26 @@ public class HrDocumentService {
             throw new ResponseStatusException(CONFLICT,"Дополнительное соглашение ожидает получения служебной записки");
         if (a.getStatus() != AdditionalAgreement.Status.READY)
             throw new ResponseStatusException(CONFLICT,"Сначала отредактируйте и сформируйте дополнительное соглашение");
-        validateAgreementData(a);
+        EmploymentContract contract=validateAgreementData(a);
+        validateInRateAllocation(a,contract);
         if(a.getCurrentDocument()==null||a.getCurrentDocument().length==0)
             throw new ResponseStatusException(CONFLICT,"Файл дополнительного соглашения ещё не сформирован");
         a.setReissueRequired(false);
         a.setStatus(AdditionalAgreement.Status.ISSUED); a.setIssuedAt(LocalDateTime.now()); a.setIssuedBy(username); return agreements.save(a);
+    }
+
+    private void validateInRateAllocation(AdditionalAgreement agreement, EmploymentContract contract) {
+        if (agreement == null || contract == null || !contract.isLoadHoursMayBeIncludedInRate()) return;
+        List<ManualLoadEntry> rows = loadRepository.findAllByAcademicYear(agreement.getAcademicYear()).stream()
+                .filter(row -> Objects.equals(row.getTeacherId(), contract.getTeacherId()))
+                .filter(row -> loadSalaryCalculationService.totalHours(row).signum() > 0)
+                .toList();
+        long unresolved = rows.stream().filter(row -> !row.isInRateAllocationConfirmed()).count();
+        if (unresolved > 0) {
+            throw new ResponseStatusException(CONFLICT,
+                    "Сначала распределите часы внутри ставки в разделе «Нагрузка → Часы в ставке». Не подтверждено строк: "
+                            + unresolved);
+        }
     }
 
     @Transactional public AdditionalAgreement reopenIssuedAgreement(Long id,String username){
@@ -1820,28 +1885,54 @@ public class HrDocumentService {
         updated=updated.replaceFirst(
                 "(?s)(«ученико-часа»\\s+в размере\\s+).*?(\\s+рубл(?:ь|я|ей))",
                 "$1"+java.util.regex.Matcher.quoteReplacement(decimal(rate))+"$2");
-        int hours=details.stream().mapToInt(LoadDetail::hours).sum();
-        String workload=hours<=0?"___ часов":hours+" "+form(hours,"час","часа","часов");
-        return updated.replaceFirst(
+        BigDecimal paidHours=details.stream().map(LoadDetail::paidHours).reduce(BigDecimal.ZERO,BigDecimal::add);
+        String workload=paidHours.signum()<=0?"___ часов":formatHours(paidHours);
+        updated=updated.replaceFirst(
                 "(?s)(педагогической нагрузки в размере\\s+).*?(?=»\\.)",
                 "$1"+java.util.regex.Matcher.quoteReplacement(workload));
+        return withIncludedInRateParagraph(updated,details);
     }
 
     private String loadClause(List<LoadDetail> details,BigDecimal amount){
         BigDecimal rate=details.stream().map(LoadDetail::rate).findFirst()
                 .orElseGet(()->salarySettingsRepository.findById(SalarySettings.DEFAULT_ID)
                         .map(SalarySettings::getStudentHourRate).orElse(SalarySettings.DEFAULT_STUDENT_HOUR_RATE));
-        int hours=details.stream().mapToInt(LoadDetail::hours).sum();
+        BigDecimal hours=details.stream().map(LoadDetail::paidHours).reduce(BigDecimal.ZERO,BigDecimal::add);
         String salary=amount==null||amount.signum()<=0
                 ?"________ рублей __ коп. (________________ рублей __ коп.)"
                 :moneyLegal(amount)+" ("+moneyWordsLegal(amount)+")";
-        String workload=hours<=0?"___ часов":hours+" "+form(hours,"час","часа","часов");
-        return "Внести изменения в пункт 2.1. раздела 2 «Оплата труда», изложив его в следующей редакции:\n"
+        String workload=hours.signum()<=0?"___ часов":formatHours(hours);
+        String clause="Внести изменения в пункт 2.1. раздела 2 «Оплата труда», изложив его в следующей редакции:\n"
                 +"«2.1. За исполнение трудовых (должностных) обязанностей, предусмотренных должностной инструкцией "
                 +"и настоящим Трудовым договором, Работнику выплачивается заработная плата, которая состоит из:\n"
                 +"- должностного оклада в размере "+salary+" в месяц, определяемого исходя из учебной нагрузки "
                 +"по формуле, установленной в п. 2.3. настоящего договора, на основании «ученико-часа» в размере "
                 +shortMoneyLegal(rate)+" и педагогической нагрузки в размере "+workload+"».";
+        return withIncludedInRateParagraph(clause,details);
+    }
+
+    private String withIncludedInRateParagraph(String clause,List<LoadDetail> details){
+        String marker="В педагогическую нагрузку Работника также включено ";
+        String cleaned=Objects.toString(clause,"").replaceAll(
+                "(?s)\\n?В педагогическую нагрузку Работника также включено .*?отдельно по ученико-часу не оплачивается\\.","");
+        Map<String,BigDecimal> byReason=new LinkedHashMap<>();
+        Optional.ofNullable(details).orElse(List.of()).stream()
+                .filter(detail->detail.includedHours().signum()>0)
+                .forEach(detail->byReason.merge(firstPresent(detail.reason(),"внутри должностного оклада"),
+                        detail.includedHours(),BigDecimal::add));
+        if(byReason.isEmpty())return cleaned;
+        String paragraphs=byReason.entrySet().stream().map(entry->
+                marker+formatHours(entry.getValue())+", выполнение которых осуществляется в пределах должностного оклада "
+                        +"по основанию «"+entry.getKey()+"» и отдельно по ученико-часу не оплачивается.")
+                .collect(Collectors.joining("\n"));
+        return cleaned+"\n"+paragraphs;
+    }
+
+    private String formatHours(BigDecimal value){
+        BigDecimal normalized=Optional.ofNullable(value).orElse(BigDecimal.ZERO).stripTrailingZeros();
+        String number=normalized.scale()<=0?normalized.toBigInteger().toString():normalized.toPlainString().replace('.',',');
+        long integer=normalized.longValue();
+        return number+" "+form(integer,"час","часа","часов");
     }
 
     private String shortMoneyLegal(BigDecimal value){
@@ -1890,13 +1981,25 @@ public class HrDocumentService {
 
     private void appendLoadAnnex(XWPFDocument d,List<LoadDetail> rows){
         title(d, "Приложение № 1"); paragraph(d, "Расчёт должностного оклада по педагогической нагрузке", true);
-        int[] widths={1400,1300,650,1250,1300,1200,1500,1320};
-        XWPFTable table=d.createTable(1,8);configureAnnexTable(table,widths);
-        String[] headers={"Предмет","Класс/группа","Часы","Численность","Ученико-час","Предм. коэф.","Коэф. группы","Сумма"};
+        int[] widths={1250,1100,650,650,650,900,1000,900,1050,1850};
+        XWPFTable table=d.createTable(1,10);configureAnnexTable(table,widths);
+        String[] headers={"Предмет","Класс/группа","Всего","В ставке","К оплате","Численность","Ученико-час","Коэффициенты","Сумма","Пояснение"};
         for(int i=0;i<headers.length;i++) cell(table.getRow(0).getCell(i),headers[i],true,widths[i]);
-        BigDecimal total=BigDecimal.ZERO;int totalHours=0;
-        for(LoadDetail x:rows){XWPFTableRow r=table.createRow();String[] v={x.subject(),x.className(),String.valueOf(x.hours()),String.valueOf(x.children()),decimal(x.rate()),decimal(x.subjectCoefficient()),decimal(x.groupCoefficient().setScale(4,RoundingMode.HALF_UP)),money(x.amount()).replace(" руб.","")};for(int i=0;i<v.length;i++)cell(r.getCell(i),v[i],false,widths[i]);total=total.add(x.amount());totalHours+=x.hours();}
-        XWPFTableRow tr=table.createRow();cell(tr.getCell(0),"Итого",true,widths[0]);cell(tr.getCell(1),"",false,widths[1]);cell(tr.getCell(2),String.valueOf(totalHours),true,widths[2]);for(int i=3;i<7;i++)cell(tr.getCell(i),"",false,widths[i]);cell(tr.getCell(7),money(total).replace(" руб.",""),true,widths[7]);
+        BigDecimal total=BigDecimal.ZERO,totalHours=BigDecimal.ZERO,includedHours=BigDecimal.ZERO,paidHours=BigDecimal.ZERO;
+        for(LoadDetail x:rows){
+            XWPFTableRow r=table.createRow();
+            String note=x.includedHours().signum()>0?"Внутри ставки — "+firstPresent(x.reason(),"должностной оклад"):"";
+            String coefficients=decimal(x.subjectCoefficient())+" / "+decimal(x.groupCoefficient().setScale(4,RoundingMode.HALF_UP));
+            String[] v={x.subject(),x.className(),decimal(x.totalHours()),decimal(x.includedHours()),decimal(x.paidHours()),
+                    String.valueOf(x.children()),decimal(x.rate()),coefficients,money(x.amount()).replace(" руб.",""),note};
+            for(int i=0;i<v.length;i++)cell(r.getCell(i),v[i],false,widths[i]);
+            total=total.add(x.amount());totalHours=totalHours.add(x.totalHours());
+            includedHours=includedHours.add(x.includedHours());paidHours=paidHours.add(x.paidHours());
+        }
+        XWPFTableRow tr=table.createRow();cell(tr.getCell(0),"Итого",true,widths[0]);cell(tr.getCell(1),"",false,widths[1]);
+        cell(tr.getCell(2),decimal(totalHours),true,widths[2]);cell(tr.getCell(3),decimal(includedHours),true,widths[3]);
+        cell(tr.getCell(4),decimal(paidHours),true,widths[4]);for(int i=5;i<8;i++)cell(tr.getCell(i),"",false,widths[i]);
+        cell(tr.getCell(8),money(total).replace(" руб.",""),true,widths[8]);cell(tr.getCell(9),"",false,widths[9]);
     }
     private void configureAnnexTable(XWPFTable table,int[] widths){
         int total=Arrays.stream(widths).sum();table.setWidthType(TableWidthType.DXA);table.setWidth(String.valueOf(total));table.setCellMargins(80,70,80,70);
@@ -1911,13 +2014,20 @@ public class HrDocumentService {
         r.setFontSize(bold?8:9);r.setBold(bold);appendRunText(r,s);
     }
     private List<LoadDetail> loadDetails(Long teacherId,String year,LocalDate date){
-        Map<String,Integer> sizes=normalizedClassSizes(classSizeService.effectiveClassSizes(year));BigDecimal rate=salarySettingsRepository.findById(SalarySettings.DEFAULT_ID).map(SalarySettings::getStudentHourRate).orElse(SalarySettings.DEFAULT_STUDENT_HOUR_RATE);
-        BigDecimal multiplier=BigDecimal.valueOf(34).divide(BigDecimal.valueOf(12),10,RoundingMode.HALF_UP);List<LoadDetail> result=new ArrayList<>();
-        for(ManualLoadEntry row:loadRepository.findAllByAcademicYear(year)){if(!Objects.equals(row.getTeacherId(),teacherId)||row.getStudyPeriod()==StudyPeriod.H2)continue;if(row.getLoadFromDate()!=null&&row.getLoadFromDate().isAfter(date))continue;if(row.getLoadToDate()!=null&&row.getLoadToDate().isBefore(date))continue;
-            int classSize=sizes.getOrDefault(normalizeClass(row.getClassName()),0);String group=Objects.toString(row.getGroupNameEducationalPlan(),"").toLowerCase(Locale.ROOT);int first=(classSize+1)/2,second=classSize-first,children=group.contains("2")?second:group.contains("1")?first:classSize;children=Math.max(children,0);int hours=Optional.ofNullable(row.getGroupLoad()).orElse(Optional.ofNullable(row.getLoad()).orElse(0));
-            EducationStage stage=stage(row.getClassName());BigDecimal subjectCoefficient=coefficientRepository.findBySubjectNameIgnoreCaseAndEducationStage(row.getSubjectName(),stage).map(SubjectLevelCoefficientEntry::getCoefficient).orElse(BigDecimal.ONE);boolean groupEnabled=row.getSubjectId()!=null?groupSubjectRepository.findBySubjectId(row.getSubjectId()).isPresent():groupSubjectRepository.findBySubjectNameIgnoreCase(row.getSubjectName()).isPresent();BigDecimal groupCoefficient=!group.isBlank()&&groupEnabled&&children>0?BigDecimal.valueOf(25).divide(BigDecimal.valueOf(children),10,RoundingMode.HALF_UP):BigDecimal.ONE;
-            BigDecimal base=rate.multiply(BigDecimal.valueOf(children)).multiply(BigDecimal.valueOf(hours)).multiply(multiplier);BigDecimal amount=base.add(base.multiply(subjectCoefficient.subtract(BigDecimal.ONE))).add(base.multiply(groupCoefficient.subtract(BigDecimal.ONE)));result.add(new LoadDetail(row.getSubjectName(),row.getClassName()+(!group.isBlank()?" "+row.getGroupNameEducationalPlan():""),hours,children,rate,subjectCoefficient,groupCoefficient,amount));}
-        return result;
+        List<ManualLoadEntry> rows=loadRepository.findAllByAcademicYear(year).stream()
+                .filter(row->Objects.equals(row.getTeacherId(),teacherId))
+                .filter(row->date==null||row.getLoadFromDate()==null||!row.getLoadFromDate().isAfter(date))
+                .filter(row->date==null||row.getLoadToDate()==null||!row.getLoadToDate().isBefore(date))
+                .toList();
+        Map<Long,LoadSalaryCalculationService.SalaryLine> calculated=loadSalaryCalculationService.calculate(year,rows);
+        return rows.stream().map(row->{
+            LoadSalaryCalculationService.SalaryLine line=calculated.get(row.getId());
+            if(line==null)line=loadSalaryCalculationService.calculate(year,row);
+            String group=Objects.toString(row.getGroupNameEducationalPlan(),"");
+            return new LoadDetail(row.getSubjectName(),row.getClassName()+(!group.isBlank()?" "+group:""),
+                    line.totalHours(),line.includedHours(),line.paidHours(),line.children(),line.studentHourRate(),
+                    line.subjectCoefficient(),line.groupCoefficient(),line.amount(),firstPresent(row.getInRateReason(),"должностной оклад"));
+        }).toList();
     }
     private Map<String,Integer> normalizedClassSizes(Map<String,Integer> sizes){
         Map<String,Integer> normalized=new LinkedHashMap<>();
@@ -1927,7 +2037,9 @@ public class HrDocumentService {
     private String normalizeClass(String s){return ClassNameNormalizer.normalize(s).toLowerCase(Locale.ROOT)
             .replace('ё','е').replaceAll("\\s+","").replace('–','-').replace('—','-');}
     private EducationStage stage(String s){java.util.regex.Matcher m=java.util.regex.Pattern.compile("\\d+").matcher(Objects.toString(s,""));if(!m.find())return EducationStage.OOO;int g=Integer.parseInt(m.group());return g<=4?EducationStage.NOO:g<=9?EducationStage.OOO:EducationStage.SOO;}
-    private record LoadDetail(String subject,String className,int hours,int children,BigDecimal rate,BigDecimal subjectCoefficient,BigDecimal groupCoefficient,BigDecimal amount){}
+    private record LoadDetail(String subject,String className,BigDecimal totalHours,BigDecimal includedHours,
+                              BigDecimal paidHours,int children,BigDecimal rate,BigDecimal subjectCoefficient,
+                              BigDecimal groupCoefficient,BigDecimal amount,String reason){}
     private String money(BigDecimal v){
         BigDecimal value=v.setScale(2,RoundingMode.HALF_UP);String[] parts=value.abs().toPlainString().split("\\.");
         String grouped=parts[0].replaceAll("\\B(?=(\\d{3})+(?!\\d))"," ");
@@ -1947,6 +2059,12 @@ public class HrDocumentService {
     }
     private String decimal(BigDecimal value){return value.stripTrailingZeros().toPlainString().replace('.',',');}
     private String firstPresent(String... values){for(String value:values)if(present(value))return value.trim();return "";}
+    private String standardContractClause(String requested,String catalogValue){
+        String clause=firstPresent(requested,catalogValue,"2.4");
+        if(!STANDARD_CONTRACT_CLAUSES.contains(clause))
+            throw new ResponseStatusException(BAD_REQUEST,"Выберите пункт трудового договора: 2.1, 2.4 или 2.5");
+        return clause;
+    }
     private String employerIntro(){return employerLegalName()+", именуемое в дальнейшем «Работодатель», в лице директора "
             +("1811".equals(SchoolCodeResolver.resolve())?"Тихонова Валерия Анатольевича":"Ждановой Ирины Дмитриевны");}
     private String employerAuthorityPhrase(){return "1811".equals(SchoolCodeResolver.resolve())?"действующего":"действующей";}

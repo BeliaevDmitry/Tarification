@@ -61,6 +61,10 @@ public class SessionUser implements Serializable {
         return tabPermissions.stream().anyMatch(permission -> permission.getTab() == AppTab.LOAD_SALARY && permission.isCanExport());
     }
 
+    public boolean canEditSalary() {
+        return canEditTab(AppTab.LOAD_SALARY);
+    }
+
     public boolean canExportTab(AppTab tab) {
         if (isAdmin()) return true;
         if (tab == null || !canView) return false;

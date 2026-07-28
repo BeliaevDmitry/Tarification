@@ -15,6 +15,8 @@ import org.school.personalLoad.dto.LoadIssueDtos;
 import org.school.personalLoad.dto.ManualLoadStatsResponse;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.service.LoadIssueService;
+import org.school.personalLoad.service.LoadInRateService;
+import org.school.personalLoad.service.LoadSalaryCalculationService;
 import org.school.personalLoad.service.ManualLoadService;
 import org.school.personalLoad.service.AcademicYearService;
 import org.springframework.http.HttpHeaders;
@@ -42,6 +44,8 @@ public class ManualLoadController {
     private final LoadIssueService loadIssueService;
     private final AcademicYearService academicYearService;
     private final ObjectMapper objectMapper;
+    private final LoadSalaryCalculationService loadSalaryCalculationService;
+    private final LoadInRateService loadInRateService;
 
     @PostMapping
     public ResponseEntity<ManualLoadEntry> create(@RequestParam(required = false) String academicYear, @RequestBody ManualLoadEntryRequest request, HttpServletRequest httpServletRequest) {
@@ -134,6 +138,19 @@ public class ManualLoadController {
         return workbookResponse(body, "Полная нагрузка " + effectiveYear + " " + LocalDate.now() + ".xlsx");
     }
 
+    @GetMapping("/salary-breakdown")
+    public ResponseEntity<java.util.Collection<LoadSalaryCalculationService.SalaryLine>> salaryBreakdown(
+            @RequestParam(required = false) String academicYear,
+            HttpServletRequest request) {
+        SessionUser user = AuthSessionUtils.requiredUser(request);
+        if (!user.canViewSalary()) {
+            throw new ForbiddenException("Нет прав на просмотр расчёта зарплаты");
+        }
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        List<ManualLoadEntry> rows = manualLoadService.findAll(effectiveYear);
+        return ResponseEntity.ok(loadSalaryCalculationService.calculate(effectiveYear, rows).values());
+    }
+
     @GetMapping("/export-consolidated")
     public ResponseEntity<byte[]> exportConsolidatedWorkbook(@RequestParam(required = false) String academicYear) throws Exception {
         String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
@@ -160,6 +177,7 @@ public class ManualLoadController {
             throw new ForbiddenException("Нет прав на экспорт полной нагрузки с расчётом зарплаты");
         }
         String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        requireCompletedInRateAllocation(effectiveYear);
         byte[] body = manualLoadService.exportFullWorkbookWithSalary(effectiveYear);
         return workbookResponse(body, "Полная нагрузка с ЗП " + effectiveYear + " " + LocalDate.now() + ".xlsx");
     }
@@ -172,6 +190,7 @@ public class ManualLoadController {
             throw new ForbiddenException("Нет прав на экспорт нагрузки для ЗП");
         }
         String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        requireCompletedInRateAllocation(effectiveYear);
         byte[] body = manualLoadService.exportSalaryOneWorkbook(effectiveYear);
         return workbookResponse(body, "Нагрузка для ЗП 1 " + effectiveYear + " " + LocalDate.now() + ".xlsx");
     }
@@ -189,6 +208,16 @@ public class ManualLoadController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .body(body);
+    }
+
+    private void requireCompletedInRateAllocation(String academicYear) {
+        int unresolved = loadInRateService.unresolvedCount(academicYear);
+        if (unresolved > 0) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "Сначала распределите часы внутри ставки. Не подтверждено строк: " + unresolved
+            );
+        }
     }
 
     @PostMapping("/import")

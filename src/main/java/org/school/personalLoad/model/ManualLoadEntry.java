@@ -7,6 +7,7 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
 import javax.persistence.*;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -101,6 +102,30 @@ public class ManualLoadEntry {
 
     @Column(nullable = false)
     private Integer load;
+
+    @JsonIgnore
+    @Column(name = "employment_contract_id")
+    private Long employmentContractId;
+
+    @JsonIgnore
+    @Column(name = "included_in_rate_hours", precision = 10, scale = 2)
+    private BigDecimal includedInRateHours;
+
+    @JsonIgnore
+    @Column(name = "in_rate_allocation_confirmed", nullable = false)
+    private boolean inRateAllocationConfirmed = false;
+
+    @JsonIgnore
+    @Column(name = "in_rate_reason", length = 1000)
+    private String inRateReason;
+
+    @JsonIgnore
+    @Column(name = "in_rate_updated_at")
+    private LocalDateTime inRateUpdatedAt;
+
+    @JsonIgnore
+    @Column(name = "in_rate_updated_by")
+    private String inRateUpdatedBy;
 
     private String groupNameEducationalPlan;
 

@@ -248,12 +248,14 @@ public class TeacherNotificationsController {
 
         XmlCursor cursor = markerParagraph.getCTP().newCursor();
         XWPFTable table = doc.insertNewTbl(cursor);
-        styleRow(table.createRow(), Arrays.asList("Предмет", "Класс", "Часы"), true);
+        styleRow(table.createRow(), Arrays.asList("Предмет", "Класс", "Часы всего", "Внутри ставки", "К оплате"), true);
         table.removeRow(0);
         for (SubjectLoad row : subjectLoads) {
-            styleRow(table.createRow(), Arrays.asList(row.subjectName, row.className, row.hoursDisplay), false);
+            styleRow(table.createRow(), Arrays.asList(row.subjectName, row.className, row.hoursDisplay,
+                    row.includedDisplay, row.paidDisplay), false);
         }
-        styleRow(table.createRow(), Arrays.asList("Итого", "", totalDisplay(subjectLoads)), true);
+        styleRow(table.createRow(), Arrays.asList("Итого", "", totalDisplay(subjectLoads),
+                totalIncludedDisplay(subjectLoads), totalPaidDisplay(subjectLoads)), true);
         table.setTableAlignment(TableRowAlign.CENTER);
     }
 
@@ -263,10 +265,13 @@ public class TeacherNotificationsController {
             String key = row.getSubjectName() + "|" + row.getClassName();
             SubjectLoad sl = map.computeIfAbsent(key, k -> new SubjectLoad(row.getSubjectName(), row.getClassName()));
             int hours = notificationLoadHours(row);
+            java.math.BigDecimal included = Optional.ofNullable(row.getIncludedInRateHours())
+                    .orElse(java.math.BigDecimal.ZERO).max(java.math.BigDecimal.ZERO)
+                    .min(java.math.BigDecimal.valueOf(hours));
             org.school.personalLoad.model.StudyPeriod period = notificationStudyPeriod(row);
-            if (period == org.school.personalLoad.model.StudyPeriod.H1) sl.h1 += hours;
-            else if (period == org.school.personalLoad.model.StudyPeriod.H2) sl.h2 += hours;
-            else { sl.h1 += hours; sl.h2 += hours; }
+            if (period == org.school.personalLoad.model.StudyPeriod.H1) { sl.h1 += hours;sl.includedH1=sl.includedH1.add(included); }
+            else if (period == org.school.personalLoad.model.StudyPeriod.H2) { sl.h2 += hours;sl.includedH2=sl.includedH2.add(included); }
+            else { sl.h1 += hours; sl.h2 += hours;sl.includedH1=sl.includedH1.add(included);sl.includedH2=sl.includedH2.add(included); }
         }
         map.values().forEach(SubjectLoad::finalizeDisplay);
         return new ArrayList<>(map.values());
@@ -277,6 +282,26 @@ public class TeacherNotificationsController {
         int totalH2 = rows.stream().mapToInt(r -> r.h2).sum();
         if (totalH1 == totalH2) return String.valueOf(totalH1);
         return totalH1 + "/" + totalH2;
+    }
+
+    private String totalIncludedDisplay(List<SubjectLoad> rows) {
+        java.math.BigDecimal h1=rows.stream().map(row->row.includedH1).reduce(java.math.BigDecimal.ZERO,java.math.BigDecimal::add);
+        java.math.BigDecimal h2=rows.stream().map(row->row.includedH2).reduce(java.math.BigDecimal.ZERO,java.math.BigDecimal::add);
+        return halfDisplay(h1,h2);
+    }
+
+    private String totalPaidDisplay(List<SubjectLoad> rows) {
+        java.math.BigDecimal h1=rows.stream().map(row->java.math.BigDecimal.valueOf(row.h1).subtract(row.includedH1))
+                .reduce(java.math.BigDecimal.ZERO,java.math.BigDecimal::add);
+        java.math.BigDecimal h2=rows.stream().map(row->java.math.BigDecimal.valueOf(row.h2).subtract(row.includedH2))
+                .reduce(java.math.BigDecimal.ZERO,java.math.BigDecimal::add);
+        return halfDisplay(h1,h2);
+    }
+
+    private String halfDisplay(java.math.BigDecimal h1,java.math.BigDecimal h2){
+        String first=h1.stripTrailingZeros().toPlainString().replace('.',',');
+        String second=h2.stripTrailingZeros().toPlainString().replace('.',',');
+        return h1.compareTo(h2)==0?first:first+"/"+second;
     }
 
     private int notificationLoadHours(ManualLoadEntry row) {
@@ -318,7 +343,11 @@ public class TeacherNotificationsController {
         int h1;
         int h2;
         int year;
+        java.math.BigDecimal includedH1 = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal includedH2 = java.math.BigDecimal.ZERO;
         String hoursDisplay;
+        String includedDisplay;
+        String paidDisplay;
 
         SubjectLoad(String subjectName, String className) { this.subjectName = subjectName; this.className = className; }
         void finalizeDisplay() {
@@ -329,6 +358,14 @@ public class TeacherNotificationsController {
             } else {
                 hoursDisplay = h1 + "/" + h2;
             }
+            includedDisplay = half(includedH1,includedH2);
+            paidDisplay = half(java.math.BigDecimal.valueOf(h1).subtract(includedH1),
+                    java.math.BigDecimal.valueOf(h2).subtract(includedH2));
+        }
+        private String half(java.math.BigDecimal first,java.math.BigDecimal second){
+            String a=first.stripTrailingZeros().toPlainString().replace('.',',');
+            String b=second.stripTrailingZeros().toPlainString().replace('.',',');
+            return first.compareTo(second)==0?a:a+"/"+b;
         }
     }
 
@@ -432,7 +469,9 @@ public class TeacherNotificationsController {
     }
 
     private String hashOf(List<ManualLoadEntry> rows) {
-        return Integer.toHexString(rows.stream().map(r -> (r.getSubjectName() + "|" + r.getClassName() + "|" + r.getLoad() + "|" + r.getLoadFromDate() + "|" + r.getLoadToDate())).sorted().collect(Collectors.joining(";")).hashCode());
+        return Integer.toHexString(rows.stream().map(r -> (r.getSubjectName() + "|" + r.getClassName() + "|" + r.getLoad() + "|"
+                +r.getIncludedInRateHours()+"|"+r.isInRateAllocationConfirmed()+"|"+r.getLoadFromDate() + "|" + r.getLoadToDate()))
+                .sorted().collect(Collectors.joining(";")).hashCode());
     }
 
     @Data

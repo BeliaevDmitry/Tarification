@@ -22,6 +22,7 @@ import org.school.personalLoad.repository.EmploymentContractRepository;
 import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.school.personalLoad.service.ServiceMemoSettingsService;
 import org.school.personalLoad.service.HrDocumentService;
+import org.school.personalLoad.service.LoadSalaryCalculationService;
 
 import java.io.ByteArrayInputStream;
 import java.time.LocalDate;
@@ -64,6 +65,8 @@ class ServiceMemoTransferGenerationTest {
     private EmploymentContractRepository employmentContractRepository;
     @Mock
     private HrDocumentService hrDocumentService;
+    @Mock
+    private LoadSalaryCalculationService loadSalaryCalculationService;
 
     private ServiceMemoServiceImpl service;
     private List<ServiceMemo> savedMemos;
@@ -79,8 +82,17 @@ class ServiceMemoTransferGenerationTest {
                 studyPeriodSettingService,
                 serviceMemoSettingsService,
                 employmentContractRepository,
-                hrDocumentService
+                hrDocumentService,
+                loadSalaryCalculationService
         );
+        lenient().when(loadSalaryCalculationService.totalHours(any())).thenAnswer(invocation -> {
+            ManualLoadEntry row = invocation.getArgument(0);
+            return java.math.BigDecimal.valueOf(row.getGroupLoad() == null
+                    ? Objects.requireNonNullElse(row.getLoad(), 0) : row.getGroupLoad());
+        });
+        lenient().when(loadSalaryCalculationService.includedHours(any())).thenReturn(java.math.BigDecimal.ZERO);
+        lenient().when(loadSalaryCalculationService.paidHours(any()))
+                .thenAnswer(invocation -> loadSalaryCalculationService.totalHours(invocation.getArgument(0)));
 
         lenient().when(studyPeriodSettingService.rangesByKey()).thenReturn(Map.of(
                 StudyPeriodSettingKey.YEAR_1_9,
