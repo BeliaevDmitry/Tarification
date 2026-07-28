@@ -94,11 +94,15 @@ class ManualLoadServiceImplBulkReplaceTest {
     private PrimarySubjectService primarySubjectService;
     @Mock
     private ClassSizeService classSizeService;
+    private org.school.personalLoad.service.LoadSalaryCalculationService loadSalaryCalculationService;
 
     private ManualLoadServiceImpl service;
 
     @BeforeEach
     void setUp() {
+        loadSalaryCalculationService = new org.school.personalLoad.service.LoadSalaryCalculationService(
+                classSizeService, salarySettingsRepository, subjectLevelCoefficientRepository,
+                salaryGroupCoefficientSubjectRepository);
         lenient().when(metaGroupRepository.findById(any()))
                 .thenAnswer(invocation -> Optional.of(metaGroup(invocation.getArgument(0), 36L)));
         TeacherDirectoryEntry teacher = teacher(10L, "Иванов И.И.");
@@ -142,7 +146,8 @@ class ManualLoadServiceImplBulkReplaceTest {
                 salaryGroupCoefficientSubjectRepository,
                 metaGroupRepository,
                 primarySubjectService,
-                classSizeService
+                classSizeService,
+                loadSalaryCalculationService
         );
     }
 
@@ -812,12 +817,14 @@ class ManualLoadServiceImplBulkReplaceTest {
             double expectedSecondRow = 40 * 30 * 4 * (34.0 / 12.0);
             double expectedHours = expectedFirstRow + expectedSecondRow;
             double expectedLeadership = 500 * 30 + 5000;
-            assertEquals(1D, loadSheet.getRow(1).getCell(10).getNumericCellValue(), 0.01);
-            assertEquals(1D, loadSheet.getRow(1).getCell(11).getNumericCellValue(), 0.01);
-            assertEquals(expectedFirstRow, loadSheet.getRow(1).getCell(12).getNumericCellValue(), 0.01);
-            assertEquals(expectedHours, loadSheet.getRow(1).getCell(13).getNumericCellValue(), 0.01);
-            assertEquals(expectedLeadership, loadSheet.getRow(1).getCell(14).getNumericCellValue(), 0.01);
-            assertEquals(expectedHours + expectedLeadership, loadSheet.getRow(1).getCell(15).getNumericCellValue(), 0.01);
+            assertEquals(0D, loadSheet.getRow(1).getCell(10).getNumericCellValue(), 0.01);
+            assertEquals(5D, loadSheet.getRow(1).getCell(11).getNumericCellValue(), 0.01);
+            assertEquals(1D, loadSheet.getRow(1).getCell(13).getNumericCellValue(), 0.01);
+            assertEquals(1D, loadSheet.getRow(1).getCell(14).getNumericCellValue(), 0.01);
+            assertEquals(expectedFirstRow, loadSheet.getRow(1).getCell(15).getNumericCellValue(), 0.01);
+            assertEquals(expectedHours, loadSheet.getRow(1).getCell(16).getNumericCellValue(), 0.01);
+            assertEquals(expectedLeadership, loadSheet.getRow(1).getCell(17).getNumericCellValue(), 0.01);
+            assertEquals(expectedHours + expectedLeadership, loadSheet.getRow(1).getCell(18).getNumericCellValue(), 0.01);
 
             var summarySheet = workbook.getSheet("Свод ЗП");
             assertEquals("Итого по комплексу", summarySheet.getRow(2).getCell(0).getStringCellValue());
@@ -857,11 +864,11 @@ class ManualLoadServiceImplBulkReplaceTest {
             double subjectBonus = base * (1.5 - 1);
             double groupBonus = base * ((25.0 / 15.0) - 1);
             double expected = base + subjectBonus + groupBonus;
-            assertEquals(1.5D, loadSheet.getRow(1).getCell(10).getNumericCellValue(), 0.01);
-            assertEquals(25.0 / 15.0, loadSheet.getRow(1).getCell(11).getNumericCellValue(), 0.01);
-            assertEquals(expected, loadSheet.getRow(1).getCell(12).getNumericCellValue(), 0.01);
-            assertEquals(expected, loadSheet.getRow(1).getCell(13).getNumericCellValue(), 0.01);
+            assertEquals(1.5D, loadSheet.getRow(1).getCell(13).getNumericCellValue(), 0.01);
+            assertEquals(25.0 / 15.0, loadSheet.getRow(1).getCell(14).getNumericCellValue(), 0.01);
             assertEquals(expected, loadSheet.getRow(1).getCell(15).getNumericCellValue(), 0.01);
+            assertEquals(expected, loadSheet.getRow(1).getCell(16).getNumericCellValue(), 0.01);
+            assertEquals(expected, loadSheet.getRow(1).getCell(18).getNumericCellValue(), 0.01);
         }
     }
 
@@ -949,9 +956,9 @@ class ManualLoadServiceImplBulkReplaceTest {
             assertEquals("11 | 12", loadSheet.getRow(1).getCell(7).getStringCellValue());
             double expectedRowMoney = 40 * 30 * 10 * (34.0 / 12.0);
             double expectedFirstHalfHoursMoney = 40 * 30 * 11 * (34.0 / 12.0);
-            assertEquals(expectedRowMoney, loadSheet.getRow(1).getCell(12).getNumericCellValue(), 0.01);
-            assertEquals(expectedFirstHalfHoursMoney, loadSheet.getRow(1).getCell(13).getNumericCellValue(), 0.01);
-            assertEquals(expectedFirstHalfHoursMoney, loadSheet.getRow(1).getCell(15).getNumericCellValue(), 0.01);
+            assertEquals(expectedRowMoney, loadSheet.getRow(1).getCell(15).getNumericCellValue(), 0.01);
+            assertEquals(expectedFirstHalfHoursMoney, loadSheet.getRow(1).getCell(16).getNumericCellValue(), 0.01);
+            assertEquals(expectedFirstHalfHoursMoney, loadSheet.getRow(1).getCell(18).getNumericCellValue(), 0.01);
         }
     }
 

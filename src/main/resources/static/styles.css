@@ -3,6 +3,41 @@
     --sticky-header-height: 140px;
 }
 
+.load-in-rate-unresolved {
+    background: #fff3cd;
+}
+
+.in-rate-hours-input {
+    width: 88px;
+}
+
+.in-rate-rule-card {
+    margin-bottom: 14px;
+}
+
+.in-rate-rule-card .form-grid,
+.in-rate-new-rule .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.in-rate-rule-card label,
+.in-rate-new-rule label {
+    display: grid;
+    gap: 4px;
+}
+
+.in-rate-rules-dialog {
+    width: min(1180px, 96vw);
+}
+
+.error-text {
+    color: #a61b1b;
+    font-weight: 600;
+}
+
 * {
     box-sizing: border-box;
 }

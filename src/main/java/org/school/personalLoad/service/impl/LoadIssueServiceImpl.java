@@ -5,12 +5,14 @@ import org.school.personalLoad.dto.LoadIssueDtos;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.LoadIssueState;
 import org.school.personalLoad.model.ManualLoadEntry;
+import org.school.personalLoad.model.EmploymentContract;
 import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.LoadIssueStateRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.EmploymentContractRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.service.LoadIssueService;
 import org.school.personalLoad.model.CurriculumPart;
@@ -45,6 +47,7 @@ public class LoadIssueServiceImpl implements LoadIssueService {
     private final LoadIssueStateRepository stateRepository;
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     private final TeacherDirectoryRepository teacherDirectoryRepository;
+    private final EmploymentContractRepository employmentContractRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -78,11 +81,43 @@ public class LoadIssueServiceImpl implements LoadIssueService {
         addMetaGroupIssues(rows, states, academicYear, classes, activeLoad);
         addMaximumLoadIssues(rows, states, academicYear, classes);
         addDismissalHandoffIssues(rows, states, academicYear, yearLoad);
+        addInRateAllocationIssues(rows, academicYear, yearLoad);
         rows.sort(Comparator.comparing(LoadIssueDtos.LoadIssueRow::building, String.CASE_INSENSITIVE_ORDER)
                 .thenComparing(LoadIssueDtos.LoadIssueRow::type, String.CASE_INSENSITIVE_ORDER)
                 .thenComparing(LoadIssueDtos.LoadIssueRow::description, String.CASE_INSENSITIVE_ORDER));
         int unresolved = (int) rows.stream().filter(row -> !row.resolved()).count();
         return new LoadIssueDtos.LoadIssueResponse(rows, unresolved);
+    }
+
+    private void addInRateAllocationIssues(List<LoadIssueDtos.LoadIssueRow> rows,
+                                           String academicYear,
+                                           List<ManualLoadEntry> yearLoad) {
+        Map<Long, EmploymentContract> contractsByTeacher = employmentContractRepository
+                .findAllByActiveTrueAndLoadHoursMayBeIncludedInRateTrueOrderByTeacherIdAsc().stream()
+                .collect(Collectors.toMap(
+                        EmploymentContract::getTeacherId,
+                        contract -> contract,
+                        (first, second) -> first.isPrimaryContract() ? first : second,
+                        LinkedHashMap::new
+                ));
+        for (ManualLoadEntry load : yearLoad) {
+            if (load.getTeacherId() == null || !contractsByTeacher.containsKey(load.getTeacherId())
+                    || load.isInRateAllocationConfirmed()) {
+                continue;
+            }
+            int hours = Math.max(load.getGroupLoad() == null
+                    ? Optional.ofNullable(load.getLoad()).orElse(0)
+                    : load.getGroupLoad(), 0);
+            if (hours == 0) continue;
+            EmploymentContract contract = contractsByTeacher.get(load.getTeacherId());
+            String key = String.join("|", "IN_RATE_ALLOCATION", academicYear,
+                    String.valueOf(load.getId()), String.valueOf(contract.getId()));
+            String description = display(load.getFioTeacher()) + ", " + display(load.getSubjectName())
+                    + ", класс " + display(load.getClassName()) + ": распределите " + hours
+                    + " ч. между часами внутри ставки и оплачиваемыми часами.";
+            rows.add(withState(key, load.getNumberSchoolBuilding(), "Не распределены часы внутри ставки",
+                    description, null, "inRate", load.getClassName(), load.getSubjectName()));
+        }
     }
 
     private void addMaximumLoadIssues(List<LoadIssueDtos.LoadIssueRow> rows,

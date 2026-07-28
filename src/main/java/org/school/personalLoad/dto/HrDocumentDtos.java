@@ -9,10 +9,13 @@ import java.util.List;
 public final class HrDocumentDtos {
     private HrDocumentDtos() {}
     public record ContractRequest(Long teacherId, String contractNumber, LocalDate contractDate, String positionName,
-                                  LocalDate startDate, LocalDate endDate, Boolean primaryContract, Boolean active) {}
+                                  LocalDate startDate, LocalDate endDate, Boolean primaryContract, Boolean active,
+                                  Boolean loadHoursMayBeIncludedInRate, Long loadInRateRuleId,
+                                  String loadInRateDocumentLabel) {}
     public record ContractView(Long id, Long teacherId, String contractNumber, LocalDate contractDate,
             String positionName, LocalDate startDate, LocalDate endDate,
-            boolean primaryContract, boolean active, LocalDateTime createdAt) {}
+            boolean primaryContract, boolean active, boolean loadHoursMayBeIncludedInRate,
+            Long loadInRateRuleId, String loadInRateDocumentLabel, LocalDateTime createdAt) {}
     public record PersonalDataRequest(Long teacherId, LocalDate birthDate, String passportSeries, String passportNumber,
             String passportIssuedBy, LocalDate passportIssueDate, String passportDepartmentCode,
             String registrationAddress, String actualAddress, String phone, String inn, String snils) {}

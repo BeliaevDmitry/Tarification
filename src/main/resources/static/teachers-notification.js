@@ -40,21 +40,24 @@ const CONTRACT_CLAUSE_LABELS = {
 };
 function clausePicker(prefix, value = '2.4') {
     const current = String(value || '2.4');
-    const manual = !STANDARD_CONTRACT_CLAUSES.includes(current);
-    return `<div class="clause-picker"><select id="${prefix}-clause-choice" name="${prefix}ClauseChoice" required>${STANDARD_CONTRACT_CLAUSES.map(clause=>option(clause,CONTRACT_CLAUSE_LABELS[clause],!manual&&clause===current)).join('')}<option value="MANUAL"${manual?' selected':''}>Добавить вручную</option></select><input id="${prefix}-clause-manual" name="${prefix}ClauseManual" value="${manual?esc(current):''}" placeholder="Введите пункт, например 3.2" class="${manual?'':'hidden'}"></div>`;
-}
-function bindClausePicker(prefix) {
-    const choice = $(`#${prefix}-clause-choice`), manual = $(`#${prefix}-clause-manual`);
-    const update = () => { const show=choice.value==='MANUAL'; manual.classList.toggle('hidden',!show); manual.required=show; if(show)manual.focus(); };
-    choice.addEventListener('change',update); update();
+    const selected=STANDARD_CONTRACT_CLAUSES.includes(current)?current:'2.4';
+    return `<div class="clause-picker"><select id="${prefix}-clause-choice" name="${prefix}ClauseChoice" required>${STANDARD_CONTRACT_CLAUSES.map(clause=>option(clause,CONTRACT_CLAUSE_LABELS[clause],clause===selected)).join('')}</select></div>`;
 }
 function setClausePicker(prefix, value) {
-    const current=String(value||'2.4'), choice=$(`#${prefix}-clause-choice`), manual=$(`#${prefix}-clause-manual`);
-    const custom=!STANDARD_CONTRACT_CLAUSES.includes(current); choice.value=custom?'MANUAL':current; manual.value=custom?current:'';
-    manual.classList.toggle('hidden',!custom); manual.required=custom;
+    const current=String(value||'2.4'),choice=$(`#${prefix}-clause-choice`);
+    choice.value=STANDARD_CONTRACT_CLAUSES.includes(current)?current:'2.4';
 }
 function readClause(form, prefix) {
-    return form.get(`${prefix}ClauseChoice`)==='MANUAL' ? form.get(`${prefix}ClauseManual`) : form.get(`${prefix}ClauseChoice`);
+    return form.get(`${prefix}ClauseChoice`);
+}
+function contractClauseRow(prefix, value, help = '') {
+    return `<div id="${prefix}-clause-label" class="field-label">Пункт трудового договора</div><div id="${prefix}-clause-control" class="field-control">${clausePicker(prefix,value)}${help?`<span class="field-help">${help}</span>`:''}</div>`;
+}
+function setContractClauseVisibility(prefix, separate) {
+    $(`#${prefix}-clause-label`)?.classList.toggle('hidden',separate);
+    $(`#${prefix}-clause-control`)?.classList.toggle('hidden',separate);
+    const choice=$(`#${prefix}-clause-choice`);
+    if(choice)choice.disabled=separate;
 }
 function documentTextOverrides(memoText = '', agreementText = '', prefix = 'memo') {
     const hasText=Boolean(memoText||agreementText);
@@ -119,8 +122,10 @@ function isHistoricalAgreement(row) {
     return agreement.status==='SIGNED'&&agreement.validTo&&agreement.validTo<today;
 }
 function renderAgreementActions(agreement, rowInfo = {}) {
-    const canDelete=!agreement.issuedAt&&!agreement.serviceMemoId&&!agreement.loadServiceMemoId&&['WAITING_FOR_MEMO','DRAFT','READY','REQUIRES_DECISION','REJECTED','ANNULLED'].includes(agreement.status);
-    const deleteButton=canDelete?` <button data-delete-agreement="${agreement.id}">Удалить</button>`:'';
+    const canDelete=agreement.status==='ANNULLED'
+        ||(!agreement.issuedAt&&!agreement.serviceMemoId&&!agreement.loadServiceMemoId
+            &&['WAITING_FOR_MEMO','DRAFT','READY','REQUIRES_DECISION','REJECTED'].includes(agreement.status));
+    const deleteButton=canDelete?` <button data-delete-agreement="${agreement.id}" data-delete-agreement-status="${agreement.status}">Удалить</button>`:'';
     if (agreement.status === 'ANNULLED') return `<span class="muted">Документ аннулирован</span>${deleteButton}`;
     if (agreement.status === 'REJECTED') return `<span class="muted">Черновик отклонён; связанную служебку можно удалить</span>${deleteButton}`;
     const contractId=rowInfo.contractId;
@@ -330,7 +335,10 @@ function showReferenceLoadError(error) {
 
 async function openContractEditor(selectedTeacherId = null, contractId = null) {
     if (!teachersCache.length) teachersCache = await loadTeachersForDocuments();
-    const contracts = selectedTeacherId ? await api(`/api/hr-documents/contracts?teacherId=${selectedTeacherId}`) : [];
+    const [contracts, inRateRules] = await Promise.all([
+        selectedTeacherId ? api(`/api/hr-documents/contracts?teacherId=${selectedTeacherId}`) : Promise.resolve([]),
+        api('/api/manual-load/in-rate/rules').catch(()=>[])
+    ]);
     const current = contracts.find(item=>String(item.id)===String(contractId)) || null;
     openEditor(current ? 'Редактирование трудового договора' : 'Трудовой договор',
         row('Работник', `<select name="teacherId" required ${current?'disabled':''}><option value="">Выберите работника</option>${teachersCache.map(t => option(t.id, t.fio,String(t.id)===String(selectedTeacherId))).join('')}</select>`,'Договор всегда связан с постоянным ID работника.') +
@@ -339,13 +347,25 @@ async function openContractEditor(selectedTeacherId = null, contractId = null) {
         row('Должность', `<input name="position" value="${esc(current?.positionName)}" required>`) +
         row('Начало работы', `<input name="start" type="date" value="${esc(current?.startDate)}">`) +
         row('Окончание', `<input name="end" type="date" value="${esc(current?.endDate)}">`) +
-        row('Состояние', `<div class="inline-choice"><label><input name="primary" type="checkbox" ${current?.primaryContract!==false?'checked':''}> Основной договор</label><label><input name="active" type="checkbox" ${current?.active!==false?'checked':''}> Действует</label></div>`),
+        row('Состояние', `<div class="inline-choice"><label><input name="primary" type="checkbox" ${current?.primaryContract!==false?'checked':''}> Основной договор</label><label><input name="active" type="checkbox" ${current?.active!==false?'checked':''}> Действует</label></div>`) +
+        row('Учебные часы могут входить в ставку', `<select id="contract-in-rate-enabled" name="inRateEnabled"><option value="false" ${!current?.loadHoursMayBeIncludedInRate?'selected':''}>Нет — все часы оплачиваются отдельно</option><option value="true" ${current?.loadHoursMayBeIncludedInRate?'selected':''}>Да — часть часов входит в должностной оклад</option></select>`,'Распределение конкретных классов выполняется в разделе «Нагрузка по людям → Часы в ставке».') +
+        `<div id="contract-in-rate-fields">`+
+        row('Правило часов в ставке', `<select name="inRateRuleId"><option value="">Без автоматического правила</option>${inRateRules.filter(rule=>rule.active||String(rule.id)===String(current?.loadInRateRuleId)).map(rule=>option(rule.id,rule.name,String(rule.id)===String(current?.loadInRateRuleId))).join('')}</select>`,'Правило только предлагает распределение; пользователь подтверждает его вручную.')+
+        row('Пояснение для документов', `<input name="inRateLabel" value="${esc(current?.loadInRateDocumentLabel)}" placeholder="преподаватель ОБЗР">`,'Эта формулировка попадёт в пункт 2.1 и приложение №1.')+
+        `</div>`,
         async form => {
             const teacherId=current?.teacherId || +form.get('teacherId');
             await api(current ? `/api/hr-documents/contracts/${current.id}` : '/api/hr-documents/contracts',
-                json(current ? 'PUT' : 'POST', {teacherId,contractNumber:form.get('number'),contractDate:form.get('date'),positionName:form.get('position'),startDate:form.get('start')||null,endDate:form.get('end')||null,primaryContract:form.get('primary')==='on',active:form.get('active')==='on'}));
+                json(current ? 'PUT' : 'POST', {teacherId,contractNumber:form.get('number'),contractDate:form.get('date'),positionName:form.get('position'),startDate:form.get('start')||null,endDate:form.get('end')||null,primaryContract:form.get('primary')==='on',active:form.get('active')==='on',
+                    loadHoursMayBeIncludedInRate:form.get('inRateEnabled')==='true',
+                    loadInRateRuleId:form.get('inRateRuleId')?+form.get('inRateRuleId'):null,
+                    loadInRateDocumentLabel:form.get('inRateLabel')}));
             await Promise.all([loadAgreements(),canViewPersonal()?loadPersonalData():Promise.resolve()]);
             showNotice('Трудовой договор сохранён и автоматически привязан к ожидающим документам.');
+        },
+        ()=>{
+            const toggle=()=>{$('#contract-in-rate-fields').hidden=$('#contract-in-rate-enabled').value!=='true';};
+            $('#contract-in-rate-enabled').addEventListener('change',toggle);toggle();
         }
     );
 }
@@ -469,8 +489,10 @@ async function handleAgreementAction(event) {
     if (target.dataset.reject && confirm('Отклонить этот черновик дополнительного соглашения?')) { await api(`/api/hr-documents/agreements/${target.dataset.reject}/status`, json('POST',{status:'REJECTED'})); await Promise.all([loadJournal(),loadAgreements(),loadMemos()]); }
     if (target.dataset.annul) { const reason = prompt('Причина аннулирования'); if (reason) { await api(`/api/hr-documents/agreements/${target.dataset.annul}/annul`, json('POST',{reason})); await Promise.all([loadJournal(),loadAgreements(),loadMemos()]); showNotice('Дополнительное соглашение аннулировано. Связанная служебная записка перенесена в архив.'); } }
     if (target.dataset.deleteAgreement) {
-        if(!confirm('Удалить невыпущенный дополнительный документ без возможности восстановления? Действие будет записано в журнал.'))return;
-        const reason=prompt('Укажите причину удаления ошибочного или тестового документа:');
+        const annulled=target.dataset.deleteAgreementStatus==='ANNULLED';
+        const documentName=annulled?'аннулированное дополнительное соглашение':'невыпущенный дополнительный документ';
+        if(!confirm(`Удалить ${documentName} без возможности восстановления? Действие будет записано в журнал.`))return;
+        const reason=prompt(annulled?'Укажите причину удаления аннулированного соглашения:':'Укажите причину удаления ошибочного или тестового документа:');
         if(reason===null)return;
         if(!reason.trim()){showNotice('Для удаления необходимо указать причину.',true);return;}
         const confirmation=prompt('Повторное подтверждение: введите слово УДАЛИТЬ заглавными буквами.');
@@ -478,7 +500,7 @@ async function handleAgreementAction(event) {
         await api(`/api/hr-documents/agreements/${target.dataset.deleteAgreement}`,
             json('DELETE',{confirmation,reason:reason.trim()}));
         await Promise.all([loadJournal(),loadAgreements()]);
-        showNotice('Невыпущенный документ удалён, его номер снова свободен. Действие записано в журнал.');
+        showNotice(`${annulled?'Аннулированное соглашение':'Невыпущенный документ'} удалено, его номер снова свободен. Действие записано в журнал.`);
     }
     if (target.dataset.mergeAgreements) {
         const reissue=target.dataset.mergeReissue==='true';
@@ -563,7 +585,7 @@ async function editIssuedMemo(memoId) {
         row('Трудовой договор',`<select name="contractId"><option value="">Можно заполнить позже</option>${contracts.filter(item=>item.active).map(item=>option(item.id,`№ ${item.contractNumber} от ${item.contractDate} — ${item.positionName}`,String(item.id)===String(memo.contractId))).join('')}</select>`)+
         row('Обязанность из справочника',`<select name="catalogItemId"><option value="">Ручная формулировка</option>${catalogCache.map(item=>option(item.id,`${item.name} — ${CATEGORY_LABELS[item.category]||item.category}`,String(item.id)===String(memo.catalogItemId))).join('')}</select>`)+
         row('Обязанность или работа',`<input name="assignmentName" value="${esc(memo.assignmentName)}" required>`)+
-        row('Пункт трудового договора',clausePicker('memo-edit',memo.contractClause||'2.4'))+
+        contractClauseRow('memo-edit',memo.contractClause||'2.4')+
         row('Есть отдельный функционал?',`<div class="inline-choice"><label><input type="radio" name="separate" value="false"${memo.separateAgreement?'':' checked'}> Нет — изменить выбранный пункт</label><label><input type="radio" name="separate" value="true"${memo.separateAgreement?' checked':''}> Да — отдельное соглашение</label></div>`)+
         row('Дополнительные обязанности',`<textarea name="dutiesText">${esc(memo.dutiesText)}</textarea>`)+
         row('Сумма в месяц',`<input name="amount" type="number" min="0" step="0.01" value="${esc(memo.amount)}" required>`,'Например, если директор изменил сумму, укажите новую сумму и сохраните.')+
@@ -578,7 +600,7 @@ async function editIssuedMemo(memoId) {
                 catalogItemId:form.get('catalogItemId')?+form.get('catalogItemId'):null,
                 title:memo.title,documentDate:form.get('documentDate')||null,
                 assignmentName:form.get('assignmentName'),assignmentText:form.get('memo'),
-                agreementText:form.get('agreement'),contractClause:readClause(form,'memo-edit'),
+                agreementText:form.get('agreement'),contractClause:form.get('separate')==='true'?null:readClause(form,'memo-edit'),
                 dutiesText:form.get('dutiesText'),amount:form.get('amount')||null,
                 validFrom:form.get('validFrom'),validTo:form.get('validTo'),
                 separateAgreement:form.get('separate')==='true',
@@ -587,7 +609,14 @@ async function editIssuedMemo(memoId) {
             await Promise.all([loadMemos(),loadAgreements(),loadJournal()]);
             showNotice('Изменения сохранены. Служебка возвращена в черновик: её нужно снова выпустить и подписать.');
         },
-        ()=>bindClausePicker('memo-edit')
+        ()=>{
+            const update=()=>{
+                const separate=document.querySelector('input[name="separate"]:checked')?.value==='true';
+                setContractClauseVisibility('memo-edit',separate);
+            };
+            document.querySelectorAll('input[name="separate"]').forEach(radio=>radio.addEventListener('change',update));
+            update();
+        }
     );
 }
 
@@ -620,7 +649,7 @@ $('#add-memo').addEventListener('click', async () => {
         row('Трудовой договор', '<select id="memo-contract" name="contractId"><option value="">Можно заполнить позже</option></select>','Договор необязателен для служебной записки. После его заполнения система автоматически создаст и привяжет допсоглашение.') +
         row('Обязанность из справочника', `<div class="hr-toolbar"><select id="memo-catalog" name="catalogItemId"><option value="">Добавить вручную</option>${catalogCache.map(c=>option(c.id,`${c.name} — ${CATEGORY_LABELS[c.category]||c.category}`)).join('')}</select><button id="memo-manual" type="button">Добавить вручную</button></div>`,'Готовый вариант можно отредактировать для конкретного работника.') +
         row('Обязанность или работа', '<input id="memo-assignment" name="assignmentName" required placeholder="Например: заведование кабинетом">','Этого названия достаточно: текст служебной записки система сформирует автоматически.') +
-        row('Пункт трудового договора', clausePicker('memo','2.4'),'2.1 формируется из нагрузки, 2.4 — из дополнительных функций, 2.5 будет формироваться из отдельной таблицы стимулирующих выплат.') +
+        contractClauseRow('memo','2.4','2.1 формируется из нагрузки, 2.4 — из дополнительных функций, 2.5 будет формироваться из отдельной таблицы стимулирующих выплат.') +
         row('Есть отдельный функционал?', '<div class="inline-choice"><label><input type="radio" name="separate" value="false" checked> Нет — изменить выбранный пункт</label><label><input type="radio" name="separate" value="true"> Да — отдельное соглашение</label></div>','Выберите «Да», если кроме названия работы нужно закрепить отдельный перечень обязанностей.') +
         `<div id="duties-label" class="field-label hidden">Дополнительные обязанности</div><div id="duties-control" class="field-control hidden"><textarea id="memo-duties" name="dutiesText" placeholder="Перечислите обязанности отдельными строками"></textarea><span class="field-help">Текст попадёт в отдельное дополнительное соглашение и может быть сохранён как шаблон.</span></div>` +
         row('Сумма в месяц', '<input id="memo-amount" name="amount" type="number" min="0" step="0.01" required>') +
@@ -629,7 +658,8 @@ $('#add-memo').addEventListener('click', async () => {
         row('Текст документов', documentTextOverrides('','','memo'),'Обычно этот раздел открывать не нужно: ниже находятся только ручные исправления и примеры.') +
         row('Справочник', '<label><input id="memo-save-template" name="saveTemplate" type="checkbox"> Сохранить ручной вариант для дальнейшего выбора</label>'),
         async form => {
-            const created=await api('/api/hr-documents/memos', json('POST',{academicYear:academicYear(),teacherId:+form.get('teacherId'),contractId:form.get('contractId')?+form.get('contractId'):null,catalogItemId:form.get('catalogItemId')?+form.get('catalogItemId'):null,title:null,documentDate:form.get('documentDate')||null,assignmentName:form.get('assignmentName'),assignmentText:form.get('assignmentText'),agreementText:form.get('agreementText'),contractClause:readClause(form,'memo'),dutiesText:form.get('dutiesText'),amount:form.get('amount')||null,validFrom:form.get('validFrom'),validTo:form.get('validTo'),separateAgreement:form.get('separate')==='true',saveAsTemplate:form.get('saveTemplate')==='on',itemsJson:null}));
+            const separate=form.get('separate')==='true';
+            const created=await api('/api/hr-documents/memos', json('POST',{academicYear:academicYear(),teacherId:+form.get('teacherId'),contractId:form.get('contractId')?+form.get('contractId'):null,catalogItemId:form.get('catalogItemId')?+form.get('catalogItemId'):null,title:null,documentDate:form.get('documentDate')||null,assignmentName:form.get('assignmentName'),assignmentText:form.get('assignmentText'),agreementText:form.get('agreementText'),contractClause:separate?null:readClause(form,'memo'),dutiesText:form.get('dutiesText'),amount:form.get('amount')||null,validFrom:form.get('validFrom'),validTo:form.get('validTo'),separateAgreement:separate,saveAsTemplate:form.get('saveTemplate')==='on',itemsJson:null}));
             try {
                 await loadMemos();
                 showNotice(`Служебная записка создана и добавлена в таблицу${created?.id ? ` (ID ${created.id})` : ''}.`);
@@ -638,7 +668,7 @@ $('#add-memo').addEventListener('click', async () => {
             }
         },
         () => {
-            const teacherSelect = $('#memo-teacher'), contractSelect = $('#memo-contract'), catalogSelect = $('#memo-catalog'); bindClausePicker('memo');
+            const teacherSelect = $('#memo-teacher'), contractSelect = $('#memo-contract'), catalogSelect = $('#memo-catalog');
             async function updateContracts() {
                 const teacherId = teacherSelect.value; contractSelect.innerHTML = '<option value="">Можно заполнить позже</option>';
                 if (!teacherId) return;
@@ -650,6 +680,7 @@ $('#add-memo').addEventListener('click', async () => {
             function setSeparate(value) {
                 const radio = document.querySelector(`input[name="separate"][value="${value}"]`); if (radio) radio.checked = true;
                 const show = value === 'true'; $('#duties-label').classList.toggle('hidden',!show); $('#duties-control').classList.toggle('hidden',!show); $('#memo-duties').required = show;
+                setContractClauseVisibility('memo',show);
             }
             function applyCatalog() {
                 const item = catalogCache.find(c=>String(c.id)===catalogSelect.value);
@@ -666,6 +697,7 @@ $('#add-memo').addEventListener('click', async () => {
             teacherSelect.addEventListener('change',updateContracts); catalogSelect.addEventListener('change',applyCatalog);
             $('#memo-manual').addEventListener('click',()=>{catalogSelect.value='';$('#memo-assignment').value='';$('#memo-text').value='';$('#memo-agreement').value='';$('#memo-duties').value='';$('#memo-amount').value='';setClausePicker('memo','2.4');$('#memo-save-template').checked=true;$('#memo-assignment').focus();});
             document.querySelectorAll('input[name="separate"]').forEach(r=>r.addEventListener('change',()=>setSeparate(r.value)));
+            setSeparate(document.querySelector('input[name="separate"]:checked')?.value||'false');
         }
     );
 });
@@ -696,18 +728,23 @@ function editCatalog(item = null) {
     openEditor(item ? 'Изменить выплату или работу' : 'Добавить выплату или работу',
         row('Название обязанности или выплаты', `<input name="name" value="${esc(item?.name)}" required placeholder="Например: заведование кабинетом">`) +
         row('Категория', `<select name="category"><option value="COMPENSATION" ${item?.category==='COMPENSATION'?'selected':''}>Компенсационная выплата</option><option value="INCENTIVE" ${item?.category==='INCENTIVE'?'selected':''}>Стимулирующая выплата</option><option value="ADDITIONAL_WORK" ${item?.category==='ADDITIONAL_WORK'?'selected':''}>Дополнительная работа</option></select>`) +
-        row('Пункт трудового договора', clausePicker('catalog',item?.contractClause||'2.4'),'Источники разделены: 2.1 — нагрузка, 2.4 — дополнительные функции, 2.5 — стимулирующие выплаты из отдельной таблицы.') + row('Стандартная сумма', `<input name="amount" type="number" min="0" step="0.01" value="${esc(item?.defaultAmount)}">`) +
+        contractClauseRow('catalog',item?.contractClause||'2.4','Источники разделены: 2.1 — нагрузка, 2.4 — дополнительные функции, 2.5 — стимулирующие выплаты из отдельной таблицы.') + row('Стандартная сумма', `<input name="amount" type="number" min="0" step="0.01" value="${esc(item?.defaultAmount)}">`) +
         row('Отдельное соглашение', `<label><input name="separate" type="checkbox" ${item?.separateAgreement?'checked':''}> Есть отдельный перечень дополнительных обязанностей</label>`,'Если флажок снят, выплата изменяет выбранный пункт договора. Если установлен — создаётся отдельный допник с функционалом.') +
         row('Дополнительные обязанности', `<textarea name="duties" placeholder="Например: контролировать состояние кабинета; вести журнал инструктажей; обеспечивать сохранность оборудования.">${esc(item?.dutiesText)}</textarea>`,'Заполняется, когда выбран отдельный функционал.') +
         row('Текст документов', documentTextOverrides(automaticClause24?'':item?.memoText,automaticClause24?'':item?.agreementText,'catalog'),'Для стандартного пункта 2.4 старые ручные формулировки не используются.'),
         async form => {
-            const clause=readClause(form,'catalog');
             const separate=form.get('separate')==='on';
+            const clause=separate?null:readClause(form,'catalog');
             const automaticClause24=clause==='2.4'&&!separate;
             await api(item ? `/api/hr-documents/catalog/${item.id}` : '/api/hr-documents/catalog',json(item ? 'PUT' : 'POST',{name:form.get('name'),category:form.get('category'),contractClause:clause,defaultAmount:form.get('amount')||null,memoText:automaticClause24?null:form.get('memo'),agreementText:automaticClause24?null:form.get('agreement'),dutiesText:form.get('duties'),separateAgreement:separate,active:true}));
             await loadCatalog();
         },
-        () => bindClausePicker('catalog')
+        () => {
+            const separate=document.querySelector('input[name="separate"]');
+            const update=()=>setContractClauseVisibility('catalog',Boolean(separate?.checked));
+            separate?.addEventListener('change',update);
+            update();
+        }
     );
 }
 $('#add-catalog').addEventListener('click', () => editCatalog());
@@ -734,7 +771,7 @@ function renderPersonalData() {
             ? `${esc(data.registrationAddress||'Адрес регистрации не заполнен')}<br><span class="muted">${esc(data.actualAddress||'Фактический адрес не заполнен')}${data.phone?` · ${esc(data.phone)}`:''}${data.inn?` · ИНН ${esc(data.inn)}`:''}${data.snils?` · СНИЛС ${esc(data.snils)}`:''}</span>`
             : '<span class="muted">Не заполнены</span>';
         const activeContracts=(item.contracts||[]).filter(contract=>contract.active);
-        const contractHtml=activeContracts.length?activeContracts.map(contract=>`<div><b>№ ${esc(contract.contractNumber)}</b> от ${esc(formatDate(contract.contractDate))}<br><span class="muted">${esc(contract.positionName)}${contract.primaryContract?' · основной':''}</span></div>`).join(''):'<span class="muted">Не заполнен</span>';
+        const contractHtml=activeContracts.length?activeContracts.map(contract=>`<div><b>№ ${esc(contract.contractNumber)}</b> от ${esc(formatDate(contract.contractDate))}<br><span class="muted">${esc(contract.positionName)}${contract.primaryContract?' · основной':''}${contract.loadHoursMayBeIncludedInRate?' · часы могут входить в ставку':''}</span></div>`).join(''):'<span class="muted">Не заполнен</span>';
         const contractButtons=activeContracts.map(contract=>`<button data-personal-contract="${contract.id}" data-teacher="${item.teacherId}">Изменить договор № ${esc(contract.contractNumber)}</button>`).join(' ');
         return `<tr><td><b>${esc(item.fio)}</b><br><span class="muted">ID ${item.teacherId}</span></td><td>${passport}</td><td>${contacts}</td><td>${contractHtml}</td><td>${data?.complete?'<span class="success">Достаточно для DOCX</span>':'Нужно заполнить обязательные данные'}${data?.updatedAt?`<br><span class="muted">Обновлено ${esc(data.updatedAt.replace('T',' '))}</span>`:''}</td><td><button data-personal-edit="${item.teacherId}">${data?'Изменить данные':'Заполнить данные'}</button> ${contractButtons||`<button data-personal-contract="" data-teacher="${item.teacherId}">Добавить договор</button>`}</td></tr>`;
     }).join(''):'<tr><td colspan="6">Работники не найдены</td></tr>';

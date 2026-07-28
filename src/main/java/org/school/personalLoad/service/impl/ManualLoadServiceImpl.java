@@ -40,6 +40,7 @@ import org.school.personalLoad.service.ClassSizeService;
 import org.school.personalLoad.service.CurriculumPlanService;
 import org.school.personalLoad.service.DatabaseService;
 import org.school.personalLoad.service.ManualLoadService;
+import org.school.personalLoad.service.LoadSalaryCalculationService;
 import org.school.personalLoad.service.PrimarySubjectService;
 import org.school.personalLoad.service.TarifficationProcessingService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
@@ -61,6 +62,7 @@ import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 @Slf4j
@@ -91,6 +93,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private final MetaGroupRepository metaGroupRepository;
     private final PrimarySubjectService primarySubjectService;
     private final ClassSizeService classSizeService;
+    private final LoadSalaryCalculationService loadSalaryCalculationService;
 
     @Override
     public ManualLoadEntry create(ManualLoadEntryRequest request) {
@@ -120,12 +123,31 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         if (request != null && request.getAcademicYear() != null && !request.getAcademicYear().isBlank()) {
             explicitAcademicYears.add(request.getAcademicYear().trim());
         }
+        Map<String, ManualLoadEntry> existingAllocationByKey = explicitAcademicYears.stream()
+                .flatMap(year -> manualLoadEntryRepository.findAllByAcademicYear(year).stream())
+                .filter(ManualLoadEntry::isInRateAllocationConfirmed)
+                .collect(java.util.stream.Collectors.toMap(
+                        this::manualLoadDuplicateKey,
+                        java.util.function.Function.identity(),
+                        (first, second) -> first,
+                        LinkedHashMap::new
+                ));
         List<ManualLoadEntry> entries = requests.stream()
                 .map(this::toEntity)
                 .collect(java.util.stream.Collectors.collectingAndThen(
                         java.util.stream.Collectors.toMap(this::manualLoadDuplicateKey, java.util.function.Function.identity(), (first, second) -> first, LinkedHashMap::new),
                         map -> new ArrayList<>(map.values())
                 ));
+        entries.forEach(entry -> {
+            ManualLoadEntry existing = existingAllocationByKey.get(manualLoadDuplicateKey(entry));
+            if (existing == null) return;
+            entry.setEmploymentContractId(existing.getEmploymentContractId());
+            entry.setIncludedInRateHours(existing.getIncludedInRateHours());
+            entry.setInRateAllocationConfirmed(true);
+            entry.setInRateReason(existing.getInRateReason());
+            entry.setInRateUpdatedAt(existing.getInRateUpdatedAt());
+            entry.setInRateUpdatedBy(existing.getInRateUpdatedBy());
+        });
         java.util.Set<String> buildingCodes = entries.stream()
                 .map(ManualLoadEntry::getNumberSchoolBuilding)
                 .filter(java.util.Objects::nonNull)
@@ -298,7 +320,6 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     return a.getEducationLevel().name().compareToIgnoreCase(b.getEducationLevel().name());
                 })
                 .toList();
-
         log.info("Ручная нагрузка обработана. Записей: {}, сводок: {}", tarifficationList.size(), summaries.size());
         return new ManualLoadProcessResult("ok", tarifficationList.size(), summaries);
     }
@@ -382,6 +403,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                         .thenComparing(ManualLoadEntry::getClassName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
                         .thenComparing(ManualLoadEntry::getGroupNameEducationalPlan, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER)))
                 .toList();
+        Map<Long, LoadSalaryCalculationService.SalaryLine> salaryLines =
+                loadSalaryCalculationService.calculate(academicYear, rows);
 
         Map<String, String> buildingNameByCode = schoolBuildingRepository.findAll().stream()
                 .collect(java.util.stream.Collectors.toMap(
@@ -429,7 +452,10 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     "Класс",
                     "Группа",
                     "Период",
-                    "Часы",
+                    "Часы всего",
+                    "Часы внутри ставки",
+                    "Часы к оплате",
+                    "Основание",
                     "Часть учебного плана",
                     "Обязательный / по выбору школы",
                     "Деление на подгруппы"
@@ -459,16 +485,27 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 row.createCell(4).setCellValue(normalizeDisplayValue(entry.getClassName()));
                 row.createCell(5).setCellValue(salaryExportGroup(entry));
                 row.createCell(6).setCellValue(studyPeriodLabel(entry.getStudyPeriod()));
+                LoadSalaryCalculationService.SalaryLine line = salaryLines.get(entry.getId());
+                if (line == null) {
+                    line = loadSalaryCalculationService.calculate(academicYear, entry);
+                }
+                BigDecimal included = line == null ? BigDecimal.ZERO : line.includedHours();
+                BigDecimal paid = line == null ? BigDecimal.valueOf(manualLoadHours(entry)) : line.paidHours();
                 row.createCell(7).setCellValue(manualLoadHours(entry));
-                row.createCell(8).setCellValue(curriculumPartSalaryLabel(part));
-                row.createCell(9).setCellValue(subjectRequirementSalaryLabel(curriculum, part));
-                row.createCell(10).setCellValue(subgroupPolicySalaryLabel(curriculum, entry));
+                row.createCell(8).setCellValue(included.doubleValue());
+                row.createCell(9).setCellValue(paid.doubleValue());
+                row.createCell(10).setCellValue(included.signum() > 0
+                        ? (normalizeDisplayValue(entry.getInRateReason()).isBlank()
+                        ? "Внутри должностного оклада" : entry.getInRateReason()) : "");
+                row.createCell(11).setCellValue(curriculumPartSalaryLabel(part));
+                row.createCell(12).setCellValue(subjectRequirementSalaryLabel(curriculum, part));
+                row.createCell(13).setCellValue(subgroupPolicySalaryLabel(curriculum, entry));
                 for (int column = 0; column < headers.size(); column++) {
                     row.getCell(column).setCellStyle(wrap);
                 }
             }
 
-            int[] widths = {8, 32, 26, 28, 12, 24, 12, 10, 24, 26, 26};
+            int[] widths = {8, 32, 26, 28, 12, 24, 12, 11, 14, 12, 34, 24, 26, 26};
             for (int column = 0; column < widths.length; column++) {
                 sheet.setColumnWidth(column, widths[column] * 256);
             }
@@ -1207,6 +1244,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         SalarySummary salarySummary = includeSalary
                 ? calculateSalarySummary(rows, classEntries, classSizeByClass, subjectCoefficientByLevel, groupCoefficientSubjects, studentHourRate)
                 : SalarySummary.empty();
+        Map<Long, LoadSalaryCalculationService.SalaryLine> salaryLines = includeSalary
+                ? loadSalaryCalculationService.calculate(academicYear, rows)
+                : Map.of();
 
         Map<String, List<ManualLoadEntry>> byBuilding = rows.stream().collect(java.util.stream.Collectors.groupingBy(
                 r -> r.getNumberSchoolBuilding() == null || r.getNumberSchoolBuilding().isBlank() ? "Не закреплены" : r.getNumberSchoolBuilding(),
@@ -1258,12 +1298,15 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 }
                 if (includeSalary) {
                     cols.subList(cols.size() - 3, cols.size()).clear();
-                    cols.add("РџСЂРµРґРјРµС‚РЅС‹Р№ РєРѕСЌС„.");
-                    cols.add("РљРѕСЌС„. РіСЂСѓРїРїС‹");
-                    cols.add("Р—Р° С‡Р°СЃС‹");
-                    cols.add("Р—Р° С‡Р°СЃС‹ РёС‚РѕРі");
-                    cols.add("РљР»Р°СЃСЃРЅРѕРµ СЂСѓРєРѕРІРѕРґСЃС‚РІРѕ, СЂСѓР±.");
-                    cols.add("РС‚РѕРіРѕ, СЂСѓР±.");
+                    cols.add("Часы внутри ставки");
+                    cols.add("Часы к оплате");
+                    cols.add("Основание");
+                    cols.add("Предметный коэф.");
+                    cols.add("Коэф. группы");
+                    cols.add("За строку");
+                    cols.add("За оплачиваемые часы итого");
+                    cols.add("Классное руководство, руб.");
+                    cols.add("Итого, руб.");
                 }
                 for (int i = 0; i < cols.size(); i++) { h.createCell(i).setCellValue(cols.get(i)); h.getCell(i).setCellStyle(header); }
                 sheet.createFreezePane(0, 1);
@@ -1321,9 +1364,9 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                             sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 7, 7));
                             sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 9, 9));
                             if (includeSalary) {
-                                sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 13, 13));
-                                sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 14, 14));
-                                sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 15, 15));
+                                sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 16, 16));
+                                sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 17, 17));
+                                sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 18, 18));
                             }
                         }
                         currentTeacher = key;
@@ -1361,24 +1404,35 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     r.createCell(8).setCellValue(rowBuilding + (rowAddress.isBlank() ? "" : "\n" + rowAddress));
                     r.createCell(9).setCellValue(classLeadership);
                     if (includeSalary) {
-                        SalaryTotals salary = salarySummary.byTeacher().getOrDefault(key, SalaryTotals.empty());
-                        SalaryRowDetails rowSalary = calculateHourSalaryDetails(e, classSizeByClass, subjectCoefficientByLevel, groupCoefficientSubjects, studentHourRate);
-                        r.createCell(10).setCellValue(coefficientValue(rowSalary.subjectCoefficient()));
-                        r.createCell(11).setCellValue(coefficientValue(rowSalary.groupCoefficient()));
-                        r.createCell(12).setCellValue(moneyValue(rowSalary.hoursSalary()));
-                        r.createCell(13).setCellValue(moneyValue(salary.hourSalary()));
-                        r.createCell(14).setCellValue(moneyValue(salary.classLeadershipSalary()));
-                        r.createCell(15).setCellValue(moneyValue(salary.total()));
+                        SalaryTotals salary = salarySummary.byTeacher()
+                                .getOrDefault(salaryTeacherKey(e.getTeacherId(), e.getFioTeacher()), SalaryTotals.empty());
+                        LoadSalaryCalculationService.SalaryLine rowSalary = salaryLines.get(e.getId());
+                        if (rowSalary == null) {
+                            rowSalary = loadSalaryCalculationService.calculate(academicYear, e);
+                        }
+                        BigDecimal includedHours = rowSalary == null ? BigDecimal.ZERO : rowSalary.includedHours();
+                        BigDecimal paidHours = rowSalary == null ? BigDecimal.valueOf(subjectHours) : rowSalary.paidHours();
+                        r.createCell(10).setCellValue(includedHours.doubleValue());
+                        r.createCell(11).setCellValue(paidHours.doubleValue());
+                        r.createCell(12).setCellValue(includedHours.signum() > 0
+                                ? (normalizeDisplayValue(e.getInRateReason()).isBlank()
+                                ? "Внутри должностного оклада" : e.getInRateReason()) : "");
+                        r.createCell(13).setCellValue(coefficientValue(rowSalary == null ? BigDecimal.ONE : rowSalary.subjectCoefficient()));
+                        r.createCell(14).setCellValue(coefficientValue(rowSalary == null ? BigDecimal.ONE : rowSalary.groupCoefficient()));
+                        r.createCell(15).setCellValue(moneyValue(rowSalary == null ? BigDecimal.ZERO : rowSalary.amount()));
+                        r.createCell(16).setCellValue(moneyValue(salary.hourSalary()));
+                        r.createCell(17).setCellValue(moneyValue(salary.classLeadershipSalary()));
+                        r.createCell(18).setCellValue(moneyValue(salary.total()));
                     }
-                    for (int c = 0; c <= (includeSalary ? 15 : 9); c++) r.getCell(c).setCellStyle(c >= 12 ? money : wrap);
+                    for (int c = 0; c <= (includeSalary ? 18 : 9); c++) r.getCell(c).setCellStyle(c >= 15 ? money : wrap);
                     if (i == buildingRows.size() - 1 && rowNum - 1 > teacherStart) {
                         sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 0, 0));
                         sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 7, 7));
                         sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 9, 9));
                         if (includeSalary) {
-                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 13, 13));
-                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 14, 14));
-                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 15, 15));
+                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 16, 16));
+                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 17, 17));
+                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 18, 18));
                         }
                     }
                 }
@@ -1394,8 +1448,14 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 sheet.setColumnWidth(9, 16 * 256);
                 if (includeSalary) {
                     sheet.setColumnWidth(10, 12 * 256);
-                    sheet.setColumnWidth(11, 18 * 256);
-                    sheet.setColumnWidth(12, 12 * 256);
+                    sheet.setColumnWidth(11, 12 * 256);
+                    sheet.setColumnWidth(12, 32 * 256);
+                    sheet.setColumnWidth(13, 12 * 256);
+                    sheet.setColumnWidth(14, 18 * 256);
+                    sheet.setColumnWidth(15, 12 * 256);
+                    sheet.setColumnWidth(16, 16 * 256);
+                    sheet.setColumnWidth(17, 18 * 256);
+                    sheet.setColumnWidth(18, 14 * 256);
                 }
             }
             if (includeSalary) {
@@ -1751,21 +1811,31 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         Map<String, SalaryTotals> byTeacher = new HashMap<>();
         Map<String, SalaryTotals> byBuilding = new HashMap<>();
         SalaryTotals complex = new SalaryTotals();
+        Map<Long, LoadSalaryCalculationService.SalaryLine> salaryLines =
+                loadSalaryCalculationService.calculate(
+                        rows.stream().map(ManualLoadEntry::getAcademicYear).filter(Objects::nonNull)
+                                .findFirst().orElse(""),
+                        rows
+                );
 
         for (ManualLoadEntry row : rows) {
             if (!isFirstHalfSalaryRow(row)) {
                 continue;
             }
             String building = buildingKey(row.getNumberSchoolBuilding());
-            String teacher = String.valueOf(row.getFioTeacher()).trim().toLowerCase(Locale.ROOT);
-            BigDecimal hourSalary = calculateHourSalary(row, classSizeByClass, subjectCoefficientByLevel, groupCoefficientSubjects, studentHourRate);
+            String teacher = salaryTeacherKey(row.getTeacherId(), row.getFioTeacher());
+            LoadSalaryCalculationService.SalaryLine line = salaryLines.get(row.getId());
+            if (line == null) {
+                line = loadSalaryCalculationService.calculate(row.getAcademicYear(), row);
+            }
+            BigDecimal hourSalary = line.amount();
             byTeacher.computeIfAbsent(teacher, key -> new SalaryTotals()).addHourSalary(hourSalary);
             byBuilding.computeIfAbsent(building, key -> new SalaryTotals()).addHourSalary(hourSalary);
             complex.addHourSalary(hourSalary);
         }
 
         for (ClassroomLeadershipEntry entry : classEntries) {
-            String teacher = String.valueOf(entry.getFioTeacher()).trim().toLowerCase(Locale.ROOT);
+            String teacher = salaryTeacherKey(entry.getTeacherId(), entry.getFioTeacher());
             if (teacher.isBlank()) {
                 continue;
             }
@@ -1780,6 +1850,12 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         }
 
         return new SalarySummary(byTeacher, byBuilding, complex);
+    }
+
+    private String salaryTeacherKey(Long teacherId, String fio) {
+        return teacherId == null
+                ? "fio:" + String.valueOf(fio).trim().toLowerCase(Locale.ROOT)
+                : "id:" + teacherId;
     }
 
     private boolean isFirstHalfSalaryRow(ManualLoadEntry row) {

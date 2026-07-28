@@ -65,8 +65,11 @@ function renderFilteredIssues() {
 }
 
 function targetUrl(row) {
-    const page = row.targetPage === "curriculum" ? "/curriculum.html" : "/load.html";
+    const page = row.targetPage === "curriculum"
+        ? "/curriculum.html"
+        : row.targetPage === "inRate" ? "/people-load.html" : "/load.html";
     const params = new URLSearchParams();
+    if (row.targetPage === "inRate") params.set("panel", "inRate");
     if (row.building) params.set("building", row.building);
     if (row.targetClass) params.set("issueClass", row.targetClass);
     if (row.targetSubject) params.set("issueSubject", row.targetSubject);

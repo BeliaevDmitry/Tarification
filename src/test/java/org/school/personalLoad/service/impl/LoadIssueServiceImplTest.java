@@ -10,6 +10,7 @@ import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.CurriculumPart;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.EducationLevel;
+import org.school.personalLoad.model.EmploymentContract;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
@@ -18,6 +19,7 @@ import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.LoadIssueStateRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
+import org.school.personalLoad.repository.EmploymentContractRepository;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -40,16 +42,21 @@ class LoadIssueServiceImplTest {
     private CurriculumPlanEntryRepository curriculumRepository;
     @Mock
     private TeacherDirectoryRepository teacherRepository;
+    @Mock
+    private EmploymentContractRepository employmentContractRepository;
 
     private LoadIssueServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new LoadIssueServiceImpl(classroomRepository, manualLoadRepository, stateRepository, curriculumRepository, teacherRepository);
+        service = new LoadIssueServiceImpl(classroomRepository, manualLoadRepository, stateRepository,
+                curriculumRepository, teacherRepository, employmentContractRepository);
         when(classroomRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(classroom()));
         when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
         when(stateRepository.findAll()).thenReturn(List.of());
         when(teacherRepository.findAll()).thenReturn(List.of(teacher(1L, "Белогур Кристина Игоревна")));
+        when(employmentContractRepository.findAllByActiveTrueAndLoadHoursMayBeIncludedInRateTrueOrderByTeacherIdAsc())
+                .thenReturn(List.of());
     }
 
     @Test
@@ -73,6 +80,37 @@ class LoadIssueServiceImplTest {
                 .orElseThrow();
         assertEquals("3-Б", issue.targetClass());
         assertTrue(issue.description().contains("в нагрузке по предмету стоит: не назначено"));
+    }
+
+    @Test
+    void reportsUnconfirmedInRateAllocationAsBlockingIssue() {
+        EmploymentContract contract = new EmploymentContract();
+        contract.setId(20L);
+        contract.setTeacherId(1L);
+        contract.setActive(true);
+        contract.setPrimaryContract(true);
+        contract.setLoadHoursMayBeIncludedInRate(true);
+        ManualLoadEntry load = new ManualLoadEntry();
+        load.setId(30L);
+        load.setAcademicYear("2026/2027");
+        load.setTeacherId(1L);
+        load.setFioTeacher("Белогур Кристина Игоревна");
+        load.setNumberSchoolBuilding("СП1");
+        load.setSubjectName("ОБЗР");
+        load.setClassName("7-А");
+        load.setLoad(4);
+        when(employmentContractRepository.findAllByActiveTrueAndLoadHoursMayBeIncludedInRateTrueOrderByTeacherIdAsc())
+                .thenReturn(List.of(contract));
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(load));
+        when(curriculumRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
+
+        LoadIssueDtos.LoadIssueResponse response = service.findIssues("2026/2027", "");
+
+        LoadIssueDtos.LoadIssueRow issue = response.rows().stream()
+                .filter(row -> row.type().equals("Не распределены часы внутри ставки"))
+                .findFirst().orElseThrow();
+        assertEquals("inRate", issue.targetPage());
+        assertTrue(issue.description().contains("распределите 4 ч."));
     }
 
     @Test

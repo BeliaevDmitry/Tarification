@@ -27,6 +27,11 @@ class HrDocumentsFrontendTest {
         assertTrue(js.contains("Обязанность из справочника"));
         assertTrue(js.contains("Добавить вручную"));
         assertTrue(js.contains("STANDARD_CONTRACT_CLAUSES = ['2.1','2.4','2.5']"));
+        assertFalse(js.contains("<option value=\"MANUAL\""));
+        assertFalse(js.contains("ClauseManual"));
+        assertTrue(js.contains("function setContractClauseVisibility(prefix, separate)"));
+        assertTrue(js.contains("contractClause:separate?null:readClause(form,'memo')"));
+        assertTrue(js.contains("contractClause:form.get('separate')==='true'?null:readClause(form,'memo-edit')"));
         assertTrue(js.contains("'2.1':'2.1 — учебная нагрузка'"));
         assertTrue(js.contains("'2.4':'2.4 — дополнительные функции'"));
         assertTrue(js.contains("'2.5':'2.5 — стимулирующие выплаты'"));
@@ -38,7 +43,7 @@ class HrDocumentsFrontendTest {
         assertTrue(js.contains("Не удалось загрузить список работников"));
         assertTrue(js.contains("loadTeachersForDocuments"));
         assertTrue(js.contains("api('/api/teachers')"));
-        assertTrue(html.contains("teachers-notification.js?v=20260727-7"));
+        assertTrue(html.contains("teachers-notification.js?v=20260728-3"));
         assertTrue(js.contains("function formatDate(value, fallback = '—')"));
         assertTrue(js.contains("`${match[3]}.${match[2]}.${match[1]}`"));
         assertTrue(js.contains("formatDate(agreement.validFrom)"));
@@ -62,6 +67,10 @@ class HrDocumentsFrontendTest {
         assertTrue(js.contains("personal-data/import"));
         assertTrue(js.contains("data-reject"));
         assertTrue(js.contains("data-delete-agreement"));
+        assertTrue(js.contains("agreement.status==='ANNULLED'"));
+        assertTrue(js.contains("data-delete-agreement-status"));
+        assertTrue(js.contains("Укажите причину удаления аннулированного соглашения"));
+        assertTrue(html.contains("#all-agreements-dialog{width:calc(100vw - 20px);max-width:none"));
         assertTrue(js.contains("data-merge-agreements"));
         assertTrue(js.contains("data-merge-reissue"));
         assertTrue(js.contains("/api/hr-documents/agreements/merge"));

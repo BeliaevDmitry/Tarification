@@ -22,6 +22,7 @@ import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.ServiceMemoService;
 import org.school.personalLoad.service.ServiceMemoSettingsService;
 import org.school.personalLoad.service.HrDocumentService;
+import org.school.personalLoad.service.LoadSalaryCalculationService;
 import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -69,6 +70,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     private final ServiceMemoSettingsService serviceMemoSettingsService;
     private final EmploymentContractRepository employmentContractRepository;
     private final HrDocumentService hrDocumentService;
+    private final LoadSalaryCalculationService loadSalaryCalculationService;
 
     @Override
     @Transactional(readOnly = true)
@@ -318,7 +320,10 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                         .fioTeacher(row.getFioTeacher())
                         .subjectName(row.getSubjectName())
                         .className(row.getClassName())
-                        .load(row.getLoad())
+                        .load(loadSalaryCalculationService.totalHours(row).intValue())
+                        .includedInRateHours(loadSalaryCalculationService.includedHours(row))
+                        .paidHours(loadSalaryCalculationService.paidHours(row))
+                        .inRateReason(row.getInRateReason())
                         .status(resolveStatus(aggregate, row))
                         .build())
                 .toList();
@@ -1127,6 +1132,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         row.setNumberSchoolBuilding(source.getNumberSchoolBuilding());
         row.setSchoolBuildingId(source.getSchoolBuildingId());
         row.setContinuityStatus(source.getContinuityStatus());
+        row.setEmploymentContractId(source.getEmploymentContractId());
+        row.setIncludedInRateHours(source.getIncludedInRateHours());
+        row.setInRateAllocationConfirmed(source.isInRateAllocationConfirmed());
+        row.setInRateReason(source.getInRateReason());
+        row.setInRateUpdatedAt(source.getInRateUpdatedAt());
+        row.setInRateUpdatedBy(source.getInRateUpdatedBy());
         return row;
     }
 
@@ -1343,7 +1354,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     }
 
     private int appendTable(XWPFDocument doc, List<ManualLoadEntry> rows, TeacherChangeAggregate aggregate, boolean newEmployeeMode) {
-        XWPFTable table = doc.createTable(1, newEmployeeMode ? 3 : 4);
+        XWPFTable table = doc.createTable(1, newEmployeeMode ? 5 : 6);
         return appendTableToExisting(table, rows, aggregate, newEmployeeMode);
     }
 
@@ -1353,8 +1364,8 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         table.setTableAlignment(TableRowAlign.CENTER);
 
         List<String> header = newEmployeeMode
-                ? List.of("Предмет", "Класс", "Количество часов")
-                : List.of("Предмет", "Класс", "Количество часов", "Статус");
+                ? List.of("Предмет", "Класс", "Часы всего", "Внутри ставки", "К оплате")
+                : List.of("Предмет", "Класс", "Часы всего", "Внутри ставки", "К оплате", "Статус");
         for (int i = 0; i < header.size(); i++) {
             setCellText(ensureCell(table.getRow(0), i), header.get(i), true);
         }
@@ -1363,8 +1374,14 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         for (ManualLoadEntry row : Optional.ofNullable(rows).orElseGet(List::of)) {
             if (row == null) continue;
             String status = resolveStatus(aggregate, row);
-            String key = String.join("|", safe(row.getSubjectName()), safe(row.getClassName()), String.valueOf(row.getLoad() == null ? 0 : row.getLoad()), safe(status));
-            rowsForDisplay.putIfAbsent(key, new DisplayRow(safeDocText(row.getSubjectName()), safeDocText(row.getClassName()), row.getLoad() == null ? 0 : row.getLoad(), status));
+            java.math.BigDecimal totalHours = loadSalaryCalculationService.totalHours(row);
+            java.math.BigDecimal includedHours = loadSalaryCalculationService.includedHours(row);
+            java.math.BigDecimal paidHours = loadSalaryCalculationService.paidHours(row);
+            String key = String.join("|", safe(row.getSubjectName()), safe(row.getClassName()),
+                    totalHours.toPlainString(), includedHours.toPlainString(), paidHours.toPlainString(), safe(status));
+            rowsForDisplay.putIfAbsent(key, new DisplayRow(
+                    safeDocText(row.getSubjectName()), safeDocText(row.getClassName()),
+                    totalHours, includedHours, paidHours, status));
         }
 
         int totalRemainingHours = 0;
@@ -1372,9 +1389,11 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             XWPFTableRow tr = table.createRow();
             setCellText(ensureCell(tr, 0), row.subjectName(), false);
             setCellText(ensureCell(tr, 1), row.className(), false);
-            setCellText(ensureCell(tr, 2), String.valueOf(row.load()), false);
-            if (!"Снять".equalsIgnoreCase(row.status())) totalRemainingHours += row.load();
-            if (!newEmployeeMode) setCellText(ensureCell(tr, 3), row.status(), false);
+            setCellText(ensureCell(tr, 2), formatHours(row.totalHours()), false);
+            setCellText(ensureCell(tr, 3), formatHours(row.includedHours()), false);
+            setCellText(ensureCell(tr, 4), formatHours(row.paidHours()), false);
+            if (!"Снять".equalsIgnoreCase(row.status())) totalRemainingHours += row.totalHours().intValue();
+            if (!newEmployeeMode) setCellText(ensureCell(tr, 5), row.status(), false);
         }
         return totalRemainingHours;
     }
@@ -1426,6 +1445,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         LocalDate value = Optional.ofNullable(date).orElseGet(LocalDate::now);
         int startYear = value.getMonthValue() >= 7 ? value.getYear() : value.getYear() - 1;
         return startYear + "/" + (startYear + 1);
+    }
+
+    private String formatHours(java.math.BigDecimal value) {
+        java.math.BigDecimal normalized = Optional.ofNullable(value).orElse(java.math.BigDecimal.ZERO)
+                .stripTrailingZeros();
+        return normalized.scale() < 0 ? normalized.setScale(0).toPlainString() : normalized.toPlainString();
     }
 
     private void setCellText(XWPFTableCell cell, String text, boolean bold) {
@@ -1571,6 +1596,9 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                             safe(row.getSubjectName()),
                             safe(row.getClassName()),
                             String.valueOf(row.getLoad() == null ? 0 : row.getLoad()),
+                            loadSalaryCalculationService.includedHours(row).toPlainString(),
+                            String.valueOf(row.isInRateAllocationConfirmed()),
+                            safe(row.getInRateReason()),
                             String.valueOf(row.getLoadFromDate() == null ? "" : row.getLoadFromDate()),
                             String.valueOf(row.getLoadToDate() == null ? "" : row.getLoadToDate()));
                 })
@@ -1730,6 +1758,9 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     value.put("subject", row.getSubjectName());
                     value.put("className", row.getClassName());
                     value.put("hours", row.getLoad());
+                    value.put("includedInRateHours", loadSalaryCalculationService.includedHours(row));
+                    value.put("paidHours", loadSalaryCalculationService.paidHours(row));
+                    value.put("inRateReason", row.getInRateReason());
                     value.put("validFrom", Objects.toString(row.getLoadFromDate(), ""));
                     value.put("validTo", Objects.toString(row.getLoadToDate(), ""));
                     return value;
@@ -1777,7 +1808,9 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     private record DisplayRow(
             String subjectName,
             String className,
-            int load,
+            java.math.BigDecimal totalHours,
+            java.math.BigDecimal includedHours,
+            java.math.BigDecimal paidHours,
             String status
     ) {
     }
