@@ -74,7 +74,7 @@
                     <th>Основная должность</th>
                     <th>Вид занятости</th>
                     <th>Статус</th>
-                    <th>Действия<br><span class="muted">Планируемое увольнение — доступно всем, увольнение — только с правом редактирования</span></th>
+                    <th>Действия</th>
                 </tr>
                 </thead>
                 <tbody id="teachers-table-body"></tbody>
@@ -242,6 +242,81 @@
             </section>
         </div>
     </section>
+
+    <dialog id="teacher-card-dialog" class="teacher-card-dialog">
+        <div class="dialog-hero">
+            <div>
+                <h2>Карточка сотрудника</h2>
+                <p id="teacher-card-name" class="muted"></p>
+            </div>
+            <button id="teacher-card-close" type="button">Закрыть</button>
+        </div>
+
+        <section id="teacher-contract-section">
+            <h3>Трудовой договор и учебные часы</h3>
+            <p class="muted">Здесь указывается, могут ли учебные часы входить в должностной оклад. Распределение по классам выполняется в разделе «Нагрузка по людям → Часы в ставке».</p>
+            <div class="teacher-card-contract-selector">
+                <label>Трудовой договор
+                    <select id="teacher-contract-select"></select>
+                </label>
+            </div>
+            <form id="teacher-contract-form">
+                <div class="teacher-card-grid">
+                    <label>Номер договора<input id="teacher-contract-number" required></label>
+                    <label>Дата договора<input id="teacher-contract-date" type="date" required></label>
+                    <label>Должность<input id="teacher-contract-position" required></label>
+                    <label>Начало работы<input id="teacher-contract-start" type="date"></label>
+                    <label>Окончание<input id="teacher-contract-end" type="date"></label>
+                    <label>Статус
+                        <span class="teacher-card-checks">
+                            <label><input id="teacher-contract-primary" type="checkbox"> Основной</label>
+                            <label><input id="teacher-contract-active" type="checkbox"> Действует</label>
+                        </span>
+                    </label>
+                    <label class="teacher-card-wide">Учебные часы могут входить в ставку
+                        <select id="teacher-contract-in-rate">
+                            <option value="false">Нет — все часы оплачиваются отдельно</option>
+                            <option value="true">Да — часть часов входит в должностной оклад</option>
+                        </select>
+                    </label>
+                    <label class="teacher-card-wide teacher-in-rate-field">Правило часов в ставке
+                        <select id="teacher-contract-in-rate-rule"></select>
+                    </label>
+                    <label class="teacher-card-wide teacher-in-rate-field">Формулировка для документов
+                        <input id="teacher-contract-in-rate-label" placeholder="Например: преподаватель ОБЗР">
+                    </label>
+                </div>
+                <div class="dialog-actions">
+                    <span id="teacher-contract-feedback" class="muted" role="status"></span>
+                    <button id="teacher-contract-save" type="submit">Сохранить договор</button>
+                </div>
+            </form>
+        </section>
+
+        <hr>
+
+        <section>
+            <h3>Кадровые действия</h3>
+            <div class="teacher-card-grid">
+                <label>Планируемая дата увольнения<input id="teacher-card-plan-date" type="date"></label>
+                <label>Комментарий<input id="teacher-card-plan-comment"></label>
+                <label>Фактическая дата увольнения<input id="teacher-card-dismiss-date" type="date"></label>
+            </div>
+            <div class="teacher-card-action-groups">
+                <div>
+                    <button id="teacher-card-save-plan" type="button">Сохранить план</button>
+                    <button id="teacher-card-cancel-plan" type="button">Отменить план</button>
+                    <button id="teacher-card-dismiss" type="button">Уволить</button>
+                    <button id="teacher-card-restore" type="button">Восстановить</button>
+                </div>
+                <div>
+                    <button id="teacher-card-archive" type="button">В архив</button>
+                    <button id="teacher-card-delete" class="danger-btn" type="button">Удалить сотрудника</button>
+                </div>
+            </div>
+            <p id="teacher-card-feedback" class="muted" role="status"></p>
+        </section>
+    </dialog>
 
     <dialog id="teacher-1c-dialog" class="teacher-1c-dialog">
         <form method="dialog">

@@ -86,6 +86,14 @@ public class LoadInRateSchemaInitializer implements ApplicationRunner {
     }
 
     private void migrateMckoGradeBand() {
+        jdbcTemplate.execute("ALTER TABLE mcko_subject_mapping ADD COLUMN IF NOT EXISTS ignored boolean DEFAULT false");
+        jdbcTemplate.execute("UPDATE mcko_subject_mapping SET ignored = false WHERE ignored IS NULL");
+        jdbcTemplate.execute("ALTER TABLE mcko_subject_mapping ALTER COLUMN ignored SET DEFAULT false");
+        jdbcTemplate.execute("ALTER TABLE mcko_subject_mapping ALTER COLUMN ignored SET NOT NULL");
+        jdbcTemplate.execute("ALTER TABLE mcko_subject_mapping ADD COLUMN IF NOT EXISTS created_at timestamp DEFAULT now()");
+        jdbcTemplate.execute("UPDATE mcko_subject_mapping SET created_at = now() WHERE created_at IS NULL");
+        jdbcTemplate.execute("ALTER TABLE mcko_subject_mapping ALTER COLUMN created_at SET DEFAULT now()");
+        jdbcTemplate.execute("ALTER TABLE mcko_subject_mapping ALTER COLUMN created_at SET NOT NULL");
         jdbcTemplate.execute("ALTER TABLE mcko_subject_mapping ADD COLUMN IF NOT EXISTS grade_band varchar(32) DEFAULT 'ALL'");
         jdbcTemplate.execute("UPDATE mcko_subject_mapping SET grade_band = 'ALL' WHERE grade_band IS NULL OR btrim(grade_band) = ''");
         jdbcTemplate.execute("ALTER TABLE mcko_subject_mapping ALTER COLUMN grade_band SET DEFAULT 'ALL'");

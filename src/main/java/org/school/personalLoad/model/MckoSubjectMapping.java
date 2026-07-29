@@ -37,9 +37,9 @@ public class MckoSubjectMapping {
     @Column(name = "grade_band", nullable = false, columnDefinition = "varchar(32) default 'ALL'")
     private String gradeBand = "ALL";
 
-    @Column(name = "ignored", nullable = false)
+    @Column(name = "ignored", nullable = false, columnDefinition = "boolean default false")
     private boolean ignored;
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "created_at", nullable = false, columnDefinition = "timestamp default now()")
     private LocalDateTime createdAt = LocalDateTime.now();
 }

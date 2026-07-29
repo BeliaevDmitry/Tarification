@@ -10,13 +10,23 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TeacherDismissalFrontendTest {
 
     @Test
-    void dismissalActionsUseDismissalPermissionAndExposeCancellation() throws Exception {
+    void personnelRowsStayCompactAndEmployeeCardContainsContractsAndDismissalActions() throws Exception {
+        String html = Files.readString(Path.of("src/main/resources/static/teachers.html"));
         String js = Files.readString(Path.of("src/main/resources/static/teachers.js"));
+        String css = Files.readString(Path.of("src/main/resources/static/styles.css"));
         String filter = Files.readString(Path.of("src/main/java/org/school/personalLoad/config/auth/AuthFilter.java"));
 
-        assertTrue(js.contains("if (!canEditTeacherPermission(\"TEACHERS_DISMISSALS\"))"));
+        assertTrue(html.contains("id=\"teacher-card-dialog\""));
+        assertTrue(html.contains("Учебные часы могут входить в ставку"));
+        assertTrue(html.contains("id=\"teacher-contract-in-rate-rule\""));
+        assertTrue(html.contains("id=\"teacher-contract-in-rate-label\""));
+        assertTrue(html.contains("id=\"teacher-card-cancel-plan\""));
+        assertTrue(js.contains("class=\"teacher-row-actions\""));
+        assertTrue(js.contains("/api/hr-documents/contracts?teacherId="));
+        assertTrue(js.contains("loadHoursMayBeIncludedInRate: ui.teacherContractInRate.value === \"true\""));
         assertTrue(js.contains("cancel-plan-dismiss"));
-        assertTrue(js.contains(">Передумал</button>"));
+        assertTrue(css.contains("#teachers-main-panel .teachers-table td > input"));
+        assertTrue(css.contains("height: 42px"));
         assertTrue(filter.contains("plan-dismiss|cancel-plan-dismiss|dismiss|restore"));
     }
 }

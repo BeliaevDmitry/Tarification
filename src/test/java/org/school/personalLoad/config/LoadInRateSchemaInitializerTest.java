@@ -20,12 +20,17 @@ class LoadInRateSchemaInitializerTest {
         assertTrue(java.contains("SET in_rate_allocation_confirmed = false WHERE in_rate_allocation_confirmed IS NULL"));
         assertTrue(java.contains("ADD COLUMN IF NOT EXISTS load_hours_may_be_included_in_rate boolean DEFAULT false"));
         assertTrue(java.contains("SET load_hours_may_be_included_in_rate = false WHERE load_hours_may_be_included_in_rate IS NULL"));
+        assertTrue(java.contains("ADD COLUMN IF NOT EXISTS ignored boolean DEFAULT false"));
+        assertTrue(java.contains("SET ignored = false WHERE ignored IS NULL"));
+        assertTrue(java.contains("ADD COLUMN IF NOT EXISTS created_at timestamp DEFAULT now()"));
         assertTrue(java.contains("ADD COLUMN IF NOT EXISTS grade_band varchar(32) DEFAULT 'ALL'"));
         assertTrue(java.contains("CREATE TABLE IF NOT EXISTS load_in_rate_rule"));
         assertTrue(java.contains("CREATE TABLE IF NOT EXISTS load_in_rate_rule_band"));
         assertTrue(sql.startsWith("BEGIN;"));
         assertTrue(sql.contains("UPDATE manual_load_entry"));
         assertTrue(sql.contains("UPDATE employment_contract"));
+        assertTrue(sql.contains("UPDATE mcko_subject_mapping"));
+        assertTrue(sql.contains("ALTER COLUMN ignored SET NOT NULL"));
         assertTrue(sql.endsWith("COMMIT;\n"));
     }
 }
