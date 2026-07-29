@@ -664,7 +664,8 @@ function renderInRateOverview() {
             html += `<td>${first ? `<b>${escapeHtml(row.fio)}</b><br>№ ${escapeHtml(row.contractNumber)} · ${escapeHtml(row.positionName)}
                 <br><span class="muted">Всего ${escapeHtml(formatNumber(teacher?.totalHoursH1))}/${escapeHtml(formatNumber(teacher?.totalHoursH2))};
                 в ставке ${escapeHtml(formatNumber(teacher?.includedHoursH1))}/${escapeHtml(formatNumber(teacher?.includedHoursH2))};
-                к оплате ${escapeHtml(formatNumber(teacher?.paidHoursH1))}/${escapeHtml(formatNumber(teacher?.paidHoursH2))}</span>` : ""}</td>`;
+                к оплате ${escapeHtml(formatNumber(teacher?.paidHoursH1))}/${escapeHtml(formatNumber(teacher?.paidHoursH2))}
+                ${teacher?.suggestedRateFraction != null ? `; по правилу — ${escapeHtml(formatNumber(teacher.suggestedRateFraction))} ставки` : ""}</span>` : ""}</td>`;
             html += `<td>${escapeHtml(row.subject)}</td><td>${escapeHtml([row.className, row.groupName].filter(Boolean).join(" "))}</td>`;
             html += `<td>${escapeHtml(row.studyPeriod === "H1" ? "1П" : row.studyPeriod === "H2" ? "2П" : "ГОД")}</td>`;
             html += `<td>${escapeHtml(formatNumber(row.totalHours))}</td>`;

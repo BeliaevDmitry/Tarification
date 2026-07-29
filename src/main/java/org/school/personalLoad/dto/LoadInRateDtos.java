@@ -98,6 +98,7 @@ public final class LoadInRateDtos {
             BigDecimal paidHoursH1,
             BigDecimal paidHoursH2,
             BigDecimal suggestedIncludedHours,
+            BigDecimal suggestedRateFraction,
             boolean complete,
             int unresolvedRows
     ) {

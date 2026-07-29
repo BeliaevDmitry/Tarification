@@ -13,16 +13,10 @@ const ui = {
     oneCCancel: document.getElementById("teacher-1c-cancel"),
     oneCApply: document.getElementById("teacher-1c-apply"),
     downloadBtn: document.getElementById("download-teachers-template-btn"),
-    createForm: document.getElementById("teacher-create-form"),
-    fioInput: document.getElementById("teacher-fio"),
+    acceptTeacherBtn: document.getElementById("accept-teacher-btn"),
+    autoAssignBuildingsBtn: document.getElementById("auto-assign-buildings-btn"),
     refreshBtn: document.getElementById("refresh-teachers-btn"),
     clearBtn: document.getElementById("clear-teachers-btn"),
-    initialsCreate: document.getElementById("teacher-initials-create"),
-    dativeCreate: document.getElementById("teacher-dative-create"),
-    phoneCreate: document.getElementById("teacher-phone-create"),
-    emailCreate: document.getElementById("teacher-email-create"),
-    dutiesCreate: document.getElementById("teacher-duties-create"),
-    buildingCreate: document.getElementById("teacher-building-create"),
     personnelPanel: document.getElementById("teachers-personnel-panel"),
     contentCard: document.getElementById("teachers-content-card"),
     sectionTitle: document.getElementById("teachers-section-title"),
@@ -34,6 +28,14 @@ const ui = {
     salarySettingsForm: document.getElementById("salary-settings-form"),
     salaryStudentHourRate: document.getElementById("salary-student-hour-rate"),
     salarySettingsStatus: document.getElementById("salary-settings-status"),
+    settingsInRateRulesList: document.getElementById("settings-in-rate-rules-list"),
+    settingsNewRulePosition: document.getElementById("settings-new-rule-position"),
+    settingsNewRuleLabel: document.getElementById("settings-new-rule-label"),
+    settingsNewRuleMin: document.getElementById("settings-new-rule-min"),
+    settingsNewRuleMax: document.getElementById("settings-new-rule-max"),
+    settingsNewRuleIncluded: document.getElementById("settings-new-rule-included"),
+    settingsNewRuleFraction: document.getElementById("settings-new-rule-fraction"),
+    settingsAddInRateRuleBtn: document.getElementById("settings-add-in-rate-rule-btn"),
     coefficientsPanel: document.getElementById("teachers-coefficients-panel"),
     groupCoefficientsPanel: document.getElementById("teachers-group-coefficients-panel"),
     coefficientFileInput: document.getElementById("coefficient-file"),
@@ -97,7 +99,61 @@ const ui = {
     teacherCardRestore: document.getElementById("teacher-card-restore"),
     teacherCardArchive: document.getElementById("teacher-card-archive"),
     teacherCardDelete: document.getElementById("teacher-card-delete"),
-    teacherCardFeedback: document.getElementById("teacher-card-feedback")
+    teacherCardFeedback: document.getElementById("teacher-card-feedback"),
+    teacherCardMainForm: document.getElementById("teacher-card-main-form"),
+    teacherCardFio: document.getElementById("teacher-card-fio"),
+    teacherCardInitials: document.getElementById("teacher-card-initials"),
+    teacherCardDative: document.getElementById("teacher-card-dative"),
+    teacherCardPhone: document.getElementById("teacher-card-phone"),
+    teacherCardEmail: document.getElementById("teacher-card-email"),
+    teacherCardBuilding: document.getElementById("teacher-card-building"),
+    teacherCardPrimaryPosition: document.getElementById("teacher-card-primary-position"),
+    teacherCardEmploymentType: document.getElementById("teacher-card-employment-type"),
+    teacherCardEmploymentDate: document.getElementById("teacher-card-employment-date"),
+    teacherCardDataSheet: document.getElementById("teacher-card-data-sheet"),
+    teacherPersonalSection: document.getElementById("teacher-personal-section"),
+    teacherPersonalDivider: document.getElementById("teacher-personal-divider"),
+    teacherPersonalForm: document.getElementById("teacher-personal-form"),
+    teacherPersonalBirthDate: document.getElementById("teacher-personal-birth-date"),
+    teacherPersonalPhone: document.getElementById("teacher-personal-phone"),
+    teacherPersonalPassportSeries: document.getElementById("teacher-personal-passport-series"),
+    teacherPersonalPassportNumber: document.getElementById("teacher-personal-passport-number"),
+    teacherPersonalPassportIssuedBy: document.getElementById("teacher-personal-passport-issued-by"),
+    teacherPersonalPassportIssueDate: document.getElementById("teacher-personal-passport-issue-date"),
+    teacherPersonalPassportCode: document.getElementById("teacher-personal-passport-code"),
+    teacherPersonalRegistration: document.getElementById("teacher-personal-registration"),
+    teacherPersonalActual: document.getElementById("teacher-personal-actual"),
+    teacherPersonalInn: document.getElementById("teacher-personal-inn"),
+    teacherPersonalSnils: document.getElementById("teacher-personal-snils"),
+    acceptTeacherDialog: document.getElementById("accept-teacher-dialog"),
+    acceptTeacherForm: document.getElementById("accept-teacher-form"),
+    acceptTeacherClose: document.getElementById("accept-teacher-close"),
+    acceptTeacherCancel: document.getElementById("accept-teacher-cancel"),
+    acceptVacancy: document.getElementById("accept-vacancy"),
+    acceptFio: document.getElementById("accept-fio"),
+    acceptPhone: document.getElementById("accept-phone"),
+    acceptEmail: document.getElementById("accept-email"),
+    acceptBuilding: document.getElementById("accept-building"),
+    acceptPosition: document.getElementById("accept-position"),
+    acceptEmploymentType: document.getElementById("accept-employment-type"),
+    acceptEmploymentDate: document.getElementById("accept-employment-date"),
+    acceptBirthDate: document.getElementById("accept-birth-date"),
+    acceptSnils: document.getElementById("accept-snils"),
+    acceptInn: document.getElementById("accept-inn"),
+    acceptPassportSeries: document.getElementById("accept-passport-series"),
+    acceptPassportNumber: document.getElementById("accept-passport-number"),
+    acceptPassportIssuedBy: document.getElementById("accept-passport-issued-by"),
+    acceptPassportIssueDate: document.getElementById("accept-passport-issue-date"),
+    acceptPassportCode: document.getElementById("accept-passport-code"),
+    acceptRegistrationAddress: document.getElementById("accept-registration-address"),
+    acceptActualAddress: document.getElementById("accept-actual-address"),
+    acceptContractNumber: document.getElementById("accept-contract-number"),
+    acceptContractDate: document.getElementById("accept-contract-date"),
+    acceptContractStart: document.getElementById("accept-contract-start"),
+    acceptContractEnd: document.getElementById("accept-contract-end"),
+    acceptInRate: document.getElementById("accept-in-rate"),
+    acceptInRateRule: document.getElementById("accept-in-rate-rule"),
+    acceptTeacherFeedback: document.getElementById("accept-teacher-feedback")
 };
 let buildings = [];
 let groupCoefficientSubjectCatalog = [];
@@ -110,6 +166,8 @@ let oneCPreview = null;
 let oneCPreviewFile = null;
 let teacherCardContracts = [];
 let teacherCardInRateRules = [];
+let teacherPositions = [];
+let teacherVacancies = [];
 let editingMckoCertificateId = null;
 let mckoCertificateSort = { key: "teacherFio", ascending: true };
 const PRIMARY_MCKO_SUBJECT = "Метапредметные умения (начальное образование)";
@@ -155,6 +213,19 @@ function canEditEmploymentContracts() {
     const currentUser = currentAuthUser();
     if (currentUser?.admin) return true;
     return Boolean((window.tarificationTabPermissions || {}).HR_DOCUMENTS?.canEdit);
+}
+
+function canViewPersonalData() {
+    const currentUser = currentAuthUser();
+    if (currentUser?.admin) return true;
+    const permission = (window.tarificationTabPermissions || {}).HR_PERSONAL_DATA;
+    return Boolean(permission?.canView || permission?.canEdit);
+}
+
+function canEditPersonalData() {
+    const currentUser = currentAuthUser();
+    if (currentUser?.admin) return true;
+    return Boolean((window.tarificationTabPermissions || {}).HR_PERSONAL_DATA?.canEdit);
 }
 
 function canEditTeachers() {
@@ -333,7 +404,9 @@ function renderTeacherContractForm(contract = null) {
     const teacher = selectedTeacherCardRow();
     ui.teacherContractNumber.value = contract?.contractNumber || "";
     ui.teacherContractDate.value = contract?.contractDate || "";
-    ui.teacherContractPosition.value = contract?.positionName || teacher?.primaryPosition || "";
+    const selectedPosition = contract?.positionName || teacher?.primaryPosition || "";
+    ui.teacherContractPosition.innerHTML = positionOptions(selectedPosition);
+    ui.teacherContractPosition.value = selectedPosition;
     ui.teacherContractStart.value = contract?.startDate || "";
     ui.teacherContractEnd.value = contract?.endDate || "";
     ui.teacherContractPrimary.checked = contract?.primaryContract !== false;
@@ -342,7 +415,8 @@ function renderTeacherContractForm(contract = null) {
     ui.teacherContractInRateRule.innerHTML = [
         '<option value="">Без автоматического правила</option>',
         ...teacherCardInRateRules
-            .filter((rule) => rule.active || String(rule.id) === String(contract?.loadInRateRuleId || ""))
+            .filter((rule) => (rule.active && (!selectedPosition || rule.name === selectedPosition))
+                || String(rule.id) === String(contract?.loadInRateRuleId || ""))
             .map((rule) => `<option value="${escapeHtml(rule.id)}" ${String(rule.id) === String(contract?.loadInRateRuleId || "") ? "selected" : ""}>${escapeHtml(rule.name || "")}</option>`)
     ].join("");
     ui.teacherContractInRateLabel.value = contract?.loadInRateDocumentLabel || "";
@@ -372,6 +446,35 @@ async function openTeacherCard(teacherId, preferredContractId = null) {
     ui.teacherCardPlanComment.value = teacher.plannedDismissalComment || "";
     ui.teacherCardDismissDate.value = teacher.dismissalDate || "";
     ui.teacherCardFeedback.textContent = "";
+    ui.teacherCardFio.value = teacher.fioTeacher || "";
+    ui.teacherCardInitials.value = teacher.initials || "";
+    ui.teacherCardDative.value = teacher.fioTeacherDative || "";
+    ui.teacherCardPhone.value = teacher.phone || "";
+    ui.teacherCardEmail.value = teacher.email || "";
+    ui.teacherCardBuilding.innerHTML = renderBuildingOptions(teacher.numberSchoolBuilding);
+    ui.teacherCardPrimaryPosition.value = teacher.primaryPosition || "";
+    ui.teacherCardEmploymentType.value = teacher.employmentType || "";
+    ui.teacherCardEmploymentDate.value = teacher.employmentDate || "";
+    const canViewPersonal = canViewPersonalData();
+    ui.teacherPersonalSection.hidden = !canViewPersonal;
+    ui.teacherPersonalDivider.hidden = !canViewPersonal;
+    if (canViewPersonal) {
+        const personal = await api(`/api/hr-documents/personal-data/${teacher.id}`).catch(() => null);
+        ui.teacherPersonalBirthDate.value = personal?.birthDate || "";
+        ui.teacherPersonalPhone.value = personal?.phone || teacher.phone || "";
+        ui.teacherPersonalPassportSeries.value = personal?.passportSeries || "";
+        ui.teacherPersonalPassportNumber.value = personal?.passportNumber || "";
+        ui.teacherPersonalPassportIssuedBy.value = personal?.passportIssuedBy || "";
+        ui.teacherPersonalPassportIssueDate.value = personal?.passportIssueDate || "";
+        ui.teacherPersonalPassportCode.value = personal?.passportDepartmentCode || "";
+        ui.teacherPersonalRegistration.value = personal?.registrationAddress || "";
+        ui.teacherPersonalActual.value = personal?.actualAddress || "";
+        ui.teacherPersonalInn.value = personal?.inn || "";
+        ui.teacherPersonalSnils.value = personal?.snils || "";
+        ui.teacherPersonalForm.querySelectorAll("input, button").forEach((element) => {
+            element.disabled = !canEditPersonalData();
+        });
+    }
 
     const canEditDismissals = canEditTeacherPermission("TEACHERS_DISMISSALS");
     ui.teacherCardSavePlan.disabled = !canEditDismissals || Boolean(teacher.dismissalDate);
@@ -408,6 +511,68 @@ async function openTeacherCard(teacherId, preferredContractId = null) {
         setTeacherContractFormAccess();
     }
     if (!ui.teacherCardDialog.open) ui.teacherCardDialog.showModal();
+}
+
+function positionOptions(selected = "") {
+    const values = new Set((teacherPositions || []).filter(Boolean));
+    if (selected) values.add(selected);
+    return ['<option value="">Должность не выбрана</option>',
+        ...Array.from(values).sort((a, b) => a.localeCompare(b, "ru"))
+            .map((value) => `<option value="${escapeHtml(value)}" ${value === selected ? "selected" : ""}>${escapeHtml(value)}</option>`)
+    ].join("");
+}
+
+async function saveTeacherCardMain(event) {
+    event.preventDefault();
+    const teacher = selectedTeacherCardRow();
+    if (!teacher) return;
+    await api(`/api/teachers/${teacher.id}`, {
+        method: "PATCH",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+            fioTeacher: ui.teacherCardFio.value.trim(),
+            initials: ui.teacherCardInitials.value.trim(),
+            fioTeacherDative: ui.teacherCardDative.value.trim(),
+            phone: ui.teacherCardPhone.value.trim(),
+            email: ui.teacherCardEmail.value.trim(),
+            numberSchoolBuilding: ui.teacherCardBuilding.value,
+            primaryPosition: ui.teacherCardPrimaryPosition.value.trim(),
+            employmentType: ui.teacherCardEmploymentType.value.trim(),
+            employmentDate: ui.teacherCardEmploymentDate.value || null
+        })
+    });
+    await refreshTeacherCardAfterAction(teacher.id, "Данные сотрудника сохранены.");
+}
+
+function downloadTeacherDataSheet() {
+    const teacher = selectedTeacherCardRow();
+    if (teacher) window.location.href = `/api/teachers/${teacher.id}/data-sheet`;
+}
+
+async function saveTeacherPersonalData(event) {
+    event.preventDefault();
+    if (!canEditPersonalData()) return;
+    const teacher = selectedTeacherCardRow();
+    if (!teacher) return;
+    await api(`/api/hr-documents/personal-data/${teacher.id}`, {
+        method: "PUT",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+            teacherId: teacher.id,
+            birthDate: ui.teacherPersonalBirthDate.value || null,
+            passportSeries: ui.teacherPersonalPassportSeries.value.trim(),
+            passportNumber: ui.teacherPersonalPassportNumber.value.trim(),
+            passportIssuedBy: ui.teacherPersonalPassportIssuedBy.value.trim(),
+            passportIssueDate: ui.teacherPersonalPassportIssueDate.value || null,
+            passportDepartmentCode: ui.teacherPersonalPassportCode.value.trim(),
+            registrationAddress: ui.teacherPersonalRegistration.value.trim(),
+            actualAddress: ui.teacherPersonalActual.value.trim(),
+            phone: ui.teacherPersonalPhone.value.trim(),
+            inn: ui.teacherPersonalInn.value.trim(),
+            snils: ui.teacherPersonalSnils.value.trim()
+        })
+    });
+    ui.teacherCardFeedback.textContent = "Персональные данные сохранены.";
 }
 
 async function saveTeacherCardContract(event) {
@@ -515,45 +680,39 @@ function renderTeachers(rows) {
             const tr = document.createElement("tr");
             if (row.dismissalDate) tr.classList.add("dismissal-row");
             tr.innerHTML = `
-                <td><input class="teacher-fio-input" data-id="${row.id}" value="${escapeHtml(row.fioTeacher || "")}" placeholder="ФИО"></td>
-                <td><input class="teacher-initials-input" data-id="${row.id}" value="${escapeHtml(row.initials || "")}" placeholder="ФИО (инициалы)"></td>
-                <td>
-                    <input class="teacher-dative-input" data-id="${row.id}" value="${escapeHtml(row.fioTeacherDative || "")}" placeholder="Дательный падеж">
-                </td>
-                <td><input class="teacher-phone-input" data-id="${row.id}" value="${escapeHtml(row.phone || "")}" placeholder="+7 ..."></td>
-                <td><input class="teacher-email-input" data-id="${row.id}" value="${escapeHtml(row.email || "")}" placeholder="email"></td>
-                <td><input class="teacher-duties-input" data-id="${row.id}" value="${escapeHtml(row.additionalDuties || "")}" placeholder="Доп. обязанности"></td>
+                <td><b>${escapeHtml(row.fioTeacher || "")}</b></td>
+                <td>${escapeHtml(row.phone || "—")}</td>
+                <td>${escapeHtml(row.email || "—")}</td>
+                <td class="teacher-duty-summary">${escapeHtml(row.additionalDutiesSummary || "Нет действующих назначений")}</td>
                 <td><select class="teacher-building-input" data-id="${row.id}">${renderBuildingOptions(row.numberSchoolBuilding)}</select></td>
                 <td>${escapeHtml(row.primaryPosition || "—")}</td>
                 <td>${escapeHtml(row.employmentType || "—")}</td>
                 <td>${escapeHtml(statusLabel(row))}</td>
                 <td>
                     <div class="teacher-row-actions">
-                        <button type="button" class="save-teacher-btn" data-id="${row.id}">Сохранить</button>
                         <button type="button" class="open-teacher-card-btn" data-id="${row.id}">Карточка сотрудника</button>
                     </div>
                 </td>`;
             ui.tbody.appendChild(tr);
         });
 
-    ui.tbody.querySelectorAll(".save-teacher-btn").forEach((btn) => {
-        btn.addEventListener("click", async () => {
-            const id = btn.dataset.id;
-            const fioTeacher = (ui.tbody.querySelector(`.teacher-fio-input[data-id="${id}"]`)?.value || "").trim();
-            const initials = (ui.tbody.querySelector(`.teacher-initials-input[data-id="${id}"]`)?.value || "").trim();
-            const input = ui.tbody.querySelector(`.teacher-dative-input[data-id="${id}"]`);
-            const fioTeacherDative = (input?.value || "").trim();
-            const phone = (ui.tbody.querySelector(`.teacher-phone-input[data-id="${id}"]`)?.value || "").trim();
-            const email = (ui.tbody.querySelector(`.teacher-email-input[data-id="${id}"]`)?.value || "").trim();
-            const additionalDuties = (ui.tbody.querySelector(`.teacher-duties-input[data-id="${id}"]`)?.value || "").trim();
-            const numberSchoolBuilding = (ui.tbody.querySelector(`.teacher-building-input[data-id="${id}"]`)?.value || "").trim();
+    ui.tbody.querySelectorAll(".teacher-building-input").forEach((select) => {
+        select.addEventListener("change", async () => {
+            const row = teacherRows.find((item) => String(item.id) === String(select.dataset.id));
+            if (!row) return;
             try {
-                const result = await api(`/api/teachers/${id}`, {
+                await api(`/api/teachers/${row.id}`, {
                     method: "PATCH",
                     headers: jsonHeaders,
-                    body: JSON.stringify({ fioTeacher, fioTeacherDative, initials, phone, email, additionalDuties, numberSchoolBuilding })
+                    body: JSON.stringify({
+                        fioTeacher: row.fioTeacher,
+                        fioTeacherDative: row.fioTeacherDative,
+                        initials: row.initials,
+                        phone: row.phone,
+                        email: row.email,
+                        numberSchoolBuilding: select.value
+                    })
                 });
-                print(result);
                 await loadTeachers();
             } catch (error) {
                 print({ error: error.message });
@@ -675,10 +834,14 @@ function renderTeachers(rows) {
 }
 
 async function loadTeachers() {
-    const [rows, archivedRows] = await Promise.all([
-        api('/api/teachers'),
-        api('/api/teachers/archive')
+    const [rows, archivedRows, positions, vacancies] = await Promise.all([
+        api(mckoAcademicYearPath('/api/teachers')),
+        api('/api/teachers/archive'),
+        api('/api/teachers/positions'),
+        api('/api/teachers/vacancies')
     ]);
+    teacherPositions = positions || [];
+    teacherVacancies = vacancies || [];
     teacherRows = rows || [];
     renderTeachers(rows || []);
     renderDismissals(rows || []);
@@ -1231,29 +1394,84 @@ function downloadTeachers() {
     window.location.href = '/api/teachers/export';
 }
 
-async function createTeacher(e) {
-    e.preventDefault();
-    const fioTeacher = (ui.fioInput.value || '').trim();
-    const initials = (ui.initialsCreate.value || '').trim();
-    const fioTeacherDative = (ui.dativeCreate.value || '').trim();
-    const phone = (ui.phoneCreate.value || '').trim();
-    const email = (ui.emailCreate.value || '').trim();
-    const additionalDuties = (ui.dutiesCreate.value || '').trim();
-    const numberSchoolBuilding = (ui.buildingCreate.value || '').trim();
-    if (!fioTeacher) return;
+function renderAcceptTeacherDialog() {
+    ui.acceptTeacherForm.reset();
+    ui.acceptTeacherFeedback.textContent = "";
+    ui.acceptVacancy.innerHTML = [
+        '<option value="">Нет — создать нового сотрудника</option>',
+        ...teacherVacancies
+            .filter((row) => String(row.fioTeacher || "").trim().toLowerCase() !== "вакансия")
+            .map((row) => `<option value="${escapeHtml(row.id)}">${escapeHtml(row.fioTeacher)} · ID ${escapeHtml(row.id)}</option>`)
+    ].join("");
+    ui.acceptBuilding.innerHTML = renderBuildingOptions("");
+    ui.acceptPosition.innerHTML = positionOptions("");
+    ui.acceptInRateRule.innerHTML = '<option value="">Выберите правило после должности</option>';
+    ui.acceptTeacherDialog.querySelectorAll(".accept-in-rate-field").forEach((field) => field.hidden = true);
+    ui.acceptTeacherDialog.showModal();
+}
 
-    try {
-        const result = await api('/api/teachers', {
-            method: 'POST',
-            headers: jsonHeaders,
-            body: JSON.stringify({ fioTeacher, fioTeacherDative, initials, phone, email, additionalDuties, numberSchoolBuilding })
-        });
-        print(result);
-        ui.createForm.reset();
-        await loadTeachers();
-    } catch (error) {
-        print({ error: error.message });
-    }
+function refreshAcceptRuleOptions() {
+    const position = ui.acceptPosition.value;
+    const matches = teacherCardInRateRules.filter((rule) => rule.active && rule.name === position);
+    ui.acceptInRateRule.innerHTML = [
+        '<option value="">Без автоматического правила</option>',
+        ...matches.map((rule) => `<option value="${escapeHtml(rule.id)}">${escapeHtml(rule.name)}</option>`)
+    ].join("");
+    if (matches.length === 1) ui.acceptInRateRule.value = String(matches[0].id);
+}
+
+async function acceptTeacher(event) {
+    event.preventDefault();
+    ui.acceptTeacherFeedback.textContent = "Сохраняю карточку и связи…";
+    const result = await api("/api/teachers/accept", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+            vacancyTeacherId: ui.acceptVacancy.value ? Number(ui.acceptVacancy.value) : null,
+            fioTeacher: ui.acceptFio.value.trim(),
+            phone: ui.acceptPhone.value.trim(),
+            email: ui.acceptEmail.value.trim(),
+            numberSchoolBuilding: ui.acceptBuilding.value,
+            primaryPosition: ui.acceptPosition.value,
+            employmentType: ui.acceptEmploymentType.value.trim(),
+            employmentDate: ui.acceptEmploymentDate.value || null,
+            birthDate: ui.acceptBirthDate.value || null,
+            passportSeries: ui.acceptPassportSeries.value.trim(),
+            passportNumber: ui.acceptPassportNumber.value.trim(),
+            passportIssuedBy: ui.acceptPassportIssuedBy.value.trim(),
+            passportIssueDate: ui.acceptPassportIssueDate.value || null,
+            passportDepartmentCode: ui.acceptPassportCode.value.trim(),
+            registrationAddress: ui.acceptRegistrationAddress.value.trim(),
+            actualAddress: ui.acceptActualAddress.value.trim(),
+            inn: ui.acceptInn.value.trim(),
+            snils: ui.acceptSnils.value.trim(),
+            contractNumber: ui.acceptContractNumber.value.trim(),
+            contractDate: ui.acceptContractDate.value || null,
+            contractStartDate: ui.acceptContractStart.value || null,
+            contractEndDate: ui.acceptContractEnd.value || null,
+            loadHoursMayBeIncludedInRate: ui.acceptInRate.value === "true",
+            loadInRateRuleId: ui.acceptInRateRule.value ? Number(ui.acceptInRateRule.value) : null
+        })
+    });
+    ui.acceptTeacherDialog.close();
+    await loadTeachers();
+    await openTeacherCard(result.teacherId);
+    ui.teacherCardFeedback.textContent = result.linkedToVacancy
+        ? `Сотрудник принят. Запись «${result.previousName}» сохранена под тем же ID ${result.teacherId}.`
+        : `Сотрудник принят, ID ${result.teacherId}.`;
+}
+
+async function autoAssignBuildings() {
+    if (!window.confirm("Распределить сотрудников по корпусам по наибольшей сумме часов выбранного учебного года?")) return;
+    const result = await api(mckoAcademicYearPath("/api/teachers/auto-assign-buildings"), { method: "POST" });
+    print({
+        status: "Распределение по корпусам завершено",
+        назначено: result.assigned,
+        безИзменений: result.unchanged,
+        безНагрузки: result.skippedWithoutLoad,
+        равнаяНагрузкаВКорпусах: result.skippedTies
+    });
+    await loadTeachers();
 }
 
 async function clearTeachers() {
@@ -1421,23 +1639,126 @@ async function saveGroupCoefficientSubject(event) {
     await reloadGroupCoefficients();
 }
 
+function settingsRuleBandRow(band = {}) {
+    return `<tr data-settings-rule-band>
+        <td><input data-band-min type="number" min="0" step="0.01" value="${escapeHtml(band.minTotalHours ?? 0)}"></td>
+        <td><input data-band-max type="number" min="0" step="0.01" value="${escapeHtml(band.maxTotalHours ?? "")}"></td>
+        <td><input data-band-included type="number" min="0" step="0.01" value="${escapeHtml(band.suggestedIncludedHours ?? 0)}"></td>
+        <td><input data-band-fraction type="number" min="0" step="0.01" value="${escapeHtml(band.rateFraction ?? "")}"></td>
+        <td><button type="button" data-remove-settings-band>Удалить</button></td>
+    </tr>`;
+}
+
+function renderSettingsInRateRules() {
+    if (!ui.settingsInRateRulesList) return;
+    ui.settingsNewRulePosition.innerHTML = positionOptions("");
+    ui.settingsInRateRulesList.innerHTML = teacherCardInRateRules.map((rule) => `
+        <div class="card in-rate-rule-card" data-settings-rule="${escapeHtml(rule.id)}">
+            <div class="form-grid">
+                <label>Основная должность<select data-rule-name>${positionOptions(rule.name)}</select></label>
+                <label>Пояснение для документов<input data-rule-label value="${escapeHtml(rule.documentLabel || "")}"></label>
+                <label><input data-rule-active type="checkbox" ${rule.active ? "checked" : ""}> Правило действует</label>
+            </div>
+            <table class="sheet-table"><thead><tr>
+                <th>От часов</th><th>До часов</th><th>Максимум внутри ставки</th><th>Доля ставки</th><th></th>
+            </tr></thead><tbody data-rule-bands>${(rule.bands || []).map(settingsRuleBandRow).join("")}</tbody></table>
+            <div class="row">
+                <button type="button" data-add-settings-band>Добавить диапазон</button>
+                <button type="button" data-save-settings-rule>Сохранить</button>
+                <button type="button" class="danger-btn" data-delete-settings-rule>Удалить</button>
+            </div>
+        </div>
+    `).join("") || '<p class="muted">Правила ещё не созданы.</p>';
+}
+
+function settingsRuleRequest(card) {
+    return {
+        name: card.querySelector("[data-rule-name]").value,
+        documentLabel: card.querySelector("[data-rule-label]").value.trim(),
+        active: card.querySelector("[data-rule-active]").checked,
+        bands: Array.from(card.querySelectorAll("[data-settings-rule-band]")).map((row) => ({
+            minTotalHours: Number(row.querySelector("[data-band-min]").value || 0),
+            maxTotalHours: row.querySelector("[data-band-max]").value === "" ? null : Number(row.querySelector("[data-band-max]").value),
+            suggestedIncludedHours: Number(row.querySelector("[data-band-included]").value || 0),
+            rateFraction: row.querySelector("[data-band-fraction]").value === "" ? null : Number(row.querySelector("[data-band-fraction]").value)
+        }))
+    };
+}
+
+async function reloadSettingsInRateRules() {
+    const [rules, positions] = await Promise.all([
+        api("/api/manual-load/in-rate/rules"),
+        api("/api/teachers/positions")
+    ]);
+    teacherCardInRateRules = rules || [];
+    teacherPositions = positions || [];
+    renderSettingsInRateRules();
+}
+
+async function addSettingsInRateRule() {
+    if (!ui.settingsNewRulePosition.value) throw new Error("Выберите основную должность");
+    await api("/api/manual-load/in-rate/rules", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+            name: ui.settingsNewRulePosition.value,
+            documentLabel: ui.settingsNewRuleLabel.value.trim(),
+            active: true,
+            bands: [{
+                minTotalHours: Number(ui.settingsNewRuleMin.value || 0),
+                maxTotalHours: ui.settingsNewRuleMax.value === "" ? null : Number(ui.settingsNewRuleMax.value),
+                suggestedIncludedHours: Number(ui.settingsNewRuleIncluded.value || 0),
+                rateFraction: ui.settingsNewRuleFraction.value === "" ? null : Number(ui.settingsNewRuleFraction.value)
+            }]
+        })
+    });
+    ui.settingsNewRuleLabel.value = "";
+    await reloadSettingsInRateRules();
+}
+
 async function loadSettingsTabData(tab = teachersTabFromHash()) {
-    if (tab === "settings") await loadSalarySettings();
+    if (tab === "settings") await Promise.all([loadSalarySettings(), reloadSettingsInRateRules()]);
     if (tab === "coefficients") await reloadCoefficients();
     if (tab === "group-coefficients") await reloadGroupCoefficients();
 }
 
 function bindEvents() {
-    ui.importBtn.addEventListener('click', importTeachers);
+    ui.importBtn?.addEventListener('click', importTeachers);
     ui.oneCPreviewBtn?.addEventListener('click', previewOneCImport);
     ui.oneCApply?.addEventListener('click', applyOneCImport);
     ui.oneCClose?.addEventListener('click', () => ui.oneCDialog.close());
     ui.oneCCancel?.addEventListener('click', () => ui.oneCDialog.close());
-    ui.downloadBtn.addEventListener('click', downloadTeachers);
-    ui.createForm.addEventListener('submit', createTeacher);
-    ui.refreshBtn.addEventListener('click', () => loadTeachers().catch((e) => print({ error: e.message })));
-    ui.clearBtn.addEventListener('click', clearTeachers);
+    ui.downloadBtn?.addEventListener('click', downloadTeachers);
+    ui.refreshBtn?.addEventListener('click', () => loadTeachers().catch((e) => print({ error: e.message })));
+    ui.clearBtn?.addEventListener('click', clearTeachers);
+    ui.acceptTeacherBtn?.addEventListener("click", async () => {
+        try {
+            if (!teacherCardInRateRules.length) teacherCardInRateRules = await api("/api/manual-load/in-rate/rules") || [];
+            renderAcceptTeacherDialog();
+        } catch (error) {
+            print({ error: error.message });
+        }
+    });
+    ui.autoAssignBuildingsBtn?.addEventListener("click", () => autoAssignBuildings().catch((error) => print({ error: error.message })));
+    ui.acceptTeacherClose?.addEventListener("click", () => ui.acceptTeacherDialog.close());
+    ui.acceptTeacherCancel?.addEventListener("click", () => ui.acceptTeacherDialog.close());
+    ui.acceptTeacherForm?.addEventListener("submit", (event) => acceptTeacher(event).catch((error) => {
+        ui.acceptTeacherFeedback.textContent = error.message;
+    }));
+    ui.acceptPosition?.addEventListener("change", refreshAcceptRuleOptions);
+    ui.acceptInRate?.addEventListener("change", () => {
+        const enabled = ui.acceptInRate.value === "true";
+        ui.acceptTeacherDialog.querySelectorAll(".accept-in-rate-field").forEach((field) => field.hidden = !enabled);
+        if (enabled) refreshAcceptRuleOptions();
+    });
     ui.teacherCardClose?.addEventListener("click", () => ui.teacherCardDialog.close());
+    ui.teacherCardMainForm?.addEventListener("submit", (event) => saveTeacherCardMain(event).catch((error) => {
+        ui.teacherCardFeedback.textContent = error.message;
+    }));
+    ui.teacherPersonalForm?.addEventListener("submit", (event) => saveTeacherPersonalData(event).catch((error) => {
+        ui.teacherCardFeedback.textContent = error.message;
+    }));
+    ui.teacherCardDataSheet?.addEventListener("click", downloadTeacherDataSheet);
     ui.teacherContractSelect?.addEventListener("change", () => {
         renderTeacherContractForm(selectedTeacherContract());
         setTeacherContractFormAccess();
@@ -1447,6 +1768,22 @@ function bindEvents() {
         ui.teacherCardDialog.querySelectorAll(".teacher-in-rate-field").forEach((field) => {
             field.hidden = !enabled;
         });
+    });
+    ui.teacherContractPosition?.addEventListener("change", () => {
+        const position = ui.teacherContractPosition.value;
+        const matches = teacherCardInRateRules.filter((rule) => rule.active && rule.name === position);
+        ui.teacherContractInRateRule.innerHTML = [
+            '<option value="">Без автоматического правила</option>',
+            ...matches.map((rule) => `<option value="${escapeHtml(rule.id)}">${escapeHtml(rule.name)}</option>`)
+        ].join("");
+        if (matches.length === 1) {
+            ui.teacherContractInRateRule.value = String(matches[0].id);
+            ui.teacherContractInRateLabel.value = matches[0].documentLabel || "";
+        }
+    });
+    ui.teacherContractInRateRule?.addEventListener("change", () => {
+        const rule = teacherCardInRateRules.find((item) => String(item.id) === String(ui.teacherContractInRateRule.value));
+        ui.teacherContractInRateLabel.value = rule?.documentLabel || "";
     });
     ui.teacherContractForm?.addEventListener("submit", (event) => {
         saveTeacherCardContract(event).catch((error) => {
@@ -1471,6 +1808,30 @@ function bindEvents() {
         await loadMckoTabData(tab);
     });
     ui.salarySettingsForm?.addEventListener("submit", saveSalarySettings);
+    ui.settingsAddInRateRuleBtn?.addEventListener("click", () => addSettingsInRateRule().catch((error) => print({ error: error.message })));
+    ui.settingsInRateRulesList?.addEventListener("click", async (event) => {
+        const card = event.target.closest("[data-settings-rule]");
+        if (!card) return;
+        try {
+            if (event.target.closest("[data-add-settings-band]")) {
+                card.querySelector("[data-rule-bands]").insertAdjacentHTML("beforeend", settingsRuleBandRow());
+            } else if (event.target.closest("[data-remove-settings-band]")) {
+                event.target.closest("[data-settings-rule-band]")?.remove();
+            } else if (event.target.closest("[data-save-settings-rule]")) {
+                await api(`/api/manual-load/in-rate/rules/${card.dataset.settingsRule}`, {
+                    method: "PUT", headers: jsonHeaders, body: JSON.stringify(settingsRuleRequest(card))
+                });
+                await reloadSettingsInRateRules();
+            } else if (event.target.closest("[data-delete-settings-rule]")) {
+                if (window.confirm("Удалить правило часов в ставке?")) {
+                    await api(`/api/manual-load/in-rate/rules/${card.dataset.settingsRule}`, { method: "DELETE" });
+                    await reloadSettingsInRateRules();
+                }
+            }
+        } catch (error) {
+            print({ error: error.message });
+        }
+    });
     ui.coefficientImportBtn?.addEventListener("click", () => importCoefficients().catch((error) => print({ error: error.message })));
     ui.coefficientForm?.addEventListener("submit", (event) => saveCoefficient(event).catch((error) => print({ error: error.message })));
     ui.coefficientRefreshBtn?.addEventListener("click", () => reloadCoefficients().catch((error) => print({ error: error.message })));

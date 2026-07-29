@@ -21,7 +21,17 @@ class TeacherDismissalFrontendTest {
         assertTrue(html.contains("id=\"teacher-contract-in-rate-rule\""));
         assertTrue(html.contains("id=\"teacher-contract-in-rate-label\""));
         assertTrue(html.contains("id=\"teacher-card-cancel-plan\""));
+        assertTrue(html.contains("id=\"accept-teacher-btn\""));
+        assertTrue(html.contains("id=\"auto-assign-buildings-btn\""));
+        assertTrue(html.contains("id=\"teacher-card-initials\""));
+        assertTrue(html.contains("id=\"teacher-card-dative\""));
+        assertTrue(html.contains("id=\"teacher-personal-section\""));
+        assertTrue(html.contains("id=\"teacher-card-data-sheet\""));
+        assertTrue(!html.contains("id=\"teacher-duties-create\""));
         assertTrue(js.contains("class=\"teacher-row-actions\""));
+        assertTrue(js.contains("additionalDutiesSummary"));
+        assertTrue(js.contains("/api/teachers/auto-assign-buildings"));
+        assertTrue(js.contains("/api/teachers/accept"));
         assertTrue(js.contains("/api/hr-documents/contracts?teacherId="));
         assertTrue(js.contains("loadHoursMayBeIncludedInRate: ui.teacherContractInRate.value === \"true\""));
         assertTrue(js.contains("cancel-plan-dismiss"));

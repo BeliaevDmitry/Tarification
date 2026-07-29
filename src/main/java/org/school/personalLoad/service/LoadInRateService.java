@@ -35,6 +35,8 @@ public class LoadInRateService {
     public RuleView saveRule(Long id, RuleRequest request) {
         String name = required(request == null ? null : request.name(), "Название правила");
         String documentLabel = required(request.documentLabel(), "Пояснение для документов");
+        List<RuleBandRequest> requestedBands = Optional.ofNullable(request.bands()).orElse(List.of());
+        validateBands(requestedBands);
         if ((id == null && ruleRepository.existsByNameIgnoreCase(name))
                 || (id != null && ruleRepository.existsByNameIgnoreCaseAndIdNot(name, id))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Правило с таким названием уже существует");
@@ -46,7 +48,7 @@ public class LoadInRateService {
         rule.setUpdatedAt(LocalDateTime.now());
         rule = ruleRepository.save(rule);
         bandRepository.deleteAllByRuleId(rule.getId());
-        for (RuleBandRequest bandRequest : Optional.ofNullable(request.bands()).orElse(List.of())) {
+        for (RuleBandRequest bandRequest : requestedBands) {
             LoadInRateRuleBand band = new LoadInRateRuleBand();
             band.setRuleId(rule.getId());
             band.setMinTotalHours(nonNegative(bandRequest.minTotalHours()));
@@ -196,11 +198,14 @@ public class LoadInRateService {
             BigDecimal[] included = halfTotals(group, AllocationRow::includedHours);
             BigDecimal[] paid = halfTotals(group, AllocationRow::paidHours);
             int unresolved = (int) group.stream().filter(row -> !row.allocationConfirmed()).count();
-            BigDecimal suggestion = suggestedIncludedHours(first.ruleId(), total[0].max(total[1]));
+            LoadInRateRuleBand matchedBand = matchingBand(first.ruleId(), total[0].max(total[1])).orElse(null);
+            BigDecimal suggestion = matchedBand == null ? BigDecimal.ZERO
+                    : matchedBand.getSuggestedIncludedHours().min(total[0].max(total[1]));
             result.add(new TeacherSummary(
                     first.teacherId(), first.fio(), first.contractId(), first.contractNumber(), first.positionName(),
                     total[0], total[1], included[0], included[1], paid[0], paid[1],
-                    suggestion, unresolved == 0, unresolved
+                    suggestion, matchedBand == null ? null : matchedBand.getRateFraction(),
+                    unresolved == 0, unresolved
             ));
         }
         return result.stream().sorted(Comparator.comparing(TeacherSummary::fio, String.CASE_INSENSITIVE_ORDER)).toList();
@@ -222,13 +227,49 @@ public class LoadInRateService {
         return new BigDecimal[]{h1, h2};
     }
 
-    private BigDecimal suggestedIncludedHours(Long ruleId, BigDecimal totalHours) {
-        if (ruleId == null) return BigDecimal.ZERO;
+    BigDecimal suggestedIncludedHours(Long ruleId, BigDecimal totalHours) {
+        return matchingBand(ruleId, totalHours)
+                .map(LoadInRateRuleBand::getSuggestedIncludedHours)
+                .orElse(BigDecimal.ZERO).min(totalHours);
+    }
+
+    private Optional<LoadInRateRuleBand> matchingBand(Long ruleId, BigDecimal totalHours) {
+        if (ruleId == null) return Optional.empty();
         return bandRepository.findAllByRuleIdOrderByMinTotalHoursAsc(ruleId).stream()
                 .filter(band -> totalHours.compareTo(band.getMinTotalHours()) >= 0)
                 .filter(band -> band.getMaxTotalHours() == null || totalHours.compareTo(band.getMaxTotalHours()) <= 0)
-                .map(LoadInRateRuleBand::getSuggestedIncludedHours)
-                .findFirst().orElse(BigDecimal.ZERO).min(totalHours);
+                .findFirst();
+    }
+
+    private void validateBands(List<RuleBandRequest> bands) {
+        if (bands.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Добавьте хотя бы один диапазон нагрузки");
+        }
+        List<RuleBandRequest> sorted = bands.stream()
+                .sorted(Comparator.comparing(band -> nonNegative(band.minTotalHours())))
+                .toList();
+        BigDecimal previousMax = null;
+        boolean first = true;
+        for (RuleBandRequest band : sorted) {
+            BigDecimal min = nonNegative(band.minTotalHours());
+            BigDecimal max = nullableNonNegative(band.maxTotalHours());
+            BigDecimal included = nonNegative(band.suggestedIncludedHours());
+            if (max != null && max.compareTo(min) < 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Верхняя граница диапазона не может быть меньше нижней");
+            }
+            if (max != null && included.compareTo(max) > 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Максимум часов внутри ставки не может превышать верхнюю границу диапазона");
+            }
+            if (!first && (previousMax == null || min.compareTo(previousMax) <= 0)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Диапазоны нагрузки не должны пересекаться");
+            }
+            previousMax = max;
+            first = false;
+        }
     }
 
     private EmploymentContract resolveContract(ManualLoadEntry row,

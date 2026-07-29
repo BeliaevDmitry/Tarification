@@ -1783,23 +1783,19 @@ td.vacancy-row {
 }
 
 #teachers-main-panel .teachers-table {
-    min-width: 1820px;
+    min-width: 1280px;
     table-layout: fixed;
 }
 
-#teachers-main-panel .teachers-table th:nth-child(1) { width: 180px; }
-#teachers-main-panel .teachers-table th:nth-child(2) { width: 130px; }
-#teachers-main-panel .teachers-table th:nth-child(3) { width: 180px; }
-#teachers-main-panel .teachers-table th:nth-child(4) { width: 125px; }
-#teachers-main-panel .teachers-table th:nth-child(5) { width: 190px; }
-#teachers-main-panel .teachers-table th:nth-child(6) { width: 180px; }
-#teachers-main-panel .teachers-table th:nth-child(7) {
-    width: 74px;
-}
-#teachers-main-panel .teachers-table th:nth-child(8) { width: 150px; }
-#teachers-main-panel .teachers-table th:nth-child(9) { width: 125px; }
-#teachers-main-panel .teachers-table th:nth-child(10) { width: 145px; }
-#teachers-main-panel .teachers-table th:nth-child(11) { width: 260px; }
+#teachers-main-panel .teachers-table th:nth-child(1) { width: 190px; }
+#teachers-main-panel .teachers-table th:nth-child(2) { width: 125px; }
+#teachers-main-panel .teachers-table th:nth-child(3) { width: 175px; }
+#teachers-main-panel .teachers-table th:nth-child(4) { width: 260px; }
+#teachers-main-panel .teachers-table th:nth-child(5) { width: 105px; }
+#teachers-main-panel .teachers-table th:nth-child(6) { width: 155px; }
+#teachers-main-panel .teachers-table th:nth-child(7) { width: 145px; }
+#teachers-main-panel .teachers-table th:nth-child(8) { width: 145px; }
+#teachers-main-panel .teachers-table th:nth-child(9) { width: 175px; }
 
 #teachers-main-panel .teachers-table td {
     height: 42px;
@@ -1816,6 +1812,11 @@ td.vacancy-row {
 
 .teachers-table .teacher-building-input {
     max-width: 100%;
+}
+
+.teacher-duty-summary {
+    white-space: normal;
+    line-height: 1.25;
 }
 
 .teacher-row-actions {
@@ -1838,6 +1839,27 @@ td.vacancy-row {
     border-radius: 14px;
     padding: 20px;
     box-shadow: 0 24px 70px rgba(15, 23, 42, .3);
+}
+
+.accept-teacher-dialog {
+    width: min(1040px, calc(100vw - 24px));
+    max-width: 1040px;
+}
+
+.settings-block {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid #dbe4f0;
+}
+
+.settings-block .in-rate-rule-card {
+    padding: 14px;
+}
+
+.settings-block .sheet-table input,
+.settings-block .sheet-table select {
+    min-width: 90px;
+    width: 100%;
 }
 
 .teacher-card-dialog::backdrop {

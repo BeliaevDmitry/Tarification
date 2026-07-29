@@ -68,7 +68,7 @@
         <div class="row primary-subject-toolbar">
             <button id="save-in-rate-hours-btn" type="button">Сохранить распределение</button>
             <button id="apply-in-rate-suggestions-btn" type="button">Распределить по правилам</button>
-            <button id="manage-in-rate-rules-btn" type="button">Правила часов в ставке</button>
+            <a class="nav-link" href="/teachers.html#settings">Настроить правила в кадрах</a>
             <span id="in-rate-summary" class="muted"></span>
         </div>
         <p class="muted compact-note">Для каждого класса укажите, сколько часов входит в должностной оклад. Оставшиеся часы рассчитываются к отдельной оплате.</p>
@@ -103,31 +103,6 @@
             </select>
             <input id="new-primary-subject-rule-value" type="text" placeholder="Ключевые слова через запятую">
             <button id="add-primary-subject-rule-btn" type="button">Добавить основной предмет</button>
-        </div>
-    </form>
-</dialog>
-
-<dialog id="in-rate-rules-dialog" class="primary-subject-dialog in-rate-rules-dialog">
-    <form method="dialog" class="primary-subject-dialog-form">
-        <div class="row">
-            <div>
-                <h2>Правила часов в ставке</h2>
-                <p class="muted">Правило предлагает количество часов внутри ставки. Конкретное распределение по классам всегда можно изменить.</p>
-            </div>
-            <button type="submit">Закрыть</button>
-        </div>
-        <div id="in-rate-rules-list"></div>
-        <div class="card in-rate-new-rule">
-            <h3>Новое правило</h3>
-            <div class="form-grid">
-                <label>Название<input id="new-in-rate-rule-name" type="text" placeholder="Преподаватель ОБЗР"></label>
-                <label>Пояснение для документов<input id="new-in-rate-rule-label" type="text" placeholder="преподаватель ОБЗР"></label>
-                <label>Минимум часов<input id="new-in-rate-rule-min" type="number" min="0" step="0.01" value="0"></label>
-                <label>Максимум часов<input id="new-in-rate-rule-max" type="number" min="0" step="0.01"></label>
-                <label>Предложить внутри ставки<input id="new-in-rate-rule-included" type="number" min="0" step="0.01" value="0"></label>
-                <label>Доля ставки<input id="new-in-rate-rule-fraction" type="number" min="0" step="0.01"></label>
-            </div>
-            <button id="add-in-rate-rule-btn" type="button">Добавить правило</button>
         </div>
     </form>
 </dialog>
