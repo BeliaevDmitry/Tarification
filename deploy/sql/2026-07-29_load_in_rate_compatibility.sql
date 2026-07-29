@@ -58,6 +58,24 @@ CREATE INDEX IF NOT EXISTS idx_load_in_rate_rule_band_rule
     ON load_in_rate_rule_band(rule_id);
 
 ALTER TABLE mcko_subject_mapping
+    ADD COLUMN IF NOT EXISTS ignored boolean DEFAULT false;
+UPDATE mcko_subject_mapping
+   SET ignored = false
+ WHERE ignored IS NULL;
+ALTER TABLE mcko_subject_mapping
+    ALTER COLUMN ignored SET DEFAULT false;
+ALTER TABLE mcko_subject_mapping
+    ALTER COLUMN ignored SET NOT NULL;
+ALTER TABLE mcko_subject_mapping
+    ADD COLUMN IF NOT EXISTS created_at timestamp DEFAULT now();
+UPDATE mcko_subject_mapping
+   SET created_at = now()
+ WHERE created_at IS NULL;
+ALTER TABLE mcko_subject_mapping
+    ALTER COLUMN created_at SET DEFAULT now();
+ALTER TABLE mcko_subject_mapping
+    ALTER COLUMN created_at SET NOT NULL;
+ALTER TABLE mcko_subject_mapping
     ADD COLUMN IF NOT EXISTS grade_band varchar(32) DEFAULT 'ALL';
 UPDATE mcko_subject_mapping
    SET grade_band = 'ALL'

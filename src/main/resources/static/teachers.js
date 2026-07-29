@@ -69,7 +69,35 @@ const ui = {
     mckoSubjectsBody: document.getElementById("mcko-subjects-body"),
     dismissalsBody: document.getElementById("teachers-dismissals-body"),
     result: document.getElementById("teachers-result"),
-    tbody: document.getElementById("teachers-table-body")
+    tbody: document.getElementById("teachers-table-body"),
+    teacherCardDialog: document.getElementById("teacher-card-dialog"),
+    teacherCardName: document.getElementById("teacher-card-name"),
+    teacherCardClose: document.getElementById("teacher-card-close"),
+    teacherContractSection: document.getElementById("teacher-contract-section"),
+    teacherContractSelect: document.getElementById("teacher-contract-select"),
+    teacherContractForm: document.getElementById("teacher-contract-form"),
+    teacherContractNumber: document.getElementById("teacher-contract-number"),
+    teacherContractDate: document.getElementById("teacher-contract-date"),
+    teacherContractPosition: document.getElementById("teacher-contract-position"),
+    teacherContractStart: document.getElementById("teacher-contract-start"),
+    teacherContractEnd: document.getElementById("teacher-contract-end"),
+    teacherContractPrimary: document.getElementById("teacher-contract-primary"),
+    teacherContractActive: document.getElementById("teacher-contract-active"),
+    teacherContractInRate: document.getElementById("teacher-contract-in-rate"),
+    teacherContractInRateRule: document.getElementById("teacher-contract-in-rate-rule"),
+    teacherContractInRateLabel: document.getElementById("teacher-contract-in-rate-label"),
+    teacherContractSave: document.getElementById("teacher-contract-save"),
+    teacherContractFeedback: document.getElementById("teacher-contract-feedback"),
+    teacherCardPlanDate: document.getElementById("teacher-card-plan-date"),
+    teacherCardPlanComment: document.getElementById("teacher-card-plan-comment"),
+    teacherCardDismissDate: document.getElementById("teacher-card-dismiss-date"),
+    teacherCardSavePlan: document.getElementById("teacher-card-save-plan"),
+    teacherCardCancelPlan: document.getElementById("teacher-card-cancel-plan"),
+    teacherCardDismiss: document.getElementById("teacher-card-dismiss"),
+    teacherCardRestore: document.getElementById("teacher-card-restore"),
+    teacherCardArchive: document.getElementById("teacher-card-archive"),
+    teacherCardDelete: document.getElementById("teacher-card-delete"),
+    teacherCardFeedback: document.getElementById("teacher-card-feedback")
 };
 let buildings = [];
 let groupCoefficientSubjectCatalog = [];
@@ -80,6 +108,8 @@ let mckoCertificates = [];
 let mckoOverviewRows = [];
 let oneCPreview = null;
 let oneCPreviewFile = null;
+let teacherCardContracts = [];
+let teacherCardInRateRules = [];
 let editingMckoCertificateId = null;
 let mckoCertificateSort = { key: "teacherFio", ascending: true };
 const PRIMARY_MCKO_SUBJECT = "Метапредметные умения (начальное образование)";
@@ -112,6 +142,19 @@ function canEditTeacherPermission(permissionKey) {
     if (currentUser?.admin) return true;
     const permissions = window.tarificationTabPermissions || {};
     return Boolean(permissions[permissionKey]?.canEdit);
+}
+
+function canViewEmploymentContracts() {
+    const currentUser = currentAuthUser();
+    if (currentUser?.admin) return true;
+    const permission = (window.tarificationTabPermissions || {}).HR_DOCUMENTS;
+    return Boolean(permission?.canView || permission?.canEdit);
+}
+
+function canEditEmploymentContracts() {
+    const currentUser = currentAuthUser();
+    if (currentUser?.admin) return true;
+    return Boolean((window.tarificationTabPermissions || {}).HR_DOCUMENTS?.canEdit);
 }
 
 function canEditTeachers() {
@@ -276,6 +319,189 @@ function applyMckoVisibility() {
     }
 }
 
+function selectedTeacherCardRow() {
+    const teacherId = Number(ui.teacherCardDialog?.dataset.teacherId || 0);
+    return teacherRows.find((row) => Number(row.id) === teacherId) || null;
+}
+
+function selectedTeacherContract() {
+    const contractId = Number(ui.teacherContractSelect?.value || 0);
+    return teacherCardContracts.find((contract) => Number(contract.id) === contractId) || null;
+}
+
+function renderTeacherContractForm(contract = null) {
+    const teacher = selectedTeacherCardRow();
+    ui.teacherContractNumber.value = contract?.contractNumber || "";
+    ui.teacherContractDate.value = contract?.contractDate || "";
+    ui.teacherContractPosition.value = contract?.positionName || teacher?.primaryPosition || "";
+    ui.teacherContractStart.value = contract?.startDate || "";
+    ui.teacherContractEnd.value = contract?.endDate || "";
+    ui.teacherContractPrimary.checked = contract?.primaryContract !== false;
+    ui.teacherContractActive.checked = contract?.active !== false;
+    ui.teacherContractInRate.value = contract?.loadHoursMayBeIncludedInRate ? "true" : "false";
+    ui.teacherContractInRateRule.innerHTML = [
+        '<option value="">Без автоматического правила</option>',
+        ...teacherCardInRateRules
+            .filter((rule) => rule.active || String(rule.id) === String(contract?.loadInRateRuleId || ""))
+            .map((rule) => `<option value="${escapeHtml(rule.id)}" ${String(rule.id) === String(contract?.loadInRateRuleId || "") ? "selected" : ""}>${escapeHtml(rule.name || "")}</option>`)
+    ].join("");
+    ui.teacherContractInRateLabel.value = contract?.loadInRateDocumentLabel || "";
+    const enabled = ui.teacherContractInRate.value === "true";
+    ui.teacherCardDialog.querySelectorAll(".teacher-in-rate-field").forEach((field) => {
+        field.hidden = !enabled;
+    });
+}
+
+function setTeacherContractFormAccess() {
+    const canEdit = canEditEmploymentContracts();
+    ui.teacherContractForm.querySelectorAll("input, select, button").forEach((element) => {
+        element.disabled = !canEdit;
+    });
+    ui.teacherContractSelect.disabled = false;
+    ui.teacherContractFeedback.textContent = canEdit
+        ? ""
+        : "Договор доступен только для просмотра. Для изменения требуется право редактирования кадровых документов.";
+}
+
+async function openTeacherCard(teacherId, preferredContractId = null) {
+    const teacher = teacherRows.find((row) => String(row.id) === String(teacherId));
+    if (!teacher) throw new Error("Сотрудник не найден");
+    ui.teacherCardDialog.dataset.teacherId = String(teacher.id);
+    ui.teacherCardName.textContent = `${teacher.fioTeacher || ""} · ID ${teacher.id}`;
+    ui.teacherCardPlanDate.value = teacher.plannedDismissalDate || "";
+    ui.teacherCardPlanComment.value = teacher.plannedDismissalComment || "";
+    ui.teacherCardDismissDate.value = teacher.dismissalDate || "";
+    ui.teacherCardFeedback.textContent = "";
+
+    const canEditDismissals = canEditTeacherPermission("TEACHERS_DISMISSALS");
+    ui.teacherCardSavePlan.disabled = !canEditDismissals || Boolean(teacher.dismissalDate);
+    ui.teacherCardCancelPlan.disabled = !canEditDismissals || !teacher.plannedDismissalDate || Boolean(teacher.dismissalDate);
+    ui.teacherCardDismiss.hidden = Boolean(teacher.dismissalDate);
+    ui.teacherCardDismiss.disabled = !canEditDismissals;
+    ui.teacherCardRestore.hidden = !teacher.dismissalDate;
+    ui.teacherCardRestore.disabled = !canEditDismissals;
+    ui.teacherCardArchive.disabled = !canEditTeacherPermission("TEACHERS_ARCHIVE");
+    ui.teacherCardDelete.disabled = !canEditTeacherPermission("TEACHERS");
+
+    const canViewContracts = canViewEmploymentContracts();
+    ui.teacherContractSection.hidden = !canViewContracts;
+    teacherCardContracts = [];
+    teacherCardInRateRules = [];
+    if (canViewContracts) {
+        const [contracts, rules] = await Promise.all([
+            api(`/api/hr-documents/contracts?teacherId=${encodeURIComponent(teacher.id)}`),
+            api("/api/manual-load/in-rate/rules").catch(() => [])
+        ]);
+        teacherCardContracts = contracts || [];
+        teacherCardInRateRules = rules || [];
+        const preferred = teacherCardContracts.find((contract) => String(contract.id) === String(preferredContractId));
+        const current = preferred
+            || teacherCardContracts.find((contract) => contract.primaryContract && contract.active)
+            || teacherCardContracts[0]
+            || null;
+        ui.teacherContractSelect.innerHTML = [
+            '<option value="">+ Новый трудовой договор</option>',
+            ...teacherCardContracts.map((contract) =>
+                `<option value="${escapeHtml(contract.id)}" ${current && String(contract.id) === String(current.id) ? "selected" : ""}>№ ${escapeHtml(contract.contractNumber)} от ${escapeHtml(contract.contractDate)} — ${escapeHtml(contract.positionName)}</option>`)
+        ].join("");
+        renderTeacherContractForm(current);
+        setTeacherContractFormAccess();
+    }
+    if (!ui.teacherCardDialog.open) ui.teacherCardDialog.showModal();
+}
+
+async function saveTeacherCardContract(event) {
+    event.preventDefault();
+    if (!canEditEmploymentContracts()) return;
+    const teacher = selectedTeacherCardRow();
+    if (!teacher) throw new Error("Сотрудник не найден");
+    const current = selectedTeacherContract();
+    ui.teacherContractFeedback.textContent = "Сохраняю…";
+    const saved = await api(current ? `/api/hr-documents/contracts/${current.id}` : "/api/hr-documents/contracts", {
+        method: current ? "PUT" : "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+            teacherId: teacher.id,
+            contractNumber: ui.teacherContractNumber.value.trim(),
+            contractDate: ui.teacherContractDate.value || null,
+            positionName: ui.teacherContractPosition.value.trim(),
+            startDate: ui.teacherContractStart.value || null,
+            endDate: ui.teacherContractEnd.value || null,
+            primaryContract: ui.teacherContractPrimary.checked,
+            active: ui.teacherContractActive.checked,
+            loadHoursMayBeIncludedInRate: ui.teacherContractInRate.value === "true",
+            loadInRateRuleId: ui.teacherContractInRateRule.value ? Number(ui.teacherContractInRateRule.value) : null,
+            loadInRateDocumentLabel: ui.teacherContractInRateLabel.value.trim()
+        })
+    });
+    await openTeacherCard(teacher.id, saved.id);
+    ui.teacherContractFeedback.textContent = "Договор и настройка учебных часов сохранены.";
+}
+
+async function refreshTeacherCardAfterAction(teacherId, message) {
+    await loadTeachers();
+    const teacher = teacherRows.find((row) => String(row.id) === String(teacherId));
+    if (!teacher) {
+        ui.teacherCardDialog.close();
+        print({ status: message });
+        return;
+    }
+    await openTeacherCard(teacherId);
+    ui.teacherCardFeedback.textContent = message;
+}
+
+async function saveTeacherDismissalPlan() {
+    const teacher = selectedTeacherCardRow();
+    const plannedDismissalDate = ui.teacherCardPlanDate.value;
+    if (!teacher || !plannedDismissalDate) throw new Error("Укажите планируемую дату увольнения");
+    await api(`/api/teachers/${teacher.id}/plan-dismiss`, {
+        method: "PATCH",
+        headers: jsonHeaders,
+        body: JSON.stringify({ plannedDismissalDate, comment: ui.teacherCardPlanComment.value.trim() })
+    });
+    await refreshTeacherCardAfterAction(teacher.id, "Планируемое увольнение сохранено.");
+}
+
+async function cancelTeacherDismissalPlan() {
+    const teacher = selectedTeacherCardRow();
+    if (!teacher) return;
+    await api(`/api/teachers/${teacher.id}/cancel-plan-dismiss`, { method: "PATCH" });
+    await refreshTeacherCardAfterAction(teacher.id, "Планируемое увольнение отменено.");
+}
+
+async function dismissTeacherFromCard() {
+    const teacher = selectedTeacherCardRow();
+    const dismissalDate = ui.teacherCardDismissDate.value;
+    if (!teacher || !dismissalDate) throw new Error("Укажите фактическую дату увольнения");
+    await api(`/api/teachers/${teacher.id}/dismiss`, {
+        method: "PATCH",
+        headers: jsonHeaders,
+        body: JSON.stringify({ dismissalDate })
+    });
+    await refreshTeacherCardAfterAction(teacher.id, "Увольнение зарегистрировано.");
+}
+
+async function restoreTeacherFromCard() {
+    const teacher = selectedTeacherCardRow();
+    if (!teacher) return;
+    await api(`/api/teachers/${teacher.id}/restore`, { method: "PATCH" });
+    await refreshTeacherCardAfterAction(teacher.id, "Сотрудник восстановлен.");
+}
+
+async function archiveTeacherFromCard() {
+    const teacher = selectedTeacherCardRow();
+    if (!teacher || !window.confirm(`Перенести ${teacher.fioTeacher} в архив?`)) return;
+    await api(`/api/teachers/${teacher.id}/archive`, { method: "PATCH" });
+    await refreshTeacherCardAfterAction(teacher.id, "Сотрудник перенесён в архив.");
+}
+
+async function deleteTeacherFromCard() {
+    const teacher = selectedTeacherCardRow();
+    if (!teacher || !window.confirm(`Удалить ${teacher.fioTeacher}? Это действие доступно только при отсутствии связанной нагрузки.`)) return;
+    await api(`/api/teachers/${teacher.id}`, { method: "DELETE" });
+    await refreshTeacherCardAfterAction(teacher.id, "Сотрудник удалён.");
+}
+
 function renderTeachers(rows) {
     ui.tbody.innerHTML = "";
     rows
@@ -302,17 +528,9 @@ function renderTeachers(rows) {
                 <td>${escapeHtml(row.employmentType || "—")}</td>
                 <td>${escapeHtml(statusLabel(row))}</td>
                 <td>
-                    <div class="row">
+                    <div class="teacher-row-actions">
                         <button type="button" class="save-teacher-btn" data-id="${row.id}">Сохранить</button>
-                        <input type="date" class="dismiss-date-input" value="${escapeHtml(row.dismissalDate || "")}" data-id="${row.id}">
-                        ${row.dismissalDate ? "" : `<button type="button" class="mark-dismiss-btn" data-id="${row.id}" ${canEditTeacherPermission("TEACHERS_DISMISSALS") ? "" : "disabled title=\"Требуется право редактирования увольнений\""}>На увольнение</button>`}
-                        <input type="date" class="plan-dismiss-date-input" value="${escapeHtml(row.plannedDismissalDate || "")}" data-id="${row.id}" data-allow-readonly="true">
-                        <input type="text" class="plan-dismiss-comment-input" value="${escapeHtml(row.plannedDismissalComment || "")}" data-id="${row.id}" placeholder="Комментарий" data-allow-readonly="true">
-                        ${row.dismissalDate ? "" : `<button type="button" class="mark-plan-dismiss-btn" data-id="${row.id}" data-allow-readonly="true" ${canEditTeacherPermission("TEACHERS_DISMISSALS") ? "" : "disabled"}>${row.plannedDismissalDate ? "Обновить план" : "Планирует уволиться"}</button>`}
-                        ${row.plannedDismissalDate && !row.dismissalDate ? `<button type="button" class="cancel-plan-dismiss-btn" data-id="${row.id}" ${canEditTeacherPermission("TEACHERS_DISMISSALS") ? "" : "disabled"}>Передумал</button>` : ""}
-                        ${row.dismissalDate ? `<button type="button" class="restore-teacher-btn" data-id="${row.id}" ${canEditTeacherPermission("TEACHERS_DISMISSALS") ? "" : "disabled"}>Восстановить</button>` : ""}
-                        <button type="button" class="archive-teacher-btn" data-id="${row.id}" ${canEditTeacherPermission("TEACHERS_ARCHIVE") ? "" : "disabled"}>В архив</button>
-                        <button type="button" class="danger-btn delete-teacher-btn" data-id="${row.id}">Удалить</button>
+                        <button type="button" class="open-teacher-card-btn" data-id="${row.id}">Карточка сотрудника</button>
                     </div>
                 </td>`;
             ui.tbody.appendChild(tr);
@@ -340,6 +558,12 @@ function renderTeachers(rows) {
             } catch (error) {
                 print({ error: error.message });
             }
+        });
+    });
+
+    ui.tbody.querySelectorAll(".open-teacher-card-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            openTeacherCard(btn.dataset.id).catch((error) => print({ error: error.message }));
         });
     });
 
@@ -728,6 +952,7 @@ async function reloadMckoMappings() {
             }
         });
     });
+
     ui.mckoSubjectsBody.querySelectorAll("[data-toggle-mcko-ignore]").forEach((button) => {
         button.addEventListener("click", async () => {
             try {
@@ -1212,6 +1437,33 @@ function bindEvents() {
     ui.createForm.addEventListener('submit', createTeacher);
     ui.refreshBtn.addEventListener('click', () => loadTeachers().catch((e) => print({ error: e.message })));
     ui.clearBtn.addEventListener('click', clearTeachers);
+    ui.teacherCardClose?.addEventListener("click", () => ui.teacherCardDialog.close());
+    ui.teacherContractSelect?.addEventListener("change", () => {
+        renderTeacherContractForm(selectedTeacherContract());
+        setTeacherContractFormAccess();
+    });
+    ui.teacherContractInRate?.addEventListener("change", () => {
+        const enabled = ui.teacherContractInRate.value === "true";
+        ui.teacherCardDialog.querySelectorAll(".teacher-in-rate-field").forEach((field) => {
+            field.hidden = !enabled;
+        });
+    });
+    ui.teacherContractForm?.addEventListener("submit", (event) => {
+        saveTeacherCardContract(event).catch((error) => {
+            ui.teacherContractFeedback.textContent = error.message;
+        });
+    });
+    const cardAction = (element, action) => element?.addEventListener("click", () => {
+        action().catch((error) => {
+            ui.teacherCardFeedback.textContent = error.message;
+        });
+    });
+    cardAction(ui.teacherCardSavePlan, saveTeacherDismissalPlan);
+    cardAction(ui.teacherCardCancelPlan, cancelTeacherDismissalPlan);
+    cardAction(ui.teacherCardDismiss, dismissTeacherFromCard);
+    cardAction(ui.teacherCardRestore, restoreTeacherFromCard);
+    cardAction(ui.teacherCardArchive, archiveTeacherFromCard);
+    cardAction(ui.teacherCardDelete, deleteTeacherFromCard);
     window.addEventListener("hashchange", async () => {
         const tab = teachersTabFromHash();
         showTeachersTab(tab);
