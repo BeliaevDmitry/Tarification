@@ -65,6 +65,13 @@ public class AuthFilter extends OncePerRequestFilter {
             Map.entry("/vsoko-oge.html", AppTab.VSOKO_VIEW),
             Map.entry("/vsoko-ege.html", AppTab.VSOKO_VIEW),
             Map.entry("/vsoko-pa.html", AppTab.VSOKO_VIEW),
+            Map.entry("/vsoko-pa-spec.html", AppTab.VSOKO_VIEW),
+            Map.entry("/vsoko-pa-entry.html", AppTab.VSOKO_VIEW),
+            Map.entry("/vsoko-pa-exit.html", AppTab.VSOKO_VIEW),
+            Map.entry("/vsoko-pa-folders.html", AppTab.VSOKO_VIEW),
+            Map.entry("/vsoko-pa-analysis.html", AppTab.VSOKO_VIEW),
+            Map.entry("/vsoko-pa-teachers.html", AppTab.VSOKO_VIEW),
+            Map.entry("/vsoko-pa-upload.html", AppTab.VSOKO_VIEW),
             Map.entry("/admin.html", AppTab.USERS)
     );
 
@@ -134,6 +141,10 @@ public class AuthFilter extends OncePerRequestFilter {
         }
 
         AppTab apiTab = apiTabForPath(path);
+        if (isReadApiRequest(request, path) && !canReadProtectedApi(currentUser, path)) {
+            rejectForbidden(request, response, "У пользователя нет прав на просмотр этой вкладки");
+            return;
+        }
         if (isWriteApiRequest(request, path) && apiTab != null && !currentUser.canEditTab(apiTab)) {
             rejectForbidden(request, response, "У пользователя нет прав на редактирование этой вкладки");
             return;
@@ -191,6 +202,21 @@ public class AuthFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/pedagogical-councils")) return AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS;
         if (path.startsWith("/api/pa")) return AppTab.VSOKO_EDIT;
         return null;
+    }
+
+    private boolean isReadApiRequest(HttpServletRequest request, String path) {
+        return path.startsWith("/api/")
+                && (HttpMethod.GET.matches(request.getMethod()) || HttpMethod.HEAD.matches(request.getMethod()));
+    }
+
+    private boolean canReadProtectedApi(SessionUser user, String path) {
+        if (path.startsWith("/api/mcko")) {
+            return user.canViewTab(AppTab.TEACHERS_MCKO);
+        }
+        if (path.startsWith("/api/pa")) {
+            return user.canViewTab(AppTab.VSOKO_VIEW) || user.canViewTab(AppTab.VSOKO_EDIT);
+        }
+        return true;
     }
 
     private boolean isWriteApiRequest(HttpServletRequest request, String path) {

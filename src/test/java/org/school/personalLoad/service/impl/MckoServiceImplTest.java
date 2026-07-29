@@ -354,6 +354,31 @@ class MckoServiceImplTest {
         assertThat(saved.isPublished()).isTrue();
     }
 
+    @Test
+    void loadModeDoesNotReturnCertificatesWhenSelectedYearHasNoLoad() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Иванов Иван Иванович");
+        MckoCertificate certificate = certificate(teacher, "Математика профильная", "Высокий",
+                true, LocalDate.now().minusMonths(1), MckoCertificateSource.IMPORT);
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
+        when(certificateRepository.findAll()).thenReturn(List.of(certificate));
+
+        List<MckoDtos.CertificateRow> rows = service.certificates("2026/2027", "load");
+
+        assertThat(rows).isEmpty();
+    }
+
+    @Test
+    void allModeStillReturnsCertificatesWhenSelectedYearHasNoLoad() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Иванов Иван Иванович");
+        MckoCertificate certificate = certificate(teacher, "Математика профильная", "Высокий",
+                true, LocalDate.now().minusMonths(1), MckoCertificateSource.IMPORT);
+        when(certificateRepository.findAll()).thenReturn(List.of(certificate));
+
+        List<MckoDtos.CertificateRow> rows = service.certificates("2026/2027", "all");
+
+        assertThat(rows).hasSize(1);
+    }
+
     private TeacherDirectoryEntry teacher(Long id, String fio) {
         TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
         teacher.setId(id);

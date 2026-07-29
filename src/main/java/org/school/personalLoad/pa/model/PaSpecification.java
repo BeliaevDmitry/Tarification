@@ -64,7 +64,8 @@ public class PaSpecification {
     private Integer grade3Percent;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "grading_scale", nullable = false, length = 20)
+    @Column(name = "grading_scale", nullable = false, length = 20,
+            columnDefinition = "varchar(20) default 'FIVE_POINT'")
     private PaGradingScale gradingScale = PaGradingScale.FIVE_POINT;
 
     @Column(name = "pass_percent")

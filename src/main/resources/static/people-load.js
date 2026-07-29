@@ -56,7 +56,9 @@ const state = {
     groupCoefficientSubjectIds: new Set(),
     groupCoefficientSubjectNames: new Set(),
     salaryByRowId: new Map(),
+    salaryBreakdownAvailable: false,
     inRateOverview: { rows: [], teachers: [], hasUnresolvedRows: false },
+    inRateLoadError: "",
     inRateRules: [],
     studentHourRate: 37
 };
@@ -525,7 +527,7 @@ function renderTable() {
         addHours(allTotals.get(key), row);
     });
 
-    const showSalary = salaryPermission().canView;
+    const showSalary = salaryPermission().canView && state.salaryBreakdownAvailable;
     const headers = ["ФИО", "Предмет", "Класс", "Группа", "Количество детей", "Часы по предмету", "Период нагрузки", "Часы в корпусе/всего", "Корпус", "Классное руководство"];
     if (showSalary) {
         headers.push("В ставке", "К оплате", "Основание", "Предметный коэф.", "Коэф. группы", "За строку", "За оплачиваемые часы итог", "Кл. рук., руб.", "Итого");
@@ -635,6 +637,13 @@ async function exportConsolidatedLoadWorkbook() {
 
 function renderInRateOverview() {
     if (!ui.inRateTable) return;
+    if (state.inRateLoadError) {
+        ui.inRateTable.innerHTML = `<tbody><tr><td class="muted">Раздел «Часы в ставке» временно недоступен. Основная нагрузка не потеряна и показана в соседней вкладке.</td></tr></tbody>`;
+        ui.inRateSummary.textContent = state.inRateLoadError;
+        ui.inRateSummary.classList.add("error-text");
+        fitPeopleLoadTables();
+        return;
+    }
     const overview = state.inRateOverview || { rows: [], teachers: [] };
     const summaryByKey = new Map((overview.teachers || []).map((item) => [`${item.teacherId}|${item.contractId}`, item]));
     const rows = overview.rows || [];
@@ -989,26 +998,44 @@ function rebuildIndexes() {
 async function loadData() {
     ui.summary.textContent = "Загрузка данных…";
     const salaryAccess = salaryPermission().canView;
-    const [buildings, manualRows, classes, teachers, subjects, coefficients, salarySettings, groupCoefficientSubjects,
+    const manualRows = await api("/api/manual-load");
+    const warnings = [];
+    const optionalApi = (path, fallback, label) => api(path).catch((error) => {
+        warnings.push(label);
+        console.warn(`Не удалось загрузить ${label}:`, error);
+        return fallback;
+    });
+    let salaryBreakdownError = null;
+    let inRateError = null;
+    const [buildings, classes, teachers, subjects, coefficients, salarySettings, groupCoefficientSubjects,
         primaryAssignments, primaryRules, classSizes, salaryBreakdown, inRateOverview, inRateRules] = await Promise.all([
-        api("/api/buildings"),
-        api("/api/manual-load"),
-        api("/api/classroom-leadership"),
-        api("/api/teachers"),
-        api("/api/subjects"),
-        api("/api/subjects/coefficients"),
-        salaryAccess ? api("/api/salary-settings") : Promise.resolve(null),
-        salaryAccess ? api("/api/salary-group-coefficient-subjects") : Promise.resolve([]),
-        api("/api/primary-subjects/teachers"),
-        api("/api/primary-subjects/rules"),
-        api("/api/contingent/manual-class-sizes").catch(() => ({ source: "AIS", rows: [] })),
-        salaryAccess ? api("/api/manual-load/salary-breakdown") : Promise.resolve([]),
-        salaryAccess ? api("/api/manual-load/in-rate") : Promise.resolve({ rows: [], teachers: [], hasUnresolvedRows: false }),
-        salaryAccess ? api("/api/manual-load/in-rate/rules") : Promise.resolve([])
+        optionalApi("/api/buildings", [], "список корпусов"),
+        optionalApi("/api/classroom-leadership", [], "классное руководство"),
+        optionalApi("/api/teachers", [], "список работников"),
+        optionalApi("/api/subjects", [], "справочник предметов"),
+        optionalApi("/api/subjects/coefficients", [], "предметные коэффициенты"),
+        salaryAccess ? optionalApi("/api/salary-settings", null, "настройки расчёта зарплаты") : Promise.resolve(null),
+        salaryAccess ? optionalApi("/api/salary-group-coefficient-subjects", [], "настройки деления на группы") : Promise.resolve([]),
+        optionalApi("/api/primary-subjects/teachers", [], "основные предметы работников"),
+        optionalApi("/api/primary-subjects/rules", [], "правила основных предметов"),
+        optionalApi("/api/contingent/manual-class-sizes", { source: "AIS", rows: [] }, "численность классов"),
+        salaryAccess ? api("/api/manual-load/salary-breakdown").catch((error) => {
+            salaryBreakdownError = error;
+            warnings.push("расчёт зарплаты");
+            console.warn("Не удалось загрузить расчёт зарплаты:", error);
+            return [];
+        }) : Promise.resolve([]),
+        salaryAccess ? api("/api/manual-load/in-rate").catch((error) => {
+            inRateError = error;
+            warnings.push("часы внутри ставки");
+            console.warn("Не удалось загрузить часы внутри ставки:", error);
+            return { rows: [], teachers: [], hasUnresolvedRows: false };
+        }) : Promise.resolve({ rows: [], teachers: [], hasUnresolvedRows: false }),
+        salaryAccess ? optionalApi("/api/manual-load/in-rate/rules", [], "правила часов внутри ставки") : Promise.resolve([])
     ]);
     state.manualRows = manualRows || [];
     state.classes = classes || [];
-    state.buildings = buildBuildingOptions(buildings, state.classes);
+    state.buildings = buildBuildingOptions(buildings, state.classes.length ? state.classes : state.manualRows);
     state.teachers = teachers || [];
     state.subjects = subjects || [];
     state.coefficients = coefficients || [];
@@ -1016,7 +1043,9 @@ async function loadData() {
     state.primarySubjectAssignments = primaryAssignments || [];
     state.primarySubjectRules = primaryRules || [];
     state.salaryByRowId = new Map((salaryBreakdown || []).map((row) => [String(row.manualLoadEntryId), row]));
+    state.salaryBreakdownAvailable = salaryAccess && !salaryBreakdownError;
     state.inRateOverview = inRateOverview || { rows: [], teachers: [], hasUnresolvedRows: false };
+    state.inRateLoadError = inRateError ? "Не удалось получить распределение часов внутри ставки. Обновите страницу после восстановления сервера." : "";
     state.inRateRules = inRateRules || [];
     applyClassSizeResponse(classSizes);
     const rate = Number(salarySettings?.studentHourRate ?? 37);
@@ -1028,11 +1057,17 @@ async function loadData() {
     renderPrimarySubjectRules();
     renderInRateOverview();
     renderInRateRules();
+    if (warnings.length) {
+        const uniqueWarnings = Array.from(new Set(warnings));
+        ui.summary.textContent += ` Нагрузка загружена. Временно недоступны дополнительные данные: ${uniqueWarnings.join(", ")}.`;
+    }
 }
 
 function showError(error) {
-    ui.summary.textContent = `Ошибка: ${error.message}`;
-    ui.table.innerHTML = "";
+    const suffix = state.manualRows.length
+        ? " Ранее загруженная нагрузка оставлена на экране."
+        : "";
+    ui.summary.textContent = `Не удалось обновить нагрузку: ${error.message}.${suffix}`;
 }
 
 function waitForAuth() {
