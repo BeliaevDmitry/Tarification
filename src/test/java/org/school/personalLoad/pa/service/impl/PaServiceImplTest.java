@@ -15,6 +15,7 @@ import org.school.personalLoad.pa.dto.PaDtos;
 import org.school.personalLoad.pa.model.PaLevel;
 import org.school.personalLoad.pa.model.PaReportVersion;
 import org.school.personalLoad.pa.model.PaScopeType;
+import org.school.personalLoad.pa.model.PaSpecImportLog;
 import org.school.personalLoad.pa.model.PaWorkType;
 import org.school.personalLoad.pa.repository.PaClassLevelAssignmentRepository;
 import org.school.personalLoad.pa.repository.PaParticipationRepository;
@@ -31,6 +32,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockMultipartFile;
 
 import java.io.ByteArrayOutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -38,6 +41,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -106,6 +110,48 @@ class PaServiceImplTest {
         assertFalse(previousSameTeacherUpload.isActiveVersion(), "Перезатирается только предыдущая сдача этого же педагога");
         verify(reportVersionRepository).saveAll(List.of(previousSameTeacherUpload));
         verify(reportVersionRepository).save(any(PaReportVersion.class));
+    }
+
+    @Test
+    void specificationImportFileCannotBeDownloadedThroughAnotherUsersLogId() {
+        PaSpecImportLog log = new PaSpecImportLog();
+        log.setId(55L);
+        log.setAcademicYear("2025/2026");
+        log.setFileName("spec.xlsx");
+        log.setCreatedBy("owner");
+        when(paSpecImportLogRepository.findById(55L)).thenReturn(Optional.of(log));
+        PaServiceImpl service = service();
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> service.loadSpecificationImportLogFile(
+                        "2025/2026", 55L, "another-user", false));
+
+        assertTrue(error.getMessage().contains("недоступна"));
+    }
+
+    @Test
+    void deletingOneSpecificationKeepsSharedImportFileForHistoryAndOtherSpecifications() throws Exception {
+        String fileName = "shared-specification-test-" + System.nanoTime() + ".xlsx";
+        Path file = Path.of("pa-specifications", "2025-2026", fileName);
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, "archive");
+        org.school.personalLoad.pa.model.PaSpecification specification =
+                new org.school.personalLoad.pa.model.PaSpecification();
+        specification.setId(77L);
+        specification.setAcademicYear("2025/2026");
+        specification.setSourceFileName(fileName);
+        when(specificationRepository.findById(77L)).thenReturn(Optional.of(specification));
+        PaServiceImpl service = service();
+
+        try {
+            service.deleteSpecification("2025/2026", 77L);
+
+            assertTrue(Files.exists(file));
+            verify(taskRepository).deleteAllBySpecificationId(77L);
+            verify(specificationRepository).delete(specification);
+        } finally {
+            Files.deleteIfExists(file);
+        }
     }
 
     private PaServiceImpl service() {

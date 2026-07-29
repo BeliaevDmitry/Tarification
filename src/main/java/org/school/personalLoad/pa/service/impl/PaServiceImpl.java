@@ -88,11 +88,11 @@ public class PaServiceImpl implements PaService {
             java.util.Set<String> importedSubjects = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
             java.util.Set<String> importedParallels = new java.util.TreeSet<>();
             try (InputStream inputStream = file.getInputStream();
-                 Workbook workbook = new XSSFWorkbook(inputStream)) {
+                Workbook workbook = new XSSFWorkbook(inputStream)) {
                 Path specDir = Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-"));
                 Files.createDirectories(specDir);
                 if (file.getOriginalFilename() != null) {
-                    Files.write(specDir.resolve(file.getOriginalFilename()), file.getBytes());
+                    Files.write(PaStoragePath.resolveUploadedFile(specDir, file.getOriginalFilename()), file.getBytes());
                 }
                 for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
                     Sheet sheet = workbook.getSheetAt(i);
@@ -125,28 +125,63 @@ public class PaServiceImpl implements PaService {
     }
 
     @Override
-    public byte[] loadSpecificationImportLogFile(String academicYear, Long importLogId) throws IOException {
-        var row = paSpecImportLogRepository.findById(importLogId)
+    public byte[] loadSpecificationImportLogFile(String academicYear,
+                                                 Long importLogId,
+                                                 String username,
+                                                 boolean admin) throws IOException {
+        var row = visibleSpecificationImportLog(academicYear, importLogId, username, admin);
+        Path path = PaStoragePath.resolveUploadedFile(
+                Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-")),
+                row.getFileName());
+        if (!Files.exists(path)) throw new IllegalArgumentException("Файл импорта не найден на диске");
+        return Files.readAllBytes(path);
+    }
+
+    @Override
+    public byte[] loadSpecificationImportFileByName(String academicYear,
+                                                    String fileName,
+                                                    String username,
+                                                    boolean admin) throws IOException {
+        if (!admin) {
+            boolean belongsToUser = paSpecImportLogRepository
+                    .findAllByAcademicYearAndCreatedByOrderByCreatedAtDescIdDesc(academicYear, username)
+                    .stream()
+                    .anyMatch(row -> Objects.equals(row.getFileName(), fileName));
+            if (!belongsToUser) {
+                throw new IllegalArgumentException("Файл недоступен текущему пользователю");
+            }
+        }
+        Path path = PaStoragePath.resolveUploadedFile(
+                Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-")),
+                fileName);
+        if (!Files.exists(path)) throw new IllegalArgumentException("Файл импорта не найден на диске");
+        return Files.readAllBytes(path);
+    }
+
+    @Override
+    public String specificationImportLogFileName(String academicYear,
+                                                 Long importLogId,
+                                                 String username,
+                                                 boolean admin) {
+        String fileName = visibleSpecificationImportLog(academicYear, importLogId, username, admin).getFileName();
+        return fileName == null || fileName.isBlank()
+                ? "pa-spec-import-" + importLogId + ".xlsx"
+                : fileName;
+    }
+
+    private PaSpecImportLog visibleSpecificationImportLog(String academicYear,
+                                                          Long importLogId,
+                                                          String username,
+                                                          boolean admin) {
+        PaSpecImportLog row = paSpecImportLogRepository.findById(importLogId)
                 .orElseThrow(() -> new IllegalArgumentException("Запись журнала импорта не найдена"));
-        Path path = Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-"), row.getFileName());
-        if (!Files.exists(path)) throw new IllegalArgumentException("Файл импорта не найден на диске");
-        return Files.readAllBytes(path);
-    }
-
-    @Override
-    public byte[] loadSpecificationImportFileByName(String academicYear, String fileName) throws IOException {
-        if (fileName == null || fileName.isBlank()) throw new IllegalArgumentException("Имя файла не указано");
-        Path path = Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-"), fileName);
-        if (!Files.exists(path)) throw new IllegalArgumentException("Файл импорта не найден на диске");
-        return Files.readAllBytes(path);
-    }
-
-    @Override
-    public String specificationImportLogFileName(String academicYear, Long importLogId) {
-        return paSpecImportLogRepository.findById(importLogId)
-                .map(org.school.personalLoad.pa.model.PaSpecImportLog::getFileName)
-                .filter(name -> name != null && !name.isBlank())
-                .orElse("pa-spec-import-" + importLogId + ".xlsx");
+        if (!academicYearVariants(academicYear).contains(row.getAcademicYear())) {
+            throw new IllegalArgumentException("Запись журнала относится к другому учебному году");
+        }
+        if (!admin && !normalize(row.getCreatedBy()).equals(normalize(username))) {
+            throw new IllegalArgumentException("Запись журнала недоступна текущему пользователю");
+        }
+        return row;
     }
 
     private void saveSpecImportLog(String academicYear, String username, PaDtos.ImportResult result) {
@@ -1331,10 +1366,8 @@ public class PaServiceImpl implements PaService {
                 .orElseThrow(() -> new IllegalArgumentException("Спецификация не найдена"));
         taskRepository.deleteAllBySpecificationId(specificationId);
         specificationRepository.delete(specification);
-        if (specification.getSourceFileName() != null && !specification.getSourceFileName().isBlank()) {
-            Path path = Path.of(PA_SPEC_STORAGE_DIR, academicYear.replace("/", "-"), specification.getSourceFileName());
-            Files.deleteIfExists(path);
-        }
+        // Исходный файл хранится как часть журнала импорта и может содержать несколько спецификаций.
+        // Удаление одной позиции реестра не должно уничтожать общий архивный файл.
     }
 
     private PaSpecification resolveSpecificationForClass(String year, String subject, String className, PaLevel level, PaWorkType workType, LocalDate workDate) {

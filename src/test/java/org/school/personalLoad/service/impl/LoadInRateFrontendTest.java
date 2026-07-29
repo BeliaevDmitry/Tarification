@@ -23,6 +23,10 @@ class LoadInRateFrontendTest {
         assertTrue(js.contains("data-included-hours"));
         assertTrue(js.contains("data-study-period"));
         assertTrue(js.contains("teacherRowKey(row)"));
+        assertTrue(js.contains("const manualRows = await api(\"/api/manual-load\")"));
+        assertTrue(js.contains("state.salaryBreakdownAvailable"));
+        assertTrue(js.contains("Нагрузка загружена. Временно недоступны дополнительные данные"));
+        assertTrue(js.contains("Ранее загруженная нагрузка оставлена на экране"));
         assertTrue(issuesJs.contains("row.targetPage === \"inRate\""));
         assertTrue(issuesJs.contains("/people-load.html"));
     }

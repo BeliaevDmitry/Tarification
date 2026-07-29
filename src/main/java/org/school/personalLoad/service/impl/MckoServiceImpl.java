@@ -55,9 +55,13 @@ public class MckoServiceImpl implements MckoService {
 
     @Override
     public List<MckoDtos.CertificateRow> certificates(String academicYear, String mode) {
+        boolean onlyTeachersWithLoad = mode != null
+                && !mode.isBlank()
+                && !"all".equalsIgnoreCase(mode);
         Set<Long> teacherFilter = teacherIdsForMode(academicYear, mode);
         return certificateRepository.findAll().stream()
-                .filter(row -> teacherFilter.isEmpty() || (row.getTeacherId() != null && teacherFilter.contains(row.getTeacherId())))
+                .filter(row -> !onlyTeachersWithLoad
+                        || (row.getTeacherId() != null && teacherFilter.contains(row.getTeacherId())))
                 .sorted(Comparator.comparing(MckoCertificate::getTeacherFioSnapshot, Comparator.nullsLast(String::compareToIgnoreCase))
                         .thenComparing(MckoCertificate::getMckoSubject, Comparator.nullsLast(String::compareToIgnoreCase))
                         .thenComparing(MckoCertificate::getDiagnosticDate, Comparator.nullsLast(Comparator.reverseOrder())))

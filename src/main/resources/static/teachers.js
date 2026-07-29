@@ -540,12 +540,29 @@ function mckoStatusClass(status) {
 
 async function reloadMckoCertificates() {
     updateMckoExportLink();
-    [mckoCertificates, mckoOverviewRows] = await Promise.all([
-        api("/api/mcko/certificates?mode=all"),
-        api(mckoAcademicYearPath("/api/mcko/overview"))
-    ]);
-    mckoCertificates = mckoCertificates || [];
-    mckoOverviewRows = mckoOverviewRows || [];
+    mckoCertificates = await api("/api/mcko/certificates?mode=all") || [];
+    try {
+        mckoOverviewRows = await api(mckoAcademicYearPath("/api/mcko/overview")) || [];
+    } catch (error) {
+        mckoOverviewRows = mckoCertificates.map((row) => ({
+            certificateId: row.id,
+            teacherId: row.teacherId,
+            teacherFio: row.teacherFio,
+            curriculumSubjects: "Нагрузка временно недоступна",
+            mckoSubject: row.mckoSubject,
+            examType: row.examType,
+            diagnosticDate: row.diagnosticDate,
+            expiresAt: row.expiresAt,
+            level: row.level,
+            published: row.published,
+            source: row.source,
+            comment: row.comment,
+            hasScan: row.hasScan,
+            status: row.status,
+            message: row.warning || (row.status === "OK" ? "МЦКО есть" : "НЕТ МЦКО")
+        }));
+        print({ warning: "Сертификаты МЦКО загружены, но проверка по текущей нагрузке временно недоступна", error: error.message });
+    }
     renderMckoSubjectSelectors();
     renderMckoCertificates();
 }
@@ -611,7 +628,8 @@ function renderMckoCertificates() {
                 : `<button type="button" data-add-mcko="${row.teacherId}" data-mcko-subject="${escapeHtml(row.mckoSubject || "")}">Добавить</button>`) : ""}</td>
         </tr>`).join("") || `<tr><td colspan="13">Нет предметов основной части, настроенных для проверки МЦКО</td></tr>`;
     ui.mckoCertificatesBody.querySelectorAll("[data-edit-mcko]").forEach((button) => button.addEventListener("click", () => startMckoEdit(Number(button.dataset.editMcko))));
-    ui.mckoCertificatesBody.querySelectorAll("[data-delete-mcko]").forEach((button) => button.addEventListener("click", () => deleteMckoCertificate(Number(button.dataset.deleteMcko))));
+    ui.mckoCertificatesBody.querySelectorAll("[data-delete-mcko]").forEach((button) => button.addEventListener("click", () =>
+        deleteMckoCertificate(Number(button.dataset.deleteMcko)).catch((error) => print({ error: error.message }))));
     ui.mckoCertificatesBody.querySelectorAll("[data-add-mcko]").forEach((button) => button.addEventListener("click", () => startMckoCreate(Number(button.dataset.addMcko), button.dataset.mckoSubject)));
 }
 
@@ -700,24 +718,32 @@ async function reloadMckoMappings() {
     });
     ui.mckoSubjectsBody.querySelectorAll("[data-save-mcko-mapping]").forEach((button) => {
         button.addEventListener("click", async () => {
-            const row = rows[Number(button.dataset.saveMckoMapping)];
-            await saveMckoMappingSet(row?.mckoSubject || "");
-            await reloadMckoMappings();
-            await reloadMckoCertificates();
+            try {
+                const row = rows[Number(button.dataset.saveMckoMapping)];
+                await saveMckoMappingSet(row?.mckoSubject || "");
+                await reloadMckoMappings();
+                await reloadMckoCertificates();
+            } catch (error) {
+                print({ error: `Не удалось сохранить соответствие МЦКО: ${error.message}` });
+            }
         });
     });
     ui.mckoSubjectsBody.querySelectorAll("[data-toggle-mcko-ignore]").forEach((button) => {
         button.addEventListener("click", async () => {
-            const row = rows[Number(button.dataset.toggleMckoIgnore)];
-            if (!row) return;
-            if (row.ignored) {
-                await deleteMckoSubjectMappings(row.mckoSubject);
-                print({ status: "mcko subject returned to checks", mckoSubject: row.mckoSubject });
-            } else {
-                await ignoreMckoSubject(row.mckoSubject);
+            try {
+                const row = rows[Number(button.dataset.toggleMckoIgnore)];
+                if (!row) return;
+                if (row.ignored) {
+                    await deleteMckoSubjectMappings(row.mckoSubject);
+                    print({ status: "mcko subject returned to checks", mckoSubject: row.mckoSubject });
+                } else {
+                    await ignoreMckoSubject(row.mckoSubject);
+                }
+                await reloadMckoMappings();
+                await reloadMckoCertificates();
+            } catch (error) {
+                print({ error: `Не удалось изменить проверку МЦКО: ${error.message}` });
             }
-            await reloadMckoMappings();
-            await reloadMckoCertificates();
         });
     });
 }

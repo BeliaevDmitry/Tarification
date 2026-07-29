@@ -112,7 +112,7 @@ public class ManualLoadEntry {
     private BigDecimal includedInRateHours;
 
     @JsonIgnore
-    @Column(name = "in_rate_allocation_confirmed", nullable = false)
+    @Column(name = "in_rate_allocation_confirmed", nullable = false, columnDefinition = "boolean default false")
     private boolean inRateAllocationConfirmed = false;
 
     @JsonIgnore

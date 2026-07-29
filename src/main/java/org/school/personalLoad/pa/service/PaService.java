@@ -13,9 +13,9 @@ import java.util.List;
 public interface PaService {
     List<PaDtos.ImportResult> importSpecifications(String academicYear, List<MultipartFile> files, String username);
     List<PaDtos.ImportLogRow> specificationImportLog(String academicYear, String username, boolean admin);
-    byte[] loadSpecificationImportLogFile(String academicYear, Long importLogId) throws IOException;
-    byte[] loadSpecificationImportFileByName(String academicYear, String fileName) throws IOException;
-    String specificationImportLogFileName(String academicYear, Long importLogId);
+    byte[] loadSpecificationImportLogFile(String academicYear, Long importLogId, String username, boolean admin) throws IOException;
+    byte[] loadSpecificationImportFileByName(String academicYear, String fileName, String username, boolean admin) throws IOException;
+    String specificationImportLogFileName(String academicYear, Long importLogId, String username, boolean admin);
     List<PaDtos.SpecificationRow> specifications(String academicYear);
     List<PaDtos.SpecificationTaskRow> specificationTasks(Long specificationId);
     void deleteSpecification(String academicYear, Long specificationId) throws IOException;

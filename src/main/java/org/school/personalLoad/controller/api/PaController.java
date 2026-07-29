@@ -59,10 +59,14 @@ public class PaController {
 
     @GetMapping("/specifications/import-log/{importLogId}/download")
     public ResponseEntity<byte[]> downloadSpecificationImportFile(@PathVariable Long importLogId,
-                                                                  @RequestParam(required = false) String academicYear) throws Exception {
+                                                                  @RequestParam(required = false) String academicYear,
+                                                                  HttpSession session) throws Exception {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
-        byte[] body = paService.loadSpecificationImportLogFile(year, importLogId);
-        String fileName = paService.specificationImportLogFileName(year, importLogId);
+        SessionUser user = (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
+        String username = user == null ? "unknown" : user.getUsername();
+        boolean admin = user != null && user.isAdmin();
+        byte[] body = paService.loadSpecificationImportLogFile(year, importLogId, username, admin);
+        String fileName = paService.specificationImportLogFileName(year, importLogId, username, admin);
         String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
@@ -72,9 +76,13 @@ public class PaController {
 
     @GetMapping("/specifications/import-file/download")
     public ResponseEntity<byte[]> downloadSpecificationImportFileByName(@RequestParam String fileName,
-                                                                        @RequestParam(required = false) String academicYear) throws Exception {
+                                                                        @RequestParam(required = false) String academicYear,
+                                                                        HttpSession session) throws Exception {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
-        byte[] body = paService.loadSpecificationImportFileByName(year, fileName);
+        SessionUser user = (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
+        String username = user == null ? "unknown" : user.getUsername();
+        boolean admin = user != null && user.isAdmin();
+        byte[] body = paService.loadSpecificationImportFileByName(year, fileName, username, admin);
         String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)

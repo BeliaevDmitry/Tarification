@@ -34,7 +34,7 @@ public class MckoSubjectMapping {
     @Column(name = "subject_name")
     private String subjectName;
 
-    @Column(name = "grade_band", nullable = false)
+    @Column(name = "grade_band", nullable = false, columnDefinition = "varchar(32) default 'ALL'")
     private String gradeBand = "ALL";
 
     @Column(name = "ignored", nullable = false)

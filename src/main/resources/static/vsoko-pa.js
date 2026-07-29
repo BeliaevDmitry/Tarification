@@ -628,11 +628,15 @@ async function deleteGeneratedByParallel(prefix) {
 }
 
 async function reloadSummaryAndSpecs() {
+    const optionalPaData = (path, fallback, label) => paApi(path).catch((error) => {
+        console.warn(`Не удалось загрузить ${label}:`, error);
+        return fallback;
+    });
     const [summary, specs, subjects, curriculum] = await Promise.all([
         paApi('/api/pa/specifications/summary'),
         paApi('/api/pa/specifications'),
-        paApi('/api/subjects'),
-        paApi('/api/curriculum')
+        optionalPaData('/api/subjects', [], 'справочник предметов'),
+        optionalPaData('/api/curriculum', [], 'учебный план')
     ]);
     paState.summary = summary || { primary: [], secondary: [] };
     paState.subjectAreas = subjects || [];
