@@ -778,11 +778,13 @@ class ManualLoadServiceImplBulkReplaceTest {
 
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
             var sheet = workbook.getSheet("СП1");
-            assertEquals("Корпус", sheet.getRow(0).getCell(8).getStringCellValue());
-            assertEquals("Классное руководство", sheet.getRow(0).getCell(9).getStringCellValue());
-            assertTrue(sheet.getRow(1).getCell(8).getStringCellValue().contains("ул. Первая, 1"));
-            assertEquals("1-А", sheet.getRow(1).getCell(9).getStringCellValue());
-            assertEquals("СП2", sheet.getRow(2).getCell(8).getStringCellValue().split("\n")[0]);
+            assertEquals("Всего основных", sheet.getRow(0).getCell(7).getStringCellValue());
+            assertEquals("Полная нагрузка", sheet.getRow(0).getCell(8).getStringCellValue());
+            assertEquals("Корпус", sheet.getRow(0).getCell(9).getStringCellValue());
+            assertEquals("Классное руководство", sheet.getRow(0).getCell(10).getStringCellValue());
+            assertTrue(sheet.getRow(1).getCell(9).getStringCellValue().contains("ул. Первая, 1"));
+            assertEquals("1-А", sheet.getRow(1).getCell(10).getStringCellValue());
+            assertEquals("СП2", sheet.getRow(2).getCell(9).getStringCellValue().split("\n")[0]);
             assertNotNull(workbook.getSheet("Все педагоги"));
         }
     }

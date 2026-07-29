@@ -92,7 +92,9 @@ public class PrimarySubjectServiceImpl implements PrimarySubjectService {
     @Transactional
     public PrimarySubjectDtos.DetermineResult determine(String academicYear) {
         List<PrimarySubjectRule> rules = getRules();
-        List<ManualLoadEntry> loadRows = manualLoadRepository.findAllByAcademicYear(academicYear);
+        List<ManualLoadEntry> loadRows = manualLoadRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(row -> !row.isIupLoad())
+                .toList();
         Map<Long, List<ManualLoadEntry>> loadByTeacher = loadRows.stream()
                 .filter(row -> row.getTeacherId() != null)
                 .collect(Collectors.groupingBy(ManualLoadEntry::getTeacherId));
@@ -202,7 +204,9 @@ public class PrimarySubjectServiceImpl implements PrimarySubjectService {
         Set<Long> assignedTeacherIds = assignments.stream()
                 .map(TeacherPrimarySubjectAssignment::getTeacherId)
                 .collect(Collectors.toSet());
-        List<ManualLoadEntry> loadRows = manualLoadRepository.findAllByAcademicYear(academicYear);
+        List<ManualLoadEntry> loadRows = manualLoadRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(row -> !row.isIupLoad())
+                .toList();
         loadRows.stream()
                 .filter(row -> row.getTeacherId() == null)
                 .findFirst()
@@ -287,6 +291,7 @@ public class PrimarySubjectServiceImpl implements PrimarySubjectService {
                         (first, second) -> first
                 ));
         return manualLoadRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(row -> !row.isIupLoad())
                 .filter(row -> !normalizeDisplay(row.getSubjectName()).isBlank())
                 .map(row -> new AbstractMap.SimpleEntry<>(
                         row.getTeacherId() != null ? row.getTeacherId() : teacherIdByFio.get(normalizeKey(row.getFioTeacher())),

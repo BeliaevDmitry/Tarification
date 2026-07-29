@@ -61,6 +61,7 @@ public class LoadIssueServiceImpl implements LoadIssueService {
                 .filter(row -> buildingFilter.isBlank() || normalize(row.getNumberSchoolBuilding()).equals(buildingFilter))
                 .toList();
         List<ManualLoadEntry> yearLoad = manualLoadEntryRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(row -> !row.isIupLoad())
                 .filter(row -> buildingFilter.isBlank() || normalize(row.getNumberSchoolBuilding()).equals(buildingFilter))
                 .collect(Collectors.collectingAndThen(
                         Collectors.toMap(this::loadDuplicateKey, row -> row, (first, second) -> first, LinkedHashMap::new),

@@ -7,6 +7,7 @@ import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.CurriculumModule;
 import org.school.personalLoad.model.CurriculumPart;
 import org.school.personalLoad.model.ManualLoadEntry;
+import org.school.personalLoad.model.ManualLoadSource;
 import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.repository.AcademicYearRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
@@ -129,6 +130,7 @@ public class AcademicYearServiceImpl implements AcademicYearService {
         }
 
         List<ManualLoadEntry> sourceManual = manualLoadEntryRepository.findAllByAcademicYear(sourceYear).stream()
+                .filter(entry -> !entry.isIupLoad())
                 .filter(entry -> entry.getFioTeacher() != null && !entry.getFioTeacher().isBlank())
                 .toList();
 
@@ -144,6 +146,7 @@ public class AcademicYearServiceImpl implements AcademicYearService {
                 ));
 
         Map<String, ManualLoadEntry> targetExisting = manualLoadEntryRepository.findAllByAcademicYear(targetYear).stream()
+                .filter(entry -> !entry.isIupLoad())
                 .collect(Collectors.toMap(this::continuityKey, Function.identity(), (left, right) -> left));
 
         List<ManualLoadEntry> toCreate = sourceManual.stream()
@@ -291,6 +294,7 @@ public class AcademicYearServiceImpl implements AcademicYearService {
                                                   CurriculumModule module,
                                                   ManualLoadEntry source) {
         ManualLoadEntry entry = new ManualLoadEntry();
+        entry.setLoadSource(ManualLoadSource.CORE);
         entry.setAcademicYear(targetYear);
         entry.setFioTeacher(source.getFioTeacher().trim());
         entry.setNumberSchoolBuilding(curriculum.getNumberSchoolBuilding());

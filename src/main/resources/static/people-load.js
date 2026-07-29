@@ -10,9 +10,14 @@ const ui = {
     summary: document.getElementById("people-load-summary"),
     table: document.getElementById("people-load-table"),
     mainTab: document.getElementById("people-load-main-tab"),
+    iupTab: document.getElementById("people-load-iup-tab"),
     primaryTab: document.getElementById("people-load-primary-tab"),
     inRateTab: document.getElementById("people-load-in-rate-tab"),
     mainPanel: document.getElementById("people-load-main-panel"),
+    iupPanel: document.getElementById("people-load-iup-panel"),
+    iupTable: document.getElementById("iup-load-table"),
+    iupSummary: document.getElementById("iup-load-summary"),
+    exportIupLoadBtn: document.getElementById("export-iup-load-btn"),
     primaryPanel: document.getElementById("people-load-primary-panel"),
     inRatePanel: document.getElementById("people-load-in-rate-panel"),
     inRateTable: document.getElementById("in-rate-hours-table"),
@@ -34,6 +39,7 @@ const ui = {
 const state = {
     buildings: [],
     manualRows: [],
+    iupRows: [],
     classes: [],
     teachers: [],
     subjects: [],
@@ -309,7 +315,7 @@ function periodLabel(row) {
 }
 
 function loadValue(row) {
-    const value = Number(row.groupLoad ?? row.load ?? 0);
+    const value = Number(row.hoursPerWeek ?? row.preciseLoadHours ?? row.groupLoad ?? row.load ?? 0);
     return Number.isFinite(value) ? value : 0;
 }
 
@@ -346,12 +352,20 @@ function formatScopedTotalHours(scoped, total) {
     return `${formatHours(scoped)} / ${formatHours(total)}`;
 }
 
+function combineHours(first, second) {
+    return {
+        year: Number(first?.year || 0) + Number(second?.year || 0),
+        h1: Number(first?.h1 || 0) + Number(second?.h1 || 0),
+        h2: Number(first?.h2 || 0) + Number(second?.h2 || 0)
+    };
+}
+
 function fioKey(value) {
     return normalizeKey(value || "Вакансия");
 }
 
 function teacherRowKey(row) {
-    return row?.teacherId != null ? `id:${row.teacherId}` : `fio:${fioKey(row?.fioTeacher)}`;
+    return row?.teacherId != null ? `id:${row.teacherId}` : `fio:${fioKey(row?.fioTeacher || row?.teacherFullName)}`;
 }
 
 function childrenCount(row) {
@@ -363,6 +377,11 @@ function childrenCount(row) {
     if (name.includes("2")) return secondGroupSize;
     if (name.includes("1")) return firstGroupSize;
     return classSize;
+}
+
+function calculationChildren(row) {
+    const server = state.salaryByRowId?.get(String(row.id));
+    return server ? Number(server.children ?? childrenCount(row)) : childrenCount(row);
 }
 
 function salaryPermission() {
@@ -505,6 +524,8 @@ function renderTable() {
 
     const selectedTotals = new Map();
     const allTotals = new Map();
+    const selectedIupTotals = new Map();
+    const allIupTotals = new Map();
     selectedRows.forEach((row) => {
         const key = teacherRowKey(row);
         if (!selectedTotals.has(key)) selectedTotals.set(key, { year: 0, h1: 0, h2: 0 });
@@ -515,9 +536,22 @@ function renderTable() {
         if (!allTotals.has(key)) allTotals.set(key, { year: 0, h1: 0, h2: 0 });
         addHours(allTotals.get(key), row);
     });
+    state.iupRows.filter((row) => rowMatchesBuildingAccess(row, selected)).forEach((row) => {
+        const key = teacherRowKey(row);
+        if (!selectedIupTotals.has(key)) selectedIupTotals.set(key, { year: 0, h1: 0, h2: 0 });
+        addHours(selectedIupTotals.get(key), row);
+    });
+    state.iupRows.forEach((row) => {
+        const key = teacherRowKey(row);
+        if (!allIupTotals.has(key)) allIupTotals.set(key, { year: 0, h1: 0, h2: 0 });
+        addHours(allIupTotals.get(key), row);
+    });
 
     const showSalary = salaryPermission().canView && state.salaryBreakdownAvailable;
-    const headers = ["ФИО", "Предмет", "Класс", "Группа", "Количество детей", "Часы по предмету", "Период нагрузки", "Часы в корпусе/всего", "Корпус", "Классное руководство"];
+    const headers = ["ФИО", "Предмет", "Класс", "Группа",
+        state.salaryBreakdownAvailable ? "Расчётная численность" : "Количество детей",
+        "Часы по предмету", "Период нагрузки", "Всего основных", "Полная нагрузка",
+        "Корпус", "Классное руководство"];
     if (showSalary) {
         headers.push("В ставке", "К оплате", "Основание", "Предметный коэф.", "Коэф. группы", "За строку", "За оплачиваемые часы итог", "Кл. рук., руб.", "Итого");
     }
@@ -537,6 +571,10 @@ function renderTable() {
             const scoped = selectedTotals.get(key) || { year: 0, h1: 0, h2: 0 };
             const total = allTotals.get(key) || { year: 0, h1: 0, h2: 0 };
             const hours = formatScopedTotalHours(scoped, total);
+            const fullHours = formatScopedTotalHours(
+                combineHours(scoped, selectedIupTotals.get(key)),
+                combineHours(total, allIupTotals.get(key))
+            );
             const leadership = teacherLeadershipClasses(rows[0]);
             const teacherRowsAcrossAllClasses = allRowsByTeacher.get(key) || rows;
             const salary = showSalary ? teacherSalary(rows[0], teacherRowsAcrossAllClasses) : null;
@@ -548,11 +586,12 @@ function renderTable() {
                 html += `<td>${escapeHtml(row.subjectName)}</td>`;
                 html += `<td>${escapeHtml(row.className)}</td>`;
                 html += `<td>${escapeHtml(row.groupNameEducationalPlan || "")}</td>`;
-                html += `<td>${childrenCount(row)}</td>`;
+                html += `<td>${calculationChildren(row)}</td>`;
                 html += `<td>${escapeHtml(loadValue(row))}</td>`;
                 html += `<td>${escapeHtml(periodLabel(row))}</td>`;
                 if (index === 0) {
                     html += `<td rowspan="${rows.length}" class="people-load-hours">${escapeHtml(hours)}</td>`;
+                    html += `<td rowspan="${rows.length}" class="people-load-hours">${escapeHtml(fullHours)}</td>`;
                 }
                 html += `<td class="people-load-building">${escapeHtml(rowBuildingLabel(row))}</td>`;
                 if (index === 0) {
@@ -583,6 +622,64 @@ function renderTable() {
     ui.table.innerHTML = html;
     const label = state.buildings.find((building) => building.value === selected);
     ui.summary.textContent = `Показано строк: ${displayRows.length} (в выбранном корпусе: ${selectedRows.length}). Выбрано: ${buildingLabel(label) || "корпус не выбран"}.`;
+    fitPeopleLoadTables();
+}
+
+function iupCategoryLabel(category) {
+    if (category === "K2") return "К2";
+    if (category === "K3") return "К3";
+    return "Норма";
+}
+
+function renderIupTable() {
+    if (!ui.iupTable) return;
+    const selected = ui.buildingSelect?.value || state.buildings[0]?.value || "";
+    const rows = state.iupRows
+        .filter((row) => !selected || rowMatchesBuildingAccess(row, selected))
+        .sort((a, b) => {
+            const teacher = normalizeText(a.teacherFullName).localeCompare(normalizeText(b.teacherFullName), "ru");
+            if (teacher) return teacher;
+            const student = normalizeText(a.studentFullName).localeCompare(normalizeText(b.studentFullName), "ru");
+            if (student) return student;
+            return normalizeText(a.subjectName).localeCompare(normalizeText(b.subjectName), "ru");
+        });
+    const showSalary = salaryPermission().canView;
+    const headers = [
+        "Педагог", "Ребёнок", "Категория", "Предмет", "Класс ИУП", "Часы",
+        "Период", "Приказ", "Статус"
+    ];
+    if (showSalary) {
+        headers.push("Коэф. предмета", "Коэф. категории", "Предварительная сумма");
+    }
+    let html = `<thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>`;
+    if (!rows.length) {
+        html += `<tr><td colspan="${headers.length}" class="muted">Строки очной нагрузки ИУП не найдены.</td></tr>`;
+    } else {
+        rows.forEach((row) => {
+            const period = [row.validFrom || "—", row.validTo || "без окончания"].join(" — ");
+            const order = [row.orderNumber, row.orderDate].filter(Boolean).join(" от ");
+            html += `<tr class="${row.activeNow ? "" : "muted"}">
+                <td>${escapeHtml(row.teacherFullName)}</td>
+                <td>${escapeHtml(row.studentFullName)}</td>
+                <td>${escapeHtml(iupCategoryLabel(row.studentCategory))}</td>
+                <td>${escapeHtml(row.subjectName)}</td>
+                <td>${escapeHtml(row.className)}</td>
+                <td>${escapeHtml(formatNumber(row.hoursPerWeek))}</td>
+                <td>${escapeHtml(period)}</td>
+                <td>${escapeHtml(order)}</td>
+                <td>${row.activeNow ? "Действует" : "Вне текущего периода"}</td>`;
+            if (showSalary) {
+                html += `<td>${escapeHtml(formatCoefficient(row.subjectCoefficient))}</td>
+                    <td>${escapeHtml(formatCoefficient(row.categoryCoefficient))}</td>
+                    <td class="people-load-money">${escapeHtml(formatMoney(row.preliminaryMonthlyAmount))}</td>`;
+            }
+            html += "</tr>";
+        });
+    }
+    html += "</tbody>";
+    ui.iupTable.innerHTML = html;
+    const hours = rows.reduce((sum, row) => sum + Number(row.hoursPerWeek || 0), 0);
+    ui.iupSummary.textContent = `Строк: ${rows.length}. Часов: ${formatNumber(hours)}. Расчёт предварительный: часы × коэффициент предмета × 34/12 × коэффициент категории.`;
     fitPeopleLoadTables();
 }
 
@@ -731,12 +828,15 @@ async function saveInRateAllocations() {
 }
 
 function showPeopleLoadPanel(panel) {
+    const iup = panel === "iup";
     const primary = panel === "primary";
     const inRate = panel === "inRate";
-    ui.mainPanel.hidden = primary || inRate;
+    ui.mainPanel.hidden = iup || primary || inRate;
+    ui.iupPanel.hidden = !iup;
     ui.primaryPanel.hidden = !primary;
     ui.inRatePanel.hidden = !inRate;
-    ui.mainTab.classList.toggle("active", !primary && !inRate);
+    ui.mainTab.classList.toggle("active", !iup && !primary && !inRate);
+    ui.iupTab?.classList.toggle("active", iup);
     ui.primaryTab.classList.toggle("active", primary);
     ui.inRateTab?.classList.toggle("active", inRate);
     fitPeopleLoadTables();
@@ -918,6 +1018,7 @@ async function loadData() {
         console.warn(`Не удалось загрузить ${label}:`, error);
         return fallback;
     });
+    const iupRows = await optionalApi("/api/manual-load/iup", [], "нагрузка ИУП");
     let salaryBreakdownError = null;
     let inRateError = null;
     const [buildings, classes, teachers, subjects, coefficients, salarySettings, groupCoefficientSubjects,
@@ -946,6 +1047,7 @@ async function loadData() {
         }) : Promise.resolve({ rows: [], teachers: [], hasUnresolvedRows: false })
     ]);
     state.manualRows = manualRows || [];
+    state.iupRows = iupRows || [];
     state.classes = classes || [];
     state.buildings = buildBuildingOptions(buildings, state.classes.length ? state.classes : state.manualRows);
     state.teachers = teachers || [];
@@ -964,6 +1066,7 @@ async function loadData() {
     rebuildIndexes();
     fillBuildingSelect();
     renderTable();
+    renderIupTable();
     renderPrimarySubjectTeachers();
     renderPrimarySubjectRules();
     renderInRateOverview();
@@ -995,7 +1098,10 @@ function waitForAuth() {
 }
 
 async function init() {
-    ui.buildingSelect?.addEventListener("change", renderTable);
+    ui.buildingSelect?.addEventListener("change", () => {
+        renderTable();
+        renderIupTable();
+    });
     ui.refreshBtn?.addEventListener("click", () => loadData().catch(showError));
     ui.exportFullLoadBtn?.addEventListener("click", () => exportFullLoadWorkbook().catch((error) => alert(`Не удалось скачать полную нагрузку: ${error.message}`)));
     ui.exportConsolidatedLoadBtn?.addEventListener("click", () => exportConsolidatedLoadWorkbook().catch((error) => alert(`Не удалось скачать отчёт по основному предмету: ${error.message}`)));
@@ -1007,7 +1113,10 @@ async function init() {
         ui.exportSalaryOneLoadBtn.addEventListener("click", () => exportSalaryOneLoadWorkbook().catch((error) => alert(`Не удалось скачать нагрузку для ЗП 1: ${error.message}`)));
     }
     ui.exportDepartmentLoadBtn?.addEventListener("click", () => exportDepartmentLoadWorkbook().catch((error) => alert(`Не удалось скачать нагрузку ДЕП: ${error.message}`)));
+    ui.exportIupLoadBtn?.addEventListener("click", () => exportLoadWorkbook("/api/manual-load/iup/export", "iup-load-export.xlsx")
+        .catch((error) => alert(`Не удалось скачать нагрузку ИУП: ${error.message}`)));
     ui.mainTab?.addEventListener("click", () => showPeopleLoadPanel("main"));
+    ui.iupTab?.addEventListener("click", () => showPeopleLoadPanel("iup"));
     ui.primaryTab?.addEventListener("click", () => showPeopleLoadPanel("primary"));
     ui.inRateTab?.addEventListener("click", () => showPeopleLoadPanel("inRate"));
     ui.inRateTable?.addEventListener("input", (event) => {
@@ -1061,6 +1170,8 @@ async function init() {
     const requestedPanel = new URLSearchParams(window.location.search).get("panel");
     if (requestedPanel === "inRate" && salaryPermission().canView) {
         showPeopleLoadPanel("inRate");
+    } else if (requestedPanel === "iup") {
+        showPeopleLoadPanel("iup");
     }
     loadData().catch(showError);
 }

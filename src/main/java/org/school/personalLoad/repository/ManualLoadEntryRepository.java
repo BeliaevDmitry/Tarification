@@ -1,6 +1,7 @@
 package org.school.personalLoad.repository;
 
 import org.school.personalLoad.model.ManualLoadEntry;
+import org.school.personalLoad.model.ManualLoadSource;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -14,11 +15,25 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
     java.util.List<ManualLoadEntry> findByTeacherId(Long teacherId);
 
     @Modifying
-    @Query("delete from ManualLoadEntry m where m.academicYear = :academicYear and lower(m.numberSchoolBuilding) in :codes")
+    @Query("delete from ManualLoadEntry m where m.academicYear = :academicYear and m.loadSource = org.school.personalLoad.model.ManualLoadSource.CORE and lower(m.numberSchoolBuilding) in :codes")
     void deleteByAcademicYearAndBuildingCodes(@Param("academicYear") String academicYear,
                                               @Param("codes") java.util.Collection<String> codes);
 
     java.util.List<ManualLoadEntry> findAllByAcademicYear(String academicYear);
+    java.util.List<ManualLoadEntry> findAllByAcademicYearAndLoadSource(String academicYear, ManualLoadSource loadSource);
+    java.util.List<ManualLoadEntry> findAllBySourceIupPlanId(Long sourceIupPlanId);
+    java.util.List<ManualLoadEntry> findAllBySourceStudentIdAndAcademicYearAndLoadSource(
+            Long sourceStudentId,
+            String academicYear,
+            ManualLoadSource loadSource
+    );
+
+    @Modifying
+    void deleteAllBySourceIupPlanId(Long sourceIupPlanId);
+
+    @Modifying
+    void deleteAllByAcademicYearAndLoadSource(String academicYear, ManualLoadSource loadSource);
+
     java.util.List<ManualLoadEntry> findAllByAcademicYearAndNumberSchoolBuildingIgnoreCase(String academicYear, String numberSchoolBuilding);
 
 
@@ -42,7 +57,9 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
     long countClassTails(@Param("academicYear") String academicYear,
                          @Param("classId") Long classId);
 
-    void deleteAllByAcademicYear(String academicYear);
+    @Modifying
+    @Query("delete from ManualLoadEntry m where m.academicYear = :academicYear and m.loadSource = org.school.personalLoad.model.ManualLoadSource.CORE")
+    void deleteAllByAcademicYear(@Param("academicYear") String academicYear);
 
     @Modifying
     @Query(value = "delete from manual_load_entry where meta_group_id = :metaGroupId", nativeQuery = true)
@@ -52,13 +69,13 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
     java.util.List<ManualLoadEntry> findAllByMetaGroupId(@Param("metaGroupId") Long metaGroupId);
 
     @Modifying
-    @Query("delete from ManualLoadEntry m where m.academicYear = :academicYear and m.classId in :classIds")
+    @Query("delete from ManualLoadEntry m where m.academicYear = :academicYear and m.loadSource = org.school.personalLoad.model.ManualLoadSource.CORE and m.classId in :classIds")
     void deleteByAcademicYearAndClassIds(@Param("academicYear") String academicYear,
                                          @Param("classIds") java.util.Collection<Long> classIds);
 
 
     @Modifying
-    @Query("delete from ManualLoadEntry m where m.academicYear = :academicYear and m.metaGroupId in :metaGroupIds")
+    @Query("delete from ManualLoadEntry m where m.academicYear = :academicYear and m.loadSource = org.school.personalLoad.model.ManualLoadSource.CORE and m.metaGroupId in :metaGroupIds")
     void deleteByAcademicYearAndMetaGroupIds(@Param("academicYear") String academicYear,
                                              @Param("metaGroupIds") java.util.Collection<Long> metaGroupIds);
 
@@ -67,6 +84,7 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
     @Query(value = """
             delete from manual_load_entry m
              where m.academic_year = :academicYear
+               and coalesce(m.load_source, 'CORE') = 'CORE'
                and (
                     m.school_building_id = :schoolBuildingId
                  or (m.school_building_id is null and m.class_id in (
@@ -86,7 +104,7 @@ public interface ManualLoadEntryRepository extends JpaRepository<ManualLoadEntry
                                                  @Param("schoolBuildingId") Long schoolBuildingId);
 
     @Modifying
-    @Query("delete from ManualLoadEntry m where lower(m.numberSchoolBuilding) in :codes")
+    @Query("delete from ManualLoadEntry m where m.loadSource = org.school.personalLoad.model.ManualLoadSource.CORE and lower(m.numberSchoolBuilding) in :codes")
     void deleteByBuildingCodes(@Param("codes") java.util.Collection<String> codes);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)

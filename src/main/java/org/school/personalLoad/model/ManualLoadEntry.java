@@ -13,7 +13,9 @@ import java.time.LocalDateTime;
 
 @Data
 @Entity
-@Table(name = "manual_load_entry")
+@Table(name = "manual_load_entry", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_manual_load_iup_assignment", columnNames = {"source_iup_assignment_id"})
+})
 public class ManualLoadEntry {
 
     @Id
@@ -103,6 +105,30 @@ public class ManualLoadEntry {
     @Column(nullable = false)
     private Integer load;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "load_source", nullable = false, columnDefinition = "varchar(16) default 'CORE'")
+    private ManualLoadSource loadSource = ManualLoadSource.CORE;
+
+    /**
+     * IUP hours may be fractional. The legacy load/groupLoad columns remain intact
+     * for ordinary load rows; this value is authoritative only for IUP rows.
+     */
+    @Column(name = "precise_load_hours", precision = 10, scale = 2)
+    private BigDecimal preciseLoadHours;
+
+    @Column(name = "source_iup_plan_id")
+    private Long sourceIupPlanId;
+
+    @Column(name = "source_iup_assignment_id")
+    private Long sourceIupAssignmentId;
+
+    @Column(name = "source_student_id")
+    private Long sourceStudentId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "iup_student_category")
+    private StudentCategory iupStudentCategory;
+
     @JsonIgnore
     @Column(name = "employment_contract_id")
     private Long employmentContractId;
@@ -163,4 +189,16 @@ public class ManualLoadEntry {
 
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    public boolean isIupLoad() {
+        return loadSource == ManualLoadSource.IUP;
+    }
+
+    public BigDecimal getEffectiveLoadHours() {
+        if (isIupLoad() && preciseLoadHours != null) {
+            return preciseLoadHours.max(BigDecimal.ZERO);
+        }
+        int value = groupLoad != null ? groupLoad : (load == null ? 0 : load);
+        return BigDecimal.valueOf(Math.max(value, 0));
+    }
 }

@@ -1,11 +1,13 @@
 package org.school.personalLoad.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.school.personalLoad.model.*;
 import org.school.personalLoad.repository.SalaryGroupCoefficientSubjectRepository;
 import org.school.personalLoad.repository.SalarySettingsRepository;
 import org.school.personalLoad.repository.SubjectLevelCoefficientRepository;
 import org.school.personalLoad.service.impl.ClassNameNormalizer;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -16,6 +18,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class LoadSalaryCalculationService {
     private static final BigDecimal STUDENT_HOUR_MULTIPLIER =
             BigDecimal.valueOf(34).divide(BigDecimal.valueOf(12), 10, RoundingMode.HALF_UP);
@@ -26,9 +29,13 @@ public class LoadSalaryCalculationService {
     private final SubjectLevelCoefficientRepository coefficientRepository;
     private final SalaryGroupCoefficientSubjectRepository groupSubjectRepository;
 
+    @Autowired(required = false)
+    private StudentDataExchangeService studentDataExchangeService;
+
     public Map<Long, SalaryLine> calculate(String academicYear, Collection<ManualLoadEntry> rows) {
-        CalculationContext context = context(academicYear);
-        return Optional.ofNullable(rows).orElse(List.of()).stream()
+        Collection<ManualLoadEntry> safeRows = Optional.ofNullable(rows).orElse(List.of());
+        CalculationContext context = context(academicYear, safeRows);
+        return safeRows.stream()
                 .filter(Objects::nonNull)
                 .filter(row -> row.getId() != null)
                 .collect(Collectors.toMap(
@@ -40,13 +47,11 @@ public class LoadSalaryCalculationService {
     }
 
     public SalaryLine calculate(String academicYear, ManualLoadEntry row) {
-        return calculate(row, context(academicYear));
+        return calculate(row, context(academicYear, row == null ? List.of() : List.of(row)));
     }
 
     public BigDecimal totalHours(ManualLoadEntry row) {
-        int value = Optional.ofNullable(row.getGroupLoad())
-                .orElse(Optional.ofNullable(row.getLoad()).orElse(0));
-        return BigDecimal.valueOf(Math.max(value, 0));
+        return row == null ? BigDecimal.ZERO : row.getEffectiveLoadHours();
     }
 
     public BigDecimal includedHours(ManualLoadEntry row) {
@@ -60,10 +65,24 @@ public class LoadSalaryCalculationService {
         return totalHours(row).subtract(includedHours(row)).max(BigDecimal.ZERO);
     }
 
-    private CalculationContext context(String academicYear) {
+    private CalculationContext context(String academicYear, Collection<ManualLoadEntry> rows) {
         Map<String, Integer> sizes = new LinkedHashMap<>();
         classSizeService.effectiveClassSizes(academicYear).forEach((name, count) ->
                 sizes.put(normalizeClass(name), count == null ? 0 : Math.max(count, 0)));
+        Map<Long, Integer> contingentCounts = new LinkedHashMap<>();
+        if (studentDataExchangeService != null) {
+            try {
+                StudentDataExchangeService.StudentCountResolution resolution =
+                        studentDataExchangeService.resolveStudentCounts(academicYear, rows);
+                if (resolution != null && resolution.contingentMode()
+                        && resolution.childrenByLoadEntry() != null) {
+                    contingentCounts.putAll(resolution.childrenByLoadEntry());
+                }
+            } catch (RuntimeException exception) {
+                log.warn("Не удалось применить фактическую численность для {}: {}. Используется резервный расчёт.",
+                        academicYear, exception.getMessage());
+            }
+        }
         Map<String, BigDecimal> coefficients = coefficientRepository.findAll().stream()
                 .collect(Collectors.toMap(
                         row -> coefficientKey(row.getSubjectName(), row.getEducationStage()),
@@ -84,7 +103,7 @@ public class LoadSalaryCalculationService {
                 .map(SalarySettings::getStudentHourRate)
                 .filter(value -> value != null && value.signum() > 0)
                 .orElse(SalarySettings.DEFAULT_STUDENT_HOUR_RATE);
-        return new CalculationContext(sizes, coefficients, groupSubjectIds, groupSubjectNames, rate);
+        return new CalculationContext(sizes, contingentCounts, coefficients, groupSubjectIds, groupSubjectNames, rate);
     }
 
     private SalaryLine calculate(ManualLoadEntry row, CalculationContext context) {
@@ -95,11 +114,38 @@ public class LoadSalaryCalculationService {
         String group = normalizeText(row.getGroupNameEducationalPlan());
         int first = (classSize + 1) / 2;
         int second = classSize - first;
-        int children = group.contains("2") ? second : group.contains("1") ? first : classSize;
+        int legacyChildren = group.contains("2") ? second : group.contains("1") ? first : classSize;
+        int children = context.contingentCounts().getOrDefault(row.getId(), legacyChildren);
         children = Math.max(children, 0);
         EducationStage stage = stage(row.getClassName());
         BigDecimal subjectCoefficient = context.subjectCoefficients()
                 .getOrDefault(coefficientKey(row.getSubjectName(), stage), BigDecimal.ONE);
+        if (row.isIupLoad()) {
+            StudentCategory category = Objects.requireNonNullElse(
+                    row.getIupStudentCategory(),
+                    StudentCategory.NORMAL
+            );
+            BigDecimal categoryCoefficient = IupLoadService.categoryCoefficient(category);
+            BigDecimal amount = paidHours
+                    .multiply(subjectCoefficient)
+                    .multiply(STUDENT_HOUR_MULTIPLIER)
+                    .multiply(categoryCoefficient);
+            return new SalaryLine(
+                    row.getId(),
+                    row.getTeacherId(),
+                    row.getEmploymentContractId(),
+                    totalHours,
+                    BigDecimal.ZERO,
+                    paidHours,
+                    1,
+                    BigDecimal.ONE,
+                    subjectCoefficient,
+                    categoryCoefficient,
+                    amount,
+                    true,
+                    "ИУП: отдельная оплата"
+            );
+        }
         boolean groupEnabled = row.getSubjectId() != null
                 ? context.groupSubjectIds().contains(row.getSubjectId())
                 : context.groupSubjectNames().contains(normalizeText(row.getSubjectName()));
@@ -160,6 +206,7 @@ public class LoadSalaryCalculationService {
 
     private record CalculationContext(
             Map<String, Integer> classSizes,
+            Map<Long, Integer> contingentCounts,
             Map<String, BigDecimal> subjectCoefficients,
             Set<Long> groupSubjectIds,
             Set<String> groupSubjectNames,

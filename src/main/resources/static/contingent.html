@@ -19,6 +19,7 @@
         <nav class="contingent-tabs">
             <a class="nav-link nav-home-link" href="/" title="Главная" aria-label="Главная">🏠</a>
             <button type="button" class="nav-link active" data-contingent-tab="stats">Численность</button>
+            <button type="button" class="nav-link" data-contingent-tab="support">Статусы и ИУП</button>
             <button type="button" class="nav-link" data-contingent-tab="manual">Ручная правка</button>
             <button type="button" class="nav-link" data-contingent-tab="import">Импорт</button>
         </nav>
@@ -91,6 +92,146 @@
         <div id="contingent-manual-summary" class="muted"></div>
         <div class="sheet-wrap">
             <table class="sheet-table" id="contingent-manual-table"></table>
+        </div>
+    </section>
+
+    <section class="card" data-contingent-pane="support" style="display:none;">
+        <h2>Статусы и ИУП</h2>
+        <p class="muted">
+            В численности ребёнок с действующим ИУП учитывается только в колонке «ИУП».
+            Его исходная категория «Норма / К2 / К3» сохраняется и показывается в реестре ниже.
+        </p>
+        <div class="row controls-row">
+            <label>Состояние на дату:
+                <input id="support-as-of-date" type="date">
+            </label>
+            <button id="support-refresh-btn" type="button">Обновить</button>
+            <button id="support-export-btn" type="button" data-allow-readonly="true">Экспорт Excel</button>
+            <button id="support-reconcile-btn" type="button" class="secondary" data-requires-edit>Связать карточки детей</button>
+        </div>
+        <div id="support-summary-message" class="muted"></div>
+
+        <details class="card" open>
+            <summary><strong>Импорт и экспорт всех данных</strong></summary>
+            <p class="muted">
+                Скачайте единый Excel-пакет: в нём уже есть текущие данные, справочники и точные заголовки.
+                Заполненный файл можно загрузить обратно целиком. Пока данные не прошли контроль,
+                действует прежний расчёт; после успешной проверки фактическая численность применяется автоматически.
+            </p>
+            <div class="row controls-row">
+                <button id="support-data-package-export-btn" type="button" data-allow-readonly="true">
+                    Скачать пакет-шаблон
+                </button>
+                <input id="support-data-package-file" type="file" accept=".xlsx,.xls" data-requires-edit>
+                <button id="support-data-package-import-btn" type="button" data-requires-edit>
+                    Импортировать пакет
+                </button>
+                <button id="support-readiness-btn" type="button" class="secondary">
+                    Проверить готовность
+                </button>
+            </div>
+            <div id="support-data-package-result" class="muted"></div>
+            <div class="sheet-wrap">
+                <table class="sheet-table" id="support-readiness-table"></table>
+            </div>
+        </details>
+
+        <h3>Численность по классам</h3>
+        <div class="sheet-wrap">
+            <table class="sheet-table" id="support-class-table"></table>
+        </div>
+
+        <div data-requires-edit>
+            <details class="card" id="support-status-editor">
+                <summary><strong>Установить или изменить категорию ребёнка</strong></summary>
+                <div class="row controls-row">
+                    <label>Ребёнок:
+                        <select id="support-status-student"></select>
+                    </label>
+                    <label>Категория:
+                        <select id="support-status-category">
+                            <option value="NORMAL">Норма</option>
+                            <option value="K2">К2</option>
+                            <option value="K3">К3</option>
+                        </select>
+                    </label>
+                    <label>Начало:
+                        <input id="support-status-from" type="date">
+                    </label>
+                    <label>Окончание:
+                        <input id="support-status-to" type="date">
+                    </label>
+                    <input id="support-status-id" type="hidden">
+                    <button id="support-status-save-btn" type="button">Сохранить статус</button>
+                    <button id="support-status-clear-btn" type="button" class="secondary">Очистить</button>
+                </div>
+            </details>
+
+            <details class="card" id="support-iup-editor">
+                <summary><strong>Создать или изменить ИУП</strong></summary>
+                <div class="row controls-row">
+                    <label>Ребёнок:
+                        <select id="support-iup-student"></select>
+                    </label>
+                    <label>Статус ИУП:
+                        <select id="support-iup-status">
+                            <option value="DRAFT">Черновик</option>
+                            <option value="REVIEW">На согласовании</option>
+                            <option value="APPROVED">Утверждён</option>
+                            <option value="ACTIVE">Действует</option>
+                            <option value="CHANGED">Изменён</option>
+                            <option value="COMPLETED">Завершён</option>
+                            <option value="CANCELLED">Отменён</option>
+                        </select>
+                    </label>
+                    <label>Номер приказа:
+                        <input id="support-iup-order-number" type="text">
+                    </label>
+                    <label>Дата приказа:
+                        <input id="support-iup-order-date" type="date">
+                    </label>
+                    <label>Начало:
+                        <input id="support-iup-from" type="date">
+                    </label>
+                    <label>Окончание:
+                        <input id="support-iup-to" type="date">
+                    </label>
+                    <input id="support-iup-id" type="hidden">
+                </div>
+                <p class="muted">
+                    «С классом» — ребёнок учитывается в выбранной подгруппе.
+                    «Индивидуально» — в подгруппы не распределяется.
+                    Очные часы назначенного учителя будут источником для будущей колонки «Полная нагрузка».
+                </p>
+                <div class="sheet-wrap">
+                    <table class="sheet-table" id="support-iup-subject-table">
+                        <thead>
+                        <tr>
+                            <th>Предмет</th>
+                            <th>Как изучает</th>
+                            <th>С классом</th>
+                            <th>Индивидуально</th>
+                            <th>Группа</th>
+                            <th>Учитель</th>
+                            <th>Часы учителя</th>
+                            <th>Форма</th>
+                            <th></th>
+                        </tr>
+                        </thead>
+                        <tbody id="support-iup-subject-body"></tbody>
+                    </table>
+                </div>
+                <div class="row controls-row">
+                    <button id="support-iup-add-subject-btn" type="button" class="secondary">Добавить предмет</button>
+                    <button id="support-iup-save-btn" type="button">Сохранить ИУП</button>
+                    <button id="support-iup-clear-btn" type="button" class="secondary">Очистить</button>
+                </div>
+            </details>
+        </div>
+
+        <h3>Сводный реестр статусов и ИУП</h3>
+        <div class="sheet-wrap">
+            <table class="sheet-table" id="support-register-table"></table>
         </div>
     </section>
 </main>
