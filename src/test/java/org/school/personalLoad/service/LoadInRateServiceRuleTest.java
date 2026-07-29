@@ -40,6 +40,29 @@ class LoadInRateServiceRuleTest {
     }
 
     @Test
+    void obzrOpenEndedBandKeepsOnlyNineHoursInsideSalary() {
+        LoadInRateRuleBand halfRate = new LoadInRateRuleBand();
+        halfRate.setMinTotalHours(new BigDecimal("1"));
+        halfRate.setMaxTotalHours(new BigDecimal("4"));
+        halfRate.setSuggestedIncludedHours(new BigDecimal("4"));
+        halfRate.setRateFraction(new BigDecimal("0.5"));
+        LoadInRateRuleBand fullRate = new LoadInRateRuleBand();
+        fullRate.setMinTotalHours(new BigDecimal("5"));
+        fullRate.setMaxTotalHours(null);
+        fullRate.setSuggestedIncludedHours(new BigDecimal("9"));
+        fullRate.setRateFraction(BigDecimal.ONE);
+        when(bands.findAllByRuleIdOrderByMinTotalHoursAsc(7L))
+                .thenReturn(List.of(halfRate, fullRate));
+
+        assertEquals(0, service.suggestedIncludedHours(7L, new BigDecimal("3"))
+                .compareTo(new BigDecimal("3")));
+        assertEquals(0, service.suggestedIncludedHours(7L, new BigDecimal("7"))
+                .compareTo(new BigDecimal("7")));
+        assertEquals(0, service.suggestedIncludedHours(7L, new BigDecimal("12"))
+                .compareTo(new BigDecimal("9")));
+    }
+
+    @Test
     void ruleIsSavedForPositionWithItsBands() {
         when(rules.existsByNameIgnoreCase("Преподаватель ОБЗР")).thenReturn(false);
         when(rules.save(any())).thenAnswer(invocation -> {

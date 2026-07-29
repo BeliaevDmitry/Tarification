@@ -181,6 +181,10 @@ class ServiceMemoTransferGenerationTest {
                     .filter(run->run.text()!=null&&!run.text().isBlank())
                     .allMatch(run->run.getFontSize()>=14),
                     "Текст служебной записки и таблицы должен быть не мельче 14 пунктов");
+            XWPFTable loadTable=document.getTables().stream()
+                    .filter(table->table.getText().contains("Часы всего")).findFirst().orElseThrow();
+            assertFalse(loadTable.getText().contains("Внутри ставки"));
+            assertEquals(4,loadTable.getRow(0).getTableCells().size());
         }
         String qaOutput=System.getProperty("load.memo.qa.output");
         if(qaOutput!=null&&!qaOutput.isBlank()){
@@ -188,6 +192,29 @@ class ServiceMemoTransferGenerationTest {
         }
         org.mockito.Mockito.verify(hrDocumentService).createLoadChangeDraft(
                 org.mockito.ArgumentMatchers.same(memo), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("Автор"));
+    }
+
+    @Test
+    void generatedLoadMemoShowsInsideRateColumnWhenItContainsHours() throws Exception {
+        ManualLoadEntry row = row("Сидоров С.С.", "ОБЗР", "5-А", 5,
+                LocalDate.of(2025, 10, 11), LocalDate.of(2026, 5, 31));
+        when(manualLoadEntryRepository.findAll()).thenReturn(List.of(row));
+        org.mockito.Mockito.doReturn(new java.math.BigDecimal("2"))
+                .when(loadSalaryCalculationService).includedHours(any());
+        org.mockito.Mockito.doReturn(new java.math.BigDecimal("3"))
+                .when(loadSalaryCalculationService).paidHours(any());
+        ServiceMemoDtos.PendingTeacher pending = service.findPendingTeachers().get(0);
+
+        service.generateForTeachers(null, List.of(pending.getTeacherKey()), "Автор");
+
+        ServiceMemo memo = savedMemos.get(savedMemos.size() - 1);
+        try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(memo.getGeneratedDocument()))){
+            XWPFTable loadTable=document.getTables().stream()
+                    .filter(table->table.getText().contains("Часы всего")).findFirst().orElseThrow();
+            assertTrue(loadTable.getText().contains("Внутри ставки"));
+            assertEquals(5,loadTable.getRow(0).getTableCells().size());
+            assertEquals("2",loadTable.getRow(1).getCell(3).getText());
+        }
     }
 
     @Test

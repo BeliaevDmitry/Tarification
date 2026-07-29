@@ -1641,10 +1641,10 @@ async function saveGroupCoefficientSubject(event) {
 
 function settingsRuleBandRow(band = {}) {
     return `<tr data-settings-rule-band>
-        <td><input data-band-min type="number" min="0" step="0.01" value="${escapeHtml(band.minTotalHours ?? 0)}"></td>
-        <td><input data-band-max type="number" min="0" step="0.01" value="${escapeHtml(band.maxTotalHours ?? "")}"></td>
-        <td><input data-band-included type="number" min="0" step="0.01" value="${escapeHtml(band.suggestedIncludedHours ?? 0)}"></td>
-        <td><input data-band-fraction type="number" min="0" step="0.01" value="${escapeHtml(band.rateFraction ?? "")}"></td>
+        <td><input data-band-min aria-label="Общая нагрузка от, часов" type="number" min="0" step="0.01" value="${escapeHtml(band.minTotalHours ?? 0)}"></td>
+        <td><input data-band-max aria-label="Общая нагрузка до, часов" title="Пусто — без верхней границы" type="number" min="0" step="0.01" value="${escapeHtml(band.maxTotalHours ?? "")}"></td>
+        <td><input data-band-included aria-label="Входит в оклад, часов" type="number" min="0" step="0.01" value="${escapeHtml(band.suggestedIncludedHours ?? 0)}"></td>
+        <td><input data-band-fraction aria-label="Размер ставки" title="0,5 — половина ставки; 1 — полная ставка" type="number" min="0" step="0.01" value="${escapeHtml(band.rateFraction ?? "")}"></td>
         <td><button type="button" data-remove-settings-band>Удалить</button></td>
     </tr>`;
 }
@@ -1656,11 +1656,16 @@ function renderSettingsInRateRules() {
         <div class="card in-rate-rule-card" data-settings-rule="${escapeHtml(rule.id)}">
             <div class="form-grid">
                 <label>Основная должность<select data-rule-name>${positionOptions(rule.name)}</select></label>
-                <label>Пояснение для документов<input data-rule-label value="${escapeHtml(rule.documentLabel || "")}"></label>
+                <label>Текст пояснения в документах<input data-rule-label value="${escapeHtml(rule.documentLabel || "")}"></label>
                 <label><input data-rule-active type="checkbox" ${rule.active ? "checked" : ""}> Правило действует</label>
             </div>
+            <p class="muted">Для каждого диапазона укажите: при какой общей нагрузке он действует,
+                сколько часов уже оплачено окладом и какой ставке это соответствует.</p>
             <table class="sheet-table"><thead><tr>
-                <th>От часов</th><th>До часов</th><th>Максимум внутри ставки</th><th>Доля ставки</th><th></th>
+                <th>Общая нагрузка<br>от, часов</th>
+                <th>Общая нагрузка<br>до, часов</th>
+                <th>Входит в оклад,<br>не более часов</th>
+                <th>Размер<br>ставки</th><th></th>
             </tr></thead><tbody data-rule-bands>${(rule.bands || []).map(settingsRuleBandRow).join("")}</tbody></table>
             <div class="row">
                 <button type="button" data-add-settings-band>Добавить диапазон</button>
@@ -1697,6 +1702,15 @@ async function reloadSettingsInRateRules() {
 
 async function addSettingsInRateRule() {
     if (!ui.settingsNewRulePosition.value) throw new Error("Выберите основную должность");
+    if (!ui.settingsNewRuleLabel.value.trim()) {
+        throw new Error("Укажите понятный текст для документов, например «внутри должностного оклада преподавателя-организатора ОБЗР»");
+    }
+    if (ui.settingsNewRuleIncluded.value === "") {
+        throw new Error("Укажите, сколько часов из этого диапазона входит в должностной оклад");
+    }
+    if (ui.settingsNewRuleFraction.value === "") {
+        throw new Error("Укажите размер ставки: например 0,5 или 1");
+    }
     await api("/api/manual-load/in-rate/rules", {
         method: "POST",
         headers: jsonHeaders,
@@ -1713,6 +1727,10 @@ async function addSettingsInRateRule() {
         })
     });
     ui.settingsNewRuleLabel.value = "";
+    ui.settingsNewRuleMin.value = "1";
+    ui.settingsNewRuleMax.value = "";
+    ui.settingsNewRuleIncluded.value = "";
+    ui.settingsNewRuleFraction.value = "";
     await reloadSettingsInRateRules();
 }
 

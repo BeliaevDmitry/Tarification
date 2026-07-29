@@ -444,7 +444,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             wrap.setVerticalAlignment(VerticalAlignment.CENTER);
 
             Sheet sheet = workbook.createSheet(uniqueSheetName(workbook, "Нагрузка для ЗП 1"));
-            List<String> headers = List.of(
+            boolean showIncludedHours = hasIncludedInRateHours(academicYear, rows, salaryLines);
+            List<String> headers = new ArrayList<>(List.of(
                     "№",
                     "ФИО педагога",
                     "Название корпуса",
@@ -452,14 +453,16 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     "Класс",
                     "Группа",
                     "Период",
-                    "Часы всего",
-                    "Часы внутри ставки",
-                    "Часы к оплате",
-                    "Основание",
+                    "Часы всего"
+            ));
+            if (showIncludedHours) headers.add("Часы внутри ставки");
+            headers.add("Часы к оплате");
+            if (showIncludedHours) headers.add("Основание");
+            headers.addAll(List.of(
                     "Часть учебного плана",
                     "Обязательный / по выбору школы",
                     "Деление на подгруппы"
-            );
+            ));
             Row headerRow = sheet.createRow(0);
             for (int column = 0; column < headers.size(); column++) {
                 headerRow.createCell(column).setCellValue(headers.get(column));
@@ -491,23 +494,30 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 }
                 BigDecimal included = line == null ? BigDecimal.ZERO : line.includedHours();
                 BigDecimal paid = line == null ? BigDecimal.valueOf(manualLoadHours(entry)) : line.paidHours();
-                row.createCell(7).setCellValue(manualLoadHours(entry));
-                row.createCell(8).setCellValue(included.doubleValue());
-                row.createCell(9).setCellValue(paid.doubleValue());
-                row.createCell(10).setCellValue(included.signum() > 0
-                        ? (normalizeDisplayValue(entry.getInRateReason()).isBlank()
-                        ? "Внутри должностного оклада" : entry.getInRateReason()) : "");
-                row.createCell(11).setCellValue(curriculumPartSalaryLabel(part));
-                row.createCell(12).setCellValue(subjectRequirementSalaryLabel(curriculum, part));
-                row.createCell(13).setCellValue(subgroupPolicySalaryLabel(curriculum, entry));
-                for (int column = 0; column < headers.size(); column++) {
-                    row.getCell(column).setCellStyle(wrap);
+                int column = 7;
+                row.createCell(column++).setCellValue(manualLoadHours(entry));
+                if (showIncludedHours) row.createCell(column++).setCellValue(included.doubleValue());
+                row.createCell(column++).setCellValue(paid.doubleValue());
+                if (showIncludedHours) {
+                    row.createCell(column++).setCellValue(included.signum() > 0
+                            ? (normalizeDisplayValue(entry.getInRateReason()).isBlank()
+                            ? "Внутри должностного оклада" : entry.getInRateReason()) : "");
+                }
+                row.createCell(column++).setCellValue(curriculumPartSalaryLabel(part));
+                row.createCell(column++).setCellValue(subjectRequirementSalaryLabel(curriculum, part));
+                row.createCell(column).setCellValue(subgroupPolicySalaryLabel(curriculum, entry));
+                for (int styleColumn = 0; styleColumn < headers.size(); styleColumn++) {
+                    row.getCell(styleColumn).setCellStyle(wrap);
                 }
             }
 
-            int[] widths = {8, 32, 26, 28, 12, 24, 12, 11, 14, 12, 34, 24, 26, 26};
-            for (int column = 0; column < widths.length; column++) {
-                sheet.setColumnWidth(column, widths[column] * 256);
+            List<Integer> widths = new ArrayList<>(List.of(8, 32, 26, 28, 12, 24, 12, 11));
+            if (showIncludedHours) widths.add(14);
+            widths.add(12);
+            if (showIncludedHours) widths.add(34);
+            widths.addAll(List.of(24, 26, 26));
+            for (int column = 0; column < widths.size(); column++) {
+                sheet.setColumnWidth(column, widths.get(column) * 256);
             }
             workbook.write(out);
             return out.toByteArray();
@@ -1203,6 +1213,47 @@ public class ManualLoadServiceImpl implements ManualLoadService {
         return entry.getGroupLoad() != null ? entry.getGroupLoad() : (entry.getLoad() == null ? 0 : entry.getLoad());
     }
 
+    private boolean hasIncludedInRateHours(String academicYear,
+                                           List<ManualLoadEntry> rows,
+                                           Map<Long, LoadSalaryCalculationService.SalaryLine> salaryLines) {
+        for (ManualLoadEntry row : rows) {
+            LoadSalaryCalculationService.SalaryLine line = salaryLines.get(row.getId());
+            if (line == null) {
+                line = loadSalaryCalculationService.calculate(academicYear, row);
+            }
+            if (line != null && line.includedHours().signum() > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private record SalaryColumnLayout(int includedHours,
+                                      int paidHours,
+                                      int reason,
+                                      int subjectCoefficient,
+                                      int groupCoefficient,
+                                      int rowAmount,
+                                      int hourSalary,
+                                      int classLeadership,
+                                      int total,
+                                      int last) {
+        static SalaryColumnLayout from(boolean showIncludedHours) {
+            int column = 10;
+            int included = showIncludedHours ? column++ : -1;
+            int paid = column++;
+            int reason = showIncludedHours ? column++ : -1;
+            int subjectCoefficient = column++;
+            int groupCoefficient = column++;
+            int rowAmount = column++;
+            int hourSalary = column++;
+            int classLeadership = column++;
+            int total = column;
+            return new SalaryColumnLayout(included, paid, reason, subjectCoefficient, groupCoefficient,
+                    rowAmount, hourSalary, classLeadership, total, total);
+        }
+    }
+
     private byte[] exportFullWorkbook(String academicYear, boolean includeSalary) throws IOException {
         List<ManualLoadEntry> rows = manualLoadEntryRepository.findAllByAcademicYear(academicYear);
         Map<String, TeacherDirectoryEntry> teacherByFio = teacherDirectoryRepository.findAll().stream()
@@ -1289,18 +1340,31 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 sheet.getPrintSetup().setFitWidth((short) 1);
                 sheet.getPrintSetup().setFitHeight((short) 0);
 
+                List<ManualLoadEntry> scopeRows = allTeachersSheet ? rows : byBuilding.getOrDefault(building, List.of());
+                Set<String> teacherKeysInScope = scopeRows.stream()
+                        .map(row -> String.valueOf(row.getFioTeacher()).trim().toLowerCase(Locale.ROOT))
+                        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+                List<ManualLoadEntry> buildingRows = rows.stream()
+                        .filter(row -> teacherKeysInScope.contains(String.valueOf(row.getFioTeacher()).trim().toLowerCase(Locale.ROOT)))
+                        .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+                buildingRows.sort(
+                        Comparator.comparing(ManualLoadEntry::getFioTeacher, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                                .thenComparing(row -> allTeachersSheet || building.equals(row.getNumberSchoolBuilding()) ? 0 : 1)
+                                .thenComparing(ManualLoadEntry::getSubjectName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                                .thenComparing(ManualLoadEntry::getClassName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
+                );
+                boolean showIncludedHours = includeSalary
+                        && hasIncludedInRateHours(academicYear, buildingRows, salaryLines);
+                SalaryColumnLayout salaryColumns = includeSalary
+                        ? SalaryColumnLayout.from(showIncludedHours)
+                        : null;
+
                 Row h = sheet.createRow(0);
                 List<String> cols = new ArrayList<>(List.of("ФИО", "Предмет", "Класс", "Группа", "Количество детей", "Часы по предмету", "Период нагрузки", "Часы в корпусе/всего", "Корпус", "Классное руководство"));
                 if (includeSalary) {
-                    cols.add("За часы");
-                    cols.add("Классное руководство, руб.");
-                    cols.add("Итого, руб.");
-                }
-                if (includeSalary) {
-                    cols.subList(cols.size() - 3, cols.size()).clear();
-                    cols.add("Часы внутри ставки");
+                    if (showIncludedHours) cols.add("Часы внутри ставки");
                     cols.add("Часы к оплате");
-                    cols.add("Основание");
+                    if (showIncludedHours) cols.add("Основание");
                     cols.add("Предметный коэф.");
                     cols.add("Коэф. группы");
                     cols.add("За строку");
@@ -1335,19 +1399,6 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     }
                 });
 
-                List<ManualLoadEntry> scopeRows = allTeachersSheet ? rows : byBuilding.getOrDefault(building, List.of());
-                Set<String> teacherKeysInScope = scopeRows.stream()
-                        .map(row -> String.valueOf(row.getFioTeacher()).trim().toLowerCase(Locale.ROOT))
-                        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-                List<ManualLoadEntry> buildingRows = rows.stream()
-                        .filter(row -> teacherKeysInScope.contains(String.valueOf(row.getFioTeacher()).trim().toLowerCase(Locale.ROOT)))
-                        .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
-                buildingRows.sort(
-                        Comparator.comparing(ManualLoadEntry::getFioTeacher, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
-                                .thenComparing(row -> allTeachersSheet || building.equals(row.getNumberSchoolBuilding()) ? 0 : 1)
-                                .thenComparing(ManualLoadEntry::getSubjectName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
-                                .thenComparing(ManualLoadEntry::getClassName, Comparator.nullsFirst(String.CASE_INSENSITIVE_ORDER))
-                );
                 int rowNum = 1;
                 int teacherStart = rowNum;
                 String currentTeacher = null;
@@ -1364,9 +1415,12 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                             sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 7, 7));
                             sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 9, 9));
                             if (includeSalary) {
-                                sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 16, 16));
-                                sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 17, 17));
-                                sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 18, 18));
+                                sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1,
+                                        salaryColumns.hourSalary(), salaryColumns.hourSalary()));
+                                sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1,
+                                        salaryColumns.classLeadership(), salaryColumns.classLeadership()));
+                                sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1,
+                                        salaryColumns.total(), salaryColumns.total()));
                             }
                         }
                         currentTeacher = key;
@@ -1412,27 +1466,37 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                         }
                         BigDecimal includedHours = rowSalary == null ? BigDecimal.ZERO : rowSalary.includedHours();
                         BigDecimal paidHours = rowSalary == null ? BigDecimal.valueOf(subjectHours) : rowSalary.paidHours();
-                        r.createCell(10).setCellValue(includedHours.doubleValue());
-                        r.createCell(11).setCellValue(paidHours.doubleValue());
-                        r.createCell(12).setCellValue(includedHours.signum() > 0
-                                ? (normalizeDisplayValue(e.getInRateReason()).isBlank()
-                                ? "Внутри должностного оклада" : e.getInRateReason()) : "");
-                        r.createCell(13).setCellValue(coefficientValue(rowSalary == null ? BigDecimal.ONE : rowSalary.subjectCoefficient()));
-                        r.createCell(14).setCellValue(coefficientValue(rowSalary == null ? BigDecimal.ONE : rowSalary.groupCoefficient()));
-                        r.createCell(15).setCellValue(moneyValue(rowSalary == null ? BigDecimal.ZERO : rowSalary.amount()));
-                        r.createCell(16).setCellValue(moneyValue(salary.hourSalary()));
-                        r.createCell(17).setCellValue(moneyValue(salary.classLeadershipSalary()));
-                        r.createCell(18).setCellValue(moneyValue(salary.total()));
+                        if (showIncludedHours) {
+                            r.createCell(salaryColumns.includedHours()).setCellValue(includedHours.doubleValue());
+                            r.createCell(salaryColumns.reason()).setCellValue(includedHours.signum() > 0
+                                    ? (normalizeDisplayValue(e.getInRateReason()).isBlank()
+                                    ? "Внутри должностного оклада" : e.getInRateReason()) : "");
+                        }
+                        r.createCell(salaryColumns.paidHours()).setCellValue(paidHours.doubleValue());
+                        r.createCell(salaryColumns.subjectCoefficient()).setCellValue(
+                                coefficientValue(rowSalary == null ? BigDecimal.ONE : rowSalary.subjectCoefficient()));
+                        r.createCell(salaryColumns.groupCoefficient()).setCellValue(
+                                coefficientValue(rowSalary == null ? BigDecimal.ONE : rowSalary.groupCoefficient()));
+                        r.createCell(salaryColumns.rowAmount()).setCellValue(
+                                moneyValue(rowSalary == null ? BigDecimal.ZERO : rowSalary.amount()));
+                        r.createCell(salaryColumns.hourSalary()).setCellValue(moneyValue(salary.hourSalary()));
+                        r.createCell(salaryColumns.classLeadership()).setCellValue(moneyValue(salary.classLeadershipSalary()));
+                        r.createCell(salaryColumns.total()).setCellValue(moneyValue(salary.total()));
                     }
-                    for (int c = 0; c <= (includeSalary ? 18 : 9); c++) r.getCell(c).setCellStyle(c >= 15 ? money : wrap);
+                    for (int c = 0; c <= (includeSalary ? salaryColumns.last() : 9); c++) {
+                        r.getCell(c).setCellStyle(includeSalary && c >= salaryColumns.rowAmount() ? money : wrap);
+                    }
                     if (i == buildingRows.size() - 1 && rowNum - 1 > teacherStart) {
                         sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 0, 0));
                         sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 7, 7));
                         sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 9, 9));
                         if (includeSalary) {
-                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 16, 16));
-                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 17, 17));
-                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1, 18, 18));
+                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1,
+                                    salaryColumns.hourSalary(), salaryColumns.hourSalary()));
+                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1,
+                                    salaryColumns.classLeadership(), salaryColumns.classLeadership()));
+                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1,
+                                    salaryColumns.total(), salaryColumns.total()));
                         }
                     }
                 }
@@ -1447,15 +1511,15 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 sheet.setColumnWidth(8, 26 * 256);
                 sheet.setColumnWidth(9, 16 * 256);
                 if (includeSalary) {
-                    sheet.setColumnWidth(10, 12 * 256);
-                    sheet.setColumnWidth(11, 12 * 256);
-                    sheet.setColumnWidth(12, 32 * 256);
-                    sheet.setColumnWidth(13, 12 * 256);
-                    sheet.setColumnWidth(14, 18 * 256);
-                    sheet.setColumnWidth(15, 12 * 256);
-                    sheet.setColumnWidth(16, 16 * 256);
-                    sheet.setColumnWidth(17, 18 * 256);
-                    sheet.setColumnWidth(18, 14 * 256);
+                    if (showIncludedHours) sheet.setColumnWidth(salaryColumns.includedHours(), 14 * 256);
+                    sheet.setColumnWidth(salaryColumns.paidHours(), 12 * 256);
+                    if (showIncludedHours) sheet.setColumnWidth(salaryColumns.reason(), 32 * 256);
+                    sheet.setColumnWidth(salaryColumns.subjectCoefficient(), 12 * 256);
+                    sheet.setColumnWidth(salaryColumns.groupCoefficient(), 18 * 256);
+                    sheet.setColumnWidth(salaryColumns.rowAmount(), 12 * 256);
+                    sheet.setColumnWidth(salaryColumns.hourSalary(), 16 * 256);
+                    sheet.setColumnWidth(salaryColumns.classLeadership(), 18 * 256);
+                    sheet.setColumnWidth(salaryColumns.total(), 14 * 256);
                 }
             }
             if (includeSalary) {

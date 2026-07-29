@@ -1020,6 +1020,11 @@ class HrDocumentServiceTest {
             XWPFTable annex=document.getTables().stream()
                     .filter(table->table.getText().contains("Предмет")
                             &&table.getText().contains("Класс/группа")).findFirst().orElseThrow();
+            assertFalse(annex.getText().contains("В ставке"),
+                    "Для обычной нагрузки лишняя колонка часов внутри ставки не нужна");
+            assertFalse(annex.getText().contains("Пояснение"),
+                    "Связанная пустая колонка пояснения также должна быть скрыта");
+            assertEquals(8,annex.getRow(0).getTableCells().size());
             XWPFTableRow annexTotal=annex.getRow(annex.getNumberOfRows()-1);
             assertEquals("Итого",annexTotal.getCell(0).getText());
             assertEquals("2",annexTotal.getCell(2).getText(),

@@ -33,7 +33,9 @@ class LoadInRateFrontendTest {
 
         String teachersHtml = Files.readString(Path.of("src/main/resources/static/teachers.html"));
         assertTrue(teachersHtml.contains("id=\"in-rate-rules-settings\""));
-        assertTrue(teachersHtml.contains("Основная должность"));
-        assertTrue(teachersHtml.contains("Максимум часов внутри ставки"));
+        assertTrue(teachersHtml.contains("Должность, для которой действует правило"));
+        assertTrue(teachersHtml.contains("Из них входит в оклад, не более"));
+        assertTrue(teachersHtml.contains("Пример для ОБЗР"));
+        assertTrue(teachersHtml.contains("при нагрузке 12 часов система предложит 9 часов внутри оклада"));
     }
 }

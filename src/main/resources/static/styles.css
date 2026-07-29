@@ -18,8 +18,8 @@
 .in-rate-rule-card .form-grid,
 .in-rate-new-rule .form-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
     margin-bottom: 10px;
 }
 
@@ -27,6 +27,57 @@
 .in-rate-new-rule label {
     display: grid;
     gap: 4px;
+    align-content: start;
+    min-width: 0;
+}
+
+.in-rate-rule-card input,
+.in-rate-rule-card select,
+.in-rate-new-rule input,
+.in-rate-new-rule select {
+    width: 100%;
+    min-width: 0;
+}
+
+.in-rate-rule-help,
+.in-rate-example {
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: #eef5ff;
+    color: #233552;
+}
+
+.in-rate-rule-help {
+    margin: 0 0 12px;
+}
+
+.in-rate-example {
+    margin-top: 12px;
+}
+
+.in-rate-example p {
+    margin: 6px 0 0;
+}
+
+.field-hint {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.35;
+}
+
+@media (max-width: 1100px) {
+    .in-rate-rule-card .form-grid,
+    .in-rate-new-rule .form-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 680px) {
+    .in-rate-rule-card .form-grid,
+    .in-rate-new-rule .form-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .in-rate-rules-dialog {

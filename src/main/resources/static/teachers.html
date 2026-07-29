@@ -121,16 +121,44 @@
                 <div id="settings-in-rate-rules-list"></div>
                 <div class="card in-rate-new-rule">
                     <h4>Новое правило</h4>
+                    <p class="in-rate-rule-help">
+                        Правило определяет, сколько учебных часов уже оплачено должностным окладом
+                        и поэтому не должно второй раз участвовать в расчёте зарплаты «за часы».
+                    </p>
                     <div class="form-grid">
-                        <label>Основная должность<select id="settings-new-rule-position"></select></label>
-                        <label>Пояснение для документов<input id="settings-new-rule-label" placeholder="Например: преподаватель ОБЗР"></label>
-                        <label>Минимум общей нагрузки<input id="settings-new-rule-min" type="number" min="0" step="0.01" value="0"></label>
-                        <label>Максимум общей нагрузки<input id="settings-new-rule-max" type="number" min="0" step="0.01"></label>
-                        <label>Максимум часов внутри ставки<input id="settings-new-rule-included" type="number" min="0" step="0.01" value="0"></label>
-                        <label>Доля ставки<input id="settings-new-rule-fraction" type="number" min="0" step="0.01"></label>
+                        <label>Должность, для которой действует правило
+                            <select id="settings-new-rule-position"></select>
+                            <span class="field-hint">Берётся из поля «Основная должность» в карточке сотрудника.</span>
+                        </label>
+                        <label>Текст пояснения в документах
+                            <input id="settings-new-rule-label" placeholder="Например: внутри должностного оклада преподавателя-организатора ОБЗР">
+                            <span class="field-hint">Этот текст появится в приложении к допсоглашению и в выгрузках.</span>
+                        </label>
+                        <label>Если у сотрудника всего часов от
+                            <input id="settings-new-rule-min" type="number" min="0" step="0.01" value="1">
+                            <span class="field-hint">Нижняя граница диапазона.</span>
+                        </label>
+                        <label>Если у сотрудника всего часов до
+                            <input id="settings-new-rule-max" type="number" min="0" step="0.01">
+                            <span class="field-hint">Оставьте пустым для последнего диапазона без верхней границы.</span>
+                        </label>
+                        <label>Из них входит в оклад, не более
+                            <input id="settings-new-rule-included" type="number" min="0" step="0.01">
+                            <span class="field-hint">После применения правила эти часы будут иметь сумму 0 руб.; остальные часы оплатятся отдельно.</span>
+                        </label>
+                        <label>Размер занимаемой ставки
+                            <input id="settings-new-rule-fraction" type="number" min="0" step="0.01">
+                            <span class="field-hint">Например: 0,5 — половина ставки; 1 — полная ставка.</span>
+                        </label>
                     </div>
                     <button id="settings-add-in-rate-rule-btn" type="button">Добавить правило</button>
-                    <p class="muted">Пример: диапазон 1–4, максимум внутри ставки 4, доля 0,5. При нагрузке 3 часа система предложит включить 3 часа; при нагрузке 4 часа — 4.</p>
+                    <div class="in-rate-example">
+                        <strong>Пример для ОБЗР</strong>
+                        <p>Первый диапазон: от 1 до 4 часов, входит в оклад не более 4 часов, размер ставки — 0,5.</p>
+                        <p>После создания правила добавьте второй диапазон: от 5 часов, поле «до» оставьте пустым,
+                            входит в оклад не более 9 часов, размер ставки — 1.</p>
+                        <p>Тогда при нагрузке 12 часов система предложит 9 часов внутри оклада и 3 оплачиваемых часа.</p>
+                    </div>
                 </div>
             </section>
             <div class="people-load-subtabs" style="margin-top:12px;">

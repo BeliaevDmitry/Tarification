@@ -809,26 +809,32 @@ class ManualLoadServiceImplBulkReplaceTest {
         when(salarySettingsRepository.findById(SalarySettings.DEFAULT_ID)).thenReturn(Optional.of(settings));
 
         byte[] body = service.exportFullWorkbookWithSalary("2025/2026");
+        byte[] salaryOneBody = service.exportSalaryOneWorkbook("2025/2026");
 
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
             var loadSheet = workbook.getSheet("СП1");
             assertEquals("ГОД", loadSheet.getRow(1).getCell(6).getStringCellValue());
+            assertEquals(-1, columnIndex(loadSheet, "Часы внутри ставки"));
             double expectedFirstRow = 40 * 30 * 5 * (34.0 / 12.0);
             double expectedSecondRow = 40 * 30 * 4 * (34.0 / 12.0);
             double expectedHours = expectedFirstRow + expectedSecondRow;
             double expectedLeadership = 500 * 30 + 5000;
-            assertEquals(0D, loadSheet.getRow(1).getCell(10).getNumericCellValue(), 0.01);
-            assertEquals(5D, loadSheet.getRow(1).getCell(11).getNumericCellValue(), 0.01);
-            assertEquals(1D, loadSheet.getRow(1).getCell(13).getNumericCellValue(), 0.01);
-            assertEquals(1D, loadSheet.getRow(1).getCell(14).getNumericCellValue(), 0.01);
-            assertEquals(expectedFirstRow, loadSheet.getRow(1).getCell(15).getNumericCellValue(), 0.01);
-            assertEquals(expectedHours, loadSheet.getRow(1).getCell(16).getNumericCellValue(), 0.01);
-            assertEquals(expectedLeadership, loadSheet.getRow(1).getCell(17).getNumericCellValue(), 0.01);
-            assertEquals(expectedHours + expectedLeadership, loadSheet.getRow(1).getCell(18).getNumericCellValue(), 0.01);
+            assertEquals(5D, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "Часы к оплате")).getNumericCellValue(), 0.01);
+            assertEquals(1D, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "Предметный коэф.")).getNumericCellValue(), 0.01);
+            assertEquals(1D, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "Коэф. группы")).getNumericCellValue(), 0.01);
+            assertEquals(expectedFirstRow, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "За строку")).getNumericCellValue(), 0.01);
+            assertEquals(expectedHours, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "За оплачиваемые часы итого")).getNumericCellValue(), 0.01);
+            assertEquals(expectedLeadership, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "Классное руководство, руб.")).getNumericCellValue(), 0.01);
+            assertEquals(expectedHours + expectedLeadership, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "Итого, руб.")).getNumericCellValue(), 0.01);
 
             var summarySheet = workbook.getSheet("Свод ЗП");
             assertEquals("Итого по комплексу", summarySheet.getRow(2).getCell(0).getStringCellValue());
             assertEquals(expectedHours + expectedLeadership, summarySheet.getRow(2).getCell(3).getNumericCellValue(), 0.01);
+        }
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(salaryOneBody))) {
+            var salaryOneSheet = workbook.getSheet("Нагрузка для ЗП 1");
+            assertEquals(-1, columnIndex(salaryOneSheet, "Часы внутри ставки"));
+            assertEquals(-1, columnIndex(salaryOneSheet, "Основание"));
         }
     }
 
@@ -864,11 +870,11 @@ class ManualLoadServiceImplBulkReplaceTest {
             double subjectBonus = base * (1.5 - 1);
             double groupBonus = base * ((25.0 / 15.0) - 1);
             double expected = base + subjectBonus + groupBonus;
-            assertEquals(1.5D, loadSheet.getRow(1).getCell(13).getNumericCellValue(), 0.01);
-            assertEquals(25.0 / 15.0, loadSheet.getRow(1).getCell(14).getNumericCellValue(), 0.01);
-            assertEquals(expected, loadSheet.getRow(1).getCell(15).getNumericCellValue(), 0.01);
-            assertEquals(expected, loadSheet.getRow(1).getCell(16).getNumericCellValue(), 0.01);
-            assertEquals(expected, loadSheet.getRow(1).getCell(18).getNumericCellValue(), 0.01);
+            assertEquals(1.5D, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "Предметный коэф.")).getNumericCellValue(), 0.01);
+            assertEquals(25.0 / 15.0, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "Коэф. группы")).getNumericCellValue(), 0.01);
+            assertEquals(expected, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "За строку")).getNumericCellValue(), 0.01);
+            assertEquals(expected, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "За оплачиваемые часы итого")).getNumericCellValue(), 0.01);
+            assertEquals(expected, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "Итого, руб.")).getNumericCellValue(), 0.01);
         }
     }
 
@@ -956,9 +962,37 @@ class ManualLoadServiceImplBulkReplaceTest {
             assertEquals("11 | 12", loadSheet.getRow(1).getCell(7).getStringCellValue());
             double expectedRowMoney = 40 * 30 * 10 * (34.0 / 12.0);
             double expectedFirstHalfHoursMoney = 40 * 30 * 11 * (34.0 / 12.0);
-            assertEquals(expectedRowMoney, loadSheet.getRow(1).getCell(15).getNumericCellValue(), 0.01);
-            assertEquals(expectedFirstHalfHoursMoney, loadSheet.getRow(1).getCell(16).getNumericCellValue(), 0.01);
-            assertEquals(expectedFirstHalfHoursMoney, loadSheet.getRow(1).getCell(18).getNumericCellValue(), 0.01);
+            assertEquals(expectedRowMoney, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "За строку")).getNumericCellValue(), 0.01);
+            assertEquals(expectedFirstHalfHoursMoney, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "За оплачиваемые часы итого")).getNumericCellValue(), 0.01);
+            assertEquals(expectedFirstHalfHoursMoney, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "Итого, руб.")).getNumericCellValue(), 0.01);
+        }
+    }
+
+    @Test
+    void salaryExportsShowInsideRateColumnsOnlyWhenTheyContainHours() throws Exception {
+        ManualLoadEntry row = manualRow("Иванов И.И.", "СП1", "5-А", "ОБЗР", 6);
+        row.setIncludedInRateHours(new BigDecimal("4"));
+        row.setInRateReason("Внутри ставки преподавателя ОБЗР");
+        when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(row));
+        when(teacherDirectoryRepository.findAll()).thenReturn(List.of());
+        when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of());
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of());
+        when(classSizeService.effectiveClassSizes("2025/2026")).thenReturn(Map.of());
+
+        byte[] fullBody = service.exportFullWorkbookWithSalary("2025/2026");
+        byte[] salaryOneBody = service.exportSalaryOneWorkbook("2025/2026");
+
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(fullBody))) {
+            var sheet = workbook.getSheet("СП1");
+            assertTrue(columnIndex(sheet, "Часы внутри ставки") >= 0);
+            assertTrue(columnIndex(sheet, "Основание") >= 0);
+            assertEquals(4D, sheet.getRow(1).getCell(columnIndex(sheet, "Часы внутри ставки")).getNumericCellValue(), 0.01);
+        }
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(salaryOneBody))) {
+            var sheet = workbook.getSheet("Нагрузка для ЗП 1");
+            assertTrue(columnIndex(sheet, "Часы внутри ставки") >= 0);
+            assertTrue(columnIndex(sheet, "Основание") >= 0);
+            assertEquals(4D, sheet.getRow(1).getCell(columnIndex(sheet, "Часы внутри ставки")).getNumericCellValue(), 0.01);
         }
     }
 
@@ -1064,6 +1098,16 @@ class ManualLoadServiceImplBulkReplaceTest {
         row.setEducationLevel(EducationLevel.BASIC);
         row.setStudyPeriod(StudyPeriod.YEAR);
         return row;
+    }
+
+    private int columnIndex(org.apache.poi.ss.usermodel.Sheet sheet, String header) {
+        var row = sheet.getRow(0);
+        for (int column = 0; column < row.getLastCellNum(); column++) {
+            if (header.equals(row.getCell(column).getStringCellValue())) {
+                return column;
+            }
+        }
+        return -1;
     }
 
     private TeacherDirectoryEntry teacher(Long id, String fio) {

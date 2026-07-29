@@ -1981,25 +1981,39 @@ public class HrDocumentService {
 
     private void appendLoadAnnex(XWPFDocument d,List<LoadDetail> rows){
         title(d, "Приложение № 1"); paragraph(d, "Расчёт должностного оклада по педагогической нагрузке", true);
-        int[] widths={1250,1100,650,650,650,900,1000,900,1050,1850};
-        XWPFTable table=d.createTable(1,10);configureAnnexTable(table,widths);
-        String[] headers={"Предмет","Класс/группа","Всего","В ставке","К оплате","Численность","Ученико-час","Коэффициенты","Сумма","Пояснение"};
+        boolean showIncludedHours=rows.stream().anyMatch(x->x.includedHours().signum()>0);
+        int[] widths=showIncludedHours
+                ?new int[]{1250,1100,650,650,650,900,1000,900,1050,1850}
+                :new int[]{1650,1450,800,800,1000,1200,1500,1500};
+        XWPFTable table=d.createTable(1,widths.length);configureAnnexTable(table,widths);
+        String[] headers=showIncludedHours
+                ?new String[]{"Предмет","Класс/группа","Всего","В ставке","К оплате","Численность","Ученико-час","Коэффициенты","Сумма","Пояснение"}
+                :new String[]{"Предмет","Класс/группа","Всего","К оплате","Численность","Ученико-час","Коэффициенты","Сумма"};
         for(int i=0;i<headers.length;i++) cell(table.getRow(0).getCell(i),headers[i],true,widths[i]);
         BigDecimal total=BigDecimal.ZERO,totalHours=BigDecimal.ZERO,includedHours=BigDecimal.ZERO,paidHours=BigDecimal.ZERO;
         for(LoadDetail x:rows){
             XWPFTableRow r=table.createRow();
             String note=x.includedHours().signum()>0?"Внутри ставки — "+firstPresent(x.reason(),"должностной оклад"):"";
             String coefficients=decimal(x.subjectCoefficient())+" / "+decimal(x.groupCoefficient().setScale(4,RoundingMode.HALF_UP));
-            String[] v={x.subject(),x.className(),decimal(x.totalHours()),decimal(x.includedHours()),decimal(x.paidHours()),
-                    String.valueOf(x.children()),decimal(x.rate()),coefficients,money(x.amount()).replace(" руб.",""),note};
+            String[] v=showIncludedHours
+                    ?new String[]{x.subject(),x.className(),decimal(x.totalHours()),decimal(x.includedHours()),decimal(x.paidHours()),
+                    String.valueOf(x.children()),decimal(x.rate()),coefficients,money(x.amount()).replace(" руб.",""),note}
+                    :new String[]{x.subject(),x.className(),decimal(x.totalHours()),decimal(x.paidHours()),
+                    String.valueOf(x.children()),decimal(x.rate()),coefficients,money(x.amount()).replace(" руб.","")};
             for(int i=0;i<v.length;i++)cell(r.getCell(i),v[i],false,widths[i]);
             total=total.add(x.amount());totalHours=totalHours.add(x.totalHours());
             includedHours=includedHours.add(x.includedHours());paidHours=paidHours.add(x.paidHours());
         }
-        XWPFTableRow tr=table.createRow();cell(tr.getCell(0),"Итого",true,widths[0]);cell(tr.getCell(1),"",false,widths[1]);
-        cell(tr.getCell(2),decimal(totalHours),true,widths[2]);cell(tr.getCell(3),decimal(includedHours),true,widths[3]);
-        cell(tr.getCell(4),decimal(paidHours),true,widths[4]);for(int i=5;i<8;i++)cell(tr.getCell(i),"",false,widths[i]);
-        cell(tr.getCell(8),money(total).replace(" руб.",""),true,widths[8]);cell(tr.getCell(9),"",false,widths[9]);
+        XWPFTableRow tr=table.createRow();
+        String[] totalValues=showIncludedHours
+                ?new String[]{"Итого","",decimal(totalHours),decimal(includedHours),decimal(paidHours),"","","",
+                money(total).replace(" руб.",""),""}
+                :new String[]{"Итого","",decimal(totalHours),decimal(paidHours),"","","",
+                money(total).replace(" руб.","")};
+        for(int i=0;i<totalValues.length;i++){
+            boolean bold=i==0||i==2||i==3||(showIncludedHours&&i==4)||i==(showIncludedHours?8:7);
+            cell(tr.getCell(i),totalValues[i],bold,widths[i]);
+        }
     }
     private void configureAnnexTable(XWPFTable table,int[] widths){
         int total=Arrays.stream(widths).sum();table.setWidthType(TableWidthType.DXA);table.setWidth(String.valueOf(total));table.setCellMargins(80,70,80,70);

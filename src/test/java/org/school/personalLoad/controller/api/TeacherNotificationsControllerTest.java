@@ -1,5 +1,7 @@
 package org.school.personalLoad.controller.api;
 
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -11,11 +13,15 @@ import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.TeacherNotificationRecordRepository;
 
+import java.io.ByteArrayInputStream;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -168,6 +174,57 @@ class TeacherNotificationsControllerTest {
                 "предварительную педагогическую нагрузку - ${TOTAL_LOAD}.",
                 controller.stripTemplateHourWordAfterTotalLoad("предварительную педагогическую нагрузку - ${TOTAL_LOAD} часов.")
         );
+    }
+
+    @Test
+    void notificationOmitsInsideRateColumnForOrdinaryLoad() throws Exception {
+        ManualLoadEntry load = documentRow(6);
+        when(manualLoadEntryRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(load));
+
+        byte[] body = controller().generateDoc(
+                load.getFioTeacher(), "2026/2027",
+                LocalDate.of(2026, 9, 1), LocalDate.of(2026, 8, 20));
+
+        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(body))) {
+            XWPFTable table = loadTable(document);
+            assertFalse(table.getText().contains("Внутри ставки"));
+            assertEquals(4, table.getRow(0).getTableCells().size());
+        }
+    }
+
+    @Test
+    void notificationShowsInsideRateColumnWhenEmployeeHasIncludedHours() throws Exception {
+        ManualLoadEntry load = documentRow(6);
+        load.setIncludedInRateHours(new BigDecimal("4"));
+        when(manualLoadEntryRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(load));
+
+        byte[] body = controller().generateDoc(
+                load.getFioTeacher(), "2026/2027",
+                LocalDate.of(2026, 9, 1), LocalDate.of(2026, 8, 20));
+
+        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(body))) {
+            XWPFTable table = loadTable(document);
+            assertTrue(table.getText().contains("Внутри ставки"));
+            assertEquals(5, table.getRow(0).getTableCells().size());
+            assertEquals("4", table.getRow(1).getCell(3).getText());
+        }
+    }
+
+    private XWPFTable loadTable(XWPFDocument document) {
+        return document.getTables().stream()
+                .filter(table -> table.getText().contains("Часы всего"))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private ManualLoadEntry documentRow(int load) {
+        ManualLoadEntry row = row(StudyPeriod.YEAR, load);
+        row.setFioTeacher("Иванов Иван Иванович");
+        row.setSubjectName("ОБЗР");
+        row.setClassName("7-А");
+        row.setLoadFromDate(LocalDate.of(2026, 9, 1));
+        row.setLoadToDate(LocalDate.of(2027, 5, 31));
+        return row;
     }
 
     private TeacherNotificationsController controller() {
