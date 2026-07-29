@@ -6,6 +6,7 @@ import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.LoadIssueState;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.EmploymentContract;
+import org.school.personalLoad.model.LoadInRateRule;
 import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
@@ -13,6 +14,7 @@ import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.LoadIssueStateRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.EmploymentContractRepository;
+import org.school.personalLoad.repository.LoadInRateRuleRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.service.LoadIssueService;
 import org.school.personalLoad.model.CurriculumPart;
@@ -48,6 +50,7 @@ public class LoadIssueServiceImpl implements LoadIssueService {
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final EmploymentContractRepository employmentContractRepository;
+    private final LoadInRateRuleRepository loadInRateRuleRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -92,8 +95,16 @@ public class LoadIssueServiceImpl implements LoadIssueService {
     private void addInRateAllocationIssues(List<LoadIssueDtos.LoadIssueRow> rows,
                                            String academicYear,
                                            List<ManualLoadEntry> yearLoad) {
+        List<String> eligiblePositions = loadInRateRuleRepository.findAllByOrderByNameAsc().stream()
+                .filter(LoadInRateRule::isActive)
+                .map(LoadInRateRule::getName)
+                .filter(Objects::nonNull)
+                .map(value -> value.trim().toLowerCase(Locale.ROOT))
+                .toList();
         Map<Long, EmploymentContract> contractsByTeacher = employmentContractRepository
-                .findAllByActiveTrueAndLoadHoursMayBeIncludedInRateTrueOrderByTeacherIdAsc().stream()
+                .findAllByActiveTrueOrderByTeacherIdAsc().stream()
+                .filter(contract -> eligiblePositions.contains(
+                        display(contract.getPositionName()).trim().toLowerCase(Locale.ROOT)))
                 .collect(Collectors.toMap(
                         EmploymentContract::getTeacherId,
                         contract -> contract,

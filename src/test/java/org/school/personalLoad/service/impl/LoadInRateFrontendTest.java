@@ -23,6 +23,9 @@ class LoadInRateFrontendTest {
         assertTrue(js.contains("/api/manual-load/in-rate"));
         assertTrue(js.contains("data-included-hours"));
         assertTrue(js.contains("data-study-period"));
+        assertTrue(js.contains("remainingCapacityHoursH1"));
+        assertTrue(js.contains("rateFractionH1"));
+        assertTrue(js.contains("capacityHoursH1"));
         assertTrue(js.contains("teacherRowKey(row)"));
         assertTrue(js.contains("const manualRows = await api(\"/api/manual-load\")"));
         assertTrue(js.contains("state.salaryBreakdownAvailable"));
@@ -33,7 +36,12 @@ class LoadInRateFrontendTest {
 
         String teachersHtml = Files.readString(Path.of("src/main/resources/static/teachers.html"));
         assertTrue(teachersHtml.contains("id=\"in-rate-rules-settings\""));
-        assertTrue(teachersHtml.contains("Основная должность"));
-        assertTrue(teachersHtml.contains("Максимум часов внутри ставки"));
+        assertTrue(teachersHtml.contains("Должность, для которой действует правило"));
+        assertTrue(teachersHtml.contains("Размер занимаемой ставки"));
+        assertTrue(teachersHtml.contains("Пример для ОБЗР"));
+        assertTrue(teachersHtml.contains("от 1 до 4 часов — 0,5 ставки"));
+        assertTrue(teachersHtml.contains("от 5 до 9 часов — 1 ставка"));
+        assertTrue(teachersHtml.contains("Фактические часы внутри ставки распределяются отдельно"));
+        assertTrue(!teachersHtml.contains("Из них входит в оклад, не более"));
     }
 }

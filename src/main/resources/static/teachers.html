@@ -115,22 +115,42 @@
                 <div class="dialog-hero">
                     <div>
                         <h3>Правила часов в ставке</h3>
-                        <p class="muted">Правило привязано к основной должности. Для диапазона задайте максимум часов, которые могут войти в ставку, и долю ставки.</p>
+                        <p class="muted">Правило привязано к основной должности и определяет долю ставки по диапазону общей учебной нагрузки.</p>
                     </div>
                 </div>
                 <div id="settings-in-rate-rules-list"></div>
                 <div class="card in-rate-new-rule">
                     <h4>Новое правило</h4>
+                    <p class="in-rate-rule-help">
+                        Здесь настраивается только зависимость доли ставки от общей нагрузки.
+                        Фактические часы внутри ставки распределяются отдельно для каждого сотрудника.
+                    </p>
                     <div class="form-grid">
-                        <label>Основная должность<select id="settings-new-rule-position"></select></label>
-                        <label>Пояснение для документов<input id="settings-new-rule-label" placeholder="Например: преподаватель ОБЗР"></label>
-                        <label>Минимум общей нагрузки<input id="settings-new-rule-min" type="number" min="0" step="0.01" value="0"></label>
-                        <label>Максимум общей нагрузки<input id="settings-new-rule-max" type="number" min="0" step="0.01"></label>
-                        <label>Максимум часов внутри ставки<input id="settings-new-rule-included" type="number" min="0" step="0.01" value="0"></label>
-                        <label>Доля ставки<input id="settings-new-rule-fraction" type="number" min="0" step="0.01"></label>
+                        <label>Должность, для которой действует правило
+                            <select id="settings-new-rule-position"></select>
+                            <span class="field-hint">Берётся из поля «Основная должность» в карточке сотрудника.</span>
+                        </label>
+                        <label>Если у сотрудника всего часов от
+                            <input id="settings-new-rule-min" type="number" min="0" step="0.01" value="1">
+                            <span class="field-hint">Нижняя граница диапазона.</span>
+                        </label>
+                        <label>Если у сотрудника всего часов до
+                            <input id="settings-new-rule-max" type="number" min="0" step="0.01">
+                            <span class="field-hint">Оставьте пустым для последнего диапазона без верхней границы.</span>
+                        </label>
+                        <label>Размер занимаемой ставки
+                            <input id="settings-new-rule-fraction" type="number" min="0" step="0.01">
+                            <span class="field-hint">Например: 0,5 — половина ставки; 1 — полная ставка.</span>
+                        </label>
                     </div>
                     <button id="settings-add-in-rate-rule-btn" type="button">Добавить правило</button>
-                    <p class="muted">Пример: диапазон 1–4, максимум внутри ставки 4, доля 0,5. При нагрузке 3 часа система предложит включить 3 часа; при нагрузке 4 часа — 4.</p>
+                    <div class="in-rate-example">
+                        <strong>Пример для ОБЗР</strong>
+                        <p>Первый диапазон: от 1 до 4 часов — 0,5 ставки.</p>
+                        <p>Второй диапазон: от 5 до 9 часов — 1 ставка.</p>
+                        <p>После распределения нагрузки сотрудник появится во вкладке «Часы в ставке».
+                            Там пользователь сам укажет, какие конкретно часы относятся внутрь ставки.</p>
+                    </div>
                 </div>
             </section>
             <div class="people-load-subtabs" style="margin-top:12px;">
@@ -312,7 +332,7 @@
 
         <section id="teacher-contract-section">
             <h3>Трудовой договор и учебные часы</h3>
-            <p class="muted">Здесь указывается, могут ли учебные часы входить в должностной оклад. Распределение по классам выполняется в разделе «Нагрузка по людям → Часы в ставке».</p>
+            <p class="muted">Наличие режима часов внутри ставки определяется автоматически по должности. Распределение по классам выполняется в разделе «Нагрузка по людям → Часы в ставке».</p>
             <div class="teacher-card-contract-selector">
                 <label>Трудовой договор
                     <select id="teacher-contract-select"></select>
@@ -331,18 +351,10 @@
                             <label><input id="teacher-contract-active" type="checkbox"> Действует</label>
                         </span>
                     </label>
-                    <label class="teacher-card-wide">Учебные часы могут входить в ставку
-                        <select id="teacher-contract-in-rate">
-                            <option value="false">Нет — все часы оплачиваются отдельно</option>
-                            <option value="true">Да — часть часов входит в должностной оклад</option>
-                        </select>
-                    </label>
-                    <label class="teacher-card-wide teacher-in-rate-field">Правило часов в ставке
-                        <select id="teacher-contract-in-rate-rule"></select>
-                    </label>
-                    <label class="teacher-card-wide teacher-in-rate-field">Формулировка для документов
-                        <input id="teacher-contract-in-rate-label" readonly>
-                    </label>
+                    <div class="teacher-card-wide">
+                        <b>Часы внутри ставки</b>
+                        <div id="teacher-contract-in-rate-status" class="muted">Определяются автоматически по должности.</div>
+                    </div>
                 </div>
                 <div class="dialog-actions">
                     <span id="teacher-contract-feedback" class="muted" role="status"></span>
@@ -410,15 +422,10 @@
                 <label>Дата договора<input id="accept-contract-date" type="date"></label>
                 <label>Начало договора<input id="accept-contract-start" type="date"></label>
                 <label>Окончание договора<input id="accept-contract-end" type="date"></label>
-                <label class="teacher-card-wide">Учебные часы могут входить в ставку
-                    <select id="accept-in-rate">
-                        <option value="false">Нет</option>
-                        <option value="true">Да</option>
-                    </select>
-                </label>
-                <label class="teacher-card-wide accept-in-rate-field" hidden>Правило часов в ставке
-                    <select id="accept-in-rate-rule"></select>
-                </label>
+                <div class="teacher-card-wide">
+                    <b>Часы внутри ставки</b>
+                    <div id="accept-in-rate-status" class="muted">Определятся автоматически после выбора основной должности.</div>
+                </div>
             </div>
             <p id="accept-teacher-feedback" class="muted" role="status"></p>
             <div class="dialog-actions">

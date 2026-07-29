@@ -17,9 +17,9 @@ class TeacherDismissalFrontendTest {
         String filter = Files.readString(Path.of("src/main/java/org/school/personalLoad/config/auth/AuthFilter.java"));
 
         assertTrue(html.contains("id=\"teacher-card-dialog\""));
-        assertTrue(html.contains("Учебные часы могут входить в ставку"));
-        assertTrue(html.contains("id=\"teacher-contract-in-rate-rule\""));
-        assertTrue(html.contains("id=\"teacher-contract-in-rate-label\""));
+        assertTrue(html.contains("Часы внутри ставки"));
+        assertTrue(html.contains("id=\"teacher-contract-in-rate-status\""));
+        assertTrue(html.contains("Определяются автоматически по должности"));
         assertTrue(html.contains("id=\"teacher-card-cancel-plan\""));
         assertTrue(html.contains("id=\"accept-teacher-btn\""));
         assertTrue(html.contains("id=\"auto-assign-buildings-btn\""));
@@ -33,7 +33,9 @@ class TeacherDismissalFrontendTest {
         assertTrue(js.contains("/api/teachers/auto-assign-buildings"));
         assertTrue(js.contains("/api/teachers/accept"));
         assertTrue(js.contains("/api/hr-documents/contracts?teacherId="));
-        assertTrue(js.contains("loadHoursMayBeIncludedInRate: ui.teacherContractInRate.value === \"true\""));
+        assertTrue(js.contains("function ruleForPosition(position"));
+        assertTrue(js.contains("loadHoursMayBeIncludedInRate: Boolean(inRateRule)"));
+        assertTrue(js.contains("loadInRateDocumentLabel: null"));
         assertTrue(js.contains("cancel-plan-dismiss"));
         assertTrue(css.contains("#teachers-main-panel .teachers-table td > input"));
         assertTrue(css.contains("height: 42px"));

@@ -49,13 +49,14 @@ class HrDocumentServiceTest {
     ClassSizeService sizes=mock(ClassSizeService.class);
     LoadSalaryCalculationService loadSalary;
     HrIncentiveRepository incentives=mock(HrIncentiveRepository.class);
+    LoadInRateRuleRepository inRateRules=mock(LoadInRateRuleRepository.class);
     HrDocumentService service;
     EmploymentContract contract;
     TeacherDirectoryEntry teacher;
 
     @BeforeEach void setUp(){
         loadSalary=new LoadSalaryCalculationService(sizes,salary,coefficients,groups);
-        service=new HrDocumentService(contracts,personal,memos,loadMemos,agreements,versions,catalog,teachers,loads,salary,coefficients,groups,classroomLeadership,sizes,loadSalary,incentives,new ObjectMapper().findAndRegisterModules());
+        service=new HrDocumentService(contracts,personal,memos,loadMemos,agreements,versions,catalog,teachers,loads,salary,coefficients,groups,classroomLeadership,sizes,loadSalary,incentives,inRateRules,new ObjectMapper().findAndRegisterModules());
         contract=new EmploymentContract(); contract.setId(10L); contract.setTeacherId(1L); contract.setContractNumber("1-ТД");
         contract.setContractDate(LocalDate.of(2025,1,1)); contract.setPositionName("Учитель");
         teacher=new TeacherDirectoryEntry(); teacher.setId(1L); teacher.setFioTeacher("Иванов Иван Иванович");
@@ -64,6 +65,7 @@ class HrDocumentServiceTest {
         when(classroomLeadership.findAllByAcademicYear(anyString())).thenReturn(List.of());
         when(loads.findAllByAcademicYear(anyString())).thenReturn(List.of()); when(sizes.effectiveClassSizes(anyString())).thenReturn(Map.of());
         when(incentives.findAllByAcademicYear(anyString())).thenReturn(List.of());
+        when(inRateRules.findAllByOrderByNameAsc()).thenReturn(List.of());
         when(incentives.save(any())).thenAnswer(x->{HrIncentive incentive=x.getArgument(0);if(incentive.getId()==null)incentive.setId(200L);return incentive;});
         when(agreements.save(any())).thenAnswer(x->{AdditionalAgreement a=x.getArgument(0);if(a.getId()==null)a.setId(100L);return a;});
         when(memos.save(any())).thenAnswer(x->{HrServiceMemo m=x.getArgument(0);if(m.getId()==null)m.setId(50L);return m;});
@@ -86,6 +88,29 @@ class HrDocumentServiceTest {
         assertEquals(1L,view.teacherId());
         assertTrue(json.contains("\"contractNumber\":\"1-ТД\""));
         assertFalse(json.contains("\"teacher\""));
+    }
+
+    @Test void positionRuleIsAppliedToContractWithoutManualFlag() {
+        LoadInRateRule rule = new LoadInRateRule();
+        rule.setId(71L);
+        rule.setName("Преподаватель ОБЗР");
+        rule.setDocumentLabel("Преподаватель ОБЗР");
+        rule.setActive(true);
+        when(inRateRules.findAllByOrderByNameAsc()).thenReturn(List.of(rule));
+
+        EmploymentContract saved = service.saveContract(10L,
+                new org.school.personalLoad.dto.HrDocumentDtos.ContractRequest(
+                        1L, "1-ТД", LocalDate.of(2025, 1, 1), "Преподаватель ОБЗР",
+                        LocalDate.of(2025, 1, 1), null, true, true,
+                        false, null, "устаревшее ручное пояснение"));
+
+        assertTrue(saved.isLoadHoursMayBeIncludedInRate());
+        assertEquals(71L, saved.getLoadInRateRuleId());
+        assertNull(saved.getLoadInRateDocumentLabel());
+        var view = service.contractView(saved);
+        assertTrue(view.loadHoursMayBeIncludedInRate());
+        assertEquals(71L, view.loadInRateRuleId());
+        assertNull(view.loadInRateDocumentLabel());
     }
 
     @Test void manualAdditionalWorkAgreementIsRejectedBecauseMemoCreatesItAutomatically() {
@@ -1020,6 +1045,11 @@ class HrDocumentServiceTest {
             XWPFTable annex=document.getTables().stream()
                     .filter(table->table.getText().contains("Предмет")
                             &&table.getText().contains("Класс/группа")).findFirst().orElseThrow();
+            assertFalse(annex.getText().contains("В ставке"),
+                    "Для обычной нагрузки лишняя колонка часов внутри ставки не нужна");
+            assertFalse(annex.getText().contains("Пояснение"),
+                    "Связанная пустая колонка пояснения также должна быть скрыта");
+            assertEquals(8,annex.getRow(0).getTableCells().size());
             XWPFTableRow annexTotal=annex.getRow(annex.getNumberOfRows()-1);
             assertEquals("Итого",annexTotal.getCell(0).getText());
             assertEquals("2",annexTotal.getCell(2).getText(),

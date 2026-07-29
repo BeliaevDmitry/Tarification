@@ -5,6 +5,8 @@ import org.school.personalLoad.dto.PersonnelDtos.AcceptEmployeeRequest;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.MckoCertificate;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
+import org.school.personalLoad.model.EmploymentContract;
+import org.school.personalLoad.model.LoadInRateRule;
 import org.school.personalLoad.pa.model.PaSpecification;
 import org.school.personalLoad.repository.*;
 import org.school.personalLoad.pa.repository.PaSpecificationRepository;
@@ -114,6 +116,41 @@ class PersonnelServiceTest {
         assertEquals("Носкова С.Н.", cases.initials());
         assertEquals("Носковой Светлане Николаевне", cases.dative());
         assertEquals("Носковой Светланы Николаевны", cases.genitive());
+    }
+
+    @Test
+    void acceptingEmployeeAppliesHoursInRateRuleByPrimaryPosition() {
+        LoadInRateRule rule = new LoadInRateRule();
+        rule.setId(18L);
+        rule.setName("Педагог-психолог");
+        rule.setDocumentLabel("Педагог-психолог");
+        rule.setActive(true);
+        when(rules.findAllByOrderByNameAsc()).thenReturn(List.of(rule));
+        when(teachers.findByFioTeacherIgnoreCase("Петрова Анна Ивановна")).thenReturn(Optional.empty());
+        when(teachers.findAll()).thenReturn(List.of());
+        when(teachers.save(any())).thenAnswer(invocation -> {
+            TeacherDirectoryEntry teacher = invocation.getArgument(0);
+            teacher.setId(77L);
+            return teacher;
+        });
+        when(personal.findByTeacherId(77L)).thenReturn(Optional.empty());
+        when(contracts.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(77L))
+                .thenReturn(List.of());
+        when(contracts.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.acceptEmployee(new AcceptEmployeeRequest(
+                null, "Петрова Анна Ивановна", null, null,
+                "СП1", "Педагог-психолог", "Основное место работы", LocalDate.of(2026, 9, 1),
+                null, null, null, null, null, null, null, null, null, null,
+                "25", LocalDate.of(2026, 8, 20), LocalDate.of(2026, 9, 1), null,
+                false, null
+        ), "admin");
+
+        verify(contracts).save(argThat(contract ->
+                contract.isLoadHoursMayBeIncludedInRate()
+                        && Long.valueOf(18L).equals(contract.getLoadInRateRuleId())
+                        && contract.getLoadInRateDocumentLabel() == null
+                        && "Педагог-психолог".equals(contract.getPositionName())));
     }
 
     @Test

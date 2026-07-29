@@ -1363,13 +1363,6 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         table.setWidth("100%");
         table.setTableAlignment(TableRowAlign.CENTER);
 
-        List<String> header = newEmployeeMode
-                ? List.of("Предмет", "Класс", "Часы всего", "Внутри ставки", "К оплате")
-                : List.of("Предмет", "Класс", "Часы всего", "Внутри ставки", "К оплате", "Статус");
-        for (int i = 0; i < header.size(); i++) {
-            setCellText(ensureCell(table.getRow(0), i), header.get(i), true);
-        }
-
         LinkedHashMap<String, DisplayRow> rowsForDisplay = new LinkedHashMap<>();
         for (ManualLoadEntry row : Optional.ofNullable(rows).orElseGet(List::of)) {
             if (row == null) continue;
@@ -1384,18 +1377,48 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     totalHours, includedHours, paidHours, status));
         }
 
+        boolean showIncludedHours = rowsForDisplay.values().stream()
+                .anyMatch(row -> row.includedHours().signum() > 0);
+        List<String> header = new ArrayList<>(List.of("Предмет", "Класс", "Часы всего"));
+        if (showIncludedHours) header.add("Внутри ставки");
+        header.add("К оплате");
+        if (!newEmployeeMode) header.add("Статус");
+        trimRow(table.getRow(0), header.size());
+        trimTableGrid(table, header.size());
+        for (int i = 0; i < header.size(); i++) {
+            setCellText(ensureCell(table.getRow(0), i), header.get(i), true);
+        }
+
         int totalRemainingHours = 0;
         for (DisplayRow row : rowsForDisplay.values()) {
             XWPFTableRow tr = table.createRow();
-            setCellText(ensureCell(tr, 0), row.subjectName(), false);
-            setCellText(ensureCell(tr, 1), row.className(), false);
-            setCellText(ensureCell(tr, 2), formatHours(row.totalHours()), false);
-            setCellText(ensureCell(tr, 3), formatHours(row.includedHours()), false);
-            setCellText(ensureCell(tr, 4), formatHours(row.paidHours()), false);
+            trimRow(tr, header.size());
+            int column = 0;
+            setCellText(ensureCell(tr, column++), row.subjectName(), false);
+            setCellText(ensureCell(tr, column++), row.className(), false);
+            setCellText(ensureCell(tr, column++), formatHours(row.totalHours()), false);
+            if (showIncludedHours) {
+                setCellText(ensureCell(tr, column++), formatHours(row.includedHours()), false);
+            }
+            setCellText(ensureCell(tr, column++), formatHours(row.paidHours()), false);
             if (!"Снять".equalsIgnoreCase(row.status())) totalRemainingHours += row.totalHours().intValue();
-            if (!newEmployeeMode) setCellText(ensureCell(tr, 5), row.status(), false);
+            if (!newEmployeeMode) setCellText(ensureCell(tr, column), row.status(), false);
         }
         return totalRemainingHours;
+    }
+
+    private void trimRow(XWPFTableRow row, int cellCount) {
+        while (row.getTableCells().size() > cellCount) {
+            row.removeCell(row.getTableCells().size() - 1);
+        }
+    }
+
+    private void trimTableGrid(XWPFTable table, int columnCount) {
+        var grid = table.getCTTbl().getTblGrid();
+        if (grid == null) return;
+        while (grid.sizeOfGridColArray() > columnCount) {
+            grid.removeGridCol(grid.sizeOfGridColArray() - 1);
+        }
     }
 
     private XWPFTableCell ensureCell(XWPFTableRow row, int index) {

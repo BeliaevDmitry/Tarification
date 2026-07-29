@@ -105,7 +105,7 @@ public class TeacherNotificationsController {
         return "attachment; filename*=UTF-8''" + encoded;
     }
 
-    private byte[] generateDoc(String fio, String year, LocalDate loadDate, LocalDate notificationDate) throws Exception {
+    byte[] generateDoc(String fio, String year, LocalDate loadDate, LocalDate notificationDate) throws Exception {
         List<ManualLoadEntry> rows = activeRows(year, loadDate).stream()
                 .filter(r -> fio.equalsIgnoreCase(r.getFioTeacher()))
                 .sorted(Comparator.comparing(ManualLoadEntry::getClassName))
@@ -248,14 +248,23 @@ public class TeacherNotificationsController {
 
         XmlCursor cursor = markerParagraph.getCTP().newCursor();
         XWPFTable table = doc.insertNewTbl(cursor);
-        styleRow(table.createRow(), Arrays.asList("Предмет", "Класс", "Часы всего", "Внутри ставки", "К оплате"), true);
+        boolean showIncludedHours = subjectLoads.stream()
+                .anyMatch(row -> row.includedH1.signum() > 0 || row.includedH2.signum() > 0);
+        List<String> headers = new ArrayList<>(List.of("Предмет", "Класс", "Часы всего"));
+        if (showIncludedHours) headers.add("Внутри ставки");
+        headers.add("К оплате");
+        styleRow(table.createRow(), headers, true);
         table.removeRow(0);
         for (SubjectLoad row : subjectLoads) {
-            styleRow(table.createRow(), Arrays.asList(row.subjectName, row.className, row.hoursDisplay,
-                    row.includedDisplay, row.paidDisplay), false);
+            List<String> values = new ArrayList<>(List.of(row.subjectName, row.className, row.hoursDisplay));
+            if (showIncludedHours) values.add(row.includedDisplay);
+            values.add(row.paidDisplay);
+            styleRow(table.createRow(), values, false);
         }
-        styleRow(table.createRow(), Arrays.asList("Итого", "", totalDisplay(subjectLoads),
-                totalIncludedDisplay(subjectLoads), totalPaidDisplay(subjectLoads)), true);
+        List<String> totals = new ArrayList<>(List.of("Итого", "", totalDisplay(subjectLoads)));
+        if (showIncludedHours) totals.add(totalIncludedDisplay(subjectLoads));
+        totals.add(totalPaidDisplay(subjectLoads));
+        styleRow(table.createRow(), totals, true);
         table.setTableAlignment(TableRowAlign.CENTER);
     }
 

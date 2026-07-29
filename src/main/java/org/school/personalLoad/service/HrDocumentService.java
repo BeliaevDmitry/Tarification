@@ -64,6 +64,7 @@ public class HrDocumentService {
     private final ClassSizeService classSizeService;
     private final LoadSalaryCalculationService loadSalaryCalculationService;
     private final HrIncentiveRepository incentiveRepository;
+    private final LoadInRateRuleRepository loadInRateRuleRepository;
     private final ObjectMapper objectMapper;
 
     @Transactional public List<JournalRow> journal(String academicYear) {
@@ -108,10 +109,10 @@ public class HrDocumentService {
         c.setContractDate(Objects.requireNonNull(r.contractDate(), "Дата договора обязательна"));
         c.setPositionName(required(r.positionName(), "Должность")); c.setStartDate(r.startDate()); c.setEndDate(r.endDate());
         c.setPrimaryContract(r.primaryContract() == null || r.primaryContract()); c.setActive(r.active() == null || r.active());
-        c.setLoadHoursMayBeIncludedInRate(Boolean.TRUE.equals(r.loadHoursMayBeIncludedInRate()));
-        c.setLoadInRateRuleId(c.isLoadHoursMayBeIncludedInRate()?r.loadInRateRuleId():null);
-        c.setLoadInRateDocumentLabel(c.isLoadHoursMayBeIncludedInRate()
-                ?Objects.toString(r.loadInRateDocumentLabel(),"").trim():null);
+        LoadInRateRule inRateRule=ruleForPosition(c.getPositionName(),r.loadInRateRuleId());
+        c.setLoadHoursMayBeIncludedInRate(inRateRule!=null);
+        c.setLoadInRateRuleId(inRateRule==null?null:inRateRule.getId());
+        c.setLoadInRateDocumentLabel(null);
         EmploymentContract saved = contracts.save(c);
         if(previouslyIncluded&&!saved.isLoadHoursMayBeIncludedInRate()){
             Map<String,Set<Long>> affected=new LinkedHashMap<>();
@@ -135,10 +136,11 @@ public class HrDocumentService {
         return contracts(teacherId).stream().map(this::contractView).toList();
     }
     public ContractView contractView(EmploymentContract contract) {
+        LoadInRateRule rule=ruleForPosition(contract.getPositionName(),contract.getLoadInRateRuleId());
         return new ContractView(contract.getId(), contract.getTeacherId(), contract.getContractNumber(),
                 contract.getContractDate(), contract.getPositionName(), contract.getStartDate(), contract.getEndDate(),
-                contract.isPrimaryContract(), contract.isActive(), contract.isLoadHoursMayBeIncludedInRate(),
-                contract.getLoadInRateRuleId(), contract.getLoadInRateDocumentLabel(), contract.getCreatedAt());
+                contract.isPrimaryContract(), contract.isActive(), rule!=null,
+                rule==null?null:rule.getId(), null, contract.getCreatedAt());
     }
     public Optional<HrPersonalData> personal(Long teacherId) { return personalData.findByTeacherId(teacherId); }
     @Transactional(readOnly = true)
@@ -1094,7 +1096,9 @@ public class HrDocumentService {
     }
 
     private void validateInRateAllocation(AdditionalAgreement agreement, EmploymentContract contract) {
-        if (agreement == null || contract == null || !contract.isLoadHoursMayBeIncludedInRate()) return;
+        if (agreement == null || contract == null
+                || (!contract.isLoadHoursMayBeIncludedInRate()
+                &&ruleForPosition(contract.getPositionName(),contract.getLoadInRateRuleId())==null)) return;
         List<ManualLoadEntry> rows = loadRepository.findAllByAcademicYear(agreement.getAcademicYear()).stream()
                 .filter(row -> Objects.equals(row.getTeacherId(), contract.getTeacherId()))
                 .filter(row -> loadSalaryCalculationService.totalHours(row).signum() > 0)
@@ -1105,6 +1109,19 @@ public class HrDocumentService {
                     "Сначала распределите часы внутри ставки в разделе «Нагрузка → Часы в ставке». Не подтверждено строк: "
                             + unresolved);
         }
+    }
+
+    private LoadInRateRule ruleForPosition(String positionName,Long preferredRuleId){
+        String position=Objects.toString(positionName,"").trim();
+        if(position.isBlank())return null;
+        if(preferredRuleId!=null){
+            LoadInRateRule preferred=loadInRateRuleRepository.findById(preferredRuleId).orElse(null);
+            if(preferred!=null&&preferred.isActive()&&preferred.getName().equalsIgnoreCase(position))return preferred;
+        }
+        return loadInRateRuleRepository.findAllByOrderByNameAsc().stream()
+                .filter(LoadInRateRule::isActive)
+                .filter(rule->rule.getName().equalsIgnoreCase(position))
+                .findFirst().orElse(null);
     }
 
     @Transactional public AdditionalAgreement reopenIssuedAgreement(Long id,String username){
@@ -1981,25 +1998,39 @@ public class HrDocumentService {
 
     private void appendLoadAnnex(XWPFDocument d,List<LoadDetail> rows){
         title(d, "Приложение № 1"); paragraph(d, "Расчёт должностного оклада по педагогической нагрузке", true);
-        int[] widths={1250,1100,650,650,650,900,1000,900,1050,1850};
-        XWPFTable table=d.createTable(1,10);configureAnnexTable(table,widths);
-        String[] headers={"Предмет","Класс/группа","Всего","В ставке","К оплате","Численность","Ученико-час","Коэффициенты","Сумма","Пояснение"};
+        boolean showIncludedHours=rows.stream().anyMatch(x->x.includedHours().signum()>0);
+        int[] widths=showIncludedHours
+                ?new int[]{1250,1100,650,650,650,900,1000,900,1050,1850}
+                :new int[]{1650,1450,800,800,1000,1200,1500,1500};
+        XWPFTable table=d.createTable(1,widths.length);configureAnnexTable(table,widths);
+        String[] headers=showIncludedHours
+                ?new String[]{"Предмет","Класс/группа","Всего","В ставке","К оплате","Численность","Ученико-час","Коэффициенты","Сумма","Пояснение"}
+                :new String[]{"Предмет","Класс/группа","Всего","К оплате","Численность","Ученико-час","Коэффициенты","Сумма"};
         for(int i=0;i<headers.length;i++) cell(table.getRow(0).getCell(i),headers[i],true,widths[i]);
         BigDecimal total=BigDecimal.ZERO,totalHours=BigDecimal.ZERO,includedHours=BigDecimal.ZERO,paidHours=BigDecimal.ZERO;
         for(LoadDetail x:rows){
             XWPFTableRow r=table.createRow();
             String note=x.includedHours().signum()>0?"Внутри ставки — "+firstPresent(x.reason(),"должностной оклад"):"";
             String coefficients=decimal(x.subjectCoefficient())+" / "+decimal(x.groupCoefficient().setScale(4,RoundingMode.HALF_UP));
-            String[] v={x.subject(),x.className(),decimal(x.totalHours()),decimal(x.includedHours()),decimal(x.paidHours()),
-                    String.valueOf(x.children()),decimal(x.rate()),coefficients,money(x.amount()).replace(" руб.",""),note};
+            String[] v=showIncludedHours
+                    ?new String[]{x.subject(),x.className(),decimal(x.totalHours()),decimal(x.includedHours()),decimal(x.paidHours()),
+                    String.valueOf(x.children()),decimal(x.rate()),coefficients,money(x.amount()).replace(" руб.",""),note}
+                    :new String[]{x.subject(),x.className(),decimal(x.totalHours()),decimal(x.paidHours()),
+                    String.valueOf(x.children()),decimal(x.rate()),coefficients,money(x.amount()).replace(" руб.","")};
             for(int i=0;i<v.length;i++)cell(r.getCell(i),v[i],false,widths[i]);
             total=total.add(x.amount());totalHours=totalHours.add(x.totalHours());
             includedHours=includedHours.add(x.includedHours());paidHours=paidHours.add(x.paidHours());
         }
-        XWPFTableRow tr=table.createRow();cell(tr.getCell(0),"Итого",true,widths[0]);cell(tr.getCell(1),"",false,widths[1]);
-        cell(tr.getCell(2),decimal(totalHours),true,widths[2]);cell(tr.getCell(3),decimal(includedHours),true,widths[3]);
-        cell(tr.getCell(4),decimal(paidHours),true,widths[4]);for(int i=5;i<8;i++)cell(tr.getCell(i),"",false,widths[i]);
-        cell(tr.getCell(8),money(total).replace(" руб.",""),true,widths[8]);cell(tr.getCell(9),"",false,widths[9]);
+        XWPFTableRow tr=table.createRow();
+        String[] totalValues=showIncludedHours
+                ?new String[]{"Итого","",decimal(totalHours),decimal(includedHours),decimal(paidHours),"","","",
+                money(total).replace(" руб.",""),""}
+                :new String[]{"Итого","",decimal(totalHours),decimal(paidHours),"","","",
+                money(total).replace(" руб.","")};
+        for(int i=0;i<totalValues.length;i++){
+            boolean bold=i==0||i==2||i==3||(showIncludedHours&&i==4)||i==(showIncludedHours?8:7);
+            cell(tr.getCell(i),totalValues[i],bold,widths[i]);
+        }
     }
     private void configureAnnexTable(XWPFTable table,int[] widths){
         int total=Arrays.stream(widths).sum();table.setWidthType(TableWidthType.DXA);table.setWidth(String.valueOf(total));table.setCellMargins(80,70,80,70);
@@ -2026,7 +2057,7 @@ public class HrDocumentService {
             String group=Objects.toString(row.getGroupNameEducationalPlan(),"");
             return new LoadDetail(row.getSubjectName(),row.getClassName()+(!group.isBlank()?" "+group:""),
                     line.totalHours(),line.includedHours(),line.paidHours(),line.children(),line.studentHourRate(),
-                    line.subjectCoefficient(),line.groupCoefficient(),line.amount(),firstPresent(row.getInRateReason(),"должностной оклад"));
+                    line.subjectCoefficient(),line.groupCoefficient(),line.amount(),firstPresent(row.getInRateReason(),"внутри ставки"));
         }).toList();
     }
     private Map<String,Integer> normalizedClassSizes(Map<String,Integer> sizes){
