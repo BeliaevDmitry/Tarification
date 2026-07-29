@@ -70,7 +70,8 @@ public class PersonnelService {
                 .filter(teacher -> !teacher.isArchived())
                 .sorted(Comparator.comparing(TeacherDirectoryEntry::getFioTeacher, String.CASE_INSENSITIVE_ORDER))
                 .map(teacher -> PersonnelRow.from(teacher,
-                        String.join("; ", duties.getOrDefault(teacher.getId(), new LinkedHashSet<>()))))
+                        String.join("; ", duties.getOrDefault(teacher.getId(), new LinkedHashSet<>())),
+                        storedNameCases(teacher)))
                 .toList();
     }
 
@@ -154,11 +155,8 @@ public class PersonnelService {
             }
         }
         String previousName = teacher.getFioTeacher();
-        NameCases cases = RussianNameCases.derive(fio);
-        teacher.setFioTeacher(fio);
-        teacher.setFioTeacherDative(cases.dative());
-        teacher.setInitials(cases.initials());
-        teacher.setInitialsDative(cases.initialsDative());
+        NameCases cases = mergeNameCases(fio, request.nameCases());
+        applyNameCases(teacher, cases);
         teacher.setPhone(blankToNull(request.phone()));
         teacher.setEmail(email);
         teacher.setNumberSchoolBuilding(blankToNull(request.numberSchoolBuilding()));
@@ -230,16 +228,18 @@ public class PersonnelService {
 
     @Transactional(readOnly = true)
     public NameCases nameCases(Long teacherId) {
-        return RussianNameCases.derive(teachers.findById(teacherId).orElseThrow().getFioTeacher());
+        return storedNameCases(teachers.findById(teacherId).orElseThrow());
+    }
+
+    public NameCases deriveNameCases(String fio) {
+        return RussianNameCases.derive(fio);
     }
 
     @Transactional(readOnly = true)
     public byte[] employeeDataSheet(Long teacherId) {
         TeacherDirectoryEntry teacher = teachers.findById(teacherId).orElseThrow();
         HrPersonalData personal = personalData.findByTeacherId(teacherId).orElse(null);
-        EmploymentContract contract = contracts.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(teacherId)
-                .stream().findFirst().orElse(null);
-        NameCases cases = RussianNameCases.derive(teacher.getFioTeacher());
+        NameCases cases = storedNameCases(teacher);
         try (XWPFDocument document = new XWPFDocument(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             var section = document.getDocument().getBody().addNewSectPr();
             var pageSize = section.addNewPgSz();
@@ -266,12 +266,18 @@ public class PersonnelService {
             table.setTableAlignment(TableRowAlign.CENTER);
             table.getCTTbl().getTblPr().addNewTblLayout().setType(
                     org.openxmlformats.schemas.wordprocessingml.x2006.main.STTblLayoutType.FIXED);
-            addRow(table, "ФИО", teacher.getFioTeacher());
-            addRow(table, "ФИО (инициалы)", cases.initials());
-            addRow(table, "Родительный падеж", cases.genitive());
-            addRow(table, "Дательный падеж", cases.dative());
-            addRow(table, "Творительный падеж", cases.instrumental());
-            addRow(table, "Предложный падеж", cases.prepositional());
+            addRow(table, "ФИО — именительный падеж", cases.nominative());
+            addRow(table, "ФИО — родительный падеж", cases.genitive());
+            addRow(table, "ФИО — дательный падеж", cases.dative());
+            addRow(table, "ФИО — винительный падеж", cases.accusative());
+            addRow(table, "ФИО — творительный падеж", cases.instrumental());
+            addRow(table, "ФИО — предложный падеж", cases.prepositional());
+            addRow(table, "Фамилия и инициалы — именительный", cases.initials());
+            addRow(table, "Фамилия и инициалы — родительный", cases.initialsGenitive());
+            addRow(table, "Фамилия и инициалы — дательный", cases.initialsDative());
+            addRow(table, "Фамилия и инициалы — винительный", cases.initialsAccusative());
+            addRow(table, "Фамилия и инициалы — творительный", cases.initialsInstrumental());
+            addRow(table, "Фамилия и инициалы — предложный", cases.initialsPrepositional());
             addRow(table, "Дата рождения", date(personal == null ? null : personal.getBirthDate()));
             addRow(table, "Телефон", first(teacher.getPhone(), personal == null ? null : personal.getPhone()));
             addRow(table, "Email", teacher.getEmail());
@@ -279,8 +285,6 @@ public class PersonnelService {
             addRow(table, "Основная должность", teacher.getPrimaryPosition());
             addRow(table, "Вид занятости", teacher.getEmploymentType());
             addRow(table, "Дата приёма", date(teacher.getEmploymentDate()));
-            addRow(table, "Трудовой договор", contract == null ? "" :
-                    "№ " + contract.getContractNumber() + " от " + date(contract.getContractDate()));
             addRow(table, "Паспорт", personal == null ? "" :
                     first(personal.getPassportSeries(), "") + " " + first(personal.getPassportNumber(), ""));
             addRow(table, "Кем выдан", personal == null ? "" : personal.getPassportIssuedBy());
@@ -303,6 +307,58 @@ public class PersonnelService {
         } catch (Exception exception) {
             throw new IllegalStateException("Не удалось сформировать лист проверки данных", exception);
         }
+    }
+
+    private NameCases mergeNameCases(String fio, NameCases requested) {
+        NameCases generated = RussianNameCases.derive(fio);
+        if (requested == null) return generated;
+        return new NameCases(
+                fio,
+                first(requested.genitive(), generated.genitive()),
+                first(requested.dative(), generated.dative()),
+                first(requested.accusative(), generated.accusative()),
+                first(requested.instrumental(), generated.instrumental()),
+                first(requested.prepositional(), generated.prepositional()),
+                first(requested.initials(), generated.initials()),
+                first(requested.initialsGenitive(), generated.initialsGenitive()),
+                first(requested.initialsDative(), generated.initialsDative()),
+                first(requested.initialsAccusative(), generated.initialsAccusative()),
+                first(requested.initialsInstrumental(), generated.initialsInstrumental()),
+                first(requested.initialsPrepositional(), generated.initialsPrepositional())
+        );
+    }
+
+    private NameCases storedNameCases(TeacherDirectoryEntry teacher) {
+        NameCases generated = RussianNameCases.derive(teacher.getFioTeacher());
+        return new NameCases(
+                teacher.getFioTeacher(),
+                first(teacher.getFioTeacherGenitive(), generated.genitive()),
+                first(teacher.getFioTeacherDative(), generated.dative()),
+                first(teacher.getFioTeacherAccusative(), generated.accusative()),
+                first(teacher.getFioTeacherInstrumental(), generated.instrumental()),
+                first(teacher.getFioTeacherPrepositional(), generated.prepositional()),
+                first(teacher.getInitials(), generated.initials()),
+                first(teacher.getInitialsGenitive(), generated.initialsGenitive()),
+                first(teacher.getInitialsDative(), generated.initialsDative()),
+                first(teacher.getInitialsAccusative(), generated.initialsAccusative()),
+                first(teacher.getInitialsInstrumental(), generated.initialsInstrumental()),
+                first(teacher.getInitialsPrepositional(), generated.initialsPrepositional())
+        );
+    }
+
+    private void applyNameCases(TeacherDirectoryEntry teacher, NameCases cases) {
+        teacher.setFioTeacher(cases.nominative());
+        teacher.setFioTeacherGenitive(cases.genitive());
+        teacher.setFioTeacherDative(cases.dative());
+        teacher.setFioTeacherAccusative(cases.accusative());
+        teacher.setFioTeacherInstrumental(cases.instrumental());
+        teacher.setFioTeacherPrepositional(cases.prepositional());
+        teacher.setInitials(cases.initials());
+        teacher.setInitialsGenitive(cases.initialsGenitive());
+        teacher.setInitialsDative(cases.initialsDative());
+        teacher.setInitialsAccusative(cases.initialsAccusative());
+        teacher.setInitialsInstrumental(cases.initialsInstrumental());
+        teacher.setInitialsPrepositional(cases.initialsPrepositional());
     }
 
     private void updateNameSnapshots(Long teacherId, String oldName, String newName) {

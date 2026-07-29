@@ -24,7 +24,15 @@ class TeacherDismissalFrontendTest {
         assertTrue(html.contains("id=\"accept-teacher-btn\""));
         assertTrue(html.contains("id=\"auto-assign-buildings-btn\""));
         assertTrue(html.contains("id=\"teacher-card-initials\""));
-        assertTrue(html.contains("id=\"teacher-card-dative\""));
+        assertTrue(html.contains("id=\"teacher-card-fio-genitive\""));
+        assertTrue(html.contains("id=\"teacher-card-fio-dative\""));
+        assertTrue(html.contains("id=\"teacher-card-fio-accusative\""));
+        assertTrue(html.contains("id=\"teacher-card-initials-genitive\""));
+        assertTrue(html.contains("id=\"teacher-card-initials-prepositional\""));
+        assertTrue(html.contains("id=\"teacher-card-fill-name-cases\""));
+        assertTrue(html.contains("id=\"accept-fill-name-cases\""));
+        assertTrue(html.contains("id=\"accept-teacher-with-sheet\""));
+        assertTrue(!html.contains("id=\"accept-contract-number\""));
         assertTrue(html.contains("id=\"teacher-personal-section\""));
         assertTrue(html.contains("id=\"teacher-card-data-sheet\""));
         assertTrue(!html.contains("id=\"teacher-duties-create\""));
@@ -32,6 +40,9 @@ class TeacherDismissalFrontendTest {
         assertTrue(js.contains("additionalDutiesSummary"));
         assertTrue(js.contains("/api/teachers/auto-assign-buildings"));
         assertTrue(js.contains("/api/teachers/accept"));
+        assertTrue(js.contains("/api/teachers/name-cases/derive?fio="));
+        assertTrue(js.contains("nameCases: acceptNameCasesPayload()"));
+        assertTrue(js.contains("dataset.downloadSheet"));
         assertTrue(js.contains("/api/hr-documents/contracts?teacherId="));
         assertTrue(js.contains("function ruleForPosition(position"));
         assertTrue(js.contains("loadHoursMayBeIncludedInRate: Boolean(inRateRule)"));

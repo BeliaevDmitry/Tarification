@@ -25,9 +25,17 @@ public class TeacherDirectoryEntry {
     @Column(nullable = false)
     private String fioTeacher;
 
+    private String fioTeacherGenitive;
     private String fioTeacherDative;
+    private String fioTeacherAccusative;
+    private String fioTeacherInstrumental;
+    private String fioTeacherPrepositional;
     private String initials;
+    private String initialsGenitive;
     private String initialsDative;
+    private String initialsAccusative;
+    private String initialsInstrumental;
+    private String initialsPrepositional;
     private String phone;
     @Column(unique = true)
     private String email;

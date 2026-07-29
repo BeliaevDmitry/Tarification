@@ -18,7 +18,11 @@ public final class PersonnelDtos {
             String instrumental,
             String prepositional,
             String initials,
-            String initialsDative
+            String initialsGenitive,
+            String initialsDative,
+            String initialsAccusative,
+            String initialsInstrumental,
+            String initialsPrepositional
     ) {
     }
 
@@ -46,7 +50,8 @@ public final class PersonnelDtos {
             LocalDate contractStartDate,
             LocalDate contractEndDate,
             Boolean loadHoursMayBeIncludedInRate,
-            Long loadInRateRuleId
+            Long loadInRateRuleId,
+            NameCases nameCases
     ) {
     }
 
@@ -76,9 +81,17 @@ public final class PersonnelDtos {
     public record PersonnelRow(
             Long id,
             String fioTeacher,
+            String fioTeacherGenitive,
             String fioTeacherDative,
+            String fioTeacherAccusative,
+            String fioTeacherInstrumental,
+            String fioTeacherPrepositional,
             String initials,
+            String initialsGenitive,
             String initialsDative,
+            String initialsAccusative,
+            String initialsInstrumental,
+            String initialsPrepositional,
             String phone,
             String email,
             String additionalDuties,
@@ -97,13 +110,21 @@ public final class PersonnelDtos {
             LocalDateTime archivedAt,
             LocalDateTime createdAt
     ) {
-        public static PersonnelRow from(TeacherDirectoryEntry teacher, String dutiesSummary) {
+        public static PersonnelRow from(TeacherDirectoryEntry teacher, String dutiesSummary, NameCases cases) {
             return new PersonnelRow(
                     teacher.getId(),
-                    teacher.getFioTeacher(),
-                    teacher.getFioTeacherDative(),
-                    teacher.getInitials(),
-                    teacher.getInitialsDative(),
+                    cases.nominative(),
+                    cases.genitive(),
+                    cases.dative(),
+                    cases.accusative(),
+                    cases.instrumental(),
+                    cases.prepositional(),
+                    cases.initials(),
+                    cases.initialsGenitive(),
+                    cases.initialsDative(),
+                    cases.initialsAccusative(),
+                    cases.initialsInstrumental(),
+                    cases.initialsPrepositional(),
                     teacher.getPhone(),
                     teacher.getEmail(),
                     teacher.getAdditionalDuties(),

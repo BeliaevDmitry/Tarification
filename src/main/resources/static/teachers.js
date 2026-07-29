@@ -98,8 +98,18 @@ const ui = {
     teacherCardFeedback: document.getElementById("teacher-card-feedback"),
     teacherCardMainForm: document.getElementById("teacher-card-main-form"),
     teacherCardFio: document.getElementById("teacher-card-fio"),
+    teacherCardFioGenitive: document.getElementById("teacher-card-fio-genitive"),
+    teacherCardFioDative: document.getElementById("teacher-card-fio-dative"),
+    teacherCardFioAccusative: document.getElementById("teacher-card-fio-accusative"),
+    teacherCardFioInstrumental: document.getElementById("teacher-card-fio-instrumental"),
+    teacherCardFioPrepositional: document.getElementById("teacher-card-fio-prepositional"),
     teacherCardInitials: document.getElementById("teacher-card-initials"),
-    teacherCardDative: document.getElementById("teacher-card-dative"),
+    teacherCardInitialsGenitive: document.getElementById("teacher-card-initials-genitive"),
+    teacherCardInitialsDative: document.getElementById("teacher-card-initials-dative"),
+    teacherCardInitialsAccusative: document.getElementById("teacher-card-initials-accusative"),
+    teacherCardInitialsInstrumental: document.getElementById("teacher-card-initials-instrumental"),
+    teacherCardInitialsPrepositional: document.getElementById("teacher-card-initials-prepositional"),
+    teacherCardFillNameCases: document.getElementById("teacher-card-fill-name-cases"),
     teacherCardPhone: document.getElementById("teacher-card-phone"),
     teacherCardEmail: document.getElementById("teacher-card-email"),
     teacherCardBuilding: document.getElementById("teacher-card-building"),
@@ -127,6 +137,18 @@ const ui = {
     acceptTeacherCancel: document.getElementById("accept-teacher-cancel"),
     acceptVacancy: document.getElementById("accept-vacancy"),
     acceptFio: document.getElementById("accept-fio"),
+    acceptFioGenitive: document.getElementById("accept-fio-genitive"),
+    acceptFioDative: document.getElementById("accept-fio-dative"),
+    acceptFioAccusative: document.getElementById("accept-fio-accusative"),
+    acceptFioInstrumental: document.getElementById("accept-fio-instrumental"),
+    acceptFioPrepositional: document.getElementById("accept-fio-prepositional"),
+    acceptInitials: document.getElementById("accept-initials"),
+    acceptInitialsGenitive: document.getElementById("accept-initials-genitive"),
+    acceptInitialsDative: document.getElementById("accept-initials-dative"),
+    acceptInitialsAccusative: document.getElementById("accept-initials-accusative"),
+    acceptInitialsInstrumental: document.getElementById("accept-initials-instrumental"),
+    acceptInitialsPrepositional: document.getElementById("accept-initials-prepositional"),
+    acceptFillNameCases: document.getElementById("accept-fill-name-cases"),
     acceptPhone: document.getElementById("accept-phone"),
     acceptEmail: document.getElementById("accept-email"),
     acceptBuilding: document.getElementById("accept-building"),
@@ -143,11 +165,7 @@ const ui = {
     acceptPassportCode: document.getElementById("accept-passport-code"),
     acceptRegistrationAddress: document.getElementById("accept-registration-address"),
     acceptActualAddress: document.getElementById("accept-actual-address"),
-    acceptContractNumber: document.getElementById("accept-contract-number"),
-    acceptContractDate: document.getElementById("accept-contract-date"),
-    acceptContractStart: document.getElementById("accept-contract-start"),
-    acceptContractEnd: document.getElementById("accept-contract-end"),
-    acceptInRateStatus: document.getElementById("accept-in-rate-status"),
+    acceptTeacherWithSheet: document.getElementById("accept-teacher-with-sheet"),
     acceptTeacherFeedback: document.getElementById("accept-teacher-feedback")
 };
 let buildings = [];
@@ -447,8 +465,17 @@ async function openTeacherCard(teacherId, preferredContractId = null) {
     ui.teacherCardDismissDate.value = teacher.dismissalDate || "";
     ui.teacherCardFeedback.textContent = "";
     ui.teacherCardFio.value = teacher.fioTeacher || "";
+    ui.teacherCardFioGenitive.value = teacher.fioTeacherGenitive || "";
+    ui.teacherCardFioDative.value = teacher.fioTeacherDative || "";
+    ui.teacherCardFioAccusative.value = teacher.fioTeacherAccusative || "";
+    ui.teacherCardFioInstrumental.value = teacher.fioTeacherInstrumental || "";
+    ui.teacherCardFioPrepositional.value = teacher.fioTeacherPrepositional || "";
     ui.teacherCardInitials.value = teacher.initials || "";
-    ui.teacherCardDative.value = teacher.fioTeacherDative || "";
+    ui.teacherCardInitialsGenitive.value = teacher.initialsGenitive || "";
+    ui.teacherCardInitialsDative.value = teacher.initialsDative || "";
+    ui.teacherCardInitialsAccusative.value = teacher.initialsAccusative || "";
+    ui.teacherCardInitialsInstrumental.value = teacher.initialsInstrumental || "";
+    ui.teacherCardInitialsPrepositional.value = teacher.initialsPrepositional || "";
     ui.teacherCardPhone.value = teacher.phone || "";
     ui.teacherCardEmail.value = teacher.email || "";
     ui.teacherCardBuilding.innerHTML = renderBuildingOptions(teacher.numberSchoolBuilding);
@@ -531,8 +558,17 @@ async function saveTeacherCardMain(event) {
         headers: jsonHeaders,
         body: JSON.stringify({
             fioTeacher: ui.teacherCardFio.value.trim(),
+            fioTeacherGenitive: ui.teacherCardFioGenitive.value.trim(),
+            fioTeacherDative: ui.teacherCardFioDative.value.trim(),
+            fioTeacherAccusative: ui.teacherCardFioAccusative.value.trim(),
+            fioTeacherInstrumental: ui.teacherCardFioInstrumental.value.trim(),
+            fioTeacherPrepositional: ui.teacherCardFioPrepositional.value.trim(),
             initials: ui.teacherCardInitials.value.trim(),
-            fioTeacherDative: ui.teacherCardDative.value.trim(),
+            initialsGenitive: ui.teacherCardInitialsGenitive.value.trim(),
+            initialsDative: ui.teacherCardInitialsDative.value.trim(),
+            initialsAccusative: ui.teacherCardInitialsAccusative.value.trim(),
+            initialsInstrumental: ui.teacherCardInitialsInstrumental.value.trim(),
+            initialsPrepositional: ui.teacherCardInitialsPrepositional.value.trim(),
             phone: ui.teacherCardPhone.value.trim(),
             email: ui.teacherCardEmail.value.trim(),
             numberSchoolBuilding: ui.teacherCardBuilding.value,
@@ -542,6 +578,57 @@ async function saveTeacherCardMain(event) {
         })
     });
     await refreshTeacherCardAfterAction(teacher.id, "Данные сотрудника сохранены.");
+}
+
+async function deriveNameCases(fio) {
+    const value = String(fio || "").trim();
+    if (!value) throw new Error("Сначала укажите полное ФИО");
+    return api(`/api/teachers/name-cases/derive?fio=${encodeURIComponent(value)}`);
+}
+
+function fillTeacherCardNameCases(cases) {
+    ui.teacherCardFioGenitive.value = cases.genitive || "";
+    ui.teacherCardFioDative.value = cases.dative || "";
+    ui.teacherCardFioAccusative.value = cases.accusative || "";
+    ui.teacherCardFioInstrumental.value = cases.instrumental || "";
+    ui.teacherCardFioPrepositional.value = cases.prepositional || "";
+    ui.teacherCardInitials.value = cases.initials || "";
+    ui.teacherCardInitialsGenitive.value = cases.initialsGenitive || "";
+    ui.teacherCardInitialsDative.value = cases.initialsDative || "";
+    ui.teacherCardInitialsAccusative.value = cases.initialsAccusative || "";
+    ui.teacherCardInitialsInstrumental.value = cases.initialsInstrumental || "";
+    ui.teacherCardInitialsPrepositional.value = cases.initialsPrepositional || "";
+}
+
+function fillAcceptNameCases(cases) {
+    ui.acceptFioGenitive.value = cases.genitive || "";
+    ui.acceptFioDative.value = cases.dative || "";
+    ui.acceptFioAccusative.value = cases.accusative || "";
+    ui.acceptFioInstrumental.value = cases.instrumental || "";
+    ui.acceptFioPrepositional.value = cases.prepositional || "";
+    ui.acceptInitials.value = cases.initials || "";
+    ui.acceptInitialsGenitive.value = cases.initialsGenitive || "";
+    ui.acceptInitialsDative.value = cases.initialsDative || "";
+    ui.acceptInitialsAccusative.value = cases.initialsAccusative || "";
+    ui.acceptInitialsInstrumental.value = cases.initialsInstrumental || "";
+    ui.acceptInitialsPrepositional.value = cases.initialsPrepositional || "";
+}
+
+function acceptNameCasesPayload() {
+    return {
+        nominative: ui.acceptFio.value.trim(),
+        genitive: ui.acceptFioGenitive.value.trim(),
+        dative: ui.acceptFioDative.value.trim(),
+        accusative: ui.acceptFioAccusative.value.trim(),
+        instrumental: ui.acceptFioInstrumental.value.trim(),
+        prepositional: ui.acceptFioPrepositional.value.trim(),
+        initials: ui.acceptInitials.value.trim(),
+        initialsGenitive: ui.acceptInitialsGenitive.value.trim(),
+        initialsDative: ui.acceptInitialsDative.value.trim(),
+        initialsAccusative: ui.acceptInitialsAccusative.value.trim(),
+        initialsInstrumental: ui.acceptInitialsInstrumental.value.trim(),
+        initialsPrepositional: ui.acceptInitialsPrepositional.value.trim()
+    };
 }
 
 function downloadTeacherDataSheet() {
@@ -1406,25 +1493,16 @@ function renderAcceptTeacherDialog() {
     ].join("");
     ui.acceptBuilding.innerHTML = renderBuildingOptions("");
     ui.acceptPosition.innerHTML = positionOptions("");
-    refreshAcceptRuleOptions();
     ui.acceptTeacherDialog.showModal();
-}
-
-function refreshAcceptRuleOptions() {
-    const position = ui.acceptPosition.value;
-    const rule = ruleForPosition(position);
-    if (ui.acceptInRateStatus) {
-        ui.acceptInRateStatus.textContent = rule
-            ? `Будет применено правило «${rule.name}». Конкретные часы распределяются после назначения нагрузки.`
-            : "Для выбранной должности правило не настроено — вся нагрузка будет оплачиваться отдельно.";
-    }
-    return rule;
 }
 
 async function acceptTeacher(event) {
     event.preventDefault();
     ui.acceptTeacherFeedback.textContent = "Сохраняю карточку и связи…";
-    const inRateRule = refreshAcceptRuleOptions();
+    const downloadSheet = event.submitter?.dataset.downloadSheet === "true";
+    if (!ui.acceptInitials.value.trim()) {
+        fillAcceptNameCases(await deriveNameCases(ui.acceptFio.value));
+    }
     const result = await api("/api/teachers/accept", {
         method: "POST",
         headers: jsonHeaders,
@@ -1447,16 +1525,20 @@ async function acceptTeacher(event) {
             actualAddress: ui.acceptActualAddress.value.trim(),
             inn: ui.acceptInn.value.trim(),
             snils: ui.acceptSnils.value.trim(),
-            contractNumber: ui.acceptContractNumber.value.trim(),
-            contractDate: ui.acceptContractDate.value || null,
-            contractStartDate: ui.acceptContractStart.value || null,
-            contractEndDate: ui.acceptContractEnd.value || null,
-            loadHoursMayBeIncludedInRate: Boolean(inRateRule),
-            loadInRateRuleId: inRateRule?.id || null
+            contractNumber: null,
+            contractDate: null,
+            contractStartDate: null,
+            contractEndDate: null,
+            loadHoursMayBeIncludedInRate: false,
+            loadInRateRuleId: null,
+            nameCases: acceptNameCasesPayload()
         })
     });
     ui.acceptTeacherDialog.close();
     await loadTeachers();
+    if (downloadSheet) {
+        window.location.href = `/api/teachers/${result.teacherId}/data-sheet`;
+    }
     await openTeacherCard(result.teacherId);
     ui.teacherCardFeedback.textContent = result.linkedToVacancy
         ? `Сотрудник принят. Запись «${result.previousName}» сохранена под тем же ID ${result.teacherId}.`
@@ -1741,25 +1823,31 @@ function bindEvents() {
     ui.downloadBtn?.addEventListener('click', downloadTeachers);
     ui.refreshBtn?.addEventListener('click', () => loadTeachers().catch((e) => print({ error: e.message })));
     ui.clearBtn?.addEventListener('click', clearTeachers);
-    ui.acceptTeacherBtn?.addEventListener("click", async () => {
-        try {
-            if (!teacherCardInRateRules.length) teacherCardInRateRules = await api("/api/manual-load/in-rate/rules") || [];
-            renderAcceptTeacherDialog();
-        } catch (error) {
-            print({ error: error.message });
-        }
-    });
+    ui.acceptTeacherBtn?.addEventListener("click", renderAcceptTeacherDialog);
     ui.autoAssignBuildingsBtn?.addEventListener("click", () => autoAssignBuildings().catch((error) => print({ error: error.message })));
     ui.acceptTeacherClose?.addEventListener("click", () => ui.acceptTeacherDialog.close());
     ui.acceptTeacherCancel?.addEventListener("click", () => ui.acceptTeacherDialog.close());
     ui.acceptTeacherForm?.addEventListener("submit", (event) => acceptTeacher(event).catch((error) => {
         ui.acceptTeacherFeedback.textContent = error.message;
     }));
-    ui.acceptPosition?.addEventListener("change", refreshAcceptRuleOptions);
+    ui.acceptFillNameCases?.addEventListener("click", () => {
+        deriveNameCases(ui.acceptFio.value).then(fillAcceptNameCases)
+            .catch((error) => { ui.acceptTeacherFeedback.textContent = error.message; });
+    });
+    ui.acceptFio?.addEventListener("blur", () => {
+        if (ui.acceptFio.value.trim() && !ui.acceptInitials.value.trim()) {
+            deriveNameCases(ui.acceptFio.value).then(fillAcceptNameCases)
+                .catch((error) => { ui.acceptTeacherFeedback.textContent = error.message; });
+        }
+    });
     ui.teacherCardClose?.addEventListener("click", () => ui.teacherCardDialog.close());
     ui.teacherCardMainForm?.addEventListener("submit", (event) => saveTeacherCardMain(event).catch((error) => {
         ui.teacherCardFeedback.textContent = error.message;
     }));
+    ui.teacherCardFillNameCases?.addEventListener("click", () => {
+        deriveNameCases(ui.teacherCardFio.value).then(fillTeacherCardNameCases)
+            .catch((error) => { ui.teacherCardFeedback.textContent = error.message; });
+    });
     ui.teacherPersonalForm?.addEventListener("submit", (event) => saveTeacherPersonalData(event).catch((error) => {
         ui.teacherCardFeedback.textContent = error.message;
     }));

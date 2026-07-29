@@ -13,7 +13,8 @@ public final class RussianNameCases {
         String normalized = Arrays.stream(String.valueOf(source == null ? "" : source).trim().split("\\s+"))
                 .filter(part -> !part.isBlank())
                 .reduce((left, right) -> left + " " + right).orElse("");
-        if (normalized.isBlank()) return new NameCases("", "", "", "", "", "", "", "");
+        if (normalized.isBlank()) return new NameCases(
+                "", "", "", "", "", "", "", "", "", "", "", "");
         String[] parts = normalized.split(" ");
         boolean female = parts.length > 2 && femalePatronymic(parts[2]);
         String surname = parts[0];
@@ -21,26 +22,35 @@ public final class RussianNameCases {
         String patronymic = parts.length > 2 ? parts[2] : "";
         String tail = parts.length > 3 ? " " + String.join(" ", Arrays.copyOfRange(parts, 3, parts.length)) : "";
         String initials = initials(surname, name, patronymic);
+        String genitiveSurname = decline(surname, female, CaseType.GENITIVE, true);
         String dativeSurname = decline(surname, female, CaseType.DATIVE, true);
+        String accusativeSurname = decline(surname, female, CaseType.ACCUSATIVE, true);
+        String instrumentalSurname = decline(surname, female, CaseType.INSTRUMENTAL, true);
+        String prepositionalSurname = decline(surname, female, CaseType.PREPOSITIONAL, true);
+        String initialsSuffix = initialsSuffix(name, patronymic);
         return new NameCases(
                 normalized,
-                join(decline(surname, female, CaseType.GENITIVE, true),
+                join(genitiveSurname,
                         decline(name, female, CaseType.GENITIVE, false),
                         decline(patronymic, female, CaseType.GENITIVE, false)) + tail,
                 join(dativeSurname,
                         decline(name, female, CaseType.DATIVE, false),
                         decline(patronymic, female, CaseType.DATIVE, false)) + tail,
-                join(decline(surname, female, CaseType.ACCUSATIVE, true),
+                join(accusativeSurname,
                         decline(name, female, CaseType.ACCUSATIVE, false),
                         decline(patronymic, female, CaseType.ACCUSATIVE, false)) + tail,
-                join(decline(surname, female, CaseType.INSTRUMENTAL, true),
+                join(instrumentalSurname,
                         decline(name, female, CaseType.INSTRUMENTAL, false),
                         decline(patronymic, female, CaseType.INSTRUMENTAL, false)) + tail,
-                join(decline(surname, female, CaseType.PREPOSITIONAL, true),
+                join(prepositionalSurname,
                         decline(name, female, CaseType.PREPOSITIONAL, false),
                         decline(patronymic, female, CaseType.PREPOSITIONAL, false)) + tail,
                 initials,
-                dativeSurname + initialsSuffix(name, patronymic)
+                genitiveSurname + initialsSuffix,
+                dativeSurname + initialsSuffix,
+                accusativeSurname + initialsSuffix,
+                instrumentalSurname + initialsSuffix,
+                prepositionalSurname + initialsSuffix
         );
     }
 

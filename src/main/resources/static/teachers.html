@@ -290,8 +290,6 @@
             <form id="teacher-card-main-form">
                 <div class="teacher-card-grid">
                     <label class="teacher-card-wide">ФИО<input id="teacher-card-fio" required></label>
-                    <label>ФИО (инициалы)<input id="teacher-card-initials"></label>
-                    <label>Дательный падеж<input id="teacher-card-dative"></label>
                     <label>Телефон<input id="teacher-card-phone"></label>
                     <label>Email<input id="teacher-card-email" type="email"></label>
                     <label>Корпус<select id="teacher-card-building"></select></label>
@@ -299,6 +297,24 @@
                     <label>Вид занятости<input id="teacher-card-employment-type"></label>
                     <label>Дата приёма<input id="teacher-card-employment-date" type="date"></label>
                 </div>
+                <details class="teacher-name-forms teacher-card-wide">
+                    <summary>Формы ФИО для документов</summary>
+                    <p class="muted">Система заполняет их автоматически. Любую форму можно исправить — исправление сохранится и будет доступно для приказов и других документов.</p>
+                    <div class="teacher-card-grid">
+                        <label>Полное ФИО — родительный<input id="teacher-card-fio-genitive"></label>
+                        <label>Полное ФИО — дательный<input id="teacher-card-fio-dative"></label>
+                        <label>Полное ФИО — винительный<input id="teacher-card-fio-accusative"></label>
+                        <label>Полное ФИО — творительный<input id="teacher-card-fio-instrumental"></label>
+                        <label>Полное ФИО — предложный<input id="teacher-card-fio-prepositional"></label>
+                        <label>Фамилия и инициалы — именительный<input id="teacher-card-initials"></label>
+                        <label>Фамилия и инициалы — родительный<input id="teacher-card-initials-genitive"></label>
+                        <label>Фамилия и инициалы — дательный<input id="teacher-card-initials-dative"></label>
+                        <label>Фамилия и инициалы — винительный<input id="teacher-card-initials-accusative"></label>
+                        <label>Фамилия и инициалы — творительный<input id="teacher-card-initials-instrumental"></label>
+                        <label>Фамилия и инициалы — предложный<input id="teacher-card-initials-prepositional"></label>
+                    </div>
+                    <button id="teacher-card-fill-name-cases" type="button">Заполнить формы автоматически</button>
+                </details>
                 <div class="dialog-actions">
                     <button id="teacher-card-data-sheet" type="button">Лист проверки данных</button>
                     <button type="submit">Сохранить данные</button>
@@ -402,6 +418,24 @@
                     <select id="accept-vacancy"><option value="">Нет — создать нового сотрудника</option></select>
                 </label>
                 <label class="teacher-card-wide">ФИО полностью<input id="accept-fio" required placeholder="Рысь Виктория Игоревна"></label>
+                <details class="teacher-name-forms teacher-card-wide">
+                    <summary>Формы ФИО для документов</summary>
+                    <p class="muted">После ввода ФИО нажмите кнопку автоматического заполнения и при необходимости исправьте исключения.</p>
+                    <div class="teacher-card-grid">
+                        <label>Полное ФИО — родительный<input id="accept-fio-genitive"></label>
+                        <label>Полное ФИО — дательный<input id="accept-fio-dative"></label>
+                        <label>Полное ФИО — винительный<input id="accept-fio-accusative"></label>
+                        <label>Полное ФИО — творительный<input id="accept-fio-instrumental"></label>
+                        <label>Полное ФИО — предложный<input id="accept-fio-prepositional"></label>
+                        <label>Фамилия и инициалы — именительный<input id="accept-initials"></label>
+                        <label>Фамилия и инициалы — родительный<input id="accept-initials-genitive"></label>
+                        <label>Фамилия и инициалы — дательный<input id="accept-initials-dative"></label>
+                        <label>Фамилия и инициалы — винительный<input id="accept-initials-accusative"></label>
+                        <label>Фамилия и инициалы — творительный<input id="accept-initials-instrumental"></label>
+                        <label>Фамилия и инициалы — предложный<input id="accept-initials-prepositional"></label>
+                    </div>
+                    <button id="accept-fill-name-cases" type="button">Заполнить формы автоматически</button>
+                </details>
                 <label>Телефон<input id="accept-phone"></label>
                 <label>Email<input id="accept-email" type="email"></label>
                 <label>Корпус<select id="accept-building"></select></label>
@@ -418,19 +452,12 @@
                 <label>Код подразделения<input id="accept-passport-code"></label>
                 <label class="teacher-card-wide">Адрес регистрации<input id="accept-registration-address"></label>
                 <label class="teacher-card-wide">Фактический адрес<input id="accept-actual-address"></label>
-                <label>Номер трудового договора<input id="accept-contract-number"></label>
-                <label>Дата договора<input id="accept-contract-date" type="date"></label>
-                <label>Начало договора<input id="accept-contract-start" type="date"></label>
-                <label>Окончание договора<input id="accept-contract-end" type="date"></label>
-                <div class="teacher-card-wide">
-                    <b>Часы внутри ставки</b>
-                    <div id="accept-in-rate-status" class="muted">Определятся автоматически после выбора основной должности.</div>
-                </div>
             </div>
             <p id="accept-teacher-feedback" class="muted" role="status"></p>
             <div class="dialog-actions">
                 <button id="accept-teacher-cancel" type="button">Отмена</button>
                 <button type="submit">Принять сотрудника</button>
+                <button id="accept-teacher-with-sheet" type="submit" data-download-sheet="true">Принять и скачать лист проверки</button>
             </div>
         </form>
     </dialog>
