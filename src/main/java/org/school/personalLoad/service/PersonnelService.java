@@ -206,15 +206,26 @@ public class PersonnelService {
             contract.setEndDate(request.contractEndDate());
             contract.setPrimaryContract(true);
             contract.setActive(true);
-            boolean inRate = Boolean.TRUE.equals(request.loadHoursMayBeIncludedInRate());
-            contract.setLoadHoursMayBeIncludedInRate(inRate);
-            contract.setLoadInRateRuleId(inRate ? request.loadInRateRuleId() : null);
-            contract.setLoadInRateDocumentLabel(inRate && request.loadInRateRuleId() != null
-                    ? inRateRules.findById(request.loadInRateRuleId()).map(LoadInRateRule::getDocumentLabel).orElse(null)
-                    : null);
+            LoadInRateRule inRateRule=ruleForPosition(request.primaryPosition(),request.loadInRateRuleId());
+            contract.setLoadHoursMayBeIncludedInRate(inRateRule!=null);
+            contract.setLoadInRateRuleId(inRateRule==null?null:inRateRule.getId());
+            contract.setLoadInRateDocumentLabel(null);
             contracts.save(contract);
         }
         return new AcceptEmployeeResult(teacher.getId(), linked, previousName, fio, cases);
+    }
+
+    private LoadInRateRule ruleForPosition(String positionName,Long preferredRuleId){
+        String position=Objects.toString(positionName,"").trim();
+        if(position.isBlank())return null;
+        if(preferredRuleId!=null){
+            LoadInRateRule preferred=inRateRules.findById(preferredRuleId).orElse(null);
+            if(preferred!=null&&preferred.isActive()&&preferred.getName().equalsIgnoreCase(position))return preferred;
+        }
+        return inRateRules.findAllByOrderByNameAsc().stream()
+                .filter(LoadInRateRule::isActive)
+                .filter(rule->rule.getName().equalsIgnoreCase(position))
+                .findFirst().orElse(null);
     }
 
     @Transactional(readOnly = true)

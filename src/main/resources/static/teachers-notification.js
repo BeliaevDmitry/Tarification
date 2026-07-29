@@ -348,24 +348,29 @@ async function openContractEditor(selectedTeacherId = null, contractId = null) {
         row('Начало работы', `<input name="start" type="date" value="${esc(current?.startDate)}">`) +
         row('Окончание', `<input name="end" type="date" value="${esc(current?.endDate)}">`) +
         row('Состояние', `<div class="inline-choice"><label><input name="primary" type="checkbox" ${current?.primaryContract!==false?'checked':''}> Основной договор</label><label><input name="active" type="checkbox" ${current?.active!==false?'checked':''}> Действует</label></div>`) +
-        row('Учебные часы могут входить в ставку', `<select id="contract-in-rate-enabled" name="inRateEnabled"><option value="false" ${!current?.loadHoursMayBeIncludedInRate?'selected':''}>Нет — все часы оплачиваются отдельно</option><option value="true" ${current?.loadHoursMayBeIncludedInRate?'selected':''}>Да — часть часов входит в должностной оклад</option></select>`,'Распределение конкретных классов выполняется в разделе «Нагрузка по людям → Часы в ставке».') +
-        `<div id="contract-in-rate-fields">`+
-        row('Правило часов в ставке', `<select name="inRateRuleId"><option value="">Без автоматического правила</option>${inRateRules.filter(rule=>rule.active||String(rule.id)===String(current?.loadInRateRuleId)).map(rule=>option(rule.id,rule.name,String(rule.id)===String(current?.loadInRateRuleId))).join('')}</select>`,'Правило только предлагает распределение; пользователь подтверждает его вручную.')+
-        row('Пояснение для документов', `<input name="inRateLabel" value="${esc(current?.loadInRateDocumentLabel)}" placeholder="преподаватель ОБЗР">`,'Эта формулировка попадёт в пункт 2.1 и приложение №1.')+
-        `</div>`,
+        row('Часы внутри ставки', `<span id="contract-in-rate-status" class="muted"></span>`,
+            'Режим определяется автоматически по должности. Конкретные часы распределяются в разделе «Нагрузка по людям → Часы в ставке».'),
         async form => {
             const teacherId=current?.teacherId || +form.get('teacherId');
+            const position=String(form.get('position')||'').trim();
+            const rule=inRateRules.find(item=>item.active&&item.name===position)||null;
             await api(current ? `/api/hr-documents/contracts/${current.id}` : '/api/hr-documents/contracts',
-                json(current ? 'PUT' : 'POST', {teacherId,contractNumber:form.get('number'),contractDate:form.get('date'),positionName:form.get('position'),startDate:form.get('start')||null,endDate:form.get('end')||null,primaryContract:form.get('primary')==='on',active:form.get('active')==='on',
-                    loadHoursMayBeIncludedInRate:form.get('inRateEnabled')==='true',
-                    loadInRateRuleId:form.get('inRateRuleId')?+form.get('inRateRuleId'):null,
-                    loadInRateDocumentLabel:form.get('inRateLabel')}));
+                json(current ? 'PUT' : 'POST', {teacherId,contractNumber:form.get('number'),contractDate:form.get('date'),positionName:position,startDate:form.get('start')||null,endDate:form.get('end')||null,primaryContract:form.get('primary')==='on',active:form.get('active')==='on',
+                    loadHoursMayBeIncludedInRate:Boolean(rule),
+                    loadInRateRuleId:rule?.id||null,
+                    loadInRateDocumentLabel:null}));
             await Promise.all([loadAgreements(),canViewPersonal()?loadPersonalData():Promise.resolve()]);
             showNotice('Трудовой договор сохранён и автоматически привязан к ожидающим документам.');
         },
         ()=>{
-            const toggle=()=>{$('#contract-in-rate-fields').hidden=$('#contract-in-rate-enabled').value!=='true';};
-            $('#contract-in-rate-enabled').addEventListener('change',toggle);toggle();
+            const positionInput=document.querySelector('#editor-body [name="position"]');
+            const update=()=>{
+                const rule=inRateRules.find(item=>item.active&&item.name===String(positionInput?.value||'').trim());
+                $('#contract-in-rate-status').textContent=rule
+                    ?`Действует правило «${rule.name}».`
+                    :'Для этой должности правило часов в ставке не настроено.';
+            };
+            positionInput?.addEventListener('input',update);update();
         }
     );
 }
@@ -771,7 +776,7 @@ function renderPersonalData() {
             ? `${esc(data.registrationAddress||'Адрес регистрации не заполнен')}<br><span class="muted">${esc(data.actualAddress||'Фактический адрес не заполнен')}${data.phone?` · ${esc(data.phone)}`:''}${data.inn?` · ИНН ${esc(data.inn)}`:''}${data.snils?` · СНИЛС ${esc(data.snils)}`:''}</span>`
             : '<span class="muted">Не заполнены</span>';
         const activeContracts=(item.contracts||[]).filter(contract=>contract.active);
-        const contractHtml=activeContracts.length?activeContracts.map(contract=>`<div><b>№ ${esc(contract.contractNumber)}</b> от ${esc(formatDate(contract.contractDate))}<br><span class="muted">${esc(contract.positionName)}${contract.primaryContract?' · основной':''}${contract.loadHoursMayBeIncludedInRate?' · часы могут входить в ставку':''}</span></div>`).join(''):'<span class="muted">Не заполнен</span>';
+        const contractHtml=activeContracts.length?activeContracts.map(contract=>`<div><b>№ ${esc(contract.contractNumber)}</b> от ${esc(formatDate(contract.contractDate))}<br><span class="muted">${esc(contract.positionName)}${contract.primaryContract?' · основной':''}${contract.loadHoursMayBeIncludedInRate?' · действует правило часов в ставке':''}</span></div>`).join(''):'<span class="muted">Не заполнен</span>';
         const contractButtons=activeContracts.map(contract=>`<button data-personal-contract="${contract.id}" data-teacher="${item.teacherId}">Изменить договор № ${esc(contract.contractNumber)}</button>`).join(' ');
         return `<tr><td><b>${esc(item.fio)}</b><br><span class="muted">ID ${item.teacherId}</span></td><td>${passport}</td><td>${contacts}</td><td>${contractHtml}</td><td>${data?.complete?'<span class="success">Достаточно для DOCX</span>':'Нужно заполнить обязательные данные'}${data?.updatedAt?`<br><span class="muted">Обновлено ${esc(data.updatedAt.replace('T',' '))}</span>`:''}</td><td><button data-personal-edit="${item.teacherId}">${data?'Изменить данные':'Заполнить данные'}</button> ${contractButtons||`<button data-personal-contract="" data-teacher="${item.teacherId}">Добавить договор</button>`}</td></tr>`;
     }).join(''):'<tr><td colspan="6">Работники не найдены</td></tr>';

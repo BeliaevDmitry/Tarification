@@ -19,16 +19,6 @@ const ui = {
     inRateSummary: document.getElementById("in-rate-summary"),
     saveInRateBtn: document.getElementById("save-in-rate-hours-btn"),
     applyInRateSuggestionsBtn: document.getElementById("apply-in-rate-suggestions-btn"),
-    manageInRateRulesBtn: document.getElementById("manage-in-rate-rules-btn"),
-    inRateRulesDialog: document.getElementById("in-rate-rules-dialog"),
-    inRateRulesList: document.getElementById("in-rate-rules-list"),
-    addInRateRuleBtn: document.getElementById("add-in-rate-rule-btn"),
-    newInRateRuleName: document.getElementById("new-in-rate-rule-name"),
-    newInRateRuleLabel: document.getElementById("new-in-rate-rule-label"),
-    newInRateRuleMin: document.getElementById("new-in-rate-rule-min"),
-    newInRateRuleMax: document.getElementById("new-in-rate-rule-max"),
-    newInRateRuleIncluded: document.getElementById("new-in-rate-rule-included"),
-    newInRateRuleFraction: document.getElementById("new-in-rate-rule-fraction"),
     determinePrimarySubjectsBtn: document.getElementById("determine-primary-subjects-btn"),
     managePrimarySubjectsBtn: document.getElementById("manage-primary-subjects-btn"),
     primarySubjectSummary: document.getElementById("primary-subject-summary"),
@@ -59,7 +49,6 @@ const state = {
     salaryBreakdownAvailable: false,
     inRateOverview: { rows: [], teachers: [], hasUnresolvedRows: false },
     inRateLoadError: "",
-    inRateRules: [],
     studentHourRate: 37
 };
 
@@ -573,7 +562,7 @@ function renderTable() {
                     const rowSalary = rowSalaryDetails(row);
                     html += `<td class="people-load-money">${escapeHtml(formatNumber(rowSalary.includedHours))}</td>`;
                     html += `<td class="people-load-money">${escapeHtml(formatNumber(rowSalary.paidHours))}</td>`;
-                    html += `<td>${escapeHtml(rowSalary.includedHours > 0 ? (rowSalary.reason || "Внутри должностного оклада") : "")}</td>`;
+                    html += `<td>${escapeHtml(rowSalary.includedHours > 0 ? (rowSalary.reason || "Внутри ставки") : "")}</td>`;
                     html += `<td class="people-load-money">${escapeHtml(formatCoefficient(rowSalary.subjectCoef))}</td>`;
                     html += `<td class="people-load-money">${escapeHtml(formatCoefficient(rowSalary.groupCoef))}</td>`;
                     html += `<td class="people-load-money">${escapeHtml(formatMoney(rowSalary.hoursSalary))}</td>`;
@@ -649,10 +638,10 @@ function renderInRateOverview() {
     const rows = overview.rows || [];
     let html = `<thead><tr>
         <th>Работник и договор</th><th>Предмет</th><th>Класс/группа</th><th>Период</th>
-        <th>Часы всего</th><th>Внутри ставки</th><th>К оплате</th><th>Основание</th><th>Сумма</th>
+        <th>Часы всего</th><th>Внутри ставки</th><th>К оплате</th><th>Сумма</th>
     </tr></thead><tbody>`;
     if (!rows.length) {
-        html += '<tr><td colspan="9" class="muted">Нет работников, у которых в трудовом договоре включён режим «Часы могут входить в ставку».</td></tr>';
+        html += '<tr><td colspan="8" class="muted">Нет работников с нагрузкой по должностям, для которых настроены правила часов в ставке.</td></tr>';
     } else {
         let previousKey = "";
         rows.forEach((row) => {
@@ -664,14 +653,14 @@ function renderInRateOverview() {
             html += `<td>${first ? `<b>${escapeHtml(row.fio)}</b><br>№ ${escapeHtml(row.contractNumber)} · ${escapeHtml(row.positionName)}
                 <br><span class="muted">Всего ${escapeHtml(formatNumber(teacher?.totalHoursH1))}/${escapeHtml(formatNumber(teacher?.totalHoursH2))};
                 в ставке ${escapeHtml(formatNumber(teacher?.includedHoursH1))}/${escapeHtml(formatNumber(teacher?.includedHoursH2))};
-                к оплате ${escapeHtml(formatNumber(teacher?.paidHoursH1))}/${escapeHtml(formatNumber(teacher?.paidHoursH2))}
-                ${teacher?.suggestedRateFraction != null ? `; по правилу — ${escapeHtml(formatNumber(teacher.suggestedRateFraction))} ставки` : ""}</span>` : ""}</td>`;
+                ещё можно ${escapeHtml(formatNumber(teacher?.remainingCapacityHoursH1))}/${escapeHtml(formatNumber(teacher?.remainingCapacityHoursH2))};
+                к оплате ${escapeHtml(formatNumber(teacher?.paidHoursH1))}/${escapeHtml(formatNumber(teacher?.paidHoursH2))}.
+                Ставка: ${escapeHtml(formatNumber(teacher?.rateFractionH1))}/${escapeHtml(formatNumber(teacher?.rateFractionH2))}</span>` : ""}</td>`;
             html += `<td>${escapeHtml(row.subject)}</td><td>${escapeHtml([row.className, row.groupName].filter(Boolean).join(" "))}</td>`;
             html += `<td>${escapeHtml(row.studyPeriod === "H1" ? "1П" : row.studyPeriod === "H2" ? "2П" : "ГОД")}</td>`;
             html += `<td>${escapeHtml(formatNumber(row.totalHours))}</td>`;
             html += `<td><input class="in-rate-hours-input" data-included-hours type="number" min="0" max="${escapeHtml(row.totalHours)}" step="0.01" value="${escapeHtml(row.includedHours)}" ${salaryPermission().canEdit ? "" : "disabled"}></td>`;
             html += `<td data-paid-hours>${escapeHtml(formatNumber(row.paidHours))}</td>`;
-            html += `<td><input data-in-rate-reason value="${escapeHtml(row.reason || row.documentLabel)}" ${salaryPermission().canEdit ? "" : "disabled"}></td>`;
             html += `<td data-in-rate-amount>${escapeHtml(formatMoney(row.amount))}</td></tr>`;
         });
     }
@@ -699,12 +688,11 @@ function updateInRateRowPreview(tableRow) {
 }
 
 function applyInRateSuggestions() {
-    const suggestions = new Map((state.inRateOverview.teachers || [])
-        .map((row) => [`${row.teacherId}|${row.contractId}`, Number(row.suggestedIncludedHours || 0)]));
     const remaining = new Map();
-    suggestions.forEach((value, key) => {
-        remaining.set(`${key}|H1`, value);
-        remaining.set(`${key}|H2`, value);
+    (state.inRateOverview.teachers || []).forEach((row) => {
+        const key = `${row.teacherId}|${row.contractId}`;
+        remaining.set(`${key}|H1`, Number(row.capacityHoursH1 || 0));
+        remaining.set(`${key}|H2`, Number(row.capacityHoursH2 || 0));
     });
     const rows = Array.from(ui.inRateTable.querySelectorAll("[data-in-rate-row]"))
         .sort((left, right) => (left.dataset.studyPeriod === "YEAR" ? 0 : 1)
@@ -728,8 +716,7 @@ async function saveInRateAllocations() {
     const rows = Array.from(ui.inRateTable.querySelectorAll("[data-in-rate-row]")).map((row) => ({
         manualLoadEntryId: Number(row.dataset.inRateRow),
         contractId: Number(row.dataset.contractId),
-        includedHours: Number(row.querySelector("[data-included-hours]").value || 0),
-        reason: row.querySelector("[data-in-rate-reason]").value
+        includedHours: Number(row.querySelector("[data-included-hours]").value || 0)
     }));
     ui.saveInRateBtn.disabled = true;
     try {
@@ -741,81 +728,6 @@ async function saveInRateAllocations() {
     } finally {
         ui.saveInRateBtn.disabled = false;
     }
-}
-
-function inRateBandRow(band = {}) {
-    return `<tr data-in-rate-band>
-        <td><input data-band-min type="number" min="0" step="0.01" value="${escapeHtml(band.minTotalHours ?? 0)}"></td>
-        <td><input data-band-max type="number" min="0" step="0.01" value="${escapeHtml(band.maxTotalHours ?? "")}"></td>
-        <td><input data-band-included type="number" min="0" step="0.01" value="${escapeHtml(band.suggestedIncludedHours ?? 0)}"></td>
-        <td><input data-band-fraction type="number" min="0" step="0.01" value="${escapeHtml(band.rateFraction ?? "")}"></td>
-        <td><button type="button" data-remove-in-rate-band>Удалить</button></td></tr>`;
-}
-
-function renderInRateRules() {
-    if (!ui.inRateRulesList) return;
-    ui.inRateRulesList.innerHTML = (state.inRateRules || []).map((rule) => `
-        <div class="card in-rate-rule-card" data-in-rate-rule="${rule.id}">
-            <div class="form-grid">
-                <label>Название<input data-rule-name value="${escapeHtml(rule.name)}"></label>
-                <label>Пояснение для документов<input data-rule-label value="${escapeHtml(rule.documentLabel)}"></label>
-                <label><input data-rule-active type="checkbox" ${rule.active ? "checked" : ""}> Правило действует</label>
-            </div>
-            <table class="sheet-table"><thead><tr><th>От часов</th><th>До часов</th><th>Внутри ставки</th><th>Доля ставки</th><th></th></tr></thead>
-            <tbody data-rule-bands>${(rule.bands || []).map((band) => inRateBandRow(band)).join("")}</tbody></table>
-            <div class="row"><button type="button" data-add-in-rate-band>Добавить диапазон</button>
-            <button type="button" data-save-in-rate-rule>Сохранить</button>
-            <button type="button" class="danger" data-delete-in-rate-rule>Удалить</button></div>
-        </div>
-    `).join("") || '<p class="muted">Правила ещё не созданы.</p>';
-}
-
-function inRateRuleRequest(card) {
-    return {
-        name: card.querySelector("[data-rule-name]").value,
-        documentLabel: card.querySelector("[data-rule-label]").value,
-        active: card.querySelector("[data-rule-active]").checked,
-        bands: Array.from(card.querySelectorAll("[data-in-rate-band]")).map((row) => ({
-            minTotalHours: Number(row.querySelector("[data-band-min]").value || 0),
-            maxTotalHours: row.querySelector("[data-band-max]").value === "" ? null : Number(row.querySelector("[data-band-max]").value),
-            suggestedIncludedHours: Number(row.querySelector("[data-band-included]").value || 0),
-            rateFraction: row.querySelector("[data-band-fraction]").value === "" ? null : Number(row.querySelector("[data-band-fraction]").value)
-        }))
-    };
-}
-
-async function saveInRateRule(card) {
-    await apiRequest(`/api/manual-load/in-rate/rules/${card.dataset.inRateRule}`, {
-        method: "PUT", body: JSON.stringify(inRateRuleRequest(card))
-    });
-    await loadInRateData();
-}
-
-async function addInRateRule() {
-    const request = {
-        name: ui.newInRateRuleName.value,
-        documentLabel: ui.newInRateRuleLabel.value,
-        active: true,
-        bands: [{
-            minTotalHours: Number(ui.newInRateRuleMin.value || 0),
-            maxTotalHours: ui.newInRateRuleMax.value === "" ? null : Number(ui.newInRateRuleMax.value),
-            suggestedIncludedHours: Number(ui.newInRateRuleIncluded.value || 0),
-            rateFraction: ui.newInRateRuleFraction.value === "" ? null : Number(ui.newInRateRuleFraction.value)
-        }]
-    };
-    await apiRequest("/api/manual-load/in-rate/rules", { method: "POST", body: JSON.stringify(request) });
-    ui.newInRateRuleName.value = "";
-    ui.newInRateRuleLabel.value = "";
-    await loadInRateData();
-}
-
-async function loadInRateData() {
-    if (!salaryPermission().canView) return;
-    const [overview, rules] = await Promise.all([api("/api/manual-load/in-rate"), api("/api/manual-load/in-rate/rules")]);
-    state.inRateOverview = overview || { rows: [], teachers: [] };
-    state.inRateRules = rules || [];
-    renderInRateOverview();
-    renderInRateRules();
 }
 
 function showPeopleLoadPanel(panel) {
@@ -1009,7 +921,7 @@ async function loadData() {
     let salaryBreakdownError = null;
     let inRateError = null;
     const [buildings, classes, teachers, subjects, coefficients, salarySettings, groupCoefficientSubjects,
-        primaryAssignments, primaryRules, classSizes, salaryBreakdown, inRateOverview, inRateRules] = await Promise.all([
+        primaryAssignments, primaryRules, classSizes, salaryBreakdown, inRateOverview] = await Promise.all([
         optionalApi("/api/buildings", [], "список корпусов"),
         optionalApi("/api/classroom-leadership", [], "классное руководство"),
         optionalApi("/api/teachers", [], "список работников"),
@@ -1031,8 +943,7 @@ async function loadData() {
             warnings.push("часы внутри ставки");
             console.warn("Не удалось загрузить часы внутри ставки:", error);
             return { rows: [], teachers: [], hasUnresolvedRows: false };
-        }) : Promise.resolve({ rows: [], teachers: [], hasUnresolvedRows: false }),
-        salaryAccess ? optionalApi("/api/manual-load/in-rate/rules", [], "правила часов внутри ставки") : Promise.resolve([])
+        }) : Promise.resolve({ rows: [], teachers: [], hasUnresolvedRows: false })
     ]);
     state.manualRows = manualRows || [];
     state.classes = classes || [];
@@ -1047,7 +958,6 @@ async function loadData() {
     state.salaryBreakdownAvailable = salaryAccess && !salaryBreakdownError;
     state.inRateOverview = inRateOverview || { rows: [], teachers: [], hasUnresolvedRows: false };
     state.inRateLoadError = inRateError ? "Не удалось получить распределение часов внутри ставки. Обновите страницу после восстановления сервера." : "";
-    state.inRateRules = inRateRules || [];
     applyClassSizeResponse(classSizes);
     const rate = Number(salarySettings?.studentHourRate ?? 37);
     state.studentHourRate = Number.isFinite(rate) && rate > 0 ? rate : 37;
@@ -1057,7 +967,6 @@ async function loadData() {
     renderPrimarySubjectTeachers();
     renderPrimarySubjectRules();
     renderInRateOverview();
-    renderInRateRules();
     if (warnings.length) {
         const uniqueWarnings = Array.from(new Set(warnings));
         ui.summary.textContent += ` Нагрузка загружена. Временно недоступны дополнительные данные: ${uniqueWarnings.join(", ")}.`;
@@ -1108,28 +1017,6 @@ async function init() {
     ui.saveInRateBtn?.addEventListener("click", () => saveInRateAllocations()
         .catch((error) => alert(`Не удалось сохранить распределение: ${error.message}`)));
     ui.applyInRateSuggestionsBtn?.addEventListener("click", applyInRateSuggestions);
-    ui.manageInRateRulesBtn?.addEventListener("click", () => ui.inRateRulesDialog?.showModal());
-    ui.addInRateRuleBtn?.addEventListener("click", () => addInRateRule()
-        .catch((error) => alert(`Не удалось добавить правило: ${error.message}`)));
-    ui.inRateRulesList?.addEventListener("click", (event) => {
-        const card = event.target.closest("[data-in-rate-rule]");
-        if (!card) return;
-        if (event.target.closest("[data-add-in-rate-band]")) {
-            card.querySelector("[data-rule-bands]").insertAdjacentHTML("beforeend", inRateBandRow());
-        }
-        if (event.target.closest("[data-remove-in-rate-band]")) {
-            event.target.closest("[data-in-rate-band]")?.remove();
-        }
-        if (event.target.closest("[data-save-in-rate-rule]")) {
-            saveInRateRule(card).catch((error) => alert(`Не удалось сохранить правило: ${error.message}`));
-        }
-        if (event.target.closest("[data-delete-in-rate-rule]")
-            && confirm("Удалить правило часов в ставке?")) {
-            apiRequest(`/api/manual-load/in-rate/rules/${card.dataset.inRateRule}`, { method: "DELETE" })
-                .then(loadInRateData)
-                .catch((error) => alert(`Не удалось удалить правило: ${error.message}`));
-        }
-    });
     window.addEventListener("resize", fitPeopleLoadTables);
     window.addEventListener("scroll", fitPeopleLoadTables, { passive: true });
     ui.determinePrimarySubjectsBtn?.addEventListener("click", () => determinePrimarySubjects().catch((error) => alert(`Не удалось определить основные предметы: ${error.message}`)));

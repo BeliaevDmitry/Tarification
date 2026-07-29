@@ -501,7 +501,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                 if (showIncludedHours) {
                     row.createCell(column++).setCellValue(included.signum() > 0
                             ? (normalizeDisplayValue(entry.getInRateReason()).isBlank()
-                            ? "Внутри должностного оклада" : entry.getInRateReason()) : "");
+                            ? "Внутри ставки" : entry.getInRateReason()) : "");
                 }
                 row.createCell(column++).setCellValue(curriculumPartSalaryLabel(part));
                 row.createCell(column++).setCellValue(subjectRequirementSalaryLabel(curriculum, part));
@@ -1470,7 +1470,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                             r.createCell(salaryColumns.includedHours()).setCellValue(includedHours.doubleValue());
                             r.createCell(salaryColumns.reason()).setCellValue(includedHours.signum() > 0
                                     ? (normalizeDisplayValue(e.getInRateReason()).isBlank()
-                                    ? "Внутри должностного оклада" : e.getInRateReason()) : "");
+                                    ? "Внутри ставки" : e.getInRateReason()) : "");
                         }
                         r.createCell(salaryColumns.paidHours()).setCellValue(paidHours.doubleValue());
                         r.createCell(salaryColumns.subjectCoefficient()).setCellValue(

@@ -99,6 +99,12 @@ public final class LoadInRateDtos {
             BigDecimal paidHoursH2,
             BigDecimal suggestedIncludedHours,
             BigDecimal suggestedRateFraction,
+            BigDecimal capacityHoursH1,
+            BigDecimal capacityHoursH2,
+            BigDecimal remainingCapacityHoursH1,
+            BigDecimal remainingCapacityHoursH2,
+            BigDecimal rateFractionH1,
+            BigDecimal rateFractionH2,
             boolean complete,
             int unresolvedRows
     ) {

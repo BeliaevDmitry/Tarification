@@ -12,6 +12,7 @@ import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.EmploymentContract;
 import org.school.personalLoad.model.ManualLoadEntry;
+import org.school.personalLoad.model.LoadInRateRule;
 import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
@@ -20,6 +21,7 @@ import org.school.personalLoad.repository.LoadIssueStateRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.EmploymentContractRepository;
+import org.school.personalLoad.repository.LoadInRateRuleRepository;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -44,19 +46,21 @@ class LoadIssueServiceImplTest {
     private TeacherDirectoryRepository teacherRepository;
     @Mock
     private EmploymentContractRepository employmentContractRepository;
+    @Mock
+    private LoadInRateRuleRepository loadInRateRuleRepository;
 
     private LoadIssueServiceImpl service;
 
     @BeforeEach
     void setUp() {
         service = new LoadIssueServiceImpl(classroomRepository, manualLoadRepository, stateRepository,
-                curriculumRepository, teacherRepository, employmentContractRepository);
+                curriculumRepository, teacherRepository, employmentContractRepository, loadInRateRuleRepository);
         when(classroomRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(classroom()));
         when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
         when(stateRepository.findAll()).thenReturn(List.of());
         when(teacherRepository.findAll()).thenReturn(List.of(teacher(1L, "Белогур Кристина Игоревна")));
-        when(employmentContractRepository.findAllByActiveTrueAndLoadHoursMayBeIncludedInRateTrueOrderByTeacherIdAsc())
-                .thenReturn(List.of());
+        when(employmentContractRepository.findAllByActiveTrueOrderByTeacherIdAsc()).thenReturn(List.of());
+        when(loadInRateRuleRepository.findAllByOrderByNameAsc()).thenReturn(List.of());
     }
 
     @Test
@@ -89,7 +93,13 @@ class LoadIssueServiceImplTest {
         contract.setTeacherId(1L);
         contract.setActive(true);
         contract.setPrimaryContract(true);
-        contract.setLoadHoursMayBeIncludedInRate(true);
+        contract.setPositionName("Преподаватель ОБЗР");
+        contract.setLoadHoursMayBeIncludedInRate(false);
+        LoadInRateRule rule = new LoadInRateRule();
+        rule.setId(21L);
+        rule.setName("Преподаватель ОБЗР");
+        rule.setDocumentLabel("Преподаватель ОБЗР");
+        rule.setActive(true);
         ManualLoadEntry load = new ManualLoadEntry();
         load.setId(30L);
         load.setAcademicYear("2026/2027");
@@ -99,8 +109,8 @@ class LoadIssueServiceImplTest {
         load.setSubjectName("ОБЗР");
         load.setClassName("7-А");
         load.setLoad(4);
-        when(employmentContractRepository.findAllByActiveTrueAndLoadHoursMayBeIncludedInRateTrueOrderByTeacherIdAsc())
-                .thenReturn(List.of(contract));
+        when(employmentContractRepository.findAllByActiveTrueOrderByTeacherIdAsc()).thenReturn(List.of(contract));
+        when(loadInRateRuleRepository.findAllByOrderByNameAsc()).thenReturn(List.of(rule));
         when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(load));
         when(curriculumRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
 

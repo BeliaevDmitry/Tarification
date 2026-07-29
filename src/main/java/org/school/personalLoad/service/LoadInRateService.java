@@ -34,7 +34,6 @@ public class LoadInRateService {
     @Transactional
     public RuleView saveRule(Long id, RuleRequest request) {
         String name = required(request == null ? null : request.name(), "Название правила");
-        String documentLabel = required(request.documentLabel(), "Пояснение для документов");
         List<RuleBandRequest> requestedBands = Optional.ofNullable(request.bands()).orElse(List.of());
         validateBands(requestedBands);
         if ((id == null && ruleRepository.existsByNameIgnoreCase(name))
@@ -43,7 +42,7 @@ public class LoadInRateService {
         }
         LoadInRateRule rule = id == null ? new LoadInRateRule() : ruleRepository.findById(id).orElseThrow();
         rule.setName(name);
-        rule.setDocumentLabel(documentLabel);
+        rule.setDocumentLabel(name);
         rule.setActive(request.active() == null || request.active());
         rule.setUpdatedAt(LocalDateTime.now());
         rule = ruleRepository.save(rule);
@@ -53,8 +52,8 @@ public class LoadInRateService {
             band.setRuleId(rule.getId());
             band.setMinTotalHours(nonNegative(bandRequest.minTotalHours()));
             band.setMaxTotalHours(nullableNonNegative(bandRequest.maxTotalHours()));
-            band.setSuggestedIncludedHours(nonNegative(bandRequest.suggestedIncludedHours()));
-            band.setRateFraction(nullableNonNegative(bandRequest.rateFraction()));
+            band.setSuggestedIncludedHours(Optional.ofNullable(band.getMaxTotalHours()).orElse(BigDecimal.ZERO));
+            band.setRateFraction(positive(bandRequest.rateFraction(), "Доля ставки"));
             if (band.getMaxTotalHours() != null
                     && band.getMaxTotalHours().compareTo(band.getMinTotalHours()) < 0) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -77,8 +76,14 @@ public class LoadInRateService {
 
     @Transactional(readOnly = true)
     public Overview overview(String academicYear) {
+        Map<Long, LoadInRateRule> rulesById = ruleRepository.findAll().stream()
+                .collect(Collectors.toMap(LoadInRateRule::getId, Function.identity()));
+        List<LoadInRateRule> activeRules = rulesById.values().stream()
+                .filter(LoadInRateRule::isActive).toList();
         List<EmploymentContract> eligibleContracts = contractRepository
-                .findAllByActiveTrueAndLoadHoursMayBeIncludedInRateTrueOrderByTeacherIdAsc();
+                .findAllByActiveTrueOrderByTeacherIdAsc().stream()
+                .filter(contract -> resolveRule(contract, rulesById, activeRules) != null)
+                .toList();
         Map<Long, List<EmploymentContract>> contractsByTeacher = eligibleContracts.stream()
                 .collect(Collectors.groupingBy(EmploymentContract::getTeacherId, LinkedHashMap::new, Collectors.toList()));
         contractsByTeacher.values().forEach(items -> items.sort(
@@ -86,8 +91,6 @@ public class LoadInRateService {
                         .thenComparing(EmploymentContract::getContractDate, Comparator.nullsLast(Comparator.reverseOrder()))));
         Map<Long, EmploymentContract> contractsById = eligibleContracts.stream()
                 .collect(Collectors.toMap(EmploymentContract::getId, Function.identity()));
-        Map<Long, LoadInRateRule> rulesById = ruleRepository.findAll().stream()
-                .collect(Collectors.toMap(LoadInRateRule::getId, Function.identity()));
         Map<Long, String> teacherNames = teacherRepository.findAll().stream()
                 .filter(teacher -> teacher.getId() != null)
                 .collect(Collectors.toMap(TeacherDirectoryEntry::getId, TeacherDirectoryEntry::getFioTeacher,
@@ -108,11 +111,9 @@ public class LoadInRateService {
         for (ManualLoadEntry row : loadRows) {
             EmploymentContract contract = resolveContract(row, contractsByTeacher, contractsById);
             if (contract == null) continue;
-            LoadInRateRule rule = contract.getLoadInRateRuleId() == null
-                    ? null : rulesById.get(contract.getLoadInRateRuleId());
+            LoadInRateRule rule = resolveRule(contract, rulesById, activeRules);
             LoadSalaryCalculationService.SalaryLine line = salary.get(row.getId());
-            String label = firstPresent(row.getInRateReason(), contract.getLoadInRateDocumentLabel(),
-                    rule == null ? null : rule.getDocumentLabel(), contract.getPositionName());
+            String label = firstPresent(row.getInRateReason(), documentReason(contract.getPositionName()));
             rows.add(new AllocationRow(
                     row.getId(), row.getTeacherId(),
                     teacherNames.getOrDefault(row.getTeacherId(), row.getFioTeacher()),
@@ -145,10 +146,10 @@ public class LoadInRateService {
                         "Строка нагрузки относится к другому учебному году");
             }
             EmploymentContract contract = contractRepository.findById(update.contractId()).orElseThrow();
-            if (!contract.isActive() || !contract.isLoadHoursMayBeIncludedInRate()
-                    || !Objects.equals(contract.getTeacherId(), row.getTeacherId())) {
+            LoadInRateRule rule = resolveRule(contract);
+            if (!contract.isActive() || rule == null || !Objects.equals(contract.getTeacherId(), row.getTeacherId())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Трудовой договор не разрешает включение часов в ставку");
+                        "Для должности по трудовому договору не настроено правило часов в ставке");
             }
             BigDecimal total = salaryCalculationService.totalHours(row);
             BigDecimal included = nonNegative(update.includedHours());
@@ -156,8 +157,7 @@ public class LoadInRateService {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Часов внутри ставки не может быть больше общей нагрузки");
             }
-            String reason = firstPresent(update.reason(), contract.getLoadInRateDocumentLabel(),
-                    contractRuleLabel(contract), contract.getPositionName());
+            String reason = documentReason(contract.getPositionName());
             boolean changed = !same(row.getIncludedInRateHours(), included)
                     || !Objects.equals(row.getEmploymentContractId(), contract.getId())
                     || !Objects.equals(Objects.toString(row.getInRateReason(), ""), reason)
@@ -174,10 +174,10 @@ public class LoadInRateService {
                 updated++;
             }
         }
-        if (!changedTeachers.isEmpty()) {
-            hrDocumentService.markAnnualLoadAgreementsChanged(academicYear, changedTeachers);
-        }
-        int unresolved = overview(academicYear).teachers().stream().mapToInt(TeacherSummary::unresolvedRows).sum();
+        Overview overview = overview(academicYear);
+        overview.teachers().forEach(this::validateCapacity);
+        if (!changedTeachers.isEmpty()) hrDocumentService.markAnnualLoadAgreementsChanged(academicYear, changedTeachers);
+        int unresolved = overview.teachers().stream().mapToInt(TeacherSummary::unresolvedRows).sum();
         return new SaveResult(updated, unresolved, !changedTeachers.isEmpty());
     }
 
@@ -198,13 +198,21 @@ public class LoadInRateService {
             BigDecimal[] included = halfTotals(group, AllocationRow::includedHours);
             BigDecimal[] paid = halfTotals(group, AllocationRow::paidHours);
             int unresolved = (int) group.stream().filter(row -> !row.allocationConfirmed()).count();
-            LoadInRateRuleBand matchedBand = matchingBand(first.ruleId(), total[0].max(total[1])).orElse(null);
-            BigDecimal suggestion = matchedBand == null ? BigDecimal.ZERO
-                    : matchedBand.getSuggestedIncludedHours().min(total[0].max(total[1]));
+            LoadInRateRuleBand bandH1 = matchingBand(first.ruleId(), total[0]).orElse(null);
+            LoadInRateRuleBand bandH2 = matchingBand(first.ruleId(), total[1]).orElse(null);
+            BigDecimal capacityH1 = capacity(total[0], bandH1);
+            BigDecimal capacityH2 = capacity(total[1], bandH2);
+            BigDecimal remainingH1 = capacityH1.subtract(included[0]).max(BigDecimal.ZERO);
+            BigDecimal remainingH2 = capacityH2.subtract(included[1]).max(BigDecimal.ZERO);
+            BigDecimal suggestion = capacityH1.max(capacityH2);
+            BigDecimal suggestedFraction = total[0].compareTo(total[1]) >= 0
+                    ? rateFraction(bandH1) : rateFraction(bandH2);
             result.add(new TeacherSummary(
                     first.teacherId(), first.fio(), first.contractId(), first.contractNumber(), first.positionName(),
                     total[0], total[1], included[0], included[1], paid[0], paid[1],
-                    suggestion, matchedBand == null ? null : matchedBand.getRateFraction(),
+                    suggestion, suggestedFraction,
+                    capacityH1, capacityH2, remainingH1, remainingH2,
+                    rateFraction(bandH1), rateFraction(bandH2),
                     unresolved == 0, unresolved
             ));
         }
@@ -229,8 +237,8 @@ public class LoadInRateService {
 
     BigDecimal suggestedIncludedHours(Long ruleId, BigDecimal totalHours) {
         return matchingBand(ruleId, totalHours)
-                .map(LoadInRateRuleBand::getSuggestedIncludedHours)
-                .orElse(BigDecimal.ZERO).min(totalHours);
+                .map(band -> capacity(totalHours, band))
+                .orElse(BigDecimal.ZERO);
     }
 
     private Optional<LoadInRateRuleBand> matchingBand(Long ruleId, BigDecimal totalHours) {
@@ -254,15 +262,11 @@ public class LoadInRateService {
         for (RuleBandRequest band : sorted) {
             BigDecimal min = nonNegative(band.minTotalHours());
             BigDecimal max = nullableNonNegative(band.maxTotalHours());
-            BigDecimal included = nonNegative(band.suggestedIncludedHours());
             if (max != null && max.compareTo(min) < 0) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Верхняя граница диапазона не может быть меньше нижней");
             }
-            if (max != null && included.compareTo(max) > 0) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Максимум часов внутри ставки не может превышать верхнюю границу диапазона");
-            }
+            positive(band.rateFraction(), "Доля ставки");
             if (!first && (previousMax == null || min.compareTo(previousMax) <= 0)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Диапазоны нагрузки не должны пересекаться");
@@ -281,10 +285,46 @@ public class LoadInRateService {
         return byTeacher.getOrDefault(row.getTeacherId(), List.of()).stream().findFirst().orElse(null);
     }
 
-    private String contractRuleLabel(EmploymentContract contract) {
-        if (contract.getLoadInRateRuleId() == null) return null;
-        return ruleRepository.findById(contract.getLoadInRateRuleId())
-                .map(LoadInRateRule::getDocumentLabel).orElse(null);
+    private LoadInRateRule resolveRule(EmploymentContract contract) {
+        Map<Long,LoadInRateRule> rulesById=ruleRepository.findAll().stream()
+                .collect(Collectors.toMap(LoadInRateRule::getId,Function.identity()));
+        return resolveRule(contract,rulesById,rulesById.values().stream().filter(LoadInRateRule::isActive).toList());
+    }
+
+    private LoadInRateRule resolveRule(EmploymentContract contract,
+                                       Map<Long,LoadInRateRule> rulesById,
+                                       List<LoadInRateRule> activeRules) {
+        if(contract==null)return null;
+        LoadInRateRule assigned=contract.getLoadInRateRuleId()==null?null:rulesById.get(contract.getLoadInRateRuleId());
+        if(assigned!=null&&assigned.isActive()
+                &&sameText(assigned.getName(),contract.getPositionName()))return assigned;
+        return activeRules.stream().filter(rule->sameText(rule.getName(),contract.getPositionName()))
+                .findFirst().orElse(null);
+    }
+
+    private BigDecimal capacity(BigDecimal totalHours,LoadInRateRuleBand band){
+        return band==null?BigDecimal.ZERO:Optional.ofNullable(totalHours).orElse(BigDecimal.ZERO).max(BigDecimal.ZERO);
+    }
+
+    private BigDecimal rateFraction(LoadInRateRuleBand band){
+        return band==null?null:band.getRateFraction();
+    }
+
+    private void validateCapacity(TeacherSummary summary){
+        if(summary.includedHoursH1().compareTo(summary.capacityHoursH1())>0
+                ||summary.includedHoursH2().compareTo(summary.capacityHoursH2())>0){
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Распределено больше часов внутри ставки, чем допускает диапазон нагрузки для "
+                            +summary.fio()+" ("+summary.positionName()+")");
+        }
+    }
+
+    private String documentReason(String positionName){
+        return "внутри ставки по должности «"+required(positionName,"Должность")+"»";
+    }
+
+    private boolean sameText(String left,String right){
+        return Objects.toString(left,"").trim().equalsIgnoreCase(Objects.toString(right,"").trim());
     }
 
     private RuleView view(LoadInRateRule rule) {
@@ -311,6 +351,12 @@ public class LoadInRateService {
 
     private BigDecimal nullableNonNegative(BigDecimal value) {
         return value == null ? null : nonNegative(value);
+    }
+
+    private BigDecimal positive(BigDecimal value,String label){
+        BigDecimal normalized=nonNegative(value);
+        if(normalized.signum()==0)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,label+" должна быть больше нуля");
+        return normalized;
     }
 
     private String required(String value, String label) {

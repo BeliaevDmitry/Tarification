@@ -30,10 +30,8 @@ const ui = {
     salarySettingsStatus: document.getElementById("salary-settings-status"),
     settingsInRateRulesList: document.getElementById("settings-in-rate-rules-list"),
     settingsNewRulePosition: document.getElementById("settings-new-rule-position"),
-    settingsNewRuleLabel: document.getElementById("settings-new-rule-label"),
     settingsNewRuleMin: document.getElementById("settings-new-rule-min"),
     settingsNewRuleMax: document.getElementById("settings-new-rule-max"),
-    settingsNewRuleIncluded: document.getElementById("settings-new-rule-included"),
     settingsNewRuleFraction: document.getElementById("settings-new-rule-fraction"),
     settingsAddInRateRuleBtn: document.getElementById("settings-add-in-rate-rule-btn"),
     coefficientsPanel: document.getElementById("teachers-coefficients-panel"),
@@ -85,9 +83,7 @@ const ui = {
     teacherContractEnd: document.getElementById("teacher-contract-end"),
     teacherContractPrimary: document.getElementById("teacher-contract-primary"),
     teacherContractActive: document.getElementById("teacher-contract-active"),
-    teacherContractInRate: document.getElementById("teacher-contract-in-rate"),
-    teacherContractInRateRule: document.getElementById("teacher-contract-in-rate-rule"),
-    teacherContractInRateLabel: document.getElementById("teacher-contract-in-rate-label"),
+    teacherContractInRateStatus: document.getElementById("teacher-contract-in-rate-status"),
     teacherContractSave: document.getElementById("teacher-contract-save"),
     teacherContractFeedback: document.getElementById("teacher-contract-feedback"),
     teacherCardPlanDate: document.getElementById("teacher-card-plan-date"),
@@ -151,8 +147,7 @@ const ui = {
     acceptContractDate: document.getElementById("accept-contract-date"),
     acceptContractStart: document.getElementById("accept-contract-start"),
     acceptContractEnd: document.getElementById("accept-contract-end"),
-    acceptInRate: document.getElementById("accept-in-rate"),
-    acceptInRateRule: document.getElementById("accept-in-rate-rule"),
+    acceptInRateStatus: document.getElementById("accept-in-rate-status"),
     acceptTeacherFeedback: document.getElementById("accept-teacher-feedback")
 };
 let buildings = [];
@@ -411,19 +406,24 @@ function renderTeacherContractForm(contract = null) {
     ui.teacherContractEnd.value = contract?.endDate || "";
     ui.teacherContractPrimary.checked = contract?.primaryContract !== false;
     ui.teacherContractActive.checked = contract?.active !== false;
-    ui.teacherContractInRate.value = contract?.loadHoursMayBeIncludedInRate ? "true" : "false";
-    ui.teacherContractInRateRule.innerHTML = [
-        '<option value="">Без автоматического правила</option>',
-        ...teacherCardInRateRules
-            .filter((rule) => (rule.active && (!selectedPosition || rule.name === selectedPosition))
-                || String(rule.id) === String(contract?.loadInRateRuleId || ""))
-            .map((rule) => `<option value="${escapeHtml(rule.id)}" ${String(rule.id) === String(contract?.loadInRateRuleId || "") ? "selected" : ""}>${escapeHtml(rule.name || "")}</option>`)
-    ].join("");
-    ui.teacherContractInRateLabel.value = contract?.loadInRateDocumentLabel || "";
-    const enabled = ui.teacherContractInRate.value === "true";
-    ui.teacherCardDialog.querySelectorAll(".teacher-in-rate-field").forEach((field) => {
-        field.hidden = !enabled;
-    });
+    renderContractInRateStatus(selectedPosition, contract?.loadInRateRuleId);
+}
+
+function ruleForPosition(position, preferredRuleId = null) {
+    return teacherCardInRateRules.find((rule) => rule.active
+        && rule.name === position
+        && (!preferredRuleId || String(rule.id) === String(preferredRuleId)))
+        || teacherCardInRateRules.find((rule) => rule.active && rule.name === position)
+        || null;
+}
+
+function renderContractInRateStatus(position, preferredRuleId = null) {
+    const rule = ruleForPosition(position, preferredRuleId);
+    if (!ui.teacherContractInRateStatus) return rule;
+    ui.teacherContractInRateStatus.textContent = rule
+        ? `Для должности действует правило «${rule.name}». Конкретные часы распределяются во вкладке «Часы в ставке».`
+        : "Для этой должности правило часов в ставке не настроено — вся нагрузка оплачивается отдельно.";
+    return rule;
 }
 
 function setTeacherContractFormAccess() {
@@ -581,6 +581,7 @@ async function saveTeacherCardContract(event) {
     const teacher = selectedTeacherCardRow();
     if (!teacher) throw new Error("Сотрудник не найден");
     const current = selectedTeacherContract();
+    const inRateRule = ruleForPosition(ui.teacherContractPosition.value.trim());
     ui.teacherContractFeedback.textContent = "Сохраняю…";
     const saved = await api(current ? `/api/hr-documents/contracts/${current.id}` : "/api/hr-documents/contracts", {
         method: current ? "PUT" : "POST",
@@ -594,9 +595,9 @@ async function saveTeacherCardContract(event) {
             endDate: ui.teacherContractEnd.value || null,
             primaryContract: ui.teacherContractPrimary.checked,
             active: ui.teacherContractActive.checked,
-            loadHoursMayBeIncludedInRate: ui.teacherContractInRate.value === "true",
-            loadInRateRuleId: ui.teacherContractInRateRule.value ? Number(ui.teacherContractInRateRule.value) : null,
-            loadInRateDocumentLabel: ui.teacherContractInRateLabel.value.trim()
+            loadHoursMayBeIncludedInRate: Boolean(inRateRule),
+            loadInRateRuleId: inRateRule?.id || null,
+            loadInRateDocumentLabel: null
         })
     });
     await openTeacherCard(teacher.id, saved.id);
@@ -1405,24 +1406,25 @@ function renderAcceptTeacherDialog() {
     ].join("");
     ui.acceptBuilding.innerHTML = renderBuildingOptions("");
     ui.acceptPosition.innerHTML = positionOptions("");
-    ui.acceptInRateRule.innerHTML = '<option value="">Выберите правило после должности</option>';
-    ui.acceptTeacherDialog.querySelectorAll(".accept-in-rate-field").forEach((field) => field.hidden = true);
+    refreshAcceptRuleOptions();
     ui.acceptTeacherDialog.showModal();
 }
 
 function refreshAcceptRuleOptions() {
     const position = ui.acceptPosition.value;
-    const matches = teacherCardInRateRules.filter((rule) => rule.active && rule.name === position);
-    ui.acceptInRateRule.innerHTML = [
-        '<option value="">Без автоматического правила</option>',
-        ...matches.map((rule) => `<option value="${escapeHtml(rule.id)}">${escapeHtml(rule.name)}</option>`)
-    ].join("");
-    if (matches.length === 1) ui.acceptInRateRule.value = String(matches[0].id);
+    const rule = ruleForPosition(position);
+    if (ui.acceptInRateStatus) {
+        ui.acceptInRateStatus.textContent = rule
+            ? `Будет применено правило «${rule.name}». Конкретные часы распределяются после назначения нагрузки.`
+            : "Для выбранной должности правило не настроено — вся нагрузка будет оплачиваться отдельно.";
+    }
+    return rule;
 }
 
 async function acceptTeacher(event) {
     event.preventDefault();
     ui.acceptTeacherFeedback.textContent = "Сохраняю карточку и связи…";
+    const inRateRule = refreshAcceptRuleOptions();
     const result = await api("/api/teachers/accept", {
         method: "POST",
         headers: jsonHeaders,
@@ -1449,8 +1451,8 @@ async function acceptTeacher(event) {
             contractDate: ui.acceptContractDate.value || null,
             contractStartDate: ui.acceptContractStart.value || null,
             contractEndDate: ui.acceptContractEnd.value || null,
-            loadHoursMayBeIncludedInRate: ui.acceptInRate.value === "true",
-            loadInRateRuleId: ui.acceptInRateRule.value ? Number(ui.acceptInRateRule.value) : null
+            loadHoursMayBeIncludedInRate: Boolean(inRateRule),
+            loadInRateRuleId: inRateRule?.id || null
         })
     });
     ui.acceptTeacherDialog.close();
@@ -1643,8 +1645,7 @@ function settingsRuleBandRow(band = {}) {
     return `<tr data-settings-rule-band>
         <td><input data-band-min aria-label="Общая нагрузка от, часов" type="number" min="0" step="0.01" value="${escapeHtml(band.minTotalHours ?? 0)}"></td>
         <td><input data-band-max aria-label="Общая нагрузка до, часов" title="Пусто — без верхней границы" type="number" min="0" step="0.01" value="${escapeHtml(band.maxTotalHours ?? "")}"></td>
-        <td><input data-band-included aria-label="Входит в оклад, часов" type="number" min="0" step="0.01" value="${escapeHtml(band.suggestedIncludedHours ?? 0)}"></td>
-        <td><input data-band-fraction aria-label="Размер ставки" title="0,5 — половина ставки; 1 — полная ставка" type="number" min="0" step="0.01" value="${escapeHtml(band.rateFraction ?? "")}"></td>
+        <td><input data-band-fraction aria-label="Размер ставки" title="0,5 — половина ставки; 1 — полная ставка" type="number" min="0.01" step="0.01" value="${escapeHtml(band.rateFraction ?? "")}"></td>
         <td><button type="button" data-remove-settings-band>Удалить</button></td>
     </tr>`;
 }
@@ -1656,15 +1657,13 @@ function renderSettingsInRateRules() {
         <div class="card in-rate-rule-card" data-settings-rule="${escapeHtml(rule.id)}">
             <div class="form-grid">
                 <label>Основная должность<select data-rule-name>${positionOptions(rule.name)}</select></label>
-                <label>Текст пояснения в документах<input data-rule-label value="${escapeHtml(rule.documentLabel || "")}"></label>
                 <label><input data-rule-active type="checkbox" ${rule.active ? "checked" : ""}> Правило действует</label>
             </div>
-            <p class="muted">Для каждого диапазона укажите: при какой общей нагрузке он действует,
-                сколько часов уже оплачено окладом и какой ставке это соответствует.</p>
+            <p class="muted">Для каждого диапазона укажите общую учебную нагрузку и соответствующую долю ставки.
+                Фактические часы распределяются отдельно по сотруднику.</p>
             <table class="sheet-table"><thead><tr>
                 <th>Общая нагрузка<br>от, часов</th>
                 <th>Общая нагрузка<br>до, часов</th>
-                <th>Входит в оклад,<br>не более часов</th>
                 <th>Размер<br>ставки</th><th></th>
             </tr></thead><tbody data-rule-bands>${(rule.bands || []).map(settingsRuleBandRow).join("")}</tbody></table>
             <div class="row">
@@ -1677,14 +1676,15 @@ function renderSettingsInRateRules() {
 }
 
 function settingsRuleRequest(card) {
+    const position = card.querySelector("[data-rule-name]").value;
     return {
-        name: card.querySelector("[data-rule-name]").value,
-        documentLabel: card.querySelector("[data-rule-label]").value.trim(),
+        name: position,
+        documentLabel: position,
         active: card.querySelector("[data-rule-active]").checked,
         bands: Array.from(card.querySelectorAll("[data-settings-rule-band]")).map((row) => ({
             minTotalHours: Number(row.querySelector("[data-band-min]").value || 0),
             maxTotalHours: row.querySelector("[data-band-max]").value === "" ? null : Number(row.querySelector("[data-band-max]").value),
-            suggestedIncludedHours: Number(row.querySelector("[data-band-included]").value || 0),
+            suggestedIncludedHours: null,
             rateFraction: row.querySelector("[data-band-fraction]").value === "" ? null : Number(row.querySelector("[data-band-fraction]").value)
         }))
     };
@@ -1702,12 +1702,6 @@ async function reloadSettingsInRateRules() {
 
 async function addSettingsInRateRule() {
     if (!ui.settingsNewRulePosition.value) throw new Error("Выберите основную должность");
-    if (!ui.settingsNewRuleLabel.value.trim()) {
-        throw new Error("Укажите понятный текст для документов, например «внутри должностного оклада преподавателя-организатора ОБЗР»");
-    }
-    if (ui.settingsNewRuleIncluded.value === "") {
-        throw new Error("Укажите, сколько часов из этого диапазона входит в должностной оклад");
-    }
     if (ui.settingsNewRuleFraction.value === "") {
         throw new Error("Укажите размер ставки: например 0,5 или 1");
     }
@@ -1716,20 +1710,18 @@ async function addSettingsInRateRule() {
         headers: jsonHeaders,
         body: JSON.stringify({
             name: ui.settingsNewRulePosition.value,
-            documentLabel: ui.settingsNewRuleLabel.value.trim(),
+            documentLabel: ui.settingsNewRulePosition.value,
             active: true,
             bands: [{
                 minTotalHours: Number(ui.settingsNewRuleMin.value || 0),
                 maxTotalHours: ui.settingsNewRuleMax.value === "" ? null : Number(ui.settingsNewRuleMax.value),
-                suggestedIncludedHours: Number(ui.settingsNewRuleIncluded.value || 0),
+                suggestedIncludedHours: null,
                 rateFraction: ui.settingsNewRuleFraction.value === "" ? null : Number(ui.settingsNewRuleFraction.value)
             }]
         })
     });
-    ui.settingsNewRuleLabel.value = "";
     ui.settingsNewRuleMin.value = "1";
     ui.settingsNewRuleMax.value = "";
-    ui.settingsNewRuleIncluded.value = "";
     ui.settingsNewRuleFraction.value = "";
     await reloadSettingsInRateRules();
 }
@@ -1764,11 +1756,6 @@ function bindEvents() {
         ui.acceptTeacherFeedback.textContent = error.message;
     }));
     ui.acceptPosition?.addEventListener("change", refreshAcceptRuleOptions);
-    ui.acceptInRate?.addEventListener("change", () => {
-        const enabled = ui.acceptInRate.value === "true";
-        ui.acceptTeacherDialog.querySelectorAll(".accept-in-rate-field").forEach((field) => field.hidden = !enabled);
-        if (enabled) refreshAcceptRuleOptions();
-    });
     ui.teacherCardClose?.addEventListener("click", () => ui.teacherCardDialog.close());
     ui.teacherCardMainForm?.addEventListener("submit", (event) => saveTeacherCardMain(event).catch((error) => {
         ui.teacherCardFeedback.textContent = error.message;
@@ -1781,27 +1768,8 @@ function bindEvents() {
         renderTeacherContractForm(selectedTeacherContract());
         setTeacherContractFormAccess();
     });
-    ui.teacherContractInRate?.addEventListener("change", () => {
-        const enabled = ui.teacherContractInRate.value === "true";
-        ui.teacherCardDialog.querySelectorAll(".teacher-in-rate-field").forEach((field) => {
-            field.hidden = !enabled;
-        });
-    });
     ui.teacherContractPosition?.addEventListener("change", () => {
-        const position = ui.teacherContractPosition.value;
-        const matches = teacherCardInRateRules.filter((rule) => rule.active && rule.name === position);
-        ui.teacherContractInRateRule.innerHTML = [
-            '<option value="">Без автоматического правила</option>',
-            ...matches.map((rule) => `<option value="${escapeHtml(rule.id)}">${escapeHtml(rule.name)}</option>`)
-        ].join("");
-        if (matches.length === 1) {
-            ui.teacherContractInRateRule.value = String(matches[0].id);
-            ui.teacherContractInRateLabel.value = matches[0].documentLabel || "";
-        }
-    });
-    ui.teacherContractInRateRule?.addEventListener("change", () => {
-        const rule = teacherCardInRateRules.find((item) => String(item.id) === String(ui.teacherContractInRateRule.value));
-        ui.teacherContractInRateLabel.value = rule?.documentLabel || "";
+        renderContractInRateStatus(ui.teacherContractPosition.value);
     });
     ui.teacherContractForm?.addEventListener("submit", (event) => {
         saveTeacherCardContract(event).catch((error) => {

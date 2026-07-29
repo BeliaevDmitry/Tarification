@@ -64,6 +64,7 @@ public class HrDocumentService {
     private final ClassSizeService classSizeService;
     private final LoadSalaryCalculationService loadSalaryCalculationService;
     private final HrIncentiveRepository incentiveRepository;
+    private final LoadInRateRuleRepository loadInRateRuleRepository;
     private final ObjectMapper objectMapper;
 
     @Transactional public List<JournalRow> journal(String academicYear) {
@@ -108,10 +109,10 @@ public class HrDocumentService {
         c.setContractDate(Objects.requireNonNull(r.contractDate(), "Дата договора обязательна"));
         c.setPositionName(required(r.positionName(), "Должность")); c.setStartDate(r.startDate()); c.setEndDate(r.endDate());
         c.setPrimaryContract(r.primaryContract() == null || r.primaryContract()); c.setActive(r.active() == null || r.active());
-        c.setLoadHoursMayBeIncludedInRate(Boolean.TRUE.equals(r.loadHoursMayBeIncludedInRate()));
-        c.setLoadInRateRuleId(c.isLoadHoursMayBeIncludedInRate()?r.loadInRateRuleId():null);
-        c.setLoadInRateDocumentLabel(c.isLoadHoursMayBeIncludedInRate()
-                ?Objects.toString(r.loadInRateDocumentLabel(),"").trim():null);
+        LoadInRateRule inRateRule=ruleForPosition(c.getPositionName(),r.loadInRateRuleId());
+        c.setLoadHoursMayBeIncludedInRate(inRateRule!=null);
+        c.setLoadInRateRuleId(inRateRule==null?null:inRateRule.getId());
+        c.setLoadInRateDocumentLabel(null);
         EmploymentContract saved = contracts.save(c);
         if(previouslyIncluded&&!saved.isLoadHoursMayBeIncludedInRate()){
             Map<String,Set<Long>> affected=new LinkedHashMap<>();
@@ -135,10 +136,11 @@ public class HrDocumentService {
         return contracts(teacherId).stream().map(this::contractView).toList();
     }
     public ContractView contractView(EmploymentContract contract) {
+        LoadInRateRule rule=ruleForPosition(contract.getPositionName(),contract.getLoadInRateRuleId());
         return new ContractView(contract.getId(), contract.getTeacherId(), contract.getContractNumber(),
                 contract.getContractDate(), contract.getPositionName(), contract.getStartDate(), contract.getEndDate(),
-                contract.isPrimaryContract(), contract.isActive(), contract.isLoadHoursMayBeIncludedInRate(),
-                contract.getLoadInRateRuleId(), contract.getLoadInRateDocumentLabel(), contract.getCreatedAt());
+                contract.isPrimaryContract(), contract.isActive(), rule!=null,
+                rule==null?null:rule.getId(), null, contract.getCreatedAt());
     }
     public Optional<HrPersonalData> personal(Long teacherId) { return personalData.findByTeacherId(teacherId); }
     @Transactional(readOnly = true)
@@ -1094,7 +1096,9 @@ public class HrDocumentService {
     }
 
     private void validateInRateAllocation(AdditionalAgreement agreement, EmploymentContract contract) {
-        if (agreement == null || contract == null || !contract.isLoadHoursMayBeIncludedInRate()) return;
+        if (agreement == null || contract == null
+                || (!contract.isLoadHoursMayBeIncludedInRate()
+                &&ruleForPosition(contract.getPositionName(),contract.getLoadInRateRuleId())==null)) return;
         List<ManualLoadEntry> rows = loadRepository.findAllByAcademicYear(agreement.getAcademicYear()).stream()
                 .filter(row -> Objects.equals(row.getTeacherId(), contract.getTeacherId()))
                 .filter(row -> loadSalaryCalculationService.totalHours(row).signum() > 0)
@@ -1105,6 +1109,19 @@ public class HrDocumentService {
                     "Сначала распределите часы внутри ставки в разделе «Нагрузка → Часы в ставке». Не подтверждено строк: "
                             + unresolved);
         }
+    }
+
+    private LoadInRateRule ruleForPosition(String positionName,Long preferredRuleId){
+        String position=Objects.toString(positionName,"").trim();
+        if(position.isBlank())return null;
+        if(preferredRuleId!=null){
+            LoadInRateRule preferred=loadInRateRuleRepository.findById(preferredRuleId).orElse(null);
+            if(preferred!=null&&preferred.isActive()&&preferred.getName().equalsIgnoreCase(position))return preferred;
+        }
+        return loadInRateRuleRepository.findAllByOrderByNameAsc().stream()
+                .filter(LoadInRateRule::isActive)
+                .filter(rule->rule.getName().equalsIgnoreCase(position))
+                .findFirst().orElse(null);
     }
 
     @Transactional public AdditionalAgreement reopenIssuedAgreement(Long id,String username){
@@ -2040,7 +2057,7 @@ public class HrDocumentService {
             String group=Objects.toString(row.getGroupNameEducationalPlan(),"");
             return new LoadDetail(row.getSubjectName(),row.getClassName()+(!group.isBlank()?" "+group:""),
                     line.totalHours(),line.includedHours(),line.paidHours(),line.children(),line.studentHourRate(),
-                    line.subjectCoefficient(),line.groupCoefficient(),line.amount(),firstPresent(row.getInRateReason(),"должностной оклад"));
+                    line.subjectCoefficient(),line.groupCoefficient(),line.amount(),firstPresent(row.getInRateReason(),"внутри ставки"));
         }).toList();
     }
     private Map<String,Integer> normalizedClassSizes(Map<String,Integer> sizes){
