@@ -12,4 +12,7 @@ public class TeacherCreateRequest {
     private String email;
     private String additionalDuties;
     private String numberSchoolBuilding;
+    private String primaryPosition;
+    private String employmentType;
+    private java.time.LocalDate employmentDate;
 }

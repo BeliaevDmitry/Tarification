@@ -30,6 +30,8 @@ public class TeacherDirectoryEntry {
     @Column(unique = true)
     private String email;
     private String additionalDuties;
+    @Transient
+    private String additionalDutiesSummary;
     private String numberSchoolBuilding;
     private String primaryPosition;
     private String personnelNumber;

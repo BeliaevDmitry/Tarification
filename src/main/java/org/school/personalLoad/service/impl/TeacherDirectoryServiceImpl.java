@@ -11,6 +11,7 @@ import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.TeacherDirectoryService;
+import org.school.personalLoad.service.RussianNameCases;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -195,8 +196,9 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         }
 
         String normalized = request.getFioTeacher().trim();
-        String dative = normalizeOptional(request.getFioTeacherDative());
-        String initials = normalizeOptional(request.getInitials());
+        var cases = RussianNameCases.derive(normalized);
+        String dative = Optional.ofNullable(normalizeOptional(request.getFioTeacherDative())).orElse(cases.dative());
+        String initials = Optional.ofNullable(normalizeOptional(request.getInitials())).orElse(cases.initials());
         String phone = normalizePhone(request.getPhone());
         String email = normalizeEmail(request.getEmail());
         String additionalDuties = normalizeOptional(request.getAdditionalDuties());
@@ -207,11 +209,15 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                     entry.setFioTeacher(normalized);
                     entry.setFioTeacherDative(dative);
                     entry.setInitials(initials);
+                    entry.setInitialsDative(cases.initialsDative());
                     entry.setPhone(phone);
                     ensureUniqueTeacherEmail(email, null);
                     entry.setEmail(email);
                     entry.setAdditionalDuties(additionalDuties);
                     entry.setNumberSchoolBuilding(building);
+                    entry.setPrimaryPosition(normalizeOptional(request.getPrimaryPosition()));
+                    entry.setEmploymentType(normalizeOptional(request.getEmploymentType()));
+                    entry.setEmploymentDate(request.getEmploymentDate());
                     return teacherDirectoryRepository.save(entry);
                 });
     }
@@ -225,14 +231,19 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
             if (request.getFioTeacher() != null && !request.getFioTeacher().isBlank()) {
                 entry.setFioTeacher(request.getFioTeacher().trim());
             }
-            entry.setFioTeacherDative(normalizeOptional(request.getFioTeacherDative()));
-            entry.setInitials(normalizeOptional(request.getInitials()));
+            var cases = RussianNameCases.derive(entry.getFioTeacher());
+            entry.setFioTeacherDative(Optional.ofNullable(normalizeOptional(request.getFioTeacherDative())).orElse(cases.dative()));
+            entry.setInitials(Optional.ofNullable(normalizeOptional(request.getInitials())).orElse(cases.initials()));
+            entry.setInitialsDative(Optional.ofNullable(normalizeOptional(request.getInitialsDative())).orElse(cases.initialsDative()));
             entry.setPhone(normalizePhone(request.getPhone()));
             String email = normalizeEmail(request.getEmail());
             ensureUniqueTeacherEmail(email, teacherId);
             entry.setEmail(email);
             entry.setAdditionalDuties(normalizeOptional(request.getAdditionalDuties()));
             entry.setNumberSchoolBuilding(normalizeOptional(request.getNumberSchoolBuilding()));
+            if (request.getPrimaryPosition() != null) entry.setPrimaryPosition(normalizeOptional(request.getPrimaryPosition()));
+            if (request.getEmploymentType() != null) entry.setEmploymentType(normalizeOptional(request.getEmploymentType()));
+            if (request.getEmploymentDate() != null) entry.setEmploymentDate(request.getEmploymentDate());
         }
         return teacherDirectoryRepository.save(entry);
     }

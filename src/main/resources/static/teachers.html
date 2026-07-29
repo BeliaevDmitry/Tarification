@@ -12,7 +12,7 @@
 <main class="container">
     <header class="card">
         <h1>Персонал</h1>
-        <p class="muted">Справочник корректных ФИО: импорт из Excel, ручное добавление и пометка на увольнение.</p>
+        <p class="muted">Единый справочник сотрудников: приём, карточки, сверка с 1С и кадровые действия.</p>
         <nav class="page-nav">
             <a class="nav-link" href="/" aria-label="Главная">🏠</a>
             <a class="nav-link active" href="/teachers.html" data-tab="TEACHERS">Персонал</a>
@@ -27,7 +27,7 @@
 
     <section class="card" id="teachers-personnel-panel">
         <h2>Импорт из Excel</h2>
-        <p class="muted">Можно скачать текущий список, заполнить дательный падеж и загрузить файл обратно.</p>
+        <p class="muted">Можно скачать текущий список, проверить контактные данные и загрузить файл обратно.</p>
         <div class="row" data-requires-edit>
             <input id="teacher-file" type="file" accept=".xls,.xlsx">
             <button id="import-teachers-btn" type="button">Импортировать</button>
@@ -39,21 +39,14 @@
             <input id="teacher-1c-file" type="file" accept=".xls,.xlsx">
             <button id="preview-teachers-1c-btn" type="button">Проверить выгрузку 1С</button>
         </div>
-        <h2>Ручное добавление</h2>
-        <form id="teacher-create-form" class="row" data-requires-edit>
-            <input id="teacher-fio" name="fioTeacher" placeholder="ФИО педагога" required>
-            <input id="teacher-initials-create" name="initials" placeholder="ФИО (инициалы)">
-            <input id="teacher-dative-create" name="fioTeacherDative" placeholder="Дательный падеж">
-            <input id="teacher-phone-create" name="phone" placeholder="+7 ...">
-            <input id="teacher-email-create" name="email" placeholder="email">
-            <input id="teacher-duties-create" name="additionalDuties" placeholder="Доп. обязанности">
-            <select id="teacher-building-create" name="numberSchoolBuilding">
-                <option value="">Корпус не указан</option>
-            </select>
-            <button type="submit">Добавить педагога</button>
+        <h2>Кадровые действия</h2>
+        <div class="row" data-requires-edit>
+            <button id="accept-teacher-btn" type="button">Принять сотрудника</button>
+            <button id="auto-assign-buildings-btn" type="button">Распределить по корпусам</button>
             <button id="refresh-teachers-btn" type="button" data-allow-readonly="true">Обновить список</button>
             <button id="clear-teachers-btn" type="button">Очистить справочник</button>
-        </form>
+        </div>
+        <p class="muted">Корпус определяется по наибольшей сумме часов нагрузки за выбранный учебный год. При равенстве часов система ничего не меняет.</p>
         <pre id="teachers-result"></pre>
     </section>
 
@@ -65,8 +58,6 @@
                 <thead>
                 <tr>
                     <th>ФИО</th>
-                    <th>ФИО (инициалы)</th>
-                    <th>Дательный падеж</th>
                     <th>Телефон</th>
                     <th>Email</th>
                     <th>Дополнительные обязанности</th>
@@ -120,6 +111,28 @@
                 <button id="save-salary-settings-btn" type="submit" data-allow-readonly="true">Сохранить</button>
             </form>
             <p id="salary-settings-status" class="muted"></p>
+            <section class="settings-block" id="in-rate-rules-settings">
+                <div class="dialog-hero">
+                    <div>
+                        <h3>Правила часов в ставке</h3>
+                        <p class="muted">Правило привязано к основной должности. Для диапазона задайте максимум часов, которые могут войти в ставку, и долю ставки.</p>
+                    </div>
+                </div>
+                <div id="settings-in-rate-rules-list"></div>
+                <div class="card in-rate-new-rule">
+                    <h4>Новое правило</h4>
+                    <div class="form-grid">
+                        <label>Основная должность<select id="settings-new-rule-position"></select></label>
+                        <label>Пояснение для документов<input id="settings-new-rule-label" placeholder="Например: преподаватель ОБЗР"></label>
+                        <label>Минимум общей нагрузки<input id="settings-new-rule-min" type="number" min="0" step="0.01" value="0"></label>
+                        <label>Максимум общей нагрузки<input id="settings-new-rule-max" type="number" min="0" step="0.01"></label>
+                        <label>Максимум часов внутри ставки<input id="settings-new-rule-included" type="number" min="0" step="0.01" value="0"></label>
+                        <label>Доля ставки<input id="settings-new-rule-fraction" type="number" min="0" step="0.01"></label>
+                    </div>
+                    <button id="settings-add-in-rate-rule-btn" type="button">Добавить правило</button>
+                    <p class="muted">Пример: диапазон 1–4, максимум внутри ставки 4, доля 0,5. При нагрузке 3 часа система предложит включить 3 часа; при нагрузке 4 часа — 4.</p>
+                </div>
+            </section>
             <div class="people-load-subtabs" style="margin-top:12px;">
                 <a class="nav-link" href="/teachers.html#coefficients">Предметные коэффициенты</a>
                 <a class="nav-link" href="/teachers.html#group-coefficients">Коэффициент деления на подгруппы</a>
@@ -252,6 +265,51 @@
             <button id="teacher-card-close" type="button">Закрыть</button>
         </div>
 
+        <section>
+            <h3>Основные данные</h3>
+            <form id="teacher-card-main-form">
+                <div class="teacher-card-grid">
+                    <label class="teacher-card-wide">ФИО<input id="teacher-card-fio" required></label>
+                    <label>ФИО (инициалы)<input id="teacher-card-initials"></label>
+                    <label>Дательный падеж<input id="teacher-card-dative"></label>
+                    <label>Телефон<input id="teacher-card-phone"></label>
+                    <label>Email<input id="teacher-card-email" type="email"></label>
+                    <label>Корпус<select id="teacher-card-building"></select></label>
+                    <label>Основная должность<input id="teacher-card-primary-position"></label>
+                    <label>Вид занятости<input id="teacher-card-employment-type"></label>
+                    <label>Дата приёма<input id="teacher-card-employment-date" type="date"></label>
+                </div>
+                <div class="dialog-actions">
+                    <button id="teacher-card-data-sheet" type="button">Лист проверки данных</button>
+                    <button type="submit">Сохранить данные</button>
+                </div>
+            </form>
+        </section>
+
+        <hr>
+
+        <section id="teacher-personal-section">
+            <h3>Персональные данные</h3>
+            <form id="teacher-personal-form">
+                <div class="teacher-card-grid">
+                    <label>Дата рождения<input id="teacher-personal-birth-date" type="date"></label>
+                    <label>Телефон<input id="teacher-personal-phone"></label>
+                    <label>Серия паспорта<input id="teacher-personal-passport-series"></label>
+                    <label>Номер паспорта<input id="teacher-personal-passport-number"></label>
+                    <label class="teacher-card-wide">Кем выдан<input id="teacher-personal-passport-issued-by"></label>
+                    <label>Дата выдачи<input id="teacher-personal-passport-issue-date" type="date"></label>
+                    <label>Код подразделения<input id="teacher-personal-passport-code"></label>
+                    <label class="teacher-card-wide">Адрес регистрации<input id="teacher-personal-registration"></label>
+                    <label class="teacher-card-wide">Фактический адрес<input id="teacher-personal-actual"></label>
+                    <label>ИНН<input id="teacher-personal-inn"></label>
+                    <label>СНИЛС<input id="teacher-personal-snils"></label>
+                </div>
+                <div class="dialog-actions"><button type="submit">Сохранить персональные данные</button></div>
+            </form>
+        </section>
+
+        <hr id="teacher-personal-divider">
+
         <section id="teacher-contract-section">
             <h3>Трудовой договор и учебные часы</h3>
             <p class="muted">Здесь указывается, могут ли учебные часы входить в должностной оклад. Распределение по классам выполняется в разделе «Нагрузка по людям → Часы в ставке».</p>
@@ -264,7 +322,7 @@
                 <div class="teacher-card-grid">
                     <label>Номер договора<input id="teacher-contract-number" required></label>
                     <label>Дата договора<input id="teacher-contract-date" type="date" required></label>
-                    <label>Должность<input id="teacher-contract-position" required></label>
+                    <label>Должность<select id="teacher-contract-position" required></select></label>
                     <label>Начало работы<input id="teacher-contract-start" type="date"></label>
                     <label>Окончание<input id="teacher-contract-end" type="date"></label>
                     <label>Статус
@@ -283,7 +341,7 @@
                         <select id="teacher-contract-in-rate-rule"></select>
                     </label>
                     <label class="teacher-card-wide teacher-in-rate-field">Формулировка для документов
-                        <input id="teacher-contract-in-rate-label" placeholder="Например: преподаватель ОБЗР">
+                        <input id="teacher-contract-in-rate-label" readonly>
                     </label>
                 </div>
                 <div class="dialog-actions">
@@ -316,6 +374,58 @@
             </div>
             <p id="teacher-card-feedback" class="muted" role="status"></p>
         </section>
+    </dialog>
+
+    <dialog id="accept-teacher-dialog" class="teacher-card-dialog accept-teacher-dialog">
+        <div class="dialog-hero">
+            <div>
+                <h2>Принять сотрудника</h2>
+                <p class="muted">Можно связать сотрудника с ранее созданной вакансией. Тогда нагрузка, МЦКО и другие данные сохранят прежний ID.</p>
+            </div>
+            <button id="accept-teacher-close" type="button">Закрыть</button>
+        </div>
+        <form id="accept-teacher-form">
+            <div class="teacher-card-grid">
+                <label class="teacher-card-wide">Связать с вакансией
+                    <select id="accept-vacancy"><option value="">Нет — создать нового сотрудника</option></select>
+                </label>
+                <label class="teacher-card-wide">ФИО полностью<input id="accept-fio" required placeholder="Рысь Виктория Игоревна"></label>
+                <label>Телефон<input id="accept-phone"></label>
+                <label>Email<input id="accept-email" type="email"></label>
+                <label>Корпус<select id="accept-building"></select></label>
+                <label>Основная должность<select id="accept-position" required></select></label>
+                <label>Вид занятости<input id="accept-employment-type" value="Основное место работы"></label>
+                <label>Дата приёма<input id="accept-employment-date" type="date"></label>
+                <label>Дата рождения<input id="accept-birth-date" type="date"></label>
+                <label>СНИЛС<input id="accept-snils"></label>
+                <label>ИНН<input id="accept-inn"></label>
+                <label>Серия паспорта<input id="accept-passport-series"></label>
+                <label>Номер паспорта<input id="accept-passport-number"></label>
+                <label class="teacher-card-wide">Кем выдан<input id="accept-passport-issued-by"></label>
+                <label>Дата выдачи<input id="accept-passport-issue-date" type="date"></label>
+                <label>Код подразделения<input id="accept-passport-code"></label>
+                <label class="teacher-card-wide">Адрес регистрации<input id="accept-registration-address"></label>
+                <label class="teacher-card-wide">Фактический адрес<input id="accept-actual-address"></label>
+                <label>Номер трудового договора<input id="accept-contract-number"></label>
+                <label>Дата договора<input id="accept-contract-date" type="date"></label>
+                <label>Начало договора<input id="accept-contract-start" type="date"></label>
+                <label>Окончание договора<input id="accept-contract-end" type="date"></label>
+                <label class="teacher-card-wide">Учебные часы могут входить в ставку
+                    <select id="accept-in-rate">
+                        <option value="false">Нет</option>
+                        <option value="true">Да</option>
+                    </select>
+                </label>
+                <label class="teacher-card-wide accept-in-rate-field" hidden>Правило часов в ставке
+                    <select id="accept-in-rate-rule"></select>
+                </label>
+            </div>
+            <p id="accept-teacher-feedback" class="muted" role="status"></p>
+            <div class="dialog-actions">
+                <button id="accept-teacher-cancel" type="button">Отмена</button>
+                <button type="submit">Принять сотрудника</button>
+            </div>
+        </form>
     </dialog>
 
     <dialog id="teacher-1c-dialog" class="teacher-1c-dialog">
