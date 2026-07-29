@@ -12,6 +12,7 @@ import org.school.personalLoad.dto.TeacherUpdateRequest;
 import org.school.personalLoad.dto.PersonnelDtos.AcceptEmployeeRequest;
 import org.school.personalLoad.dto.PersonnelDtos.AcceptEmployeeResult;
 import org.school.personalLoad.dto.PersonnelDtos.AutoBuildingResult;
+import org.school.personalLoad.dto.PersonnelDtos.PersonnelRow;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.model.UserActionLog;
 import org.school.personalLoad.service.TeacherDirectoryService;
@@ -134,7 +135,7 @@ public class TeacherDirectoryController {
     }
 
     @GetMapping
-    public ResponseEntity<List<TeacherDirectoryEntry>> findAll(
+    public ResponseEntity<List<PersonnelRow>> findAll(
             @RequestParam(required = false) String academicYear) {
         String year = academicYearService.resolveRequestedOrDefault(academicYear);
         return ResponseEntity.ok(personnelService.personnel(year));

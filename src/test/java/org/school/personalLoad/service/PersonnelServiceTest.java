@@ -17,6 +17,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import java.io.ByteArrayInputStream;
 
@@ -42,6 +44,25 @@ class PersonnelServiceTest {
     private final PersonnelService service = new PersonnelService(
             teachers, loads, classes, hrMemos, loadMemos, mcko, personal, contracts, rules, salary,
             paSpecifications, paVersions, paSummaries, paStudents);
+
+    @Test
+    void personnelUsesStableApiRowsWithoutHibernateInternals() throws Exception {
+        TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
+        teacher.setId(13L);
+        teacher.setFioTeacher("Абдрахманова Анастасия Робертовна");
+        teacher.setPrimaryPosition("Учитель");
+        when(classes.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
+        when(hrMemos.findAllByAcademicYearOrderByCreatedAtDesc("2026/2027")).thenReturn(List.of());
+        when(teachers.findAll()).thenReturn(List.of(teacher));
+
+        var rows = service.personnel("2026/2027");
+        String json = new ObjectMapper().registerModule(new JavaTimeModule()).writeValueAsString(rows);
+
+        assertEquals(13L, rows.get(0).id());
+        assertEquals("", rows.get(0).additionalDutiesSummary());
+        assertFalse(json.contains("hibernateLazyInitializer"));
+        assertFalse(json.contains("\"handler\""));
+    }
 
     @Test
     void vacancyIsAcceptedUnderSameTeacherIdAndLoadGetsNewName() {
