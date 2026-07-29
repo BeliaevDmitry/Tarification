@@ -1,6 +1,7 @@
 package org.school.personalLoad.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
@@ -11,6 +12,7 @@ import java.time.LocalDateTime;
 
 @Data
 @Entity
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 @Table(name = "teacher_directory_entry", uniqueConstraints = {
         @UniqueConstraint(name = "uk_teacher_directory_fio", columnNames = "fioTeacher")
 })

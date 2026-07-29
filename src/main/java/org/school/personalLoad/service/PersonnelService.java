@@ -42,7 +42,7 @@ public class PersonnelService {
     private final PaReportStudentResultRepository paStudentResults;
 
     @Transactional(readOnly = true)
-    public List<TeacherDirectoryEntry> personnel(String academicYear) {
+    public List<PersonnelRow> personnel(String academicYear) {
         Map<Long, LinkedHashSet<String>> duties = new HashMap<>();
         classroomLeadership.findAllByAcademicYear(academicYear).forEach(row -> {
             Long teacherId = row.getTeacherId();
@@ -66,13 +66,12 @@ public class PersonnelService {
                         values.add(entry.getValue());
                     }
                 });
-        List<TeacherDirectoryEntry> result = teachers.findAll().stream()
+        return teachers.findAll().stream()
                 .filter(teacher -> !teacher.isArchived())
                 .sorted(Comparator.comparing(TeacherDirectoryEntry::getFioTeacher, String.CASE_INSENSITIVE_ORDER))
+                .map(teacher -> PersonnelRow.from(teacher,
+                        String.join("; ", duties.getOrDefault(teacher.getId(), new LinkedHashSet<>()))))
                 .toList();
-        result.forEach(teacher -> teacher.setAdditionalDutiesSummary(
-                String.join("; ", duties.getOrDefault(teacher.getId(), new LinkedHashSet<>()))));
-        return result;
     }
 
     @Transactional
