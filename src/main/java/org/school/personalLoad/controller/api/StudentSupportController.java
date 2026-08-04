@@ -7,14 +7,17 @@ import org.school.personalLoad.auth.AuthSessionUtils;
 import org.school.personalLoad.auth.SessionUser;
 import org.school.personalLoad.dto.contingent.StudentSupportDtos;
 import org.school.personalLoad.dto.contingent.StudentDataExchangeDtos;
+import org.school.personalLoad.dto.contingent.StudentSupportDocumentDtos;
 import org.school.personalLoad.service.AcademicYearService;
 import org.school.personalLoad.service.StudentIdentityService;
 import org.school.personalLoad.service.StudentDataExchangeService;
 import org.school.personalLoad.service.StudentSupportService;
+import org.school.personalLoad.service.StudentSupportDocumentService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -37,6 +40,7 @@ public class StudentSupportController {
     private final StudentIdentityService studentIdentityService;
     private final AcademicYearService academicYearService;
     private final StudentDataExchangeService studentDataExchangeService;
+    private final StudentSupportDocumentService studentSupportDocumentService;
 
     @GetMapping("/summary")
     public ResponseEntity<StudentSupportDtos.SummaryResponse> summary(
@@ -136,6 +140,97 @@ public class StudentSupportController {
             @RequestParam(required = false) String academicYear
     ) {
         return ResponseEntity.ok(studentDataExchangeService.readiness(effectiveYear(academicYear)));
+    }
+
+    @GetMapping("/documents")
+    public ResponseEntity<java.util.List<StudentSupportDocumentDtos.View>> documents(
+            @RequestParam(required = false) String academicYear,
+            @RequestParam(required = false) String asOfDate
+    ) {
+        return ResponseEntity.ok(studentSupportDocumentService.findAll(
+                effectiveYear(academicYear),
+                parseDate(asOfDate)
+        ));
+    }
+
+    @PutMapping("/documents")
+    public ResponseEntity<StudentSupportDocumentDtos.View> saveDocument(
+            @RequestParam(required = false) String academicYear,
+            @RequestBody StudentSupportDocumentDtos.SaveRequest request,
+            HttpServletRequest httpServletRequest
+    ) {
+        validateEdit(AuthSessionUtils.requiredUser(httpServletRequest));
+        return ResponseEntity.ok(studentSupportDocumentService.save(effectiveYear(academicYear), request));
+    }
+
+    @DeleteMapping("/documents/{documentId}")
+    public ResponseEntity<Void> deleteDocument(
+            @RequestParam(required = false) String academicYear,
+            @PathVariable Long documentId,
+            HttpServletRequest httpServletRequest
+    ) {
+        validateEdit(AuthSessionUtils.requiredUser(httpServletRequest));
+        studentSupportDocumentService.delete(effectiveYear(academicYear), documentId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/documents/{documentId}/attachments")
+    public ResponseEntity<StudentSupportDocumentDtos.AttachmentView> addDocumentAttachment(
+            @RequestParam(required = false) String academicYear,
+            @PathVariable Long documentId,
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+            HttpServletRequest httpServletRequest
+    ) {
+        SessionUser user = AuthSessionUtils.requiredUser(httpServletRequest);
+        validateEdit(user);
+        return ResponseEntity.ok(studentSupportDocumentService.addAttachment(
+                effectiveYear(academicYear),
+                documentId,
+                file,
+                user.getUsername()
+        ));
+    }
+
+    @GetMapping("/documents/{documentId}/attachments/{attachmentId}")
+    public ResponseEntity<byte[]> downloadDocumentAttachment(
+            @RequestParam(required = false) String academicYear,
+            @PathVariable Long documentId,
+            @PathVariable Long attachmentId
+    ) {
+        StudentSupportDocumentDtos.AttachmentDownload download =
+                studentSupportDocumentService.downloadAttachment(
+                        effectiveYear(academicYear),
+                        documentId,
+                        attachmentId
+                );
+        String encoded = URLEncoder.encode(download.fileName(), StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        MediaType contentType;
+        try {
+            contentType = MediaType.parseMediaType(download.contentType());
+        } catch (RuntimeException ignored) {
+            contentType = MediaType.APPLICATION_OCTET_STREAM;
+        }
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encoded)
+                .contentType(contentType)
+                .body(download.content());
+    }
+
+    @DeleteMapping("/documents/{documentId}/attachments/{attachmentId}")
+    public ResponseEntity<Void> deleteDocumentAttachment(
+            @RequestParam(required = false) String academicYear,
+            @PathVariable Long documentId,
+            @PathVariable Long attachmentId,
+            HttpServletRequest httpServletRequest
+    ) {
+        validateEdit(AuthSessionUtils.requiredUser(httpServletRequest));
+        studentSupportDocumentService.deleteAttachment(
+                effectiveYear(academicYear),
+                documentId,
+                attachmentId
+        );
+        return ResponseEntity.noContent().build();
     }
 
     private String effectiveYear(String academicYear) {

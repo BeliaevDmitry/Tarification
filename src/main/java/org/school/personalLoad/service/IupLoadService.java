@@ -11,6 +11,7 @@ import org.school.personalLoad.dto.IupLoadDtos;
 import org.school.personalLoad.model.*;
 import org.school.personalLoad.repository.*;
 import org.school.personalLoad.service.impl.ClassNameNormalizer;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,11 +28,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class IupLoadService {
 
-    private static final BigDecimal K2_COEFFICIENT =
-            BigDecimal.valueOf(25).divide(BigDecimal.valueOf(2), 10, RoundingMode.HALF_UP);
-    private static final BigDecimal K3_COEFFICIENT =
-            BigDecimal.valueOf(25).divide(BigDecimal.valueOf(3), 10, RoundingMode.HALF_UP);
-
     private final ManualLoadEntryRepository manualLoadRepository;
     private final IupPlanRepository iupPlanRepository;
     private final IupSubjectLineRepository iupSubjectLineRepository;
@@ -42,12 +38,16 @@ public class IupLoadService {
     private final SubjectCatalogRepository subjectRepository;
     private final ClassroomLeadershipRepository classroomRepository;
     private final LoadSalaryCalculationService salaryCalculationService;
+    private final IupCompensationCalculator iupCompensationCalculator;
+    private final ObjectProvider<HrDocumentService> hrDocumentServiceProvider;
 
     @Transactional
     public void synchronize(Long planId) {
+        List<ManualLoadEntry> previousRows=manualLoadRepository.findAllBySourceIupPlanId(planId);
         manualLoadRepository.deleteAllBySourceIupPlanId(planId);
         IupPlan plan = iupPlanRepository.findById(planId).orElse(null);
         if (plan == null || !isIssued(plan.getStatus())) {
+            markAgreementChanges(plan,previousRows,List.of());
             return;
         }
 
@@ -62,6 +62,7 @@ public class IupLoadService {
                         && assignment.getHoursPerWeek().signum() > 0)
                 .toList();
         if (assignments.isEmpty()) {
+            markAgreementChanges(plan,previousRows,List.of());
             return;
         }
 
@@ -166,7 +167,8 @@ public class IupLoadService {
             }
             generated.add(row);
         }
-        manualLoadRepository.saveAll(generated);
+        List<ManualLoadEntry> saved=manualLoadRepository.saveAll(generated);
+        markAgreementChanges(plan,previousRows,saved);
     }
 
     @Transactional
@@ -190,6 +192,30 @@ public class IupLoadService {
                 Objects.requireNonNullElse(row.getLoadFromDate(), LocalDate.now())
         )));
         manualLoadRepository.saveAll(rows);
+        markAnnualIupAgreementsChanged(
+                academicYear,
+                rows.stream().map(ManualLoadEntry::getTeacherId).filter(Objects::nonNull).collect(Collectors.toSet())
+        );
+    }
+
+    private void markAgreementChanges(IupPlan plan,
+                                      Collection<ManualLoadEntry> previousRows,
+                                      Collection<ManualLoadEntry> currentRows){
+        String academicYear=plan==null
+                ?Optional.ofNullable(previousRows).orElse(List.of()).stream()
+                .map(ManualLoadEntry::getAcademicYear).filter(Objects::nonNull).findFirst().orElse(null)
+                :plan.getAcademicYear();
+        Set<Long> teacherIds=new LinkedHashSet<>();
+        Optional.ofNullable(previousRows).orElse(List.of()).stream()
+                .map(ManualLoadEntry::getTeacherId).filter(Objects::nonNull).forEach(teacherIds::add);
+        Optional.ofNullable(currentRows).orElse(List.of()).stream()
+                .map(ManualLoadEntry::getTeacherId).filter(Objects::nonNull).forEach(teacherIds::add);
+        markAnnualIupAgreementsChanged(academicYear,teacherIds);
+    }
+
+    private void markAnnualIupAgreementsChanged(String academicYear,Collection<Long> teacherIds){
+        HrDocumentService service=hrDocumentServiceProvider.getIfAvailable();
+        if(service!=null)service.markAnnualIupAgreementsChanged(academicYear,teacherIds);
     }
 
     @Transactional
@@ -324,7 +350,9 @@ public class IupLoadService {
         view.setOrderNumber(plan == null ? null : plan.getOrderNumber());
         view.setOrderDate(plan == null ? null : plan.getOrderDate());
         view.setSubjectCoefficient(salary == null ? BigDecimal.ONE : salary.subjectCoefficient());
-        view.setCategoryCoefficient(categoryCoefficient(view.getStudentCategory()));
+        view.setCategoryCoefficient(salary == null
+                ? iupCompensationCalculator.categoryCoefficient(view.getStudentCategory())
+                : salary.groupCoefficient());
         view.setPreliminaryMonthlyAmount(salary == null ? BigDecimal.ZERO : salary.amount());
         view.setActiveNow(contains(row.getLoadFromDate(), row.getLoadToDate(), today)
                 && plan != null && isIssued(plan.getStatus()));
@@ -446,16 +474,6 @@ public class IupLoadService {
 
     private String normalize(String value) {
         return Objects.toString(value, "").trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
-    }
-
-    public static BigDecimal categoryCoefficient(StudentCategory category) {
-        if (category == StudentCategory.K2) {
-            return K2_COEFFICIENT;
-        }
-        if (category == StudentCategory.K3) {
-            return K3_COEFFICIENT;
-        }
-        return BigDecimal.ONE;
     }
 
     private String categoryLabel(StudentCategory category) {

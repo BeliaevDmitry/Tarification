@@ -40,6 +40,8 @@ import static org.springframework.http.HttpStatus.*;
 public class HrDocumentService {
     private static final String ANNUAL_LOAD_SUMMARY = "Нагрузка и должностной оклад";
     private static final String CLASSROOM_SUMMARY_SUFFIX = " · Классное руководство";
+    private static final String IUP_SUMMARY = "Работа с обучающимися с ОВЗ, детьми-инвалидами";
+    private static final String IUP_SUMMARY_SUFFIX = " · " + IUP_SUMMARY;
     private static final String INCENTIVE_SUMMARY_SUFFIX = " · Стимулирующая выплата";
     private static final Set<String> STANDARD_CONTRACT_CLAUSES = Set.of("2.1","2.4","2.5");
     private static final String ANNUAL_LOAD_PLACEHOLDER =
@@ -630,8 +632,10 @@ public class HrDocumentService {
         int startYear=Integer.parseInt(r.academicYear().substring(0,4));LocalDate from=r.validFrom()==null?firstWorkingDay(LocalDate.of(startYear,9,1)):r.validFrom();LocalDate to=LocalDate.of(startYear+1,8,31);
         Set<Long> requestedContracts=r.contractIds()==null?Set.of():new HashSet<>(r.contractIds());
         Set<Long> requestedTeachers=requestedContracts.stream().map(contracts::findById).flatMap(Optional::stream).map(EmploymentContract::getTeacherId).collect(Collectors.toSet());
-        Set<Long> loadTeacherIds=loadTeacherIds(r.academicYear());
+        Set<Long> loadTeacherIds=coreLoadTeacherIds(r.academicYear());
+        Set<Long> iupTeacherIds=iupTeacherIds(r.academicYear());
         Set<Long> teacherIds=new LinkedHashSet<>(loadTeacherIds);
+        teacherIds.addAll(iupTeacherIds);
         classroomLeadershipRepository.findAllByAcademicYear(r.academicYear()).stream()
                 .map(ClassroomLeadershipEntry::getTeacherId).filter(Objects::nonNull).forEach(teacherIds::add);
         incentiveRepository.findAllByAcademicYear(r.academicYear()).stream()
@@ -655,7 +659,11 @@ public class HrDocumentService {
                         .contains(annual.getStatus())){
                     String oldConditions=annual.getConditionsJson();String oldSummary=annual.getSummary();
                     BigDecimal oldAmount=annual.getTotalAmount();
-                    applyAutomaticLoadClause(annual,teacherId);
+                    if(loadTeacherIds.contains(teacherId)){
+                        ensureAutomaticAnnualLoadClause(annual);
+                        applyAutomaticLoadClause(annual,teacherId);
+                    }
+                    else removeAutomaticAnnualLoadClause(annual);
                     applyAutomaticAnnualClassroomLeadershipClause(annual,teacherId,true);
                     if(!Objects.equals(oldConditions,annual.getConditionsJson())
                             ||!Objects.equals(oldSummary,annual.getSummary())
@@ -668,12 +676,16 @@ public class HrDocumentService {
                 continue;
             }
             boolean hasLoad=loadTeacherIds.contains(teacherId);
-            List<CompensationFunction> classroomFunctions=classroomLeadershipFunctions(r.academicYear(),teacherId);
+            List<CompensationFunction> clause24Functions=annualClause24Functions(r.academicYear(),teacherId);
             String conditions=hasLoad?ANNUAL_LOAD_PLACEHOLDER:"";
-            if(!classroomFunctions.isEmpty())
-                conditions=upsertClause24Block(conditions,clause24Text(classroomFunctions));
+            if(!clause24Functions.isEmpty())
+                conditions=upsertClause24Block(conditions,clause24Text(clause24Functions));
             conditions=withIncentiveClause(conditions,incentiveAmount);
-            String summary=annualSummary(hasLoad,!classroomFunctions.isEmpty(),incentiveAmount.signum()>0);
+            boolean hasClassroomLeadership=clause24Functions.stream()
+                    .anyMatch(function->"классное руководство".equals(normalizedFunctionName(function.name())));
+            boolean hasIup=clause24Functions.stream()
+                    .anyMatch(function->"iup".equals(normalizedFunctionName(function.name())));
+            String summary=annualSummary(hasLoad,hasClassroomLeadership,hasIup,incentiveAmount.signum()>0);
             Long replacesAgreementId=latestAnnulledAnnualRegistryAgreement(existing,teacherId,from,to)
                     .map(AdditionalAgreement::getId).orElse(null);
             AdditionalAgreement created=createAgreementForTeacher(new AgreementRequest(contract==null?null:contract.getId(),null,
@@ -843,7 +855,23 @@ public class HrDocumentService {
     private Set<Long> loadTeacherIds(String academicYear){
         return loadRepository.findAllByAcademicYear(academicYear).stream()
                 .filter(row->!row.isOrphaned())
-                .filter(row->Optional.ofNullable(row.getGroupLoad()).orElse(Optional.ofNullable(row.getLoad()).orElse(0))>0)
+                .filter(row->row.getEffectiveLoadHours().signum()>0)
+                .map(ManualLoadEntry::getTeacherId).filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private Set<Long> coreLoadTeacherIds(String academicYear){
+        return loadRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(row->!row.isOrphaned()&&!row.isIupLoad())
+                .filter(row->row.getEffectiveLoadHours().signum()>0)
+                .map(ManualLoadEntry::getTeacherId).filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private Set<Long> iupTeacherIds(String academicYear){
+        return loadRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(row->!row.isOrphaned()&&row.isIupLoad())
+                .filter(row->row.getEffectiveLoadHours().signum()>0)
                 .map(ManualLoadEntry::getTeacherId).filter(Objects::nonNull)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
@@ -877,9 +905,48 @@ public class HrDocumentService {
                 .forEach(agreement->{
                     Long teacherId=agreementTeacherId(agreement,null);
                     List<LoadDetail> details=loadDetails(teacherId,academicYear,agreement.getValidFrom());
-                    agreement.setTotalAmount(calculatedLoadAmount(details));
-                    markAgreementContentChanged(agreement);
-                    agreements.save(agreement);
+                    String oldConditions=agreement.getConditionsJson();
+                    String oldSummary=agreement.getSummary();
+                    BigDecimal oldAmount=agreement.getTotalAmount();
+                    if(details.isEmpty())removeAutomaticAnnualLoadClause(agreement);
+                    else{
+                        ensureAutomaticAnnualLoadClause(agreement);
+                        applyAutomaticLoadClause(agreement,teacherId);
+                    }
+                    if(!Objects.equals(oldConditions,agreement.getConditionsJson())
+                            ||!Objects.equals(oldSummary,agreement.getSummary())
+                            ||!Objects.equals(oldAmount,agreement.getTotalAmount())){
+                        markAgreementContentChanged(agreement);
+                        agreements.save(agreement);
+                    }
+                });
+    }
+
+    @Transactional
+    public void markAnnualIupAgreementsChanged(String academicYear,Collection<Long> teacherIds){
+        Set<Long> affected=Optional.ofNullable(teacherIds).orElse(List.of()).stream()
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        if(affected.isEmpty()||!present(academicYear))return;
+        agreements.findAllByAcademicYearOrderByCreatedAtDesc(academicYear).stream()
+                .filter(this::isAnnualRegistryAgreement)
+                .filter(agreement->affected.contains(agreementTeacherId(agreement,null)))
+                .filter(agreement->EnumSet.of(AdditionalAgreement.Status.WAITING_FOR_MEMO,
+                        AdditionalAgreement.Status.DRAFT,AdditionalAgreement.Status.READY,
+                        AdditionalAgreement.Status.REQUIRES_DECISION,AdditionalAgreement.Status.ISSUED,
+                        AdditionalAgreement.Status.SIGNING).contains(agreement.getStatus()))
+                .forEach(agreement->{
+                    String oldConditions=agreement.getConditionsJson();
+                    String oldSummary=agreement.getSummary();
+                    applyAutomaticAnnualClassroomLeadershipClause(
+                            agreement,
+                            agreementTeacherId(agreement,null),
+                            true
+                    );
+                    if(!Objects.equals(oldConditions,agreement.getConditionsJson())
+                            ||!Objects.equals(oldSummary,agreement.getSummary())){
+                        markAgreementContentChanged(agreement);
+                        agreements.save(agreement);
+                    }
                 });
     }
 
@@ -1715,6 +1782,35 @@ public class HrDocumentService {
         return List.copyOf(functions.values());
     }
 
+    private List<CompensationFunction> annualClause24Functions(String academicYear,Long teacherId){
+        Map<String,CompensationFunction> functions=new LinkedHashMap<>();
+        addClassroomLeadershipFunction(functions,academicYear,teacherId);
+        iupCompensationFunction(academicYear,teacherId)
+                .ifPresent(function->functions.put("iup",function));
+        return List.copyOf(functions.values());
+    }
+
+    private Optional<CompensationFunction> iupCompensationFunction(String academicYear,Long teacherId){
+        List<ManualLoadEntry> rows=loadRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(ManualLoadEntry::isIupLoad)
+                .filter(row->Objects.equals(row.getTeacherId(),teacherId))
+                .filter(row->row.getEffectiveLoadHours().signum()>0)
+                .toList();
+        if(rows.isEmpty())return Optional.empty();
+        Map<Long,LoadSalaryCalculationService.SalaryLine> calculated=
+                loadSalaryCalculationService.calculate(academicYear,rows);
+        BigDecimal amount=rows.stream().map(row->{
+                    LoadSalaryCalculationService.SalaryLine line=calculated.get(row.getId());
+                    return line==null?loadSalaryCalculationService.calculate(academicYear,row).amount():line.amount();
+                })
+                .reduce(BigDecimal.ZERO,BigDecimal::add)
+                .setScale(2,RoundingMode.HALF_UP);
+        if(amount.signum()<=0)return Optional.empty();
+        String legalLine="возложена работа с обучающимися с ограниченными возможностями здоровья, детьми-инвалидами, в размере "
+                +moneyLegal(amount)+" ("+moneyWordsLegal(amount)+") в месяц";
+        return Optional.of(new CompensationFunction("IUP",amount,legalLine));
+    }
+
     private void addClassroomLeadershipFunction(Map<String,CompensationFunction> functions,String academicYear,Long teacherId){
         List<ClassroomLeadershipEntry> classes=classroomLeadershipRepository.findAllByAcademicYear(academicYear).stream()
                 .filter(entry->Objects.equals(entry.getTeacherId(),teacherId))
@@ -1772,7 +1868,7 @@ public class HrDocumentService {
         LocalDate effectiveDate=agreement.getValidFrom()==null?memo.getValidFrom():agreement.getValidFrom();
         Map<String,CompensationFunction> functions=new LinkedHashMap<>();
         if(isAnnualRegistryAgreement(agreement))
-            classroomLeadershipFunctions(agreement.getAcademicYear(),teacherId)
+            annualClause24Functions(agreement.getAcademicYear(),teacherId)
                     .forEach(function->functions.put(normalizedFunctionName(function.name()),function));
         compensationFunctions(agreement.getAcademicYear(),teacherId,"2.4",false,assignment,amount,effectiveDate)
                 .forEach(function->functions.putIfAbsent(normalizedFunctionName(function.name()),function));
@@ -1801,32 +1897,51 @@ public class HrDocumentService {
     }
 
     private void applyAutomaticAnnualClassroomLeadershipClause(AdditionalAgreement agreement,Long teacherId,boolean force){
-        if(agreement==null||teacherId==null||agreement.getServiceMemoId()!=null
+        if(agreement==null||teacherId==null
                 ||agreement.getKind()!=AdditionalAgreement.Kind.PAY_TERMS||!isAnnualPeriod(agreement))return;
-        if(!force&&!Objects.toString(agreement.getSummary(),"").contains("Классное руководство"))return;
-        List<CompensationFunction> functions=classroomLeadershipFunctions(agreement.getAcademicYear(),teacherId);
-        String replacement=functions.isEmpty()?"":clause24Text(functions);
-        agreement.setConditionsJson(upsertClause24Block(agreement.getConditionsJson(),replacement));
-        agreement.setSummary(updateAnnualClassroomSummary(agreement.getSummary(),!functions.isEmpty()));
+        String currentSummary=Objects.toString(agreement.getSummary(),"");
+        if(!force&&!currentSummary.contains("Классное руководство")
+                &&!currentSummary.contains(IUP_SUMMARY))return;
+        List<CompensationFunction> functions=annualClause24Functions(agreement.getAcademicYear(),teacherId);
+        if(agreement.getServiceMemoId()!=null){
+            applyAutomaticCompensationClause(agreement,teacherId);
+        }else{
+            String replacement=functions.isEmpty()?"":clause24Text(functions);
+            agreement.setConditionsJson(upsertClause24Block(agreement.getConditionsJson(),replacement));
+        }
+        boolean hasClassroomLeadership=functions.stream()
+                .anyMatch(function->"классное руководство".equals(normalizedFunctionName(function.name())));
+        boolean hasIup=functions.stream()
+                .anyMatch(function->"iup".equals(normalizedFunctionName(function.name())));
+        agreement.setSummary(updateAnnualClause24Summary(
+                agreement.getSummary(),
+                hasClassroomLeadership,
+                hasIup
+        ));
     }
 
-    private String annualSummary(boolean hasLoad,boolean hasClassroomLeadership,boolean hasIncentive){
+    private String annualSummary(boolean hasLoad,boolean hasClassroomLeadership,boolean hasIup,boolean hasIncentive){
         List<String> parts=new ArrayList<>();
         if(hasLoad)parts.add(ANNUAL_LOAD_SUMMARY);
         if(hasClassroomLeadership)parts.add("Классное руководство");
+        if(hasIup)parts.add(IUP_SUMMARY);
         if(hasIncentive)parts.add("Стимулирующая выплата");
         return String.join(" · ",parts);
     }
 
-    private String updateAnnualClassroomSummary(String current,boolean includeClassroomLeadership){
+    private String updateAnnualClause24Summary(String current,boolean includeClassroomLeadership,boolean includeIup){
         String summary=Objects.toString(current,"").trim();
         boolean incentive=summary.contains("Стимулирующая выплата");
         summary=summary.replace(INCENTIVE_SUMMARY_SUFFIX,"").trim();
+        summary=summary.replace(IUP_SUMMARY_SUFFIX,"").trim();
         summary=summary.replace(CLASSROOM_SUMMARY_SUFFIX,"").trim();
         if("Классное руководство".equals(summary))summary="";
+        if(IUP_SUMMARY.equals(summary))summary="";
         if("Стимулирующая выплата".equals(summary))summary="";
         if(includeClassroomLeadership)
             summary=summary.isBlank()?"Классное руководство":summary+CLASSROOM_SUMMARY_SUFFIX;
+        if(includeIup)
+            summary=summary.isBlank()?IUP_SUMMARY:summary+IUP_SUMMARY_SUFFIX;
         if(incentive)
             summary=summary.isBlank()?"Стимулирующая выплата":summary+INCENTIVE_SUMMARY_SUFFIX;
         return summary;
@@ -1867,6 +1982,46 @@ public class HrDocumentService {
     private boolean isClause24Block(String block){
         return block.contains("пункт 2.4")||block.contains("пункта 2.4")
                 ||block.contains("\"2.4.")||block.contains("«2.4.");
+    }
+
+    private void ensureAutomaticAnnualLoadClause(AdditionalAgreement agreement){
+        if(agreement==null||!isAnnualRegistryAgreement(agreement)||isLoadAgreement(agreement))return;
+        String current=Objects.toString(agreement.getConditionsJson(),"").trim();
+        agreement.setConditionsJson(current.isEmpty()
+                ?ANNUAL_LOAD_PLACEHOLDER
+                :ANNUAL_LOAD_PLACEHOLDER+"\n\n"+current);
+        agreement.setSummary(addSummaryPart(agreement.getSummary(),ANNUAL_LOAD_SUMMARY,true));
+    }
+
+    private void removeAutomaticAnnualLoadClause(AdditionalAgreement agreement){
+        if(agreement==null||!isAnnualRegistryAgreement(agreement))return;
+        agreement.setConditionsJson(removeClause21Block(agreement.getConditionsJson()));
+        agreement.setSummary(addSummaryPart(agreement.getSummary(),ANNUAL_LOAD_SUMMARY,false));
+        agreement.setTotalAmount(BigDecimal.ZERO.setScale(2,RoundingMode.HALF_UP));
+    }
+
+    private String removeClause21Block(String conditions){
+        return Arrays.stream(Objects.toString(conditions,"").replace("\r\n","\n")
+                        .replace('\r','\n').trim().split("\\n\\s*\\n(?=(?:Внести|Изложить))"))
+                .map(String::trim)
+                .filter(this::present)
+                .filter(block->!isClause21Block(block))
+                .collect(Collectors.joining("\n\n"));
+    }
+
+    private boolean isClause21Block(String block){
+        return block.contains("пункт 2.1")||block.contains("пункта 2.1")
+                ||block.contains("\"2.1.")||block.contains("«2.1.");
+    }
+
+    private String addSummaryPart(String current,String part,boolean include){
+        List<String> parts=Arrays.stream(Objects.toString(current,"").split("\\s*·\\s*"))
+                .map(String::trim)
+                .filter(this::present)
+                .filter(value->!value.equalsIgnoreCase(part))
+                .collect(Collectors.toCollection(ArrayList::new));
+        if(include)parts.add(0,part);
+        return String.join(" · ",parts);
     }
 
     private void applyAutomaticLoadClause(AdditionalAgreement agreement,Long teacherId){
@@ -2047,6 +2202,7 @@ public class HrDocumentService {
     private List<LoadDetail> loadDetails(Long teacherId,String year,LocalDate date){
         List<ManualLoadEntry> rows=loadRepository.findAllByAcademicYear(year).stream()
                 .filter(row->Objects.equals(row.getTeacherId(),teacherId))
+                .filter(row->!row.isIupLoad())
                 .filter(row->date==null||row.getLoadFromDate()==null||!row.getLoadFromDate().isAfter(date))
                 .filter(row->date==null||row.getLoadToDate()==null||!row.getLoadToDate().isBefore(date))
                 .toList();

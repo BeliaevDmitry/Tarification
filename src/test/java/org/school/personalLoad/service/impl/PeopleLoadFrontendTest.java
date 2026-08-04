@@ -40,5 +40,7 @@ class PeopleLoadFrontendTest {
         assertTrue(js.contains("Всего основных"));
         assertTrue(js.contains("Полная нагрузка"));
         assertTrue(js.contains("Предварительная сумма"));
+        assertTrue(js.indexOf("\"/api/primary-subjects/rules\"")
+                < js.indexOf("const [buildings, classes, teachers"));
     }
 }

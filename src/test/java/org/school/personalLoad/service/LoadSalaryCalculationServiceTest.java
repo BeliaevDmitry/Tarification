@@ -33,7 +33,7 @@ class LoadSalaryCalculationServiceTest {
     @BeforeEach
     void setUp() {
         service = new LoadSalaryCalculationService(classSizeService, salarySettingsRepository,
-                coefficientRepository, groupSubjectRepository);
+                coefficientRepository, groupSubjectRepository, new IupCompensationCalculator());
         when(classSizeService.effectiveClassSizes("2026/2027")).thenReturn(Map.of("7-А", 20));
         SalarySettings settings = new SalarySettings();
         settings.setStudentHourRate(new BigDecimal("37"));
@@ -121,7 +121,8 @@ class LoadSalaryCalculationServiceTest {
         BigDecimal expected = new BigDecimal("1.5")
                 .multiply(new BigDecimal("1.2"))
                 .multiply(BigDecimal.valueOf(34).divide(BigDecimal.valueOf(12), 10, RoundingMode.HALF_UP))
-                .multiply(new BigDecimal("12.5"));
+                .multiply(new BigDecimal("12.5"))
+                .setScale(2, RoundingMode.HALF_UP);
         assertEquals(0, expected.compareTo(line.amount()));
     }
 }

@@ -8,6 +8,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.school.personalLoad.model.*;
 import org.school.personalLoad.repository.*;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -16,6 +17,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,12 +44,19 @@ class IupLoadServiceTest {
     private ClassroomLeadershipRepository classroomRepository;
     @Mock
     private LoadSalaryCalculationService salaryCalculationService;
+    @Mock
+    private IupCompensationCalculator iupCompensationCalculator;
+    @Mock
+    private ObjectProvider<HrDocumentService> hrDocumentServiceProvider;
+    @Mock
+    private HrDocumentService hrDocumentService;
 
     @InjectMocks
     private IupLoadService service;
 
     @Test
     void issuedFaceToFaceAssignmentCreatesProtectedCommonLoadRow() {
+        when(hrDocumentServiceProvider.getIfAvailable()).thenReturn(hrDocumentService);
         StudentProfile student = new StudentProfile();
         student.setId(11L);
         student.setCurrentFullName("Иванов Алексей Андреевич");
@@ -110,6 +119,8 @@ class IupLoadServiceTest {
         when(supportStatusRepository.findAllByStudent_IdAndAcademicYearOrderByValidFromDesc(
                 11L, "2026/2027"
         )).thenReturn(List.of(status));
+        when(manualLoadRepository.saveAll(anyList()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         service.synchronize(21L);
 
@@ -125,5 +136,6 @@ class IupLoadServiceTest {
         assertEquals(11L, row.getSourceStudentId());
         assertNull(row.getClassId());
         assertNull(row.getGroupNameEducationalPlan());
+        verify(hrDocumentService).markAnnualIupAgreementsChanged("2026/2027", java.util.Set.of(61L));
     }
 }

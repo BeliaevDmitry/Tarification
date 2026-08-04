@@ -36,6 +36,7 @@ public class StudentDataExchangeServiceImpl implements StudentDataExchangeServic
     private static final String SHEET_CHILDREN = "Дети";
     private static final String SHEET_NOSOLOGIES = "Нозологии";
     private static final String SHEET_STATUSES = "Статусы";
+    private static final String SHEET_DOCUMENTS = "Документы";
     private static final String SHEET_IUPS = "ИУП";
     private static final String SHEET_IUP_SUBJECTS = "Предметы ИУП";
     private static final String SHEET_IUP_TEACHERS = "Педагоги ИУП";
@@ -55,6 +56,8 @@ public class StudentDataExchangeServiceImpl implements StudentDataExchangeServic
     private final ContingentStudentRepository contingentStudentRepository;
     private final StudentProfileRepository studentProfileRepository;
     private final StudentSupportStatusRepository supportStatusRepository;
+    private final StudentSupportDocumentRepository supportDocumentRepository;
+    private final StudentSupportDocumentAttachmentRepository supportDocumentAttachmentRepository;
     private final NosologyCatalogEntryRepository nosologyRepository;
     private final IupPlanRepository iupPlanRepository;
     private final IupSubjectLineRepository iupSubjectLineRepository;
@@ -77,6 +80,7 @@ public class StudentDataExchangeServiceImpl implements StudentDataExchangeServic
             writeChildren(workbook, context, styles);
             writeNosologies(workbook, styles);
             writeStatuses(workbook, academicYear, context, styles);
+            writeDocuments(workbook, academicYear, context, styles);
             writeIups(workbook, academicYear, styles);
             writeMeshNames(workbook, academicYear, styles);
             writeDistribution(workbook, academicYear, context, styles);
@@ -100,6 +104,7 @@ public class StudentDataExchangeServiceImpl implements StudentDataExchangeServic
         try (InputStream input = file.getInputStream(); Workbook workbook = WorkbookFactory.create(input)) {
             importNosologies(workbook, result);
             importStatuses(workbook, academicYear, result);
+            importDocuments(workbook, academicYear, result);
             importIups(workbook, academicYear, result);
             importMeshNames(workbook, academicYear, result);
             importDistribution(workbook, academicYear, result);
@@ -424,6 +429,7 @@ public class StudentDataExchangeServiceImpl implements StudentDataExchangeServic
                 List.of("Норма по умолчанию", "Если на листе «Статусы» нет записи о ребёнке, он считается категорией «Норма»."),
                 List.of("Названия МЭШ", "Если название МЭШ пустое или отдельной связи нет, используется название из УП."),
                 List.of("ИУП и подгруппы", "Ребёнок с действующим ИУП не распределяется автоматически. Строка группы нужна только для предмета, который он посещает с классом."),
+                List.of("Документы", "Лист «Документы» переносит реквизиты МСЭ, ИПР/ИПРА, ЦПМПК, ППк, ИОМ и других документов. Файлы-копии в Excel не вкладываются: их прикрепляют в карточке документа."),
                 List.of("Идентификаторы", "Не меняйте заполненные ID. Для новых строк допустимо оставить ID пустым и использовать указанные ключи."),
                 List.of("Даты", "Рекомендуемый формат: ГГГГ-ММ-ДД."),
                 List.of("Расчёт", "До успешного контроля действует прежняя логика. После контроля фактическая численность применяется автоматически.")
@@ -512,6 +518,60 @@ public class StudentDataExchangeServiceImpl implements StudentDataExchangeServic
                     );
                 }).toList();
         writeTable(workbook, SHEET_STATUSES, headers, rows, styles, true);
+    }
+
+    private void writeDocuments(Workbook workbook,
+                                String academicYear,
+                                ExportContext context,
+                                WorkbookStyles styles) {
+        List<String> headers = List.of(
+                "Действие", "Документ ID", "Карточка ID", "Личное дело", "ФИО", "Дата рождения", "Класс",
+                "Вид документа", "Форма приёма", "Номер", "Дата выдачи", "Дата с", "Дата по",
+                "Кем выдан", "Дата приёма", "Ответственный", "Комментарий", "Прикреплено файлов"
+        );
+        Map<Long, ContingentStudent> sourceByStudent = context.sourceRows().stream()
+                .filter(row -> row.getStudentId() != null)
+                .collect(Collectors.toMap(ContingentStudent::getStudentId, Function.identity(), (a, b) -> a));
+        List<List<Object>> rows = new ArrayList<>();
+        for (StudentSupportDocument document :
+                supportDocumentRepository.findAllByAcademicYearOrderByValidToAscStudent_CurrentFullNameAsc(
+                        academicYear
+                )) {
+            ContingentStudent source = sourceByStudent.get(document.getStudent().getId());
+            int attachments = supportDocumentAttachmentRepository
+                    .findAllByDocument_IdOrderByUploadedAtAsc(document.getId()).size();
+            rows.add(List.of(
+                    "UPSERT", document.getId(), document.getStudent().getId(),
+                    nullable(source == null
+                            ? document.getStudent().getRecordNumber()
+                            : source.getRecordNumber()),
+                    document.getStudent().getCurrentFullName(),
+                    nullable(document.getStudent().getBirthDate()),
+                    nullable(source == null
+                            ? currentClassName(document.getStudent().getId(), academicYear)
+                            : source.getClassName()),
+                    document.getDocumentType().name(),
+                    document.getAcceptedForm().name(),
+                    nullable(document.getDocumentNumber()),
+                    nullable(document.getIssueDate()),
+                    nullable(document.getValidFrom()),
+                    nullable(document.getValidTo()),
+                    nullable(document.getIssuingOrganization()),
+                    document.getReceivedAt(),
+                    nullable(document.getResponsibleEmployee()),
+                    nullable(document.getComment()),
+                    attachments
+            ));
+        }
+        if (rows.isEmpty()) {
+            rows.add(List.of(
+                    "ПРИМЕР", "", "", "ЛД-1", "Иванов Иван Иванович", "2015-01-01", "5-А",
+                    "MSE_CERTIFICATE", "COPY", "МСЭ-001", "2026-09-01", "2026-09-01",
+                    "2027-08-31", "Бюро МСЭ", "2026-09-02", "Ответственный сотрудник",
+                    "Условный пример — строка не импортируется", 0
+            ));
+        }
+        writeTable(workbook, SHEET_DOCUMENTS, headers, rows, styles, true);
     }
 
     private void writeIups(Workbook workbook, String academicYear, WorkbookStyles styles) {
@@ -896,6 +956,77 @@ public class StudentDataExchangeServiceImpl implements StudentDataExchangeServic
                 counter.imported++;
             } catch (RuntimeException exception) {
                 accumulator.error(SHEET_STATUSES, excelRow, exception);
+            }
+        }
+    }
+
+    private void importDocuments(Workbook workbook,
+                                 String academicYear,
+                                 ImportAccumulator accumulator) {
+        SheetTable table = table(workbook, SHEET_DOCUMENTS);
+        if (table == null) {
+            return;
+        }
+        SheetCounter counter = accumulator.sheet(SHEET_DOCUMENTS);
+        for (int rowIndex = table.firstDataRow(); rowIndex <= table.lastRow(); rowIndex++) {
+            int excelRow = rowIndex + 1;
+            try {
+                String action = action(table.text(rowIndex, "Действие"));
+                if (skipAction(action)
+                        || blankRow(table, rowIndex, "Документ ID", "Карточка ID", "ФИО", "Вид документа")) {
+                    counter.skipped++;
+                    continue;
+                }
+                Long documentId = table.longValue(rowIndex, "Документ ID");
+                StudentSupportDocument document = documentId == null
+                        ? new StudentSupportDocument()
+                        : supportDocumentRepository.findById(documentId)
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "Документ не найден: " + documentId
+                        ));
+                if (document.getId() != null && !Objects.equals(document.getAcademicYear(), academicYear)) {
+                    throw new IllegalArgumentException("Документ относится к другому учебному году");
+                }
+                if ("DELETE".equals(action)) {
+                    if (documentId == null) {
+                        throw new IllegalArgumentException("Для удаления укажите ID документа");
+                    }
+                    supportDocumentAttachmentRepository.deleteAllByDocument_Id(documentId);
+                    supportDocumentRepository.delete(document);
+                    counter.deleted++;
+                    continue;
+                }
+
+                StudentProfile student = resolveStudent(table, rowIndex);
+                if (document.getId() != null
+                        && !Objects.equals(document.getStudent().getId(), student.getId())) {
+                    throw new IllegalArgumentException(
+                            "Нельзя перенести существующий документ в карточку другого ребёнка"
+                    );
+                }
+                LocalDate validFrom = table.date(rowIndex, "Дата с");
+                LocalDate validTo = table.date(rowIndex, "Дата по");
+                validateDates(validFrom, validTo);
+                document.setStudent(student);
+                document.setAcademicYear(academicYear);
+                document.setDocumentType(parseDocumentType(table.text(rowIndex, "Вид документа")));
+                document.setAcceptedForm(parseDocumentForm(table.text(rowIndex, "Форма приёма")));
+                document.setDocumentNumber(trimToNull(table.text(rowIndex, "Номер")));
+                document.setIssueDate(table.date(rowIndex, "Дата выдачи"));
+                document.setValidFrom(validFrom);
+                document.setValidTo(validTo);
+                document.setIssuingOrganization(trimToNull(table.text(rowIndex, "Кем выдан")));
+                document.setReceivedAt(Objects.requireNonNullElse(
+                        table.date(rowIndex, "Дата приёма"),
+                        LocalDate.now()
+                ));
+                document.setResponsibleEmployee(trimToNull(table.text(rowIndex, "Ответственный")));
+                document.setComment(trimToNull(table.text(rowIndex, "Комментарий")));
+                document.setUpdatedAt(LocalDateTime.now());
+                supportDocumentRepository.save(document);
+                counter.imported++;
+            } catch (RuntimeException exception) {
+                accumulator.error(SHEET_DOCUMENTS, excelRow, exception);
             }
         }
     }
@@ -1513,6 +1644,13 @@ public class StudentDataExchangeServiceImpl implements StudentDataExchangeServic
         addListValidation(sheet, headers, "Действие", new String[]{"UPSERT", "DELETE"}, lastRow);
         if (SHEET_STATUSES.equals(sheetName)) {
             addListValidation(sheet, headers, "Категория", new String[]{"NORMAL", "K2", "K3"}, lastRow);
+        } else if (SHEET_DOCUMENTS.equals(sheetName)) {
+            addListValidation(sheet, headers, "Вид документа", Arrays.stream(StudentSupportDocumentType.values())
+                    .map(Enum::name)
+                    .toArray(String[]::new), lastRow);
+            addListValidation(sheet, headers, "Форма приёма", Arrays.stream(StudentSupportDocumentForm.values())
+                    .map(Enum::name)
+                    .toArray(String[]::new), lastRow);
         } else if (SHEET_NOSOLOGIES.equals(sheetName)) {
             addListValidation(sheet, headers, "Коэффициент", new String[]{"K2", "K3"}, lastRow);
             addListValidation(sheet, headers, "Активна", new String[]{"TRUE", "FALSE"}, lastRow);
@@ -1715,6 +1853,34 @@ public class StudentDataExchangeServiceImpl implements StudentDataExchangeServic
             case "K3", "3" -> StudentCategory.K3;
             case "NORMAL", "НОРМА", "" -> StudentCategory.NORMAL;
             default -> throw new IllegalArgumentException("Неизвестная категория: " + value);
+        };
+    }
+
+    private StudentSupportDocumentType parseDocumentType(String value) {
+        String normalized = Objects.toString(value, "").trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "СПРАВКА МСЭ", "МСЭ", "MSE_CERTIFICATE" ->
+                    StudentSupportDocumentType.MSE_CERTIFICATE;
+            case "ИПР", "ИПРА", "ИПР/ИПРА", "IPR_IPRA" ->
+                    StudentSupportDocumentType.IPR_IPRA;
+            case "ЗАКЛЮЧЕНИЕ ЦПМПК", "ЦПМПК", "CPMPC_CONCLUSION" ->
+                    StudentSupportDocumentType.CPMPC_CONCLUSION;
+            case "ПРОТОКОЛ ППК", "ППК", "INTERNAL_PPK_PROTOCOL" ->
+                    StudentSupportDocumentType.INTERNAL_PPK_PROTOCOL;
+            case "ИОМ", "IOM" -> StudentSupportDocumentType.IOM;
+            case "ДРУГОЙ ДОКУМЕНТ", "ДРУГОЙ", "OTHER" -> StudentSupportDocumentType.OTHER;
+            default -> throw new IllegalArgumentException("Неизвестный вид документа: " + value);
+        };
+    }
+
+    private StudentSupportDocumentForm parseDocumentForm(String value) {
+        String normalized = Objects.toString(value, "").trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "", "КОПИЯ", "COPY" -> StudentSupportDocumentForm.COPY;
+            case "ОРИГИНАЛ", "ORIGINAL" -> StudentSupportDocumentForm.ORIGINAL;
+            case "ЭЛЕКТРОННАЯ КОПИЯ", "ЭЛЕКТРОННЫЙ", "ELECTRONIC_COPY" ->
+                    StudentSupportDocumentForm.ELECTRONIC_COPY;
+            default -> throw new IllegalArgumentException("Неизвестная форма приёма: " + value);
         };
     }
 
@@ -1994,7 +2160,7 @@ public class StudentDataExchangeServiceImpl implements StudentDataExchangeServic
             if (cell == null || cell.getCellType() == CellType.BLANK) {
                 return null;
             }
-            if (DateUtil.isCellDateFormatted(cell)) {
+            if (cell.getCellType() == CellType.NUMERIC && DateUtil.isCellDateFormatted(cell)) {
                 return cell.getLocalDateTimeCellValue().toLocalDate();
             }
             String value = formatter.formatCellValue(cell).trim();

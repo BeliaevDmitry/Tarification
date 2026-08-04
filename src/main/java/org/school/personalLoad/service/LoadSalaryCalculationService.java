@@ -8,6 +8,7 @@ import org.school.personalLoad.repository.SalarySettingsRepository;
 import org.school.personalLoad.repository.SubjectLevelCoefficientRepository;
 import org.school.personalLoad.service.impl.ClassNameNormalizer;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -28,8 +29,10 @@ public class LoadSalaryCalculationService {
     private final SalarySettingsRepository salarySettingsRepository;
     private final SubjectLevelCoefficientRepository coefficientRepository;
     private final SalaryGroupCoefficientSubjectRepository groupSubjectRepository;
+    private final IupCompensationCalculator iupCompensationCalculator;
 
     @Autowired(required = false)
+    @Lazy
     private StudentDataExchangeService studentDataExchangeService;
 
     public Map<Long, SalaryLine> calculate(String academicYear, Collection<ManualLoadEntry> rows) {
@@ -125,11 +128,8 @@ public class LoadSalaryCalculationService {
                     row.getIupStudentCategory(),
                     StudentCategory.NORMAL
             );
-            BigDecimal categoryCoefficient = IupLoadService.categoryCoefficient(category);
-            BigDecimal amount = paidHours
-                    .multiply(subjectCoefficient)
-                    .multiply(STUDENT_HOUR_MULTIPLIER)
-                    .multiply(categoryCoefficient);
+            IupCompensationCalculator.Calculation iup =
+                    iupCompensationCalculator.calculate(paidHours, subjectCoefficient, category);
             return new SalaryLine(
                     row.getId(),
                     row.getTeacherId(),
@@ -139,9 +139,9 @@ public class LoadSalaryCalculationService {
                     paidHours,
                     1,
                     BigDecimal.ONE,
-                    subjectCoefficient,
-                    categoryCoefficient,
-                    amount,
+                    iup.subjectCoefficient(),
+                    iup.categoryCoefficient(),
+                    iup.monthlyAmount(),
                     true,
                     "ИУП: отдельная оплата"
             );

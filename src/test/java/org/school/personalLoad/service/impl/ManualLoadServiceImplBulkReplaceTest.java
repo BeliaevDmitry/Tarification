@@ -102,7 +102,8 @@ class ManualLoadServiceImplBulkReplaceTest {
     void setUp() {
         loadSalaryCalculationService = new org.school.personalLoad.service.LoadSalaryCalculationService(
                 classSizeService, salarySettingsRepository, subjectLevelCoefficientRepository,
-                salaryGroupCoefficientSubjectRepository);
+                salaryGroupCoefficientSubjectRepository,
+                new org.school.personalLoad.service.IupCompensationCalculator());
         lenient().when(metaGroupRepository.findById(any()))
                 .thenAnswer(invocation -> Optional.of(metaGroup(invocation.getArgument(0), 36L)));
         TeacherDirectoryEntry teacher = teacher(10L, "Иванов И.И.");

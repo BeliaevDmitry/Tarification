@@ -251,6 +251,45 @@ $$;
 
 CREATE INDEX IF NOT EXISTS idx_manual_load_source_year
     ON manual_load_entry (academic_year, load_source);
+
+CREATE TABLE IF NOT EXISTS student_support_document (
+    id BIGSERIAL PRIMARY KEY,
+    student_id BIGINT NOT NULL REFERENCES student_profile(id),
+    academic_year VARCHAR(20) NOT NULL,
+    document_type VARCHAR(40) NOT NULL,
+    accepted_form VARCHAR(30) NOT NULL DEFAULT 'COPY',
+    document_number VARCHAR(255),
+    issue_date DATE,
+    valid_from DATE,
+    valid_to DATE,
+    issuing_organization VARCHAR(500),
+    received_at DATE NOT NULL,
+    responsible_employee VARCHAR(255),
+    comment VARCHAR(2000),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_support_document_student_year
+    ON student_support_document (student_id, academic_year);
+CREATE INDEX IF NOT EXISTS idx_support_document_dates
+    ON student_support_document (valid_from, valid_to);
+CREATE INDEX IF NOT EXISTS idx_support_document_type
+    ON student_support_document (document_type);
+
+CREATE TABLE IF NOT EXISTS student_support_document_attachment (
+    id BIGSERIAL PRIMARY KEY,
+    document_id BIGINT NOT NULL REFERENCES student_support_document(id) ON DELETE CASCADE,
+    original_file_name VARCHAR(500) NOT NULL,
+    content_type VARCHAR(150) NOT NULL,
+    file_size BIGINT NOT NULL,
+    content BYTEA NOT NULL,
+    uploaded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    uploaded_by VARCHAR(255) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_support_document_attachment_document
+    ON student_support_document_attachment (document_id);
 CREATE INDEX IF NOT EXISTS idx_manual_load_iup_plan
     ON manual_load_entry (source_iup_plan_id);
 CREATE INDEX IF NOT EXISTS idx_manual_load_iup_student

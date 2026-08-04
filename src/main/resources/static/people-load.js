@@ -1019,10 +1019,17 @@ async function loadData() {
         return fallback;
     });
     const iupRows = await optionalApi("/api/manual-load/iup", [], "нагрузка ИУП");
+    // Справочник правил создаётся при первом обращении. Загружаем его до остальных
+    // параллельных запросов, чтобы чистая база не получила две одновременные инициализации.
+    const primaryRules = await optionalApi(
+        "/api/primary-subjects/rules",
+        [],
+        "правила основных предметов"
+    );
     let salaryBreakdownError = null;
     let inRateError = null;
     const [buildings, classes, teachers, subjects, coefficients, salarySettings, groupCoefficientSubjects,
-        primaryAssignments, primaryRules, classSizes, salaryBreakdown, inRateOverview] = await Promise.all([
+        primaryAssignments, classSizes, salaryBreakdown, inRateOverview] = await Promise.all([
         optionalApi("/api/buildings", [], "список корпусов"),
         optionalApi("/api/classroom-leadership", [], "классное руководство"),
         optionalApi("/api/teachers", [], "список работников"),
@@ -1031,7 +1038,6 @@ async function loadData() {
         salaryAccess ? optionalApi("/api/salary-settings", null, "настройки расчёта зарплаты") : Promise.resolve(null),
         salaryAccess ? optionalApi("/api/salary-group-coefficient-subjects", [], "настройки деления на группы") : Promise.resolve([]),
         optionalApi("/api/primary-subjects/teachers", [], "основные предметы работников"),
-        optionalApi("/api/primary-subjects/rules", [], "правила основных предметов"),
         optionalApi("/api/contingent/manual-class-sizes", { source: "AIS", rows: [] }, "численность классов"),
         salaryAccess ? api("/api/manual-load/salary-breakdown").catch((error) => {
             salaryBreakdownError = error;

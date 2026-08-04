@@ -136,6 +136,93 @@
             </div>
         </details>
 
+        <details class="card" id="support-document-section" open>
+            <summary><strong>Подтверждающие документы</strong></summary>
+            <p class="muted">
+                Здесь фиксируется приём МСЭ, ИПР/ИПРА, ЦПМПК, ППк, ИОМ и других документов.
+                Запись хранит реквизиты, срок действия, форму принятого экземпляра и прикреплённые копии.
+                Сам документ не меняет категорию ребёнка автоматически: статус «Норма / К2 / К3» задаётся отдельно.
+            </p>
+            <div data-requires-edit>
+                <div class="row controls-row">
+                    <label>Ребёнок:
+                        <select id="support-document-student"></select>
+                    </label>
+                    <label>Вид документа:
+                        <select id="support-document-type">
+                            <option value="MSE_CERTIFICATE">Справка МСЭ</option>
+                            <option value="IPR_IPRA">ИПР/ИПРА</option>
+                            <option value="CPMPC_CONCLUSION">Заключение ЦПМПК</option>
+                            <option value="INTERNAL_PPK_PROTOCOL">Протокол ППк</option>
+                            <option value="IOM">ИОМ</option>
+                            <option value="OTHER">Другой документ</option>
+                        </select>
+                    </label>
+                    <label>Принято:
+                        <select id="support-document-form">
+                            <option value="COPY">Копия</option>
+                            <option value="ORIGINAL">Оригинал</option>
+                            <option value="ELECTRONIC_COPY">Электронная копия</option>
+                        </select>
+                    </label>
+                    <label>Номер:
+                        <input id="support-document-number" type="text">
+                    </label>
+                    <label>Дата выдачи:
+                        <input id="support-document-issue-date" type="date">
+                    </label>
+                    <label>Действует с:
+                        <input id="support-document-valid-from" type="date">
+                    </label>
+                    <label>Действует по:
+                        <input id="support-document-valid-to" type="date">
+                    </label>
+                    <label>Дата приёма:
+                        <input id="support-document-received-at" type="date">
+                    </label>
+                    <label>Кем выдан:
+                        <input id="support-document-organization" type="text">
+                    </label>
+                    <label>Ответственный:
+                        <input id="support-document-responsible" type="text">
+                    </label>
+                    <label>Комментарий:
+                        <input id="support-document-comment" type="text">
+                    </label>
+                    <label>Прикрепить копию:
+                        <input id="support-document-file" type="file"
+                               accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx">
+                    </label>
+                    <input id="support-document-id" type="hidden">
+                    <button id="support-document-save-btn" type="button">Принять документ</button>
+                    <button id="support-document-clear-btn" type="button" class="secondary">Очистить</button>
+                </div>
+                <p class="muted">Один файл — до 15 МБ. Дополнительные копии можно прикрепить при повторном сохранении записи.</p>
+            </div>
+            <div id="support-document-message" class="muted"></div>
+            <div class="sheet-wrap">
+                <table class="sheet-table" id="support-document-table">
+                    <thead>
+                    <tr>
+                        <th>ФИО</th>
+                        <th>Класс</th>
+                        <th>Документ</th>
+                        <th>Номер</th>
+                        <th>Даты</th>
+                        <th>Принято</th>
+                        <th>Дата приёма</th>
+                        <th>Состояние</th>
+                        <th>Копии</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr><td colspan="10" class="muted">Документы пока не приняты.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </details>
+
         <h3>Численность по классам</h3>
         <div class="sheet-wrap">
             <table class="sheet-table" id="support-class-table"></table>

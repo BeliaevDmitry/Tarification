@@ -31,6 +31,24 @@ const ui = {
     supportDataPackageResult: document.getElementById('support-data-package-result'),
     supportReadinessBtn: document.getElementById('support-readiness-btn'),
     supportReadinessTable: document.getElementById('support-readiness-table'),
+    supportDocumentSection: document.getElementById('support-document-section'),
+    supportDocumentTable: document.getElementById('support-document-table'),
+    supportDocumentMessage: document.getElementById('support-document-message'),
+    supportDocumentId: document.getElementById('support-document-id'),
+    supportDocumentStudent: document.getElementById('support-document-student'),
+    supportDocumentType: document.getElementById('support-document-type'),
+    supportDocumentForm: document.getElementById('support-document-form'),
+    supportDocumentNumber: document.getElementById('support-document-number'),
+    supportDocumentIssueDate: document.getElementById('support-document-issue-date'),
+    supportDocumentValidFrom: document.getElementById('support-document-valid-from'),
+    supportDocumentValidTo: document.getElementById('support-document-valid-to'),
+    supportDocumentReceivedAt: document.getElementById('support-document-received-at'),
+    supportDocumentOrganization: document.getElementById('support-document-organization'),
+    supportDocumentResponsible: document.getElementById('support-document-responsible'),
+    supportDocumentComment: document.getElementById('support-document-comment'),
+    supportDocumentFile: document.getElementById('support-document-file'),
+    supportDocumentSaveBtn: document.getElementById('support-document-save-btn'),
+    supportDocumentClearBtn: document.getElementById('support-document-clear-btn'),
     supportClassTable: document.getElementById('support-class-table'),
     supportRegisterTable: document.getElementById('support-register-table'),
     supportStatusEditor: document.getElementById('support-status-editor'),
@@ -59,6 +77,7 @@ const esc = (v) => String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt
 let currentStats = null;
 let currentManualRows = [];
 let currentSupportSummary = null;
+let currentSupportDocuments = [];
 let supportReferences = { students: [], curriculum: [], teachers: [] };
 
 function stageClassSummary(stats) {
@@ -560,6 +579,178 @@ function resetSupportIupForm() {
     ui.supportIupSubjectBody.innerHTML = '';
 }
 
+const supportDocumentTypeLabels = {
+    MSE_CERTIFICATE: 'Справка МСЭ',
+    IPR_IPRA: 'ИПР/ИПРА',
+    CPMPC_CONCLUSION: 'Заключение ЦПМПК',
+    INTERNAL_PPK_PROTOCOL: 'Протокол ППк',
+    IOM: 'ИОМ',
+    OTHER: 'Другой документ'
+};
+
+const supportDocumentFormLabels = {
+    ORIGINAL: 'Оригинал',
+    COPY: 'Копия',
+    ELECTRONIC_COPY: 'Электронная копия'
+};
+
+function resetSupportDocumentForm() {
+    ui.supportDocumentId.value = '';
+    ui.supportDocumentStudent.value = '';
+    ui.supportDocumentType.value = 'MSE_CERTIFICATE';
+    ui.supportDocumentForm.value = 'COPY';
+    ui.supportDocumentNumber.value = '';
+    ui.supportDocumentIssueDate.value = '';
+    ui.supportDocumentValidFrom.value = '';
+    ui.supportDocumentValidTo.value = '';
+    const today = new Date();
+    today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+    ui.supportDocumentReceivedAt.value = today.toISOString().slice(0, 10);
+    ui.supportDocumentOrganization.value = '';
+    ui.supportDocumentResponsible.value = '';
+    ui.supportDocumentComment.value = '';
+    ui.supportDocumentFile.value = '';
+    ui.supportDocumentSaveBtn.textContent = 'Принять документ';
+}
+
+function supportAttachmentSize(value) {
+    const bytes = Number(value || 0);
+    if (bytes < 1024) return `${bytes} Б`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+}
+
+function supportAttachmentLink(documentId, attachment) {
+    const path = `/api/contingent/special-support/documents/${encodeURIComponent(documentId)}`
+        + `/attachments/${encodeURIComponent(attachment.id)}`;
+    const href = window.withAcademicYear ? window.withAcademicYear(path) : path;
+    return `
+        <span>
+            <a href="${esc(href)}">${esc(attachment.fileName)}</a>
+            <small class="muted">(${esc(supportAttachmentSize(attachment.fileSize))})</small>
+            <button type="button" class="secondary" data-requires-edit
+                    data-support-delete-attachment="${esc(attachment.id)}"
+                    data-support-document-id="${esc(documentId)}">×</button>
+        </span>`;
+}
+
+function renderSupportDocuments(documents) {
+    const rows = (documents || []).map((document) => {
+        const dates = [
+            document.issueDate ? `выдан ${document.issueDate}` : '',
+            (document.validFrom || document.validTo)
+                ? `действует ${supportDateRange(document.validFrom, document.validTo)}`
+                : ''
+        ].filter(Boolean).join('; ');
+        const files = (document.attachments || [])
+            .map((attachment) => supportAttachmentLink(document.id, attachment))
+            .join('<br>');
+        return `
+            <tr>
+                <td>${esc(document.studentFullName)}</td>
+                <td>${esc(document.className)}</td>
+                <td>${esc(supportDocumentTypeLabels[document.documentType] || document.documentType)}</td>
+                <td>${esc(document.documentNumber || '')}</td>
+                <td>${esc(dates || '—')}</td>
+                <td>${esc(supportDocumentFormLabels[document.acceptedForm] || document.acceptedForm)}</td>
+                <td>${esc(document.receivedAt || '')}</td>
+                <td>${esc(document.validityStatus || '')}</td>
+                <td>${files || '<span class="muted">Нет копий</span>'}</td>
+                <td data-requires-edit>
+                    <button type="button" class="secondary"
+                            data-support-edit-document="${esc(document.id)}">Изменить</button>
+                    <button type="button" class="secondary"
+                            data-support-delete-document="${esc(document.id)}">Удалить</button>
+                </td>
+            </tr>`;
+    }).join('');
+    ui.supportDocumentTable.innerHTML = `
+        <thead>
+            <tr>
+                <th>ФИО</th><th>Класс</th><th>Документ</th><th>Номер</th><th>Даты</th>
+                <th>Принято</th><th>Дата приёма</th><th>Состояние</th><th>Копии</th><th></th>
+            </tr>
+        </thead>
+        <tbody>${rows || '<tr><td colspan="10" class="muted">Документы пока не приняты.</td></tr>'}</tbody>`;
+}
+
+async function refreshSupportDocuments() {
+    const asOf = ui.supportAsOfDate?.value
+        ? `?asOfDate=${encodeURIComponent(ui.supportAsOfDate.value)}`
+        : '';
+    currentSupportDocuments = await api(`/api/contingent/special-support/documents${asOf}`);
+    renderSupportDocuments(currentSupportDocuments);
+    ui.supportDocumentMessage.textContent = currentSupportDocuments.length
+        ? `Принято документов: ${currentSupportDocuments.length}.`
+        : 'Документы пока не приняты.';
+}
+
+async function saveSupportDocument() {
+    if (!ui.supportDocumentStudent.value) {
+        ui.supportDocumentMessage.textContent = 'Выберите ребёнка, для которого принят документ.';
+        ui.supportDocumentStudent.focus();
+        return;
+    }
+    const selectedFile = ui.supportDocumentFile.files?.[0];
+    if (selectedFile && selectedFile.size > 15 * 1024 * 1024) {
+        ui.supportDocumentMessage.textContent = 'Размер прикреплённой копии не должен превышать 15 МБ.';
+        ui.supportDocumentFile.focus();
+        return;
+    }
+    const payload = {
+        id: ui.supportDocumentId.value ? Number(ui.supportDocumentId.value) : null,
+        studentId: Number(ui.supportDocumentStudent.value || 0) || null,
+        documentType: ui.supportDocumentType.value,
+        acceptedForm: ui.supportDocumentForm.value,
+        documentNumber: ui.supportDocumentNumber.value || null,
+        issueDate: ui.supportDocumentIssueDate.value || null,
+        validFrom: ui.supportDocumentValidFrom.value || null,
+        validTo: ui.supportDocumentValidTo.value || null,
+        receivedAt: ui.supportDocumentReceivedAt.value || null,
+        issuingOrganization: ui.supportDocumentOrganization.value || null,
+        responsibleEmployee: ui.supportDocumentResponsible.value || null,
+        comment: ui.supportDocumentComment.value || null
+    };
+    const saved = await api('/api/contingent/special-support/documents', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const file = selectedFile;
+    if (file) {
+        const form = new FormData();
+        form.append('file', file);
+        await api(`/api/contingent/special-support/documents/${encodeURIComponent(saved.id)}/attachments`, {
+            method: 'POST',
+            body: form
+        });
+    }
+    resetSupportDocumentForm();
+    await refreshSupportDocuments();
+    ui.supportDocumentMessage.textContent = 'Документ принят и сохранён.';
+}
+
+function editSupportDocument(documentId) {
+    const document = currentSupportDocuments.find((item) => Number(item.id) === Number(documentId));
+    if (!document) return;
+    ui.supportDocumentId.value = document.id || '';
+    ui.supportDocumentStudent.value = document.studentId || '';
+    ui.supportDocumentType.value = document.documentType || 'OTHER';
+    ui.supportDocumentForm.value = document.acceptedForm || 'COPY';
+    ui.supportDocumentNumber.value = document.documentNumber || '';
+    ui.supportDocumentIssueDate.value = document.issueDate || '';
+    ui.supportDocumentValidFrom.value = document.validFrom || '';
+    ui.supportDocumentValidTo.value = document.validTo || '';
+    ui.supportDocumentReceivedAt.value = document.receivedAt || '';
+    ui.supportDocumentOrganization.value = document.issuingOrganization || '';
+    ui.supportDocumentResponsible.value = document.responsibleEmployee || '';
+    ui.supportDocumentComment.value = document.comment || '';
+    ui.supportDocumentFile.value = '';
+    ui.supportDocumentSaveBtn.textContent = 'Сохранить изменения';
+    ui.supportDocumentSection.open = true;
+    ui.supportDocumentSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function renderSupportClassTable(summary) {
     const rows = (summary?.classes || []).map((item) => `
         <tr>
@@ -618,6 +809,7 @@ async function loadSupportReferences() {
     const options = supportStudentOptions();
     ui.supportStatusStudent.innerHTML = options;
     ui.supportIupStudent.innerHTML = options;
+    ui.supportDocumentStudent.innerHTML = options;
 }
 
 function supportQuery() {
@@ -702,6 +894,7 @@ async function importSupportDataPackage() {
     ui.supportDataPackageFile.value = '';
     await loadSupportReferences();
     await refreshSupport();
+    await refreshSupportDocuments();
     await refreshSupportReadiness();
 }
 
@@ -806,7 +999,12 @@ ui.tabs.forEach((tab) => tab.addEventListener('click', () => {
         });
     }
     if (tabName === 'support') {
-        Promise.all([loadSupportReferences(), refreshSupport(), refreshSupportReadiness()]).catch((error) => {
+        Promise.all([
+            loadSupportReferences(),
+            refreshSupport(),
+            refreshSupportDocuments(),
+            refreshSupportReadiness()
+        ]).catch((error) => {
             ui.supportSummaryMessage.textContent = `Ошибка: ${error.message}`;
         });
     }
@@ -877,9 +1075,11 @@ ui.manualExportBtn?.addEventListener('click', () => downloadWorkbook('/api/conti
     ui.manualSummary.textContent = `Ошибка экспорта: ${error.message}`;
 }));
 
-ui.supportRefreshBtn?.addEventListener('click', () => refreshSupport().catch((error) => {
-    ui.supportSummaryMessage.textContent = `Ошибка: ${error.message}`;
-}));
+ui.supportRefreshBtn?.addEventListener('click', () =>
+    Promise.all([refreshSupport(), refreshSupportDocuments()]).catch((error) => {
+        ui.supportSummaryMessage.textContent = `Ошибка: ${error.message}`;
+    })
+);
 
 ui.supportExportBtn?.addEventListener('click', () =>
     downloadWorkbook(`/api/contingent/special-support/export${supportQuery()}`, 'student-statuses-iup.xlsx')
@@ -908,6 +1108,54 @@ ui.supportReadinessBtn?.addEventListener('click', () =>
         ui.supportDataPackageResult.textContent = `Ошибка проверки: ${error.message}`;
     })
 );
+
+ui.supportDocumentSaveBtn?.addEventListener('click', () =>
+    saveSupportDocument().catch((error) => {
+        ui.supportDocumentMessage.textContent = `Ошибка сохранения документа: ${error.message}`;
+    })
+);
+
+ui.supportDocumentClearBtn?.addEventListener('click', resetSupportDocumentForm);
+
+ui.supportDocumentTable?.addEventListener('click', async (event) => {
+    const editButton = event.target.closest('[data-support-edit-document]');
+    if (editButton) {
+        editSupportDocument(editButton.dataset.supportEditDocument);
+        return;
+    }
+    const deleteDocumentButton = event.target.closest('[data-support-delete-document]');
+    if (deleteDocumentButton) {
+        if (!window.confirm('Удалить запись о документе и все прикреплённые копии?')) return;
+        try {
+            await api(
+                `/api/contingent/special-support/documents/${encodeURIComponent(deleteDocumentButton.dataset.supportDeleteDocument)}`,
+                { method: 'DELETE' }
+            );
+            resetSupportDocumentForm();
+            await refreshSupportDocuments();
+            ui.supportDocumentMessage.textContent = 'Запись о документе удалена.';
+        } catch (error) {
+            ui.supportDocumentMessage.textContent = `Ошибка удаления документа: ${error.message}`;
+        }
+        return;
+    }
+    const deleteAttachmentButton = event.target.closest('[data-support-delete-attachment]');
+    if (deleteAttachmentButton) {
+        if (!window.confirm('Удалить прикреплённую копию?')) return;
+        try {
+            const documentId = encodeURIComponent(deleteAttachmentButton.dataset.supportDocumentId);
+            const attachmentId = encodeURIComponent(deleteAttachmentButton.dataset.supportDeleteAttachment);
+            await api(
+                `/api/contingent/special-support/documents/${documentId}/attachments/${attachmentId}`,
+                { method: 'DELETE' }
+            );
+            await refreshSupportDocuments();
+            ui.supportDocumentMessage.textContent = 'Прикреплённая копия удалена.';
+        } catch (error) {
+            ui.supportDocumentMessage.textContent = `Ошибка удаления копии: ${error.message}`;
+        }
+    }
+});
 
 ui.supportReconcileBtn?.addEventListener('click', async () => {
     try {
@@ -1015,9 +1263,11 @@ ui.supportRegisterTable?.addEventListener('click', (event) => {
         if (finalTab === 'support') {
             await loadSupportReferences();
             await refreshSupport();
+            await refreshSupportDocuments();
             await refreshSupportReadiness();
             resetSupportStatusForm();
             resetSupportIupForm();
+            resetSupportDocumentForm();
         }
     } catch (error) {
         printImportResult({ error: error.message });

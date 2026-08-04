@@ -20,6 +20,7 @@ import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.StudentGroupMembership;
 import org.school.personalLoad.model.StudentGroupMembershipSource;
 import org.school.personalLoad.model.StudentProfile;
+import org.school.personalLoad.model.StudentSupportDocument;
 import org.school.personalLoad.model.StudentSupportStatus;
 import org.school.personalLoad.model.StudentCategory;
 import org.school.personalLoad.repository.ContingentSnapshotRepository;
@@ -33,6 +34,8 @@ import org.school.personalLoad.repository.NosologyCatalogEntryRepository;
 import org.school.personalLoad.repository.StudentClassEnrollmentRepository;
 import org.school.personalLoad.repository.StudentGroupMembershipRepository;
 import org.school.personalLoad.repository.StudentProfileRepository;
+import org.school.personalLoad.repository.StudentSupportDocumentAttachmentRepository;
+import org.school.personalLoad.repository.StudentSupportDocumentRepository;
 import org.school.personalLoad.repository.StudentSupportStatusRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.StudentSupportService;
@@ -68,6 +71,10 @@ class StudentDataExchangeServiceImplTest {
     private StudentProfileRepository studentProfileRepository;
     @Mock
     private StudentSupportStatusRepository supportStatusRepository;
+    @Mock
+    private StudentSupportDocumentRepository supportDocumentRepository;
+    @Mock
+    private StudentSupportDocumentAttachmentRepository supportDocumentAttachmentRepository;
     @Mock
     private NosologyCatalogEntryRepository nosologyRepository;
     @Mock
@@ -143,11 +150,12 @@ class StudentDataExchangeServiceImplTest {
         byte[] body = service.exportPackage(YEAR);
 
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
-            assertEquals(12, workbook.getNumberOfSheets());
+            assertEquals(13, workbook.getNumberOfSheets());
             assertNotNull(workbook.getSheet("Инструкция"));
             assertNotNull(workbook.getSheet("Дети"));
             assertNotNull(workbook.getSheet("Нозологии"));
             assertNotNull(workbook.getSheet("Статусы"));
+            assertNotNull(workbook.getSheet("Документы"));
             assertNotNull(workbook.getSheet("ИУП"));
             assertNotNull(workbook.getSheet("Предметы ИУП"));
             assertNotNull(workbook.getSheet("Педагоги ИУП"));
@@ -210,6 +218,45 @@ class StudentDataExchangeServiceImplTest {
         assertEquals(StudentGroupMembershipSource.MESH_IMPORT, captor.getValue().getSource());
         assertTrue(result.getImported() >= 1);
         assertTrue(result.getErrors().isEmpty(), () -> "Ошибки импорта: " + result.getErrors());
+    }
+
+    @Test
+    void exportedDocumentTemplateCanBeImportedBackWithoutBinaryCopies() throws Exception {
+        byte[] exported = service.exportPackage(YEAR);
+        byte[] filled;
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(exported));
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            Sheet documents = workbook.getSheet("Документы");
+            Row row = documents.getRow(1);
+            set(row, column(documents, "Действие"), "UPSERT");
+            set(row, column(documents, "Карточка ID"), "1");
+            workbook.write(output);
+            filled = output.toByteArray();
+        }
+        when(studentProfileRepository.findById(1L)).thenReturn(Optional.of(profile));
+        when(supportDocumentRepository.save(any(StudentSupportDocument.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        StudentDataExchangeDtos.ImportResult result = service.importPackage(
+                YEAR,
+                new MockMultipartFile(
+                        "file",
+                        "Пакет.xlsx",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        filled
+                )
+        );
+
+        assertTrue(result.getErrors().isEmpty(), () -> "Ошибки импорта: " + result.getErrors());
+        assertEquals(1, result.getSheets().stream()
+                .filter(sheet -> "Документы".equals(sheet.getSheetName()))
+                .mapToInt(StudentDataExchangeDtos.SheetImportResult::getImported)
+                .sum(), () -> "Результаты листов: " + result.getSheets());
+        ArgumentCaptor<StudentSupportDocument> captor =
+                ArgumentCaptor.forClass(StudentSupportDocument.class);
+        verify(supportDocumentRepository).save(captor.capture());
+        assertEquals("МСЭ-001", captor.getValue().getDocumentNumber());
+        assertEquals(profile, captor.getValue().getStudent());
     }
 
     @Test
