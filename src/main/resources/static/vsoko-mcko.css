@@ -1,0 +1,16 @@
+.mcko-toolbar,.mcko-filter-grid,.mcko-actions,.mcko-tabs,.mcko-selected-list{display:flex;gap:12px;align-items:end;flex-wrap:wrap}
+.mcko-toolbar>*{flex:0 1 auto}.mcko-filter-grid>label{min-width:180px;flex:1 1 190px}
+.mcko-tabs{margin:12px 0}.mcko-tab{border-radius:999px;padding:9px 16px}.mcko-tab.active{background:#244b75;color:#fff}
+.mcko-panel[hidden]{display:none}.mcko-dropzone{border:2px dashed #8aa4bd;border-radius:16px;padding:34px;text-align:center;background:#f5f9fc;cursor:pointer;transition:.15s}
+.mcko-dropzone.drag{background:#e1eff9;border-color:#244b75;transform:translateY(-1px)}.mcko-file-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.mcko-file-chip{background:#eef3f7;border-radius:999px;padding:7px 11px;font-size:.92rem}.mcko-status{display:inline-flex;border-radius:999px;padding:4px 9px;font-weight:650;font-size:.82rem}
+.mcko-status-PROCESSED,.mcko-link-LINKED_BY_CODE,.mcko-link-LINKED_BY_NAME_AND_CLASS,.mcko-link-MANUALLY_LINKED{background:#dff4e5;color:#17602d}
+.mcko-status-PARTIAL,.mcko-link-AMBIGUOUS{background:#fff1c9;color:#765100}.mcko-status-FAILED,.mcko-link-NOT_FOUND{background:#fbdede;color:#8b2222}.mcko-status-PROCESSING{background:#e4edf7;color:#234e78}
+.mcko-table-wrap{overflow:auto;max-height:65vh;border:1px solid #dbe3ea;border-radius:12px}.mcko-table-wrap table{min-width:1100px;margin:0}.mcko-table-wrap thead th{position:sticky;top:0;z-index:2;background:#edf3f8}
+.mcko-feedback{min-height:24px;margin-top:10px}.mcko-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0}.mcko-kpi{padding:14px;border-radius:13px;background:#f3f7fa}.mcko-kpi strong{display:block;font-size:1.4rem}
+.mcko-search-results{display:grid;gap:8px;margin-top:10px}.mcko-search-card{border:1px solid #d7e0e7;border-radius:12px;padding:11px;cursor:pointer}.mcko-search-card:hover{background:#f5f8fa}
+.mcko-timeline-group{margin-top:18px}.mcko-timeline-group h3{position:sticky;top:var(--sticky-header-height,0);background:#fff;padding:8px 0;z-index:1}.mcko-chart{width:100%;height:360px;border:1px solid #dbe3ea;border-radius:14px;background:#fff}
+.mcko-selected-list{align-items:stretch}.mcko-selected{display:flex;gap:8px;align-items:center;border:1px solid #dbe3ea;border-radius:12px;padding:10px 12px;background:#fff}.mcko-selected button{padding:4px 8px}
+.mcko-empty{padding:26px;text-align:center;color:#64748b}.mcko-dialog{max-width:720px;width:min(92vw,720px)}.mcko-dialog::backdrop{background:rgba(15,23,42,.45)}
+.mcko-row-actions{white-space:nowrap}.mcko-number{font-variant-numeric:tabular-nums;text-align:right}.mcko-subnav-note{margin:0}
+@media(max-width:720px){.mcko-dropzone{padding:22px 12px}.mcko-chart{height:300px}.mcko-filter-grid>label{min-width:100%;}.mcko-actions button,.mcko-actions a{flex:1 1 auto}}

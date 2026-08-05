@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>ГБОУ школа 7 — МЦКО / Педагоги по классам</title><link rel="icon" type="image/png" href="/school-crest.png"><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/vsoko-mcko.css"></head>
+<body><main class="container">
+<header class="card app-shell-header"><h1>МЦКО / Педагоги по классам</h1><nav class="page-nav"></nav><p class="muted">Закрепление задаётся на учебный год, класс и предмет. Оно применяется ко всем результатам этого среза.</p></header>
+<section class="card" data-requires-edit>
+    <form id="assignment-form" class="mcko-filter-grid">
+        <input type="hidden" id="assignment-id">
+        <label>Класс<input id="assignment-class" required placeholder="7-К"></label>
+        <label>Предмет<input id="assignment-subject" required placeholder="Математика"></label>
+        <label>Педагог<select id="assignment-teacher" required><option value="">Выберите педагога</option></select></label>
+        <button type="submit">Сохранить закрепление</button>
+    </form>
+    <div class="mcko-actions" style="margin-top:14px">
+        <button id="assignment-autofill" type="button">Заполнить из ПА и нагрузки</button>
+        <button id="assignment-import-btn" type="button">Импорт Excel</button><input id="assignment-import-file" type="file" accept=".xlsx,.xls" hidden>
+        <button id="assignment-export" type="button">Экспорт Excel</button>
+    </div>
+    <p id="assignment-feedback" class="muted mcko-feedback"></p>
+</section>
+<section class="card"><div class="mcko-table-wrap"><table><thead><tr><th>Год</th><th>Класс</th><th>Предмет</th><th>Педагог</th><th></th></tr></thead><tbody id="assignment-body"></tbody></table></div></section>
+</main><script src="/auth.js"></script><script src="/vsoko-mcko-teachers.js"></script><script src="/branding.js"></script></body></html>
