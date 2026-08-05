@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>ГБОУ школа 7 — ВСОКО / Собеседование</title><link rel="icon" type="image/png" href="/school-crest.png"><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/vsoko-mcko.css"></head>
+<body><main class="container">
+<header class="card app-shell-header"><h1>ВСОКО / Собеседование</h1><nav class="page-nav"></nav><p class="muted">Добавьте педагогов в нужном порядке и скачайте готовую книгу Excel для печати.</p></header>
+<section class="card">
+    <div class="mcko-toolbar"><label style="min-width:320px">Педагог<select id="interview-teacher"><option value="">Выберите ФИО</option></select></label><button id="interview-add" type="button">Добавить в список</button></div>
+    <h2>Список на печать</h2><div id="interview-selected" class="mcko-selected-list"></div>
+    <div class="mcko-actions" style="margin-top:16px"><button id="interview-export" type="button">Скачать Excel для печати</button><button id="interview-clear" type="button">Очистить</button></div>
+    <p id="interview-feedback" class="muted mcko-feedback"></p>
+</section>
+</main><script src="/auth.js"></script><script src="/vsoko-interview.js"></script><script src="/branding.js"></script></body></html>

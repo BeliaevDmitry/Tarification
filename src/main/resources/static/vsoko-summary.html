@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ГБОУ школа 7 — ВСОКО / Свод</title>
+    <link rel="icon" type="image/png" href="/school-crest.png"><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/vsoko-mcko.css">
+</head>
+<body>
+<main class="container">
+    <header class="card app-shell-header"><h1>ВСОКО / Свод</h1><nav class="page-nav"></nav><p class="muted">Накопительная история ребёнка и сравнение результатов класса.</p></header>
+    <section class="card">
+        <div class="mcko-tabs"><button class="mcko-tab active" data-summary-panel="student">По ребёнку</button><button class="mcko-tab" data-summary-panel="class">По классу</button></div>
+        <div id="summary-student-panel">
+            <div class="mcko-toolbar"><label style="min-width:320px">ФИО ребёнка<input id="summary-student-query" placeholder="Можно вводить прежнее ФИО"></label><button id="summary-student-search">Найти</button><button id="summary-student-export" disabled>Скачать Excel</button></div>
+            <div id="summary-student-results" class="mcko-search-results"></div>
+            <div id="summary-student-card"></div>
+        </div>
+        <div id="summary-class-panel" hidden>
+            <div class="mcko-toolbar"><label>Класс<input id="summary-class-name" placeholder="Например, 7-К"></label><button id="summary-class-load">Показать сравнение</button><button id="summary-class-export" disabled>Скачать Excel</button></div>
+            <div id="summary-class-kpis" class="mcko-kpis"></div>
+            <canvas id="summary-class-chart" class="mcko-chart" width="1200" height="420"></canvas>
+            <div class="mcko-table-wrap" style="margin-top:14px"><table><thead><tr><th>Предмет</th><th>МЦКО: детей</th><th>МЦКО: средний %</th><th>МЦКО: средняя оценка</th><th>ПА: детей</th><th>ПА: средний %</th><th>ПА: средняя оценка</th></tr></thead><tbody id="summary-class-body"></tbody></table></div>
+        </div>
+    </section>
+</main>
+<script src="/auth.js"></script><script src="/vsoko-summary.js"></script><script src="/branding.js"></script>
+</body></html>
