@@ -8,6 +8,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.school.personalLoad.model.EducationLevel;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
+import org.school.personalLoad.dto.TeacherUpdateRequest;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 
@@ -145,6 +146,30 @@ class TeacherDirectoryServiceImplFkCutoverTest {
         when(teacherDirectoryRepository.findAll()).thenReturn(List.of(teacher, nullName));
 
         assertDoesNotThrow(() -> assertTrue(service.buildImportTemplate().contentLength() > 0));
+    }
+
+    @Test
+    void editedDocumentNameFormsAreStoredAndNotResetByUnrelatedUpdate() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Рысь Виктория Игоревна");
+        TeacherDirectoryServiceImpl service = new TeacherDirectoryServiceImpl(
+                teacherDirectoryRepository, manualLoadEntryRepository);
+        when(teacherDirectoryRepository.findById(1L)).thenReturn(Optional.of(teacher));
+        when(teacherDirectoryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TeacherUpdateRequest nameUpdate = new TeacherUpdateRequest();
+        nameUpdate.setFioTeacher("Рысь Виктория Игоревна");
+        nameUpdate.setFioTeacherGenitive("Рыси Виктории Игоревны");
+        nameUpdate.setInitialsGenitive("Рыси В.И.");
+        service.update(1L, nameUpdate);
+
+        TeacherUpdateRequest phoneUpdate = new TeacherUpdateRequest();
+        phoneUpdate.setPhone("+7 999 123-45-67");
+        TeacherDirectoryEntry updated = service.update(1L, phoneUpdate);
+
+        assertEquals("Рыси Виктории Игоревны", updated.getFioTeacherGenitive());
+        assertEquals("Рыси В.И.", updated.getInitialsGenitive());
+        assertEquals("Рысь Виктории Игоревне", updated.getFioTeacherDative());
+        assertEquals("+79991234567", updated.getPhone());
     }
 
     private TeacherDirectoryEntry teacher(Long id, String fio) {

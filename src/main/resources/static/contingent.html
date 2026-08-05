@@ -19,6 +19,7 @@
         <nav class="contingent-tabs">
             <a class="nav-link nav-home-link" href="/" title="Главная" aria-label="Главная">🏠</a>
             <button type="button" class="nav-link active" data-contingent-tab="stats">Численность</button>
+            <button type="button" class="nav-link" data-contingent-tab="support">Статусы и ИУП</button>
             <button type="button" class="nav-link" data-contingent-tab="manual">Ручная правка</button>
             <button type="button" class="nav-link" data-contingent-tab="import">Импорт</button>
         </nav>
@@ -91,6 +92,330 @@
         <div id="contingent-manual-summary" class="muted"></div>
         <div class="sheet-wrap">
             <table class="sheet-table" id="contingent-manual-table"></table>
+        </div>
+    </section>
+
+    <section class="card" data-contingent-pane="support" style="display:none;">
+        <h2>Статусы и ИУП</h2>
+        <p class="muted">
+            В численности ребёнок с действующим ИУП учитывается только в колонке «ИУП».
+            Его исходная категория «Норма / К2 / К3» сохраняется и показывается в реестре ниже.
+        </p>
+        <div class="row controls-row">
+            <label>Состояние на дату:
+                <input id="support-as-of-date" type="date">
+            </label>
+            <button id="support-refresh-btn" type="button">Обновить</button>
+            <button id="support-export-btn" type="button" data-allow-readonly="true">Экспорт Excel</button>
+            <button id="support-reconcile-btn" type="button" class="secondary" data-requires-edit>Связать карточки детей</button>
+        </div>
+        <div id="support-summary-message" class="muted"></div>
+
+        <details class="card" open>
+            <summary><strong>Импорт и экспорт всех данных</strong></summary>
+            <p class="muted">
+                Скачайте единый Excel-пакет: в нём уже есть текущие данные, справочники и точные заголовки.
+                Заполненный файл можно загрузить обратно целиком. Пока данные не прошли контроль,
+                действует прежний расчёт; после успешной проверки фактическая численность применяется автоматически.
+            </p>
+            <div class="row controls-row">
+                <button id="support-data-package-export-btn" type="button" data-allow-readonly="true">
+                    Скачать пакет-шаблон
+                </button>
+                <input id="support-data-package-file" type="file" accept=".xlsx,.xls" data-requires-edit>
+                <button id="support-data-package-import-btn" type="button" data-requires-edit>
+                    Импортировать пакет
+                </button>
+                <button id="support-readiness-btn" type="button" class="secondary">
+                    Проверить готовность
+                </button>
+            </div>
+            <div id="support-data-package-result" class="muted"></div>
+            <div class="sheet-wrap">
+                <table class="sheet-table" id="support-readiness-table"></table>
+            </div>
+        </details>
+
+        <details class="card" id="support-document-section" open>
+            <summary><strong>Подтверждающие документы</strong></summary>
+            <p class="muted">
+                Здесь фиксируется приём МСЭ, ИПР/ИПРА, ЦПМПК, ППк, ИОМ и других документов.
+                Запись хранит реквизиты, срок действия, форму принятого экземпляра и прикреплённые копии.
+                Сам документ не меняет категорию ребёнка автоматически: статус «Норма / К2 / К3» задаётся отдельно.
+            </p>
+            <div data-requires-edit>
+                <div class="row controls-row">
+                    <label>Ребёнок:
+                        <select id="support-document-student"></select>
+                    </label>
+                    <label>Вид документа:
+                        <select id="support-document-type">
+                            <option value="MSE_CERTIFICATE">Справка МСЭ</option>
+                            <option value="IPR_IPRA">ИПР/ИПРА</option>
+                            <option value="CPMPC_CONCLUSION">Заключение ЦПМПК</option>
+                            <option value="INTERNAL_PPK_PROTOCOL">Протокол ППк</option>
+                            <option value="IOM">ИОМ</option>
+                            <option value="IUP_ORDER">Приказ по ИУП</option>
+                            <option value="OTHER">Другой документ</option>
+                        </select>
+                    </label>
+                    <label>Принято:
+                        <select id="support-document-form">
+                            <option value="COPY">Копия</option>
+                            <option value="ORIGINAL">Оригинал</option>
+                            <option value="ELECTRONIC_COPY">Электронная копия</option>
+                        </select>
+                    </label>
+                    <label>Номер:
+                        <input id="support-document-number" type="text">
+                    </label>
+                    <label>Дата выдачи:
+                        <input id="support-document-issue-date" type="date">
+                    </label>
+                    <label>Действует с:
+                        <input id="support-document-valid-from" type="date">
+                    </label>
+                    <label>Действует по:
+                        <input id="support-document-valid-to" type="date">
+                    </label>
+                    <label>Дата приёма:
+                        <input id="support-document-received-at" type="date">
+                    </label>
+                    <label>Кем выдан:
+                        <input id="support-document-organization" type="text">
+                    </label>
+                    <label>Ответственный:
+                        <input id="support-document-responsible" type="text">
+                    </label>
+                    <label>Комментарий:
+                        <input id="support-document-comment" type="text">
+                    </label>
+                    <label>Прикрепить копию:
+                        <input id="support-document-file" type="file"
+                               accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx">
+                    </label>
+                    <input id="support-document-id" type="hidden">
+                    <button id="support-document-save-btn" type="button">Принять документ</button>
+                    <button id="support-document-clear-btn" type="button" class="secondary">Очистить</button>
+                </div>
+                <p class="muted">Один файл — до 15 МБ. Дополнительные копии можно прикрепить при повторном сохранении записи.</p>
+            </div>
+            <div id="support-document-message" class="muted"></div>
+            <div class="sheet-wrap">
+                <table class="sheet-table" id="support-document-table">
+                    <thead>
+                    <tr>
+                        <th>ФИО</th>
+                        <th>Класс</th>
+                        <th>Документ</th>
+                        <th>Номер</th>
+                        <th>Даты</th>
+                        <th>Принято</th>
+                        <th>Дата приёма</th>
+                        <th>Состояние</th>
+                        <th>Копии</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr><td colspan="10" class="muted">Документы пока не приняты.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </details>
+
+        <h3>Численность по классам</h3>
+        <div class="sheet-wrap">
+            <table class="sheet-table" id="support-class-table"></table>
+        </div>
+
+        <div data-requires-edit>
+            <details class="card" id="support-status-editor">
+                <summary><strong>Установить или изменить категорию ребёнка</strong></summary>
+                <div class="row controls-row">
+                    <label>Ребёнок:
+                        <select id="support-status-student"></select>
+                    </label>
+                    <label>Категория:
+                        <select id="support-status-category">
+                            <option value="NORMAL">Норма</option>
+                            <option value="K2">К2</option>
+                            <option value="K3">К3</option>
+                        </select>
+                    </label>
+                    <label>Начало:
+                        <input id="support-status-from" type="date">
+                    </label>
+                    <label>Окончание:
+                        <input id="support-status-to" type="date">
+                    </label>
+                    <input id="support-status-id" type="hidden">
+                    <button id="support-status-save-btn" type="button">Сохранить статус</button>
+                    <button id="support-status-clear-btn" type="button" class="secondary">Очистить</button>
+                </div>
+            </details>
+
+            <details class="card" id="support-iup-editor">
+                <summary><strong>Создать или изменить ИУП</strong></summary>
+                <div class="row controls-row">
+                    <label>Ребёнок:
+                        <select id="support-iup-student"></select>
+                    </label>
+                    <label>Статус ИУП:
+                        <select id="support-iup-status">
+                            <option value="DRAFT">Черновик</option>
+                            <option value="REVIEW">На согласовании</option>
+                            <option value="APPROVED">Утверждён</option>
+                            <option value="ACTIVE">Действует</option>
+                            <option value="CHANGED">Изменён</option>
+                            <option value="COMPLETED">Завершён</option>
+                            <option value="CANCELLED">Отменён</option>
+                        </select>
+                    </label>
+                    <label>Номер приказа:
+                        <input id="support-iup-order-number" type="text">
+                    </label>
+                    <label>Дата приказа:
+                        <input id="support-iup-order-date" type="date">
+                    </label>
+                    <label>Начало:
+                        <input id="support-iup-from" type="date">
+                    </label>
+                    <label>Окончание:
+                        <input id="support-iup-to" type="date">
+                    </label>
+                    <input id="support-iup-id" type="hidden">
+                </div>
+                <p class="muted">
+                    «С классом» — ребёнок учитывается в выбранной подгруппе.
+                    «Индивидуально» — в подгруппы не распределяется.
+                    Очные часы назначенного учителя будут источником для будущей колонки «Полная нагрузка».
+                </p>
+                <div class="sheet-wrap">
+                    <table class="sheet-table" id="support-iup-subject-table">
+                        <thead>
+                        <tr>
+                            <th>Предмет</th>
+                            <th>Как изучает</th>
+                            <th>С классом</th>
+                            <th>Индивидуально</th>
+                            <th>Группа</th>
+                            <th>Учитель</th>
+                            <th>Часы учителя</th>
+                            <th>Форма</th>
+                            <th></th>
+                        </tr>
+                        </thead>
+                        <tbody id="support-iup-subject-body"></tbody>
+                    </table>
+                </div>
+                <div class="row controls-row">
+                    <button id="support-iup-add-subject-btn" type="button" class="secondary">Добавить предмет</button>
+                    <button id="support-iup-save-btn" type="button">Сохранить ИУП</button>
+                    <button id="support-iup-clear-btn" type="button" class="secondary">Очистить</button>
+                </div>
+
+                <details id="support-iup-order-editor">
+                    <summary><strong>Сформировать приказ Word по реальному образцу</strong></summary>
+                    <p class="muted">
+                        Доступны четыре приложенных образца: обычный ИУП, надомное обучение,
+                        продление надомного обучения и сводный приказ ОВЗ. Предметы, учителя,
+                        часы, класс и дата рождения берутся из сохранённого ИУП и контингента.
+                    </p>
+                    <div class="row controls-row">
+                        <label>Вид приказа:
+                            <select id="support-iup-order-template">
+                                <option value="INDIVIDUAL_IUP">Обычный ИУП</option>
+                                <option value="HOME_EDUCATION">Надомное обучение</option>
+                                <option value="HOME_EDUCATION_EXTENSION">Продление надомного обучения</option>
+                                <option value="OVZ_GROUP">Сводный приказ ИУП для К2/К3</option>
+                            </select>
+                        </label>
+                        <label>Номер приказа:
+                            <input id="support-iup-document-order-number" type="text">
+                        </label>
+                        <label>Дата приказа:
+                            <input id="support-iup-document-order-date" type="date">
+                        </label>
+                        <label>Пол ребёнка:
+                            <select id="support-iup-order-gender">
+                                <option value="">Выберите</option>
+                                <option value="MALE">Мужской</option>
+                                <option value="FEMALE">Женский</option>
+                            </select>
+                        </label>
+                        <label>ФИО для текста приказа:
+                            <input id="support-iup-order-student-name" type="text"
+                                   placeholder="Например: Иванова Ивана Ивановича">
+                        </label>
+                        <label>Уровень и форма обучения:
+                            <input id="support-iup-order-education-form" type="text"
+                                   placeholder="Например: основное общее образование / очная форма">
+                        </label>
+                        <label>Медицинское заключение №:
+                            <input id="support-iup-order-medical-number" type="text">
+                        </label>
+                        <label>Дата медицинского заключения:
+                            <input id="support-iup-order-medical-date" type="date">
+                        </label>
+                        <label>Кем выдано медицинское заключение:
+                            <input id="support-iup-order-medical-organization" type="text">
+                        </label>
+                        <label>Протокол педсовета №:
+                            <input id="support-iup-order-ped-number" type="text">
+                        </label>
+                        <label>Дата протокола педсовета:
+                            <input id="support-iup-order-ped-date" type="date">
+                        </label>
+                        <label>Протокол ППк №:
+                            <input id="support-iup-order-ppk-number" type="text">
+                        </label>
+                        <label>Дата протокола ППк:
+                            <input id="support-iup-order-ppk-date" type="date">
+                        </label>
+                        <label>Предыдущий приказ №:
+                            <input id="support-iup-order-previous-number" type="text">
+                        </label>
+                        <label>Дата предыдущего приказа:
+                            <input id="support-iup-order-previous-date" type="date">
+                        </label>
+                        <label>Ответственный за организацию:
+                            <input id="support-iup-order-coordinator" type="text">
+                        </label>
+                        <label>Администратор ЭЖД:
+                            <input id="support-iup-order-ejournal-admin" type="text" placeholder="И. О. Фамилия">
+                        </label>
+                        <label>Ответственный за АИС «Зачисление»:
+                            <input id="support-iup-order-enrollment-admin" type="text">
+                        </label>
+                        <label>Контроль исполнения:
+                            <input id="support-iup-order-control-officer" type="text" placeholder="И. О. Фамилия">
+                        </label>
+                        <label>Исполнитель:
+                            <input id="support-iup-order-executor" type="text">
+                        </label>
+                        <label>Директор (для подписи):
+                            <input id="support-iup-order-director" type="text" placeholder="И. О. Фамилия">
+                        </label>
+                    </div>
+                    <p class="muted">
+                        ФИО для текста приказа вводится в нужном падеже: система намеренно не склоняет
+                        фамилии автоматически, чтобы не исказить официальный документ.
+                    </p>
+                    <div class="row controls-row">
+                        <button id="support-iup-order-download-btn" type="button">Скачать приказ по выбранному ИУП</button>
+                        <button id="support-iup-order-download-group-btn" type="button" class="secondary">
+                            Скачать сводный приказ по действующим К2/К3
+                        </button>
+                    </div>
+                    <div id="support-iup-order-message" class="muted"></div>
+                </details>
+            </details>
+        </div>
+
+        <h3>Сводный реестр статусов и ИУП</h3>
+        <div class="sheet-wrap">
+            <table class="sheet-table" id="support-register-table"></table>
         </div>
     </section>
 </main>

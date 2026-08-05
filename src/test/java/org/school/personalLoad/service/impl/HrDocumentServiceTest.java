@@ -55,7 +55,7 @@ class HrDocumentServiceTest {
     TeacherDirectoryEntry teacher;
 
     @BeforeEach void setUp(){
-        loadSalary=new LoadSalaryCalculationService(sizes,salary,coefficients,groups);
+        loadSalary=new LoadSalaryCalculationService(sizes,salary,coefficients,groups,new IupCompensationCalculator());
         service=new HrDocumentService(contracts,personal,memos,loadMemos,agreements,versions,catalog,teachers,loads,salary,coefficients,groups,classroomLeadership,sizes,loadSalary,incentives,inRateRules,new ObjectMapper().findAndRegisterModules());
         contract=new EmploymentContract(); contract.setId(10L); contract.setTeacherId(1L); contract.setContractNumber("1-ТД");
         contract.setContractDate(LocalDate.of(2025,1,1)); contract.setPositionName("Учитель");
@@ -553,6 +553,98 @@ class HrDocumentServiceTest {
         assertTrue(created.getSummary().contains("Классное руководство"));
         assertTrue(created.isRegistryManaged());
         verify(memos,never()).save(any());
+    }
+
+    @Test void annualAgreementPlacesIupOnlyInClause24AndKeepsCoreSalarySeparate() {
+        ManualLoadEntry core=new ManualLoadEntry();core.setId(11L);core.setTeacherId(1L);
+        core.setAcademicYear("2025/2026");core.setSubjectName("Математика");
+        core.setClassName("5А");core.setLoad(1);core.setNumberSchoolBuilding("1");
+
+        ManualLoadEntry iup=new ManualLoadEntry();iup.setId(12L);iup.setTeacherId(1L);
+        iup.setAcademicYear("2025/2026");iup.setSubjectName("Математика");
+        iup.setClassName("ИУП-5-А-Иванов И.И.");iup.setLoad(2);
+        iup.setPreciseLoadHours(new BigDecimal("2.00"));iup.setLoadSource(ManualLoadSource.IUP);
+        iup.setIupStudentCategory(StudentCategory.K2);iup.setNumberSchoolBuilding("1");
+
+        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(core,iup));
+        when(contracts.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(1L))
+                .thenReturn(List.of());
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026"))
+                .thenReturn(new ArrayList<>());
+
+        AdditionalAgreement created=service.createAnnualDrafts(new BatchAgreementRequest(
+                "2025/2026",LocalDate.of(2025,9,1),null,List.of(),null
+        ),"hr").get(0);
+
+        assertTrue(created.getConditionsJson().contains("пункт 2.1"));
+        assertTrue(created.getConditionsJson().contains("пункт 2.4"));
+        assertTrue(created.getConditionsJson().contains(
+                "возложена работа с обучающимися с ограниченными возможностями здоровья, "
+                        +"детьми-инвалидами, в размере 70 рублей 83 коп. "
+                        +"(семьдесят рублей 83 коп.) в месяц"
+        ));
+        assertFalse(created.getConditionsJson().substring(
+                0,
+                created.getConditionsJson().indexOf("Внести изменения в пункт 2.4")
+        ).contains("ИУП-5-А-Иванов"));
+        assertEquals(new BigDecimal("3145.00"),created.getTotalAmount(),
+                "Пункт 2.1 содержит только основную нагрузку; ИУП рассчитан отдельно для пункта 2.4");
+        assertTrue(created.getSummary().contains("Работа с обучающимися с ОВЗ, детьми-инвалидами"));
+    }
+
+    @Test void iupOnlyAnnualAgreementDoesNotCreateClause21OrLoadSalary() {
+        ManualLoadEntry iup=new ManualLoadEntry();iup.setId(12L);iup.setTeacherId(1L);
+        iup.setAcademicYear("2025/2026");iup.setSubjectName("Математика");
+        iup.setClassName("ИУП-5-А-Иванов И.И.");iup.setLoad(2);
+        iup.setPreciseLoadHours(new BigDecimal("2.00"));iup.setLoadSource(ManualLoadSource.IUP);
+        iup.setIupStudentCategory(StudentCategory.NORMAL);iup.setNumberSchoolBuilding("1");
+        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(iup));
+        when(contracts.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(1L))
+                .thenReturn(List.of());
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026"))
+                .thenReturn(new ArrayList<>());
+
+        AdditionalAgreement created=service.createAnnualDrafts(new BatchAgreementRequest(
+                "2025/2026",LocalDate.of(2025,9,1),null,List.of(),null
+        ),"hr").get(0);
+
+        assertFalse(created.getConditionsJson().contains("пункт 2.1"));
+        assertTrue(created.getConditionsJson().contains("пункт 2.4"));
+        assertTrue(created.getConditionsJson().contains("5 рублей 67 коп."));
+        assertNull(created.getTotalAmount());
+    }
+
+    @Test void iupRefreshKeepsMergedClause24FunctionAndMarksIssuedAgreementForReissue() {
+        ManualLoadEntry iup=new ManualLoadEntry();iup.setId(12L);iup.setTeacherId(1L);
+        iup.setAcademicYear("2025/2026");iup.setSubjectName("Математика");
+        iup.setClassName("ИУП-5-А-Иванов И.И.");iup.setPreciseLoadHours(new BigDecimal("2.00"));
+        iup.setLoadSource(ManualLoadSource.IUP);iup.setIupStudentCategory(StudentCategory.K2);
+
+        AdditionalAgreement annual=draftAgreement();
+        annual.setRegistryManaged(true);
+        annual.setServiceMemoId(50L);
+        annual.setStatus(AdditionalAgreement.Status.ISSUED);
+        annual.setSummary("Нагрузка и должностной оклад · Заведование кабинетом");
+
+        HrServiceMemo memo=new HrServiceMemo();memo.setId(50L);memo.setTeacherId(1L);
+        memo.setAcademicYear("2025/2026");memo.setAssignmentName("Заведование кабинетом");
+        memo.setContractClause("2.4");memo.setAmount(new BigDecimal("5000.00"));
+
+        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(iup));
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026"))
+                .thenReturn(List.of(annual));
+        when(memos.findById(50L)).thenReturn(Optional.of(memo));
+
+        service.markAnnualIupAgreementsChanged("2025/2026",Set.of(1L));
+
+        assertTrue(annual.getConditionsJson().toLowerCase(Locale.ROOT)
+                .contains("заведование кабинетом"));
+        assertTrue(annual.getConditionsJson().contains(
+                "возложена работа с обучающимися с ограниченными возможностями здоровья, детьми-инвалидами"
+        ));
+        assertTrue(annual.getSummary().contains("Работа с обучающимися с ОВЗ, детьми-инвалидами"));
+        assertTrue(annual.isReissueRequired());
+        verify(agreements).save(annual);
     }
 
     @Test void repeatedAnnualGenerationAddsClassroomLeadershipToExistingDraft() {

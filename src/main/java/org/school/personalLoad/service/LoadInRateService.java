@@ -96,6 +96,7 @@ public class LoadInRateService {
                 .collect(Collectors.toMap(TeacherDirectoryEntry::getId, TeacherDirectoryEntry::getFioTeacher,
                         (first, second) -> first));
         List<ManualLoadEntry> loadRows = loadRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(row -> !row.isIupLoad())
                 .filter(row -> row.getTeacherId() != null)
                 .filter(row -> contractsByTeacher.containsKey(row.getTeacherId()))
                 .filter(row -> salaryCalculationService.totalHours(row).signum() > 0)
@@ -141,6 +142,10 @@ public class LoadInRateService {
         for (AllocationUpdate update : updates) {
             if (update == null || update.manualLoadEntryId() == null || update.contractId() == null) continue;
             ManualLoadEntry row = loadRepository.findById(update.manualLoadEntryId()).orElseThrow();
+            if (row.isIupLoad()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Нагрузка ИУП оплачивается отдельно и не распределяется внутрь ставки");
+            }
             if (!Objects.equals(row.getAcademicYear(), academicYear)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Строка нагрузки относится к другому учебному году");

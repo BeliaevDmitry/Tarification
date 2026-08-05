@@ -43,6 +43,7 @@
 
     <div class="people-load-subtabs" role="tablist" aria-label="Разделы нагрузки по педагогам">
         <button id="people-load-main-tab" class="tab-button active" type="button" role="tab">Нагрузка</button>
+        <button id="people-load-iup-tab" class="tab-button" type="button" role="tab">ИУП</button>
         <button id="people-load-primary-tab" class="tab-button" type="button" role="tab">Педагог/предмет</button>
         <button id="people-load-in-rate-tab" class="tab-button" type="button" role="tab" hidden>Часы в ставке</button>
     </div>
@@ -50,6 +51,22 @@
     <section id="people-load-main-panel" class="card people-load-card">
         <div class="sheet-wrap people-load-wrap" data-scroll-controls="off">
             <table id="people-load-table" class="sheet-table people-load-table"></table>
+        </div>
+    </section>
+
+    <section id="people-load-iup-panel" class="card people-load-card" hidden>
+        <div class="row primary-subject-toolbar">
+            <strong>Индивидуальные учебные планы</strong>
+            <button id="export-iup-load-btn" type="button" data-allow-readonly="true">Экспорт ИУП</button>
+            <span id="iup-load-summary" class="muted"></span>
+        </div>
+        <p class="muted compact-note">
+            Таблица формируется автоматически из выпущенных приказов ИУП. Редактирование выполняется
+            в <a href="/contingent.html">разделе контингента</a>; там же доступен единый Excel-пакет
+            с шаблоном импорта. Здесь нагрузка показана только для контроля.
+        </p>
+        <div class="sheet-wrap people-load-wrap" data-scroll-controls="off">
+            <table id="iup-load-table" class="sheet-table people-load-table"></table>
         </div>
     </section>
 
@@ -109,7 +126,7 @@
 
 <script src="/auth.js"></script>
 <script src="/table-scroll.js"></script>
-<script src="/people-load.js?v=20260728-1"></script>
+<script src="/people-load.js?v=20260730-1"></script>
 <script src="/branding.js"></script>
 </body>
 </html>

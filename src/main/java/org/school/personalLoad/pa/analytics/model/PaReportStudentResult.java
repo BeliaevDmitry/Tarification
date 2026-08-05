@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
         @Index(name = "idx_pa_student_result_subject", columnList = "subject_name"),
         @Index(name = "idx_pa_student_result_class", columnList = "class_name"),
         @Index(name = "idx_pa_student_result_teacher", columnList = "teacher_fio"),
+        @Index(name = "idx_pa_student_result_student", columnList = "student_id"),
         @Index(name = "idx_pa_student_result_fio_norm", columnList = "student_fio_normalized"),
         @Index(name = "idx_pa_student_result_row_status", columnList = "row_status")
 })
@@ -23,6 +24,15 @@ public class PaReportStudentResult {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "student_id")
+    private Long studentId;
+
+    @Column(name = "student_link_status", length = 50)
+    private String studentLinkStatus;
+
+    @Column(name = "student_link_message", length = 1000)
+    private String studentLinkMessage;
 
     @Column(name = "report_version_id", nullable = false)
     private Long reportVersionId;

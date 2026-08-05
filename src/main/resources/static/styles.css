@@ -1964,6 +1964,33 @@ td.vacancy-row {
     grid-column: 1 / -1;
 }
 
+.teacher-name-forms {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border: 1px solid #dbe4f0;
+    border-radius: 10px;
+    background: #f8fbff;
+}
+
+.teacher-name-forms summary {
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.teacher-name-forms[open] summary {
+    margin-bottom: 8px;
+}
+
+.teacher-name-forms .teacher-card-grid {
+    margin: 10px 0 12px;
+}
+
+.teacher-name-forms .teacher-card-grid label {
+    display: grid;
+    gap: 5px;
+    font-weight: 600;
+}
+
 .teacher-card-checks {
     min-height: 38px;
     display: flex;

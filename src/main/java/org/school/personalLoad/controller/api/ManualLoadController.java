@@ -13,10 +13,12 @@ import org.school.personalLoad.dto.ManualLoadProcessResult;
 import org.school.personalLoad.dto.ManualLoadHealthResponse;
 import org.school.personalLoad.dto.LoadIssueDtos;
 import org.school.personalLoad.dto.ManualLoadStatsResponse;
+import org.school.personalLoad.dto.IupLoadDtos;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.service.LoadIssueService;
 import org.school.personalLoad.service.LoadInRateService;
 import org.school.personalLoad.service.LoadSalaryCalculationService;
+import org.school.personalLoad.service.IupLoadService;
 import org.school.personalLoad.service.ManualLoadService;
 import org.school.personalLoad.service.AcademicYearService;
 import org.springframework.http.HttpHeaders;
@@ -46,6 +48,7 @@ public class ManualLoadController {
     private final ObjectMapper objectMapper;
     private final LoadSalaryCalculationService loadSalaryCalculationService;
     private final LoadInRateService loadInRateService;
+    private final IupLoadService iupLoadService;
 
     @PostMapping
     public ResponseEntity<ManualLoadEntry> create(@RequestParam(required = false) String academicYear, @RequestBody ManualLoadEntryRequest request, HttpServletRequest httpServletRequest) {
@@ -80,6 +83,37 @@ public class ManualLoadController {
                 campusAddress,
                 schoolBuildingId
         ));
+    }
+
+    @GetMapping("/iup")
+    public ResponseEntity<List<IupLoadDtos.Row>> iupLoad(
+            @RequestParam(required = false) String academicYear,
+            HttpServletRequest request
+    ) {
+        List<IupLoadDtos.Row> rows = iupLoadService.findAll(
+                academicYearService.resolveRequestedOrDefault(academicYear)
+        );
+        if (!AuthSessionUtils.requiredUser(request).canViewSalary()) {
+            rows.forEach(row -> {
+                row.setSubjectCoefficient(null);
+                row.setCategoryCoefficient(null);
+                row.setPreliminaryMonthlyAmount(null);
+            });
+        }
+        return ResponseEntity.ok(rows);
+    }
+
+    @GetMapping("/iup/export")
+    public ResponseEntity<byte[]> exportIupLoad(
+            @RequestParam(required = false) String academicYear,
+            HttpServletRequest request
+    ) {
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        boolean includeSalary = AuthSessionUtils.requiredUser(request).canViewSalary();
+        return workbookResponse(
+                iupLoadService.exportWorkbook(effectiveYear, includeSalary),
+                "Нагрузка ИУП " + effectiveYear + " " + LocalDate.now() + ".xlsx"
+        );
     }
 
     @DeleteMapping

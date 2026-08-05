@@ -19,6 +19,13 @@ public class ContingentStudent {
     @Column(nullable = false)
     private Long snapshotId;
 
+    @Column(name = "student_id")
+    private Long studentId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "identity_match_status", nullable = false)
+    private StudentIdentityMatchStatus identityMatchStatus = StudentIdentityMatchStatus.PENDING;
+
     @Column(nullable = false)
     private String academicYear;
 

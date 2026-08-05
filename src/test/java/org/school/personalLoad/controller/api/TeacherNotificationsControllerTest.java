@@ -7,6 +7,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.school.personalLoad.model.ManualLoadEntry;
+import org.school.personalLoad.model.ManualLoadSource;
 import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
@@ -174,6 +175,15 @@ class TeacherNotificationsControllerTest {
                 "предварительную педагогическую нагрузку - ${TOTAL_LOAD}.",
                 controller.stripTemplateHourWordAfterTotalLoad("предварительную педагогическую нагрузку - ${TOTAL_LOAD} часов.")
         );
+    }
+
+    @Test
+    void notificationKeepsFractionalIupHours() {
+        ManualLoadEntry iup = row(StudyPeriod.YEAR, 2);
+        iup.setLoadSource(ManualLoadSource.IUP);
+        iup.setPreciseLoadHours(new BigDecimal("1.5"));
+
+        assertEquals("1,5 часа", controller().formatNotificationTotalLoad(List.of(iup)));
     }
 
     @Test

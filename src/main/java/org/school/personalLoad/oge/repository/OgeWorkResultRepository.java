@@ -12,4 +12,6 @@ public interface OgeWorkResultRepository extends JpaRepository<OgeWorkResult, Lo
             String workSource, String workType, String workDate);
 
     List<OgeWorkResult> findAllByAcademicYearOrderByClassNameAscFullNameAscSubjectNameAsc(String academicYear);
+
+    List<OgeWorkResult> findAllByStudentIdOrderByAcademicYearAscWorkDateAsc(Long studentId);
 }

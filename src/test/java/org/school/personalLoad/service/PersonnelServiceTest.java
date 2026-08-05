@@ -2,6 +2,7 @@ package org.school.personalLoad.service;
 
 import org.junit.jupiter.api.Test;
 import org.school.personalLoad.dto.PersonnelDtos.AcceptEmployeeRequest;
+import org.school.personalLoad.dto.PersonnelDtos.NameCases;
 import org.school.personalLoad.model.ManualLoadEntry;
 import org.school.personalLoad.model.MckoCertificate;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
@@ -96,7 +97,7 @@ class PersonnelServiceTest {
                 42L, "Рысь Виктория Игоревна", "+7 900 000-00-00", "rys@example.test",
                 "СП1", "Учитель", "Основное место работы", LocalDate.of(2026, 9, 1),
                 null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, false, null
+                null, null, null, null, false, null, null
         ), "admin");
 
         assertEquals(42L, result.teacherId());
@@ -114,6 +115,8 @@ class PersonnelServiceTest {
     void automaticCasesIncludeDocumentForms() {
         var cases = RussianNameCases.derive("Носкова Светлана Николаевна");
         assertEquals("Носкова С.Н.", cases.initials());
+        assertEquals("Носковой С.Н.", cases.initialsGenitive());
+        assertEquals("Носковой С.Н.", cases.initialsDative());
         assertEquals("Носковой Светлане Николаевне", cases.dative());
         assertEquals("Носковой Светланы Николаевны", cases.genitive());
     }
@@ -128,9 +131,11 @@ class PersonnelServiceTest {
         when(rules.findAllByOrderByNameAsc()).thenReturn(List.of(rule));
         when(teachers.findByFioTeacherIgnoreCase("Петрова Анна Ивановна")).thenReturn(Optional.empty());
         when(teachers.findAll()).thenReturn(List.of());
+        TeacherDirectoryEntry[] accepted = new TeacherDirectoryEntry[1];
         when(teachers.save(any())).thenAnswer(invocation -> {
             TeacherDirectoryEntry teacher = invocation.getArgument(0);
             teacher.setId(77L);
+            accepted[0] = teacher;
             return teacher;
         });
         when(personal.findByTeacherId(77L)).thenReturn(Optional.empty());
@@ -138,14 +143,30 @@ class PersonnelServiceTest {
                 .thenReturn(List.of());
         when(contracts.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
+        NameCases correctedCases = new NameCases(
+                "Петрова Анна Ивановна",
+                "Петровой Анны Ивановны",
+                "Петровой Анне Ивановне",
+                "Петрову Анну Ивановну",
+                "Петровой Анной Ивановной",
+                "Петровой Анне Ивановне",
+                "Петрова А.И.",
+                "Петровой А.И.",
+                "Петровой А.И.",
+                "Петрову А.И.",
+                "Петровой А.И.",
+                "Петровой А.И."
+        );
         service.acceptEmployee(new AcceptEmployeeRequest(
                 null, "Петрова Анна Ивановна", null, null,
                 "СП1", "Педагог-психолог", "Основное место работы", LocalDate.of(2026, 9, 1),
                 null, null, null, null, null, null, null, null, null, null,
                 "25", LocalDate.of(2026, 8, 20), LocalDate.of(2026, 9, 1), null,
-                false, null
+                false, null, correctedCases
         ), "admin");
 
+        assertEquals("Петрову Анну Ивановну", accepted[0].getFioTeacherAccusative());
+        assertEquals("Петровой А.И.", accepted[0].getInitialsInstrumental());
         verify(contracts).save(argThat(contract ->
                 contract.isLoadHoursMayBeIncludedInRate()
                         && Long.valueOf(18L).equals(contract.getLoadInRateRuleId())
@@ -164,6 +185,8 @@ class PersonnelServiceTest {
         teacher.setPrimaryPosition("Учитель");
         teacher.setEmploymentType("Основное место работы");
         teacher.setEmploymentDate(LocalDate.of(2026, 9, 1));
+        teacher.setFioTeacherGenitive("Рыси Виктории Игоревны");
+        teacher.setInitialsGenitive("Рыси В.И.");
         when(teachers.findById(7L)).thenReturn(Optional.of(teacher));
         when(personal.findByTeacherId(7L)).thenReturn(Optional.empty());
         when(contracts.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(7L)).thenReturn(List.of());
@@ -176,6 +199,14 @@ class PersonnelServiceTest {
             var cells = document.getTables().get(0).getRow(0).getTableCells();
             assertEquals(cells.get(0).getCTTc().getTcPr().getTcW().getW(),
                     cells.get(1).getCTTc().getTcPr().getTcW().getW());
+            String text = document.getTables().stream()
+                    .flatMap(table -> table.getRows().stream())
+                    .flatMap(row -> row.getTableCells().stream())
+                    .map(cell -> cell.getText())
+                    .reduce("", (left, right) -> left + "\n" + right);
+            assertTrue(text.contains("Рыси Виктории Игоревны"));
+            assertTrue(text.contains("Рыси В.И."));
+            assertFalse(text.contains("Трудовой договор"));
         }
         Path qa = Path.of("target", "docx-qa");
         Files.createDirectories(qa);

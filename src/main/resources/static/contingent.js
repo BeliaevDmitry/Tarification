@@ -19,12 +19,90 @@ const ui = {
     manualSaveBtn: document.getElementById('contingent-manual-save-btn'),
     manualRefreshBtn: document.getElementById('contingent-manual-refresh-btn'),
     manualSummary: document.getElementById('contingent-manual-summary'),
-    manualTable: document.getElementById('contingent-manual-table')
+    manualTable: document.getElementById('contingent-manual-table'),
+    supportAsOfDate: document.getElementById('support-as-of-date'),
+    supportRefreshBtn: document.getElementById('support-refresh-btn'),
+    supportExportBtn: document.getElementById('support-export-btn'),
+    supportReconcileBtn: document.getElementById('support-reconcile-btn'),
+    supportSummaryMessage: document.getElementById('support-summary-message'),
+    supportDataPackageExportBtn: document.getElementById('support-data-package-export-btn'),
+    supportDataPackageFile: document.getElementById('support-data-package-file'),
+    supportDataPackageImportBtn: document.getElementById('support-data-package-import-btn'),
+    supportDataPackageResult: document.getElementById('support-data-package-result'),
+    supportReadinessBtn: document.getElementById('support-readiness-btn'),
+    supportReadinessTable: document.getElementById('support-readiness-table'),
+    supportDocumentSection: document.getElementById('support-document-section'),
+    supportDocumentTable: document.getElementById('support-document-table'),
+    supportDocumentMessage: document.getElementById('support-document-message'),
+    supportDocumentId: document.getElementById('support-document-id'),
+    supportDocumentStudent: document.getElementById('support-document-student'),
+    supportDocumentType: document.getElementById('support-document-type'),
+    supportDocumentForm: document.getElementById('support-document-form'),
+    supportDocumentNumber: document.getElementById('support-document-number'),
+    supportDocumentIssueDate: document.getElementById('support-document-issue-date'),
+    supportDocumentValidFrom: document.getElementById('support-document-valid-from'),
+    supportDocumentValidTo: document.getElementById('support-document-valid-to'),
+    supportDocumentReceivedAt: document.getElementById('support-document-received-at'),
+    supportDocumentOrganization: document.getElementById('support-document-organization'),
+    supportDocumentResponsible: document.getElementById('support-document-responsible'),
+    supportDocumentComment: document.getElementById('support-document-comment'),
+    supportDocumentFile: document.getElementById('support-document-file'),
+    supportDocumentSaveBtn: document.getElementById('support-document-save-btn'),
+    supportDocumentClearBtn: document.getElementById('support-document-clear-btn'),
+    supportClassTable: document.getElementById('support-class-table'),
+    supportRegisterTable: document.getElementById('support-register-table'),
+    supportStatusEditor: document.getElementById('support-status-editor'),
+    supportStatusId: document.getElementById('support-status-id'),
+    supportStatusStudent: document.getElementById('support-status-student'),
+    supportStatusCategory: document.getElementById('support-status-category'),
+    supportStatusFrom: document.getElementById('support-status-from'),
+    supportStatusTo: document.getElementById('support-status-to'),
+    supportStatusSaveBtn: document.getElementById('support-status-save-btn'),
+    supportStatusClearBtn: document.getElementById('support-status-clear-btn'),
+    supportIupEditor: document.getElementById('support-iup-editor'),
+    supportIupId: document.getElementById('support-iup-id'),
+    supportIupStudent: document.getElementById('support-iup-student'),
+    supportIupStatus: document.getElementById('support-iup-status'),
+    supportIupOrderNumber: document.getElementById('support-iup-order-number'),
+    supportIupOrderDate: document.getElementById('support-iup-order-date'),
+    supportIupFrom: document.getElementById('support-iup-from'),
+    supportIupTo: document.getElementById('support-iup-to'),
+    supportIupSubjectBody: document.getElementById('support-iup-subject-body'),
+    supportIupAddSubjectBtn: document.getElementById('support-iup-add-subject-btn'),
+    supportIupSaveBtn: document.getElementById('support-iup-save-btn'),
+    supportIupClearBtn: document.getElementById('support-iup-clear-btn'),
+    supportIupOrderTemplate: document.getElementById('support-iup-order-template'),
+    supportIupDocumentOrderNumber: document.getElementById('support-iup-document-order-number'),
+    supportIupDocumentOrderDate: document.getElementById('support-iup-document-order-date'),
+    supportIupOrderGender: document.getElementById('support-iup-order-gender'),
+    supportIupOrderStudentName: document.getElementById('support-iup-order-student-name'),
+    supportIupOrderEducationForm: document.getElementById('support-iup-order-education-form'),
+    supportIupOrderMedicalNumber: document.getElementById('support-iup-order-medical-number'),
+    supportIupOrderMedicalDate: document.getElementById('support-iup-order-medical-date'),
+    supportIupOrderMedicalOrganization: document.getElementById('support-iup-order-medical-organization'),
+    supportIupOrderPedNumber: document.getElementById('support-iup-order-ped-number'),
+    supportIupOrderPedDate: document.getElementById('support-iup-order-ped-date'),
+    supportIupOrderPpkNumber: document.getElementById('support-iup-order-ppk-number'),
+    supportIupOrderPpkDate: document.getElementById('support-iup-order-ppk-date'),
+    supportIupOrderPreviousNumber: document.getElementById('support-iup-order-previous-number'),
+    supportIupOrderPreviousDate: document.getElementById('support-iup-order-previous-date'),
+    supportIupOrderCoordinator: document.getElementById('support-iup-order-coordinator'),
+    supportIupOrderEjournalAdmin: document.getElementById('support-iup-order-ejournal-admin'),
+    supportIupOrderEnrollmentAdmin: document.getElementById('support-iup-order-enrollment-admin'),
+    supportIupOrderControlOfficer: document.getElementById('support-iup-order-control-officer'),
+    supportIupOrderExecutor: document.getElementById('support-iup-order-executor'),
+    supportIupOrderDirector: document.getElementById('support-iup-order-director'),
+    supportIupOrderDownloadBtn: document.getElementById('support-iup-order-download-btn'),
+    supportIupOrderDownloadGroupBtn: document.getElementById('support-iup-order-download-group-btn'),
+    supportIupOrderMessage: document.getElementById('support-iup-order-message')
 };
 
 const esc = (v) => String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 let currentStats = null;
 let currentManualRows = [];
+let currentSupportSummary = null;
+let currentSupportDocuments = [];
+let supportReferences = { students: [], curriculum: [], teachers: [] };
 
 function stageClassSummary(stats) {
     return `НОО: ${Number(stats?.totalClassesNoo || 0)}; ООО: ${Number(stats?.totalClassesOoo || 0)}; СОО: ${Number(stats?.totalClassesSoo || 0)}`;
@@ -33,12 +111,13 @@ function stageClassSummary(stats) {
 function contingentPermissions() {
     const permissions = window.tarificationTabPermissions || {};
     if (window.tarificationAuth?.admin) {
-        return { canImportView: true, canStatsView: true, canManualView: true };
+        return { canImportView: true, canStatsView: true, canManualView: true, canSupportView: true };
     }
     return {
         canImportView: Boolean(permissions.CONTINGENT_IMPORT?.canView),
         canStatsView: Boolean(permissions.CONTINGENT_STATS?.canView),
-        canManualView: Boolean(permissions.CONTINGENT_STATS?.canView)
+        canManualView: Boolean(permissions.CONTINGENT_STATS?.canView),
+        canSupportView: Boolean(permissions.CONTINGENT_STATS?.canView)
     };
 }
 
@@ -51,14 +130,19 @@ async function waitForAuthContext() {
 }
 
 function applyTabAccess() {
-    const { canImportView, canStatsView, canManualView } = contingentPermissions();
+    const { canImportView, canStatsView, canManualView, canSupportView } = contingentPermissions();
     ui.tabs.forEach((tab) => {
         const tabName = tab.dataset.contingentTab;
-        const allowed = tabName === 'import' ? canImportView : (tabName === 'manual' ? canManualView : canStatsView);
+        const allowed = tabName === 'import'
+            ? canImportView
+            : (tabName === 'manual'
+                ? canManualView
+                : (tabName === 'support' ? canSupportView : canStatsView));
         tab.style.display = allowed ? '' : 'none';
     });
 
     if (canStatsView) return 'stats';
+    if (canSupportView) return 'support';
     if (canManualView) return 'manual';
     if (canImportView) return 'import';
     return null;
@@ -83,6 +167,30 @@ async function downloadWorkbook(path, fallbackName) {
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = decodeURIComponent(fileName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+}
+
+async function downloadGeneratedDocument(path, payload, fallbackName) {
+    const scopedPath = window.withAcademicYear ? window.withAcademicYear(path) : path;
+    const response = await fetch(scopedPath, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+        const text = await response.text();
+        let error = null;
+        try { error = text ? JSON.parse(text) : null; } catch { error = null; }
+        throw new Error(error?.message || error?.error || text || `HTTP ${response.status}`);
+    }
+    const blob = await response.blob();
+    const encodedName = response.headers.get('Content-Disposition')?.split("filename*=UTF-8''")[1];
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = encodedName ? decodeURIComponent(encodedName) : fallbackName;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -375,13 +483,677 @@ async function refreshStats() {
     renderStatsTable(currentStats);
 }
 
+const supportCategoryLabel = (value) => ({ NORMAL: 'Норма', K2: 'К2', K3: 'К3' }[value] || value || '');
+const supportIupStatusLabel = (value) => ({
+    DRAFT: 'Черновик',
+    REVIEW: 'На согласовании',
+    APPROVED: 'Утверждён',
+    ACTIVE: 'Действует',
+    CHANGED: 'Изменён',
+    COMPLETED: 'Завершён',
+    CANCELLED: 'Отменён'
+}[value] || value || '');
+const supportModeLabel = (value) => ({
+    WITH_CLASS: 'С классом',
+    INDIVIDUAL: 'Индивидуально',
+    PARTIAL: 'Частично с классом',
+    NOT_STUDIED: 'Не изучает'
+}[value] || value || '');
+
+function supportDateRange(from, to) {
+    if (!from && !to) return '';
+    return `${from || '…'} — ${to || 'бессрочно'}`;
+}
+
+function supportSelectedStudent() {
+    const studentId = Number(ui.supportIupStudent?.value || 0);
+    return (supportReferences.students || []).find((student) => Number(student.studentId) === studentId) || null;
+}
+
+function supportStudentOptions() {
+    const options = (supportReferences.students || []).map((student) =>
+        `<option value="${esc(student.studentId)}">${esc(student.className)} — ${esc(student.fullName)}</option>`
+    ).join('');
+    return `<option value="">Выберите ребёнка</option>${options}`;
+}
+
+function supportCurriculumForSelectedStudent() {
+    const student = supportSelectedStudent();
+    if (!student) return [];
+    return (supportReferences.curriculum || []).filter((entry) =>
+        String(entry.className || '').localeCompare(String(student.className || ''), 'ru', { sensitivity: 'base' }) === 0
+    );
+}
+
+function supportCurriculumOptions(selectedId) {
+    const entries = supportCurriculumForSelectedStudent();
+    return `<option value="">Выберите предмет</option>${entries.map((entry) => `
+        <option value="${esc(entry.curriculumEntryId)}" ${Number(entry.curriculumEntryId) === Number(selectedId) ? 'selected' : ''}>
+            ${esc(entry.subjectName)}${entry.subgroupRequired ? ` · ${esc(entry.subgroupCount || 2)} группы` : ''}
+        </option>
+    `).join('')}`;
+}
+
+function supportTeacherOptions(selectedId) {
+    return `<option value="">Не назначен</option>${(supportReferences.teachers || []).map((teacher) => `
+        <option value="${esc(teacher.teacherId)}" ${Number(teacher.teacherId) === Number(selectedId) ? 'selected' : ''}>
+            ${esc(teacher.fullName)}${teacher.archived ? ' (архив)' : ''}
+        </option>
+    `).join('')}`;
+}
+
+function supportGroupOptions(curriculumEntryId, selected) {
+    const entry = (supportReferences.curriculum || []).find((item) =>
+        Number(item.curriculumEntryId) === Number(curriculumEntryId)
+    );
+    if (!entry?.subgroupRequired) {
+        return '<option value="">Не требуется</option>';
+    }
+    const count = Math.max(1, Number(entry.subgroupCount || 2));
+    const options = [];
+    for (let index = 1; index <= count; index += 1) {
+        const name = `Группа ${index}`;
+        options.push(`<option value="${name}" ${name === selected ? 'selected' : ''}>${name}</option>`);
+    }
+    return `<option value="">Выберите группу</option>${options.join('')}`;
+}
+
+function addSupportIupSubjectRow(subject = {}) {
+    const assignment = subject.teachers?.[0] || {};
+    const row = document.createElement('tr');
+    row.innerHTML = `
+        <td><select data-iup-field="curriculumEntryId">${supportCurriculumOptions(subject.curriculumEntryId)}</select></td>
+        <td>
+            <select data-iup-field="participationMode">
+                ${['WITH_CLASS', 'INDIVIDUAL', 'PARTIAL', 'NOT_STUDIED'].map((mode) =>
+                    `<option value="${mode}" ${(subject.participationMode || 'INDIVIDUAL') === mode ? 'selected' : ''}>${supportModeLabel(mode)}</option>`
+                ).join('')}
+            </select>
+        </td>
+        <td><input data-iup-field="classHours" type="number" min="0" step="0.25" value="${esc(subject.classHours ?? 0)}"></td>
+        <td><input data-iup-field="individualHours" type="number" min="0" step="0.25" value="${esc(subject.individualHours ?? 0)}"></td>
+        <td><select data-iup-field="groupNameEducationalPlan">${supportGroupOptions(subject.curriculumEntryId, subject.groupNameEducationalPlan)}</select></td>
+        <td><select data-iup-field="teacherId">${supportTeacherOptions(assignment.teacherId)}</select></td>
+        <td><input data-iup-field="teacherHours" type="number" min="0" step="0.25" value="${esc(assignment.hoursPerWeek ?? '')}"></td>
+        <td>
+            <select data-iup-field="deliveryForm">
+                <option value="FACE_TO_FACE" ${(assignment.deliveryForm || 'FACE_TO_FACE') === 'FACE_TO_FACE' ? 'selected' : ''}>Очно</option>
+                <option value="ELECTRONIC" ${assignment.deliveryForm === 'ELECTRONIC' ? 'selected' : ''}>Электронно</option>
+                <option value="DISTANCE" ${assignment.deliveryForm === 'DISTANCE' ? 'selected' : ''}>Дистанционно</option>
+                <option value="MIXED" ${assignment.deliveryForm === 'MIXED' ? 'selected' : ''}>Смешанно</option>
+            </select>
+        </td>
+        <td><button type="button" class="secondary" data-iup-remove-subject>×</button></td>
+    `;
+    ui.supportIupSubjectBody.appendChild(row);
+}
+
+function updateSupportSubjectCurriculumOptions() {
+    Array.from(ui.supportIupSubjectBody?.querySelectorAll('tr') || []).forEach((row) => {
+        const select = row.querySelector('[data-iup-field="curriculumEntryId"]');
+        const selectedId = select?.value;
+        select.innerHTML = supportCurriculumOptions(selectedId);
+        if (selectedId) select.value = selectedId;
+        updateSupportGroupOptions(row);
+    });
+}
+
+function updateSupportGroupOptions(row) {
+    const curriculumId = row.querySelector('[data-iup-field="curriculumEntryId"]')?.value;
+    const groupSelect = row.querySelector('[data-iup-field="groupNameEducationalPlan"]');
+    const selected = groupSelect?.value;
+    if (groupSelect) {
+        groupSelect.innerHTML = supportGroupOptions(curriculumId, selected);
+        if (selected) groupSelect.value = selected;
+    }
+}
+
+function resetSupportStatusForm() {
+    ui.supportStatusId.value = '';
+    ui.supportStatusStudent.value = '';
+    ui.supportStatusCategory.value = 'NORMAL';
+    ui.supportStatusFrom.value = ui.supportAsOfDate.value || '';
+    ui.supportStatusTo.value = '';
+}
+
+function resetSupportIupForm() {
+    ui.supportIupId.value = '';
+    ui.supportIupStudent.value = '';
+    ui.supportIupStatus.value = 'DRAFT';
+    ui.supportIupOrderNumber.value = '';
+    ui.supportIupOrderDate.value = '';
+    ui.supportIupFrom.value = ui.supportAsOfDate.value || '';
+    ui.supportIupTo.value = '';
+    ui.supportIupSubjectBody.innerHTML = '';
+    resetSupportIupOrderForm();
+}
+
+function resetSupportIupOrderForm() {
+    if (!ui.supportIupOrderTemplate) return;
+    ui.supportIupOrderTemplate.value = 'INDIVIDUAL_IUP';
+    ui.supportIupDocumentOrderNumber.value = '';
+    ui.supportIupDocumentOrderDate.value = '';
+    ui.supportIupOrderGender.value = '';
+    ui.supportIupOrderStudentName.value = '';
+    ui.supportIupOrderStudentName.placeholder = 'Например: Иванова Ивана Ивановича';
+    ui.supportIupOrderEducationForm.value = '';
+    ui.supportIupOrderMedicalNumber.value = '';
+    ui.supportIupOrderMedicalDate.value = '';
+    ui.supportIupOrderMedicalOrganization.value = '';
+    ui.supportIupOrderPedNumber.value = '';
+    ui.supportIupOrderPedDate.value = '';
+    ui.supportIupOrderPpkNumber.value = '';
+    ui.supportIupOrderPpkDate.value = '';
+    ui.supportIupOrderPreviousNumber.value = '';
+    ui.supportIupOrderPreviousDate.value = '';
+    ui.supportIupOrderCoordinator.value = '';
+    ui.supportIupOrderEjournalAdmin.value = '';
+    ui.supportIupOrderEnrollmentAdmin.value = '';
+    ui.supportIupOrderControlOfficer.value = '';
+    ui.supportIupOrderExecutor.value = '';
+    ui.supportIupOrderDirector.value = '';
+    ui.supportIupOrderMessage.textContent = '';
+}
+
+function fillSupportIupOrderDefaults(plan) {
+    if (!ui.supportIupOrderTemplate) return;
+    const student = (supportReferences.students || []).find((item) =>
+        Number(item.studentId) === Number(plan.studentId)
+    );
+    ui.supportIupDocumentOrderNumber.value = plan.orderNumber || '';
+    ui.supportIupDocumentOrderDate.value = plan.orderDate || '';
+    ui.supportIupOrderStudentName.value = '';
+    ui.supportIupOrderStudentName.placeholder = student?.fullName
+        ? `ФИО из контингента: ${student.fullName}. Введите форму для приказа`
+        : 'Введите ФИО в форме, необходимой для приказа';
+}
+
+function supportIupOrderPayload(planIds, templateType) {
+    return {
+        templateType,
+        iupPlanIds: planIds,
+        orderNumber: ui.supportIupDocumentOrderNumber.value || null,
+        orderDate: ui.supportIupDocumentOrderDate.value || null,
+        studentGender: templateType === 'OVZ_GROUP' ? null : (ui.supportIupOrderGender.value || null),
+        studentNameForOrder: templateType === 'OVZ_GROUP' ? null : (ui.supportIupOrderStudentName.value || null),
+        educationLevelAndForm: ui.supportIupOrderEducationForm.value || null,
+        medicalConclusionNumber: ui.supportIupOrderMedicalNumber.value || null,
+        medicalConclusionDate: ui.supportIupOrderMedicalDate.value || null,
+        medicalOrganization: ui.supportIupOrderMedicalOrganization.value || null,
+        pedagogicalCouncilProtocolNumber: ui.supportIupOrderPedNumber.value || null,
+        pedagogicalCouncilProtocolDate: ui.supportIupOrderPedDate.value || null,
+        ppkProtocolNumber: ui.supportIupOrderPpkNumber.value || null,
+        ppkProtocolDate: ui.supportIupOrderPpkDate.value || null,
+        previousOrderNumber: ui.supportIupOrderPreviousNumber.value || null,
+        previousOrderDate: ui.supportIupOrderPreviousDate.value || null,
+        responsibleCoordinator: ui.supportIupOrderCoordinator.value || null,
+        electronicJournalAdministrator: ui.supportIupOrderEjournalAdmin.value || null,
+        enrollmentAdministrator: ui.supportIupOrderEnrollmentAdmin.value || null,
+        controlOfficer: ui.supportIupOrderControlOfficer.value || null,
+        executor: ui.supportIupOrderExecutor.value || null,
+        directorName: ui.supportIupOrderDirector.value || null
+    };
+}
+
+async function generateSupportIupOrder(groupOrder) {
+    let templateType = ui.supportIupOrderTemplate.value || 'INDIVIDUAL_IUP';
+    let planIds;
+    if (groupOrder) {
+        templateType = 'OVZ_GROUP';
+        ui.supportIupOrderTemplate.value = templateType;
+        planIds = (currentSupportSummary?.registerRows || [])
+            .filter((item) => item.hasIup && ['K2', 'K3'].includes(item.underlyingCategory))
+            .map((item) => Number(item.iupPlanId))
+            .filter((value) => Number.isFinite(value) && value > 0);
+        if (!planIds.length) {
+            throw new Error('На выбранную дату нет действующих ИУП у детей К2/К3.');
+        }
+    } else {
+        const planId = Number(ui.supportIupId.value || 0);
+        if (!planId) {
+            throw new Error('Сначала сохраните ИУП или откройте существующий ИУП из реестра.');
+        }
+        planIds = [planId];
+    }
+    ui.supportIupOrderMessage.textContent = 'Формирую приказ Word…';
+    await downloadGeneratedDocument(
+        '/api/contingent/special-support/iup-orders/generate',
+        supportIupOrderPayload(planIds, templateType),
+        'Приказ_ИУП.docx'
+    );
+    ui.supportIupOrderMessage.textContent = 'Приказ сформирован. После подписания его можно принять в реестр документов как «Приказ по ИУП».';
+}
+
+const supportDocumentTypeLabels = {
+    MSE_CERTIFICATE: 'Справка МСЭ',
+    IPR_IPRA: 'ИПР/ИПРА',
+    CPMPC_CONCLUSION: 'Заключение ЦПМПК',
+    INTERNAL_PPK_PROTOCOL: 'Протокол ППк',
+    IOM: 'ИОМ',
+    IUP_ORDER: 'Приказ по ИУП',
+    OTHER: 'Другой документ'
+};
+
+const supportDocumentFormLabels = {
+    ORIGINAL: 'Оригинал',
+    COPY: 'Копия',
+    ELECTRONIC_COPY: 'Электронная копия'
+};
+
+function resetSupportDocumentForm() {
+    ui.supportDocumentId.value = '';
+    ui.supportDocumentStudent.value = '';
+    ui.supportDocumentType.value = 'MSE_CERTIFICATE';
+    ui.supportDocumentForm.value = 'COPY';
+    ui.supportDocumentNumber.value = '';
+    ui.supportDocumentIssueDate.value = '';
+    ui.supportDocumentValidFrom.value = '';
+    ui.supportDocumentValidTo.value = '';
+    const today = new Date();
+    today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+    ui.supportDocumentReceivedAt.value = today.toISOString().slice(0, 10);
+    ui.supportDocumentOrganization.value = '';
+    ui.supportDocumentResponsible.value = '';
+    ui.supportDocumentComment.value = '';
+    ui.supportDocumentFile.value = '';
+    ui.supportDocumentSaveBtn.textContent = 'Принять документ';
+}
+
+function supportAttachmentSize(value) {
+    const bytes = Number(value || 0);
+    if (bytes < 1024) return `${bytes} Б`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+}
+
+function supportAttachmentLink(documentId, attachment) {
+    const path = `/api/contingent/special-support/documents/${encodeURIComponent(documentId)}`
+        + `/attachments/${encodeURIComponent(attachment.id)}`;
+    const href = window.withAcademicYear ? window.withAcademicYear(path) : path;
+    return `
+        <span>
+            <a href="${esc(href)}">${esc(attachment.fileName)}</a>
+            <small class="muted">(${esc(supportAttachmentSize(attachment.fileSize))})</small>
+            <button type="button" class="secondary" data-requires-edit
+                    data-support-delete-attachment="${esc(attachment.id)}"
+                    data-support-document-id="${esc(documentId)}">×</button>
+        </span>`;
+}
+
+function renderSupportDocuments(documents) {
+    const rows = (documents || []).map((document) => {
+        const dates = [
+            document.issueDate ? `выдан ${document.issueDate}` : '',
+            (document.validFrom || document.validTo)
+                ? `действует ${supportDateRange(document.validFrom, document.validTo)}`
+                : ''
+        ].filter(Boolean).join('; ');
+        const files = (document.attachments || [])
+            .map((attachment) => supportAttachmentLink(document.id, attachment))
+            .join('<br>');
+        return `
+            <tr>
+                <td>${esc(document.studentFullName)}</td>
+                <td>${esc(document.className)}</td>
+                <td>${esc(supportDocumentTypeLabels[document.documentType] || document.documentType)}</td>
+                <td>${esc(document.documentNumber || '')}</td>
+                <td>${esc(dates || '—')}</td>
+                <td>${esc(supportDocumentFormLabels[document.acceptedForm] || document.acceptedForm)}</td>
+                <td>${esc(document.receivedAt || '')}</td>
+                <td>${esc(document.validityStatus || '')}</td>
+                <td>${files || '<span class="muted">Нет копий</span>'}</td>
+                <td data-requires-edit>
+                    <button type="button" class="secondary"
+                            data-support-edit-document="${esc(document.id)}">Изменить</button>
+                    <button type="button" class="secondary"
+                            data-support-delete-document="${esc(document.id)}">Удалить</button>
+                </td>
+            </tr>`;
+    }).join('');
+    ui.supportDocumentTable.innerHTML = `
+        <thead>
+            <tr>
+                <th>ФИО</th><th>Класс</th><th>Документ</th><th>Номер</th><th>Даты</th>
+                <th>Принято</th><th>Дата приёма</th><th>Состояние</th><th>Копии</th><th></th>
+            </tr>
+        </thead>
+        <tbody>${rows || '<tr><td colspan="10" class="muted">Документы пока не приняты.</td></tr>'}</tbody>`;
+}
+
+async function refreshSupportDocuments() {
+    const asOf = ui.supportAsOfDate?.value
+        ? `?asOfDate=${encodeURIComponent(ui.supportAsOfDate.value)}`
+        : '';
+    currentSupportDocuments = await api(`/api/contingent/special-support/documents${asOf}`);
+    renderSupportDocuments(currentSupportDocuments);
+    ui.supportDocumentMessage.textContent = currentSupportDocuments.length
+        ? `Принято документов: ${currentSupportDocuments.length}.`
+        : 'Документы пока не приняты.';
+}
+
+async function saveSupportDocument() {
+    if (!ui.supportDocumentStudent.value) {
+        ui.supportDocumentMessage.textContent = 'Выберите ребёнка, для которого принят документ.';
+        ui.supportDocumentStudent.focus();
+        return;
+    }
+    const selectedFile = ui.supportDocumentFile.files?.[0];
+    if (selectedFile && selectedFile.size > 15 * 1024 * 1024) {
+        ui.supportDocumentMessage.textContent = 'Размер прикреплённой копии не должен превышать 15 МБ.';
+        ui.supportDocumentFile.focus();
+        return;
+    }
+    const payload = {
+        id: ui.supportDocumentId.value ? Number(ui.supportDocumentId.value) : null,
+        studentId: Number(ui.supportDocumentStudent.value || 0) || null,
+        documentType: ui.supportDocumentType.value,
+        acceptedForm: ui.supportDocumentForm.value,
+        documentNumber: ui.supportDocumentNumber.value || null,
+        issueDate: ui.supportDocumentIssueDate.value || null,
+        validFrom: ui.supportDocumentValidFrom.value || null,
+        validTo: ui.supportDocumentValidTo.value || null,
+        receivedAt: ui.supportDocumentReceivedAt.value || null,
+        issuingOrganization: ui.supportDocumentOrganization.value || null,
+        responsibleEmployee: ui.supportDocumentResponsible.value || null,
+        comment: ui.supportDocumentComment.value || null
+    };
+    const saved = await api('/api/contingent/special-support/documents', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const file = selectedFile;
+    if (file) {
+        const form = new FormData();
+        form.append('file', file);
+        await api(`/api/contingent/special-support/documents/${encodeURIComponent(saved.id)}/attachments`, {
+            method: 'POST',
+            body: form
+        });
+    }
+    resetSupportDocumentForm();
+    await refreshSupportDocuments();
+    ui.supportDocumentMessage.textContent = 'Документ принят и сохранён.';
+}
+
+function editSupportDocument(documentId) {
+    const document = currentSupportDocuments.find((item) => Number(item.id) === Number(documentId));
+    if (!document) return;
+    ui.supportDocumentId.value = document.id || '';
+    ui.supportDocumentStudent.value = document.studentId || '';
+    ui.supportDocumentType.value = document.documentType || 'OTHER';
+    ui.supportDocumentForm.value = document.acceptedForm || 'COPY';
+    ui.supportDocumentNumber.value = document.documentNumber || '';
+    ui.supportDocumentIssueDate.value = document.issueDate || '';
+    ui.supportDocumentValidFrom.value = document.validFrom || '';
+    ui.supportDocumentValidTo.value = document.validTo || '';
+    ui.supportDocumentReceivedAt.value = document.receivedAt || '';
+    ui.supportDocumentOrganization.value = document.issuingOrganization || '';
+    ui.supportDocumentResponsible.value = document.responsibleEmployee || '';
+    ui.supportDocumentComment.value = document.comment || '';
+    ui.supportDocumentFile.value = '';
+    ui.supportDocumentSaveBtn.textContent = 'Сохранить изменения';
+    ui.supportDocumentSection.open = true;
+    ui.supportDocumentSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderSupportClassTable(summary) {
+    const rows = (summary?.classes || []).map((item) => `
+        <tr>
+            <td>${esc(item.className)}</td>
+            <td><strong>${esc(item.total)}</strong></td>
+            <td>${esc(item.normal)}</td>
+            <td>${esc(item.k2)}</td>
+            <td>${esc(item.k3)}</td>
+            <td>${esc(item.iup)}</td>
+        </tr>
+    `).join('');
+    const totals = (summary?.classes || []).reduce((acc, item) => ({
+        total: acc.total + Number(item.total || 0),
+        normal: acc.normal + Number(item.normal || 0),
+        k2: acc.k2 + Number(item.k2 || 0),
+        k3: acc.k3 + Number(item.k3 || 0),
+        iup: acc.iup + Number(item.iup || 0)
+    }), { total: 0, normal: 0, k2: 0, k3: 0, iup: 0 });
+    ui.supportClassTable.innerHTML = `
+        <thead><tr><th>Класс</th><th>Всего</th><th>Норма</th><th>К2</th><th>К3</th><th>ИУП</th></tr></thead>
+        <tbody>
+            ${rows || '<tr><td colspan="6" class="muted">Нет данных.</td></tr>'}
+            <tr><th>ИТОГО</th><th>${totals.total}</th><th>${totals.normal}</th><th>${totals.k2}</th><th>${totals.k3}</th><th>${totals.iup}</th></tr>
+        </tbody>`;
+}
+
+function renderSupportRegister(summary) {
+    const rows = (summary?.registerRows || []).map((item) => `
+        <tr>
+            <td>${esc(item.fullName)}</td>
+            <td>${esc(item.className)}</td>
+            <td>${esc(supportCategoryLabel(item.underlyingCategory))}</td>
+            <td>${esc(supportDateRange(item.categoryValidFrom, item.categoryValidTo))}</td>
+            <td>${item.hasIup ? 'Да' : 'Нет'}</td>
+            <td>${esc(supportIupStatusLabel(item.iupStatus))}</td>
+            <td>${esc(supportDateRange(item.iupValidFrom, item.iupValidTo))}</td>
+            <td>${esc(item.orderNumber || '')}${item.orderDate ? ` от ${esc(item.orderDate)}` : ''}</td>
+            <td data-requires-edit>
+                ${item.supportStatusId ? `<button type="button" class="secondary" data-support-edit-status="${esc(item.studentId)}">Статус</button>` : ''}
+                ${item.iupPlanId ? `<button type="button" class="secondary" data-support-edit-iup="${esc(item.iupPlanId)}">ИУП</button>` : ''}
+            </td>
+        </tr>
+    `).join('');
+    ui.supportRegisterTable.innerHTML = `
+        <thead>
+            <tr>
+                <th>ФИО</th><th>Класс</th><th>Категория</th><th>Срок категории</th>
+                <th>ИУП</th><th>Статус ИУП</th><th>Срок ИУП</th><th>Приказ</th><th></th>
+            </tr>
+        </thead>
+        <tbody>${rows || '<tr><td colspan="9" class="muted">Действующих К2, К3 и ИУП на эту дату нет.</td></tr>'}</tbody>`;
+}
+
+async function loadSupportReferences() {
+    supportReferences = await api('/api/contingent/special-support/references');
+    const options = supportStudentOptions();
+    ui.supportStatusStudent.innerHTML = options;
+    ui.supportIupStudent.innerHTML = options;
+    ui.supportDocumentStudent.innerHTML = options;
+}
+
+function supportQuery() {
+    const params = new URLSearchParams();
+    if (ui.snapshotDateSelect?.value) params.set('snapshotDate', ui.snapshotDateSelect.value);
+    if (ui.supportAsOfDate?.value) params.set('asOfDate', ui.supportAsOfDate.value);
+    return params.toString() ? `?${params}` : '';
+}
+
+async function refreshSupport() {
+    currentSupportSummary = await api(`/api/contingent/special-support/summary${supportQuery()}`);
+    if (!ui.supportAsOfDate.value) {
+        ui.supportAsOfDate.value = currentSupportSummary.asOfDate || currentSupportSummary.snapshotDate || '';
+    }
+    renderSupportClassTable(currentSupportSummary);
+    renderSupportRegister(currentSupportSummary);
+    if (ui.supportReconcileBtn) {
+        ui.supportReconcileBtn.disabled = Number(currentSupportSummary.unlinkedStudents || 0) === 0;
+    }
+    const warning = (currentSupportSummary.warnings || []).join(' ');
+    ui.supportSummaryMessage.textContent =
+        `Снимок контингента: ${currentSupportSummary.snapshotDate}. Всего: ${currentSupportSummary.totalStudents}. `
+        + `Формула каждой строки: Всего = Норма + К2 + К3 + ИУП.${warning ? ` ${warning}` : ''}`;
+}
+
+function renderSupportReadiness(readiness) {
+    const rows = [
+        ['Режим расчёта', readiness?.calculationMode || ''],
+        ['Дата контингента', readiness?.snapshotDate || '—'],
+        ['Всего детей', readiness?.totalStudents ?? 0],
+        ['Связано карточек', readiness?.linkedStudents ?? 0],
+        ['Не связано', readiness?.unlinkedStudents ?? 0],
+        ['Нозологий в справочнике', readiness?.nosologies ?? 0],
+        ['Активных ИУП', readiness?.activeIups ?? 0],
+        ['Ожидается распределений', readiness?.expectedGroupAssignments ?? 0],
+        ['Заполнено распределений', readiness?.completedGroupAssignments ?? 0],
+        ['Не заполнено', readiness?.missingGroupAssignments ?? 0],
+        ['Дубли', readiness?.duplicateGroupAssignments ?? 0],
+        ['Фактическая численность применяется', readiness?.readyForStudentCountCutover ? 'Да' : 'Нет']
+    ];
+    const messages = [
+        ...(readiness?.blockers || []).map((message) => ['Блокирующая проверка', message]),
+        ...(readiness?.notes || []).map((message) => ['Примечание', message])
+    ];
+    ui.supportReadinessTable.innerHTML = `
+        <thead><tr><th>Показатель</th><th>Значение</th></tr></thead>
+        <tbody>${[...rows, ...messages].map(([label, value]) => `
+            <tr><td>${esc(label)}</td><td>${esc(value)}</td></tr>
+        `).join('')}</tbody>`;
+}
+
+async function refreshSupportReadiness() {
+    const readiness = await api('/api/contingent/special-support/data-package/readiness');
+    renderSupportReadiness(readiness);
+    const blockers = readiness?.blockers || [];
+    ui.supportDataPackageResult.textContent = readiness?.readyForStudentCountCutover
+        ? 'Данные прошли контроль. Фактическая численность автоматически применяется в нагрузке и расчёте зарплаты.'
+        : `Пока действует резервный расчёт. Для автоматического применения фактической численности нужно исправить: ${blockers.join(' ') || 'загрузить недостающие данные.'}`;
+}
+
+async function importSupportDataPackage() {
+    const file = ui.supportDataPackageFile.files?.[0];
+    if (!file) {
+        ui.supportDataPackageResult.textContent = 'Выберите заполненный Excel-пакет.';
+        return;
+    }
+    const form = new FormData();
+    form.append('file', file);
+    const result = await api('/api/contingent/special-support/data-package/import', {
+        method: 'POST',
+        body: form
+    });
+    const errors = result?.errors || [];
+    ui.supportDataPackageResult.textContent =
+        `Импортировано: ${Number(result?.imported || 0)}, удалено: ${Number(result?.deleted || 0)}, `
+        + `пропущено: ${Number(result?.skipped || 0)}, ошибок: ${errors.length}.`
+        + (errors.length
+            ? ` Первые ошибки: ${errors.slice(0, 5).map((item) =>
+                `${item.sheetName}, строка ${item.rowNumber}: ${item.message}`
+            ).join(' | ')}`
+            : '');
+    ui.supportDataPackageFile.value = '';
+    await loadSupportReferences();
+    await refreshSupport();
+    await refreshSupportDocuments();
+    await refreshSupportReadiness();
+}
+
+async function saveSupportStatus() {
+    const payload = {
+        id: ui.supportStatusId.value ? Number(ui.supportStatusId.value) : null,
+        studentId: Number(ui.supportStatusStudent.value || 0) || null,
+        category: ui.supportStatusCategory.value,
+        validFrom: ui.supportStatusFrom.value || null,
+        validTo: ui.supportStatusTo.value || null
+    };
+    await api('/api/contingent/special-support/statuses', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    resetSupportStatusForm();
+    await refreshSupport();
+    ui.supportSummaryMessage.textContent = `Статус сохранён. ${ui.supportSummaryMessage.textContent}`;
+}
+
+function supportIupSubjectsPayload() {
+    return Array.from(ui.supportIupSubjectBody.querySelectorAll('tr')).map((row) => {
+        const value = (name) => row.querySelector(`[data-iup-field="${name}"]`)?.value || '';
+        const curriculumEntryId = Number(value('curriculumEntryId') || 0) || null;
+        const curriculum = (supportReferences.curriculum || []).find((item) =>
+            Number(item.curriculumEntryId) === curriculumEntryId
+        );
+        const teacherId = Number(value('teacherId') || 0) || null;
+        const teacherHours = value('teacherHours');
+        return {
+            curriculumEntryId,
+            subjectName: curriculum?.subjectName || null,
+            participationMode: value('participationMode'),
+            classHours: Number(value('classHours') || 0),
+            individualHours: Number(value('individualHours') || 0),
+            groupNameEducationalPlan: value('groupNameEducationalPlan') || null,
+            teachers: teacherId ? [{
+                teacherId,
+                hoursPerWeek: Number(teacherHours || 0),
+                deliveryForm: value('deliveryForm')
+            }] : []
+        };
+    });
+}
+
+async function saveSupportIup() {
+    const payload = {
+        id: ui.supportIupId.value ? Number(ui.supportIupId.value) : null,
+        studentId: Number(ui.supportIupStudent.value || 0) || null,
+        status: ui.supportIupStatus.value,
+        orderNumber: ui.supportIupOrderNumber.value || null,
+        orderDate: ui.supportIupOrderDate.value || null,
+        validFrom: ui.supportIupFrom.value || null,
+        validTo: ui.supportIupTo.value || null,
+        subjects: supportIupSubjectsPayload()
+    };
+    await api('/api/contingent/special-support/iups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    resetSupportIupForm();
+    await refreshSupport();
+    ui.supportSummaryMessage.textContent = `ИУП сохранён. ${ui.supportSummaryMessage.textContent}`;
+}
+
+function editSupportStatus(studentId) {
+    const row = (currentSupportSummary?.registerRows || []).find((item) => Number(item.studentId) === Number(studentId));
+    if (!row) return;
+    ui.supportStatusId.value = row.supportStatusId || '';
+    ui.supportStatusStudent.value = row.studentId || '';
+    ui.supportStatusCategory.value = row.underlyingCategory || 'NORMAL';
+    ui.supportStatusFrom.value = row.categoryValidFrom || '';
+    ui.supportStatusTo.value = row.categoryValidTo || '';
+    ui.supportStatusEditor.open = true;
+    ui.supportStatusEditor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function editSupportIup(iupPlanId) {
+    const plan = await api(`/api/contingent/special-support/iups/${encodeURIComponent(iupPlanId)}`);
+    ui.supportIupId.value = plan.id || '';
+    ui.supportIupStudent.value = plan.studentId || '';
+    ui.supportIupStatus.value = plan.status || 'DRAFT';
+    ui.supportIupOrderNumber.value = plan.orderNumber || '';
+    ui.supportIupOrderDate.value = plan.orderDate || '';
+    ui.supportIupFrom.value = plan.validFrom || '';
+    ui.supportIupTo.value = plan.validTo || '';
+    ui.supportIupSubjectBody.innerHTML = '';
+    (plan.subjects || []).forEach(addSupportIupSubjectRow);
+    resetSupportIupOrderForm();
+    fillSupportIupOrderDefaults(plan);
+    ui.supportIupEditor.open = true;
+    ui.supportIupEditor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 ui.tabs.forEach((tab) => tab.addEventListener('click', () => {
     const tabName = tab.dataset.contingentTab;
     showTab(tabName);
-    window.location.hash = tabName === 'import' ? '#import' : (tabName === 'manual' ? '#manual' : '#stats');
+    window.location.hash = `#${tabName}`;
     if (tabName === 'manual') {
         refreshManualClassSizes().catch((error) => {
             ui.manualSummary.textContent = `Ошибка: ${error.message}`;
+        });
+    }
+    if (tabName === 'support') {
+        Promise.all([
+            loadSupportReferences(),
+            refreshSupport(),
+            refreshSupportDocuments(),
+            refreshSupportReadiness()
+        ]).catch((error) => {
+            ui.supportSummaryMessage.textContent = `Ошибка: ${error.message}`;
         });
     }
 }));
@@ -451,6 +1223,165 @@ ui.manualExportBtn?.addEventListener('click', () => downloadWorkbook('/api/conti
     ui.manualSummary.textContent = `Ошибка экспорта: ${error.message}`;
 }));
 
+ui.supportRefreshBtn?.addEventListener('click', () =>
+    Promise.all([refreshSupport(), refreshSupportDocuments()]).catch((error) => {
+        ui.supportSummaryMessage.textContent = `Ошибка: ${error.message}`;
+    })
+);
+
+ui.supportExportBtn?.addEventListener('click', () =>
+    downloadWorkbook(`/api/contingent/special-support/export${supportQuery()}`, 'student-statuses-iup.xlsx')
+        .catch((error) => {
+            ui.supportSummaryMessage.textContent = `Ошибка экспорта: ${error.message}`;
+        })
+);
+
+ui.supportDataPackageExportBtn?.addEventListener('click', () =>
+    downloadWorkbook(
+        '/api/contingent/special-support/data-package/export',
+        'student-data-package.xlsx'
+    ).catch((error) => {
+        ui.supportDataPackageResult.textContent = `Ошибка экспорта пакета: ${error.message}`;
+    })
+);
+
+ui.supportDataPackageImportBtn?.addEventListener('click', () =>
+    importSupportDataPackage().catch((error) => {
+        ui.supportDataPackageResult.textContent = `Ошибка импорта пакета: ${error.message}`;
+    })
+);
+
+ui.supportReadinessBtn?.addEventListener('click', () =>
+    refreshSupportReadiness().catch((error) => {
+        ui.supportDataPackageResult.textContent = `Ошибка проверки: ${error.message}`;
+    })
+);
+
+ui.supportDocumentSaveBtn?.addEventListener('click', () =>
+    saveSupportDocument().catch((error) => {
+        ui.supportDocumentMessage.textContent = `Ошибка сохранения документа: ${error.message}`;
+    })
+);
+
+ui.supportDocumentClearBtn?.addEventListener('click', resetSupportDocumentForm);
+
+ui.supportDocumentTable?.addEventListener('click', async (event) => {
+    const editButton = event.target.closest('[data-support-edit-document]');
+    if (editButton) {
+        editSupportDocument(editButton.dataset.supportEditDocument);
+        return;
+    }
+    const deleteDocumentButton = event.target.closest('[data-support-delete-document]');
+    if (deleteDocumentButton) {
+        if (!window.confirm('Удалить запись о документе и все прикреплённые копии?')) return;
+        try {
+            await api(
+                `/api/contingent/special-support/documents/${encodeURIComponent(deleteDocumentButton.dataset.supportDeleteDocument)}`,
+                { method: 'DELETE' }
+            );
+            resetSupportDocumentForm();
+            await refreshSupportDocuments();
+            ui.supportDocumentMessage.textContent = 'Запись о документе удалена.';
+        } catch (error) {
+            ui.supportDocumentMessage.textContent = `Ошибка удаления документа: ${error.message}`;
+        }
+        return;
+    }
+    const deleteAttachmentButton = event.target.closest('[data-support-delete-attachment]');
+    if (deleteAttachmentButton) {
+        if (!window.confirm('Удалить прикреплённую копию?')) return;
+        try {
+            const documentId = encodeURIComponent(deleteAttachmentButton.dataset.supportDocumentId);
+            const attachmentId = encodeURIComponent(deleteAttachmentButton.dataset.supportDeleteAttachment);
+            await api(
+                `/api/contingent/special-support/documents/${documentId}/attachments/${attachmentId}`,
+                { method: 'DELETE' }
+            );
+            await refreshSupportDocuments();
+            ui.supportDocumentMessage.textContent = 'Прикреплённая копия удалена.';
+        } catch (error) {
+            ui.supportDocumentMessage.textContent = `Ошибка удаления копии: ${error.message}`;
+        }
+    }
+});
+
+ui.supportReconcileBtn?.addEventListener('click', async () => {
+    try {
+        if (!currentSupportSummary?.snapshotId) {
+            await refreshSupport();
+        }
+        const result = await api(`/api/contingent/special-support/reconcile/${encodeURIComponent(currentSupportSummary.snapshotId)}`, {
+            method: 'POST'
+        });
+        await loadSupportReferences();
+        await refreshSupport();
+        ui.supportSummaryMessage.textContent =
+            `Карточки связаны: ${Number(result.linked || 0)}, создано: ${Number(result.created || 0)}, неоднозначно: ${Number(result.ambiguous || 0)}. `
+            + ui.supportSummaryMessage.textContent;
+    } catch (error) {
+        ui.supportSummaryMessage.textContent = `Ошибка сопоставления карточек: ${error.message}`;
+    }
+});
+
+ui.supportStatusSaveBtn?.addEventListener('click', () => saveSupportStatus().catch((error) => {
+    ui.supportSummaryMessage.textContent = `Ошибка сохранения статуса: ${error.message}`;
+}));
+
+ui.supportStatusClearBtn?.addEventListener('click', resetSupportStatusForm);
+
+ui.supportIupStudent?.addEventListener('change', updateSupportSubjectCurriculumOptions);
+
+ui.supportIupAddSubjectBtn?.addEventListener('click', () => {
+    if (!ui.supportIupStudent.value) {
+        ui.supportSummaryMessage.textContent = 'Сначала выберите ребёнка.';
+        return;
+    }
+    addSupportIupSubjectRow();
+});
+
+ui.supportIupSubjectBody?.addEventListener('change', (event) => {
+    if (event.target.matches('[data-iup-field="curriculumEntryId"]')) {
+        updateSupportGroupOptions(event.target.closest('tr'));
+    }
+});
+
+ui.supportIupSubjectBody?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-iup-remove-subject]');
+    if (button) button.closest('tr')?.remove();
+});
+
+ui.supportIupSaveBtn?.addEventListener('click', () => saveSupportIup().catch((error) => {
+    ui.supportSummaryMessage.textContent = `Ошибка сохранения ИУП: ${error.message}`;
+}));
+
+ui.supportIupClearBtn?.addEventListener('click', resetSupportIupForm);
+
+ui.supportIupOrderDownloadBtn?.addEventListener('click', () => {
+    generateSupportIupOrder(false).catch((error) => {
+        ui.supportIupOrderMessage.textContent = `Не удалось сформировать приказ: ${error.message}`;
+    });
+});
+
+ui.supportIupOrderDownloadGroupBtn?.addEventListener('click', () => {
+    generateSupportIupOrder(true).catch((error) => {
+        ui.supportIupOrderMessage.textContent = `Не удалось сформировать сводный приказ: ${error.message}`;
+    });
+});
+
+ui.supportRegisterTable?.addEventListener('click', (event) => {
+    const statusButton = event.target.closest('[data-support-edit-status]');
+    if (statusButton) {
+        editSupportStatus(statusButton.dataset.supportEditStatus);
+        return;
+    }
+    const iupButton = event.target.closest('[data-support-edit-iup]');
+    if (iupButton) {
+        editSupportIup(iupButton.dataset.supportEditIup).catch((error) => {
+            ui.supportSummaryMessage.textContent = `Ошибка загрузки ИУП: ${error.message}`;
+        });
+    }
+});
+
 (async function init() {
     try {
         await waitForAuthContext();
@@ -461,10 +1392,13 @@ ui.manualExportBtn?.addEventListener('click', () => downloadWorkbook('/api/conti
         }
 
         const hash = String(window.location.hash || '').toLowerCase();
-        const requestedTab = hash === '#import' ? 'import' : (hash === '#manual' ? 'manual' : (hash === '#stats' ? 'stats' : defaultTab));
+        const requestedTab = ['#import', '#manual', '#support', '#stats'].includes(hash)
+            ? hash.slice(1)
+            : defaultTab;
         const permissions = contingentPermissions();
         const finalTab = (requestedTab === 'import' && permissions.canImportView)
             || (requestedTab === 'manual' && permissions.canManualView)
+            || (requestedTab === 'support' && permissions.canSupportView)
             || (requestedTab === 'stats' && permissions.canStatsView)
             ? requestedTab
             : defaultTab;
@@ -485,6 +1419,15 @@ ui.manualExportBtn?.addEventListener('click', () => downloadWorkbook('/api/conti
         }
         if (finalTab === 'manual' || contingentPermissions().canManualView) {
             await refreshManualClassSizes();
+        }
+        if (finalTab === 'support') {
+            await loadSupportReferences();
+            await refreshSupport();
+            await refreshSupportDocuments();
+            await refreshSupportReadiness();
+            resetSupportStatusForm();
+            resetSupportIupForm();
+            resetSupportDocumentForm();
         }
     } catch (error) {
         printImportResult({ error: error.message });

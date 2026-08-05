@@ -188,6 +188,11 @@ public class TeacherDirectoryController {
         return personnelService.nameCases(teacherId);
     }
 
+    @GetMapping("/name-cases/derive")
+    public Object deriveNameCases(@RequestParam String fio) {
+        return personnelService.deriveNameCases(fio);
+    }
+
     @GetMapping("/{teacherId}/data-sheet")
     public ResponseEntity<byte[]> dataSheet(@PathVariable Long teacherId,
                                             HttpServletRequest request) {

@@ -7,6 +7,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.TeacherCreateRequest;
 import org.school.personalLoad.dto.TeacherOneCImportDtos;
 import org.school.personalLoad.dto.TeacherUpdateRequest;
+import org.school.personalLoad.dto.PersonnelDtos.NameCases;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
@@ -101,8 +102,9 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 if (existing.isPresent()) {
                     TeacherDirectoryEntry teacher = existing.get();
                     boolean changed = false;
-                    if (!Objects.equals(fioDative, teacher.getFioTeacherDative())) { teacher.setFioTeacherDative(fioDative); changed = true; }
-                    if (!Objects.equals(initials, teacher.getInitials())) { teacher.setInitials(initials); changed = true; }
+                    if (fioDative != null && !Objects.equals(fioDative, teacher.getFioTeacherDative())) { teacher.setFioTeacherDative(fioDative); changed = true; }
+                    if (initials != null && !Objects.equals(initials, teacher.getInitials())) { teacher.setInitials(initials); changed = true; }
+                    changed |= fillMissingNameCases(teacher);
                     if (!Objects.equals(phone, teacher.getPhone())) { teacher.setPhone(phone); changed = true; }
                     if (!Objects.equals(email, teacher.getEmail())) { ensureUniqueTeacherEmail(email, teacher.getId()); teacher.setEmail(email); changed = true; }
                     if (!Objects.equals(additionalDuties, teacher.getAdditionalDuties())) { teacher.setAdditionalDuties(additionalDuties); changed = true; }
@@ -112,9 +114,9 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 }
 
                 TeacherDirectoryEntry entry = new TeacherDirectoryEntry();
-                entry.setFioTeacher(normalized);
-                entry.setFioTeacherDative(fioDative);
-                entry.setInitials(initials);
+                applyNameCases(entry, RussianNameCases.derive(normalized));
+                if (fioDative != null) entry.setFioTeacherDative(fioDative);
+                if (initials != null) entry.setInitials(initials);
                 entry.setPhone(phone);
                 ensureUniqueTeacherEmail(email, null);
                 entry.setEmail(email);
@@ -197,8 +199,6 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
 
         String normalized = request.getFioTeacher().trim();
         var cases = RussianNameCases.derive(normalized);
-        String dative = Optional.ofNullable(normalizeOptional(request.getFioTeacherDative())).orElse(cases.dative());
-        String initials = Optional.ofNullable(normalizeOptional(request.getInitials())).orElse(cases.initials());
         String phone = normalizePhone(request.getPhone());
         String email = normalizeEmail(request.getEmail());
         String additionalDuties = normalizeOptional(request.getAdditionalDuties());
@@ -206,10 +206,18 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         return teacherDirectoryRepository.findByFioTeacherIgnoreCase(normalized)
                 .orElseGet(() -> {
                     TeacherDirectoryEntry entry = new TeacherDirectoryEntry();
-                    entry.setFioTeacher(normalized);
-                    entry.setFioTeacherDative(dative);
-                    entry.setInitials(initials);
-                    entry.setInitialsDative(cases.initialsDative());
+                    applyNameCases(entry, cases);
+                    entry.setFioTeacherGenitive(first(request.getFioTeacherGenitive(), cases.genitive()));
+                    entry.setFioTeacherDative(first(request.getFioTeacherDative(), cases.dative()));
+                    entry.setFioTeacherAccusative(first(request.getFioTeacherAccusative(), cases.accusative()));
+                    entry.setFioTeacherInstrumental(first(request.getFioTeacherInstrumental(), cases.instrumental()));
+                    entry.setFioTeacherPrepositional(first(request.getFioTeacherPrepositional(), cases.prepositional()));
+                    entry.setInitials(first(request.getInitials(), cases.initials()));
+                    entry.setInitialsGenitive(first(request.getInitialsGenitive(), cases.initialsGenitive()));
+                    entry.setInitialsDative(first(request.getInitialsDative(), cases.initialsDative()));
+                    entry.setInitialsAccusative(first(request.getInitialsAccusative(), cases.initialsAccusative()));
+                    entry.setInitialsInstrumental(first(request.getInitialsInstrumental(), cases.initialsInstrumental()));
+                    entry.setInitialsPrepositional(first(request.getInitialsPrepositional(), cases.initialsPrepositional()));
                     entry.setPhone(phone);
                     ensureUniqueTeacherEmail(email, null);
                     entry.setEmail(email);
@@ -228,13 +236,23 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         TeacherDirectoryEntry entry = teacherDirectoryRepository.findById(teacherId)
                 .orElseThrow(() -> new IllegalArgumentException("Teacher not found"));
         if (request != null) {
+            String previousFio = entry.getFioTeacher();
             if (request.getFioTeacher() != null && !request.getFioTeacher().isBlank()) {
                 entry.setFioTeacher(request.getFioTeacher().trim());
             }
             var cases = RussianNameCases.derive(entry.getFioTeacher());
-            entry.setFioTeacherDative(Optional.ofNullable(normalizeOptional(request.getFioTeacherDative())).orElse(cases.dative()));
-            entry.setInitials(Optional.ofNullable(normalizeOptional(request.getInitials())).orElse(cases.initials()));
-            entry.setInitialsDative(Optional.ofNullable(normalizeOptional(request.getInitialsDative())).orElse(cases.initialsDative()));
+            boolean fioChanged = !Objects.equals(previousFio, entry.getFioTeacher());
+            entry.setFioTeacherGenitive(nameForm(request.getFioTeacherGenitive(), entry.getFioTeacherGenitive(), cases.genitive(), fioChanged));
+            entry.setFioTeacherDative(nameForm(request.getFioTeacherDative(), entry.getFioTeacherDative(), cases.dative(), fioChanged));
+            entry.setFioTeacherAccusative(nameForm(request.getFioTeacherAccusative(), entry.getFioTeacherAccusative(), cases.accusative(), fioChanged));
+            entry.setFioTeacherInstrumental(nameForm(request.getFioTeacherInstrumental(), entry.getFioTeacherInstrumental(), cases.instrumental(), fioChanged));
+            entry.setFioTeacherPrepositional(nameForm(request.getFioTeacherPrepositional(), entry.getFioTeacherPrepositional(), cases.prepositional(), fioChanged));
+            entry.setInitials(nameForm(request.getInitials(), entry.getInitials(), cases.initials(), fioChanged));
+            entry.setInitialsGenitive(nameForm(request.getInitialsGenitive(), entry.getInitialsGenitive(), cases.initialsGenitive(), fioChanged));
+            entry.setInitialsDative(nameForm(request.getInitialsDative(), entry.getInitialsDative(), cases.initialsDative(), fioChanged));
+            entry.setInitialsAccusative(nameForm(request.getInitialsAccusative(), entry.getInitialsAccusative(), cases.initialsAccusative(), fioChanged));
+            entry.setInitialsInstrumental(nameForm(request.getInitialsInstrumental(), entry.getInitialsInstrumental(), cases.initialsInstrumental(), fioChanged));
+            entry.setInitialsPrepositional(nameForm(request.getInitialsPrepositional(), entry.getInitialsPrepositional(), cases.initialsPrepositional(), fioChanged));
             entry.setPhone(normalizePhone(request.getPhone()));
             String email = normalizeEmail(request.getEmail());
             ensureUniqueTeacherEmail(email, teacherId);
@@ -564,6 +582,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         if (isBlank(teacher.getInitials())) {
             teacher.setInitials(shortFioFromFull(teacher.getFioTeacher()));
         }
+        fillMissingNameCases(teacher);
     }
 
     private OneCWorkbookData parseOneCWorkbook(MultipartFile file) {
@@ -838,6 +857,49 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
             }
             default -> "";
         };
+    }
+
+    private void applyNameCases(TeacherDirectoryEntry entry, NameCases cases) {
+        entry.setFioTeacher(cases.nominative());
+        entry.setFioTeacherGenitive(cases.genitive());
+        entry.setFioTeacherDative(cases.dative());
+        entry.setFioTeacherAccusative(cases.accusative());
+        entry.setFioTeacherInstrumental(cases.instrumental());
+        entry.setFioTeacherPrepositional(cases.prepositional());
+        entry.setInitials(cases.initials());
+        entry.setInitialsGenitive(cases.initialsGenitive());
+        entry.setInitialsDative(cases.initialsDative());
+        entry.setInitialsAccusative(cases.initialsAccusative());
+        entry.setInitialsInstrumental(cases.initialsInstrumental());
+        entry.setInitialsPrepositional(cases.initialsPrepositional());
+    }
+
+    private boolean fillMissingNameCases(TeacherDirectoryEntry entry) {
+        NameCases cases = RussianNameCases.derive(entry.getFioTeacher());
+        boolean changed = false;
+        if (isBlank(entry.getFioTeacherGenitive())) { entry.setFioTeacherGenitive(cases.genitive()); changed = true; }
+        if (isBlank(entry.getFioTeacherDative())) { entry.setFioTeacherDative(cases.dative()); changed = true; }
+        if (isBlank(entry.getFioTeacherAccusative())) { entry.setFioTeacherAccusative(cases.accusative()); changed = true; }
+        if (isBlank(entry.getFioTeacherInstrumental())) { entry.setFioTeacherInstrumental(cases.instrumental()); changed = true; }
+        if (isBlank(entry.getFioTeacherPrepositional())) { entry.setFioTeacherPrepositional(cases.prepositional()); changed = true; }
+        if (isBlank(entry.getInitials())) { entry.setInitials(cases.initials()); changed = true; }
+        if (isBlank(entry.getInitialsGenitive())) { entry.setInitialsGenitive(cases.initialsGenitive()); changed = true; }
+        if (isBlank(entry.getInitialsDative())) { entry.setInitialsDative(cases.initialsDative()); changed = true; }
+        if (isBlank(entry.getInitialsAccusative())) { entry.setInitialsAccusative(cases.initialsAccusative()); changed = true; }
+        if (isBlank(entry.getInitialsInstrumental())) { entry.setInitialsInstrumental(cases.initialsInstrumental()); changed = true; }
+        if (isBlank(entry.getInitialsPrepositional())) { entry.setInitialsPrepositional(cases.initialsPrepositional()); changed = true; }
+        return changed;
+    }
+
+    private String nameForm(String requested, String existing, String generated, boolean fioChanged) {
+        if (requested != null) return first(requested, generated);
+        if (fioChanged || isBlank(existing)) return generated;
+        return existing.trim();
+    }
+
+    private String first(String value, String fallback) {
+        String normalized = normalizeOptional(value);
+        return normalized == null ? fallback : normalized;
     }
 
     private String normalizeOptional(String value) {

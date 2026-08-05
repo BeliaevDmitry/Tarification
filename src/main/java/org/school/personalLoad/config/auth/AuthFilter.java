@@ -72,6 +72,10 @@ public class AuthFilter extends OncePerRequestFilter {
             Map.entry("/vsoko-pa-analysis.html", AppTab.VSOKO_VIEW),
             Map.entry("/vsoko-pa-teachers.html", AppTab.VSOKO_VIEW),
             Map.entry("/vsoko-pa-upload.html", AppTab.VSOKO_VIEW),
+            Map.entry("/vsoko-mcko.html", AppTab.VSOKO_MCKO),
+            Map.entry("/vsoko-summary.html", AppTab.VSOKO_MCKO),
+            Map.entry("/vsoko-interview.html", AppTab.VSOKO_MCKO),
+            Map.entry("/vsoko-mcko-teachers.html", AppTab.VSOKO_MCKO),
             Map.entry("/admin.html", AppTab.USERS)
     );
 
@@ -192,6 +196,7 @@ public class AuthFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/teachers-notification")) return AppTab.HR_NOTIFICATIONS_VIEW;
         if (path.startsWith("/api/hr-documents/personal-data")) return AppTab.HR_PERSONAL_DATA;
         if (path.startsWith("/api/hr-documents")) return AppTab.HR_DOCUMENTS;
+        if (path.startsWith("/api/vsoko/mcko")) return AppTab.VSOKO_MCKO;
         if (path.startsWith("/api/mcko")) return AppTab.TEACHERS_MCKO;
         if (path.startsWith("/api/salary-group-coefficient-subjects")) return AppTab.TEACHERS_SETTINGS;
         if (path.matches("^/api/teachers/\\d+/(plan-dismiss|cancel-plan-dismiss|dismiss|restore)$")) return AppTab.TEACHERS_DISMISSALS;
@@ -212,6 +217,9 @@ public class AuthFilter extends OncePerRequestFilter {
     private boolean canReadProtectedApi(SessionUser user, String path) {
         if (path.startsWith("/api/mcko")) {
             return user.canViewTab(AppTab.TEACHERS_MCKO);
+        }
+        if (path.startsWith("/api/vsoko/mcko")) {
+            return user.canViewTab(AppTab.VSOKO_MCKO);
         }
         if (path.startsWith("/api/pa")) {
             return user.canViewTab(AppTab.VSOKO_VIEW) || user.canViewTab(AppTab.VSOKO_EDIT);

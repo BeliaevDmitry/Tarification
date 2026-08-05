@@ -34,6 +34,9 @@ public final class ContingentDtos {
         private LocalDate snapshotDate;
         private int importedStudents;
         private int skippedRows;
+        private int linkedStudents;
+        private int createdStudentProfiles;
+        private int ambiguousStudents;
         private List<ImportProblem> problems;
     }
 

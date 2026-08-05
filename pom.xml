@@ -20,6 +20,7 @@
         <java.version>21</java.version>
         <poi.version>5.2.3</poi.version>
         <lombok.version>1.18.38</lombok.version>
+        <tarification.build.directory>${project.basedir}/target</tarification.build.directory>
     </properties>
 
     <dependencies>
@@ -84,6 +85,7 @@
     </dependencies>
 
     <build>
+        <directory>${tarification.build.directory}</directory>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

@@ -10,6 +10,10 @@ import java.util.List;
 public interface ContingentStudentRepository extends JpaRepository<ContingentStudent, Long> {
     List<ContingentStudent> findAllBySnapshotId(Long snapshotId);
 
+    List<ContingentStudent> findAllBySnapshotIdAndStudentIdIsNull(Long snapshotId);
+
+    long countBySnapshotIdAndStudentIdIsNull(Long snapshotId);
+
     @Query("select s.className from ContingentStudent s where s.snapshotId = :snapshotId")
     List<String> findClassNamesBySnapshotId(@Param("snapshotId") Long snapshotId);
 

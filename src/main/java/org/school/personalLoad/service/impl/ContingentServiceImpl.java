@@ -17,7 +17,9 @@ import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.service.ClassSizeService;
 import org.school.personalLoad.service.ContingentService;
+import org.school.personalLoad.service.StudentIdentityService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
@@ -40,8 +42,10 @@ public class ContingentServiceImpl implements ContingentService {
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     private final SchoolBuildingRepository schoolBuildingRepository;
     private final ClassSizeService classSizeService;
+    private final StudentIdentityService studentIdentityService;
 
     @Override
+    @Transactional
     public ContingentDtos.ImportResponse importSnapshot(String academicYear, MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("Файл обязателен");
@@ -145,6 +149,7 @@ public class ContingentServiceImpl implements ContingentService {
         ContingentSnapshot savedSnapshot = snapshotRepository.save(snapshot);
 
         parsedStudents.forEach(student -> student.setSnapshotId(savedSnapshot.getId()));
+        StudentIdentityService.LinkResult linkResult = studentIdentityService.linkStudents(savedSnapshot, parsedStudents);
         studentRepository.saveAll(parsedStudents);
 
         ContingentDtos.ImportResponse response = new ContingentDtos.ImportResponse();
@@ -152,6 +157,9 @@ public class ContingentServiceImpl implements ContingentService {
         response.setSnapshotDate(savedSnapshot.getSnapshotDate());
         response.setImportedStudents(imported);
         response.setSkippedRows(skipped);
+        response.setLinkedStudents(linkResult.linked());
+        response.setCreatedStudentProfiles(linkResult.created());
+        response.setAmbiguousStudents(linkResult.ambiguous());
         response.setProblems(getProblems(academicYear, savedSnapshot.getId()));
         return response;
     }
