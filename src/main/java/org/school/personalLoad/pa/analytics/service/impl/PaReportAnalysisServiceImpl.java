@@ -27,6 +27,7 @@ import org.school.personalLoad.pa.model.PaSpecificationTask;
 import org.school.personalLoad.pa.repository.PaReportVersionRepository;
 import org.school.personalLoad.pa.repository.PaSpecificationRepository;
 import org.school.personalLoad.pa.repository.PaSpecificationTaskRepository;
+import org.school.personalLoad.vsoko.mcko.service.StudentResultLinker;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -68,6 +69,7 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
     private final PaReportAnalysisSummaryRepository summaryRepository;
     private final PaReportStudentResultRepository studentResultRepository;
     private final PaReportTaskResultRepository taskResultRepository;
+    private final StudentResultLinker studentResultLinker;
     private final ObjectProvider<PaReportAnalysisJobRunner> jobRunnerProvider;
 
     @Override
@@ -251,6 +253,7 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
             }
 
             boolean subgroupSubject = isSubgroupSubject(version.getSubjectName());
+            StudentResultLinker.LinkIndex studentLinkIndex = studentResultLinker.buildIndex();
             List<PaReportStudentResult> students = new ArrayList<>();
             List<PaReportTaskResult> taskResults = new ArrayList<>();
             for (int rowIndex = FIRST_STUDENT_ROW; rowIndex <= dataSheet.getLastRowNum(); rowIndex++) {
@@ -259,7 +262,8 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
                 if (studentFio.isBlank()) {
                     continue;
                 }
-                StudentParseResult parsedStudent = parseStudentRow(version, row, structure, subgroupSubject, gradingRules);
+                StudentParseResult parsedStudent = parseStudentRow(version, row, structure, subgroupSubject,
+                        gradingRules, studentLinkIndex);
                 PaReportStudentResult savedStudent = studentResultRepository.save(parsedStudent.student());
                 students.add(savedStudent);
                 if (savedStudent.getRowStatus() == PaStudentResultStatus.PRESENT_WITH_RESULT
@@ -322,7 +326,8 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
                                                Row row,
                                                SheetStructure structure,
                                                boolean subgroupSubject,
-                                               GradingRules gradingRules) {
+                                               GradingRules gradingRules,
+                                               StudentResultLinker.LinkIndex studentLinkIndex) {
         String studentFio = cellText(row, 1).trim();
         String presenceStatus = cellText(row, 2).trim();
         String variantName = cellText(row, 3).trim();
@@ -386,6 +391,11 @@ public class PaReportAnalysisServiceImpl implements PaReportAnalysisService {
         student.setTeacherFio(version.getTeacherFio());
         student.setStudentFio(studentFio);
         student.setStudentFioNormalized(normalizeFio(studentFio));
+        StudentResultLinker.LinkResult identity = studentLinkIndex
+                .resolve(null, studentFio, version.getAcademicYear(), version.getScopeValue());
+        student.setStudentId(identity.studentId());
+        student.setStudentLinkStatus(identity.status().name());
+        student.setStudentLinkMessage(identity.message());
         student.setPresenceStatus(presenceStatus);
         student.setVariantName(variantName);
         student.setTotalScore(totalScore);

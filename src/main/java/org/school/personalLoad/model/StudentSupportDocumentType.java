@@ -6,5 +6,6 @@ public enum StudentSupportDocumentType {
     CPMPC_CONCLUSION,
     INTERNAL_PPK_PROTOCOL,
     IOM,
+    IUP_ORDER,
     OTHER
 }

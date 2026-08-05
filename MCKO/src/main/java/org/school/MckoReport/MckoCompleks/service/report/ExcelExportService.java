@@ -1,0 +1,625 @@
+package org.school.MckoReport.MckoCompleks.service.report;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.school.MckoReport.MckoCompleks.dto.CombinedResultData;
+import org.school.MckoReport.MckoCompleks.dto.ProcessingErrorInfo;
+import org.school.MckoReport.MckoCompleks.model.ListStudentData;
+import org.school.MckoReport.MckoCompleks.model.OtherDiagnosticData;
+import org.school.MckoReport.MckoCompleks.model.StudentResultData;
+import org.school.MckoReport.MckoCompleks.model.StudentResultFGData;
+import org.school.MckoReport.MckoCompleks.util.SubjectNormalizerUtil;
+import org.school.MckoReport.MckoCompleks.util.TaskScoresConverter;
+import org.springframework.stereotype.Service;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.*;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class ExcelExportService {
+
+    private final TaskScoresConverter taskScoresConverter;
+
+    /**
+     * Создать Excel файл с двумя вкладками
+     */
+    public byte[] exportToExcel(List<CombinedResultData> data) throws IOException {
+        return exportToExcel(
+                data,
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList()
+        );
+    }
+
+    /**
+     * Создать Excel файл с листами результатов и сводкой по работам.
+     */
+    public byte[] exportToExcel(List<CombinedResultData> data,
+                                List<ListStudentData> allStudents,
+                                List<StudentResultData> allStudentResults,
+                                List<StudentResultFGData> allStudentFGResults,
+                                List<OtherDiagnosticData> allOtherDiagnosticResults,
+                                List<ProcessingErrorInfo> processingErrors) throws IOException {
+        try (Workbook workbook = new XSSFWorkbook();
+             ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+            log.debug("длина List<CombinedResultData> data в exportToExcel перед передачей в генератор эксель {}", data.size());
+            // Стили для заголовков
+            CellStyle headerStyle = createHeaderStyle(workbook);
+
+            // Вкладка 1: Основные результаты
+            createResultsSheet(workbook, data, headerStyle, "Результаты");
+
+            // Вкладка 2: Функциональная грамотность
+            createFGSheet(workbook, data, headerStyle, "Функциональная грамотность");
+
+            Map<String, WorkSummary> workSummaryMap = buildWorkSummaryMap(
+                    allStudents,
+                    allStudentResults,
+                    allStudentFGResults,
+                    allOtherDiagnosticResults
+            );
+            createAllWorksSheet(workbook, workSummaryMap, headerStyle, "Все работы");
+            createMissingWorksSheet(workbook, workSummaryMap, headerStyle, "Незагруженные работы");
+            createProcessingErrorsSheet(workbook, processingErrors, headerStyle, "Ошибки обработки");
+
+            // Записываем в массив байтов
+            workbook.write(outputStream);
+            return outputStream.toByteArray();
+        }
+    }
+
+    private void createProcessingErrorsSheet(Workbook workbook,
+                                             List<ProcessingErrorInfo> processingErrors,
+                                             CellStyle headerStyle,
+                                             String sheetName) {
+        Sheet sheet = workbook.createSheet(sheetName);
+        Row headerRow = sheet.createRow(0);
+        String[] headers = {"Школа", "Файл", "Этап", "Причина", "Дата из файла (не обработана)"};
+
+        for (int i = 0; i < headers.length; i++) {
+            Cell cell = headerRow.createCell(i);
+            cell.setCellValue(headers[i]);
+            cell.setCellStyle(headerStyle);
+        }
+
+        int rowNum = 1;
+        for (ProcessingErrorInfo error : processingErrors) {
+            Row row = sheet.createRow(rowNum++);
+            row.createCell(0).setCellValue(valueOrEmpty(error.getSchool()));
+            row.createCell(1).setCellValue(valueOrEmpty(error.getFileName()));
+            row.createCell(2).setCellValue(valueOrEmpty(error.getStage()));
+            row.createCell(3).setCellValue(valueOrEmpty(error.getReason()));
+            row.createCell(4).setCellValue(valueOrEmpty(error.getRawDate()));
+        }
+
+        finalizeSheet(sheet, headers.length, rowNum);
+    }
+
+    private void createResultsSheet(Workbook workbook, List<CombinedResultData> data,
+                                    CellStyle headerStyle, String sheetName) {
+
+        Sheet sheet = workbook.createSheet(sheetName);
+
+        // Создаем заголовки
+        Row headerRow = sheet.createRow(0);
+        String[] headers = {
+                "ФИО", "Код ученика", "Класс", "Предмет", "Дата", "Учебный год", "Школа",
+                "Уровень класса", "Уровень города",
+                "Параллель", "Литера", "Вариант", "Балл", "Процент", "Оценка",
+                "Номер ученика", "JSON баллы"
+        };
+
+        for (int i = 0; i < headers.length; i++) {
+            Cell cell = headerRow.createCell(i);
+            cell.setCellValue(headers[i]);
+            cell.setCellStyle(headerStyle);
+            sheet.autoSizeColumn(i);
+        }
+
+        // Заполняем данными
+        int rowNum = 1;
+        for (CombinedResultData record : data) {
+            if (record.isHasResultData()) {
+                Row row = sheet.createRow(rowNum++);
+
+                row.createCell(0).setCellValue(record.getNameFIO() != null ? record.getNameFIO() : "");
+                row.createCell(1).setCellValue(record.getCode() != null ? record.getCode() : "");
+                row.createCell(2).setCellValue(normalizeClassName(record.getClassName()));
+                row.createCell(3).setCellValue(normalizeSubjectName(record.getSubject()));
+                row.createCell(4).setCellValue(record.getDate() != null ? record.getDate() : "");
+                row.createCell(5).setCellValue(record.getSchoolYear() != null ? record.getSchoolYear() : "");
+                row.createCell(6).setCellValue(record.getSchool() != null ? record.getSchool() : "");
+                row.createCell(7).setCellValue(record.getClassLevel() != null ? record.getClassLevel() : "");
+                row.createCell(8).setCellValue(record.getCityLevel() != null ? record.getCityLevel() : "");
+
+                setCellValueSmart(row.createCell(9), record.getParallel());
+                row.createCell(10).setCellValue(record.getLetter() != null ? record.getLetter() : "");
+                setCellValueSmart(row.createCell(11), record.getVariant());
+                setCellValueSmart(row.createCell(12), record.getBall());
+                setCellValueSmart(row.createCell(13), record.getPercentCompleted());
+                setCellValueSmart(row.createCell(14), record.getMark());
+                setCellValueSmart(row.createCell(15), record.getStudentNumber());
+
+                row.createCell(16).setCellValue(record.getTaskScores() != null ? record.getTaskScores() : "");
+            }
+        }
+
+        finalizeSheet(sheet, headers.length, rowNum);
+    }
+
+    private void createFGSheet(Workbook workbook, List<CombinedResultData> data,
+                               CellStyle headerStyle, String sheetName) {
+        log.debug("длина List<CombinedResultData> data в createFGSheet перед передачей в генератор эксель {}", data.size());
+        Sheet sheet = workbook.createSheet(sheetName);
+
+        // Создаем заголовки
+        Row headerRow = sheet.createRow(0);
+        String[] headers = {
+                "ФИО", "Код ученика", "Класс", "Предмет", "Дата", "Учебный год", "Школа",
+                "Уровень класса", "Уровень города",
+                "Общий процент", "Уровень освоения",
+                "Раздел 1 %", "Раздел 2 %", "Раздел 3 %"
+        };
+        for (int i = 0; i < headers.length; i++) {
+            Cell cell = headerRow.createCell(i);
+            cell.setCellValue(headers[i]);
+            cell.setCellStyle(headerStyle);
+        }
+
+        log.debug("заголовки созданы");
+        // Заполняем данными
+        int rowNum = 1;
+        for (CombinedResultData record : data) {
+            if (record.isHasFGData()) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(record.getNameFIO() != null ? record.getNameFIO() : "");
+                row.createCell(1).setCellValue(record.getCode() != null ? record.getCode() : "");
+                row.createCell(2).setCellValue(normalizeClassName(record.getClassName()));
+                row.createCell(3).setCellValue(normalizeSubjectName(record.getSubject()));
+                row.createCell(4).setCellValue(record.getDate() != null ? record.getDate() : "");
+                row.createCell(5).setCellValue(record.getSchoolYear() != null ? record.getSchoolYear() : "");
+                row.createCell(6).setCellValue(record.getSchool() != null ? record.getSchool() : "");
+                row.createCell(7).setCellValue(record.getClassLevel() != null ? record.getClassLevel() : "");
+                row.createCell(8).setCellValue(record.getCityLevel() != null ? record.getCityLevel() : "");
+                setCellValueSmart(row.createCell(9), record.getOverallPercent());
+                row.createCell(10).setCellValue(record.getMasteryLevel() != null ? record.getMasteryLevel() : "");
+                setCellValueSmart(row.createCell(11), record.getSection1Percent());
+                setCellValueSmart(row.createCell(12), record.getSection2Percent());
+                setCellValueSmart(row.createCell(13), record.getSection3Percent());
+            }
+        }
+        log.debug("вышел из цикла");
+        finalizeSheet(sheet, headers.length, rowNum);
+    }
+
+    private CellStyle createHeaderStyle(Workbook workbook) {
+        CellStyle style = workbook.createCellStyle();
+        Font font = workbook.createFont();
+        font.setBold(true);
+        font.setColor(IndexedColors.WHITE.getIndex());
+        style.setFont(font);
+        style.setFillForegroundColor(IndexedColors.DARK_BLUE.getIndex());
+        style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        style.setAlignment(HorizontalAlignment.CENTER);
+        style.setVerticalAlignment(VerticalAlignment.CENTER);
+        return style;
+    }
+
+    private Map<String, WorkSummary> buildWorkSummaryMap(List<ListStudentData> allStudents,
+                                                         List<StudentResultData> allStudentResults,
+                                                         List<StudentResultFGData> allStudentFGResults,
+                                                         List<OtherDiagnosticData> allOtherDiagnosticResults) {
+        Map<String, WorkSummary> workSummaryMap = new LinkedHashMap<>();
+
+        for (ListStudentData student : allStudents) {
+            String normalizedSubject = normalizeSubjectForWorkKey(student.getSubject());
+            String normalizedClass = normalizeClassName(student.getClassName());
+            String key = buildWorkKey(student.getSchool(), normalizedSubject, student.getDate(), normalizedClass, student.getSchoolYear());
+            WorkSummary summary = workSummaryMap.computeIfAbsent(key,
+                    k -> new WorkSummary(student.getSchool(), normalizedSubject, student.getDate(), normalizedClass, student.getSchoolYear()));
+            summary.childSheetRows++;
+        }
+
+        for (StudentResultData result : allStudentResults) {
+            String normalizedSubject = normalizeSubjectForWorkKey(result.getSubject());
+            String normalizedClass = normalizeClassName(result.getClassName());
+            String key = buildWorkKey(result.getSchool(), normalizedSubject, result.getDate(), normalizedClass, result.getSchoolYear());
+            WorkSummary summary = workSummaryMap.computeIfAbsent(key,
+                    k -> new WorkSummary(result.getSchool(), normalizedSubject, result.getDate(), normalizedClass, result.getSchoolYear()));
+            summary.resultRows++;
+        }
+
+        for (StudentResultFGData fgResult : allStudentFGResults) {
+            String normalizedSubject = normalizeSubjectForWorkKey(fgResult.getSubject());
+            String normalizedClass = normalizeClassName(fgResult.getClassName());
+            String key = buildWorkKey(
+                    fgResult.getSchool(),
+                    normalizedSubject,
+                    fgResult.getDate(),
+                    normalizedClass,
+                    fgResult.getSchoolYear()
+            );
+
+            WorkSummary summary = workSummaryMap.computeIfAbsent(
+                    key,
+                    k -> new WorkSummary(
+                            fgResult.getSchool(),
+                            normalizedSubject,
+                            fgResult.getDate(),
+                            normalizedClass,
+                            fgResult.getSchoolYear()
+                    )
+            );
+
+            summary.fgRows++;
+
+            if (fgResult.getClassPercent() != null) {
+                summary.classLevel = fgResult.getClassPercent() + "%";
+            }
+
+            if (fgResult.getCityPercent() != null) {
+                summary.cityLevel = fgResult.getCityPercent() + "%";
+            }
+        }
+
+        for (OtherDiagnosticData diagnostic : allOtherDiagnosticResults) {
+            String normalizedSubject = normalizeSubjectForWorkKey(diagnostic.getSubject());
+            String normalizedClass = normalizeClassName(diagnostic.getClassName());
+            String key = buildWorkKey(diagnostic.getSchool(), normalizedSubject, diagnostic.getDate(), normalizedClass, diagnostic.getSchoolYear());
+            WorkSummary summary = workSummaryMap.computeIfAbsent(key,
+                    k -> new WorkSummary(diagnostic.getSchool(), normalizedSubject, diagnostic.getDate(), normalizedClass, diagnostic.getSchoolYear()));
+            summary.otherDiagnosticRows++;
+            if (hasText(diagnostic.getAvgPercent())) {
+                summary.classLevel = diagnostic.getAvgPercent();
+            }
+            if (hasText(diagnostic.getCityPercent())) {
+                summary.cityLevel = diagnostic.getCityPercent();
+            }
+        }
+
+        return workSummaryMap;
+    }
+
+    private void createAllWorksSheet(Workbook workbook,
+                                     Map<String, WorkSummary> workSummaryMap,
+                                     CellStyle headerStyle,
+                                     String sheetName) {
+        Sheet sheet = workbook.createSheet(sheetName);
+        Row headerRow = sheet.createRow(0);
+        String[] headers = {
+                "Школа", "Предмет", "Дата", "Учебный год", "Класс",
+                "Уровень класса", "Уровень города",
+                "Строк в листе детей", "Строк в результатах", "Строк в ФГ", "PDF-файл с результатами класса"
+        };
+
+        for (int i = 0; i < headers.length; i++) {
+            Cell cell = headerRow.createCell(i);
+            cell.setCellValue(headers[i]);
+            cell.setCellStyle(headerStyle);
+        }
+
+        int rowNum = 1;
+        for (WorkSummary summary : workSummaryMap.values()) {
+            Row row = sheet.createRow(rowNum++);
+            row.createCell(0).setCellValue(valueOrEmpty(summary.school));
+            row.createCell(1).setCellValue(normalizeSubjectName(summary.subject));
+            row.createCell(2).setCellValue(valueOrEmpty(summary.date));
+            row.createCell(3).setCellValue(valueOrEmpty(summary.schoolYear));
+            row.createCell(4).setCellValue(normalizeClassName(summary.className));
+            row.createCell(5).setCellValue(valueOrEmpty(summary.classLevel));
+            row.createCell(6).setCellValue(valueOrEmpty(summary.cityLevel));
+            row.createCell(7).setCellValue(summary.childSheetRows);
+            row.createCell(8).setCellValue(summary.resultRows);
+            row.createCell(9).setCellValue(summary.fgRows);
+            row.createCell(10).setCellValue(summary.otherDiagnosticRows);
+        }
+
+        finalizeSheet(sheet, headers.length, rowNum);
+    }
+
+    private void createMissingWorksSheet(Workbook workbook,
+                                         Map<String, WorkSummary> workSummaryMap,
+                                         CellStyle headerStyle,
+                                         String sheetName) {
+        Sheet sheet = workbook.createSheet(sheetName);
+        Row headerRow = sheet.createRow(0);
+        String[] headers = {
+                "Школа", "Предмет", "Дата", "Учебный год", "Класс", "Проблема",
+                "Уровень класса", "Уровень города",
+                "Строк в листе детей", "Строк в результатах", "Строк в ФГ", "PDF-файл с результатами класса"
+        };
+
+        for (int i = 0; i < headers.length; i++) {
+            Cell cell = headerRow.createCell(i);
+            cell.setCellValue(headers[i]);
+            cell.setCellStyle(headerStyle);
+        }
+
+        int rowNum = 1;
+        for (WorkSummary summary : workSummaryMap.values()) {
+            List<String> problems = detectProblems(summary, workSummaryMap);
+            if (problems.isEmpty()) {
+                continue;
+            }
+
+            Row row = sheet.createRow(rowNum++);
+            row.createCell(0).setCellValue(valueOrEmpty(summary.school));
+            row.createCell(1).setCellValue(normalizeSubjectName(summary.subject));
+            row.createCell(2).setCellValue(valueOrEmpty(summary.date));
+            row.createCell(3).setCellValue(valueOrEmpty(summary.schoolYear));
+            row.createCell(4).setCellValue(normalizeClassName(summary.className));
+            row.createCell(5).setCellValue(String.join("; ", problems));
+            row.createCell(6).setCellValue(valueOrEmpty(summary.classLevel));
+            row.createCell(7).setCellValue(valueOrEmpty(summary.cityLevel));
+            row.createCell(8).setCellValue(summary.childSheetRows);
+            row.createCell(9).setCellValue(summary.resultRows);
+            row.createCell(10).setCellValue(summary.fgRows);
+            row.createCell(11).setCellValue(summary.otherDiagnosticRows);
+        }
+
+        finalizeSheet(sheet, headers.length, rowNum);
+    }
+
+    private void finalizeSheet(Sheet sheet, int headerCount, int rowNum) {
+        sheet.createFreezePane(0, 1);
+        if (rowNum > 0) {
+            sheet.setAutoFilter(new org.apache.poi.ss.util.CellRangeAddress(0, Math.max(rowNum - 1, 0), 0, headerCount - 1));
+        }
+        for (int i = 0; i < headerCount; i++) {
+            sheet.autoSizeColumn(i);
+        }
+    }
+
+    private List<String> detectProblems(WorkSummary summary, Map<String, WorkSummary> workSummaryMap) {
+        List<String> problems = new ArrayList<>();
+
+        if (isParentWorkCoveredByChildWorks(summary, workSummaryMap)) {
+            return problems;
+        }
+
+        if (isFunctionalLiteracyWork(summary)) {
+            if (summary.childSheetRows == 0) {
+                problems.add("Не загружен лист с данными детей");
+            }
+
+            if (summary.fgRows == 0) {
+                problems.add("Не загружен файл результатов функциональной грамотности");
+            }
+
+            if (!hasText(summary.classLevel) || !hasText(summary.cityLevel)) {
+                problems.add("В файле ФГ не найден средний % выполнения теста");
+            }
+
+            return problems;
+        }
+
+        if (summary.resultRows == 0) {
+            problems.add("Не загружены результаты работы");
+        }
+
+        if (summary.childSheetRows == 0 && summary.resultRows > 0) {
+            problems.add("Не загружен лист с данными детей");
+        }
+
+        if (summary.otherDiagnosticRows == 0) {
+            problems.add("Не найден PDF-файл с результатами класса");
+        }
+
+        return problems;
+    }
+
+    private boolean isParentWorkCoveredByChildWorks(WorkSummary parent,
+                                                    Map<String, WorkSummary> workSummaryMap) {
+        if (parent.resultRows > 0 || parent.fgRows > 0 || parent.otherDiagnosticRows > 0) {
+            return false;
+        }
+
+        if (parent.childSheetRows == 0) {
+            return false;
+        }
+
+        String parentKey = extractPartFamilyKey(parent.subject);
+        String normalizedParentSubject = normalizePartSubject(parent.subject);
+
+        // Родитель: "математика часть 2"
+        if (!hasText(parentKey) || !normalizedParentSubject.equals(parentKey)) {
+            return false;
+        }
+
+        for (WorkSummary child : workSummaryMap.values()) {
+            if (child == parent) {
+                continue;
+            }
+
+            if (!sameWorkBase(parent, child)) {
+                continue;
+            }
+
+            String childKey = extractPartFamilyKey(child.subject);
+            String normalizedChildSubject = normalizePartSubject(child.subject);
+
+            // Дочерние:
+            // "математика часть 2 геометрия углубленный уровень"
+            // "математика часть 2 вероятность и статистика углубленный уровень"
+            if (parentKey.equals(childKey)
+                    && !normalizedChildSubject.equals(parentKey)
+                    && hasAnyLoadedData(child)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private String extractPartFamilyKey(String subject) {
+        String normalized = normalizePartSubject(subject);
+
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("^(.+?\\bчасть\\s*\\d+\\b)")
+                .matcher(normalized);
+
+        if (matcher.find()) {
+            return matcher.group(1).trim();
+        }
+
+        return "";
+    }
+
+    private String normalizePartSubject(String subject) {
+        return valueOrEmpty(subject)
+                .toLowerCase(Locale.ROOT)
+                .replace('ё', 'е')
+                .replaceAll("[().,]", " ")
+                .replaceAll("\\s*-\\s*", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private boolean sameWorkBase(WorkSummary a, WorkSummary b) {
+        return valueOrEmpty(a.school).equals(valueOrEmpty(b.school))
+                && valueOrEmpty(a.date).equals(valueOrEmpty(b.date))
+                && valueOrEmpty(a.className).equals(valueOrEmpty(b.className))
+                && valueOrEmpty(a.schoolYear).equals(valueOrEmpty(b.schoolYear));
+    }
+
+    private boolean hasAnyLoadedData(WorkSummary summary) {
+        return summary.resultRows > 0
+                || summary.fgRows > 0
+                || summary.otherDiagnosticRows > 0;
+    }
+
+    private boolean isFunctionalLiteracyWork(WorkSummary summary) {
+        String subject = valueOrEmpty(summary.subject).toLowerCase(Locale.ROOT);
+
+        return subject.contains("функцион")
+                || subject.contains("грамот");
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
+    }
+
+    private String buildWorkKey(String school, String subject, String date, String className, String schoolYear) {
+        return String.format("%s|%s|%s|%s|%s",
+                valueOrEmpty(school),
+                valueOrEmpty(subject),
+                valueOrEmpty(date),
+                valueOrEmpty(className),
+                valueOrEmpty(schoolYear));
+    }
+
+    private String valueOrEmpty(String value) {
+        return value != null ? value : "";
+    }
+
+    private String normalizeClassName(String className) {
+        if (className == null) {
+            return "";
+        }
+        String normalized = className.trim().toUpperCase().replace('Ё', 'Е');
+        if (normalized.matches("^\\d+[А-ЯЕ]$")) {
+            return normalized.replaceAll("^(\\d+)([А-ЯЕ])$", "$1-$2");
+        }
+        return normalized;
+    }
+
+    private String normalizeSubjectName(String subject) {
+        if (subject == null) {
+            return "";
+        }
+        return subject
+                .replaceAll("[\\r\\n]+", " ")
+                .replaceAll("(?i)\\bокруг\\b\\s*:?\\s*.*$", "")
+                .replaceAll("(?i)\\bшкола\\b\\s*:?\\s*.*$", "")
+                .replaceAll("(?i)\\bкласс\\b\\s*:?\\s*.*$", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private String normalizeSubjectForWorkKey(String subject) {
+        return SubjectNormalizerUtil.normalizeForMatching(normalizeSubjectName(subject));
+    }
+
+    private void setCellValueSmart(Cell cell, Object value) {
+        if (value == null) {
+            cell.setBlank();
+            return;
+        }
+
+        if (value instanceof Number number) {
+            cell.setCellValue(number.doubleValue());
+            return;
+        }
+
+        String text = value.toString().trim();
+
+        if (text.isEmpty()) {
+            cell.setBlank();
+            return;
+        }
+
+        // Оставляем текстом коды, классы, даты, учебный год
+        if (text.matches("\\d{4}-\\d{4}")          // 9116-0638
+                || text.matches("\\d{1,2}-[А-Яа-яЁё]") // 4-А
+                || text.matches("\\d{2}\\.\\d{2}\\.\\d{4}")
+                || text.matches("\\d{4}/\\d{4}")
+                || text.contains("-")) {
+            cell.setCellValue(text);
+            return;
+        }
+
+        // Целые числа
+        if (text.matches("\\d+")) {
+            try {
+                cell.setCellValue(Long.parseLong(text));
+                return;
+            } catch (NumberFormatException ignored) {
+                cell.setCellValue(text);
+                return;
+            }
+        }
+
+        // Дробные числа: 75.5 или 75,5
+        if (text.matches("\\d+[,.]\\d+")) {
+            try {
+                cell.setCellValue(Double.parseDouble(text.replace(',', '.')));
+                return;
+            } catch (NumberFormatException ignored) {
+                cell.setCellValue(text);
+                return;
+            }
+        }
+
+        cell.setCellValue(text);
+    }
+
+    private static class WorkSummary {
+        private final String school;
+        private final String subject;
+        private final String date;
+        private final String className;
+        private final String schoolYear;
+        private int childSheetRows;
+        private int resultRows;
+        private int fgRows;
+        private int otherDiagnosticRows;
+        private String classLevel;
+        private String cityLevel;
+
+        private WorkSummary(String school, String subject, String date, String className, String schoolYear) {
+            this.school = school;
+            this.subject = subject;
+            this.date = date;
+            this.className = className;
+            this.schoolYear = schoolYear;
+        }
+    }
+}

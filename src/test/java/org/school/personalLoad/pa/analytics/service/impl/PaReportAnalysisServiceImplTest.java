@@ -12,6 +12,7 @@ import org.school.personalLoad.pa.model.PaReportVersion;
 import org.school.personalLoad.pa.repository.PaReportVersionRepository;
 import org.school.personalLoad.pa.repository.PaSpecificationRepository;
 import org.school.personalLoad.pa.repository.PaSpecificationTaskRepository;
+import org.school.personalLoad.vsoko.mcko.service.StudentResultLinker;
 import org.springframework.beans.factory.ObjectProvider;
 
 import java.nio.file.Files;
@@ -38,6 +39,8 @@ class PaReportAnalysisServiceImplTest {
     private PaReportStudentResultRepository studentResultRepository;
     @Mock
     private PaReportTaskResultRepository taskResultRepository;
+    @Mock
+    private StudentResultLinker studentResultLinker;
     @Mock
     private ObjectProvider<PaReportAnalysisJobRunner> jobRunnerProvider;
     @Mock
@@ -82,6 +85,7 @@ class PaReportAnalysisServiceImplTest {
                 summaryRepository,
                 studentResultRepository,
                 taskResultRepository,
+                studentResultLinker,
                 jobRunnerProvider
         );
     }

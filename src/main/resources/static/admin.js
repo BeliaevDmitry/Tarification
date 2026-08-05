@@ -76,6 +76,7 @@ const TAB_GROUPS = [
         tabs: [
             { key: 'VSOKO_VIEW', label: 'ВСОКО/ПА: просмотр' },
             { key: 'VSOKO_EDIT', label: 'ВСОКО/ПА: редактирование' },
+            { key: 'VSOKO_MCKO', label: 'ВСОКО/МЦКО: результаты и своды' },
             { key: 'OGE_UPLOAD_VIEW', label: 'ОГЭ: Выгрузка (просмотр)' },
             { key: 'OGE_EXTERNAL_WORKS_VIEW', label: 'ОГЭ: Внешние работы пробники (просмотр)' },
             { key: 'OGE_TEACHER_BINDING_VIEW', label: 'ОГЭ: Привязка к педагогу (просмотр)' },

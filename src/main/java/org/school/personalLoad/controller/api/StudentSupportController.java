@@ -7,12 +7,14 @@ import org.school.personalLoad.auth.AuthSessionUtils;
 import org.school.personalLoad.auth.SessionUser;
 import org.school.personalLoad.dto.contingent.StudentSupportDtos;
 import org.school.personalLoad.dto.contingent.StudentDataExchangeDtos;
+import org.school.personalLoad.dto.contingent.IupOrderDocumentDtos;
 import org.school.personalLoad.dto.contingent.StudentSupportDocumentDtos;
 import org.school.personalLoad.service.AcademicYearService;
 import org.school.personalLoad.service.StudentIdentityService;
 import org.school.personalLoad.service.StudentDataExchangeService;
 import org.school.personalLoad.service.StudentSupportService;
 import org.school.personalLoad.service.StudentSupportDocumentService;
+import org.school.personalLoad.service.IupOrderDocumentService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -41,6 +43,7 @@ public class StudentSupportController {
     private final AcademicYearService academicYearService;
     private final StudentDataExchangeService studentDataExchangeService;
     private final StudentSupportDocumentService studentSupportDocumentService;
+    private final IupOrderDocumentService iupOrderDocumentService;
 
     @GetMapping("/summary")
     public ResponseEntity<StudentSupportDtos.SummaryResponse> summary(
@@ -88,6 +91,25 @@ public class StudentSupportController {
             @PathVariable Long iupPlanId
     ) {
         return ResponseEntity.ok(studentSupportService.getIup(effectiveYear(academicYear), iupPlanId));
+    }
+
+    @PostMapping("/iup-orders/generate")
+    public ResponseEntity<byte[]> generateIupOrder(
+            @RequestParam(required = false) String academicYear,
+            @RequestBody IupOrderDocumentDtos.GenerateRequest request,
+            HttpServletRequest httpServletRequest
+    ) {
+        validateEdit(AuthSessionUtils.requiredUser(httpServletRequest));
+        IupOrderDocumentService.GeneratedDocument generated =
+                iupOrderDocumentService.generate(effectiveYear(academicYear), request);
+        String encodedFileName = URLEncoder.encode(generated.fileName(), StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
+                .contentType(MediaType.parseMediaType(
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                ))
+                .body(generated.content());
     }
 
     @PostMapping("/reconcile/{snapshotId}")

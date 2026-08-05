@@ -70,7 +70,31 @@ const ui = {
     supportIupSubjectBody: document.getElementById('support-iup-subject-body'),
     supportIupAddSubjectBtn: document.getElementById('support-iup-add-subject-btn'),
     supportIupSaveBtn: document.getElementById('support-iup-save-btn'),
-    supportIupClearBtn: document.getElementById('support-iup-clear-btn')
+    supportIupClearBtn: document.getElementById('support-iup-clear-btn'),
+    supportIupOrderTemplate: document.getElementById('support-iup-order-template'),
+    supportIupDocumentOrderNumber: document.getElementById('support-iup-document-order-number'),
+    supportIupDocumentOrderDate: document.getElementById('support-iup-document-order-date'),
+    supportIupOrderGender: document.getElementById('support-iup-order-gender'),
+    supportIupOrderStudentName: document.getElementById('support-iup-order-student-name'),
+    supportIupOrderEducationForm: document.getElementById('support-iup-order-education-form'),
+    supportIupOrderMedicalNumber: document.getElementById('support-iup-order-medical-number'),
+    supportIupOrderMedicalDate: document.getElementById('support-iup-order-medical-date'),
+    supportIupOrderMedicalOrganization: document.getElementById('support-iup-order-medical-organization'),
+    supportIupOrderPedNumber: document.getElementById('support-iup-order-ped-number'),
+    supportIupOrderPedDate: document.getElementById('support-iup-order-ped-date'),
+    supportIupOrderPpkNumber: document.getElementById('support-iup-order-ppk-number'),
+    supportIupOrderPpkDate: document.getElementById('support-iup-order-ppk-date'),
+    supportIupOrderPreviousNumber: document.getElementById('support-iup-order-previous-number'),
+    supportIupOrderPreviousDate: document.getElementById('support-iup-order-previous-date'),
+    supportIupOrderCoordinator: document.getElementById('support-iup-order-coordinator'),
+    supportIupOrderEjournalAdmin: document.getElementById('support-iup-order-ejournal-admin'),
+    supportIupOrderEnrollmentAdmin: document.getElementById('support-iup-order-enrollment-admin'),
+    supportIupOrderControlOfficer: document.getElementById('support-iup-order-control-officer'),
+    supportIupOrderExecutor: document.getElementById('support-iup-order-executor'),
+    supportIupOrderDirector: document.getElementById('support-iup-order-director'),
+    supportIupOrderDownloadBtn: document.getElementById('support-iup-order-download-btn'),
+    supportIupOrderDownloadGroupBtn: document.getElementById('support-iup-order-download-group-btn'),
+    supportIupOrderMessage: document.getElementById('support-iup-order-message')
 };
 
 const esc = (v) => String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
@@ -143,6 +167,30 @@ async function downloadWorkbook(path, fallbackName) {
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = decodeURIComponent(fileName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+}
+
+async function downloadGeneratedDocument(path, payload, fallbackName) {
+    const scopedPath = window.withAcademicYear ? window.withAcademicYear(path) : path;
+    const response = await fetch(scopedPath, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+        const text = await response.text();
+        let error = null;
+        try { error = text ? JSON.parse(text) : null; } catch { error = null; }
+        throw new Error(error?.message || error?.error || text || `HTTP ${response.status}`);
+    }
+    const blob = await response.blob();
+    const encodedName = response.headers.get('Content-Disposition')?.split("filename*=UTF-8''")[1];
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = encodedName ? decodeURIComponent(encodedName) : fallbackName;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -577,6 +625,103 @@ function resetSupportIupForm() {
     ui.supportIupFrom.value = ui.supportAsOfDate.value || '';
     ui.supportIupTo.value = '';
     ui.supportIupSubjectBody.innerHTML = '';
+    resetSupportIupOrderForm();
+}
+
+function resetSupportIupOrderForm() {
+    if (!ui.supportIupOrderTemplate) return;
+    ui.supportIupOrderTemplate.value = 'INDIVIDUAL_IUP';
+    ui.supportIupDocumentOrderNumber.value = '';
+    ui.supportIupDocumentOrderDate.value = '';
+    ui.supportIupOrderGender.value = '';
+    ui.supportIupOrderStudentName.value = '';
+    ui.supportIupOrderStudentName.placeholder = 'Например: Иванова Ивана Ивановича';
+    ui.supportIupOrderEducationForm.value = '';
+    ui.supportIupOrderMedicalNumber.value = '';
+    ui.supportIupOrderMedicalDate.value = '';
+    ui.supportIupOrderMedicalOrganization.value = '';
+    ui.supportIupOrderPedNumber.value = '';
+    ui.supportIupOrderPedDate.value = '';
+    ui.supportIupOrderPpkNumber.value = '';
+    ui.supportIupOrderPpkDate.value = '';
+    ui.supportIupOrderPreviousNumber.value = '';
+    ui.supportIupOrderPreviousDate.value = '';
+    ui.supportIupOrderCoordinator.value = '';
+    ui.supportIupOrderEjournalAdmin.value = '';
+    ui.supportIupOrderEnrollmentAdmin.value = '';
+    ui.supportIupOrderControlOfficer.value = '';
+    ui.supportIupOrderExecutor.value = '';
+    ui.supportIupOrderDirector.value = '';
+    ui.supportIupOrderMessage.textContent = '';
+}
+
+function fillSupportIupOrderDefaults(plan) {
+    if (!ui.supportIupOrderTemplate) return;
+    const student = (supportReferences.students || []).find((item) =>
+        Number(item.studentId) === Number(plan.studentId)
+    );
+    ui.supportIupDocumentOrderNumber.value = plan.orderNumber || '';
+    ui.supportIupDocumentOrderDate.value = plan.orderDate || '';
+    ui.supportIupOrderStudentName.value = '';
+    ui.supportIupOrderStudentName.placeholder = student?.fullName
+        ? `ФИО из контингента: ${student.fullName}. Введите форму для приказа`
+        : 'Введите ФИО в форме, необходимой для приказа';
+}
+
+function supportIupOrderPayload(planIds, templateType) {
+    return {
+        templateType,
+        iupPlanIds: planIds,
+        orderNumber: ui.supportIupDocumentOrderNumber.value || null,
+        orderDate: ui.supportIupDocumentOrderDate.value || null,
+        studentGender: templateType === 'OVZ_GROUP' ? null : (ui.supportIupOrderGender.value || null),
+        studentNameForOrder: templateType === 'OVZ_GROUP' ? null : (ui.supportIupOrderStudentName.value || null),
+        educationLevelAndForm: ui.supportIupOrderEducationForm.value || null,
+        medicalConclusionNumber: ui.supportIupOrderMedicalNumber.value || null,
+        medicalConclusionDate: ui.supportIupOrderMedicalDate.value || null,
+        medicalOrganization: ui.supportIupOrderMedicalOrganization.value || null,
+        pedagogicalCouncilProtocolNumber: ui.supportIupOrderPedNumber.value || null,
+        pedagogicalCouncilProtocolDate: ui.supportIupOrderPedDate.value || null,
+        ppkProtocolNumber: ui.supportIupOrderPpkNumber.value || null,
+        ppkProtocolDate: ui.supportIupOrderPpkDate.value || null,
+        previousOrderNumber: ui.supportIupOrderPreviousNumber.value || null,
+        previousOrderDate: ui.supportIupOrderPreviousDate.value || null,
+        responsibleCoordinator: ui.supportIupOrderCoordinator.value || null,
+        electronicJournalAdministrator: ui.supportIupOrderEjournalAdmin.value || null,
+        enrollmentAdministrator: ui.supportIupOrderEnrollmentAdmin.value || null,
+        controlOfficer: ui.supportIupOrderControlOfficer.value || null,
+        executor: ui.supportIupOrderExecutor.value || null,
+        directorName: ui.supportIupOrderDirector.value || null
+    };
+}
+
+async function generateSupportIupOrder(groupOrder) {
+    let templateType = ui.supportIupOrderTemplate.value || 'INDIVIDUAL_IUP';
+    let planIds;
+    if (groupOrder) {
+        templateType = 'OVZ_GROUP';
+        ui.supportIupOrderTemplate.value = templateType;
+        planIds = (currentSupportSummary?.registerRows || [])
+            .filter((item) => item.hasIup && ['K2', 'K3'].includes(item.underlyingCategory))
+            .map((item) => Number(item.iupPlanId))
+            .filter((value) => Number.isFinite(value) && value > 0);
+        if (!planIds.length) {
+            throw new Error('На выбранную дату нет действующих ИУП у детей К2/К3.');
+        }
+    } else {
+        const planId = Number(ui.supportIupId.value || 0);
+        if (!planId) {
+            throw new Error('Сначала сохраните ИУП или откройте существующий ИУП из реестра.');
+        }
+        planIds = [planId];
+    }
+    ui.supportIupOrderMessage.textContent = 'Формирую приказ Word…';
+    await downloadGeneratedDocument(
+        '/api/contingent/special-support/iup-orders/generate',
+        supportIupOrderPayload(planIds, templateType),
+        'Приказ_ИУП.docx'
+    );
+    ui.supportIupOrderMessage.textContent = 'Приказ сформирован. После подписания его можно принять в реестр документов как «Приказ по ИУП».';
 }
 
 const supportDocumentTypeLabels = {
@@ -585,6 +730,7 @@ const supportDocumentTypeLabels = {
     CPMPC_CONCLUSION: 'Заключение ЦПМПК',
     INTERNAL_PPK_PROTOCOL: 'Протокол ППк',
     IOM: 'ИОМ',
+    IUP_ORDER: 'Приказ по ИУП',
     OTHER: 'Другой документ'
 };
 
@@ -985,6 +1131,8 @@ async function editSupportIup(iupPlanId) {
     ui.supportIupTo.value = plan.validTo || '';
     ui.supportIupSubjectBody.innerHTML = '';
     (plan.subjects || []).forEach(addSupportIupSubjectRow);
+    resetSupportIupOrderForm();
+    fillSupportIupOrderDefaults(plan);
     ui.supportIupEditor.open = true;
     ui.supportIupEditor.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -1207,6 +1355,18 @@ ui.supportIupSaveBtn?.addEventListener('click', () => saveSupportIup().catch((er
 }));
 
 ui.supportIupClearBtn?.addEventListener('click', resetSupportIupForm);
+
+ui.supportIupOrderDownloadBtn?.addEventListener('click', () => {
+    generateSupportIupOrder(false).catch((error) => {
+        ui.supportIupOrderMessage.textContent = `Не удалось сформировать приказ: ${error.message}`;
+    });
+});
+
+ui.supportIupOrderDownloadGroupBtn?.addEventListener('click', () => {
+    generateSupportIupOrder(true).catch((error) => {
+        ui.supportIupOrderMessage.textContent = `Не удалось сформировать сводный приказ: ${error.message}`;
+    });
+});
 
 ui.supportRegisterTable?.addEventListener('click', (event) => {
     const statusButton = event.target.closest('[data-support-edit-status]');

@@ -155,6 +155,7 @@
                             <option value="CPMPC_CONCLUSION">Заключение ЦПМПК</option>
                             <option value="INTERNAL_PPK_PROTOCOL">Протокол ППк</option>
                             <option value="IOM">ИОМ</option>
+                            <option value="IUP_ORDER">Приказ по ИУП</option>
                             <option value="OTHER">Другой документ</option>
                         </select>
                     </label>
@@ -313,6 +314,102 @@
                     <button id="support-iup-save-btn" type="button">Сохранить ИУП</button>
                     <button id="support-iup-clear-btn" type="button" class="secondary">Очистить</button>
                 </div>
+
+                <details id="support-iup-order-editor">
+                    <summary><strong>Сформировать приказ Word по реальному образцу</strong></summary>
+                    <p class="muted">
+                        Доступны четыре приложенных образца: обычный ИУП, надомное обучение,
+                        продление надомного обучения и сводный приказ ОВЗ. Предметы, учителя,
+                        часы, класс и дата рождения берутся из сохранённого ИУП и контингента.
+                    </p>
+                    <div class="row controls-row">
+                        <label>Вид приказа:
+                            <select id="support-iup-order-template">
+                                <option value="INDIVIDUAL_IUP">Обычный ИУП</option>
+                                <option value="HOME_EDUCATION">Надомное обучение</option>
+                                <option value="HOME_EDUCATION_EXTENSION">Продление надомного обучения</option>
+                                <option value="OVZ_GROUP">Сводный приказ ИУП для К2/К3</option>
+                            </select>
+                        </label>
+                        <label>Номер приказа:
+                            <input id="support-iup-document-order-number" type="text">
+                        </label>
+                        <label>Дата приказа:
+                            <input id="support-iup-document-order-date" type="date">
+                        </label>
+                        <label>Пол ребёнка:
+                            <select id="support-iup-order-gender">
+                                <option value="">Выберите</option>
+                                <option value="MALE">Мужской</option>
+                                <option value="FEMALE">Женский</option>
+                            </select>
+                        </label>
+                        <label>ФИО для текста приказа:
+                            <input id="support-iup-order-student-name" type="text"
+                                   placeholder="Например: Иванова Ивана Ивановича">
+                        </label>
+                        <label>Уровень и форма обучения:
+                            <input id="support-iup-order-education-form" type="text"
+                                   placeholder="Например: основное общее образование / очная форма">
+                        </label>
+                        <label>Медицинское заключение №:
+                            <input id="support-iup-order-medical-number" type="text">
+                        </label>
+                        <label>Дата медицинского заключения:
+                            <input id="support-iup-order-medical-date" type="date">
+                        </label>
+                        <label>Кем выдано медицинское заключение:
+                            <input id="support-iup-order-medical-organization" type="text">
+                        </label>
+                        <label>Протокол педсовета №:
+                            <input id="support-iup-order-ped-number" type="text">
+                        </label>
+                        <label>Дата протокола педсовета:
+                            <input id="support-iup-order-ped-date" type="date">
+                        </label>
+                        <label>Протокол ППк №:
+                            <input id="support-iup-order-ppk-number" type="text">
+                        </label>
+                        <label>Дата протокола ППк:
+                            <input id="support-iup-order-ppk-date" type="date">
+                        </label>
+                        <label>Предыдущий приказ №:
+                            <input id="support-iup-order-previous-number" type="text">
+                        </label>
+                        <label>Дата предыдущего приказа:
+                            <input id="support-iup-order-previous-date" type="date">
+                        </label>
+                        <label>Ответственный за организацию:
+                            <input id="support-iup-order-coordinator" type="text">
+                        </label>
+                        <label>Администратор ЭЖД:
+                            <input id="support-iup-order-ejournal-admin" type="text" placeholder="И. О. Фамилия">
+                        </label>
+                        <label>Ответственный за АИС «Зачисление»:
+                            <input id="support-iup-order-enrollment-admin" type="text">
+                        </label>
+                        <label>Контроль исполнения:
+                            <input id="support-iup-order-control-officer" type="text" placeholder="И. О. Фамилия">
+                        </label>
+                        <label>Исполнитель:
+                            <input id="support-iup-order-executor" type="text">
+                        </label>
+                        <label>Директор (для подписи):
+                            <input id="support-iup-order-director" type="text" placeholder="И. О. Фамилия">
+                        </label>
+                    </div>
+                    <p class="muted">
+                        ФИО для текста приказа вводится в нужном падеже: система намеренно не склоняет
+                        фамилии автоматически, чтобы не исказить официальный документ.
+                    </p>
+                    <div class="row controls-row">
+                        <button id="support-iup-order-download-btn" type="button">Скачать приказ по выбранному ИУП</button>
+                        <button id="support-iup-order-download-group-btn" type="button" class="secondary">
+                            Скачать сводный приказ по действующим К2/К3
+                        </button>
+                    </div>
+                    <div id="support-iup-order-message" class="muted"></div>
+                </details>
             </details>
         </div>
 

@@ -408,10 +408,12 @@ public class OgeService {
                             normalizeFioCompare(fio) + "|" + normalizedClass, List.of());
                     String birthDate = "";
                     String snils = "";
+                    Long entityStudentId = null;
                     boolean needsManualStudentMatch = false;
                     String sourceIssue = null;
                     if (matchedStudents.size() == 1) {
                         ContingentStudent matched = matchedStudents.get(0);
+                        entityStudentId = matched.getStudentId();
                         birthDate = blank(matched.getBirthDate());
                         snils = OgeSubjects.normalizeSnils(matched.getPensionInsurance());
                     } else if (matchedStudents.isEmpty()) {
@@ -427,6 +429,7 @@ public class OgeService {
                                     academicYear, fio, birthDate, snils, subject, sourceKey, workType, workDate)
                             .orElseGet(OgeWorkResult::new);
                     entity.setAcademicYear(academicYear);
+                    entity.setStudentId(entityStudentId);
                     entity.setClassName(className);
                     entity.setFullName(fio);
                     entity.setBirthDate(birthDate);

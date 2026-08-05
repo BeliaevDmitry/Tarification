@@ -39,6 +39,21 @@ class AuthFilterMckoPaAccessTest {
     }
 
     @Test
+    void vsokoMckoPagesAndApiRequireDedicatedPermission() throws Exception {
+        for (String path : List.of("/vsoko-mcko.html", "/vsoko-summary.html", "/vsoko-interview.html", "/vsoko-mcko-teachers.html")) {
+            assertPageAccess(path, List.of(), false);
+            assertPageAccess(path, List.of(new TabPermissionSnapshot(AppTab.VSOKO_MCKO, true, false, false, true)), true);
+        }
+        assertReadAccess("/api/vsoko/mcko/results", List.of(), false);
+        assertReadAccess("/api/vsoko/mcko/results",
+                List.of(new TabPermissionSnapshot(AppTab.VSOKO_MCKO, true, false, false, true)), true);
+        assertAccess(new MockHttpServletRequest("POST", "/api/vsoko/mcko/imports"),
+                List.of(new TabPermissionSnapshot(AppTab.VSOKO_MCKO, true, false, false, true)), false);
+        assertAccess(new MockHttpServletRequest("POST", "/api/vsoko/mcko/imports"),
+                List.of(new TabPermissionSnapshot(AppTab.VSOKO_MCKO, true, true, false, true)), true);
+    }
+
+    @Test
     void everyProtectedPaPageRequiresVsokoViewPermission() throws Exception {
         for (String path : List.of(
                 "/vsoko-pa-spec.html",
@@ -95,7 +110,7 @@ class AuthFilterMckoPaAccessTest {
             assertEquals(200, response.getStatus());
         } else if (request.getRequestURI().startsWith("/api/")) {
             assertEquals(403, response.getStatus());
-            assertTrue(response.getContentAsString().contains("нет прав на просмотр"));
+            assertTrue(response.getContentAsString().contains("нет прав"));
         } else {
             assertEquals(302, response.getStatus());
             assertEquals("/", response.getRedirectedUrl());

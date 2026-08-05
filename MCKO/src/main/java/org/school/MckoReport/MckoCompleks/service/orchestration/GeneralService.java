@@ -1,0 +1,1161 @@
+package org.school.MckoReport.MckoCompleks.service.orchestration;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.school.MckoReport.MckoCompleks.Config.AppConfig;
+import org.school.MckoReport.MckoCompleks.dto.CombinedResultData;
+import org.school.MckoReport.MckoCompleks.dto.ProcessingErrorInfo;
+import org.school.MckoReport.MckoCompleks.expextion.ProcessingException;
+import org.school.MckoReport.MckoCompleks.model.*;
+import org.school.MckoReport.MckoCompleks.repository.ListStudentDataRepository;
+import org.school.MckoReport.MckoCompleks.repository.OtherDiagnosticDataRepository;
+import org.school.MckoReport.MckoCompleks.repository.StudentResultDataRepository;
+import org.school.MckoReport.MckoCompleks.repository.StudentResultFGDataRepository;
+import org.school.MckoReport.MckoCompleks.service.file.FindFilesService;
+import org.school.MckoReport.MckoCompleks.service.parser.ListProcessingService;
+import org.school.MckoReport.MckoCompleks.service.parser.OtherDiagnosticMgchParserService;
+import org.school.MckoReport.MckoCompleks.service.parser.OtherDiagnosticMgmParserService;
+import org.school.MckoReport.MckoCompleks.service.parser.OtherDiagnosticParserService;
+import org.school.MckoReport.MckoCompleks.service.parser.ResultFGProcessorService;
+import org.school.MckoReport.MckoCompleks.service.parser.ResultProcessorService;
+import org.school.MckoReport.MckoCompleks.service.report.CombinedReportPersistenceService;
+import org.school.MckoReport.MckoCompleks.service.report.DataCombinationService;
+import org.school.MckoReport.MckoCompleks.service.report.ExcelExportService;
+import org.school.MckoReport.MckoCompleks.util.DiagnosticCodeUtil;
+import org.school.MckoReport.MckoCompleks.util.SubjectNormalizerUtil;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+@Service
+@RequiredArgsConstructor
+@Transactional
+@Slf4j
+public class GeneralService {
+
+    private final FindFilesService findFilesService;
+    private final ListProcessingService listProcessingService;
+    private final ListStudentDataRepository listStudentDataRepository;
+    private final StudentResultDataRepository studentResultDataRepository;
+    private final StudentResultFGDataRepository studentResultFGDataRepository;
+    private final ResultFGProcessorService resultFGProcessorService;
+    private final ResultProcessorService resultProcessorService;
+    private final DataCombinationService dataCombinationService;
+    private final ExcelExportService excelExportService;
+    private final CombinedReportPersistenceService combinedReportPersistenceService;
+    private final OtherDiagnosticParserService otherDiagnosticParserService;
+    private final OtherDiagnosticMgmParserService otherDiagnosticMgmParserService;
+    private final OtherDiagnosticMgchParserService otherDiagnosticMgchParserService;
+    private final OtherDiagnosticDataRepository otherDiagnosticDataRepository;
+    private final Map<String, List<ProcessingErrorInfo>> processingErrorsBySchool = new HashMap<>();
+
+    public void processListCod() {
+        log.info("Начало обработки для {} школ", AppConfig.SCHOOLS.size());
+        processingErrorsBySchool.clear();
+
+        int totalProcessed = 0;
+        int totalFailed = 0;
+        List<Path> successfullyProcessedArchives = new ArrayList<>();
+
+        for (String schoolName : AppConfig.SCHOOLS) {
+            processingErrorsBySchool.computeIfAbsent(schoolName, key -> new ArrayList<>());
+            try {
+                // 1. Формируем путь для школы
+                String folderPath = AppConfig.FOLDER_PATCH.replace("{школа}", schoolName);
+                log.info("Обработка школы: {} (путь: {})", schoolName, folderPath);
+
+                // 2. Получаем список файлов
+                List<ArchiveEntry> filesList = findFilesService.findFilesInArchives(
+                        Path.of(folderPath)
+                );
+
+                log.info("Найдено архивных записей: {}", filesList.size());
+
+                if (filesList.isEmpty()) {
+                    log.warn("Для школы {} не найдено файлов", schoolName);
+                    continue;
+                }
+
+                // 3. Классифицируем файлы
+                Map<String, List<ArchiveEntry>> dispatchArchive =
+                        findFilesService.dispatchArchiveProcessing(filesList);
+
+                List<ArchiveEntry> codeListFiles = dispatchArchive.getOrDefault("CODE_LISTS",
+                        Collections.emptyList());
+
+                log.info("Файлов со списками кодов: {}", codeListFiles.size());
+
+                // 4. Обрабатываем каждый файл
+                for (ArchiveEntry fileEntry : codeListFiles) {
+                    try {
+                        List<ListStudentData> students =
+                                listProcessingService.extractStudentsCodFromArchive(fileEntry);
+
+                        if (!students.isEmpty()) {
+                            applySchoolName(students, schoolName);
+                            students = deduplicateListStudents(students);
+                            // Сохраняем пакетами если нужно
+                            if (AppConfig.BATCH_SIZE > 0 && students.size() > AppConfig.BATCH_SIZE) {
+                                saveInBatches(students, AppConfig.BATCH_SIZE);
+                            } else {
+                                listStudentDataRepository.saveAll(students);
+                            }
+
+                            totalProcessed += students.size();
+
+                            // Добавляем архив в список успешно обработанных
+                            Path archivePath = fileEntry.getArchivePath();
+                            if (!successfullyProcessedArchives.contains(archivePath)) {
+                                successfullyProcessedArchives.add(archivePath);
+                            }
+
+                            log.info("Файл {} обработан успешно, сохранено {} студентов",
+                                    fileEntry.getEntryPath(), students.size());
+                        } else {
+                            log.warn("Файл {} не содержит данных о студентах",
+                                    fileEntry.getEntryPath());
+                        }
+
+                    } catch (ProcessingException e) {
+                        totalFailed++;
+                        log.error("Файл {} не обработан: {}", fileEntry.getEntryPath(), e.getMessage());
+                        registerProcessingError(
+                                schoolName,
+                                Path.of(fileEntry.getEntryPath()),
+                                "CODE_LIST_PARSE",
+                                e.getMessage()
+                        );
+                        // Продолжаем с другими файлами
+                    }
+                }
+
+            } catch (Exception e) {
+                log.error("Ошибка обработки для школы {}: {}", schoolName, e.getMessage(), e);
+                registerProcessingError(schoolName, null, "CODE_LIST_PARSE", e.getMessage());
+                throw new RuntimeException("Ошибка обработки школы " + schoolName, e);
+            }
+        }
+
+        // 5. Перемещаем архивы если включено
+        if (AppConfig.ENABLE_MOVE && !successfullyProcessedArchives.isEmpty()) {
+            try {
+                boolean moved = findFilesService.moveToSubjectFolder(successfullyProcessedArchives);
+                if (moved) {
+                    log.info("✅ Успешно перемещено {} архивов", successfullyProcessedArchives.size());
+                } else {
+                    log.warn("⚠ Не все архивы удалось переместить");
+                }
+            } catch (Exception e) {
+                log.error("❌ Ошибка при перемещении файлов: {}", e.getMessage());
+                // НЕ откатываем транзакцию БД
+            }
+        }
+
+        log.info("=".repeat(50));
+        log.info("📊 ИТОГИ ОБРАБОТКИ:");
+        log.info("  🏫 Обработано школ: {}", AppConfig.SCHOOLS.size());
+        log.info("  ✅ Успешных файлов: {}", totalProcessed);
+        log.info("  ❌ Ошибок: {}", totalFailed);
+        log.info("  📦 Перемещено архивов: {}", successfullyProcessedArchives.size());
+        log.info("=".repeat(50));
+    }
+
+    public void processFGResult() {
+        log.info("Начало обработки для {} школ", AppConfig.SCHOOLS.size());
+
+        int totalProcessed = 0;
+        int totalFailed = 0;
+        List<Path> successfullyProcessed = new ArrayList<>();
+
+        for (String schoolName : AppConfig.SCHOOLS) {
+            processingErrorsBySchool.computeIfAbsent(schoolName, key -> new ArrayList<>());
+            try {
+                // 1. Формируем путь для школы
+                String folderPath = AppConfig.FOLDER_PATCH.replace("{школа}", schoolName);
+                log.info("Обработка школы: {} (путь: {})", schoolName, folderPath);
+
+                // 2. Получаем список файлов
+                List<Path> filesList = findFilesService.findRegularFiles(
+                        Path.of(folderPath)
+                );
+
+
+                log.info("Найдено  записей: {}", filesList.size());
+
+                if (filesList.isEmpty()) {
+                    log.warn("Для школы {} не найдено файлов", schoolName);
+                    continue;
+                }
+
+                // 3. Классифицируем файлы
+                Map<String, List<Path>> dispatch =
+                        findFilesService.dispatchProcessing(filesList);
+
+                List<Path> resultFiles = dispatch.getOrDefault(FileCategory.FG_PDF_RESULTS.name(),
+                        Collections.emptyList());
+
+                log.info("Файлов ФГ: {}", resultFiles.size());
+
+                // 4. Обрабатываем каждый файл
+                for (Path path : resultFiles) {
+                    try {
+                        List<StudentResultFGData> resultFG =
+                                resultFGProcessorService.extractStudentsResultFG(path);
+
+                        if (!resultFG.isEmpty()) {
+                            applySchoolNameToFG(resultFG, schoolName);
+                            resultFG = deduplicateFGResults(resultFG);
+                            // Сохраняем пакетами если нужно
+                            if (AppConfig.BATCH_SIZE > 0 && resultFG.size() > AppConfig.BATCH_SIZE) {
+                                saveInBatchesFG(resultFG, AppConfig.BATCH_SIZE);
+                            } else {
+                                studentResultFGDataRepository.saveAll(resultFG);
+                            }
+
+                            totalProcessed += resultFG.size();
+
+                            // Добавляем в список успешно обработанных
+
+                            if (!successfullyProcessed.contains(path)) {
+                                successfullyProcessed.add(path);
+                            }
+
+                            log.info("Файл {} обработан успешно, сохранено {} студентов",
+                                    path.getFileName(), resultFG.size());
+                        } else {
+                            log.warn("Файл {} не содержит данных о студентах",
+                                    path.getFileName());
+                        }
+
+                    } catch (ProcessingException e) {
+                        totalFailed++;
+                        log.error("Файл {} не обработан: {}", path.getFileName(), e.getMessage());
+                        registerProcessingError(schoolName, path, "FG_PARSE", e.getMessage());
+                        // Продолжаем с другими файлами
+                    }
+                }
+
+            } catch (Exception e) {
+                log.error("Ошибка обработки для школы {}: {}", schoolName, e.getMessage(), e);
+                registerProcessingError(schoolName, null, "FG_PARSE", e.getMessage());
+                throw new RuntimeException("Ошибка обработки школы " + schoolName, e);
+            }
+        }
+
+        // 5. Перемещаем если включено
+        if (AppConfig.ENABLE_MOVE && !successfullyProcessed.isEmpty()) {
+            try {
+                boolean moved = findFilesService.moveToSubjectFolder(successfullyProcessed);
+                if (moved) {
+                    log.info("✅ Успешно перемещено {} файлов ФГ", successfullyProcessed.size());
+                } else {
+                    log.warn("⚠ Не все файлы ФГ удалось переместить");
+                }
+            } catch (Exception e) {
+                log.error("❌ Ошибка при перемещении файлов ФГ: {}", e.getMessage());
+                // НЕ откатываем транзакцию БД
+            }
+        }
+
+        log.info("=".repeat(50));
+        log.info("📊 ИТОГИ ОБРАБОТКИ:");
+        log.info("  🏫 Обработано школ: {}", AppConfig.SCHOOLS.size());
+        log.info("  ✅ Успешных файлов: {}", totalProcessed);
+        log.info("  ❌ Ошибок: {}", totalFailed);
+        log.info("  📦 Перемещено файлов ФГ: {}", successfullyProcessed.size());
+        log.info("=".repeat(50));
+    }
+
+    public void processResult() {
+        log.info("Начало обработки для {} школ", AppConfig.SCHOOLS.size());
+
+        int totalProcessed = 0;
+        int totalFailed = 0;
+        List<Path> successfullyProcessed = new ArrayList<>();
+
+        for (String schoolName : AppConfig.SCHOOLS) {
+            processingErrorsBySchool.computeIfAbsent(schoolName, key -> new ArrayList<>());
+            try {
+                // 1. Формируем путь для школы
+                String folderPath = AppConfig.FOLDER_PATCH.replace("{школа}", schoolName);
+                log.info("Обработка школы: {} (путь: {})", schoolName, folderPath);
+
+                // 2. Получаем список файлов
+                List<Path> filesList = findFilesService.findRegularFiles(
+                        Path.of(folderPath)
+                );
+
+                log.info("Найдено  записей: {}", filesList.size());
+
+                if (filesList.isEmpty()) {
+                    log.warn("Для школы {} не найдено файлов", schoolName);
+                    continue;
+                }
+
+                // 3. Классифицируем файлы
+                Map<String, List<Path>> dispatch =
+                        findFilesService.dispatchProcessing(filesList);
+
+                List<Path> resultFiles = dispatch.getOrDefault(FileCategory.EXCEL_RESULTS.name(),
+                        Collections.emptyList());
+
+                log.info("Файлов с результатами: {}", resultFiles.size());
+
+                // 4. Обрабатываем каждый файл
+                for (Path path : resultFiles) {
+                    try {
+                        List<StudentResultData> result =
+                                resultProcessorService.extractStudentsResult(path);
+
+                        if (!result.isEmpty()) {
+                            applySchoolNameToResults(result, schoolName);
+                            result = deduplicateResults(result);
+                            // Сохраняем пакетами если нужно
+                            if (AppConfig.BATCH_SIZE > 0 && result.size() > AppConfig.BATCH_SIZE) {
+                                saveInBatchesResult(result, AppConfig.BATCH_SIZE);
+                            } else {
+                                studentResultDataRepository.saveAll(result);
+                            }
+
+                            totalProcessed += result.size();
+
+                            // Добавляем в список успешно обработанных
+
+                            if (!successfullyProcessed.contains(path)) {
+                                successfullyProcessed.add(path);
+                            }
+
+                            log.info("Файл {} обработан успешно, сохранено {} студентов",
+                                    path.getFileName(), result.size());
+                        } else {
+                            log.warn("Файл {} не содержит данных о студентах",
+                                    path.getFileName());
+                        }
+
+                    } catch (ProcessingException e) {
+                        totalFailed++;
+                        log.error("Файл {} не обработан: {}", path.getFileName(), e.getMessage());
+                        registerProcessingError(schoolName, path, "RESULT_PARSE", e.getMessage());
+                        // Продолжаем с другими файлами
+                    } catch (Exception e) {
+                        totalFailed++;
+                        log.error("Критическая ошибка при обработке файла {}", path, e);
+                        registerProcessingError(schoolName, path, "RESULT_PARSE", e.getMessage());
+                    }
+                }
+            } catch (Exception e) {
+                log.error("Ошибка обработки для школы {}: {}", schoolName, e.getMessage(), e);
+                registerProcessingError(schoolName, null, "RESULT_PARSE", e.getMessage());
+                throw new RuntimeException("Ошибка обработки школы " + schoolName, e);
+            }
+        }
+
+        // 5. Перемещаем если включено
+        if (AppConfig.ENABLE_MOVE && !successfullyProcessed.isEmpty()) {
+            try {
+                boolean moved = findFilesService.moveToSubjectFolder(successfullyProcessed);
+                if (moved) {
+                    log.info("✅ Успешно перемещено {} результатов XLXS", successfullyProcessed.size());
+                } else {
+                    log.warn("⚠ Не все результаты XLXS удалось переместить");
+                }
+            } catch (Exception e) {
+                log.error("❌ Ошибка при перемещении результатов XLXS: {}", e.getMessage());
+                // НЕ откатываем транзакцию БД
+            }
+        }
+
+        log.info("=".repeat(50));
+        log.info("📊 ИТОГИ ОБРАБОТКИ:");
+        log.info("  🏫 Обработано школ: {}", AppConfig.SCHOOLS.size());
+        log.info("  ✅ Успешных файлов: {}", totalProcessed);
+        log.info("  ❌ Ошибок: {}", totalFailed);
+        log.info("  📦 Перемещено результатов XLXS: {}", successfullyProcessed.size());
+        log.info("=".repeat(50));
+    }
+
+    private void applySchoolName(List<ListStudentData> students, String schoolName) {
+        for (ListStudentData student : students) {
+            student.setSchool(schoolName);
+            student.setSubject(SubjectNormalizerUtil.normalize(student.getSubject()));
+            student.setNameFIO(normalizeDisplayName(student.getNameFIO()));
+        }
+    }
+
+    private void applySchoolNameToFG(List<StudentResultFGData> results, String schoolName) {
+        for (StudentResultFGData result : results) {
+            result.setSchool(schoolName);
+            result.setSubject(SubjectNormalizerUtil.normalize(result.getSubject()));
+        }
+    }
+
+    private void applySchoolNameToResults(List<StudentResultData> results, String schoolName) {
+        for (StudentResultData result : results) {
+            result.setSchool(schoolName);
+            result.setSubject(SubjectNormalizerUtil.normalize(result.getSubject()));
+        }
+    }
+
+    private void saveInBatches(List<ListStudentData> students, int batchSize) {
+        for (int i = 0; i < students.size(); i += batchSize) {
+            int end = Math.min(students.size(), i + batchSize);
+            List<ListStudentData> batch = students.subList(i, end);
+            listStudentDataRepository.saveAll(batch);
+            log.debug("Сохранен пакет {}-{} из {}", i + 1, end, students.size());
+        }
+    }
+
+    private void saveInBatchesFG(List<StudentResultFGData> resultFGData, int batchSize) {
+        for (int i = 0; i < resultFGData.size(); i += batchSize) {
+            int end = Math.min(resultFGData.size(), i + batchSize);
+            List<StudentResultFGData> batch = resultFGData.subList(i, end);
+            studentResultFGDataRepository.saveAll(batch);
+            log.debug("Сохранен пакет {}-{} из {}", i + 1, end, resultFGData.size());
+        }
+    }
+
+    private void saveInBatchesResult(List<StudentResultData> resultData, int batchSize) {
+        for (int i = 0; i < resultData.size(); i += batchSize) {
+            int end = Math.min(resultData.size(), i + batchSize);
+            List<StudentResultData> batch = resultData.subList(i, end);
+            studentResultDataRepository.saveAll(batch);
+            log.debug("Сохранен пакет {}-{} из {}", i + 1, end, resultData.size());
+        }
+    }
+
+
+
+    private List<ListStudentData> deduplicateListStudents(List<ListStudentData> source) {
+        return new ArrayList<>(source.stream()
+                .collect(Collectors.toMap(
+                        this::buildListStudentDuplicateKey,
+                        s -> s,
+                        GeneralService::preferBetterNameRecord,
+                        LinkedHashMap::new
+                )).values());
+    }
+
+    private List<StudentResultData> deduplicateResults(List<StudentResultData> source) {
+        return new ArrayList<>(source.stream()
+                .collect(Collectors.toMap(
+                        s -> String.join("|", normalizeText(s.getSchool()), normalizeText(s.getSubject()), normalizeText(s.getDate()),
+                                normalizeText(s.getClassName()), String.valueOf(s.getStudentNumber()), normalizeText(s.getCode())),
+                        s -> s,
+                        (existing, replacement) -> existing,
+                        LinkedHashMap::new
+                )).values());
+    }
+
+    private List<StudentResultFGData> deduplicateFGResults(List<StudentResultFGData> source) {
+        return new ArrayList<>(source.stream()
+                .collect(Collectors.toMap(
+                        this::buildStudentResultFGDuplicateKey,
+                        s -> s,
+                        (existing, replacement) -> replacement,
+                        LinkedHashMap::new
+                )).values());
+    }
+
+    private void deduplicateDatabaseForSchool(String schoolName) {
+        List<ListStudentData> schoolStudents = listStudentDataRepository.findBySchool(schoolName);
+        Map<String, List<ListStudentData>> groupedStudents = schoolStudents.stream()
+                .collect(Collectors.groupingBy(this::buildListStudentDuplicateKey));
+
+        List<ListStudentData> duplicatesStudents = groupedStudents.values().stream()
+                .filter(group -> group.size() > 1)
+                .flatMap(group -> {
+                    ListStudentData keeper = group.stream()
+                            .reduce(GeneralService::preferBetterNameRecord)
+                            .orElse(group.get(0));
+                    return group.stream().filter(item -> item.getId() != null && !item.getId().equals(keeper.getId()));
+                })
+                .collect(Collectors.toList());
+
+        if (!duplicatesStudents.isEmpty()) {
+            listStudentDataRepository.deleteAll(duplicatesStudents);
+            log.info("Удалено дубликатов list_student_data для {}: {}", schoolName, duplicatesStudents.size());
+        }
+
+        List<StudentResultData> resultDuplicates = findDuplicates(
+                studentResultDataRepository.findBySchool(schoolName),
+                this::buildStudentResultDuplicateKey
+        );
+        if (!resultDuplicates.isEmpty()) {
+            studentResultDataRepository.deleteAll(resultDuplicates);
+            log.info("Удалено дубликатов list_result_data для {}: {}", schoolName, resultDuplicates.size());
+        }
+
+        List<StudentResultFGData> fgDuplicates = findFGDuplicatesKeepingLatest(
+                studentResultFGDataRepository.findBySchool(schoolName)
+        );
+        if (!fgDuplicates.isEmpty()) {
+            studentResultFGDataRepository.deleteAll(fgDuplicates);
+            log.info("Удалено дубликатов result_fg_data для {}: {}", schoolName, fgDuplicates.size());
+        }
+
+        List<OtherDiagnosticData> diagnosticDuplicates = findDuplicates(
+                otherDiagnosticDataRepository.findBySchool(schoolName),
+                this::buildOtherDiagnosticDuplicateKey
+        );
+        if (!diagnosticDuplicates.isEmpty()) {
+            otherDiagnosticDataRepository.deleteAll(diagnosticDuplicates);
+            log.info("Удалено дубликатов other_diagnostic_data для {}: {}", schoolName, diagnosticDuplicates.size());
+        }
+    }
+
+    private <T> List<T> findDuplicates(List<T> source, java.util.function.Function<T, String> keyExtractor) {
+        return source.stream()
+                .collect(Collectors.groupingBy(keyExtractor, LinkedHashMap::new, Collectors.toList()))
+                .values()
+                .stream()
+                .filter(group -> group.size() > 1)
+                .flatMap(group -> group.stream().skip(1))
+                .collect(Collectors.toList());
+    }
+
+    private List<StudentResultFGData> findFGDuplicatesKeepingLatest(List<StudentResultFGData> source) {
+        return source.stream()
+                .collect(Collectors.groupingBy(
+                        this::buildStudentResultFGDuplicateKey,
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ))
+                .values()
+                .stream()
+                .filter(group -> group.size() > 1)
+                .flatMap(group -> {
+                    StudentResultFGData keeper = group.stream()
+                            .max(Comparator.comparing(
+                                    StudentResultFGData::getId,
+                                    Comparator.nullsFirst(Long::compareTo)
+                            ))
+                            .orElse(group.get(group.size() - 1));
+                    return group.stream().filter(item -> item != keeper);
+                })
+                .collect(Collectors.toList());
+    }
+
+    private String buildListStudentDuplicateKey(ListStudentData student) {
+        String normalizedCode = DiagnosticCodeUtil.normalize(student.getCode());
+        String identity = normalizedCode != null
+                ? "CODE:" + normalizedCode
+                : "NUMBER:" + String.valueOf(student.getStudentNumber());
+
+        return String.join("|",
+                normalizeText(student.getSchool()),
+                normalizeText(student.getSubject()),
+                normalizeText(student.getDate()),
+                normalizeText(student.getClassName()),
+                identity,
+                normalizeNameKey(student.getNameFIO())
+        );
+    }
+
+    private String buildStudentResultDuplicateKey(StudentResultData result) {
+        return String.join("|",
+                normalizeText(result.getSchool()),
+                normalizeText(result.getSubject()),
+                normalizeText(result.getDate()),
+                normalizeText(result.getClassName()),
+                String.valueOf(result.getStudentNumber()),
+                normalizeText(result.getCode()),
+                String.valueOf(result.getVariant()),
+                String.valueOf(result.getBall()),
+                String.valueOf(result.getPercentCompleted()),
+                String.valueOf(result.getMark()),
+                normalizeText(result.getTaskScores())
+        );
+    }
+
+    private String buildStudentResultFGDuplicateKey(StudentResultFGData result) {
+        return String.join("|",
+                normalizeText(result.getSchool()),
+                normalizeText(result.getSubject()),
+                normalizeText(result.getDate()),
+                normalizeText(result.getClassName()),
+                normalizeText(result.getCode())
+        );
+    }
+
+    private String buildOtherDiagnosticDuplicateKey(OtherDiagnosticData diagnostic) {
+        return String.join("|",
+                normalizeText(diagnostic.getSchool()),
+                normalizeText(diagnostic.getSubject()),
+                normalizeText(diagnostic.getDate()),
+                normalizeText(diagnostic.getClassName()),
+                normalizeText(diagnostic.getAvgPercent()),
+                normalizeText(diagnostic.getCityPercent()),
+                normalizeText(diagnostic.getSchoolYear()),
+                normalizeText(diagnostic.getFileName())
+        );
+    }
+
+    private String normalizeText(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private String normalizeDisplayName(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim()
+                .replace('ѐ', 'ё')
+                .replace('Ѐ', 'Ё')
+                .replaceAll("\\s+", " ");
+    }
+
+    private String normalizeNameKey(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim()
+                .replace('ё', 'е')
+                .replace('Ё', 'Е')
+                .replace('ѐ', 'е')
+                .replace('Ѐ', 'Е')
+                .replaceAll("\\s+", " ");
+    }
+
+    static ListStudentData preferBetterNameRecord(
+            ListStudentData existing,
+            ListStudentData replacement) {
+        boolean existingHasYo = containsYo(existing.getNameFIO());
+        boolean replacementHasYo = containsYo(replacement.getNameFIO());
+        ListStudentData preferred = existing;
+
+        if (!existingHasYo && replacementHasYo) {
+            preferred = replacement;
+        }
+
+        ListStudentData other = preferred == existing ? replacement : existing;
+        if (preferred.getStudentNumber() == null && other.getStudentNumber() != null) {
+            preferred.setStudentNumber(other.getStudentNumber());
+        }
+        return preferred;
+    }
+
+    private static boolean containsYo(String value) {
+        return value != null && (value.contains("ё") || value.contains("Ё"));
+    }
+
+    /**
+     * Создать объединенные отчеты Excel для каждой школы
+     * (Аналог processResult() для отчетов)
+     */
+    @Transactional
+    public void createSchoolReports() throws IOException {
+        log.info("Начало создания отчетов для {} школ", AppConfig.SCHOOLS.size());
+
+        int totalReportsCreated = 0;
+        int totalFailed = 0;
+        List<String> successfullyProcessed = new ArrayList<>();
+
+        for (String schoolName : AppConfig.SCHOOLS) {
+            log.info("Создание общего отчета для школы: {}", schoolName);
+            deduplicateDatabaseForSchool(schoolName);
+
+            // Получаем всех студентов школы
+            List<ListStudentData> allStudents = listStudentDataRepository.findBySchool(schoolName);
+            allStudents.forEach(student -> student.setNameFIO(normalizeDisplayName(student.getNameFIO())));
+            log.debug("длина allStudents {}", allStudents.size());
+            if (allStudents.isEmpty()) {
+                totalFailed++;
+                log.warn("Нет студентов для школы {}, пропускаем создание отчета", schoolName);
+                continue;
+            }
+
+            List<StudentResultData> allStudentResults = studentResultDataRepository.findBySchool(schoolName);
+            log.debug("длина allStudentResults {}", allStudentResults.size());
+            if (allStudentResults.isEmpty()) {
+                totalFailed++;
+                log.warn("Нет данных результатов для школы {}, пропускаем создание отчета", schoolName);
+                continue;
+            }
+
+            List<StudentResultFGData> allStudentFGResults = studentResultFGDataRepository.findBySchool(schoolName);
+            log.debug("длина allStudentFGResults {}", allStudentFGResults.size());
+            if (allStudentFGResults.isEmpty()) {
+                totalFailed++;
+                log.warn("Нет FG-результатов для школы {}, пропускаем создание отчета", schoolName);
+                continue;
+            }
+
+            List<OtherDiagnosticData> allOtherDiagnosticResults = otherDiagnosticDataRepository.findBySchool(schoolName);
+            log.debug("длина allOtherDiagnosticResults {}", allOtherDiagnosticResults.size());
+
+            normalizeSubjectsForReport(allStudents, allStudentResults, allStudentFGResults, allOtherDiagnosticResults);
+
+            Map<String, OtherDiagnosticData> otherDiagnosticByKey = allOtherDiagnosticResults.stream()
+                    .collect(Collectors.toMap(
+                            diagnostic -> buildReportWorkKey(
+                                    schoolName,
+                                    diagnostic.getSubject(),
+                                    diagnostic.getDate(),
+                                    diagnostic.getClassName(),
+                                    diagnostic.getSchoolYear()
+                            ),
+                            diagnostic -> diagnostic,
+                            (existing, replacement) -> existing
+                    ));
+
+            Map<String, OtherDiagnosticData> otherDiagnosticByKeyWithoutYear = allOtherDiagnosticResults.stream()
+                    .collect(Collectors.toMap(
+                            diagnostic -> buildReportWorkKeyWithoutYear(
+                                    schoolName,
+                                    diagnostic.getSubject(),
+                                    diagnostic.getDate(),
+                                    diagnostic.getClassName()
+                            ),
+                            diagnostic -> diagnostic,
+                            (existing, replacement) -> existing
+                    ));
+
+            List<CombinedResultData> combinedResults = buildCombinedResultsUsingCombinationService(
+                    allStudents,
+                    schoolName
+            );
+            enrichWithDiagnosticLevels(combinedResults, schoolName, otherDiagnosticByKey, otherDiagnosticByKeyWithoutYear);
+
+            log.debug("длина combinedResults перед передачей в генератор эксель {}", combinedResults.size());
+
+            // Сохраняем объединенные данные для накопительного анализа в таблицу MCKO_*
+            combinedReportPersistenceService.upsertCombinedResults(combinedResults);
+
+            // Создаем Excel
+            List<ProcessingErrorInfo> processingErrors = processingErrorsBySchool.getOrDefault(
+                    schoolName,
+                    Collections.emptyList()
+            );
+            byte[] excelBytes = excelExportService.exportToExcel(
+                    combinedResults,
+                    allStudents,
+                    allStudentResults,
+                    allStudentFGResults,
+                    allOtherDiagnosticResults,
+                    processingErrors
+            );
+
+            // Сохраняем
+            String filePath = saveTotalReportFile(excelBytes, schoolName);
+
+            if (filePath != null) {
+                totalReportsCreated++;
+                successfullyProcessed.add(schoolName);
+                log.info("✅ Общий отчет для школы {} сохранен: {}", schoolName, filePath);
+            } else {
+                totalFailed++;
+                log.error("❌ Не удалось сохранить общий отчет для школы {}", schoolName);
+            }
+        }
+
+        // 5. Выводим итоги
+        log.info("=".repeat(60));
+        log.info("📋 ИТОГИ СОЗДАНИЯ ОТЧЕТОВ:");
+        log.info("  🏫 Всего школ в конфиге: {}", AppConfig.SCHOOLS.size());
+        log.info("  ✅ Успешно обработано школ: {}", successfullyProcessed.size());
+        log.info("  ❌ Школ с ошибками: {}", totalFailed);
+        log.info("  📄 Создано отчетов: {}", totalReportsCreated);
+
+        if (!successfullyProcessed.isEmpty()) {
+            log.info("  🎯 Успешно обработанные школы: {}", successfullyProcessed);
+        }
+
+        log.info("=".repeat(60));
+    }
+
+    private List<CombinedResultData> buildCombinedResultsUsingCombinationService(List<ListStudentData> allStudents,
+                                                                                  String schoolName) {
+        Set<String> uniqueCombinations = allStudents.stream()
+                .map(student -> String.join("|",
+                        safe(student.getSubject()),
+                        safe(student.getDate()),
+                        safe(student.getClassName())))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        List<CombinedResultData> combinedResults = new ArrayList<>();
+        for (String combination : uniqueCombinations) {
+            String[] parts = combination.split("\\|", -1);
+            String subject = parts[0];
+            String date = parts[1];
+            String className = parts[2];
+            combinedResults.addAll(
+                    dataCombinationService.combineDataByKey(schoolName, subject, date, className)
+            );
+        }
+        return deduplicateCombinedResults(combinedResults);
+    }
+
+    static List<CombinedResultData> deduplicateCombinedResults(List<CombinedResultData> source) {
+        return new ArrayList<>(new LinkedHashSet<>(source));
+    }
+
+    private void enrichWithDiagnosticLevels(List<CombinedResultData> combinedResults,
+                                            String schoolName,
+                                            Map<String, OtherDiagnosticData> otherDiagnosticByKey,
+                                            Map<String, OtherDiagnosticData> otherDiagnosticByKeyWithoutYear) {
+        for (CombinedResultData combined : combinedResults) {
+            OtherDiagnosticData diagnosticData = otherDiagnosticByKey.get(
+                    buildReportWorkKey(
+                            schoolName,
+                            combined.getSubject(),
+                            combined.getDate(),
+                            combined.getClassName(),
+                            combined.getSchoolYear()
+                    )
+            );
+
+            if (diagnosticData == null) {
+                diagnosticData = otherDiagnosticByKeyWithoutYear.get(
+                        buildReportWorkKeyWithoutYear(
+                                schoolName,
+                                combined.getSubject(),
+                                combined.getDate(),
+                                combined.getClassName()
+                        )
+                );
+            }
+
+            if (diagnosticData != null) {
+                combined.setClassLevel(diagnosticData.getAvgPercent());
+                combined.setCityLevel(diagnosticData.getCityPercent());
+            }
+        }
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value;
+    }
+
+    private String buildReportWorkKey(String school, String subject, String date, String className, String schoolYear) {
+        return String.format("%s|%s|%s|%s|%s",
+                school != null ? school : "",
+                normalizeSubjectToken(subject),
+                date != null ? date : "",
+                normalizeClassToken(className),
+                schoolYear != null ? schoolYear : ""
+        );
+    }
+
+    private String buildReportWorkKeyWithoutYear(String school, String subject, String date, String className) {
+        return String.format("%s|%s|%s|%s",
+                school != null ? school : "",
+                normalizeSubjectToken(subject),
+                date != null ? date : "",
+                normalizeClassToken(className)
+        );
+    }
+
+    private String normalizeSubjectToken(String subject) {
+        return SubjectNormalizerUtil.normalizeForMatching(subject);
+    }
+
+    private String normalizeClassToken(String className) {
+        if (className == null) {
+            return "";
+        }
+
+        String normalized = className.trim()
+                .toUpperCase(Locale.ROOT)
+                .replace('Ё', 'Е')
+                .replace("–", "-")
+                .replace("—", "-")
+                .replace("№", "")
+                .replaceAll("(?i)КЛАСС", "")
+                .replace(":", "")
+                .replace(".", "")
+                .replaceAll("\\s+", "");
+
+        // Отрезаем хвосты вида 9116-КОДШКОЛЫ, КОДШКОЛЫ, 9116-КОДОО, КОДОО
+        normalized = normalized.replaceAll("(?:\\d{4}-?)?КОД(?:ШКОЛЫ|ОО).*$", "");
+
+        Matcher matcher = Pattern.compile("^(\\d{1,2})-?([А-ЯЕ])").matcher(normalized);
+        if (matcher.find()) {
+            return matcher.group(1) + "-" + matcher.group(2);
+        }
+
+        return normalized;
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
+    }
+
+    private void normalizeSubjectsForReport(List<ListStudentData> allStudents,
+                                            List<StudentResultData> allStudentResults,
+                                            List<StudentResultFGData> allStudentFGResults,
+                                            List<OtherDiagnosticData> allOtherDiagnosticResults) {
+        for (ListStudentData student : allStudents) {
+            student.setSubject(SubjectNormalizerUtil.normalize(student.getSubject()));
+        }
+        for (StudentResultData result : allStudentResults) {
+            result.setSubject(SubjectNormalizerUtil.normalize(result.getSubject()));
+        }
+        for (StudentResultFGData fgResult : allStudentFGResults) {
+            fgResult.setSubject(SubjectNormalizerUtil.normalize(fgResult.getSubject()));
+        }
+        for (OtherDiagnosticData diagnostic : allOtherDiagnosticResults) {
+            diagnostic.setSubject(SubjectNormalizerUtil.normalize(diagnostic.getSubject()));
+        }
+    }
+
+    /**
+     * Сохранить общий отчет школы
+     */
+    private String saveTotalReportFile(byte[] excelData, String schoolName) {
+        try {
+            String reportsFolder = AppConfig.REPORTS_FOLDER.replace("{школа}", schoolName);
+            Path folderPath = Paths.get(reportsFolder);
+
+            if (!Files.exists(folderPath)) {
+                Files.createDirectories(folderPath);
+            }
+
+            String cleanSchoolName = cleanFileName(schoolName);
+            String fileName = String.format("ОБЩИЙ_отчет_%s.xlsx", cleanSchoolName);
+            Path filePath = folderPath.resolve(fileName);
+
+            try (FileOutputStream fos = new FileOutputStream(filePath.toFile())) {
+                fos.write(excelData);
+            }
+
+            return filePath.toString();
+
+        } catch (Exception e) {
+            log.error("Ошибка при сохранении общего отчета: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Очистка имени файла
+     */
+    private String cleanFileName(String text) {
+        if (text == null) return "";
+        return text.replaceAll("[^a-zA-Zа-яА-Я0-9]", "_")
+                .toLowerCase()
+                .replaceAll("_+", "_");
+    }
+
+    /**
+     * Обрабатывает файлы других диагностик (PDF с _pm, не ФГ)
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void processOtherDiagnostics() {
+        log.info("Начало обработки других диагностик для {} школ", AppConfig.SCHOOLS.size());
+
+        int totalProcessed = 0;
+        int totalFailed = 0;
+        List<Path> successfullyProcessed = new ArrayList<>();
+
+        for (String schoolName : AppConfig.SCHOOLS) {
+            processingErrorsBySchool.computeIfAbsent(schoolName, key -> new ArrayList<>());
+            try {
+                // 1. Формируем путь для школы
+                String folderPath = AppConfig.FOLDER_PATCH.replace("{школа}", schoolName);
+                log.info("Обработка школы: {} (путь: {})", schoolName, folderPath);
+
+                // 2. Получаем список обычных файлов (не архивы)
+                List<Path> filesList = findFilesService.findRegularFiles(Path.of(folderPath));
+                log.info("Найдено файлов: {}", filesList.size());
+
+                if (filesList.isEmpty()) {
+                    log.warn("Для школы {} не найдено файлов", schoolName);
+                    continue;
+                }
+
+                // 3. Классифицируем файлы
+                Map<String, List<Path>> dispatch = findFilesService.dispatchProcessing(filesList);
+                List<Path> diagnosticFiles = dispatch.getOrDefault(FileCategory.OTHER_DIAGNOSTICS.name(), Collections.emptyList());
+                List<Path> mgmDiagnosticFiles = dispatch.getOrDefault(FileCategory.OTHER_DIAGNOSTICS_MGM.name(), Collections.emptyList());
+                List<Path> mgchDiagnosticFiles = dispatch.getOrDefault(FileCategory.OTHER_DIAGNOSTICS_MGCH.name(), Collections.emptyList());
+                log.info("Файлов других диагностик: {}, из них МГМ: {}, МГЧ: {}",
+                        diagnosticFiles.size(), mgmDiagnosticFiles.size(), mgchDiagnosticFiles.size());
+
+                // 4. Обрабатываем каждый файл
+                for (Path path : diagnosticFiles) {
+                    try {
+                        List<OtherDiagnosticData> dataList = otherDiagnosticParserService.extractDiagnosticData(path);
+
+                        if (!dataList.isEmpty()) {
+                            applySchoolNameToOtherDiagnostics(dataList, schoolName);
+                            // Сохраняем пакетами если нужно
+                            if (AppConfig.BATCH_SIZE > 0 && dataList.size() > AppConfig.BATCH_SIZE) {
+                                saveInBatchesOtherDiagnostic(dataList, AppConfig.BATCH_SIZE);
+                            } else {
+                                otherDiagnosticDataRepository.saveAll(dataList);
+                            }
+
+                            totalProcessed += dataList.size();
+
+                            if (!successfullyProcessed.contains(path)) {
+                                successfullyProcessed.add(path);
+                            }
+
+                            log.info("Файл {} обработан успешно, сохранено {} записей",
+                                    path.getFileName(), dataList.size());
+                        } else {
+                            log.warn("Файл {} не содержит данных о диагностике", path.getFileName());
+                        }
+
+                    } catch (ProcessingException e) {
+                        totalFailed++;
+                        log.error("Файл {} не обработан. Причина парсинга: {}", path.getFileName(), e.getMessage(), e);
+                        registerProcessingError(schoolName, path, "OTHER_DIAGNOSTIC_PARSE", e.getMessage());
+                    } catch (Exception e) {
+                        totalFailed++;
+                        log.error("Критическая ошибка при обработке файла {}: {}", path, e.getMessage(), e);
+                        registerProcessingError(schoolName, path, "OTHER_DIAGNOSTIC_PARSE", e.getMessage());
+                    }
+                }
+
+                // 5. Обрабатываем МГМ файлы отдельным парсером
+                for (Path path : mgmDiagnosticFiles) {
+                    try {
+                        List<OtherDiagnosticData> dataList = otherDiagnosticMgmParserService.extractDiagnosticData(path);
+
+                        if (!dataList.isEmpty()) {
+                            applySchoolNameToOtherDiagnostics(dataList, schoolName);
+                            if (AppConfig.BATCH_SIZE > 0 && dataList.size() > AppConfig.BATCH_SIZE) {
+                                saveInBatchesOtherDiagnostic(dataList, AppConfig.BATCH_SIZE);
+                            } else {
+                                otherDiagnosticDataRepository.saveAll(dataList);
+                            }
+
+                            totalProcessed += dataList.size();
+
+                            if (!successfullyProcessed.contains(path)) {
+                                successfullyProcessed.add(path);
+                            }
+
+                            log.info("МГМ-файл {} обработан успешно, сохранено {} записей",
+                                    path.getFileName(), dataList.size());
+                        } else {
+                            log.warn("МГМ-файл {} не содержит данных о диагностике", path.getFileName());
+                        }
+                    } catch (ProcessingException e) {
+                        totalFailed++;
+                        log.error("МГМ-файл {} не обработан. Причина парсинга: {}", path.getFileName(), e.getMessage(), e);
+                        registerProcessingError(schoolName, path, "OTHER_DIAGNOSTIC_MGM_PARSE", e.getMessage());
+                    } catch (Exception e) {
+                        totalFailed++;
+                        log.error("Критическая ошибка при обработке МГМ-файла {}: {}", path, e.getMessage(), e);
+                        registerProcessingError(schoolName, path, "OTHER_DIAGNOSTIC_MGM_PARSE", e.getMessage());
+                    }
+                }
+
+                // 6. Обрабатываем МГЧ файлы отдельным парсером
+                for (Path path : mgchDiagnosticFiles) {
+                    try {
+                        List<OtherDiagnosticData> dataList = otherDiagnosticMgchParserService.extractDiagnosticData(path);
+
+                        if (!dataList.isEmpty()) {
+                            applySchoolNameToOtherDiagnostics(dataList, schoolName);
+                            if (AppConfig.BATCH_SIZE > 0 && dataList.size() > AppConfig.BATCH_SIZE) {
+                                saveInBatchesOtherDiagnostic(dataList, AppConfig.BATCH_SIZE);
+                            } else {
+                                otherDiagnosticDataRepository.saveAll(dataList);
+                            }
+
+                            totalProcessed += dataList.size();
+
+                            if (!successfullyProcessed.contains(path)) {
+                                successfullyProcessed.add(path);
+                            }
+
+                            log.info("МГЧ-файл {} обработан успешно, сохранено {} записей",
+                                    path.getFileName(), dataList.size());
+                        } else {
+                            log.warn("МГЧ-файл {} не содержит данных о диагностике", path.getFileName());
+                        }
+                    } catch (ProcessingException e) {
+                        totalFailed++;
+                        log.error("МГЧ-файл {} не обработан. Причина парсинга: {}", path.getFileName(), e.getMessage(), e);
+                        registerProcessingError(schoolName, path, "OTHER_DIAGNOSTIC_MGCH_PARSE", e.getMessage());
+                    } catch (Exception e) {
+                        totalFailed++;
+                        log.error("Критическая ошибка при обработке МГЧ-файла {}: {}", path, e.getMessage(), e);
+                        registerProcessingError(schoolName, path, "OTHER_DIAGNOSTIC_MGCH_PARSE", e.getMessage());
+                    }
+                }
+
+            } catch (Exception e) {
+                log.error("Ошибка обработки для школы {}: {}", schoolName, e.getMessage(), e);
+                // Не бросаем исключение, чтобы продолжить обработку других школ
+            }
+        }
+
+        // 5. Перемещаем если включено
+        if (AppConfig.ENABLE_MOVE && !successfullyProcessed.isEmpty()) {
+            try {
+                boolean moved = findFilesService.moveToSubjectFolder(successfullyProcessed);
+                if (moved) {
+                    log.info("✅ Успешно перемещено {} файлов других диагностик", successfullyProcessed.size());
+                } else {
+                    log.warn("⚠ Не все файлы других диагностик удалось переместить");
+                }
+            } catch (Exception e) {
+                log.error("❌ Ошибка при перемещении файлов других диагностик: {}", e.getMessage());
+            }
+        }
+
+        log.info("=".repeat(50));
+        log.info("📊 ИТОГИ ОБРАБОТКИ ДРУГИХ ДИАГНОСТИК:");
+        log.info("  🏫 Обработано школ: {}", AppConfig.SCHOOLS.size());
+        log.info("  ✅ Успешных записей: {}", totalProcessed);
+        log.info("  ❌ Ошибок: {}", totalFailed);
+        log.info("  📦 Перемещено файлов: {}", successfullyProcessed.size());
+        log.info("=".repeat(50));
+    }
+
+    private void saveInBatchesOtherDiagnostic(List<OtherDiagnosticData> dataList, int batchSize) {
+        for (int i = 0; i < dataList.size(); i += batchSize) {
+            int end = Math.min(dataList.size(), i + batchSize);
+            List<OtherDiagnosticData> batch = dataList.subList(i, end);
+            otherDiagnosticDataRepository.saveAll(batch);
+            log.debug("Сохранен пакет {}-{} из {}", i + 1, end, dataList.size());
+        }
+    }
+
+    private void applySchoolNameToOtherDiagnostics(List<OtherDiagnosticData> dataList, String schoolName) {
+        for (OtherDiagnosticData data : dataList) {
+            data.setSchool(schoolName);
+            data.setSubject(SubjectNormalizerUtil.normalize(data.getSubject()));
+        }
+    }
+
+    private void registerProcessingError(String schoolName, Path filePath, String stage, String reason) {
+        List<ProcessingErrorInfo> errors = processingErrorsBySchool.computeIfAbsent(schoolName, key -> new ArrayList<>());
+        errors.add(
+                ProcessingErrorInfo.builder()
+                        .school(schoolName)
+                        .fileName(filePath != null ? filePath.getFileName().toString() : "")
+                        .stage(stage)
+                        .reason(reason)
+                        .rawDate(extractRawDate(reason))
+                        .build()
+        );
+    }
+
+    private String extractRawDate(String reason) {
+        if (reason == null) {
+            return "";
+        }
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("rawDate='([^']*)'").matcher(reason);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return "";
+    }
+}

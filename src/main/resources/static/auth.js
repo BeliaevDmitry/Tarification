@@ -28,6 +28,10 @@ const TAB_PATHS = {
     '/vsoko-pa-analysis.html': 'VSOKO_VIEW',
     '/vsoko-pa-teachers.html': 'VSOKO_VIEW',
     '/vsoko-pa-upload.html': 'VSOKO_VIEW',
+    '/vsoko-mcko.html': 'VSOKO_MCKO',
+    '/vsoko-summary.html': 'VSOKO_MCKO',
+    '/vsoko-interview.html': 'VSOKO_MCKO',
+    '/vsoko-mcko-teachers.html': 'VSOKO_MCKO',
     '/subject-areas.html': 'SUBJECT_AREAS',
     '/admin.html': 'USERS'
 };
@@ -127,6 +131,16 @@ function isLoadModulePage(pathname) {
 }
 
 function navItemsForPath(pathname) {
+    if (pathname === '/vsoko-mcko.html' || pathname === '/vsoko-summary.html'
+        || pathname === '/vsoko-interview.html' || pathname === '/vsoko-mcko-teachers.html') {
+        return [
+            { path: '/vsoko.html', tab: 'VSOKO_VIEW', label: '← ВСОКО' },
+            { path: '/vsoko-mcko.html', tab: 'VSOKO_MCKO', label: 'МЦКО' },
+            { path: '/vsoko-summary.html', tab: 'VSOKO_MCKO', label: 'Свод' },
+            { path: '/vsoko-mcko-teachers.html', tab: 'VSOKO_MCKO', label: 'Педагоги по классам' },
+            { path: '/vsoko-interview.html', tab: 'VSOKO_MCKO', label: 'Собеседование' }
+        ];
+    }
     if (pathname === '/documents.html' || pathname === '/pedagogical-councils.html') {
         return [
             { path: '/documents.html', tab: 'DOCUMENTS_PEDAGOGICAL_COUNCILS', label: 'Документы' },

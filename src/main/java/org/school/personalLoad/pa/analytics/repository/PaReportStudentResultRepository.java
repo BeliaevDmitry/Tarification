@@ -11,5 +11,11 @@ public interface PaReportStudentResultRepository extends JpaRepository<PaReportS
 
     List<PaReportStudentResult> findAllByReportVersionIdIn(List<Long> reportVersionIds);
 
+    List<PaReportStudentResult> findAllByStudentIdOrderByAcademicYearAscIdAsc(Long studentId);
+
+    List<PaReportStudentResult> findAllByAcademicYearAndClassName(String academicYear, String className);
+
+    List<PaReportStudentResult> findAllByAcademicYear(String academicYear);
+
     void deleteByReportVersionId(Long reportVersionId);
 }

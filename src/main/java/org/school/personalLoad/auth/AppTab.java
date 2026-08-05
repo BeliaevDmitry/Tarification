@@ -31,6 +31,7 @@ public enum AppTab {
     DOCUMENTS_PEDAGOGICAL_COUNCILS("Документы: педагогические советы", "/pedagogical-councils.html"),
     VSOKO_VIEW("ВСОКО: просмотр", "/vsoko.html"),
     VSOKO_EDIT("ВСОКО: редактирование", "/vsoko-oge.html"),
+    VSOKO_MCKO("ВСОКО: МЦКО", "/vsoko-mcko.html"),
     OGE_UPLOAD_VIEW("ВСОКО: ОГЭ/Выгрузка (просмотр)", "/vsoko-oge.html#upload"),
     OGE_MISMATCH_VIEW("ВСОКО: ОГЭ/Нестыковки (просмотр)", "/vsoko-oge.html#mismatches"),
     OGE_EXTERNAL_WORKS_VIEW("ВСОКО: ОГЭ/Внешние работы (просмотр)", "/vsoko-oge.html#external-works"),
@@ -61,7 +62,7 @@ public enum AppTab {
         return Arrays.asList(HR_DOCUMENTS, HR_PERSONAL_DATA, BUILDINGS, CLASSES, SUBJECTS, CURRICULUM, LOAD, PEOPLE_LOAD, LOAD_ISSUES, LOAD_STATS,
                 LOAD_SALARY, SETTINGS, SUBJECT_AREAS, TEACHERS, TEACHERS_ARCHIVE, TEACHERS_DISMISSALS,
                 TEACHERS_SETTINGS, TEACHERS_MCKO, SERVICE_NOTES, HR_NOTIFICATIONS_VIEW, CONTINGENT_IMPORT, CONTINGENT_STATS,
-                EDUCATIONAL_WORK, DOCUMENTS_PEDAGOGICAL_COUNCILS, VSOKO_VIEW, VSOKO_EDIT, OGE_UPLOAD_VIEW, OGE_MISMATCH_VIEW,
+                EDUCATIONAL_WORK, DOCUMENTS_PEDAGOGICAL_COUNCILS, VSOKO_VIEW, VSOKO_EDIT, VSOKO_MCKO, OGE_UPLOAD_VIEW, OGE_MISMATCH_VIEW,
                 OGE_EXTERNAL_WORKS_VIEW, OGE_TEACHER_BINDING_VIEW, OGE_SCORE_VIEW, OGE_EVALUATION_VIEW,
                 OGE_GIA_UPLOAD, OGE_WORK_UPLOAD, USERS);
     }

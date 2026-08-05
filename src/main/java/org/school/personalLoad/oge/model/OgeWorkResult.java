@@ -20,6 +20,9 @@ public class OgeWorkResult {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "student_id")
+    private Long studentId;
+
     @Column(name = "class_name", nullable = false, length = 100)
     private String className;
 
