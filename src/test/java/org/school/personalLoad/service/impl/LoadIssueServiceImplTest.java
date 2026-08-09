@@ -22,14 +22,17 @@ import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.EmploymentContractRepository;
 import org.school.personalLoad.repository.LoadInRateRuleRepository;
+import org.school.personalLoad.service.LoadInRateSubjectService;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.*;
 
 @ExtendWith(MockitoExtension.class)
 class LoadIssueServiceImplTest {
@@ -48,19 +51,23 @@ class LoadIssueServiceImplTest {
     private EmploymentContractRepository employmentContractRepository;
     @Mock
     private LoadInRateRuleRepository loadInRateRuleRepository;
+    @Mock
+    private LoadInRateSubjectService loadInRateSubjectService;
 
     private LoadIssueServiceImpl service;
 
     @BeforeEach
     void setUp() {
         service = new LoadIssueServiceImpl(classroomRepository, manualLoadRepository, stateRepository,
-                curriculumRepository, teacherRepository, employmentContractRepository, loadInRateRuleRepository);
+                curriculumRepository, teacherRepository, employmentContractRepository, loadInRateRuleRepository,
+                loadInRateSubjectService);
         when(classroomRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(classroom()));
         when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
         when(stateRepository.findAll()).thenReturn(List.of());
         when(teacherRepository.findAll()).thenReturn(List.of(teacher(1L, "Белогур Кристина Игоревна")));
         when(employmentContractRepository.findAllByActiveTrueOrderByTeacherIdAsc()).thenReturn(List.of());
         when(loadInRateRuleRepository.findAllByOrderByNameAsc()).thenReturn(List.of());
+        when(loadInRateSubjectService.allowedByRuleIds(anyCollection())).thenReturn(Map.of());
     }
 
     @Test
@@ -111,6 +118,11 @@ class LoadIssueServiceImplTest {
         load.setLoad(4);
         when(employmentContractRepository.findAllByActiveTrueOrderByTeacherIdAsc()).thenReturn(List.of(contract));
         when(loadInRateRuleRepository.findAllByOrderByNameAsc()).thenReturn(List.of(rule));
+        Map<Long, List<LoadInRateSubjectService.AllowedSubject>> allowed =
+                Map.of(21L, List.of(new LoadInRateSubjectService.AllowedSubject(101L, "ОБЗР")));
+        when(loadInRateSubjectService.allowedByRuleIds(anyCollection())).thenReturn(allowed);
+        when(loadInRateSubjectService.allows(eq(21L), nullable(Long.class), eq("ОБЗР"), same(allowed)))
+                .thenReturn(true);
         when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(load));
         when(curriculumRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
 
@@ -121,6 +133,37 @@ class LoadIssueServiceImplTest {
                 .findFirst().orElseThrow();
         assertEquals("inRate", issue.targetPage());
         assertTrue(issue.description().contains("распределите 4 ч."));
+    }
+
+    @Test
+    void doesNotReportSubjectThatIsNotAllowedForThePositionRate() {
+        EmploymentContract contract = new EmploymentContract();
+        contract.setId(20L);
+        contract.setTeacherId(1L);
+        contract.setActive(true);
+        contract.setPositionName("Преподаватель ОБЗР");
+        LoadInRateRule rule = new LoadInRateRule();
+        rule.setId(21L);
+        rule.setName("Преподаватель ОБЗР");
+        rule.setActive(true);
+        ManualLoadEntry load = manualLoad("Математика");
+        load.setId(30L);
+        load.setLoad(4);
+
+        when(employmentContractRepository.findAllByActiveTrueOrderByTeacherIdAsc()).thenReturn(List.of(contract));
+        when(loadInRateRuleRepository.findAllByOrderByNameAsc()).thenReturn(List.of(rule));
+        Map<Long, List<LoadInRateSubjectService.AllowedSubject>> allowed =
+                Map.of(21L, List.of(new LoadInRateSubjectService.AllowedSubject(101L, "ОБЗР")));
+        when(loadInRateSubjectService.allowedByRuleIds(anyCollection())).thenReturn(allowed);
+        when(loadInRateSubjectService.allows(eq(21L), nullable(Long.class), eq("Математика"), same(allowed)))
+                .thenReturn(false);
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(load));
+        when(curriculumRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
+
+        LoadIssueDtos.LoadIssueResponse response = service.findIssues("2026/2027", "");
+
+        assertTrue(response.rows().stream()
+                .noneMatch(row -> row.type().equals("Не распределены часы внутри ставки")));
     }
 
     @Test

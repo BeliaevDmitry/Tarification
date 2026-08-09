@@ -26,10 +26,12 @@ class LoadInRateSchemaInitializerTest {
         assertTrue(java.contains("ADD COLUMN IF NOT EXISTS grade_band varchar(32) DEFAULT 'ALL'"));
         assertTrue(java.contains("CREATE TABLE IF NOT EXISTS load_in_rate_rule"));
         assertTrue(java.contains("CREATE TABLE IF NOT EXISTS load_in_rate_rule_band"));
+        assertTrue(java.contains("CREATE TABLE IF NOT EXISTS load_in_rate_rule_subject"));
         assertTrue(sql.startsWith("BEGIN;"));
         assertTrue(sql.contains("UPDATE manual_load_entry"));
         assertTrue(sql.contains("UPDATE employment_contract"));
         assertTrue(sql.contains("UPDATE mcko_subject_mapping"));
+        assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS load_in_rate_rule_subject"));
         assertTrue(sql.contains("ALTER COLUMN ignored SET NOT NULL"));
         assertTrue(sql.endsWith("COMMIT;\n"));
     }

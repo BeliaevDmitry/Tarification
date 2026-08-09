@@ -67,6 +67,7 @@ public class HrDocumentService {
     private final LoadSalaryCalculationService loadSalaryCalculationService;
     private final HrIncentiveRepository incentiveRepository;
     private final LoadInRateRuleRepository loadInRateRuleRepository;
+    private final LoadInRateSubjectService loadInRateSubjectService;
     private final ObjectMapper objectMapper;
 
     @Transactional public List<JournalRow> journal(String academicYear) {
@@ -106,7 +107,6 @@ public class HrDocumentService {
     @Transactional public EmploymentContract saveContract(Long id, ContractRequest r) {
         teachers.findById(r.teacherId()).orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Педагог не найден"));
         EmploymentContract c = id == null ? new EmploymentContract() : contracts.findById(id).orElseThrow(() -> new ResponseStatusException(NOT_FOUND));
-        boolean previouslyIncluded=c.isLoadHoursMayBeIncludedInRate();
         c.setTeacherId(r.teacherId()); c.setContractNumber(required(r.contractNumber(), "Номер договора"));
         c.setContractDate(Objects.requireNonNull(r.contractDate(), "Дата договора обязательна"));
         c.setPositionName(required(r.positionName(), "Должность")); c.setStartDate(r.startDate()); c.setEndDate(r.endDate());
@@ -116,11 +116,18 @@ public class HrDocumentService {
         c.setLoadInRateRuleId(inRateRule==null?null:inRateRule.getId());
         c.setLoadInRateDocumentLabel(null);
         EmploymentContract saved = contracts.save(c);
-        if(previouslyIncluded&&!saved.isLoadHoursMayBeIncludedInRate()){
+        List<ManualLoadEntry> assignedRows=loadRepository.findByTeacherId(saved.getTeacherId()).stream()
+                .filter(row->Objects.equals(row.getEmploymentContractId(),saved.getId())).toList();
+        if(!assignedRows.isEmpty()){
+            Map<Long,List<LoadInRateSubjectService.AllowedSubject>> allowedByRule=inRateRule==null
+                    ?Map.of():loadInRateSubjectService.allowedByRuleIds(List.of(inRateRule.getId()));
+            List<ManualLoadEntry> rows=assignedRows.stream()
+                    .filter(row->inRateRule==null||!loadInRateSubjectService.allows(
+                            inRateRule.getId(),row.getSubjectId(),row.getSubjectName(),allowedByRule))
+                    .toList();
             Map<String,Set<Long>> affected=new LinkedHashMap<>();
-            List<ManualLoadEntry> rows=loadRepository.findByTeacherId(saved.getTeacherId()).stream()
-                    .filter(row->Objects.equals(row.getEmploymentContractId(),saved.getId())).toList();
             rows.forEach(row->{
+                row.setEmploymentContractId(null);
                 row.setIncludedInRateHours(BigDecimal.ZERO);row.setInRateAllocationConfirmed(false);
                 row.setInRateReason(null);row.setInRateUpdatedAt(LocalDateTime.now());
                 affected.computeIfAbsent(row.getAcademicYear(),key->new LinkedHashSet<>()).add(row.getTeacherId());
@@ -1163,17 +1170,22 @@ public class HrDocumentService {
     }
 
     private void validateInRateAllocation(AdditionalAgreement agreement, EmploymentContract contract) {
-        if (agreement == null || contract == null
-                || (!contract.isLoadHoursMayBeIncludedInRate()
-                &&ruleForPosition(contract.getPositionName(),contract.getLoadInRateRuleId())==null)) return;
+        if (agreement == null || contract == null) return;
+        LoadInRateRule rule = ruleForPosition(contract.getPositionName(), contract.getLoadInRateRuleId());
+        if (rule == null) return;
+        Map<Long, List<LoadInRateSubjectService.AllowedSubject>> allowedByRule =
+                loadInRateSubjectService.allowedByRuleIds(List.of(rule.getId()));
         List<ManualLoadEntry> rows = loadRepository.findAllByAcademicYear(agreement.getAcademicYear()).stream()
                 .filter(row -> Objects.equals(row.getTeacherId(), contract.getTeacherId()))
+                .filter(row -> !row.isIupLoad())
                 .filter(row -> loadSalaryCalculationService.totalHours(row).signum() > 0)
+                .filter(row -> loadInRateSubjectService.allows(
+                        rule.getId(), row.getSubjectId(), row.getSubjectName(), allowedByRule))
                 .toList();
         long unresolved = rows.stream().filter(row -> !row.isInRateAllocationConfirmed()).count();
         if (unresolved > 0) {
             throw new ResponseStatusException(CONFLICT,
-                    "Сначала распределите часы внутри ставки в разделе «Нагрузка → Часы в ставке». Не подтверждено строк: "
+                    "Сначала распределите часы внутри ставки в разделе «Ставки». Не подтверждено строк: "
                             + unresolved);
         }
     }

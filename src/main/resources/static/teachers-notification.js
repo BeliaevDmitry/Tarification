@@ -349,7 +349,7 @@ async function openContractEditor(selectedTeacherId = null, contractId = null) {
         row('Окончание', `<input name="end" type="date" value="${esc(current?.endDate)}">`) +
         row('Состояние', `<div class="inline-choice"><label><input name="primary" type="checkbox" ${current?.primaryContract!==false?'checked':''}> Основной договор</label><label><input name="active" type="checkbox" ${current?.active!==false?'checked':''}> Действует</label></div>`) +
         row('Часы внутри ставки', `<span id="contract-in-rate-status" class="muted"></span>`,
-            'Режим определяется автоматически по должности. Конкретные часы распределяются в разделе «Нагрузка по людям → Часы в ставке».'),
+            'Режим определяется автоматически по должности и выбранным предметам. Конкретные часы распределяются в разделе «Ставки». Данные показываются сразу по всем корпусам.'),
         async form => {
             const teacherId=current?.teacherId || +form.get('teacherId');
             const position=String(form.get('position')||'').trim();

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ГБОУ школа 7 — Ставки</title>
+    <link rel="icon" type="image/png" href="/school-crest.png">
+    <link rel="stylesheet" href="/styles.css?v=20260728-1">
+</head>
+<body class="load-page people-load-page">
+<main class="container">
+    <header class="card">
+        <h1>Ставки</h1>
+        <p class="muted compact-note">Распределение часов внутри ставки сразу по всем корпусам и адресам.</p>
+        <nav class="page-nav">
+            <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
+            <a class="nav-link" href="/classes.html" data-tab="CLASSES">Классы</a>
+            <a class="nav-link" href="/subjects.html" data-tab="SUBJECTS">Предметы</a>
+            <a class="nav-link" href="/curriculum.html" data-tab="CURRICULUM">Учебный план</a>
+            <a class="nav-link" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
+            <a class="nav-link" href="/people-load.html" data-tab="PEOPLE_LOAD">Нагрузка по людям</a>
+            <a class="nav-link active" href="/rates.html" data-tab="LOAD_SALARY">Ставки</a>
+            <a class="nav-link" href="/load-issues.html" data-tab="LOAD_ISSUES">Возможные ошибки</a>
+            <a class="nav-link" href="/load-statistics.html" data-tab="LOAD_STATS">Статистика нагрузки</a>
+            <a class="nav-link" href="/settings.html" data-tab="SETTINGS">Настройки</a>
+        </nav>
+    </header>
+
+    <section class="card load-toolbar">
+        <div class="row load-main-row">
+            <button id="rates-refresh-btn" type="button">Обновить</button>
+            <button id="rates-save-btn" type="button">Сохранить распределение</button>
+            <button id="rates-fill-btn" type="button">Заполнить доступные часы</button>
+            <a class="nav-link" href="/teachers.html#settings">Должности, предметы и диапазоны ставок</a>
+        </div>
+        <p id="rates-summary" class="muted compact-note">Загрузка данных…</p>
+    </section>
+
+    <section class="card people-load-card">
+        <p class="muted compact-note">
+            В таблицу попадают только предметы, выбранные для должности в правилах ставки.
+            Невыбранные предметы остаются в основной нагрузке и оплачиваются отдельно.
+            Значения за первое и второе полугодие в итогах сотрудника показаны через «/».
+        </p>
+        <div class="sheet-wrap people-load-wrap" data-scroll-controls="off">
+            <table id="rates-table" class="sheet-table people-load-table"></table>
+        </div>
+    </section>
+</main>
+
+<script src="/auth.js"></script>
+<script src="/table-scroll.js"></script>
+<script src="/rates.js?v=20260805-1"></script>
+<script src="/branding.js"></script>
+</body>
+</html>
