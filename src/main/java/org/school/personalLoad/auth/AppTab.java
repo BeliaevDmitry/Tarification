@@ -14,7 +14,7 @@ public enum AppTab {
     PEOPLE_LOAD("Нагрузка по людям", "/people-load.html"),
     LOAD_ISSUES("Возможные ошибки", "/load-issues.html"),
     LOAD_STATS("Статистика нагрузки", "/load-statistics.html"),
-    LOAD_SALARY("Нагрузка: расчёт денег", "/people-load.html"),
+    LOAD_SALARY("Ставки", "/rates.html"),
     SERVICE_NOTES("СЛ. записки на изменение нагрузки", "/service-notes.html"),
     HR_NOTIFICATIONS_VIEW("Кадры: предварительная нагрузка (просмотр)", "/teachers-notification.html"),
     HR_NOTIFICATIONS_EDIT("Кадры: предварительная нагрузка", "/teachers-notification.html"),

@@ -828,16 +828,64 @@ class ManualLoadServiceImplBulkReplaceTest {
             assertEquals(expectedFirstRow, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "За строку")).getNumericCellValue(), 0.01);
             assertEquals(expectedHours, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "За оплачиваемые часы итого")).getNumericCellValue(), 0.01);
             assertEquals(expectedLeadership, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "Классное руководство, руб.")).getNumericCellValue(), 0.01);
+            assertEquals(0D, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "ОВЗ и дети-инвалиды, руб.")).getNumericCellValue(), 0.01);
             assertEquals(expectedHours + expectedLeadership, loadSheet.getRow(1).getCell(columnIndex(loadSheet, "Итого, руб.")).getNumericCellValue(), 0.01);
 
             var summarySheet = workbook.getSheet("Свод ЗП");
             assertEquals("Итого по комплексу", summarySheet.getRow(2).getCell(0).getStringCellValue());
-            assertEquals(expectedHours + expectedLeadership, summarySheet.getRow(2).getCell(3).getNumericCellValue(), 0.01);
+            assertEquals(0D, summarySheet.getRow(2).getCell(3).getNumericCellValue(), 0.01);
+            assertEquals(expectedHours + expectedLeadership, summarySheet.getRow(2).getCell(4).getNumericCellValue(), 0.01);
         }
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(salaryOneBody))) {
             var salaryOneSheet = workbook.getSheet("Нагрузка для ЗП 1");
             assertEquals(-1, columnIndex(salaryOneSheet, "Часы внутри ставки"));
             assertEquals(-1, columnIndex(salaryOneSheet, "Основание"));
+        }
+    }
+
+    @Test
+    void exportFullWorkbookWithSalaryKeepsCoreSalaryAndAddsIupCompensationSeparately() throws Exception {
+        ManualLoadEntry core = manualRow("Иванов И.И.", "СП1", "5-А", "Математика", 5);
+        core.setId(1L);
+        core.setTeacherId(10L);
+        ManualLoadEntry iup = manualRow("Иванов И.И.", "СП1", "ИУП-5-А-Иванов И.И.", "Математика", 2);
+        iup.setId(2L);
+        iup.setTeacherId(10L);
+        iup.setLoadSource(ManualLoadSource.IUP);
+        iup.setPreciseLoadHours(new BigDecimal("2"));
+        iup.setIupStudentCategory(StudentCategory.K2);
+
+        when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(core, iup));
+        when(teacherDirectoryRepository.findAll()).thenReturn(List.of());
+        when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of());
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of());
+        when(classSizeService.effectiveClassSizes("2025/2026")).thenReturn(Map.of("5-А", 30));
+        SalarySettings settings = new SalarySettings();
+        settings.setStudentHourRate(new BigDecimal("40"));
+        when(salarySettingsRepository.findById(SalarySettings.DEFAULT_ID)).thenReturn(Optional.of(settings));
+
+        byte[] body = service.exportFullWorkbookWithSalary("2025/2026");
+
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
+            var loadSheet = workbook.getSheet("СП1");
+            double expectedCoreSalary = 40 * 30 * 5 * (34.0 / 12.0);
+            double expectedIupCompensation = new BigDecimal("2")
+                    .multiply(BigDecimal.valueOf(34).divide(BigDecimal.valueOf(12), 10, java.math.RoundingMode.HALF_UP))
+                    .multiply(new BigDecimal("12.5"))
+                    .setScale(2, java.math.RoundingMode.HALF_UP)
+                    .doubleValue();
+            assertEquals(expectedCoreSalary,
+                    loadSheet.getRow(1).getCell(columnIndex(loadSheet, "За оплачиваемые часы итого")).getNumericCellValue(), 0.01);
+            assertEquals(expectedIupCompensation,
+                    loadSheet.getRow(1).getCell(columnIndex(loadSheet, "ОВЗ и дети-инвалиды, руб.")).getNumericCellValue(), 0.01);
+            assertEquals(expectedCoreSalary + expectedIupCompensation,
+                    loadSheet.getRow(1).getCell(columnIndex(loadSheet, "Итого, руб.")).getNumericCellValue(), 0.01);
+
+            var summarySheet = workbook.getSheet("Свод ЗП");
+            assertEquals(expectedCoreSalary, summarySheet.getRow(2).getCell(1).getNumericCellValue(), 0.01);
+            assertEquals(expectedIupCompensation, summarySheet.getRow(2).getCell(3).getNumericCellValue(), 0.01);
+            assertEquals(expectedCoreSalary + expectedIupCompensation,
+                    summarySheet.getRow(2).getCell(4).getNumericCellValue(), 0.01);
         }
     }
 

@@ -50,13 +50,14 @@ class HrDocumentServiceTest {
     LoadSalaryCalculationService loadSalary;
     HrIncentiveRepository incentives=mock(HrIncentiveRepository.class);
     LoadInRateRuleRepository inRateRules=mock(LoadInRateRuleRepository.class);
+    LoadInRateSubjectService inRateSubjects=mock(LoadInRateSubjectService.class);
     HrDocumentService service;
     EmploymentContract contract;
     TeacherDirectoryEntry teacher;
 
     @BeforeEach void setUp(){
         loadSalary=new LoadSalaryCalculationService(sizes,salary,coefficients,groups,new IupCompensationCalculator());
-        service=new HrDocumentService(contracts,personal,memos,loadMemos,agreements,versions,catalog,teachers,loads,salary,coefficients,groups,classroomLeadership,sizes,loadSalary,incentives,inRateRules,new ObjectMapper().findAndRegisterModules());
+        service=new HrDocumentService(contracts,personal,memos,loadMemos,agreements,versions,catalog,teachers,loads,salary,coefficients,groups,classroomLeadership,sizes,loadSalary,incentives,inRateRules,inRateSubjects,new ObjectMapper().findAndRegisterModules());
         contract=new EmploymentContract(); contract.setId(10L); contract.setTeacherId(1L); contract.setContractNumber("1-ТД");
         contract.setContractDate(LocalDate.of(2025,1,1)); contract.setPositionName("Учитель");
         teacher=new TeacherDirectoryEntry(); teacher.setId(1L); teacher.setFioTeacher("Иванов Иван Иванович");
@@ -1205,6 +1206,12 @@ class HrDocumentServiceTest {
 
     @Test void agreementCannotBePreparedBeforeInRateAllocationIsConfirmed() {
         contract.setLoadHoursMayBeIncludedInRate(true);
+        LoadInRateRule rule=new LoadInRateRule();rule.setId(71L);rule.setName("Учитель");rule.setActive(true);
+        when(inRateRules.findAllByOrderByNameAsc()).thenReturn(List.of(rule));
+        Map<Long,List<LoadInRateSubjectService.AllowedSubject>> allowed=Map.of(
+                71L,List.of(new LoadInRateSubjectService.AllowedSubject(101L,"ОБЗР")));
+        when(inRateSubjects.allowedByRuleIds(List.of(71L))).thenReturn(allowed);
+        when(inRateSubjects.allows(eq(71L),isNull(),eq("ОБЗР"),same(allowed))).thenReturn(true);
         AdditionalAgreement agreement=draftAgreement();
         ManualLoadEntry load=new ManualLoadEntry();load.setTeacherId(1L);load.setAcademicYear("2025/2026");
         load.setSubjectName("ОБЗР");load.setClassName("7-А");load.setLoad(5);
@@ -1215,6 +1222,25 @@ class HrDocumentServiceTest {
         ResponseStatusException error=assertThrows(ResponseStatusException.class,()->service.prepare(100L,"hr"));
 
         assertTrue(error.getReason().contains("Сначала распределите часы внутри ставки"));
+    }
+
+    @Test void unselectedSubjectDoesNotBlockAgreementPreparation() {
+        LoadInRateRule rule=new LoadInRateRule();rule.setId(71L);rule.setName("Учитель");rule.setActive(true);
+        when(inRateRules.findAllByOrderByNameAsc()).thenReturn(List.of(rule));
+        Map<Long,List<LoadInRateSubjectService.AllowedSubject>> allowed=Map.of(
+                71L,List.of(new LoadInRateSubjectService.AllowedSubject(101L,"ОБЗР")));
+        when(inRateSubjects.allowedByRuleIds(List.of(71L))).thenReturn(allowed);
+        when(inRateSubjects.allows(eq(71L),isNull(),eq("Математика"),same(allowed))).thenReturn(false);
+        AdditionalAgreement agreement=draftAgreement();
+        ManualLoadEntry load=new ManualLoadEntry();load.setTeacherId(1L);load.setAcademicYear("2025/2026");
+        load.setSubjectName("Математика");load.setClassName("7-А");load.setLoad(5);
+        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load));
+        when(agreements.findById(100L)).thenReturn(Optional.of(agreement));
+        when(personal.findByTeacherId(1L)).thenReturn(Optional.of(completePersonal()));
+
+        AdditionalAgreement prepared=service.prepare(100L,"hr");
+
+        assertEquals(AdditionalAgreement.Status.READY,prepared.getStatus());
     }
 
     @Test void combinedPayAgreementUsesAllWordingFromProvidedSchoolSample() throws Exception {

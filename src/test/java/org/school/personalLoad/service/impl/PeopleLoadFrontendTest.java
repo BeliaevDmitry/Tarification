@@ -40,6 +40,9 @@ class PeopleLoadFrontendTest {
         assertTrue(js.contains("Всего основных"));
         assertTrue(js.contains("Полная нагрузка"));
         assertTrue(js.contains("Предварительная сумма"));
+        assertTrue(js.contains("ОВЗ и дети-инвалиды, руб."));
+        assertTrue(js.contains("iupCompensationSalary"));
+        assertTrue(js.contains("hours + leadership + iupCompensation"));
         assertTrue(js.indexOf("\"/api/primary-subjects/rules\"")
                 < js.indexOf("const [buildings, classes, teachers"));
     }

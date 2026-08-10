@@ -57,6 +57,21 @@ CREATE TABLE IF NOT EXISTS load_in_rate_rule_band (
 CREATE INDEX IF NOT EXISTS idx_load_in_rate_rule_band_rule
     ON load_in_rate_rule_band(rule_id);
 
+CREATE TABLE IF NOT EXISTS load_in_rate_rule_subject (
+    id bigserial PRIMARY KEY,
+    rule_id bigint NOT NULL,
+    subject_id bigint NOT NULL,
+    CONSTRAINT uk_load_in_rate_rule_subject UNIQUE (rule_id, subject_id),
+    CONSTRAINT fk_load_in_rate_rule_subject_rule FOREIGN KEY (rule_id)
+        REFERENCES load_in_rate_rule(id) ON DELETE CASCADE,
+    CONSTRAINT fk_load_in_rate_rule_subject_subject FOREIGN KEY (subject_id)
+        REFERENCES subject_catalog_entry(id)
+);
+CREATE INDEX IF NOT EXISTS idx_load_in_rate_rule_subject_rule
+    ON load_in_rate_rule_subject(rule_id);
+CREATE INDEX IF NOT EXISTS idx_load_in_rate_rule_subject_subject
+    ON load_in_rate_rule_subject(subject_id);
+
 ALTER TABLE mcko_subject_mapping
     ADD COLUMN IF NOT EXISTS ignored boolean DEFAULT false;
 UPDATE mcko_subject_mapping

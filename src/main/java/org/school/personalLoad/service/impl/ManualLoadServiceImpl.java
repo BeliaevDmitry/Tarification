@@ -1273,6 +1273,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                                       int rowAmount,
                                       int hourSalary,
                                       int classLeadership,
+                                      int iupCompensation,
                                       int total,
                                       int last) {
         static SalaryColumnLayout from(boolean showIncludedHours) {
@@ -1285,9 +1286,10 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             int rowAmount = column++;
             int hourSalary = column++;
             int classLeadership = column++;
+            int iupCompensation = column++;
             int total = column;
             return new SalaryColumnLayout(included, paid, reason, subjectCoefficient, groupCoefficient,
-                    rowAmount, hourSalary, classLeadership, total, total);
+                    rowAmount, hourSalary, classLeadership, iupCompensation, total, total);
         }
     }
 
@@ -1330,7 +1332,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
 
         BigDecimal studentHourRate = includeSalary ? resolveStudentHourRate() : SalarySettings.DEFAULT_STUDENT_HOUR_RATE;
         SalarySummary salarySummary = includeSalary
-                ? calculateSalarySummary(rows.stream().filter(this::isCoreLoad).toList(), classEntries, classSizeByClass, subjectCoefficientByLevel, groupCoefficientSubjects, studentHourRate)
+                ? calculateSalarySummary(rows, classEntries, classSizeByClass, subjectCoefficientByLevel, groupCoefficientSubjects, studentHourRate)
                 : SalarySummary.empty();
         Map<Long, LoadSalaryCalculationService.SalaryLine> salaryLines = includeSalary
                 ? loadSalaryCalculationService.calculate(academicYear, rows)
@@ -1411,6 +1413,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     cols.add("За строку");
                     cols.add("За оплачиваемые часы итого");
                     cols.add("Классное руководство, руб.");
+                    cols.add("ОВЗ и дети-инвалиды, руб.");
                     cols.add("Итого, руб.");
                 }
                 for (int i = 0; i < cols.size(); i++) { h.createCell(i).setCellValue(cols.get(i)); h.getCell(i).setCellStyle(header); }
@@ -1450,6 +1453,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                                         salaryColumns.hourSalary(), salaryColumns.hourSalary()));
                                 sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1,
                                         salaryColumns.classLeadership(), salaryColumns.classLeadership()));
+                                sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1,
+                                        salaryColumns.iupCompensation(), salaryColumns.iupCompensation()));
                                 sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1,
                                         salaryColumns.total(), salaryColumns.total()));
                             }
@@ -1523,6 +1528,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                                 moneyValue(rowSalary == null ? BigDecimal.ZERO : rowSalary.amount()));
                         r.createCell(salaryColumns.hourSalary()).setCellValue(moneyValue(salary.hourSalary()));
                         r.createCell(salaryColumns.classLeadership()).setCellValue(moneyValue(salary.classLeadershipSalary()));
+                        r.createCell(salaryColumns.iupCompensation()).setCellValue(moneyValue(salary.iupCompensation()));
                         r.createCell(salaryColumns.total()).setCellValue(moneyValue(salary.total()));
                     }
                     for (int c = 0; c <= (includeSalary ? salaryColumns.last() : 10); c++) {
@@ -1538,6 +1544,8 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                                     salaryColumns.hourSalary(), salaryColumns.hourSalary()));
                             sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1,
                                     salaryColumns.classLeadership(), salaryColumns.classLeadership()));
+                            sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1,
+                                    salaryColumns.iupCompensation(), salaryColumns.iupCompensation()));
                             sheet.addMergedRegion(new CellRangeAddress(teacherStart, rowNum - 1,
                                     salaryColumns.total(), salaryColumns.total()));
                         }
@@ -1563,6 +1571,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
                     sheet.setColumnWidth(salaryColumns.rowAmount(), 12 * 256);
                     sheet.setColumnWidth(salaryColumns.hourSalary(), 16 * 256);
                     sheet.setColumnWidth(salaryColumns.classLeadership(), 18 * 256);
+                    sheet.setColumnWidth(salaryColumns.iupCompensation(), 22 * 256);
                     sheet.setColumnWidth(salaryColumns.total(), 14 * 256);
                 }
             }
@@ -1964,10 +1973,18 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             if (line == null) {
                 line = loadSalaryCalculationService.calculate(row.getAcademicYear(), row);
             }
-            BigDecimal hourSalary = line.amount();
-            byTeacher.computeIfAbsent(teacher, key -> new SalaryTotals()).addHourSalary(hourSalary);
-            byBuilding.computeIfAbsent(building, key -> new SalaryTotals()).addHourSalary(hourSalary);
-            complex.addHourSalary(hourSalary);
+            BigDecimal amount = line.amount();
+            SalaryTotals teacherTotals = byTeacher.computeIfAbsent(teacher, key -> new SalaryTotals());
+            SalaryTotals buildingTotals = byBuilding.computeIfAbsent(building, key -> new SalaryTotals());
+            if (row.isIupLoad()) {
+                teacherTotals.addIupCompensation(amount);
+                buildingTotals.addIupCompensation(amount);
+                complex.addIupCompensation(amount);
+            } else {
+                teacherTotals.addHourSalary(amount);
+                buildingTotals.addHourSalary(amount);
+                complex.addHourSalary(amount);
+            }
         }
 
         for (ClassroomLeadershipEntry entry : classEntries) {
@@ -2077,7 +2094,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private void createSalarySummarySheet(Workbook workbook, SalarySummary salarySummary, CellStyle header, CellStyle money) {
         Sheet sheet = workbook.createSheet(uniqueSheetName(workbook, "Свод ЗП"));
         Row h = sheet.createRow(0);
-        List<String> cols = List.of("Корпус", "За часы", "Классное руководство", "Итого");
+        List<String> cols = List.of("Корпус", "За часы", "Классное руководство", "ОВЗ и дети-инвалиды", "Итого");
         for (int i = 0; i < cols.size(); i++) {
             h.createCell(i).setCellValue(cols.get(i));
             h.getCell(i).setCellStyle(header);
@@ -2091,20 +2108,23 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             row.createCell(0).setCellValue(building);
             row.createCell(1).setCellValue(moneyValue(totals.hourSalary()));
             row.createCell(2).setCellValue(moneyValue(totals.classLeadershipSalary()));
-            row.createCell(3).setCellValue(moneyValue(totals.total()));
-            for (int c = 1; c <= 3; c++) row.getCell(c).setCellStyle(money);
+            row.createCell(3).setCellValue(moneyValue(totals.iupCompensation()));
+            row.createCell(4).setCellValue(moneyValue(totals.total()));
+            for (int c = 1; c <= 4; c++) row.getCell(c).setCellStyle(money);
         }
         Row total = sheet.createRow(rowNum);
         total.createCell(0).setCellValue("Итого по комплексу");
         total.getCell(0).setCellStyle(header);
         total.createCell(1).setCellValue(moneyValue(salarySummary.complex().hourSalary()));
         total.createCell(2).setCellValue(moneyValue(salarySummary.complex().classLeadershipSalary()));
-        total.createCell(3).setCellValue(moneyValue(salarySummary.complex().total()));
-        for (int c = 1; c <= 3; c++) total.getCell(c).setCellStyle(money);
+        total.createCell(3).setCellValue(moneyValue(salarySummary.complex().iupCompensation()));
+        total.createCell(4).setCellValue(moneyValue(salarySummary.complex().total()));
+        for (int c = 1; c <= 4; c++) total.getCell(c).setCellStyle(money);
         sheet.setColumnWidth(0, 24 * 256);
         sheet.setColumnWidth(1, 12 * 256);
         sheet.setColumnWidth(2, 18 * 256);
-        sheet.setColumnWidth(3, 12 * 256);
+        sheet.setColumnWidth(3, 22 * 256);
+        sheet.setColumnWidth(4, 12 * 256);
     }
 
     private record SalarySummary(Map<String, SalaryTotals> byTeacher,
@@ -2122,6 +2142,7 @@ public class ManualLoadServiceImpl implements ManualLoadService {
     private static class SalaryTotals {
         private BigDecimal hourSalary = BigDecimal.ZERO;
         private BigDecimal classLeadershipSalary = BigDecimal.ZERO;
+        private BigDecimal iupCompensation = BigDecimal.ZERO;
 
         static SalaryTotals empty() {
             return new SalaryTotals();
@@ -2135,6 +2156,10 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             classLeadershipSalary = classLeadershipSalary.add(value == null ? BigDecimal.ZERO : value);
         }
 
+        void addIupCompensation(BigDecimal value) {
+            iupCompensation = iupCompensation.add(value == null ? BigDecimal.ZERO : value);
+        }
+
         BigDecimal hourSalary() {
             return hourSalary;
         }
@@ -2143,8 +2168,12 @@ public class ManualLoadServiceImpl implements ManualLoadService {
             return classLeadershipSalary;
         }
 
+        BigDecimal iupCompensation() {
+            return iupCompensation;
+        }
+
         BigDecimal total() {
-            return hourSalary.add(classLeadershipSalary);
+            return hourSalary.add(classLeadershipSalary).add(iupCompensation);
         }
     }
 

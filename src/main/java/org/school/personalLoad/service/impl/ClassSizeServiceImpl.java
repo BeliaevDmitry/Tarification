@@ -1,6 +1,7 @@
 package org.school.personalLoad.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.school.personalLoad.model.ClassSizeSource;
 import org.school.personalLoad.model.ContingentClassSizeOverride;
 import org.school.personalLoad.model.ContingentClassSizeSourceSetting;
@@ -28,6 +29,7 @@ import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class ClassSizeServiceImpl implements ClassSizeService {
 
@@ -40,29 +42,44 @@ public class ClassSizeServiceImpl implements ClassSizeService {
 
     @Override
     public Map<String, Integer> aisClassSizes(String academicYear) {
-        return snapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear)
-                .map(snapshot -> studentRepository.findAllBySnapshotId(snapshot.getId()).stream()
-                        .collect(Collectors.groupingBy(
-                                student -> classSizeKey(student.getClassName()),
-                                LinkedHashMap::new,
-                                Collectors.summingInt(student -> 1)
-                        )))
-                .orElseGet(LinkedHashMap::new);
+        try {
+            return snapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear)
+                    .map(snapshot -> studentRepository.findAllBySnapshotId(snapshot.getId()).stream()
+                            .collect(Collectors.groupingBy(
+                                    student -> classSizeKey(student.getClassName()),
+                                    LinkedHashMap::new,
+                                    Collectors.summingInt(student -> 1)
+                            )))
+                    .orElseGet(LinkedHashMap::new);
+        } catch (RuntimeException exception) {
+            // Contingent is an optional correction layer. A damaged or not yet
+            // migrated import must never disable the established salary logic
+            // and workload exports, which use their legacy default class size.
+            log.warn("Не удалось получить численность из контингента за {}. Основной расчёт продолжен без корректировки контингентом.",
+                    academicYear, exception);
+            return new LinkedHashMap<>();
+        }
     }
 
     @Override
     public Map<String, Integer> effectiveClassSizes(String academicYear) {
         Map<String, Integer> ais = aisClassSizes(academicYear);
-        if (source(academicYear) != ClassSizeSource.MANUAL) {
+        try {
+            if (source(academicYear) != ClassSizeSource.MANUAL) {
+                return ais;
+            }
+            Map<String, Integer> effective = new LinkedHashMap<>(ais);
+            overrideRepository.findAllByAcademicYear(academicYear).forEach(row -> {
+                if (row.getManualStudents() != null) {
+                    effective.put(classSizeKey(row.getClassName()), row.getManualStudents());
+                }
+            });
+            return effective;
+        } catch (RuntimeException exception) {
+            log.warn("Не удалось применить настройки численности за {}. Основной расчёт продолжен с доступной численностью.",
+                    academicYear, exception);
             return ais;
         }
-        Map<String, Integer> effective = new LinkedHashMap<>(ais);
-        overrideRepository.findAllByAcademicYear(academicYear).forEach(row -> {
-            if (row.getManualStudents() != null) {
-                effective.put(classSizeKey(row.getClassName()), row.getManualStudents());
-            }
-        });
-        return effective;
     }
 
     @Override

@@ -44,7 +44,7 @@ const TAB_GROUPS = [
         key: 'SENSITIVE',
         label: 'Чувствительные данные',
         tabs: [
-            { key: 'LOAD_SALARY', label: 'Нагрузка: расчёт денег (ЗП)', sensitive: true },
+            { key: 'LOAD_SALARY', label: 'Ставки и расчёт денег', sensitive: true },
             { key: 'OGE_MISMATCH_VIEW', label: 'ОГЭ: Нестыковки (просмотр)', sensitive: true }
         ]
     },

@@ -21,8 +21,12 @@ public final class LoadInRateDtos {
             String name,
             String documentLabel,
             Boolean active,
+            List<Long> subjectIds,
             List<RuleBandRequest> bands
     ) {
+    }
+
+    public record AllowedSubjectView(Long id, String name) {
     }
 
     public record RuleBandView(
@@ -39,6 +43,7 @@ public final class LoadInRateDtos {
             String name,
             String documentLabel,
             boolean active,
+            List<AllowedSubjectView> subjects,
             List<RuleBandView> bands,
             LocalDateTime updatedAt
     ) {

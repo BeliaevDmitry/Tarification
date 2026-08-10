@@ -30,6 +30,7 @@ const ui = {
     salarySettingsStatus: document.getElementById("salary-settings-status"),
     settingsInRateRulesList: document.getElementById("settings-in-rate-rules-list"),
     settingsNewRulePosition: document.getElementById("settings-new-rule-position"),
+    settingsNewRuleSubjects: document.getElementById("settings-new-rule-subjects"),
     settingsNewRuleMin: document.getElementById("settings-new-rule-min"),
     settingsNewRuleMax: document.getElementById("settings-new-rule-max"),
     settingsNewRuleFraction: document.getElementById("settings-new-rule-fraction"),
@@ -180,6 +181,7 @@ let oneCPreviewFile = null;
 let teacherCardContracts = [];
 let teacherCardInRateRules = [];
 let teacherPositions = [];
+let inRateSubjectCatalog = [];
 let teacherVacancies = [];
 let editingMckoCertificateId = null;
 let mckoCertificateSort = { key: "teacherFio", ascending: true };
@@ -439,7 +441,7 @@ function renderContractInRateStatus(position, preferredRuleId = null) {
     const rule = ruleForPosition(position, preferredRuleId);
     if (!ui.teacherContractInRateStatus) return rule;
     ui.teacherContractInRateStatus.textContent = rule
-        ? `Для должности действует правило «${rule.name}». Конкретные часы распределяются во вкладке «Часы в ставке».`
+        ? `Для должности действует правило «${rule.name}»: предметов внутри ставки — ${(rule.subjects || []).length}. Конкретные часы распределяются в модуле «Ставки».`
         : "Для этой должности правило часов в ставке не настроено — вся нагрузка оплачивается отдельно.";
     return rule;
 }
@@ -1732,6 +1734,14 @@ function settingsRuleBandRow(band = {}) {
     </tr>`;
 }
 
+function inRateSubjectOptions(selectedSubjects = []) {
+    const selected = new Set((selectedSubjects || []).map((subject) => String(subject.id ?? subject)));
+    return inRateSubjectCatalog.map((subject) => `
+        <option value="${escapeHtml(subject.id)}" ${selected.has(String(subject.id)) ? "selected" : ""}>
+            ${escapeHtml(subject.subjectName || "")}
+        </option>`).join("");
+}
+
 function renderSettingsInRateRules() {
     if (!ui.settingsInRateRulesList) return;
     ui.settingsNewRulePosition.innerHTML = positionOptions("");
@@ -1740,6 +1750,10 @@ function renderSettingsInRateRules() {
             <div class="form-grid">
                 <label>Основная должность<select data-rule-name>${positionOptions(rule.name)}</select></label>
                 <label><input data-rule-active type="checkbox" ${rule.active ? "checked" : ""}> Правило действует</label>
+                <label>Предметы внутри ставки
+                    <select data-rule-subjects multiple size="6">${inRateSubjectOptions(rule.subjects)}</select>
+                    <span class="field-hint">Для нескольких предметов удерживайте Ctrl. Невыбранные предметы не попадут в ставку и не создадут ошибку распределения.</span>
+                </label>
             </div>
             <p class="muted">Для каждого диапазона укажите общую учебную нагрузку и соответствующую долю ставки.
                 Фактические часы распределяются отдельно по сотруднику.</p>
@@ -1763,6 +1777,8 @@ function settingsRuleRequest(card) {
         name: position,
         documentLabel: position,
         active: card.querySelector("[data-rule-active]").checked,
+        subjectIds: Array.from(card.querySelector("[data-rule-subjects]").selectedOptions)
+            .map((option) => Number(option.value)),
         bands: Array.from(card.querySelectorAll("[data-settings-rule-band]")).map((row) => ({
             minTotalHours: Number(row.querySelector("[data-band-min]").value || 0),
             maxTotalHours: row.querySelector("[data-band-max]").value === "" ? null : Number(row.querySelector("[data-band-max]").value),
@@ -1773,13 +1789,19 @@ function settingsRuleRequest(card) {
 }
 
 async function reloadSettingsInRateRules() {
-    const [rules, positions] = await Promise.all([
+    const [rules, positions, subjects] = await Promise.all([
         api("/api/manual-load/in-rate/rules"),
-        api("/api/teachers/positions")
+        api("/api/teachers/positions"),
+        api("/api/subjects")
     ]);
     teacherCardInRateRules = rules || [];
     teacherPositions = positions || [];
+    inRateSubjectCatalog = (subjects || []).slice()
+        .sort((left, right) => String(left.subjectName || "").localeCompare(String(right.subjectName || ""), "ru"));
     renderSettingsInRateRules();
+    if (ui.settingsNewRuleSubjects) {
+        ui.settingsNewRuleSubjects.innerHTML = inRateSubjectOptions();
+    }
 }
 
 async function addSettingsInRateRule() {
@@ -1787,6 +1809,9 @@ async function addSettingsInRateRule() {
     if (ui.settingsNewRuleFraction.value === "") {
         throw new Error("Укажите размер ставки: например 0,5 или 1");
     }
+    const subjectIds = Array.from(ui.settingsNewRuleSubjects?.selectedOptions || [])
+        .map((option) => Number(option.value));
+    if (!subjectIds.length) throw new Error("Выберите хотя бы один предмет, который входит в ставку");
     await api("/api/manual-load/in-rate/rules", {
         method: "POST",
         headers: jsonHeaders,
@@ -1794,6 +1819,7 @@ async function addSettingsInRateRule() {
             name: ui.settingsNewRulePosition.value,
             documentLabel: ui.settingsNewRulePosition.value,
             active: true,
+            subjectIds,
             bands: [{
                 minTotalHours: Number(ui.settingsNewRuleMin.value || 0),
                 maxTotalHours: ui.settingsNewRuleMax.value === "" ? null : Number(ui.settingsNewRuleMax.value),
@@ -1805,6 +1831,7 @@ async function addSettingsInRateRule() {
     ui.settingsNewRuleMin.value = "1";
     ui.settingsNewRuleMax.value = "";
     ui.settingsNewRuleFraction.value = "";
+    if (ui.settingsNewRuleSubjects) ui.settingsNewRuleSubjects.selectedIndex = -1;
     await reloadSettingsInRateRules();
 }
 

@@ -45,7 +45,6 @@
         <button id="people-load-main-tab" class="tab-button active" type="button" role="tab">Нагрузка</button>
         <button id="people-load-iup-tab" class="tab-button" type="button" role="tab">ИУП</button>
         <button id="people-load-primary-tab" class="tab-button" type="button" role="tab">Педагог/предмет</button>
-        <button id="people-load-in-rate-tab" class="tab-button" type="button" role="tab" hidden>Часы в ставке</button>
     </div>
 
     <section id="people-load-main-panel" class="card people-load-card">
@@ -81,18 +80,6 @@
         </div>
     </section>
 
-    <section id="people-load-in-rate-panel" class="card people-load-card" hidden>
-        <div class="row primary-subject-toolbar">
-            <button id="save-in-rate-hours-btn" type="button">Сохранить распределение</button>
-            <button id="apply-in-rate-suggestions-btn" type="button">Заполнить доступные часы</button>
-            <a class="nav-link" href="/teachers.html#settings">Настроить правила в кадрах</a>
-            <span id="in-rate-summary" class="muted"></span>
-        </div>
-        <p class="muted compact-note">Система показывает должность, долю ставки и доступный остаток. Пользователь сам указывает, какие конкретно часы относятся внутрь ставки; остальные рассчитываются к отдельной оплате.</p>
-        <div class="sheet-wrap people-load-wrap" data-scroll-controls="off">
-            <table id="in-rate-hours-table" class="sheet-table people-load-table"></table>
-        </div>
-    </section>
 </main>
 
 <dialog id="primary-subject-rules-dialog" class="primary-subject-dialog">

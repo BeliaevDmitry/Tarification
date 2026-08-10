@@ -25,6 +25,7 @@ public class LoadInRateService {
     private final TeacherDirectoryRepository teacherRepository;
     private final LoadSalaryCalculationService salaryCalculationService;
     private final HrDocumentService hrDocumentService;
+    private final LoadInRateSubjectService subjectService;
 
     @Transactional(readOnly = true)
     public List<RuleView> rules() {
@@ -34,13 +35,14 @@ public class LoadInRateService {
     @Transactional
     public RuleView saveRule(Long id, RuleRequest request) {
         String name = required(request == null ? null : request.name(), "Название правила");
-        List<RuleBandRequest> requestedBands = Optional.ofNullable(request.bands()).orElse(List.of());
+        List<RuleBandRequest> requestedBands = Optional.ofNullable(request == null ? null : request.bands()).orElse(List.of());
         validateBands(requestedBands);
         if ((id == null && ruleRepository.existsByNameIgnoreCase(name))
                 || (id != null && ruleRepository.existsByNameIgnoreCaseAndIdNot(name, id))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Правило с таким названием уже существует");
         }
         LoadInRateRule rule = id == null ? new LoadInRateRule() : ruleRepository.findById(id).orElseThrow();
+        String previousName = rule.getName();
         rule.setName(name);
         rule.setDocumentLabel(name);
         rule.setActive(request.active() == null || request.active());
@@ -61,6 +63,9 @@ public class LoadInRateService {
             }
             bandRepository.save(band);
         }
+        List<LoadInRateSubjectService.AllowedSubject> allowedSubjects =
+                subjectService.replace(rule.getId(), request.subjectIds());
+        clearExcludedAllocations(rule, rule.isActive() ? allowedSubjects : List.of(), previousName);
         return view(rule);
     }
 
@@ -70,6 +75,9 @@ public class LoadInRateService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Правило используется в трудовом договоре. Сначала выберите для договора другое правило.");
         }
+        LoadInRateRule rule = ruleRepository.findById(id).orElseThrow();
+        clearExcludedAllocations(rule, List.of(), rule.getName());
+        subjectService.deleteForRule(id);
         bandRepository.deleteAllByRuleId(id);
         ruleRepository.deleteById(id);
     }
@@ -80,9 +88,14 @@ public class LoadInRateService {
                 .collect(Collectors.toMap(LoadInRateRule::getId, Function.identity()));
         List<LoadInRateRule> activeRules = rulesById.values().stream()
                 .filter(LoadInRateRule::isActive).toList();
+        Map<Long, List<LoadInRateSubjectService.AllowedSubject>> allowedByRule =
+                subjectService.allowedByRuleIds(activeRules.stream().map(LoadInRateRule::getId).toList());
         List<EmploymentContract> eligibleContracts = contractRepository
                 .findAllByActiveTrueOrderByTeacherIdAsc().stream()
-                .filter(contract -> resolveRule(contract, rulesById, activeRules) != null)
+                .filter(contract -> {
+                    LoadInRateRule rule = resolveRule(contract, rulesById, activeRules);
+                    return rule != null && !allowedByRule.getOrDefault(rule.getId(), List.of()).isEmpty();
+                })
                 .toList();
         Map<Long, List<EmploymentContract>> contractsByTeacher = eligibleContracts.stream()
                 .collect(Collectors.groupingBy(EmploymentContract::getTeacherId, LinkedHashMap::new, Collectors.toList()));
@@ -95,11 +108,23 @@ public class LoadInRateService {
                 .filter(teacher -> teacher.getId() != null)
                 .collect(Collectors.toMap(TeacherDirectoryEntry::getId, TeacherDirectoryEntry::getFioTeacher,
                         (first, second) -> first));
-        List<ManualLoadEntry> loadRows = loadRepository.findAllByAcademicYear(academicYear).stream()
+        List<ManualLoadEntry> candidateRows = loadRepository.findAllByAcademicYear(academicYear).stream()
                 .filter(row -> !row.isIupLoad())
                 .filter(row -> row.getTeacherId() != null)
                 .filter(row -> contractsByTeacher.containsKey(row.getTeacherId()))
                 .filter(row -> salaryCalculationService.totalHours(row).signum() > 0)
+                .toList();
+        Map<Long, EmploymentContract> contractByLoadId = new HashMap<>();
+        List<ManualLoadEntry> loadRows = candidateRows.stream()
+                .filter(row -> {
+                    EmploymentContract contract = resolveContract(row, contractsByTeacher, contractsById,
+                            rulesById, activeRules, allowedByRule);
+                    if (contract == null) {
+                        return false;
+                    }
+                    contractByLoadId.put(row.getId(), contract);
+                    return true;
+                })
                 .sorted(Comparator.comparing((ManualLoadEntry row) ->
                                 teacherNames.getOrDefault(row.getTeacherId(), row.getFioTeacher()),
                                 String.CASE_INSENSITIVE_ORDER)
@@ -110,7 +135,7 @@ public class LoadInRateService {
                 salaryCalculationService.calculate(academicYear, loadRows);
         List<AllocationRow> rows = new ArrayList<>();
         for (ManualLoadEntry row : loadRows) {
-            EmploymentContract contract = resolveContract(row, contractsByTeacher, contractsById);
+            EmploymentContract contract = contractByLoadId.get(row.getId());
             if (contract == null) continue;
             LoadInRateRule rule = resolveRule(contract, rulesById, activeRules);
             LoadSalaryCalculationService.SalaryLine line = salary.get(row.getId());
@@ -155,6 +180,13 @@ public class LoadInRateService {
             if (!contract.isActive() || rule == null || !Objects.equals(contract.getTeacherId(), row.getTeacherId())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Для должности по трудовому договору не настроено правило часов в ставке");
+            }
+            Map<Long, List<LoadInRateSubjectService.AllowedSubject>> allowedByRule =
+                    subjectService.allowedByRuleIds(List.of(rule.getId()));
+            if (!subjectService.allows(rule.getId(), row.getSubjectId(), row.getSubjectName(), allowedByRule)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Предмет «" + Objects.toString(row.getSubjectName(), "")
+                                + "» не разрешён для ставки по должности «" + contract.getPositionName() + "»");
             }
             BigDecimal total = salaryCalculationService.totalHours(row);
             BigDecimal included = nonNegative(update.includedHours());
@@ -281,13 +313,35 @@ public class LoadInRateService {
         }
     }
 
-    private EmploymentContract resolveContract(ManualLoadEntry row,
-                                               Map<Long, List<EmploymentContract>> byTeacher,
-                                               Map<Long, EmploymentContract> byId) {
+    private EmploymentContract resolveContract(
+            ManualLoadEntry row,
+            Map<Long, List<EmploymentContract>> byTeacher,
+            Map<Long, EmploymentContract> byId,
+            Map<Long, LoadInRateRule> rulesById,
+            List<LoadInRateRule> activeRules,
+            Map<Long, List<LoadInRateSubjectService.AllowedSubject>> allowedByRule
+    ) {
         EmploymentContract assigned = row.getEmploymentContractId() == null
                 ? null : byId.get(row.getEmploymentContractId());
-        if (assigned != null && Objects.equals(assigned.getTeacherId(), row.getTeacherId())) return assigned;
-        return byTeacher.getOrDefault(row.getTeacherId(), List.of()).stream().findFirst().orElse(null);
+        if (assigned != null && Objects.equals(assigned.getTeacherId(), row.getTeacherId())
+                && contractAllows(assigned, row, rulesById, activeRules, allowedByRule)) {
+            return assigned;
+        }
+        return byTeacher.getOrDefault(row.getTeacherId(), List.of()).stream()
+                .filter(contract -> contractAllows(contract, row, rulesById, activeRules, allowedByRule))
+                .findFirst().orElse(null);
+    }
+
+    private boolean contractAllows(
+            EmploymentContract contract,
+            ManualLoadEntry row,
+            Map<Long, LoadInRateRule> rulesById,
+            List<LoadInRateRule> activeRules,
+            Map<Long, List<LoadInRateSubjectService.AllowedSubject>> allowedByRule
+    ) {
+        LoadInRateRule rule = resolveRule(contract, rulesById, activeRules);
+        return rule != null
+                && subjectService.allows(rule.getId(), row.getSubjectId(), row.getSubjectName(), allowedByRule);
     }
 
     private LoadInRateRule resolveRule(EmploymentContract contract) {
@@ -337,8 +391,57 @@ public class LoadInRateService {
                 .map(band -> new RuleBandView(band.getId(), band.getMinTotalHours(), band.getMaxTotalHours(),
                         band.getSuggestedIncludedHours(), band.getRateFraction()))
                 .toList();
+        List<AllowedSubjectView> subjects = subjectService.allowedForRule(rule.getId()).stream()
+                .map(subject -> new AllowedSubjectView(subject.id(), subject.name()))
+                .toList();
         return new RuleView(rule.getId(), rule.getName(), rule.getDocumentLabel(),
-                rule.isActive(), bands, rule.getUpdatedAt());
+                rule.isActive(), subjects, bands, rule.getUpdatedAt());
+    }
+
+    private void clearExcludedAllocations(
+            LoadInRateRule rule,
+            List<LoadInRateSubjectService.AllowedSubject> allowedSubjects,
+            String previousRuleName
+    ) {
+        Map<Long, List<LoadInRateSubjectService.AllowedSubject>> allowedByRule =
+                Map.of(rule.getId(), allowedSubjects);
+        Map<Long, EmploymentContract> affectedContracts = contractRepository.findAll().stream()
+                .filter(contract -> Objects.equals(contract.getLoadInRateRuleId(), rule.getId())
+                        || sameText(contract.getPositionName(), rule.getName())
+                        || sameText(contract.getPositionName(), previousRuleName))
+                .filter(contract -> contract.getId() != null)
+                .collect(Collectors.toMap(EmploymentContract::getId, Function.identity(), (first, second) -> first));
+        if (affectedContracts.isEmpty()) {
+            return;
+        }
+        Map<String, Set<Long>> changedTeachersByYear = new LinkedHashMap<>();
+        for (ManualLoadEntry row : loadRepository.findAll()) {
+            EmploymentContract contract = affectedContracts.get(row.getEmploymentContractId());
+            if (contract == null) {
+                continue;
+            }
+            boolean contractStillUsesRule = Objects.equals(contract.getLoadInRateRuleId(), rule.getId())
+                    || sameText(contract.getPositionName(), rule.getName());
+            boolean subjectStillAllowed = contractStillUsesRule && subjectService.allows(
+                    rule.getId(), row.getSubjectId(), row.getSubjectName(), allowedByRule);
+            if (subjectStillAllowed) {
+                continue;
+            }
+            boolean changed = Optional.ofNullable(row.getIncludedInRateHours()).orElse(BigDecimal.ZERO).signum() > 0
+                    || row.isInRateAllocationConfirmed()
+                    || row.getInRateReason() != null;
+            row.setEmploymentContractId(null);
+            row.setIncludedInRateHours(BigDecimal.ZERO);
+            row.setInRateAllocationConfirmed(false);
+            row.setInRateReason(null);
+            row.setInRateUpdatedAt(LocalDateTime.now());
+            loadRepository.save(row);
+            if (changed && row.getTeacherId() != null && row.getAcademicYear() != null) {
+                changedTeachersByYear.computeIfAbsent(row.getAcademicYear(), ignored -> new LinkedHashSet<>())
+                        .add(row.getTeacherId());
+            }
+        }
+        changedTeachersByYear.forEach(hrDocumentService::markAnnualLoadAgreementsChanged);
     }
 
     private boolean same(BigDecimal first, BigDecimal second) {

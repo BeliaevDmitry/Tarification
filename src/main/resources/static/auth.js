@@ -7,6 +7,7 @@ const TAB_PATHS = {
     '/curriculum.html': 'CURRICULUM',
     '/load.html': 'LOAD',
     '/people-load.html': 'PEOPLE_LOAD',
+    '/rates.html': 'LOAD_SALARY',
     '/load-issues.html': 'LOAD_ISSUES',
     '/load-statistics.html': 'LOAD_STATS',
     '/service-notes.html': 'SERVICE_NOTES',
@@ -85,6 +86,7 @@ const NAV_ORDER = [
     { path: '/curriculum.html', tab: 'CURRICULUM', label: 'Учебный план' },
     { path: '/load.html', tab: 'LOAD', label: 'Нагрузка по корпусам' },
     { path: '/people-load.html', tab: 'PEOPLE_LOAD', label: 'Нагрузка по людям' },
+    { path: '/rates.html', tab: 'LOAD_SALARY', label: 'Ставки' },
     { path: '/load-issues.html', tab: 'LOAD_ISSUES', label: 'Возможные ошибки' },
     { path: '/load-statistics.html', tab: 'LOAD_STATS', label: 'Статистика нагрузки' },
     { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' },
@@ -124,6 +126,7 @@ function isLoadModulePage(pathname) {
         || pathname === '/curriculum.html'
         || pathname === '/load.html'
         || pathname === '/people-load.html'
+        || pathname === '/rates.html'
         || pathname === '/load-issues.html'
         || pathname === '/load-statistics.html'
         || pathname === '/settings.html'
@@ -265,6 +268,7 @@ function isContingentPage() {
 function isLoadPage() {
     return window.location.pathname === '/load.html'
         || window.location.pathname === '/people-load.html'
+        || window.location.pathname === '/rates.html'
         || window.location.pathname === '/load-issues.html'
         || window.location.pathname === '/load-statistics.html';
 }
@@ -289,6 +293,7 @@ function hasLoadAccess(currentUser) {
         || permissions.CURRICULUM?.canView
         || permissions.LOAD?.canView
         || permissions.PEOPLE_LOAD?.canView
+        || permissions.LOAD_SALARY?.canView
         || permissions.LOAD_ISSUES?.canView
         || permissions.LOAD_STATS?.canView
         || permissions.SETTINGS?.canView

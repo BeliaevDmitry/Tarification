@@ -17,6 +17,7 @@ import org.school.personalLoad.repository.EmploymentContractRepository;
 import org.school.personalLoad.repository.LoadInRateRuleRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.service.LoadIssueService;
+import org.school.personalLoad.service.LoadInRateSubjectService;
 import org.school.personalLoad.model.CurriculumPart;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.util.CurriculumLoadStandard;
@@ -51,6 +52,7 @@ public class LoadIssueServiceImpl implements LoadIssueService {
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final EmploymentContractRepository employmentContractRepository;
     private final LoadInRateRuleRepository loadInRateRuleRepository;
+    private final LoadInRateSubjectService loadInRateSubjectService;
 
     @Override
     @Transactional(readOnly = true)
@@ -96,32 +98,37 @@ public class LoadIssueServiceImpl implements LoadIssueService {
     private void addInRateAllocationIssues(List<LoadIssueDtos.LoadIssueRow> rows,
                                            String academicYear,
                                            List<ManualLoadEntry> yearLoad) {
-        List<String> eligiblePositions = loadInRateRuleRepository.findAllByOrderByNameAsc().stream()
+        Map<Long, LoadInRateRule> rulesById = loadInRateRuleRepository.findAllByOrderByNameAsc().stream()
+                .filter(rule -> rule.getId() != null)
+                .collect(Collectors.toMap(LoadInRateRule::getId, rule -> rule));
+        List<LoadInRateRule> activeRules = rulesById.values().stream()
                 .filter(LoadInRateRule::isActive)
-                .map(LoadInRateRule::getName)
-                .filter(Objects::nonNull)
-                .map(value -> value.trim().toLowerCase(Locale.ROOT))
                 .toList();
-        Map<Long, EmploymentContract> contractsByTeacher = employmentContractRepository
+        Map<Long, List<LoadInRateSubjectService.AllowedSubject>> allowedByRule =
+                loadInRateSubjectService.allowedByRuleIds(activeRules.stream().map(LoadInRateRule::getId).toList());
+        Map<Long, List<EmploymentContract>> contractsByTeacher = employmentContractRepository
                 .findAllByActiveTrueOrderByTeacherIdAsc().stream()
-                .filter(contract -> eligiblePositions.contains(
-                        display(contract.getPositionName()).trim().toLowerCase(Locale.ROOT)))
-                .collect(Collectors.toMap(
-                        EmploymentContract::getTeacherId,
-                        contract -> contract,
-                        (first, second) -> first.isPrimaryContract() ? first : second,
-                        LinkedHashMap::new
-                ));
+                .filter(contract -> resolveInRateRule(contract, rulesById, activeRules) != null)
+                .collect(Collectors.groupingBy(
+                        EmploymentContract::getTeacherId, LinkedHashMap::new, Collectors.toList()));
+        contractsByTeacher.values().forEach(contracts -> contracts.sort(
+                Comparator.comparing(EmploymentContract::isPrimaryContract).reversed()));
         for (ManualLoadEntry load : yearLoad) {
-            if (load.getTeacherId() == null || !contractsByTeacher.containsKey(load.getTeacherId())
-                    || load.isInRateAllocationConfirmed()) {
+            if (load.getTeacherId() == null || load.isInRateAllocationConfirmed()) {
                 continue;
             }
+            EmploymentContract contract = contractsByTeacher.getOrDefault(load.getTeacherId(), List.of()).stream()
+                    .filter(item -> {
+                        LoadInRateRule rule = resolveInRateRule(item, rulesById, activeRules);
+                        return rule != null && loadInRateSubjectService.allows(
+                                rule.getId(), load.getSubjectId(), load.getSubjectName(), allowedByRule);
+                    })
+                    .findFirst().orElse(null);
+            if (contract == null) continue;
             int hours = Math.max(load.getGroupLoad() == null
                     ? Optional.ofNullable(load.getLoad()).orElse(0)
                     : load.getGroupLoad(), 0);
             if (hours == 0) continue;
-            EmploymentContract contract = contractsByTeacher.get(load.getTeacherId());
             String key = String.join("|", "IN_RATE_ALLOCATION", academicYear,
                     String.valueOf(load.getId()), String.valueOf(contract.getId()));
             String description = display(load.getFioTeacher()) + ", " + display(load.getSubjectName())
@@ -130,6 +137,20 @@ public class LoadIssueServiceImpl implements LoadIssueService {
             rows.add(withState(key, load.getNumberSchoolBuilding(), "Не распределены часы внутри ставки",
                     description, null, "inRate", load.getClassName(), load.getSubjectName()));
         }
+    }
+
+    private LoadInRateRule resolveInRateRule(EmploymentContract contract,
+                                             Map<Long, LoadInRateRule> rulesById,
+                                             List<LoadInRateRule> activeRules) {
+        if (contract == null) return null;
+        LoadInRateRule assigned = contract.getLoadInRateRuleId() == null
+                ? null : rulesById.get(contract.getLoadInRateRuleId());
+        if (assigned != null && assigned.isActive() && same(assigned.getName(), contract.getPositionName())) {
+            return assigned;
+        }
+        return activeRules.stream()
+                .filter(rule -> same(rule.getName(), contract.getPositionName()))
+                .findFirst().orElse(null);
     }
 
     private void addMaximumLoadIssues(List<LoadIssueDtos.LoadIssueRow> rows,

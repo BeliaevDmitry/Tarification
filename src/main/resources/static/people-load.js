@@ -12,18 +12,12 @@ const ui = {
     mainTab: document.getElementById("people-load-main-tab"),
     iupTab: document.getElementById("people-load-iup-tab"),
     primaryTab: document.getElementById("people-load-primary-tab"),
-    inRateTab: document.getElementById("people-load-in-rate-tab"),
     mainPanel: document.getElementById("people-load-main-panel"),
     iupPanel: document.getElementById("people-load-iup-panel"),
     iupTable: document.getElementById("iup-load-table"),
     iupSummary: document.getElementById("iup-load-summary"),
     exportIupLoadBtn: document.getElementById("export-iup-load-btn"),
     primaryPanel: document.getElementById("people-load-primary-panel"),
-    inRatePanel: document.getElementById("people-load-in-rate-panel"),
-    inRateTable: document.getElementById("in-rate-hours-table"),
-    inRateSummary: document.getElementById("in-rate-summary"),
-    saveInRateBtn: document.getElementById("save-in-rate-hours-btn"),
-    applyInRateSuggestionsBtn: document.getElementById("apply-in-rate-suggestions-btn"),
     determinePrimarySubjectsBtn: document.getElementById("determine-primary-subjects-btn"),
     managePrimarySubjectsBtn: document.getElementById("manage-primary-subjects-btn"),
     primarySubjectSummary: document.getElementById("primary-subject-summary"),
@@ -53,8 +47,6 @@ const state = {
     groupCoefficientSubjectNames: new Set(),
     salaryByRowId: new Map(),
     salaryBreakdownAvailable: false,
-    inRateOverview: { rows: [], teachers: [], hasUnresolvedRows: false },
-    inRateLoadError: "",
     studentHourRate: 37
 };
 
@@ -457,12 +449,20 @@ function isFirstHalfSalaryRow(row) {
     return row.studyPeriod !== "H2" && row.studyPeriod !== "SECOND_HALF";
 }
 
+function iupCompensationSalary(teacherRow) {
+    const key = teacherRowKey(teacherRow);
+    return state.iupRows
+        .filter((row) => teacherRowKey(row) === key && isFirstHalfSalaryRow(row))
+        .reduce((sum, row) => sum + Number(row.preliminaryMonthlyAmount || 0), 0);
+}
+
 function teacherSalary(teacherRow, allTeacherRows) {
     const hours = allTeacherRows
         .filter(isFirstHalfSalaryRow)
         .reduce((sum, row) => sum + rowSalary(row), 0);
     const leadership = classLeadershipSalary(teacherRow);
-    return { hours, leadership, total: hours + leadership };
+    const iupCompensation = iupCompensationSalary(teacherRow);
+    return { hours, leadership, iupCompensation, total: hours + leadership + iupCompensation };
 }
 
 function formatMoney(value) {
@@ -553,7 +553,7 @@ function renderTable() {
         "Часы по предмету", "Период нагрузки", "Всего основных", "Полная нагрузка",
         "Корпус", "Классное руководство"];
     if (showSalary) {
-        headers.push("В ставке", "К оплате", "Основание", "Предметный коэф.", "Коэф. группы", "За строку", "За оплачиваемые часы итог", "Кл. рук., руб.", "Итого");
+        headers.push("В ставке", "К оплате", "Основание", "Предметный коэф.", "Коэф. группы", "За строку", "За оплачиваемые часы итог", "Кл. рук., руб.", "ОВЗ и дети-инвалиды, руб.", "Итого");
     }
     let html = `<thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>`;
 
@@ -610,6 +610,7 @@ function renderTable() {
                     if (showSalary) {
                         html += `<td rowspan="${rows.length}" class="people-load-money">${escapeHtml(formatMoney(salary.hours))}</td>`;
                         html += `<td rowspan="${rows.length}" class="people-load-money people-load-money-leadership">${escapeHtml(formatMoney(salary.leadership))}</td>`;
+                        html += `<td rowspan="${rows.length}" class="people-load-money">${escapeHtml(formatMoney(salary.iupCompensation))}</td>`;
                         html += `<td rowspan="${rows.length}" class="people-load-money">${escapeHtml(formatMoney(salary.total))}</td>`;
                     }
                 }
@@ -721,124 +722,15 @@ async function exportConsolidatedLoadWorkbook() {
     return exportLoadWorkbook("/api/manual-load/export-consolidated", "primary-subject-load-export.xlsx");
 }
 
-function renderInRateOverview() {
-    if (!ui.inRateTable) return;
-    if (state.inRateLoadError) {
-        ui.inRateTable.innerHTML = `<tbody><tr><td class="muted">Раздел «Часы в ставке» временно недоступен. Основная нагрузка не потеряна и показана в соседней вкладке.</td></tr></tbody>`;
-        ui.inRateSummary.textContent = state.inRateLoadError;
-        ui.inRateSummary.classList.add("error-text");
-        fitPeopleLoadTables();
-        return;
-    }
-    const overview = state.inRateOverview || { rows: [], teachers: [] };
-    const summaryByKey = new Map((overview.teachers || []).map((item) => [`${item.teacherId}|${item.contractId}`, item]));
-    const rows = overview.rows || [];
-    let html = `<thead><tr>
-        <th>Работник и договор</th><th>Предмет</th><th>Класс/группа</th><th>Период</th>
-        <th>Часы всего</th><th>Внутри ставки</th><th>К оплате</th><th>Сумма</th>
-    </tr></thead><tbody>`;
-    if (!rows.length) {
-        html += '<tr><td colspan="8" class="muted">Нет работников с нагрузкой по должностям, для которых настроены правила часов в ставке.</td></tr>';
-    } else {
-        let previousKey = "";
-        rows.forEach((row) => {
-            const key = `${row.teacherId}|${row.contractId}`;
-            const teacher = summaryByKey.get(key);
-            const first = key !== previousKey;
-            previousKey = key;
-            html += `<tr class="${row.allocationConfirmed ? "" : "load-in-rate-unresolved"}" data-in-rate-row="${row.manualLoadEntryId}" data-contract-id="${row.contractId}" data-teacher-key="${key}" data-study-period="${escapeHtml(row.studyPeriod || "YEAR")}">`;
-            html += `<td>${first ? `<b>${escapeHtml(row.fio)}</b><br>№ ${escapeHtml(row.contractNumber)} · ${escapeHtml(row.positionName)}
-                <br><span class="muted">Всего ${escapeHtml(formatNumber(teacher?.totalHoursH1))}/${escapeHtml(formatNumber(teacher?.totalHoursH2))};
-                в ставке ${escapeHtml(formatNumber(teacher?.includedHoursH1))}/${escapeHtml(formatNumber(teacher?.includedHoursH2))};
-                ещё можно ${escapeHtml(formatNumber(teacher?.remainingCapacityHoursH1))}/${escapeHtml(formatNumber(teacher?.remainingCapacityHoursH2))};
-                к оплате ${escapeHtml(formatNumber(teacher?.paidHoursH1))}/${escapeHtml(formatNumber(teacher?.paidHoursH2))}.
-                Ставка: ${escapeHtml(formatNumber(teacher?.rateFractionH1))}/${escapeHtml(formatNumber(teacher?.rateFractionH2))}</span>` : ""}</td>`;
-            html += `<td>${escapeHtml(row.subject)}</td><td>${escapeHtml([row.className, row.groupName].filter(Boolean).join(" "))}</td>`;
-            html += `<td>${escapeHtml(row.studyPeriod === "H1" ? "1П" : row.studyPeriod === "H2" ? "2П" : "ГОД")}</td>`;
-            html += `<td>${escapeHtml(formatNumber(row.totalHours))}</td>`;
-            html += `<td><input class="in-rate-hours-input" data-included-hours type="number" min="0" max="${escapeHtml(row.totalHours)}" step="0.01" value="${escapeHtml(row.includedHours)}" ${salaryPermission().canEdit ? "" : "disabled"}></td>`;
-            html += `<td data-paid-hours>${escapeHtml(formatNumber(row.paidHours))}</td>`;
-            html += `<td data-in-rate-amount>${escapeHtml(formatMoney(row.amount))}</td></tr>`;
-        });
-    }
-    html += "</tbody>";
-    ui.inRateTable.innerHTML = html;
-    const unresolved = (overview.teachers || []).reduce((sum, row) => sum + Number(row.unresolvedRows || 0), 0);
-    ui.inRateSummary.textContent = unresolved
-        ? `Требуется распределить строк: ${unresolved}. До завершения распределения документы и выгрузки с ЗП требуют проверки.`
-        : `Распределение подтверждено для ${overview.teachers?.length || 0} работников.`;
-    ui.inRateSummary.classList.toggle("error-text", unresolved > 0);
-    fitPeopleLoadTables();
-}
-
-function updateInRateRowPreview(tableRow) {
-    const input = tableRow.querySelector("[data-included-hours]");
-    const total = Number(input?.max || 0);
-    const included = Math.min(total, Math.max(0, Number(input?.value || 0)));
-    input.value = String(included);
-    tableRow.querySelector("[data-paid-hours]").textContent = formatNumber(total - included);
-    const source = (state.inRateOverview.rows || []).find((row) => String(row.manualLoadEntryId) === tableRow.dataset.inRateRow);
-    if (source) {
-        const perHour = Number(source.paidHours || 0) > 0 ? Number(source.amount || 0) / Number(source.paidHours) : 0;
-        tableRow.querySelector("[data-in-rate-amount]").textContent = formatMoney(perHour * (total - included));
-    }
-}
-
-function applyInRateSuggestions() {
-    const remaining = new Map();
-    (state.inRateOverview.teachers || []).forEach((row) => {
-        const key = `${row.teacherId}|${row.contractId}`;
-        remaining.set(`${key}|H1`, Number(row.capacityHoursH1 || 0));
-        remaining.set(`${key}|H2`, Number(row.capacityHoursH2 || 0));
-    });
-    const rows = Array.from(ui.inRateTable.querySelectorAll("[data-in-rate-row]"))
-        .sort((left, right) => (left.dataset.studyPeriod === "YEAR" ? 0 : 1)
-            - (right.dataset.studyPeriod === "YEAR" ? 0 : 1));
-    rows.forEach((row) => {
-        const key = row.dataset.teacherKey;
-        const input = row.querySelector("[data-included-hours]");
-        const total = Number(input.max || 0);
-        const period = row.dataset.studyPeriod || "YEAR";
-        const halfKeys = period === "H1" ? [`${key}|H1`]
-            : period === "H2" ? [`${key}|H2`] : [`${key}|H1`, `${key}|H2`];
-        const available = Math.min(...halfKeys.map((halfKey) => Math.max(0, remaining.get(halfKey) || 0)));
-        const value = Math.min(total, available);
-        input.value = String(value);
-        halfKeys.forEach((halfKey) => remaining.set(halfKey, Math.max(0, (remaining.get(halfKey) || 0) - value)));
-        updateInRateRowPreview(row);
-    });
-}
-
-async function saveInRateAllocations() {
-    const rows = Array.from(ui.inRateTable.querySelectorAll("[data-in-rate-row]")).map((row) => ({
-        manualLoadEntryId: Number(row.dataset.inRateRow),
-        contractId: Number(row.dataset.contractId),
-        includedHours: Number(row.querySelector("[data-included-hours]").value || 0)
-    }));
-    ui.saveInRateBtn.disabled = true;
-    try {
-        const result = await apiRequest("/api/manual-load/in-rate", { method: "PUT", body: JSON.stringify({ rows }) });
-        await loadData();
-        alert(result.agreementsRequireReissue
-            ? "Распределение сохранено. Неподписанные выпущенные допсоглашения отмечены для перевыпуска."
-            : "Распределение сохранено.");
-    } finally {
-        ui.saveInRateBtn.disabled = false;
-    }
-}
-
 function showPeopleLoadPanel(panel) {
     const iup = panel === "iup";
     const primary = panel === "primary";
-    const inRate = panel === "inRate";
-    ui.mainPanel.hidden = iup || primary || inRate;
+    ui.mainPanel.hidden = iup || primary;
     ui.iupPanel.hidden = !iup;
     ui.primaryPanel.hidden = !primary;
-    ui.inRatePanel.hidden = !inRate;
-    ui.mainTab.classList.toggle("active", !iup && !primary && !inRate);
+    ui.mainTab.classList.toggle("active", !iup && !primary);
     ui.iupTab?.classList.toggle("active", iup);
     ui.primaryTab.classList.toggle("active", primary);
-    ui.inRateTab?.classList.toggle("active", inRate);
     fitPeopleLoadTables();
 }
 
@@ -1027,9 +919,8 @@ async function loadData() {
         "правила основных предметов"
     );
     let salaryBreakdownError = null;
-    let inRateError = null;
     const [buildings, classes, teachers, subjects, coefficients, salarySettings, groupCoefficientSubjects,
-        primaryAssignments, classSizes, salaryBreakdown, inRateOverview] = await Promise.all([
+        primaryAssignments, classSizes, salaryBreakdown] = await Promise.all([
         optionalApi("/api/buildings", [], "список корпусов"),
         optionalApi("/api/classroom-leadership", [], "классное руководство"),
         optionalApi("/api/teachers", [], "список работников"),
@@ -1044,13 +935,7 @@ async function loadData() {
             warnings.push("расчёт зарплаты");
             console.warn("Не удалось загрузить расчёт зарплаты:", error);
             return [];
-        }) : Promise.resolve([]),
-        salaryAccess ? api("/api/manual-load/in-rate").catch((error) => {
-            inRateError = error;
-            warnings.push("часы внутри ставки");
-            console.warn("Не удалось загрузить часы внутри ставки:", error);
-            return { rows: [], teachers: [], hasUnresolvedRows: false };
-        }) : Promise.resolve({ rows: [], teachers: [], hasUnresolvedRows: false })
+        }) : Promise.resolve([])
     ]);
     state.manualRows = manualRows || [];
     state.iupRows = iupRows || [];
@@ -1064,8 +949,6 @@ async function loadData() {
     state.primarySubjectRules = primaryRules || [];
     state.salaryByRowId = new Map((salaryBreakdown || []).map((row) => [String(row.manualLoadEntryId), row]));
     state.salaryBreakdownAvailable = salaryAccess && !salaryBreakdownError;
-    state.inRateOverview = inRateOverview || { rows: [], teachers: [], hasUnresolvedRows: false };
-    state.inRateLoadError = inRateError ? "Не удалось получить распределение часов внутри ставки. Обновите страницу после восстановления сервера." : "";
     applyClassSizeResponse(classSizes);
     const rate = Number(salarySettings?.studentHourRate ?? 37);
     state.studentHourRate = Number.isFinite(rate) && rate > 0 ? rate : 37;
@@ -1075,7 +958,6 @@ async function loadData() {
     renderIupTable();
     renderPrimarySubjectTeachers();
     renderPrimarySubjectRules();
-    renderInRateOverview();
     if (warnings.length) {
         const uniqueWarnings = Array.from(new Set(warnings));
         ui.summary.textContent += ` Нагрузка загружена. Временно недоступны дополнительные данные: ${uniqueWarnings.join(", ")}.`;
@@ -1124,14 +1006,6 @@ async function init() {
     ui.mainTab?.addEventListener("click", () => showPeopleLoadPanel("main"));
     ui.iupTab?.addEventListener("click", () => showPeopleLoadPanel("iup"));
     ui.primaryTab?.addEventListener("click", () => showPeopleLoadPanel("primary"));
-    ui.inRateTab?.addEventListener("click", () => showPeopleLoadPanel("inRate"));
-    ui.inRateTable?.addEventListener("input", (event) => {
-        const row = event.target.closest("[data-in-rate-row]");
-        if (row && event.target.matches("[data-included-hours]")) updateInRateRowPreview(row);
-    });
-    ui.saveInRateBtn?.addEventListener("click", () => saveInRateAllocations()
-        .catch((error) => alert(`Не удалось сохранить распределение: ${error.message}`)));
-    ui.applyInRateSuggestionsBtn?.addEventListener("click", applyInRateSuggestions);
     window.addEventListener("resize", fitPeopleLoadTables);
     window.addEventListener("scroll", fitPeopleLoadTables, { passive: true });
     ui.determinePrimarySubjectsBtn?.addEventListener("click", () => determinePrimarySubjects().catch((error) => alert(`Не удалось определить основные предметы: ${error.message}`)));
@@ -1163,9 +1037,6 @@ async function init() {
     });
     ui.addPrimarySubjectRuleBtn?.addEventListener("click", () => addPrimarySubjectRule().catch((error) => alert(`Не удалось добавить правило: ${error.message}`)));
     await waitForAuth();
-    if (ui.inRateTab) ui.inRateTab.hidden = !salaryPermission().canView;
-    if (ui.saveInRateBtn) ui.saveInRateBtn.hidden = !salaryPermission().canEdit;
-    if (ui.applyInRateSuggestionsBtn) ui.applyInRateSuggestionsBtn.hidden = !salaryPermission().canEdit;
     if (ui.manageInRateRulesBtn) ui.manageInRateRulesBtn.hidden = !salaryPermission().canEdit;
     if (ui.exportFullLoadSalaryBtn) {
         ui.exportFullLoadSalaryBtn.style.display = salaryPermission().canExport ? "" : "none";
@@ -1175,7 +1046,8 @@ async function init() {
     }
     const requestedPanel = new URLSearchParams(window.location.search).get("panel");
     if (requestedPanel === "inRate" && salaryPermission().canView) {
-        showPeopleLoadPanel("inRate");
+        window.location.replace(withYear("/rates.html"));
+        return;
     } else if (requestedPanel === "iup") {
         showPeopleLoadPanel("iup");
     }
