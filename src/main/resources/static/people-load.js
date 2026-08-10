@@ -449,12 +449,20 @@ function isFirstHalfSalaryRow(row) {
     return row.studyPeriod !== "H2" && row.studyPeriod !== "SECOND_HALF";
 }
 
+function iupCompensationSalary(teacherRow) {
+    const key = teacherRowKey(teacherRow);
+    return state.iupRows
+        .filter((row) => teacherRowKey(row) === key && isFirstHalfSalaryRow(row))
+        .reduce((sum, row) => sum + Number(row.preliminaryMonthlyAmount || 0), 0);
+}
+
 function teacherSalary(teacherRow, allTeacherRows) {
     const hours = allTeacherRows
         .filter(isFirstHalfSalaryRow)
         .reduce((sum, row) => sum + rowSalary(row), 0);
     const leadership = classLeadershipSalary(teacherRow);
-    return { hours, leadership, total: hours + leadership };
+    const iupCompensation = iupCompensationSalary(teacherRow);
+    return { hours, leadership, iupCompensation, total: hours + leadership + iupCompensation };
 }
 
 function formatMoney(value) {
@@ -545,7 +553,7 @@ function renderTable() {
         "Часы по предмету", "Период нагрузки", "Всего основных", "Полная нагрузка",
         "Корпус", "Классное руководство"];
     if (showSalary) {
-        headers.push("В ставке", "К оплате", "Основание", "Предметный коэф.", "Коэф. группы", "За строку", "За оплачиваемые часы итог", "Кл. рук., руб.", "Итого");
+        headers.push("В ставке", "К оплате", "Основание", "Предметный коэф.", "Коэф. группы", "За строку", "За оплачиваемые часы итог", "Кл. рук., руб.", "ОВЗ и дети-инвалиды, руб.", "Итого");
     }
     let html = `<thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>`;
 
@@ -602,6 +610,7 @@ function renderTable() {
                     if (showSalary) {
                         html += `<td rowspan="${rows.length}" class="people-load-money">${escapeHtml(formatMoney(salary.hours))}</td>`;
                         html += `<td rowspan="${rows.length}" class="people-load-money people-load-money-leadership">${escapeHtml(formatMoney(salary.leadership))}</td>`;
+                        html += `<td rowspan="${rows.length}" class="people-load-money">${escapeHtml(formatMoney(salary.iupCompensation))}</td>`;
                         html += `<td rowspan="${rows.length}" class="people-load-money">${escapeHtml(formatMoney(salary.total))}</td>`;
                     }
                 }
