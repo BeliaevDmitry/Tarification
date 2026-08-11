@@ -39,6 +39,7 @@ public class VsokoMckoQueryService {
     private static final DateTimeFormatter RU_DATE = DateTimeFormatter.ofPattern("dd.MM.yyyy");
 
     private final MckoStudentResultRepository resultRepository;
+    private final MckoClassDiagnosticSummaryRepository classSummaryRepository;
     private final MckoImportFileRepository fileRepository;
     private final MckoTeacherClassAssignmentRepository assignmentRepository;
     private final StudentProfileRepository profileRepository;
@@ -87,10 +88,14 @@ public class VsokoMckoQueryService {
     @Transactional(readOnly = true)
     public VsokoMckoDtos.FilterOptions filters() {
         List<MckoStudentResult> rows = resultRepository.findAll();
+        List<MckoClassDiagnosticSummary> summaries = classSummaryRepository.findAll();
         return new VsokoMckoDtos.FilterOptions(
-                distinct(rows, MckoStudentResult::getAcademicYear),
-                distinct(rows, MckoStudentResult::getClassName),
-                distinct(rows, MckoStudentResult::getSubjectName),
+                mergeDistinct(distinct(rows, MckoStudentResult::getAcademicYear),
+                        summaries.stream().map(MckoClassDiagnosticSummary::getAcademicYear).toList()),
+                mergeDistinct(distinct(rows, MckoStudentResult::getClassName),
+                        summaries.stream().map(MckoClassDiagnosticSummary::getClassName).toList()),
+                mergeDistinct(distinct(rows, MckoStudentResult::getSubjectName),
+                        summaries.stream().map(MckoClassDiagnosticSummary::getSubjectName).toList()),
                 distinct(rows, MckoStudentResult::getTeacherFioSnapshot),
                 Arrays.stream(MckoStudentLinkStatus.values()).map(Enum::name).toList());
     }
@@ -217,19 +222,31 @@ public class VsokoMckoQueryService {
         List<MckoStudentResult> mcko = resultRepository
                 .findAllByAcademicYearOrderByClassNameAscSubjectNameAscStudentFioSnapshotAsc(year).stream()
                 .filter(row -> normalizeClass(row.getClassName()).equals(classKey)).toList();
+        List<MckoClassDiagnosticSummary> summaries = classSummaryRepository.findAllByAcademicYear(year).stream()
+                .filter(row -> normalizeClass(row.getClassName()).equals(classKey)).toList();
         List<PaReportStudentResult> pa = paResultRepository.findAllByAcademicYear(year).stream()
                 .filter(row -> normalizeClass(row.getClassName()).equals(classKey))
                 .filter(PaReportStudentResult::isHasResult).toList();
         Set<String> subjects = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         mcko.stream().map(MckoStudentResult::getSubjectName)
                 .filter(value -> !blank(value).isBlank()).forEach(subjects::add);
+        summaries.stream().map(MckoClassDiagnosticSummary::getSubjectName)
+                .filter(value -> !blank(value).isBlank()).forEach(subjects::add);
         pa.stream().map(PaReportStudentResult::getSubjectName)
                 .filter(value -> !blank(value).isBlank()).forEach(subjects::add);
         List<VsokoMckoDtos.ClassSubjectComparison> rows = new ArrayList<>();
         for (String subject : subjects) {
             List<MckoStudentResult> mr = mcko.stream().filter(row -> sameSubject(row.getSubjectName(), subject)).toList();
+            List<MckoClassDiagnosticSummary> sr = summaries.stream()
+                    .filter(row -> sameSubject(row.getSubjectName(), subject)).toList();
             List<PaReportStudentResult> pr = pa.stream().filter(row -> sameSubject(row.getSubjectName(), subject)).toList();
-            rows.add(new VsokoMckoDtos.ClassSubjectComparison(subject, mr.size(), average(mr, MckoStudentResult::getPercent),
+            int mckoCount = mr.isEmpty() ? sr.stream().map(MckoClassDiagnosticSummary::getParticipantCount)
+                    .filter(Objects::nonNull).mapToInt(Integer::intValue).sum() : mr.size();
+            Double mckoPercent = average(mr, MckoStudentResult::getPercent);
+            if (mckoPercent == null) {
+                mckoPercent = weightedSummaryAverage(sr, MckoClassDiagnosticSummary::getAveragePercent);
+            }
+            rows.add(new VsokoMckoDtos.ClassSubjectComparison(subject, mckoCount, mckoPercent,
                     average(mr, row -> row.getMark() == null ? null : row.getMark().doubleValue()), pr.size(),
                     average(pr, PaReportStudentResult::getPercent),
                     average(pr, row -> row.getMark() == null ? null : row.getMark().doubleValue())));
@@ -401,6 +418,7 @@ public class VsokoMckoQueryService {
             CellStyle header = headerStyle(workbook);
             createResultsSheet(workbook, header, rows.stream().filter(row -> !"FUNCTIONAL_LITERACY".equals(row.resultType())).toList());
             createFunctionalSheet(workbook, header, rows.stream().filter(row -> "FUNCTIONAL_LITERACY".equals(row.resultType())).toList());
+            createClassSummariesSheet(workbook, header, academicYear, className, subject);
             createWorksSheets(workbook, header, rows);
             createErrorsSheet(workbook, header);
             return bytes(workbook);
@@ -525,6 +543,31 @@ public class VsokoMckoQueryService {
         finishTable(sheet, headers.length, rowNo);
     }
 
+    private void createClassSummariesSheet(Workbook wb, CellStyle header, String academicYear,
+                                           String className, String subject) {
+        Sheet sheet = wb.createSheet("Своды классов");
+        String[] headers = {"Учебный год", "Класс", "Предмет", "Дата", "Школа", "Тип отчёта",
+                "Участников", "Средний балл", "Средний % класса", "Средний % города", "Источник"};
+        writeHeader(sheet, header, headers);
+        String yearFilter = normalizeYear(academicYear);
+        String classFilter = normalizeClass(className);
+        String subjectFilter = normalize(subject);
+        Map<Long, String> fileNames = fileRepository.findAll().stream()
+                .collect(Collectors.toMap(MckoImportFile::getId, MckoImportFile::getFileName, (a, b) -> a));
+        int rowNo = 1;
+        for (MckoClassDiagnosticSummary summary : classSummaryRepository.findAll()) {
+            if (!yearFilter.isBlank() && !normalizeYear(summary.getAcademicYear()).equals(yearFilter)) continue;
+            if (!classFilter.isBlank() && !normalizeClass(summary.getClassName()).equals(classFilter)) continue;
+            if (!subjectFilter.isBlank() && !normalize(summary.getSubjectName()).contains(subjectFilter)) continue;
+            Row row = sheet.createRow(rowNo++);
+            values(row, summary.getAcademicYear(), summary.getClassName(), summary.getSubjectName(),
+                    formatDate(summary.getDiagnosticDate()), summary.getSchoolName(), summary.getResultKind(),
+                    summary.getParticipantCount(), summary.getAverageScore(), summary.getAveragePercent(),
+                    summary.getCityPercent(), fileNames.get(summary.getSourceFileId()));
+        }
+        finishTable(sheet, headers.length, rowNo);
+    }
+
     private void createWorksSheets(Workbook wb, CellStyle header, List<VsokoMckoDtos.ResultRow> rows) {
         Map<String, List<VsokoMckoDtos.ResultRow>> groups = rows.stream().collect(Collectors.groupingBy(row ->
                 String.join("|", blank(row.schoolName()), blank(row.subjectName()), formatDate(row.diagnosticDate()),
@@ -559,13 +602,15 @@ public class VsokoMckoQueryService {
 
     private void createErrorsSheet(Workbook wb, CellStyle header) {
         Sheet sheet = wb.createSheet("Ошибки обработки");
-        String[] headers = {"Файл", "Статус", "Причина", "Всего строк", "Импортировано", "Пропущено", "Обработан"};
+        String[] headers = {"Файл", "Учебный год", "Дата работы", "Предмет", "Статус", "Причина",
+                "Всего строк", "Импортировано", "Пропущено", "Обработан"};
         writeHeader(sheet, header, headers);
         int rowNo = 1;
         for (MckoImportFile file : fileRepository.findTop200ByOrderByIdDesc()) {
             if (file.getStatus() == MckoFileStatus.PROCESSED) continue;
             Row row = sheet.createRow(rowNo++);
-            values(row, file.getFileName(), file.getStatus().name(), file.getReason(), file.getTotalRows(),
+            values(row, file.getFileName(), file.getDetectedAcademicYear(), file.getDetectedWorkDate(),
+                    file.getDetectedSubject(), file.getStatus().name(), file.getReason(), file.getTotalRows(),
                     file.getImportedRows(), file.getSkippedRows(), Objects.toString(file.getProcessedAt(), ""));
         }
         finishTable(sheet, headers.length, rowNo);
@@ -661,9 +706,31 @@ public class VsokoMckoQueryService {
                 .sorted(String.CASE_INSENSITIVE_ORDER).toList();
     }
 
+    private List<String> mergeDistinct(List<String> first, List<String> second) {
+        TreeSet<String> result = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        first.stream().filter(value -> !blank(value).isBlank()).forEach(result::add);
+        second.stream().filter(value -> !blank(value).isBlank()).forEach(result::add);
+        return result.stream().toList();
+    }
+
     private <T> Double average(List<T> rows, Function<T, Double> getter) {
         DoubleSummaryStatistics stats = rows.stream().map(getter).filter(Objects::nonNull).mapToDouble(Double::doubleValue).summaryStatistics();
         return stats.getCount() == 0 ? null : Math.round(stats.getAverage() * 100.0) / 100.0;
+    }
+
+    private Double weightedSummaryAverage(List<MckoClassDiagnosticSummary> rows,
+                                          Function<MckoClassDiagnosticSummary, Double> getter) {
+        double total = 0;
+        int weightTotal = 0;
+        for (MckoClassDiagnosticSummary row : rows) {
+            Double value = getter.apply(row);
+            if (value == null) continue;
+            int weight = row.getParticipantCount() == null || row.getParticipantCount() <= 0
+                    ? 1 : row.getParticipantCount();
+            total += value * weight;
+            weightTotal += weight;
+        }
+        return weightTotal == 0 ? null : Math.round(total / weightTotal * 100.0) / 100.0;
     }
 
     private <T> Double averagePercentText(List<T> rows, Function<T, String> getter) {

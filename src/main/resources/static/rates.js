@@ -50,6 +50,15 @@ function formatMoney(value) {
     }).format(Number(value || 0));
 }
 
+function wholeHours(input, label = "Часы") {
+    const value = Number(input?.value || 0);
+    if (!Number.isInteger(value)) {
+        input?.focus();
+        throw new Error(`${label} должны быть целым числом`);
+    }
+    return value;
+}
+
 function permission() {
     const user = window.tarificationAuth || {};
     const permissions = window.tarificationTabPermissions || {};
@@ -108,7 +117,7 @@ function render() {
             html += `<td>${esc(row.studyPeriod === "H1" ? "1П" : row.studyPeriod === "H2" ? "2П" : "ГОД")}</td>`;
             html += `<td>${esc(formatNumber(row.totalHours))}</td>`;
             html += `<td><input class="in-rate-hours-input" data-included-hours type="number" min="0"
-                max="${esc(row.totalHours)}" step="0.01" value="${esc(row.includedHours)}"
+                max="${esc(row.totalHours)}" step="1" value="${esc(row.includedHours)}"
                 ${permission().canEdit ? "" : "disabled"}></td>`;
             html += `<td data-paid-hours>${esc(formatNumber(row.paidHours))}</td>`;
             html += `<td data-rate-amount>${esc(formatMoney(row.amount))}</td></tr>`;
@@ -180,7 +189,7 @@ async function save() {
     const rows = Array.from(ui.table.querySelectorAll("[data-rate-row]")).map((row) => ({
         manualLoadEntryId: Number(row.dataset.rateRow),
         contractId: Number(row.dataset.contractId),
-        includedHours: Number(row.querySelector("[data-included-hours]").value || 0)
+        includedHours: wholeHours(row.querySelector("[data-included-hours]"), "Часы внутри ставки")
     }));
     ui.save.disabled = true;
     try {

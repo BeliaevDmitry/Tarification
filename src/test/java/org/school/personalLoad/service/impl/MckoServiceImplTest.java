@@ -30,6 +30,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -201,6 +202,55 @@ class MckoServiceImplTest {
     }
 
     @Test
+    void overviewUsesOneBroadCertificateForSeveralMathSubjectsAndAlternativeMappings() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Васильев Михаил Юрьевич");
+        MckoSubjectMapping plainGeometry = mapping("Математика", 11L, "Геометрия", "5-11");
+        List<MckoSubjectMapping> profileMappings = List.of(
+                mapping("Математика (профильный уровень)", 10L, "Математика", "5-11"),
+                mapping("Математика (профильный уровень)", 11L, "Геометрия", "5-11"),
+                mapping("Математика (профильный уровень)", 12L, "Алгебра", "5-11"),
+                mapping("Математика (профильный уровень)", 13L, "Вероятность и статистика", "5-11")
+        );
+        MckoCertificate profileCertificate = certificate(teacher, "Математика (профильный уровень)", "Экспертный",
+                true, LocalDate.now().minusMonths(1), MckoCertificateSource.IMPORT);
+        profileCertificate.setId(88L);
+
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(
+                load(teacher, 10L, "Математика", "6-А"),
+                load(teacher, 11L, "Геометрия", "8-А"),
+                load(teacher, 12L, "Алгебра", "8-А"),
+                load(teacher, 13L, "Вероятность и статистика", "8-А")
+        ));
+        when(mappingRepository.findAll()).thenReturn(java.util.stream.Stream.concat(
+                java.util.stream.Stream.of(plainGeometry), profileMappings.stream()).toList());
+        when(certificateRepository.findAll()).thenReturn(List.of(profileCertificate));
+
+        List<MckoDtos.OverviewRow> rows = service.overview("2026/2027");
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).certificateId()).isEqualTo(88L);
+        assertThat(rows.get(0).mckoSubject()).isEqualTo("Математика (профильный уровень)");
+        assertThat(rows.get(0).curriculumSubjects())
+                .contains("Математика", "Геометрия", "Алгебра", "Вероятность и статистика");
+        assertThat(rows.get(0).status()).isEqualTo("OK");
+    }
+
+    @Test
+    void ignoreSubjectAtomicallyReplacesMappingsWithIgnoredMarker() {
+        MckoSubjectMapping geometry = mapping("Математика", 11L, "Геометрия", "5-11");
+        MckoSubjectMapping algebra = mapping("Математика", 12L, "Алгебра", "5-11");
+        when(mappingRepository.findAllByMckoSubjectIgnoreCase("Математика")).thenReturn(List.of(geometry, algebra));
+        when(mappingRepository.save(any(MckoSubjectMapping.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MckoDtos.SubjectMappingRow result = service.ignoreSubject("Математика");
+
+        verify(mappingRepository).deleteAll(List.of(geometry, algebra));
+        verify(mappingRepository).flush();
+        assertThat(result.ignored()).isTrue();
+        assertThat(result.subjectId()).isNull();
+    }
+
+    @Test
     void overviewShowsMissingRequirementWithoutCertificate() {
         TeacherDirectoryEntry teacher = teacher(1L, "Teacher One");
         MckoSubjectMapping chemistry = mapping("Chemistry MCKO", 12L, "Chemistry");
@@ -296,6 +346,33 @@ class MckoServiceImplTest {
             assertThat(row.subjectName()).isEqualTo("Математика");
             assertThat(row.status()).isEqualTo("MISSING");
         });
+    }
+
+    @Test
+    void secondaryRussianTeacherDoesNotRequireOrUsePrimarySchoolMcko() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Виноградова Дарья Александровна");
+        MckoSubjectMapping primaryRussian = mapping("Начальная школа", 20L, "Русский язык", "ALL");
+        MckoSubjectMapping secondaryRussian = mapping("Русский язык", 20L, "Русский язык", "ALL");
+        MckoCertificate primaryCertificate = certificate(teacher,
+                "Метапредметные умения (начальное образование)", "Высокий",
+                true, LocalDate.now().minusMonths(1), MckoCertificateSource.IMPORT);
+
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(
+                load(teacher, 20L, "Русский язык", "7-А"),
+                load(teacher, 20L, "Русский язык", "8-Б"),
+                load(teacher, 20L, "Русский язык", "9-В")
+        ));
+        when(mappingRepository.findAll()).thenReturn(List.of(primaryRussian, secondaryRussian));
+        when(certificateRepository.findAll()).thenReturn(List.of(primaryCertificate));
+
+        List<MckoDtos.OverviewRow> overview = service.overview("2026/2027");
+        List<MckoDtos.EligibilityRow> eligibility = service.eligibility("2026/2027");
+
+        assertThat(overview).hasSize(1);
+        assertThat(overview.get(0).mckoSubject()).isEqualTo("Русский язык");
+        assertThat(overview.get(0).status()).isEqualTo("MISSING");
+        assertThat(eligibility).hasSize(1);
+        assertThat(eligibility.get(0).status()).isEqualTo("MISSING");
     }
 
     @Test

@@ -49,7 +49,8 @@ class VsokoMckoReconcileTest {
         ogeRow.setSourceIssue("старое несопоставленное значение");
         when(oge.findAll()).thenReturn(List.of(ogeRow));
 
-        VsokoMckoQueryService service = new VsokoMckoQueryService(mcko, mock(MckoImportFileRepository.class),
+        VsokoMckoQueryService service = new VsokoMckoQueryService(mcko, mock(MckoClassDiagnosticSummaryRepository.class),
+                mock(MckoImportFileRepository.class),
                 mock(MckoTeacherClassAssignmentRepository.class), profiles, names, enrollments,
                 mock(TeacherDirectoryRepository.class), mock(ManualLoadEntryRepository.class), pa, oge, linker);
 

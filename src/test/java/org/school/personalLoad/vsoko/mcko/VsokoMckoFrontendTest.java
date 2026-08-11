@@ -21,6 +21,9 @@ class VsokoMckoFrontendTest {
         assertTrue(hub.contains("/vsoko-interview.html"));
         assertTrue(mcko.contains("multiple"));
         assertTrue(mcko.contains("Скачать Excel как раньше"));
+        assertTrue(mcko.contains("Учебный год"));
+        assertTrue(mcko.contains("Дата работы"));
+        assertTrue(mcko.contains("Предмет"));
         assertTrue(summary.contains("По ребёнку"));
         assertTrue(summary.contains("По классу"));
         assertTrue(interview.contains("Список на печать"));

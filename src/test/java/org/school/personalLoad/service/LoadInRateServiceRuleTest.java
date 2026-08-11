@@ -3,6 +3,8 @@ package org.school.personalLoad.service;
 import org.junit.jupiter.api.Test;
 import org.school.personalLoad.dto.LoadInRateDtos.RuleBandRequest;
 import org.school.personalLoad.dto.LoadInRateDtos.RuleRequest;
+import org.school.personalLoad.dto.LoadInRateDtos.AllocationBatchRequest;
+import org.school.personalLoad.dto.LoadInRateDtos.AllocationUpdate;
 import org.school.personalLoad.model.*;
 import org.school.personalLoad.repository.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -190,6 +192,52 @@ class LoadInRateServiceRuleTest {
 
         assertThrows(ResponseStatusException.class, () -> service.saveRule(null, request));
         verifyNoInteractions(rules);
+    }
+
+    @Test
+    void fractionalHourRangeIsRejected() {
+        RuleRequest request = new RuleRequest("Педагог-психолог", null, true, List.of(100L), List.of(
+                new RuleBandRequest(new BigDecimal("1.5"), new BigDecimal("4"), null, BigDecimal.ONE)
+        ));
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.saveRule(null, request)
+        );
+
+        assertTrue(exception.getReason().contains("целым числом"));
+        verifyNoInteractions(rules);
+    }
+
+    @Test
+    void fractionalIncludedHoursAreRejected() {
+        LoadInRateRule rule = rule(7L, "Преподаватель ОБЗР");
+        EmploymentContract contract = new EmploymentContract();
+        contract.setId(21L);
+        contract.setTeacherId(31L);
+        contract.setPositionName(rule.getName());
+        contract.setActive(true);
+        ManualLoadEntry row = load(101L, 31L, "ОБЗР", "6-А", 5, false);
+
+        when(loads.findById(101L)).thenReturn(java.util.Optional.of(row));
+        when(contracts.findById(21L)).thenReturn(java.util.Optional.of(contract));
+        when(rules.findAll()).thenReturn(List.of(rule));
+        Map<Long, List<LoadInRateSubjectService.AllowedSubject>> allowed = Map.of(
+                7L, List.of(new LoadInRateSubjectService.AllowedSubject(100L, "ОБЗР"))
+        );
+        when(rateSubjects.allowedByRuleIds(List.of(7L))).thenReturn(allowed);
+        when(rateSubjects.allows(eq(7L), nullable(Long.class), eq("ОБЗР"), same(allowed))).thenReturn(true);
+        when(salary.totalHours(row)).thenReturn(new BigDecimal("5"));
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.save("2026/2027", new AllocationBatchRequest(List.of(
+                        new AllocationUpdate(101L, 21L, new BigDecimal("1.5"), null)
+                )), "tester")
+        );
+
+        assertTrue(exception.getReason().contains("целым числом"));
+        verify(loads, never()).save(any());
     }
 
     private LoadInRateRule rule(Long id, String name) {

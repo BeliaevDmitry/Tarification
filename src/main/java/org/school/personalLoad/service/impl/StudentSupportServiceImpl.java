@@ -354,8 +354,8 @@ public class StudentSupportServiceImpl implements StudentSupportService {
                 request.getParticipationMode(),
                 IupParticipationMode.INDIVIDUAL
         );
-        BigDecimal classHours = nonNegative(request.getClassHours(), "Часы с классом");
-        BigDecimal individualHours = nonNegative(request.getIndividualHours(), "Индивидуальные часы");
+        BigDecimal classHours = wholeNonNegative(request.getClassHours(), "Часы с классом");
+        BigDecimal individualHours = wholeNonNegative(request.getIndividualHours(), "Индивидуальные часы");
         validateParticipationHours(mode, classHours, individualHours);
 
         CurriculumPlanEntry curriculumEntry = null;
@@ -417,7 +417,7 @@ public class StudentSupportServiceImpl implements StudentSupportService {
         }
         TeacherDirectoryEntry teacher = teacherDirectoryRepository.findById(request.getTeacherId())
                 .orElseThrow(() -> new IllegalArgumentException("Учитель не найден: " + request.getTeacherId()));
-        BigDecimal hours = positive(request.getHoursPerWeek(), "Часы учителя по ИУП");
+        BigDecimal hours = wholePositive(request.getHoursPerWeek(), "Часы учителя по ИУП");
         LocalDate validFrom = request.getValidFrom() == null ? plan.getValidFrom() : request.getValidFrom();
         LocalDate validTo = request.getValidTo() == null ? plan.getValidTo() : request.getValidTo();
         validateDates(validFrom, validTo, "назначения учителя");
@@ -861,6 +861,24 @@ public class StudentSupportServiceImpl implements StudentSupportService {
         BigDecimal result = nonNegative(value, fieldName);
         requirePositive(result, fieldName + " должны быть больше нуля");
         return result;
+    }
+
+    private BigDecimal wholeNonNegative(BigDecimal value, String fieldName) {
+        BigDecimal result = nonNegative(value, fieldName);
+        requireWhole(result, fieldName);
+        return result;
+    }
+
+    private BigDecimal wholePositive(BigDecimal value, String fieldName) {
+        BigDecimal result = positive(value, fieldName);
+        requireWhole(result, fieldName);
+        return result;
+    }
+
+    private void requireWhole(BigDecimal value, String fieldName) {
+        if (value.stripTrailingZeros().scale() > 0) {
+            throw new IllegalArgumentException(fieldName + " должны быть целым числом");
+        }
     }
 
     private void requirePositive(BigDecimal value, String message) {

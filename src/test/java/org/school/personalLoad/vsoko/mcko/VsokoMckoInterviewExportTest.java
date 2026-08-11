@@ -64,7 +64,8 @@ class VsokoMckoInterviewExportTest {
         PaReportStudentResultRepository pa = mock(PaReportStudentResultRepository.class);
         when(pa.findAllByAcademicYear("2025/2026")).thenReturn(List.of(paRow));
 
-        VsokoMckoQueryService service = new VsokoMckoQueryService(mcko, mock(MckoImportFileRepository.class),
+        VsokoMckoQueryService service = new VsokoMckoQueryService(mcko, mock(MckoClassDiagnosticSummaryRepository.class),
+                mock(MckoImportFileRepository.class),
                 assignments, mock(StudentProfileRepository.class), mock(StudentNameHistoryRepository.class),
                 mock(StudentClassEnrollmentRepository.class), teachers, mock(ManualLoadEntryRepository.class),
                 pa, mock(OgeWorkResultRepository.class), mock(StudentResultLinker.class));

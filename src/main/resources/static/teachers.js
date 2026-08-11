@@ -1305,7 +1305,6 @@ async function deleteMckoSubjectMappings(mckoSubject) {
 }
 
 async function ignoreMckoSubject(mckoSubject) {
-    await deleteMckoSubjectMappings(mckoSubject);
     const subject = mckoSubjectCanonical(mckoSubject);
     const result = await api("/api/mcko/subjects", {
         method: "POST",
@@ -1727,8 +1726,8 @@ async function saveGroupCoefficientSubject(event) {
 
 function settingsRuleBandRow(band = {}) {
     return `<tr data-settings-rule-band>
-        <td><input data-band-min aria-label="Общая нагрузка от, часов" type="number" min="0" step="0.01" value="${escapeHtml(band.minTotalHours ?? 0)}"></td>
-        <td><input data-band-max aria-label="Общая нагрузка до, часов" title="Пусто — без верхней границы" type="number" min="0" step="0.01" value="${escapeHtml(band.maxTotalHours ?? "")}"></td>
+        <td><input data-band-min aria-label="Общая нагрузка от, часов" type="number" min="0" step="1" value="${escapeHtml(band.minTotalHours ?? 0)}"></td>
+        <td><input data-band-max aria-label="Общая нагрузка до, часов" title="Пусто — без верхней границы" type="number" min="0" step="1" value="${escapeHtml(band.maxTotalHours ?? "")}"></td>
         <td><input data-band-fraction aria-label="Размер ставки" title="0,5 — половина ставки; 1 — полная ставка" type="number" min="0.01" step="0.01" value="${escapeHtml(band.rateFraction ?? "")}"></td>
         <td><button type="button" data-remove-settings-band>Удалить</button></td>
     </tr>`;

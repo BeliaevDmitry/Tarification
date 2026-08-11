@@ -81,40 +81,79 @@ public class MckoServiceImpl implements MckoService {
                 .filter(row -> !ignoredMckoSubjects.contains(mckoSubjectKey(row.getMckoSubject())))
                 .toList();
 
-        Map<String, OverviewRequirement> requirements = new LinkedHashMap<>();
+        Map<String, LoadRequirement> loadRequirements = new LinkedHashMap<>();
         manualLoadRepository.findAllByAcademicYear(academicYear).stream()
                 .filter(this::isCoreLoad)
                 .filter(load -> load.getTeacherId() != null)
-                .forEach(load -> activeMappings.stream()
-                        .filter(mapping -> mappingAppliesToLoad(mapping, load))
-                        .filter(mapping -> !isPrimaryClass(load.getClassName()) || isPrimaryMckoSubject(mapping.getMckoSubject()))
-                        .forEach(mapping -> {
-                            String mckoSubject = canonicalMckoSubject(mapping.getMckoSubject());
-                            String key = load.getTeacherId() + "|" + mckoSubjectKey(mckoSubject);
-                            OverviewRequirement requirement = requirements.computeIfAbsent(key,
-                                    ignored -> new OverviewRequirement(load.getTeacherId(), load.getFioTeacher(), mckoSubject));
-                            String rawSubjectName = load.getSubjectName() == null ? mapping.getSubjectName() : load.getSubjectName();
-                            String subjectName = rawSubjectName == null ? "" : rawSubjectName.trim();
-                            if (!subjectName.isBlank()) requirement.curriculumSubjects.add(subjectName);
-                        }));
+                .forEach(load -> {
+                    List<MckoSubjectMapping> applicable = activeMappings.stream()
+                            .filter(mapping -> mappingAppliesToLoad(mapping, load))
+                            .toList();
+                    if (applicable.isEmpty()) return;
+                    String key = load.getTeacherId() + "|" + load.getSubjectId() + "|" + (isPrimaryClass(load.getClassName()) ? "1-4" : "5-11");
+                    LoadRequirement requirement = loadRequirements.computeIfAbsent(key,
+                            ignored -> new LoadRequirement(load.getTeacherId(), load.getFioTeacher()));
+                    String rawSubjectName = load.getSubjectName() == null ? applicable.get(0).getSubjectName() : load.getSubjectName();
+                    String subjectName = rawSubjectName == null ? "" : rawSubjectName.trim();
+                    if (!subjectName.isBlank()) requirement.curriculumSubjects.add(subjectName);
+                    applicable.stream()
+                            .map(MckoSubjectMapping::getMckoSubject)
+                            .map(this::canonicalMckoSubject)
+                            .forEach(subject -> requirement.mckoSubjects.putIfAbsent(mckoSubjectKey(subject), subject));
+                });
 
         Map<String, List<MckoCertificate>> certificates = certificateRepository.findAll().stream()
                 .collect(Collectors.groupingBy(row -> row.getTeacherId() + "|" + mckoSubjectKey(row.getMckoSubject())));
 
-        return requirements.entrySet().stream()
-                .map(entry -> toOverviewRow(entry.getValue(), bestCertificateForOverview(certificates.getOrDefault(entry.getKey(), List.of()))))
+        Map<String, Integer> coverage = new HashMap<>();
+        loadRequirements.values().forEach(requirement -> requirement.mckoSubjects.keySet().forEach(subjectKey ->
+                coverage.merge(requirement.teacherId + "|" + subjectKey, 1, Integer::sum)));
+
+        Map<String, OverviewRequirement> overviewRequirements = new LinkedHashMap<>();
+        loadRequirements.values().forEach(requirement -> {
+            List<MckoCertificate> candidates = requirement.mckoSubjects.keySet().stream()
+                    .flatMap(subjectKey -> certificates.getOrDefault(requirement.teacherId + "|" + subjectKey, List.of()).stream())
+                    .toList();
+            Comparator<MckoCertificate> preferredCertificate = (left, right) -> {
+                int covered = Integer.compare(
+                        coverage.getOrDefault(requirement.teacherId + "|" + mckoSubjectKey(left.getMckoSubject()), 0),
+                        coverage.getOrDefault(requirement.teacherId + "|" + mckoSubjectKey(right.getMckoSubject()), 0));
+                if (covered != 0) return covered;
+                return compareCertificates(left, right);
+            };
+            MckoCertificate selected = candidates.stream()
+                    .filter(this::isActivePassing)
+                    .max(preferredCertificate)
+                    .orElseGet(() -> candidates.stream()
+                            .max(preferredCertificate.thenComparing(MckoCertificate::getDiagnosticDate,
+                                    Comparator.nullsFirst(LocalDate::compareTo)))
+                            .orElse(null));
+            String selectedSubject = selected == null
+                    ? preferredMckoSubject(requirement, coverage)
+                    : canonicalMckoSubject(selected.getMckoSubject());
+            String selectedKey = mckoSubjectKey(selectedSubject);
+            String groupKey = requirement.teacherId + "|" + (selected != null && selected.getId() != null
+                    ? "certificate:" + selected.getId()
+                    : "subject:" + selectedKey);
+            OverviewRequirement overview = overviewRequirements.computeIfAbsent(groupKey,
+                    ignored -> new OverviewRequirement(requirement.teacherId, requirement.teacherFio, selectedSubject, selected));
+            overview.curriculumSubjects.addAll(requirement.curriculumSubjects);
+        });
+
+        return overviewRequirements.values().stream()
+                .map(requirement -> toOverviewRow(requirement, requirement.certificate))
                 .sorted(Comparator.comparing(MckoDtos.OverviewRow::teacherFio, Comparator.nullsLast(String::compareToIgnoreCase))
                         .thenComparing(MckoDtos.OverviewRow::mckoSubject, Comparator.nullsLast(String::compareToIgnoreCase)))
                 .toList();
     }
 
-    private MckoCertificate bestCertificateForOverview(List<MckoCertificate> candidates) {
-        Optional<MckoCertificate> activePassing = candidates.stream()
-                .filter(this::isActivePassing)
-                .max(this::compareCertificates);
-        return activePassing.orElseGet(() -> candidates.stream()
-                .max(Comparator.comparing(MckoCertificate::getDiagnosticDate, Comparator.nullsFirst(LocalDate::compareTo)))
-                .orElse(null));
+    private String preferredMckoSubject(LoadRequirement requirement, Map<String, Integer> coverage) {
+        return requirement.mckoSubjects.entrySet().stream()
+                .max(Comparator.<Map.Entry<String, String>>comparingInt(entry ->
+                                coverage.getOrDefault(requirement.teacherId + "|" + entry.getKey(), 0))
+                        .thenComparing(Map.Entry::getValue, String.CASE_INSENSITIVE_ORDER))
+                .map(Map.Entry::getValue)
+                .orElse("");
     }
 
     private MckoDtos.OverviewRow toOverviewRow(OverviewRequirement requirement, MckoCertificate cert) {
@@ -138,12 +177,26 @@ public class MckoServiceImpl implements MckoService {
         private final Long teacherId;
         private final String teacherFio;
         private final String mckoSubject;
+        private final MckoCertificate certificate;
         private final Set<String> curriculumSubjects = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 
-        private OverviewRequirement(Long teacherId, String teacherFio, String mckoSubject) {
+        private OverviewRequirement(Long teacherId, String teacherFio, String mckoSubject, MckoCertificate certificate) {
             this.teacherId = teacherId;
             this.teacherFio = teacherFio;
             this.mckoSubject = mckoSubject;
+            this.certificate = certificate;
+        }
+    }
+
+    private static final class LoadRequirement {
+        private final Long teacherId;
+        private final String teacherFio;
+        private final Set<String> curriculumSubjects = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        private final Map<String, String> mckoSubjects = new LinkedHashMap<>();
+
+        private LoadRequirement(Long teacherId, String teacherFio) {
+            this.teacherId = teacherId;
+            this.teacherFio = teacherFio;
         }
     }
 
@@ -310,12 +363,13 @@ public class MckoServiceImpl implements MckoService {
     public MckoDtos.SubjectMappingRow ignoreSubject(String mckoSubject) {
         String mcko = canonicalMckoSubject(required(mckoSubject, "Предмет МЦКО"));
         List<MckoSubjectMapping> existing = mappingRepository.findAllByMckoSubjectIgnoreCase(mcko);
-        existing.stream()
-                .filter(row -> !row.isIgnored())
-                .forEach(row -> mappingRepository.deleteById(row.getId()));
         Optional<MckoSubjectMapping> ignored = existing.stream().filter(MckoSubjectMapping::isIgnored).findFirst();
         if (ignored.isPresent()) {
             return toMappingRow(ignored.get());
+        }
+        if (!existing.isEmpty()) {
+            mappingRepository.deleteAll(existing);
+            mappingRepository.flush();
         }
         MckoSubjectMapping row = new MckoSubjectMapping();
         row.setMckoSubject(mcko);
@@ -494,6 +548,7 @@ public class MckoServiceImpl implements MckoService {
 
     private boolean mappingAppliesToLoad(MckoSubjectMapping mapping, ManualLoadEntry load) {
         return Objects.equals(mapping.getSubjectId(), load.getSubjectId())
+                && isPrimaryClass(load.getClassName()) == isPrimaryMckoSubject(mapping.getMckoSubject())
                 && gradeBandMatches(mapping.getGradeBand(), load.getClassName());
     }
 

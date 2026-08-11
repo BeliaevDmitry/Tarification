@@ -17,6 +17,9 @@ create table if not exists vsoko_mcko_import_file (
     content_type varchar(255),
     file_size bigint not null default 0,
     file_kind varchar(80),
+    detected_academic_year varchar(500),
+    detected_work_date varchar(1000),
+    detected_subject varchar(2000),
     status varchar(30) not null default 'PROCESSING',
     reason varchar(4000),
     total_rows integer not null default 0,
@@ -27,6 +30,58 @@ create table if not exists vsoko_mcko_import_file (
 
 create index if not exists idx_vsoko_mcko_import_file_batch on vsoko_mcko_import_file(batch_id);
 create index if not exists idx_vsoko_mcko_import_file_status on vsoko_mcko_import_file(status);
+
+alter table if exists vsoko_mcko_import_file add column if not exists detected_academic_year varchar(500);
+alter table if exists vsoko_mcko_import_file add column if not exists detected_work_date varchar(1000);
+alter table if exists vsoko_mcko_import_file add column if not exists detected_subject varchar(2000);
+
+create table if not exists vsoko_mcko_participant_roster (
+    id bigserial primary key,
+    student_id bigint references student_profile(id),
+    student_fio varchar(500) not null,
+    student_code varchar(100),
+    student_link_status varchar(40) not null default 'NOT_FOUND',
+    student_link_message varchar(1000),
+    student_number integer not null,
+    class_name varchar(100) not null,
+    subject_name varchar(500) not null,
+    work_date date,
+    academic_year varchar(20) not null,
+    school_name varchar(500),
+    source_file_id bigint references vsoko_mcko_import_file(id),
+    fingerprint varchar(64) not null,
+    created_at timestamp not null default now(),
+    updated_at timestamp not null default now(),
+    constraint uk_vsoko_mcko_roster_fingerprint unique (fingerprint)
+);
+
+create index if not exists idx_vsoko_mcko_roster_work
+    on vsoko_mcko_participant_roster(academic_year, class_name, subject_name, work_date);
+create index if not exists idx_vsoko_mcko_roster_code on vsoko_mcko_participant_roster(student_code);
+create index if not exists idx_vsoko_mcko_roster_student on vsoko_mcko_participant_roster(student_id);
+
+create table if not exists vsoko_mcko_class_summary (
+    id bigserial primary key,
+    academic_year varchar(20) not null,
+    class_name varchar(100) not null,
+    subject_name varchar(500) not null,
+    diagnostic_date date,
+    school_name varchar(500),
+    result_kind varchar(40) not null,
+    participant_count integer,
+    average_score double precision,
+    average_percent double precision,
+    city_percent double precision,
+    source_file_id bigint references vsoko_mcko_import_file(id),
+    fingerprint varchar(64) not null,
+    created_at timestamp not null default now(),
+    updated_at timestamp not null default now(),
+    constraint uk_vsoko_mcko_class_summary_fingerprint unique (fingerprint)
+);
+
+create index if not exists idx_vsoko_mcko_class_summary_work
+    on vsoko_mcko_class_summary(academic_year, class_name, subject_name, diagnostic_date);
+create index if not exists idx_vsoko_mcko_class_summary_source on vsoko_mcko_class_summary(source_file_id);
 
 create table if not exists vsoko_mcko_teacher_class_assignment (
     id bigserial primary key,

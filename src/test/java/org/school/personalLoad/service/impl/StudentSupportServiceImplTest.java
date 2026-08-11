@@ -10,11 +10,13 @@ import org.school.personalLoad.model.ContingentSnapshot;
 import org.school.personalLoad.model.ContingentStudent;
 import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.IupParticipationMode;
+import org.school.personalLoad.model.IupSubjectLine;
 import org.school.personalLoad.model.IupPlan;
 import org.school.personalLoad.model.IupStatus;
 import org.school.personalLoad.model.StudentCategory;
 import org.school.personalLoad.model.StudentProfile;
 import org.school.personalLoad.model.StudentSupportStatus;
+import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ContingentSnapshotRepository;
 import org.school.personalLoad.repository.ContingentStudentRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
@@ -168,6 +170,84 @@ class StudentSupportServiceImplTest {
         );
 
         assertTrue(exception.getMessage().contains("выберите группу"));
+    }
+
+    @Test
+    void fractionalIupSubjectHoursAreRejected() {
+        StudentProfile student = profile(1L, "Иванов Иван");
+        StudentSupportDtos.SubjectLineRequest subject = new StudentSupportDtos.SubjectLineRequest();
+        subject.setSubjectName("Математика");
+        subject.setParticipationMode(IupParticipationMode.INDIVIDUAL);
+        subject.setClassHours(BigDecimal.ZERO);
+        subject.setIndividualHours(new BigDecimal("1.5"));
+
+        StudentSupportDtos.IupSaveRequest request = draftIupRequest(subject);
+        when(studentProfileRepository.findById(1L)).thenReturn(Optional.of(student));
+        when(iupPlanRepository.findAllByStudent_IdAndAcademicYearOrderByVersionNumberDesc(1L, YEAR))
+                .thenReturn(List.of());
+        when(iupPlanRepository.save(any(IupPlan.class))).thenAnswer(invocation -> {
+            IupPlan plan = invocation.getArgument(0);
+            plan.setId(50L);
+            return plan;
+        });
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.saveIup(YEAR, request)
+        );
+
+        assertTrue(exception.getMessage().contains("целым числом"));
+    }
+
+    @Test
+    void fractionalTeacherHoursAreRejected() {
+        StudentProfile student = profile(1L, "Иванов Иван");
+        TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
+        teacher.setId(7L);
+        teacher.setFioTeacher("Петров Пётр");
+
+        StudentSupportDtos.TeacherAssignmentRequest assignment =
+                new StudentSupportDtos.TeacherAssignmentRequest();
+        assignment.setTeacherId(7L);
+        assignment.setHoursPerWeek(new BigDecimal("1.5"));
+
+        StudentSupportDtos.SubjectLineRequest subject = new StudentSupportDtos.SubjectLineRequest();
+        subject.setSubjectName("Математика");
+        subject.setParticipationMode(IupParticipationMode.INDIVIDUAL);
+        subject.setClassHours(BigDecimal.ZERO);
+        subject.setIndividualHours(BigDecimal.ONE);
+        subject.setTeachers(List.of(assignment));
+
+        StudentSupportDtos.IupSaveRequest request = draftIupRequest(subject);
+        when(studentProfileRepository.findById(1L)).thenReturn(Optional.of(student));
+        when(iupPlanRepository.findAllByStudent_IdAndAcademicYearOrderByVersionNumberDesc(1L, YEAR))
+                .thenReturn(List.of());
+        when(iupPlanRepository.save(any(IupPlan.class))).thenAnswer(invocation -> {
+            IupPlan plan = invocation.getArgument(0);
+            plan.setId(50L);
+            return plan;
+        });
+        when(iupSubjectLineRepository.save(any(IupSubjectLine.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(teacherDirectoryRepository.findById(7L)).thenReturn(Optional.of(teacher));
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.saveIup(YEAR, request)
+        );
+
+        assertTrue(exception.getMessage().contains("целым числом"));
+    }
+
+    private StudentSupportDtos.IupSaveRequest draftIupRequest(
+            StudentSupportDtos.SubjectLineRequest subject
+    ) {
+        StudentSupportDtos.IupSaveRequest request = new StudentSupportDtos.IupSaveRequest();
+        request.setStudentId(1L);
+        request.setStatus(IupStatus.DRAFT);
+        request.setValidFrom(DATE);
+        request.setSubjects(List.of(subject));
+        return request;
     }
 
     private ContingentSnapshot snapshot() {

@@ -33,6 +33,15 @@ public class MckoImportFile {
     @Column(name = "file_kind", length = 80)
     private String fileKind;
 
+    @Column(name = "detected_academic_year", length = 500)
+    private String detectedAcademicYear;
+
+    @Column(name = "detected_work_date", length = 1000)
+    private String detectedWorkDate;
+
+    @Column(name = "detected_subject", length = 2000)
+    private String detectedSubject;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
     private MckoFileStatus status = MckoFileStatus.PROCESSING;

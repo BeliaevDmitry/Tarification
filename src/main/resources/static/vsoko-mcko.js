@@ -36,9 +36,11 @@ async function uploadFiles() {
 async function loadHistory() {
     const rows = await mckoApi('/api/vsoko/mcko/imports');
     document.getElementById('mcko-history-body').innerHTML = rows.length ? rows.map(row => `<tr>
-        <td>${esc(row.fileName)}</td><td>${esc(row.fileKind || '—')}</td><td><span class="mcko-status mcko-status-${esc(row.status)}">${esc(statusLabel(row.status))}</span></td>
+        <td>${esc(row.fileName)}</td><td>${esc(row.fileKind || '—')}</td><td>${esc(row.detectedAcademicYear || '—')}</td>
+        <td>${esc(row.detectedWorkDate || '—')}</td><td>${esc(row.detectedSubject || '—')}</td>
+        <td><span class="mcko-status mcko-status-${esc(row.status)}">${esc(statusLabel(row.status))}</span></td>
         <td class="mcko-number">${row.totalRows}</td><td class="mcko-number">${row.importedRows}</td><td class="mcko-number">${row.skippedRows}</td>
-        <td>${esc(row.reason || '—')}</td><td>${row.processedAt ? new Date(row.processedAt).toLocaleString('ru-RU') : '—'}</td></tr>`).join('') : '<tr><td colspan="8" class="mcko-empty">Файлы ещё не загружались</td></tr>';
+        <td>${esc(row.reason || '—')}</td><td>${row.processedAt ? new Date(row.processedAt).toLocaleString('ru-RU') : '—'}</td></tr>`).join('') : '<tr><td colspan="11" class="mcko-empty">Файлы ещё не загружались</td></tr>';
 }
 async function loadFilters() {
     const data = await mckoApi('/api/vsoko/mcko/filters');

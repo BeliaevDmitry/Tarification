@@ -52,8 +52,8 @@ public class LoadInRateService {
         for (RuleBandRequest bandRequest : requestedBands) {
             LoadInRateRuleBand band = new LoadInRateRuleBand();
             band.setRuleId(rule.getId());
-            band.setMinTotalHours(nonNegative(bandRequest.minTotalHours()));
-            band.setMaxTotalHours(nullableNonNegative(bandRequest.maxTotalHours()));
+            band.setMinTotalHours(wholeNonNegative(bandRequest.minTotalHours(), "Минимум часов"));
+            band.setMaxTotalHours(nullableWholeNonNegative(bandRequest.maxTotalHours(), "Максимум часов"));
             band.setSuggestedIncludedHours(Optional.ofNullable(band.getMaxTotalHours()).orElse(BigDecimal.ZERO));
             band.setRateFraction(positive(bandRequest.rateFraction(), "Доля ставки"));
             if (band.getMaxTotalHours() != null
@@ -189,7 +189,7 @@ public class LoadInRateService {
                                 + "» не разрешён для ставки по должности «" + contract.getPositionName() + "»");
             }
             BigDecimal total = salaryCalculationService.totalHours(row);
-            BigDecimal included = nonNegative(update.includedHours());
+            BigDecimal included = wholeNonNegative(update.includedHours(), "Часы внутри ставки");
             if (included.compareTo(total) > 0) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Часов внутри ставки не может быть больше общей нагрузки");
@@ -292,13 +292,13 @@ public class LoadInRateService {
                     "Добавьте хотя бы один диапазон нагрузки");
         }
         List<RuleBandRequest> sorted = bands.stream()
-                .sorted(Comparator.comparing(band -> nonNegative(band.minTotalHours())))
+                .sorted(Comparator.comparing(band -> wholeNonNegative(band.minTotalHours(), "Минимум часов")))
                 .toList();
         BigDecimal previousMax = null;
         boolean first = true;
         for (RuleBandRequest band : sorted) {
-            BigDecimal min = nonNegative(band.minTotalHours());
-            BigDecimal max = nullableNonNegative(band.maxTotalHours());
+            BigDecimal min = wholeNonNegative(band.minTotalHours(), "Минимум часов");
+            BigDecimal max = nullableWholeNonNegative(band.maxTotalHours(), "Максимум часов");
             if (max != null && max.compareTo(min) < 0) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Верхняя граница диапазона не может быть меньше нижней");
@@ -457,8 +457,17 @@ public class LoadInRateService {
         return normalized;
     }
 
-    private BigDecimal nullableNonNegative(BigDecimal value) {
-        return value == null ? null : nonNegative(value);
+    private BigDecimal wholeNonNegative(BigDecimal value, String fieldName) {
+        BigDecimal normalized = nonNegative(value);
+        if (normalized.stripTrailingZeros().scale() > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    fieldName + " должны быть целым числом");
+        }
+        return normalized;
+    }
+
+    private BigDecimal nullableWholeNonNegative(BigDecimal value, String fieldName) {
+        return value == null ? null : wholeNonNegative(value, fieldName);
     }
 
     private BigDecimal positive(BigDecimal value,String label){
