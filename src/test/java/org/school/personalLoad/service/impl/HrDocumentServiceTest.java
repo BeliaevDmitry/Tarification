@@ -1233,27 +1233,20 @@ class HrDocumentServiceTest {
         }
     }
 
-    @Test void agreementListRepairsOldClause21ForAlreadyAllocatedHoursInsideRate() {
+    @Test void agreementListDoesNotRecalculateEveryAgreementWhenPageIsOpened() {
         AdditionalAgreement agreement=draftAgreement();
         agreement.setRegistryManaged(true);
         agreement.setConditionsJson("Внести изменения в пункт 2.1. раздела 2 «Оплата труда», изложив его в следующей редакции:\n"
                 +"«2.1. За исполнение трудовых обязанностей Работнику выплачивается должностной оклад, "
                 +"определяемый по ученико-часу и педагогической нагрузке в размере 5 часов».");
-        ManualLoadEntry load=new ManualLoadEntry();
-        load.setId(101L);load.setTeacherId(1L);load.setAcademicYear("2025/2026");
-        load.setSubjectName("ОБЗР");load.setClassName("9-Р");load.setLoad(5);
-        load.setIncludedInRateHours(new BigDecimal("4"));load.setInRateAllocationConfirmed(true);
-        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load));
         when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026")).thenReturn(List.of(agreement));
 
         var rows=service.agreementRows("2025/2026");
 
-        String conditions=rows.get(0).agreement().conditionsJson();
-        assertTrue(conditions.contains("В установленную Работнику педагогическую нагрузку, входящую в ставку заработной платы"));
-        assertTrue(conditions.contains("— 4 часа ОБЗР, 9-Р."));
-        assertTrue(conditions.contains("Дополнительная оплата за указанные часы сверх установленной заработной платы по ставке не производится.»"));
-        assertFalse(conditions.contains("педагогической нагрузке в размере 5 часов"));
-        verify(agreements).save(agreement);
+        assertEquals(1,rows.size());
+        assertTrue(rows.get(0).agreement().conditionsJson().contains("педагогической нагрузке в размере 5 часов"));
+        verify(loads,never()).findAllByAcademicYear("2025/2026");
+        verify(agreements,never()).save(agreement);
     }
 
     @Test void agreementCannotBePreparedBeforeInRateAllocationIsConfirmed() {
