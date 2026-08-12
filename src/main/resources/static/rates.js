@@ -50,6 +50,29 @@ function formatMoney(value) {
     }).format(Number(value || 0));
 }
 
+function rateRange(minimum, maximum) {
+    if (minimum == null) return "диапазон не определён";
+    return maximum == null
+        ? `диапазон от ${formatNumber(minimum)} ч.`
+        : `диапазон ${formatNumber(minimum)}–${formatNumber(maximum)} ч.`;
+}
+
+function rateSummary(teacher, half) {
+    const suffix = half === 1 ? "H1" : "H2";
+    const total = teacher?.[`totalHours${suffix}`];
+    const included = teacher?.[`includedHours${suffix}`];
+    const paid = teacher?.[`paidHours${suffix}`];
+    const fraction = teacher?.[`rateFraction${suffix}`];
+    const fixedSalary = teacher?.[`fixedMonthlySalary${suffix}`];
+    const minimum = teacher?.[`matchedRangeMinHours${suffix}`];
+    const maximum = teacher?.[`matchedRangeMaxHours${suffix}`];
+    const fixed = Number(fixedSalary || 0) > 0
+        ? `; фиксированная оплата ${formatMoney(fixedSalary)} руб./мес.` : "";
+    return `общая нагрузка ${formatNumber(total)} ч.; внутри ставки ${formatNumber(included)} ч.; `
+        + `отдельно оплачивается ${formatNumber(paid)} ч.; ${rateRange(minimum, maximum)}; `
+        + `размер ставки ${fraction == null ? "не определён" : formatNumber(fraction)}${fixed}`;
+}
+
 function wholeHours(input, label = "Часы") {
     const value = Number(input?.value || 0);
     if (!Number.isInteger(value)) {
@@ -106,11 +129,8 @@ function render() {
                 data-teacher-key="${esc(key)}"
                 data-study-period="${esc(row.studyPeriod || "YEAR")}">`;
             html += `<td>${first ? `<b>${esc(row.fio)}</b><br>№ ${esc(row.contractNumber)} · ${esc(row.positionName)}
-                <br><span class="muted">Всего ${esc(formatNumber(teacher?.totalHoursH1))}/${esc(formatNumber(teacher?.totalHoursH2))};
-                в ставке ${esc(formatNumber(teacher?.includedHoursH1))}/${esc(formatNumber(teacher?.includedHoursH2))};
-                ещё можно ${esc(formatNumber(teacher?.remainingCapacityHoursH1))}/${esc(formatNumber(teacher?.remainingCapacityHoursH2))};
-                к оплате ${esc(formatNumber(teacher?.paidHoursH1))}/${esc(formatNumber(teacher?.paidHoursH2))};
-                ставка ${esc(formatNumber(teacher?.rateFractionH1))}/${esc(formatNumber(teacher?.rateFractionH2))}</span>` : ""}</td>`;
+                <br><span class="muted">1 полугодие: ${esc(rateSummary(teacher, 1))}<br>
+                2 полугодие: ${esc(rateSummary(teacher, 2))}</span>` : ""}</td>`;
             html += `<td>${esc(row.building)}</td>`;
             html += `<td>${esc(row.subject)}</td>`;
             html += `<td>${esc([row.className, row.groupName].filter(Boolean).join(" "))}</td>`;

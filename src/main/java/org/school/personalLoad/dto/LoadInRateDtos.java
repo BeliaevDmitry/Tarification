@@ -13,8 +13,13 @@ public final class LoadInRateDtos {
             BigDecimal minTotalHours,
             BigDecimal maxTotalHours,
             BigDecimal suggestedIncludedHours,
-            BigDecimal rateFraction
+            BigDecimal rateFraction,
+            BigDecimal fixedMonthlySalary
     ) {
+        public RuleBandRequest(BigDecimal minTotalHours, BigDecimal maxTotalHours,
+                               BigDecimal suggestedIncludedHours, BigDecimal rateFraction) {
+            this(minTotalHours, maxTotalHours, suggestedIncludedHours, rateFraction, BigDecimal.ZERO);
+        }
     }
 
     public record RuleRequest(
@@ -34,7 +39,8 @@ public final class LoadInRateDtos {
             BigDecimal minTotalHours,
             BigDecimal maxTotalHours,
             BigDecimal suggestedIncludedHours,
-            BigDecimal rateFraction
+            BigDecimal rateFraction,
+            BigDecimal fixedMonthlySalary
     ) {
     }
 
@@ -110,6 +116,12 @@ public final class LoadInRateDtos {
             BigDecimal remainingCapacityHoursH2,
             BigDecimal rateFractionH1,
             BigDecimal rateFractionH2,
+            BigDecimal fixedMonthlySalaryH1,
+            BigDecimal fixedMonthlySalaryH2,
+            BigDecimal matchedRangeMinHoursH1,
+            BigDecimal matchedRangeMaxHoursH1,
+            BigDecimal matchedRangeMinHoursH2,
+            BigDecimal matchedRangeMaxHoursH2,
             boolean complete,
             int unresolvedRows
     ) {

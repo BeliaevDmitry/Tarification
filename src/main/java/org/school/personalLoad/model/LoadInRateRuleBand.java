@@ -27,4 +27,7 @@ public class LoadInRateRuleBand {
 
     @Column(name = "rate_fraction", precision = 5, scale = 2)
     private BigDecimal rateFraction;
+
+    @Column(name = "fixed_monthly_salary", precision = 12, scale = 2)
+    private BigDecimal fixedMonthlySalary = BigDecimal.ZERO;
 }

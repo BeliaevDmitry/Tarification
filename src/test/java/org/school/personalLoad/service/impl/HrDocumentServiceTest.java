@@ -1198,12 +1198,17 @@ class HrDocumentServiceTest {
                     .reduce("",(left,right)->left+"\n"+right)
                     +document.getTables().stream().map(XWPFTable::getText).reduce("",String::concat);
             assertTrue(text.contains("«2.1. За исполнение трудовых (должностных) обязанностей, предусмотренных должностной инструкцией "
-                    +"и настоящим Трудовым договором, Работнику выплачивается заработная плата в соответствии с установленными Работнику условиями оплаты труда."));
+                    +"и настоящим Трудовым договором, Работнику выплачивается заработная плата, которая состоит из:"));
+            assertTrue(text.contains("должностного оклада в размере 12 580 рублей 00 коп. "
+                    +"(двенадцать тысяч пятьсот восемьдесят рублей 00 коп.) в месяц"));
+            assertTrue(text.contains("педагогической нагрузки в размере 6 часов."));
             assertTrue(text.contains("В установленную Работнику педагогическую нагрузку, входящую в ставку заработной платы, включаются следующие часы:"));
             assertTrue(text.contains("— 4 часа ОБЗР, 7-А;"));
             assertTrue(text.contains("— 2 часа ОБЗР, 8-Б."));
             assertTrue(text.contains("Указанные часы являются частью установленной Работнику педагогической нагрузки и учтены при определении размера заработной платы по ставке."));
             assertTrue(text.contains("Дополнительная оплата за указанные часы сверх установленной заработной платы по ставке не производится.»"));
+            assertFalse(text.contains("педагогической нагрузки в размере 12 часов"),
+                    "В оплачиваемый оклад должны попадать только часы сверх ставки");
             assertFalse(text.contains("В педагогическую нагрузку Работника также включено"));
             XWPFParagraph warning=document.getParagraphs().stream()
                     .filter(paragraph->paragraph.getText().contains("Дополнительная оплата за указанные часы"))
@@ -1226,6 +1231,29 @@ class HrDocumentServiceTest {
             Path path=Path.of(qaOutput);Files.createDirectories(path.getParent());
             Files.write(path,prepared.getCurrentDocument());
         }
+    }
+
+    @Test void agreementListRepairsOldClause21ForAlreadyAllocatedHoursInsideRate() {
+        AdditionalAgreement agreement=draftAgreement();
+        agreement.setRegistryManaged(true);
+        agreement.setConditionsJson("Внести изменения в пункт 2.1. раздела 2 «Оплата труда», изложив его в следующей редакции:\n"
+                +"«2.1. За исполнение трудовых обязанностей Работнику выплачивается должностной оклад, "
+                +"определяемый по ученико-часу и педагогической нагрузке в размере 5 часов».");
+        ManualLoadEntry load=new ManualLoadEntry();
+        load.setId(101L);load.setTeacherId(1L);load.setAcademicYear("2025/2026");
+        load.setSubjectName("ОБЗР");load.setClassName("9-Р");load.setLoad(5);
+        load.setIncludedInRateHours(new BigDecimal("4"));load.setInRateAllocationConfirmed(true);
+        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load));
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026")).thenReturn(List.of(agreement));
+
+        var rows=service.agreementRows("2025/2026");
+
+        String conditions=rows.get(0).agreement().conditionsJson();
+        assertTrue(conditions.contains("В установленную Работнику педагогическую нагрузку, входящую в ставку заработной платы"));
+        assertTrue(conditions.contains("— 4 часа ОБЗР, 9-Р."));
+        assertTrue(conditions.contains("Дополнительная оплата за указанные часы сверх установленной заработной платы по ставке не производится.»"));
+        assertFalse(conditions.contains("педагогической нагрузке в размере 5 часов"));
+        verify(agreements).save(agreement);
     }
 
     @Test void agreementCannotBePreparedBeforeInRateAllocationIsConfirmed() {

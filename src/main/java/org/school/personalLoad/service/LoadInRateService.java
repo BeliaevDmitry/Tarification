@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.function.Function;
@@ -56,6 +57,8 @@ public class LoadInRateService {
             band.setMaxTotalHours(nullableWholeNonNegative(bandRequest.maxTotalHours(), "Максимум часов"));
             band.setSuggestedIncludedHours(Optional.ofNullable(band.getMaxTotalHours()).orElse(BigDecimal.ZERO));
             band.setRateFraction(positive(bandRequest.rateFraction(), "Доля ставки"));
+            band.setFixedMonthlySalary(moneyNonNegative(
+                    bandRequest.fixedMonthlySalary(), "Фиксированная оплата в месяц"));
             if (band.getMaxTotalHours() != null
                     && band.getMaxTotalHours().compareTo(band.getMinTotalHours()) < 0) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -250,6 +253,8 @@ public class LoadInRateService {
                     suggestion, suggestedFraction,
                     capacityH1, capacityH2, remainingH1, remainingH2,
                     rateFraction(bandH1), rateFraction(bandH2),
+                    fixedMonthlySalary(bandH1), fixedMonthlySalary(bandH2),
+                    bandMin(bandH1), bandMax(bandH1), bandMin(bandH2), bandMax(bandH2),
                     unresolved == 0, unresolved
             ));
         }
@@ -369,6 +374,19 @@ public class LoadInRateService {
         return band==null?null:band.getRateFraction();
     }
 
+    private BigDecimal fixedMonthlySalary(LoadInRateRuleBand band){
+        return band==null?BigDecimal.ZERO:Optional.ofNullable(band.getFixedMonthlySalary())
+                .orElse(BigDecimal.ZERO).setScale(2,RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal bandMin(LoadInRateRuleBand band){
+        return band==null?null:band.getMinTotalHours();
+    }
+
+    private BigDecimal bandMax(LoadInRateRuleBand band){
+        return band==null?null:band.getMaxTotalHours();
+    }
+
     private void validateCapacity(TeacherSummary summary){
         if(summary.includedHoursH1().compareTo(summary.capacityHoursH1())>0
                 ||summary.includedHoursH2().compareTo(summary.capacityHoursH2())>0){
@@ -389,7 +407,8 @@ public class LoadInRateService {
     private RuleView view(LoadInRateRule rule) {
         List<RuleBandView> bands = bandRepository.findAllByRuleIdOrderByMinTotalHoursAsc(rule.getId()).stream()
                 .map(band -> new RuleBandView(band.getId(), band.getMinTotalHours(), band.getMaxTotalHours(),
-                        band.getSuggestedIncludedHours(), band.getRateFraction()))
+                        band.getSuggestedIncludedHours(), band.getRateFraction(),
+                        Optional.ofNullable(band.getFixedMonthlySalary()).orElse(BigDecimal.ZERO)))
                 .toList();
         List<AllowedSubjectView> subjects = subjectService.allowedForRule(rule.getId()).stream()
                 .map(subject -> new AllowedSubjectView(subject.id(), subject.name()))
@@ -474,6 +493,13 @@ public class LoadInRateService {
         BigDecimal normalized=nonNegative(value);
         if(normalized.signum()==0)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,label+" должна быть больше нуля");
         return normalized;
+    }
+
+    private BigDecimal moneyNonNegative(BigDecimal value,String label){
+        BigDecimal normalized=Optional.ofNullable(value).orElse(BigDecimal.ZERO);
+        if(normalized.signum()<0)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,label+" не может быть отрицательной");
+        return normalized.setScale(2,RoundingMode.HALF_UP);
     }
 
     private String required(String value, String label) {

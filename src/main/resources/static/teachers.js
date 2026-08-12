@@ -34,6 +34,7 @@ const ui = {
     settingsNewRuleMin: document.getElementById("settings-new-rule-min"),
     settingsNewRuleMax: document.getElementById("settings-new-rule-max"),
     settingsNewRuleFraction: document.getElementById("settings-new-rule-fraction"),
+    settingsNewRuleFixedSalary: document.getElementById("settings-new-rule-fixed-salary"),
     settingsAddInRateRuleBtn: document.getElementById("settings-add-in-rate-rule-btn"),
     coefficientsPanel: document.getElementById("teachers-coefficients-panel"),
     groupCoefficientsPanel: document.getElementById("teachers-group-coefficients-panel"),
@@ -1729,6 +1730,7 @@ function settingsRuleBandRow(band = {}) {
         <td><input data-band-min aria-label="Общая нагрузка от, часов" type="number" min="0" step="1" value="${escapeHtml(band.minTotalHours ?? 0)}"></td>
         <td><input data-band-max aria-label="Общая нагрузка до, часов" title="Пусто — без верхней границы" type="number" min="0" step="1" value="${escapeHtml(band.maxTotalHours ?? "")}"></td>
         <td><input data-band-fraction aria-label="Размер ставки" title="0,5 — половина ставки; 1 — полная ставка" type="number" min="0.01" step="0.01" value="${escapeHtml(band.rateFraction ?? "")}"></td>
+        <td><input data-band-fixed-salary aria-label="Фиксированная оплата в месяц" type="number" min="0" step="0.01" value="${escapeHtml(band.fixedMonthlySalary ?? 0)}"></td>
         <td><button type="button" data-remove-settings-band>Удалить</button></td>
     </tr>`;
 }
@@ -1759,7 +1761,8 @@ function renderSettingsInRateRules() {
             <table class="sheet-table"><thead><tr>
                 <th>Общая нагрузка<br>от, часов</th>
                 <th>Общая нагрузка<br>до, часов</th>
-                <th>Размер<br>ставки</th><th></th>
+                <th>Размер<br>ставки</th>
+                <th>Фиксированная оплата<br>в месяц, руб.</th><th></th>
             </tr></thead><tbody data-rule-bands>${(rule.bands || []).map(settingsRuleBandRow).join("")}</tbody></table>
             <div class="row">
                 <button type="button" data-add-settings-band>Добавить диапазон</button>
@@ -1782,7 +1785,8 @@ function settingsRuleRequest(card) {
             minTotalHours: Number(row.querySelector("[data-band-min]").value || 0),
             maxTotalHours: row.querySelector("[data-band-max]").value === "" ? null : Number(row.querySelector("[data-band-max]").value),
             suggestedIncludedHours: null,
-            rateFraction: row.querySelector("[data-band-fraction]").value === "" ? null : Number(row.querySelector("[data-band-fraction]").value)
+            rateFraction: row.querySelector("[data-band-fraction]").value === "" ? null : Number(row.querySelector("[data-band-fraction]").value),
+            fixedMonthlySalary: Number(row.querySelector("[data-band-fixed-salary]").value || 0)
         }))
     };
 }
@@ -1823,13 +1827,15 @@ async function addSettingsInRateRule() {
                 minTotalHours: Number(ui.settingsNewRuleMin.value || 0),
                 maxTotalHours: ui.settingsNewRuleMax.value === "" ? null : Number(ui.settingsNewRuleMax.value),
                 suggestedIncludedHours: null,
-                rateFraction: ui.settingsNewRuleFraction.value === "" ? null : Number(ui.settingsNewRuleFraction.value)
+                rateFraction: ui.settingsNewRuleFraction.value === "" ? null : Number(ui.settingsNewRuleFraction.value),
+                fixedMonthlySalary: Number(ui.settingsNewRuleFixedSalary.value || 0)
             }]
         })
     });
     ui.settingsNewRuleMin.value = "1";
     ui.settingsNewRuleMax.value = "";
     ui.settingsNewRuleFraction.value = "";
+    ui.settingsNewRuleFixedSalary.value = "0";
     if (ui.settingsNewRuleSubjects) ui.settingsNewRuleSubjects.selectedIndex = -1;
     await reloadSettingsInRateRules();
 }
