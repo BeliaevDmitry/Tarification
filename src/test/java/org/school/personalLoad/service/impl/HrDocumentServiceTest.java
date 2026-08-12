@@ -1177,11 +1177,16 @@ class HrDocumentServiceTest {
         contract.setLoadHoursMayBeIncludedInRate(true);
         AdditionalAgreement agreement=draftAgreement();
         ManualLoadEntry load=new ManualLoadEntry();load.setTeacherId(1L);load.setAcademicYear("2025/2026");
+        load.setId(101L);
         load.setSubjectName("ОБЗР");load.setClassName("7-А");load.setLoad(10);
         load.setIncludedInRateHours(new BigDecimal("4"));load.setInRateAllocationConfirmed(true);
         load.setInRateReason("внутри ставки преподавателя ОБЗР");
-        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load));
-        when(sizes.effectiveClassSizes("2025/2026")).thenReturn(Map.of("7-а",20));
+        ManualLoadEntry second=new ManualLoadEntry();second.setTeacherId(1L);second.setAcademicYear("2025/2026");
+        second.setId(102L);second.setSubjectName("ОБЗР");second.setClassName("8-Б");second.setLoad(2);
+        second.setIncludedInRateHours(new BigDecimal("2"));second.setInRateAllocationConfirmed(true);
+        second.setInRateReason("внутри ставки преподавателя ОБЗР");
+        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load,second));
+        when(sizes.effectiveClassSizes("2025/2026")).thenReturn(Map.of("7-а",20,"8-б",20));
         when(agreements.findById(100L)).thenReturn(Optional.of(agreement));
         when(personal.findByTeacherId(1L)).thenReturn(Optional.of(completePersonal()));
 
@@ -1192,15 +1197,34 @@ class HrDocumentServiceTest {
             String text=document.getParagraphs().stream().map(XWPFParagraph::getText)
                     .reduce("",(left,right)->left+"\n"+right)
                     +document.getTables().stream().map(XWPFTable::getText).reduce("",String::concat);
-            assertTrue(text.contains("педагогической нагрузки в размере 6 часов"));
-            assertTrue(text.contains("В педагогическую нагрузку Работника также включено 4 часа"));
-            assertTrue(text.contains("внутри ставки преподавателя ОБЗР"));
+            assertTrue(text.contains("«2.1. За исполнение трудовых (должностных) обязанностей, предусмотренных должностной инструкцией "
+                    +"и настоящим Трудовым договором, Работнику выплачивается заработная плата в соответствии с установленными Работнику условиями оплаты труда."));
+            assertTrue(text.contains("В установленную Работнику педагогическую нагрузку, входящую в ставку заработной платы, включаются следующие часы:"));
+            assertTrue(text.contains("— 4 часа ОБЗР, 7-А;"));
+            assertTrue(text.contains("— 2 часа ОБЗР, 8-Б."));
+            assertTrue(text.contains("Указанные часы являются частью установленной Работнику педагогической нагрузки и учтены при определении размера заработной платы по ставке."));
+            assertTrue(text.contains("Дополнительная оплата за указанные часы сверх установленной заработной платы по ставке не производится.»"));
+            assertFalse(text.contains("В педагогическую нагрузку Работника также включено"));
+            XWPFParagraph warning=document.getParagraphs().stream()
+                    .filter(paragraph->paragraph.getText().contains("Дополнительная оплата за указанные часы"))
+                    .findFirst().orElseThrow();
+            assertTrue(warning.getRuns().stream().anyMatch(run->run.isBold()
+                    &&run.getText(0)!=null&&run.getText(0).startsWith("Дополнительная оплата")));
+            XWPFParagraph clause=document.getParagraphs().stream()
+                    .filter(paragraph->paragraph.getText().startsWith("«2.1."))
+                    .findFirst().orElseThrow();
+            assertTrue(clause.getRuns().stream().anyMatch(run->run.isBold()&&"2.1.".equals(run.getText(0))));
             XWPFTable annex=document.getTables().stream()
                     .filter(table->table.getText().contains("В ставке")&&table.getText().contains("К оплате"))
                     .findFirst().orElseThrow();
             assertEquals("10",annex.getRow(1).getCell(2).getText());
             assertEquals("4",annex.getRow(1).getCell(3).getText());
             assertEquals("6",annex.getRow(1).getCell(4).getText());
+        }
+        String qaOutput=System.getProperty("hr.agreement.in-rate.qa.output");
+        if(qaOutput!=null&&!qaOutput.isBlank()){
+            Path path=Path.of(qaOutput);Files.createDirectories(path.getParent());
+            Files.write(path,prepared.getCurrentDocument());
         }
     }
 

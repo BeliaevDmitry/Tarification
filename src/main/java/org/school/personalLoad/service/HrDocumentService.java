@@ -33,6 +33,7 @@ import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import static org.springframework.http.HttpStatus.*;
 
 @Service
@@ -1620,7 +1621,8 @@ public class HrDocumentService {
         agreementBody(document,(point++)+". "+(lines.length>1&&first.endsWith(":")?first:finishSentence(first)),false);
         for(int i=1;i<lines.length;i++){
             String line=lines[i].trim();
-            if(!line.isEmpty())agreementBody(document,line,false,line.startsWith("-")||line.startsWith("–")?991:708);
+            if(!line.isEmpty())agreementConditionBody(document,line,
+                    line.startsWith("-")||line.startsWith("–")||line.startsWith("—")?991:708);
         }
         return point;
     }
@@ -1661,6 +1663,27 @@ public class HrDocumentService {
     private void agreementCentered(XWPFDocument document,String text,boolean bold,int size){XWPFParagraph p=document.createParagraph();p.setAlignment(ParagraphAlignment.CENTER);p.setSpacingAfter(0);agreementRun(p,text,bold,size);}
     private void agreementBody(XWPFDocument document,String text,boolean bold){agreementBody(document,text,bold,708);}
     private void agreementBody(XWPFDocument document,String text,boolean bold,int indent){XWPFParagraph p=document.createParagraph();p.setAlignment(ParagraphAlignment.BOTH);p.setIndentationFirstLine(indent);p.setSpacingAfter(0);p.setSpacingBefore(0);p.setSpacingBetween(1.0);agreementRun(p,Objects.toString(text,""),bold,11);}
+    private void agreementConditionBody(XWPFDocument document,String text,int indent){
+        String value=Objects.toString(text,"");
+        XWPFParagraph p=document.createParagraph();p.setAlignment(ParagraphAlignment.BOTH);p.setIndentationFirstLine(indent);
+        p.setSpacingAfter(0);p.setSpacingBefore(0);p.setSpacingBetween(1.0);
+        String warning="Дополнительная оплата за указанные часы сверх установленной заработной платы по ставке не производится.";
+        int warningAt=value.indexOf(warning);
+        if(warningAt>=0){
+            agreementRun(p,value.substring(0,warningAt),false,11);
+            agreementRun(p,warning,true,11);
+            agreementRun(p,value.substring(warningAt+warning.length()),false,11);
+            return;
+        }
+        int clauseAt=value.indexOf("2.1.");
+        if(clauseAt>=0&&clauseAt<=1){
+            agreementRun(p,value.substring(0,clauseAt),false,11);
+            agreementRun(p,"2.1.",true,11);
+            agreementRun(p,value.substring(clauseAt+4),false,11);
+            return;
+        }
+        agreementRun(p,value,false,11);
+    }
     private XWPFRun agreementRun(XWPFParagraph paragraph,String text,boolean bold,int size){XWPFRun run=paragraph.createRun();run.setBold(bold);run.setFontFamily("Times New Roman");run.setFontFamily("Times New Roman",XWPFRun.FontCharRange.eastAsia);run.setFontSize(size);appendRunText(run,Objects.toString(text,""));return run;}
     private void addCityAndDate(XWPFDocument document,LocalDate date){XWPFTable table=document.createTable(1,2);table.setWidth("100%");setTableBorders(table,STBorder.NIL);agreementCell(table.getRow(0).getCell(0),"г. Москва",false,ParagraphAlignment.LEFT,11);agreementCell(table.getRow(0).getCell(1),numericDate(date),false,ParagraphAlignment.RIGHT,11);}
     private void addAgreementSignatures(XWPFDocument document,TeacherDirectoryEntry teacher,HrPersonalData personal,LocalDate documentDate){
@@ -2058,6 +2081,7 @@ public class HrDocumentService {
 
     private String updateAutomaticLoadClauseValues(String conditions,List<LoadDetail> details,BigDecimal amount){
         String updated=Objects.toString(conditions,"");
+        if(hasIncludedInRateHours(details))return upsertClause21Block(updated,inRateLoadClause(details));
         if(!updated.contains("2.1")||!updated.contains("должностного оклада в размере"))return updated;
         String salary=moneyLegal(amount)+" ("+moneyWordsLegal(amount)+")";
         updated=updated.replaceFirst(
@@ -2074,10 +2098,11 @@ public class HrDocumentService {
         updated=updated.replaceFirst(
                 "(?s)(педагогической нагрузки в размере\\s+).*?(?=»\\.)",
                 "$1"+java.util.regex.Matcher.quoteReplacement(workload));
-        return withIncludedInRateParagraph(updated,details);
+        return updated;
     }
 
     private String loadClause(List<LoadDetail> details,BigDecimal amount){
+        if(hasIncludedInRateHours(details))return inRateLoadClause(details);
         BigDecimal rate=details.stream().map(LoadDetail::rate).findFirst()
                 .orElseGet(()->salarySettingsRepository.findById(SalarySettings.DEFAULT_ID)
                         .map(SalarySettings::getStudentHourRate).orElse(SalarySettings.DEFAULT_STUDENT_HOUR_RATE));
@@ -2092,24 +2117,54 @@ public class HrDocumentService {
                 +"- должностного оклада в размере "+salary+" в месяц, определяемого исходя из учебной нагрузки "
                 +"по формуле, установленной в п. 2.3. настоящего договора, на основании «ученико-часа» в размере "
                 +shortMoneyLegal(rate)+" и педагогической нагрузки в размере "+workload+"».";
-        return withIncludedInRateParagraph(clause,details);
+        return clause;
     }
 
-    private String withIncludedInRateParagraph(String clause,List<LoadDetail> details){
-        String marker="В педагогическую нагрузку Работника также включено ";
-        String cleaned=Objects.toString(clause,"").replaceAll(
-                "(?s)\\n?В педагогическую нагрузку Работника также включено .*?отдельно по ученико-часу не оплачивается\\.","");
-        Map<String,BigDecimal> byReason=new LinkedHashMap<>();
+    private boolean hasIncludedInRateHours(List<LoadDetail> details){
+        return Optional.ofNullable(details).orElse(List.of()).stream()
+                .anyMatch(detail->detail.includedHours().signum()>0);
+    }
+
+    private String inRateLoadClause(List<LoadDetail> details){
+        Map<String,BigDecimal> hoursByLoad=new LinkedHashMap<>();
         Optional.ofNullable(details).orElse(List.of()).stream()
                 .filter(detail->detail.includedHours().signum()>0)
-                .forEach(detail->byReason.merge(firstPresent(detail.reason(),"внутри должностного оклада"),
-                        detail.includedHours(),BigDecimal::add));
-        if(byReason.isEmpty())return cleaned;
-        String paragraphs=byReason.entrySet().stream().map(entry->
-                marker+formatHours(entry.getValue())+", выполнение которых осуществляется в пределах должностного оклада "
-                        +"по основанию «"+entry.getKey()+"» и отдельно по ученико-часу не оплачивается.")
-                .collect(Collectors.joining("\n"));
-        return cleaned+"\n"+paragraphs;
+                .forEach(detail->hoursByLoad.merge(inRateLoadDescription(detail),detail.includedHours(),BigDecimal::add));
+        List<Map.Entry<String,BigDecimal>> rows=new ArrayList<>(hoursByLoad.entrySet());
+        StringBuilder lines=new StringBuilder();
+        for(int index=0;index<rows.size();index++){
+            Map.Entry<String,BigDecimal> row=rows.get(index);
+            lines.append("— ").append(formatHours(row.getValue())).append(" ").append(row.getKey())
+                    .append(index+1<rows.size()?";":".");
+            if(index+1<rows.size())lines.append("\n");
+        }
+        return "Внести изменения в пункт 2.1. раздела 2 «Оплата труда», изложив его в следующей редакции:\n"
+                +"«2.1. За исполнение трудовых (должностных) обязанностей, предусмотренных должностной инструкцией "
+                +"и настоящим Трудовым договором, Работнику выплачивается заработная плата в соответствии с установленными Работнику условиями оплаты труда.\n\n"
+                +"В установленную Работнику педагогическую нагрузку, входящую в ставку заработной платы, включаются следующие часы:\n\n"
+                +lines+"\n\n"
+                +"Указанные часы являются частью установленной Работнику педагогической нагрузки и учтены при определении размера заработной платы по ставке. "
+                +"Дополнительная оплата за указанные часы сверх установленной заработной платы по ставке не производится.»";
+    }
+
+    private String inRateLoadDescription(LoadDetail detail){
+        return Stream.of(detail.subject(),detail.className()).map(value->Objects.toString(value,"").trim())
+                .filter(this::present).collect(Collectors.joining(", "));
+    }
+
+    private String upsertClause21Block(String conditions,String replacement){
+        String normalized=Objects.toString(conditions,"").replace("\r\n","\n").replace('\r','\n').trim();
+        if(normalized.isEmpty())return replacement;
+        List<String> result=new ArrayList<>();boolean replaced=false;
+        for(String block:normalized.split("\\n\\s*\\n(?=(?:Внести|Изложить))")){
+            String current=block.trim();
+            if(isClause21Block(current)){
+                if(!replaced)result.add(replacement);
+                replaced=true;
+            }else if(present(current))result.add(current);
+        }
+        if(!replaced)result.add(0,replacement);
+        return String.join("\n\n",result);
     }
 
     private String formatHours(BigDecimal value){

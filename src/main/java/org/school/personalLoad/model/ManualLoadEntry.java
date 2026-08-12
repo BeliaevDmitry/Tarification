@@ -110,8 +110,9 @@ public class ManualLoadEntry {
     private ManualLoadSource loadSource = ManualLoadSource.CORE;
 
     /**
-     * IUP hours may be fractional. The legacy load/groupLoad columns remain intact
-     * for ordinary load rows; this value is authoritative only for IUP rows.
+     * The decimal-capable column is retained for stored-data compatibility, but new
+     * IUP assignments are validated as whole hours. This value is authoritative only
+     * for IUP rows; ordinary load still uses the legacy load/groupLoad columns.
      */
     @Column(name = "precise_load_hours", precision = 10, scale = 2)
     private BigDecimal preciseLoadHours;

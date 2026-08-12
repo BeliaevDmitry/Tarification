@@ -31,6 +31,8 @@ class LoadInRateFrontendTest {
         assertTrue(ratesJs.contains("/api/manual-load/in-rate"));
         assertTrue(ratesJs.contains("<th>Корпус</th>"));
         assertTrue(ratesJs.contains("data-included-hours"));
+        assertTrue(ratesJs.contains("step=\"1\""));
+        assertTrue(ratesJs.contains("Часы внутри ставки"));
         assertTrue(ratesJs.contains("remainingCapacityHoursH1"));
         assertTrue(issuesJs.contains("row.targetPage === \"inRate\""));
         assertTrue(issuesJs.contains("/rates.html"));
@@ -44,6 +46,8 @@ class LoadInRateFrontendTest {
         assertTrue(teachersHtml.contains("от 1 до 4 часов — 0,5 ставки"));
         assertTrue(teachersHtml.contains("от 5 до 9 часов — 1 ставка"));
         assertTrue(teachersHtml.contains("Фактические часы распределяются отдельно"));
+        assertTrue(teachersHtml.contains("id=\"settings-new-rule-min\" type=\"number\" min=\"0\" step=\"1\""));
+        assertTrue(teachersHtml.contains("id=\"settings-new-rule-max\" type=\"number\" min=\"0\" step=\"1\""));
         assertTrue(!teachersHtml.contains("Из них входит в оклад, не более"));
     }
 }

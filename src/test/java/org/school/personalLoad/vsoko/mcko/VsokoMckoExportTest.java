@@ -35,7 +35,7 @@ class VsokoMckoExportTest {
                 .thenReturn(List.of(row));
         when(files.findAll()).thenReturn(List.of());
         when(files.findTop200ByOrderByIdDesc()).thenReturn(List.of());
-        VsokoMckoQueryService service = new VsokoMckoQueryService(results, files,
+        VsokoMckoQueryService service = new VsokoMckoQueryService(results, mock(MckoClassDiagnosticSummaryRepository.class), files,
                 mock(MckoTeacherClassAssignmentRepository.class), mock(StudentProfileRepository.class),
                 mock(StudentNameHistoryRepository.class), mock(StudentClassEnrollmentRepository.class),
                 mock(TeacherDirectoryRepository.class), mock(ManualLoadEntryRepository.class),
@@ -45,7 +45,7 @@ class VsokoMckoExportTest {
         byte[] body = service.exportResults("2025/2026", null, null, null, null, null);
 
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
-            assertEquals(List.of("Результаты", "Функциональная грамотность", "Все работы", "Незагруженные работы", "Ошибки обработки"),
+            assertEquals(List.of("Результаты", "Функциональная грамотность", "Своды классов", "Все работы", "Незагруженные работы", "Ошибки обработки"),
                     java.util.stream.IntStream.range(0, workbook.getNumberOfSheets()).mapToObj(i -> workbook.getSheetAt(i).getSheetName()).toList());
             assertEquals("ФИО", workbook.getSheet("Результаты").getRow(0).getCell(0).getStringCellValue());
             assertEquals("Иванов Иван", workbook.getSheet("Результаты").getRow(1).getCell(0).getStringCellValue());

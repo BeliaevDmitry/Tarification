@@ -11,6 +11,7 @@ public final class VsokoMckoDtos {
     private VsokoMckoDtos() {}
 
     public record FileStatusRow(Long id, Long batchId, String fileName, String fileKind, long fileSize,
+                                String detectedAcademicYear, String detectedWorkDate, String detectedSubject,
                                 MckoFileStatus status, String reason, int totalRows, int importedRows,
                                 int skippedRows, LocalDateTime processedAt) {}
 

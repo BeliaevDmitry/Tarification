@@ -570,11 +570,11 @@ function addSupportIupSubjectRow(subject = {}) {
                 ).join('')}
             </select>
         </td>
-        <td><input data-iup-field="classHours" type="number" min="0" step="0.25" value="${esc(subject.classHours ?? 0)}"></td>
-        <td><input data-iup-field="individualHours" type="number" min="0" step="0.25" value="${esc(subject.individualHours ?? 0)}"></td>
+        <td><input data-iup-field="classHours" type="number" min="0" step="1" value="${esc(subject.classHours ?? 0)}"></td>
+        <td><input data-iup-field="individualHours" type="number" min="0" step="1" value="${esc(subject.individualHours ?? 0)}"></td>
         <td><select data-iup-field="groupNameEducationalPlan">${supportGroupOptions(subject.curriculumEntryId, subject.groupNameEducationalPlan)}</select></td>
         <td><select data-iup-field="teacherId">${supportTeacherOptions(assignment.teacherId)}</select></td>
-        <td><input data-iup-field="teacherHours" type="number" min="0" step="0.25" value="${esc(assignment.hoursPerWeek ?? '')}"></td>
+        <td><input data-iup-field="teacherHours" type="number" min="0" step="1" value="${esc(assignment.hoursPerWeek ?? '')}"></td>
         <td>
             <select data-iup-field="deliveryForm">
                 <option value="FACE_TO_FACE" ${(assignment.deliveryForm || 'FACE_TO_FACE') === 'FACE_TO_FACE' ? 'selected' : ''}>Очно</option>
@@ -1070,17 +1070,25 @@ function supportIupSubjectsPayload() {
             Number(item.curriculumEntryId) === curriculumEntryId
         );
         const teacherId = Number(value('teacherId') || 0) || null;
-        const teacherHours = value('teacherHours');
+        const wholeHours = (name, label) => {
+            const input = row.querySelector(`[data-iup-field="${name}"]`);
+            const hours = Number(input?.value || 0);
+            if (!Number.isInteger(hours)) {
+                input?.focus();
+                throw new Error(`${label} должны быть целым числом`);
+            }
+            return hours;
+        };
         return {
             curriculumEntryId,
             subjectName: curriculum?.subjectName || null,
             participationMode: value('participationMode'),
-            classHours: Number(value('classHours') || 0),
-            individualHours: Number(value('individualHours') || 0),
+            classHours: wholeHours('classHours', 'Часы с классом'),
+            individualHours: wholeHours('individualHours', 'Индивидуальные часы'),
             groupNameEducationalPlan: value('groupNameEducationalPlan') || null,
             teachers: teacherId ? [{
                 teacherId,
-                hoursPerWeek: Number(teacherHours || 0),
+                hoursPerWeek: wholeHours('teacherHours', 'Часы учителя по ИУП'),
                 deliveryForm: value('deliveryForm')
             }] : []
         };

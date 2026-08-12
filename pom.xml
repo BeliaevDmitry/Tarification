@@ -19,6 +19,7 @@
     <properties>
         <java.version>21</java.version>
         <poi.version>5.2.3</poi.version>
+        <pdfbox.version>2.0.27</pdfbox.version>
         <lombok.version>1.18.38</lombok.version>
         <tarification.build.directory>${project.basedir}/target</tarification.build.directory>
     </properties>
@@ -51,6 +52,11 @@
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
             <version>${poi.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>${pdfbox.version}</version>
         </dependency>
 
         <dependency>
