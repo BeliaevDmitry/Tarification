@@ -593,6 +593,61 @@ class HrDocumentServiceTest {
         assertTrue(created.getSummary().contains("Работа с обучающимися с ОВЗ, детьми-инвалидами"));
     }
 
+    @Test void annualGenerationCreatesSeparateRegistryAgreementsForInRateAndPaidContracts() {
+        contract.setActive(true);contract.setPrimaryContract(true);
+        contract.setPositionName("Преподаватель-организатор ОБЗР");
+        EmploymentContract paidContract=new EmploymentContract();paidContract.setId(20L);paidContract.setTeacherId(1L);
+        paidContract.setContractNumber("2-ТД");paidContract.setContractDate(LocalDate.of(2025,1,2));
+        paidContract.setPositionName("Учитель");paidContract.setActive(true);paidContract.setPrimaryContract(false);
+        when(contracts.findById(20L)).thenReturn(Optional.of(paidContract));
+        when(contracts.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(1L))
+                .thenReturn(List.of(contract,paidContract));
+        ManualLoadEntry load=new ManualLoadEntry();load.setId(101L);load.setTeacherId(1L);
+        load.setAcademicYear("2025/2026");load.setSubjectName("ОБЗР");load.setClassName("7-А");load.setLoad(10);
+        load.setEmploymentContractId(10L);load.setIncludedInRateHours(new BigDecimal("4"));
+        load.setInRateAllocationConfirmed(true);load.setInRateReason("внутри ставки преподавателя ОБЗР");
+        HrIncentive incentive=new HrIncentive();incentive.setAcademicYear("2025/2026");
+        incentive.setTeacherId(1L);incentive.setAmount(new BigDecimal("7500"));
+        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load));
+        when(sizes.effectiveClassSizes("2025/2026")).thenReturn(Map.of("7-а",20));
+        when(incentives.findAllByAcademicYear("2025/2026")).thenReturn(List.of(incentive));
+        when(incentives.findByAcademicYearAndTeacherId("2025/2026",1L)).thenReturn(Optional.of(incentive));
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026")).thenReturn(new ArrayList<>());
+
+        List<AdditionalAgreement> created=service.createAnnualDrafts(new BatchAgreementRequest(
+                "2025/2026",LocalDate.of(2025,9,1),null,List.of(),null),"hr");
+
+        assertEquals(2,created.size());
+        AdditionalAgreement inside=created.stream().filter(item->Objects.equals(item.getContractId(),10L))
+                .findFirst().orElseThrow();
+        AdditionalAgreement paid=created.stream().filter(item->Objects.equals(item.getContractId(),20L))
+                .findFirst().orElseThrow();
+        assertTrue(inside.getConditionsJson().contains("входящую в ставку заработной платы"));
+        assertFalse(inside.getConditionsJson().contains("пункт 2.5"));
+        assertEquals(new BigDecimal("0.00"),inside.getTotalAmount());
+        assertFalse(paid.getConditionsJson().contains("входящую в ставку заработной платы"));
+        assertTrue(paid.getConditionsJson().contains("педагогической нагрузки в размере 6 часов"));
+        assertTrue(paid.getConditionsJson().contains("пункт 2.5"));
+        assertEquals(new BigDecimal("12580.00"),paid.getTotalAmount());
+    }
+
+    @Test void mixedLoadRequiresSecondActiveEmploymentContract() {
+        contract.setActive(true);contract.setPrimaryContract(true);
+        contract.setPositionName("Преподаватель-организатор ОБЗР");
+        when(contracts.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(1L)).thenReturn(List.of(contract));
+        ManualLoadEntry load=new ManualLoadEntry();load.setId(101L);load.setTeacherId(1L);
+        load.setAcademicYear("2025/2026");load.setSubjectName("ОБЗР");load.setClassName("7-А");load.setLoad(10);
+        load.setEmploymentContractId(10L);load.setIncludedInRateHours(new BigDecimal("4"));
+        load.setInRateAllocationConfirmed(true);
+        when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load));
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026")).thenReturn(new ArrayList<>());
+
+        ResponseStatusException error=assertThrows(ResponseStatusException.class,()->service.createAnnualDrafts(
+                new BatchAgreementRequest("2025/2026",LocalDate.of(2025,9,1),null,List.of(),null),"hr"));
+
+        assertTrue(error.getReason().contains("Добавьте второй действующий трудовой договор"));
+    }
+
     @Test void iupOnlyAnnualAgreementDoesNotCreateClause21OrLoadSalary() {
         ManualLoadEntry iup=new ManualLoadEntry();iup.setId(12L);iup.setTeacherId(1L);
         iup.setAcademicYear("2025/2026");iup.setSubjectName("Математика");
@@ -1173,63 +1228,68 @@ class HrDocumentServiceTest {
         verify(versions).save(argThat(version->"PREPARED".equals(version.getSource())));
     }
 
-    @Test void agreementSeparatesHoursInsideRateFromPaidHours() throws Exception {
-        contract.setLoadHoursMayBeIncludedInRate(true);
-        AdditionalAgreement agreement=draftAgreement();
+    @Test void hoursInsideRateAndPaidHoursArePreparedForDifferentEmploymentContracts() throws Exception {
+        contract.setLoadHoursMayBeIncludedInRate(true);contract.setActive(true);contract.setPrimaryContract(true);
+        contract.setPositionName("Преподаватель-организатор ОБЗР");
+        EmploymentContract paidContract=new EmploymentContract();paidContract.setId(20L);paidContract.setTeacherId(1L);
+        paidContract.setContractNumber("2-ТД");paidContract.setContractDate(LocalDate.of(2025,1,2));
+        paidContract.setPositionName("Учитель");paidContract.setActive(true);paidContract.setPrimaryContract(false);
+        when(contracts.findById(20L)).thenReturn(Optional.of(paidContract));
+        when(contracts.findAllByTeacherIdOrderByPrimaryContractDescContractDateDesc(1L))
+                .thenReturn(List.of(contract,paidContract));
+        AdditionalAgreement inRateAgreement=draftAgreement();
+        AdditionalAgreement paidAgreement=draftAgreement();paidAgreement.setId(200L);paidAgreement.setContractId(20L);
         ManualLoadEntry load=new ManualLoadEntry();load.setTeacherId(1L);load.setAcademicYear("2025/2026");
         load.setId(101L);
         load.setSubjectName("ОБЗР");load.setClassName("7-А");load.setLoad(10);
+        load.setEmploymentContractId(10L);
         load.setIncludedInRateHours(new BigDecimal("4"));load.setInRateAllocationConfirmed(true);
         load.setInRateReason("внутри ставки преподавателя ОБЗР");
         ManualLoadEntry second=new ManualLoadEntry();second.setTeacherId(1L);second.setAcademicYear("2025/2026");
         second.setId(102L);second.setSubjectName("ОБЗР");second.setClassName("8-Б");second.setLoad(2);
+        second.setEmploymentContractId(10L);
         second.setIncludedInRateHours(new BigDecimal("2"));second.setInRateAllocationConfirmed(true);
         second.setInRateReason("внутри ставки преподавателя ОБЗР");
         when(loads.findAllByAcademicYear("2025/2026")).thenReturn(List.of(load,second));
         when(sizes.effectiveClassSizes("2025/2026")).thenReturn(Map.of("7-а",20,"8-б",20));
-        when(agreements.findById(100L)).thenReturn(Optional.of(agreement));
+        when(agreements.findById(100L)).thenReturn(Optional.of(inRateAgreement));
+        when(agreements.findById(200L)).thenReturn(Optional.of(paidAgreement));
         when(personal.findByTeacherId(1L)).thenReturn(Optional.of(completePersonal()));
 
-        AdditionalAgreement prepared=service.prepare(100L,"hr");
+        AdditionalAgreement preparedInRate=service.prepare(100L,"hr");
+        AdditionalAgreement preparedPaid=service.prepare(200L,"hr");
 
-        assertEquals(new BigDecimal("12580.00"),prepared.getTotalAmount());
-        try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(prepared.getCurrentDocument()))){
+        assertEquals(new BigDecimal("0.00"),preparedInRate.getTotalAmount());
+        assertEquals(new BigDecimal("12580.00"),preparedPaid.getTotalAmount());
+        try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(preparedInRate.getCurrentDocument()))){
             String text=document.getParagraphs().stream().map(XWPFParagraph::getText)
                     .reduce("",(left,right)->left+"\n"+right)
                     +document.getTables().stream().map(XWPFTable::getText).reduce("",String::concat);
-            assertTrue(text.contains("«2.1. За исполнение трудовых (должностных) обязанностей, предусмотренных должностной инструкцией "
-                    +"и настоящим Трудовым договором, Работнику выплачивается заработная плата, которая состоит из:"));
-            assertTrue(text.contains("должностного оклада в размере 12 580 рублей 00 коп. "
-                    +"(двенадцать тысяч пятьсот восемьдесят рублей 00 коп.) в месяц"));
-            assertTrue(text.contains("педагогической нагрузки в размере 6 часов."));
             assertTrue(text.contains("В установленную Работнику педагогическую нагрузку, входящую в ставку заработной платы, включаются следующие часы:"));
             assertTrue(text.contains("— 4 часа ОБЗР, 7-А;"));
             assertTrue(text.contains("— 2 часа ОБЗР, 8-Б."));
-            assertTrue(text.contains("Указанные часы являются частью установленной Работнику педагогической нагрузки и учтены при определении размера заработной платы по ставке."));
             assertTrue(text.contains("Дополнительная оплата за указанные часы сверх установленной заработной платы по ставке не производится.»"));
-            assertFalse(text.contains("педагогической нагрузки в размере 12 часов"),
-                    "В оплачиваемый оклад должны попадать только часы сверх ставки");
-            assertFalse(text.contains("В педагогическую нагрузку Работника также включено"));
-            XWPFParagraph warning=document.getParagraphs().stream()
-                    .filter(paragraph->paragraph.getText().contains("Дополнительная оплата за указанные часы"))
-                    .findFirst().orElseThrow();
-            assertTrue(warning.getRuns().stream().anyMatch(run->run.isBold()
-                    &&run.getText(0)!=null&&run.getText(0).startsWith("Дополнительная оплата")));
-            XWPFParagraph clause=document.getParagraphs().stream()
-                    .filter(paragraph->paragraph.getText().startsWith("«2.1."))
-                    .findFirst().orElseThrow();
-            assertTrue(clause.getRuns().stream().anyMatch(run->run.isBold()&&"2.1.".equals(run.getText(0))));
+            assertFalse(text.contains("должностного оклада в размере 12 580 рублей"));
             XWPFTable annex=document.getTables().stream()
                     .filter(table->table.getText().contains("В ставке")&&table.getText().contains("К оплате"))
                     .findFirst().orElseThrow();
-            assertEquals("10",annex.getRow(1).getCell(2).getText());
+            assertEquals("4",annex.getRow(1).getCell(2).getText());
             assertEquals("4",annex.getRow(1).getCell(3).getText());
-            assertEquals("6",annex.getRow(1).getCell(4).getText());
+            assertEquals("0",annex.getRow(1).getCell(4).getText());
         }
-        String qaOutput=System.getProperty("hr.agreement.in-rate.qa.output");
-        if(qaOutput!=null&&!qaOutput.isBlank()){
-            Path path=Path.of(qaOutput);Files.createDirectories(path.getParent());
-            Files.write(path,prepared.getCurrentDocument());
+        try(XWPFDocument document=new XWPFDocument(new ByteArrayInputStream(preparedPaid.getCurrentDocument()))){
+            String text=document.getParagraphs().stream().map(XWPFParagraph::getText)
+                    .reduce("",(left,right)->left+"\n"+right)
+                    +document.getTables().stream().map(XWPFTable::getText).reduce("",String::concat);
+            assertTrue(text.contains("должностного оклада в размере 12 580 рублей 00 коп. "
+                    +"(двенадцать тысяч пятьсот восемьдесят рублей 00 коп.) в месяц"));
+            assertTrue(text.contains("педагогической нагрузки в размере 6 часов"));
+            assertFalse(text.contains("В установленную Работнику педагогическую нагрузку, входящую в ставку"));
+            XWPFTable annex=document.getTables().stream()
+                    .filter(table->table.getText().contains("Класс/группа")&&table.getText().contains("К оплате"))
+                    .findFirst().orElseThrow();
+            assertFalse(annex.getText().contains("В ставке"));
+            assertEquals("6",annex.getRow(1).getCell(2).getText());
         }
     }
 
@@ -1245,6 +1305,21 @@ class HrDocumentServiceTest {
 
         assertEquals(1,rows.size());
         assertTrue(rows.get(0).agreement().conditionsJson().contains("педагогической нагрузке в размере 5 часов"));
+        verify(loads,never()).findAllByAcademicYear("2025/2026");
+        verify(agreements,never()).save(agreement);
+    }
+
+    @Test void journalDoesNotRecalculateEveryAgreementWhenPageIsOpened() {
+        AdditionalAgreement agreement=draftAgreement();
+        agreement.setRegistryManaged(true);
+        agreement.setConditionsJson("Внести изменения в пункт 2.1. раздела 2 «Оплата труда».");
+        when(agreements.findAllByAcademicYearOrderByCreatedAtDesc("2025/2026")).thenReturn(List.of(agreement));
+        when(contracts.findAllByActiveTrueOrderByTeacherIdAsc()).thenReturn(List.of(contract));
+
+        var rows=service.journal("2025/2026");
+
+        assertEquals(1,rows.size());
+        assertEquals(1,rows.get(0).agreements().size());
         verify(loads,never()).findAllByAcademicYear("2025/2026");
         verify(agreements,never()).save(agreement);
     }

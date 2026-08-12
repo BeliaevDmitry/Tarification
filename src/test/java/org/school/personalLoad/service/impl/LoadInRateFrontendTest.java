@@ -28,6 +28,8 @@ class LoadInRateFrontendTest {
         assertTrue(ratesHtml.contains("<h1>Ставки</h1>"));
         assertTrue(ratesHtml.contains("сразу по всем корпусам"));
         assertTrue(ratesHtml.contains("id=\"rates-table\""));
+        assertTrue(ratesHtml.contains("Оплачиваемый остаток включается"));
+        assertTrue(ratesHtml.contains("к другому действующему трудовому договору"));
         assertTrue(ratesJs.contains("/api/manual-load/in-rate"));
         assertTrue(ratesJs.contains("<th>Корпус</th>"));
         assertTrue(ratesJs.contains("data-included-hours"));
