@@ -2106,7 +2106,7 @@ public class HrDocumentService {
 
     private String updateAutomaticLoadClauseValues(String conditions,List<LoadDetail> details,BigDecimal amount){
         String updated=Objects.toString(conditions,"");
-        if(hasIncludedInRateHours(details))return upsertClause21Block(updated,inRateLoadClause(details));
+        if(hasIncludedInRateHours(details))return upsertClause21Block(updated,inRateLoadClause(details,amount));
         if(!updated.contains("2.1")||!updated.contains("должностного оклада в размере"))return updated;
         String salary=moneyLegal(amount)+" ("+moneyWordsLegal(amount)+")";
         updated=updated.replaceFirst(
@@ -2127,21 +2127,13 @@ public class HrDocumentService {
     }
 
     private String loadClause(List<LoadDetail> details,BigDecimal amount){
-        if(hasIncludedInRateHours(details))return inRateLoadClause(details);
+        if(hasIncludedInRateHours(details))return inRateLoadClause(details,amount);
         BigDecimal rate=details.stream().map(LoadDetail::rate).findFirst()
                 .orElseGet(()->salarySettingsRepository.findById(SalarySettings.DEFAULT_ID)
                         .map(SalarySettings::getStudentHourRate).orElse(SalarySettings.DEFAULT_STUDENT_HOUR_RATE));
         BigDecimal hours=details.stream().map(LoadDetail::paidHours).reduce(BigDecimal.ZERO,BigDecimal::add);
-        String salary=amount==null||amount.signum()<=0
-                ?"________ рублей __ коп. (________________ рублей __ коп.)"
-                :moneyLegal(amount)+" ("+moneyWordsLegal(amount)+")";
-        String workload=hours.signum()<=0?"___ часов":formatHours(hours);
         String clause="Внести изменения в пункт 2.1. раздела 2 «Оплата труда», изложив его в следующей редакции:\n"
-                +"«2.1. За исполнение трудовых (должностных) обязанностей, предусмотренных должностной инструкцией "
-                +"и настоящим Трудовым договором, Работнику выплачивается заработная плата, которая состоит из:\n"
-                +"- должностного оклада в размере "+salary+" в месяц, определяемого исходя из учебной нагрузки "
-                +"по формуле, установленной в п. 2.3. настоящего договора, на основании «ученико-часа» в размере "
-                +shortMoneyLegal(rate)+" и педагогической нагрузки в размере "+workload+"».";
+                +paidLoadClauseBody(amount,hours,rate)+"».";
         return clause;
     }
 
@@ -2150,7 +2142,7 @@ public class HrDocumentService {
                 .anyMatch(detail->detail.includedHours().signum()>0);
     }
 
-    private String inRateLoadClause(List<LoadDetail> details){
+    private String inRateLoadClause(List<LoadDetail> details,BigDecimal paidAmount){
         Map<String,BigDecimal> hoursByLoad=new LinkedHashMap<>();
         Optional.ofNullable(details).orElse(List.of()).stream()
                 .filter(detail->detail.includedHours().signum()>0)
@@ -2163,13 +2155,33 @@ public class HrDocumentService {
                     .append(index+1<rows.size()?";":".");
             if(index+1<rows.size())lines.append("\n");
         }
+        BigDecimal paidHours=Optional.ofNullable(details).orElse(List.of()).stream()
+                .map(LoadDetail::paidHours).reduce(BigDecimal.ZERO,BigDecimal::add);
+        BigDecimal rate=Optional.ofNullable(details).orElse(List.of()).stream().map(LoadDetail::rate).findFirst()
+                .orElseGet(()->salarySettingsRepository.findById(SalarySettings.DEFAULT_ID)
+                        .map(SalarySettings::getStudentHourRate).orElse(SalarySettings.DEFAULT_STUDENT_HOUR_RATE));
+        String clause21=paidHours.signum()>0
+                ?paidLoadClauseBody(paidAmount,paidHours,rate)+"."
+                :"«2.1. За исполнение трудовых (должностных) обязанностей, предусмотренных должностной инструкцией "
+                +"и настоящим Трудовым договором, Работнику выплачивается заработная плата в соответствии с установленными Работнику условиями оплаты труда.";
         return "Внести изменения в пункт 2.1. раздела 2 «Оплата труда», изложив его в следующей редакции:\n"
-                +"«2.1. За исполнение трудовых (должностных) обязанностей, предусмотренных должностной инструкцией "
-                +"и настоящим Трудовым договором, Работнику выплачивается заработная плата в соответствии с установленными Работнику условиями оплаты труда.\n\n"
+                +clause21+"\n\n"
                 +"В установленную Работнику педагогическую нагрузку, входящую в ставку заработной платы, включаются следующие часы:\n\n"
                 +lines+"\n\n"
                 +"Указанные часы являются частью установленной Работнику педагогической нагрузки и учтены при определении размера заработной платы по ставке. "
                 +"Дополнительная оплата за указанные часы сверх установленной заработной платы по ставке не производится.»";
+    }
+
+    private String paidLoadClauseBody(BigDecimal amount,BigDecimal paidHours,BigDecimal rate){
+        String salary=amount==null||amount.signum()<=0
+                ?"________ рублей __ коп. (________________ рублей __ коп.)"
+                :moneyLegal(amount)+" ("+moneyWordsLegal(amount)+")";
+        String workload=paidHours==null||paidHours.signum()<=0?"___ часов":formatHours(paidHours);
+        return "«2.1. За исполнение трудовых (должностных) обязанностей, предусмотренных должностной инструкцией "
+                +"и настоящим Трудовым договором, Работнику выплачивается заработная плата, которая состоит из:\n"
+                +"- должностного оклада в размере "+salary+" в месяц, определяемого исходя из учебной нагрузки "
+                +"по формуле, установленной в п. 2.3. настоящего договора, на основании «ученико-часа» в размере "
+                +shortMoneyLegal(rate)+" и педагогической нагрузки в размере "+workload;
     }
 
     private String inRateLoadDescription(LoadDetail detail){
