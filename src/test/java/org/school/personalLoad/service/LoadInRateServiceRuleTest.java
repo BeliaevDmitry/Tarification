@@ -56,6 +56,7 @@ class LoadInRateServiceRuleTest {
     void overviewAutomaticallySelectsEmployeesByPositionAndShowsRemainingCapacity() {
         LoadInRateRule rule = rule(7L, "Преподаватель ОБЗР");
         LoadInRateRuleBand fullRate = band("5", "9", "1");
+        fullRate.setFixedMonthlySalary(new BigDecimal("50000"));
         when(rules.findAll()).thenReturn(List.of(rule));
         when(bands.findAllByRuleIdOrderByMinTotalHoursAsc(7L)).thenReturn(List.of(fullRate));
         var allowedSubject = new LoadInRateSubjectService.AllowedSubject(71L, "ОБЗР");
@@ -81,14 +82,15 @@ class LoadInRateServiceRuleTest {
 
         ManualLoadEntry first = load(101L, 31L, "Математика", "5-А", 3, true);
         first.setIncludedInRateHours(BigDecimal.ONE);
-        ManualLoadEntry second = load(102L, 31L, "ОБЗР", "6-А", 5, false);
+        ManualLoadEntry second = load(102L, 31L, "ОБЗР", "6-А", 5, true);
+        second.setIncludedInRateHours(new BigDecimal("4"));
         when(loads.findAllByAcademicYear("2026/2027")).thenReturn(List.of(first, second));
         when(salary.totalHours(first)).thenReturn(new BigDecimal("3"));
         when(salary.totalHours(second)).thenReturn(new BigDecimal("5"));
         when(salary.calculate(eq("2026/2027"),
                 org.mockito.ArgumentMatchers.<Collection<ManualLoadEntry>>argThat(
                         rows -> rows.size() == 1 && rows.contains(second))))
-                .thenReturn(Map.of(102L, salaryLine(second, "5", "0", "5")));
+                .thenReturn(Map.of(102L, salaryLine(second, "5", "4", "1")));
 
         var overview = service.overview("2026/2027");
 
@@ -99,10 +101,15 @@ class LoadInRateServiceRuleTest {
         assertEquals("Преподаватель ОБЗР", summary.positionName());
         assertDecimal("5", summary.totalHoursH1());
         assertDecimal("5", summary.capacityHoursH1());
-        assertDecimal("5", summary.remainingCapacityHoursH1());
+        assertDecimal("4", summary.includedHoursH1());
+        assertDecimal("1", summary.remainingCapacityHoursH1());
+        assertDecimal("1", summary.paidHoursH1());
         assertDecimal("1", summary.rateFractionH1());
-        assertEquals(1, summary.unresolvedRows());
-        assertFalse(summary.complete());
+        assertDecimal("50000", summary.fixedMonthlySalaryH1());
+        assertDecimal("5", summary.matchedRangeMinHoursH1());
+        assertDecimal("9", summary.matchedRangeMaxHoursH1());
+        assertEquals(0, summary.unresolvedRows());
+        assertTrue(summary.complete());
     }
 
     @Test
@@ -123,7 +130,8 @@ class LoadInRateServiceRuleTest {
         var saved = service.saveRule(null, new RuleRequest(
                 "Преподаватель ОБЗР", null, true, List.of(100L),
                 List.of(new RuleBandRequest(
-                        BigDecimal.ONE, new BigDecimal("4"), null, new BigDecimal("0.5")))
+                        BigDecimal.ONE, new BigDecimal("4"), null, new BigDecimal("0.5"),
+                        new BigDecimal("23500")))
         ));
 
         assertEquals("Преподаватель ОБЗР", saved.name());
@@ -132,7 +140,8 @@ class LoadInRateServiceRuleTest {
         assertEquals(1, saved.bands().size());
         verify(bands).save(argThat(savedBand -> savedBand.getRuleId().equals(11L)
                 && savedBand.getSuggestedIncludedHours().compareTo(new BigDecimal("4")) == 0
-                && savedBand.getRateFraction().compareTo(new BigDecimal("0.5")) == 0));
+                && savedBand.getRateFraction().compareTo(new BigDecimal("0.5")) == 0
+                && savedBand.getFixedMonthlySalary().compareTo(new BigDecimal("23500")) == 0));
     }
 
     @Test

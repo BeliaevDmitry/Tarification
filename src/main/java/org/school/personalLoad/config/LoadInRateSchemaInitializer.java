@@ -79,9 +79,14 @@ public class LoadInRateSchemaInitializer implements ApplicationRunner {
                     min_total_hours numeric(10, 2) NOT NULL DEFAULT 0,
                     max_total_hours numeric(10, 2),
                     suggested_included_hours numeric(10, 2) NOT NULL DEFAULT 0,
-                    rate_fraction numeric(5, 2)
+                    rate_fraction numeric(5, 2),
+                    fixed_monthly_salary numeric(12, 2) NOT NULL DEFAULT 0
                 )
                 """);
+        jdbcTemplate.execute("ALTER TABLE load_in_rate_rule_band ADD COLUMN IF NOT EXISTS fixed_monthly_salary numeric(12, 2) DEFAULT 0");
+        jdbcTemplate.execute("UPDATE load_in_rate_rule_band SET fixed_monthly_salary = 0 WHERE fixed_monthly_salary IS NULL");
+        jdbcTemplate.execute("ALTER TABLE load_in_rate_rule_band ALTER COLUMN fixed_monthly_salary SET DEFAULT 0");
+        jdbcTemplate.execute("ALTER TABLE load_in_rate_rule_band ALTER COLUMN fixed_monthly_salary SET NOT NULL");
         jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_load_in_rate_rule_band_rule ON load_in_rate_rule_band(rule_id)");
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS load_in_rate_rule_subject (

@@ -75,6 +75,7 @@ public class HrDocumentService {
         List<AdditionalAgreement> allAgreements=agreements.findAllByAcademicYearOrderByCreatedAtDesc(academicYear);
         repairMisappliedRegistryIncentives(allAgreements);
         repairMisappliedRegistryFunctions(allAgreements);
+        repairStaleAnnualLoadClauses(allAgreements);
         Map<Long,List<AdditionalAgreement>> byContract = allAgreements.stream().filter(a -> a.getContractId() != null)
                 .collect(Collectors.groupingBy(AdditionalAgreement::getContractId));
         return contracts.findAllByActiveTrueOrderByTeacherIdAsc().stream().map(c -> {
@@ -95,6 +96,7 @@ public class HrDocumentService {
         List<AdditionalAgreement> allAgreements=agreements.findAllByAcademicYearOrderByCreatedAtDesc(academicYear);
         repairMisappliedRegistryIncentives(allAgreements);
         repairMisappliedRegistryFunctions(allAgreements);
+        repairStaleAnnualLoadClauses(allAgreements);
         return allAgreements.stream().map(agreement->{
             EmploymentContract contract=agreement.getContractId()==null?null:contracts.findById(agreement.getContractId()).orElse(null);
             Long teacherId=agreementTeacherId(agreement,contract);
@@ -1953,6 +1955,29 @@ public class HrDocumentService {
                 hasClassroomLeadership,
                 hasIup
         ));
+    }
+
+    private void repairStaleAnnualLoadClauses(List<AdditionalAgreement> candidates){
+        EnumSet<AdditionalAgreement.Status> repairable=EnumSet.of(AdditionalAgreement.Status.WAITING_FOR_MEMO,
+                AdditionalAgreement.Status.DRAFT,AdditionalAgreement.Status.READY,
+                AdditionalAgreement.Status.REQUIRES_DECISION,AdditionalAgreement.Status.ISSUED,
+                AdditionalAgreement.Status.SIGNING);
+        Optional.ofNullable(candidates).orElse(List.of()).stream()
+                .filter(agreement->repairable.contains(agreement.getStatus()))
+                .filter(this::isAnnualRegistryAgreement)
+                .filter(this::isLoadAgreement)
+                .forEach(agreement->{
+                    Long teacherId=agreementTeacherId(agreement,null);
+                    if(teacherId==null||loadDetails(teacherId,agreement.getAcademicYear(),agreement.getValidFrom()).isEmpty())return;
+                    String oldConditions=agreement.getConditionsJson();
+                    BigDecimal oldAmount=agreement.getTotalAmount();
+                    applyAutomaticLoadClause(agreement,teacherId);
+                    if(!Objects.equals(oldConditions,agreement.getConditionsJson())
+                            ||!Objects.equals(oldAmount,agreement.getTotalAmount())){
+                        markAgreementContentChanged(agreement);
+                        agreements.save(agreement);
+                    }
+                });
     }
 
     private String annualSummary(boolean hasLoad,boolean hasClassroomLeadership,boolean hasIup,boolean hasIncentive){

@@ -33,7 +33,9 @@ class LoadInRateFrontendTest {
         assertTrue(ratesJs.contains("data-included-hours"));
         assertTrue(ratesJs.contains("step=\"1\""));
         assertTrue(ratesJs.contains("Часы внутри ставки"));
-        assertTrue(ratesJs.contains("remainingCapacityHoursH1"));
+        assertTrue(ratesJs.contains("matchedRangeMinHours${suffix}"));
+        assertTrue(ratesJs.contains("fixedMonthlySalary${suffix}"));
+        assertTrue(ratesJs.contains("фиксированная оплата"));
         assertTrue(issuesJs.contains("row.targetPage === \"inRate\""));
         assertTrue(issuesJs.contains("/rates.html"));
 
@@ -48,6 +50,8 @@ class LoadInRateFrontendTest {
         assertTrue(teachersHtml.contains("Фактические часы распределяются отдельно"));
         assertTrue(teachersHtml.contains("id=\"settings-new-rule-min\" type=\"number\" min=\"0\" step=\"1\""));
         assertTrue(teachersHtml.contains("id=\"settings-new-rule-max\" type=\"number\" min=\"0\" step=\"1\""));
+        assertTrue(teachersHtml.contains("id=\"settings-new-rule-fixed-salary\""));
+        assertTrue(teachersHtml.contains("Фиксированная оплата в месяц, руб."));
         assertTrue(!teachersHtml.contains("Из них входит в оклад, не более"));
     }
 }
