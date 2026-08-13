@@ -290,6 +290,49 @@ CREATE TABLE IF NOT EXISTS student_support_document_attachment (
 
 CREATE INDEX IF NOT EXISTS idx_support_document_attachment_document
     ON student_support_document_attachment (document_id);
+
+ALTER TABLE student_support_document
+    ADD COLUMN IF NOT EXISTS nosology_code VARCHAR(16),
+    ADD COLUMN IF NOT EXISTS education_stage VARCHAR(16),
+    ADD COLUMN IF NOT EXISTS education_program VARCHAR(64),
+    ADD COLUMN IF NOT EXISTS prolongation_available BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS prolongation_used BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS prolonged_grade INTEGER,
+    ADD COLUMN IF NOT EXISTS prolonged_academic_year VARCHAR(16),
+    ADD COLUMN IF NOT EXISTS ipra_present BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE student_support_document ALTER COLUMN received_at DROP NOT NULL;
+
+ALTER TABLE student_support_status
+    ADD COLUMN IF NOT EXISTS source_document_id BIGINT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_support_status_source_document
+    ON student_support_status (source_document_id)
+    WHERE source_document_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS correction_specialist_catalog_entry (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    built_in BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_correction_specialist_name UNIQUE (name)
+);
+
+CREATE TABLE IF NOT EXISTS student_support_document_correction (
+    id BIGSERIAL PRIMARY KEY,
+    document_id BIGINT NOT NULL REFERENCES student_support_document(id) ON DELETE CASCADE,
+    specialist_id BIGINT NOT NULL REFERENCES correction_specialist_catalog_entry(id),
+    tasks VARCHAR(4000) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_support_document_correction UNIQUE (document_id, specialist_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_support_document_correction_document
+    ON student_support_document_correction (document_id);
+
 CREATE INDEX IF NOT EXISTS idx_manual_load_iup_plan
     ON manual_load_entry (source_iup_plan_id);
 CREATE INDEX IF NOT EXISTS idx_manual_load_iup_student

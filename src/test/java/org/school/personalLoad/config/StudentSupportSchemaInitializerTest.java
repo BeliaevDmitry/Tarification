@@ -30,5 +30,7 @@ class StudentSupportSchemaInitializerTest {
         verify(jdbcTemplate).execute("ALTER TABLE contingent_student ADD COLUMN IF NOT EXISTS student_id bigint");
         verify(jdbcTemplate).execute("ALTER TABLE contingent_student ADD COLUMN IF NOT EXISTS identity_match_status varchar(48) DEFAULT 'PENDING'");
         verify(jdbcTemplate).execute("UPDATE contingent_student SET identity_match_status = 'PENDING' WHERE identity_match_status IS NULL");
+        verify(jdbcTemplate).execute("ALTER TABLE student_support_document ADD COLUMN IF NOT EXISTS nosology_code varchar(16)");
+        verify(jdbcTemplate).execute("ALTER TABLE student_support_status ADD COLUMN IF NOT EXISTS source_document_id bigint");
     }
 }

@@ -19,7 +19,8 @@
         <nav class="contingent-tabs">
             <a class="nav-link nav-home-link" href="/" title="Главная" aria-label="Главная">🏠</a>
             <button type="button" class="nav-link active" data-contingent-tab="stats">Численность</button>
-            <button type="button" class="nav-link" data-contingent-tab="support">Статусы и ИУП</button>
+            <button type="button" class="nav-link" data-contingent-tab="support">Справки</button>
+            <button type="button" class="nav-link" data-contingent-tab="nosologies">Справочник нозологий</button>
             <button type="button" class="nav-link" data-contingent-tab="manual">Ручная правка</button>
             <button type="button" class="nav-link" data-contingent-tab="import">Импорт</button>
         </nav>
@@ -95,7 +96,196 @@
         </div>
     </section>
 
-    <section class="card" data-contingent-pane="support" style="display:none;">
+    <section class="card certificate-pane" data-contingent-pane="support" style="display:none;">
+        <h2>Справки</h2>
+        <p class="muted">
+            Ребёнок выбирается из актуального контингента и сохраняется по постоянной карточке (ФК),
+            а не по текстовому совпадению ФИО. В этом разделе учитываются только справки МСЭ и заключения ЦМПК.
+        </p>
+        <div class="row controls-row">
+            <button id="certificate-refresh-btn" type="button">Обновить</button>
+            <button id="certificate-nosology-directory-btn" type="button" class="secondary" data-requires-edit>
+                Справочник нозологий К3
+            </button>
+            <button id="certificate-specialist-directory-btn" type="button" class="secondary" data-requires-edit>
+                Справочник специалистов
+            </button>
+        </div>
+
+        <details class="card" id="certificate-editor" open data-requires-edit>
+            <summary><strong>Принять или изменить справку</strong></summary>
+            <input id="certificate-id" type="hidden">
+            <div class="certificate-form-grid">
+                <label>ФИО ребёнка
+                    <select id="certificate-student"></select>
+                    <small class="muted">В списке показаны класс, ФИО, дата рождения и номер ФК.</small>
+                </label>
+                <label>Вид документа
+                    <select id="certificate-type">
+                        <option value="MSE_CERTIFICATE">Справка МСЭ</option>
+                        <option value="CPMPC_CONCLUSION">Заключение ЦМПК</option>
+                    </select>
+                </label>
+                <label>Принято
+                    <select id="certificate-form">
+                        <option value="COPY">Копия</option>
+                        <option value="ORIGINAL">Оригинал</option>
+                        <option value="ELECTRONIC_COPY">Электронная копия</option>
+                    </select>
+                </label>
+                <label>Дата установления
+                    <input id="certificate-valid-from" type="date">
+                </label>
+                <label>Дата окончания
+                    <input id="certificate-valid-to" type="date">
+                </label>
+                <label>Нозология
+                    <select id="certificate-has-nosology">
+                        <option value="false">Нет</option>
+                        <option value="true">Да</option>
+                    </select>
+                </label>
+                <fieldset id="certificate-nosology-fields" class="certificate-code-fields" hidden>
+                    <legend>Код нозологии</legend>
+                    <select id="certificate-nosology-letter" aria-label="Буква кода">
+                        <option value="И">И</option>
+                        <option value="О">О</option>
+                    </select>
+                    <input id="certificate-nosology-major" type="number" min="0" max="9" inputmode="numeric" aria-label="Первая цифра">
+                    <span>.</span>
+                    <input id="certificate-nosology-minor" type="number" min="0" max="9" inputmode="numeric" aria-label="Вторая цифра">
+                </fieldset>
+            </div>
+
+            <section id="certificate-mse-fields" class="certificate-type-section">
+                <h3>Справка МСЭ</h3>
+                <p class="muted">
+                    Действующая справка автоматически устанавливает К2. Если числовая часть нозологии
+                    включена в справочник К3, категория автоматически станет К3.
+                </p>
+            </section>
+
+            <section id="certificate-cpmpc-fields" class="certificate-type-section" hidden>
+                <h3>Заключение ЦМПК</h3>
+                <div class="certificate-form-grid">
+                    <label>Номер
+                        <input id="certificate-number" type="text">
+                    </label>
+                    <label>Ступень образования
+                        <select id="certificate-education-stage">
+                            <option value="">Выберите</option>
+                            <option value="DO">ДО</option>
+                            <option value="NOO">НОО</option>
+                            <option value="OOO">ООО</option>
+                            <option value="SOO">СОО</option>
+                        </select>
+                    </label>
+                    <label>Есть возможность пролонгирования
+                        <select id="certificate-prolongation-available">
+                            <option value="false">Нет</option>
+                            <option value="true">Да</option>
+                        </select>
+                    </label>
+                    <label>ИПР/ИПРА имеется
+                        <select id="certificate-ipra-present">
+                            <option value="false">Нет</option>
+                            <option value="true">Да</option>
+                        </select>
+                    </label>
+                    <label>Образовательная программа
+                        <select id="certificate-education-program">
+                            <option value="">Выберите</option>
+                            <option value="DEAF">Глухие</option>
+                            <option value="HARD_OF_HEARING">Слабослышащие, позднооглохшие, кохлеарно имплантированные, глухие</option>
+                            <option value="BLIND">Слепые</option>
+                            <option value="VISUALLY_IMPAIRED">Слабовидящие</option>
+                            <option value="TNR">ТНР</option>
+                            <option value="NODA">НОДА</option>
+                            <option value="ZPR">ЗПР</option>
+                            <option value="RAS">РАС</option>
+                            <option value="UO">УО</option>
+                        </select>
+                    </label>
+                </div>
+                <div id="certificate-prolongation-panel" class="certificate-prolongation-panel" hidden>
+                    <strong>Есть возможность пролонгирования</strong>
+                    <div class="certificate-form-grid">
+                        <label>Использовал пролонгирование
+                            <select id="certificate-prolongation-used">
+                                <option value="false">Нет</option>
+                                <option value="true">Да</option>
+                            </select>
+                        </label>
+                        <label data-certificate-prolongation-details hidden>Параллель, которую пролонгировали
+                            <select id="certificate-prolonged-grade"></select>
+                        </label>
+                        <label data-certificate-prolongation-details hidden>Год обучения
+                            <select id="certificate-prolonged-year"></select>
+                        </label>
+                    </div>
+                </div>
+                <p id="certificate-date-hint" class="muted"></p>
+
+                <div class="row controls-row">
+                    <h3>Направления коррекционной работы</h3>
+                    <button id="certificate-add-direction-btn" type="button" class="secondary">Добавить специалиста</button>
+                    <button id="certificate-open-specialists-btn" type="button" class="secondary">Справочник</button>
+                </div>
+                <div class="sheet-wrap">
+                    <table class="sheet-table">
+                        <thead><tr><th>Специалист</th><th>Задачи</th><th></th></tr></thead>
+                        <tbody id="certificate-direction-body"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <div class="certificate-form-grid">
+                <label>Прикрепить скан документа
+                    <input id="certificate-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx">
+                    <small class="muted">Один файл — до 15 МБ.</small>
+                </label>
+            </div>
+            <div class="row controls-row">
+                <button id="certificate-save-btn" type="button">Сохранить справку</button>
+                <button id="certificate-clear-btn" type="button" class="secondary">Очистить</button>
+            </div>
+            <div id="certificate-message" class="muted"></div>
+        </details>
+
+        <h3>Реестр справок</h3>
+        <div class="sheet-wrap">
+            <table class="sheet-table" id="certificate-table"></table>
+        </div>
+    </section>
+
+    <section class="card" data-contingent-pane="nosologies" style="display:none;">
+        <div>
+            <div class="dialog-hero"><h2>Справочник нозологий К3</h2></div>
+            <p class="muted">Введите числовую часть кода. Например: 4.1, 4.2 или 6.1.</p>
+            <div class="row controls-row" data-requires-edit>
+                <input id="certificate-nosology-id" type="hidden">
+                <input id="certificate-nosology-code" type="text" inputmode="decimal" placeholder="4.1">
+                <label><input id="certificate-nosology-active" type="checkbox" checked> действует</label>
+                <button id="certificate-nosology-save-btn" type="button">Сохранить</button>
+            </div>
+            <div class="sheet-wrap"><table class="sheet-table" id="certificate-nosology-table"></table></div>
+            <div class="row controls-row"><button id="certificate-nosology-back-btn" type="button" class="secondary">Вернуться к справкам</button></div>
+        </div>
+    </section>
+
+    <dialog id="certificate-specialist-dialog" class="certificate-directory-dialog">
+        <form method="dialog">
+            <div class="dialog-hero"><h3>Справочник специалистов</h3></div>
+            <div class="row controls-row" data-requires-edit>
+                <input id="certificate-specialist-name" type="text" placeholder="Наименование специалиста">
+                <button id="certificate-specialist-save-btn" type="button">Добавить</button>
+            </div>
+            <div class="sheet-wrap"><table class="sheet-table" id="certificate-specialist-table"></table></div>
+            <div class="dialog-actions"><button value="cancel" class="secondary">Закрыть</button></div>
+        </form>
+    </dialog>
+
+    <template id="support-legacy-template">
         <h2>Статусы и ИУП</h2>
         <p class="muted">
             В численности ребёнок с действующим ИУП учитывается только в колонке «ИУП».
@@ -417,7 +607,7 @@
         <div class="sheet-wrap">
             <table class="sheet-table" id="support-register-table"></table>
         </div>
-    </section>
+    </template>
 </main>
 <script src="/auth.js"></script>
 <script src="/contingent.js"></script>

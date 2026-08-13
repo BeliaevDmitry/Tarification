@@ -2340,6 +2340,81 @@ td.vacancy-row {
     cursor: pointer;
 }
 
+.certificate-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 12px;
+    margin: 14px 0;
+}
+
+.certificate-form-grid > label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.certificate-form-grid input,
+.certificate-form-grid select,
+.certificate-form-grid textarea,
+#certificate-direction-body select,
+#certificate-direction-body textarea {
+    width: 100%;
+}
+
+.certificate-type-section {
+    margin: 16px 0;
+    padding: 14px;
+    border: 1px solid #dbe1ea;
+    border-radius: 10px;
+    background: #f8fafc;
+}
+
+.certificate-code-fields {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid #dbe1ea;
+    border-radius: 8px;
+    padding: 8px 10px 10px;
+}
+
+.certificate-code-fields[hidden],
+.certificate-type-section[hidden],
+.certificate-prolongation-panel[hidden],
+[data-certificate-prolongation-details][hidden] {
+    display: none !important;
+}
+
+.certificate-code-fields select,
+.certificate-code-fields input {
+    width: 62px;
+}
+
+.certificate-prolongation-panel {
+    margin: 14px 0;
+    padding: 12px;
+    border: 2px solid #f59e0b;
+    border-radius: 10px;
+    background: #fffbeb;
+    color: #92400e;
+}
+
+.certificate-directory-dialog {
+    width: min(850px, calc(100vw - 32px));
+    max-width: 850px;
+}
+
+#certificate-direction-body textarea {
+    min-width: 360px;
+    resize: vertical;
+}
+
+@media (max-width: 720px) {
+    #certificate-direction-body textarea {
+        min-width: 220px;
+    }
+}
+
 #contingent-stats-table th,
 #contingent-stats-table td {
     text-align: center;
