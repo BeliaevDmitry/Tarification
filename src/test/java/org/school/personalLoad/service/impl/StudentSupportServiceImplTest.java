@@ -130,6 +130,30 @@ class StudentSupportServiceImplTest {
     }
 
     @Test
+    void categoryDerivedFromMseHasPriorityOverLegacyManualStatus() {
+        ContingentSnapshot snapshot = snapshot();
+        StudentProfile student = profile(1L, "Ребёнок со справкой МСЭ");
+        StudentSupportStatus automatic = status(student, StudentCategory.K3);
+        automatic.setSourceDocumentId(500L);
+        automatic.setValidFrom(DATE.minusMonths(2));
+        StudentSupportStatus manual = status(student, StudentCategory.K2);
+        manual.setId(202L);
+        manual.setValidFrom(DATE.minusDays(1));
+        when(snapshotRepository.findFirstByAcademicYearAndSnapshotDateOrderByImportedAtDesc(YEAR, DATE))
+                .thenReturn(Optional.of(snapshot));
+        when(contingentStudentRepository.findAllBySnapshotId(10L)).thenReturn(List.of(contingentRow(1L)));
+        when(studentProfileRepository.findAllById(any())).thenReturn(List.of(student));
+        when(supportStatusRepository.findAllByAcademicYear(YEAR)).thenReturn(List.of(automatic, manual));
+        when(iupPlanRepository.findAllByAcademicYear(YEAR)).thenReturn(List.of());
+
+        StudentSupportDtos.SummaryResponse summary = service.getSummary(YEAR, DATE, DATE);
+
+        assertEquals(0, summary.getClasses().get(0).getK2());
+        assertEquals(1, summary.getClasses().get(0).getK3());
+        assertEquals(StudentCategory.K3, summary.getRegisterRows().get(0).getUnderlyingCategory());
+    }
+
+    @Test
     void splitSubjectRequiresGroupWhenIupChildAttendsClass() {
         StudentProfile student = profile(1L, "Иванов Иван");
         CurriculumPlanEntry curriculum = new CurriculumPlanEntry();

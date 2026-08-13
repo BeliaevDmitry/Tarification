@@ -154,7 +154,10 @@ public class StudentSupportController {
             HttpServletRequest httpServletRequest
     ) {
         validateEdit(AuthSessionUtils.requiredUser(httpServletRequest));
-        return ResponseEntity.ok(studentDataExchangeService.importPackage(effectiveYear(academicYear), file));
+        StudentDataExchangeDtos.ImportResult result =
+                studentDataExchangeService.importPackage(effectiveYear(academicYear), file);
+        studentSupportDocumentService.synchronizeMseStatuses();
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/data-package/readiness")
@@ -183,6 +186,34 @@ public class StudentSupportController {
     ) {
         validateEdit(AuthSessionUtils.requiredUser(httpServletRequest));
         return ResponseEntity.ok(studentSupportDocumentService.save(effectiveYear(academicYear), request));
+    }
+
+    @GetMapping("/nosologies")
+    public ResponseEntity<java.util.List<StudentSupportDocumentDtos.NosologyView>> nosologies() {
+        return ResponseEntity.ok(studentSupportDocumentService.findNosologies());
+    }
+
+    @PutMapping("/nosologies")
+    public ResponseEntity<StudentSupportDocumentDtos.NosologyView> saveNosology(
+            @RequestBody StudentSupportDocumentDtos.NosologySaveRequest request,
+            HttpServletRequest httpServletRequest
+    ) {
+        validateEdit(AuthSessionUtils.requiredUser(httpServletRequest));
+        return ResponseEntity.ok(studentSupportDocumentService.saveNosology(request));
+    }
+
+    @GetMapping("/correction-specialists")
+    public ResponseEntity<java.util.List<StudentSupportDocumentDtos.SpecialistView>> correctionSpecialists() {
+        return ResponseEntity.ok(studentSupportDocumentService.findSpecialists());
+    }
+
+    @PostMapping("/correction-specialists")
+    public ResponseEntity<StudentSupportDocumentDtos.SpecialistView> saveCorrectionSpecialist(
+            @RequestBody StudentSupportDocumentDtos.SpecialistSaveRequest request,
+            HttpServletRequest httpServletRequest
+    ) {
+        validateEdit(AuthSessionUtils.requiredUser(httpServletRequest));
+        return ResponseEntity.ok(studentSupportDocumentService.saveSpecialist(request));
     }
 
     @DeleteMapping("/documents/{documentId}")

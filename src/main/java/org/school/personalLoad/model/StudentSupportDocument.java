@@ -50,11 +50,37 @@ public class StudentSupportDocument {
     @Column(name = "valid_to")
     private LocalDate validTo;
 
+    @Column(name = "nosology_code", length = 16)
+    private String nosologyCode;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "education_stage", length = 16)
+    private SupportEducationStage educationStage;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "education_program", length = 64)
+    private CpmPcEducationProgram educationProgram;
+
+    @Column(name = "prolongation_available", nullable = false)
+    private boolean prolongationAvailable;
+
+    @Column(name = "prolongation_used", nullable = false)
+    private boolean prolongationUsed;
+
+    @Column(name = "prolonged_grade")
+    private Integer prolongedGrade;
+
+    @Column(name = "prolonged_academic_year", length = 16)
+    private String prolongedAcademicYear;
+
+    @Column(name = "ipra_present", nullable = false)
+    private boolean ipraPresent;
+
     @Column(name = "issuing_organization", length = 500)
     private String issuingOrganization;
 
-    @Column(name = "received_at", nullable = false)
-    private LocalDate receivedAt = LocalDate.now();
+    @Column(name = "received_at")
+    private LocalDate receivedAt;
 
     @Column(name = "responsible_employee", length = 255)
     private String responsibleEmployee;

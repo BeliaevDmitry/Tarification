@@ -7,14 +7,23 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.school.personalLoad.dto.contingent.StudentSupportDocumentDtos;
 import org.school.personalLoad.model.StudentProfile;
+import org.school.personalLoad.model.StudentCategory;
 import org.school.personalLoad.model.StudentSupportDocument;
 import org.school.personalLoad.model.StudentSupportDocumentAttachment;
 import org.school.personalLoad.model.StudentSupportDocumentForm;
 import org.school.personalLoad.model.StudentSupportDocumentType;
+import org.school.personalLoad.model.StudentSupportStatus;
+import org.school.personalLoad.model.NosologyCatalogEntry;
+import org.school.personalLoad.model.SupportEducationStage;
+import org.school.personalLoad.model.CpmPcEducationProgram;
+import org.school.personalLoad.repository.CorrectionSpecialistCatalogEntryRepository;
+import org.school.personalLoad.repository.NosologyCatalogEntryRepository;
 import org.school.personalLoad.repository.StudentClassEnrollmentRepository;
 import org.school.personalLoad.repository.StudentProfileRepository;
 import org.school.personalLoad.repository.StudentSupportDocumentAttachmentRepository;
+import org.school.personalLoad.repository.StudentSupportDocumentCorrectionRepository;
 import org.school.personalLoad.repository.StudentSupportDocumentRepository;
+import org.school.personalLoad.repository.StudentSupportStatusRepository;
 import org.springframework.mock.web.MockMultipartFile;
 
 import java.time.LocalDate;
@@ -38,6 +47,14 @@ class StudentSupportDocumentServiceTest {
     private StudentProfileRepository studentRepository;
     @Mock
     private StudentClassEnrollmentRepository enrollmentRepository;
+    @Mock
+    private StudentSupportStatusRepository supportStatusRepository;
+    @Mock
+    private NosologyCatalogEntryRepository nosologyRepository;
+    @Mock
+    private CorrectionSpecialistCatalogEntryRepository specialistRepository;
+    @Mock
+    private StudentSupportDocumentCorrectionRepository correctionRepository;
 
     private StudentSupportDocumentService service;
     private StudentProfile student;
@@ -48,7 +65,11 @@ class StudentSupportDocumentServiceTest {
                 documentRepository,
                 attachmentRepository,
                 studentRepository,
-                enrollmentRepository
+                enrollmentRepository,
+                supportStatusRepository,
+                nosologyRepository,
+                specialistRepository,
+                correctionRepository
         );
         student = new StudentProfile();
         student.setId(1L);
@@ -63,10 +84,14 @@ class StudentSupportDocumentServiceTest {
                 .thenReturn(List.of());
         lenient().when(enrollmentRepository.findAllByStudent_IdAndAcademicYearOrderByValidFromDesc(1L, "2026/2027"))
                 .thenReturn(List.of());
+        lenient().when(supportStatusRepository.findBySourceDocumentId(10L)).thenReturn(Optional.empty());
+        lenient().when(supportStatusRepository.save(any(StudentSupportStatus.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(nosologyRepository.findByCodeIgnoreCase(any())).thenReturn(Optional.empty());
+        lenient().when(correctionRepository.findAllByDocument_IdOrderBySpecialist_NameAsc(10L)).thenReturn(List.of());
     }
 
     @Test
-    void acceptsDocumentMetadataWithoutChangingStudentCategory() {
+    void mseAutomaticallyCreatesK2StatusAndDoesNotKeepUnusedNumber() {
         StudentSupportDocumentDtos.SaveRequest request = new StudentSupportDocumentDtos.SaveRequest();
         request.setStudentId(1L);
         request.setDocumentType(StudentSupportDocumentType.MSE_CERTIFICATE);
@@ -81,7 +106,56 @@ class StudentSupportDocumentServiceTest {
         assertEquals(10L, saved.getId());
         assertEquals(StudentSupportDocumentType.MSE_CERTIFICATE, saved.getDocumentType());
         assertEquals(StudentSupportDocumentForm.COPY, saved.getAcceptedForm());
-        assertEquals("МСЭ-1", saved.getDocumentNumber());
+        assertEquals(null, saved.getDocumentNumber());
+        org.mockito.ArgumentCaptor<StudentSupportStatus> captor =
+                org.mockito.ArgumentCaptor.forClass(StudentSupportStatus.class);
+        org.mockito.Mockito.verify(supportStatusRepository).save(captor.capture());
+        assertEquals(StudentCategory.K2, captor.getValue().getCategory());
+        assertEquals(10L, captor.getValue().getSourceDocumentId());
+    }
+
+    @Test
+    void mseNosologyFromDirectoryAutomaticallyCreatesK3Status() {
+        NosologyCatalogEntry nosology = new NosologyCatalogEntry();
+        nosology.setId(5L);
+        nosology.setCode("4.1");
+        nosology.setStudentCategory(StudentCategory.K3);
+        nosology.setActive(true);
+        when(nosologyRepository.findByCodeIgnoreCase("4.1")).thenReturn(Optional.of(nosology));
+        StudentSupportDocumentDtos.SaveRequest request = new StudentSupportDocumentDtos.SaveRequest();
+        request.setStudentId(1L);
+        request.setDocumentType(StudentSupportDocumentType.MSE_CERTIFICATE);
+        request.setNosologyCode("И4.1");
+        request.setValidFrom(LocalDate.of(2026, 9, 1));
+        request.setValidTo(LocalDate.of(2027, 8, 31));
+
+        StudentSupportDocumentDtos.View saved = service.save("2026/2027", request);
+
+        assertEquals(StudentCategory.K3, saved.getDerivedCategory());
+        org.mockito.ArgumentCaptor<StudentSupportStatus> captor =
+                org.mockito.ArgumentCaptor.forClass(StudentSupportStatus.class);
+        org.mockito.Mockito.verify(supportStatusRepository).save(captor.capture());
+        assertEquals(StudentCategory.K3, captor.getValue().getCategory());
+        assertEquals("И4.1", captor.getValue().getNosologyCodeSnapshot());
+    }
+
+    @Test
+    void cpmpcRequiresStandardStageEndDateWhenProlongationIsUnavailable() {
+        StudentSupportDocumentDtos.SaveRequest request = new StudentSupportDocumentDtos.SaveRequest();
+        request.setStudentId(1L);
+        request.setDocumentType(StudentSupportDocumentType.CPMPC_CONCLUSION);
+        request.setDocumentNumber("ЦМПК-1");
+        request.setEducationStage(SupportEducationStage.NOO);
+        request.setEducationProgram(CpmPcEducationProgram.ZPR);
+        request.setValidFrom(LocalDate.of(2026, 9, 1));
+        request.setValidTo(LocalDate.of(2027, 7, 31));
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.save("2026/2027", request)
+        );
+
+        assertEquals("Срок заключения ЦМПК должен оканчиваться 31.08", error.getMessage());
     }
 
     @Test

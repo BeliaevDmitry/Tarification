@@ -48,6 +48,9 @@ public class StudentSupportStatus {
     @Column(name = "comment", length = 1000)
     private String comment;
 
+    @Column(name = "source_document_id")
+    private Long sourceDocumentId;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 

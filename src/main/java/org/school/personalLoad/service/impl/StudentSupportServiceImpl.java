@@ -538,10 +538,12 @@ public class StudentSupportServiceImpl implements StudentSupportService {
         Map<Long, StudentSupportStatus> result = new HashMap<>();
         supportStatusRepository.findAllByAcademicYear(academicYear).stream()
                 .filter(status -> contains(status.getValidFrom(), status.getValidTo(), date))
-                .sorted(Comparator.comparing(
-                        StudentSupportStatus::getValidFrom,
-                        Comparator.nullsFirst(Comparator.naturalOrder())
-                ))
+                .sorted(Comparator
+                        .comparing((StudentSupportStatus status) -> status.getSourceDocumentId() == null ? 0 : 1)
+                        .thenComparing(
+                                StudentSupportStatus::getValidFrom,
+                                Comparator.nullsFirst(Comparator.naturalOrder())
+                        ))
                 .forEach(status -> result.put(status.getStudent().getId(), status));
         return result;
     }
