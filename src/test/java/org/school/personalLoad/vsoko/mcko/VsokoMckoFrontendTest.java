@@ -15,6 +15,7 @@ class VsokoMckoFrontendTest {
         String summary = Files.readString(Path.of("src/main/resources/static/vsoko-summary.html"));
         String interview = Files.readString(Path.of("src/main/resources/static/vsoko-interview.html"));
         String assignments = Files.readString(Path.of("src/main/resources/static/vsoko-mcko-teachers.html"));
+        String mckoScript = Files.readString(Path.of("src/main/resources/static/vsoko-mcko.js"));
 
         assertTrue(hub.contains("/vsoko-mcko.html"));
         assertTrue(hub.contains("/vsoko-summary.html"));
@@ -29,5 +30,9 @@ class VsokoMckoFrontendTest {
         assertTrue(interview.contains("Список на печать"));
         assertTrue(assignments.contains("Импорт Excel"));
         assertTrue(assignments.contains("Экспорт Excel"));
+        assertTrue(mckoScript.contains("MCKO_UPLOAD_BATCH_BYTES"));
+        assertTrue(mckoScript.contains("splitUploadBatches"));
+        assertTrue(mckoScript.contains("Пакет ${index + 1} из ${batches.length}"));
+        assertTrue(mckoScript.contains("completedKeys"));
     }
 }
