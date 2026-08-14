@@ -43,7 +43,7 @@
     <a class="card home-menu-card" href="/documents.html" data-documents-card>
       <div class="home-menu-sticker">📄</div>
       <h2>Документы</h2>
-      <p class="muted">Педагогические советы: конструктор протоколов, архив Word-файлов и автоматические выписки.</p>
+      <p class="muted">Педагогические советы и приказы на пробные мероприятия: согласование, выпуск Word-файлов и подписанные сканы.</p>
     </a>
 
     <a class="card home-menu-card home-menu-placeholder" href="/vsoko.html">
@@ -58,8 +58,30 @@
       <p class="muted">Управление пользователями системы (только для администратора).</p>
     </a>
   </section>
+
+  <section class="card home-calendar-card" id="home-probe-calendar">
+    <div class="home-calendar-toolbar">
+      <div>
+        <h2>Календарь мероприятий</h2>
+        <p class="muted">Здесь появляются только выпущенные приказы: дата, время, классы и сопровождающие.</p>
+      </div>
+      <div class="home-calendar-actions">
+        <button type="button" class="secondary" id="calendar-prev" aria-label="Предыдущий период">←</button>
+        <button type="button" class="secondary" id="calendar-today">Сегодня</button>
+        <button type="button" class="secondary" id="calendar-next" aria-label="Следующий период">→</button>
+        <div class="home-calendar-view-switch" role="group" aria-label="Вид календаря">
+          <button type="button" data-calendar-view="month">Месяц</button>
+          <button type="button" data-calendar-view="week">Неделя</button>
+          <button type="button" data-calendar-view="day">День</button>
+        </div>
+      </div>
+    </div>
+    <h3 id="calendar-period-title" class="home-calendar-title"></h3>
+    <div id="calendar-grid" class="home-calendar-grid" aria-live="polite"></div>
+  </section>
 </main>
 <script src="/branding.js"></script>
 <script src="/auth.js"></script>
+<script src="/home-calendar.js"></script>
 </body>
 </html>

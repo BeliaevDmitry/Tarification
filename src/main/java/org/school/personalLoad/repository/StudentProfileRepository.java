@@ -10,4 +10,6 @@ public interface StudentProfileRepository extends JpaRepository<StudentProfile, 
     List<StudentProfile> findAllByNormalizedRecordNumber(String normalizedRecordNumber);
 
     List<StudentProfile> findAllByNormalizedFullNameAndBirthDate(String normalizedFullName, LocalDate birthDate);
+
+    List<StudentProfile> findAllByNormalizedFullName(String normalizedFullName);
 }

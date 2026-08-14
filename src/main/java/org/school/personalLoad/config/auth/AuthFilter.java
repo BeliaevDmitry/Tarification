@@ -60,8 +60,8 @@ public class AuthFilter extends OncePerRequestFilter {
             Map.entry("/subject-areas.html", AppTab.SUBJECT_AREAS),
             Map.entry("/teachers-notification.html", AppTab.HR_DOCUMENTS),
             Map.entry("/educational-work.html", AppTab.EDUCATIONAL_WORK),
-            Map.entry("/documents.html", AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS),
             Map.entry("/pedagogical-councils.html", AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS),
+            Map.entry("/probe-orders.html", AppTab.DOCUMENTS_PROBE_ORDERS),
             Map.entry("/vsoko.html", AppTab.VSOKO_VIEW),
             Map.entry("/vsoko-oge.html", AppTab.VSOKO_VIEW),
             Map.entry("/vsoko-ege.html", AppTab.VSOKO_VIEW),
@@ -139,6 +139,11 @@ public class AuthFilter extends OncePerRequestFilter {
             return;
         }
 
+        if ("/documents.html".equals(path) && !hasAnyDocumentsPageAccess(currentUser)) {
+            rejectForbidden(request, response, "У пользователя нет прав на просмотр раздела документов");
+            return;
+        }
+
         AppTab pageTab = PAGE_TABS.get(path);
         if (pageTab != null && !currentUser.canViewTab(pageTab)) {
             rejectForbidden(request, response, "У пользователя нет прав на просмотр этой вкладки");
@@ -178,6 +183,11 @@ public class AuthFilter extends OncePerRequestFilter {
                 || user.canViewTab(AppTab.TEACHERS_MCKO);
     }
 
+    private boolean hasAnyDocumentsPageAccess(SessionUser user) {
+        return user.canViewTab(AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS)
+                || user.canViewTab(AppTab.DOCUMENTS_PROBE_ORDERS);
+    }
+
     private AppTab apiTabForPath(String path) {
         if (path.startsWith("/api/building-groups")) return AppTab.BUILDINGS;
         if (path.startsWith("/api/buildings")) return AppTab.BUILDINGS;
@@ -206,6 +216,7 @@ public class AuthFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/admin/users")) return AppTab.USERS;
         if (path.startsWith("/api/educational-work")) return AppTab.EDUCATIONAL_WORK;
         if (path.startsWith("/api/pedagogical-councils")) return AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS;
+        if (path.startsWith("/api/probe-orders")) return AppTab.DOCUMENTS_PROBE_ORDERS;
         if (path.startsWith("/api/pa")) return AppTab.VSOKO_EDIT;
         return null;
     }
@@ -216,6 +227,9 @@ public class AuthFilter extends OncePerRequestFilter {
     }
 
     private boolean canReadProtectedApi(SessionUser user, String path) {
+        if ("/api/probe-orders/calendar".equals(path)) {
+            return true;
+        }
         if (path.startsWith("/api/mcko")) {
             return user.canViewTab(AppTab.TEACHERS_MCKO);
         }
@@ -224,6 +238,9 @@ public class AuthFilter extends OncePerRequestFilter {
         }
         if (path.startsWith("/api/pa")) {
             return user.canViewTab(AppTab.VSOKO_VIEW) || user.canViewTab(AppTab.VSOKO_EDIT);
+        }
+        if (path.startsWith("/api/probe-orders")) {
+            return user.canViewTab(AppTab.DOCUMENTS_PROBE_ORDERS);
         }
         return true;
     }

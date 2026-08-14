@@ -33,6 +33,15 @@ public class StudentProfile {
     @Column(name = "normalized_record_number")
     private String normalizedRecordNumber;
 
+    @Column(name = "child_phone", length = 100)
+    private String childPhone;
+
+    @Column(name = "representative_name", length = 500)
+    private String representativeName;
+
+    @Column(name = "representative_phone", length = 100)
+    private String representativePhone;
+
     @Column(name = "active", nullable = false)
     private boolean active = true;
 

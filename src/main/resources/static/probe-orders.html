@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ГБОУ школа — Приказы на пробы</title>
+    <link rel="icon" type="image/png" href="/school-crest.png">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container probe-orders-page">
+    <header class="card">
+        <h1>Приказы на пробы</h1>
+        <p class="muted">Единый процесс: загрузка регистрации → проверка корпуса → согласование → Word-приказ → выпуск и подписанный скан.</p>
+        <nav class="page-nav"></nav>
+    </header>
+
+    <section class="card" id="probe-import-card" data-requires-edit>
+        <h2>Свежая выгрузка регистрации</h2>
+        <p class="muted">Загрузите один Excel-файл с листами «Мероприятия» и «Заявки». Контингент, классы, корпуса и сотрудники берутся из системы.</p>
+        <div class="row controls-row">
+            <input id="probe-import-file" type="file" accept=".xlsx,.xls,.xlsm">
+            <button id="probe-import-btn" type="button">Проанализировать и обновить таблицу</button>
+            <button id="probe-refresh-btn" type="button" class="secondary" data-allow-readonly="true">Обновить</button>
+        </div>
+        <div id="probe-import-result" class="muted probe-feedback" role="status"></div>
+    </section>
+
+    <section class="card">
+        <div class="probe-toolbar">
+            <div>
+                <h2>Приказы и мероприятия</h2>
+                <p id="probe-table-summary" class="muted"></p>
+            </div>
+            <label>Поиск
+                <input id="probe-search" placeholder="Мероприятие, класс, корпус, сопровождающий">
+            </label>
+            <label>Статус
+                <select id="probe-status-filter">
+                    <option value="">Все</option>
+                    <option value="DRAFT">Черновики</option>
+                    <option value="BUILDING_APPROVED">Согласованы корпусом</option>
+                    <option value="GENERATED">Word сформирован</option>
+                    <option value="RELEASED">Выпущены</option>
+                </select>
+            </label>
+        </div>
+        <div class="probe-legend">
+            <span class="probe-legend-item urgent">На следующей неделе, не согласовано</span>
+            <span class="probe-legend-item pending">Согласовано, но не выпущено</span>
+            <span class="probe-legend-item active">Выпущено, мероприятие впереди</span>
+            <span class="probe-legend-item draft">Черновик, до мероприятия больше недели</span>
+            <span class="probe-legend-item past">Мероприятие завершено</span>
+        </div>
+        <div class="sheet-wrap">
+            <table class="sheet-table probe-orders-table">
+                <thead><tr>
+                    <th data-probe-sort="eventDate">Дата и время</th>
+                    <th data-probe-sort="eventName">Мероприятие</th>
+                    <th data-probe-sort="buildingCode">Корпус / классы</th>
+                    <th data-probe-sort="participantCount">Детей</th>
+                    <th data-probe-sort="companions">Сопровождающие</th>
+                    <th data-probe-sort="approval">Согласование</th>
+                    <th data-probe-sort="status">Приказ</th>
+                    <th>Действия</th>
+                </tr></thead>
+                <tbody id="probe-orders-body"><tr><td colspan="8" class="muted">Загрузка…</td></tr></tbody>
+            </table>
+        </div>
+    </section>
+
+    <dialog id="probe-companions-dialog" class="teacher-card-dialog probe-dialog">
+        <div class="dialog-hero"><div><h2>Сопровождающие</h2><p id="probe-companions-caption" class="muted"></p></div>
+            <button type="button" data-probe-close>Закрыть</button></div>
+        <form id="probe-companions-form">
+            <label>Основной сопровождающий<select id="probe-primary-companion" required></select></label>
+            <label>Второй сопровождающий<select id="probe-secondary-companion"></select></label>
+            <p id="probe-companions-rule" class="probe-validation"></p>
+            <div class="dialog-actions"><button type="submit">Сохранить</button></div>
+        </form>
+    </dialog>
+
+    <dialog id="probe-edit-dialog" class="teacher-card-dialog probe-dialog probe-edit-dialog">
+        <div class="dialog-hero"><div><h2>Редактировать приказ</h2><p id="probe-edit-caption" class="muted"></p></div>
+            <button type="button" data-probe-close>Закрыть</button></div>
+        <form id="probe-edit-form">
+            <div class="teacher-card-grid">
+                <label class="teacher-card-wide">Название мероприятия<input id="probe-edit-name" required></label>
+                <label>Дата<input id="probe-edit-date" type="date" required></label>
+                <label>Начало<input id="probe-edit-start" type="time" required></label>
+                <label>Окончание<input id="probe-edit-end" type="time" required></label>
+                <label class="teacher-card-wide">Место проведения<input id="probe-edit-venue" required></label>
+                <label class="teacher-card-wide">Адрес мероприятия<input id="probe-edit-address" required></label>
+                <label>Время сбора<input id="probe-edit-gathering-time" type="time" required></label>
+                <label class="teacher-card-wide">Место сбора<input id="probe-edit-gathering-place" required></label>
+                <label>Возвращение<input id="probe-edit-return" type="time" required></label>
+            </div>
+            <h3>Состав детей</h3>
+            <p class="muted">ФИО и телефон представителя подставляются из постоянной карточки ребёнка, заполненной расширенной выгрузкой МЭШ. При необходимости их можно уточнить перед созданием приказа.</p>
+            <div class="probe-add-student-row">
+                <select id="probe-add-student"><option value="">Добавить ребёнка из контингента…</option></select>
+                <button id="probe-add-student-btn" type="button" class="secondary">Добавить</button>
+            </div>
+            <div class="sheet-wrap"><table class="sheet-table">
+                <thead><tr><th>ФИО</th><th>Класс</th><th>ФИО представителя</th><th>Телефон</th><th></th></tr></thead>
+                <tbody id="probe-edit-participants"></tbody>
+            </table></div>
+            <div class="dialog-actions"><span id="probe-edit-feedback" class="muted"></span><button type="submit">Сохранить изменения</button></div>
+        </form>
+    </dialog>
+
+    <dialog id="probe-generate-dialog" class="teacher-card-dialog probe-dialog">
+        <div class="dialog-hero"><div><h2>Сформировать Word-приказ</h2><p id="probe-generate-caption" class="muted"></p></div>
+            <button type="button" data-probe-close>Закрыть</button></div>
+        <form id="probe-generate-form">
+            <div class="teacher-card-grid">
+                <label>Номер приказа<input id="probe-order-number" required></label>
+                <label>Дата приказа<input id="probe-order-date" type="date" required></label>
+                <label class="teacher-card-wide">Кто подписывает<select id="probe-order-signer" required></select></label>
+                <label class="teacher-card-wide">Должность подписанта<input id="probe-order-signer-position" required></label>
+            </div>
+            <div class="dialog-actions"><span id="probe-generate-feedback" class="muted"></span><button type="submit">Сформировать</button></div>
+        </form>
+    </dialog>
+
+    <dialog id="probe-scan-dialog" class="teacher-card-dialog probe-dialog">
+        <div class="dialog-hero"><div><h2>Подписанный приказ</h2><p id="probe-scan-caption" class="muted"></p></div>
+            <button type="button" data-probe-close>Закрыть</button></div>
+        <form id="probe-scan-form">
+            <label>Скан PDF, JPG или PNG<input id="probe-scan-file" type="file" accept=".pdf,.jpg,.jpeg,.png" required></label>
+            <div class="dialog-actions"><span id="probe-scan-feedback" class="muted"></span><button type="submit">Загрузить скан</button></div>
+        </form>
+    </dialog>
+</main>
+<script src="/auth.js"></script>
+<script src="/table-scroll.js"></script>
+<script src="/probe-orders.js"></script>
+<script src="/branding.js"></script>
+</body>
+</html>

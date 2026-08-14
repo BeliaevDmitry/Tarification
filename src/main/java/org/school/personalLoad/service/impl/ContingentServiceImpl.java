@@ -23,7 +23,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.PushbackReader;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -51,10 +55,19 @@ public class ContingentServiceImpl implements ContingentService {
             throw new IllegalArgumentException("Файл обязателен");
         }
 
+        if (isCsvUpload(file)) {
+            try {
+                return importExtendedMeshCsv(academicYear, file);
+            } catch (Exception e) {
+                throw new RuntimeException("Не удалось обработать расширенную CSV-выгрузку МЭШ", e);
+            }
+        }
+
         int imported = 0;
         int skipped = 0;
         List<ContingentStudent> parsedStudents = new ArrayList<>();
         LocalDate snapshotDate = LocalDate.now();
+        String importFormat = "FULL";
 
         try (InputStream inputStream = file.getInputStream(); Workbook workbook = WorkbookFactory.create(inputStream)) {
             Sheet sheet = workbook.getNumberOfSheets() > 0 ? workbook.getSheetAt(0) : null;
@@ -67,84 +80,195 @@ public class ContingentServiceImpl implements ContingentService {
             snapshotDate = parseSnapshotDate(dateRow == null ? "" : formatter.formatCellValue(dateRow.getCell(0)), snapshotDate);
 
             int headerRowIndex = findHeaderRow(sheet, formatter);
-            if (headerRowIndex < 0) {
-                throw new IllegalArgumentException("Не удалось найти строку заголовков");
+            if (headerRowIndex >= 0) {
+                Row header = sheet.getRow(headerRowIndex);
+                Map<String, Integer> indexByHeader = extractHeaderIndices(header, formatter);
+
+                int recordCol = resolveColumnIndex(indexByHeader, "личное дело");
+                int fioCol = resolveColumnIndex(indexByHeader, "фио");
+                int classCol = resolveColumnIndex(indexByHeader, "номер и буква класса", "класс");
+
+                if (recordCol < 0 || fioCol < 0 || classCol < 0) {
+                    throw new IllegalArgumentException("В файле не найдены обязательные колонки: Личное дело №, ФИО, Номер и буква класса");
+                }
+
+                for (int i = headerRowIndex + 1; i <= sheet.getLastRowNum(); i++) {
+                    Row row = sheet.getRow(i);
+                    if (row == null) {
+                        continue;
+                    }
+                    String recordNumber = normalize(getCellValueByMarker(row, indexByHeader, formatter, "личное дело"));
+                    String fullName = normalize(getCellValueByMarker(row, indexByHeader, formatter, "фио"));
+                    String className = normalizePlacementName(getCellValueByMarker(row, indexByHeader, formatter, "номер и буква класса", "класс"));
+
+                    if (recordNumber.isBlank() && fullName.isBlank() && className.isBlank()) {
+                        continue;
+                    }
+                    if (fullName.isBlank() || className.isBlank()) {
+                        skipped++;
+                        continue;
+                    }
+
+                    LinkedHashMap<String, String> rawValues = buildRawValues(indexByHeader, row, formatter);
+                    ContingentStudent student = createBlankStudent(academicYear, recordNumber, fullName, className, toJson(rawValues));
+                    student.setEnrollmentDate(getCellValueByMarker(row, indexByHeader, formatter, "заведено"));
+                    student.setGender(getCellValueByMarker(row, indexByHeader, formatter, "пол"));
+                    student.setBirthDate(getCellValueByMarker(row, indexByHeader, formatter, "родился"));
+                    student.setBirthCertificate(getCellValueByMarker(row, indexByHeader, formatter, "свидетельство о рождении"));
+                    student.setSocialCard(getCellValueByMarker(row, indexByHeader, formatter, "социальная карта"));
+                    student.setPensionInsurance(getCellValueByMarker(row, indexByHeader, formatter, "полис пенсионного страхования"));
+                    student.setMedicalInsurance(getCellValueByMarker(row, indexByHeader, formatter, "полис медицинского страхования"));
+                    student.setPassport(getCellValueByMarker(row, indexByHeader, formatter, "паспорт"));
+                    student.setCitizenship(getCellValueByMarker(row, indexByHeader, formatter, "гражданство"));
+                    student.setAdditionalInfoCode(getCellValueByMarker(row, indexByHeader, formatter, "дополнительные сведения"));
+                    student.setAoopVariant(getCellValueByMarker(row, indexByHeader, formatter, "вариант аооп"));
+                    student.setEducationReceivingForm(getCellValueByMarker(row, indexByHeader, formatter, "форме получения образования"));
+                    student.setEducationForm(getCellValueByMarker(row, indexByHeader, formatter, "форме обучения"));
+                    student.setAlphabetBookNumber(getCellValueByMarker(row, indexByHeader, formatter, "номер алфавитной книги"));
+                    student.setRegistrationAddress(getCellValueByMarker(row, indexByHeader, formatter, "регистрация по месту жительства"));
+                    student.setTemporaryRegistrationAddress(getCellValueByMarker(row, indexByHeader, formatter, "регистрация по месту пребывания"));
+                    student.setActualAddress(getCellValueByMarker(row, indexByHeader, formatter, "адрес фактического проживания"));
+                    student.setPhone(getCellValueByMarker(row, indexByHeader, formatter, "телефон"));
+                    student.setEmail(getCellValueByMarker(row, indexByHeader, formatter, "email"));
+                    student.setOnVshuFrom(getCellValueByMarker(row, indexByHeader, formatter, "на вшу с"));
+                    student.setOnVshuReason(getCellValueByMarker(row, indexByHeader, formatter, "основание(я) постановки на вшу", "основание постановки на вшу"));
+                    student.setOnKdnFrom(getCellValueByMarker(row, indexByHeader, formatter, "на учете кдн с"));
+                    student.setOnKdnReason(getCellValueByMarker(row, indexByHeader, formatter, "основание(я) постановки на учет кдн", "основание постановки на учет кдн"));
+                    student.setOnPdnFrom(getCellValueByMarker(row, indexByHeader, formatter, "на учете пдн с"));
+                    student.setOnPdnReason(getCellValueByMarker(row, indexByHeader, formatter, "основание(я) постановки на учет пдн", "основание постановки на учет пдн"));
+                    student.setRemovedFromVshu(getCellValueByMarker(row, indexByHeader, formatter, "снят с вшу"));
+                    student.setRemovedFromVshuReason(getCellValueByMarker(row, indexByHeader, formatter, "основание снятия с вшу"));
+                    parsedStudents.add(student);
+                    imported++;
+                }
+            } else {
+                importFormat = "COMPACT";
+                CompactLayout layout = detectCompactLayout(sheet, formatter);
+                if (layout == null) {
+                    throw new IllegalArgumentException(
+                            "Не удалось распознать файл. Ожидается полная выгрузка или два столбца: ФИО и класс/группа"
+                    );
+                }
+                for (int i = layout.firstDataRow(); i <= sheet.getLastRowNum(); i++) {
+                    Row row = sheet.getRow(i);
+                    if (row == null) {
+                        continue;
+                    }
+                    String fullName = normalize(getCellValue(row, layout.fioColumn(), formatter));
+                    String placementName = normalizePlacementName(getCellValue(row, layout.placementColumn(), formatter));
+                    if (fullName.isBlank() && placementName.isBlank()) {
+                        continue;
+                    }
+                    if (fullName.isBlank() || placementName.isBlank()) {
+                        skipped++;
+                        continue;
+                    }
+                    LinkedHashMap<String, String> rawValues = new LinkedHashMap<>();
+                    rawValues.put("ФИО", fullName);
+                    rawValues.put("Класс или группа", placementName);
+                    rawValues.put("Формат", "Сокращённая выгрузка МЭШ");
+                    parsedStudents.add(createBlankStudent(academicYear, "", fullName, placementName, toJson(rawValues)));
+                    imported++;
+                }
             }
-            Row header = sheet.getRow(headerRowIndex);
-            Map<String, Integer> indexByHeader = extractHeaderIndices(header, formatter);
-
-            int recordCol = resolveColumnIndex(indexByHeader, "личное дело");
-            int fioCol = resolveColumnIndex(indexByHeader, "фио");
-            int classCol = resolveColumnIndex(indexByHeader, "номер и буква класса", "класс");
-
-            if (recordCol < 0 || fioCol < 0 || classCol < 0) {
-                throw new IllegalArgumentException("В файле не найдены обязательные колонки: Личное дело №, ФИО, Номер и буква класса");
-            }
-
-            for (int i = headerRowIndex + 1; i <= sheet.getLastRowNum(); i++) {
-                Row row = sheet.getRow(i);
-                if (row == null) {
-                    continue;
-                }
-                String recordNumber = normalize(getCellValueByMarker(row, indexByHeader, formatter, "личное дело"));
-                String fullName = normalize(getCellValueByMarker(row, indexByHeader, formatter, "фио"));
-                String className = ClassNameNormalizer.normalize(getCellValueByMarker(row, indexByHeader, formatter, "номер и буква класса", "класс"));
-
-                if (recordNumber.isBlank() && fullName.isBlank() && className.isBlank()) {
-                    continue;
-                }
-                if (fullName.isBlank() || className.isBlank()) {
-                    skipped++;
-                    continue;
-                }
-
-                LinkedHashMap<String, String> rawValues = buildRawValues(indexByHeader, row, formatter);
-
-                ContingentStudent student = new ContingentStudent();
-                student.setAcademicYear(academicYear);
-                student.setRecordNumber(recordNumber.isBlank() ? UUID.randomUUID().toString() : recordNumber);
-                student.setEnrollmentDate(getCellValueByMarker(row, indexByHeader, formatter, "заведено"));
-                student.setFullName(fullName);
-                student.setGender(getCellValueByMarker(row, indexByHeader, formatter, "пол"));
-                student.setBirthDate(getCellValueByMarker(row, indexByHeader, formatter, "родился"));
-                student.setBirthCertificate(getCellValueByMarker(row, indexByHeader, formatter, "свидетельство о рождении"));
-                student.setSocialCard(getCellValueByMarker(row, indexByHeader, formatter, "социальная карта"));
-                student.setPensionInsurance(getCellValueByMarker(row, indexByHeader, formatter, "полис пенсионного страхования"));
-                student.setMedicalInsurance(getCellValueByMarker(row, indexByHeader, formatter, "полис медицинского страхования"));
-                student.setPassport(getCellValueByMarker(row, indexByHeader, formatter, "паспорт"));
-                student.setCitizenship(getCellValueByMarker(row, indexByHeader, formatter, "гражданство"));
-                student.setAdditionalInfoCode(getCellValueByMarker(row, indexByHeader, formatter, "дополнительные сведения"));
-                student.setAoopVariant(getCellValueByMarker(row, indexByHeader, formatter, "вариант аооп"));
-                student.setEducationReceivingForm(getCellValueByMarker(row, indexByHeader, formatter, "форме получения образования"));
-                student.setEducationForm(getCellValueByMarker(row, indexByHeader, formatter, "форме обучения"));
-                student.setClassName(className);
-                student.setAlphabetBookNumber(getCellValueByMarker(row, indexByHeader, formatter, "номер алфавитной книги"));
-                student.setRegistrationAddress(getCellValueByMarker(row, indexByHeader, formatter, "регистрация по месту жительства"));
-                student.setTemporaryRegistrationAddress(getCellValueByMarker(row, indexByHeader, formatter, "регистрация по месту пребывания"));
-                student.setActualAddress(getCellValueByMarker(row, indexByHeader, formatter, "адрес фактического проживания"));
-                student.setPhone(getCellValueByMarker(row, indexByHeader, formatter, "телефон"));
-                student.setEmail(getCellValueByMarker(row, indexByHeader, formatter, "email"));
-                student.setOnVshuFrom(getCellValueByMarker(row, indexByHeader, formatter, "на вшу с"));
-                student.setOnVshuReason(getCellValueByMarker(row, indexByHeader, formatter, "основание(я) постановки на вшу", "основание постановки на вшу"));
-                student.setOnKdnFrom(getCellValueByMarker(row, indexByHeader, formatter, "на учете кдн с"));
-                student.setOnKdnReason(getCellValueByMarker(row, indexByHeader, formatter, "основание(я) постановки на учет кдн", "основание постановки на учет кдн"));
-                student.setOnPdnFrom(getCellValueByMarker(row, indexByHeader, formatter, "на учете пдн с"));
-                student.setOnPdnReason(getCellValueByMarker(row, indexByHeader, formatter, "основание(я) постановки на учет пдн", "основание постановки на учет пдн"));
-                student.setRemovedFromVshu(getCellValueByMarker(row, indexByHeader, formatter, "снят с вшу"));
-                student.setRemovedFromVshuReason(getCellValueByMarker(row, indexByHeader, formatter, "основание снятия с вшу"));
-                student.setRawPayload(toJson(rawValues));
-
-                parsedStudents.add(student);
-                imported++;
+            if (parsedStudents.isEmpty()) {
+                throw new IllegalArgumentException("В файле не найдено ни одной строки с ФИО и классом/группой");
             }
         } catch (Exception e) {
             throw new RuntimeException("Не удалось обработать файл контингента", e);
         }
 
+        return saveImportedSnapshot(academicYear, file, snapshotDate, importFormat, parsedStudents, imported, skipped);
+    }
+
+    private ContingentDtos.ImportResponse importExtendedMeshCsv(String academicYear, MultipartFile file) throws IOException {
+        List<List<String>> rows;
+        try (InputStream inputStream = file.getInputStream()) {
+            rows = readSemicolonCsv(inputStream);
+        }
+        if (rows.isEmpty()) {
+            throw new IllegalArgumentException("CSV-файл пуст");
+        }
+
+        List<String> headers = rows.get(0).stream().map(this::cleanCsvHeader).toList();
+        Map<String, Integer> indexByHeader = new LinkedHashMap<>();
+        for (int index = 0; index < headers.size(); index++) {
+            String header = headers.get(index);
+            if (!header.isBlank()) {
+                indexByHeader.putIfAbsent(header, index);
+            }
+        }
+
+        int fioColumn = resolveColumnIndex(indexByHeader, "фио ребёнка", "фио ребенка", "фио");
+        int birthDateColumn = resolveColumnIndex(indexByHeader, "дата рождения");
+        int placementColumn = resolveColumnIndex(indexByHeader, "класс / группа", "класс/группа", "класс");
+        if (fioColumn < 0 || birthDateColumn < 0 || placementColumn < 0) {
+            throw new IllegalArgumentException(
+                    "В CSV нужны колонки: ФИО ребёнка, Дата рождения и Класс / группа"
+            );
+        }
+
+        List<ContingentStudent> parsedStudents = new ArrayList<>();
+        int skipped = 0;
+        for (int rowIndex = 1; rowIndex < rows.size(); rowIndex++) {
+            List<String> row = rows.get(rowIndex);
+            String fullName = normalize(csvValue(row, fioColumn));
+            String birthDate = normalize(csvValue(row, birthDateColumn));
+            String placementName = normalizePlacementName(csvValue(row, placementColumn));
+            if (fullName.isBlank() && birthDate.isBlank() && placementName.isBlank()) {
+                continue;
+            }
+            if (fullName.isBlank() || placementName.isBlank()) {
+                skipped++;
+                continue;
+            }
+
+            LinkedHashMap<String, String> rawValues = new LinkedHashMap<>();
+            for (int column = 0; column < headers.size(); column++) {
+                String header = headers.get(column);
+                if (!header.isBlank()) {
+                    rawValues.put(header, csvValue(row, column));
+                }
+            }
+            ContingentStudent student = createBlankStudent(
+                    academicYear, "", fullName, placementName, toJson(rawValues)
+            );
+            student.setBirthDate(birthDate);
+            student.setGender(csvValueByMarker(row, indexByHeader, "пол"));
+            student.setPhone(csvValueByMarker(row, indexByHeader, "телефон ребёнка", "телефон ребенка"));
+            student.setEmail(csvValueByMarker(row, indexByHeader, "email ребёнка", "email ребенка"));
+            student.setPensionInsurance(csvValueByMarker(row, indexByHeader, "снилс ребёнка", "снилс ребенка"));
+            RepresentativeContact representative = firstRepresentative(row, indexByHeader);
+            student.setRepresentativeName(representative.name());
+            student.setRepresentativePhone(representative.phone());
+            parsedStudents.add(student);
+        }
+        if (parsedStudents.isEmpty()) {
+            throw new IllegalArgumentException("В CSV не найдено ни одной строки с ФИО и классом/группой");
+        }
+
+        return saveImportedSnapshot(
+                academicYear,
+                file,
+                parseSnapshotDateFromFileName(file.getOriginalFilename(), LocalDate.now()),
+                "MES_EXTENDED_CSV",
+                parsedStudents,
+                parsedStudents.size(),
+                skipped
+        );
+    }
+
+    private ContingentDtos.ImportResponse saveImportedSnapshot(String academicYear,
+                                                                MultipartFile file,
+                                                                LocalDate snapshotDate,
+                                                                String importFormat,
+                                                                List<ContingentStudent> parsedStudents,
+                                                                int imported,
+                                                                int skipped) {
         ContingentSnapshot snapshot = new ContingentSnapshot();
         snapshot.setAcademicYear(academicYear);
         snapshot.setSnapshotDate(snapshotDate);
-        snapshot.setSourceFileName(file.getOriginalFilename() == null ? "contingent.xlsx" : file.getOriginalFilename());
+        snapshot.setSourceFileName(file.getOriginalFilename() == null ? "contingent" : file.getOriginalFilename());
         snapshot.setTotalStudents(imported);
         ContingentSnapshot savedSnapshot = snapshotRepository.save(snapshot);
 
@@ -155,13 +279,133 @@ public class ContingentServiceImpl implements ContingentService {
         ContingentDtos.ImportResponse response = new ContingentDtos.ImportResponse();
         response.setSnapshotId(savedSnapshot.getId());
         response.setSnapshotDate(savedSnapshot.getSnapshotDate());
+        response.setImportFormat(importFormat);
         response.setImportedStudents(imported);
+        response.setSchoolStudents((int) parsedStudents.stream().filter(student -> isSchoolClassName(student.getClassName())).count());
+        response.setKindergartenStudents((int) parsedStudents.stream().filter(student -> isKindergartenPlacement(student.getClassName())).count());
+        response.setUnassignedStudents(imported - response.getSchoolStudents() - response.getKindergartenStudents());
         response.setSkippedRows(skipped);
         response.setLinkedStudents(linkResult.linked());
         response.setCreatedStudentProfiles(linkResult.created());
         response.setAmbiguousStudents(linkResult.ambiguous());
         response.setProblems(getProblems(academicYear, savedSnapshot.getId()));
         return response;
+    }
+
+    private boolean isCsvUpload(MultipartFile file) {
+        String fileName = Optional.ofNullable(file.getOriginalFilename()).orElse("").toLowerCase(Locale.ROOT);
+        String contentType = Optional.ofNullable(file.getContentType()).orElse("").toLowerCase(Locale.ROOT);
+        return fileName.endsWith(".csv") || contentType.contains("text/csv") || contentType.contains("application/csv");
+    }
+
+    private List<List<String>> readSemicolonCsv(InputStream inputStream) throws IOException {
+        List<List<String>> rows = new ArrayList<>();
+        List<String> row = new ArrayList<>();
+        StringBuilder value = new StringBuilder();
+        boolean quoted = false;
+        boolean firstCharacter = true;
+        try (PushbackReader reader = new PushbackReader(
+                new InputStreamReader(inputStream, StandardCharsets.UTF_8), 1)) {
+            int codePoint;
+            while ((codePoint = reader.read()) != -1) {
+                char character = (char) codePoint;
+                if (firstCharacter) {
+                    firstCharacter = false;
+                    if (character == '\uFEFF') {
+                        continue;
+                    }
+                }
+                if (character == '"') {
+                    if (quoted) {
+                        int next = reader.read();
+                        if (next == '"') {
+                            value.append('"');
+                        } else {
+                            quoted = false;
+                            if (next != -1) {
+                                reader.unread(next);
+                            }
+                        }
+                    } else if (value.length() == 0) {
+                        quoted = true;
+                    } else {
+                        value.append(character);
+                    }
+                } else if (character == ';' && !quoted) {
+                    row.add(value.toString());
+                    value.setLength(0);
+                } else if ((character == '\r' || character == '\n') && !quoted) {
+                    if (character == '\r') {
+                        int next = reader.read();
+                        if (next != '\n' && next != -1) {
+                            reader.unread(next);
+                        }
+                    }
+                    row.add(value.toString());
+                    value.setLength(0);
+                    if (row.stream().anyMatch(cell -> !cell.isBlank())) {
+                        rows.add(new ArrayList<>(row));
+                    }
+                    row.clear();
+                } else {
+                    value.append(character);
+                }
+            }
+        }
+        if (quoted) {
+            throw new IllegalArgumentException("В CSV не закрыта кавычка");
+        }
+        if (value.length() > 0 || !row.isEmpty()) {
+            row.add(value.toString());
+            if (row.stream().anyMatch(cell -> !cell.isBlank())) {
+                rows.add(row);
+            }
+        }
+        return rows;
+    }
+
+    private String cleanCsvHeader(String value) {
+        return normalize(value).replace("\uFEFF", "");
+    }
+
+    private String csvValue(List<String> row, int index) {
+        return row == null || index < 0 || index >= row.size() ? "" : normalize(row.get(index));
+    }
+
+    private String csvValueByMarker(List<String> row,
+                                    Map<String, Integer> indexByHeader,
+                                    String... markers) {
+        return csvValue(row, resolveColumnIndex(indexByHeader, markers));
+    }
+
+    private RepresentativeContact firstRepresentative(List<String> row, Map<String, Integer> indexByHeader) {
+        RepresentativeContact firstPartial = null;
+        for (int index = 1; index <= 20; index++) {
+            String name = csvValueByMarker(row, indexByHeader,
+                    "представитель " + index + " — фио", "представитель " + index + " - фио");
+            String phone = csvValueByMarker(row, indexByHeader,
+                    "представитель " + index + " — телефон", "представитель " + index + " - телефон");
+            if (!name.isBlank() && !phone.isBlank()) {
+                return new RepresentativeContact(name, phone);
+            }
+            if (firstPartial == null && (!name.isBlank() || !phone.isBlank())) {
+                firstPartial = new RepresentativeContact(name, phone);
+            }
+        }
+        return firstPartial == null ? new RepresentativeContact("", "") : firstPartial;
+    }
+
+    private LocalDate parseSnapshotDateFromFileName(String fileName, LocalDate fallback) {
+        Matcher matcher = Pattern.compile("(20\\d{2}-\\d{2}-\\d{2})")
+                .matcher(Optional.ofNullable(fileName).orElse(""));
+        if (!matcher.find()) {
+            return fallback;
+        }
+        try {
+            return LocalDate.parse(matcher.group(1));
+        } catch (Exception ignored) {
+            return fallback;
+        }
     }
 
     @Override
@@ -205,10 +449,17 @@ public class ContingentServiceImpl implements ContingentService {
         });
 
         Map<String, Integer> importedCountByClass = new TreeMap<>();
+        Map<String, Integer> kindergartenCountByGroup = new TreeMap<>((left, right) ->
+                left.compareToIgnoreCase(right));
+        int unassignedChildren = 0;
         for (String rawClassName : classNames) {
-            String className = ClassNameNormalizer.normalize(rawClassName);
-            if (extractParallel(className) >= 0) {
+            String className = normalizePlacementName(rawClassName);
+            if (isSchoolClassName(className)) {
                 importedCountByClass.merge(className, 1, Integer::sum);
+            } else if (isKindergartenPlacement(className)) {
+                kindergartenCountByGroup.merge(className, 1, Integer::sum);
+            } else {
+                unassignedChildren++;
             }
         }
 
@@ -293,6 +544,10 @@ public class ContingentServiceImpl implements ContingentService {
         ContingentDtos.StatsResponse response = new ContingentDtos.StatsResponse();
         response.setSnapshotId(snapshot.getId());
         response.setSnapshotDate(snapshot.getSnapshotDate());
+        response.setTotalImportedChildren(classNames.size());
+        response.setTotalSchoolChildren(importedCountByClass.values().stream().mapToInt(Integer::intValue).sum());
+        response.setTotalKindergartenChildren(kindergartenCountByGroup.values().stream().mapToInt(Integer::intValue).sum());
+        response.setTotalUnassignedChildren(unassignedChildren);
         response.setTotalStudents(totalByParallel.values().stream().mapToInt(Integer::intValue).sum());
         response.setTotalClassesNoo(classCountByStage(classCountByParallel, 1, 4));
         response.setTotalClassesOoo(classCountByStage(classCountByParallel, 5, 9));
@@ -300,6 +555,12 @@ public class ContingentServiceImpl implements ContingentService {
         response.setParallels(new ArrayList<>(totalByParallel.keySet()));
         response.setColumns(columns);
         response.setParallelTotals(parallelTotals);
+        response.setKindergartenGroups(kindergartenCountByGroup.entrySet().stream().map(entry -> {
+            ContingentDtos.KindergartenGroupTotal group = new ContingentDtos.KindergartenGroupTotal();
+            group.setGroupName(entry.getKey());
+            group.setStudents(entry.getValue());
+            return group;
+        }).toList());
         return response;
     }
 
@@ -330,6 +591,7 @@ public class ContingentServiceImpl implements ContingentService {
             ContingentWorkbookStyles styles = createContingentStyles(workbook);
             writeBuildingStatsSheet(workbook, stats, styles);
             writeAddressStatsSheet(workbook, stats, styles);
+            writeKindergartenStatsSheet(workbook, stats, styles);
             workbook.write(out);
             return out.toByteArray();
         } catch (Exception e) {
@@ -457,6 +719,47 @@ public class ContingentServiceImpl implements ContingentService {
 
         writeStageClassSummaryRow(sheet, rowIdx + 1, totalCol, stats, styles);
         finishContingentSheet(sheet, Math.max(totalCol, 4), 2);
+    }
+
+    private void writeKindergartenStatsSheet(Workbook workbook,
+                                             ContingentDtos.StatsResponse stats,
+                                             ContingentWorkbookStyles styles) {
+        Sheet sheet = workbook.createSheet("Детский сад");
+        Row title = sheet.createRow(0);
+        createCell(title, 0, "Дошкольный контингент на " + stats.getSnapshotDate(), styles.title());
+        createCell(title, 1, "", styles.title());
+        merge(sheet, new CellRangeAddress(0, 0, 0, 1));
+
+        Row header = sheet.createRow(1);
+        createCell(header, 0, "Группа / форма", styles.header());
+        createCell(header, 1, "Детей", styles.header());
+
+        int rowIndex = 2;
+        for (ContingentDtos.KindergartenGroupTotal group : stats.getKindergartenGroups()) {
+            Row row = sheet.createRow(rowIndex++);
+            createCell(row, 0, group.getGroupName(), styles.text());
+            createCell(row, 1, group.getStudents(), styles.number());
+        }
+
+        Row total = sheet.createRow(rowIndex++);
+        createCell(total, 0, "ИТОГО ДЕТСКИЙ САД", styles.total());
+        createCell(total, 1, stats.getTotalKindergartenChildren(), styles.total());
+
+        if (zeroIfNull(stats.getTotalUnassignedChildren()) > 0) {
+            Row unassigned = sheet.createRow(rowIndex++);
+            createCell(unassigned, 0, "Вне класса/детского сада", styles.total());
+            createCell(unassigned, 1, stats.getTotalUnassignedChildren(), styles.total());
+        }
+
+        Row imported = sheet.createRow(rowIndex);
+        createCell(imported, 0, "ВСЕГО В ФАЙЛЕ", styles.total());
+        createCell(imported, 1, stats.getTotalImportedChildren(), styles.total());
+
+        sheet.createFreezePane(0, 2);
+        sheet.autoSizeColumn(0);
+        sheet.autoSizeColumn(1);
+        sheet.setColumnWidth(0, Math.min(Math.max(sheet.getColumnWidth(0), 28 * 256), 48 * 256));
+        sheet.setColumnWidth(1, Math.min(Math.max(sheet.getColumnWidth(1), 12 * 256), 18 * 256));
     }
 
     private void writeStageClassSummaryRow(Sheet sheet,
@@ -684,7 +987,10 @@ public class ContingentServiceImpl implements ContingentService {
 
         Map<String, Integer> studentCountByClass = new TreeMap<>();
         studentRepository.findClassNamesBySnapshotId(snapshot.getId())
-                .forEach(className -> studentCountByClass.merge(ClassNameNormalizer.normalize(className), 1, Integer::sum));
+                .stream()
+                .map(this::normalizePlacementName)
+                .filter(this::isSchoolClassName)
+                .forEach(className -> studentCountByClass.merge(className, 1, Integer::sum));
 
         List<ContingentDtos.ImportProblem> problems = new ArrayList<>();
         studentCountByClass.forEach((className, count) -> {
@@ -834,6 +1140,140 @@ public class ContingentServiceImpl implements ContingentService {
         LinkedHashMap<String, String> raw = new LinkedHashMap<>();
         indexByHeader.forEach((header, index) -> raw.put(header, getCellValue(row, index, formatter)));
         return raw;
+    }
+
+    private ContingentStudent createBlankStudent(String academicYear,
+                                                  String recordNumber,
+                                                  String fullName,
+                                                  String placementName,
+                                                  String rawPayload) {
+        ContingentStudent student = new ContingentStudent();
+        student.setAcademicYear(academicYear);
+        student.setRecordNumber(normalize(recordNumber).isBlank() ? UUID.randomUUID().toString() : normalize(recordNumber));
+        student.setEnrollmentDate("");
+        student.setFullName(normalize(fullName));
+        student.setGender("");
+        student.setBirthDate("");
+        student.setBirthCertificate("");
+        student.setSocialCard("");
+        student.setPensionInsurance("");
+        student.setMedicalInsurance("");
+        student.setPassport("");
+        student.setCitizenship("");
+        student.setAdditionalInfoCode("");
+        student.setAoopVariant("");
+        student.setEducationReceivingForm("");
+        student.setEducationForm("");
+        student.setClassName(normalizePlacementName(placementName));
+        student.setAlphabetBookNumber("");
+        student.setRegistrationAddress("");
+        student.setTemporaryRegistrationAddress("");
+        student.setActualAddress("");
+        student.setPhone("");
+        student.setEmail("");
+        student.setRepresentativeName("");
+        student.setRepresentativePhone("");
+        student.setOnVshuFrom("");
+        student.setOnVshuReason("");
+        student.setOnKdnFrom("");
+        student.setOnKdnReason("");
+        student.setOnPdnFrom("");
+        student.setOnPdnReason("");
+        student.setRemovedFromVshu("");
+        student.setRemovedFromVshuReason("");
+        student.setRawPayload(normalize(rawPayload).isBlank() ? "{}" : rawPayload);
+        return student;
+    }
+
+    private CompactLayout detectCompactLayout(Sheet sheet, DataFormatter formatter) {
+        int firstRowIndex = firstNonEmptyRow(sheet, formatter);
+        if (firstRowIndex < 0) {
+            return null;
+        }
+        Row firstRow = sheet.getRow(firstRowIndex);
+        Map<String, Integer> possibleHeaders = extractHeaderIndices(firstRow, formatter);
+        int fioColumn = resolveColumnIndex(possibleHeaders, "фио", "ф.и.о", "учащийся", "обучающийся");
+        int placementColumn = resolveColumnIndex(possibleHeaders, "класс", "группа");
+        if (fioColumn >= 0 && placementColumn >= 0 && fioColumn != placementColumn) {
+            return new CompactLayout(firstRowIndex + 1, fioColumn, placementColumn);
+        }
+
+        int pairedRows = 0;
+        int personRows = 0;
+        int recognizedPlacements = 0;
+        int lastProbeRow = Math.min(sheet.getLastRowNum(), firstRowIndex + 49);
+        for (int i = firstRowIndex; i <= lastProbeRow; i++) {
+            Row row = sheet.getRow(i);
+            String fullName = getCellValue(row, 0, formatter);
+            String placement = getCellValue(row, 1, formatter);
+            if (fullName.isBlank() && placement.isBlank()) {
+                continue;
+            }
+            if (fullName.isBlank() || placement.isBlank()) {
+                continue;
+            }
+            pairedRows++;
+            if (looksLikePersonName(fullName)) {
+                personRows++;
+            }
+            if (isSchoolClassName(placement) || isKindergartenPlacement(placement) || isOutsideOrganization(placement)) {
+                recognizedPlacements++;
+            }
+        }
+        if (pairedRows == 0 || personRows * 10 < pairedRows * 7 || recognizedPlacements == 0) {
+            return null;
+        }
+        return new CompactLayout(firstRowIndex, 0, 1);
+    }
+
+    private int firstNonEmptyRow(Sheet sheet, DataFormatter formatter) {
+        for (int i = 0; i <= sheet.getLastRowNum(); i++) {
+            Row row = sheet.getRow(i);
+            if (row == null) {
+                continue;
+            }
+            int lastCell = Math.max(2, row.getLastCellNum());
+            for (int column = 0; column < lastCell; column++) {
+                if (!getCellValue(row, column, formatter).isBlank()) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private boolean looksLikePersonName(String value) {
+        String normalized = normalize(value);
+        return normalized.split("\\s+").length >= 2
+                && normalized.chars().anyMatch(Character::isLetter);
+    }
+
+    private boolean isSchoolClassName(String value) {
+        int parallel = extractParallel(normalize(value));
+        return parallel >= 1 && parallel <= 11;
+    }
+
+    private boolean isKindergartenPlacement(String value) {
+        String normalized = normalize(value).toLowerCase(Locale.ROOT).replace('ё', 'е');
+        return normalized.contains("групп")
+                || normalized.matches("^гкп(?:\\s|$).*")
+                || normalized.contains("детский сад")
+                || normalized.contains("дошкол");
+    }
+
+    private boolean isOutsideOrganization(String value) {
+        return normalize(value).toLowerCase(Locale.ROOT).replace('ё', 'е').matches("^вне\\s+оо(?:\\s|$).*");
+    }
+
+    private String normalizePlacementName(String value) {
+        String normalized = normalize(value).replaceAll("\\s+", " ");
+        return isSchoolClassName(normalized) ? ClassNameNormalizer.normalize(normalized) : normalized;
+    }
+
+    private record CompactLayout(int firstDataRow, int fioColumn, int placementColumn) {
+    }
+
+    private record RepresentativeContact(String name, String phone) {
     }
 
 

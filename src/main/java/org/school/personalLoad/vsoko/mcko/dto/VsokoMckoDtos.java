@@ -1,5 +1,6 @@
 package org.school.personalLoad.vsoko.mcko.dto;
 
+import org.school.personalLoad.dto.ProbeOrderDtos;
 import org.school.personalLoad.vsoko.mcko.model.MckoFileStatus;
 import org.school.personalLoad.vsoko.mcko.model.MckoStudentLinkStatus;
 
@@ -45,7 +46,10 @@ public final class VsokoMckoDtos {
                               String status) {}
 
     public record StudentSummary(Long studentId, String currentFullName, List<String> knownNames,
-                                 List<TimelineRow> results) {}
+                                 LocalDate birthDate, String childPhone,
+                                 String representativeName, String representativePhone,
+                                 List<TimelineRow> results,
+                                 List<ProbeOrderDtos.HistoryEvent> probeEvents) {}
 
     public record ClassSubjectComparison(String subjectName, int mckoCount, Double mckoAveragePercent,
                                          Double mckoAverageMark, int paCount, Double paAveragePercent,

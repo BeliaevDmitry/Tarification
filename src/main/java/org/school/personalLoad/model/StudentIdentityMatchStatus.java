@@ -4,6 +4,7 @@ public enum StudentIdentityMatchStatus {
     PENDING,
     LINKED_BY_RECORD_NUMBER,
     LINKED_BY_NAME_AND_BIRTH_DATE,
+    LINKED_BY_NAME_ONLY,
     CREATED,
     AMBIGUOUS
 }

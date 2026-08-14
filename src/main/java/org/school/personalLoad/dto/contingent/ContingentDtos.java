@@ -32,7 +32,11 @@ public final class ContingentDtos {
     public static class ImportResponse {
         private Long snapshotId;
         private LocalDate snapshotDate;
+        private String importFormat;
         private int importedStudents;
+        private int schoolStudents;
+        private int kindergartenStudents;
+        private int unassignedStudents;
         private int skippedRows;
         private int linkedStudents;
         private int createdStudentProfiles;
@@ -55,6 +59,12 @@ public final class ContingentDtos {
     }
 
     @Data
+    public static class KindergartenGroupTotal {
+        private String groupName;
+        private Integer students;
+    }
+
+    @Data
     public static class AddressColumn {
         private String address;
         private List<ClassTotal> classes;
@@ -73,6 +83,10 @@ public final class ContingentDtos {
     public static class StatsResponse {
         private Long snapshotId;
         private LocalDate snapshotDate;
+        private Integer totalImportedChildren;
+        private Integer totalSchoolChildren;
+        private Integer totalKindergartenChildren;
+        private Integer totalUnassignedChildren;
         private Integer totalStudents;
         private Integer totalClassesNoo;
         private Integer totalClassesOoo;
@@ -80,6 +94,7 @@ public final class ContingentDtos {
         private List<Integer> parallels;
         private List<BuildingColumn> columns;
         private List<ParallelTotal> parallelTotals;
+        private List<KindergartenGroupTotal> kindergartenGroups;
     }
 
     @Data

@@ -1,11 +1,20 @@
-const mckoState = { files: [], resultsLoaded: false, linkingResultId: null };
+const MCKO_UPLOAD_BATCH_BYTES = 24 * 1024 * 1024;
+const MCKO_UPLOAD_MAX_FILE_BYTES = 30 * 1024 * 1024;
+const MCKO_UPLOAD_BATCH_FILES = 40;
+const mckoState = { files: [], resultsLoaded: false, linkingResultId: null, uploading: false };
 
 function esc(value) { return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
 function currentYear() { return sessionStorage.getItem('tarification.academicYear') || ''; }
 async function mckoApi(path, options = {}) {
     const response = await fetch(path, options); const text = await response.text(); let body = null;
     try { body = text ? JSON.parse(text) : null; } catch { body = text ? { message: text } : null; }
-    if (!response.ok) throw new Error(body?.message || body?.error || `Ошибка ${response.status}`); return body;
+    if (!response.ok) {
+        if (response.status === 413) {
+            throw new Error('Пакет файлов превышает допустимый размер сервера. Крупные файлы оставлены в списке для повторной загрузки.');
+        }
+        throw new Error(body?.message || body?.error || `Ошибка ${response.status}`);
+    }
+    return body;
 }
 function q(params) { const out = new URLSearchParams(); Object.entries(params).forEach(([k,v]) => { if (v !== '' && v != null) out.set(k,v); }); return out.toString(); }
 function statusLabel(value) { return ({PROCESSED:'Обработан',PARTIAL:'Частично',FAILED:'Не обработан',PROCESSING:'Обрабатывается'})[value] || value || '—'; }
@@ -13,25 +22,69 @@ function linkLabel(value) { return ({LINKED_BY_CODE:'По коду',LINKED_BY_NA
 function fmt(value, digits = 1) { return value == null || value === '' ? '—' : Number(value).toLocaleString('ru-RU',{maximumFractionDigits:digits}); }
 
 function setFiles(files) {
+    if (mckoState.uploading) return;
     const known = new Map(mckoState.files.map(file => [`${file.name}|${file.size}|${file.lastModified}`, file]));
     [...files].forEach(file => known.set(`${file.name}|${file.size}|${file.lastModified}`, file));
     mckoState.files = [...known.values()]; renderFiles();
 }
+function fileKey(file) { return `${file.name}|${file.size}|${file.lastModified}`; }
+function splitUploadBatches(files) {
+    const batches = [], oversized = []; let batch = [], batchBytes = 0;
+    const flush = () => { if (batch.length) batches.push(batch); batch = []; batchBytes = 0; };
+    files.forEach(file => {
+        if (file.size > MCKO_UPLOAD_MAX_FILE_BYTES) { oversized.push(file); return; }
+        if (file.size > MCKO_UPLOAD_BATCH_BYTES) { flush(); batches.push([file]); return; }
+        if (batch.length && (batchBytes + file.size > MCKO_UPLOAD_BATCH_BYTES || batch.length >= MCKO_UPLOAD_BATCH_FILES)) flush();
+        batch.push(file); batchBytes += file.size;
+    });
+    flush(); return { batches, oversized };
+}
 function renderFiles() {
     document.getElementById('mcko-file-chips').innerHTML = mckoState.files.map(file => `<span class="mcko-file-chip">${esc(file.name)} · ${(file.size/1024/1024).toFixed(2)} МБ</span>`).join('');
-    document.getElementById('mcko-upload-btn').disabled = !mckoState.files.length;
-    document.getElementById('mcko-clear-files').disabled = !mckoState.files.length;
+    document.getElementById('mcko-upload-btn').disabled = !mckoState.files.length || mckoState.uploading;
+    document.getElementById('mcko-clear-files').disabled = !mckoState.files.length || mckoState.uploading;
+    document.getElementById('mcko-choose-files').disabled = mckoState.uploading;
+    document.getElementById('mcko-files').disabled = mckoState.uploading;
 }
 async function uploadFiles() {
-    if (!mckoState.files.length) return; const feedback = document.getElementById('mcko-upload-feedback');
-    const form = new FormData(); mckoState.files.forEach(file => form.append('files', file));
-    feedback.textContent = `Обрабатываем файлов: ${mckoState.files.length}…`;
+    if (!mckoState.files.length || mckoState.uploading) return;
+    const feedback = document.getElementById('mcko-upload-feedback');
+    const selected = [...mckoState.files]; const { batches, oversized } = splitUploadBatches(selected);
+    if (!batches.length) {
+        feedback.textContent = `Не отправлено: ${oversized.length}. Размер каждого такого файла превышает 30 МБ.`;
+        return;
+    }
+    const totals = { filesTotal: 0, filesProcessed: 0, filesFailed: 0, rowsImported: 0 };
+    const completedKeys = new Set(), requestErrors = [];
+    const year = currentYear(); const suffix = year ? `?academicYear=${encodeURIComponent(year)}` : '';
+    mckoState.uploading = true; renderFiles();
     try {
-        const year = currentYear(); const suffix = year ? `?academicYear=${encodeURIComponent(year)}` : '';
-        const result = await mckoApi(`/api/vsoko/mcko/imports${suffix}`, {method:'POST',body:form});
-        feedback.textContent = `Готово: обработано ${result.filesProcessed}, с ошибкой ${result.filesFailed}, строк загружено ${result.rowsImported}.`;
-        mckoState.files = []; renderFiles(); await loadHistory(); mckoState.resultsLoaded = false;
-    } catch (error) { feedback.textContent = `Не удалось обработать: ${error.message}`; }
+        for (let index = 0; index < batches.length; index++) {
+            const batch = batches[index]; const batchMegabytes = batch.reduce((sum, file) => sum + file.size, 0) / 1024 / 1024;
+            feedback.textContent = `Пакет ${index + 1} из ${batches.length}: ${batch.length} файлов, ${batchMegabytes.toFixed(1)} МБ…`;
+            const form = new FormData(); batch.forEach(file => form.append('files', file));
+            try {
+                const result = await mckoApi(`/api/vsoko/mcko/imports${suffix}`, {method:'POST',body:form});
+                totals.filesTotal += Number(result.filesTotal || 0);
+                totals.filesProcessed += Number(result.filesProcessed || 0);
+                totals.filesFailed += Number(result.filesFailed || 0);
+                totals.rowsImported += Number(result.rowsImported || 0);
+                batch.forEach(file => completedKeys.add(fileKey(file)));
+            } catch (error) {
+                requestErrors.push(`пакет ${index + 1}: ${error.message}`);
+            }
+        }
+    } finally {
+        mckoState.files = selected.filter(file => !completedKeys.has(fileKey(file)));
+        mckoState.uploading = false; renderFiles(); mckoState.resultsLoaded = false;
+    }
+    try { await loadHistory(); } catch (error) { requestErrors.push(`история: ${error.message}`); }
+    const pending = mckoState.files.length;
+    if (requestErrors.length || oversized.length) {
+        feedback.textContent = `Загрузка завершена частично: обработано ${totals.filesProcessed}, ошибок в файлах ${totals.filesFailed}, строк загружено ${totals.rowsImported}. Осталось в списке: ${pending}. ${requestErrors.join('; ')}${oversized.length ? `; файлов больше 30 МБ: ${oversized.length}` : ''}`;
+    } else {
+        feedback.textContent = `Готово: обработано ${totals.filesProcessed}, с ошибкой ${totals.filesFailed}, строк загружено ${totals.rowsImported}. Автоматически отправлено пакетов: ${batches.length}.`;
+    }
 }
 async function loadHistory() {
     const rows = await mckoApi('/api/vsoko/mcko/imports');

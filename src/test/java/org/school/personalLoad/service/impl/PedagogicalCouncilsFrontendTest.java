@@ -108,7 +108,8 @@ class PedagogicalCouncilsFrontendTest {
     void authFilterProtectsDocumentsPageAndApi() throws Exception {
         String filter = Files.readString(Path.of("src/main/java/org/school/personalLoad/config/auth/AuthFilter.java"));
 
-        assertTrue(filter.contains("Map.entry(\"/documents.html\", AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS)"));
+        assertTrue(filter.contains("\"/documents.html\".equals(path) && !hasAnyDocumentsPageAccess(currentUser)"));
+        assertTrue(filter.contains("user.canViewTab(AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS)"));
         assertTrue(filter.contains("Map.entry(\"/pedagogical-councils.html\", AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS)"));
         assertTrue(filter.contains("path.startsWith(\"/api/pedagogical-councils\")"));
     }

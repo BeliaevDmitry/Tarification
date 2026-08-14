@@ -45,6 +45,7 @@ public class ClassSizeServiceImpl implements ClassSizeService {
         try {
             return snapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear)
                     .map(snapshot -> studentRepository.findAllBySnapshotId(snapshot.getId()).stream()
+                            .filter(student -> isSchoolClass(student.getClassName()))
                             .collect(Collectors.groupingBy(
                                     student -> classSizeKey(student.getClassName()),
                                     LinkedHashMap::new,
@@ -170,6 +171,11 @@ public class ClassSizeServiceImpl implements ClassSizeService {
 
     private String normalizeClass(String className) {
         return ClassNameNormalizer.normalize(className);
+    }
+
+    private boolean isSchoolClass(String className) {
+        Integer parallel = ClassNameNormalizer.extractParallel(className);
+        return parallel != null && parallel >= 1 && parallel <= 11;
     }
 
     private String classSizeKey(String className) {
