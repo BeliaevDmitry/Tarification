@@ -69,6 +69,27 @@ class AuthFilterMckoPaAccessTest {
         }
     }
 
+    @Test
+    void probeOrdersHaveDedicatedRightsWhileReleasedCalendarIsVisibleToAuthenticatedUsers() throws Exception {
+        TabPermissionSnapshot councils = new TabPermissionSnapshot(
+                AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS, true, false, false, false);
+        TabPermissionSnapshot probeView = new TabPermissionSnapshot(
+                AppTab.DOCUMENTS_PROBE_ORDERS, true, false, false, false);
+        TabPermissionSnapshot probeEdit = new TabPermissionSnapshot(
+                AppTab.DOCUMENTS_PROBE_ORDERS, true, true, false, false);
+
+        assertPageAccess("/documents.html", List.of(), false);
+        assertPageAccess("/documents.html", List.of(councils), true);
+        assertPageAccess("/documents.html", List.of(probeView), true);
+        assertPageAccess("/probe-orders.html", List.of(councils), false);
+        assertPageAccess("/probe-orders.html", List.of(probeView), true);
+        assertReadAccess("/api/probe-orders", List.of(councils), false);
+        assertReadAccess("/api/probe-orders", List.of(probeView), true);
+        assertReadAccess("/api/probe-orders/calendar", List.of(), true);
+        assertAccess(new MockHttpServletRequest("POST", "/api/probe-orders/42/release"), List.of(probeView), false);
+        assertAccess(new MockHttpServletRequest("POST", "/api/probe-orders/42/release"), List.of(probeEdit), true);
+    }
+
     private void assertReadAccess(String path, List<TabPermissionSnapshot> permissions, boolean expected) throws Exception {
         assertAccess(new MockHttpServletRequest("GET", path), permissions, expected);
     }

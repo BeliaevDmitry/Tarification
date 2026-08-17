@@ -14,10 +14,12 @@ import org.school.personalLoad.oge.repository.OgeWorkResultRepository;
 import org.school.personalLoad.pa.analytics.model.PaReportStudentResult;
 import org.school.personalLoad.pa.analytics.repository.PaReportStudentResultRepository;
 import org.school.personalLoad.repository.*;
+import org.school.personalLoad.service.ProbeOrderService;
 import org.school.personalLoad.vsoko.mcko.dto.VsokoMckoDtos;
 import org.school.personalLoad.vsoko.mcko.model.*;
 import org.school.personalLoad.vsoko.mcko.repository.*;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -50,6 +52,8 @@ public class VsokoMckoQueryService {
     private final PaReportStudentResultRepository paResultRepository;
     private final OgeWorkResultRepository ogeResultRepository;
     private final StudentResultLinker studentResultLinker;
+    @Autowired(required = false)
+    private ProbeOrderService probeOrderService;
 
     @Transactional(readOnly = true)
     public List<VsokoMckoDtos.ResultRow> results(String academicYear,
@@ -186,7 +190,9 @@ public class VsokoMckoQueryService {
         timeline.sort(Comparator.comparing(VsokoMckoDtos.TimelineRow::academicYear, Comparator.nullsLast(String::compareTo))
                 .thenComparing(VsokoMckoDtos.TimelineRow::date, Comparator.nullsLast(LocalDate::compareTo))
                 .thenComparing(VsokoMckoDtos.TimelineRow::subjectName, Comparator.nullsLast(String::compareToIgnoreCase)));
-        return new VsokoMckoDtos.StudentSummary(profile.getId(), profile.getCurrentFullName(), knownNames(profile, histories), timeline);
+        return new VsokoMckoDtos.StudentSummary(profile.getId(), profile.getCurrentFullName(), knownNames(profile, histories),
+                profile.getBirthDate(), profile.getChildPhone(), profile.getRepresentativeName(), profile.getRepresentativePhone(),
+                timeline, probeOrderService == null ? List.of() : probeOrderService.studentHistory(profile.getId()));
     }
 
     @Transactional(readOnly = true)
@@ -209,6 +215,10 @@ public class VsokoMckoQueryService {
             values(card.createRow(0), "ID карточки", summary.studentId());
             values(card.createRow(1), "Текущее ФИО", summary.currentFullName());
             values(card.createRow(2), "Известные ФИО", String.join("; ", summary.knownNames()));
+            values(card.createRow(3), "Дата рождения", summary.birthDate());
+            values(card.createRow(4), "Телефон ребёнка", summary.childPhone());
+            values(card.createRow(5), "ФИО представителя", summary.representativeName());
+            values(card.createRow(6), "Телефон представителя", summary.representativePhone());
             card.autoSizeColumn(0);
             card.setColumnWidth(1, 15000);
             return bytes(workbook);

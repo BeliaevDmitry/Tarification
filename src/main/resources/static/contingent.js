@@ -4,6 +4,9 @@ const ui = {
     fileInput: document.getElementById('contingent-file'),
     importBtn: document.getElementById('contingent-import-btn'),
     importResult: document.getElementById('contingent-import-result'),
+    copyMesScriptBtn: document.getElementById('contingent-copy-mes-script-btn'),
+    downloadMesScriptBtn: document.getElementById('contingent-download-mes-script-btn'),
+    mesScriptResult: document.getElementById('contingent-mes-script-result'),
     problemsBody: document.getElementById('contingent-problems-body'),
     snapshotDateSelect: document.getElementById('contingent-snapshot-date'),
     statsRefreshBtn: document.getElementById('contingent-stats-refresh-btn'),
@@ -11,6 +14,8 @@ const ui = {
     statsViewMode: document.getElementById('contingent-stats-view-mode'),
     statsTable: document.getElementById('contingent-stats-table'),
     statsSummary: document.getElementById('contingent-stats-summary'),
+    kindergartenSummary: document.getElementById('contingent-kindergarten-summary'),
+    kindergartenTable: document.getElementById('contingent-kindergarten-table'),
     manualSourceSelect: document.getElementById('contingent-class-size-source'),
     manualSourceSaveBtn: document.getElementById('contingent-class-size-source-save-btn'),
     manualFileInput: document.getElementById('contingent-manual-file'),
@@ -257,7 +262,64 @@ function showTab(name) {
 }
 
 function printImportResult(value) {
-    ui.importResult.textContent = JSON.stringify(value, null, 2);
+    if (value?.error) {
+        ui.importResult.textContent = `Ошибка: ${value.error}`;
+        return;
+    }
+    const format = value?.importFormat === 'MES_EXTENDED_CSV'
+        ? 'расширенная CSV-выгрузка МЭШ'
+        : value?.importFormat === 'COMPACT'
+            ? 'сокращённая выгрузка МЭШ (ФИО + класс/группа)'
+            : 'полная Excel-выгрузка';
+    ui.importResult.textContent = [
+        `Формат: ${format}`,
+        `Загружено: ${Number(value?.importedStudents || 0)}`,
+        `В школьных классах: ${Number(value?.schoolStudents || 0)}`,
+        `В детском саду: ${Number(value?.kindergartenStudents || 0)}`,
+        `Вне класса/детского сада: ${Number(value?.unassignedStudents || 0)}`,
+        `Связано с существующими карточками: ${Number(value?.linkedStudents || 0)}`,
+        `Создано новых карточек: ${Number(value?.createdStudentProfiles || 0)}`,
+        `Требуют ручного сопоставления: ${Number(value?.ambiguousStudents || 0)}`,
+        `Пропущено строк: ${Number(value?.skippedRows || 0)}`
+    ].join('\n');
+}
+
+async function loadMesExportScript() {
+    const response = await fetch('/mes-contingent-export.js', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Не удалось получить скрипт (${response.status})`);
+    return response.text();
+}
+
+async function copyMesExportScript() {
+    const script = await loadMesExportScript();
+    if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(script);
+    } else {
+        const field = document.createElement('textarea');
+        field.value = script;
+        field.setAttribute('readonly', '');
+        field.style.position = 'fixed';
+        field.style.opacity = '0';
+        document.body.appendChild(field);
+        field.select();
+        const copied = document.execCommand('copy');
+        field.remove();
+        if (!copied) throw new Error('Браузер запретил копирование. Используйте кнопку «Скачать скрипт».');
+    }
+    ui.mesScriptResult.textContent = 'Скрипт скопирован. Перейдите в Console открытого МЭШ, вставьте его и нажмите Enter.';
+}
+
+async function downloadMesExportScript() {
+    const script = await loadMesExportScript();
+    const url = URL.createObjectURL(new Blob([script], { type: 'text/javascript;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'MES_расширенная_выгрузка_контингента.js';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    ui.mesScriptResult.textContent = 'Скрипт скачан. Откройте файл, скопируйте его содержимое и запустите в Console МЭШ.';
 }
 
 function renderProblems(problems) {
@@ -363,6 +425,24 @@ function renderStatsTable(stats) {
     const footerClassRowWithClasses = `<tr><th>Классов</th><th></th><th>${esc(totalClasses)}</th>${footerClasses}</tr>`;
     const footerStageRow = `<tr><th>По уровням</th><th></th><th>${esc(stageClassSummary(stats))}</th>${footerStageCells}</tr>`;
     ui.statsTable.innerHTML = `${thead}<tbody>${tbodyRows.join('')}${footerTotalRowWithClasses}${footerClassRowWithClasses}${footerStageRow}</tbody>`;
+}
+
+function renderKindergartenStats(stats) {
+    const groups = stats?.kindergartenGroups || [];
+    const total = Number(stats?.totalKindergartenChildren || 0);
+    const unassigned = Number(stats?.totalUnassignedChildren || 0);
+    ui.kindergartenSummary.textContent = `Групп/форм: ${groups.length}. Детей: ${total}.`
+        + (unassigned > 0 ? ` Вне класса или детского сада: ${unassigned}.` : '');
+    const rows = groups.map((group) => `
+        <tr><td>${esc(group.groupName)}</td><td>${esc(group.students || 0)}</td></tr>
+    `).join('');
+    const unassignedRow = unassigned > 0
+        ? `<tr><th>Вне класса/детского сада</th><th>${esc(unassigned)}</th></tr>`
+        : '';
+    ui.kindergartenTable.innerHTML = `
+        <thead><tr><th>Группа / форма</th><th>Детей</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="2" class="muted">Дошкольных групп в снимке нет.</td></tr>'}
+        <tr><th>ИТОГО ДЕТСКИЙ САД</th><th>${esc(total)}</th></tr>${unassignedRow}</tbody>`;
 }
 
 
@@ -531,8 +611,9 @@ async function refreshStats() {
     const query = selectedDate ? `?snapshotDate=${encodeURIComponent(selectedDate)}` : '';
     currentStats = await api(`/api/contingent/stats${query}`);
     const totalClasses = (currentStats?.parallelTotals || []).reduce((sum, x) => sum + Number(x.totalClasses || 0), 0);
-    ui.statsSummary.textContent = `Данные по состоянию на ${currentStats.snapshotDate}. Всего учащихся: ${currentStats.totalStudents}. Всего классов: ${totalClasses} (${stageClassSummary(currentStats)}). Для классов без численности применяется значение 30 человек.`;
+    ui.statsSummary.textContent = `Данные по состоянию на ${currentStats.snapshotDate}. В файле: ${Number(currentStats.totalImportedChildren || 0)} детей; в школьных классах: ${Number(currentStats.totalSchoolChildren || 0)}; в детском саду: ${Number(currentStats.totalKindergartenChildren || 0)}. Всего классов: ${totalClasses} (${stageClassSummary(currentStats)}). Для классов без численности применяется значение 30 человек.`;
     renderStatsTable(currentStats);
+    renderKindergartenStats(currentStats);
 }
 
 const supportCategoryLabel = (value) => ({ NORMAL: 'Норма', K2: 'К2', K3: 'К3' }[value] || value || '');
@@ -1596,10 +1677,24 @@ ui.tabs.forEach((tab) => tab.addEventListener('click', () => {
     }
 }));
 
+ui.copyMesScriptBtn?.addEventListener('click', () => {
+    ui.mesScriptResult.textContent = 'Копирую скрипт…';
+    copyMesExportScript().catch((error) => {
+        ui.mesScriptResult.textContent = `Ошибка: ${error.message}`;
+    });
+});
+
+ui.downloadMesScriptBtn?.addEventListener('click', () => {
+    ui.mesScriptResult.textContent = 'Готовлю файл…';
+    downloadMesExportScript().catch((error) => {
+        ui.mesScriptResult.textContent = `Ошибка: ${error.message}`;
+    });
+});
+
 ui.importBtn.addEventListener('click', async () => {
     const file = ui.fileInput.files?.[0];
     if (!file) {
-        printImportResult({ error: 'Выберите Excel файл' });
+        printImportResult({ error: 'Выберите CSV- или Excel-файл' });
         return;
     }
     try {

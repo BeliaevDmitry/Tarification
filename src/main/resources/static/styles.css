@@ -1827,6 +1827,68 @@ td.vacancy-row {
     font-size: 13px;
 }
 
+/* Приказы на пробные мероприятия */
+.probe-orders-page { max-width: 1800px; }
+.probe-toolbar, .home-calendar-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.probe-toolbar h2, .home-calendar-toolbar h2 { margin-bottom: 4px; }
+.probe-toolbar label { min-width: 220px; }
+.probe-legend { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
+.probe-legend-item { padding: 5px 9px; border-radius: 999px; font-size: .85rem; border: 1px solid transparent; }
+.probe-legend-item.urgent { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
+.probe-legend-item.pending { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
+.probe-legend-item.active { background: #dcfce7; border-color: #86efac; color: #166534; }
+.probe-legend-item.draft { background: #e0f2fe; border-color: #7dd3fc; color: #075985; }
+.probe-legend-item.past { background: #f1f5f9; border-color: #cbd5e1; color: #475569; }
+.probe-orders-table th[data-probe-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
+.probe-orders-table th.sort-asc::after { content: ' ▲'; }
+.probe-orders-table th.sort-desc::after { content: ' ▼'; }
+.probe-orders-table tbody tr.probe-highlight-urgent > td { background: #fff1f2; }
+.probe-orders-table tbody tr.probe-highlight-pending_signature > td { background: #fffbeb; }
+.probe-orders-table tbody tr.probe-highlight-active > td { background: #f0fdf4; }
+.probe-orders-table tbody tr.probe-highlight-draft > td { background: #f0f9ff; }
+.probe-orders-table tbody tr.probe-highlight-past > td { background: #f8fafc; color: #64748b; }
+.probe-ok { color: #15803d; font-weight: 650; }
+.probe-error { color: #b91c1c; font-weight: 650; }
+.probe-validation, .probe-feedback { margin: 10px 0; }
+.probe-row-warnings { color: #b91c1c; font-size: .82rem; margin-top: 7px; }
+.probe-row-actions { display: flex; flex-direction: column; align-items: stretch; gap: 6px; min-width: 175px; }
+.probe-row-actions button, .probe-row-actions .button-link { width: 100%; text-align: center; box-sizing: border-box; }
+.probe-dialog { width: min(820px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto; }
+.probe-edit-dialog { width: min(1180px, calc(100vw - 24px)); }
+.probe-dialog > form { padding: 18px; }
+.probe-add-student-row { display: grid; grid-template-columns: minmax(240px, 1fr) auto; gap: 10px; margin-bottom: 12px; }
+.probe-dialog table input { min-width: 140px; }
+
+/* Календарь выпущенных приказов на главной странице */
+.home-calendar-card { margin-top: 18px; }
+.home-calendar-actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.home-calendar-view-switch { display: inline-flex; padding: 3px; border-radius: 9px; background: #e2e8f0; }
+.home-calendar-view-switch button { background: transparent; color: #334155; box-shadow: none; }
+.home-calendar-view-switch button.is-active { background: #fff; color: #0f172a; box-shadow: 0 1px 3px rgba(15, 23, 42, .18); }
+.home-calendar-title { margin: 16px 0 10px; }
+.home-calendar-grid.is-month { display: grid; grid-template-columns: repeat(7, minmax(125px, 1fr)); min-width: 875px; border-top: 1px solid #cbd5e1; border-left: 1px solid #cbd5e1; }
+.home-calendar-card:has(.is-month) { overflow-x: auto; }
+.home-calendar-weekday { padding: 7px; text-align: center; font-weight: 700; background: #f8fafc; border-right: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; }
+.home-calendar-day { min-height: 125px; padding: 7px; border-right: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; background: #fff; }
+.home-calendar-day.is-outside { background: #f8fafc; color: #94a3b8; }
+.home-calendar-day.is-today, .home-calendar-agenda-day.is-today { box-shadow: inset 0 0 0 2px #2563eb; }
+.home-calendar-day-number { font-weight: 700; margin-bottom: 5px; }
+.home-calendar-day-events { display: grid; gap: 5px; }
+.home-calendar-event { padding: 6px 7px; border-radius: 7px; border-left: 4px solid #2563eb; background: #eff6ff; color: #1e3a8a; font-size: .78rem; line-height: 1.25; overflow-wrap: anywhere; }
+.home-calendar-event-time { font-weight: 700; }
+.home-calendar-grid.is-week { display: grid; grid-template-columns: repeat(7, minmax(170px, 1fr)); gap: 8px; min-width: 1190px; }
+.home-calendar-grid.is-day { display: grid; grid-template-columns: minmax(280px, 680px); }
+.home-calendar-agenda-day { min-height: 180px; padding: 10px; border: 1px solid #cbd5e1; border-radius: 9px; background: #fff; }
+.home-calendar-agenda-day h4 { margin: 0 0 10px; text-transform: capitalize; }
+.home-calendar-agenda-day .home-calendar-event { margin-bottom: 7px; font-size: .88rem; }
+
+@media (max-width: 720px) {
+    .probe-toolbar, .home-calendar-toolbar { align-items: stretch; }
+    .probe-toolbar label { width: 100%; }
+    .probe-add-student-row { grid-template-columns: 1fr; }
+    .home-calendar-actions { width: 100%; }
+}
+
 .teachers-table th,
 .teachers-table td {
     padding: 6px 8px;

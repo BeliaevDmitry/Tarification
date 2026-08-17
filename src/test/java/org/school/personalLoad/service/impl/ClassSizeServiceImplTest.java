@@ -1,6 +1,8 @@
 package org.school.personalLoad.service.impl;
 
 import org.junit.jupiter.api.Test;
+import org.school.personalLoad.model.ContingentSnapshot;
+import org.school.personalLoad.model.ContingentStudent;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.ContingentClassSizeOverrideRepository;
 import org.school.personalLoad.repository.ContingentClassSizeSourceSettingRepository;
@@ -9,6 +11,7 @@ import org.school.personalLoad.repository.ContingentStudentRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 
 import java.util.Map;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -56,5 +59,34 @@ class ClassSizeServiceImplTest {
         Map<String, Integer> sizes = service.effectiveClassSizes("2025/2026");
 
         assertEquals(Map.of(), sizes);
+    }
+
+    @Test
+    void kindergartenGroupsStayInformationalAndDoNotBecomeSalaryClasses() {
+        ContingentSnapshotRepository snapshots = mock(ContingentSnapshotRepository.class);
+        ContingentStudentRepository students = mock(ContingentStudentRepository.class);
+        ContingentSnapshot snapshot = new ContingentSnapshot();
+        snapshot.setId(5L);
+        when(snapshots.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc("2025/2026"))
+                .thenReturn(Optional.of(snapshot));
+        when(students.findAllBySnapshotId(5L)).thenReturn(List.of(
+                student("2-А"), student("2-А"), student("Старшая группа 16А"), student("ГКП 88А")
+        ));
+        ClassSizeServiceImpl service = new ClassSizeServiceImpl(
+                snapshots,
+                students,
+                mock(ContingentClassSizeOverrideRepository.class),
+                mock(ContingentClassSizeSourceSettingRepository.class),
+                mock(ClassroomLeadershipRepository.class),
+                mock(CurriculumPlanEntryRepository.class)
+        );
+
+        assertEquals(Map.of("2-а", 2), service.aisClassSizes("2025/2026"));
+    }
+
+    private ContingentStudent student(String className) {
+        ContingentStudent student = new ContingentStudent();
+        student.setClassName(className);
+        return student;
     }
 }

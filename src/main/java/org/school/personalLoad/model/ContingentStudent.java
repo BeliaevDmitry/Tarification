@@ -95,6 +95,12 @@ public class ContingentStudent {
     @Column(nullable = false)
     private String email;
 
+    @Column(name = "representative_name", length = 500)
+    private String representativeName;
+
+    @Column(name = "representative_phone", length = 100)
+    private String representativePhone;
+
     @Column(nullable = false)
     private String onVshuFrom;
 

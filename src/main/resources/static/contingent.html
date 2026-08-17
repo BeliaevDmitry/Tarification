@@ -28,8 +28,26 @@
 
     <section class="card" data-contingent-pane="import" data-requires-edit style="display:none;">
         <h2>Импорт</h2>
+        <p class="muted">Можно загрузить расширенную CSV-выгрузку из скрипта, полную Excel-выгрузку или сокращённый Excel-файл МЭШ без заголовков: в первом столбце ФИО, во втором — класс или группа детского сада.</p>
+
+        <details class="card mes-export-script-card" open>
+            <summary><strong>Получить расширенную выгрузку из МЭШ</strong></summary>
+            <ol>
+                <li>Откройте МЭШ и войдите под своей учётной записью.</li>
+                <li>Откройте инструменты разработчика браузера и вкладку Console.</li>
+                <li>Скопируйте скрипт кнопкой ниже, вставьте его в Console и нажмите Enter.</li>
+                <li>Дождитесь скачивания файла <code>MES_контингент_…csv</code> и загрузите его в поле импорта.</li>
+            </ol>
+            <div class="row controls-row">
+                <button id="contingent-copy-mes-script-btn" type="button" class="secondary">Скопировать скрипт</button>
+                <button id="contingent-download-mes-script-btn" type="button" class="secondary">Скачать скрипт</button>
+            </div>
+            <p id="contingent-mes-script-result" class="muted" aria-live="polite"></p>
+            <p class="muted">Скрипт запускается только в вашей открытой сессии МЭШ и сохраняет CSV на компьютер. Файл содержит персональные данные — не пересылайте его посторонним.</p>
+        </details>
+
         <div class="row controls-row">
-            <input id="contingent-file" type="file" accept=".xlsx,.xls">
+            <input id="contingent-file" type="file" accept=".csv,text/csv,.xlsx,.xls">
             <button id="contingent-import-btn" type="button">Загрузить в БД</button>
         </div>
         <pre id="contingent-import-result" class="result-box"></pre>
@@ -68,6 +86,11 @@
         <div id="contingent-stats-summary" class="muted"></div>
         <div class="sheet-wrap">
             <table class="sheet-table" id="contingent-stats-table"></table>
+        </div>
+        <h3>Детский сад <span class="muted">(информационно)</span></h3>
+        <div id="contingent-kindergarten-summary" class="muted"></div>
+        <div class="sheet-wrap">
+            <table class="sheet-table" id="contingent-kindergarten-table"></table>
         </div>
     </section>
 

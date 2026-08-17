@@ -24,11 +24,15 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -56,12 +60,32 @@ public class StudentIdentityServiceImpl implements StudentIdentityService {
         }
         List<ContingentStudent> source = students == null ? List.of() : students;
         Map<String, ClassroomLeadershipEntry> classByName = uniqueClassesByName(snapshot.getAcademicYear());
+        IdentityIndex identityIndex = new IdentityIndex(studentProfileRepository.findAll());
+        Map<String, Integer> weakIdentityOccurrences = new HashMap<>();
+        for (ContingentStudent row : source) {
+            String normalizedName = normalizeName(row.getFullName());
+            if (!normalizedName.isBlank()
+                    && !usableRecordNumber(normalizeRecordNumber(row.getRecordNumber()))
+                    && parseBirthDate(row.getBirthDate()) == null) {
+                weakIdentityOccurrences.merge(normalizedName, 1, Integer::sum);
+            }
+        }
         int linked = 0;
         int created = 0;
         int ambiguous = 0;
+        List<ResolvedStudentRow> resolvedRows = new ArrayList<>();
+        List<StudentProfile> profilesToSave = new ArrayList<>();
+        Set<StudentProfile> profilesMarkedForSave = Collections.newSetFromMap(new IdentityHashMap<>());
 
         for (ContingentStudent row : source) {
-            Resolution resolution = resolve(row, snapshot.getSnapshotDate());
+            String weakName = normalizeName(row.getFullName());
+            if (weakIdentityOccurrences.getOrDefault(weakName, 0) > 1) {
+                row.setStudentId(null);
+                row.setIdentityMatchStatus(StudentIdentityMatchStatus.AMBIGUOUS);
+                ambiguous++;
+                continue;
+            }
+            Resolution resolution = resolve(row, snapshot.getSnapshotDate(), identityIndex);
             if (resolution.profile() == null) {
                 row.setStudentId(null);
                 row.setIdentityMatchStatus(StudentIdentityMatchStatus.AMBIGUOUS);
@@ -70,16 +94,57 @@ public class StudentIdentityServiceImpl implements StudentIdentityService {
             }
             StudentProfile profile = resolution.profile();
             updateCurrentIdentity(profile, row, snapshot.getSnapshotDate());
-            profile = studentProfileRepository.save(profile);
-            row.setStudentId(profile.getId());
             row.setIdentityMatchStatus(resolution.status());
-            syncNameHistory(profile, row.getFullName(), snapshot.getSnapshotDate());
-            syncEnrollment(profile, snapshot, row, classByName.get(classKey(row.getClassName())));
+            identityIndex.add(profile);
+            markDirty(profile, profilesToSave, profilesMarkedForSave);
+            resolvedRows.add(new ResolvedStudentRow(row, profile));
             if (resolution.created()) {
                 created++;
             } else {
                 linked++;
             }
+        }
+
+        if (!profilesToSave.isEmpty()) {
+            studentProfileRepository.saveAll(profilesToSave);
+        }
+        resolvedRows.forEach(item -> item.row().setStudentId(item.profile().getId()));
+
+        Map<Long, List<StudentNameHistory>> historiesByStudent = new HashMap<>();
+        nameHistoryRepository.findAll().stream()
+                .filter(history -> history.getStudent() != null && history.getStudent().getId() != null)
+                .forEach(history -> historiesByStudent
+                        .computeIfAbsent(history.getStudent().getId(), ignored -> new ArrayList<>())
+                        .add(history));
+        Map<Long, List<StudentClassEnrollment>> enrollmentsByStudent = new HashMap<>();
+        enrollmentRepository.findAllByAcademicYear(snapshot.getAcademicYear()).stream()
+                .filter(enrollment -> enrollment.getStudent() != null && enrollment.getStudent().getId() != null)
+                .forEach(enrollment -> enrollmentsByStudent
+                        .computeIfAbsent(enrollment.getStudent().getId(), ignored -> new ArrayList<>())
+                        .add(enrollment));
+
+        List<StudentNameHistory> historiesToSave = new ArrayList<>();
+        Set<StudentNameHistory> historiesMarkedForSave = Collections.newSetFromMap(new IdentityHashMap<>());
+        List<StudentClassEnrollment> enrollmentsToSave = new ArrayList<>();
+        Set<StudentClassEnrollment> enrollmentsMarkedForSave = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (ResolvedStudentRow item : resolvedRows) {
+            if (item.profile().getId() == null) {
+                continue;
+            }
+            List<StudentNameHistory> histories = historiesByStudent
+                    .computeIfAbsent(item.profile().getId(), ignored -> new ArrayList<>());
+            syncNameHistory(item.profile(), item.row().getFullName(), snapshot.getSnapshotDate(), histories,
+                    historiesToSave, historiesMarkedForSave);
+            List<StudentClassEnrollment> enrollments = enrollmentsByStudent
+                    .computeIfAbsent(item.profile().getId(), ignored -> new ArrayList<>());
+            syncEnrollment(item.profile(), snapshot, item.row(), classByName.get(classKey(item.row().getClassName())),
+                    enrollments, enrollmentsToSave, enrollmentsMarkedForSave);
+        }
+        if (!historiesToSave.isEmpty()) {
+            nameHistoryRepository.saveAll(historiesToSave);
+        }
+        if (!enrollmentsToSave.isEmpty()) {
+            enrollmentRepository.saveAll(enrollmentsToSave);
         }
         return new LinkResult(linked, created, ambiguous);
     }
@@ -95,13 +160,13 @@ public class StudentIdentityServiceImpl implements StudentIdentityService {
         return result;
     }
 
-    private Resolution resolve(ContingentStudent row, LocalDate snapshotDate) {
+    private Resolution resolve(ContingentStudent row, LocalDate snapshotDate, IdentityIndex identityIndex) {
         String normalizedRecord = normalizeRecordNumber(row.getRecordNumber());
         LocalDate birthDate = parseBirthDate(row.getBirthDate());
         String normalizedName = normalizeName(row.getFullName());
 
         if (usableRecordNumber(normalizedRecord)) {
-            List<StudentProfile> candidates = studentProfileRepository.findAllByNormalizedRecordNumber(normalizedRecord)
+            List<StudentProfile> candidates = identityIndex.byRecord(normalizedRecord)
                     .stream()
                     .filter(profile -> birthDate == null || profile.getBirthDate() == null || birthDate.equals(profile.getBirthDate()))
                     .toList();
@@ -114,10 +179,22 @@ public class StudentIdentityServiceImpl implements StudentIdentityService {
         }
 
         if (!normalizedName.isBlank() && birthDate != null) {
-            List<StudentProfile> candidates = studentProfileRepository
-                    .findAllByNormalizedFullNameAndBirthDate(normalizedName, birthDate);
+            List<StudentProfile> candidates = identityIndex.byNameAndBirthDate(normalizedName, birthDate);
             if (candidates.size() == 1) {
                 return new Resolution(candidates.get(0), StudentIdentityMatchStatus.LINKED_BY_NAME_AND_BIRTH_DATE, false);
+            }
+            if (candidates.size() > 1) {
+                return Resolution.ambiguous();
+            }
+        }
+
+        // The shortened МЭШ export has no record number or birth date. Reuse a
+        // permanent profile only when the normalized full name is unique; a
+        // duplicate name must stay ambiguous instead of silently merging two children.
+        if (!normalizedName.isBlank() && birthDate == null) {
+            List<StudentProfile> candidates = identityIndex.byName(normalizedName);
+            if (candidates.size() == 1) {
+                return new Resolution(candidates.get(0), StudentIdentityMatchStatus.LINKED_BY_NAME_ONLY, false);
             }
             if (candidates.size() > 1) {
                 return Resolution.ambiguous();
@@ -156,15 +233,29 @@ public class StudentIdentityServiceImpl implements StudentIdentityService {
             if (birthDate != null) {
                 profile.setBirthDate(birthDate);
             }
+            if (!normalize(row.getPhone()).isBlank()) {
+                profile.setChildPhone(normalize(row.getPhone()));
+            }
+            if (!normalize(row.getRepresentativeName()).isBlank()) {
+                profile.setRepresentativeName(normalize(row.getRepresentativeName()));
+            }
+            if (!normalize(row.getRepresentativePhone()).isBlank()) {
+                profile.setRepresentativePhone(normalize(row.getRepresentativePhone()));
+            }
         }
         profile.setActive(true);
         profile.setUpdatedAt(LocalDateTime.now());
     }
 
-    private void syncNameHistory(StudentProfile profile, String observedName, LocalDate observedAt) {
+    private void syncNameHistory(StudentProfile profile,
+                                 String observedName,
+                                 LocalDate observedAt,
+                                 List<StudentNameHistory> histories,
+                                 List<StudentNameHistory> historiesToSave,
+                                 Set<StudentNameHistory> historiesMarkedForSave) {
         String normalizedObservedName = normalizeName(observedName);
-        List<StudentNameHistory> histories = nameHistoryRepository
-                .findAllByStudent_IdOrderByValidFromAsc(profile.getId());
+        histories.sort(Comparator.comparing(StudentNameHistory::getValidFrom,
+                Comparator.nullsFirst(LocalDate::compareTo)));
         StudentNameHistory containing = histories.stream()
                 .filter(history -> contains(history.getValidFrom(), history.getValidTo(), observedAt))
                 .findFirst()
@@ -177,12 +268,12 @@ public class StudentIdentityServiceImpl implements StudentIdentityService {
             if (containing.getValidFrom() == null || !observedAt.isAfter(containing.getValidFrom())) {
                 containing.setFullName(displayName(observedName));
                 containing.setNormalizedFullName(normalizedObservedName);
-                nameHistoryRepository.save(containing);
+                markDirty(containing, historiesToSave, historiesMarkedForSave);
                 return;
             }
             if (containing.getValidFrom() == null || !observedAt.isBefore(containing.getValidFrom())) {
                 containing.setValidTo(observedAt.minusDays(1));
-                nameHistoryRepository.save(containing);
+                markDirty(containing, historiesToSave, historiesMarkedForSave);
             }
         }
 
@@ -198,18 +289,22 @@ public class StudentIdentityServiceImpl implements StudentIdentityService {
         history.setNormalizedFullName(normalizedObservedName);
         history.setValidFrom(observedAt);
         history.setValidTo(nextStart == null ? null : nextStart.minusDays(1));
-        nameHistoryRepository.save(history);
+        histories.add(history);
+        markDirty(history, historiesToSave, historiesMarkedForSave);
     }
 
     private void syncEnrollment(StudentProfile profile,
                                 ContingentSnapshot snapshot,
                                 ContingentStudent row,
-                                ClassroomLeadershipEntry classRef) {
+                                ClassroomLeadershipEntry classRef,
+                                List<StudentClassEnrollment> enrollments,
+                                List<StudentClassEnrollment> enrollmentsToSave,
+                                Set<StudentClassEnrollment> enrollmentsMarkedForSave) {
         String className = ClassNameNormalizer.normalize(row.getClassName());
         LocalDate observedAt = snapshot.getSnapshotDate();
-        StudentClassEnrollment observedEnrollment = enrollmentRepository
-                .findAllByStudent_IdAndAcademicYearOrderByValidFromDesc(profile.getId(), snapshot.getAcademicYear())
-                .stream()
+        enrollments.sort(Comparator.comparing(StudentClassEnrollment::getValidFrom,
+                Comparator.nullsLast(Comparator.reverseOrder())));
+        StudentClassEnrollment observedEnrollment = enrollments.stream()
                 .filter(enrollment -> contains(enrollment.getValidFrom(), enrollment.getValidTo(), observedAt))
                 .findFirst()
                 .orElse(null);
@@ -220,7 +315,7 @@ public class StudentIdentityServiceImpl implements StudentIdentityService {
             }
             observedEnrollment.setSourceSnapshotId(snapshot.getId());
             observedEnrollment.setUpdatedAt(LocalDateTime.now());
-            enrollmentRepository.save(observedEnrollment);
+            markDirty(observedEnrollment, enrollmentsToSave, enrollmentsMarkedForSave);
             return;
         }
         if (observedEnrollment != null && observedAt != null) {
@@ -230,14 +325,14 @@ public class StudentIdentityServiceImpl implements StudentIdentityService {
                 observedEnrollment.setClassRef(classRef);
                 observedEnrollment.setSourceSnapshotId(snapshot.getId());
                 observedEnrollment.setUpdatedAt(LocalDateTime.now());
-                enrollmentRepository.save(observedEnrollment);
+                markDirty(observedEnrollment, enrollmentsToSave, enrollmentsMarkedForSave);
                 return;
             }
             LocalDate previousEnd = observedEnrollment.getValidTo();
             observedEnrollment.setValidTo(observedAt.minusDays(1));
             observedEnrollment.setStatus(StudentEnrollmentStatus.TRANSFERRED);
             observedEnrollment.setUpdatedAt(LocalDateTime.now());
-            enrollmentRepository.save(observedEnrollment);
+            markDirty(observedEnrollment, enrollmentsToSave, enrollmentsMarkedForSave);
 
             StudentClassEnrollment changed = new StudentClassEnrollment();
             changed.setStudent(profile);
@@ -250,16 +345,14 @@ public class StudentIdentityServiceImpl implements StudentIdentityService {
                     ? StudentEnrollmentStatus.ACTIVE
                     : StudentEnrollmentStatus.TRANSFERRED);
             changed.setSourceSnapshotId(snapshot.getId());
-            enrollmentRepository.save(changed);
+            enrollments.add(changed);
+            markDirty(changed, enrollmentsToSave, enrollmentsMarkedForSave);
             return;
         }
 
-        StudentClassEnrollment active = enrollmentRepository
-                .findFirstByStudent_IdAndAcademicYearAndValidToIsNullOrderByValidFromDesc(
-                        profile.getId(),
-                        snapshot.getAcademicYear()
-                )
-                .orElse(null);
+        StudentClassEnrollment active = enrollments.stream()
+                .filter(enrollment -> enrollment.getValidTo() == null)
+                .findFirst().orElse(null);
         if (active != null && classKey(active.getClassName()).equals(classKey(className))) {
             if (observedAt != null && (active.getValidFrom() == null || observedAt.isBefore(active.getValidFrom()))) {
                 active.setValidFrom(observedAt);
@@ -269,7 +362,7 @@ public class StudentIdentityServiceImpl implements StudentIdentityService {
             }
             active.setSourceSnapshotId(snapshot.getId());
             active.setUpdatedAt(LocalDateTime.now());
-            enrollmentRepository.save(active);
+            markDirty(active, enrollmentsToSave, enrollmentsMarkedForSave);
             return;
         }
         if (active != null && observedAt != null
@@ -277,7 +370,7 @@ public class StudentIdentityServiceImpl implements StudentIdentityService {
             active.setValidTo(observedAt.minusDays(1));
             active.setStatus(StudentEnrollmentStatus.TRANSFERRED);
             active.setUpdatedAt(LocalDateTime.now());
-            enrollmentRepository.save(active);
+            markDirty(active, enrollmentsToSave, enrollmentsMarkedForSave);
         }
 
         StudentClassEnrollment created = new StudentClassEnrollment();
@@ -294,7 +387,14 @@ public class StudentIdentityServiceImpl implements StudentIdentityService {
             created.setStatus(StudentEnrollmentStatus.ACTIVE);
         }
         created.setSourceSnapshotId(snapshot.getId());
-        enrollmentRepository.save(created);
+        enrollments.add(created);
+        markDirty(created, enrollmentsToSave, enrollmentsMarkedForSave);
+    }
+
+    private <T> void markDirty(T entity, List<T> target, Set<T> marked) {
+        if (marked.add(entity)) {
+            target.add(entity);
+        }
     }
 
     private boolean contains(LocalDate from, LocalDate to, LocalDate date) {
@@ -370,6 +470,66 @@ public class StudentIdentityServiceImpl implements StudentIdentityService {
 
     private String normalize(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private final class IdentityIndex {
+        private final Map<String, List<StudentProfile>> byRecord = new HashMap<>();
+        private final Map<String, List<StudentProfile>> byNameAndBirthDate = new HashMap<>();
+        private final Map<String, List<StudentProfile>> byName = new HashMap<>();
+
+        private IdentityIndex(List<StudentProfile> profiles) {
+            (profiles == null ? List.<StudentProfile>of() : profiles).forEach(this::add);
+        }
+
+        private void add(StudentProfile profile) {
+            if (profile == null) {
+                return;
+            }
+            String record = normalizeRecordNumber(firstNotBlank(
+                    profile.getRecordNumber(),
+                    profile.getNormalizedRecordNumber()
+            ));
+            if (usableRecordNumber(record)) {
+                addCandidate(byRecord, record, profile);
+            }
+            String name = normalizeName(profile.getCurrentFullName());
+            if (!name.isBlank()) {
+                addCandidate(byName, name, profile);
+                if (profile.getBirthDate() != null) {
+                    addCandidate(byNameAndBirthDate, nameBirthKey(name, profile.getBirthDate()), profile);
+                }
+            }
+        }
+
+        private List<StudentProfile> byRecord(String record) {
+            return byRecord.getOrDefault(record, List.of());
+        }
+
+        private List<StudentProfile> byNameAndBirthDate(String name, LocalDate birthDate) {
+            return byNameAndBirthDate.getOrDefault(nameBirthKey(name, birthDate), List.of());
+        }
+
+        private List<StudentProfile> byName(String name) {
+            return byName.getOrDefault(name, List.of());
+        }
+
+        private void addCandidate(Map<String, List<StudentProfile>> target, String key, StudentProfile profile) {
+            List<StudentProfile> candidates = target.computeIfAbsent(key, ignored -> new ArrayList<>());
+            if (candidates.stream().noneMatch(existing -> existing == profile)) {
+                candidates.add(profile);
+            }
+        }
+
+        private String nameBirthKey(String name, LocalDate birthDate) {
+            return name + "\u0000" + birthDate;
+        }
+    }
+
+    private String firstNotBlank(String first, String second) {
+        return !normalize(first).isBlank() ? first : second;
+    }
+
+    private record ResolvedStudentRow(ContingentStudent row, StudentProfile profile) {
     }
 
     private record Resolution(

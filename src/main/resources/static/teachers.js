@@ -98,6 +98,7 @@ const ui = {
     teacherCardArchive: document.getElementById("teacher-card-archive"),
     teacherCardDelete: document.getElementById("teacher-card-delete"),
     teacherCardFeedback: document.getElementById("teacher-card-feedback"),
+    teacherProbeEventsBody: document.getElementById("teacher-probe-events-body"),
     teacherCardMainForm: document.getElementById("teacher-card-main-form"),
     teacherCardFio: document.getElementById("teacher-card-fio"),
     teacherCardFioGenitive: document.getElementById("teacher-card-fio-genitive"),
@@ -467,6 +468,9 @@ async function openTeacherCard(teacherId, preferredContractId = null) {
     ui.teacherCardPlanComment.value = teacher.plannedDismissalComment || "";
     ui.teacherCardDismissDate.value = teacher.dismissalDate || "";
     ui.teacherCardFeedback.textContent = "";
+    if (ui.teacherProbeEventsBody) {
+        ui.teacherProbeEventsBody.innerHTML = '<tr><td colspan="5" class="muted">История загружается…</td></tr>';
+    }
     ui.teacherCardFio.value = teacher.fioTeacher || "";
     ui.teacherCardFioGenitive.value = teacher.fioTeacherGenitive || "";
     ui.teacherCardFioDative.value = teacher.fioTeacherDative || "";
@@ -539,6 +543,16 @@ async function openTeacherCard(teacherId, preferredContractId = null) {
         ].join("");
         renderTeacherContractForm(current);
         setTeacherContractFormAccess();
+    }
+    if (ui.teacherProbeEventsBody) {
+        const events = await api(`/api/teachers/${teacher.id}/probe-events`).catch(() => []);
+        ui.teacherProbeEventsBody.innerHTML = events.length ? events.map((item) => `<tr>
+            <td>${escapeHtml(item.eventDate || '—')}</td>
+            <td>${escapeHtml(item.eventName || '—')}<br><span class="muted">${escapeHtml(item.venue || '')}</span></td>
+            <td>${escapeHtml((item.classNames || []).join(', ') || '—')}</td>
+            <td>${escapeHtml(item.buildingCode || '—')}</td>
+            <td>${escapeHtml(item.orderNumber || '—')} ${item.orderDate ? `от ${escapeHtml(item.orderDate)}` : ''}</td>
+        </tr>`).join('') : '<tr><td colspan="5" class="muted">Сотрудник пока не сопровождал мероприятия по выпущенным приказам.</td></tr>';
     }
     if (!ui.teacherCardDialog.open) ui.teacherCardDialog.showModal();
 }

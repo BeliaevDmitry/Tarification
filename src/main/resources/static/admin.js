@@ -67,7 +67,8 @@ const TAB_GROUPS = [
         key: 'DOCUMENTS',
         label: 'Документы',
         tabs: [
-            { key: 'DOCUMENTS_PEDAGOGICAL_COUNCILS', label: 'Педагогические советы' }
+            { key: 'DOCUMENTS_PEDAGOGICAL_COUNCILS', label: 'Педагогические советы' },
+            { key: 'DOCUMENTS_PROBE_ORDERS', label: 'Приказы на пробы' }
         ]
     },
     {

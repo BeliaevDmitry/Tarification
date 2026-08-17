@@ -17,6 +17,7 @@ import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.model.UserActionLog;
 import org.school.personalLoad.service.TeacherDirectoryService;
 import org.school.personalLoad.service.PersonnelService;
+import org.school.personalLoad.service.ProbeOrderService;
 import org.school.personalLoad.service.AcademicYearService;
 import org.school.personalLoad.service.UserActionLogService;
 import org.springframework.core.io.Resource;
@@ -42,6 +43,7 @@ public class TeacherDirectoryController {
     private final PersonnelService personnelService;
     private final AcademicYearService academicYearService;
     private final UserActionLogService audit;
+    private final ProbeOrderService probeOrderService;
 
     @PostMapping("/import")
     public ResponseEntity<Map<String, Object>> importFromExcel(@RequestParam("file") MultipartFile file) {
@@ -186,6 +188,11 @@ public class TeacherDirectoryController {
     @GetMapping("/{teacherId}/name-cases")
     public Object nameCases(@PathVariable Long teacherId) {
         return personnelService.nameCases(teacherId);
+    }
+
+    @GetMapping("/{teacherId}/probe-events")
+    public Object probeEvents(@PathVariable Long teacherId) {
+        return probeOrderService.teacherHistory(teacherId);
     }
 
     @GetMapping("/name-cases/derive")
