@@ -7,7 +7,25 @@ const ui = {
     copyMesScriptBtn: document.getElementById('contingent-copy-mes-script-btn'),
     downloadMesScriptBtn: document.getElementById('contingent-download-mes-script-btn'),
     mesScriptResult: document.getElementById('contingent-mes-script-result'),
-    problemsBody: document.getElementById('contingent-problems-body'),
+    openMismatchesBtn: document.getElementById('contingent-open-mismatches-btn'),
+    mismatchTabCount: document.getElementById('contingent-mismatch-tab-count'),
+    mismatchSnapshot: document.getElementById('contingent-mismatch-snapshot'),
+    mismatchRefreshBtn: document.getElementById('contingent-mismatch-refresh-btn'),
+    mismatchSummary: document.getElementById('contingent-mismatch-summary'),
+    mismatchBody: document.getElementById('contingent-mismatch-body'),
+    mismatchDialog: document.getElementById('contingent-mismatch-dialog'),
+    mismatchForm: document.getElementById('contingent-mismatch-form'),
+    mismatchDialogPerson: document.getElementById('contingent-mismatch-dialog-person'),
+    mismatchDialogClose: document.getElementById('contingent-mismatch-dialog-close'),
+    mismatchCancelBtn: document.getElementById('contingent-mismatch-cancel-btn'),
+    mismatchRowId: document.getElementById('contingent-mismatch-row-id'),
+    mismatchStudentField: document.getElementById('contingent-mismatch-student-field'),
+    mismatchStudentSearch: document.getElementById('contingent-mismatch-student-search'),
+    mismatchStudent: document.getElementById('contingent-mismatch-student'),
+    mismatchStudentHint: document.getElementById('contingent-mismatch-student-hint'),
+    mismatchPlacementField: document.getElementById('contingent-mismatch-placement-field'),
+    mismatchPlacement: document.getElementById('contingent-mismatch-placement'),
+    mismatchDialogMessage: document.getElementById('contingent-mismatch-dialog-message'),
     snapshotDateSelect: document.getElementById('contingent-snapshot-date'),
     statsRefreshBtn: document.getElementById('contingent-stats-refresh-btn'),
     statsExportBtn: document.getElementById('contingent-stats-export-btn'),
@@ -111,6 +129,9 @@ let supportReferences = { students: [], curriculum: [], teachers: [] };
 let currentCertificates = [];
 let certificateNosologies = [];
 let certificateSpecialists = [];
+let currentSnapshots = [];
+let currentMismatchData = { rows: [], studentOptions: [], placementOptions: [] };
+let currentMismatchRow = null;
 
 const certificateUi = {
     editor: document.getElementById('certificate-editor'),
@@ -168,10 +189,11 @@ function stageClassSummary(stats) {
 function contingentPermissions() {
     const permissions = window.tarificationTabPermissions || {};
     if (window.tarificationAuth?.admin) {
-        return { canImportView: true, canStatsView: true, canManualView: true, canSupportView: true };
+        return { canImportView: true, canImportEdit: true, canStatsView: true, canManualView: true, canSupportView: true };
     }
     return {
         canImportView: Boolean(permissions.CONTINGENT_IMPORT?.canView),
+        canImportEdit: Boolean(permissions.CONTINGENT_IMPORT?.canEdit || permissions.CONTINGENT_STATS?.canEdit),
         canStatsView: Boolean(permissions.CONTINGENT_STATS?.canView),
         canManualView: Boolean(permissions.CONTINGENT_STATS?.canView),
         canSupportView: Boolean(permissions.CONTINGENT_STATS?.canView)
@@ -190,7 +212,7 @@ function applyTabAccess() {
     const { canImportView, canStatsView, canManualView, canSupportView } = contingentPermissions();
     ui.tabs.forEach((tab) => {
         const tabName = tab.dataset.contingentTab;
-        const allowed = tabName === 'import'
+        const allowed = (tabName === 'import' || tabName === 'mismatches')
             ? canImportView
             : (tabName === 'manual'
                 ? canManualView
@@ -264,13 +286,14 @@ function showTab(name) {
 function printImportResult(value) {
     if (value?.error) {
         ui.importResult.textContent = `Ошибка: ${value.error}`;
+        ui.openMismatchesBtn.hidden = true;
         return;
     }
     const format = value?.importFormat === 'MES_EXTENDED_CSV'
         ? 'расширенная CSV-выгрузка МЭШ'
         : value?.importFormat === 'COMPACT'
-            ? 'сокращённая выгрузка МЭШ (ФИО + класс/группа)'
-            : 'полная Excel-выгрузка';
+            ? 'простой контингент (ФИО + класс/группа)'
+            : 'выгрузка АИС';
     ui.importResult.textContent = [
         `Формат: ${format}`,
         `Загружено: ${Number(value?.importedStudents || 0)}`,
@@ -282,6 +305,10 @@ function printImportResult(value) {
         `Требуют ручного сопоставления: ${Number(value?.ambiguousStudents || 0)}`,
         `Пропущено строк: ${Number(value?.skippedRows || 0)}`
     ].join('\n');
+    const mismatches = Number(value?.mismatchCount || 0);
+    ui.openMismatchesBtn.hidden = mismatches < 1;
+    ui.openMismatchesBtn.textContent = `Открыть нестыковки импорта (${mismatches})`;
+    ui.openMismatchesBtn.dataset.snapshotId = value?.snapshotId || '';
 }
 
 async function loadMesExportScript() {
@@ -320,20 +347,6 @@ async function downloadMesExportScript() {
     link.remove();
     URL.revokeObjectURL(url);
     ui.mesScriptResult.textContent = 'Скрипт скачан. Откройте файл, скопируйте его содержимое и запустите в Console МЭШ.';
-}
-
-function renderProblems(problems) {
-    if (!problems?.length) {
-        ui.problemsBody.innerHTML = '<tr><td colspan="3" class="muted">Проблем нет ✅</td></tr>';
-        return;
-    }
-    ui.problemsBody.innerHTML = problems.map((problem) => `
-        <tr>
-            <td>${esc(problem.className)}</td>
-            <td>${esc(problem.studentsCount)}</td>
-            <td>${esc(problem.description)}</td>
-        </tr>
-    `).join('');
 }
 
 function renderStatsTable(stats) {
@@ -591,7 +604,9 @@ async function importManualClassSizes() {
 }
 
 async function loadSnapshots() {
+    const previousMismatchSnapshot = ui.mismatchSnapshot?.value || '';
     const snapshots = await api('/api/contingent/snapshots');
+    currentSnapshots = snapshots || [];
     ui.snapshotDateSelect.innerHTML = '';
     snapshots.forEach((snapshot) => {
         const option = document.createElement('option');
@@ -599,11 +614,155 @@ async function loadSnapshots() {
         option.textContent = `${snapshot.snapshotDate} (импорт: ${String(snapshot.importedAt || '').replace('T', ' ').slice(0, 16)})`;
         ui.snapshotDateSelect.appendChild(option);
     });
+    if (ui.mismatchSnapshot) {
+        ui.mismatchSnapshot.innerHTML = snapshots.map((snapshot) => {
+            const format = snapshot.importFormat === 'MES_EXTENDED_CSV'
+                ? 'Расширенный МЭШ'
+                : snapshot.importFormat === 'COMPACT'
+                    ? 'Простой'
+                    : 'АИС';
+            return `<option value="${esc(snapshot.id)}">${esc(snapshot.snapshotDate)} · ${esc(format)} · ${esc(snapshot.sourceFileName)}</option>`;
+        }).join('');
+        if (previousMismatchSnapshot && snapshots.some((snapshot) => String(snapshot.id) === previousMismatchSnapshot)) {
+            ui.mismatchSnapshot.value = previousMismatchSnapshot;
+        }
+    }
 }
 
-async function refreshProblems() {
-    const problems = await api('/api/contingent/problems');
-    renderProblems(problems);
+const mismatchTypeLabel = (type) => ({
+    OUTSIDE_ORGANIZATION: 'Вне ОО',
+    AMBIGUOUS_IDENTITY: 'Неясная карточка',
+    UNKNOWN_CLASS: 'Неизвестный класс',
+    SKIPPED_ROW: 'Строка пропущена'
+}[type] || type || 'Проблема');
+
+function renderMismatches(data) {
+    currentMismatchData = data || { rows: [], studentOptions: [], placementOptions: [] };
+    const rows = currentMismatchData.rows || [];
+    const total = Number(currentMismatchData.total || rows.length);
+    ui.mismatchTabCount.textContent = total ? `(${total})` : '';
+    if (ui.openMismatchesBtn.dataset.snapshotId === String(currentMismatchData.snapshotId || '')) {
+        ui.openMismatchesBtn.hidden = total < 1;
+        ui.openMismatchesBtn.textContent = `Открыть нестыковки импорта (${total})`;
+    }
+    ui.mismatchSummary.textContent = currentMismatchData.snapshotId
+        ? `Выгрузка от ${currentMismatchData.snapshotDate}: всего ${total}; «Вне ОО» — ${Number(currentMismatchData.outsideOrganization || 0)}; неясные карточки — ${Number(currentMismatchData.ambiguousIdentity || 0)}; пропущенные строки — ${Number(currentMismatchData.skippedRows || 0)}; неизвестные классы — ${Number(currentMismatchData.unknownClasses || 0)}.`
+        : 'Выгрузки контингента пока нет.';
+    if (!rows.length) {
+        ui.mismatchBody.innerHTML = '<tr><td colspan="6" class="muted">Нестыковок нет ✅</td></tr>';
+        return;
+    }
+    const canEdit = contingentPermissions().canImportEdit;
+    ui.mismatchBody.innerHTML = rows.map((row) => {
+        const birthDate = row.birthDate ? `<div class="muted">${esc(row.birthDate)}</div>` : '';
+        const raw = row.rawPayload
+            ? `<details class="contingent-mismatch-raw"><summary>Исходные данные</summary><pre>${esc(row.rawPayload)}</pre></details>`
+            : '';
+        const action = row.canResolve && canEdit
+            ? `<button type="button" class="secondary" data-resolve-mismatch="${esc(row.contingentStudentId)}">Сопоставить</button>`
+            : (row.canResolve ? '<span class="muted">Только просмотр</span>' : '<span class="muted">Исправить файл</span>');
+        return `
+            <tr class="contingent-mismatch-row contingent-mismatch-${esc(String(row.type || '').toLowerCase())}">
+                <td><span class="table-badge">${esc(mismatchTypeLabel(row.type))}</span></td>
+                <td>${row.sourceRowNumber ? esc(row.sourceRowNumber) : '—'}</td>
+                <td><strong>${esc(row.fullName || 'ФИО не указано')}</strong>${birthDate}</td>
+                <td>${esc(row.currentPlacement || 'Не указано')}</td>
+                <td>${esc(row.message)}${raw}</td>
+                <td>${action}</td>
+            </tr>`;
+    }).join('');
+}
+
+async function refreshMismatches(snapshotId = null) {
+    const selectedId = snapshotId || ui.mismatchSnapshot?.value;
+    const query = selectedId ? `?snapshotId=${encodeURIComponent(selectedId)}` : '';
+    const data = await api(`/api/contingent/import-mismatches${query}`);
+    renderMismatches(data);
+    if (data?.snapshotId && ui.mismatchSnapshot) {
+        ui.mismatchSnapshot.value = String(data.snapshotId);
+    }
+    return data;
+}
+
+function studentOptionLabel(option) {
+    return [option.fullName, option.birthDate, option.currentPlacement].filter(Boolean).join(' · ');
+}
+
+function fillMismatchStudentOptions(search = '') {
+    const selected = ui.mismatchStudent.value;
+    const needle = String(search || '').trim().toLocaleLowerCase('ru-RU');
+    const options = (currentMismatchData.studentOptions || []).filter((option) =>
+        !needle || studentOptionLabel(option).toLocaleLowerCase('ru-RU').includes(needle)
+    );
+    const current = (currentMismatchData.studentOptions || []).find((option) =>
+        String(option.id) === String(currentMismatchRow?.currentStudentId || '')
+    );
+    const visible = current && !options.some((option) => String(option.id) === String(current.id))
+        ? [current, ...options]
+        : options;
+    ui.mismatchStudent.innerHTML = '<option value="">Выберите карточку ребёнка</option>'
+        + visible.map((option) => `<option value="${esc(option.id)}">${esc(studentOptionLabel(option))}</option>`).join('');
+    const target = selected || currentMismatchRow?.currentStudentId || '';
+    ui.mismatchStudent.value = String(target);
+}
+
+function openMismatchDialog(rowId) {
+    const row = (currentMismatchData.rows || []).find((item) =>
+        Number(item.contingentStudentId) === Number(rowId)
+    );
+    if (!row) return;
+    currentMismatchRow = row;
+    ui.mismatchRowId.value = row.contingentStudentId || '';
+    ui.mismatchDialogPerson.textContent = `${row.fullName || 'ФИО не указано'}${row.birthDate ? `, ${row.birthDate}` : ''}. Сейчас: ${row.currentPlacement || 'не указано'}.`;
+    ui.mismatchDialogMessage.textContent = row.message || '';
+    ui.mismatchStudentSearch.value = '';
+    fillMismatchStudentOptions();
+    const studentLocked = Boolean(row.currentStudentId);
+    ui.mismatchStudent.disabled = studentLocked;
+    ui.mismatchStudentSearch.disabled = studentLocked;
+    ui.mismatchStudentField.style.display = row.requiresStudent || studentLocked ? '' : 'none';
+    ui.mismatchStudentHint.textContent = studentLocked
+        ? 'Карточка уже связана; здесь меняется только класс или группа.'
+        : 'Выберите существующую постоянную карточку. Новая карточка из неоднозначной строки автоматически не создаётся.';
+
+    const placementOptions = currentMismatchData.placementOptions || [];
+    ui.mismatchPlacement.innerHTML = '<option value="">Выберите класс или группу</option>'
+        + placementOptions.map((placement) => `<option value="${esc(placement)}">${esc(placement)}</option>`).join('');
+    if (!row.requiresPlacement && row.currentPlacement) {
+        if (!placementOptions.includes(row.currentPlacement)) {
+            ui.mismatchPlacement.insertAdjacentHTML('beforeend', `<option value="${esc(row.currentPlacement)}">${esc(row.currentPlacement)}</option>`);
+        }
+        ui.mismatchPlacement.value = row.currentPlacement;
+    }
+    ui.mismatchPlacementField.style.display = row.requiresPlacement ? '' : 'none';
+    ui.mismatchDialog.showModal();
+}
+
+async function saveMismatchResolution(event) {
+    event.preventDefault();
+    if (!currentMismatchRow) return;
+    ui.mismatchDialogMessage.textContent = 'Сохраняю сопоставление…';
+    try {
+        const data = await api('/api/contingent/import-mismatches/resolve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contingentStudentId: Number(ui.mismatchRowId.value),
+                studentId: ui.mismatchStudent.value ? Number(ui.mismatchStudent.value) : null,
+                className: ui.mismatchPlacement.value || currentMismatchRow.currentPlacement || ''
+            })
+        });
+        ui.mismatchDialog.close();
+        currentMismatchRow = null;
+        renderMismatches(data);
+        try {
+            await refreshStats();
+        } catch (statsError) {
+            ui.mismatchSummary.textContent += ` Численность не обновилась автоматически: ${statsError.message}`;
+        }
+    } catch (error) {
+        ui.mismatchDialogMessage.textContent = `Ошибка: ${error.message}`;
+    }
 }
 
 async function refreshStats() {
@@ -1675,7 +1834,37 @@ ui.tabs.forEach((tab) => tab.addEventListener('click', () => {
             window.alert(`Ошибка загрузки справочника: ${error.message}`);
         });
     }
+    if (tabName === 'mismatches') {
+        refreshMismatches().catch((error) => {
+            ui.mismatchSummary.textContent = `Ошибка: ${error.message}`;
+        });
+    }
 }));
+
+ui.openMismatchesBtn?.addEventListener('click', () => {
+    const snapshotId = ui.openMismatchesBtn.dataset.snapshotId || '';
+    if (snapshotId && ui.mismatchSnapshot) ui.mismatchSnapshot.value = snapshotId;
+    showTab('mismatches');
+    window.location.hash = '#mismatches';
+    refreshMismatches(snapshotId).catch((error) => {
+        ui.mismatchSummary.textContent = `Ошибка: ${error.message}`;
+    });
+});
+
+ui.mismatchRefreshBtn?.addEventListener('click', () => refreshMismatches().catch((error) => {
+    ui.mismatchSummary.textContent = `Ошибка: ${error.message}`;
+}));
+ui.mismatchSnapshot?.addEventListener('change', () => refreshMismatches().catch((error) => {
+    ui.mismatchSummary.textContent = `Ошибка: ${error.message}`;
+}));
+ui.mismatchBody?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-resolve-mismatch]');
+    if (button) openMismatchDialog(button.dataset.resolveMismatch);
+});
+ui.mismatchStudentSearch?.addEventListener('input', () => fillMismatchStudentOptions(ui.mismatchStudentSearch.value));
+ui.mismatchForm?.addEventListener('submit', saveMismatchResolution);
+ui.mismatchDialogClose?.addEventListener('click', () => ui.mismatchDialog.close());
+ui.mismatchCancelBtn?.addEventListener('click', () => ui.mismatchDialog.close());
 
 ui.copyMesScriptBtn?.addEventListener('click', () => {
     ui.mesScriptResult.textContent = 'Копирую скрипт…';
@@ -1704,7 +1893,7 @@ ui.importBtn.addEventListener('click', async () => {
         printImportResult(result);
         ui.fileInput.value = '';
         await loadSnapshots();
-        await refreshProblems();
+        await refreshMismatches(result.snapshotId);
         await refreshStats();
     } catch (error) {
         printImportResult({ error: error.message });
@@ -1925,11 +2114,11 @@ ui.supportRegisterTable?.addEventListener('click', (event) => {
         }
 
         const hash = String(window.location.hash || '').toLowerCase();
-        const requestedTab = ['#import', '#manual', '#support', '#nosologies', '#stats'].includes(hash)
+        const requestedTab = ['#import', '#mismatches', '#manual', '#support', '#nosologies', '#stats'].includes(hash)
             ? hash.slice(1)
             : defaultTab;
         const permissions = contingentPermissions();
-        const finalTab = (requestedTab === 'import' && permissions.canImportView)
+        const finalTab = ((requestedTab === 'import' || requestedTab === 'mismatches') && permissions.canImportView)
             || (requestedTab === 'manual' && permissions.canManualView)
             || ((requestedTab === 'support' || requestedTab === 'nosologies') && permissions.canSupportView)
             || (requestedTab === 'stats' && permissions.canStatsView)
@@ -1939,9 +2128,7 @@ ui.supportRegisterTable?.addEventListener('click', (event) => {
 
         await loadSnapshots();
         if (contingentPermissions().canImportView) {
-            await refreshProblems();
-        } else {
-            renderProblems([]);
+            await refreshMismatches();
         }
 
         if (contingentPermissions().canStatsView && ui.snapshotDateSelect.options.length) {

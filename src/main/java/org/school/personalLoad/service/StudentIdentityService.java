@@ -11,6 +11,8 @@ public interface StudentIdentityService {
 
     LinkResult reconcileSnapshot(Long snapshotId);
 
+    void resolveManually(ContingentSnapshot snapshot, ContingentStudent student, Long studentId);
+
     record LinkResult(int linked, int created, int ambiguous) {
     }
 }

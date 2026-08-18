@@ -50,6 +50,8 @@ const state = {
     studentHourRate: 37
 };
 
+const ALL_BUILDINGS_VALUE = "__ALL__";
+
 function withYear(path) {
     return window.withAcademicYear ? window.withAcademicYear(path) : path;
 }
@@ -196,6 +198,10 @@ function rowMatchesBuildingAccess(row, accessCode) {
     return knownAddresses.length === 1 && knownAddresses[0] === selectedAddress;
 }
 
+function rowMatchesPeopleLoadScope(row, accessCode) {
+    return accessCode === ALL_BUILDINGS_VALUE || !accessCode || rowMatchesBuildingAccess(row, accessCode);
+}
+
 function escapeHtml(value) {
     return String(value ?? "")
         .replace(/&/g, "&amp;")
@@ -289,14 +295,20 @@ function fillBuildingSelect() {
     if (!ui.buildingSelect) return;
     const previous = ui.buildingSelect.value;
     ui.buildingSelect.innerHTML = "";
+    const allOption = document.createElement("option");
+    allOption.value = ALL_BUILDINGS_VALUE;
+    allOption.textContent = "ВСЕ";
+    ui.buildingSelect.appendChild(allOption);
     state.buildings.forEach((building) => {
         const option = document.createElement("option");
         option.value = building.value;
         option.textContent = buildingLabel(building);
         ui.buildingSelect.appendChild(option);
     });
-    if (previous && state.buildings.some((building) => building.value === previous)) {
+    if (previous === ALL_BUILDINGS_VALUE || (previous && state.buildings.some((building) => building.value === previous))) {
         ui.buildingSelect.value = previous;
+    } else {
+        ui.buildingSelect.value = ALL_BUILDINGS_VALUE;
     }
 }
 
@@ -499,16 +511,16 @@ function fioHtml(fio) {
 }
 
 function renderTable() {
-    const selected = ui.buildingSelect?.value || state.buildings[0]?.value || "";
-    const selectedRows = state.manualRows.filter((row) => rowMatchesBuildingAccess(row, selected));
+    const selected = ui.buildingSelect?.value || ALL_BUILDINGS_VALUE;
+    const selectedRows = state.manualRows.filter((row) => rowMatchesPeopleLoadScope(row, selected));
     const selectedTeacherKeys = new Set(selectedRows.map(teacherRowKey));
     const displayRows = state.manualRows
         .filter((row) => selectedTeacherKeys.has(teacherRowKey(row)))
         .sort((a, b) => {
             const fioCompare = normalizeText(a.fioTeacher).localeCompare(normalizeText(b.fioTeacher), "ru");
             if (fioCompare) return fioCompare;
-            const aSelected = rowMatchesBuildingAccess(a, selected) ? 0 : 1;
-            const bSelected = rowMatchesBuildingAccess(b, selected) ? 0 : 1;
+            const aSelected = rowMatchesPeopleLoadScope(a, selected) ? 0 : 1;
+            const bSelected = rowMatchesPeopleLoadScope(b, selected) ? 0 : 1;
             if (aSelected !== bSelected) return aSelected - bSelected;
             const subjectCompare = normalizeText(a.subjectName).localeCompare(normalizeText(b.subjectName), "ru");
             if (subjectCompare) return subjectCompare;
@@ -536,7 +548,7 @@ function renderTable() {
         if (!allTotals.has(key)) allTotals.set(key, { year: 0, h1: 0, h2: 0 });
         addHours(allTotals.get(key), row);
     });
-    state.iupRows.filter((row) => rowMatchesBuildingAccess(row, selected)).forEach((row) => {
+    state.iupRows.filter((row) => rowMatchesPeopleLoadScope(row, selected)).forEach((row) => {
         const key = teacherRowKey(row);
         if (!selectedIupTotals.has(key)) selectedIupTotals.set(key, { year: 0, h1: 0, h2: 0 });
         addHours(selectedIupTotals.get(key), row);
@@ -622,7 +634,8 @@ function renderTable() {
     html += "</tbody>";
     ui.table.innerHTML = html;
     const label = state.buildings.find((building) => building.value === selected);
-    ui.summary.textContent = `Показано строк: ${displayRows.length} (в выбранном корпусе: ${selectedRows.length}). Выбрано: ${buildingLabel(label) || "корпус не выбран"}.`;
+    const selectedLabel = selected === ALL_BUILDINGS_VALUE ? "ВСЕ" : (buildingLabel(label) || "фильтр не выбран");
+    ui.summary.textContent = `Показано строк: ${displayRows.length} (в выбранном фильтре: ${selectedRows.length}). Выбрано: ${selectedLabel}.`;
     fitPeopleLoadTables();
 }
 
@@ -634,9 +647,9 @@ function iupCategoryLabel(category) {
 
 function renderIupTable() {
     if (!ui.iupTable) return;
-    const selected = ui.buildingSelect?.value || state.buildings[0]?.value || "";
+    const selected = ui.buildingSelect?.value || ALL_BUILDINGS_VALUE;
     const rows = state.iupRows
-        .filter((row) => !selected || rowMatchesBuildingAccess(row, selected))
+        .filter((row) => rowMatchesPeopleLoadScope(row, selected))
         .sort((a, b) => {
             const teacher = normalizeText(a.teacherFullName).localeCompare(normalizeText(b.teacherFullName), "ru");
             if (teacher) return teacher;
@@ -858,7 +871,10 @@ async function addPrimarySubjectRule() {
 }
 
 function exportSubjectLoadWorkbook() {
-    const selected = ui.buildingSelect?.value || state.buildings[0]?.value || "";
+    const selected = ui.buildingSelect?.value || ALL_BUILDINGS_VALUE;
+    if (selected === ALL_BUILDINGS_VALUE) {
+        return exportLoadWorkbook("/api/manual-load/export-subjects", "subject-load-export.xlsx");
+    }
     const [building, ...addressParts] = selected.split("|");
     const params = new URLSearchParams();
     if (building) params.set("building", building);

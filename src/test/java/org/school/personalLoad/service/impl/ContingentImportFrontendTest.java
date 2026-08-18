@@ -21,6 +21,10 @@ class ContingentImportFrontendTest {
         assertTrue(pageScript.contains("/mes-contingent-export.js"));
         assertTrue(pageScript.contains("navigator.clipboard.writeText"));
         assertTrue(pageScript.contains("MES_EXTENDED_CSV"));
+        assertTrue(html.contains("data-contingent-tab=\"mismatches\""));
+        assertTrue(html.contains("id=\"contingent-mismatch-dialog\""));
+        assertTrue(html.contains("<strong>АИС</strong>"));
+        assertTrue(pageScript.contains("/api/contingent/import-mismatches/resolve"));
         assertTrue(exporter.contains("/api/ej/core/teacher/v1/student_profiles"));
         assertTrue(exporter.contains("'ФИО ребёнка'"));
         assertTrue(exporter.contains("`Представитель ${n} — телефон`"));

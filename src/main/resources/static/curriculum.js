@@ -54,6 +54,7 @@ const ui = {
     importBtn: document.getElementById("import-curriculum-btn"),
     exportBtn: document.getElementById("export-curriculum-btn"),
     exportParallelsBtn: document.getElementById("export-curriculum-parallels-btn"),
+    exportAddressesBtn: document.getElementById("export-curriculum-addresses-btn"),
     exportDepartmentBtn: document.getElementById("export-curriculum-department-btn"),
     subgroupRequired: document.getElementById("subgroup-required"),
     subgroupConfig: document.getElementById("subgroup-config"),
@@ -1151,6 +1152,29 @@ async function exportCurriculumParallelsFile() {
     }
 }
 
+async function exportCurriculumAddressesFile() {
+    try {
+        const path = window.withAcademicYear ? window.withAcademicYear("/api/curriculum/export-addresses") : "/api/curriculum/export-addresses";
+        const response = await fetch(path);
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || `HTTP ${response.status}`);
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "curriculum-by-addresses.xlsx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        print({ status: "exported", file: "curriculum-by-addresses.xlsx" });
+    } catch (error) {
+        print({ error: error.message });
+    }
+}
+
 function captureCurriculumScroll() {
     const wrap = ui.summaryBody?.closest(".sheet-wrap");
     return {
@@ -1470,6 +1494,7 @@ function bindEvents() {
     ui.importBtn?.addEventListener("click", importCurriculumFile);
     ui.exportBtn?.addEventListener("click", exportCurriculumFile);
     ui.exportParallelsBtn?.addEventListener("click", exportCurriculumParallelsFile);
+    ui.exportAddressesBtn?.addEventListener("click", exportCurriculumAddressesFile);
     ui.exportDepartmentBtn?.addEventListener("click", exportCurriculumDepartmentFile);
     ui.form.elements.curriculumPart.addEventListener("change", () => {
         ui.form.elements.subjectRequirement.value = ui.form.elements.curriculumPart.value === "CORE" ? "MANDATORY" : "SCHOOL_CHOICE";
@@ -1604,6 +1629,7 @@ try {
     ui.importBtn?.addEventListener("click", importCurriculumFile);
     ui.exportBtn?.addEventListener("click", exportCurriculumFile);
     ui.exportParallelsBtn?.addEventListener("click", exportCurriculumParallelsFile);
+    ui.exportAddressesBtn?.addEventListener("click", exportCurriculumAddressesFile);
     ui.exportDepartmentBtn?.addEventListener("click", exportCurriculumDepartmentFile);
 }
 toggleSubgroupConfig(ui.subgroupConfig, ui.subgroupRequired.value);

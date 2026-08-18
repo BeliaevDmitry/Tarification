@@ -23,12 +23,20 @@
             <button type="button" class="nav-link" data-contingent-tab="nosologies">Справочник нозологий</button>
             <button type="button" class="nav-link" data-contingent-tab="manual">Ручная правка</button>
             <button type="button" class="nav-link" data-contingent-tab="import">Импорт</button>
+            <button type="button" class="nav-link" data-contingent-tab="mismatches">
+                Нестыковки импорта <span id="contingent-mismatch-tab-count"></span>
+            </button>
         </nav>
     </section>
 
     <section class="card" data-contingent-pane="import" data-requires-edit style="display:none;">
         <h2>Импорт</h2>
-        <p class="muted">Можно загрузить расширенную CSV-выгрузку из скрипта, полную Excel-выгрузку или сокращённый Excel-файл МЭШ без заголовков: в первом столбце ФИО, во втором — класс или группа детского сада.</p>
+        <p>Система принимает три вида контингента:</p>
+        <ul>
+            <li><strong>Простой</strong> — Excel с двумя столбцами: ФИО и класс/группа.</li>
+            <li><strong>Расширенный МЭШ</strong> — CSV, полученный скриптом ниже.</li>
+            <li><strong>АИС</strong> — полная Excel-выгрузка с личным делом и данными ребёнка.</li>
+        </ul>
 
         <details class="card mes-export-script-card" open>
             <summary><strong>Получить расширенную выгрузку из МЭШ</strong></summary>
@@ -51,22 +59,74 @@
             <button id="contingent-import-btn" type="button">Загрузить в БД</button>
         </div>
         <pre id="contingent-import-result" class="result-box"></pre>
+        <button id="contingent-open-mismatches-btn" type="button" class="secondary" hidden>
+            Открыть нестыковки импорта
+        </button>
+        <p class="muted">
+            Ошибка чтения файла показывается прямо здесь. Пропущенные строки, неоднозначные карточки,
+            дети «Вне ОО» и неизвестные классы сохраняются во вкладке «Нестыковки импорта».
+        </p>
+    </section>
 
-        <h3>Проблемы</h3>
-        <p class="muted">Если в выгрузке есть класс, которого нет в учебном плане, он появится здесь.</p>
+    <section class="card" data-contingent-pane="mismatches" style="display:none;">
+        <h2>Нестыковки импорта</h2>
+        <p class="muted">
+            Здесь видны все строки, которые требуют внимания. Для ребёнка «Вне ОО» выберите класс или группу;
+            при неоднозначном ФИО выберите постоянную карточку ребёнка.
+        </p>
+        <div class="row controls-row">
+            <label>Выгрузка:
+                <select id="contingent-mismatch-snapshot"></select>
+            </label>
+            <button id="contingent-mismatch-refresh-btn" type="button" class="secondary">Обновить</button>
+        </div>
+        <div id="contingent-mismatch-summary" class="muted"></div>
         <div class="sheet-wrap">
-            <table class="sheet-table">
+            <table class="sheet-table" id="contingent-mismatch-table">
                 <thead>
                 <tr>
-                    <th>Класс</th>
-                    <th>Учеников</th>
-                    <th>Описание</th>
+                    <th>Вид</th>
+                    <th>Строка</th>
+                    <th>Ребёнок</th>
+                    <th>Сейчас указан</th>
+                    <th>Что исправить</th>
+                    <th>Действие</th>
                 </tr>
                 </thead>
-                <tbody id="contingent-problems-body"></tbody>
+                <tbody id="contingent-mismatch-body"></tbody>
             </table>
         </div>
     </section>
+
+    <dialog id="contingent-mismatch-dialog" class="contingent-mismatch-dialog">
+        <form id="contingent-mismatch-form">
+            <div class="dialog-hero">
+                <div>
+                    <h3>Сопоставление строки импорта</h3>
+                    <p id="contingent-mismatch-dialog-person" class="muted"></p>
+                </div>
+                <button id="contingent-mismatch-dialog-close" type="button" class="secondary">Закрыть</button>
+            </div>
+            <input id="contingent-mismatch-row-id" type="hidden">
+            <div class="contingent-mismatch-fields">
+                <label id="contingent-mismatch-student-field">Карточка ребёнка
+                    <input id="contingent-mismatch-student-search" type="search"
+                           placeholder="Начните вводить ФИО для поиска">
+                    <select id="contingent-mismatch-student"></select>
+                    <small id="contingent-mismatch-student-hint" class="muted"></small>
+                </label>
+                <label id="contingent-mismatch-placement-field">Класс или группа
+                    <select id="contingent-mismatch-placement"></select>
+                    <small class="muted">Для «Вне ОО» нужно выбрать место внутри организации.</small>
+                </label>
+            </div>
+            <div id="contingent-mismatch-dialog-message" class="muted" aria-live="polite"></div>
+            <div class="row dialog-actions">
+                <button id="contingent-mismatch-save-btn" type="submit">Сохранить сопоставление</button>
+                <button id="contingent-mismatch-cancel-btn" type="button" class="secondary">Отмена</button>
+            </div>
+        </form>
+    </dialog>
 
     <section class="card" data-contingent-pane="stats">
         <h2>Численность</h2>

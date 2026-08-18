@@ -20,6 +20,13 @@ public interface ContingentService {
 
     List<ContingentDtos.ImportProblem> getProblems(String academicYear, Long snapshotId);
 
+    ContingentDtos.ImportMismatchResponse getImportMismatches(String academicYear, Long snapshotId);
+
+    ContingentDtos.ImportMismatchResponse resolveImportMismatch(
+            String academicYear,
+            ContingentDtos.ResolveImportMismatchRequest request
+    );
+
     ContingentDtos.ManualClassSizeResponse getManualClassSizes(String academicYear);
 
     ContingentDtos.ManualClassSizeResponse saveManualClassSizes(String academicYear, ContingentDtos.ManualClassSizeSaveRequest request);

@@ -6,5 +6,6 @@ public enum StudentIdentityMatchStatus {
     LINKED_BY_NAME_AND_BIRTH_DATE,
     LINKED_BY_NAME_ONLY,
     CREATED,
-    AMBIGUOUS
+    AMBIGUOUS,
+    MANUALLY_LINKED
 }

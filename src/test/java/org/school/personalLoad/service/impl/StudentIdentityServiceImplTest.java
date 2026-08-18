@@ -18,6 +18,7 @@ import org.school.personalLoad.repository.StudentProfileRepository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -139,6 +140,34 @@ class StudentIdentityServiceImplTest {
         assertEquals(100L, first.getStudentId());
         assertEquals(101L, second.getStudentId());
         assertEquals(StudentIdentityMatchStatus.CREATED, first.getIdentityMatchStatus());
+    }
+
+    @Test
+    void manualResolutionLinksPermanentCardAndSynchronizesPlacement() {
+        StudentProfile profile = new StudentProfile();
+        profile.setId(77L);
+        profile.setCurrentFullName("Иванов Иван Иванович");
+        profile.setNormalizedFullName("иванов иван иванович");
+        when(studentProfileRepository.findById(77L)).thenReturn(Optional.of(profile));
+        when(nameHistoryRepository.findAll()).thenReturn(List.of());
+        when(enrollmentRepository.findAllByStudent_IdAndAcademicYearOrderByValidFromDesc(77L, "2026/2027"))
+                .thenReturn(List.of());
+        when(classroomLeadershipRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
+
+        ContingentSnapshot snapshot = new ContingentSnapshot();
+        snapshot.setId(30L);
+        snapshot.setAcademicYear("2026/2027");
+        snapshot.setSnapshotDate(LocalDate.of(2026, 8, 16));
+        ContingentStudent row = compactRow("Иванов Иван Иванович", "3-А");
+        row.setId(300L);
+        row.setSnapshotId(30L);
+        row.setPhone("+7 900 000-00-00");
+
+        service.resolveManually(snapshot, row, 77L);
+
+        assertEquals(77L, row.getStudentId());
+        assertEquals(StudentIdentityMatchStatus.MANUALLY_LINKED, row.getIdentityMatchStatus());
+        assertEquals("+7 900 000-00-00", profile.getChildPhone());
     }
 
     private ContingentStudent compactRow(String fullName, String className) {

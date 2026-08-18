@@ -45,6 +45,17 @@ class ProbeOrdersFrontendTest {
         assertTrue(calendar.contains("/api/probe-orders/calendar"));
         assertTrue(calendar.contains("event.classNames"));
         assertTrue(calendar.contains("event.companions"));
+        assertTrue(index.contains("data-calendar-audience=\"DEPUTIES\""));
+        assertTrue(index.contains("data-calendar-audience=\"ADMINISTRATION\""));
+        assertTrue(index.contains("data-calendar-audience=\"FULL_ADMINISTRATION\""));
+        assertTrue(index.contains("data-calendar-audience=\"BUILDING\""));
+        assertTrue(index.contains("data-calendar-audience=\"PERSONAL\""));
+        assertTrue(index.contains("id=\"calendar-group-settings\""));
+        assertTrue(index.contains("id=\"calendar-groups-dialog\""));
+        assertTrue(calendar.contains("/api/calendar/audiences"));
+        assertTrue(calendar.contains("event.participants"));
+        assertTrue(calendar.contains("data-calendar-filter-building"));
+        assertTrue(calendar.contains("data-calendar-filter-person"));
     }
 
     @Test

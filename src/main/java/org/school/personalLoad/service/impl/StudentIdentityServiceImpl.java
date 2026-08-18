@@ -160,6 +160,60 @@ public class StudentIdentityServiceImpl implements StudentIdentityService {
         return result;
     }
 
+    @Override
+    @Transactional
+    public void resolveManually(ContingentSnapshot snapshot, ContingentStudent row, Long studentId) {
+        if (snapshot == null || snapshot.getId() == null) {
+            throw new IllegalArgumentException("Снимок контингента не найден");
+        }
+        if (row == null || row.getId() == null || !Objects.equals(snapshot.getId(), row.getSnapshotId())) {
+            throw new IllegalArgumentException("Строка не относится к выбранной выгрузке");
+        }
+        Long targetStudentId = studentId == null ? row.getStudentId() : studentId;
+        if (targetStudentId == null) {
+            throw new IllegalArgumentException("Выберите карточку ребёнка");
+        }
+        if (row.getStudentId() != null && !Objects.equals(row.getStudentId(), targetStudentId)) {
+            throw new IllegalArgumentException(
+                    "Уже связанную карточку нельзя заменить здесь. Исправьте связь в карточке ребёнка."
+            );
+        }
+
+        StudentProfile profile = studentProfileRepository.findById(targetStudentId)
+                .orElseThrow(() -> new IllegalArgumentException("Карточка ребёнка не найдена"));
+        updateCurrentIdentity(profile, row, snapshot.getSnapshotDate());
+        studentProfileRepository.save(profile);
+        row.setStudentId(profile.getId());
+        row.setIdentityMatchStatus(StudentIdentityMatchStatus.MANUALLY_LINKED);
+
+        List<StudentNameHistory> histories = nameHistoryRepository.findAll().stream()
+                .filter(history -> history.getStudent() != null
+                        && Objects.equals(history.getStudent().getId(), profile.getId()))
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        List<StudentNameHistory> historiesToSave = new ArrayList<>();
+        Set<StudentNameHistory> historiesMarkedForSave = Collections.newSetFromMap(new IdentityHashMap<>());
+        syncNameHistory(profile, row.getFullName(), snapshot.getSnapshotDate(), histories,
+                historiesToSave, historiesMarkedForSave);
+        if (!historiesToSave.isEmpty()) {
+            nameHistoryRepository.saveAll(historiesToSave);
+        }
+
+        List<StudentClassEnrollment> enrollments = new ArrayList<>(
+                enrollmentRepository.findAllByStudent_IdAndAcademicYearOrderByValidFromDesc(
+                        profile.getId(), snapshot.getAcademicYear()
+                )
+        );
+        List<StudentClassEnrollment> enrollmentsToSave = new ArrayList<>();
+        Set<StudentClassEnrollment> enrollmentsMarkedForSave = Collections.newSetFromMap(new IdentityHashMap<>());
+        ClassroomLeadershipEntry classRef = uniqueClassesByName(snapshot.getAcademicYear())
+                .get(classKey(row.getClassName()));
+        syncEnrollment(profile, snapshot, row, classRef, enrollments,
+                enrollmentsToSave, enrollmentsMarkedForSave);
+        if (!enrollmentsToSave.isEmpty()) {
+            enrollmentRepository.saveAll(enrollmentsToSave);
+        }
+    }
+
     private Resolution resolve(ContingentStudent row, LocalDate snapshotDate, IdentityIndex identityIndex) {
         String normalizedRecord = normalizeRecordNumber(row.getRecordNumber());
         LocalDate birthDate = parseBirthDate(row.getBirthDate());

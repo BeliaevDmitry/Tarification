@@ -8,6 +8,8 @@ import org.school.personalLoad.model.*;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.MetaGroupRepository;
+import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.apache.poi.ss.usermodel.*;
@@ -32,6 +34,8 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
     private final CurriculumExcelParser parser;
     private final CurriculumPlanEntryRepository curriculumRepository;
     private final ClassroomLeadershipRepository classroomRepository;
+    private final MetaGroupRepository metaGroupRepository;
+    private final SchoolBuildingRepository schoolBuildingRepository;
     private final ManualLoadEntryRepository manualLoadRepository;
     private final TeacherDirectoryRepository teacherRepository;
     private final SubjectCatalogRepository subjectCatalogRepository;
@@ -176,6 +180,105 @@ public class CurriculumImportServiceImpl implements CurriculumImportService {
                 .filter(e -> Objects.equals(extractParallelForExportClass(e.getClassName()), parallel))
                 .toList();
         buildExportSheet(workbook, academicYear, parallel + " параллель", "Учебный план по " + parallel + " параллели", entries, classDirectory);
+    }
+
+    @Override
+    public byte[] exportAddressWorkbook(String academicYear) throws IOException {
+        List<CurriculumPlanEntry> entries = curriculumRepository.findAllByAcademicYear(academicYear).stream()
+                .filter(entry -> !entry.isDeprecated())
+                .filter(entry -> !normalizeSubject(entry.getClassName()).isBlank())
+                .toList();
+        List<ClassroomLeadershipEntry> classroomEntries = Optional.ofNullable(classroomRepository.findAllByAcademicYear(academicYear))
+                .orElseGet(List::of);
+        Map<String, ClassroomLeadershipEntry> classDirectory = classroomEntries.stream()
+                .collect(Collectors.toMap(
+                        entry -> classExportKey(entry.getNumberSchoolBuilding(), entry.getClassName()),
+                        entry -> entry,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+        Map<Long, ClassroomLeadershipEntry> classesById = classroomEntries.stream()
+                .filter(entry -> entry.getId() != null)
+                .collect(Collectors.toMap(ClassroomLeadershipEntry::getId, entry -> entry, (left, right) -> left));
+        Map<Long, Long> schoolBuildingIdByMetaGroupId = Optional.ofNullable(
+                        metaGroupRepository.findAllByAcademicYearOrderByNumberSchoolBuildingAscParallelAscNameAsc(academicYear))
+                .orElseGet(List::of).stream()
+                .filter(metaGroup -> metaGroup.getId() != null && metaGroup.getSchoolBuildingId() != null)
+                .collect(Collectors.toMap(MetaGroup::getId, MetaGroup::getSchoolBuildingId, (left, right) -> left));
+        Map<Long, String> addressBySchoolBuildingId = Optional.ofNullable(schoolBuildingRepository.findAll())
+                .orElseGet(List::of).stream()
+                .filter(building -> building.getId() != null)
+                .collect(Collectors.toMap(
+                        SchoolBuilding::getId,
+                        building -> normalizeSubject(building.getAddress()),
+                        (left, right) -> left
+                ));
+
+        Comparator<String> addressComparator = Comparator
+                .comparing((String value) -> "Адрес не определён".equals(value))
+                .thenComparing(String.CASE_INSENSITIVE_ORDER);
+        Map<String, List<CurriculumPlanEntry>> entriesByAddress = new TreeMap<>(addressComparator);
+        for (CurriculumPlanEntry entry : entries) {
+            String address = addressForCurriculumEntry(
+                    entry,
+                    classDirectory,
+                    classesById,
+                    schoolBuildingIdByMetaGroupId,
+                    addressBySchoolBuildingId
+            );
+            entriesByAddress.computeIfAbsent(address, key -> new ArrayList<>()).add(entry);
+        }
+
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            if (entriesByAddress.isEmpty()) {
+                workbook.createSheet("Учебный план").createRow(0).createCell(0)
+                        .setCellValue("Нет данных учебного плана за " + academicYear);
+            } else {
+                entriesByAddress.forEach((address, addressEntries) -> buildExportSheet(
+                        workbook,
+                        academicYear,
+                        uniqueAddressSheetName(workbook, address),
+                        "Учебный план по адресу: " + address,
+                        addressEntries,
+                        classDirectory
+                ));
+            }
+            workbook.write(output);
+            return output.toByteArray();
+        }
+    }
+
+    private String addressForCurriculumEntry(CurriculumPlanEntry entry,
+                                             Map<String, ClassroomLeadershipEntry> classDirectory,
+                                             Map<Long, ClassroomLeadershipEntry> classesById,
+                                             Map<Long, Long> schoolBuildingIdByMetaGroupId,
+                                             Map<Long, String> addressBySchoolBuildingId) {
+        ClassroomLeadershipEntry classroom = entry.getClassId() == null ? null : classesById.get(entry.getClassId());
+        if (classroom == null) {
+            classroom = classDirectory.get(classExportKey(entry.getNumberSchoolBuilding(), entry.getClassName()));
+        }
+        String classroomAddress = normalizeSubject(classroom == null ? "" : classroom.getCampusAddress());
+        if (!classroomAddress.isBlank()) return classroomAddress;
+
+        Long schoolBuildingId = classroom == null ? null : classroom.getSchoolBuildingId();
+        if (schoolBuildingId == null && entry.getMetaGroupId() != null) {
+            schoolBuildingId = schoolBuildingIdByMetaGroupId.get(entry.getMetaGroupId());
+        }
+        String physicalAddress = normalizeSubject(addressBySchoolBuildingId.get(schoolBuildingId));
+        return physicalAddress.isBlank() ? "Адрес не определён" : physicalAddress;
+    }
+
+    private String uniqueAddressSheetName(Workbook workbook, String address) {
+        String base = org.apache.poi.ss.util.WorkbookUtil.createSafeSheetName(normalizeSubject(address));
+        if (base.isBlank()) base = "Адрес не определён";
+        String candidate = base;
+        int suffix = 2;
+        while (workbook.getSheet(candidate) != null) {
+            String marker = " (" + suffix++ + ")";
+            int maxBaseLength = Math.max(1, 31 - marker.length());
+            candidate = base.substring(0, Math.min(base.length(), maxBaseLength)) + marker;
+        }
+        return candidate;
     }
 
     @Override
