@@ -32,6 +32,12 @@ public class StudentSupportDocumentService {
             "Учитель-логопед",
             "Педагог-психолог"
     );
+    private static final Set<String> RECOMMENDATION_PROGRAMS = Set.of(
+            "Основная образовательная программа дошкольного образования.",
+            "Основная образовательная программа начального образования.",
+            "Основная образовательная программа общего образования.",
+            "Основная образовательная программа среднего образования."
+    );
 
     private final StudentSupportDocumentRepository documentRepository;
     private final StudentSupportDocumentAttachmentRepository attachmentRepository;
@@ -99,9 +105,8 @@ public class StudentSupportDocumentService {
         document.setValidTo(recommendation ? null : request.getValidTo());
         document.setNosologyCode(conclusion ? normalizeFullNosologyCode(request.getNosologyCode()) : null);
         document.setEducationStage(conclusion || recommendation ? request.getEducationStage() : null);
-        document.setEducationProgram(conclusion
-                ? trim(request.getEducationProgram())
-                : (recommendation ? recommendationProgram(request.getEducationStage()) : null));
+        document.setEducationProgram(conclusion || recommendation
+                ? trim(request.getEducationProgram()) : null);
         document.setProlongationAvailable(conclusion && request.isProlongationAvailable());
         document.setProlongationUsed(conclusion && request.isProlongationAvailable() && request.isProlongationUsed());
         document.setProlongedGrade(document.isProlongationUsed() ? request.getProlongedGrade() : null);
@@ -342,6 +347,13 @@ public class StudentSupportDocumentService {
             if (request.getEducationStage() == null) {
                 throw new IllegalArgumentException("Выберите уровень образования");
             }
+            String educationProgram = trim(request.getEducationProgram());
+            if (educationProgram == null) {
+                throw new IllegalArgumentException("Выберите образовательную программу");
+            }
+            if (!RECOMMENDATION_PROGRAMS.contains(educationProgram)) {
+                throw new IllegalArgumentException("Выберите образовательную программу из списка");
+            }
             return;
         }
         if (request.getValidFrom() == null || request.getValidTo() == null) {
@@ -453,18 +465,6 @@ public class StudentSupportDocumentService {
             throw new IllegalArgumentException("Некорректный учебный год: " + academicYear);
         }
         return Integer.parseInt(normalized.substring(5));
-    }
-
-    private String recommendationProgram(SupportEducationStage stage) {
-        if (stage == null) {
-            return null;
-        }
-        return switch (stage) {
-            case DO -> "Основная образовательная программа дошкольного образования.";
-            case NOO -> "Основная образовательная программа начального образования.";
-            case OOO -> "Основная образовательная программа общего образования.";
-            case SOO -> "Основная образовательная программа среднего образования.";
-        };
     }
 
     private void replaceCorrectionDirections(

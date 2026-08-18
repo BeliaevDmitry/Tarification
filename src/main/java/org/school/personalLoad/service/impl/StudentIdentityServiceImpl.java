@@ -476,6 +476,11 @@ public class StudentIdentityServiceImpl implements StudentIdentityService {
         if (value.isBlank()) {
             return null;
         }
+        if (value.matches("^\\d{4}-\\d{2}-\\d{2}.*")) {
+            value = value.substring(0, 10);
+        } else if (value.matches("^\\d{2}[./]\\d{2}[./]\\d{4}.*")) {
+            value = value.substring(0, 10);
+        }
         for (DateTimeFormatter formatter : BIRTH_DATE_FORMATS) {
             try {
                 return LocalDate.parse(value, formatter);

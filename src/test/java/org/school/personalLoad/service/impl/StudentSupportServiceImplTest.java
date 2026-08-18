@@ -154,6 +154,28 @@ class StudentSupportServiceImplTest {
     }
 
     @Test
+    void referenceDataShowsEveryLinkedChildByPermanentCardAndReportsUnlinkedRows() {
+        ContingentSnapshot snapshot = snapshot();
+        StudentProfile first = profile(11L, "Иванов Иван Иванович");
+        first.setBirthDate(LocalDate.of(2018, 2, 1));
+        StudentProfile second = profile(12L, "Петрова Анна Сергеевна");
+        when(snapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(YEAR))
+                .thenReturn(Optional.of(snapshot));
+        when(contingentStudentRepository.findAllBySnapshotId(10L)).thenReturn(List.of(
+                contingentRow(11L), contingentRow(12L), contingentRow(null)
+        ));
+        when(studentProfileRepository.findAllById(any())).thenReturn(List.of(first, second));
+
+        StudentSupportDtos.ReferenceDataResponse references = service.getReferenceData(YEAR);
+
+        assertEquals(2, references.getStudents().size());
+        assertEquals(11L, references.getStudents().get(0).getStudentId());
+        assertEquals(LocalDate.of(2018, 2, 1), references.getStudents().get(0).getBirthDate());
+        assertEquals(3, references.getTotalContingentStudents());
+        assertEquals(1, references.getUnlinkedStudents());
+    }
+
+    @Test
     void splitSubjectRequiresGroupWhenIupChildAttendsClass() {
         StudentProfile student = profile(1L, "Иванов Иван");
         CurriculumPlanEntry curriculum = new CurriculumPlanEntry();

@@ -137,6 +137,9 @@ const certificateUi = {
     editor: document.getElementById('certificate-editor'),
     id: document.getElementById('certificate-id'),
     student: document.getElementById('certificate-student'),
+    studentSearch: document.getElementById('certificate-student-search'),
+    studentSuggestions: document.getElementById('certificate-student-suggestions'),
+    studentHint: document.getElementById('certificate-student-hint'),
     type: document.getElementById('certificate-type'),
     formField: document.getElementById('certificate-form-field'),
     form: document.getElementById('certificate-form'),
@@ -1030,19 +1033,67 @@ const certificateTypeLabels = {
 };
 
 const certificateStageLabels = { DO: 'ДО', NOO: 'НОО', OOO: 'ООО', SOO: 'СОО' };
-const recommendationProgramLabels = {
-    DO: 'Основная образовательная программа дошкольного образования.',
-    NOO: 'Основная образовательная программа начального образования.',
-    OOO: 'Основная образовательная программа общего образования.',
-    SOO: 'Основная образовательная программа среднего образования.'
-};
-function certificateStudentOptions() {
-    const rows = supportReferences.students || [];
-    return '<option value="">Выберите ребёнка</option>' + rows.map((student) => {
-        const details = [student.birthDate ? `д.р. ${student.birthDate}` : '', student.recordNumber ? `ФК ${student.recordNumber}` : '']
-            .filter(Boolean).join(', ');
-        return `<option value="${esc(student.studentId)}">${esc(student.className)} — ${esc(student.fullName)}${details ? ` (${esc(details)})` : ''}</option>`;
-    }).join('');
+
+function certificateStudentLabel(student) {
+    if (!student) return '';
+    const details = [
+        student.className || '',
+        student.birthDate ? `д.р. ${student.birthDate}` : '',
+        `ФК ${student.studentId}`
+    ].filter(Boolean);
+    return `${student.fullName || ''}${details.length ? ` — ${details.join(' — ')}` : ''}`;
+}
+
+function certificateStudentSummary() {
+    const linked = (supportReferences.students || []).length;
+    const total = Number(supportReferences.totalContingentStudents ?? linked);
+    const unlinked = Number(supportReferences.unlinkedStudents ?? Math.max(0, total - linked));
+    return unlinked > 0
+        ? `С ФК доступно ${linked} из ${total}. Для ${unlinked} строк откройте «Нестыковки импорта».`
+        : `Доступны все дети актуального контингента: ${linked}. У каждого указан ФК.`;
+}
+
+function fillCertificateStudentSuggestions() {
+    if (!certificateUi.studentSuggestions) return;
+    certificateUi.studentSuggestions.innerHTML = (supportReferences.students || [])
+        .map((student) => `<option value="${esc(certificateStudentLabel(student))}"></option>`)
+        .join('');
+    if (!certificateUi.student?.value && certificateUi.studentHint) {
+        certificateUi.studentHint.textContent = certificateStudentSummary();
+    }
+}
+
+function setCertificateStudent(studentId) {
+    const student = (supportReferences.students || []).find((item) =>
+        Number(item.studentId) === Number(studentId)
+    );
+    certificateUi.student.value = student?.studentId || '';
+    certificateUi.studentSearch.value = certificateStudentLabel(student);
+    if (certificateUi.studentHint) {
+        certificateUi.studentHint.textContent = student
+            ? `Выбрана постоянная карточка ФК ${student.studentId}.`
+            : certificateStudentSummary();
+    }
+}
+
+function resolveCertificateStudentSearch() {
+    const entered = String(certificateUi.studentSearch?.value || '').trim().toLocaleLowerCase('ru-RU');
+    const matches = (supportReferences.students || []).filter((student) => {
+        const label = certificateStudentLabel(student).toLocaleLowerCase('ru-RU');
+        return label === entered
+            || String(student.fullName || '').trim().toLocaleLowerCase('ru-RU') === entered;
+    });
+    const selected = matches.length === 1 ? matches[0] : null;
+    certificateUi.student.value = selected?.studentId || '';
+    if (selected) {
+        certificateUi.studentSearch.value = certificateStudentLabel(selected);
+        certificateUi.studentHint.textContent = `Выбрана постоянная карточка ФК ${selected.studentId}.`;
+    } else if (certificateUi.studentHint) {
+        certificateUi.studentHint.textContent = entered
+            ? 'Выберите ребёнка из появившейся подсказки.'
+            : certificateStudentSummary();
+    }
+    updateCertificateDateHint();
 }
 
 function certificateSpecialistOptions(selectedId) {
@@ -1142,12 +1193,6 @@ function updateCertificateAcceptedForms(cpmpc) {
         : (cpmpc ? 'ORIGINAL' : 'COPY');
 }
 
-function updateRecommendationProgram() {
-    if (!certificateUi.recommendationProgram) return;
-    certificateUi.recommendationProgram.value =
-        recommendationProgramLabels[certificateUi.recommendationStage?.value] || '';
-}
-
 function updateCertificateFormVisibility() {
     if (!certificateUi.type) return;
     const cpmpc = certificateUi.type.value === 'CPMPC_CONCLUSION';
@@ -1172,7 +1217,6 @@ function updateCertificateFormVisibility() {
         certificateUi.validFrom.value = '';
         certificateUi.validTo.value = '';
         certificateUi.file.value = '';
-        updateRecommendationProgram();
     }
     if (cpmpc || recommendation) defaultCertificateDirection();
     updateCertificateDateHint();
@@ -1181,7 +1225,7 @@ function updateCertificateFormVisibility() {
 function resetCertificateForm() {
     if (!certificateUi.id) return;
     certificateUi.id.value = '';
-    certificateUi.student.value = '';
+    setCertificateStudent(null);
     certificateUi.type.value = 'MSE_CERTIFICATE';
     certificateUi.form.value = 'COPY';
     certificateUi.validFrom.value = '';
@@ -1219,7 +1263,7 @@ async function loadCertificateReferences() {
     supportReferences = references || { students: [], curriculum: [], teachers: [] };
     certificateNosologies = nosologies || [];
     certificateSpecialists = specialists || [];
-    certificateUi.student.innerHTML = certificateStudentOptions();
+    fillCertificateStudentSuggestions();
     renderCertificateNosologies();
     renderCertificateSpecialists();
 }
@@ -1283,6 +1327,7 @@ async function saveCertificate() {
         throw new Error('Укажите дату установления и дату окончания');
     }
     if (recommendation && !certificateUi.recommendationStage.value) throw new Error('Выберите уровень образования');
+    if (recommendation && !certificateUi.recommendationProgram.value) throw new Error('Выберите образовательную программу');
     if (cpmpc && !certificateNosologyCode()) throw new Error('Для заключения ЦМПК обязательно укажите нозологию');
     const expected = certificateExpectedEndDate();
     if (expected && certificateUi.validTo.value !== expected) throw new Error(`Дата окончания для выбранного уровня должна быть ${expected}`);
@@ -1322,7 +1367,7 @@ function editCertificate(id) {
     const document = currentCertificates.find((item) => Number(item.id) === Number(id));
     if (!document) return;
     certificateUi.id.value = document.id;
-    certificateUi.student.value = document.studentId || '';
+    setCertificateStudent(document.studentId);
     certificateUi.type.value = document.documentType;
     certificateUi.form.value = document.acceptedForm || 'COPY';
     certificateUi.validFrom.value = document.validFrom || '';
@@ -1788,8 +1833,8 @@ certificateUi.type?.addEventListener('change', updateCertificateFormVisibility);
 certificateUi.prolongationAvailable?.addEventListener('change', updateCertificateFormVisibility);
 certificateUi.prolongationUsed?.addEventListener('change', updateCertificateFormVisibility);
 certificateUi.educationStage?.addEventListener('change', updateCertificateDateHint);
-certificateUi.recommendationStage?.addEventListener('change', updateRecommendationProgram);
-certificateUi.student?.addEventListener('change', updateCertificateDateHint);
+certificateUi.studentSearch?.addEventListener('input', resolveCertificateStudentSearch);
+certificateUi.studentSearch?.addEventListener('change', resolveCertificateStudentSearch);
 certificateUi.addDirectionBtn?.addEventListener('click', () => addCertificateDirection());
 certificateUi.openSpecialistsBtn?.addEventListener('click', () => certificateUi.specialistDialog?.showModal());
 certificateUi.specialistDirectoryBtn?.addEventListener('click', () => certificateUi.specialistDialog?.showModal());

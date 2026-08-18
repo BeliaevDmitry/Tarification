@@ -183,7 +183,7 @@
         <h2>Справки</h2>
         <p class="muted">
             Ребёнок выбирается из актуального контингента и сохраняется по постоянной карточке (ФК),
-            а не по текстовому совпадению ФИО. В этом разделе учитываются только справки МСЭ и заключения ЦМПК.
+            а не по текстовому совпадению ФИО. В этом разделе учитываются справки МСЭ, заключения и рекомендации ЦМПК.
         </p>
         <div class="row controls-row">
             <button id="certificate-refresh-btn" type="button">Обновить</button>
@@ -200,8 +200,12 @@
             <input id="certificate-id" type="hidden">
             <div class="certificate-form-grid">
                 <label>ФИО ребёнка
-                    <select id="certificate-student"></select>
-                    <small class="muted">В списке показаны класс, ФИО, дата рождения и номер ФК.</small>
+                    <input id="certificate-student-search" type="search"
+                           list="certificate-student-suggestions" autocomplete="off"
+                           placeholder="Начните вводить ФИО">
+                    <datalist id="certificate-student-suggestions"></datalist>
+                    <input id="certificate-student" type="hidden">
+                    <small id="certificate-student-hint" class="muted"></small>
                 </label>
                 <label>Вид документа
                     <select id="certificate-type">
@@ -308,8 +312,13 @@
                         </select>
                     </label>
                     <label>Образовательная программа
-                        <input id="certificate-recommendation-program" type="text" readonly
-                               placeholder="Сформируется после выбора уровня">
+                        <select id="certificate-recommendation-program">
+                            <option value="">Выберите</option>
+                            <option value="Основная образовательная программа дошкольного образования.">Основная образовательная программа дошкольного образования.</option>
+                            <option value="Основная образовательная программа начального образования.">Основная образовательная программа начального образования.</option>
+                            <option value="Основная образовательная программа общего образования.">Основная образовательная программа общего образования.</option>
+                            <option value="Основная образовательная программа среднего образования.">Основная образовательная программа среднего образования.</option>
+                        </select>
                     </label>
                 </div>
             </section>

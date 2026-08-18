@@ -228,7 +228,7 @@ class StudentSupportDocumentServiceTest {
     }
 
     @Test
-    void cpmpcRecommendationUsesLevelProgramAndDoesNotRequireDates() {
+    void cpmpcRecommendationUsesSelectedProgramAndDoesNotRequireDates() {
         CorrectionSpecialistCatalogEntry specialist = new CorrectionSpecialistCatalogEntry();
         specialist.setId(7L);
         specialist.setName("Учитель-логопед");
@@ -239,7 +239,7 @@ class StudentSupportDocumentServiceTest {
         request.setDocumentType(StudentSupportDocumentType.CPMPC_RECOMMENDATION);
         request.setAcceptedForm(StudentSupportDocumentForm.ORIGINAL);
         request.setEducationStage(SupportEducationStage.NOO);
-        request.setEducationProgram("Произвольный текст не должен сохраниться");
+        request.setEducationProgram("Основная образовательная программа начального образования.");
         request.setNosologyCode("И4.1");
         StudentSupportDocumentDtos.CorrectionDirectionRequest direction =
                 new StudentSupportDocumentDtos.CorrectionDirectionRequest();
@@ -277,6 +277,22 @@ class StudentSupportDocumentServiceTest {
         );
 
         assertEquals("Выберите уровень образования", error.getMessage());
+    }
+
+    @Test
+    void cpmpcRecommendationRejectsProgramOutsideDirectory() {
+        StudentSupportDocumentDtos.SaveRequest request = new StudentSupportDocumentDtos.SaveRequest();
+        request.setStudentId(1L);
+        request.setDocumentType(StudentSupportDocumentType.CPMPC_RECOMMENDATION);
+        request.setEducationStage(SupportEducationStage.NOO);
+        request.setEducationProgram("Произвольная программа");
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.save("2026/2027", request)
+        );
+
+        assertEquals("Выберите образовательную программу из списка", error.getMessage());
     }
 
     @Test

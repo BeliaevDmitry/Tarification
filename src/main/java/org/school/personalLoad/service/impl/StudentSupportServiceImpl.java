@@ -200,6 +200,9 @@ public class StudentSupportServiceImpl implements StudentSupportService {
         response.setStudents(students);
         response.setCurriculum(curriculum);
         response.setTeachers(teachers);
+        int unlinkedStudents = (int) rows.stream().filter(row -> row.getStudentId() == null).count();
+        response.setTotalContingentStudents(students.size() + unlinkedStudents);
+        response.setUnlinkedStudents(unlinkedStudents);
         return response;
     }
 
