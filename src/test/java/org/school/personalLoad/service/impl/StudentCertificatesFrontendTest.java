@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class StudentCertificatesFrontendTest {
 
@@ -13,6 +14,12 @@ class StudentCertificatesFrontendTest {
     void supportTabIsReplacedWithCertificateRegisterBoundToStudentProfile() throws Exception {
         String html = Files.readString(Path.of("src/main/resources/static/contingent.html"));
         String js = Files.readString(Path.of("src/main/resources/static/contingent.js"));
+        String controller = Files.readString(Path.of(
+                "src/main/java/org/school/personalLoad/controller/api/StudentSupportController.java"
+        ));
+        String exchange = Files.readString(Path.of(
+                "src/main/java/org/school/personalLoad/service/impl/StudentDataExchangeServiceImpl.java"
+        ));
 
         assertTrue(html.contains("data-contingent-tab=\"support\">Справки"));
         assertTrue(html.contains("data-contingent-tab=\"nosologies\">Справочник нозологий"));
@@ -30,7 +37,9 @@ class StudentCertificatesFrontendTest {
         assertTrue(html.contains("id=\"certificate-correction-fields\""));
         assertTrue(html.contains("ИПР/ИПРА имеется"));
         assertTrue(html.contains("<label>Уровень образования"));
-        assertTrue(html.contains("id=\"certificate-education-program\" type=\"text\""));
+        assertTrue(html.contains("<select id=\"certificate-education-program\">"));
+        assertTrue(html.contains("id=\"certificate-education-program-other\" type=\"text\""));
+        assertTrue(html.contains("id=\"certificate-education-program-source\""));
         assertTrue(js.contains("[['ORIGINAL', 'Оригинал'], ['ELECTRONIC_COPY', 'Электронная копия']]"));
         assertTrue(js.contains(": [['COPY', 'Копия']]"));
         assertTrue(js.contains("nosologyCode: cpmpc ? certificateNosologyCode() : null"));
@@ -43,5 +52,18 @@ class StudentCertificatesFrontendTest {
         assertTrue(js.contains("CPMPC_RECOMMENDATION: 'Рекомендация ЦМПК'"));
         assertTrue(js.contains("Выберите образовательную программу"));
         assertTrue(js.contains("correctionDirections: cpmpc || recommendation ? certificateDirectionPayload() : []"));
+        assertTrue(js.contains("/documents/education-defaults"));
+        assertTrue(js.contains("certificateUi.validTo.readOnly = cpmpc && studentId > 0"));
+        assertTrue(js.contains("prolongationAvailable: String(documentType === 'CPMPC_CONCLUSION'"));
+        assertTrue(js.contains("educationProgramCustom: cpmpc && certificateUi.educationProgram.value === '__OTHER__'"));
+        assertTrue(js.contains("defaults.educationPrograms || []"));
+        assertTrue(js.contains("<option value=\"__OTHER__\">Другое</option>"));
+        assertFalse(html.contains("id=\"certificate-file\""));
+        assertFalse(html.contains("id=\"support-document-file\""));
+        assertFalse(html.contains(">Скан<"));
+        assertFalse(js.contains("data-certificate-delete-attachment"));
+        assertFalse(js.contains("data-support-delete-attachment"));
+        assertFalse(controller.contains("/documents/{documentId}/attachments"));
+        assertFalse(exchange.contains("Прикреплено файлов"));
     }
 }

@@ -7,7 +7,6 @@ import org.school.personalLoad.model.StudentSupportDocumentType;
 import org.school.personalLoad.model.SupportEducationStage;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 
 public final class StudentSupportDocumentDtos {
@@ -28,6 +27,7 @@ public final class StudentSupportDocumentDtos {
         private String nosologyCode;
         private SupportEducationStage educationStage;
         private String educationProgram;
+        private boolean educationProgramCustom;
         private boolean prolongationAvailable;
         private boolean prolongationUsed;
         private Integer prolongedGrade;
@@ -67,7 +67,21 @@ public final class StudentSupportDocumentDtos {
         private String responsibleEmployee;
         private String comment;
         private String validityStatus;
-        private List<AttachmentView> attachments;
+    }
+
+    @Data
+    public static class EducationDefaultsView {
+        private SupportEducationStage educationStage;
+        private LocalDate validTo;
+        private boolean manualCheckRequired;
+        private String message;
+        private List<EducationProgramView> educationPrograms;
+    }
+
+    @Data
+    public static class EducationProgramView {
+        private String name;
+        private String sourceUrl;
     }
 
     @Data
@@ -111,16 +125,4 @@ public final class StudentSupportDocumentDtos {
         private boolean builtIn;
     }
 
-    @Data
-    public static class AttachmentView {
-        private Long id;
-        private String fileName;
-        private String contentType;
-        private Long fileSize;
-        private LocalDateTime uploadedAt;
-        private String uploadedBy;
-    }
-
-    public record AttachmentDownload(String fileName, String contentType, byte[] content) {
-    }
 }

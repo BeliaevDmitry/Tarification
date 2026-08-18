@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -196,6 +197,25 @@ class StudentIdentityServiceImplTest {
         assertEquals(77L, row.getStudentId());
         assertEquals(StudentIdentityMatchStatus.MANUALLY_LINKED, row.getIdentityMatchStatus());
         assertEquals("+7 900 000-00-00", profile.getChildPhone());
+    }
+
+    @Test
+    void reconciliationLocksSnapshotBeforeLookingForUnlinkedRows() {
+        ContingentSnapshot snapshot = new ContingentSnapshot();
+        snapshot.setId(31L);
+        snapshot.setAcademicYear("2026/2027");
+        snapshot.setSnapshotDate(LocalDate.of(2026, 8, 16));
+        when(snapshotRepository.findByIdForUpdate(31L)).thenReturn(Optional.of(snapshot));
+        when(contingentStudentRepository.findAllBySnapshotIdAndStudentIdIsNull(31L)).thenReturn(List.of());
+        when(classroomLeadershipRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
+
+        var result = service.reconcileSnapshot(31L);
+
+        assertEquals(0, result.linked());
+        assertEquals(0, result.created());
+        assertEquals(0, result.ambiguous());
+        verify(snapshotRepository).findByIdForUpdate(31L);
+        verify(contingentStudentRepository).findAllBySnapshotIdAndStudentIdIsNull(31L);
     }
 
     private ContingentStudent compactRow(String fullName, String className) {

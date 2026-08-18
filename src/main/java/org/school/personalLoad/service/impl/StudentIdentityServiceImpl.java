@@ -152,7 +152,7 @@ public class StudentIdentityServiceImpl implements StudentIdentityService {
     @Override
     @Transactional
     public LinkResult reconcileSnapshot(Long snapshotId) {
-        ContingentSnapshot snapshot = snapshotRepository.findById(snapshotId)
+        ContingentSnapshot snapshot = snapshotRepository.findByIdForUpdate(snapshotId)
                 .orElseThrow(() -> new IllegalArgumentException("Снимок контингента не найден: " + snapshotId));
         List<ContingentStudent> rows = contingentStudentRepository.findAllBySnapshotIdAndStudentIdIsNull(snapshotId);
         LinkResult result = linkStudents(snapshot, rows);
