@@ -57,9 +57,8 @@ public class StudentSupportDocument {
     @Column(name = "education_stage", length = 16)
     private SupportEducationStage educationStage;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "education_program", length = 64)
-    private CpmPcEducationProgram educationProgram;
+    @Column(name = "education_program", length = 2000)
+    private String educationProgram;
 
     @Column(name = "prolongation_available", nullable = false)
     private boolean prolongationAvailable;

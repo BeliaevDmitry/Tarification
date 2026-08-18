@@ -196,7 +196,7 @@
         </div>
 
         <details class="card" id="certificate-editor" open data-requires-edit>
-            <summary><strong>Принять или изменить справку</strong></summary>
+            <summary><strong>Добавить или изменить документ</strong></summary>
             <input id="certificate-id" type="hidden">
             <div class="certificate-form-grid">
                 <label>ФИО ребёнка
@@ -207,29 +207,22 @@
                     <select id="certificate-type">
                         <option value="MSE_CERTIFICATE">Справка МСЭ</option>
                         <option value="CPMPC_CONCLUSION">Заключение ЦМПК</option>
+                        <option value="CPMPC_RECOMMENDATION">Рекомендация ЦМПК</option>
                     </select>
                 </label>
-                <label>Принято
+                <label id="certificate-form-field">Принято
                     <select id="certificate-form">
                         <option value="COPY">Копия</option>
-                        <option value="ORIGINAL">Оригинал</option>
-                        <option value="ELECTRONIC_COPY">Электронная копия</option>
                     </select>
                 </label>
-                <label>Дата установления
+                <label id="certificate-valid-from-field">Дата установления
                     <input id="certificate-valid-from" type="date">
                 </label>
-                <label>Дата окончания
+                <label id="certificate-valid-to-field">Дата окончания
                     <input id="certificate-valid-to" type="date">
                 </label>
-                <label>Нозология
-                    <select id="certificate-has-nosology">
-                        <option value="false">Нет</option>
-                        <option value="true">Да</option>
-                    </select>
-                </label>
                 <fieldset id="certificate-nosology-fields" class="certificate-code-fields" hidden>
-                    <legend>Код нозологии</legend>
+                    <legend>Код нозологии (обязательно для ЦМПК)</legend>
                     <select id="certificate-nosology-letter" aria-label="Буква кода">
                         <option value="И">И</option>
                         <option value="О">О</option>
@@ -243,9 +236,16 @@
             <section id="certificate-mse-fields" class="certificate-type-section">
                 <h3>Справка МСЭ</h3>
                 <p class="muted">
-                    Действующая справка автоматически устанавливает К2. Если числовая часть нозологии
-                    включена в справочник К3, категория автоматически станет К3.
+                    Действующая справка автоматически устанавливает К2.
                 </p>
+                <div class="certificate-form-grid">
+                    <label>ИПР/ИПРА имеется
+                        <select id="certificate-ipra-present">
+                            <option value="false">Нет</option>
+                            <option value="true">Да</option>
+                        </select>
+                    </label>
+                </div>
             </section>
 
             <section id="certificate-cpmpc-fields" class="certificate-type-section" hidden>
@@ -254,7 +254,7 @@
                     <label>Номер
                         <input id="certificate-number" type="text">
                     </label>
-                    <label>Ступень образования
+                    <label>Уровень образования
                         <select id="certificate-education-stage">
                             <option value="">Выберите</option>
                             <option value="DO">ДО</option>
@@ -269,25 +269,9 @@
                             <option value="true">Да</option>
                         </select>
                     </label>
-                    <label>ИПР/ИПРА имеется
-                        <select id="certificate-ipra-present">
-                            <option value="false">Нет</option>
-                            <option value="true">Да</option>
-                        </select>
-                    </label>
                     <label>Образовательная программа
-                        <select id="certificate-education-program">
-                            <option value="">Выберите</option>
-                            <option value="DEAF">Глухие</option>
-                            <option value="HARD_OF_HEARING">Слабослышащие, позднооглохшие, кохлеарно имплантированные, глухие</option>
-                            <option value="BLIND">Слепые</option>
-                            <option value="VISUALLY_IMPAIRED">Слабовидящие</option>
-                            <option value="TNR">ТНР</option>
-                            <option value="NODA">НОДА</option>
-                            <option value="ZPR">ЗПР</option>
-                            <option value="RAS">РАС</option>
-                            <option value="UO">УО</option>
-                        </select>
+                        <input id="certificate-education-program" type="text" maxlength="2000"
+                               placeholder="Введите образовательную программу">
                     </label>
                 </div>
                 <div id="certificate-prolongation-panel" class="certificate-prolongation-panel" hidden>
@@ -309,6 +293,28 @@
                 </div>
                 <p id="certificate-date-hint" class="muted"></p>
 
+            </section>
+
+            <section id="certificate-recommendation-fields" class="certificate-type-section" hidden>
+                <h3>Рекомендация ЦМПК</h3>
+                <div class="certificate-form-grid">
+                    <label>Уровень образования
+                        <select id="certificate-recommendation-stage">
+                            <option value="">Выберите</option>
+                            <option value="DO">ДО</option>
+                            <option value="NOO">НОО</option>
+                            <option value="OOO">ООО</option>
+                            <option value="SOO">СОО</option>
+                        </select>
+                    </label>
+                    <label>Образовательная программа
+                        <input id="certificate-recommendation-program" type="text" readonly
+                               placeholder="Сформируется после выбора уровня">
+                    </label>
+                </div>
+            </section>
+
+            <section id="certificate-correction-fields" class="certificate-type-section" hidden>
                 <div class="row controls-row">
                     <h3>Направления коррекционной работы</h3>
                     <button id="certificate-add-direction-btn" type="button" class="secondary">Добавить специалиста</button>
@@ -322,7 +328,7 @@
                 </div>
             </section>
 
-            <div class="certificate-form-grid">
+            <div id="certificate-attachment-field" class="certificate-form-grid">
                 <label>Прикрепить скан документа
                     <input id="certificate-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx">
                     <small class="muted">Один файл — до 15 МБ.</small>

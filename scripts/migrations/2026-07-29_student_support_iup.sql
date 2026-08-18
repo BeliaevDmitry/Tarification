@@ -294,17 +294,52 @@ CREATE INDEX IF NOT EXISTS idx_support_document_attachment_document
 ALTER TABLE student_support_document
     ADD COLUMN IF NOT EXISTS nosology_code VARCHAR(16),
     ADD COLUMN IF NOT EXISTS education_stage VARCHAR(16),
-    ADD COLUMN IF NOT EXISTS education_program VARCHAR(64),
+    ADD COLUMN IF NOT EXISTS education_program VARCHAR(2000),
     ADD COLUMN IF NOT EXISTS prolongation_available BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS prolongation_used BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS prolonged_grade INTEGER,
     ADD COLUMN IF NOT EXISTS prolonged_academic_year VARCHAR(16),
     ADD COLUMN IF NOT EXISTS ipra_present BOOLEAN NOT NULL DEFAULT FALSE;
 
+ALTER TABLE student_support_document
+    ALTER COLUMN education_program TYPE VARCHAR(2000) USING education_program::text;
+
+UPDATE student_support_document
+SET education_program = CASE education_program
+    WHEN 'DEAF' THEN 'Глухие'
+    WHEN 'HARD_OF_HEARING' THEN 'Слабослышащие, позднооглохшие, кохлеарно имплантированные, глухие'
+    WHEN 'BLIND' THEN 'Слепые'
+    WHEN 'VISUALLY_IMPAIRED' THEN 'Слабовидящие'
+    WHEN 'TNR' THEN 'ТНР'
+    WHEN 'NODA' THEN 'НОДА'
+    WHEN 'ZPR' THEN 'ЗПР'
+    WHEN 'RAS' THEN 'РАС'
+    WHEN 'UO' THEN 'УО'
+    ELSE education_program
+END
+WHERE education_program IN ('DEAF', 'HARD_OF_HEARING', 'BLIND', 'VISUALLY_IMPAIRED',
+                            'TNR', 'NODA', 'ZPR', 'RAS', 'UO');
+
+UPDATE student_support_document
+SET accepted_form = 'COPY'
+WHERE document_type = 'MSE_CERTIFICATE'
+  AND accepted_form <> 'COPY';
+
 ALTER TABLE student_support_document ALTER COLUMN received_at DROP NOT NULL;
 
 ALTER TABLE student_support_status
     ADD COLUMN IF NOT EXISTS source_document_id BIGINT;
+
+UPDATE student_support_status status
+SET category = 'K2',
+    nosology_id = NULL,
+    nosology_code_snapshot = NULL,
+    updated_at = CURRENT_TIMESTAMP
+WHERE status.source_document_id IN (
+    SELECT document.id
+    FROM student_support_document document
+    WHERE document.document_type = 'MSE_CERTIFICATE'
+);
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_support_status_source_document
     ON student_support_status (source_document_id)

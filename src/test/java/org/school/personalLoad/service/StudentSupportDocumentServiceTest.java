@@ -7,15 +7,15 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.school.personalLoad.dto.contingent.StudentSupportDocumentDtos;
 import org.school.personalLoad.model.StudentProfile;
+import org.school.personalLoad.model.CorrectionSpecialistCatalogEntry;
 import org.school.personalLoad.model.StudentCategory;
 import org.school.personalLoad.model.StudentSupportDocument;
 import org.school.personalLoad.model.StudentSupportDocumentAttachment;
+import org.school.personalLoad.model.StudentSupportDocumentCorrection;
 import org.school.personalLoad.model.StudentSupportDocumentForm;
 import org.school.personalLoad.model.StudentSupportDocumentType;
 import org.school.personalLoad.model.StudentSupportStatus;
-import org.school.personalLoad.model.NosologyCatalogEntry;
 import org.school.personalLoad.model.SupportEducationStage;
-import org.school.personalLoad.model.CpmPcEducationProgram;
 import org.school.personalLoad.repository.CorrectionSpecialistCatalogEntryRepository;
 import org.school.personalLoad.repository.NosologyCatalogEntryRepository;
 import org.school.personalLoad.repository.StudentClassEnrollmentRepository;
@@ -96,6 +96,7 @@ class StudentSupportDocumentServiceTest {
         request.setStudentId(1L);
         request.setDocumentType(StudentSupportDocumentType.MSE_CERTIFICATE);
         request.setAcceptedForm(StudentSupportDocumentForm.COPY);
+        request.setIpraPresent(true);
         request.setDocumentNumber("МСЭ-1");
         request.setValidFrom(LocalDate.of(2026, 9, 1));
         request.setValidTo(LocalDate.of(2027, 8, 31));
@@ -106,6 +107,7 @@ class StudentSupportDocumentServiceTest {
         assertEquals(10L, saved.getId());
         assertEquals(StudentSupportDocumentType.MSE_CERTIFICATE, saved.getDocumentType());
         assertEquals(StudentSupportDocumentForm.COPY, saved.getAcceptedForm());
+        assertEquals(true, saved.isIpraPresent());
         assertEquals(null, saved.getDocumentNumber());
         org.mockito.ArgumentCaptor<StudentSupportStatus> captor =
                 org.mockito.ArgumentCaptor.forClass(StudentSupportStatus.class);
@@ -115,28 +117,47 @@ class StudentSupportDocumentServiceTest {
     }
 
     @Test
-    void mseNosologyFromDirectoryAutomaticallyCreatesK3Status() {
-        NosologyCatalogEntry nosology = new NosologyCatalogEntry();
-        nosology.setId(5L);
-        nosology.setCode("4.1");
-        nosology.setStudentCategory(StudentCategory.K3);
-        nosology.setActive(true);
-        when(nosologyRepository.findByCodeIgnoreCase("4.1")).thenReturn(Optional.of(nosology));
+    void mseIgnoresNosologyAndAlwaysCreatesK2Status() {
         StudentSupportDocumentDtos.SaveRequest request = new StudentSupportDocumentDtos.SaveRequest();
         request.setStudentId(1L);
         request.setDocumentType(StudentSupportDocumentType.MSE_CERTIFICATE);
+        request.setAcceptedForm(StudentSupportDocumentForm.COPY);
         request.setNosologyCode("И4.1");
         request.setValidFrom(LocalDate.of(2026, 9, 1));
         request.setValidTo(LocalDate.of(2027, 8, 31));
 
         StudentSupportDocumentDtos.View saved = service.save("2026/2027", request);
 
-        assertEquals(StudentCategory.K3, saved.getDerivedCategory());
+        assertEquals(StudentCategory.K2, saved.getDerivedCategory());
+        assertEquals(null, saved.getNosologyCode());
         org.mockito.ArgumentCaptor<StudentSupportStatus> captor =
                 org.mockito.ArgumentCaptor.forClass(StudentSupportStatus.class);
         org.mockito.Mockito.verify(supportStatusRepository).save(captor.capture());
-        assertEquals(StudentCategory.K3, captor.getValue().getCategory());
-        assertEquals("И4.1", captor.getValue().getNosologyCodeSnapshot());
+        assertEquals(StudentCategory.K2, captor.getValue().getCategory());
+        assertEquals(null, captor.getValue().getNosologyCodeSnapshot());
+    }
+
+    @Test
+    void mseRejectsOriginalAndElectronicCopy() {
+        StudentSupportDocumentDtos.SaveRequest request = new StudentSupportDocumentDtos.SaveRequest();
+        request.setStudentId(1L);
+        request.setDocumentType(StudentSupportDocumentType.MSE_CERTIFICATE);
+        request.setAcceptedForm(StudentSupportDocumentForm.ORIGINAL);
+        request.setValidFrom(LocalDate.of(2026, 9, 1));
+        request.setValidTo(LocalDate.of(2027, 8, 31));
+
+        IllegalArgumentException originalError = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.save("2026/2027", request)
+        );
+        assertEquals("Справка МСЭ принимается только как копия", originalError.getMessage());
+
+        request.setAcceptedForm(StudentSupportDocumentForm.ELECTRONIC_COPY);
+        IllegalArgumentException electronicError = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.save("2026/2027", request)
+        );
+        assertEquals("Справка МСЭ принимается только как копия", electronicError.getMessage());
     }
 
     @Test
@@ -144,9 +165,11 @@ class StudentSupportDocumentServiceTest {
         StudentSupportDocumentDtos.SaveRequest request = new StudentSupportDocumentDtos.SaveRequest();
         request.setStudentId(1L);
         request.setDocumentType(StudentSupportDocumentType.CPMPC_CONCLUSION);
+        request.setAcceptedForm(StudentSupportDocumentForm.ORIGINAL);
         request.setDocumentNumber("ЦМПК-1");
+        request.setNosologyCode("О5.2");
         request.setEducationStage(SupportEducationStage.NOO);
-        request.setEducationProgram(CpmPcEducationProgram.ZPR);
+        request.setEducationProgram("Адаптированная программа для обучающихся с ЗПР");
         request.setValidFrom(LocalDate.of(2026, 9, 1));
         request.setValidTo(LocalDate.of(2027, 7, 31));
 
@@ -156,6 +179,104 @@ class StudentSupportDocumentServiceTest {
         );
 
         assertEquals("Срок заключения ЦМПК должен оканчиваться 31.08", error.getMessage());
+    }
+
+    @Test
+    void cpmpcRequiresNosologyAndRejectsPlainCopy() {
+        StudentSupportDocumentDtos.SaveRequest request = new StudentSupportDocumentDtos.SaveRequest();
+        request.setStudentId(1L);
+        request.setDocumentType(StudentSupportDocumentType.CPMPC_CONCLUSION);
+        request.setAcceptedForm(StudentSupportDocumentForm.COPY);
+        request.setDocumentNumber("ЦМПК-2");
+        request.setEducationStage(SupportEducationStage.NOO);
+        request.setEducationProgram("Программа вручную");
+        request.setValidFrom(LocalDate.of(2026, 9, 1));
+        request.setValidTo(LocalDate.of(2027, 8, 31));
+
+        IllegalArgumentException copyError = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.save("2026/2027", request)
+        );
+        assertEquals("Заключение ЦМПК принимается как оригинал или электронная копия", copyError.getMessage());
+
+        request.setAcceptedForm(StudentSupportDocumentForm.ELECTRONIC_COPY);
+        IllegalArgumentException nosologyError = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.save("2026/2027", request)
+        );
+        assertEquals("Укажите нозологию для заключения ЦМПК", nosologyError.getMessage());
+    }
+
+    @Test
+    void cpmpcStoresFreeTextProgramAndDoesNotOwnIpraFlag() {
+        StudentSupportDocumentDtos.SaveRequest request = new StudentSupportDocumentDtos.SaveRequest();
+        request.setStudentId(1L);
+        request.setDocumentType(StudentSupportDocumentType.CPMPC_CONCLUSION);
+        request.setAcceptedForm(StudentSupportDocumentForm.ORIGINAL);
+        request.setDocumentNumber("ЦМПК-3");
+        request.setNosologyCode("И6.4");
+        request.setEducationStage(SupportEducationStage.NOO);
+        request.setEducationProgram("  Индивидуально сформулированная образовательная программа  ");
+        request.setIpraPresent(true);
+        request.setValidFrom(LocalDate.of(2026, 9, 1));
+        request.setValidTo(LocalDate.of(2027, 8, 31));
+
+        StudentSupportDocumentDtos.View saved = service.save("2026/2027", request);
+
+        assertEquals("Индивидуально сформулированная образовательная программа", saved.getEducationProgram());
+        assertEquals(false, saved.isIpraPresent());
+    }
+
+    @Test
+    void cpmpcRecommendationUsesLevelProgramAndDoesNotRequireDates() {
+        CorrectionSpecialistCatalogEntry specialist = new CorrectionSpecialistCatalogEntry();
+        specialist.setId(7L);
+        specialist.setName("Учитель-логопед");
+        specialist.setActive(true);
+        when(specialistRepository.findById(7L)).thenReturn(Optional.of(specialist));
+        StudentSupportDocumentDtos.SaveRequest request = new StudentSupportDocumentDtos.SaveRequest();
+        request.setStudentId(1L);
+        request.setDocumentType(StudentSupportDocumentType.CPMPC_RECOMMENDATION);
+        request.setAcceptedForm(StudentSupportDocumentForm.ORIGINAL);
+        request.setEducationStage(SupportEducationStage.NOO);
+        request.setEducationProgram("Произвольный текст не должен сохраниться");
+        request.setNosologyCode("И4.1");
+        StudentSupportDocumentDtos.CorrectionDirectionRequest direction =
+                new StudentSupportDocumentDtos.CorrectionDirectionRequest();
+        direction.setSpecialistId(7L);
+        direction.setTasks("Развитие письменной речи");
+        request.setCorrectionDirections(List.of(direction));
+
+        StudentSupportDocumentDtos.View saved = service.save("2026/2027", request);
+
+        assertEquals(StudentSupportDocumentType.CPMPC_RECOMMENDATION, saved.getDocumentType());
+        assertEquals(StudentSupportDocumentForm.COPY, saved.getAcceptedForm());
+        assertEquals(SupportEducationStage.NOO, saved.getEducationStage());
+        assertEquals("Основная образовательная программа начального общего образования",
+                saved.getEducationProgram());
+        assertEquals(null, saved.getNosologyCode());
+        assertEquals(null, saved.getValidFrom());
+        assertEquals(null, saved.getValidTo());
+        assertEquals("АКТУАЛЬНО", saved.getValidityStatus());
+        org.mockito.ArgumentCaptor<StudentSupportDocumentCorrection> correctionCaptor =
+                org.mockito.ArgumentCaptor.forClass(StudentSupportDocumentCorrection.class);
+        org.mockito.Mockito.verify(correctionRepository).save(correctionCaptor.capture());
+        assertEquals("Учитель-логопед", correctionCaptor.getValue().getSpecialist().getName());
+        assertEquals("Развитие письменной речи", correctionCaptor.getValue().getTasks());
+    }
+
+    @Test
+    void cpmpcRecommendationRequiresEducationLevel() {
+        StudentSupportDocumentDtos.SaveRequest request = new StudentSupportDocumentDtos.SaveRequest();
+        request.setStudentId(1L);
+        request.setDocumentType(StudentSupportDocumentType.CPMPC_RECOMMENDATION);
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.save("2026/2027", request)
+        );
+
+        assertEquals("Выберите уровень образования", error.getMessage());
     }
 
     @Test

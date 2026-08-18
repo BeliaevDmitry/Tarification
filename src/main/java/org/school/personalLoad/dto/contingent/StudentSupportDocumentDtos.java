@@ -1,7 +1,6 @@
 package org.school.personalLoad.dto.contingent;
 
 import lombok.Data;
-import org.school.personalLoad.model.CpmPcEducationProgram;
 import org.school.personalLoad.model.StudentCategory;
 import org.school.personalLoad.model.StudentSupportDocumentForm;
 import org.school.personalLoad.model.StudentSupportDocumentType;
@@ -28,7 +27,7 @@ public final class StudentSupportDocumentDtos {
         private LocalDate validTo;
         private String nosologyCode;
         private SupportEducationStage educationStage;
-        private CpmPcEducationProgram educationProgram;
+        private String educationProgram;
         private boolean prolongationAvailable;
         private boolean prolongationUsed;
         private Integer prolongedGrade;
@@ -56,7 +55,7 @@ public final class StudentSupportDocumentDtos {
         private String nosologyCode;
         private StudentCategory derivedCategory;
         private SupportEducationStage educationStage;
-        private CpmPcEducationProgram educationProgram;
+        private String educationProgram;
         private boolean prolongationAvailable;
         private boolean prolongationUsed;
         private Integer prolongedGrade;

@@ -23,7 +23,8 @@ public class StudentSupportDocumentService {
     );
     private static final Set<StudentSupportDocumentType> CERTIFICATE_TYPES = Set.of(
             StudentSupportDocumentType.MSE_CERTIFICATE,
-            StudentSupportDocumentType.CPMPC_CONCLUSION
+            StudentSupportDocumentType.CPMPC_CONCLUSION,
+            StudentSupportDocumentType.CPMPC_RECOMMENDATION
     );
     private static final List<String> DEFAULT_SPECIALISTS = List.of(
             "Социальный педагог",
@@ -64,7 +65,7 @@ public class StudentSupportDocumentService {
             throw new IllegalArgumentException("Выберите тип документа");
         }
         if (!CERTIFICATE_TYPES.contains(request.getDocumentType())) {
-            throw new IllegalArgumentException("В разделе «Справки» доступны только МСЭ и заключения ЦМПК");
+            throw new IllegalArgumentException("В разделе «Справки» доступны МСЭ, заключения и рекомендации ЦМПК");
         }
         StudentProfile student = studentRepository.findById(request.getStudentId())
                 .orElseThrow(() -> new IllegalArgumentException("Карточка ребёнка не найдена"));
@@ -82,25 +83,31 @@ public class StudentSupportDocumentService {
         document.setStudent(student);
         document.setAcademicYear(academicYear);
         document.setDocumentType(request.getDocumentType());
-        document.setAcceptedForm(Objects.requireNonNullElse(
-                request.getAcceptedForm(),
-                StudentSupportDocumentForm.COPY
-        ));
-        document.setDocumentNumber(request.getDocumentType() == StudentSupportDocumentType.CPMPC_CONCLUSION
+        boolean conclusion = request.getDocumentType() == StudentSupportDocumentType.CPMPC_CONCLUSION;
+        boolean recommendation = request.getDocumentType() == StudentSupportDocumentType.CPMPC_RECOMMENDATION;
+        boolean mse = request.getDocumentType() == StudentSupportDocumentType.MSE_CERTIFICATE;
+        document.setAcceptedForm(recommendation
+                ? StudentSupportDocumentForm.COPY
+                : Objects.requireNonNullElse(
+                        request.getAcceptedForm(),
+                        conclusion ? StudentSupportDocumentForm.ORIGINAL : StudentSupportDocumentForm.COPY
+                ));
+        document.setDocumentNumber(conclusion
                 ? trim(request.getDocumentNumber()) : null);
         document.setIssueDate(null);
-        document.setValidFrom(request.getValidFrom());
-        document.setValidTo(request.getValidTo());
-        document.setNosologyCode(normalizeFullNosologyCode(request.getNosologyCode()));
-        boolean cpmpc = request.getDocumentType() == StudentSupportDocumentType.CPMPC_CONCLUSION;
-        document.setEducationStage(cpmpc ? request.getEducationStage() : null);
-        document.setEducationProgram(cpmpc ? request.getEducationProgram() : null);
-        document.setProlongationAvailable(cpmpc && request.isProlongationAvailable());
-        document.setProlongationUsed(cpmpc && request.isProlongationAvailable() && request.isProlongationUsed());
+        document.setValidFrom(recommendation ? null : request.getValidFrom());
+        document.setValidTo(recommendation ? null : request.getValidTo());
+        document.setNosologyCode(conclusion ? normalizeFullNosologyCode(request.getNosologyCode()) : null);
+        document.setEducationStage(conclusion || recommendation ? request.getEducationStage() : null);
+        document.setEducationProgram(conclusion
+                ? trim(request.getEducationProgram())
+                : (recommendation ? recommendationProgram(request.getEducationStage()) : null));
+        document.setProlongationAvailable(conclusion && request.isProlongationAvailable());
+        document.setProlongationUsed(conclusion && request.isProlongationAvailable() && request.isProlongationUsed());
         document.setProlongedGrade(document.isProlongationUsed() ? request.getProlongedGrade() : null);
         document.setProlongedAcademicYear(document.isProlongationUsed()
                 ? normalizeAcademicYear(request.getProlongedAcademicYear()) : null);
-        document.setIpraPresent(cpmpc && request.isIpraPresent());
+        document.setIpraPresent(mse && request.isIpraPresent());
         // These legacy requisites are intentionally no longer collected.
         document.setIssuingOrganization(null);
         document.setReceivedAt(null);
@@ -108,7 +115,8 @@ public class StudentSupportDocumentService {
         document.setComment(null);
         document.setUpdatedAt(LocalDateTime.now());
         document = documentRepository.save(document);
-        replaceCorrectionDirections(document, cpmpc ? request.getCorrectionDirections() : List.of());
+        replaceCorrectionDirections(document, conclusion || recommendation
+                ? request.getCorrectionDirections() : List.of());
         if (previousType == StudentSupportDocumentType.MSE_CERTIFICATE
                 && document.getDocumentType() != StudentSupportDocumentType.MSE_CERTIFICATE) {
             supportStatusRepository.deleteAllBySourceDocumentId(document.getId());
@@ -158,7 +166,6 @@ public class StudentSupportDocumentService {
         entry.setActive(request.isActive());
         entry.setUpdatedAt(LocalDateTime.now());
         entry = nosologyRepository.save(entry);
-        resynchronizeAllMseStatuses();
         return toNosologyView(entry);
     }
 
@@ -255,16 +262,18 @@ public class StudentSupportDocumentService {
         view.setIssueDate(document.getIssueDate());
         view.setValidFrom(document.getValidFrom());
         view.setValidTo(document.getValidTo());
-        view.setNosologyCode(document.getNosologyCode());
+        view.setNosologyCode(document.getDocumentType() == StudentSupportDocumentType.CPMPC_CONCLUSION
+                ? document.getNosologyCode() : null);
         view.setDerivedCategory(document.getDocumentType() == StudentSupportDocumentType.MSE_CERTIFICATE
-                ? mseCategory(document.getNosologyCode()) : null);
+                ? StudentCategory.K2 : null);
         view.setEducationStage(document.getEducationStage());
         view.setEducationProgram(document.getEducationProgram());
         view.setProlongationAvailable(document.isProlongationAvailable());
         view.setProlongationUsed(document.isProlongationUsed());
         view.setProlongedGrade(document.getProlongedGrade());
         view.setProlongedAcademicYear(document.getProlongedAcademicYear());
-        view.setIpraPresent(document.isIpraPresent());
+        view.setIpraPresent(document.getDocumentType() == StudentSupportDocumentType.MSE_CERTIFICATE
+                && document.isIpraPresent());
         view.setCorrectionDirections(document.getId() == null ? List.of() : correctionRepository
                 .findAllByDocument_IdOrderBySpecialist_NameAsc(document.getId()).stream()
                 .map(this::toCorrectionDirectionView)
@@ -329,21 +338,45 @@ public class StudentSupportDocumentService {
                                   Long studentId,
                                   StudentSupportDocumentDtos.SaveRequest request) {
         validateDates(request.getValidFrom(), request.getValidTo());
+        if (request.getDocumentType() == StudentSupportDocumentType.CPMPC_RECOMMENDATION) {
+            if (request.getEducationStage() == null) {
+                throw new IllegalArgumentException("Выберите уровень образования");
+            }
+            return;
+        }
         if (request.getValidFrom() == null || request.getValidTo() == null) {
             throw new IllegalArgumentException("Укажите дату установления и дату окончания справки");
         }
-        normalizeFullNosologyCode(request.getNosologyCode());
         if (request.getDocumentType() == StudentSupportDocumentType.MSE_CERTIFICATE) {
+            StudentSupportDocumentForm acceptedForm = Objects.requireNonNullElse(
+                    request.getAcceptedForm(), StudentSupportDocumentForm.COPY);
+            if (acceptedForm != StudentSupportDocumentForm.COPY) {
+                throw new IllegalArgumentException("Справка МСЭ принимается только как копия");
+            }
             return;
+        }
+        String nosologyCode = normalizeFullNosologyCode(request.getNosologyCode());
+        StudentSupportDocumentForm acceptedForm = Objects.requireNonNullElse(
+                request.getAcceptedForm(), StudentSupportDocumentForm.ORIGINAL);
+        if (acceptedForm != StudentSupportDocumentForm.ORIGINAL
+                && acceptedForm != StudentSupportDocumentForm.ELECTRONIC_COPY) {
+            throw new IllegalArgumentException("Заключение ЦМПК принимается как оригинал или электронная копия");
+        }
+        if (nosologyCode == null) {
+            throw new IllegalArgumentException("Укажите нозологию для заключения ЦМПК");
         }
         if (trim(request.getDocumentNumber()) == null) {
             throw new IllegalArgumentException("Укажите номер заключения ЦМПК");
         }
         if (request.getEducationStage() == null) {
-            throw new IllegalArgumentException("Выберите ступень образования");
+            throw new IllegalArgumentException("Выберите уровень образования");
         }
-        if (request.getEducationProgram() == null) {
-            throw new IllegalArgumentException("Выберите образовательную программу");
+        String educationProgram = trim(request.getEducationProgram());
+        if (educationProgram == null) {
+            throw new IllegalArgumentException("Укажите образовательную программу");
+        }
+        if (educationProgram.length() > 2000) {
+            throw new IllegalArgumentException("Образовательная программа не должна превышать 2000 символов");
         }
         if (request.isProlongationUsed() && !request.isProlongationAvailable()) {
             throw new IllegalArgumentException("Использование пролонгирования возможно только при наличии такого права");
@@ -381,12 +414,12 @@ public class StudentSupportDocumentService {
             case DO -> currentGrade;
         };
         if (currentGrade > terminalGrade) {
-            throw new IllegalArgumentException("Выбранная ступень образования не соответствует классу ребёнка");
+            throw new IllegalArgumentException("Выбранный уровень образования не соответствует классу ребёнка");
         }
         int expectedYear = academicYearEnd(academicYear) + terminalGrade - currentGrade;
         LocalDate expected = LocalDate.of(expectedYear, 8, 31);
         if (!expected.equals(validTo)) {
-            throw new IllegalArgumentException("Для выбранной ступени и текущего класса дата окончания должна быть "
+            throw new IllegalArgumentException("Для выбранного уровня и текущего класса дата окончания должна быть "
                     + expected + ". При возможности пролонгирования укажите «Да» — тогда дата может отличаться");
         }
     }
@@ -420,6 +453,18 @@ public class StudentSupportDocumentService {
             throw new IllegalArgumentException("Некорректный учебный год: " + academicYear);
         }
         return Integer.parseInt(normalized.substring(5));
+    }
+
+    private String recommendationProgram(SupportEducationStage stage) {
+        if (stage == null) {
+            return null;
+        }
+        return switch (stage) {
+            case DO -> "Основная образовательная программа дошкольного образования";
+            case NOO -> "Основная образовательная программа начального общего образования";
+            case OOO -> "Основная образовательная программа основного общего образования";
+            case SOO -> "Основная образовательная программа среднего общего образования";
+        };
     }
 
     private void replaceCorrectionDirections(
@@ -457,12 +502,11 @@ public class StudentSupportDocumentService {
     private void synchronizeMseStatus(StudentSupportDocument document) {
         StudentSupportStatus status = supportStatusRepository.findBySourceDocumentId(document.getId())
                 .orElseGet(StudentSupportStatus::new);
-        NosologyCatalogEntry k3Nosology = resolveK3Nosology(document.getNosologyCode()).orElse(null);
         status.setStudent(document.getStudent());
         status.setAcademicYear(document.getAcademicYear());
-        status.setCategory(k3Nosology == null ? StudentCategory.K2 : StudentCategory.K3);
-        status.setNosology(k3Nosology);
-        status.setNosologyCodeSnapshot(document.getNosologyCode());
+        status.setCategory(StudentCategory.K2);
+        status.setNosology(null);
+        status.setNosologyCodeSnapshot(null);
         status.setAoopVariantSnapshot(null);
         status.setValidFrom(document.getValidFrom());
         status.setValidTo(document.getValidTo());
@@ -477,23 +521,6 @@ public class StudentSupportDocumentService {
                 .stream()
                 .filter(document -> document.getStudent() != null && document.getValidFrom() != null)
                 .forEach(this::synchronizeMseStatus);
-    }
-
-    private StudentCategory mseCategory(String fullCode) {
-        return resolveK3Nosology(fullCode).isPresent() ? StudentCategory.K3 : StudentCategory.K2;
-    }
-
-    private Optional<NosologyCatalogEntry> resolveK3Nosology(String fullCode) {
-        String numericCode = numericNosologyCode(fullCode);
-        if (numericCode == null) {
-            return Optional.empty();
-        }
-        Optional<NosologyCatalogEntry> entry = nosologyRepository.findByCodeIgnoreCase(numericCode);
-        if (entry.isEmpty() && fullCode != null) {
-            entry = nosologyRepository.findByCodeIgnoreCase(fullCode);
-        }
-        return entry.filter(NosologyCatalogEntry::isActive)
-                .filter(item -> item.getStudentCategory() == StudentCategory.K3);
     }
 
     private String normalizeFullNosologyCode(String value) {
@@ -526,11 +553,6 @@ public class StudentSupportDocumentService {
             throw new IllegalArgumentException("Код К3 должен иметь вид 4.1, 4.2 или 6.1");
         }
         return normalized;
-    }
-
-    private String numericNosologyCode(String fullCode) {
-        String normalized = normalizeFullNosologyCode(fullCode);
-        return normalized == null ? null : normalized.substring(1);
     }
 
     private String normalizeAcademicYear(String value) {
@@ -570,6 +592,9 @@ public class StudentSupportDocumentService {
     }
 
     private String validityStatus(StudentSupportDocument document, LocalDate date) {
+        if (document.getDocumentType() == StudentSupportDocumentType.CPMPC_RECOMMENDATION) {
+            return "АКТУАЛЬНО";
+        }
         if (document.getValidFrom() != null && date.isBefore(document.getValidFrom())) {
             return "ОЖИДАЕТ НАЧАЛА";
         }
