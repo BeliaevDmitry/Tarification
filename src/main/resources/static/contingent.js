@@ -138,16 +138,22 @@ const certificateUi = {
     id: document.getElementById('certificate-id'),
     student: document.getElementById('certificate-student'),
     type: document.getElementById('certificate-type'),
+    formField: document.getElementById('certificate-form-field'),
     form: document.getElementById('certificate-form'),
+    validFromField: document.getElementById('certificate-valid-from-field'),
     validFrom: document.getElementById('certificate-valid-from'),
+    validToField: document.getElementById('certificate-valid-to-field'),
     validTo: document.getElementById('certificate-valid-to'),
-    hasNosology: document.getElementById('certificate-has-nosology'),
     nosologyFields: document.getElementById('certificate-nosology-fields'),
     nosologyLetter: document.getElementById('certificate-nosology-letter'),
     nosologyMajor: document.getElementById('certificate-nosology-major'),
     nosologyMinor: document.getElementById('certificate-nosology-minor'),
     mseFields: document.getElementById('certificate-mse-fields'),
     cpmpcFields: document.getElementById('certificate-cpmpc-fields'),
+    recommendationFields: document.getElementById('certificate-recommendation-fields'),
+    recommendationStage: document.getElementById('certificate-recommendation-stage'),
+    recommendationProgram: document.getElementById('certificate-recommendation-program'),
+    correctionFields: document.getElementById('certificate-correction-fields'),
     number: document.getElementById('certificate-number'),
     educationStage: document.getElementById('certificate-education-stage'),
     educationProgram: document.getElementById('certificate-education-program'),
@@ -162,6 +168,7 @@ const certificateUi = {
     directionBody: document.getElementById('certificate-direction-body'),
     addDirectionBtn: document.getElementById('certificate-add-direction-btn'),
     openSpecialistsBtn: document.getElementById('certificate-open-specialists-btn'),
+    attachmentField: document.getElementById('certificate-attachment-field'),
     file: document.getElementById('certificate-file'),
     saveBtn: document.getElementById('certificate-save-btn'),
     clearBtn: document.getElementById('certificate-clear-btn'),
@@ -1018,18 +1025,17 @@ async function generateSupportIupOrder(groupOrder) {
 
 const certificateTypeLabels = {
     MSE_CERTIFICATE: 'Справка МСЭ',
-    CPMPC_CONCLUSION: 'Заключение ЦМПК'
+    CPMPC_CONCLUSION: 'Заключение ЦМПК',
+    CPMPC_RECOMMENDATION: 'Рекомендация ЦМПК'
 };
 
 const certificateStageLabels = { DO: 'ДО', NOO: 'НОО', OOO: 'ООО', SOO: 'СОО' };
-const certificateProgramLabels = {
-    DEAF: 'Глухие',
-    HARD_OF_HEARING: 'Слабослышащие, позднооглохшие, кохлеарно имплантированные, глухие',
-    BLIND: 'Слепые',
-    VISUALLY_IMPAIRED: 'Слабовидящие',
-    TNR: 'ТНР', NODA: 'НОДА', ZPR: 'ЗПР', RAS: 'РАС', UO: 'УО'
+const recommendationProgramLabels = {
+    DO: 'Основная образовательная программа дошкольного образования',
+    NOO: 'Основная образовательная программа начального общего образования',
+    OOO: 'Основная образовательная программа основного общего образования',
+    SOO: 'Основная образовательная программа среднего общего образования'
 };
-
 function certificateStudentOptions() {
     const rows = supportReferences.students || [];
     return '<option value="">Выберите ребёнка</option>' + rows.map((student) => {
@@ -1057,7 +1063,8 @@ function addCertificateDirection(direction = {}) {
 }
 
 function defaultCertificateDirection() {
-    if (certificateUi.type?.value !== 'CPMPC_CONCLUSION' || certificateUi.directionBody?.children.length) return;
+    if (!['CPMPC_CONCLUSION', 'CPMPC_RECOMMENDATION'].includes(certificateUi.type?.value)
+        || certificateUi.directionBody?.children.length) return;
     const social = certificateSpecialists.find((item) => item.name === 'Социальный педагог');
     addCertificateDirection({ specialistId: social?.id });
 }
@@ -1078,7 +1085,6 @@ function fillCertificateYears() {
 }
 
 function certificateNosologyCode() {
-    if (certificateUi.hasNosology?.value !== 'true') return null;
     const letter = certificateUi.nosologyLetter.value;
     const major = certificateUi.nosologyMajor.value;
     const minor = certificateUi.nosologyMinor.value;
@@ -1087,11 +1093,9 @@ function certificateNosologyCode() {
 
 function setCertificateNosologyCode(code) {
     const match = String(code || '').toUpperCase().match(/^([ИО])(\d)\.(\d)$/);
-    certificateUi.hasNosology.value = match ? 'true' : 'false';
     certificateUi.nosologyLetter.value = match?.[1] || 'И';
     certificateUi.nosologyMajor.value = match?.[2] || '';
     certificateUi.nosologyMinor.value = match?.[3] || '';
-    certificateUi.nosologyFields.hidden = !match;
 }
 
 function selectedCertificateStudent() {
@@ -1118,24 +1122,59 @@ function updateCertificateDateHint() {
     } else if (certificateUi.prolongationAvailable?.value === 'true') {
         certificateUi.dateHint.textContent = 'Есть возможность пролонгирования — дата окончания может отличаться от стандартной.';
     } else if (expected) {
-        certificateUi.dateHint.textContent = `Для выбранной ступени и текущего класса ожидаемая дата окончания: ${expected}.`;
+        certificateUi.dateHint.textContent = `Для выбранного уровня и текущего класса ожидаемая дата окончания: ${expected}.`;
     } else {
-        certificateUi.dateHint.textContent = 'Выберите ребёнка и ступень образования для проверки даты окончания.';
+        certificateUi.dateHint.textContent = 'Выберите ребёнка и уровень образования для проверки даты окончания.';
     }
+}
+
+function updateCertificateAcceptedForms(cpmpc) {
+    if (!certificateUi.form) return;
+    const current = certificateUi.form.value;
+    const forms = cpmpc
+        ? [['ORIGINAL', 'Оригинал'], ['ELECTRONIC_COPY', 'Электронная копия']]
+        : [['COPY', 'Копия']];
+    certificateUi.form.innerHTML = forms
+        .map(([value, label]) => `<option value="${value}">${label}</option>`)
+        .join('');
+    certificateUi.form.value = forms.some(([value]) => value === current)
+        ? current
+        : (cpmpc ? 'ORIGINAL' : 'COPY');
+}
+
+function updateRecommendationProgram() {
+    if (!certificateUi.recommendationProgram) return;
+    certificateUi.recommendationProgram.value =
+        recommendationProgramLabels[certificateUi.recommendationStage?.value] || '';
 }
 
 function updateCertificateFormVisibility() {
     if (!certificateUi.type) return;
     const cpmpc = certificateUi.type.value === 'CPMPC_CONCLUSION';
-    certificateUi.mseFields.hidden = cpmpc;
+    const recommendation = certificateUi.type.value === 'CPMPC_RECOMMENDATION';
+    updateCertificateAcceptedForms(cpmpc);
+    certificateUi.formField.hidden = recommendation;
+    certificateUi.validFromField.hidden = recommendation;
+    certificateUi.validToField.hidden = recommendation;
+    certificateUi.attachmentField.hidden = recommendation;
+    certificateUi.mseFields.hidden = cpmpc || recommendation;
     certificateUi.cpmpcFields.hidden = !cpmpc;
-    certificateUi.nosologyFields.hidden = certificateUi.hasNosology.value !== 'true';
+    certificateUi.recommendationFields.hidden = !recommendation;
+    certificateUi.correctionFields.hidden = !(cpmpc || recommendation);
+    certificateUi.nosologyFields.hidden = !cpmpc;
+    if (!cpmpc) setCertificateNosologyCode(null);
     const prolongation = cpmpc && certificateUi.prolongationAvailable.value === 'true';
     certificateUi.prolongationPanel.hidden = !prolongation;
     if (!prolongation) certificateUi.prolongationUsed.value = 'false';
     const used = prolongation && certificateUi.prolongationUsed.value === 'true';
     certificateUi.prolongationDetails.forEach((label) => { label.hidden = !used; });
-    if (cpmpc) defaultCertificateDirection();
+    if (recommendation) {
+        certificateUi.validFrom.value = '';
+        certificateUi.validTo.value = '';
+        certificateUi.file.value = '';
+        updateRecommendationProgram();
+    }
+    if (cpmpc || recommendation) defaultCertificateDirection();
     updateCertificateDateHint();
 }
 
@@ -1151,6 +1190,8 @@ function resetCertificateForm() {
     certificateUi.number.value = '';
     certificateUi.educationStage.value = '';
     certificateUi.educationProgram.value = '';
+    certificateUi.recommendationStage.value = '';
+    certificateUi.recommendationProgram.value = '';
     certificateUi.prolongationAvailable.value = 'false';
     certificateUi.prolongationUsed.value = 'false';
     certificateUi.prolongedGrade.value = '';
@@ -1158,7 +1199,7 @@ function resetCertificateForm() {
     certificateUi.ipraPresent.value = 'false';
     certificateUi.directionBody.innerHTML = '';
     certificateUi.file.value = '';
-    certificateUi.saveBtn.textContent = 'Сохранить справку';
+    certificateUi.saveBtn.textContent = 'Сохранить документ';
     updateCertificateFormVisibility();
 }
 
@@ -1195,32 +1236,35 @@ function certificateDetails(document) {
     const details = [];
     if (document.documentType === 'MSE_CERTIFICATE') {
         details.push(`Категория: ${supportCategoryLabel(document.derivedCategory)}`);
-    } else {
-        details.push(`Ступень: ${certificateStageLabels[document.educationStage] || '—'}`);
-        details.push(`Программа: ${certificateProgramLabels[document.educationProgram] || '—'}`);
         details.push(`ИПР/ИПРА: ${document.ipraPresent ? 'да' : 'нет'}`);
+    } else {
+        details.push(`Уровень: ${certificateStageLabels[document.educationStage] || '—'}`);
+        details.push(`Программа: ${document.educationProgram || '—'}`);
         if (document.prolongationAvailable) details.push(`пролонгирование: ${document.prolongationUsed ? 'использовано' : 'возможно'}`);
     }
-    if (document.nosologyCode) details.push(`нозология ${document.nosologyCode}`);
+    if (document.documentType === 'CPMPC_CONCLUSION' && document.nosologyCode) {
+        details.push(`нозология ${document.nosologyCode}`);
+    }
     return details.join('; ');
 }
 
 function renderCertificates() {
     const rows = currentCertificates.map((document) => {
+        const recommendation = document.documentType === 'CPMPC_RECOMMENDATION';
         const files = (document.attachments || []).map((item) => certificateAttachmentLink(document.id, item)).join('<br>');
         const directions = (document.correctionDirections || []).map((item) => `${item.specialistName}: ${item.tasks}`).join('; ');
         return `<tr>
             <td>${esc(document.className)}</td><td>${esc(document.studentFullName)}</td>
             <td>${esc(certificateTypeLabels[document.documentType] || document.documentType)}</td>
-            <td>${esc(document.documentNumber || '—')}</td><td>${esc(document.acceptedForm === 'ORIGINAL' ? 'Оригинал' : document.acceptedForm === 'ELECTRONIC_COPY' ? 'Электронная копия' : 'Копия')}</td>
-            <td>${esc(supportDateRange(document.validFrom, document.validTo))}</td><td>${esc(certificateDetails(document))}</td>
+            <td>${esc(document.documentNumber || '—')}</td><td>${recommendation ? '—' : esc(document.acceptedForm === 'ORIGINAL' ? 'Оригинал' : document.acceptedForm === 'ELECTRONIC_COPY' ? 'Электронная копия' : 'Копия')}</td>
+            <td>${recommendation ? '—' : esc(supportDateRange(document.validFrom, document.validTo))}</td><td>${esc(certificateDetails(document))}</td>
             <td>${esc(directions || '—')}</td><td>${esc(document.validityStatus || '')}</td>
-            <td>${files || '<span class="muted">Нет скана</span>'}</td>
+            <td>${recommendation ? '—' : (files || '<span class="muted">Нет скана</span>')}</td>
             <td data-requires-edit><button type="button" class="secondary" data-certificate-edit="${esc(document.id)}">Изменить</button>
                 <button type="button" class="secondary" data-certificate-delete="${esc(document.id)}">Удалить</button></td>
         </tr>`;
     }).join('');
-    certificateUi.table.innerHTML = `<thead><tr><th>Класс</th><th>ФИО</th><th>Справка</th><th>Номер</th><th>Принято</th><th>Срок</th><th>Данные</th><th>Коррекционная работа</th><th>Состояние</th><th>Скан</th><th></th></tr></thead>
+    certificateUi.table.innerHTML = `<thead><tr><th>Класс</th><th>ФИО</th><th>Документ</th><th>Номер</th><th>Принято</th><th>Срок</th><th>Данные</th><th>Коррекционная работа</th><th>Состояние</th><th>Скан</th><th></th></tr></thead>
         <tbody>${rows || '<tr><td colspan="11" class="muted">Справки пока не внесены.</td></tr>'}</tbody>`;
 }
 
@@ -1232,26 +1276,37 @@ async function refreshCertificates() {
 
 async function saveCertificate() {
     if (!certificateUi.student.value) throw new Error('Выберите ребёнка из контингента');
-    if (!certificateUi.validFrom.value || !certificateUi.validTo.value) throw new Error('Укажите дату установления и дату окончания');
-    if (certificateUi.hasNosology.value === 'true' && !certificateNosologyCode()) throw new Error('Полностью заполните код нозологии');
+    const cpmpc = certificateUi.type.value === 'CPMPC_CONCLUSION';
+    const recommendation = certificateUi.type.value === 'CPMPC_RECOMMENDATION';
+    const mse = certificateUi.type.value === 'MSE_CERTIFICATE';
+    if (!recommendation && (!certificateUi.validFrom.value || !certificateUi.validTo.value)) {
+        throw new Error('Укажите дату установления и дату окончания');
+    }
+    if (recommendation && !certificateUi.recommendationStage.value) throw new Error('Выберите уровень образования');
+    if (cpmpc && !certificateNosologyCode()) throw new Error('Для заключения ЦМПК обязательно укажите нозологию');
     const expected = certificateExpectedEndDate();
-    if (expected && certificateUi.validTo.value !== expected) throw new Error(`Дата окончания для выбранной ступени должна быть ${expected}`);
+    if (expected && certificateUi.validTo.value !== expected) throw new Error(`Дата окончания для выбранного уровня должна быть ${expected}`);
     const file = certificateUi.file.files?.[0];
     if (file && file.size > 15 * 1024 * 1024) throw new Error('Размер скана не должен превышать 15 МБ');
-    const cpmpc = certificateUi.type.value === 'CPMPC_CONCLUSION';
     const payload = {
         id: Number(certificateUi.id.value || 0) || null,
         studentId: Number(certificateUi.student.value), documentType: certificateUi.type.value,
-        acceptedForm: certificateUi.form.value, validFrom: certificateUi.validFrom.value, validTo: certificateUi.validTo.value,
-        nosologyCode: certificateNosologyCode(), documentNumber: cpmpc ? certificateUi.number.value.trim() || null : null,
-        educationStage: cpmpc ? certificateUi.educationStage.value || null : null,
-        educationProgram: cpmpc ? certificateUi.educationProgram.value || null : null,
+        acceptedForm: recommendation ? null : certificateUi.form.value,
+        validFrom: recommendation ? null : certificateUi.validFrom.value,
+        validTo: recommendation ? null : certificateUi.validTo.value,
+        nosologyCode: cpmpc ? certificateNosologyCode() : null, documentNumber: cpmpc ? certificateUi.number.value.trim() || null : null,
+        educationStage: cpmpc
+            ? certificateUi.educationStage.value || null
+            : (recommendation ? certificateUi.recommendationStage.value || null : null),
+        educationProgram: cpmpc
+            ? certificateUi.educationProgram.value || null
+            : (recommendation ? certificateUi.recommendationProgram.value || null : null),
         prolongationAvailable: cpmpc && certificateUi.prolongationAvailable.value === 'true',
         prolongationUsed: cpmpc && certificateUi.prolongationUsed.value === 'true',
         prolongedGrade: cpmpc && certificateUi.prolongationUsed.value === 'true' ? Number(certificateUi.prolongedGrade.value || 0) || null : null,
         prolongedAcademicYear: cpmpc && certificateUi.prolongationUsed.value === 'true' ? certificateUi.prolongedYear.value || null : null,
-        ipraPresent: cpmpc && certificateUi.ipraPresent.value === 'true',
-        correctionDirections: cpmpc ? certificateDirectionPayload() : []
+        ipraPresent: mse && certificateUi.ipraPresent.value === 'true',
+        correctionDirections: cpmpc || recommendation ? certificateDirectionPayload() : []
     };
     const saved = await api('/api/contingent/special-support/documents', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (file) {
@@ -1260,7 +1315,7 @@ async function saveCertificate() {
     }
     resetCertificateForm();
     await refreshCertificates();
-    certificateUi.message.textContent = 'Справка сохранена.';
+    certificateUi.message.textContent = 'Документ сохранён.';
 }
 
 function editCertificate(id) {
@@ -1276,6 +1331,10 @@ function editCertificate(id) {
     certificateUi.number.value = document.documentNumber || '';
     certificateUi.educationStage.value = document.educationStage || '';
     certificateUi.educationProgram.value = document.educationProgram || '';
+    certificateUi.recommendationStage.value = document.documentType === 'CPMPC_RECOMMENDATION'
+        ? document.educationStage || '' : '';
+    certificateUi.recommendationProgram.value = document.documentType === 'CPMPC_RECOMMENDATION'
+        ? document.educationProgram || '' : '';
     certificateUi.prolongationAvailable.value = String(Boolean(document.prolongationAvailable));
     certificateUi.prolongationUsed.value = String(Boolean(document.prolongationUsed));
     certificateUi.prolongedGrade.value = document.prolongedGrade || '';
@@ -1726,10 +1785,10 @@ async function editSupportIup(iupPlanId) {
 }
 
 certificateUi.type?.addEventListener('change', updateCertificateFormVisibility);
-certificateUi.hasNosology?.addEventListener('change', updateCertificateFormVisibility);
 certificateUi.prolongationAvailable?.addEventListener('change', updateCertificateFormVisibility);
 certificateUi.prolongationUsed?.addEventListener('change', updateCertificateFormVisibility);
 certificateUi.educationStage?.addEventListener('change', updateCertificateDateHint);
+certificateUi.recommendationStage?.addEventListener('change', updateRecommendationProgram);
 certificateUi.student?.addEventListener('change', updateCertificateDateHint);
 certificateUi.addDirectionBtn?.addEventListener('click', () => addCertificateDirection());
 certificateUi.openSpecialistsBtn?.addEventListener('click', () => certificateUi.specialistDialog?.showModal());

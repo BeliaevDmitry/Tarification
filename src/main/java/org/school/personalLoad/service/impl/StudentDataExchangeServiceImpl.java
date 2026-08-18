@@ -1865,6 +1865,8 @@ public class StudentDataExchangeServiceImpl implements StudentDataExchangeServic
                     StudentSupportDocumentType.IPR_IPRA;
             case "ЗАКЛЮЧЕНИЕ ЦПМПК", "ЦПМПК", "CPMPC_CONCLUSION" ->
                     StudentSupportDocumentType.CPMPC_CONCLUSION;
+            case "РЕКОМЕНДАЦИЯ ЦМПК", "РЕКОМЕНДАЦИЯ ЦПМПК", "CPMPC_RECOMMENDATION" ->
+                    StudentSupportDocumentType.CPMPC_RECOMMENDATION;
             case "ПРОТОКОЛ ППК", "ППК", "INTERNAL_PPK_PROTOCOL" ->
                     StudentSupportDocumentType.INTERNAL_PPK_PROTOCOL;
             case "ИОМ", "IOM" -> StudentSupportDocumentType.IOM;

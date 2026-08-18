@@ -52,7 +52,25 @@ public class StudentSupportSchemaInitializer implements ApplicationRunner {
     private void migrateCertificates() {
         jdbcTemplate.execute("ALTER TABLE student_support_document ADD COLUMN IF NOT EXISTS nosology_code varchar(16)");
         jdbcTemplate.execute("ALTER TABLE student_support_document ADD COLUMN IF NOT EXISTS education_stage varchar(16)");
-        jdbcTemplate.execute("ALTER TABLE student_support_document ADD COLUMN IF NOT EXISTS education_program varchar(64)");
+        jdbcTemplate.execute("ALTER TABLE student_support_document ADD COLUMN IF NOT EXISTS education_program varchar(2000)");
+        jdbcTemplate.execute("ALTER TABLE student_support_document ALTER COLUMN education_program TYPE varchar(2000) USING education_program::text");
+        jdbcTemplate.execute("""
+                UPDATE student_support_document
+                SET education_program = CASE education_program
+                    WHEN 'DEAF' THEN 'Глухие'
+                    WHEN 'HARD_OF_HEARING' THEN 'Слабослышащие, позднооглохшие, кохлеарно имплантированные, глухие'
+                    WHEN 'BLIND' THEN 'Слепые'
+                    WHEN 'VISUALLY_IMPAIRED' THEN 'Слабовидящие'
+                    WHEN 'TNR' THEN 'ТНР'
+                    WHEN 'NODA' THEN 'НОДА'
+                    WHEN 'ZPR' THEN 'ЗПР'
+                    WHEN 'RAS' THEN 'РАС'
+                    WHEN 'UO' THEN 'УО'
+                    ELSE education_program
+                END
+                WHERE education_program IN ('DEAF', 'HARD_OF_HEARING', 'BLIND', 'VISUALLY_IMPAIRED',
+                                            'TNR', 'NODA', 'ZPR', 'RAS', 'UO')
+                """);
         jdbcTemplate.execute("ALTER TABLE student_support_document ADD COLUMN IF NOT EXISTS prolongation_available boolean DEFAULT false");
         jdbcTemplate.execute("UPDATE student_support_document SET prolongation_available = false WHERE prolongation_available IS NULL");
         jdbcTemplate.execute("ALTER TABLE student_support_document ALTER COLUMN prolongation_available SET NOT NULL");
@@ -64,8 +82,21 @@ public class StudentSupportSchemaInitializer implements ApplicationRunner {
         jdbcTemplate.execute("ALTER TABLE student_support_document ADD COLUMN IF NOT EXISTS ipra_present boolean DEFAULT false");
         jdbcTemplate.execute("UPDATE student_support_document SET ipra_present = false WHERE ipra_present IS NULL");
         jdbcTemplate.execute("ALTER TABLE student_support_document ALTER COLUMN ipra_present SET NOT NULL");
+        jdbcTemplate.execute("UPDATE student_support_document SET accepted_form = 'COPY' WHERE document_type = 'MSE_CERTIFICATE' AND accepted_form <> 'COPY'");
         jdbcTemplate.execute("ALTER TABLE student_support_document ALTER COLUMN received_at DROP NOT NULL");
         jdbcTemplate.execute("ALTER TABLE student_support_status ADD COLUMN IF NOT EXISTS source_document_id bigint");
+        jdbcTemplate.execute("""
+                UPDATE student_support_status status
+                SET category = 'K2',
+                    nosology_id = NULL,
+                    nosology_code_snapshot = NULL,
+                    updated_at = now()
+                WHERE status.source_document_id IN (
+                    SELECT document.id
+                    FROM student_support_document document
+                    WHERE document.document_type = 'MSE_CERTIFICATE'
+                )
+                """);
         jdbcTemplate.execute("CREATE UNIQUE INDEX IF NOT EXISTS uk_support_status_source_document ON student_support_status(source_document_id) WHERE source_document_id IS NOT NULL");
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS correction_specialist_catalog_entry (
