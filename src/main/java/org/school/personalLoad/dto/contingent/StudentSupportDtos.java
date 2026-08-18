@@ -90,6 +90,8 @@ public final class StudentSupportDtos {
         private List<StudentOption> students;
         private List<CurriculumOption> curriculum;
         private List<TeacherOption> teachers;
+        private int totalContingentStudents;
+        private int unlinkedStudents;
     }
 
     @Data

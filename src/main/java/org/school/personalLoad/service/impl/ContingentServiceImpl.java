@@ -170,6 +170,7 @@ public class ContingentServiceImpl implements ContingentService {
                     }
                     String fullName = normalize(getCellValue(row, layout.fioColumn(), formatter));
                     String placementName = normalizePlacementName(getCellValue(row, layout.placementColumn(), formatter));
+                    String birthDate = getBirthDateCellValue(row, layout.birthDateColumn(), formatter);
                     if (fullName.isBlank() && placementName.isBlank()) {
                         continue;
                     }
@@ -186,8 +187,15 @@ public class ContingentServiceImpl implements ContingentService {
                     LinkedHashMap<String, String> rawValues = new LinkedHashMap<>();
                     rawValues.put("ФИО", fullName);
                     rawValues.put("Класс или группа", placementName);
+                    if (!birthDate.isBlank()) {
+                        rawValues.put("Дата рождения", birthDate);
+                    }
                     rawValues.put("Формат", "Сокращённая выгрузка МЭШ");
-                    parsedStudents.add(createBlankStudent(academicYear, "", fullName, placementName, toJson(rawValues)));
+                    ContingentStudent student = createBlankStudent(
+                            academicYear, "", fullName, placementName, toJson(rawValues)
+                    );
+                    student.setBirthDate(birthDate);
+                    parsedStudents.add(student);
                     imported++;
                 }
             }
@@ -1483,10 +1491,13 @@ public class ContingentServiceImpl implements ContingentService {
         }
         Row firstRow = sheet.getRow(firstRowIndex);
         Map<String, Integer> possibleHeaders = extractHeaderIndices(firstRow, formatter);
-        int fioColumn = resolveColumnIndex(possibleHeaders, "фио", "ф.и.о", "учащийся", "обучающийся");
-        int placementColumn = resolveColumnIndex(possibleHeaders, "класс", "группа");
+        int fioColumn = resolveColumnIndex(possibleHeaders,
+                "фио ребёнка", "фио ребенка", "фио", "ф.и.о", "учащийся", "обучающийся");
+        int placementColumn = resolveColumnIndex(possibleHeaders,
+                "класс / группа", "класс/группа", "номер и буква класса", "класс", "группа");
+        int birthDateColumn = resolveColumnIndex(possibleHeaders, "дата рождения", "родился", "д.р.");
         if (fioColumn >= 0 && placementColumn >= 0 && fioColumn != placementColumn) {
-            return new CompactLayout(firstRowIndex + 1, fioColumn, placementColumn);
+            return new CompactLayout(firstRowIndex + 1, fioColumn, placementColumn, birthDateColumn);
         }
 
         int pairedRows = 0;
@@ -1514,7 +1525,7 @@ public class ContingentServiceImpl implements ContingentService {
         if (pairedRows == 0 || personRows * 10 < pairedRows * 7 || recognizedPlacements == 0) {
             return null;
         }
-        return new CompactLayout(firstRowIndex, 0, 1);
+        return new CompactLayout(firstRowIndex, 0, 1, -1);
     }
 
     private int firstNonEmptyRow(Sheet sheet, DataFormatter formatter) {
@@ -1561,7 +1572,18 @@ public class ContingentServiceImpl implements ContingentService {
         return isSchoolClassName(normalized) ? ClassNameNormalizer.normalize(normalized) : normalized;
     }
 
-    private record CompactLayout(int firstDataRow, int fioColumn, int placementColumn) {
+    private record CompactLayout(int firstDataRow, int fioColumn, int placementColumn, int birthDateColumn) {
+    }
+
+    private String getBirthDateCellValue(Row row, int index, DataFormatter formatter) {
+        if (row == null || index < 0) {
+            return "";
+        }
+        Cell cell = row.getCell(index);
+        if (cell != null && cell.getCellType() == CellType.NUMERIC && DateUtil.isCellDateFormatted(cell)) {
+            return cell.getLocalDateTimeCellValue().toLocalDate().format(DATE_FORMATTER);
+        }
+        return getCellValue(row, index, formatter);
     }
 
     private record RepresentativeContact(String name, String phone) {

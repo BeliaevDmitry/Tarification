@@ -165,6 +165,53 @@ class ContingentServiceImplExportTest {
     }
 
     @Test
+    void compactExcelFromScriptKeepsBirthDateForPermanentCardMatching() throws Exception {
+        byte[] source;
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            var sheet = workbook.createSheet("Контингент");
+            var header = sheet.createRow(0);
+            header.createCell(0).setCellValue("ФИО ребёнка");
+            header.createCell(1).setCellValue("Дата рождения");
+            header.createCell(2).setCellValue("Класс / группа");
+            var data = sheet.createRow(1);
+            data.createCell(0).setCellValue("Иванов Иван Иванович");
+            data.createCell(1).setCellValue("2018-02-01T00:00:00.000Z");
+            data.createCell(2).setCellValue("3-А");
+            workbook.write(out);
+            source = out.toByteArray();
+        }
+
+        AtomicReference<ContingentSnapshot> savedSnapshot = new AtomicReference<>();
+        AtomicReference<List<ContingentStudent>> savedStudents = new AtomicReference<>(List.of());
+        when(snapshotRepository.save(any(ContingentSnapshot.class))).thenAnswer(invocation -> {
+            ContingentSnapshot snapshot = invocation.getArgument(0);
+            snapshot.setId(78L);
+            savedSnapshot.set(snapshot);
+            return snapshot;
+        });
+        when(snapshotRepository.findById(78L)).thenAnswer(ignored -> Optional.ofNullable(savedSnapshot.get()));
+        when(studentIdentityService.linkStudents(any(ContingentSnapshot.class), anyList()))
+                .thenReturn(new StudentIdentityService.LinkResult(0, 1, 0));
+        when(studentRepository.saveAll(anyList())).thenAnswer(invocation -> {
+            List<ContingentStudent> students = new ArrayList<>(invocation.getArgument(0));
+            savedStudents.set(students);
+            return students;
+        });
+        when(studentRepository.findClassNamesBySnapshotId(78L)).thenReturn(List.of("3-А"));
+        when(curriculumPlanEntryRepository.findAll()).thenReturn(List.of());
+
+        var response = service.importSnapshot(
+                "2026/2027",
+                new MockMultipartFile("file", "Контингент.xlsx",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", source)
+        );
+
+        assertEquals("COMPACT", response.getImportFormat());
+        assertEquals("2018-02-01T00:00:00.000Z", savedStudents.get().get(0).getBirthDate());
+        assertTrue(savedStudents.get().get(0).getRawPayload().contains("Дата рождения"));
+    }
+
+    @Test
     void extendedMeshCsvIsImportedWithIdentityAndRepresentativeData() {
         String source = "\uFEFF\"ФИО ребёнка\";\"Дата рождения\";\"Возраст\";\"Пол\";\"Класс / группа\";"
                 + "\"Логин ребёнка\";\"Email ребёнка\";\"Телефон ребёнка\";\"СНИЛС ребёнка\";"

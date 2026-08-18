@@ -20,6 +20,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -140,6 +141,33 @@ class StudentIdentityServiceImplTest {
         assertEquals(100L, first.getStudentId());
         assertEquals(101L, second.getStudentId());
         assertEquals(StudentIdentityMatchStatus.CREATED, first.getIdentityMatchStatus());
+    }
+
+    @Test
+    void meshTimestampBirthDateIsUsedForPermanentCard() {
+        AtomicReference<List<StudentProfile>> savedProfiles = new AtomicReference<>(List.of());
+        when(classroomLeadershipRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
+        when(studentProfileRepository.findAll()).thenReturn(List.of());
+        when(studentProfileRepository.saveAll(anyList())).thenAnswer(invocation -> {
+            List<StudentProfile> profiles = invocation.getArgument(0);
+            profiles.get(0).setId(120L);
+            savedProfiles.set(profiles);
+            return profiles;
+        });
+        when(nameHistoryRepository.findAll()).thenReturn(List.of());
+        when(enrollmentRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
+
+        ContingentSnapshot snapshot = new ContingentSnapshot();
+        snapshot.setId(25L);
+        snapshot.setAcademicYear("2026/2027");
+        snapshot.setSnapshotDate(LocalDate.of(2026, 8, 16));
+        ContingentStudent row = compactRow("Иванов Иван Иванович", "3-А");
+        row.setBirthDate("2018-02-01T00:00:00.000Z");
+
+        service.linkStudents(snapshot, List.of(row));
+
+        assertEquals(120L, row.getStudentId());
+        assertEquals(LocalDate.of(2018, 2, 1), savedProfiles.get().get(0).getBirthDate());
     }
 
     @Test
