@@ -11,11 +11,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
 import org.school.personalLoad.model.ContingentSnapshot;
 import org.school.personalLoad.model.ContingentStudent;
+import org.school.personalLoad.model.ContingentImportIssue;
+import org.school.personalLoad.model.CurriculumPlanEntry;
+import org.school.personalLoad.model.StudentIdentityMatchStatus;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
+import org.school.personalLoad.repository.ContingentImportIssueRepository;
 import org.school.personalLoad.repository.ContingentSnapshotRepository;
 import org.school.personalLoad.repository.ContingentStudentRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
+import org.school.personalLoad.repository.StudentProfileRepository;
 import org.school.personalLoad.service.ClassSizeService;
 import org.school.personalLoad.service.StudentIdentityService;
 import org.springframework.mock.web.MockMultipartFile;
@@ -43,11 +48,15 @@ class ContingentServiceImplExportTest {
     @Mock
     private ContingentStudentRepository studentRepository;
     @Mock
+    private ContingentImportIssueRepository importIssueRepository;
+    @Mock
     private ClassroomLeadershipRepository classroomLeadershipRepository;
     @Mock
     private CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     @Mock
     private SchoolBuildingRepository schoolBuildingRepository;
+    @Mock
+    private StudentProfileRepository studentProfileRepository;
     @Mock
     private ClassSizeService classSizeService;
     @Mock
@@ -60,9 +69,11 @@ class ContingentServiceImplExportTest {
         service = new ContingentServiceImpl(
                 snapshotRepository,
                 studentRepository,
+                importIssueRepository,
                 classroomLeadershipRepository,
                 curriculumPlanEntryRepository,
                 schoolBuildingRepository,
+                studentProfileRepository,
                 classSizeService,
                 studentIdentityService
         );
@@ -240,6 +251,65 @@ class ContingentServiceImplExportTest {
         var problems = service.getProblems("2025/2026", 91L);
         assertEquals(1, problems.size());
         assertEquals("2-А", problems.get(0).getClassName());
+    }
+
+    @Test
+    void mismatchRegisterShowsOutsideAmbiguousAndSkippedRows() {
+        ContingentSnapshot snapshot = new ContingentSnapshot();
+        snapshot.setId(120L);
+        snapshot.setAcademicYear("2026/2027");
+        snapshot.setSnapshotDate(LocalDate.of(2026, 8, 16));
+        snapshot.setSourceFileName("MES.csv");
+        snapshot.setImportFormat("MES_EXTENDED_CSV");
+
+        ContingentStudent outside = new ContingentStudent();
+        outside.setId(1L);
+        outside.setSnapshotId(120L);
+        outside.setStudentId(501L);
+        outside.setIdentityMatchStatus(StudentIdentityMatchStatus.CREATED);
+        outside.setFullName("Иванов Иван Иванович");
+        outside.setBirthDate("01.02.2018");
+        outside.setClassName("Вне ОО");
+        outside.setRawPayload("{}");
+
+        ContingentStudent ambiguous = new ContingentStudent();
+        ambiguous.setId(2L);
+        ambiguous.setSnapshotId(120L);
+        ambiguous.setIdentityMatchStatus(StudentIdentityMatchStatus.AMBIGUOUS);
+        ambiguous.setFullName("Петров Алексей Сергеевич");
+        ambiguous.setBirthDate("");
+        ambiguous.setClassName("2-А");
+        ambiguous.setRawPayload("{}");
+
+        ContingentImportIssue skipped = new ContingentImportIssue();
+        skipped.setId(3L);
+        skipped.setSnapshotId(120L);
+        skipped.setSourceRowNumber(17);
+        skipped.setIssueType("SKIPPED_ROW");
+        skipped.setMessage("Строка пропущена: не заполнено ФИО");
+        skipped.setFullName("");
+        skipped.setPlacementName("2-Б");
+        skipped.setRawPayload("{\"Класс\":\"2-Б\"}");
+
+        CurriculumPlanEntry planClass = new CurriculumPlanEntry();
+        planClass.setAcademicYear("2026/2027");
+        planClass.setClassName("2-А");
+        when(snapshotRepository.findById(120L)).thenReturn(Optional.of(snapshot));
+        when(studentRepository.findAllBySnapshotId(120L)).thenReturn(List.of(outside, ambiguous));
+        when(importIssueRepository.findAllBySnapshotIdOrderBySourceRowNumberAscIdAsc(120L)).thenReturn(List.of(skipped));
+        when(curriculumPlanEntryRepository.findAll()).thenReturn(List.of(planClass));
+        when(classroomLeadershipRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
+        when(studentProfileRepository.findAll()).thenReturn(List.of());
+
+        var result = service.getImportMismatches("2026/2027", 120L);
+
+        assertEquals(3, result.getTotal());
+        assertEquals(1, result.getOutsideOrganization());
+        assertEquals(1, result.getAmbiguousIdentity());
+        assertEquals(1, result.getSkippedRows());
+        assertEquals("OUTSIDE_ORGANIZATION", result.getRows().get(0).getType());
+        assertTrue(result.getRows().get(0).isCanResolve());
+        assertEquals(17, result.getRows().get(2).getSourceRowNumber());
     }
 
     private void row(org.apache.poi.ss.usermodel.Sheet sheet, int index, String fullName, String placement) {

@@ -30,7 +30,9 @@ public class ContingentController {
 
     @PostMapping("/import")
     public ResponseEntity<ContingentDtos.ImportResponse> importFile(@RequestParam("file") MultipartFile file,
-                                                                     @RequestParam(required = false) String academicYear) {
+                                                                     @RequestParam(required = false) String academicYear,
+                                                                     HttpServletRequest httpServletRequest) {
+        validateContingentEdit(AuthSessionUtils.requiredUser(httpServletRequest));
         return ResponseEntity.ok(contingentService.importSnapshot(academicYearService.resolveRequestedOrDefault(academicYear), file));
     }
 
@@ -65,6 +67,26 @@ public class ContingentController {
     public ResponseEntity<List<ContingentDtos.ImportProblem>> problems(@RequestParam(required = false) String academicYear,
                                                                         @RequestParam(required = false) Long snapshotId) {
         return ResponseEntity.ok(contingentService.getProblems(academicYearService.resolveRequestedOrDefault(academicYear), snapshotId));
+    }
+
+    @GetMapping("/import-mismatches")
+    public ResponseEntity<ContingentDtos.ImportMismatchResponse> importMismatches(
+            @RequestParam(required = false) String academicYear,
+            @RequestParam(required = false) Long snapshotId) {
+        return ResponseEntity.ok(contingentService.getImportMismatches(
+                academicYearService.resolveRequestedOrDefault(academicYear), snapshotId
+        ));
+    }
+
+    @PostMapping("/import-mismatches/resolve")
+    public ResponseEntity<ContingentDtos.ImportMismatchResponse> resolveImportMismatch(
+            @RequestParam(required = false) String academicYear,
+            @RequestBody ContingentDtos.ResolveImportMismatchRequest request,
+            HttpServletRequest httpServletRequest) {
+        validateContingentEdit(AuthSessionUtils.requiredUser(httpServletRequest));
+        return ResponseEntity.ok(contingentService.resolveImportMismatch(
+                academicYearService.resolveRequestedOrDefault(academicYear), request
+        ));
     }
 
     @GetMapping("/manual-class-sizes")

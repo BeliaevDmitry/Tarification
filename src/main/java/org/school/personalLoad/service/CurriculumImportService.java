@@ -12,5 +12,7 @@ public interface CurriculumImportService {
 
     byte[] exportParallelWorkbook(String academicYear) throws IOException;
 
+    byte[] exportAddressWorkbook(String academicYear) throws IOException;
+
     byte[] exportDepartmentWorkbook(String academicYear) throws IOException;
 }

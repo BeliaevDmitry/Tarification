@@ -4,6 +4,11 @@ const ui = {
     tabs: Array.from(document.querySelectorAll("[data-load-tab]")),
     panes: Array.from(document.querySelectorAll("[data-load-pane]")),
     buildingSelect: document.getElementById("building-select"),
+    scopeBuildingBtn: document.getElementById("load-scope-building-btn"),
+    scopeAddressBtn: document.getElementById("load-scope-address-btn"),
+    scopeLabel: document.getElementById("load-scope-label"),
+    pageTitle: document.getElementById("load-page-title"),
+    togglePrimaryClassesBtn: document.getElementById("toggle-primary-classes-btn"),
     refreshLoadBtn: document.getElementById("refresh-load-btn"),
     exportLoadBtn: document.getElementById("export-load-btn"),
     exportFullLoadBtn: document.getElementById("export-full-load-btn"),
@@ -54,6 +59,7 @@ let sourceRevision = 0;
 let renderTableRaf = null;
 let latestPresentationRows = [];
 const LOAD_SELECTED_BUILDING_KEY = "tarification.load.selectedBuilding";
+const LOAD_SCOPE_MODE_KEY = "tarification.load.scopeMode";
 const issueNavigationParams = new URLSearchParams(window.location.search);
 const issueNavigation = {
     building: issueNavigationParams.get("building") || "",
@@ -73,6 +79,8 @@ const state = {
     sortDirection: "asc",
     viewMode: "all",
     viewDate: "",
+    scopeMode: sessionStorage.getItem(LOAD_SCOPE_MODE_KEY) === "address" ? "address" : "building",
+    hidePrimaryClasses: false,
     forceResort: true,
     hasUnsavedChanges: false,
     classSort: "",
@@ -1101,7 +1109,30 @@ function expandedRowsForSelectedBuilding() {
 }
 
 function classesForSelectedBuilding() {
-    return sortRu(Array.from(new Set(expandedRowsForSelectedBuilding().map((row) => row.className).filter(Boolean))));
+    return Array.from(new Set(expandedRowsForSelectedBuilding().map((row) => row.className).filter(Boolean)))
+        .sort((left, right) => {
+            const leftParallel = classParallel(left);
+            const rightParallel = classParallel(right);
+            if (leftParallel != null && rightParallel != null && leftParallel !== rightParallel) {
+                return leftParallel - rightParallel;
+            }
+            return String(left).localeCompare(String(right), "ru", { numeric: true });
+        });
+}
+
+function visibleClassesForSelectedBuilding() {
+    const classes = classesForSelectedBuilding();
+    if (!state.hidePrimaryClasses) return classes;
+    return classes.filter((className) => {
+        const parallel = classParallel(className);
+        return parallel == null || parallel >= 5;
+    });
+}
+
+function updatePrimaryClassesToggle() {
+    if (!ui.togglePrimaryClassesBtn) return;
+    ui.togglePrimaryClassesBtn.textContent = state.hidePrimaryClasses ? "Показать 1–4 классы" : "Скрыть 1–4 классы";
+    ui.togglePrimaryClassesBtn.setAttribute("aria-pressed", String(state.hidePrimaryClasses));
 }
 
 function updateDatalistOptions(listEl, query = "") {
@@ -1867,6 +1898,36 @@ function buildPresentationRows() {
     return getOrderedRows(result);
 }
 
+function limitPresentationRowsToClasses(rows, classes) {
+    const visibleClasses = new Set(classes || []);
+    const assignments = assignmentsForBuilding(selectedBuilding);
+    return (rows || []).map((row) => {
+        const rowsByClassAll = Object.fromEntries(
+            Object.entries(row.rowsByClassAll || {}).filter(([className]) => visibleClasses.has(className))
+        );
+        if (!Object.keys(rowsByClassAll).length) return null;
+
+        const rowsByClass = Object.fromEntries(
+            Object.entries(row.rowsByClass || {}).filter(([className]) => visibleClasses.has(className))
+        );
+        const teacherName = String(row.teacherName || "").trim();
+        let subjectHours = 0;
+        let classCount = 0;
+        Object.values(rowsByClassAll).forEach((rowsInClass) => {
+            let classMatched = false;
+            rowsInClass.forEach((curriculumRow) => {
+                const assignedTeacher = String(assignments[apiKeyOfRow(curriculumRow)] || "").trim();
+                if (assignedTeacher && assignedTeacher === teacherName) {
+                    subjectHours += Number(curriculumRow.plannedHours || 0);
+                    classMatched = true;
+                }
+            });
+            if (classMatched) classCount += 1;
+        });
+        return { ...row, rowsByClass, rowsByClassAll, subjectHours, classCount };
+    }).filter(Boolean);
+}
+
 function filterPresentationRowsByViewMode(rows) {
     if (state.viewMode === "all") {
         return rows;
@@ -2007,10 +2068,60 @@ function getOrderedRows(presentationRows) {
     });
 }
 
+function buildingOptionsForScope(mode = state.scopeMode) {
+    return (buildings || []).filter((building) => mode === "address"
+        ? building.scope === "address"
+        : building.scope !== "address");
+}
+
+function updateLoadScopeControls() {
+    const addressMode = state.scopeMode === "address";
+    ui.scopeBuildingBtn?.classList.toggle("active", !addressMode);
+    ui.scopeAddressBtn?.classList.toggle("active", addressMode);
+    ui.scopeBuildingBtn?.setAttribute("aria-pressed", String(!addressMode));
+    ui.scopeAddressBtn?.setAttribute("aria-pressed", String(addressMode));
+    if (ui.scopeAddressBtn) ui.scopeAddressBtn.disabled = !buildingOptionsForScope("address").length;
+    if (ui.scopeLabel) ui.scopeLabel.textContent = addressMode ? "Адрес:" : "Корпус:";
+    if (ui.pageTitle) ui.pageTitle.textContent = addressMode ? "Нагрузка по адресам" : "Нагрузка по корпусам";
+    if (ui.saveBuildingBtn) ui.saveBuildingBtn.textContent = addressMode ? "Сохранить нагрузку адреса" : "Сохранить нагрузку корпуса";
+}
+
+function selectedOptionForScope(mode = state.scopeMode) {
+    const options = buildingOptionsForScope(mode);
+    const sameGroup = buildingGroupCode(selectedBuilding);
+    return options.find((option) => buildingOptionValue(option) === selectedBuilding)
+        || options.find((option) => sameGroup && buildingGroupCode(buildingOptionValue(option)) === sameGroup)
+        || options.find((option) => buildingOptionValue(option) === preferredBuildingCode(options))
+        || options[0]
+        || null;
+}
+
+async function switchLoadScopeMode(mode) {
+    const nextMode = mode === "address" ? "address" : "building";
+    if (nextMode === "address" && !buildingOptionsForScope("address").length) return;
+    state.scopeMode = nextMode;
+    sessionStorage.setItem(LOAD_SCOPE_MODE_KEY, nextMode);
+    const option = selectedOptionForScope(nextMode);
+    selectedBuilding = option ? buildingOptionValue(option) : "";
+    rememberSelectedBuilding(selectedBuilding);
+    renderBuildingTabs();
+    if (!selectedBuilding) {
+        scheduleRenderTable();
+        return;
+    }
+    await refreshSelectedBuildingData();
+    state.forceResort = true;
+    scheduleRenderTable();
+    updateLoadEditMode();
+}
+
 function renderBuildingTabs() {
     if (!ui.buildingSelect) return;
     ui.buildingSelect.innerHTML = "";
-    const tabs = [...buildings, { value: ARCHIVE_BUILDING_CODE, code: ARCHIVE_BUILDING_CODE, name: ARCHIVE_BUILDING_LABEL, label: `🗂 ${ARCHIVE_BUILDING_LABEL}` }];
+    const tabs = [...buildingOptionsForScope()];
+    if (state.scopeMode === "building") {
+        tabs.push({ value: ARCHIVE_BUILDING_CODE, code: ARCHIVE_BUILDING_CODE, name: ARCHIVE_BUILDING_LABEL, label: `🗂 ${ARCHIVE_BUILDING_LABEL}` });
+    }
     tabs.forEach((building) => {
         const option = document.createElement("option");
         option.value = building.value || building.code;
@@ -2021,6 +2132,7 @@ function renderBuildingTabs() {
         ui.buildingSelect.appendChild(option);
     });
     ui.buildingSelect.value = selectedBuilding;
+    updateLoadScopeControls();
 }
 
 async function refreshSelectedBuildingData(force = false) {
@@ -2619,6 +2731,7 @@ async function renderStatsView() {
 function renderTable() {
     ui.tableHead.innerHTML = "";
     ui.tableBody.innerHTML = "";
+    updatePrimaryClassesToggle();
 
     if (!selectedBuilding) {
         ui.tableBody.innerHTML = '<tr><td colspan="7">Добавьте корпуса, чтобы распределять нагрузку.</td></tr>';
@@ -2632,9 +2745,12 @@ function renderTable() {
 
     ensureTeacherRowsForBuilding();
 
-    const classes = classesForSelectedBuilding();
+    const classes = visibleClassesForSelectedBuilding();
     const referenceDate = currentDisplayDate();
-    let presentationRows = filterPresentationRowsByViewMode(buildPresentationRows());
+    let presentationRows = limitPresentationRowsToClasses(
+        filterPresentationRowsByViewMode(buildPresentationRows()),
+        classes
+    );
     const classSortMatch = /^classHours:(.+)$/.exec(state.sortField || "");
     if (classSortMatch) {
         const targetClass = classSortMatch[1];
@@ -2677,7 +2793,7 @@ function renderTable() {
         <th colspan="${Math.max(classes.length, 1)}">
             <div class="load-head-actions">
                 <span><strong>Ошибки: <button type="button" class="error-count-btn" data-head-error-info="1">${errorCount}</button></strong></span>
-                <button type="button" class="head-action-btn" data-head-save="1">Сохранить нагрузку корпуса</button>
+                <button type="button" class="head-action-btn" data-head-save="1">${state.scopeMode === "address" ? "Сохранить нагрузку адреса" : "Сохранить нагрузку корпуса"}</button>
                 <button type="button" class="head-action-btn" data-head-next-error="1">Перейти к ошибке</button>
             </div>
         </th>
@@ -2714,7 +2830,7 @@ function renderTable() {
         tr.innerHTML = `
             <td>
                 <div class="subject-cell">
-                    <span class="subject-cell-name">${esc(row.displaySubjectName || row.subjectName)}</span>
+                    <span class="subject-cell-name ${row.curriculumPart === "EXTRACURRICULAR" ? "extracurricular-subject" : ""}">${esc(row.displaySubjectName || row.subjectName)}</span>
                     ${index === 0 || presentationRows[index - 1].subjectKey !== row.subjectKey ? `<button class="inline-plus" type="button" data-plus-subject="${esc(row.subjectKey)}" data-plus-after="${esc(row.teacherRowId)}" title="Добавить строку педагога">+</button>` : ""}
                 </div>
             </td>
@@ -3156,16 +3272,14 @@ async function refreshSourceData() {
         .sort((a, b) => String(a.code).localeCompare(String(b.code), "ru"))
         .forEach((group) => {
             const firstAddress = group.addresses[0] || "";
-            if (group.addresses.length !== 1) {
-                buildings.push({
-                    code: group.code,
-                    value: group.code,
-                    name: group.name,
-                    address: firstAddress,
-                    addresses: group.addresses,
-                    scope: "group"
-                });
-            }
+            buildings.push({
+                code: group.code,
+                value: group.code,
+                name: group.name,
+                address: firstAddress,
+                addresses: group.addresses,
+                scope: "group"
+            });
             const seenScopes = new Set();
             (group.addressRows || []).forEach((site) => {
                 const schoolBuildingId = site?.id ?? site?.schoolBuildingId ?? null;
@@ -3221,17 +3335,24 @@ async function refreshSourceData() {
     ) || issueBuildingOptions.find((row) => row.scope === "group")
         || issueBuildingOptions[0]
         || null;
+    if (!issueBuildingOption && state.scopeMode === "address" && !buildingOptionsForScope("address").length) {
+        state.scopeMode = "building";
+        sessionStorage.setItem(LOAD_SCOPE_MODE_KEY, state.scopeMode);
+    }
     const rememberedBuilding = restoreSelectedBuilding();
     if (issueBuildingOption) {
         selectedBuilding = issueBuildingOption.value || issueBuildingOption.code;
-    } else if (rememberedBuilding && buildings.some((row) => (row.value || row.code) === rememberedBuilding)) {
+        state.scopeMode = issueBuildingOption.scope === "address" ? "address" : "building";
+        sessionStorage.setItem(LOAD_SCOPE_MODE_KEY, state.scopeMode);
+    } else if (rememberedBuilding && buildingOptionsForScope().some((row) => (row.value || row.code) === rememberedBuilding)) {
         selectedBuilding = rememberedBuilding;
     }
-    if (!selectedBuilding || !buildings.some((row) => (row.value || row.code) === selectedBuilding)) {
-        selectedBuilding = preferredBuildingCode(buildings);
+    const scopedBuildingOptions = buildingOptionsForScope();
+    if (!selectedBuilding || !scopedBuildingOptions.some((row) => (row.value || row.code) === selectedBuilding)) {
+        selectedBuilding = preferredBuildingCode(scopedBuildingOptions);
     }
     if (selectedBuilding !== ARCHIVE_BUILDING_CODE && !issueBuildingOption && !canEditSelectedBuildingLoad()) {
-        const preferred = preferredBuildingCode(buildings);
+        const preferred = preferredBuildingCode(scopedBuildingOptions);
         if (preferred) selectedBuilding = preferred;
     }
     rememberSelectedBuilding(selectedBuilding);
@@ -3281,6 +3402,24 @@ async function refreshSourceData() {
 }
 
 function bindEvents() {
+    ui.scopeBuildingBtn?.addEventListener("click", () => switchLoadScopeMode("building")
+        .catch((error) => print({ error: error.message })));
+    ui.scopeAddressBtn?.addEventListener("click", () => switchLoadScopeMode("address")
+        .catch((error) => print({ error: error.message })));
+    ui.togglePrimaryClassesBtn?.addEventListener("click", () => {
+        state.hidePrimaryClasses = !state.hidePrimaryClasses;
+        const classSortMatch = /^classHours:(.+)$/.exec(state.sortField || "");
+        if (state.hidePrimaryClasses && classSortMatch) {
+            const parallel = classParallel(classSortMatch[1]);
+            if (parallel != null && parallel <= 4) {
+                state.sortField = "subjectArea";
+                if (ui.sortField) ui.sortField.value = "subjectArea";
+            }
+        }
+        state.forceResort = true;
+        updatePrimaryClassesToggle();
+        scheduleRenderTable();
+    });
     ui.tabs.forEach((tab) => {
         tab.addEventListener("click", () => {
             const tabName = tab.dataset.loadTab;

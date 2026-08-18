@@ -75,11 +75,72 @@
           <button type="button" data-calendar-view="day">День</button>
         </div>
       </div>
+      <div class="home-calendar-filters" aria-label="Какие события показывать">
+        <span class="home-calendar-filter-label">Показывать:</span>
+        <label><input type="checkbox" data-calendar-audience="DEPUTIES" checked> Замы</label>
+        <label><input type="checkbox" data-calendar-audience="ADMINISTRATION" checked> Администрация</label>
+        <label><input type="checkbox" data-calendar-audience="FULL_ADMINISTRATION" checked> Полная администрация</label>
+        <label><input type="checkbox" data-calendar-audience="BUILDING" checked> Корпуса</label>
+        <label><input type="checkbox" data-calendar-audience="PERSONAL" checked> Личное</label>
+        <button type="button" class="secondary" id="calendar-filter-options">Корпуса и люди</button>
+        <button type="button" class="secondary" id="calendar-group-settings" hidden>Состав групп</button>
+        <span class="muted" id="calendar-filter-summary"></span>
+      </div>
     </div>
     <h3 id="calendar-period-title" class="home-calendar-title"></h3>
     <div id="calendar-grid" class="home-calendar-grid" aria-live="polite"></div>
-  </section>
-</main>
+    </section>
+
+    <dialog id="calendar-filter-dialog" class="probe-dialog calendar-dialog">
+      <form id="calendar-filter-form">
+        <div class="calendar-dialog-heading">
+          <div>
+            <h3>Корпуса и личные события</h3>
+            <p class="muted">Отметьте адреса корпусов и конкретных сотрудников, чьи мероприятия нужно показывать.</p>
+          </div>
+          <button type="button" class="secondary" data-calendar-close="filter">Закрыть</button>
+        </div>
+        <label>Поиск
+          <input type="search" id="calendar-filter-search" placeholder="ФИО, должность, корпус или адрес">
+        </label>
+        <div class="calendar-selection-grid">
+          <section>
+            <h4>Корпуса по адресам</h4>
+            <div id="calendar-building-filter-list" class="calendar-check-list"></div>
+          </section>
+          <section>
+            <h4>Личное</h4>
+            <div id="calendar-person-filter-list" class="calendar-check-list"></div>
+          </section>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="secondary" id="calendar-filter-all">Выбрать всё</button>
+          <button type="submit">Применить</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="calendar-groups-dialog" class="probe-dialog calendar-dialog calendar-groups-dialog">
+      <form id="calendar-groups-form">
+        <div class="calendar-dialog-heading">
+          <div>
+            <h3>Состав групп календаря</h3>
+            <p class="muted">Один сотрудник может одновременно входить в несколько групп.</p>
+          </div>
+          <button type="button" class="secondary" data-calendar-close="groups">Закрыть</button>
+        </div>
+        <label>Поиск сотрудника
+          <input type="search" id="calendar-groups-search" placeholder="ФИО, должность или корпус">
+        </label>
+        <div id="calendar-groups-lists" class="calendar-groups-grid"></div>
+        <p id="calendar-groups-feedback" class="probe-feedback" aria-live="polite"></p>
+        <div class="modal-actions">
+          <button type="button" class="secondary" data-calendar-close="groups">Отмена</button>
+          <button type="submit">Сохранить составы</button>
+        </div>
+      </form>
+    </dialog>
+  </main>
 <script src="/branding.js"></script>
 <script src="/auth.js"></script>
 <script src="/home-calendar.js"></script>

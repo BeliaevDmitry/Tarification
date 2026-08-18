@@ -11,7 +11,7 @@
 <body class="load-page">
 <main class="container">
     <header class="card">
-        <h1>Нагрузка по корпусам</h1>
+        <h1 id="load-page-title">Нагрузка по корпусам</h1>
         <p class="muted compact-note">Таблица оптимизирована для прокрутки: шапка и названия классов закреплены. Для 10–11 классов предметы показываются без деления на полугодия.</p>
         <nav class="page-nav">
             <a class="nav-link" href="/buildings.html" data-tab="BUILDINGS">Корпуса</a>
@@ -28,8 +28,19 @@
 
     <section class="card load-toolbar" data-load-pane="distribution">
         <div class="row load-main-row">
-            <strong>Корпуса:</strong>
+            <div class="load-scope-switch" role="group" aria-label="Способ группировки нагрузки">
+                <button id="load-scope-building-btn" class="load-scope-button active" type="button" aria-pressed="true">По корпусам</button>
+                <button id="load-scope-address-btn" class="load-scope-button" type="button" aria-pressed="false">По адресам</button>
+            </div>
+            <strong id="load-scope-label">Корпус:</strong>
             <select id="building-select" class="building-select"></select>
+
+            <button id="toggle-primary-classes-btn"
+                    type="button"
+                    class="secondary-btn"
+                    aria-pressed="false">
+                Скрыть 1–4 классы
+            </button>
 
             <button id="save-building-btn"
                     type="button"

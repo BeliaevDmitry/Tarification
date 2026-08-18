@@ -27,6 +27,12 @@ public class ContingentSnapshot {
     @Column(nullable = false)
     private String sourceFileName;
 
+    @Column(name = "import_format")
+    private String importFormat = "";
+
+    @Column(name = "skipped_rows")
+    private Integer skippedRows = 0;
+
     @Column(nullable = false)
     private Integer totalStudents = 0;
 }

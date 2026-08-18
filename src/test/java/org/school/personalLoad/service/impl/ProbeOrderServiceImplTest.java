@@ -19,6 +19,7 @@ import org.school.personalLoad.repository.auth.AppUserRepository;
 import org.springframework.mock.web.MockMultipartFile;
 
 import java.io.ByteArrayOutputStream;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -109,6 +110,18 @@ class ProbeOrderServiceImplTest {
         assertEquals(31L, view.primaryCompanion().id());
         assertEquals("Родитель Тестовый 1", view.participants().get(0).representativeName());
         assertEquals("+7 900 000-00-01", view.participants().get(0).representativePhone());
+
+        when(orders.findAllByStatusAndEventDateBetweenOrderByEventDateAscStartTimeAsc(
+                org.school.personalLoad.model.ProbeOrderStatus.RELEASED,
+                LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30)))
+                .thenReturn(List.of(order));
+        ProbeOrderDtos.CalendarEvent calendarEvent = service.calendar(
+                LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30)).get(0);
+        assertEquals("BUILDING", calendarEvent.participants().get(0).type());
+        assertEquals(7L, calendarEvent.participants().get(0).id());
+        assertEquals("Москва, Учебная улица, дом 1", calendarEvent.participants().get(0).details());
+        assertEquals("PERSON", calendarEvent.participants().get(1).type());
+        assertEquals(31L, calendarEvent.participants().get(1).id());
     }
 
     private MockMultipartFile registrationFile(int children) throws Exception {

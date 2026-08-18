@@ -811,10 +811,28 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
     }
 
     private ProbeOrderDtos.CalendarEvent calendarEvent(ProbeOrder order) {
+        List<ProbeOrderDtos.CalendarParticipant> participants = new ArrayList<>();
+        participants.add(new ProbeOrderDtos.CalendarParticipant(
+                "BUILDING", order.getSchoolBuilding().getId(), order.getSchoolBuilding().getCode(),
+                order.getSchoolBuilding().getName(), order.getSchoolBuilding().getAddress()));
+        if (order.getPrimaryCompanion() != null) {
+            participants.add(calendarPerson(order.getPrimaryCompanion()));
+        }
+        if (order.getSecondaryCompanion() != null
+                && (order.getPrimaryCompanion() == null
+                || !Objects.equals(order.getSecondaryCompanion().getId(), order.getPrimaryCompanion().getId()))) {
+            participants.add(calendarPerson(order.getSecondaryCompanion()));
+        }
         return new ProbeOrderDtos.CalendarEvent(order.getId(), order.getEventName(), order.getEventDate(),
                 order.getStartTime(), order.getEndTime(), order.getSchoolBuilding().getCode(),
                 order.getSchoolBuilding().getName(), classNames(order), companionNames(order), order.getVenue(),
-                order.getEventAddress());
+                order.getEventAddress(), participants);
+    }
+
+    private ProbeOrderDtos.CalendarParticipant calendarPerson(TeacherDirectoryEntry teacher) {
+        return new ProbeOrderDtos.CalendarParticipant(
+                "PERSON", teacher.getId(), display(teacher.getNumberSchoolBuilding()), teacher.getFioTeacher(),
+                display(teacher.getPrimaryPosition()));
     }
 
     private ProbeOrderDtos.HistoryEvent historyEvent(ProbeOrder order) {

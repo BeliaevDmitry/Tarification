@@ -7,14 +7,19 @@ import org.apache.poi.ss.util.RegionUtil;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.school.personalLoad.dto.contingent.ContingentDtos;
 import org.school.personalLoad.model.ClassSizeSource;
+import org.school.personalLoad.model.ContingentImportIssue;
 import org.school.personalLoad.model.ContingentSnapshot;
 import org.school.personalLoad.model.ContingentStudent;
 import org.school.personalLoad.model.CurriculumPlanEntry;
+import org.school.personalLoad.model.StudentIdentityMatchStatus;
+import org.school.personalLoad.model.StudentProfile;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
+import org.school.personalLoad.repository.ContingentImportIssueRepository;
 import org.school.personalLoad.repository.ContingentSnapshotRepository;
 import org.school.personalLoad.repository.ContingentStudentRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
+import org.school.personalLoad.repository.StudentProfileRepository;
 import org.school.personalLoad.service.ClassSizeService;
 import org.school.personalLoad.service.ContingentService;
 import org.school.personalLoad.service.StudentIdentityService;
@@ -42,9 +47,11 @@ public class ContingentServiceImpl implements ContingentService {
 
     private final ContingentSnapshotRepository snapshotRepository;
     private final ContingentStudentRepository studentRepository;
+    private final ContingentImportIssueRepository importIssueRepository;
     private final ClassroomLeadershipRepository classroomLeadershipRepository;
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     private final SchoolBuildingRepository schoolBuildingRepository;
+    private final StudentProfileRepository studentProfileRepository;
     private final ClassSizeService classSizeService;
     private final StudentIdentityService studentIdentityService;
 
@@ -58,16 +65,19 @@ public class ContingentServiceImpl implements ContingentService {
         if (isCsvUpload(file)) {
             try {
                 return importExtendedMeshCsv(academicYear, file);
+            } catch (IllegalArgumentException e) {
+                throw e;
             } catch (Exception e) {
-                throw new RuntimeException("Не удалось обработать расширенную CSV-выгрузку МЭШ", e);
+                throw new IllegalArgumentException("Не удалось обработать расширенную CSV-выгрузку МЭШ: " + rootMessage(e), e);
             }
         }
 
         int imported = 0;
         int skipped = 0;
         List<ContingentStudent> parsedStudents = new ArrayList<>();
+        List<ParsedImportIssue> importIssues = new ArrayList<>();
         LocalDate snapshotDate = LocalDate.now();
-        String importFormat = "FULL";
+        String importFormat = "AIS";
 
         try (InputStream inputStream = file.getInputStream(); Workbook workbook = WorkbookFactory.create(inputStream)) {
             Sheet sheet = workbook.getNumberOfSheets() > 0 ? workbook.getSheetAt(0) : null;
@@ -106,6 +116,10 @@ public class ContingentServiceImpl implements ContingentService {
                     }
                     if (fullName.isBlank() || className.isBlank()) {
                         skipped++;
+                        LinkedHashMap<String, String> rawValues = buildRawValues(indexByHeader, row, formatter);
+                        importIssues.add(skippedRowIssue(
+                                i + 1, fullName, className, toJson(rawValues), fullName.isBlank(), className.isBlank()
+                        ));
                         continue;
                     }
 
@@ -161,6 +175,12 @@ public class ContingentServiceImpl implements ContingentService {
                     }
                     if (fullName.isBlank() || placementName.isBlank()) {
                         skipped++;
+                        LinkedHashMap<String, String> rawValues = new LinkedHashMap<>();
+                        rawValues.put("ФИО", fullName);
+                        rawValues.put("Класс или группа", placementName);
+                        importIssues.add(skippedRowIssue(
+                                i + 1, fullName, placementName, toJson(rawValues), fullName.isBlank(), placementName.isBlank()
+                        ));
                         continue;
                     }
                     LinkedHashMap<String, String> rawValues = new LinkedHashMap<>();
@@ -174,11 +194,15 @@ public class ContingentServiceImpl implements ContingentService {
             if (parsedStudents.isEmpty()) {
                 throw new IllegalArgumentException("В файле не найдено ни одной строки с ФИО и классом/группой");
             }
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
-            throw new RuntimeException("Не удалось обработать файл контингента", e);
+            throw new IllegalArgumentException("Не удалось обработать файл контингента: " + rootMessage(e), e);
         }
 
-        return saveImportedSnapshot(academicYear, file, snapshotDate, importFormat, parsedStudents, imported, skipped);
+        return saveImportedSnapshot(
+                academicYear, file, snapshotDate, importFormat, parsedStudents, imported, skipped, importIssues
+        );
     }
 
     private ContingentDtos.ImportResponse importExtendedMeshCsv(String academicYear, MultipartFile file) throws IOException {
@@ -209,6 +233,7 @@ public class ContingentServiceImpl implements ContingentService {
         }
 
         List<ContingentStudent> parsedStudents = new ArrayList<>();
+        List<ParsedImportIssue> importIssues = new ArrayList<>();
         int skipped = 0;
         for (int rowIndex = 1; rowIndex < rows.size(); rowIndex++) {
             List<String> row = rows.get(rowIndex);
@@ -220,6 +245,16 @@ public class ContingentServiceImpl implements ContingentService {
             }
             if (fullName.isBlank() || placementName.isBlank()) {
                 skipped++;
+                LinkedHashMap<String, String> rawValues = new LinkedHashMap<>();
+                for (int column = 0; column < headers.size(); column++) {
+                    String header = headers.get(column);
+                    if (!header.isBlank()) {
+                        rawValues.put(header, csvValue(row, column));
+                    }
+                }
+                importIssues.add(skippedRowIssue(
+                        rowIndex + 1, fullName, placementName, toJson(rawValues), fullName.isBlank(), placementName.isBlank()
+                ));
                 continue;
             }
 
@@ -254,7 +289,8 @@ public class ContingentServiceImpl implements ContingentService {
                 "MES_EXTENDED_CSV",
                 parsedStudents,
                 parsedStudents.size(),
-                skipped
+                skipped,
+                importIssues
         );
     }
 
@@ -264,13 +300,24 @@ public class ContingentServiceImpl implements ContingentService {
                                                                 String importFormat,
                                                                 List<ContingentStudent> parsedStudents,
                                                                 int imported,
-                                                                int skipped) {
+                                                                int skipped,
+                                                                List<ParsedImportIssue> parsedIssues) {
         ContingentSnapshot snapshot = new ContingentSnapshot();
         snapshot.setAcademicYear(academicYear);
         snapshot.setSnapshotDate(snapshotDate);
         snapshot.setSourceFileName(file.getOriginalFilename() == null ? "contingent" : file.getOriginalFilename());
+        snapshot.setImportFormat(importFormat);
+        snapshot.setSkippedRows(skipped);
         snapshot.setTotalStudents(imported);
         ContingentSnapshot savedSnapshot = snapshotRepository.save(snapshot);
+
+        List<ContingentImportIssue> issues = (parsedIssues == null ? List.<ParsedImportIssue>of() : parsedIssues)
+                .stream()
+                .map(issue -> toEntity(savedSnapshot.getId(), issue))
+                .toList();
+        if (!issues.isEmpty()) {
+            importIssueRepository.saveAll(issues);
+        }
 
         parsedStudents.forEach(student -> student.setSnapshotId(savedSnapshot.getId()));
         StudentIdentityService.LinkResult linkResult = studentIdentityService.linkStudents(savedSnapshot, parsedStudents);
@@ -289,6 +336,7 @@ public class ContingentServiceImpl implements ContingentService {
         response.setCreatedStudentProfiles(linkResult.created());
         response.setAmbiguousStudents(linkResult.ambiguous());
         response.setProblems(getProblems(academicYear, savedSnapshot.getId()));
+        response.setMismatchCount(countMismatchRows(parsedStudents, response.getProblems()) + skipped);
         return response;
     }
 
@@ -296,6 +344,60 @@ public class ContingentServiceImpl implements ContingentService {
         String fileName = Optional.ofNullable(file.getOriginalFilename()).orElse("").toLowerCase(Locale.ROOT);
         String contentType = Optional.ofNullable(file.getContentType()).orElse("").toLowerCase(Locale.ROOT);
         return fileName.endsWith(".csv") || contentType.contains("text/csv") || contentType.contains("application/csv");
+    }
+
+    private ParsedImportIssue skippedRowIssue(int rowNumber,
+                                               String fullName,
+                                               String placementName,
+                                               String rawPayload,
+                                               boolean missingFullName,
+                                               boolean missingPlacement) {
+        List<String> missing = new ArrayList<>();
+        if (missingFullName) missing.add("ФИО");
+        if (missingPlacement) missing.add("класс или группа");
+        return new ParsedImportIssue(
+                rowNumber,
+                "SKIPPED_ROW",
+                "Строка пропущена: не заполнено " + String.join(" и ", missing),
+                normalize(fullName),
+                normalizePlacementName(placementName),
+                normalize(rawPayload).isBlank() ? "{}" : rawPayload
+        );
+    }
+
+    private ContingentImportIssue toEntity(Long snapshotId, ParsedImportIssue source) {
+        ContingentImportIssue issue = new ContingentImportIssue();
+        issue.setSnapshotId(snapshotId);
+        issue.setSourceRowNumber(source.rowNumber());
+        issue.setIssueType(source.issueType());
+        issue.setMessage(source.message());
+        issue.setFullName(source.fullName());
+        issue.setPlacementName(source.placementName());
+        issue.setRawPayload(source.rawPayload());
+        return issue;
+    }
+
+    private int countMismatchRows(List<ContingentStudent> students, List<ContingentDtos.ImportProblem> problems) {
+        Set<String> unknownClasses = (problems == null ? List.<ContingentDtos.ImportProblem>of() : problems)
+                .stream()
+                .map(ContingentDtos.ImportProblem::getClassName)
+                .map(ClassNameNormalizer::normalize)
+                .collect(java.util.stream.Collectors.toSet());
+        return (int) (students == null ? List.<ContingentStudent>of() : students).stream()
+                .filter(student -> isOutsideOrganization(student.getClassName())
+                        || student.getIdentityMatchStatus() == StudentIdentityMatchStatus.AMBIGUOUS
+                        || student.getStudentId() == null
+                        || unknownClasses.contains(ClassNameNormalizer.normalize(student.getClassName())))
+                .count();
+    }
+
+    private String rootMessage(Throwable error) {
+        Throwable current = error;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        String message = current.getMessage();
+        return message == null || message.isBlank() ? current.getClass().getSimpleName() : message;
     }
 
     private List<List<String>> readSemicolonCsv(InputStream inputStream) throws IOException {
@@ -417,6 +519,8 @@ public class ContingentServiceImpl implements ContingentService {
                     item.setSnapshotDate(snapshot.getSnapshotDate());
                     item.setImportedAt(snapshot.getImportedAt());
                     item.setSourceFileName(snapshot.getSourceFileName());
+                    item.setImportFormat(snapshot.getImportFormat());
+                    item.setSkippedRows(snapshot.getSkippedRows());
                     item.setTotalStudents(snapshot.getTotalStudents());
                     return item;
                 })
@@ -1007,6 +1111,193 @@ public class ContingentServiceImpl implements ContingentService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public ContingentDtos.ImportMismatchResponse getImportMismatches(String academicYear, Long snapshotId) {
+        ContingentSnapshot snapshot = snapshotId == null
+                ? snapshotRepository.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc(academicYear).orElse(null)
+                : snapshotRepository.findById(snapshotId).orElse(null);
+        if (snapshot == null || !academicYear.equals(snapshot.getAcademicYear())) {
+            return emptyMismatchResponse();
+        }
+
+        List<ContingentStudent> students = studentRepository.findAllBySnapshotId(snapshot.getId());
+        Set<String> planClasses = planClassNames(academicYear);
+        List<ContingentDtos.ImportMismatchRow> rows = new ArrayList<>();
+        int outsideCount = 0;
+        int ambiguousCount = 0;
+        int unknownClassCount = 0;
+
+        for (ContingentStudent student : students) {
+            boolean outside = isOutsideOrganization(student.getClassName());
+            boolean ambiguous = student.getIdentityMatchStatus() == StudentIdentityMatchStatus.AMBIGUOUS
+                    || student.getStudentId() == null;
+            boolean unknownClass = isSchoolClassName(student.getClassName())
+                    && !planClasses.contains(ClassNameNormalizer.normalize(student.getClassName()));
+            if (!outside && !ambiguous && !unknownClass) {
+                continue;
+            }
+            if (outside) outsideCount++;
+            if (ambiguous) ambiguousCount++;
+            if (unknownClass) unknownClassCount++;
+
+            List<String> messages = new ArrayList<>();
+            if (outside) messages.add("Ребёнок находится в «Вне ОО» — выберите класс или группу");
+            if (ambiguous) messages.add("Карточка ребёнка не определена однозначно");
+            if (unknownClass) messages.add("Класс отсутствует в учебном плане выбранного года");
+
+            ContingentDtos.ImportMismatchRow row = new ContingentDtos.ImportMismatchRow();
+            row.setKey("student:" + student.getId());
+            row.setType(outside ? "OUTSIDE_ORGANIZATION" : (ambiguous ? "AMBIGUOUS_IDENTITY" : "UNKNOWN_CLASS"));
+            row.setContingentStudentId(student.getId());
+            row.setCurrentStudentId(student.getStudentId());
+            row.setFullName(student.getFullName());
+            row.setBirthDate(parseBirthDateOrNull(student.getBirthDate()));
+            row.setCurrentPlacement(student.getClassName());
+            row.setMessage(String.join(". ", messages));
+            row.setRawPayload(student.getRawPayload());
+            row.setCanResolve(true);
+            row.setRequiresStudent(ambiguous);
+            row.setRequiresPlacement(outside || unknownClass);
+            rows.add(row);
+        }
+
+        List<ContingentImportIssue> storedIssues = importIssueRepository
+                .findAllBySnapshotIdOrderBySourceRowNumberAscIdAsc(snapshot.getId());
+        for (ContingentImportIssue issue : storedIssues) {
+            ContingentDtos.ImportMismatchRow row = new ContingentDtos.ImportMismatchRow();
+            row.setKey("issue:" + issue.getId());
+            row.setType(issue.getIssueType());
+            row.setSourceRowNumber(issue.getSourceRowNumber());
+            row.setFullName(issue.getFullName());
+            row.setCurrentPlacement(issue.getPlacementName());
+            row.setMessage(issue.getMessage() + ". Исправьте исходный файл и загрузите его повторно.");
+            row.setRawPayload(issue.getRawPayload());
+            row.setCanResolve(false);
+            rows.add(row);
+        }
+        rows.sort(Comparator
+                .comparingInt((ContingentDtos.ImportMismatchRow row) -> mismatchOrder(row.getType()))
+                .thenComparing(row -> normalize(row.getFullName()), String.CASE_INSENSITIVE_ORDER)
+                .thenComparing(row -> row.getSourceRowNumber() == null ? Integer.MAX_VALUE : row.getSourceRowNumber()));
+
+        Map<Long, String> placementByStudent = new HashMap<>();
+        students.stream()
+                .filter(student -> student.getStudentId() != null)
+                .sorted(Comparator.comparing(student -> isOutsideOrganization(student.getClassName())))
+                .forEach(student -> placementByStudent.putIfAbsent(student.getStudentId(), student.getClassName()));
+        List<ContingentDtos.StudentOption> studentOptions = studentProfileRepository.findAll().stream()
+                .sorted(Comparator.comparing(StudentProfile::getCurrentFullName,
+                                Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
+                        .thenComparing(StudentProfile::getBirthDate, Comparator.nullsLast(LocalDate::compareTo)))
+                .map(profile -> {
+                    ContingentDtos.StudentOption option = new ContingentDtos.StudentOption();
+                    option.setId(profile.getId());
+                    option.setFullName(profile.getCurrentFullName());
+                    option.setBirthDate(profile.getBirthDate());
+                    option.setCurrentPlacement(placementByStudent.getOrDefault(profile.getId(), ""));
+                    return option;
+                })
+                .toList();
+
+        Set<String> placements = new TreeSet<>(this::compareClassNames);
+        classroomLeadershipRepository.findAllByAcademicYear(academicYear).stream()
+                .map(entry -> normalizePlacementName(entry.getClassName()))
+                .filter(value -> !value.isBlank())
+                .forEach(placements::add);
+        curriculumPlanEntryRepository.findAll().stream()
+                .filter(entry -> academicYear.equals(entry.getAcademicYear()))
+                .map(entry -> normalizePlacementName(entry.getClassName()))
+                .filter(value -> !value.isBlank())
+                .forEach(placements::add);
+        students.stream()
+                .map(ContingentStudent::getClassName)
+                .map(this::normalizePlacementName)
+                .filter(value -> !value.isBlank() && !isOutsideOrganization(value))
+                .filter(value -> isSchoolClassName(value) || isKindergartenPlacement(value))
+                .forEach(placements::add);
+
+        ContingentDtos.ImportMismatchResponse response = new ContingentDtos.ImportMismatchResponse();
+        response.setSnapshotId(snapshot.getId());
+        response.setSnapshotDate(snapshot.getSnapshotDate());
+        response.setSourceFileName(snapshot.getSourceFileName());
+        response.setImportFormat(snapshot.getImportFormat());
+        response.setRows(rows);
+        response.setTotal(rows.size());
+        response.setOutsideOrganization(outsideCount);
+        response.setAmbiguousIdentity(ambiguousCount);
+        response.setSkippedRows(storedIssues.size());
+        response.setUnknownClasses(unknownClassCount);
+        response.setStudentOptions(studentOptions);
+        response.setPlacementOptions(new ArrayList<>(placements));
+        return response;
+    }
+
+    @Override
+    @Transactional
+    public ContingentDtos.ImportMismatchResponse resolveImportMismatch(
+            String academicYear,
+            ContingentDtos.ResolveImportMismatchRequest request) {
+        if (request == null || request.getContingentStudentId() == null) {
+            throw new IllegalArgumentException("Не выбрана строка выгрузки");
+        }
+        ContingentStudent row = studentRepository.findById(request.getContingentStudentId())
+                .orElseThrow(() -> new IllegalArgumentException("Строка выгрузки не найдена"));
+        ContingentSnapshot snapshot = snapshotRepository.findById(row.getSnapshotId())
+                .orElseThrow(() -> new IllegalArgumentException("Снимок контингента не найден"));
+        if (!academicYear.equals(snapshot.getAcademicYear())) {
+            throw new IllegalArgumentException("Строка относится к другому учебному году");
+        }
+
+        boolean outside = isOutsideOrganization(row.getClassName());
+        boolean unknownClass = isSchoolClassName(row.getClassName())
+                && !planClassNames(academicYear).contains(ClassNameNormalizer.normalize(row.getClassName()));
+        String requestedPlacement = normalizePlacementName(request.getClassName());
+        if (outside || unknownClass) {
+            if (requestedPlacement.isBlank()) {
+                throw new IllegalArgumentException("Выберите класс или группу");
+            }
+            if (outside && isOutsideOrganization(requestedPlacement)) {
+                throw new IllegalArgumentException("Для ребёнка «Вне ОО» нужно выбрать класс или группу организации");
+            }
+            row.setClassName(requestedPlacement);
+        }
+
+        Long targetStudentId = row.getStudentId() == null ? request.getStudentId() : row.getStudentId();
+        if (targetStudentId == null) {
+            throw new IllegalArgumentException("Выберите карточку ребёнка");
+        }
+        studentIdentityService.resolveManually(snapshot, row, targetStudentId);
+        studentRepository.save(row);
+        return getImportMismatches(academicYear, snapshot.getId());
+    }
+
+    private ContingentDtos.ImportMismatchResponse emptyMismatchResponse() {
+        ContingentDtos.ImportMismatchResponse response = new ContingentDtos.ImportMismatchResponse();
+        response.setRows(List.of());
+        response.setStudentOptions(List.of());
+        response.setPlacementOptions(List.of());
+        return response;
+    }
+
+    private Set<String> planClassNames(String academicYear) {
+        return curriculumPlanEntryRepository.findAll().stream()
+                .filter(entry -> academicYear.equals(entry.getAcademicYear()))
+                .map(CurriculumPlanEntry::getClassName)
+                .map(ClassNameNormalizer::normalize)
+                .filter(value -> !value.isBlank())
+                .collect(java.util.stream.Collectors.toSet());
+    }
+
+    private int mismatchOrder(String type) {
+        return switch (normalize(type)) {
+            case "OUTSIDE_ORGANIZATION" -> 0;
+            case "AMBIGUOUS_IDENTITY" -> 1;
+            case "UNKNOWN_CLASS" -> 2;
+            default -> 3;
+        };
+    }
+
+    @Override
     public ContingentDtos.ManualClassSizeResponse getManualClassSizes(String academicYear) {
         return manualClassSizeResponse(academicYear);
     }
@@ -1391,6 +1682,25 @@ public class ContingentServiceImpl implements ContingentService {
         return fallback;
     }
 
+    private LocalDate parseBirthDateOrNull(String value) {
+        String normalized = normalize(value);
+        if (normalized.isBlank()) {
+            return null;
+        }
+        for (DateTimeFormatter formatter : List.of(
+                DATE_FORMATTER,
+                DateTimeFormatter.ISO_LOCAL_DATE,
+                DateTimeFormatter.ofPattern("dd/MM/yyyy")
+        )) {
+            try {
+                return LocalDate.parse(normalized, formatter);
+            } catch (Exception ignored) {
+                // Try the next supported source format.
+            }
+        }
+        return null;
+    }
+
     private int extractParallel(String className) {
         if (className == null) {
             return -1;
@@ -1413,5 +1723,15 @@ public class ContingentServiceImpl implements ContingentService {
 
     private String normalize(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private record ParsedImportIssue(
+            int rowNumber,
+            String issueType,
+            String message,
+            String fullName,
+            String placementName,
+            String rawPayload
+    ) {
     }
 }

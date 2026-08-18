@@ -23,6 +23,8 @@ import org.school.personalLoad.model.StudyPeriodSetting;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.MetaGroupRepository;
+import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.SubjectCatalogRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.ClassSizeService;
@@ -52,6 +54,10 @@ class CurriculumImportServiceImplParallelExportTest {
     @Mock
     private ClassroomLeadershipRepository classroomRepository;
     @Mock
+    private MetaGroupRepository metaGroupRepository;
+    @Mock
+    private SchoolBuildingRepository schoolBuildingRepository;
+    @Mock
     private ManualLoadEntryRepository manualLoadRepository;
     @Mock
     private TeacherDirectoryRepository teacherRepository;
@@ -70,6 +76,8 @@ class CurriculumImportServiceImplParallelExportTest {
                 parser,
                 curriculumRepository,
                 classroomRepository,
+                metaGroupRepository,
+                schoolBuildingRepository,
                 manualLoadRepository,
                 teacherRepository,
                 subjectCatalogRepository,
@@ -121,6 +129,37 @@ class CurriculumImportServiceImplParallelExportTest {
             assertEquals("Максимальная нагрузка", sheet.getRow(12).getCell(0).getStringCellValue());
             assertEquals("32", sheet.getRow(12).getCell(2).getStringCellValue());
             assertEquals("Итого внеурочная часть", sheet.getRow(13).getCell(0).getStringCellValue());
+        }
+    }
+
+    @Test
+    void exportAddressWorkbookBuildsOneSheetPerPhysicalAddress() throws Exception {
+        CurriculumPlanEntry firstEntry = entry("СП1", "7-А", "Алгебра", StudyPeriod.YEAR, 4);
+        CurriculumPlanEntry secondEntry = entry("СП1", "7-Б", "Геометрия", StudyPeriod.YEAR, 2);
+        ClassroomLeadershipEntry firstClass = classroom("СП1", "7-А", "Математический", "Иванов И.И.");
+        firstClass.setCampusAddress("ул. Первая, 1");
+        ClassroomLeadershipEntry secondClass = classroom("СП1", "7-Б", "Общеобразовательный", "Петров П.П.");
+        secondClass.setCampusAddress("ул. Вторая, 2");
+        when(curriculumRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(firstEntry, secondEntry));
+        when(classroomRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of(firstClass, secondClass));
+        when(metaGroupRepository.findAllByAcademicYearOrderByNumberSchoolBuildingAscParallelAscNameAsc("2026/2027"))
+                .thenReturn(List.of());
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of());
+        when(subjectCatalogRepository.findAll()).thenReturn(List.of(
+                subject("Алгебра", "Математика и информатика"),
+                subject("Геометрия", "Математика и информатика")
+        ));
+
+        byte[] body = service.exportAddressWorkbook("2026/2027");
+
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
+            assertEquals(2, workbook.getNumberOfSheets());
+            assertNotNull(workbook.getSheet("ул. Первая, 1"));
+            assertNotNull(workbook.getSheet("ул. Вторая, 2"));
+            assertEquals(
+                    "Учебный план по адресу: ул. Первая, 1, 2026/2027",
+                    workbook.getSheet("ул. Первая, 1").getRow(0).getCell(0).getStringCellValue()
+            );
         }
     }
 

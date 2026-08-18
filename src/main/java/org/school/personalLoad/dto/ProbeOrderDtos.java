@@ -131,7 +131,15 @@ public final class ProbeOrderDtos {
                                 List<String> classNames,
                                 List<String> companions,
                                 String venue,
-                                String address) {
+                                String address,
+                                List<CalendarParticipant> participants) {
+    }
+
+    public record CalendarParticipant(String type,
+                                      Long id,
+                                      String code,
+                                      String label,
+                                      String details) {
     }
 
     public record HistoryEvent(Long orderId,
