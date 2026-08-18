@@ -6,21 +6,17 @@ import org.school.personalLoad.model.*;
 import org.school.personalLoad.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Service
 @RequiredArgsConstructor
 public class StudentSupportDocumentService {
 
-    private static final long MAX_ATTACHMENT_SIZE = 15L * 1024L * 1024L;
-    private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
-            "pdf", "jpg", "jpeg", "png", "doc", "docx", "xls", "xlsx"
-    );
+    private static final DateTimeFormatter DISPLAY_DATE = DateTimeFormatter.ofPattern("dd.MM.yyyy");
     private static final Set<StudentSupportDocumentType> CERTIFICATE_TYPES = Set.of(
             StudentSupportDocumentType.MSE_CERTIFICATE,
             StudentSupportDocumentType.CPMPC_CONCLUSION,
@@ -37,6 +33,71 @@ public class StudentSupportDocumentService {
             "Основная образовательная программа начального образования.",
             "Основная образовательная программа общего образования.",
             "Основная образовательная программа среднего образования."
+    );
+    private static final Map<SupportEducationStage, List<EducationProgram>> CONCLUSION_PROGRAMS = Map.of(
+            SupportEducationStage.DO, List.of(
+                    program("АООП для диагностических групп детей раннего и дошкольного возраста",
+                            "https://drive.google.com/file/d/1KvPbXj7cPPoZ5C5f6rckPWQ2lJuGIctU/view?usp=sharing"),
+                    program("АООП дошкольного образования для глухих детей",
+                            "https://drive.google.com/file/d/1EZR-izIGiknqCU27yBbqjgfmKawJIrr0/view?usp=sharing"),
+                    program("АООП дошкольного образования для детей, перенесших кохлеарную имплантацию",
+                            "https://drive.google.com/file/d/1Ts3rnnlJFCidUkSBPnM_LRoq9VoR5wxY/view?usp=sharing"),
+                    program("АООП дошкольного образования для слабослышащих и позднооглохших детей",
+                            "https://drive.google.com/file/d/1waosTuRD7gMz16hiPiSMHCm9e5kpKHTZ/view?usp=sharing"),
+                    program("АООП дошкольного образования для слабовидящих детей",
+                            "https://drive.google.com/file/d/1W6InP-TWeQxYa4wryvzrFv61xP5bCj_x/view?usp=sharing"),
+                    program("АООП дошкольного образования для слепых детей",
+                            "https://drive.google.com/file/d/1zT32HxF6FgyjmSLAmobJEg-OLCv3MoDr/view?usp=sharing"),
+                    program("АООП дошкольного образования для детей с косоглазием и амблиопией",
+                            "https://drive.google.com/file/d/1KUiz4pyJMwv9gVJOhZ7jnRVnMzXWUQOT/view?usp=sharing"),
+                    program("АООП дошкольного образования для детей с ТНР",
+                            "https://drive.google.com/file/d/1MVyqpp8EIjaVpGzn8k5t7atMdITVsMOD/view?usp=sharing"),
+                    program("АООП дошкольного образования для детей с НОДА",
+                            "https://drive.google.com/file/d/1y5ZGyyKTsb6AaR_QolA7_AgA0_xqxyyF/view?usp=sharing"),
+                    program("АООП дошкольного образования для детей с ЗПР",
+                            "https://drive.google.com/file/d/1r1sslTRK3aoBXVSR5SlpC7dUxyHX8DOJ/view?usp=sharing"),
+                    program("АООП дошкольного образования для детей с УО",
+                            "https://drive.google.com/file/d/1hN3VMsAaGfmMTMPlTjuQ6nJaKaD1nN7G/view?usp=sharing"),
+                    program("АООП дошкольного образования для детей с ТМНР",
+                            "https://drive.google.com/file/d/1ru45az3V5XYr6M_sRceNg7xcXWKyZWS0/view?usp=sharing")
+            ),
+            SupportEducationStage.NOO, List.of(
+                    program("АООП НОО глухих обучающихся",
+                            "https://drive.google.com/file/d/12C1W6mrhShDFcewcJ5leRWSKPmg21jTj/view?usp=sharing"),
+                    program("АООП НОО слабослышащих и позднооглохших обучающихся",
+                            "https://drive.google.com/file/d/1MQedsLcGxtSf8uq-clCziE-yWzuecQVi/view?usp=sharing"),
+                    program("АООП НОО слепых обучающихся",
+                            "https://drive.google.com/file/d/1VnB6SX8CJB-6Drz7JOJdBswslqj_wHdi/view?usp=sharing"),
+                    program("АООП НОО слабовидящих обучающихся",
+                            "https://drive.google.com/file/d/1EtxbecEKbzIUOgFxXmQqsTOZ1HDqFvtF/view?usp=sharing"),
+                    program("АООП НОО обучающихся с ТНР",
+                            "https://drive.google.com/file/d/1r1d7wzO5n3OF-cxKPDUJ3uizBtFfSTri/view?usp=sharing"),
+                    program("АООП НОО обучающихся с НОДА",
+                            "https://drive.google.com/file/d/1V5Twhhhkj2QRtahtblJjqAFxav8W6qY7/view?usp=sharing"),
+                    program("АООП НОО обучающихся с ЗПР",
+                            "https://drive.google.com/file/d/10dXzHdSGGTHegr-g2PzlzwncB457ILg1/view?usp=sharing"),
+                    program("АООП НОО обучающихся с РАС",
+                            "https://drive.google.com/file/d/1n8Dqs1q_zMaeOZu2a6DsSLGfXgbWTCHk/view?usp=sharing"),
+                    program("АООП образования обучающихся с умственной отсталостью (интеллектуальными нарушениями)",
+                            "https://drive.google.com/file/d/1JLsNfepZGJxkG5rnlfMI0oYzGc7Jtdfw/view?usp=sharing")
+            ),
+            SupportEducationStage.OOO, List.of(
+                    program("АООП ООО обучающихся с нарушениями слуха",
+                            "https://drive.google.com/file/d/1yA7XwosND7D_AXFe0zmXJYckgNsgQQZg/view?usp=sharing"),
+                    program("АООП ООО слепых обучающихся",
+                            "https://drive.google.com/file/d/1fY52-wVC537fxCunZ0azYHbcmV__lmpc/view?usp=sharing"),
+                    program("АООП ООО слабовидящих обучающихся",
+                            "https://drive.google.com/file/d/1YtTM-qXboPfqcRcGXGJT0-lA8u7W8tUh/view?usp=sharing"),
+                    program("АООП ООО обучающихся с ТНР",
+                            "https://drive.google.com/file/d/13tUqc3zQU9Rxb-Pbjhxdf974H93_70vw/view?usp=sharing"),
+                    program("АООП ООО обучающихся с НОДА",
+                            "https://drive.google.com/file/d/1uHReclFW-3BZQXikbrF7tw0CnNQ1mwnz/view?usp=sharing"),
+                    program("АООП ООО обучающихся с ЗПР",
+                            "https://drive.google.com/file/d/13P56kJDDRwgYYntWSMS4dDLgwW8Ukeif/view?usp=sharing"),
+                    program("АООП ООО обучающихся с РАС",
+                            "https://drive.google.com/file/d/1kAe9k9ESzgjEYnhU6fMoHM0rOzTTSs5C/view?usp=sharing")
+            ),
+            SupportEducationStage.SOO, List.of()
     );
 
     private final StudentSupportDocumentRepository documentRepository;
@@ -85,7 +146,7 @@ public class StudentSupportDocumentService {
             throw new IllegalArgumentException("Документ относится к другому ребёнку или учебному году");
         }
         StudentSupportDocumentType previousType = document.getDocumentType();
-        validateDocument(academicYear, student.getId(), request);
+        validateDocument(academicYear, student, request);
         document.setStudent(student);
         document.setAcademicYear(academicYear);
         document.setDocumentType(request.getDocumentType());
@@ -102,7 +163,7 @@ public class StudentSupportDocumentService {
                 ? trim(request.getDocumentNumber()) : null);
         document.setIssueDate(null);
         document.setValidFrom(recommendation ? null : request.getValidFrom());
-        document.setValidTo(recommendation ? null : request.getValidTo());
+        document.setValidTo(request.getValidTo());
         document.setNosologyCode(conclusion ? normalizeFullNosologyCode(request.getNosologyCode()) : null);
         document.setEducationStage(conclusion || recommendation ? request.getEducationStage() : null);
         document.setEducationProgram(conclusion || recommendation
@@ -203,50 +264,52 @@ public class StudentSupportDocumentService {
         resynchronizeAllMseStatuses();
     }
 
-    @Transactional
-    public StudentSupportDocumentDtos.AttachmentView addAttachment(String academicYear,
-                                                                  Long documentId,
-                                                                  MultipartFile file,
-                                                                  String username) {
-        StudentSupportDocument document = requireDocument(academicYear, documentId);
-        validateFile(file);
-        try {
-            StudentSupportDocumentAttachment attachment = new StudentSupportDocumentAttachment();
-            attachment.setDocument(document);
-            attachment.setOriginalFileName(cleanFileName(file.getOriginalFilename()));
-            attachment.setContentType(Objects.toString(file.getContentType(), "application/octet-stream"));
-            attachment.setFileSize(file.getSize());
-            attachment.setContent(file.getBytes());
-            attachment.setUploadedAt(LocalDateTime.now());
-            attachment.setUploadedBy(Objects.toString(username, "SYSTEM"));
-            return toAttachmentView(attachmentRepository.save(attachment));
-        } catch (IOException exception) {
-            throw new IllegalStateException("Не удалось сохранить прикреплённую копию", exception);
-        }
-    }
-
     @Transactional(readOnly = true)
-    public StudentSupportDocumentDtos.AttachmentDownload downloadAttachment(String academicYear,
-                                                                            Long documentId,
-                                                                            Long attachmentId) {
-        requireDocument(academicYear, documentId);
-        StudentSupportDocumentAttachment attachment = attachmentRepository.findById(attachmentId)
-                .filter(item -> Objects.equals(item.getDocument().getId(), documentId))
-                .orElseThrow(() -> new IllegalArgumentException("Прикреплённая копия не найдена"));
-        return new StudentSupportDocumentDtos.AttachmentDownload(
-                attachment.getOriginalFileName(),
-                attachment.getContentType(),
-                attachment.getContent()
+    public StudentSupportDocumentDtos.EducationDefaultsView educationDefaults(
+            String academicYear,
+            Long studentId,
+            StudentSupportDocumentType documentType,
+            boolean prolongationAvailable,
+            boolean prolongationUsed
+    ) {
+        if (documentType != StudentSupportDocumentType.CPMPC_CONCLUSION
+                && documentType != StudentSupportDocumentType.CPMPC_RECOMMENDATION) {
+            throw new IllegalArgumentException("Автоматический срок рассчитывается только для документов ЦМПК");
+        }
+        StudentProfile student = studentRepository.findById(studentId)
+                .orElseThrow(() -> new IllegalArgumentException("Карточка ребёнка не найдена"));
+        EducationDeadline deadline = educationDeadline(
+                academicYear,
+                student,
+                documentType == StudentSupportDocumentType.CPMPC_CONCLUSION
+                        && prolongationAvailable
+                        && !prolongationUsed,
+                true
         );
-    }
-
-    @Transactional
-    public void deleteAttachment(String academicYear, Long documentId, Long attachmentId) {
-        requireDocument(academicYear, documentId);
-        StudentSupportDocumentAttachment attachment = attachmentRepository.findById(attachmentId)
-                .filter(item -> Objects.equals(item.getDocument().getId(), documentId))
-                .orElseThrow(() -> new IllegalArgumentException("Прикреплённая копия не найдена"));
-        attachmentRepository.delete(attachment);
+        StudentSupportDocumentDtos.EducationDefaultsView view =
+                new StudentSupportDocumentDtos.EducationDefaultsView();
+        view.setEducationStage(deadline.stage());
+        view.setValidTo(deadline.validTo());
+        view.setManualCheckRequired(deadline.stage() == SupportEducationStage.DO);
+        view.setEducationPrograms(documentType == StudentSupportDocumentType.CPMPC_CONCLUSION
+                ? conclusionPrograms(deadline.stage()).stream()
+                .map(this::toEducationProgramView)
+                .toList()
+                : List.of());
+        String date = deadline.validTo().format(DISPLAY_DATE);
+        if (deadline.stage() == SupportEducationStage.DO) {
+            view.setMessage("ДО: дата окончания " + date
+                    + " рассчитана по дате рождения (31.08 года исполнения 7 лет). Проверьте её вручную.");
+        } else if (documentType == StudentSupportDocumentType.CPMPC_CONCLUSION
+                && prolongationAvailable
+                && !prolongationUsed) {
+            view.setMessage("Уровень " + deadline.stage() + " определён по классу. Дата окончания "
+                    + date + " включает один дополнительный год неиспользованной пролонгации.");
+        } else {
+            view.setMessage("Уровень " + deadline.stage() + " и дата окончания " + date
+                    + " определены по текущему классу ребёнка.");
+        }
+        return view;
     }
 
     private StudentSupportDocument requireDocument(String academicYear, Long documentId) {
@@ -288,23 +351,6 @@ public class StudentSupportDocumentService {
         view.setResponsibleEmployee(document.getResponsibleEmployee());
         view.setComment(document.getComment());
         view.setValidityStatus(validityStatus(document, asOfDate));
-        view.setAttachments(document.getId() == null ? List.of() : attachmentRepository
-                .findAllByDocument_IdOrderByUploadedAtAsc(document.getId()).stream()
-                .map(this::toAttachmentView)
-                .toList());
-        return view;
-    }
-
-    private StudentSupportDocumentDtos.AttachmentView toAttachmentView(
-            StudentSupportDocumentAttachment attachment
-    ) {
-        StudentSupportDocumentDtos.AttachmentView view = new StudentSupportDocumentDtos.AttachmentView();
-        view.setId(attachment.getId());
-        view.setFileName(attachment.getOriginalFileName());
-        view.setContentType(attachment.getContentType());
-        view.setFileSize(attachment.getFileSize());
-        view.setUploadedAt(attachment.getUploadedAt());
-        view.setUploadedBy(attachment.getUploadedBy());
         return view;
     }
 
@@ -340,7 +386,7 @@ public class StudentSupportDocumentService {
     }
 
     private void validateDocument(String academicYear,
-                                  Long studentId,
+                                  StudentProfile student,
                                   StudentSupportDocumentDtos.SaveRequest request) {
         validateDates(request.getValidFrom(), request.getValidTo());
         if (request.getDocumentType() == StudentSupportDocumentType.CPMPC_RECOMMENDATION) {
@@ -354,6 +400,10 @@ public class StudentSupportDocumentService {
             if (!RECOMMENDATION_PROGRAMS.contains(educationProgram)) {
                 throw new IllegalArgumentException("Выберите образовательную программу из списка");
             }
+            if (request.getValidTo() == null) {
+                throw new IllegalArgumentException("Не удалось рассчитать дату окончания рекомендации ЦМПК");
+            }
+            validateCpmPcEndDate(academicYear, student, request);
             return;
         }
         if (request.getValidFrom() == null || request.getValidTo() == null) {
@@ -390,6 +440,13 @@ public class StudentSupportDocumentService {
         if (educationProgram.length() > 2000) {
             throw new IllegalArgumentException("Образовательная программа не должна превышать 2000 символов");
         }
+        boolean listedForStage = conclusionPrograms(request.getEducationStage()).stream()
+                .anyMatch(program -> program.name().equals(educationProgram));
+        if (!request.isEducationProgramCustom() && !listedForStage) {
+            throw new IllegalArgumentException(
+                    "Выберите образовательную программу из списка для уровня " + request.getEducationStage()
+            );
+        }
         if (request.isProlongationUsed() && !request.isProlongationAvailable()) {
             throw new IllegalArgumentException("Использование пролонгирования возможно только при наличии такого права");
         }
@@ -401,45 +458,93 @@ public class StudentSupportDocumentService {
             }
             normalizeAcademicYearRequired(request.getProlongedAcademicYear());
         }
-        validateCpmPcEndDate(academicYear, studentId, request);
+        validateCpmPcEndDate(academicYear, student, request);
     }
 
     private void validateCpmPcEndDate(String academicYear,
-                                      Long studentId,
+                                      StudentProfile student,
                                       StudentSupportDocumentDtos.SaveRequest request) {
-        if (request.getEducationStage() == SupportEducationStage.DO
-                || request.isProlongationAvailable()) {
-            return;
-        }
         LocalDate validTo = request.getValidTo();
         if (validTo.getMonthValue() != 8 || validTo.getDayOfMonth() != 31) {
-            throw new IllegalArgumentException("Срок заключения ЦМПК должен оканчиваться 31.08");
+            throw new IllegalArgumentException("Срок документа ЦМПК должен оканчиваться 31.08");
         }
-        Integer currentGrade = currentGrade(studentId, academicYear, request.getValidFrom());
-        if (currentGrade == null) {
+        EducationDeadline expected = educationDeadline(
+                academicYear,
+                student,
+                request.getDocumentType() == StudentSupportDocumentType.CPMPC_CONCLUSION
+                        && request.isProlongationAvailable()
+                        && !request.isProlongationUsed(),
+                false
+        );
+        if (expected == null) {
             return;
         }
-        int terminalGrade = switch (request.getEducationStage()) {
-            case NOO -> 4;
-            case OOO -> 9;
-            case SOO -> 11;
-            case DO -> currentGrade;
-        };
-        if (currentGrade > terminalGrade) {
+        if (request.getEducationStage() != expected.stage()) {
             throw new IllegalArgumentException("Выбранный уровень образования не соответствует классу ребёнка");
         }
-        int expectedYear = academicYearEnd(academicYear) + terminalGrade - currentGrade;
-        LocalDate expected = LocalDate.of(expectedYear, 8, 31);
-        if (!expected.equals(validTo)) {
-            throw new IllegalArgumentException("Для выбранного уровня и текущего класса дата окончания должна быть "
-                    + expected + ". При возможности пролонгирования укажите «Да» — тогда дата может отличаться");
+        if (!expected.validTo().equals(validTo)) {
+            throw new IllegalArgumentException("Для текущего класса дата окончания должна быть "
+                    + expected.validTo());
         }
+    }
+
+    private EducationDeadline educationDeadline(String academicYear,
+                                                 StudentProfile student,
+                                                 boolean addUnusedProlongationYear,
+                                                 boolean requireIdentityData) {
+        Integer grade = currentGrade(student.getId(), academicYear, null);
+        SupportEducationStage stage;
+        int expectedYear;
+        if (grade == null) {
+            if (student.getBirthDate() == null) {
+                if (requireIdentityData) {
+                    throw new IllegalArgumentException(
+                            "Для расчёта срока ДО в карточке ребёнка должна быть дата рождения"
+                    );
+                }
+                return null;
+            }
+            stage = SupportEducationStage.DO;
+            expectedYear = student.getBirthDate().getYear() + 7;
+        } else if (grade >= 1 && grade <= 4) {
+            stage = SupportEducationStage.NOO;
+            expectedYear = academicYearEnd(academicYear) + 4 - grade;
+        } else if (grade >= 5 && grade <= 9) {
+            stage = SupportEducationStage.OOO;
+            expectedYear = academicYearEnd(academicYear) + 9 - grade;
+        } else if (grade >= 10 && grade <= 11) {
+            stage = SupportEducationStage.SOO;
+            expectedYear = academicYearEnd(academicYear) + 11 - grade;
+        } else {
+            throw new IllegalArgumentException("Класс ребёнка не позволяет определить уровень образования");
+        }
+        if (addUnusedProlongationYear) {
+            expectedYear++;
+        }
+        return new EducationDeadline(stage, LocalDate.of(expectedYear, 8, 31));
+    }
+
+    private static EducationProgram program(String name, String sourceUrl) {
+        return new EducationProgram(name, sourceUrl);
+    }
+
+    private static List<EducationProgram> conclusionPrograms(SupportEducationStage stage) {
+        return stage == null ? List.of() : CONCLUSION_PROGRAMS.getOrDefault(stage, List.of());
+    }
+
+    private StudentSupportDocumentDtos.EducationProgramView toEducationProgramView(EducationProgram program) {
+        StudentSupportDocumentDtos.EducationProgramView view =
+                new StudentSupportDocumentDtos.EducationProgramView();
+        view.setName(program.name());
+        view.setSourceUrl(program.sourceUrl());
+        return view;
     }
 
     private Integer currentGrade(Long studentId, String academicYear, LocalDate date) {
         return enrollmentRepository.findAllByStudent_IdAndAcademicYearOrderByValidFromDesc(studentId, academicYear)
                 .stream()
-                .filter(enrollment -> contains(enrollment.getValidFrom(), enrollment.getValidTo(), date))
+                .filter(enrollment -> date == null
+                        || contains(enrollment.getValidFrom(), enrollment.getValidTo(), date))
                 .map(StudentClassEnrollment::getClassName)
                 .map(this::extractGrade)
                 .filter(Objects::nonNull)
@@ -592,9 +697,6 @@ public class StudentSupportDocumentService {
     }
 
     private String validityStatus(StudentSupportDocument document, LocalDate date) {
-        if (document.getDocumentType() == StudentSupportDocumentType.CPMPC_RECOMMENDATION) {
-            return "АКТУАЛЬНО";
-        }
         if (document.getValidFrom() != null && date.isBefore(document.getValidFrom())) {
             return "ОЖИДАЕТ НАЧАЛА";
         }
@@ -620,31 +722,14 @@ public class StudentSupportDocumentService {
         }
     }
 
-    private void validateFile(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("Выберите файл");
-        }
-        if (file.getSize() > MAX_ATTACHMENT_SIZE) {
-            throw new IllegalArgumentException("Размер одного файла не должен превышать 15 МБ");
-        }
-        String fileName = cleanFileName(file.getOriginalFilename());
-        int dot = fileName.lastIndexOf('.');
-        String extension = dot < 0 ? "" : fileName.substring(dot + 1).toLowerCase(Locale.ROOT);
-        if (!ALLOWED_EXTENSIONS.contains(extension)) {
-            throw new IllegalArgumentException("Разрешены PDF, изображения, Word и Excel");
-        }
-    }
-
-    private String cleanFileName(String value) {
-        String fileName = Objects.toString(value, "document").replace('\\', '/');
-        int separator = fileName.lastIndexOf('/');
-        return (separator >= 0 ? fileName.substring(separator + 1) : fileName)
-                .replaceAll("[\\p{Cntrl}]", "")
-                .trim();
-    }
-
     private String trim(String value) {
         String normalized = Objects.toString(value, "").trim();
         return normalized.isEmpty() ? null : normalized;
+    }
+
+    private record EducationProgram(String name, String sourceUrl) {
+    }
+
+    private record EducationDeadline(SupportEducationStage stage, LocalDate validTo) {
     }
 }

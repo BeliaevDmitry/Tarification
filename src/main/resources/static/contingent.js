@@ -69,7 +69,6 @@ const ui = {
     supportDocumentOrganization: document.getElementById('support-document-organization'),
     supportDocumentResponsible: document.getElementById('support-document-responsible'),
     supportDocumentComment: document.getElementById('support-document-comment'),
-    supportDocumentFile: document.getElementById('support-document-file'),
     supportDocumentSaveBtn: document.getElementById('support-document-save-btn'),
     supportDocumentClearBtn: document.getElementById('support-document-clear-btn'),
     supportClassTable: document.getElementById('support-class-table'),
@@ -124,11 +123,14 @@ const esc = (v) => String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt
 let currentStats = null;
 let currentManualRows = [];
 let currentSupportSummary = null;
+let supportReconcileInProgress = false;
 let currentSupportDocuments = [];
 let supportReferences = { students: [], curriculum: [], teachers: [] };
 let currentCertificates = [];
 let certificateNosologies = [];
 let certificateSpecialists = [];
+let certificateEducationPrograms = [];
+let certificateDefaultsRequestSequence = 0;
 let currentSnapshots = [];
 let currentMismatchData = { rows: [], studentOptions: [], placementOptions: [] };
 let currentMismatchRow = null;
@@ -160,6 +162,10 @@ const certificateUi = {
     number: document.getElementById('certificate-number'),
     educationStage: document.getElementById('certificate-education-stage'),
     educationProgram: document.getElementById('certificate-education-program'),
+    educationProgramOtherField: document.getElementById('certificate-education-program-other-field'),
+    educationProgramOther: document.getElementById('certificate-education-program-other'),
+    educationProgramSource: document.getElementById('certificate-education-program-source'),
+    educationProgramSourceLink: document.querySelector('#certificate-education-program-source a'),
     prolongationAvailable: document.getElementById('certificate-prolongation-available'),
     prolongationPanel: document.getElementById('certificate-prolongation-panel'),
     prolongationUsed: document.getElementById('certificate-prolongation-used'),
@@ -171,8 +177,6 @@ const certificateUi = {
     directionBody: document.getElementById('certificate-direction-body'),
     addDirectionBtn: document.getElementById('certificate-add-direction-btn'),
     openSpecialistsBtn: document.getElementById('certificate-open-specialists-btn'),
-    attachmentField: document.getElementById('certificate-attachment-field'),
-    file: document.getElementById('certificate-file'),
     saveBtn: document.getElementById('certificate-save-btn'),
     clearBtn: document.getElementById('certificate-clear-btn'),
     refreshBtn: document.getElementById('certificate-refresh-btn'),
@@ -1093,7 +1097,7 @@ function resolveCertificateStudentSearch() {
             ? 'Выберите ребёнка из появившейся подсказки.'
             : certificateStudentSummary();
     }
-    updateCertificateDateHint();
+    refreshCertificateEducationDefaults().catch(showCertificateDefaultsError);
 }
 
 function certificateSpecialistOptions(selectedId) {
@@ -1149,34 +1153,105 @@ function setCertificateNosologyCode(code) {
     certificateUi.nosologyMinor.value = match?.[3] || '';
 }
 
-function selectedCertificateStudent() {
-    const id = Number(certificateUi.student?.value || 0);
-    return (supportReferences.students || []).find((item) => Number(item.studentId) === id) || null;
-}
-
-function certificateExpectedEndDate() {
-    const stage = certificateUi.educationStage?.value;
-    if (!stage || stage === 'DO' || certificateUi.prolongationAvailable?.value === 'true') return null;
-    const grade = Number(String(selectedCertificateStudent()?.className || '').match(/^\s*(\d{1,2})/)?.[1] || 0);
-    const terminal = { NOO: 4, OOO: 9, SOO: 11 }[stage];
-    const selectedYear = sessionStorage.getItem('tarification.academicYear') || '';
-    const endYear = Number(selectedYear.slice(5, 9));
-    if (!grade || !terminal || !endYear || grade > terminal) return null;
-    return `${endYear + terminal - grade}-08-31`;
-}
-
 function updateCertificateDateHint() {
     if (!certificateUi.dateHint) return;
-    const expected = certificateExpectedEndDate();
-    if (certificateUi.educationStage?.value === 'DO') {
-        certificateUi.dateHint.textContent = 'Для ДО автоматически проверить дату окончания нельзя.';
-    } else if (certificateUi.prolongationAvailable?.value === 'true') {
-        certificateUi.dateHint.textContent = 'Есть возможность пролонгирования — дата окончания может отличаться от стандартной.';
-    } else if (expected) {
-        certificateUi.dateHint.textContent = `Для выбранного уровня и текущего класса ожидаемая дата окончания: ${expected}.`;
-    } else {
-        certificateUi.dateHint.textContent = 'Выберите ребёнка и уровень образования для проверки даты окончания.';
+    const cpmpc = ['CPMPC_CONCLUSION', 'CPMPC_RECOMMENDATION'].includes(certificateUi.type?.value);
+    certificateUi.dateHint.textContent = cpmpc
+        ? 'Выберите ребёнка — уровень образования и дата окончания заполнятся автоматически.'
+        : '';
+}
+
+function showCertificateDefaultsError(error) {
+    certificateUi.educationStage.disabled = false;
+    certificateUi.recommendationStage.disabled = false;
+    certificateUi.validTo.readOnly = false;
+    if (certificateUi.dateHint) {
+        certificateUi.dateHint.textContent = `Не удалось рассчитать срок: ${error.message}`;
     }
+}
+
+function conclusionEducationProgramValue() {
+    if (certificateUi.educationProgram?.value === '__OTHER__') {
+        return certificateUi.educationProgramOther?.value?.trim() || '';
+    }
+    return certificateUi.educationProgram?.value?.trim() || '';
+}
+
+function updateConclusionEducationProgramVisibility() {
+    const custom = certificateUi.educationProgram?.value === '__OTHER__';
+    if (certificateUi.educationProgramOtherField) {
+        certificateUi.educationProgramOtherField.hidden = !custom;
+    }
+    const selected = certificateEducationPrograms.find(
+        (program) => program.name === certificateUi.educationProgram?.value
+    );
+    if (certificateUi.educationProgramSource && certificateUi.educationProgramSourceLink) {
+        certificateUi.educationProgramSource.hidden = !selected?.sourceUrl;
+        certificateUi.educationProgramSourceLink.href = selected?.sourceUrl || '#';
+    }
+}
+
+function setConclusionEducationPrograms(programs = [], selectedProgram = '', discardMissingListed = false) {
+    certificateEducationPrograms = Array.isArray(programs) ? programs : [];
+    if (!certificateUi.educationProgram) return;
+    certificateUi.educationProgram.innerHTML = '<option value="">Выберите программу</option>'
+        + certificateEducationPrograms
+            .map((program) => `<option value="${esc(program.name)}">${esc(program.name)}</option>`)
+            .join('')
+        + '<option value="__OTHER__">Другое</option>';
+    const listed = certificateEducationPrograms.some((program) => program.name === selectedProgram);
+    if (listed) {
+        certificateUi.educationProgram.value = selectedProgram;
+        certificateUi.educationProgramOther.value = '';
+    } else if (selectedProgram && !discardMissingListed) {
+        certificateUi.educationProgram.value = '__OTHER__';
+        certificateUi.educationProgramOther.value = selectedProgram;
+    } else {
+        certificateUi.educationProgram.value = '';
+        certificateUi.educationProgramOther.value = '';
+    }
+    updateConclusionEducationProgramVisibility();
+}
+
+async function refreshCertificateEducationDefaults(preferredProgram = null) {
+    const requestSequence = ++certificateDefaultsRequestSequence;
+    const documentType = certificateUi.type?.value;
+    const cpmpc = ['CPMPC_CONCLUSION', 'CPMPC_RECOMMENDATION'].includes(documentType);
+    const studentId = Number(certificateUi.student?.value || 0);
+    const currentProgram = preferredProgram === null
+        ? conclusionEducationProgramValue()
+        : String(preferredProgram || '').trim();
+    const currentProgramWasListed = preferredProgram === null
+        && certificateEducationPrograms.some((program) => program.name === currentProgram);
+    certificateUi.educationStage.disabled = documentType === 'CPMPC_CONCLUSION' && studentId > 0;
+    certificateUi.recommendationStage.disabled = documentType === 'CPMPC_RECOMMENDATION' && studentId > 0;
+    certificateUi.validTo.readOnly = cpmpc && studentId > 0;
+    if (!cpmpc || !studentId) {
+        updateCertificateDateHint();
+        return;
+    }
+    const params = new URLSearchParams({
+        studentId: String(studentId),
+        documentType,
+        prolongationAvailable: String(documentType === 'CPMPC_CONCLUSION'
+            && certificateUi.prolongationAvailable.value === 'true'),
+        prolongationUsed: String(documentType === 'CPMPC_CONCLUSION'
+            && certificateUi.prolongationUsed.value === 'true')
+    });
+    const defaults = await api(`/api/contingent/special-support/documents/education-defaults?${params}`);
+    if (requestSequence !== certificateDefaultsRequestSequence) return;
+    if (documentType === 'CPMPC_CONCLUSION') {
+        certificateUi.educationStage.value = defaults.educationStage || '';
+        setConclusionEducationPrograms(
+            defaults.educationPrograms || [],
+            currentProgram,
+            currentProgramWasListed
+        );
+    } else {
+        certificateUi.recommendationStage.value = defaults.educationStage || '';
+    }
+    certificateUi.validTo.value = defaults.validTo || '';
+    certificateUi.dateHint.textContent = defaults.message || '';
 }
 
 function updateCertificateAcceptedForms(cpmpc) {
@@ -1200,8 +1275,7 @@ function updateCertificateFormVisibility() {
     updateCertificateAcceptedForms(cpmpc);
     certificateUi.formField.hidden = recommendation;
     certificateUi.validFromField.hidden = recommendation;
-    certificateUi.validToField.hidden = recommendation;
-    certificateUi.attachmentField.hidden = recommendation;
+    certificateUi.validToField.hidden = false;
     certificateUi.mseFields.hidden = cpmpc || recommendation;
     certificateUi.cpmpcFields.hidden = !cpmpc;
     certificateUi.recommendationFields.hidden = !recommendation;
@@ -1215,8 +1289,6 @@ function updateCertificateFormVisibility() {
     certificateUi.prolongationDetails.forEach((label) => { label.hidden = !used; });
     if (recommendation) {
         certificateUi.validFrom.value = '';
-        certificateUi.validTo.value = '';
-        certificateUi.file.value = '';
     }
     if (cpmpc || recommendation) defaultCertificateDirection();
     updateCertificateDateHint();
@@ -1233,7 +1305,7 @@ function resetCertificateForm() {
     setCertificateNosologyCode(null);
     certificateUi.number.value = '';
     certificateUi.educationStage.value = '';
-    certificateUi.educationProgram.value = '';
+    setConclusionEducationPrograms([], '');
     certificateUi.recommendationStage.value = '';
     certificateUi.recommendationProgram.value = '';
     certificateUi.prolongationAvailable.value = 'false';
@@ -1242,7 +1314,6 @@ function resetCertificateForm() {
     certificateUi.prolongedYear.value = '';
     certificateUi.ipraPresent.value = 'false';
     certificateUi.directionBody.innerHTML = '';
-    certificateUi.file.value = '';
     certificateUi.saveBtn.textContent = 'Сохранить документ';
     updateCertificateFormVisibility();
 }
@@ -1268,14 +1339,6 @@ async function loadCertificateReferences() {
     renderCertificateSpecialists();
 }
 
-function certificateAttachmentLink(documentId, attachment) {
-    const path = `/api/contingent/special-support/documents/${encodeURIComponent(documentId)}/attachments/${encodeURIComponent(attachment.id)}`;
-    const href = window.withAcademicYear ? window.withAcademicYear(path) : path;
-    return `<span><a href="${esc(href)}">${esc(attachment.fileName)}</a>
-        <small class="muted">(${esc(supportAttachmentSize(attachment.fileSize))})</small>
-        <button type="button" class="secondary" data-requires-edit data-certificate-delete-attachment="${esc(attachment.id)}" data-certificate-document-id="${esc(documentId)}">×</button></span>`;
-}
-
 function certificateDetails(document) {
     const details = [];
     if (document.documentType === 'MSE_CERTIFICATE') {
@@ -1295,21 +1358,19 @@ function certificateDetails(document) {
 function renderCertificates() {
     const rows = currentCertificates.map((document) => {
         const recommendation = document.documentType === 'CPMPC_RECOMMENDATION';
-        const files = (document.attachments || []).map((item) => certificateAttachmentLink(document.id, item)).join('<br>');
         const directions = (document.correctionDirections || []).map((item) => `${item.specialistName}: ${item.tasks}`).join('; ');
         return `<tr>
             <td>${esc(document.className)}</td><td>${esc(document.studentFullName)}</td>
             <td>${esc(certificateTypeLabels[document.documentType] || document.documentType)}</td>
             <td>${esc(document.documentNumber || '—')}</td><td>${recommendation ? '—' : esc(document.acceptedForm === 'ORIGINAL' ? 'Оригинал' : document.acceptedForm === 'ELECTRONIC_COPY' ? 'Электронная копия' : 'Копия')}</td>
-            <td>${recommendation ? '—' : esc(supportDateRange(document.validFrom, document.validTo))}</td><td>${esc(certificateDetails(document))}</td>
+            <td>${esc(supportDateRange(document.validFrom, document.validTo))}</td><td>${esc(certificateDetails(document))}</td>
             <td>${esc(directions || '—')}</td><td>${esc(document.validityStatus || '')}</td>
-            <td>${recommendation ? '—' : (files || '<span class="muted">Нет скана</span>')}</td>
             <td data-requires-edit><button type="button" class="secondary" data-certificate-edit="${esc(document.id)}">Изменить</button>
                 <button type="button" class="secondary" data-certificate-delete="${esc(document.id)}">Удалить</button></td>
         </tr>`;
     }).join('');
-    certificateUi.table.innerHTML = `<thead><tr><th>Класс</th><th>ФИО</th><th>Документ</th><th>Номер</th><th>Принято</th><th>Срок</th><th>Данные</th><th>Коррекционная работа</th><th>Состояние</th><th>Скан</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="11" class="muted">Справки пока не внесены.</td></tr>'}</tbody>`;
+    certificateUi.table.innerHTML = `<thead><tr><th>Класс</th><th>ФИО</th><th>Документ</th><th>Номер</th><th>Принято</th><th>Срок</th><th>Данные</th><th>Коррекционная работа</th><th>Состояние</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="10" class="muted">Справки пока не внесены.</td></tr>'}</tbody>`;
 }
 
 async function refreshCertificates() {
@@ -1323,29 +1384,31 @@ async function saveCertificate() {
     const cpmpc = certificateUi.type.value === 'CPMPC_CONCLUSION';
     const recommendation = certificateUi.type.value === 'CPMPC_RECOMMENDATION';
     const mse = certificateUi.type.value === 'MSE_CERTIFICATE';
+    if (cpmpc || recommendation) await refreshCertificateEducationDefaults();
     if (!recommendation && (!certificateUi.validFrom.value || !certificateUi.validTo.value)) {
         throw new Error('Укажите дату установления и дату окончания');
     }
+    if (recommendation && !certificateUi.validTo.value) throw new Error('Не удалось рассчитать дату окончания');
     if (recommendation && !certificateUi.recommendationStage.value) throw new Error('Выберите уровень образования');
     if (recommendation && !certificateUi.recommendationProgram.value) throw new Error('Выберите образовательную программу');
     if (cpmpc && !certificateNosologyCode()) throw new Error('Для заключения ЦМПК обязательно укажите нозологию');
-    const expected = certificateExpectedEndDate();
-    if (expected && certificateUi.validTo.value !== expected) throw new Error(`Дата окончания для выбранного уровня должна быть ${expected}`);
-    const file = certificateUi.file.files?.[0];
-    if (file && file.size > 15 * 1024 * 1024) throw new Error('Размер скана не должен превышать 15 МБ');
+    const conclusionProgram = cpmpc ? conclusionEducationProgramValue() : '';
+    if (cpmpc && !certificateUi.educationProgram.value) throw new Error('Выберите образовательную программу');
+    if (cpmpc && !conclusionProgram) throw new Error('Введите другую образовательную программу');
     const payload = {
         id: Number(certificateUi.id.value || 0) || null,
         studentId: Number(certificateUi.student.value), documentType: certificateUi.type.value,
         acceptedForm: recommendation ? null : certificateUi.form.value,
         validFrom: recommendation ? null : certificateUi.validFrom.value,
-        validTo: recommendation ? null : certificateUi.validTo.value,
+        validTo: certificateUi.validTo.value,
         nosologyCode: cpmpc ? certificateNosologyCode() : null, documentNumber: cpmpc ? certificateUi.number.value.trim() || null : null,
         educationStage: cpmpc
             ? certificateUi.educationStage.value || null
             : (recommendation ? certificateUi.recommendationStage.value || null : null),
         educationProgram: cpmpc
-            ? certificateUi.educationProgram.value || null
+            ? conclusionProgram || null
             : (recommendation ? certificateUi.recommendationProgram.value || null : null),
+        educationProgramCustom: cpmpc && certificateUi.educationProgram.value === '__OTHER__',
         prolongationAvailable: cpmpc && certificateUi.prolongationAvailable.value === 'true',
         prolongationUsed: cpmpc && certificateUi.prolongationUsed.value === 'true',
         prolongedGrade: cpmpc && certificateUi.prolongationUsed.value === 'true' ? Number(certificateUi.prolongedGrade.value || 0) || null : null,
@@ -1353,11 +1416,7 @@ async function saveCertificate() {
         ipraPresent: mse && certificateUi.ipraPresent.value === 'true',
         correctionDirections: cpmpc || recommendation ? certificateDirectionPayload() : []
     };
-    const saved = await api('/api/contingent/special-support/documents', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    if (file) {
-        const form = new FormData(); form.append('file', file);
-        await api(`/api/contingent/special-support/documents/${encodeURIComponent(saved.id)}/attachments`, { method: 'POST', body: form });
-    }
+    await api('/api/contingent/special-support/documents', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     resetCertificateForm();
     await refreshCertificates();
     certificateUi.message.textContent = 'Документ сохранён.';
@@ -1375,7 +1434,8 @@ function editCertificate(id) {
     setCertificateNosologyCode(document.nosologyCode);
     certificateUi.number.value = document.documentNumber || '';
     certificateUi.educationStage.value = document.educationStage || '';
-    certificateUi.educationProgram.value = document.educationProgram || '';
+    setConclusionEducationPrograms([], document.documentType === 'CPMPC_CONCLUSION'
+        ? document.educationProgram || '' : '');
     certificateUi.recommendationStage.value = document.documentType === 'CPMPC_RECOMMENDATION'
         ? document.educationStage || '' : '';
     certificateUi.recommendationProgram.value = document.documentType === 'CPMPC_RECOMMENDATION'
@@ -1387,9 +1447,10 @@ function editCertificate(id) {
     certificateUi.ipraPresent.value = String(Boolean(document.ipraPresent));
     certificateUi.directionBody.innerHTML = '';
     (document.correctionDirections || []).forEach(addCertificateDirection);
-    certificateUi.file.value = '';
     certificateUi.saveBtn.textContent = 'Сохранить изменения';
     updateCertificateFormVisibility();
+    refreshCertificateEducationDefaults(document.documentType === 'CPMPC_CONCLUSION'
+        ? document.educationProgram || '' : null).catch(showCertificateDefaultsError);
     certificateUi.editor.open = true;
     certificateUi.editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -1439,29 +1500,7 @@ function resetSupportDocumentForm() {
     ui.supportDocumentOrganization.value = '';
     ui.supportDocumentResponsible.value = '';
     ui.supportDocumentComment.value = '';
-    ui.supportDocumentFile.value = '';
     ui.supportDocumentSaveBtn.textContent = 'Принять документ';
-}
-
-function supportAttachmentSize(value) {
-    const bytes = Number(value || 0);
-    if (bytes < 1024) return `${bytes} Б`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
-}
-
-function supportAttachmentLink(documentId, attachment) {
-    const path = `/api/contingent/special-support/documents/${encodeURIComponent(documentId)}`
-        + `/attachments/${encodeURIComponent(attachment.id)}`;
-    const href = window.withAcademicYear ? window.withAcademicYear(path) : path;
-    return `
-        <span>
-            <a href="${esc(href)}">${esc(attachment.fileName)}</a>
-            <small class="muted">(${esc(supportAttachmentSize(attachment.fileSize))})</small>
-            <button type="button" class="secondary" data-requires-edit
-                    data-support-delete-attachment="${esc(attachment.id)}"
-                    data-support-document-id="${esc(documentId)}">×</button>
-        </span>`;
 }
 
 function renderSupportDocuments(documents) {
@@ -1472,9 +1511,6 @@ function renderSupportDocuments(documents) {
                 ? `действует ${supportDateRange(document.validFrom, document.validTo)}`
                 : ''
         ].filter(Boolean).join('; ');
-        const files = (document.attachments || [])
-            .map((attachment) => supportAttachmentLink(document.id, attachment))
-            .join('<br>');
         return `
             <tr>
                 <td>${esc(document.studentFullName)}</td>
@@ -1485,7 +1521,6 @@ function renderSupportDocuments(documents) {
                 <td>${esc(supportDocumentFormLabels[document.acceptedForm] || document.acceptedForm)}</td>
                 <td>${esc(document.receivedAt || '')}</td>
                 <td>${esc(document.validityStatus || '')}</td>
-                <td>${files || '<span class="muted">Нет копий</span>'}</td>
                 <td data-requires-edit>
                     <button type="button" class="secondary"
                             data-support-edit-document="${esc(document.id)}">Изменить</button>
@@ -1498,10 +1533,10 @@ function renderSupportDocuments(documents) {
         <thead>
             <tr>
                 <th>ФИО</th><th>Класс</th><th>Документ</th><th>Номер</th><th>Даты</th>
-                <th>Принято</th><th>Дата приёма</th><th>Состояние</th><th>Копии</th><th></th>
+                <th>Принято</th><th>Дата приёма</th><th>Состояние</th><th></th>
             </tr>
         </thead>
-        <tbody>${rows || '<tr><td colspan="10" class="muted">Документы пока не приняты.</td></tr>'}</tbody>`;
+        <tbody>${rows || '<tr><td colspan="9" class="muted">Документы пока не приняты.</td></tr>'}</tbody>`;
 }
 
 async function refreshSupportDocuments() {
@@ -1521,12 +1556,6 @@ async function saveSupportDocument() {
         ui.supportDocumentStudent.focus();
         return;
     }
-    const selectedFile = ui.supportDocumentFile.files?.[0];
-    if (selectedFile && selectedFile.size > 15 * 1024 * 1024) {
-        ui.supportDocumentMessage.textContent = 'Размер прикреплённой копии не должен превышать 15 МБ.';
-        ui.supportDocumentFile.focus();
-        return;
-    }
     const payload = {
         id: ui.supportDocumentId.value ? Number(ui.supportDocumentId.value) : null,
         studentId: Number(ui.supportDocumentStudent.value || 0) || null,
@@ -1541,20 +1570,11 @@ async function saveSupportDocument() {
         responsibleEmployee: ui.supportDocumentResponsible.value || null,
         comment: ui.supportDocumentComment.value || null
     };
-    const saved = await api('/api/contingent/special-support/documents', {
+    await api('/api/contingent/special-support/documents', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
     });
-    const file = selectedFile;
-    if (file) {
-        const form = new FormData();
-        form.append('file', file);
-        await api(`/api/contingent/special-support/documents/${encodeURIComponent(saved.id)}/attachments`, {
-            method: 'POST',
-            body: form
-        });
-    }
     resetSupportDocumentForm();
     await refreshSupportDocuments();
     ui.supportDocumentMessage.textContent = 'Документ принят и сохранён.';
@@ -1575,7 +1595,6 @@ function editSupportDocument(documentId) {
     ui.supportDocumentOrganization.value = document.issuingOrganization || '';
     ui.supportDocumentResponsible.value = document.responsibleEmployee || '';
     ui.supportDocumentComment.value = document.comment || '';
-    ui.supportDocumentFile.value = '';
     ui.supportDocumentSaveBtn.textContent = 'Сохранить изменения';
     ui.supportDocumentSection.open = true;
     ui.supportDocumentSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1657,7 +1676,8 @@ async function refreshSupport() {
     renderSupportClassTable(currentSupportSummary);
     renderSupportRegister(currentSupportSummary);
     if (ui.supportReconcileBtn) {
-        ui.supportReconcileBtn.disabled = Number(currentSupportSummary.unlinkedStudents || 0) === 0;
+        ui.supportReconcileBtn.disabled = supportReconcileInProgress
+            || Number(currentSupportSummary.unlinkedStudents || 0) === 0;
     }
     const warning = (currentSupportSummary.warnings || []).join(' ');
     ui.supportSummaryMessage.textContent =
@@ -1829,10 +1849,19 @@ async function editSupportIup(iupPlanId) {
     ui.supportIupEditor.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-certificateUi.type?.addEventListener('change', updateCertificateFormVisibility);
-certificateUi.prolongationAvailable?.addEventListener('change', updateCertificateFormVisibility);
-certificateUi.prolongationUsed?.addEventListener('change', updateCertificateFormVisibility);
-certificateUi.educationStage?.addEventListener('change', updateCertificateDateHint);
+certificateUi.type?.addEventListener('change', () => {
+    updateCertificateFormVisibility();
+    refreshCertificateEducationDefaults().catch(showCertificateDefaultsError);
+});
+certificateUi.prolongationAvailable?.addEventListener('change', () => {
+    updateCertificateFormVisibility();
+    refreshCertificateEducationDefaults().catch(showCertificateDefaultsError);
+});
+certificateUi.prolongationUsed?.addEventListener('change', () => {
+    updateCertificateFormVisibility();
+    refreshCertificateEducationDefaults().catch(showCertificateDefaultsError);
+});
+certificateUi.educationProgram?.addEventListener('change', updateConclusionEducationProgramVisibility);
 certificateUi.studentSearch?.addEventListener('input', resolveCertificateStudentSearch);
 certificateUi.studentSearch?.addEventListener('change', resolveCertificateStudentSearch);
 certificateUi.addDirectionBtn?.addEventListener('click', () => addCertificateDirection());
@@ -1860,20 +1889,12 @@ certificateUi.table?.addEventListener('click', async (event) => {
     if (edit) { editCertificate(edit.dataset.certificateEdit); return; }
     const remove = event.target.closest('[data-certificate-delete]');
     if (remove) {
-        if (!window.confirm('Удалить справку, созданный ею статус и прикреплённые сканы?')) return;
+        if (!window.confirm('Удалить справку и созданный ею статус?')) return;
         try {
             await api(`/api/contingent/special-support/documents/${encodeURIComponent(remove.dataset.certificateDelete)}`, { method: 'DELETE' });
             resetCertificateForm(); await refreshCertificates();
         } catch (error) { certificateUi.message.textContent = `Ошибка удаления: ${error.message}`; }
         return;
-    }
-    const attachment = event.target.closest('[data-certificate-delete-attachment]');
-    if (attachment) {
-        if (!window.confirm('Удалить прикреплённый скан?')) return;
-        try {
-            await api(`/api/contingent/special-support/documents/${encodeURIComponent(attachment.dataset.certificateDocumentId)}/attachments/${encodeURIComponent(attachment.dataset.certificateDeleteAttachment)}`, { method: 'DELETE' });
-            await refreshCertificates();
-        } catch (error) { certificateUi.message.textContent = `Ошибка удаления скана: ${error.message}`; }
     }
 });
 certificateUi.nosologyTable?.addEventListener('click', (event) => {
@@ -2099,7 +2120,7 @@ ui.supportDocumentTable?.addEventListener('click', async (event) => {
     }
     const deleteDocumentButton = event.target.closest('[data-support-delete-document]');
     if (deleteDocumentButton) {
-        if (!window.confirm('Удалить запись о документе и все прикреплённые копии?')) return;
+        if (!window.confirm('Удалить запись о документе?')) return;
         try {
             await api(
                 `/api/contingent/special-support/documents/${encodeURIComponent(deleteDocumentButton.dataset.supportDeleteDocument)}`,
@@ -2113,25 +2134,14 @@ ui.supportDocumentTable?.addEventListener('click', async (event) => {
         }
         return;
     }
-    const deleteAttachmentButton = event.target.closest('[data-support-delete-attachment]');
-    if (deleteAttachmentButton) {
-        if (!window.confirm('Удалить прикреплённую копию?')) return;
-        try {
-            const documentId = encodeURIComponent(deleteAttachmentButton.dataset.supportDocumentId);
-            const attachmentId = encodeURIComponent(deleteAttachmentButton.dataset.supportDeleteAttachment);
-            await api(
-                `/api/contingent/special-support/documents/${documentId}/attachments/${attachmentId}`,
-                { method: 'DELETE' }
-            );
-            await refreshSupportDocuments();
-            ui.supportDocumentMessage.textContent = 'Прикреплённая копия удалена.';
-        } catch (error) {
-            ui.supportDocumentMessage.textContent = `Ошибка удаления копии: ${error.message}`;
-        }
-    }
 });
 
 ui.supportReconcileBtn?.addEventListener('click', async () => {
+    if (supportReconcileInProgress) return;
+    supportReconcileInProgress = true;
+    const originalLabel = ui.supportReconcileBtn.textContent;
+    ui.supportReconcileBtn.disabled = true;
+    ui.supportReconcileBtn.textContent = 'Сопоставляю…';
     try {
         if (!currentSupportSummary?.snapshotId) {
             await refreshSupport();
@@ -2146,6 +2156,10 @@ ui.supportReconcileBtn?.addEventListener('click', async () => {
             + ui.supportSummaryMessage.textContent;
     } catch (error) {
         ui.supportSummaryMessage.textContent = `Ошибка сопоставления карточек: ${error.message}`;
+    } finally {
+        supportReconcileInProgress = false;
+        ui.supportReconcileBtn.textContent = originalLabel;
+        ui.supportReconcileBtn.disabled = Number(currentSupportSummary?.unlinkedStudents || 0) === 0;
     }
 });
 

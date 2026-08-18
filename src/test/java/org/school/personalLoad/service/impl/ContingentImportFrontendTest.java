@@ -39,4 +39,15 @@ class ContingentImportFrontendTest {
         assertTrue(card.contains("data.representativeName"));
         assertTrue(card.contains("data.representativePhone"));
     }
+
+    @Test
+    void repeatedReconciliationClickIsBlockedUntilRequestFinishes() throws Exception {
+        String pageScript = Files.readString(Path.of("src/main/resources/static/contingent.js"));
+
+        assertTrue(pageScript.contains("if (supportReconcileInProgress) return;"));
+        assertTrue(pageScript.contains("supportReconcileInProgress = true;"));
+        assertTrue(pageScript.contains("ui.supportReconcileBtn.disabled = true;"));
+        assertTrue(pageScript.contains("ui.supportReconcileBtn.textContent = 'Сопоставляю…';"));
+        assertTrue(pageScript.contains("supportReconcileInProgress = false;"));
+    }
 }

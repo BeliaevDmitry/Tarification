@@ -429,7 +429,7 @@ public class StudentDataExchangeServiceImpl implements StudentDataExchangeServic
                 List.of("Норма по умолчанию", "Если на листе «Статусы» нет записи о ребёнке, он считается категорией «Норма»."),
                 List.of("Названия МЭШ", "Если название МЭШ пустое или отдельной связи нет, используется название из УП."),
                 List.of("ИУП и подгруппы", "Ребёнок с действующим ИУП не распределяется автоматически. Строка группы нужна только для предмета, который он посещает с классом."),
-                List.of("Документы", "Лист «Документы» переносит реквизиты МСЭ, ИПР/ИПРА, ЦПМПК, ППк, ИОМ и других документов. Файлы-копии в Excel не вкладываются: их прикрепляют в карточке документа."),
+                List.of("Документы", "Лист «Документы» переносит реквизиты справок и заключений без файлов и сканов."),
                 List.of("Идентификаторы", "Не меняйте заполненные ID. Для новых строк допустимо оставить ID пустым и использовать указанные ключи."),
                 List.of("Даты", "Рекомендуемый формат: ГГГГ-ММ-ДД."),
                 List.of("Расчёт", "До успешного контроля действует прежняя логика. После контроля фактическая численность применяется автоматически.")
@@ -527,7 +527,7 @@ public class StudentDataExchangeServiceImpl implements StudentDataExchangeServic
         List<String> headers = List.of(
                 "Действие", "Документ ID", "Карточка ID", "Личное дело", "ФИО", "Дата рождения", "Класс",
                 "Вид документа", "Форма приёма", "Номер", "Дата выдачи", "Дата с", "Дата по",
-                "Кем выдан", "Дата приёма", "Ответственный", "Комментарий", "Прикреплено файлов"
+                "Кем выдан", "Дата приёма", "Ответственный", "Комментарий"
         );
         Map<Long, ContingentStudent> sourceByStudent = context.sourceRows().stream()
                 .filter(row -> row.getStudentId() != null)
@@ -538,8 +538,6 @@ public class StudentDataExchangeServiceImpl implements StudentDataExchangeServic
                         academicYear
                 )) {
             ContingentStudent source = sourceByStudent.get(document.getStudent().getId());
-            int attachments = supportDocumentAttachmentRepository
-                    .findAllByDocument_IdOrderByUploadedAtAsc(document.getId()).size();
             rows.add(List.of(
                     "UPSERT", document.getId(), document.getStudent().getId(),
                     nullable(source == null
@@ -559,8 +557,7 @@ public class StudentDataExchangeServiceImpl implements StudentDataExchangeServic
                     nullable(document.getIssuingOrganization()),
                     document.getReceivedAt(),
                     nullable(document.getResponsibleEmployee()),
-                    nullable(document.getComment()),
-                    attachments
+                    nullable(document.getComment())
             ));
         }
         if (rows.isEmpty()) {
@@ -568,7 +565,7 @@ public class StudentDataExchangeServiceImpl implements StudentDataExchangeServic
                     "ПРИМЕР", "", "", "ЛД-1", "Иванов Иван Иванович", "2015-01-01", "5-А",
                     "MSE_CERTIFICATE", "COPY", "МСЭ-001", "2026-09-01", "2026-09-01",
                     "2027-08-31", "Бюро МСЭ", "2026-09-02", "Ответственный сотрудник",
-                    "Условный пример — строка не импортируется", 0
+                    "Условный пример — строка не импортируется"
             ));
         }
         writeTable(workbook, SHEET_DOCUMENTS, headers, rows, styles, true);

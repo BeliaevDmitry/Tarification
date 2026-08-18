@@ -274,10 +274,18 @@
                         </select>
                     </label>
                     <label>Образовательная программа
-                        <input id="certificate-education-program" type="text" maxlength="2000"
-                               placeholder="Введите образовательную программу">
+                        <select id="certificate-education-program">
+                            <option value="">Сначала выберите ребёнка</option>
+                        </select>
+                    </label>
+                    <label id="certificate-education-program-other-field" hidden>Другая образовательная программа
+                        <input id="certificate-education-program-other" type="text" maxlength="2000"
+                               placeholder="Введите название программы вручную">
                     </label>
                 </div>
+                <p id="certificate-education-program-source" class="muted" hidden>
+                    <a href="#" target="_blank" rel="noopener noreferrer">Открыть документ программы</a>
+                </p>
                 <div id="certificate-prolongation-panel" class="certificate-prolongation-panel" hidden>
                     <strong>Есть возможность пролонгирования</strong>
                     <div class="certificate-form-grid">
@@ -295,8 +303,6 @@
                         </label>
                     </div>
                 </div>
-                <p id="certificate-date-hint" class="muted"></p>
-
             </section>
 
             <section id="certificate-recommendation-fields" class="certificate-type-section" hidden>
@@ -323,6 +329,8 @@
                 </div>
             </section>
 
+            <p id="certificate-date-hint" class="muted"></p>
+
             <section id="certificate-correction-fields" class="certificate-type-section" hidden>
                 <div class="row controls-row">
                     <h3>Направления коррекционной работы</h3>
@@ -337,12 +345,6 @@
                 </div>
             </section>
 
-            <div id="certificate-attachment-field" class="certificate-form-grid">
-                <label>Прикрепить скан документа
-                    <input id="certificate-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx">
-                    <small class="muted">Один файл — до 15 МБ.</small>
-                </label>
-            </div>
             <div class="row controls-row">
                 <button id="certificate-save-btn" type="button">Сохранить справку</button>
                 <button id="certificate-clear-btn" type="button" class="secondary">Очистить</button>
@@ -428,7 +430,7 @@
             <summary><strong>Подтверждающие документы</strong></summary>
             <p class="muted">
                 Здесь фиксируется приём МСЭ, ИПР/ИПРА, ЦПМПК, ППк, ИОМ и других документов.
-                Запись хранит реквизиты, срок действия, форму принятого экземпляра и прикреплённые копии.
+                Запись хранит реквизиты, срок действия и форму принятого экземпляра.
                 Сам документ не меняет категорию ребёнка автоматически: статус «Норма / К2 / К3» задаётся отдельно.
             </p>
             <div data-requires-edit>
@@ -478,15 +480,10 @@
                     <label>Комментарий:
                         <input id="support-document-comment" type="text">
                     </label>
-                    <label>Прикрепить копию:
-                        <input id="support-document-file" type="file"
-                               accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx">
-                    </label>
                     <input id="support-document-id" type="hidden">
                     <button id="support-document-save-btn" type="button">Принять документ</button>
                     <button id="support-document-clear-btn" type="button" class="secondary">Очистить</button>
                 </div>
-                <p class="muted">Один файл — до 15 МБ. Дополнительные копии можно прикрепить при повторном сохранении записи.</p>
             </div>
             <div id="support-document-message" class="muted"></div>
             <div class="sheet-wrap">
@@ -501,12 +498,11 @@
                         <th>Принято</th>
                         <th>Дата приёма</th>
                         <th>Состояние</th>
-                        <th>Копии</th>
                         <th></th>
                     </tr>
                     </thead>
                     <tbody>
-                    <tr><td colspan="10" class="muted">Документы пока не приняты.</td></tr>
+                    <tr><td colspan="9" class="muted">Документы пока не приняты.</td></tr>
                     </tbody>
                 </table>
             </div>
