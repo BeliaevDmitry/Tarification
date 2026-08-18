@@ -1901,6 +1901,7 @@ function buildPresentationRows() {
 function limitPresentationRowsToClasses(rows, classes) {
     const visibleClasses = new Set(classes || []);
     const assignments = assignmentsForBuilding(selectedBuilding);
+    const futurePlans = futurePlansForBuilding(selectedBuilding);
     return (rows || []).map((row) => {
         const rowsByClassAll = Object.fromEntries(
             Object.entries(row.rowsByClassAll || {}).filter(([className]) => visibleClasses.has(className))
@@ -1913,6 +1914,7 @@ function limitPresentationRowsToClasses(rows, classes) {
         const teacherName = String(row.teacherName || "").trim();
         let subjectHours = 0;
         let classCount = 0;
+        let hasVisiblePlannedLoad = false;
         Object.values(rowsByClassAll).forEach((rowsInClass) => {
             let classMatched = false;
             rowsInClass.forEach((curriculumRow) => {
@@ -1921,9 +1923,16 @@ function limitPresentationRowsToClasses(rows, classes) {
                     subjectHours += Number(curriculumRow.plannedHours || 0);
                     classMatched = true;
                 }
+                const plan = futurePlans[apiKeyOfRow(curriculumRow)];
+                if (teacherName && String(plan?.targetTeacher || "").trim() === teacherName) {
+                    hasVisiblePlannedLoad = true;
+                }
             });
             if (classMatched) classCount += 1;
         });
+        if (state.hidePrimaryClasses && teacherName && classCount === 0 && !hasVisiblePlannedLoad) {
+            return null;
+        }
         return { ...row, rowsByClass, rowsByClassAll, subjectHours, classCount };
     }).filter(Boolean);
 }

@@ -20,6 +20,7 @@ class LoadViewOptionsFrontendTest {
         assertTrue(js.contains("visibleClassesForSelectedBuilding"));
         assertTrue(js.contains("parallel == null || parallel >= 5"));
         assertTrue(js.contains("return leftParallel - rightParallel"));
+        assertTrue(js.contains("state.hidePrimaryClasses && teacherName && classCount === 0 && !hasVisiblePlannedLoad"));
         assertTrue(js.contains("building.scope === \"address\""));
         assertTrue(js.contains("row.curriculumPart === \"EXTRACURRICULAR\" ? \"extracurricular-subject\""));
     }
