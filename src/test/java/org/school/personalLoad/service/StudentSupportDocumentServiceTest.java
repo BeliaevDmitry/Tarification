@@ -252,7 +252,7 @@ class StudentSupportDocumentServiceTest {
         assertEquals(StudentSupportDocumentType.CPMPC_RECOMMENDATION, saved.getDocumentType());
         assertEquals(StudentSupportDocumentForm.COPY, saved.getAcceptedForm());
         assertEquals(SupportEducationStage.NOO, saved.getEducationStage());
-        assertEquals("Основная образовательная программа начального общего образования",
+        assertEquals("Основная образовательная программа начального образования.",
                 saved.getEducationProgram());
         assertEquals(null, saved.getNosologyCode());
         assertEquals(null, saved.getValidFrom());
