@@ -337,11 +337,13 @@ async function classDependencySummary(entry) {
 function classDeleteWarning(className, building, dependencies) {
     const curriculumRows = Number(dependencies?.curriculumRows || 0);
     const manualLoadRows = Number(dependencies?.manualLoadRows || 0);
+    const studentEnrollmentRows = Number(dependencies?.studentEnrollmentRows || 0);
     const warnings = [];
     if (manualLoadRows > 0) warnings.push(`нагрузка: ${manualLoadRows} строк`);
     if (curriculumRows > 0) warnings.push(`учебный план: ${curriculumRows} строк`);
+    if (studentEnrollmentRows > 0) warnings.push(`история контингента: ${studentEnrollmentRows} записей (будет сохранена)`);
     const tailText = warnings.length
-        ? `\n\nВНИМАНИЕ: вместе с классом будут удалены связанные хвосты (${warnings.join(", ")}).`
+        ? `\n\nСвязанные данные: ${warnings.join(", ")}. Предметы учебного плана и обычная нагрузка будут удалены. История контингента и специальные строки нагрузки сохранятся.`
         : `\n\nСвязанной нагрузки и предметов учебного плана для этого класса не найдено.`;
     return `Удалить класс ${className} в корпусе ${building}?${tailText}`;
 }

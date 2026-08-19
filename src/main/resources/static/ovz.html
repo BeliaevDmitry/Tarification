@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ГБОУ школа 7 — ОВЗ</title>
+    <link rel="icon" type="image/png" href="/school-crest.png">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container ovz-page">
+    <header class="card">
+        <h1>ОВЗ</h1>
+        <p class="muted">Единый реестр справок, личные дела детей, дорожные карты и протоколы ППк.</p>
+    </header>
+
+    <section class="card">
+        <nav class="ovz-tabs">
+            <a class="nav-link nav-home-link" href="/" title="Главная">🏠</a>
+            <button class="nav-link active" type="button" data-ovz-tab="registry">Реестр</button>
+            <button class="nav-link" type="button" data-ovz-tab="certificates">Справки</button>
+            <button class="nav-link" type="button" data-ovz-tab="nosologies">Справочник нозологий</button>
+            <button class="nav-link" type="button" data-ovz-tab="ppk">ППк</button>
+        </nav>
+    </section>
+
+    <section class="card" data-ovz-pane="registry">
+        <div class="ovz-section-heading">
+            <div><h2>Реестр</h2><p class="muted">Одна строка — одно личное дело ребёнка; внутри могут находиться МСЭ и один документ ЦМПК.</p></div>
+            <div class="row controls-row">
+                <input id="ovz-registry-search" type="search" placeholder="Поиск по ФИО" aria-label="Поиск по ФИО ребёнка">
+                <button id="ovz-registry-refresh" type="button" class="secondary">Обновить</button>
+                <button id="ovz-registry-export" type="button" class="secondary">Экспорт Excel</button>
+            </div>
+        </div>
+        <p id="ovz-registry-message" class="muted"></p>
+        <p class="muted ovz-sort-help">Для мультисортировки нажимайте заголовки по очереди. Повторный клик меняет направление, третий — убирает колонку из сортировки.</p>
+        <div class="sheet-wrap"><table class="sheet-table ovz-registry-table">
+            <thead id="ovz-registry-head"><tr>
+                <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="studentId">ФК <span data-ovz-sort-indicator></span></button></th>
+                <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="fullName">ФИО <span data-ovz-sort-indicator></span></button></th>
+                <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="className">Класс <span data-ovz-sort-indicator></span></button></th>
+                <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="mse">МСЭ <span data-ovz-sort-indicator></span></button></th>
+                <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="conclusion">Заключение<br>ЦМПК <span data-ovz-sort-indicator></span></button></th>
+                <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="recommendation">Рекомендация<br>ЦМПК <span data-ovz-sort-indicator></span></button></th>
+                <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="validTo">Срок <span data-ovz-sort-indicator></span></button></th>
+                <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="correctionDirections">Коррекционная<br>работа <span data-ovz-sort-indicator></span></button></th>
+                <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="stages">Этапы <span data-ovz-sort-indicator></span></button></th>
+                <th>Действия</th>
+            </tr></thead>
+            <tbody id="ovz-registry-body"></tbody>
+        </table></div>
+    </section>
+
+    <section class="card" data-ovz-pane="certificates" style="display:none">
+        <h2>Создание справки</h2>
+        <p class="muted">Здесь создаётся или изменяется документ. Список документов ведётся только во вкладке «Реестр».</p>
+        <form id="ovz-certificate-form" data-requires-edit>
+            <input id="ovz-certificate-id" type="hidden">
+            <div class="certificate-form-grid">
+                <label>ФИО ребёнка
+                    <input id="ovz-student-search" type="search" list="ovz-student-options" autocomplete="off" placeholder="Начните вводить ФИО">
+                    <datalist id="ovz-student-options"></datalist><input id="ovz-student-id" type="hidden">
+                    <small id="ovz-student-hint" class="muted"></small>
+                </label>
+                <label>Вид документа
+                    <select id="ovz-document-type">
+                        <option value="MSE_CERTIFICATE">Справка МСЭ</option>
+                        <option value="CPMPC_CONCLUSION">Заключение ЦМПК</option>
+                        <option value="CPMPC_RECOMMENDATION">Рекомендация ЦМПК</option>
+                    </select>
+                </label>
+                <label id="ovz-accepted-form-field">Принято<select id="ovz-accepted-form"></select></label>
+                <label id="ovz-number-field">Номер<input id="ovz-document-number" type="text"></label>
+                <label id="ovz-valid-from-field">Дата установления<input id="ovz-valid-from" type="date"></label>
+                <label>Дата окончания<input id="ovz-valid-to" type="date"></label>
+                <label id="ovz-stage-field">Уровень образования
+                    <select id="ovz-education-stage"><option value="DO">ДО</option><option value="NOO">НОО</option><option value="OOO">ООО</option><option value="SOO">СОО</option></select>
+                </label>
+                <label id="ovz-program-field">Образовательная программа<select id="ovz-education-program"></select>
+                    <small><a id="ovz-program-source" href="#" target="_blank" rel="noopener" style="display:none">Открыть текст программы</a></small></label>
+                <label id="ovz-program-other-field" style="display:none">Другая программа<textarea id="ovz-education-program-other" rows="3"></textarea></label>
+                <fieldset id="ovz-nosology-fields" class="certificate-code-fields">
+                    <legend>Нозология</legend><select id="ovz-nosology-letter"><option>И</option><option>О</option></select>
+                    <input id="ovz-nosology-major" type="number" min="0" max="9"><span>.</span>
+                    <input id="ovz-nosology-minor" type="number" min="0" max="9">
+                </fieldset>
+                <label id="ovz-ipra-field">ИПР/ИПРА<select id="ovz-ipra"><option value="false">Нет</option><option value="true">Да</option></select></label>
+            </div>
+            <p id="ovz-date-hint" class="muted"></p>
+            <div id="ovz-prolongation-fields" class="certificate-form-grid">
+                <label>Есть возможность пролонгирования<select id="ovz-prolongation"><option value="false">Нет</option><option value="true">Да</option></select></label>
+                <label>Использовал пролонгирование<select id="ovz-prolongation-used"><option value="false">Нет</option><option value="true">Да</option></select></label>
+                <label>Параллель<select id="ovz-prolonged-grade"></select></label>
+                <label>Год обучения<select id="ovz-prolonged-year"></select></label>
+            </div>
+            <section id="ovz-correction-fields">
+                <div class="ovz-section-heading"><h3>Направление коррекционной работы</h3>
+                    <div><button id="ovz-add-direction" type="button" class="secondary">Добавить специалиста</button>
+                        <button id="ovz-open-specialists" type="button" class="secondary">Справочник специалистов</button></div></div>
+                <div class="sheet-wrap"><table class="sheet-table"><thead><tr><th>Специалист</th><th>Задачи</th><th></th></tr></thead><tbody id="ovz-direction-body"></tbody></table></div>
+            </section>
+            <div class="row controls-row">
+                <button type="submit">Сохранить справку</button>
+                <button id="ovz-certificate-clear" type="button" class="secondary">Очистить</button>
+            </div>
+            <p id="ovz-certificate-message" class="muted"></p>
+        </form>
+    </section>
+
+    <section class="card" data-ovz-pane="nosologies" style="display:none">
+        <h2>Справочник нозологий К3</h2>
+        <p class="muted">Введите только цифровую часть кода: например, 4.1, 4.2 или 6.1.</p>
+        <form id="ovz-nosology-form" class="row controls-row" data-requires-edit>
+            <input id="ovz-nosology-id" type="hidden"><input id="ovz-nosology-code" type="text" placeholder="4.1" required>
+            <label><input id="ovz-nosology-active" type="checkbox" checked> действует</label><button type="submit">Сохранить</button>
+        </form>
+        <div class="sheet-wrap"><table class="sheet-table"><thead><tr><th>Код</th><th>Состояние</th><th></th></tr></thead><tbody id="ovz-nosology-body"></tbody></table></div>
+    </section>
+
+    <section class="card" data-ovz-pane="ppk" style="display:none">
+        <div class="ovz-section-heading"><div><h2>Протоколы ППк</h2><p class="muted">Номер присваивается автоматически по единой последовательности: №1, №2, №3 и далее.</p></div>
+            <div class="row controls-row" data-requires-edit><button id="ovz-ppk-settings-open" type="button" class="secondary">Настройки протоколов</button>
+                <button id="ovz-new-ppk" type="button">Создать ППк</button></div></div>
+        <form id="ovz-ppk-form" class="card ovz-ppk-form" style="display:none" data-requires-edit>
+            <input id="ovz-ppk-id" type="hidden">
+            <div class="certificate-form-grid">
+                <label>Дата заседания<input id="ovz-ppk-date" type="date"></label>
+                <label>Вид протокола<select id="ovz-ppk-type"><option value="APPOINTMENT">Назначение специальных условий</option><option value="IOM">Рассмотрение ИОМ</option></select></label>
+                <label>Ребёнок<input id="ovz-ppk-student-search" type="search" list="ovz-student-options" autocomplete="off"><input id="ovz-ppk-student-id" type="hidden"></label>
+                <label>Состояние<select id="ovz-ppk-status"><option value="NOT_RELEASED">Не печатали</option><option value="PRINTED">Распечатали, не завершили</option><option value="COMPLETED">Этап завершён</option></select></label>
+                <label>Председатель<input id="ovz-ppk-chair" type="text" value="Власова Ю.С."></label>
+                <label>Секретарь<input id="ovz-ppk-secretary" type="text" value="Рыбкина Л.П."></label>
+            </div>
+            <label>Присутствовали<textarea id="ovz-ppk-attendees" rows="2"></textarea></label>
+            <label>ФИО представителя ребёнка<input id="ovz-ppk-invited" type="text" placeholder="Можно выбрать подставленное ФИО или вписать другого представителя"><small class="muted">Подставляется из карточки ребёнка, но поле можно свободно изменить.</small></label>
+            <label><input id="ovz-ppk-representative-signature" type="checkbox" checked> Указать это ФИО возле подписи представителя ребёнка <span class="muted">(если снять отметку, останется пустая строка)</span></label>
+            <label>Повестка заседания<textarea id="ovz-ppk-agenda" rows="4"></textarea></label>
+            <label>Ход заседания ППк<textarea id="ovz-ppk-notes" rows="5"></textarea></label>
+            <label>Решение ППк<textarea id="ovz-ppk-decision" rows="5"></textarea></label>
+            <div class="row controls-row"><button type="submit">Сохранить протокол</button><button id="ovz-ppk-cancel" type="button" class="secondary">Отмена</button></div>
+            <p id="ovz-ppk-message" class="muted"></p>
+        </form>
+        <div class="sheet-wrap"><table class="sheet-table"><thead><tr><th>Номер</th><th>Дата</th><th>Вид</th><th>Ребёнок</th><th>Класс</th><th>Состояние</th><th>Действия</th></tr></thead><tbody id="ovz-ppk-body"></tbody></table></div>
+    </section>
+
+    <dialog id="ovz-correction-dialog" class="ovz-dialog"><div class="dialog-hero"><h3>Коррекционная работа</h3><button data-dialog-close="correction" class="secondary">Закрыть</button></div><div id="ovz-correction-detail"></div></dialog>
+    <dialog id="ovz-edit-dialog" class="ovz-dialog"><div class="dialog-hero"><div><h3>Документы ребёнка</h3><p id="ovz-edit-person" class="muted"></p></div><button data-dialog-close="edit" class="secondary">Закрыть</button></div><div id="ovz-edit-documents"></div><div id="ovz-edit-add" class="row controls-row"></div></dialog>
+    <dialog id="ovz-detail-dialog" class="ovz-dialog ovz-detail-dialog"><div class="dialog-hero"><div><h3 id="ovz-detail-title">Личное дело</h3><p id="ovz-detail-subtitle" class="muted"></p></div><button data-dialog-close="detail" class="secondary">Закрыть</button></div><div class="ovz-detail-layout"><aside id="ovz-roadmap" class="ovz-roadmap"></aside><section id="ovz-stage-content" class="ovz-stage-content"></section></div></dialog>
+    <dialog id="ovz-specialists-dialog" class="ovz-dialog"><div class="dialog-hero"><h3>Справочник специалистов</h3><button data-dialog-close="specialists" class="secondary">Закрыть</button></div><form id="ovz-specialist-form" class="row controls-row"><input id="ovz-specialist-name" type="text" placeholder="Наименование специалиста"><button type="submit">Добавить</button></form><div id="ovz-specialist-list"></div></dialog>
+    <dialog id="ovz-ppk-settings-dialog" class="ovz-dialog ovz-ppk-settings-dialog"><div class="dialog-hero"><div><h3>Настройки протоколов ППк</h3><p class="muted">Выберите сотрудников из кадровых карточек. ФИО и основная должность автоматически подставляются во все новые протоколы.</p></div><button data-dialog-close="ppk_settings" class="secondary">Закрыть</button></div>
+        <form id="ovz-ppk-settings-form" data-requires-edit>
+            <div class="ovz-commission-role-grid">
+                <label>Председатель<select id="ovz-ppk-settings-chair" required></select></label>
+                <label>Должность<input id="ovz-ppk-settings-chair-position" type="text" readonly></label>
+                <label>Секретарь<select id="ovz-ppk-settings-secretary" required></select></label>
+                <label>Должность<input id="ovz-ppk-settings-secretary-position" type="text" readonly></label>
+            </div>
+            <div class="ovz-commission-heading"><div><h4>Постоянно присутствуют</h4><p class="muted">Каждый член комиссии выбирается из действующих кадровых карточек.</p></div><button id="ovz-ppk-settings-add-attendee" type="button" class="secondary">Добавить сотрудника</button></div>
+            <div id="ovz-ppk-settings-attendees" class="ovz-commission-members"></div>
+            <div class="row controls-row"><button type="submit">Сохранить настройки</button><button id="ovz-ppk-settings-cancel" type="button" class="secondary">Отмена</button></div>
+            <p id="ovz-ppk-settings-message" class="muted"></p>
+        </form>
+    </dialog>
+</main>
+<script src="/branding.js"></script>
+<script src="/auth.js"></script>
+<script src="/ovz.js"></script>
+</body>
+</html>

@@ -32,6 +32,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
@@ -263,6 +264,42 @@ class StudentSupportDocumentServiceTest {
         org.mockito.Mockito.verify(correctionRepository).save(correctionCaptor.capture());
         assertEquals("Учитель-логопед", correctionCaptor.getValue().getSpecialist().getName());
         assertEquals("Развитие письменной речи", correctionCaptor.getValue().getTasks());
+    }
+
+    @Test
+    void editingDocumentDeletesPreviousDirectionsBeforeReusingSpecialist() {
+        CorrectionSpecialistCatalogEntry socialTeacher = new CorrectionSpecialistCatalogEntry();
+        socialTeacher.setId(4L);
+        socialTeacher.setName("Социальный педагог");
+        socialTeacher.setActive(true);
+        when(specialistRepository.findById(4L)).thenReturn(Optional.of(socialTeacher));
+
+        StudentSupportDocument existing = new StudentSupportDocument();
+        existing.setId(10L);
+        existing.setStudent(student);
+        existing.setAcademicYear("2026/2027");
+        existing.setDocumentType(StudentSupportDocumentType.CPMPC_RECOMMENDATION);
+        when(documentRepository.findById(10L)).thenReturn(Optional.of(existing));
+
+        StudentSupportDocumentDtos.CorrectionDirectionRequest direction =
+                new StudentSupportDocumentDtos.CorrectionDirectionRequest();
+        direction.setSpecialistId(4L);
+        direction.setTasks("Социально-педагогическое сопровождение");
+        StudentSupportDocumentDtos.SaveRequest request = new StudentSupportDocumentDtos.SaveRequest();
+        request.setId(10L);
+        request.setStudentId(1L);
+        request.setDocumentType(StudentSupportDocumentType.CPMPC_RECOMMENDATION);
+        request.setEducationStage(SupportEducationStage.NOO);
+        request.setEducationProgram("Основная образовательная программа начального образования.");
+        request.setValidTo(LocalDate.of(2027, 8, 31));
+        request.setCorrectionDirections(List.of(direction));
+
+        service.save("2026/2027", request);
+
+        org.mockito.InOrder correctionUpdate = inOrder(correctionRepository);
+        correctionUpdate.verify(correctionRepository).deleteAllByDocument_Id(10L);
+        correctionUpdate.verify(correctionRepository).flush();
+        correctionUpdate.verify(correctionRepository).save(any(StudentSupportDocumentCorrection.class));
     }
 
     @Test

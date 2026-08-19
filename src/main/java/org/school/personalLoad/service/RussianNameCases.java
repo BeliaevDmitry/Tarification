@@ -10,13 +10,11 @@ public final class RussianNameCases {
     }
 
     public static NameCases derive(String source) {
-        String normalized = Arrays.stream(String.valueOf(source == null ? "" : source).trim().split("\\s+"))
-                .filter(part -> !part.isBlank())
-                .reduce((left, right) -> left + " " + right).orElse("");
+        String normalized = normalize(source);
         if (normalized.isBlank()) return new NameCases(
                 "", "", "", "", "", "", "", "", "", "", "", "");
         String[] parts = normalized.split(" ");
-        boolean female = parts.length > 2 && femalePatronymic(parts[2]);
+        boolean female = isFemale(parts);
         String surname = parts[0];
         String name = parts.length > 1 ? parts[1] : "";
         String patronymic = parts.length > 2 ? parts[2] : "";
@@ -54,6 +52,26 @@ public final class RussianNameCases {
         );
     }
 
+    /**
+     * Определяет грамматический род ФИО для согласования слов в документах.
+     * ФИО в системе хранится в именительном падеже; наиболее надёжным
+     * признаком служит русское отчество.
+     */
+    public static boolean isFemale(String source) {
+        String normalized = normalize(source);
+        return !normalized.isBlank() && isFemale(normalized.split(" "));
+    }
+
+    private static String normalize(String source) {
+        return Arrays.stream(String.valueOf(source == null ? "" : source).trim().split("\\s+"))
+                .filter(part -> !part.isBlank())
+                .reduce((left, right) -> left + " " + right).orElse("");
+    }
+
+    private static boolean isFemale(String[] parts) {
+        return parts.length > 2 && femalePatronymic(parts[2]);
+    }
+
     private static boolean femalePatronymic(String value) {
         String lower = value.toLowerCase(Locale.ROOT);
         return lower.endsWith("вна") || lower.endsWith("чна");
@@ -87,6 +105,10 @@ public final class RussianNameCases {
                 case ACCUSATIVE -> "у";
             };
         }
+        // Женские фамилии с согласным окончанием, включая мягкий знак
+        // (Рысь, Блок, Врубель), в документах не склоняются. Женские имена
+        // на мягкий знак (Любовь) по-прежнему обрабатываются ниже.
+        if (surname && female && lower.endsWith("ь")) return value;
         if (female) return declineFemale(value, lower, type);
         return declineMale(value, lower, type);
     }
@@ -120,6 +142,11 @@ public final class RussianNameCases {
             case GENITIVE, DATIVE, PREPOSITIONAL -> "и";
             case ACCUSATIVE -> "ю";
             case INSTRUMENTAL -> "ей";
+        };
+        if (lower.endsWith("ь")) return switch (type) {
+            case GENITIVE, DATIVE, PREPOSITIONAL -> stem(value, 1) + "и";
+            case ACCUSATIVE -> value;
+            case INSTRUMENTAL -> stem(value, 1) + "ью";
         };
         return value;
     }

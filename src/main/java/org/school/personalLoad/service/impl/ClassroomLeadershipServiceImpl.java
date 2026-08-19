@@ -13,6 +13,7 @@ import org.school.personalLoad.repository.BuildingGroupRepository;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.StudentClassEnrollmentRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.service.ClassroomLeadershipService;
@@ -37,6 +38,7 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     private final BuildingGroupRepository buildingGroupRepository;
     private final CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     private final ManualLoadEntryRepository manualLoadEntryRepository;
+    private final StudentClassEnrollmentRepository studentClassEnrollmentRepository;
 
     @Override
     @Transactional
@@ -498,7 +500,10 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
     public void clearAll(String academicYear) {
         curriculumPlanEntryRepository.deleteAllByAcademicYear(academicYear);
         manualLoadEntryRepository.deleteAllByAcademicYear(academicYear);
-        classroomLeadershipRepository.findAllByAcademicYear(academicYear).forEach(classroomLeadershipRepository::delete);
+        classroomLeadershipRepository.findAllByAcademicYear(academicYear).forEach(entry -> {
+            detachPreservedClassReferences(entry);
+            classroomLeadershipRepository.delete(entry);
+        });
     }
 
 
@@ -508,11 +513,24 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
         }
         curriculumPlanEntryRepository.deleteByAcademicYearAndClassId(academicYear, entry.getId());
         manualLoadEntryRepository.deleteByAcademicYearAndClassIds(academicYear, List.of(entry.getId()));
+        detachPreservedClassReferences(entry);
+    }
+
+    private void detachPreservedClassReferences(ClassroomLeadershipEntry entry) {
+        if (entry == null || entry.getId() == null) {
+            return;
+        }
+        // История контингента и специальные строки нагрузки хранят собственное
+        // название класса. При удалении справочной записи сохраняем эти данные,
+        // снимая только техническую внешнюю ссылку на класс.
+        manualLoadEntryRepository.detachClassReference(entry.getId());
+        studentClassEnrollmentRepository.detachClassReference(entry.getId());
     }
 
     private Map<String, Object> dependencySummaryForClass(String academicYear, ClassroomLeadershipEntry entry) {
         long curriculumRows = curriculumPlanEntryRepository.countClassTails(academicYear, entry.getId());
         long manualLoadRows = manualLoadEntryRepository.countClassTails(academicYear, entry.getId());
+        long studentEnrollmentRows = studentClassEnrollmentRepository.countByClassRef_Id(entry.getId());
         return Map.of(
                 "academicYear", academicYear,
                 "classId", entry.getId(),
@@ -520,7 +538,8 @@ public class ClassroomLeadershipServiceImpl implements ClassroomLeadershipServic
                 "className", ClassNameNormalizer.normalize(entry.getClassName()),
                 "curriculumRows", curriculumRows,
                 "manualLoadRows", manualLoadRows,
-                "totalRows", curriculumRows + manualLoadRows
+                "studentEnrollmentRows", studentEnrollmentRows,
+                "totalRows", curriculumRows + manualLoadRows + studentEnrollmentRows
         );
     }
 

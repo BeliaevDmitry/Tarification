@@ -15,6 +15,7 @@ const TAB_PATHS = {
     '/teachers.html': 'TEACHERS',
     '/teachers-notification.html': 'HR_NOTIFICATIONS_VIEW',
     '/contingent.html': 'CONTINGENT_STATS',
+    '/ovz.html': 'OVZ',
     '/educational-work.html': 'EDUCATIONAL_WORK',
     '/documents.html': null,
     '/pedagogical-councils.html': 'DOCUMENTS_PEDAGOGICAL_COUNCILS',
@@ -279,6 +280,10 @@ function isEducationalWorkPage() {
     return window.location.pathname === '/educational-work.html';
 }
 
+function isOvzPage() {
+    return window.location.pathname === '/ovz.html';
+}
+
 function isDocumentsHubPage() {
     return window.location.pathname === '/documents.html';
 }
@@ -319,6 +324,11 @@ function hasDocumentsAccess(currentUser) {
         permissions.DOCUMENTS_PEDAGOGICAL_COUNCILS?.canView
         || permissions.DOCUMENTS_PROBE_ORDERS?.canView
     );
+}
+
+function hasOvzAccess(currentUser) {
+    if (currentUser.admin) return true;
+    return Boolean(tabPermissionMap(currentUser).OVZ?.canView);
 }
 
 function showAccessDenied(sectionTitle = 'раздела') {
@@ -605,6 +615,11 @@ function enrichMainMenu(currentUser) {
     const documentsCard = document.querySelector('[data-documents-card]');
     if (documentsCard) {
         documentsCard.style.display = hasDocumentsAccess(currentUser) ? '' : 'none';
+    }
+
+    const ovzCard = document.querySelector('[data-ovz-card]');
+    if (ovzCard) {
+        ovzCard.style.display = hasOvzAccess(currentUser) ? '' : 'none';
     }
 
     const permissions = tabPermissionMap(currentUser);

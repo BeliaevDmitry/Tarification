@@ -146,6 +146,7 @@ public class StudentSupportDocumentService {
             throw new IllegalArgumentException("Документ относится к другому ребёнку или учебному году");
         }
         StudentSupportDocumentType previousType = document.getDocumentType();
+        validateDossierCombination(academicYear, student.getId(), document.getId(), request.getDocumentType());
         validateDocument(academicYear, student, request);
         document.setStudent(student);
         document.setAcademicYear(academicYear);
@@ -191,6 +192,26 @@ public class StudentSupportDocumentService {
             synchronizeMseStatus(document);
         }
         return toView(document, LocalDate.now());
+    }
+
+    private void validateDossierCombination(String academicYear,
+                                            Long studentId,
+                                            Long documentId,
+                                            StudentSupportDocumentType requestedType) {
+        long ignoredId = documentId == null ? -1L : documentId;
+        if (documentRepository.existsByStudent_IdAndAcademicYearAndDocumentTypeAndIdNot(
+                studentId, academicYear, requestedType, ignoredId)) {
+            throw new IllegalArgumentException("У ребёнка уже есть документ этого вида. Откройте его через кнопку «Изменить» в реестре.");
+        }
+        StudentSupportDocumentType incompatible = requestedType == StudentSupportDocumentType.CPMPC_CONCLUSION
+                ? StudentSupportDocumentType.CPMPC_RECOMMENDATION
+                : requestedType == StudentSupportDocumentType.CPMPC_RECOMMENDATION
+                ? StudentSupportDocumentType.CPMPC_CONCLUSION
+                : null;
+        if (incompatible != null && documentRepository.existsByStudent_IdAndAcademicYearAndDocumentTypeAndIdNot(
+                studentId, academicYear, incompatible, ignoredId)) {
+            throw new IllegalArgumentException("У ребёнка не могут одновременно действовать заключение и рекомендация ЦМПК.");
+        }
     }
 
     @Transactional
@@ -577,6 +598,10 @@ public class StudentSupportDocumentService {
             List<StudentSupportDocumentDtos.CorrectionDirectionRequest> requests
     ) {
         correctionRepository.deleteAllByDocument_Id(document.getId());
+        // Derived deletes are queued in the persistence context. Execute them before
+        // inserting the replacement rows, otherwise an unchanged specialist collides
+        // with the unique (document_id, specialist_id) constraint during editing.
+        correctionRepository.flush();
         if (requests == null || requests.isEmpty()) {
             return;
         }

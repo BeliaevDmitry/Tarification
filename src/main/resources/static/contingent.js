@@ -34,6 +34,10 @@ const ui = {
     statsSummary: document.getElementById('contingent-stats-summary'),
     kindergartenSummary: document.getElementById('contingent-kindergarten-summary'),
     kindergartenTable: document.getElementById('contingent-kindergarten-table'),
+    classStudentsDialog: document.getElementById('contingent-class-students-dialog'),
+    classStudentsTitle: document.getElementById('contingent-class-students-title'),
+    classStudentsBody: document.getElementById('contingent-class-students-body'),
+    classStudentsClose: document.getElementById('contingent-class-students-close'),
     manualSourceSelect: document.getElementById('contingent-class-size-source'),
     manualSourceSaveBtn: document.getElementById('contingent-class-size-source-save-btn'),
     manualFileInput: document.getElementById('contingent-manual-file'),
@@ -120,6 +124,11 @@ const ui = {
 };
 
 const esc = (v) => String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+const formatDisplayDate = (value) => {
+    if (!value) return '';
+    const parts = String(value).split('-');
+    return parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : String(value);
+};
 let currentStats = null;
 let currentManualRows = [];
 let currentSupportSummary = null;
@@ -417,7 +426,7 @@ function renderStatsTable(stats) {
             perBuilding.forEach((buildingData) => {
                 buildingData.addressRows.forEach((rows) => {
                     const item = rows[i];
-                    row += `<td>${esc(item?.className || '')}</td>`;
+                    row += `<td>${item?.className ? `<button type="button" class="link-button" data-class-students="${esc(item.className)}">${esc(item.className)}</button>` : ''}</td>`;
                     row += `<td>${esc(item?.students || '')}</td>`;
                 });
                 if (i === 0) {
@@ -470,6 +479,25 @@ function renderKindergartenStats(stats) {
         <thead><tr><th>Группа / форма</th><th>Детей</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="2" class="muted">Дошкольных групп в снимке нет.</td></tr>'}
         <tr><th>ИТОГО ДЕТСКИЙ САД</th><th>${esc(total)}</th></tr>${unassignedRow}</tbody>`;
+}
+
+async function openClassStudents(className) {
+    const selectedDate = ui.snapshotDateSelect?.value || '';
+    const query = new URLSearchParams({ className });
+    if (selectedDate) query.set('snapshotDate', selectedDate);
+    ui.classStudentsTitle.textContent = `Класс ${className}`;
+    ui.classStudentsBody.innerHTML = '<tr><td colspan="5" class="muted">Загрузка…</td></tr>';
+    ui.classStudentsDialog.showModal();
+    try {
+        const students = await api(`/api/contingent/class-students?${query}`);
+        ui.classStudentsBody.innerHTML = students.length ? students.map((student, index) => `<tr>
+            <td>${index + 1}</td><td>${esc(student.studentId || 'не присвоена')}</td>
+            <td>${esc(student.fullName)}</td><td>${esc(formatDisplayDate(student.birthDate))}</td>
+            <td>${esc(student.recordNumber || '')}</td></tr>`).join('')
+            : '<tr><td colspan="5" class="muted">В выбранной выгрузке детей этого класса нет.</td></tr>';
+    } catch (error) {
+        ui.classStudentsBody.innerHTML = `<tr><td colspan="5">Ошибка: ${esc(error.message)}</td></tr>`;
+    }
 }
 
 
@@ -532,7 +560,7 @@ function renderStatsAddressTable(stats) {
             }
             perAddress.forEach((rows) => {
                 const item = rows[i];
-                row += `<td>${esc(item?.className || '')}</td>`;
+                row += `<td>${item?.className ? `<button type="button" class="link-button" data-class-students="${esc(item.className)}">${esc(item.className)}</button>` : ''}</td>`;
                 row += `<td>${esc(item?.students || '')}</td>`;
             });
             row += '</tr>';
@@ -2135,6 +2163,12 @@ ui.supportDocumentTable?.addEventListener('click', async (event) => {
         return;
     }
 });
+
+ui.statsTable?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-class-students]');
+    if (button) openClassStudents(button.dataset.classStudents);
+});
+ui.classStudentsClose?.addEventListener('click', () => ui.classStudentsDialog?.close());
 
 ui.supportReconcileBtn?.addEventListener('click', async () => {
     if (supportReconcileInProgress) return;
