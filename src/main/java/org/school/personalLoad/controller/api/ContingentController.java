@@ -79,6 +79,18 @@ public class ContingentController {
                 academicYearService.resolveRequestedOrDefault(academicYear), date, className));
     }
 
+    @GetMapping("/class-students/export")
+    public ResponseEntity<byte[]> exportClassStudents(
+            @RequestParam(required = false) String academicYear,
+            @RequestParam(required = false) String snapshotDate,
+            @RequestParam String className) {
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        LocalDate date = (snapshotDate == null || snapshotDate.isBlank()) ? null : LocalDate.parse(snapshotDate);
+        byte[] body = contingentService.exportClassStudents(effectiveYear, date, className);
+        String suffix = date == null ? "последние" : date.toString();
+        return workbookResponse(body, "Список класса " + className + " " + suffix + ".xlsx");
+    }
+
     @GetMapping("/import-mismatches")
     public ResponseEntity<ContingentDtos.ImportMismatchResponse> importMismatches(
             @RequestParam(required = false) String academicYear,

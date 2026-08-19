@@ -37,6 +37,7 @@ const ui = {
     classStudentsDialog: document.getElementById('contingent-class-students-dialog'),
     classStudentsTitle: document.getElementById('contingent-class-students-title'),
     classStudentsBody: document.getElementById('contingent-class-students-body'),
+    classStudentsExport: document.getElementById('contingent-class-students-export'),
     classStudentsClose: document.getElementById('contingent-class-students-close'),
     manualSourceSelect: document.getElementById('contingent-class-size-source'),
     manualSourceSaveBtn: document.getElementById('contingent-class-size-source-save-btn'),
@@ -132,6 +133,7 @@ const formatDisplayDate = (value) => {
 let currentStats = null;
 let currentManualRows = [];
 let currentSupportSummary = null;
+let currentClassStudentsClassName = '';
 let supportReconcileInProgress = false;
 let currentSupportDocuments = [];
 let supportReferences = { students: [], curriculum: [], teachers: [] };
@@ -485,18 +487,39 @@ async function openClassStudents(className) {
     const selectedDate = ui.snapshotDateSelect?.value || '';
     const query = new URLSearchParams({ className });
     if (selectedDate) query.set('snapshotDate', selectedDate);
+    currentClassStudentsClassName = className;
     ui.classStudentsTitle.textContent = `Класс ${className}`;
-    ui.classStudentsBody.innerHTML = '<tr><td colspan="5" class="muted">Загрузка…</td></tr>';
+    ui.classStudentsBody.innerHTML = '<tr><td colspan="7" class="muted">Загрузка…</td></tr>';
     ui.classStudentsDialog.showModal();
     try {
         const students = await api(`/api/contingent/class-students?${query}`);
         ui.classStudentsBody.innerHTML = students.length ? students.map((student, index) => `<tr>
-            <td>${index + 1}</td><td>${esc(student.studentId || 'не присвоена')}</td>
-            <td>${esc(student.fullName)}</td><td>${esc(formatDisplayDate(student.birthDate))}</td>
-            <td>${esc(student.recordNumber || '')}</td></tr>`).join('')
-            : '<tr><td colspan="5" class="muted">В выбранной выгрузке детей этого класса нет.</td></tr>';
+            <td>${index + 1}</td><td>${esc(student.fullName)}</td>
+            <td>${esc(formatDisplayDate(student.birthDate))}</td><td>${esc(student.snils || '')}</td>
+            <td>${esc(student.childPhone || '')}</td>
+            <td class="multiline-cell">${esc(student.representativeNames || '').replaceAll('\n', '<br>')}</td>
+            <td class="multiline-cell">${esc(student.representativePhones || '').replaceAll('\n', '<br>')}</td></tr>`).join('')
+            : '<tr><td colspan="7" class="muted">В выбранной выгрузке детей этого класса нет.</td></tr>';
     } catch (error) {
-        ui.classStudentsBody.innerHTML = `<tr><td colspan="5">Ошибка: ${esc(error.message)}</td></tr>`;
+        ui.classStudentsBody.innerHTML = `<tr><td colspan="7">Ошибка: ${esc(error.message)}</td></tr>`;
+    }
+}
+
+async function exportCurrentClassStudents() {
+    if (!currentClassStudentsClassName) return;
+    const selectedDate = ui.snapshotDateSelect?.value || '';
+    const query = new URLSearchParams({ className: currentClassStudentsClassName });
+    if (selectedDate) query.set('snapshotDate', selectedDate);
+    ui.classStudentsExport.disabled = true;
+    try {
+        await downloadWorkbook(
+            `/api/contingent/class-students/export?${query}`,
+            `Список класса ${currentClassStudentsClassName}.xlsx`
+        );
+    } catch (error) {
+        alert(`Не удалось выгрузить список класса: ${error.message}`);
+    } finally {
+        ui.classStudentsExport.disabled = false;
     }
 }
 
@@ -2169,6 +2192,7 @@ ui.statsTable?.addEventListener('click', (event) => {
     if (button) openClassStudents(button.dataset.classStudents);
 });
 ui.classStudentsClose?.addEventListener('click', () => ui.classStudentsDialog?.close());
+ui.classStudentsExport?.addEventListener('click', exportCurrentClassStudents);
 
 ui.supportReconcileBtn?.addEventListener('click', async () => {
     if (supportReconcileInProgress) return;

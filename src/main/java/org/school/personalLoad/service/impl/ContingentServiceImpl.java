@@ -1,5 +1,7 @@
 package org.school.personalLoad.service.impl;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
@@ -44,6 +46,7 @@ import java.util.regex.Pattern;
 public class ContingentServiceImpl implements ContingentService {
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd.MM.yyyy");
+    private static final ObjectMapper RAW_PAYLOAD_MAPPER = new ObjectMapper();
 
     private final ContingentSnapshotRepository snapshotRepository;
     private final ContingentStudentRepository studentRepository;
@@ -845,11 +848,101 @@ public class ContingentServiceImpl implements ContingentService {
                 .filter(student -> normalizePlacementName(student.getClassName()).equalsIgnoreCase(normalizedClass))
                 .sorted(Comparator.comparing(ContingentStudent::getFullName, String.CASE_INSENSITIVE_ORDER))
                 .map(student -> {
+                    RepresentativeContact representatives = allRepresentatives(student);
                     ContingentDtos.ClassStudentView view = new ContingentDtos.ClassStudentView();
                     view.setStudentId(student.getStudentId()); view.setFullName(student.getFullName());
                     view.setBirthDate(parseOptionalDate(student.getBirthDate())); view.setClassName(student.getClassName());
-                    view.setRecordNumber(student.getRecordNumber()); return view;
+                    view.setRecordNumber(student.getRecordNumber()); view.setSnils(student.getPensionInsurance());
+                    view.setChildPhone(student.getPhone()); view.setRepresentativeNames(representatives.name());
+                    view.setRepresentativePhones(representatives.phone()); return view;
                 }).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] exportClassStudents(String academicYear, LocalDate snapshotDate, String className) {
+        List<ContingentDtos.ClassStudentView> students = getClassStudents(academicYear, snapshotDate, className);
+        String normalizedClass = normalizePlacementName(className);
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            ContingentWorkbookStyles styles = createContingentStyles(workbook);
+            Sheet sheet = workbook.createSheet("Список класса");
+            Row title = sheet.createRow(0);
+            String dateText = snapshotDate == null ? "последняя выгрузка" : snapshotDate.format(DATE_FORMATTER);
+            createCell(title, 0, "Список класса " + normalizedClass + " — " + dateText, styles.title());
+            for (int column = 1; column < 7; column++) createCell(title, column, "", styles.title());
+            merge(sheet, new CellRangeAddress(0, 0, 0, 6));
+
+            String[] headers = {"№", "ФИО", "Дата рождения", "СНИЛС", "Телефон ребёнка",
+                    "ФИО представителей", "Телефоны представителей"};
+            Row header = sheet.createRow(1);
+            for (int column = 0; column < headers.length; column++) {
+                createCell(header, column, headers[column], styles.header());
+            }
+
+            int rowIndex = 2;
+            for (ContingentDtos.ClassStudentView student : students) {
+                Row row = sheet.createRow(rowIndex);
+                createCell(row, 0, rowIndex - 1, styles.number());
+                createCell(row, 1, student.getFullName(), styles.text());
+                createCell(row, 2, student.getBirthDate() == null ? "" : student.getBirthDate().format(DATE_FORMATTER), styles.text());
+                createCell(row, 3, student.getSnils(), styles.text());
+                createCell(row, 4, student.getChildPhone(), styles.text());
+                createCell(row, 5, student.getRepresentativeNames(), styles.text());
+                createCell(row, 6, student.getRepresentativePhones(), styles.text());
+                row.setHeight((short) -1);
+                rowIndex++;
+            }
+
+            sheet.createFreezePane(0, 2);
+            int[] widths = {7, 34, 16, 18, 20, 38, 28};
+            for (int column = 0; column < widths.length; column++) {
+                sheet.setColumnWidth(column, widths[column] * 256);
+            }
+            sheet.setAutoFilter(new CellRangeAddress(1, Math.max(1, rowIndex - 1), 0, 6));
+            workbook.write(output);
+            return output.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("Не удалось выгрузить список класса", e);
+        }
+    }
+
+    private RepresentativeContact allRepresentatives(ContingentStudent student) {
+        LinkedHashSet<String> names = new LinkedHashSet<>();
+        LinkedHashSet<String> phones = new LinkedHashSet<>();
+        String rawPayload = normalize(student == null ? null : student.getRawPayload());
+        if (!rawPayload.isBlank()) {
+            try {
+                Map<String, String> raw = RAW_PAYLOAD_MAPPER.readValue(
+                        rawPayload, new TypeReference<LinkedHashMap<String, String>>() { });
+                Map<String, String> normalizedRaw = new LinkedHashMap<>();
+                raw.forEach((key, value) -> normalizedRaw.put(
+                        cleanCsvHeader(key).toLowerCase(Locale.ROOT), normalize(value)));
+                for (int index = 1; index <= 20; index++) {
+                    addNonBlank(names, rawRepresentativeValue(normalizedRaw, index, "фио"));
+                    addNonBlank(phones, rawRepresentativeValue(normalizedRaw, index, "телефон"));
+                }
+            } catch (Exception ignored) {
+                // Старые снимки могут содержать не JSON. Ниже остаётся сохранённый контакт.
+            }
+        }
+        if (student != null) {
+            addNonBlank(names, student.getRepresentativeName());
+            addNonBlank(phones, student.getRepresentativePhone());
+        }
+        return new RepresentativeContact(String.join("\n", names), String.join("\n", phones));
+    }
+
+    private String rawRepresentativeValue(Map<String, String> raw, int index, String field) {
+        for (String separator : List.of(" — ", " - ")) {
+            String value = raw.get("представитель " + index + separator + field);
+            if (value != null && !value.isBlank()) return value;
+        }
+        return "";
+    }
+
+    private void addNonBlank(Set<String> values, String value) {
+        String normalized = normalize(value);
+        if (!normalized.isBlank()) values.add(normalized);
     }
 
     private LocalDate parseOptionalDate(String value) {

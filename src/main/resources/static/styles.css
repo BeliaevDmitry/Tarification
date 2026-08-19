@@ -3698,11 +3698,20 @@ td.vacancy-row {
 }
 
 .contingent-class-students-dialog {
-    width: min(920px, 94vw);
+    width: min(1400px, 96vw);
     max-height: 86vh;
     border: 0;
     border-radius: 14px;
     padding: 20px;
+}
+
+.contingent-class-students-dialog td {
+    vertical-align: top;
+}
+
+.contingent-class-students-dialog .multiline-cell {
+    min-width: 180px;
+    white-space: normal;
 }
 
 .ovz-tabs {
