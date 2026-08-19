@@ -117,6 +117,51 @@ class ContingentServiceImplExportTest {
     }
 
     @Test
+    void classStudentListAndWorkbookContainContactsAndAllRepresentatives() throws Exception {
+        LocalDate snapshotDate = LocalDate.of(2026, 8, 16);
+        ContingentSnapshot snapshot = new ContingentSnapshot();
+        snapshot.setId(91L);
+        snapshot.setAcademicYear("2026/2027");
+        snapshot.setSnapshotDate(snapshotDate);
+
+        ContingentStudent student = new ContingentStudent();
+        student.setSnapshotId(91L);
+        student.setFullName("Иванов Иван Иванович");
+        student.setClassName("9-Р");
+        student.setBirthDate("01.02.2011");
+        student.setPensionInsurance("123-456-789 01");
+        student.setPhone("+7 900 100-20-30");
+        student.setRepresentativeName("Петрова Мария Сергеевна");
+        student.setRepresentativePhone("+7 901 111-22-33");
+        student.setRawPayload("{\"Представитель 1 — ФИО\":\"Петрова Мария Сергеевна\","
+                + "\"Представитель 1 — телефон\":\"+7 901 111-22-33\","
+                + "\"Представитель 2 — ФИО\":\"Иванов Пётр Андреевич\","
+                + "\"Представитель 2 — телефон\":\"+7 902 444-55-66\"}");
+
+        when(snapshotRepository.findFirstByAcademicYearAndSnapshotDateOrderByImportedAtDesc(
+                "2026/2027", snapshotDate)).thenReturn(Optional.of(snapshot));
+        when(studentRepository.findAllBySnapshotId(91L)).thenReturn(List.of(student));
+
+        var rows = service.getClassStudents("2026/2027", snapshotDate, "9-Р");
+        assertEquals(1, rows.size());
+        assertEquals("123-456-789 01", rows.get(0).getSnils());
+        assertEquals("+7 900 100-20-30", rows.get(0).getChildPhone());
+        assertEquals("Петрова Мария Сергеевна\nИванов Пётр Андреевич", rows.get(0).getRepresentativeNames());
+        assertEquals("+7 901 111-22-33\n+7 902 444-55-66", rows.get(0).getRepresentativePhones());
+
+        byte[] body = service.exportClassStudents("2026/2027", snapshotDate, "9-Р");
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
+            var sheet = workbook.getSheet("Список класса");
+            assertNotNull(sheet);
+            assertEquals("СНИЛС", sheet.getRow(1).getCell(3).getStringCellValue());
+            assertEquals("Телефон ребёнка", sheet.getRow(1).getCell(4).getStringCellValue());
+            assertEquals("Иванов Иван Иванович", sheet.getRow(2).getCell(1).getStringCellValue());
+            assertEquals("Петрова Мария Сергеевна\nИванов Пётр Андреевич",
+                    sheet.getRow(2).getCell(5).getStringCellValue());
+        }
+    }
+
+    @Test
     void compactMeshExportWithoutHeadersIsImportedAndClassified() throws Exception {
         byte[] source;
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {

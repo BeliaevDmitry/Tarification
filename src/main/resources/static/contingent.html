@@ -71,11 +71,14 @@
     <dialog id="contingent-class-students-dialog" class="contingent-class-students-dialog">
         <div class="dialog-hero">
             <div><h3 id="contingent-class-students-title">Список класса</h3>
-                <p class="muted">Дети из выбранной выгрузки контингента. ФК — постоянная карточка ребёнка.</p></div>
-            <button id="contingent-class-students-close" type="button" class="secondary">Закрыть</button>
+                <p class="muted">Дети из выбранной выгрузки контингента.</p></div>
+            <div class="row dialog-actions">
+                <button id="contingent-class-students-export" type="button">Выгрузить в Excel</button>
+                <button id="contingent-class-students-close" type="button" class="secondary">Закрыть</button>
+            </div>
         </div>
         <div class="sheet-wrap"><table class="sheet-table">
-            <thead><tr><th>№</th><th>ФК</th><th>ФИО</th><th>Дата рождения</th><th>Личное дело</th></tr></thead>
+            <thead><tr><th>№</th><th>ФИО</th><th>Дата рождения</th><th>СНИЛС</th><th>Телефон ребёнка</th><th>ФИО представителей</th><th>Телефоны представителей</th></tr></thead>
             <tbody id="contingent-class-students-body"></tbody>
         </table></div>
     </dialog>

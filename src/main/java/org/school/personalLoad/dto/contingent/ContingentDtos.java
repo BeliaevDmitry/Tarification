@@ -116,6 +116,10 @@ public final class ContingentDtos {
         private LocalDate birthDate;
         private String className;
         private String recordNumber;
+        private String snils;
+        private String childPhone;
+        private String representativeNames;
+        private String representativePhones;
     }
 
     @Data

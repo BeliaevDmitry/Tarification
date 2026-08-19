@@ -41,6 +41,21 @@ class ContingentImportFrontendTest {
     }
 
     @Test
+    void classDialogShowsContactsAndOffersExcelExport() throws Exception {
+        String html = Files.readString(Path.of("src/main/resources/static/contingent.html"));
+        String pageScript = Files.readString(Path.of("src/main/resources/static/contingent.js"));
+
+        assertTrue(html.contains("id=\"contingent-class-students-export\""));
+        assertTrue(html.contains("<th>СНИЛС</th>"));
+        assertTrue(html.contains("<th>Телефон ребёнка</th>"));
+        assertTrue(html.contains("<th>ФИО представителей</th>"));
+        assertTrue(html.contains("<th>Телефоны представителей</th>"));
+        assertTrue(pageScript.contains("student.representativeNames"));
+        assertTrue(pageScript.contains("student.representativePhones"));
+        assertTrue(pageScript.contains("/api/contingent/class-students/export"));
+    }
+
+    @Test
     void repeatedReconciliationClickIsBlockedUntilRequestFinishes() throws Exception {
         String pageScript = Files.readString(Path.of("src/main/resources/static/contingent.js"));
 

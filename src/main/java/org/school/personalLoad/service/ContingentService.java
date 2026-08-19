@@ -18,6 +18,8 @@ public interface ContingentService {
 
     List<ContingentDtos.ClassStudentView> getClassStudents(String academicYear, LocalDate snapshotDate, String className);
 
+    byte[] exportClassStudents(String academicYear, LocalDate snapshotDate, String className);
+
     byte[] exportStats(String academicYear, LocalDate snapshotDate);
 
     List<ContingentDtos.ImportProblem> getProblems(String academicYear, Long snapshotId);
