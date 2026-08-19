@@ -53,7 +53,8 @@ const TAB_GROUPS = [
         label: 'Контингент',
         tabs: [
             { key: 'CONTINGENT_IMPORT', label: 'Контингент: импорт' },
-            { key: 'CONTINGENT_STATS', label: 'Контингент: численность' }
+            { key: 'CONTINGENT_STATS', label: 'Контингент: численность' },
+            { key: 'OVZ', label: 'ОВЗ' }
         ]
     },
     {

@@ -16,6 +16,7 @@ import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
+import org.school.personalLoad.repository.StudentClassEnrollmentRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 
 import java.util.List;
@@ -45,6 +46,8 @@ class ClassroomLeadershipServiceImplDeleteTest {
     private CurriculumPlanEntryRepository curriculumPlanEntryRepository;
     @Mock
     private ManualLoadEntryRepository manualLoadEntryRepository;
+    @Mock
+    private StudentClassEnrollmentRepository studentClassEnrollmentRepository;
 
     private ClassroomLeadershipServiceImpl service;
 
@@ -56,7 +59,8 @@ class ClassroomLeadershipServiceImplDeleteTest {
                 schoolBuildingRepository,
                 buildingGroupRepository,
                 curriculumPlanEntryRepository,
-                manualLoadEntryRepository
+                manualLoadEntryRepository,
+                studentClassEnrollmentRepository
         );
     }
 
@@ -70,6 +74,8 @@ class ClassroomLeadershipServiceImplDeleteTest {
 
         verify(curriculumPlanEntryRepository).deleteByAcademicYearAndClassId("2026/2027", 42L);
         verify(manualLoadEntryRepository).deleteByAcademicYearAndClassIds("2026/2027", List.of(42L));
+        verify(manualLoadEntryRepository).detachClassReference(42L);
+        verify(studentClassEnrollmentRepository).detachClassReference(42L);
         verify(classroomLeadershipRepository).delete(entry);
     }
 
@@ -332,12 +338,14 @@ class ClassroomLeadershipServiceImplDeleteTest {
                 .thenReturn(Optional.of(entry));
         when(curriculumPlanEntryRepository.countClassTails("2026/2027", 42L)).thenReturn(5L);
         when(manualLoadEntryRepository.countClassTails("2026/2027", 42L)).thenReturn(3L);
+        when(studentClassEnrollmentRepository.countByClassRef_Id(42L)).thenReturn(2L);
 
         Map<String, Object> summary = service.dependencySummary("2026/2027", "СП3", "7-А");
 
         assertEquals(5L, summary.get("curriculumRows"));
         assertEquals(3L, summary.get("manualLoadRows"));
-        assertEquals(8L, summary.get("totalRows"));
+        assertEquals(2L, summary.get("studentEnrollmentRows"));
+        assertEquals(10L, summary.get("totalRows"));
     }
 
 
@@ -430,6 +438,8 @@ class ClassroomLeadershipServiceImplDeleteTest {
 
         verify(curriculumPlanEntryRepository).deleteByAcademicYearAndClassId("2026/2027", 42L);
         verify(manualLoadEntryRepository).deleteByAcademicYearAndClassIds("2026/2027", List.of(42L));
+        verify(manualLoadEntryRepository).detachClassReference(42L);
+        verify(studentClassEnrollmentRepository).detachClassReference(42L);
         verify(classroomLeadershipRepository).delete(entry);
     }
 

@@ -833,6 +833,34 @@ public class ContingentServiceImpl implements ContingentService {
         finishContingentSheet(sheet, Math.max(totalCol, 4), 2);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<ContingentDtos.ClassStudentView> getClassStudents(String academicYear, LocalDate snapshotDate, String className) {
+        String normalizedClass = normalizePlacementName(className);
+        if (normalizedClass.isBlank()) {
+            throw new IllegalArgumentException("Выберите класс или группу");
+        }
+        ContingentSnapshot snapshot = resolveSnapshot(academicYear, snapshotDate);
+        return studentRepository.findAllBySnapshotId(snapshot.getId()).stream()
+                .filter(student -> normalizePlacementName(student.getClassName()).equalsIgnoreCase(normalizedClass))
+                .sorted(Comparator.comparing(ContingentStudent::getFullName, String.CASE_INSENSITIVE_ORDER))
+                .map(student -> {
+                    ContingentDtos.ClassStudentView view = new ContingentDtos.ClassStudentView();
+                    view.setStudentId(student.getStudentId()); view.setFullName(student.getFullName());
+                    view.setBirthDate(parseOptionalDate(student.getBirthDate())); view.setClassName(student.getClassName());
+                    view.setRecordNumber(student.getRecordNumber()); return view;
+                }).toList();
+    }
+
+    private LocalDate parseOptionalDate(String value) {
+        String normalized = normalize(value);
+        if (normalized.isBlank()) return null;
+        for (DateTimeFormatter formatter : List.of(DATE_FORMATTER, DateTimeFormatter.ISO_LOCAL_DATE)) {
+            try { return LocalDate.parse(normalized, formatter); } catch (RuntimeException ignored) { }
+        }
+        return null;
+    }
+
     private void writeKindergartenStatsSheet(Workbook workbook,
                                              ContingentDtos.StatsResponse stats,
                                              ContingentWorkbookStyles styles) {

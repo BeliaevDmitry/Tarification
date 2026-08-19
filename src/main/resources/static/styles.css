@@ -3686,3 +3686,147 @@ td.vacancy-row {
         padding: 24px 18px;
     }
 }
+.link-button {
+    appearance: none;
+    border: 0;
+    background: none;
+    color: #1268b3;
+    padding: 0;
+    text-decoration: underline;
+    cursor: pointer;
+    font: inherit;
+}
+
+.contingent-class-students-dialog {
+    width: min(920px, 94vw);
+    max-height: 86vh;
+    border: 0;
+    border-radius: 14px;
+    padding: 20px;
+}
+
+.ovz-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.ovz-section-heading,
+.dialog-hero,
+.ovz-info-card,
+.ovz-application-choice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.ovz-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.ovz-actions button,
+.ovz-registry-table button {
+    padding: 6px 9px;
+    white-space: nowrap;
+}
+
+.ovz-sort-help {
+    margin-top: -4px;
+}
+
+.ovz-registry-table .ovz-sort-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    width: 100%;
+    padding: 2px 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: left;
+    white-space: normal;
+    cursor: pointer;
+}
+
+.ovz-registry-table .ovz-sort-button:hover {
+    color: #1d4ed8;
+}
+
+.ovz-registry-table .ovz-sort-button:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
+
+.ovz-registry-table [data-ovz-sort-indicator] {
+    color: #1d4ed8;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.ovz-mini-roadmap {
+    display: flex;
+    gap: 4px;
+    min-width: 86px;
+}
+
+.ovz-status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    border: 1px solid rgba(0, 0, 0, .18);
+}
+
+.ovz-status-dot.red,
+.ovz-roadmap-number.red { background: #f87171; }
+.ovz-status-dot.yellow,
+.ovz-roadmap-number.yellow { background: #facc15; }
+.ovz-status-dot.green,
+.ovz-roadmap-number.green { background: #4ade80; }
+
+.ovz-dialog {
+    width: min(980px, 95vw);
+    max-height: 90vh;
+    overflow: auto;
+    border: 0;
+    border-radius: 16px;
+    padding: 22px;
+}
+
+.ovz-detail-dialog { width: min(1200px, 96vw); }
+.ovz-ppk-settings-dialog { width: min(1320px, 98vw); }
+.ovz-commission-role-grid { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr); gap: 14px 20px; }
+.ovz-commission-role-grid label { display: grid; gap: 6px; }
+.ovz-commission-role-grid input[readonly],
+.ovz-commission-member-row input[readonly] { background: #f4f7fa; color: #41556b; }
+.ovz-commission-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 20px 0 10px; }
+.ovz-commission-heading h4, .ovz-commission-heading p { margin: 0; }
+.ovz-commission-members { display: grid; gap: 9px; margin-bottom: 18px; }
+.ovz-commission-member-row { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr) auto; gap: 12px; align-items: center; }
+.ovz-commission-member-row select, .ovz-commission-member-row input { width: 100%; }
+.ovz-detail-layout { display: grid; grid-template-columns: minmax(230px, 300px) 1fr; gap: 22px; }
+.ovz-roadmap { display: flex; flex-direction: column; gap: 7px; border-right: 1px solid #dbe3eb; padding-right: 16px; }
+.ovz-roadmap-step { display: flex; align-items: center; gap: 10px; text-align: left; background: #f8fafc; color: #243548; border: 1px solid #dbe3eb; }
+.ovz-roadmap-step.active { border-color: #1976bd; box-shadow: 0 0 0 2px rgba(25, 118, 189, .12); }
+.ovz-roadmap-step small { display: block; margin-top: 3px; color: #667587; }
+.ovz-roadmap-number { width: 27px; height: 27px; display: grid; place-items: center; flex: 0 0 27px; border-radius: 50%; color: #17202a; font-weight: 700; }
+.ovz-stage-content { min-width: 0; }
+.ovz-info-card, .ovz-application-choice { padding: 12px; margin: 8px 0; border: 1px solid #dbe3eb; border-radius: 10px; background: #f8fafc; }
+.ovz-info-card span { color: #667587; }
+.ovz-ppk-form { margin: 14px 0; }
+.ovz-ppk-form > label { display: block; margin: 10px 0; }
+.ovz-ppk-form textarea { width: 100%; }
+
+@media (max-width: 800px) {
+    .ovz-commission-role-grid, .ovz-commission-member-row { grid-template-columns: 1fr; }
+    .ovz-commission-heading { align-items: flex-start; flex-direction: column; }
+    .ovz-detail-layout { grid-template-columns: 1fr; }
+    .ovz-roadmap { border-right: 0; border-bottom: 1px solid #dbe3eb; padding: 0 0 14px; }
+    .ovz-section-heading { align-items: flex-start; flex-direction: column; }
+}

@@ -261,7 +261,9 @@ public class StudentSupportController {
     }
 
     private void validateEdit(SessionUser user) {
-        if (!user.canEditTab(AppTab.CONTINGENT_IMPORT) && !user.canEditTab(AppTab.CONTINGENT_STATS)) {
+        if (!user.canEditTab(AppTab.OVZ)
+                && !user.canEditTab(AppTab.CONTINGENT_IMPORT)
+                && !user.canEditTab(AppTab.CONTINGENT_STATS)) {
             throw new AuthExceptions.ForbiddenException("Нет прав на редактирование статусов детей и ИУП");
         }
     }

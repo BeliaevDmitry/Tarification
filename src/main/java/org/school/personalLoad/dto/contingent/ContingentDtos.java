@@ -110,6 +110,15 @@ public final class ContingentDtos {
     }
 
     @Data
+    public static class ClassStudentView {
+        private Long studentId;
+        private String fullName;
+        private LocalDate birthDate;
+        private String className;
+        private String recordNumber;
+    }
+
+    @Data
     public static class KindergartenGroupTotal {
         private String groupName;
         private Integer students;

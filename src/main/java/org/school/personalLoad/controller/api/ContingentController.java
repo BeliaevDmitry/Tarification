@@ -69,6 +69,16 @@ public class ContingentController {
         return ResponseEntity.ok(contingentService.getProblems(academicYearService.resolveRequestedOrDefault(academicYear), snapshotId));
     }
 
+    @GetMapping("/class-students")
+    public ResponseEntity<List<ContingentDtos.ClassStudentView>> classStudents(
+            @RequestParam(required = false) String academicYear,
+            @RequestParam(required = false) String snapshotDate,
+            @RequestParam String className) {
+        LocalDate date = (snapshotDate == null || snapshotDate.isBlank()) ? null : LocalDate.parse(snapshotDate);
+        return ResponseEntity.ok(contingentService.getClassStudents(
+                academicYearService.resolveRequestedOrDefault(academicYear), date, className));
+    }
+
     @GetMapping("/import-mismatches")
     public ResponseEntity<ContingentDtos.ImportMismatchResponse> importMismatches(
             @RequestParam(required = false) String academicYear,
