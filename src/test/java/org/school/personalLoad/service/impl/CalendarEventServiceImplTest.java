@@ -54,7 +54,10 @@ class CalendarEventServiceImplTest {
                 List.of(11L), List.of("DEPUTIES"), List.of(21L), List.of()), session(owner));
 
         assertEquals(LocalTime.of(11, 30), result.endTime());
-        assertEquals(List.of(11L, 12L, 13L), result.participants().stream().map(CalendarDtos.PersonRef::id).sorted().toList());
+        assertEquals(List.of(11L, 12L, 13L), result.participants().stream()
+                .map(CalendarDtos.EventParticipant::id).sorted().toList());
+        assertTrue(result.participants().stream()
+                .allMatch(item -> item.responseStatus() == CalendarAttendanceStatus.PENDING));
         assertEquals(List.of("DEPUTIES"), result.selectedGroupCodes());
         assertEquals(List.of(21L), result.selectedBuildingIds());
         assertTrue(result.audienceSummary().contains("Замы"));
@@ -92,6 +95,46 @@ class CalendarEventServiceImplTest {
 
         assertEquals(List.of(101L), participantResult.stream().map(CalendarDtos.EventView::id).toList());
         assertEquals(List.of(101L, 102L), sharedResult.stream().map(CalendarDtos.EventView::id).toList());
+    }
+
+    @Test
+    void invitedPersonCanConfirmOwnAttendance() {
+        Dependencies dependencies = new Dependencies();
+        AppUser owner = user(1L, 10L, UserRole.METHODIST);
+        AppUser participantUser = user(2L, 20L, UserRole.METHODIST);
+        TeacherDirectoryEntry participant = teacher(20L, "Иванова Анна", "СП1");
+        CalendarEvent event = event(101L, owner, CalendarEventVisibility.PARTICIPANTS);
+        event.getParticipants().add(participant);
+
+        when(dependencies.users.findById(2L)).thenReturn(Optional.of(participantUser));
+        when(dependencies.events.findById(101L)).thenReturn(Optional.of(event));
+        when(dependencies.events.save(event)).thenReturn(event);
+
+        CalendarDtos.EventView result = dependencies.service().respond(101L,
+                new CalendarDtos.AttendanceResponseRequest(CalendarAttendanceStatus.ACCEPTED),
+                session(participantUser));
+
+        assertEquals(CalendarAttendanceStatus.ACCEPTED, event.getParticipantResponses().get(20L));
+        assertEquals(CalendarAttendanceStatus.ACCEPTED, result.myResponseStatus());
+        assertTrue(result.canRespond());
+        assertEquals("Придёт", result.participants().get(0).responseLabel());
+    }
+
+    @Test
+    void personWhoWasNotInvitedCannotAnswerForMeeting() {
+        Dependencies dependencies = new Dependencies();
+        AppUser owner = user(1L, 10L, UserRole.METHODIST);
+        AppUser outsider = user(3L, 30L, UserRole.METHODIST);
+        CalendarEvent event = event(101L, owner, CalendarEventVisibility.PARTICIPANTS);
+
+        when(dependencies.users.findById(3L)).thenReturn(Optional.of(outsider));
+        when(dependencies.events.findById(101L)).thenReturn(Optional.of(event));
+
+        assertThrows(org.school.personalLoad.auth.AuthExceptions.ForbiddenException.class,
+                () -> dependencies.service().respond(101L,
+                        new CalendarDtos.AttendanceResponseRequest(CalendarAttendanceStatus.ACCEPTED),
+                        session(outsider)));
+        verify(dependencies.events, never()).save(any(CalendarEvent.class));
     }
 
     private CalendarEvent event(Long id, AppUser owner, CalendarEventVisibility visibility) {

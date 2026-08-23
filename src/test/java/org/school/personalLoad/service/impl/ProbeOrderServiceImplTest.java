@@ -320,6 +320,70 @@ class ProbeOrderServiceImplTest {
         assertTrue(refreshed.missingData().isEmpty());
     }
 
+    @Test
+    void savesAnyNumberOfAdditionalCompanions() {
+        ProbeOrderRepository orders = mock(ProbeOrderRepository.class);
+        ProbeOrderApprovalRepository approvals = mock(ProbeOrderApprovalRepository.class);
+        ProbeOrderSettingsRepository settings = mock(ProbeOrderSettingsRepository.class);
+        ProbeOrderGeneratedDocumentRepository documents = mock(ProbeOrderGeneratedDocumentRepository.class);
+        ProbeOrderScanRepository scans = mock(ProbeOrderScanRepository.class);
+        ClassroomLeadershipRepository leadership = mock(ClassroomLeadershipRepository.class);
+        TeacherDirectoryRepository teachers = mock(TeacherDirectoryRepository.class);
+
+        SchoolBuilding building = new SchoolBuilding();
+        building.setId(7L);
+        building.setCode("СП-2");
+        building.setName("Корпус");
+        ProbeOrder order = new ProbeOrder();
+        order.setId(102L);
+        order.setAcademicYear("2026/2027");
+        order.setExternalEventId("EV-EXTRA");
+        order.setEventName("Профессиональная проба");
+        order.setEventDate(LocalDate.of(2026, 9, 22));
+        order.setSchoolBuilding(building);
+        order.setSourceUploadedAt(LocalDateTime.now());
+        ProbeOrderParticipant participant = new ProbeOrderParticipant();
+        participant.setOrder(order);
+        participant.setFullNameSnapshot("Иванов Иван Иванович");
+        participant.setClassNameSnapshot("7-А");
+        order.getParticipants().add(participant);
+
+        TeacherDirectoryEntry primary = teacher(1L, "Основной Сопровождающий");
+        TeacherDirectoryEntry additionalOne = teacher(2L, "Дополнительный Первый");
+        TeacherDirectoryEntry additionalTwo = teacher(3L, "Дополнительный Второй");
+        when(orders.findOneById(102L)).thenReturn(Optional.of(order));
+        when(orders.save(any(ProbeOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(teachers.findById(1L)).thenReturn(Optional.of(primary));
+        when(teachers.findById(2L)).thenReturn(Optional.of(additionalOne));
+        when(teachers.findById(3L)).thenReturn(Optional.of(additionalTwo));
+        when(scans.findByOrder_Id(102L)).thenReturn(Optional.empty());
+        when(approvals.findAllByOrder_Id(102L)).thenReturn(List.of());
+        when(leadership.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
+
+        ProbeOrderServiceImpl service = new ProbeOrderServiceImpl(
+                orders, approvals, settings, documents, scans,
+                mock(ContingentSnapshotRepository.class), mock(ContingentStudentRepository.class),
+                mock(StudentProfileRepository.class), leadership, teachers, mock(AppUserRepository.class),
+                new ProbeOrderDocumentService(), new ObjectMapper());
+
+        ProbeOrderDtos.OrderView view = service.assignCompanions(102L,
+                new ProbeOrderDtos.CompanionRequest(1L, null, List.of(2L, 3L)), admin());
+
+        assertTrue(view.companionsComplete());
+        assertEquals(2, view.additionalCompanions().size());
+        assertEquals(List.of("Дополнительный Первый", "Дополнительный Второй"),
+                view.additionalCompanions().stream().map(ProbeOrderDtos.StaffOption::fullName).toList());
+        assertEquals(2, order.getAdditionalCompanions().size());
+    }
+
+    private TeacherDirectoryEntry teacher(Long id, String fullName) {
+        TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
+        teacher.setId(id);
+        teacher.setFioTeacher(fullName);
+        teacher.setPrimaryPosition("Учитель");
+        return teacher;
+    }
+
     private MockMultipartFile registrationFile(int children) throws Exception {
         try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet events = workbook.createSheet("Мероприятия");

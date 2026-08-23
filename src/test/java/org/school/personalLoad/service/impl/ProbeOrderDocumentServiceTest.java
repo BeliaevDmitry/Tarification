@@ -37,6 +37,7 @@ class ProbeOrderDocumentServiceTest {
             assertTrue(text.contains("Иванова И.И."));
             assertTrue(text.contains("Московский колледж технологий"));
             assertTrue(text.contains("Исп.: Петрова М.С."));
+            assertTrue(text.contains("Орлова Светлана Викторовна"));
             assertFalse(text.contains("Жданова"));
             assertTrue(text.contains("Коваленко А.А."));
             assertTrue(text.contains("Беляковой И.В."));
@@ -68,12 +69,16 @@ class ProbeOrderDocumentServiceTest {
         ProbeOrderDocumentService.PersonData signer = new ProbeOrderDocumentService.PersonData(
                 3L, "Иванова Ирина Игоревна", "Ивановой Ирине Игоревне",
                 "Иванову Ирину Игоревну", "Иванова И.И.", null);
+        ProbeOrderDocumentService.PersonData additional = new ProbeOrderDocumentService.PersonData(
+                4L, "Орлова Светлана Викторовна", "Орловой Светлане Викторовне",
+                "Орлову Светлану Викторовну", "Орлова С.В.", "+7 999 300-40-50");
         return new ProbeOrderDocumentService.DocumentData(
                 "2026/2027", "184/пр", LocalDate.of(2026, 9, 17),
                 LocalDate.of(2026, 9, 22), LocalTime.of(10, 30), "9А, 9Б", "классов",
                 "Московский колледж технологий", "Москва, Учебная улица, дом 7",
                 LocalTime.of(9, 20), "главный вход корпуса 2", LocalTime.of(14, 10),
-                "Кузнецова Елена Викторовна", primary, secondary, signer, "Заместитель директора",
+                "Кузнецова Елена Викторовна", primary, secondary, List.of(additional),
+                signer, "Заместитель директора",
                 signer, signer, primary,
                 List.of(
                         new ProbeOrderDocumentService.ParticipantData(

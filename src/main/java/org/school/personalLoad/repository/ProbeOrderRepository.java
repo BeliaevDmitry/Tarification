@@ -13,17 +13,17 @@ import java.util.Optional;
 
 public interface ProbeOrderRepository extends JpaRepository<ProbeOrder, Long> {
 
-    @EntityGraph(attributePaths = {"schoolBuilding", "primaryCompanion", "secondaryCompanion", "signer", "participants", "participants.student"})
+    @EntityGraph(attributePaths = {"schoolBuilding", "primaryCompanion", "secondaryCompanion", "additionalCompanions", "signer", "participants", "participants.student"})
     List<ProbeOrder> findAllByAcademicYearOrderByEventDateAscStartTimeAsc(String academicYear);
 
-    @EntityGraph(attributePaths = {"schoolBuilding", "primaryCompanion", "secondaryCompanion", "signer", "participants", "participants.student"})
+    @EntityGraph(attributePaths = {"schoolBuilding", "primaryCompanion", "secondaryCompanion", "additionalCompanions", "signer", "participants", "participants.student"})
     Optional<ProbeOrder> findByAcademicYearAndExternalEventIdAndSchoolBuilding_Id(
             String academicYear, String externalEventId, Long schoolBuildingId);
 
-    @EntityGraph(attributePaths = {"schoolBuilding", "primaryCompanion", "secondaryCompanion", "signer", "participants", "participants.student"})
+    @EntityGraph(attributePaths = {"schoolBuilding", "primaryCompanion", "secondaryCompanion", "additionalCompanions", "signer", "participants", "participants.student"})
     Optional<ProbeOrder> findOneById(Long id);
 
-    @EntityGraph(attributePaths = {"schoolBuilding", "primaryCompanion", "secondaryCompanion", "participants"})
+    @EntityGraph(attributePaths = {"schoolBuilding", "primaryCompanion", "secondaryCompanion", "additionalCompanions", "participants"})
     List<ProbeOrder> findAllByStatusAndEventDateBetweenOrderByEventDateAscStartTimeAsc(
             ProbeOrderStatus status, LocalDate from, LocalDate to);
 
@@ -37,8 +37,12 @@ public interface ProbeOrderRepository extends JpaRepository<ProbeOrder, Long> {
 
     @Query("""
             select distinct o from ProbeOrder o
+            left join o.primaryCompanion primaryCompanion
+            left join o.secondaryCompanion secondaryCompanion
+            left join o.additionalCompanions additionalCompanion
             where o.status = org.school.personalLoad.model.ProbeOrderStatus.RELEASED
-              and (o.primaryCompanion.id = :teacherId or o.secondaryCompanion.id = :teacherId)
+              and (primaryCompanion.id = :teacherId or secondaryCompanion.id = :teacherId
+                   or additionalCompanion.id = :teacherId)
             order by o.eventDate desc, o.startTime desc
             """)
     List<ProbeOrder> findReleasedByCompanionId(@Param("teacherId") Long teacherId);

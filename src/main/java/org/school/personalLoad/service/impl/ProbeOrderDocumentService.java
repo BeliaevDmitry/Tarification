@@ -5,7 +5,10 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -26,7 +29,7 @@ public class ProbeOrderDocumentService {
         if (data == null) {
             throw new IllegalArgumentException("Данные приказа не переданы");
         }
-        try (InputStream in = new ClassPathResource(TEMPLATE).getInputStream();
+        try (InputStream in = openTemplate();
              XWPFDocument document = new XWPFDocument(in);
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Map<String, String> replacements = replacements(data);
@@ -45,9 +48,27 @@ public class ProbeOrderDocumentService {
             replaceParticipantTable(document, data.participants());
             document.write(out);
             return out.toByteArray();
+        } catch (IllegalStateException exception) {
+            throw exception;
         } catch (Exception exception) {
-            throw new IllegalStateException("Не удалось сформировать Word-приказ", exception);
+            throw new IllegalStateException("Не удалось сформировать Word-приказ: " + rootMessage(exception), exception);
         }
+    }
+
+    private InputStream openTemplate() throws IOException {
+        ClassPathResource resource = new ClassPathResource(TEMPLATE);
+        if (resource.exists()) return resource.getInputStream();
+        Path developmentTemplate = Path.of("school-order-generator", "order-generator", "src", "main",
+                "resources", "templates", "prikaz_template.docx");
+        if (Files.isRegularFile(developmentTemplate)) return Files.newInputStream(developmentTemplate);
+        throw new IllegalStateException("Шаблон Word-приказа не найден в запущенной сборке. Перезапустите сервер с новой сборкой");
+    }
+
+    private String rootMessage(Exception exception) {
+        Throwable current = exception;
+        while (current.getCause() != null) current = current.getCause();
+        String message = current.getMessage();
+        return message == null || message.isBlank() ? current.getClass().getSimpleName() : message;
     }
 
     private Map<String, String> replacements(DocumentData data) {
@@ -66,7 +87,7 @@ public class ProbeOrderDocumentService {
         values.put("{curator}", text(data.curator()));
         values.put("{leaderDative}", data.primaryCompanion().dativeOrName());
         values.put("{classWord}", data.classWord());
-        values.put("{accompanyingTitle}", data.secondaryCompanion() == null
+        values.put("{accompanyingTitle}", allCompanions(data).size() == 1
                 ? "Сопровождающий" : "Сопровождающие");
         values.put("{accompanying}", companionLines(data));
         return values;
@@ -143,7 +164,11 @@ public class ProbeOrderDocumentService {
         String secondary = data.secondaryCompanion() == null
                 ? ""
                 : ", заместителем руководителя группы " + data.secondaryCompanion().accusativeOrName();
-        String pronoun = data.secondaryCompanion() == null ? "него" : "них";
+        String additional = data.additionalCompanions().isEmpty()
+                ? ""
+                : ", сопровождающими " + data.additionalCompanions().stream()
+                .map(PersonData::accusativeOrName).collect(java.util.stream.Collectors.joining(", "));
+        String pronoun = allCompanions(data).size() == 1 ? "него" : "них";
         return "Направить " + formatDate(data.eventDate()) + " года обучающихся "
                 + text(data.formattedClasses()) + " " + text(data.classWord())
                 + " ГБОУ Школа № 7 в количестве " + data.participants().size()
@@ -151,7 +176,7 @@ public class ProbeOrderDocumentService {
                 + "«Мастерство начинается здесь» в " + text(data.venue()) + " по адресу: "
                 + text(data.eventAddress()) + " к " + formatTime(data.startTime())
                 + ". Назначить руководителем группы " + data.primaryCompanion().accusativeOrName()
-                + secondary + " и возложить на " + pronoun
+                + secondary + additional + " и возложить на " + pronoun
                 + " ответственность за жизнь и здоровье несовершеннолетних участников мероприятия во время "
                 + "выездного мероприятия, а также по всему маршруту следования, от места сбора группы до места "
                 + "проведения мероприятия и обратно.";
@@ -253,15 +278,18 @@ public class ProbeOrderDocumentService {
     }
 
     private String companionLines(DocumentData data) {
-        List<PersonData> people = new ArrayList<>();
-        people.add(data.primaryCompanion());
-        if (data.secondaryCompanion() != null) {
-            people.add(data.secondaryCompanion());
-        }
-        return people.stream()
+        return allCompanions(data).stream()
                 .map(person -> person.fullName() + (text(person.phone()).isBlank() ? "" : " " + person.phone()))
                 .reduce((left, right) -> left + "\n" + right)
                 .orElse("");
+    }
+
+    private List<PersonData> allCompanions(DocumentData data) {
+        List<PersonData> people = new ArrayList<>();
+        people.add(data.primaryCompanion());
+        if (data.secondaryCompanion() != null) people.add(data.secondaryCompanion());
+        people.addAll(data.additionalCompanions());
+        return people;
     }
 
     private String cleanup(String value) {
@@ -336,11 +364,42 @@ public class ProbeOrderDocumentService {
                                String curator,
                                PersonData primaryCompanion,
                                PersonData secondaryCompanion,
+                               List<PersonData> additionalCompanions,
                                PersonData signer,
                                String signerPosition,
                                PersonData director,
                                PersonData deputyDirector,
                                PersonData executor,
                                List<ParticipantData> participants) {
+        public DocumentData {
+            additionalCompanions = additionalCompanions == null ? List.of() : List.copyOf(additionalCompanions);
+        }
+
+        public DocumentData(String academicYear,
+                            String orderNumber,
+                            LocalDate orderDate,
+                            LocalDate eventDate,
+                            LocalTime startTime,
+                            String formattedClasses,
+                            String classWord,
+                            String venue,
+                            String eventAddress,
+                            LocalTime gatheringTime,
+                            String gatheringPlace,
+                            LocalTime returnTime,
+                            String curator,
+                            PersonData primaryCompanion,
+                            PersonData secondaryCompanion,
+                            PersonData signer,
+                            String signerPosition,
+                            PersonData director,
+                            PersonData deputyDirector,
+                            PersonData executor,
+                            List<ParticipantData> participants) {
+            this(academicYear, orderNumber, orderDate, eventDate, startTime, formattedClasses, classWord, venue,
+                    eventAddress, gatheringTime, gatheringPlace, returnTime, curator, primaryCompanion,
+                    secondaryCompanion, List.of(), signer, signerPosition, director, deputyDirector, executor,
+                    participants);
+        }
     }
 }

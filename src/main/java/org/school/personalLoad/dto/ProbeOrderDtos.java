@@ -50,7 +50,12 @@ public final class ProbeOrderDtos {
                                 Long defaultSignerTeacherId) {
     }
 
-    public record CompanionRequest(Long primaryTeacherId, Long secondaryTeacherId) {
+    public record CompanionRequest(Long primaryTeacherId,
+                                   Long secondaryTeacherId,
+                                   List<Long> additionalTeacherIds) {
+        public CompanionRequest(Long primaryTeacherId, Long secondaryTeacherId) {
+            this(primaryTeacherId, secondaryTeacherId, List.of());
+        }
     }
 
     public record ParticipantRequest(Long studentId,
@@ -123,6 +128,7 @@ public final class ProbeOrderDtos {
                             int requiredCompanions,
                             StaffOption primaryCompanion,
                             StaffOption secondaryCompanion,
+                            List<StaffOption> additionalCompanions,
                             boolean companionsComplete,
                             ProbeOrderStatus status,
                             ProbeOrderApprovalMode approvalMode,

@@ -1,6 +1,7 @@
 package org.school.personalLoad.dto;
 
 import org.school.personalLoad.model.CalendarEventVisibility;
+import org.school.personalLoad.model.CalendarAttendanceStatus;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -14,6 +15,15 @@ public final class CalendarDtos {
     }
 
     public record BuildingRef(Long id, String code, String name, String address) {
+    }
+
+    public record EventParticipant(Long id,
+                                   String fullName,
+                                   String position,
+                                   String buildingCode,
+                                   CalendarAttendanceStatus responseStatus,
+                                   String responseLabel,
+                                   boolean currentUser) {
     }
 
     public record EventView(Long id,
@@ -31,12 +41,14 @@ public final class CalendarDtos {
                             String ownerName,
                             String color,
                             String audienceSummary,
-                            List<PersonRef> participants,
+                            List<EventParticipant> participants,
                             List<BuildingRef> buildings,
                             List<Long> selectedPersonIds,
                             List<String> selectedGroupCodes,
                             List<Long> selectedBuildingIds,
                             List<Long> selectedCustomListIds,
+                            CalendarAttendanceStatus myResponseStatus,
+                            boolean canRespond,
                             boolean canEdit) {
     }
 
@@ -50,6 +62,9 @@ public final class CalendarDtos {
                                List<String> groupCodes,
                                List<Long> buildingIds,
                                List<Long> customListIds) {
+    }
+
+    public record AttendanceResponseRequest(CalendarAttendanceStatus status) {
     }
 
     public record VisibilityOption(String code, String label) {
