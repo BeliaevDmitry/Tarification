@@ -1,6 +1,7 @@
 const probeState = {
     orders: [],
     references: { teachers: [], signers: [], students: [], defaultSignerTeacherId: null },
+    settings: { approvalMode: 'ORGANIZATIONAL_BUILDING', approvalModeLabel: '', canEdit: false },
     selectedId: null,
     editParticipants: [],
     sortKey: 'eventDate',
@@ -15,6 +16,11 @@ const probeUi = {
     importResult: document.getElementById('probe-import-result'),
     search: document.getElementById('probe-search'),
     statusFilter: document.getElementById('probe-status-filter'),
+    settingsBtn: document.getElementById('probe-settings-btn'),
+    settingsDialog: document.getElementById('probe-settings-dialog'),
+    settingsForm: document.getElementById('probe-settings-form'),
+    approvalMode: document.getElementById('probe-approval-mode'),
+    settingsFeedback: document.getElementById('probe-settings-feedback'),
     summary: document.getElementById('probe-table-summary'),
     body: document.getElementById('probe-orders-body'),
     companionsDialog: document.getElementById('probe-companions-dialog'),
@@ -38,6 +44,7 @@ const probeUi = {
     editParticipants: document.getElementById('probe-edit-participants'),
     addStudent: document.getElementById('probe-add-student'),
     addStudentBtn: document.getElementById('probe-add-student-btn'),
+    refreshContactsBtn: document.getElementById('probe-refresh-contacts-btn'),
     editFeedback: document.getElementById('probe-edit-feedback'),
     generateDialog: document.getElementById('probe-generate-dialog'),
     generateCaption: document.getElementById('probe-generate-caption'),
@@ -91,7 +98,7 @@ function probeTime(value) {
 
 function probeStatus(value) {
     return ({
-        DRAFT: 'Черновик', BUILDING_APPROVED: 'Согласован корпусом', GENERATED: 'Word сформирован',
+        DRAFT: 'Черновик', BUILDING_APPROVED: 'Согласован', GENERATED: 'Word сформирован',
         RELEASED: 'Выпущен', CANCELLED: 'Отменён'
     })[value] || value || '—';
 }
@@ -124,7 +131,7 @@ function sortValue(order, key) {
     if (key === 'buildingCode') return `${order.buildingCode || ''} ${(order.classNames || []).join(' ')}`;
     if (key === 'participantCount') return Number(order.participantCount || 0);
     if (key === 'companions') return companionsText(order);
-    if (key === 'approval') return order.buildingApprovedAt ? 1 : 0;
+    if (key === 'approval') return order.approvalComplete ? 1 : 0;
     if (key === 'status') return probeStatus(order.status);
     return '';
 }
@@ -167,9 +174,12 @@ function renderProbeOrders() {
     }
     probeUi.body.innerHTML = rows.map(order => {
         const companionClass = order.companionsComplete ? 'probe-ok' : 'probe-error';
-        const approval = order.buildingApprovedAt
-            ? `<span class="probe-ok">Ознакомлен: ${probeEsc(order.buildingApprovedBy || '')}</span>`
-            : '<span class="probe-error">Не ознакомлен</span>';
+        const approvalRows = (order.approvals || []).map(item => item.approvedAt
+            ? `<div class="probe-approval-item probe-ok">${probeEsc(item.scopeLabel)}<br><span class="muted">Согласовал: ${probeEsc(item.approvedBy || '')}</span></div>`
+            : order.approvalComplete
+                ? `<div class="probe-approval-item muted">${probeEsc(item.scopeLabel)}<br><span>Дополнительное согласование не требуется</span></div>`
+                : `<div class="probe-approval-item probe-error">${probeEsc(item.scopeLabel)}<br><span>Не согласовано</span></div>`).join('');
+        const approval = approvalRows || '<span class="probe-error">Не определён ответственный руководитель</span>';
         const warnings = (order.dataWarnings || []).length
             ? `<div class="probe-row-warnings">${order.dataWarnings.map(probeEsc).join('<br>')}</div>` : '';
         const actions = [];
@@ -177,11 +187,11 @@ function renderProbeOrders() {
             actions.push(`<button type="button" data-probe-action="companions" data-id="${order.id}">Сопровождающие</button>`);
             actions.push(`<button type="button" class="secondary" data-probe-action="edit" data-id="${order.id}">Редактировать</button>`);
         }
-        if (order.canAcknowledge && !order.buildingApprovedAt) {
-            actions.push(`<button type="button" data-probe-action="ack" data-id="${order.id}" ${order.companionsComplete ? '' : 'disabled'}>Ознакомлен</button>`);
+        if (order.canAcknowledge) {
+            actions.push(`<button type="button" data-probe-action="ack" data-id="${order.id}" ${order.companionsComplete ? '' : 'disabled'}>Согласовать</button>`);
         }
         if (order.canGenerate) {
-            actions.push(`<button type="button" data-probe-action="generate" data-id="${order.id}" ${order.buildingApprovedAt && order.companionsComplete ? '' : 'disabled'}>Сформировать приказ</button>`);
+            actions.push(`<button type="button" data-probe-action="generate" data-id="${order.id}" ${order.approvalComplete && order.companionsComplete ? '' : 'disabled'}>Сформировать приказ</button>`);
         }
         if (order.generatedDocumentAvailable) {
             actions.push(`<a class="button-link secondary" href="/api/probe-orders/${order.id}/document">Скачать Word</a>`);
@@ -195,6 +205,7 @@ function renderProbeOrders() {
         if (order.signedScanAvailable) {
             actions.push(`<a class="button-link secondary" href="/api/probe-orders/${order.id}/scan">Скачать скан</a>`);
         }
+        if (!actions.length) actions.push('<span class="muted">Только информация</span>');
         return `<tr class="probe-highlight-${String(order.highlight || 'draft').toLowerCase()}">
             <td><strong>${probeEsc(probeDate(order.eventDate))}</strong><br>${probeEsc(probeTime(order.startTime))}–${probeEsc(probeTime(order.endTime))}</td>
             <td><strong>${probeEsc(order.eventName)}</strong><br><span class="muted">${probeEsc(order.venue || '')}<br>${probeEsc(order.eventAddress || '')}</span></td>
@@ -211,12 +222,15 @@ function renderProbeOrders() {
 
 async function loadProbeData() {
     probeUi.body.innerHTML = '<tr><td colspan="8" class="muted">Загрузка…</td></tr>';
-    const [orders, references] = await Promise.all([
+    const [orders, references, settings] = await Promise.all([
         probeApi(probeUrl('/api/probe-orders')),
-        probeApi(probeUrl('/api/probe-orders/references'))
+        probeApi(probeUrl('/api/probe-orders/references')),
+        probeApi('/api/probe-orders/settings')
     ]);
     probeState.orders = orders || [];
     probeState.references = references || probeState.references;
+    probeState.settings = settings || probeState.settings;
+    if (probeUi.settingsBtn) probeUi.settingsBtn.hidden = !probeState.settings.canEdit;
     renderProbeOrders();
 }
 
@@ -252,6 +266,7 @@ function syncEditParticipantsFromDom() {
         if (!item) return;
         item.fullName = row.querySelector('[data-field="fullName"]')?.value.trim() || '';
         item.className = row.querySelector('[data-field="className"]')?.value.trim() || '';
+        item.childPhone = row.querySelector('[data-field="childPhone"]')?.value.trim() || '';
         item.representativeName = row.querySelector('[data-field="representativeName"]')?.value.trim() || '';
         item.representativePhone = row.querySelector('[data-field="representativePhone"]')?.value.trim() || '';
     });
@@ -261,10 +276,11 @@ function renderEditParticipants() {
     probeUi.editParticipants.innerHTML = probeState.editParticipants.map((item, index) => `<tr data-index="${index}">
         <td><input data-field="fullName" value="${probeEsc(item.fullName || '')}" required></td>
         <td><input data-field="className" value="${probeEsc(item.className || '')}" required></td>
-        <td><input data-field="representativeName" value="${probeEsc(item.representativeName || '')}" placeholder="Нет данных"></td>
-        <td><input data-field="representativePhone" value="${probeEsc(item.representativePhone || '')}" placeholder="Нет данных"></td>
+        <td><input data-field="childPhone" value="${probeEsc(item.childPhone || '')}" placeholder="Нет данных"></td>
+        <td><textarea data-field="representativeName" rows="2" placeholder="Нет данных">${probeEsc(item.representativeName || '')}</textarea></td>
+        <td><textarea data-field="representativePhone" rows="2" placeholder="Нет данных">${probeEsc(item.representativePhone || '')}</textarea></td>
         <td><button type="button" class="danger-btn" data-remove-participant="${index}">Убрать</button></td>
-    </tr>`).join('') || '<tr><td colspan="5" class="probe-error">Добавьте хотя бы одного ребёнка.</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="6" class="probe-error">Добавьте хотя бы одного ребёнка.</td></tr>';
     probeUi.editParticipants.querySelectorAll('[data-remove-participant]').forEach(button => button.addEventListener('click', () => {
         syncEditParticipantsFromDom();
         probeState.editParticipants.splice(Number(button.dataset.removeParticipant), 1);
@@ -272,20 +288,44 @@ function renderEditParticipants() {
     }));
 }
 
-function openEdit(order) {
+async function refreshProbeContacts(orderId, quiet = false) {
+    const result = await probeApi(`/api/probe-orders/${orderId}/refresh-contacts`, { method: 'POST' });
+    if (result?.order) {
+        probeState.orders = probeState.orders.map(item => Number(item.id) === Number(orderId) ? result.order : item);
+        if (result.participantsUpdated) renderProbeOrders();
+    }
+    if (!quiet) {
+        probeUi.editFeedback.textContent = `Проверено детей: ${result.participantsChecked}. Обновлено: ${result.participantsUpdated}.`
+            + (result.participantsStillMissingContacts ? ` Без полных контактов: ${result.participantsStillMissingContacts}.` : ' Все контакты заполнены.');
+    }
+    return result;
+}
+
+async function openEdit(order) {
     probeState.selectedId = order.id;
-    probeState.editParticipants = (order.participants || []).map(item => ({ ...item }));
-    probeUi.editCaption.textContent = `${order.buildingCode} · ${order.eventName}`;
-    probeUi.editName.value = order.eventName || '';
-    probeUi.editDate.value = order.eventDate || '';
-    probeUi.editStart.value = probeTime(order.startTime) === '—' ? '' : probeTime(order.startTime);
-    probeUi.editEnd.value = probeTime(order.endTime) === '—' ? '' : probeTime(order.endTime);
-    probeUi.editVenue.value = order.venue || '';
-    probeUi.editAddress.value = order.eventAddress || '';
-    probeUi.editGatheringTime.value = probeTime(order.gatheringTime) === '—' ? '' : probeTime(order.gatheringTime);
-    probeUi.editGatheringPlace.value = order.gatheringPlace || '';
-    probeUi.editReturn.value = probeTime(order.returnTime) === '—' ? '' : probeTime(order.returnTime);
-    probeUi.editFeedback.textContent = '';
+    let current = order;
+    let feedback = '';
+    try {
+        const refreshed = await refreshProbeContacts(order.id, true);
+        current = refreshed.order || order;
+        feedback = refreshed.participantsUpdated
+            ? `Контакты автоматически обновлены: ${refreshed.participantsUpdated}.`
+            : 'Контакты сверены с актуальным контингентом.';
+    } catch (error) {
+        feedback = `Не удалось обновить контакты: ${error.message}`;
+    }
+    probeState.editParticipants = (current.participants || []).map(item => ({ ...item }));
+    probeUi.editCaption.textContent = `${current.buildingCode} · ${current.eventName}`;
+    probeUi.editName.value = current.eventName || '';
+    probeUi.editDate.value = current.eventDate || '';
+    probeUi.editStart.value = probeTime(current.startTime) === '—' ? '' : probeTime(current.startTime);
+    probeUi.editEnd.value = probeTime(current.endTime) === '—' ? '' : probeTime(current.endTime);
+    probeUi.editVenue.value = current.venue || '';
+    probeUi.editAddress.value = current.eventAddress || '';
+    probeUi.editGatheringTime.value = probeTime(current.gatheringTime) === '—' ? '' : probeTime(current.gatheringTime);
+    probeUi.editGatheringPlace.value = current.gatheringPlace || '';
+    probeUi.editReturn.value = probeTime(current.returnTime) === '—' ? '' : probeTime(current.returnTime);
+    probeUi.editFeedback.textContent = feedback;
     const existingIds = new Set(probeState.editParticipants.map(item => String(item.studentId || '')));
     probeUi.addStudent.innerHTML = '<option value="">Добавить ребёнка из контингента…</option>' + (probeState.references.students || [])
         .filter(item => !existingIds.has(String(item.id)))
@@ -300,7 +340,7 @@ function addStudentToEdit() {
     syncEditParticipantsFromDom();
     if (!probeState.editParticipants.some(item => String(item.studentId) === String(student.id))) {
         probeState.editParticipants.push({ studentId: student.id, fullName: student.fullName, className: student.className,
-            representativeName: '', representativePhone: '' });
+            childPhone: '', representativeName: '', representativePhone: '' });
     }
     renderEditParticipants();
     probeUi.addStudent.value = '';
@@ -333,11 +373,14 @@ function bindRowActions() {
         if (!order) return;
         try {
             if (button.dataset.probeAction === 'companions') return openCompanions(order);
-            if (button.dataset.probeAction === 'edit') return openEdit(order);
+            if (button.dataset.probeAction === 'edit') {
+                await openEdit(order);
+                return;
+            }
             if (button.dataset.probeAction === 'generate') return openGenerate(order);
             if (button.dataset.probeAction === 'scan') return openScan(order);
             if (button.dataset.probeAction === 'ack') {
-                if (!window.confirm('Подтвердить ознакомление с составом и условиями приказа?')) return;
+                if (!window.confirm('Подтвердить согласование состава и условий приказа?')) return;
                 await probeApi(`/api/probe-orders/${order.id}/acknowledge`, { method: 'POST' });
             }
             if (button.dataset.probeAction === 'release') {
@@ -414,6 +457,27 @@ probeUi.scanForm.addEventListener('submit', async event => {
     } catch (error) { probeUi.scanFeedback.textContent = error.message; }
 });
 
+probeUi.settingsBtn?.addEventListener('click', () => {
+    probeUi.approvalMode.value = probeState.settings.approvalMode || 'ORGANIZATIONAL_BUILDING';
+    probeUi.settingsFeedback.textContent = '';
+    probeUi.settingsDialog.showModal();
+});
+
+probeUi.settingsForm?.addEventListener('submit', async event => {
+    event.preventDefault();
+    probeUi.settingsFeedback.textContent = 'Сохраняем настройку…';
+    try {
+        await probeApi('/api/probe-orders/settings', {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ approvalMode: probeUi.approvalMode.value })
+        });
+        probeUi.settingsDialog.close();
+        await loadProbeData();
+    } catch (error) {
+        probeUi.settingsFeedback.textContent = error.message;
+    }
+});
+
 document.querySelectorAll('[data-probe-close]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
 document.querySelectorAll('[data-probe-sort]').forEach(header => header.addEventListener('click', () => {
     const key = header.dataset.probeSort;
@@ -428,6 +492,39 @@ probeUi.statusFilter.addEventListener('change', renderProbeOrders);
 probeUi.importBtn.addEventListener('click', () => importProbeRegistration().catch(error => { probeUi.importResult.textContent = error.message; }));
 probeUi.refreshBtn.addEventListener('click', () => loadProbeData().catch(error => { probeUi.importResult.textContent = error.message; }));
 probeUi.addStudentBtn.addEventListener('click', addStudentToEdit);
+probeUi.refreshContactsBtn?.addEventListener('click', async () => {
+    syncEditParticipantsFromDom();
+    const localParticipants = probeState.editParticipants.map(item => ({ ...item }));
+    probeUi.refreshContactsBtn.disabled = true;
+    probeUi.editFeedback.textContent = 'Обновляем контакты из актуального контингента…';
+    try {
+        const result = await refreshProbeContacts(probeState.selectedId);
+        const refreshed = (result.order?.participants || []).map(item => {
+            const local = localParticipants.find(candidate =>
+                (item.id && candidate.id && String(item.id) === String(candidate.id))
+                || (item.studentId && candidate.studentId && String(item.studentId) === String(candidate.studentId))
+                || String(item.fullName || '').trim().toLocaleLowerCase('ru-RU')
+                    === String(candidate.fullName || '').trim().toLocaleLowerCase('ru-RU'));
+            return {
+                ...item,
+                fullName: local?.fullName || item.fullName,
+                className: local?.className || item.className,
+                childPhone: item.childPhone || local?.childPhone || '',
+                representativeName: item.representativeName || local?.representativeName || '',
+                representativePhone: item.representativePhone || local?.representativePhone || ''
+            };
+        });
+        const refreshedIds = new Set(refreshed.map(item => String(item.id || `student-${item.studentId || ''}`)));
+        localParticipants.filter(item => !item.id && !refreshedIds.has(`student-${item.studentId || ''}`))
+            .forEach(item => refreshed.push(item));
+        probeState.editParticipants = refreshed;
+        renderEditParticipants();
+    } catch (error) {
+        probeUi.editFeedback.textContent = error.message;
+    } finally {
+        probeUi.refreshContactsBtn.disabled = false;
+    }
+});
 probeUi.orderSigner.addEventListener('change', () => {
     const signer = (probeState.references.signers || []).find(item => String(item.id) === probeUi.orderSigner.value);
     if (signer?.position) probeUi.orderSignerPosition.value = signer.position;

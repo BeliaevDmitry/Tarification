@@ -121,5 +121,65 @@ public class StudentSupportSchemaInitializer implements ApplicationRunner {
                 )
                 """);
         jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_support_document_correction_document ON student_support_document_correction(document_id)");
+        normalizeNinthGradeConclusionDeadlines();
+    }
+
+    private void normalizeNinthGradeConclusionDeadlines() {
+        jdbcTemplate.execute("""
+                UPDATE student_support_document document
+                SET valid_to = make_date(
+                        split_part(document.academic_year, '/', 2)::integer
+                        + 9 - substring(enrollment.class_name from '^[[:space:]]*([0-9]{1,2})')::integer
+                        + CASE WHEN document.prolongation_available AND NOT document.prolongation_used THEN 1 ELSE 0 END,
+                        8, 31),
+                    updated_at = now()
+                FROM student_class_enrollment enrollment
+                WHERE document.document_type = 'CPMPC_CONCLUSION'
+                  AND document.nosology_code ~ '^[ИО]9[.][0-9]$'
+                  AND document.academic_year ~ '^[0-9]{4}/[0-9]{4}$'
+                  AND enrollment.student_id = document.student_id
+                  AND enrollment.academic_year = document.academic_year
+                  AND substring(enrollment.class_name from '^[[:space:]]*([0-9]{1,2})')::integer BETWEEN 1 AND 11
+                  AND enrollment.id = (
+                      SELECT candidate.id
+                      FROM student_class_enrollment candidate
+                      WHERE candidate.student_id = document.student_id
+                        AND candidate.academic_year = document.academic_year
+                        AND substring(candidate.class_name from '^[[:space:]]*([0-9]{1,2})') IS NOT NULL
+                      ORDER BY (candidate.valid_to IS NULL) DESC,
+                               candidate.valid_from DESC NULLS LAST,
+                               candidate.id DESC
+                      LIMIT 1
+                  )
+                """);
+        jdbcTemplate.execute("""
+                UPDATE student_support_document document
+                SET valid_to = make_date(
+                        extract(year from student.birth_date)::integer + 15
+                        + CASE WHEN document.prolongation_available AND NOT document.prolongation_used THEN 1 ELSE 0 END,
+                        8, 31),
+                    updated_at = now()
+                FROM student_profile student
+                WHERE document.document_type = 'CPMPC_CONCLUSION'
+                  AND document.nosology_code ~ '^[ИО]9[.][0-9]$'
+                  AND student.id = document.student_id
+                  AND student.birth_date IS NOT NULL
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM student_class_enrollment enrollment
+                      WHERE enrollment.student_id = document.student_id
+                        AND enrollment.academic_year = document.academic_year
+                        AND substring(enrollment.class_name from '^[[:space:]]*([0-9]{1,2})') IS NOT NULL
+                  )
+                """);
+        jdbcTemplate.execute("""
+                UPDATE student_support_status status
+                SET valid_to = document.valid_to,
+                    updated_at = now()
+                FROM student_support_document document
+                WHERE status.source_document_id = document.id
+                  AND document.document_type = 'CPMPC_CONCLUSION'
+                  AND document.nosology_code ~ '^[ИО]9[.][0-9]$'
+                """);
     }
 }

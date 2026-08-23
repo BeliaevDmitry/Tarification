@@ -31,6 +31,7 @@ public class OvzDossierService {
         STAGE_LABELS.put(OvzRoadmapStage.APPLICATION, "Заявление");
         STAGE_LABELS.put(OvzRoadmapStage.CONSENT, "Согласие");
         STAGE_LABELS.put(OvzRoadmapStage.PPK_APPOINTMENT, "ППк: назначение");
+        STAGE_LABELS.put(OvzRoadmapStage.SPECIALIST_ASSIGNMENT, "Распределение за специалистами");
         STAGE_LABELS.put(OvzRoadmapStage.SPECIAL_CONDITIONS_ORDER, "Приказ о назначении специальных условий");
         STAGE_LABELS.put(OvzRoadmapStage.IOM, "ИОМ");
         STAGE_LABELS.put(OvzRoadmapStage.PPK_IOM, "ППк: ИОМ");
@@ -46,6 +47,7 @@ public class OvzDossierService {
     private final StudentSupportDocumentCorrectionRepository correctionRepository;
     private final StudentSupportStatusRepository supportStatusRepository;
     private final StudentSupportDocumentAttachmentRepository attachmentRepository;
+    private final CorrectionDistributionService distributionService;
 
     @Transactional(readOnly = true)
     public List<OvzDtos.DossierSummary> registry(String academicYear, LocalDate asOfDate) {
@@ -55,9 +57,10 @@ public class OvzDossierService {
         Map<Long, Map<OvzRoadmapStage, OvzStageStatus>> statuses = stageRepository.findAllByAcademicYear(academicYear).stream()
                 .collect(Collectors.groupingBy(s -> s.getStudent().getId(), Collectors.toMap(
                         OvzWorkflowStage::getStage, OvzWorkflowStage::getStatus, (left, right) -> right, () -> new EnumMap<>(OvzRoadmapStage.class))));
+        Map<Long, OvzStageStatus> distributionStatuses = distributionService.studentStageStatuses(academicYear);
         return byStudent.entrySet().stream().map(entry -> summary(
                         studentRepository.findById(entry.getKey()).orElseThrow(), academicYear, entry.getValue(),
-                        statuses.getOrDefault(entry.getKey(), Map.of())))
+                        statuses.getOrDefault(entry.getKey(), Map.of()), distributionStatuses.get(entry.getKey())))
                 .sorted(Comparator.comparing(OvzDtos.DossierSummary::getClassName, Comparator.nullsLast(String::compareToIgnoreCase))
                         .thenComparing(OvzDtos.DossierSummary::getFullName, String.CASE_INSENSITIVE_ORDER))
                 .toList();
@@ -73,7 +76,8 @@ public class OvzDossierService {
         synchronizeApplicationChoices(student, academicYear, documents);
         Map<OvzRoadmapStage, OvzStageStatus> statuses = stageRepository.findAllByStudent_IdAndAcademicYear(studentId, academicYear).stream()
                 .collect(Collectors.toMap(OvzWorkflowStage::getStage, OvzWorkflowStage::getStatus));
-        OvzDtos.DossierSummary base = summary(student, academicYear, documents, statuses);
+        OvzDtos.DossierSummary base = summary(student, academicYear, documents, statuses,
+                distributionService.studentStageStatus(academicYear, studentId));
         OvzDtos.DossierDetail detail = new OvzDtos.DossierDetail();
         copySummary(base, detail);
         detail.setApplicationChoices(choiceRepository.findAllByStudent_IdAndAcademicYearOrderBySpecialistNameAsc(studentId, academicYear)
@@ -88,8 +92,9 @@ public class OvzDossierService {
         if (request == null || request.getStage() == null || request.getStatus() == null) {
             throw new IllegalArgumentException("Выберите этап и его состояние");
         }
-        if (request.getStage() == OvzRoadmapStage.CERTIFICATE) {
-            throw new IllegalArgumentException("Этап «Справка» определяется автоматически по данным реестра");
+        if (request.getStage() == OvzRoadmapStage.CERTIFICATE
+                || request.getStage() == OvzRoadmapStage.SPECIALIST_ASSIGNMENT) {
+            throw new IllegalArgumentException("Состояние этого этапа определяется автоматически по данным системы");
         }
         StudentProfile student = studentRepository.findById(studentId)
                 .orElseThrow(() -> new IllegalArgumentException("Карточка ребёнка не найдена"));
@@ -109,15 +114,26 @@ public class OvzDossierService {
             String academicYear, Long studentId, List<OvzDtos.ApplicationChoiceRequest> requests) {
         StudentProfile student = studentRepository.findById(studentId)
                 .orElseThrow(() -> new IllegalArgumentException("Карточка ребёнка не найдена"));
-        choiceRepository.deleteAllByStudent_IdAndAcademicYear(studentId, academicYear);
+        Map<String, OvzApplicationChoice> existing = choiceRepository
+                .findAllByStudent_IdAndAcademicYearOrderBySpecialistNameAsc(studentId, academicYear)
+                .stream().collect(Collectors.toMap(OvzApplicationChoice::getSpecialistName,
+                        Function.identity(), (left, right) -> right, LinkedHashMap::new));
+        Map<String, OvzDtos.ApplicationChoiceRequest> requested = new LinkedHashMap<>();
         for (OvzDtos.ApplicationChoiceRequest request : requests == null
                 ? List.<OvzDtos.ApplicationChoiceRequest>of() : requests) {
             String specialist = trim(request.getSpecialistName());
-            if (specialist == null) continue;
-            OvzApplicationChoice choice = new OvzApplicationChoice(); choice.setStudent(student); choice.setAcademicYear(academicYear);
-            choice.setSpecialistName(specialist); choice.setTasks(trim(request.getTasks())); choice.setAgreed(request.isAgreed());
-            choiceRepository.save(choice);
+            if (specialist != null) requested.put(specialist, request);
         }
+        existing.forEach((specialist, choice) -> {
+            if (!requested.containsKey(specialist)) choiceRepository.delete(choice);
+        });
+        requested.forEach((specialist, request) -> {
+            OvzApplicationChoice choice = existing.getOrDefault(specialist, new OvzApplicationChoice());
+            choice.setStudent(student); choice.setAcademicYear(academicYear); choice.setSpecialistName(specialist);
+            choice.setTasks(trim(request.getTasks())); choice.setAgreed(request.isAgreed()); choice.setUpdatedAt(LocalDateTime.now());
+            choiceRepository.save(choice);
+        });
+        distributionService.reconcileStudentAssignments(academicYear, studentId);
         OvzDtos.StageUpdateRequest stage = new OvzDtos.StageUpdateRequest(); stage.setStage(OvzRoadmapStage.APPLICATION);
         stage.setStatus(OvzStageStatus.COMPLETED); updateStage(academicYear, studentId, stage);
         return choiceRepository.findAllByStudent_IdAndAcademicYearOrderBySpecialistNameAsc(studentId, academicYear)
@@ -135,6 +151,7 @@ public class OvzDossierService {
         }
         stageRepository.deleteAllByStudent_IdAndAcademicYear(studentId, academicYear);
         choiceRepository.deleteAllByStudent_IdAndAcademicYear(studentId, academicYear);
+        distributionService.clearStudentAssignments(academicYear, studentId);
         ppkRepository.findAllByStudent_IdAndAcademicYearOrderByMeetingDateDesc(studentId, academicYear).forEach(protocol -> {
             protocol.setStudent(null); protocol.setClassName(null); protocol.setUpdatedAt(LocalDateTime.now()); ppkRepository.save(protocol);
         });
@@ -171,19 +188,21 @@ public class OvzDossierService {
         }
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = workbook.createSheet("Реестр ОВЗ");
-            String[] headers = {"ФК", "ФИО", "Класс", "МСЭ", "Заключение ЦМПК", "Рекомендация ЦМПК", "Срок", "Коррекционная работа", "Этапы"};
+            String[] headers = {"ФК", "ФИО", "Класс", "МСЭ: действие", "Заключение ЦМПК: действие", "Рекомендация ЦМПК", "Нозология", "Коррекционная работа", "Этапы"};
             Row header = sheet.createRow(0);
             CellStyle headerStyle = workbook.createCellStyle(); Font font = workbook.createFont(); font.setBold(true); headerStyle.setFont(font);
             for (int i = 0; i < headers.length; i++) { Cell cell = header.createCell(i); cell.setCellValue(headers[i]); cell.setCellStyle(headerStyle); }
             int index = 1;
             for (OvzDtos.DossierSummary item : rows) {
                 Row row = sheet.createRow(index++); row.createCell(0).setCellValue(item.getStudentId()); row.createCell(1).setCellValue(item.getFullName());
-                row.createCell(2).setCellValue(item.getClassName()); row.createCell(3).setCellValue(yesNo(item.isMse()));
-                row.createCell(4).setCellValue(yesNo(item.isConclusion())); row.createCell(5).setCellValue(yesNo(item.isRecommendation()));
-                row.createCell(6).setCellValue(item.getValidTo() == null ? "" : item.getValidTo().format(DISPLAY_DATE));
+                row.createCell(2).setCellValue(item.getClassName());
+                row.createCell(3).setCellValue(documentPeriod(item.isMse(), item.getMseValidFrom(), item.getMseValidTo()));
+                row.createCell(4).setCellValue(documentPeriod(item.isConclusion(), item.getConclusionValidFrom(), item.getConclusionValidTo()));
+                row.createCell(5).setCellValue(yesNo(item.isRecommendation()));
+                row.createCell(6).setCellValue(Objects.toString(item.getNosologyCode(), "—"));
                 row.createCell(7).setCellValue(item.getCorrectionDirections().stream()
                         .map(c -> c.getSpecialistName() + ": " + Objects.toString(c.getTasks(), "")).collect(Collectors.joining("; ")));
-                row.createCell(8).setCellValue(item.getStages().stream()
+                row.createCell(8).setCellValue(isMseOnly(item) ? "—" : item.getStages().stream()
                         .map(stage -> stage.getLabel() + ": " + stageStatusLabel(stage.getStatus())).collect(Collectors.joining("; ")));
             }
             for (int i = 0; i < headers.length; i++) sheet.autoSizeColumn(i);
@@ -193,22 +212,34 @@ public class OvzDossierService {
 
     private OvzDtos.DossierSummary summary(StudentProfile student, String academicYear,
                                            List<StudentSupportDocumentDtos.View> docs,
-                                           Map<OvzRoadmapStage, OvzStageStatus> statuses) {
+                                           Map<OvzRoadmapStage, OvzStageStatus> statuses,
+                                           OvzStageStatus distributionStatus) {
         OvzDtos.DossierSummary result = new OvzDtos.DossierSummary(); result.setStudentId(student.getId());
         result.setFullName(student.getCurrentFullName()); result.setBirthDate(student.getBirthDate()); result.setClassName(currentClass(student.getId(), academicYear));
-        result.setMse(has(docs, StudentSupportDocumentType.MSE_CERTIFICATE)); result.setConclusion(has(docs, StudentSupportDocumentType.CPMPC_CONCLUSION));
+        StudentSupportDocumentDtos.View mseDocument = document(docs, StudentSupportDocumentType.MSE_CERTIFICATE);
+        StudentSupportDocumentDtos.View conclusionDocument = document(docs, StudentSupportDocumentType.CPMPC_CONCLUSION);
+        result.setMse(mseDocument != null); result.setMseValidFrom(mseDocument == null ? null : mseDocument.getValidFrom());
+        result.setMseValidTo(mseDocument == null ? null : mseDocument.getValidTo());
+        result.setConclusion(conclusionDocument != null); result.setConclusionValidFrom(conclusionDocument == null ? null : conclusionDocument.getValidFrom());
+        result.setConclusionValidTo(conclusionDocument == null ? null : conclusionDocument.getValidTo());
         result.setRecommendation(has(docs, StudentSupportDocumentType.CPMPC_RECOMMENDATION)); result.setDocuments(docs);
+        result.setNosologyCode(docs.stream().filter(document -> document.getDocumentType() == StudentSupportDocumentType.CPMPC_CONCLUSION)
+                .map(StudentSupportDocumentDtos.View::getNosologyCode).map(this::trim).filter(Objects::nonNull).findFirst().orElse(null));
         result.setValidTo(docs.stream().map(StudentSupportDocumentDtos.View::getValidTo).filter(Objects::nonNull).min(LocalDate::compareTo).orElse(null));
         result.setCorrectionDirections(docs.stream().flatMap(d -> Objects.requireNonNullElse(d.getCorrectionDirections(), List.<StudentSupportDocumentDtos.CorrectionDirectionView>of()).stream())
                 .collect(Collectors.toMap(StudentSupportDocumentDtos.CorrectionDirectionView::getSpecialistName, Function.identity(), (a, b) -> b, LinkedHashMap::new)).values().stream().toList());
-        result.setStages(STAGE_LABELS.keySet().stream().map(stage -> stageView(stage,
-                stage == OvzRoadmapStage.CERTIFICATE ? OvzStageStatus.COMPLETED : statuses.getOrDefault(stage, OvzStageStatus.NOT_RELEASED))).toList());
+        result.setStages((isMseOnly(result) ? List.of(OvzRoadmapStage.CERTIFICATE) : STAGE_LABELS.keySet()).stream()
+                .map(stage -> stageView(stage, stage == OvzRoadmapStage.CERTIFICATE
+                        ? OvzStageStatus.COMPLETED : stage == OvzRoadmapStage.SPECIALIST_ASSIGNMENT
+                        ? Objects.requireNonNullElse(distributionStatus, OvzStageStatus.NOT_RELEASED)
+                        : statuses.getOrDefault(stage, OvzStageStatus.NOT_RELEASED))).toList());
         return result;
     }
 
     private void synchronizeApplicationChoices(StudentProfile student, String year, List<StudentSupportDocumentDtos.View> docs) {
         Map<String, StudentSupportDocumentDtos.CorrectionDirectionView> directions = docs.stream()
-                .filter(d -> d.getDocumentType() == StudentSupportDocumentType.CPMPC_CONCLUSION)
+                .filter(d -> d.getDocumentType() == StudentSupportDocumentType.CPMPC_CONCLUSION
+                        || d.getDocumentType() == StudentSupportDocumentType.CPMPC_RECOMMENDATION)
                 .flatMap(d -> Objects.requireNonNullElse(d.getCorrectionDirections(), List.<StudentSupportDocumentDtos.CorrectionDirectionView>of()).stream())
                 .collect(Collectors.toMap(StudentSupportDocumentDtos.CorrectionDirectionView::getSpecialistName,
                         Function.identity(), (left, right) -> right, LinkedHashMap::new));
@@ -234,16 +265,25 @@ public class OvzDossierService {
 
     private void copySummary(OvzDtos.DossierSummary s, OvzDtos.DossierDetail d) {
         d.setStudentId(s.getStudentId()); d.setFullName(s.getFullName()); d.setBirthDate(s.getBirthDate()); d.setClassName(s.getClassName());
-        d.setMse(s.isMse()); d.setConclusion(s.isConclusion()); d.setRecommendation(s.isRecommendation()); d.setValidTo(s.getValidTo());
+        d.setMse(s.isMse()); d.setMseValidFrom(s.getMseValidFrom()); d.setMseValidTo(s.getMseValidTo());
+        d.setConclusion(s.isConclusion()); d.setConclusionValidFrom(s.getConclusionValidFrom()); d.setConclusionValidTo(s.getConclusionValidTo());
+        d.setRecommendation(s.isRecommendation()); d.setNosologyCode(s.getNosologyCode()); d.setValidTo(s.getValidTo());
         d.setDocuments(s.getDocuments()); d.setCorrectionDirections(s.getCorrectionDirections()); d.setStages(s.getStages());
     }
     private OvzDtos.StageView stageView(OvzRoadmapStage stage, OvzStageStatus status) { OvzDtos.StageView v = new OvzDtos.StageView(); v.setStage(stage); v.setLabel(STAGE_LABELS.get(stage)); v.setStatus(status); return v; }
     private OvzDtos.ApplicationChoiceView choiceView(OvzApplicationChoice c) { OvzDtos.ApplicationChoiceView v = new OvzDtos.ApplicationChoiceView(); v.setId(c.getId()); v.setSpecialistName(c.getSpecialistName()); v.setTasks(c.getTasks()); v.setAgreed(c.isAgreed()); return v; }
     private OvzDtos.PpkProtocolView ppkView(PpkProtocol p) { OvzDtos.PpkProtocolView v = new OvzDtos.PpkProtocolView(); v.setId(p.getId()); v.setProtocolNumber(p.getProtocolNumber()); v.setMeetingDate(p.getMeetingDate()); v.setProtocolType(p.getProtocolType()); v.setStudentId(p.getStudent() == null ? null : p.getStudent().getId()); v.setStudentFullName(p.getStudent() == null ? null : p.getStudent().getCurrentFullName()); v.setClassName(p.getClassName()); v.setChairName(p.getChairName()); v.setSecretaryName(p.getSecretaryName()); v.setAttendees(p.getAttendees()); v.setInvitedRepresentative(p.getInvitedRepresentative()); v.setAgenda(p.getAgenda()); v.setMeetingNotes(p.getMeetingNotes()); v.setDecisionText(p.getDecisionText()); v.setStatus(p.getStatus()); return v; }
     private boolean has(List<StudentSupportDocumentDtos.View> docs, StudentSupportDocumentType type) { return docs.stream().anyMatch(d -> d.getDocumentType() == type); }
+    private StudentSupportDocumentDtos.View document(List<StudentSupportDocumentDtos.View> docs, StudentSupportDocumentType type) { return docs.stream().filter(d -> d.getDocumentType() == type).findFirst().orElse(null); }
+    private boolean isMseOnly(OvzDtos.DossierSummary dossier) { return dossier.isMse() && !dossier.isConclusion() && !dossier.isRecommendation(); }
     private String currentClass(Long id, String year) { return enrollmentRepository.findFirstByStudent_IdAndAcademicYearAndValidToIsNullOrderByValidFromDesc(id, year).map(StudentClassEnrollment::getClassName).orElseGet(() -> enrollmentRepository.findAllByStudent_IdAndAcademicYearOrderByValidFromDesc(id, year).stream().map(StudentClassEnrollment::getClassName).findFirst().orElse("")); }
     private String trim(String value) { return value == null || value.trim().isEmpty() ? null : value.trim(); }
     private String yesNo(boolean value) { return value ? "Да" : "Нет"; }
+    private String documentPeriod(boolean present, LocalDate validFrom, LocalDate validTo) {
+        if (!present) return "—";
+        return (validFrom == null ? "не указано" : validFrom.format(DISPLAY_DATE)) + " — "
+                + (validTo == null ? "бессрочно" : validTo.format(DISPLAY_DATE));
+    }
     private String stageStatusLabel(OvzStageStatus status) {
         if (status == OvzStageStatus.COMPLETED) return "завершён";
         if (status == OvzStageStatus.PRINTED) return "распечатан, не завершён";

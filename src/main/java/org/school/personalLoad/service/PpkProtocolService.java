@@ -56,6 +56,7 @@ public class PpkProtocolService {
         result.setSecretaryName(commissionLine(settings.getSecretaryName(), settings.getSecretaryPosition()));
         result.setAttendees(settings.getAttendees());
         result.setStudentId(studentId);
+        result.setProtocolType(PpkProtocolType.APPOINTMENT);
         if (studentId == null) {
             result.setInvitedRepresentative("");
             result.setAgenda("");
@@ -71,6 +72,10 @@ public class PpkProtocolService {
                 .findFirstByStudent_IdAndAcademicYearAndDocumentType(
                         studentId, academicYear, StudentSupportDocumentType.CPMPC_CONCLUSION)
                 .orElse(null);
+        StudentSupportDocument recommendation = conclusion == null ? supportDocumentRepository
+                .findFirstByStudent_IdAndAcademicYearAndDocumentType(
+                        studentId, academicYear, StudentSupportDocumentType.CPMPC_RECOMMENDATION)
+                .orElse(null) : null;
         var fioCases = RussianNameCases.derive(student.getCurrentFullName());
         String fio = fioCases.nominative();
         String fioGenitive = fioCases.genitive();
@@ -88,12 +93,21 @@ public class PpkProtocolService {
         result.setInvitedRepresentative("");
         result.setRepresentativeName(representativeName);
         result.setRepresentativeSignatureName(representativeName);
+        if (recommendation != null) {
+            result.setProtocolType(PpkProtocolType.RECOMMENDATION_SUPPORT);
+            result.setAgenda(defaultRecommendationAgenda(fioGenitive, learnerGenitive, schoolYear));
+            result.setMeetingNotes(defaultRecommendationNotes(schoolYear, learnerGenitive));
+            result.setDecisionText(defaultRecommendationDecision(
+                    fioGenitive, learnerGenitive, className, schoolYear));
+            result.setMessage("Применён шаблон протокола по рекомендации ЦМПК: психолого-педагогическое сопровождение без назначения специальных условий и ИОМ.");
+            return result;
+        }
         result.setAgenda(defaultAgenda(fioGenitive, fioDative, learnerGenitive, learnerDative, variant, schoolYear));
         result.setMeetingNotes(defaultNotes(conclusionNumber, schoolYear, learnerGenitive));
         result.setDecisionText(defaultDecision(
                 fioGenitive, fioDative, learnerGenitive, learnerDative, className, variant, schoolYear));
         if (conclusion == null) {
-            result.setMessage("У ребёнка не найдено заключение ЦМПК: номер и вариант АООП оставлены для ручного заполнения.");
+            result.setMessage("У ребёнка не найдены заключение или рекомендация ЦМПК: номер и вариант АООП оставлены для ручного заполнения.");
         } else if (variant == null) {
             result.setMessage("В заключении не заполнен код нозологии: вариант АООП оставлен для ручного заполнения.");
         } else if (conclusionNumber == null) {
@@ -164,6 +178,16 @@ public class PpkProtocolService {
     }
 
     @Transactional
+    public OvzDtos.PpkProtocolView markSigned(String academicYear, Long id) {
+        PpkProtocol protocol = require(academicYear, id);
+        protocol.setStatus(OvzStageStatus.COMPLETED);
+        protocol.setUpdatedAt(LocalDateTime.now());
+        protocol = repository.save(protocol);
+        refreshRoadmap(protocol);
+        return toView(protocol);
+    }
+
+    @Transactional
     public GeneratedDocument generate(String academicYear, Long id) {
         PpkProtocol protocol = require(academicYear, id);
         if (protocol.getStatus() == OvzStageStatus.NOT_RELEASED) {
@@ -220,7 +244,9 @@ public class PpkProtocolService {
         OvzRoadmapStage roadmapStage = protocolType == PpkProtocolType.IOM
                 ? OvzRoadmapStage.PPK_IOM : OvzRoadmapStage.PPK_APPOINTMENT;
         List<PpkProtocol> linked = repository.findAllByStudent_IdAndAcademicYearOrderByMeetingDateDesc(studentId, academicYear)
-                .stream().filter(item -> item.getProtocolType() == protocolType).toList();
+                .stream().filter(item -> roadmapStage == OvzRoadmapStage.PPK_IOM
+                        ? item.getProtocolType() == PpkProtocolType.IOM
+                        : item.getProtocolType() != PpkProtocolType.IOM).toList();
         if (linked.isEmpty()) {
             workflowStageRepository.findByStudent_IdAndAcademicYearAndStage(studentId, academicYear, roadmapStage)
                     .ifPresent(workflowStageRepository::delete);
@@ -275,6 +301,25 @@ public class PpkProtocolService {
                 + " по АООП вариант " + aoop + " в " + academicYear + " учебном году.\n"
                 + "Организация коррекционно-развивающих занятий по индивидуальному образовательному маршруту (ИОМ) "
                 + "для " + learnerGenitive + " с ОВЗ " + fioGenitive + " по АООП вариант " + aoop
+                + " на " + academicYear + " учебный год.";
+    }
+
+    private String defaultRecommendationAgenda(String fioGenitive, String learnerGenitive, String academicYear) {
+        return "Оказание психолого-педагогического сопровождения и организация коррекционно-развивающих занятий "
+                + "в образовательной организации для " + learnerGenitive + " " + fioGenitive
+                + " в " + academicYear + " учебном году.";
+    }
+
+    private String defaultRecommendationNotes(String academicYear, String learnerGenitive) {
+        return "Консультирование родителя/законного представителя по вопросам оказания психолого-педагогического "
+                + "сопровождения для " + learnerGenitive + " в " + academicYear
+                + " учебном году согласно рекомендации ЦПМПК.";
+    }
+
+    private String defaultRecommendationDecision(String fioGenitive, String learnerGenitive,
+                                                  String className, String academicYear) {
+        return "На основании рекомендации ЦПМПК г. Москвы оказать психолого-педагогическое сопровождение для "
+                + learnerGenitive + " " + displayClassName(className) + " класса " + fioGenitive
                 + " на " + academicYear + " учебный год.";
     }
 

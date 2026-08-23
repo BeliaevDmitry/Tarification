@@ -7,10 +7,18 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.school.personalLoad.auth.SessionUser;
+import org.school.personalLoad.auth.AppTab;
+import org.school.personalLoad.auth.TabPermissionSnapshot;
 import org.school.personalLoad.auth.UserRole;
 import org.school.personalLoad.dto.ProbeOrderDtos;
+import org.school.personalLoad.model.BuildingGroup;
 import org.school.personalLoad.model.ClassroomLeadershipEntry;
+import org.school.personalLoad.model.ContingentSnapshot;
+import org.school.personalLoad.model.ContingentStudent;
+import org.school.personalLoad.model.ProbeOrderApprovalMode;
 import org.school.personalLoad.model.ProbeOrder;
+import org.school.personalLoad.model.ProbeOrderParticipant;
+import org.school.personalLoad.model.ProbeOrderSettings;
 import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.model.StudentProfile;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
@@ -20,6 +28,8 @@ import org.springframework.mock.web.MockMultipartFile;
 
 import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -28,6 +38,8 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -37,6 +49,8 @@ class ProbeOrderServiceImplTest {
     @Test
     void importsCurrentRegistrationUsingSystemBuildingStaffAndStudentCards() throws Exception {
         ProbeOrderRepository orders = mock(ProbeOrderRepository.class);
+        ProbeOrderApprovalRepository approvals = mock(ProbeOrderApprovalRepository.class);
+        ProbeOrderSettingsRepository settings = mock(ProbeOrderSettingsRepository.class);
         ProbeOrderGeneratedDocumentRepository documents = mock(ProbeOrderGeneratedDocumentRepository.class);
         ProbeOrderScanRepository scans = mock(ProbeOrderScanRepository.class);
         ContingentSnapshotRepository snapshots = mock(ContingentSnapshotRepository.class);
@@ -58,6 +72,7 @@ class ProbeOrderServiceImplTest {
         classTeacher.setPrimaryPosition("Учитель");
         ClassroomLeadershipEntry classLeadership = new ClassroomLeadershipEntry();
         classLeadership.setAcademicYear("2026/2027");
+        classLeadership.setNumberSchoolBuilding("СП-1");
         classLeadership.setClassName("9А");
         classLeadership.setSchoolBuilding(building);
         classLeadership.setTeacher(classTeacher);
@@ -85,7 +100,7 @@ class ProbeOrderServiceImplTest {
         when(scans.findAllByOrder_IdIn(any())).thenReturn(List.of());
 
         ProbeOrderServiceImpl service = new ProbeOrderServiceImpl(
-                orders, documents, scans, snapshots, contingentStudents, students, leadership,
+                orders, approvals, settings, documents, scans, snapshots, contingentStudents, students, leadership,
                 teachers, users, new ProbeOrderDocumentService(), new ObjectMapper());
         ProbeOrderDtos.ImportResponse result = service.importRegistration(
                 "2026/2027", registrationFile(11), admin());
@@ -122,6 +137,187 @@ class ProbeOrderServiceImplTest {
         assertEquals("Москва, Учебная улица, дом 1", calendarEvent.participants().get(0).details());
         assertEquals("PERSON", calendarEvent.participants().get(1).type());
         assertEquals(31L, calendarEvent.participants().get(1).id());
+    }
+
+    @Test
+    void allBuildingHeadsSeeOrdersButOnlyOrganizationalAndPhysicalSiteHeadsCanAct() {
+        ProbeOrderRepository orders = mock(ProbeOrderRepository.class);
+        ProbeOrderApprovalRepository approvals = mock(ProbeOrderApprovalRepository.class);
+        ProbeOrderSettingsRepository settings = mock(ProbeOrderSettingsRepository.class);
+        ProbeOrderGeneratedDocumentRepository documents = mock(ProbeOrderGeneratedDocumentRepository.class);
+        ProbeOrderScanRepository scans = mock(ProbeOrderScanRepository.class);
+        ClassroomLeadershipRepository leadership = mock(ClassroomLeadershipRepository.class);
+
+        BuildingGroup siteGroup = new BuildingGroup();
+        siteGroup.setId(2L);
+        siteGroup.setCode("СП2");
+        siteGroup.setName("СП2");
+        SchoolBuilding physicalSite = new SchoolBuilding();
+        physicalSite.setId(22L);
+        physicalSite.setCode("сп2|ул. Вторая, д. 2");
+        physicalSite.setBuildingGroup(siteGroup);
+        physicalSite.setName("Площадка СП2");
+        physicalSite.setAddress("ул. Вторая, д. 2");
+
+        ProbeOrder order = new ProbeOrder();
+        order.setId(100L);
+        order.setAcademicYear("2026/2027");
+        order.setExternalEventId("E-7A");
+        order.setEventName("Профессиональная проба");
+        order.setEventDate(LocalDate.now().plusDays(10));
+        order.setStartTime(LocalTime.of(10, 0));
+        order.setEndTime(LocalTime.of(12, 0));
+        order.setVenue("Колледж");
+        order.setEventAddress("ул. Учебная, д. 1");
+        order.setGatheringPlace("Школа");
+        order.setGatheringTime(LocalTime.of(9, 0));
+        order.setReturnTime(LocalTime.of(13, 0));
+        order.setSchoolBuilding(physicalSite);
+        order.setSourceUploadedAt(LocalDateTime.now());
+        ProbeOrderParticipant participant = new ProbeOrderParticipant();
+        participant.setOrder(order);
+        participant.setFullNameSnapshot("Иванов Иван Иванович");
+        participant.setNormalizedFullName("иванов иван иванович");
+        participant.setClassNameSnapshot("7-А");
+        order.getParticipants().add(participant);
+
+        ClassroomLeadershipEntry classEntry = new ClassroomLeadershipEntry();
+        classEntry.setAcademicYear("2026/2027");
+        classEntry.setClassName("7-А");
+        classEntry.setNumberSchoolBuilding("СП1");
+        classEntry.setSchoolBuilding(physicalSite);
+
+        ProbeOrderSettings configured = new ProbeOrderSettings();
+        configured.setApprovalMode(ProbeOrderApprovalMode.BOTH);
+        when(settings.findById(ProbeOrderSettings.DEFAULT_ID)).thenReturn(Optional.of(configured));
+        when(orders.findAllByAcademicYearOrderByEventDateAscStartTimeAsc("2026/2027")).thenReturn(List.of(order));
+        when(documents.findAllByOrder_IdIn(any())).thenReturn(List.of());
+        when(scans.findAllByOrder_IdIn(any())).thenReturn(List.of());
+        when(approvals.findAllByOrder_IdIn(any())).thenReturn(List.of());
+        when(leadership.findAllByAcademicYear("2026/2027")).thenReturn(List.of(classEntry));
+
+        ProbeOrderServiceImpl service = new ProbeOrderServiceImpl(
+                orders, approvals, settings, documents, scans,
+                mock(ContingentSnapshotRepository.class), mock(ContingentStudentRepository.class),
+                mock(StudentProfileRepository.class), leadership, mock(TeacherDirectoryRepository.class),
+                mock(AppUserRepository.class), new ProbeOrderDocumentService(), new ObjectMapper());
+
+        ProbeOrderDtos.OrderView organizationView = service.list("2026/2027", buildingHead("СП1", true)).get(0);
+        ProbeOrderDtos.OrderView siteView = service.list("2026/2027", buildingHead("СП2", true)).get(0);
+        ProbeOrderDtos.OrderView otherView = service.list("2026/2027", buildingHead("СП3", true)).get(0);
+
+        assertEquals(2, organizationView.approvals().size());
+        assertTrue(organizationView.canEdit());
+        assertTrue(organizationView.canAcknowledge());
+        assertTrue(siteView.canEdit());
+        assertTrue(siteView.canAcknowledge());
+        assertFalse(otherView.canEdit());
+        assertFalse(otherView.canAcknowledge());
+        assertEquals(1, organizationView.participants().size());
+        assertTrue(otherView.participants().isEmpty());
+
+        TeacherDirectoryEntry companion = new TeacherDirectoryEntry();
+        companion.setId(55L);
+        companion.setFioTeacher("Сопровождающий Учитель");
+        order.setPrimaryCompanion(companion);
+        List<org.school.personalLoad.model.ProbeOrderApproval> savedApprovals = new ArrayList<>();
+        when(orders.findOneById(100L)).thenReturn(Optional.of(order));
+        when(orders.save(any(ProbeOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(approvals.findAllByOrder_Id(100L)).thenAnswer(ignored -> new ArrayList<>(savedApprovals));
+        when(approvals.save(any(org.school.personalLoad.model.ProbeOrderApproval.class))).thenAnswer(invocation -> {
+            org.school.personalLoad.model.ProbeOrderApproval approval = invocation.getArgument(0);
+            approval.setId((long) savedApprovals.size() + 1);
+            savedApprovals.add(approval);
+            return approval;
+        });
+
+        ProbeOrderDtos.OrderView afterOrganization = service.acknowledge(100L, buildingHead("СП1", true));
+        assertTrue(afterOrganization.approvalComplete());
+        assertEquals(1, afterOrganization.approvals().stream().filter(item -> item.approvedAt() != null).count());
+        assertThrows(org.school.personalLoad.auth.AuthExceptions.ForbiddenException.class,
+                () -> service.acknowledge(100L, buildingHead("СП2", true)));
+    }
+
+    @Test
+    void refreshesExistingOrderWithCurrentChildAndAllRepresentativeContacts() {
+        ProbeOrderRepository orders = mock(ProbeOrderRepository.class);
+        ProbeOrderApprovalRepository approvals = mock(ProbeOrderApprovalRepository.class);
+        ProbeOrderSettingsRepository settings = mock(ProbeOrderSettingsRepository.class);
+        ProbeOrderGeneratedDocumentRepository documents = mock(ProbeOrderGeneratedDocumentRepository.class);
+        ProbeOrderScanRepository scans = mock(ProbeOrderScanRepository.class);
+        ContingentSnapshotRepository snapshots = mock(ContingentSnapshotRepository.class);
+        ContingentStudentRepository contingentStudents = mock(ContingentStudentRepository.class);
+        StudentProfileRepository students = mock(StudentProfileRepository.class);
+        ClassroomLeadershipRepository leadership = mock(ClassroomLeadershipRepository.class);
+
+        SchoolBuilding building = new SchoolBuilding();
+        building.setId(7L);
+        building.setCode("СП-2");
+        building.setName("Корпус");
+
+        ProbeOrder order = new ProbeOrder();
+        order.setId(101L);
+        order.setAcademicYear("2026/2027");
+        order.setExternalEventId("EV-REFRESH");
+        order.setEventName("Профессиональная проба");
+        order.setEventDate(LocalDate.of(2026, 9, 22));
+        order.setSchoolBuilding(building);
+        order.setSourceUploadedAt(LocalDateTime.now());
+        ProbeOrderParticipant participant = new ProbeOrderParticipant();
+        participant.setOrder(order);
+        participant.setFullNameSnapshot("Иванов Иван Иванович");
+        participant.setNormalizedFullName("иванов иван иванович");
+        participant.setClassNameSnapshot("7-А");
+        order.getParticipants().add(participant);
+
+        StudentProfile profile = new StudentProfile();
+        profile.setId(77L);
+        profile.setCurrentFullName("Иванов Иван Иванович");
+        profile.setNormalizedFullName("иванов иван иванович");
+
+        ContingentSnapshot snapshot = new ContingentSnapshot();
+        snapshot.setId(501L);
+        ContingentStudent current = new ContingentStudent();
+        current.setStudentId(77L);
+        current.setFullName("Иванов Иван Иванович");
+        current.setPhone("+7 999 111-22-33");
+        current.setRepresentativeName("Иванова Анна Сергеевна");
+        current.setRepresentativePhone("+7 999 444-55-66");
+        current.setRawPayload("""
+                {"Представитель 1 — ФИО":"Иванова Анна Сергеевна",
+                 "Представитель 1 — Телефон":"+7 999 444-55-66",
+                 "Представитель 2 — ФИО":"Иванов Сергей Петрович",
+                 "Представитель 2 — Телефон":"+7 999 777-88-99"}
+                """);
+
+        when(orders.findOneById(101L)).thenReturn(Optional.of(order));
+        when(orders.save(any(ProbeOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(snapshots.findFirstByAcademicYearOrderBySnapshotDateDescImportedAtDesc("2026/2027"))
+                .thenReturn(Optional.of(snapshot));
+        when(contingentStudents.findAllBySnapshotId(501L)).thenReturn(List.of(current));
+        when(students.findAll()).thenReturn(List.of(profile));
+        when(leadership.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
+        when(approvals.findAllByOrder_Id(101L)).thenReturn(List.of());
+        when(documents.findByOrder_Id(101L)).thenReturn(Optional.empty());
+        when(scans.findByOrder_Id(101L)).thenReturn(Optional.empty());
+
+        ProbeOrderServiceImpl service = new ProbeOrderServiceImpl(
+                orders, approvals, settings, documents, scans, snapshots, contingentStudents, students, leadership,
+                mock(TeacherDirectoryRepository.class), mock(AppUserRepository.class),
+                new ProbeOrderDocumentService(), new ObjectMapper());
+
+        ProbeOrderDtos.ContactRefreshResponse result = service.refreshContacts(101L, admin());
+
+        assertEquals(1, result.participantsChecked());
+        assertEquals(1, result.participantsUpdated());
+        assertEquals(1, result.participantsLinked());
+        assertEquals(0, result.participantsStillMissingContacts());
+        ProbeOrderDtos.ParticipantView refreshed = result.order().participants().get(0);
+        assertEquals(77L, refreshed.studentId());
+        assertEquals("+7 999 111-22-33", refreshed.childPhone());
+        assertEquals("Иванова Анна Сергеевна\nИванов Сергей Петрович", refreshed.representativeName());
+        assertEquals("+7 999 444-55-66\n+7 999 777-88-99", refreshed.representativePhone());
+        assertTrue(refreshed.missingData().isEmpty());
     }
 
     private MockMultipartFile registrationFile(int children) throws Exception {
@@ -163,5 +359,13 @@ class ProbeOrderServiceImplTest {
     private SessionUser admin() {
         return new SessionUser(1L, "admin", "Администратор", null, null, UserRole.ADMIN,
                 true, true, true, null, true, new LinkedHashSet<>(), List.of());
+    }
+
+    private SessionUser buildingHead(String code, boolean edit) {
+        TabPermissionSnapshot permission = new TabPermissionSnapshot(
+                AppTab.DOCUMENTS_PROBE_ORDERS, true, edit, false, true);
+        return new SessionUser(10L, "head-" + code, "Руководитель " + code, null, null,
+                UserRole.BUILDING_HEAD, true, true, edit, code, false,
+                new LinkedHashSet<>(), List.of(permission));
     }
 }

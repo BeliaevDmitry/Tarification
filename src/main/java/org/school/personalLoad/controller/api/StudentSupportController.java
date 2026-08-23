@@ -194,14 +194,16 @@ public class StudentSupportController {
             @RequestParam Long studentId,
             @RequestParam org.school.personalLoad.model.StudentSupportDocumentType documentType,
             @RequestParam(defaultValue = "false") boolean prolongationAvailable,
-            @RequestParam(defaultValue = "false") boolean prolongationUsed
+            @RequestParam(defaultValue = "false") boolean prolongationUsed,
+            @RequestParam(required = false) String nosologyCode
     ) {
         return ResponseEntity.ok(studentSupportDocumentService.educationDefaults(
                 effectiveYear(academicYear),
                 studentId,
                 documentType,
                 prolongationAvailable,
-                prolongationUsed
+                prolongationUsed,
+                nosologyCode
         ));
     }
 

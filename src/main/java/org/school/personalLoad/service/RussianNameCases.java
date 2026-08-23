@@ -98,7 +98,7 @@ public final class RussianNameCases {
         String lower = value.toLowerCase(Locale.ROOT);
         if (surname && (lower.endsWith("ко") || lower.endsWith("ых") || lower.endsWith("их")
                 || lower.endsWith("енко") || lower.endsWith("ук"))) return value;
-        if (surname && female && (lower.endsWith("ова") || lower.endsWith("ева")
+        if (surname && female && (lower.endsWith("ова") || lower.endsWith("ева") || lower.endsWith("ёва")
                 || lower.endsWith("ина") || lower.endsWith("ына"))) {
             return stem(value, 1) + switch (type) {
                 case GENITIVE, DATIVE, INSTRUMENTAL, PREPOSITIONAL -> "ой";

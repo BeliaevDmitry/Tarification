@@ -152,6 +152,11 @@ public class AuthFilter extends OncePerRequestFilter {
         }
 
         AppTab apiTab = apiTabForPath(path);
+        if (isCurriculumExportRequest(request, path)
+                && !currentUser.canExportTab(AppTab.CURRICULUM)) {
+            rejectForbidden(request, response, "У пользователя нет права на экспорт учебного плана");
+            return;
+        }
         if (isReadApiRequest(request, path) && !canReadProtectedApi(currentUser, path)) {
             rejectForbidden(request, response, "У пользователя нет прав на просмотр этой вкладки");
             return;
@@ -226,6 +231,11 @@ public class AuthFilter extends OncePerRequestFilter {
     private boolean isReadApiRequest(HttpServletRequest request, String path) {
         return path.startsWith("/api/")
                 && (HttpMethod.GET.matches(request.getMethod()) || HttpMethod.HEAD.matches(request.getMethod()));
+    }
+
+    private boolean isCurriculumExportRequest(HttpServletRequest request, String path) {
+        return (HttpMethod.GET.matches(request.getMethod()) || HttpMethod.HEAD.matches(request.getMethod()))
+                && ("/api/curriculum/export".equals(path) || path.startsWith("/api/curriculum/export-"));
     }
 
     private boolean canReadProtectedApi(SessionUser user, String path) {

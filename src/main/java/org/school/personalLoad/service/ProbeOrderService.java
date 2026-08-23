@@ -15,9 +15,15 @@ public interface ProbeOrderService {
 
     ProbeOrderDtos.ReferenceData references(String academicYear, SessionUser user);
 
+    ProbeOrderDtos.SettingsView settings(SessionUser user);
+
+    ProbeOrderDtos.SettingsView updateSettings(ProbeOrderDtos.SettingsRequest request, SessionUser user);
+
     ProbeOrderDtos.OrderView update(Long id, ProbeOrderDtos.EditRequest request, SessionUser user);
 
     ProbeOrderDtos.OrderView assignCompanions(Long id, ProbeOrderDtos.CompanionRequest request, SessionUser user);
+
+    ProbeOrderDtos.ContactRefreshResponse refreshContacts(Long id, SessionUser user);
 
     ProbeOrderDtos.OrderView acknowledge(Long id, SessionUser user);
 

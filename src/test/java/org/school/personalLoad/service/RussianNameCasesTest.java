@@ -36,4 +36,13 @@ class RussianNameCasesTest {
         assertEquals("Сапрыкиной Любовью Романовной", cases.instrumental());
         assertTrue(RussianNameCases.isFemale(cases.nominative()));
     }
+
+    @Test
+    void declinesFemaleSurnameEndingWithYoVa() {
+        var cases = RussianNameCases.derive("Муравьёва Виктория Денисовна");
+
+        assertEquals("Муравьёвой Виктории Денисовны", cases.genitive());
+        assertEquals("Муравьёвой Виктории Денисовне", cases.dative());
+        assertEquals("Муравьёву Викторию Денисовну", cases.accusative());
+    }
 }

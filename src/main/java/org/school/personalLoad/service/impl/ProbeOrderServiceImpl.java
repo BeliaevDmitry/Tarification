@@ -25,6 +25,7 @@ import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.function.Function;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -44,6 +45,8 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
             "(?<!\\d)([01]?\\d|2[0-3])[:.]([0-5]\\d).*?([01]?\\d|2[0-3])[:.]([0-5]\\d)(?!\\d)");
 
     private final ProbeOrderRepository orderRepository;
+    private final ProbeOrderApprovalRepository approvalRepository;
+    private final ProbeOrderSettingsRepository settingsRepository;
     private final ProbeOrderGeneratedDocumentRepository generatedDocumentRepository;
     private final ProbeOrderScanRepository scanRepository;
     private final ContingentSnapshotRepository snapshotRepository;
@@ -112,8 +115,9 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
                     resolution.student(),
                     resolution.className(),
                     resolution.leadership(),
-                    firstNotBlank(application.representativeName(), resolution.representativeName()),
-                    firstNotBlank(application.representativePhone(), resolution.representativePhone())
+                    resolution.childPhone(),
+                    firstNotBlank(resolution.representativeName(), application.representativeName()),
+                    firstNotBlank(resolution.representativePhone(), application.representativePhone())
             );
             OrderKey key = new OrderKey(event.id(), resolution.leadership().getSchoolBuilding().getId());
             grouped.computeIfAbsent(key, ignored -> new ArrayList<>()).add(resolved);
@@ -175,8 +179,11 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
                 .toList();
         Map<Long, ProbeOrderGeneratedDocument> documents = generatedDocuments(orders);
         Map<Long, ProbeOrderScan> scans = scans(orders);
+        Map<Long, List<ProbeOrderApproval>> approvals = approvals(orders);
+        ProbeOrderApprovalMode approvalMode = currentApprovalMode();
         return orders.stream().map(order -> toView(order, user,
-                documents.containsKey(order.getId()), scans.containsKey(order.getId()))).toList();
+                documents.containsKey(order.getId()), scans.containsKey(order.getId()), approvalMode,
+                approvals.getOrDefault(order.getId(), List.of()))).toList();
     }
 
     @Override
@@ -211,6 +218,32 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
                     .map(TeacherDirectoryEntry::getId).orElse(null);
         }
         return new ProbeOrderDtos.ReferenceData(staff, staff, students, defaultSigner);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ProbeOrderDtos.SettingsView settings(SessionUser user) {
+        ensureView(user);
+        ProbeOrderApprovalMode mode = currentApprovalMode();
+        return new ProbeOrderDtos.SettingsView(mode, approvalModeLabel(mode), canEditSettings(user));
+    }
+
+    @Override
+    @Transactional
+    public ProbeOrderDtos.SettingsView updateSettings(ProbeOrderDtos.SettingsRequest request, SessionUser user) {
+        ensureLeadershipEdit(user);
+        if (request == null || request.approvalMode() == null) {
+            throw new IllegalArgumentException("Выберите, кто должен согласовывать приказы");
+        }
+        ProbeOrderSettings settings = settingsRepository.findById(ProbeOrderSettings.DEFAULT_ID)
+                .orElseGet(ProbeOrderSettings::new);
+        settings.setApprovalMode(request.approvalMode());
+        settings.setUpdatedAt(LocalDateTime.now());
+        settings.setUpdatedBy(firstNotBlank(user.getFullName(), user.getUsername(), "SYSTEM"));
+        settingsRepository.save(settings);
+        refreshPendingApprovalSummaries(request.approvalMode());
+        return new ProbeOrderDtos.SettingsView(request.approvalMode(),
+                approvalModeLabel(request.approvalMode()), true);
     }
 
     @Override
@@ -268,18 +301,90 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
 
     @Override
     @Transactional
+    public ProbeOrderDtos.ContactRefreshResponse refreshContacts(Long id, SessionUser user) {
+        ProbeOrder order = requireOrder(id);
+        ensureManageOrder(user, order);
+        if (order.getStatus() == ProbeOrderStatus.RELEASED) {
+            throw new IllegalStateException("Контакты выпущенного приказа изменять нельзя");
+        }
+
+        StudentContext context = studentContext(order.getAcademicYear());
+        int updated = 0;
+        int linked = 0;
+        for (ProbeOrderParticipant participant : order.getParticipants()) {
+            ParticipantSource source = participantSource(participant, context);
+            boolean changed = false;
+            if (participant.getStudent() == null && source.student() != null) {
+                participant.setStudent(source.student());
+                linked++;
+                changed = true;
+            }
+            changed |= replaceWhenPresent(participant.getChildPhone(), source.contacts().childPhone(),
+                    participant::setChildPhone);
+            changed |= replaceWhenPresent(participant.getRepresentativeName(), source.contacts().representativeName(),
+                    participant::setRepresentativeName);
+            changed |= replaceWhenPresent(participant.getRepresentativePhone(), source.contacts().representativePhone(),
+                    participant::setRepresentativePhone);
+            if (changed) updated++;
+        }
+
+        if (updated > 0) {
+            if (order.getStatus() == ProbeOrderStatus.GENERATED) {
+                generatedDocumentRepository.deleteByOrder_Id(order.getId());
+                ApprovalState approval = approvalState(order, currentApprovalMode(),
+                        approvalRepository.findAllByOrder_Id(order.getId()));
+                order.setStatus(approval.complete() ? ProbeOrderStatus.BUILDING_APPROVED : ProbeOrderStatus.DRAFT);
+            }
+            order.setUpdatedAt(LocalDateTime.now());
+            orderRepository.save(order);
+        }
+        int stillMissing = (int) order.getParticipants().stream()
+                .filter(participant -> display(participant.getChildPhone()).isBlank()
+                        || display(participant.getRepresentativeName()).isBlank()
+                        || display(participant.getRepresentativePhone()).isBlank())
+                .count();
+        ProbeOrderDtos.OrderView view = toView(order, user,
+                generatedDocumentRepository.findByOrder_Id(id).isPresent(),
+                scanRepository.findByOrder_Id(id).isPresent());
+        return new ProbeOrderDtos.ContactRefreshResponse(
+                order.getParticipants().size(), updated, linked, stillMissing, view);
+    }
+
+    @Override
+    @Transactional
     public ProbeOrderDtos.OrderView acknowledge(Long id, SessionUser user) {
-        ProbeOrder order = editableOrder(id, user);
-        if (!canAcknowledge(user, order)) {
-            throw new AuthExceptions.ForbiddenException("Согласовать приказ может руководитель этого корпуса или администрация");
+        ProbeOrder order = requireOrder(id);
+        if (order.getStatus() == ProbeOrderStatus.RELEASED) {
+            throw new IllegalStateException("Выпущенный приказ уже нельзя согласовать");
+        }
+        ProbeOrderApprovalMode mode = currentApprovalMode();
+        List<ProbeOrderApproval> existing = approvalRepository.findAllByOrder_Id(id);
+        if (approvalState(order, mode, existing).complete()) {
+            throw new AuthExceptions.ForbiddenException("Приказ уже согласован");
+        }
+        List<ApprovalTarget> pendingForUser = pendingApprovalTargets(user, order, mode, existing);
+        if (pendingForUser.isEmpty()) {
+            throw new AuthExceptions.ForbiddenException(
+                    "Согласовать приказ может назначенный руководитель корпуса или фактической площадки");
         }
         validateReadyForApproval(order);
-        order.setBuildingApprovedAt(LocalDateTime.now());
-        order.setBuildingApprovedBy(user.getFullName());
-        order.setStatus(ProbeOrderStatus.BUILDING_APPROVED);
+        LocalDateTime approvedAt = LocalDateTime.now();
+        List<ProbeOrderApproval> savedApprovals = new ArrayList<>(existing);
+        for (ApprovalTarget target : pendingForUser) {
+            ProbeOrderApproval approval = new ProbeOrderApproval();
+            approval.setOrder(order);
+            approval.setScopeType(target.scopeType());
+            approval.setScopeCode(target.scopeCode());
+            approval.setScopeLabel(target.scopeLabel());
+            approval.setApprovedAt(approvedAt);
+            approval.setApprovedBy(firstNotBlank(user.getFullName(), user.getUsername(), "SYSTEM"));
+            savedApprovals.add(approvalRepository.save(approval));
+        }
+        refreshApprovalSummary(order, mode, savedApprovals);
         order.setUpdatedAt(LocalDateTime.now());
         ProbeOrder saved = orderRepository.save(order);
-        return toView(saved, user, false, scanRepository.findByOrder_Id(id).isPresent());
+        return toView(saved, user, false, scanRepository.findByOrder_Id(id).isPresent(), mode,
+                approvalRepository.findAllByOrder_Id(id));
     }
 
     @Override
@@ -292,8 +397,8 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
         if (order.getStatus() == ProbeOrderStatus.RELEASED) {
             throw new IllegalStateException("Выпущенный приказ нельзя сформировать заново");
         }
-        if (order.getBuildingApprovedAt() == null) {
-            throw new IllegalStateException("Руководитель корпуса ещё не ознакомился с приказом");
+        if (!approvalState(order, currentApprovalMode(), approvalRepository.findAllByOrder_Id(id)).complete()) {
+            throw new IllegalStateException("Приказ ещё не получил все обязательные согласования");
         }
         validateReadyForApproval(order);
         if (request == null || request.orderDate() == null) {
@@ -328,6 +433,7 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
         ensureExport(user);
         ProbeOrder order = requireOrder(id);
         ensureVisibleOrder(user, order);
+        ensureOrderDetails(user, order);
         ProbeOrderGeneratedDocument document = generatedDocumentRepository.findByOrder_Id(id)
                 .orElseThrow(() -> new IllegalStateException("Word-приказ ещё не сформирован"));
         return new ProbeOrderDtos.FilePayload(document.getFileName(),
@@ -344,8 +450,8 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
             throw new IllegalStateException("Сначала сформируйте Word-приказ");
         }
         validateReadyForApproval(order);
-        if (order.getBuildingApprovedAt() == null) {
-            throw new IllegalStateException("Руководитель корпуса ещё не ознакомился с приказом");
+        if (!approvalState(order, currentApprovalMode(), approvalRepository.findAllByOrder_Id(id)).complete()) {
+            throw new IllegalStateException("Приказ ещё не получил все обязательные согласования");
         }
         order.setStatus(ProbeOrderStatus.RELEASED);
         order.setReleasedAt(LocalDateTime.now());
@@ -381,6 +487,7 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
         ensureExport(user);
         ProbeOrder order = requireOrder(id);
         ensureVisibleOrder(user, order);
+        ensureOrderDetails(user, order);
         ProbeOrderScan scan = scanRepository.findByOrder_Id(id)
                 .orElseThrow(() -> new IllegalStateException("Скан подписанного приказа не загружен"));
         return new ProbeOrderDtos.FilePayload(scan.getFileName(), scan.getContentType(), scan.getContent());
@@ -553,27 +660,53 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
         List<ClassroomLeadershipEntry> classes = context.leadershipByClass()
                 .getOrDefault(classKey(className), List.of());
         ClassroomLeadershipEntry leadership = classes.size() == 1 ? classes.get(0) : null;
-        String representativeName = current == null ? "" : firstNotBlank(
-                current.getRepresentativeName(), rawValue(current, true));
-        String representativePhone = current == null ? "" : firstNotBlank(
-                current.getRepresentativePhone(), rawValue(current, false));
-        return new Resolution(student, className, leadership, representativeName, representativePhone);
+        ContactData contacts = contactData(current, student);
+        return new Resolution(student, className, leadership, contacts.childPhone(),
+                contacts.representativeName(), contacts.representativePhone());
     }
 
-    private String rawValue(ContingentStudent row, boolean name) {
+    private ContactData contactData(ContingentStudent row, StudentProfile profile) {
+        return new ContactData(
+                firstNotBlank(row == null ? null : row.getPhone(), profile == null ? null : profile.getChildPhone()),
+                joinedContacts(row, true, profile == null ? null : profile.getRepresentativeName()),
+                joinedContacts(row, false, profile == null ? null : profile.getRepresentativePhone())
+        );
+    }
+
+    private String joinedContacts(ContingentStudent row, boolean names, String profileValue) {
+        LinkedHashSet<String> contacts = new LinkedHashSet<>();
+        rawContactValues(row, names).forEach(value -> addContactLines(contacts, value));
+        if (row != null) {
+            addContactLines(contacts, names ? row.getRepresentativeName() : row.getRepresentativePhone());
+        }
+        addContactLines(contacts, profileValue);
+        return String.join("\n", contacts);
+    }
+
+    private List<String> rawContactValues(ContingentStudent row, boolean names) {
+        if (row == null || display(row.getRawPayload()).isBlank()) return List.of();
         try {
             Map<String, Object> values = objectMapper.readValue(row.getRawPayload(), new TypeReference<>() {});
+            List<String> result = new ArrayList<>();
             for (Map.Entry<String, Object> entry : values.entrySet()) {
                 String key = normalizeHeader(entry.getKey());
-                boolean target = name
+                boolean target = names
                         ? key.contains("фио") && (key.contains("представител") || key.contains("родител"))
                         : key.contains("телефон") && (key.contains("представител") || key.contains("родител"));
-                if (target) return display(Objects.toString(entry.getValue(), ""));
+                String value = display(Objects.toString(entry.getValue(), ""));
+                if (target && !value.isBlank()) result.add(value);
             }
+            return result;
         } catch (Exception ignored) {
             // Старые снимки могли хранить payload в другом формате.
         }
-        return "";
+        return List.of();
+    }
+
+    private void addContactLines(Set<String> target, String value) {
+        if (value == null) return;
+        Arrays.stream(value.split("\\R"))
+                .map(this::display).filter(line -> !line.isBlank()).forEach(target::add);
     }
 
     private void applySource(ProbeOrder order,
@@ -631,14 +764,16 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
             participant.setFullNameSnapshot(display(row.application().fullName()));
             participant.setNormalizedFullName(normalizeName(row.application().fullName()));
             participant.setClassNameSnapshot(ClassNameNormalizer.normalize(row.className()));
-            participant.setRepresentativeName(display(row.representativeName()));
-            participant.setRepresentativePhone(display(row.representativePhone()));
+            participant.setChildPhone(displayMultiline(row.childPhone()));
+            participant.setRepresentativeName(displayMultiline(row.representativeName()));
+            participant.setRepresentativePhone(displayMultiline(row.representativePhone()));
             order.getParticipants().add(participant);
         }
     }
 
     private void replaceParticipantsFromRequest(ProbeOrder order, List<ProbeOrderDtos.ParticipantRequest> rows) {
         if (rows.isEmpty()) throw new IllegalArgumentException("Добавьте хотя бы одного ребёнка");
+        StudentContext context = studentContext(order.getAcademicYear());
         Map<Long, StudentProfile> profiles = studentProfileRepository.findAllById(rows.stream()
                         .map(ProbeOrderDtos.ParticipantRequest::studentId)
                         .filter(Objects::nonNull).collect(Collectors.toSet()))
@@ -661,12 +796,52 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
             participant.setFullNameSnapshot(fullName);
             participant.setNormalizedFullName(normalizeName(fullName));
             participant.setClassNameSnapshot(ClassNameNormalizer.normalize(className));
-            participant.setRepresentativeName(display(row.representativeName()));
-            participant.setRepresentativePhone(display(row.representativePhone()));
+            ParticipantSource source = participantSource(fullName, profile, context);
+            participant.setChildPhone(displayMultiline(firstNotBlank(row.childPhone(), source.contacts().childPhone())));
+            participant.setRepresentativeName(displayMultiline(firstNotBlank(
+                    row.representativeName(), source.contacts().representativeName())));
+            participant.setRepresentativePhone(displayMultiline(firstNotBlank(
+                    row.representativePhone(), source.contacts().representativePhone())));
             participants.add(participant);
         }
         order.getParticipants().clear();
         order.getParticipants().addAll(participants);
+    }
+
+    private ParticipantSource participantSource(ProbeOrderParticipant participant, StudentContext context) {
+        return participantSource(participant.getFullNameSnapshot(), participant.getStudent(), context);
+    }
+
+    private ParticipantSource participantSource(String fullName,
+                                                StudentProfile linkedProfile,
+                                                StudentContext context) {
+        String nameKey = normalizeName(fullName);
+        Long linkedId = linkedProfile == null ? null : linkedProfile.getId();
+        StudentProfile profile = linkedId == null ? null : context.profilesById().get(linkedId);
+        if (profile == null) profile = linkedProfile;
+        if (profile == null) {
+            List<StudentProfile> matches = context.profilesByName().getOrDefault(nameKey, List.of());
+            if (matches.size() == 1) profile = matches.get(0);
+        }
+        StudentProfile resolvedProfile = profile;
+        List<ContingentStudent> rows = context.rowsByName().getOrDefault(nameKey, List.of());
+        ContingentStudent current = rows.stream()
+                .filter(row -> resolvedProfile != null && Objects.equals(row.getStudentId(), resolvedProfile.getId()))
+                .findFirst().orElse(rows.size() == 1 ? rows.get(0) : null);
+        return new ParticipantSource(profile, contactData(current, profile));
+    }
+
+    private boolean replaceWhenPresent(String current, String source, Consumer<String> setter) {
+        String value = displayMultiline(source);
+        if (value.isBlank() || value.equals(displayMultiline(current))) return false;
+        setter.accept(value);
+        return true;
+    }
+
+    private String displayMultiline(String value) {
+        if (value == null) return "";
+        return Arrays.stream(value.split("\\R"))
+                .map(this::display).filter(line -> !line.isBlank()).collect(Collectors.joining("\n"));
     }
 
     private void validateParticipantBuilding(ProbeOrder order, String className) {
@@ -696,7 +871,10 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
     }
 
     private void resetWorkflow(ProbeOrder order) {
-        if (order.getId() != null) generatedDocumentRepository.deleteByOrder_Id(order.getId());
+        if (order.getId() != null) {
+            generatedDocumentRepository.deleteByOrder_Id(order.getId());
+            approvalRepository.deleteAllByOrder_Id(order.getId());
+        }
         order.setStatus(ProbeOrderStatus.DRAFT);
         order.setBuildingApprovedAt(null);
         order.setBuildingApprovedBy(null);
@@ -764,18 +942,36 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
                                              SessionUser user,
                                              boolean hasDocument,
                                              boolean hasScan) {
+        return toView(order, user, hasDocument, hasScan, currentApprovalMode(),
+                approvalRepository.findAllByOrder_Id(order.getId()));
+    }
+
+    private ProbeOrderDtos.OrderView toView(ProbeOrder order,
+                                             SessionUser user,
+                                             boolean hasDocument,
+                                             boolean hasScan,
+                                             ProbeOrderApprovalMode approvalMode,
+                                             List<ProbeOrderApproval> savedApprovals) {
         List<ProbeOrderDtos.ParticipantView> participants = order.getParticipants().stream()
                 .map(this::participantView).toList();
         List<String> warnings = new ArrayList<>();
         long unlinked = participants.stream().filter(row -> !row.linkedToStudentCard()).count();
+        long withoutChildPhone = participants.stream().filter(row -> display(row.childPhone()).isBlank()).count();
         long withoutRepresentative = participants.stream()
                 .filter(row -> display(row.representativeName()).isBlank() || display(row.representativePhone()).isBlank())
                 .count();
         if (unlinked > 0) warnings.add("Не связаны с карточками детей: " + unlinked);
+        if (withoutChildPhone > 0) warnings.add("Нет телефона ребёнка: " + withoutChildPhone);
         if (withoutRepresentative > 0) warnings.add("Нет полных данных законного представителя: " + withoutRepresentative);
         if (!companionsComplete(order)) warnings.add(requiredCompanions(participants.size()) > 1
                 ? "Нужно назначить двух сопровождающих" : "Нужно назначить сопровождающего");
-        boolean canManage = canManageOrder(user, order);
+        List<ApprovalTarget> approvalTargets = approvalTargets(order, approvalMode);
+        ApprovalState approval = approvalState(order, approvalTargets, savedApprovals);
+        if (approval.targets().isEmpty()) {
+            warnings.add("Не удалось определить корпус класса для согласования");
+        }
+        boolean canManage = canManageOrder(user, approvalTargets);
+        boolean canViewDetails = canViewOrderDetails(user, approvalTargets);
         boolean leadership = isLeadership(user);
         return new ProbeOrderDtos.OrderView(
                 order.getId(), order.getAcademicYear(), order.getExternalEventId(), order.getEventName(),
@@ -785,11 +981,15 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
                 order.getGatheringTime(), order.getReturnTime(), classNames(order), participants.size(),
                 requiredCompanions(participants.size()), staffOption(order.getPrimaryCompanion()),
                 staffOption(order.getSecondaryCompanion()), companionsComplete(order), order.getStatus(),
+                approvalMode, approval.views(), approval.complete(),
                 order.getBuildingApprovedAt(), order.getBuildingApprovedBy(), order.getOrderNumber(), order.getOrderDate(),
-                staffOption(order.getSigner()), order.getSignerPosition(), hasDocument, hasScan, order.getReleasedAt(),
-                order.getReleasedBy(), order.getSourceFileName(), order.getSourceUploadedAt(), participants,
+                staffOption(order.getSigner()), order.getSignerPosition(),
+                hasDocument && canViewDetails && user.canExportTab(AppTab.DOCUMENTS_PROBE_ORDERS),
+                hasScan && canViewDetails && user.canExportTab(AppTab.DOCUMENTS_PROBE_ORDERS), order.getReleasedAt(),
+                order.getReleasedBy(), order.getSourceFileName(), order.getSourceUploadedAt(),
+                canViewDetails ? participants : List.of(),
                 warnings, highlight(order), canManage && order.getStatus() != ProbeOrderStatus.RELEASED,
-                canAcknowledge(user, order) && order.getStatus() != ProbeOrderStatus.RELEASED,
+                canAcknowledge(user, order, approvalTargets, savedApprovals) && order.getStatus() != ProbeOrderStatus.RELEASED,
                 leadership && user.canEditTab(AppTab.DOCUMENTS_PROBE_ORDERS)
                         && order.getStatus() != ProbeOrderStatus.RELEASED,
                 leadership && user.canEditTab(AppTab.DOCUMENTS_PROBE_ORDERS)
@@ -800,12 +1000,14 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
 
     private ProbeOrderDtos.ParticipantView participantView(ProbeOrderParticipant participant) {
         List<String> missing = new ArrayList<>();
+        if (display(participant.getChildPhone()).isBlank()) missing.add("телефон ребёнка");
         if (display(participant.getRepresentativeName()).isBlank()) missing.add("ФИО представителя");
         if (display(participant.getRepresentativePhone()).isBlank()) missing.add("телефон представителя");
         if (participant.getStudent() == null) missing.add("связь с карточкой ребёнка");
         return new ProbeOrderDtos.ParticipantView(
                 participant.getId(), participant.getStudent() == null ? null : participant.getStudent().getId(),
-                participant.getFullNameSnapshot(), participant.getClassNameSnapshot(), participant.getRepresentativeName(),
+                participant.getFullNameSnapshot(), participant.getClassNameSnapshot(), participant.getChildPhone(),
+                participant.getRepresentativeName(),
                 participant.getRepresentativePhone(), participant.getStudent() != null, missing
         );
     }
@@ -950,26 +1152,202 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
     }
 
     private boolean canSeeOrder(SessionUser user, ProbeOrder order) {
-        return user.getRole() != UserRole.BUILDING_HEAD || buildingMatches(user, order.getSchoolBuilding());
+        return user != null;
     }
 
     private boolean canManageOrder(SessionUser user, ProbeOrder order) {
+        return canManageOrder(user, order, currentApprovalMode());
+    }
+
+    private boolean canManageOrder(SessionUser user,
+                                   ProbeOrder order,
+                                   ProbeOrderApprovalMode approvalMode) {
+        return canManageOrder(user, approvalTargets(order, approvalMode));
+    }
+
+    private boolean canManageOrder(SessionUser user, List<ApprovalTarget> approvalTargets) {
         return user.canEditTab(AppTab.DOCUMENTS_PROBE_ORDERS)
-                && (isLeadership(user) || (user.getRole() == UserRole.BUILDING_HEAD
-                && buildingMatches(user, order.getSchoolBuilding())));
+                && canViewOrderDetails(user, approvalTargets);
     }
 
-    private boolean canAcknowledge(SessionUser user, ProbeOrder order) {
-        return canManageOrder(user, order)
-                && (isLeadership(user) || user.getRole() == UserRole.BUILDING_HEAD);
+    private boolean canViewOrderDetails(SessionUser user, List<ApprovalTarget> approvalTargets) {
+        return isLeadership(user) || (user != null && user.getRole() == UserRole.BUILDING_HEAD
+                && approvalTargets.stream().anyMatch(target -> targetMatchesUser(user, target)));
     }
 
-    private boolean buildingMatches(SessionUser user, SchoolBuilding building) {
-        if (building == null) return false;
-        String managed = scopeCode(user.getManagedBuildingCode());
-        String code = scopeCode(building.getCode());
-        String group = building.getBuildingGroup() == null ? "" : scopeCode(building.getBuildingGroup().getCode());
-        return !managed.isBlank() && (managed.equals(code) || managed.equals(group));
+    private boolean canViewOrderDetails(SessionUser user, ProbeOrder order) {
+        return canViewOrderDetails(user, approvalTargets(order, currentApprovalMode()));
+    }
+
+    private boolean canAcknowledge(SessionUser user,
+                                   ProbeOrder order,
+                                   ProbeOrderApprovalMode approvalMode,
+                                   List<ProbeOrderApproval> approvals) {
+        return canAcknowledge(user, order, approvalTargets(order, approvalMode), approvals);
+    }
+
+    private boolean canAcknowledge(SessionUser user,
+                                   ProbeOrder order,
+                                   List<ApprovalTarget> approvalTargets,
+                                   List<ProbeOrderApproval> approvals) {
+        return user != null
+                && user.canEditTab(AppTab.DOCUMENTS_PROBE_ORDERS)
+                && (isLeadership(user) || user.getRole() == UserRole.BUILDING_HEAD)
+                && !approvalState(order, approvalTargets, approvals).complete()
+                && !pendingApprovalTargets(user, order, approvalTargets, approvals).isEmpty();
+    }
+
+    private boolean targetMatchesUser(SessionUser user, ApprovalTarget target) {
+        if (user == null || target == null) return false;
+        if (isLeadership(user)) return true;
+        return user.getRole() == UserRole.BUILDING_HEAD
+                && !scopeCode(user.getManagedBuildingCode()).isBlank()
+                && scopeCode(user.getManagedBuildingCode()).equals(scopeCode(target.scopeCode()));
+    }
+
+    private List<ApprovalTarget> pendingApprovalTargets(SessionUser user,
+                                                        ProbeOrder order,
+                                                        ProbeOrderApprovalMode approvalMode,
+                                                        List<ProbeOrderApproval> approvals) {
+        return pendingApprovalTargets(user, order, approvalTargets(order, approvalMode), approvals);
+    }
+
+    private List<ApprovalTarget> pendingApprovalTargets(SessionUser user,
+                                                        ProbeOrder order,
+                                                        List<ApprovalTarget> approvalTargets,
+                                                        List<ProbeOrderApproval> approvals) {
+        if ((approvals == null || approvals.isEmpty()) && order.getBuildingApprovedAt() != null) {
+            return List.of();
+        }
+        Set<String> approvedKeys = Optional.ofNullable(approvals).orElseGet(List::of).stream()
+                .map(approval -> approvalKey(approval.getScopeType(), approval.getScopeCode()))
+                .collect(Collectors.toSet());
+        return approvalTargets.stream()
+                .filter(target -> targetMatchesUser(user, target))
+                .filter(target -> !approvedKeys.contains(approvalKey(target.scopeType(), target.scopeCode())))
+                .toList();
+    }
+
+    private List<ApprovalTarget> approvalTargets(ProbeOrder order, ProbeOrderApprovalMode approvalMode) {
+        if (order == null || approvalMode == null) return List.of();
+        LinkedHashMap<String, ApprovalTarget> targets = new LinkedHashMap<>();
+        if (approvalMode == ProbeOrderApprovalMode.ORGANIZATIONAL_BUILDING
+                || approvalMode == ProbeOrderApprovalMode.BOTH) {
+            Set<String> orderClasses = classNames(order).stream().map(this::classKey).collect(Collectors.toSet());
+            classroomLeadershipRepository.findAllByAcademicYear(order.getAcademicYear()).stream()
+                    .filter(entry -> orderClasses.contains(classKey(entry.getClassName())))
+                    .map(ClassroomLeadershipEntry::getNumberSchoolBuilding)
+                    .map(this::scopeCode)
+                    .filter(code -> !code.isBlank())
+                    .sorted(String.CASE_INSENSITIVE_ORDER)
+                    .forEach(code -> {
+                        ApprovalTarget target = new ApprovalTarget(ProbeOrderApprovalScope.ORGANIZATIONAL_BUILDING,
+                                code, "Корпус " + code);
+                        targets.putIfAbsent(approvalKey(target.scopeType(), target.scopeCode()), target);
+                    });
+        }
+        if (approvalMode == ProbeOrderApprovalMode.PHYSICAL_SITE
+                || approvalMode == ProbeOrderApprovalMode.BOTH) {
+            SchoolBuilding building = order.getSchoolBuilding();
+            String siteCode = building == null ? "" : scopeCode(building.getBuildingGroup() == null
+                    ? building.getCode() : building.getBuildingGroup().getCode());
+            if (!siteCode.isBlank()) {
+                String address = display(building.getAddress());
+                String label = "Площадка " + siteCode + (address.isBlank() ? "" : " — " + address);
+                ApprovalTarget target = new ApprovalTarget(ProbeOrderApprovalScope.PHYSICAL_SITE, siteCode, label);
+                targets.putIfAbsent(approvalKey(target.scopeType(), target.scopeCode()), target);
+            }
+        }
+        return List.copyOf(targets.values());
+    }
+
+    private ApprovalState approvalState(ProbeOrder order,
+                                        ProbeOrderApprovalMode approvalMode,
+                                        List<ProbeOrderApproval> approvals) {
+        return approvalState(order, approvalTargets(order, approvalMode), approvals);
+    }
+
+    private ApprovalState approvalState(ProbeOrder order,
+                                        List<ApprovalTarget> targets,
+                                        List<ProbeOrderApproval> approvals) {
+        List<ProbeOrderApproval> saved = Optional.ofNullable(approvals).orElseGet(List::of);
+        boolean legacyApproval = saved.isEmpty() && order.getBuildingApprovedAt() != null;
+        Map<String, ProbeOrderApproval> byKey = saved.stream().collect(Collectors.toMap(
+                approval -> approvalKey(approval.getScopeType(), approval.getScopeCode()),
+                Function.identity(), (left, right) -> left, LinkedHashMap::new));
+        List<ProbeOrderDtos.ApprovalView> views = targets.stream().map(target -> {
+            ProbeOrderApproval approval = byKey.get(approvalKey(target.scopeType(), target.scopeCode()));
+            return new ProbeOrderDtos.ApprovalView(target.scopeType(), target.scopeCode(), target.scopeLabel(),
+                    legacyApproval ? order.getBuildingApprovedAt() : approval == null ? null : approval.getApprovedAt(),
+                    legacyApproval ? order.getBuildingApprovedBy() : approval == null ? null : approval.getApprovedBy());
+        }).toList();
+        boolean complete = legacyApproval || (!targets.isEmpty()
+                && (approvalModeAllowsAny(targets)
+                ? views.stream().anyMatch(view -> view.approvedAt() != null)
+                : views.stream().allMatch(view -> view.approvedAt() != null)));
+        return new ApprovalState(targets, views, complete);
+    }
+
+    private boolean approvalModeAllowsAny(List<ApprovalTarget> targets) {
+        return targets.stream().map(ApprovalTarget::scopeType).collect(Collectors.toSet()).size() > 1;
+    }
+
+    private void refreshApprovalSummary(ProbeOrder order,
+                                        ProbeOrderApprovalMode approvalMode,
+                                        List<ProbeOrderApproval> approvals) {
+        if ((approvals == null || approvals.isEmpty()) && order.getBuildingApprovedAt() != null) {
+            return;
+        }
+        ApprovalState state = approvalState(order, approvalMode, approvals);
+        if (state.complete()) {
+            LocalDateTime completedAt = state.views().stream().map(ProbeOrderDtos.ApprovalView::approvedAt)
+                    .filter(Objects::nonNull).max(LocalDateTime::compareTo).orElse(LocalDateTime.now());
+            String approvedBy = state.views().stream().map(ProbeOrderDtos.ApprovalView::approvedBy)
+                    .map(this::display).filter(value -> !value.isBlank()).distinct().collect(Collectors.joining(", "));
+            order.setBuildingApprovedAt(completedAt);
+            order.setBuildingApprovedBy(approvedBy);
+            if (order.getStatus() == ProbeOrderStatus.DRAFT || order.getStatus() == ProbeOrderStatus.BUILDING_APPROVED) {
+                order.setStatus(ProbeOrderStatus.BUILDING_APPROVED);
+            }
+        } else {
+            order.setBuildingApprovedAt(null);
+            order.setBuildingApprovedBy(null);
+            if (order.getStatus() == ProbeOrderStatus.BUILDING_APPROVED) {
+                order.setStatus(ProbeOrderStatus.DRAFT);
+            }
+        }
+    }
+
+    private void refreshPendingApprovalSummaries(ProbeOrderApprovalMode approvalMode) {
+        for (ProbeOrder order : orderRepository.findAll()) {
+            if (order.getStatus() == ProbeOrderStatus.GENERATED || order.getStatus() == ProbeOrderStatus.RELEASED
+                    || order.getStatus() == ProbeOrderStatus.CANCELLED) {
+                continue;
+            }
+            refreshApprovalSummary(order, approvalMode, approvalRepository.findAllByOrder_Id(order.getId()));
+            order.setUpdatedAt(LocalDateTime.now());
+            orderRepository.save(order);
+        }
+    }
+
+    private String approvalKey(ProbeOrderApprovalScope scopeType, String scopeCode) {
+        return String.valueOf(scopeType) + "|" + scopeCode(scopeCode);
+    }
+
+    private ProbeOrderApprovalMode currentApprovalMode() {
+        return settingsRepository.findById(ProbeOrderSettings.DEFAULT_ID)
+                .map(ProbeOrderSettings::getApprovalMode)
+                .orElse(ProbeOrderApprovalMode.ORGANIZATIONAL_BUILDING);
+    }
+
+    private String approvalModeLabel(ProbeOrderApprovalMode mode) {
+        if (mode == ProbeOrderApprovalMode.PHYSICAL_SITE) return "Руководитель фактической площадки";
+        if (mode == ProbeOrderApprovalMode.BOTH) return "Руководитель корпуса или руководитель площадки";
+        return "Руководитель организационного корпуса";
+    }
+
+    private boolean canEditSettings(SessionUser user) {
+        return isLeadership(user) && user.canEditTab(AppTab.DOCUMENTS_PROBE_ORDERS);
     }
 
     private String scopeCode(String value) {
@@ -1026,6 +1404,12 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
         }
     }
 
+    private void ensureOrderDetails(SessionUser user, ProbeOrder order) {
+        if (!canViewOrderDetails(user, order)) {
+            throw new AuthExceptions.ForbiddenException("Приказ доступен только для информационного просмотра");
+        }
+    }
+
     private Map<Long, ProbeOrderGeneratedDocument> generatedDocuments(List<ProbeOrder> orders) {
         if (orders.isEmpty()) return Map.of();
         return generatedDocumentRepository.findAllByOrder_IdIn(orders.stream().map(ProbeOrder::getId).toList()).stream()
@@ -1036,6 +1420,12 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
         if (orders.isEmpty()) return Map.of();
         return scanRepository.findAllByOrder_IdIn(orders.stream().map(ProbeOrder::getId).toList()).stream()
                 .collect(Collectors.toMap(scan -> scan.getOrder().getId(), Function.identity()));
+    }
+
+    private Map<Long, List<ProbeOrderApproval>> approvals(List<ProbeOrder> orders) {
+        if (orders.isEmpty()) return Map.of();
+        return approvalRepository.findAllByOrder_IdIn(orders.stream().map(ProbeOrder::getId).toList()).stream()
+                .collect(Collectors.groupingBy(approval -> approval.getOrder().getId()));
     }
 
     private Sheet sheet(Workbook workbook, String name) {
@@ -1157,13 +1547,15 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
 
     private String participantFingerprint(List<ProbeOrderParticipant> rows) {
         return rows.stream().map(row -> normalizeName(row.getFullNameSnapshot()) + "|" + classKey(row.getClassNameSnapshot())
-                        + "|" + display(row.getRepresentativeName()) + "|" + display(row.getRepresentativePhone()))
+                        + "|" + display(row.getChildPhone()) + "|" + display(row.getRepresentativeName())
+                        + "|" + display(row.getRepresentativePhone()))
                 .sorted().collect(Collectors.joining("\n"));
     }
 
     private String resolvedFingerprint(List<ResolvedApplication> rows) {
         return rows.stream().map(row -> normalizeName(row.application().fullName()) + "|" + classKey(row.className())
-                        + "|" + display(row.representativeName()) + "|" + display(row.representativePhone()))
+                        + "|" + display(row.childPhone()) + "|" + display(row.representativeName())
+                        + "|" + display(row.representativePhone()))
                 .sorted().collect(Collectors.joining("\n"));
     }
 
@@ -1249,18 +1641,34 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
     }
 
     private record Resolution(StudentProfile student, String className, ClassroomLeadershipEntry leadership,
-                              String representativeName, String representativePhone) {
+                              String childPhone, String representativeName, String representativePhone) {
     }
 
     private record ResolvedApplication(SourceEvent event, SourceApplication application, StudentProfile student,
                                        String className, ClassroomLeadershipEntry leadership,
-                                       String representativeName, String representativePhone) {
+                                       String childPhone, String representativeName, String representativePhone) {
+    }
+
+    private record ContactData(String childPhone, String representativeName, String representativePhone) {
+    }
+
+    private record ParticipantSource(StudentProfile student, ContactData contacts) {
     }
 
     private record OrderKey(String eventId, Long buildingId) {
     }
 
     private record TimePair(LocalTime start, LocalTime end) {
+    }
+
+    private record ApprovalTarget(ProbeOrderApprovalScope scopeType,
+                                  String scopeCode,
+                                  String scopeLabel) {
+    }
+
+    private record ApprovalState(List<ApprovalTarget> targets,
+                                 List<ProbeOrderDtos.ApprovalView> views,
+                                 boolean complete) {
     }
 
     private record DocumentPersonnel(TeacherDirectoryEntry director,

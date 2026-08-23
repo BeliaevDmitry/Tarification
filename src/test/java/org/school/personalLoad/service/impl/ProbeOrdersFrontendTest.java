@@ -24,7 +24,17 @@ class ProbeOrdersFrontendTest {
         assertTrue(page.contains("id=\"probe-companions-dialog\""));
         assertTrue(page.contains("id=\"probe-generate-dialog\""));
         assertTrue(page.contains("id=\"probe-scan-dialog\""));
+        assertTrue(page.contains("id=\"probe-settings-dialog\""));
+        assertTrue(page.contains("id=\"probe-refresh-contacts-btn\""));
+        assertTrue(page.contains("Телефон ребёнка"));
+        assertTrue(page.contains("value=\"ORGANIZATIONAL_BUILDING\""));
+        assertTrue(page.contains("value=\"PHYSICAL_SITE\""));
+        assertTrue(page.contains("value=\"BOTH\""));
         assertTrue(script.contains("/api/probe-orders/import"));
+        assertTrue(script.contains("/api/probe-orders/settings"));
+        assertTrue(script.contains("/refresh-contacts"));
+        assertTrue(script.contains("item.childPhone"));
+        assertTrue(script.contains("Только информация"));
         assertTrue(script.contains("/acknowledge"));
         assertTrue(script.contains("/generate"));
         assertTrue(script.contains("/release"));
@@ -48,6 +58,7 @@ class ProbeOrdersFrontendTest {
         assertTrue(index.contains("data-calendar-audience=\"DEPUTIES\""));
         assertTrue(index.contains("data-calendar-audience=\"ADMINISTRATION\""));
         assertTrue(index.contains("data-calendar-audience=\"FULL_ADMINISTRATION\""));
+        assertTrue(index.contains("data-calendar-audience=\"BUILDING_HEADS\""));
         assertTrue(index.contains("data-calendar-audience=\"BUILDING\""));
         assertTrue(index.contains("data-calendar-audience=\"PERSONAL\""));
         assertTrue(index.contains("id=\"calendar-group-settings\""));
@@ -56,6 +67,13 @@ class ProbeOrdersFrontendTest {
         assertTrue(calendar.contains("event.participants"));
         assertTrue(calendar.contains("data-calendar-filter-building"));
         assertTrue(calendar.contains("data-calendar-filter-person"));
+        assertTrue(index.contains("id=\"calendar-event-dialog\""));
+        assertTrue(index.contains("id=\"calendar-event-duration\""));
+        assertTrue(index.contains("id=\"calendar-own-settings-dialog\""));
+        assertTrue(index.contains("id=\"calendar-list-dialog\""));
+        assertTrue(calendar.contains("/api/calendar/events"));
+        assertTrue(calendar.contains("/api/calendar/settings"));
+        assertTrue(calendar.contains("/api/calendar/lists"));
     }
 
     @Test

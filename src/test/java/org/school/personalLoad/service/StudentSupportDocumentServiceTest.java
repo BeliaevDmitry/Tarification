@@ -17,6 +17,7 @@ import org.school.personalLoad.model.StudentSupportDocumentType;
 import org.school.personalLoad.model.StudentSupportStatus;
 import org.school.personalLoad.model.SupportEducationStage;
 import org.school.personalLoad.repository.CorrectionSpecialistCatalogEntryRepository;
+import org.school.personalLoad.repository.CorrectionStudentAssignmentRepository;
 import org.school.personalLoad.repository.NosologyCatalogEntryRepository;
 import org.school.personalLoad.repository.StudentClassEnrollmentRepository;
 import org.school.personalLoad.repository.StudentProfileRepository;
@@ -55,6 +56,8 @@ class StudentSupportDocumentServiceTest {
     private CorrectionSpecialistCatalogEntryRepository specialistRepository;
     @Mock
     private StudentSupportDocumentCorrectionRepository correctionRepository;
+    @Mock
+    private CorrectionStudentAssignmentRepository assignmentRepository;
 
     private StudentSupportDocumentService service;
     private StudentProfile student;
@@ -69,7 +72,8 @@ class StudentSupportDocumentServiceTest {
                 supportStatusRepository,
                 nosologyRepository,
                 specialistRepository,
-                correctionRepository
+                correctionRepository,
+                assignmentRepository
         );
         student = new StudentProfile();
         student.setId(1L);
@@ -387,6 +391,41 @@ class StudentSupportDocumentServiceTest {
         assertEquals(SupportEducationStage.SOO, soo.getEducationStage());
         assertEquals(LocalDate.of(2028, 8, 31), soo.getValidTo());
         assertEquals(0, soo.getEducationPrograms().size());
+    }
+
+    @Test
+    void ninthNosologyExtendsConclusionThroughTheEndOfNinthGrade() {
+        useCurrentClass("2-Б");
+
+        StudentSupportDocumentDtos.EducationDefaultsView defaults = service.educationDefaults(
+                "2026/2027", 1L, StudentSupportDocumentType.CPMPC_CONCLUSION,
+                false, false, "И9.2"
+        );
+
+        assertEquals(SupportEducationStage.NOO, defaults.getEducationStage());
+        assertEquals(LocalDate.of(2034, 8, 31), defaults.getValidTo());
+        assertEquals(true, defaults.getMessage().contains("до окончания 9 класса"));
+
+        StudentSupportDocumentDtos.SaveRequest request = new StudentSupportDocumentDtos.SaveRequest();
+        request.setStudentId(1L);
+        request.setDocumentType(StudentSupportDocumentType.CPMPC_CONCLUSION);
+        request.setAcceptedForm(StudentSupportDocumentForm.ORIGINAL);
+        request.setDocumentNumber("ЦМПК-9");
+        request.setNosologyCode("И9.2");
+        request.setEducationStage(SupportEducationStage.NOO);
+        request.setEducationProgram("Индивидуальная программа");
+        request.setEducationProgramCustom(true);
+        request.setValidFrom(LocalDate.of(2026, 9, 1));
+        request.setValidTo(LocalDate.of(2029, 8, 31));
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.save("2026/2027", request)
+        );
+        assertEquals("Для текущего класса дата окончания должна быть 2034-08-31", error.getMessage());
+
+        request.setValidTo(LocalDate.of(2034, 8, 31));
+        assertEquals(LocalDate.of(2034, 8, 31), service.save("2026/2027", request).getValidTo());
     }
 
     @Test
