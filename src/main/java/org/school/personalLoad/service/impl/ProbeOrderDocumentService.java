@@ -7,8 +7,6 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -58,10 +56,7 @@ public class ProbeOrderDocumentService {
     private InputStream openTemplate() throws IOException {
         ClassPathResource resource = new ClassPathResource(TEMPLATE);
         if (resource.exists()) return resource.getInputStream();
-        Path developmentTemplate = Path.of("school-order-generator", "order-generator", "src", "main",
-                "resources", "templates", "prikaz_template.docx");
-        if (Files.isRegularFile(developmentTemplate)) return Files.newInputStream(developmentTemplate);
-        throw new IllegalStateException("Шаблон Word-приказа не найден в запущенной сборке. Перезапустите сервер с новой сборкой");
+        throw new IllegalStateException("Внутренний шаблон Word-приказа отсутствует в запущенной сборке");
     }
 
     private String rootMessage(Exception exception) {
@@ -212,6 +207,13 @@ public class ProbeOrderDocumentService {
                         .anyMatch(value -> value != null && value.contains("ФИО")))
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("В шаблоне не найдена таблица участников"));
+
+        XWPFTableRow header = target.getRow(0);
+        ensureCells(header, 4);
+        setCell(header.getCell(0), "№", ParagraphAlignment.CENTER);
+        setCell(header.getCell(1), "ФИО", ParagraphAlignment.CENTER);
+        setCell(header.getCell(2), "ФИО представителя", ParagraphAlignment.CENTER);
+        setCell(header.getCell(3), "Телефон представителя", ParagraphAlignment.CENTER);
 
         while (target.getNumberOfRows() > 1) {
             target.removeRow(target.getNumberOfRows() - 1);
