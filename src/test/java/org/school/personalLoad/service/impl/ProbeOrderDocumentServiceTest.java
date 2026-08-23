@@ -1,10 +1,16 @@
 package org.school.personalLoad.service.impl;
 
+import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.junit.jupiter.api.Test;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.STTabJc;
 
+import javax.xml.xpath.XPathConstants;
+import javax.xml.xpath.XPathFactory;
 import java.io.ByteArrayInputStream;
+import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -31,9 +37,15 @@ class ProbeOrderDocumentServiceTest {
                     .filter(table -> table.getRow(0).getCell(1).getText().contains("ФИО"))
                     .findFirst()
                     .orElseThrow();
+            XWPFParagraph requisites = document.getParagraphs().stream()
+                    .filter(paragraph -> paragraph.getText().contains("от 17.09.2026 г."))
+                    .findFirst()
+                    .orElseThrow();
 
             assertTrue(text.contains("№ 184/пр"));
             assertTrue(text.contains("17.09.2026"));
+            assertTrue(document.getParagraphs().stream()
+                    .anyMatch(paragraph -> paragraph.getText().equals("22.09.2026.")));
             assertTrue(text.contains("Иванова И.И."));
             assertTrue(text.contains("Московский колледж технологий"));
             assertTrue(text.contains("Исп.: Петрова М.С."));
@@ -50,6 +62,26 @@ class ProbeOrderDocumentServiceTest {
             assertEquals("Смирнов Алексей Павлович", participantTable.getRow(1).getCell(1).getText());
             assertEquals("—", participantTable.getRow(2).getCell(2).getText());
             assertEquals("—", participantTable.getRow(2).getCell(3).getText());
+            assertEquals(ParagraphAlignment.LEFT, requisites.getAlignment());
+            assertEquals(STTabJc.RIGHT,
+                    requisites.getCTP().getPPr().getTabs().getTabArray(0).getVal());
+            assertEquals(BigInteger.valueOf(9921),
+                    requisites.getCTP().getPPr().getTabs().getTabArray(0).getPos());
+            assertTrue(participantTable.getRows().stream()
+                    .flatMap(row -> row.getTableCells().stream())
+                    .flatMap(cell -> cell.getParagraphs().stream())
+                    .flatMap(paragraph -> paragraph.getRuns().stream())
+                    .allMatch(run -> Integer.valueOf(14).equals(run.getFontSize())));
+            double highlightCount = (double) XPathFactory.newInstance().newXPath().evaluate(
+                    "count(//*[local-name()='highlight'])",
+                    document.getDocument().getDomNode(),
+                    XPathConstants.NUMBER);
+            double directRunShadingCount = (double) XPathFactory.newInstance().newXPath().evaluate(
+                    "count(//*[local-name()='rPr']/*[local-name()='shd'])",
+                    document.getDocument().getDomNode(),
+                    XPathConstants.NUMBER);
+            assertEquals(0D, highlightCount);
+            assertEquals(0D, directRunShadingCount);
         }
 
         String qaOutput = System.getProperty("probe.qa.output");

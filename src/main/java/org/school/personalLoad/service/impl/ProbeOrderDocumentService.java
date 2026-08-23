@@ -1,12 +1,18 @@
 package org.school.personalLoad.service.impl;
 
 import org.apache.poi.xwpf.usermodel.*;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPPr;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTabStop;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTabs;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.STTabJc;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
+import org.w3c.dom.Node;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigInteger;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -22,6 +28,8 @@ public class ProbeOrderDocumentService {
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd.MM.yyyy");
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm");
     private static final String TEMPLATE = "templates/prikaz_template.docx";
+    private static final String WORD_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    private static final BigInteger RIGHT_TAB_POSITION = BigInteger.valueOf(9921);
 
     public byte[] generate(DocumentData data) {
         if (data == null) {
@@ -44,6 +52,7 @@ public class ProbeOrderDocumentService {
                 }
             }
             replaceParticipantTable(document, data.participants());
+            removeTemplateMarkers(document);
             document.write(out);
             return out.toByteArray();
         } catch (IllegalStateException exception) {
@@ -106,7 +115,7 @@ public class ProbeOrderDocumentService {
         }
         if (original.contains("к Приказу №")) {
             replaceParagraph(paragraph, "к Приказу № " + text(data.orderNumber())
-                    + " от " + formatDate(data.orderDate()) + " г.");
+                    + " от " + formatDate(data.orderDate()) + " г.", 12);
             paragraph.setAlignment(ParagraphAlignment.RIGHT);
             return;
         }
@@ -179,6 +188,7 @@ public class ProbeOrderDocumentService {
 
     private void replaceOrderRequisitesParagraph(XWPFParagraph paragraph, DocumentData data) {
         clearRuns(paragraph);
+        configureRightTab(paragraph);
         XWPFRun left = paragraph.createRun();
         styleRun(left, true, 14);
         left.setText("от " + formatDate(data.orderDate()) + " г.");
@@ -190,6 +200,7 @@ public class ProbeOrderDocumentService {
 
     private void replaceSignatureParagraph(XWPFParagraph paragraph, DocumentData data) {
         clearRuns(paragraph);
+        configureRightTab(paragraph);
         XWPFRun position = paragraph.createRun();
         styleRun(position, true, 14);
         position.setText(text(data.signerPosition()));
@@ -244,17 +255,16 @@ public class ProbeOrderDocumentService {
         paragraph.setSpacingAfter(0);
         paragraph.setSpacingBefore(0);
         XWPFRun run = paragraph.createRun();
-        styleRun(run, false, 12);
+        styleRun(run, false, 14);
         run.setText(value);
     }
 
     private void replaceParagraph(XWPFParagraph paragraph, String value) {
+        replaceParagraph(paragraph, value, 14);
+    }
+
+    private void replaceParagraph(XWPFParagraph paragraph, String value, int size) {
         boolean bold = paragraph.getRuns().stream().anyMatch(run -> Boolean.TRUE.equals(run.isBold()));
-        int size = paragraph.getRuns().stream()
-                .map(XWPFRun::getFontSize)
-                .filter(valueSize -> valueSize != null && valueSize > 0)
-                .findFirst()
-                .orElse(14);
         clearRuns(paragraph);
         String[] lines = text(value).split("\\R", -1);
         for (int i = 0; i < lines.length; i++) {
@@ -264,6 +274,76 @@ public class ProbeOrderDocumentService {
             if (i < lines.length - 1) {
                 run.addBreak();
             }
+        }
+    }
+
+    private void configureRightTab(XWPFParagraph paragraph) {
+        CTPPr properties = paragraph.getCTP().isSetPPr()
+                ? paragraph.getCTP().getPPr() : paragraph.getCTP().addNewPPr();
+        CTTabs tabs = properties.isSetTabs() ? properties.getTabs() : properties.addNewTabs();
+        while (tabs.sizeOfTabArray() > 0) {
+            tabs.removeTab(0);
+        }
+        CTTabStop rightTab = tabs.addNewTab();
+        rightTab.setVal(STTabJc.RIGHT);
+        rightTab.setPos(RIGHT_TAB_POSITION);
+        paragraph.setAlignment(ParagraphAlignment.LEFT);
+        paragraph.setIndentationLeft(0);
+        paragraph.setIndentationRight(0);
+        paragraph.setIndentationHanging(0);
+        paragraph.setIndentationFirstLine(0);
+        paragraph.setSpacingBefore(0);
+        paragraph.setSpacingAfter(0);
+    }
+
+    private void removeTemplateMarkers(XWPFDocument document) {
+        removeTemplateMarkers(document.getDocument().getDomNode());
+        for (XWPFHeader header : document.getHeaderList()) {
+            for (XWPFParagraph paragraph : header.getParagraphs()) {
+                removeTemplateMarkers(paragraph.getCTP().getDomNode());
+            }
+            for (XWPFTable table : header.getTables()) {
+                removeTemplateMarkers(table);
+            }
+        }
+        for (XWPFFooter footer : document.getFooterList()) {
+            for (XWPFParagraph paragraph : footer.getParagraphs()) {
+                removeTemplateMarkers(paragraph.getCTP().getDomNode());
+            }
+            for (XWPFTable table : footer.getTables()) {
+                removeTemplateMarkers(table);
+            }
+        }
+    }
+
+    private void removeTemplateMarkers(XWPFTable table) {
+        for (XWPFTableRow row : table.getRows()) {
+            for (XWPFTableCell cell : row.getTableCells()) {
+                for (XWPFParagraph paragraph : cell.getParagraphs()) {
+                    removeTemplateMarkers(paragraph.getCTP().getDomNode());
+                }
+                for (XWPFTable nestedTable : cell.getTables()) {
+                    removeTemplateMarkers(nestedTable);
+                }
+            }
+        }
+    }
+
+    private void removeTemplateMarkers(Node parent) {
+        Node child = parent.getFirstChild();
+        while (child != null) {
+            Node next = child.getNextSibling();
+            boolean wordElement = WORD_NAMESPACE.equals(child.getNamespaceURI());
+            boolean highlight = wordElement && "highlight".equals(child.getLocalName());
+            boolean directRunShading = wordElement && "shd".equals(child.getLocalName())
+                    && child.getParentNode() != null
+                    && "rPr".equals(child.getParentNode().getLocalName());
+            if (highlight || directRunShading) {
+                parent.removeChild(child);
+            } else {
+                removeTemplateMarkers(child);
+            }
+            child = next;
         }
     }
 
@@ -302,7 +382,7 @@ public class ProbeOrderDocumentService {
                 .replaceAll("(?<=\\d)по адресу", " по адресу")
                 .replaceAll(" {2,}", " ")
                 .trim();
-        return cleaned.replaceFirst("^(\\d+\\.)\\s*", "$1 ");
+        return cleaned.replaceFirst("^(\\d+\\.)\\s+", "$1 ");
     }
 
     private String dashIfBlank(String value) {
