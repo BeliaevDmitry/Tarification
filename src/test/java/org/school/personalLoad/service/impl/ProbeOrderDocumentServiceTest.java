@@ -46,6 +46,7 @@ class ProbeOrderDocumentServiceTest {
             assertFalse(text.contains("{className}"));
             assertFalse(text.contains("{"));
             assertEquals(3, participantTable.getNumberOfRows());
+            assertEquals("№", participantTable.getRow(0).getCell(0).getText());
             assertEquals("Смирнов Алексей Павлович", participantTable.getRow(1).getCell(1).getText());
             assertEquals("—", participantTable.getRow(2).getCell(2).getText());
             assertEquals("—", participantTable.getRow(2).getCell(3).getText());

@@ -96,12 +96,6 @@
             <resource>
                 <directory>src/main/resources</directory>
             </resource>
-            <resource>
-                <directory>school-order-generator/order-generator/src/main/resources</directory>
-                <includes>
-                    <include>templates/prikaz_template.docx</include>
-                </includes>
-            </resource>
         </resources>
         <plugins>
             <plugin>
