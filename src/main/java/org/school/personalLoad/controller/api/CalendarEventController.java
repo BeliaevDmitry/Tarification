@@ -41,6 +41,13 @@ public class CalendarEventController {
         return service.update(id, body, user(request));
     }
 
+    @PutMapping("/events/{id}/response")
+    public CalendarDtos.EventView respond(@PathVariable Long id,
+                                          @RequestBody CalendarDtos.AttendanceResponseRequest body,
+                                          HttpServletRequest request) {
+        return service.respond(id, body, user(request));
+    }
+
     @DeleteMapping("/events/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id, HttpServletRequest request) {

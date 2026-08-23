@@ -26,8 +26,9 @@ const probeUi = {
     companionsDialog: document.getElementById('probe-companions-dialog'),
     companionsCaption: document.getElementById('probe-companions-caption'),
     companionsForm: document.getElementById('probe-companions-form'),
-    primaryCompanion: document.getElementById('probe-primary-companion'),
-    secondaryCompanion: document.getElementById('probe-secondary-companion'),
+    requiredCompanions: document.getElementById('probe-required-companions'),
+    additionalCompanions: document.getElementById('probe-additional-companions'),
+    addCompanion: document.getElementById('probe-add-companion'),
     companionsRule: document.getElementById('probe-companions-rule'),
     editDialog: document.getElementById('probe-edit-dialog'),
     editCaption: document.getElementById('probe-edit-caption'),
@@ -122,7 +123,8 @@ function signerOptions(selectedId) {
 }
 
 function companionsText(order) {
-    return [order.primaryCompanion?.fullName, order.secondaryCompanion?.fullName].filter(Boolean).join(', ');
+    return [order.primaryCompanion, order.secondaryCompanion, ...(order.additionalCompanions || [])]
+        .map(item => item?.fullName).filter(Boolean).join(', ');
 }
 
 function sortValue(order, key) {
@@ -251,13 +253,35 @@ async function importProbeRegistration() {
 function openCompanions(order) {
     probeState.selectedId = order.id;
     probeUi.companionsCaption.textContent = `${probeDate(order.eventDate)} · ${order.eventName} · ${order.participantCount} детей`;
-    probeUi.primaryCompanion.innerHTML = staffOptions(order.primaryCompanion?.id, false);
-    probeUi.secondaryCompanion.innerHTML = staffOptions(order.secondaryCompanion?.id, true);
+    const required = Math.max(1, Number(order.requiredCompanions || 1));
+    const selectedRequired = [order.primaryCompanion?.id, required > 1 ? order.secondaryCompanion?.id : null];
+    probeUi.requiredCompanions.innerHTML = Array.from({ length: required }, (_, index) => `
+        <div class="probe-companion-row">
+            <label>${index === 0 ? 'Основной сопровождающий' : `Обязательный сопровождающий ${index + 1}`}
+                <select data-probe-required-companion required>${staffOptions(selectedRequired[index], false)}</select>
+            </label>
+        </div>`).join('');
+    const additional = [...(order.additionalCompanions || [])];
+    if (required === 1 && order.secondaryCompanion
+        && !additional.some(item => String(item.id) === String(order.secondaryCompanion.id))) {
+        additional.unshift(order.secondaryCompanion);
+    }
+    probeUi.additionalCompanions.innerHTML = '';
+    additional.forEach(item => addAdditionalCompanion(item.id));
     probeUi.companionsRule.className = `probe-validation ${order.companionsComplete ? 'probe-ok' : 'probe-error'}`;
     probeUi.companionsRule.textContent = order.requiredCompanions > 1
-        ? 'Для группы больше 10 детей обязательны два разных сопровождающих.'
-        : 'Для этой группы требуется один сопровождающий. Второго можно назначить дополнительно.';
+        ? 'Для группы больше 10 детей обязательны два разных сопровождающих. Дополнительных можно добавить без ограничения.'
+        : 'Для этой группы обязателен один сопровождающий. Дополнительных можно добавить без ограничения.';
     probeUi.companionsDialog.showModal();
+}
+
+function addAdditionalCompanion(selectedId = null) {
+    const row = document.createElement('div');
+    row.className = 'probe-companion-row';
+    row.innerHTML = `<label>Дополнительный сопровождающий
+        <select data-probe-additional-companion required>${staffOptions(selectedId, false)}</select>
+        </label><button type="button" class="danger-btn" data-remove-companion>Убрать</button>`;
+    probeUi.additionalCompanions.appendChild(row);
 }
 
 function syncEditParticipantsFromDom() {
@@ -397,10 +421,21 @@ function bindRowActions() {
 probeUi.companionsForm.addEventListener('submit', async event => {
     event.preventDefault();
     try {
+        const requiredIds = [...probeUi.requiredCompanions.querySelectorAll('[data-probe-required-companion]')]
+            .map(select => Number(select.value) || null);
+        const additionalTeacherIds = [...probeUi.additionalCompanions.querySelectorAll('[data-probe-additional-companion]')]
+            .map(select => Number(select.value) || null);
+        if (requiredIds.some(id => id === null) || additionalTeacherIds.some(id => id === null)) {
+            throw new Error('Выберите сотрудника в каждом добавленном поле');
+        }
+        const allIds = [...requiredIds, ...additionalTeacherIds];
+        if (new Set(allIds).size !== allIds.length) {
+            throw new Error('Один сотрудник не может быть выбран сопровождающим дважды');
+        }
         await probeApi(`/api/probe-orders/${probeState.selectedId}/companions`, {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ primaryTeacherId: Number(probeUi.primaryCompanion.value) || null,
-                secondaryTeacherId: Number(probeUi.secondaryCompanion.value) || null })
+            body: JSON.stringify({ primaryTeacherId: requiredIds[0] || null,
+                secondaryTeacherId: requiredIds[1] || null, additionalTeacherIds })
         });
         probeUi.companionsDialog.close();
         await loadProbeData();
@@ -492,6 +527,11 @@ probeUi.statusFilter.addEventListener('change', renderProbeOrders);
 probeUi.importBtn.addEventListener('click', () => importProbeRegistration().catch(error => { probeUi.importResult.textContent = error.message; }));
 probeUi.refreshBtn.addEventListener('click', () => loadProbeData().catch(error => { probeUi.importResult.textContent = error.message; }));
 probeUi.addStudentBtn.addEventListener('click', addStudentToEdit);
+probeUi.addCompanion.addEventListener('click', () => addAdditionalCompanion());
+probeUi.additionalCompanions.addEventListener('click', event => {
+    const button = event.target.closest('[data-remove-companion]');
+    if (button) button.closest('.probe-companion-row')?.remove();
+});
 probeUi.refreshContactsBtn?.addEventListener('click', async () => {
     syncEditParticipantsFromDom();
     const localParticipants = probeState.editParticipants.map(item => ({ ...item }));

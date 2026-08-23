@@ -218,14 +218,66 @@ function calendarEventVisible(event) {
 }
 
 function calendarAudienceText(event) {
-    if (event.audienceSummary) return event.audienceSummary;
     const participants = event.participants || [];
+    if (event.source === 'MANUAL' && participants.length) {
+        return participants.map(item => item.fullName).filter(Boolean).join('; ');
+    }
+    if (event.audienceSummary) return event.audienceSummary;
     const buildings = participants.filter(item => item.type === 'BUILDING')
         .map(item => item.details ? `${item.label} (${item.details})` : item.label);
     const people = participants.filter(item => item.type === 'PERSON').map(item => item.label);
     const values = [...buildings, ...people].filter(Boolean);
     if (values.length) return values.join('; ');
     return [event.buildingName || event.buildingCode, ...(event.companions || [])].filter(Boolean).join('; ');
+}
+
+function calendarResponseClass(status) {
+    return {
+        ACCEPTED: 'is-accepted',
+        DECLINED: 'is-declined',
+        PENDING: 'is-pending'
+    }[status] || 'is-pending';
+}
+
+function calendarResponseLabel(participant) {
+    return participant.responseLabel || {
+        ACCEPTED: 'Придёт',
+        DECLINED: 'Не придёт',
+        PENDING: 'Ожидается ответ'
+    }[participant.responseStatus] || 'Ожидается ответ';
+}
+
+function calendarInviteesMarkup(event) {
+    if (event.source !== 'MANUAL') return '';
+    const participants = event.participants || [];
+    const accepted = participants.filter(item => item.responseStatus === 'ACCEPTED').length;
+    const pending = participants.filter(item => !item.responseStatus || item.responseStatus === 'PENDING').length;
+    const declined = participants.filter(item => item.responseStatus === 'DECLINED').length;
+    const rows = participants.map(item => {
+        const details = [item.position, item.buildingCode].filter(Boolean).join(' · ');
+        return `<li class="calendar-invitee ${calendarResponseClass(item.responseStatus)}">
+            <span class="calendar-invitee-person"><strong>${calendarEsc(item.fullName)}</strong>
+                ${details ? `<small>${calendarEsc(details)}</small>` : ''}</span>
+            <span class="calendar-response-badge">${calendarEsc(calendarResponseLabel(item))}</span>
+        </li>`;
+    }).join('');
+    const responseActions = event.canRespond ? `
+        <div class="calendar-my-response">
+          <span><strong>Ваш ответ</strong><small>Сообщите организатору, сможете ли вы прийти.</small></span>
+          <div class="calendar-response-actions">
+            <button type="button" data-calendar-response="ACCEPTED"
+                class="${event.myResponseStatus === 'ACCEPTED' ? 'is-selected' : ''}">Приду</button>
+            <button type="button" data-calendar-response="DECLINED"
+                class="secondary ${event.myResponseStatus === 'DECLINED' ? 'is-selected is-declined' : ''}">Не приду</button>
+          </div>
+        </div>` : '';
+    return `<section class="calendar-invitees-section">
+        <div class="calendar-invitees-heading"><div><h4>Приглашённые</h4>
+          <p class="muted">Подтвердили: ${accepted}; ожидается ответ: ${pending}; не придут: ${declined}</p></div></div>
+        ${participants.length ? `<ul class="calendar-invitees-list">${rows}</ul>`
+            : '<p class="muted">Приглашённые сотрудники не выбраны.</p>'}
+        ${responseActions}<p class="probe-feedback" data-calendar-response-feedback aria-live="polite"></p>
+    </section>`;
 }
 
 function calendarEventMarkup(event, detailed = false) {
@@ -567,6 +619,7 @@ function calendarOpenDetails(event) {
     const audience = calendarAudienceText(event) || 'Только личный календарь';
     const classes = (event.classNames || []).join(', ');
     const companions = (event.companions || []).join(', ');
+    const invitees = calendarInviteesMarkup(event);
     homeCalendarUi.detailsTitle.textContent = event.title;
     homeCalendarUi.detailsOwner.textContent = event.source === 'PROBE_ORDER'
         ? 'Мероприятие из выпущенного приказа' : `Календарь: ${event.ownerName || 'пользователь'}`;
@@ -576,12 +629,46 @@ function calendarOpenDetails(event) {
           ${event.durationMinutes ? `<div><dt>Продолжительность</dt><dd>${calendarEsc(event.durationMinutes)} мин.</dd></div>` : ''}
           <div><dt>Место</dt><dd>${calendarEsc(place)}</dd></div>
           <div><dt>Видимость</dt><dd>${calendarEsc(event.visibilityLabel || 'Всем сотрудникам')}</dd></div>
-          <div><dt>Участники</dt><dd>${calendarEsc(audience)}</dd></div>
+          ${event.source !== 'MANUAL' ? `<div><dt>Участники</dt><dd>${calendarEsc(audience)}</dd></div>` : ''}
           ${classes ? `<div><dt>Классы</dt><dd>${calendarEsc(classes)}</dd></div>` : ''}
           ${companions ? `<div><dt>Сопровождающие</dt><dd>${calendarEsc(companions)}</dd></div>` : ''}
-        </dl>`;
+        </dl>${invitees}`;
     homeCalendarUi.detailsEdit.hidden = event.source !== 'MANUAL' || !event.canEdit;
+    homeCalendarUi.detailsBody.querySelectorAll('[data-calendar-response]').forEach(button => {
+        button.addEventListener('click', () => calendarRespondToEvent(event, button.dataset.calendarResponse));
+    });
     homeCalendarUi.detailsDialog.showModal();
+}
+
+async function calendarRespondToEvent(event, status) {
+    const buttons = [...homeCalendarUi.detailsBody.querySelectorAll('[data-calendar-response]')];
+    const feedback = homeCalendarUi.detailsBody.querySelector('[data-calendar-response-feedback]');
+    buttons.forEach(button => { button.disabled = true; });
+    if (feedback) {
+        feedback.className = 'probe-feedback';
+        feedback.textContent = 'Сохраняем ответ…';
+    }
+    try {
+        const updated = await calendarApi(`/api/calendar/events/${event.id}/response`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status })
+        });
+        const index = homeCalendar.events.findIndex(item => calendarEventKey(item) === calendarEventKey(event));
+        if (index >= 0) homeCalendar.events[index] = updated;
+        homeCalendarUi.detailsDialog.close();
+        renderHomeCalendar();
+        calendarOpenDetails(updated);
+        const savedFeedback = homeCalendarUi.detailsBody.querySelector('[data-calendar-response-feedback]');
+        if (savedFeedback) {
+            savedFeedback.className = 'probe-feedback probe-ok';
+            savedFeedback.textContent = status === 'ACCEPTED' ? 'Вы подтвердили участие.' : 'Вы сообщили, что не придёте.';
+        }
+    } catch (error) {
+        buttons.forEach(button => { button.disabled = false; });
+        if (feedback) {
+            feedback.className = 'probe-feedback probe-error';
+            feedback.textContent = error.message;
+        }
+    }
 }
 
 function calendarRenderSettings() {

@@ -69,6 +69,8 @@ class CalendarEventPersistenceTest {
         event.setEndsAt(LocalDateTime.of(2026, 8, 25, 11, 0));
         event.setDurationMinutes(60);
         event.getParticipants().addAll(List.of(first, second));
+        event.getParticipantResponses().put(first.getId(), CalendarAttendanceStatus.ACCEPTED);
+        event.getParticipantResponses().put(second.getId(), CalendarAttendanceStatus.PENDING);
         event.getBuildings().add(building);
         event.getSelectedPersonIds().add(first.getId());
         event.getSelectedGroups().add(CalendarAudienceGroup.ADMINISTRATION);
@@ -83,6 +85,10 @@ class CalendarEventPersistenceTest {
 
         assertEquals(1, result.size());
         assertEquals(2, result.get(0).getParticipants().size());
+        assertEquals(CalendarAttendanceStatus.ACCEPTED,
+                result.get(0).getParticipantResponses().get(first.getId()));
+        assertEquals(CalendarAttendanceStatus.PENDING,
+                result.get(0).getParticipantResponses().get(second.getId()));
         assertEquals(1, result.get(0).getBuildings().size());
         assertEquals(List.of(CalendarAudienceGroup.ADMINISTRATION), result.get(0).getSelectedGroups().stream().toList());
     }

@@ -13,6 +13,8 @@ public interface CalendarEventService {
 
     CalendarDtos.EventView update(Long id, CalendarDtos.EventRequest request, SessionUser user);
 
+    CalendarDtos.EventView respond(Long id, CalendarDtos.AttendanceResponseRequest request, SessionUser user);
+
     void delete(Long id, SessionUser user);
 
     CalendarDtos.BootstrapView bootstrap(SessionUser user);

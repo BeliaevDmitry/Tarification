@@ -91,8 +91,14 @@
         <div class="dialog-hero"><div><h2>Сопровождающие</h2><p id="probe-companions-caption" class="muted"></p></div>
             <button type="button" data-probe-close>Закрыть</button></div>
         <form id="probe-companions-form">
-            <label>Основной сопровождающий<select id="probe-primary-companion" required></select></label>
-            <label>Второй сопровождающий<select id="probe-secondary-companion"></select></label>
+            <h3>Обязательные сопровождающие</h3>
+            <div id="probe-required-companions" class="probe-companion-list"></div>
+            <div class="probe-companion-section-heading">
+                <div><h3>Дополнительные сопровождающие</h3>
+                    <p class="muted">Можно назначить любое количество сотрудников сверх обязательного минимума.</p></div>
+                <button id="probe-add-companion" type="button" class="secondary">Добавить сопровождающего</button>
+            </div>
+            <div id="probe-additional-companions" class="probe-companion-list"></div>
             <p id="probe-companions-rule" class="probe-validation"></p>
             <div class="dialog-actions"><button type="submit">Сохранить</button></div>
         </form>

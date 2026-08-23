@@ -89,6 +89,28 @@ public class CalendarEventServiceImpl implements CalendarEventService {
 
     @Override
     @Transactional
+    public CalendarDtos.EventView respond(Long id,
+                                           CalendarDtos.AttendanceResponseRequest request,
+                                           SessionUser user) {
+        AppUser participantUser = currentUser(user);
+        CalendarEvent event = requireEvent(id);
+        CalendarAttendanceStatus status = request == null ? null : request.status();
+        if (status != CalendarAttendanceStatus.ACCEPTED && status != CalendarAttendanceStatus.DECLINED) {
+            throw new IllegalArgumentException("Выберите ответ «Приду» или «Не приду»");
+        }
+        Long teacherId = participantUser.getTeacherId();
+        if (teacherId == null || event.getParticipants().stream()
+                .noneMatch(person -> Objects.equals(person.getId(), teacherId))) {
+            throw new AuthExceptions.ForbiddenException("Ответить может только приглашённый участник встречи");
+        }
+        event.getParticipantResponses().put(teacherId, status);
+        event.setUpdatedAt(LocalDateTime.now());
+        CalendarEvent saved = eventRepository.save(event);
+        return toView(saved, settingsRepository.findByUser_Id(ownerId(saved)).orElse(null), participantUser, user);
+    }
+
+    @Override
+    @Transactional
     public void delete(Long id, SessionUser user) {
         AppUser editor = currentUser(user);
         CalendarEvent event = requireEvent(id);
@@ -227,8 +249,13 @@ public class CalendarEventServiceImpl implements CalendarEventService {
         event.getSelectedCustomListIds().addAll(selectedLists);
         event.getBuildings().clear();
         selectedBuildings.stream().map(buildings::get).filter(Objects::nonNull).forEach(event.getBuildings()::add);
+        Map<Long, CalendarAttendanceStatus> previousResponses = new HashMap<>(event.getParticipantResponses());
         event.getParticipants().clear();
         event.getParticipants().addAll(participants);
+        event.getParticipantResponses().clear();
+        participants.stream().map(TeacherDirectoryEntry::getId).filter(Objects::nonNull)
+                .forEach(id -> event.getParticipantResponses().put(id,
+                        previousResponses.getOrDefault(id, CalendarAttendanceStatus.PENDING)));
         event.setAudienceSummary(audienceSummary(selectedPeople, selectedGroups, selectedBuildings, customLists,
                 activePeople, buildings));
         event.setUpdatedAt(LocalDateTime.now());
@@ -264,9 +291,14 @@ public class CalendarEventServiceImpl implements CalendarEventService {
                                           AppUser viewer,
                                           SessionUser session) {
         AppUser owner = event.getOwner();
-        List<CalendarDtos.PersonRef> participants = event.getParticipants().stream()
+        Long viewerTeacherId = viewer.getTeacherId();
+        List<CalendarDtos.EventParticipant> participants = event.getParticipants().stream()
                 .sorted(Comparator.comparing(TeacherDirectoryEntry::getFioTeacher, String.CASE_INSENSITIVE_ORDER))
-                .map(this::personRef).toList();
+                .map(person -> eventParticipant(person, event, viewerTeacherId)).toList();
+        boolean canRespond = viewerTeacherId != null && event.getParticipants().stream()
+                .anyMatch(person -> Objects.equals(person.getId(), viewerTeacherId));
+        CalendarAttendanceStatus myResponseStatus = canRespond
+                ? attendanceStatus(event, viewerTeacherId) : null;
         List<CalendarDtos.BuildingRef> buildings = event.getBuildings().stream()
                 .sorted(Comparator.comparing(building -> text(building.getAddress()), String.CASE_INSENSITIVE_ORDER))
                 .map(this::buildingRef).toList();
@@ -276,10 +308,11 @@ public class CalendarEventServiceImpl implements CalendarEventService {
                 owner.getId(), owner.getTeacherId(), owner.getFullName(), color(owner, ownerSettings),
                 event.getAudienceSummary(), participants, buildings,
                 event.getSelectedPersonIds().stream().sorted().toList(),
-                event.getSelectedGroups().stream().map(Enum::name).sorted().toList(),
-                event.getBuildings().stream().map(SchoolBuilding::getId).sorted().toList(),
-                event.getSelectedCustomListIds().stream().sorted().toList(),
-                canEdit(event, viewer, session));
+                 event.getSelectedGroups().stream().map(Enum::name).sorted().toList(),
+                 event.getBuildings().stream().map(SchoolBuilding::getId).sorted().toList(),
+                 event.getSelectedCustomListIds().stream().sorted().toList(),
+                 myResponseStatus, canRespond,
+                 canEdit(event, viewer, session));
     }
 
     private CalendarDtos.PreferencesView preferences(AppUser owner, CalendarUserSettings settings) {
@@ -448,9 +481,17 @@ public class CalendarEventServiceImpl implements CalendarEventService {
         return event.getOwner() == null ? null : event.getOwner().getId();
     }
 
-    private CalendarDtos.PersonRef personRef(TeacherDirectoryEntry person) {
-        return new CalendarDtos.PersonRef(person.getId(), person.getFioTeacher(),
-                text(person.getPrimaryPosition()), text(person.getNumberSchoolBuilding()));
+    private CalendarDtos.EventParticipant eventParticipant(TeacherDirectoryEntry person,
+                                                            CalendarEvent event,
+                                                            Long viewerTeacherId) {
+        CalendarAttendanceStatus status = attendanceStatus(event, person.getId());
+        return new CalendarDtos.EventParticipant(person.getId(), person.getFioTeacher(),
+                text(person.getPrimaryPosition()), text(person.getNumberSchoolBuilding()), status,
+                status.getDisplayName(), Objects.equals(person.getId(), viewerTeacherId));
+    }
+
+    private CalendarAttendanceStatus attendanceStatus(CalendarEvent event, Long teacherId) {
+        return event.getParticipantResponses().getOrDefault(teacherId, CalendarAttendanceStatus.PENDING);
     }
 
     private CalendarDtos.BuildingRef buildingRef(SchoolBuilding building) {

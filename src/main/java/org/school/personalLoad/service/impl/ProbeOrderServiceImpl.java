@@ -289,11 +289,28 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
         TeacherDirectoryEntry primary = staff(request.primaryTeacherId(), "Выберите основного сопровождающего");
         TeacherDirectoryEntry secondary = request.secondaryTeacherId() == null
                 ? null : staff(request.secondaryTeacherId(), "Второй сопровождающий не найден");
-        if (secondary != null && Objects.equals(primary.getId(), secondary.getId())) {
-            throw new IllegalArgumentException("Основной и второй сопровождающий должны быть разными сотрудниками");
+        if (requiredCompanions(order.getParticipants().size()) > 1 && secondary == null) {
+            throw new IllegalArgumentException("Для группы больше 10 детей выберите второго обязательного сопровождающего");
+        }
+        List<Long> additionalIds = request.additionalTeacherIds() == null
+                ? List.of()
+                : request.additionalTeacherIds().stream().filter(Objects::nonNull).toList();
+        LinkedHashSet<Long> uniqueIds = new LinkedHashSet<>();
+        uniqueIds.add(primary.getId());
+        if (secondary != null && !uniqueIds.add(secondary.getId())) {
+            throw new IllegalArgumentException("Один сотрудник не может быть выбран сопровождающим дважды");
+        }
+        LinkedHashSet<TeacherDirectoryEntry> additional = new LinkedHashSet<>();
+        for (Long teacherId : additionalIds) {
+            if (!uniqueIds.add(teacherId)) {
+                throw new IllegalArgumentException("Один сотрудник не может быть выбран сопровождающим дважды");
+            }
+            additional.add(staff(teacherId, "Дополнительный сопровождающий не найден"));
         }
         order.setPrimaryCompanion(primary);
         order.setSecondaryCompanion(secondary);
+        order.getAdditionalCompanions().clear();
+        order.getAdditionalCompanions().addAll(additional);
         resetWorkflow(order);
         order.setUpdatedAt(LocalDateTime.now());
         return toView(orderRepository.save(order), user, false, scanRepository.findByOrder_Id(id).isPresent());
@@ -980,7 +997,8 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
                 order.getSchoolBuilding().getCode(), order.getSchoolBuilding().getName(), order.getGatheringPlace(),
                 order.getGatheringTime(), order.getReturnTime(), classNames(order), participants.size(),
                 requiredCompanions(participants.size()), staffOption(order.getPrimaryCompanion()),
-                staffOption(order.getSecondaryCompanion()), companionsComplete(order), order.getStatus(),
+                staffOption(order.getSecondaryCompanion()), additionalCompanions(order).stream()
+                        .map(this::staffOption).toList(), companionsComplete(order), order.getStatus(),
                 approvalMode, approval.views(), approval.complete(),
                 order.getBuildingApprovedAt(), order.getBuildingApprovedBy(), order.getOrderNumber(), order.getOrderDate(),
                 staffOption(order.getSigner()), order.getSignerPosition(),
@@ -1025,6 +1043,7 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
                 || !Objects.equals(order.getSecondaryCompanion().getId(), order.getPrimaryCompanion().getId()))) {
             participants.add(calendarPerson(order.getSecondaryCompanion()));
         }
+        additionalCompanions(order).stream().map(this::calendarPerson).forEach(participants::add);
         return new ProbeOrderDtos.CalendarEvent(order.getId(), order.getEventName(), order.getEventDate(),
                 order.getStartTime(), order.getEndTime(), order.getSchoolBuilding().getCode(),
                 order.getSchoolBuilding().getName(), classNames(order), companionNames(order), order.getVenue(),
@@ -1053,7 +1072,8 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
                 classes.size() == 1 ? "класса" : "классов", order.getVenue(), order.getEventAddress(),
                 order.getGatheringTime(), order.getGatheringPlace(), order.getReturnTime(),
                 order.getSchoolBuilding().getManagerFio(), person(order.getPrimaryCompanion()),
-                person(order.getSecondaryCompanion()), person(order.getSigner()), order.getSignerPosition(),
+                person(order.getSecondaryCompanion()), additionalCompanions(order).stream().map(this::person).toList(),
+                person(order.getSigner()), order.getSignerPosition(),
                 person(personnel.director()), person(personnel.deputyDirector()), personnel.executor(),
                 order.getParticipants().stream().map(participant -> new ProbeOrderDocumentService.ParticipantData(
                         participant.getFullNameSnapshot(), participant.getRepresentativeName(), participant.getRepresentativePhone()
@@ -1115,7 +1135,17 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
         List<String> result = new ArrayList<>();
         if (order.getPrimaryCompanion() != null) result.add(order.getPrimaryCompanion().getFioTeacher());
         if (order.getSecondaryCompanion() != null) result.add(order.getSecondaryCompanion().getFioTeacher());
+        additionalCompanions(order).stream().map(TeacherDirectoryEntry::getFioTeacher).forEach(result::add);
         return result;
+    }
+
+    private List<TeacherDirectoryEntry> additionalCompanions(ProbeOrder order) {
+        if (order.getAdditionalCompanions() == null) return List.of();
+        return order.getAdditionalCompanions().stream()
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparing(TeacherDirectoryEntry::getFioTeacher,
+                        Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
+                .toList();
     }
 
     private Comparator<String> classComparator() {

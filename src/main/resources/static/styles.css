@@ -1858,6 +1858,12 @@ td.vacancy-row {
 .probe-edit-dialog { width: min(1180px, calc(100vw - 24px)); }
 .probe-dialog > form { padding: 18px; }
 .probe-add-student-row { display: grid; grid-template-columns: minmax(240px, 1fr) auto auto; gap: 10px; margin-bottom: 12px; }
+.probe-companion-list { display: grid; gap: 10px; }
+.probe-companion-row { display: grid; grid-template-columns: minmax(260px, 1fr) auto; gap: 10px; align-items: end; }
+.probe-companion-row > label { display: grid; gap: 5px; margin: 0; font-weight: 600; }
+.probe-companion-row select { width: 100%; min-width: 0; box-sizing: border-box; font-weight: 400; }
+.probe-companion-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-top: 18px; }
+.probe-companion-section-heading h3, .probe-companion-section-heading p { margin-bottom: 4px; }
 .probe-dialog table input,
 .probe-dialog table textarea { min-width: 140px; width: 100%; box-sizing: border-box; }
 .probe-dialog table textarea { min-height: 52px; resize: vertical; }
@@ -1933,6 +1939,23 @@ td.vacancy-row {
 .calendar-details-list > div { min-width: 0; padding: 10px; border-radius: 8px; background: #f8fafc; }
 .calendar-details-list dt { color: #64748b; font-size: .8rem; font-weight: 700; }
 .calendar-details-list dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.calendar-invitees-section { margin-top: 12px; padding: 12px; border: 1px solid #dbe3ef; border-radius: 10px; background: #f8fafc; }
+.calendar-invitees-heading h4, .calendar-invitees-heading p { margin: 0; }
+.calendar-invitees-list { display: grid; gap: 7px; margin: 10px 0 0; padding: 0; list-style: none; }
+.calendar-invitee { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 11px; border: 1px solid; border-radius: 9px; }
+.calendar-invitee.is-accepted { border-color: #86efac; background: #f0fdf4; }
+.calendar-invitee.is-pending { border-color: #fde047; background: #fefce8; }
+.calendar-invitee.is-declined { border-color: #fca5a5; background: #fef2f2; }
+.calendar-invitee-person { min-width: 0; display: grid; gap: 2px; }
+.calendar-invitee-person strong { overflow-wrap: anywhere; }
+.calendar-invitee-person small { color: #64748b; }
+.calendar-response-badge { flex: 0 0 auto; padding: 4px 8px; border-radius: 999px; background: rgba(255, 255, 255, .75); font-size: .78rem; font-weight: 700; }
+.calendar-my-response { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding: 11px; border: 1px solid #bfdbfe; border-radius: 9px; background: #eff6ff; }
+.calendar-my-response > span { display: grid; gap: 2px; }
+.calendar-my-response small { color: #475569; }
+.calendar-response-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.calendar-response-actions button.is-selected { outline: 3px solid #86efac; outline-offset: 1px; }
+.calendar-response-actions button.is-declined { outline-color: #fca5a5; }
 .calendar-agenda-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .calendar-agenda-heading h4 { margin: 0; }
 .calendar-settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
@@ -1949,6 +1972,8 @@ td.vacancy-row {
     .probe-toolbar, .home-calendar-toolbar { align-items: stretch; }
     .probe-toolbar label { width: 100%; }
     .probe-add-student-row { grid-template-columns: 1fr; }
+    .probe-companion-row { grid-template-columns: 1fr; }
+    .probe-companion-section-heading { align-items: stretch; flex-direction: column; }
     .home-calendar-actions { width: 100%; align-items: stretch; }
     .home-calendar-actions > button { flex: 1 1 auto; }
     .home-calendar-view-switch { display: grid; grid-template-columns: repeat(3, 1fr); flex: 1 0 100%; }
@@ -1975,6 +2000,9 @@ td.vacancy-row {
     .calendar-custom-lists-settings { margin: 0 12px 12px; padding: 12px; }
     .calendar-custom-list-card { align-items: flex-start; flex-direction: column; }
     .calendar-section-heading { align-items: stretch; flex-direction: column; }
+    .calendar-invitee, .calendar-my-response { align-items: stretch; flex-direction: column; }
+    .calendar-response-badge { align-self: flex-start; }
+    .calendar-response-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .teachers-table th,

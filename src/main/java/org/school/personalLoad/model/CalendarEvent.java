@@ -8,7 +8,9 @@ import org.school.personalLoad.auth.AppUser;
 
 import javax.persistence.*;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 
 @Data
@@ -58,6 +60,15 @@ public class CalendarEvent {
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private Set<TeacherDirectoryEntry> participants = new LinkedHashSet<>();
+
+    @ElementCollection
+    @CollectionTable(name = "calendar_event_participant_response", joinColumns = @JoinColumn(name = "event_id"),
+            uniqueConstraints = @UniqueConstraint(name = "uk_calendar_event_participant_response",
+                    columnNames = {"event_id", "teacher_id"}))
+    @MapKeyColumn(name = "teacher_id")
+    @Enumerated(EnumType.STRING)
+    @Column(name = "response_status", nullable = false, length = 20)
+    private Map<Long, CalendarAttendanceStatus> participantResponses = new LinkedHashMap<>();
 
     @ManyToMany
     @JoinTable(name = "calendar_event_building",

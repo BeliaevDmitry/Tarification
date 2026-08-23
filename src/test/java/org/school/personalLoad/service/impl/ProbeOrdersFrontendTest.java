@@ -22,6 +22,8 @@ class ProbeOrdersFrontendTest {
         assertTrue(page.contains("Свежая выгрузка регистрации"));
         assertTrue(page.contains("data-probe-sort=\"eventDate\""));
         assertTrue(page.contains("id=\"probe-companions-dialog\""));
+        assertTrue(page.contains("id=\"probe-add-companion\""));
+        assertTrue(page.contains("id=\"probe-additional-companions\""));
         assertTrue(page.contains("id=\"probe-generate-dialog\""));
         assertTrue(page.contains("id=\"probe-scan-dialog\""));
         assertTrue(page.contains("id=\"probe-settings-dialog\""));
@@ -36,6 +38,7 @@ class ProbeOrdersFrontendTest {
         assertTrue(script.contains("item.childPhone"));
         assertTrue(script.contains("Только информация"));
         assertTrue(script.contains("/acknowledge"));
+        assertTrue(script.contains("additionalTeacherIds"));
         assertTrue(script.contains("/generate"));
         assertTrue(script.contains("/release"));
         assertTrue(script.contains("/scan"));
@@ -72,6 +75,10 @@ class ProbeOrdersFrontendTest {
         assertTrue(index.contains("id=\"calendar-own-settings-dialog\""));
         assertTrue(index.contains("id=\"calendar-list-dialog\""));
         assertTrue(calendar.contains("/api/calendar/events"));
+        assertTrue(calendar.contains("/response"));
+        assertTrue(calendar.contains("data-calendar-response=\"ACCEPTED\""));
+        assertTrue(calendar.contains("Ожидается ответ"));
+        assertTrue(calendar.contains("item.fullName"));
         assertTrue(calendar.contains("/api/calendar/settings"));
         assertTrue(calendar.contains("/api/calendar/lists"));
     }

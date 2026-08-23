@@ -11,12 +11,12 @@ import java.util.Optional;
 public interface CalendarEventRepository extends JpaRepository<CalendarEvent, Long> {
 
     @EntityGraph(attributePaths = {"owner", "participants", "buildings", "selectedPersonIds",
-            "selectedGroups", "selectedCustomListIds"})
+            "selectedGroups", "selectedCustomListIds", "participantResponses"})
     List<CalendarEvent> findDistinctByStartsAtLessThanAndEndsAtGreaterThanEqualOrderByStartsAtAsc(
             LocalDateTime toExclusive, LocalDateTime fromInclusive);
 
     @Override
     @EntityGraph(attributePaths = {"owner", "participants", "buildings", "selectedPersonIds",
-            "selectedGroups", "selectedCustomListIds"})
+            "selectedGroups", "selectedCustomListIds", "participantResponses"})
     Optional<CalendarEvent> findById(Long id);
 }

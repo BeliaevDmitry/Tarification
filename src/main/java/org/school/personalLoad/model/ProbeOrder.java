@@ -10,7 +10,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Data
 @Entity
@@ -86,6 +88,17 @@ public class ProbeOrder {
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private TeacherDirectoryEntry secondaryCompanion;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "probe_order_additional_companion",
+            joinColumns = @JoinColumn(name = "order_id", nullable = false),
+            inverseJoinColumns = @JoinColumn(name = "teacher_id", nullable = false),
+            uniqueConstraints = @UniqueConstraint(name = "uk_probe_order_additional_companion",
+                    columnNames = {"order_id", "teacher_id"}))
+    @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private Set<TeacherDirectoryEntry> additionalCompanions = new LinkedHashSet<>();
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "signer_teacher_id")
