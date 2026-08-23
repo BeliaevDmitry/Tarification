@@ -41,6 +41,9 @@ class ProbeOrderDocumentServiceTest {
                     .filter(paragraph -> paragraph.getText().contains("от 17.09.2026 г."))
                     .findFirst()
                     .orElseThrow();
+            List<XWPFParagraph> orderItems = document.getParagraphs().stream()
+                    .filter(paragraph -> BigInteger.ONE.equals(paragraph.getNumID()))
+                    .collect(Collectors.toList());
 
             assertTrue(text.contains("№ 184/пр"));
             assertTrue(text.contains("17.09.2026"));
@@ -82,6 +85,18 @@ class ProbeOrderDocumentServiceTest {
                     XPathConstants.NUMBER);
             assertEquals(0D, highlightCount);
             assertEquals(0D, directRunShadingCount);
+            assertEquals(7, orderItems.size());
+            assertTrue(orderItems.get(0).getText().trim().startsWith("Направить "));
+            assertTrue(orderItems.get(1).getText().trim().startsWith("Сбор обучающихся"));
+            assertTrue(orderItems.get(2).getText().trim().startsWith("Руководителю группы"));
+            assertTrue(orderItems.get(3).getText().trim().startsWith("По окончании мероприятия"));
+            assertTrue(orderItems.get(4).getText().trim().startsWith("Специалисту по охране труда"));
+            assertTrue(orderItems.get(5).getText().trim().startsWith("Руководителю группы"));
+            assertTrue(orderItems.get(6).getText().trim().startsWith("Контроль за исполнением"));
+            assertTrue(orderItems.stream().allMatch(paragraph -> BigInteger.ZERO.equals(paragraph.getNumIlvl())));
+            assertTrue(orderItems.stream().allMatch(paragraph -> paragraph.getIndentationLeft() == 0));
+            assertTrue(orderItems.stream().allMatch(paragraph -> paragraph.getIndentationHanging() == 0));
+            assertTrue(orderItems.stream().noneMatch(paragraph -> paragraph.getText().trim().matches("^[5-7]\\..*")));
         }
 
         String qaOutput = System.getProperty("probe.qa.output");

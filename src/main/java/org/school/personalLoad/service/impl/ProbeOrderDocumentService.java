@@ -106,7 +106,7 @@ public class ProbeOrderDocumentService {
         }
         if (original.contains("Направить {eventDate}")) {
             replaceParagraph(paragraph, actionParagraph(data));
-            paragraph.setAlignment(ParagraphAlignment.BOTH);
+            applyOrderListNumbering(paragraph);
             return;
         }
         if (original.trim().startsWith("от") && original.contains("№")) {
@@ -126,15 +126,22 @@ public class ProbeOrderDocumentService {
         if (original.trim().startsWith("5.") && original.contains("охране труда")) {
             // Ответственный за безопасность постоянный и уже указан в утверждённом шаблоне.
             // Не подменяем его сотрудником из справочника при формировании приказа.
+            replaceParagraph(paragraph, removeManualNumber(original));
+            applyOrderListNumbering(paragraph);
             return;
         }
         if (original.trim().startsWith("6.") && original.contains("Ждановой И. Д.")) {
-            String updatedPersonnel = original
+            String updatedPersonnel = removeManualNumber(original)
                     .replace("Ждановой И. Д.", dative(data.director()))
                     .replace("Власовой Ю.С.", dative(data.deputyDirector()))
                     .replace("{leader}", data.primaryCompanion().dativeOrName());
             replaceParagraph(paragraph, cleanup(updatedPersonnel));
-            paragraph.setAlignment(ParagraphAlignment.BOTH);
+            applyOrderListNumbering(paragraph);
+            return;
+        }
+        if (original.trim().startsWith("7.") && original.contains("Контроль за исполнением")) {
+            replaceParagraph(paragraph, removeManualNumber(original));
+            applyOrderListNumbering(paragraph);
             return;
         }
         if (original.trim().startsWith("Исп.:")) {
@@ -158,9 +165,21 @@ public class ProbeOrderDocumentService {
             updated = updated.replace(data.formattedClasses() + "класс",
                     data.formattedClasses() + " " + headingWord);
         }
+        boolean numberedOrderItem = original.contains("Сбор обучающихся назначить")
+                || original.contains("Руководителю группы {leader}");
+        if (original.contains("по окончании мероприятия доложить")) {
+            updated = updated.replaceFirst("^\\s*-\\s*", "");
+            if (updated.startsWith("по окончании")) {
+                updated = "По" + updated.substring(2);
+            }
+            numberedOrderItem = true;
+        }
         updated = cleanup(updated);
         if (!Objects.equals(original, updated)) {
             replaceParagraph(paragraph, updated);
+        }
+        if (numberedOrderItem) {
+            applyOrderListNumbering(paragraph);
         }
     }
 
@@ -296,6 +315,35 @@ public class ProbeOrderDocumentService {
         paragraph.setSpacingAfter(0);
     }
 
+    private void applyOrderListNumbering(XWPFParagraph paragraph) {
+        CTPPr properties = paragraph.getCTP().isSetPPr()
+                ? paragraph.getCTP().getPPr() : paragraph.getCTP().addNewPPr();
+        if (properties.isSetTabs()) {
+            properties.unsetTabs();
+        }
+        paragraph.setNumID(BigInteger.ONE);
+        paragraph.setNumILvl(BigInteger.ZERO);
+        paragraph.setAlignment(ParagraphAlignment.BOTH);
+        paragraph.setIndentationLeft(0);
+        paragraph.setIndentationRight(0);
+        paragraph.setIndentationHanging(0);
+        paragraph.setIndentationFirstLine(0);
+        paragraph.setSpacingBefore(0);
+        paragraph.setSpacingAfter(0);
+
+        if (!paragraph.getRuns().isEmpty()) {
+            XWPFRun firstRun = paragraph.getRuns().get(0);
+            String firstText = firstRun.getText(0);
+            if (firstText != null && !firstText.startsWith(" ")) {
+                firstRun.setText(" " + firstText, 0);
+            }
+        }
+    }
+
+    private String removeManualNumber(String value) {
+        return text(value).replaceFirst("^\\d+\\.\\s*", "");
+    }
+
     private void removeTemplateMarkers(XWPFDocument document) {
         removeTemplateMarkers(document.getDocument().getDomNode());
         for (XWPFHeader header : document.getHeaderList()) {
@@ -376,6 +424,7 @@ public class ProbeOrderDocumentService {
 
     private String cleanup(String value) {
         String cleaned = text(value)
+                .replace('\u00A0', ' ')
                 .replaceAll("\\s+,", ",")
                 .replaceAll(",\\s*,", ",")
                 .replaceAll("\\s+:", ":")
