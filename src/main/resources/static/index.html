@@ -69,9 +69,11 @@
     <div class="home-calendar-toolbar">
       <div>
         <h2>Календарь мероприятий</h2>
-        <p class="muted">Здесь появляются только выпущенные приказы: дата, время, классы и сопровождающие.</p>
+        <p class="muted">Общие и личные встречи, мероприятия корпусов и выпущенные приказы.</p>
       </div>
       <div class="home-calendar-actions">
+        <button type="button" id="calendar-add-event">+ Добавить встречу</button>
+        <button type="button" class="secondary" id="calendar-own-settings">Мой календарь</button>
         <button type="button" class="secondary" id="calendar-prev" aria-label="Предыдущий период">←</button>
         <button type="button" class="secondary" id="calendar-today">Сегодня</button>
         <button type="button" class="secondary" id="calendar-next" aria-label="Следующий период">→</button>
@@ -86,6 +88,7 @@
         <label><input type="checkbox" data-calendar-audience="DEPUTIES" checked> Замы</label>
         <label><input type="checkbox" data-calendar-audience="ADMINISTRATION" checked> Администрация</label>
         <label><input type="checkbox" data-calendar-audience="FULL_ADMINISTRATION" checked> Полная администрация</label>
+        <label><input type="checkbox" data-calendar-audience="BUILDING_HEADS" checked> Руководители корпусов</label>
         <label><input type="checkbox" data-calendar-audience="BUILDING" checked> Корпуса</label>
         <label><input type="checkbox" data-calendar-audience="PERSONAL" checked> Личное</label>
         <button type="button" class="secondary" id="calendar-filter-options">Корпуса и люди</button>
@@ -96,6 +99,151 @@
     <h3 id="calendar-period-title" class="home-calendar-title"></h3>
     <div id="calendar-grid" class="home-calendar-grid" aria-live="polite"></div>
     </section>
+
+    <dialog id="calendar-event-dialog" class="probe-dialog calendar-dialog calendar-event-dialog">
+      <form id="calendar-event-form">
+        <input type="hidden" id="calendar-event-id">
+        <div class="calendar-dialog-heading">
+          <div>
+            <h3 id="calendar-event-dialog-title">Новая встреча</h3>
+            <p class="muted">Время окончания рассчитывается из продолжительности.</p>
+          </div>
+          <button type="button" class="secondary" data-calendar-close="event">Закрыть</button>
+        </div>
+        <div class="calendar-event-fields">
+          <label class="calendar-field-wide">Название встречи
+            <input id="calendar-event-name" maxlength="500" required>
+          </label>
+          <label>Дата
+            <input type="date" id="calendar-event-date" required>
+          </label>
+          <label>Начало
+            <input type="time" id="calendar-event-start" required>
+          </label>
+          <label>Продолжительность, минут
+            <input type="number" id="calendar-event-duration" min="5" max="1440" step="5" value="60" required>
+          </label>
+          <label>Окончание
+            <output id="calendar-event-end" class="calendar-time-output">—</output>
+          </label>
+          <label class="calendar-field-wide">Место проведения
+            <input id="calendar-event-place" maxlength="1000" placeholder="Кабинет, адрес или ссылка">
+          </label>
+          <label class="calendar-field-wide">Кому видно мероприятие
+            <select id="calendar-event-visibility"></select>
+          </label>
+        </div>
+
+        <section class="calendar-participant-section">
+          <h4>Заготовленные группы</h4>
+          <div id="calendar-event-groups" class="calendar-choice-chips"></div>
+        </section>
+        <div class="calendar-selection-grid calendar-event-selection-grid">
+          <section>
+            <h4>Сотрудники корпуса</h4>
+            <p class="muted">Выбор адреса добавит всех действующих сотрудников этого корпуса.</p>
+            <div id="calendar-event-buildings" class="calendar-check-list"></div>
+          </section>
+          <section>
+            <div class="calendar-section-heading">
+              <div><h4>Мои списки</h4><p class="muted">Собственные группы участников.</p></div>
+              <button type="button" class="secondary" id="calendar-event-manage-lists">Настроить</button>
+            </div>
+            <div id="calendar-event-custom-lists" class="calendar-check-list"></div>
+          </section>
+        </div>
+        <section class="calendar-participant-section">
+          <h4>Конкретные люди</h4>
+          <label>Поиск сотрудника
+            <input type="search" id="calendar-event-person-search" placeholder="ФИО, должность или корпус">
+          </label>
+          <div id="calendar-event-people" class="calendar-check-list calendar-people-picker"></div>
+        </section>
+        <p id="calendar-event-feedback" class="probe-feedback" aria-live="polite"></p>
+        <div class="modal-actions calendar-sticky-actions">
+          <button type="button" class="danger-btn" id="calendar-event-delete" hidden>Удалить встречу</button>
+          <span class="dialog-action-spacer"></span>
+          <button type="button" class="secondary" data-calendar-close="event">Отмена</button>
+          <button type="submit">Сохранить встречу</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="calendar-event-details-dialog" class="probe-dialog calendar-dialog calendar-details-dialog">
+      <div class="calendar-details-content">
+        <div class="calendar-dialog-heading">
+          <div><h3 id="calendar-details-title"></h3><p id="calendar-details-owner" class="muted"></p></div>
+          <button type="button" class="secondary" data-calendar-close="details">Закрыть</button>
+        </div>
+        <div id="calendar-details-body" class="calendar-details-body"></div>
+        <div class="modal-actions">
+          <button type="button" class="secondary" data-calendar-close="details">Закрыть</button>
+          <button type="button" id="calendar-details-edit" hidden>Редактировать</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="calendar-own-settings-dialog" class="probe-dialog calendar-dialog calendar-settings-dialog">
+      <form id="calendar-own-settings-form">
+        <div class="calendar-dialog-heading">
+          <div>
+            <h3>Мой календарь</h3>
+            <p class="muted">Цвет, видимость новых встреч и сотрудники, которым доступны ваши планы.</p>
+          </div>
+          <button type="button" class="secondary" data-calendar-close="settings">Закрыть</button>
+        </div>
+        <div class="calendar-settings-grid">
+          <label>Цвет моих встреч
+            <input type="color" id="calendar-own-color" value="#2563eb">
+          </label>
+          <label>Видимость новых встреч
+            <select id="calendar-own-default-visibility"></select>
+          </label>
+        </div>
+        <section class="calendar-participant-section">
+          <h4>Кто дополнительно видит мои планы</h4>
+          <p class="muted">Администратор и директор имеют служебный доступ. Здесь можно выдать доступ конкретным сотрудникам.</p>
+          <label>Поиск
+            <input type="search" id="calendar-share-search" placeholder="ФИО, должность или корпус">
+          </label>
+          <div id="calendar-share-people" class="calendar-check-list calendar-people-picker"></div>
+        </section>
+        <p id="calendar-settings-feedback" class="probe-feedback" aria-live="polite"></p>
+        <div class="modal-actions calendar-sticky-actions">
+          <button type="button" class="secondary" data-calendar-close="settings">Отмена</button>
+          <button type="submit">Сохранить настройки</button>
+        </div>
+      </form>
+      <section class="calendar-custom-lists-settings">
+        <div class="calendar-section-heading">
+          <div><h3>Мои списки участников</h3><p class="muted">Например: рабочая группа проекта или методическое объединение.</p></div>
+          <button type="button" id="calendar-add-list">+ Новый список</button>
+        </div>
+        <div id="calendar-custom-lists"></div>
+      </section>
+    </dialog>
+
+    <dialog id="calendar-list-dialog" class="probe-dialog calendar-dialog calendar-list-dialog">
+      <form id="calendar-list-form">
+        <input type="hidden" id="calendar-list-id">
+        <div class="calendar-dialog-heading">
+          <div><h3 id="calendar-list-title">Новый список</h3><p class="muted">Список будет доступен при создании встречи.</p></div>
+          <button type="button" class="secondary" data-calendar-close="list">Закрыть</button>
+        </div>
+        <label>Название списка
+          <input id="calendar-list-name" maxlength="255" required>
+        </label>
+        <label>Поиск сотрудника
+          <input type="search" id="calendar-list-search" placeholder="ФИО, должность или корпус">
+        </label>
+        <div id="calendar-list-people" class="calendar-check-list calendar-people-picker"></div>
+        <p id="calendar-list-feedback" class="probe-feedback" aria-live="polite"></p>
+        <div class="modal-actions calendar-sticky-actions">
+          <button type="button" class="secondary" data-calendar-close="list">Отмена</button>
+          <button type="submit">Сохранить список</button>
+        </div>
+      </form>
+    </dialog>
 
     <dialog id="calendar-filter-dialog" class="probe-dialog calendar-dialog">
       <form id="calendar-filter-form">

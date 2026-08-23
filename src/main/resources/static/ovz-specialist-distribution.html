@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ГБОУ школа 7 — Распределение по специалистам</title>
+    <link rel="icon" type="image/png" href="/school-crest.png">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container correction-distribution-page">
+    <header class="card">
+        <h1>Распределение по специалистам</h1>
+        <p class="muted">Закрепление детей после подписания ППк и рабочее расписание коррекционных групп.</p>
+    </header>
+    <section class="card"><nav class="page-nav"></nav></section>
+
+    <section class="card">
+        <div class="ovz-section-heading">
+            <div><h2>Свод распределения</h2><p id="distribution-target" class="muted"></p></div>
+            <div class="row controls-row"><button id="distribution-refresh" type="button" class="secondary">Обновить</button>
+                <button id="distribution-directory-open" type="button">Справочник специалистов</button></div>
+        </div>
+        <p id="distribution-message" class="muted"></p>
+        <div class="distribution-summary-grid">
+            <div class="sheet-wrap"><table class="sheet-table"><thead><tr><th>Направление</th><th>Нуждаются</th><th>Распределено</th><th>Не распределено</th></tr></thead><tbody id="distribution-direction-body"></tbody></table></div>
+            <div class="sheet-wrap"><table class="sheet-table"><thead><tr><th>Специалист</th><th>ФИО сотрудника</th><th>Должность / табельный №</th><th>Детей</th><th>Групп</th></tr></thead><tbody id="distribution-staff-body"></tbody></table></div>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="distribution-work-controls">
+            <label>Направление<select id="distribution-specialist-select"></select></label>
+            <label>ФИО специалиста<select id="distribution-staff-select"></select></label>
+            <button id="distribution-add-group" type="button" data-requires-edit>Добавить группу</button>
+        </div>
+        <div class="distribution-workspace">
+            <div>
+                <h2>Расписание специалиста</h2>
+                <div id="distribution-week" class="distribution-week"></div>
+            </div>
+            <aside class="distribution-unassigned">
+                <h2>Не распределены</h2>
+                <p class="muted">Только дети с подписанным ППк и потребностью в выбранном направлении.</p>
+                <div id="distribution-unassigned-list"></div>
+            </aside>
+        </div>
+    </section>
+
+    <dialog id="distribution-directory-dialog" class="ovz-dialog distribution-dialog-wide">
+        <div class="dialog-hero"><div><h3>Справочник специалистов</h3><p class="muted">Направление связывается с действующей кадровой карточкой сотрудника (ФК).</p></div><button type="button" data-close-dialog="directory" class="secondary">Закрыть</button></div>
+        <form id="distribution-directory-form" class="distribution-directory-form" data-requires-edit>
+            <input id="distribution-directory-id" type="hidden">
+            <label>Направление<select id="distribution-directory-specialist" required></select></label>
+            <label>Сотрудник<select id="distribution-directory-employee" required></select></label>
+            <label class="checkbox-line"><input id="distribution-directory-active" type="checkbox" checked> действует</label>
+            <button type="submit">Сохранить</button><button id="distribution-directory-clear" type="button" class="secondary">Очистить</button>
+        </form>
+        <div class="sheet-wrap"><table class="sheet-table"><thead><tr><th>Направление</th><th>ФИО</th><th>Должность</th><th>ФК</th><th>Состояние</th><th></th></tr></thead><tbody id="distribution-directory-body"></tbody></table></div>
+        <p id="distribution-directory-message" class="muted"></p>
+    </dialog>
+
+    <dialog id="distribution-group-dialog" class="ovz-dialog distribution-dialog-wide">
+        <div class="dialog-hero"><div><h3 id="distribution-group-title">Новая группа</h3><p id="distribution-group-full-name" class="muted"></p></div><button type="button" data-close-dialog="group" class="secondary">Закрыть</button></div>
+        <form id="distribution-group-form" data-requires-edit>
+            <input id="distribution-group-id" type="hidden">
+            <div class="distribution-group-fields">
+                <label>День<select id="distribution-group-weekday"><option value="1">Понедельник</option><option value="2">Вторник</option><option value="3">Среда</option><option value="4">Четверг</option><option value="5">Пятница</option></select></label>
+                <label>Начало<input id="distribution-group-start" type="time" value="09:00" step="300"></label>
+                <label>Продолжительность<select id="distribution-group-duration"></select></label>
+            </div>
+            <h4>Состав группы</h4><p class="muted">Можно выбрать только детей, которым требуется это направление и которые ещё не распределены.</p>
+            <div id="distribution-group-students" class="distribution-group-students"></div>
+            <div class="row controls-row"><button type="submit">Сохранить группу</button><button id="distribution-delete-group" type="button" class="danger" style="display:none">Удалить группу</button></div>
+            <p id="distribution-group-message" class="muted"></p>
+        </form>
+    </dialog>
+</main>
+<script src="/branding.js"></script>
+<script src="/auth.js"></script>
+<script src="/ovz-specialist-distribution.js"></script>
+</body>
+</html>

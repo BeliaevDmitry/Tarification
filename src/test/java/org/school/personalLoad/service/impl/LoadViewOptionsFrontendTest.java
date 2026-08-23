@@ -31,11 +31,15 @@ class LoadViewOptionsFrontendTest {
         String peopleJs = Files.readString(Path.of("src/main/resources/static/people-load.js"));
         String curriculumHtml = Files.readString(Path.of("src/main/resources/static/curriculum.html"));
         String curriculumJs = Files.readString(Path.of("src/main/resources/static/curriculum.js"));
+        String authJs = Files.readString(Path.of("src/main/resources/static/auth.js"));
 
         assertTrue(peopleHtml.contains("Выберите «ВСЕ»"));
         assertTrue(peopleJs.contains("const ALL_BUILDINGS_VALUE = \"__ALL__\""));
         assertTrue(peopleJs.contains("allOption.textContent = \"ВСЕ\""));
         assertTrue(curriculumHtml.contains("id=\"export-curriculum-addresses-btn\""));
+        assertTrue(curriculumHtml.contains("data-requires-export data-allow-readonly=\"true\""));
         assertTrue(curriculumJs.contains("/api/curriculum/export-addresses"));
+        assertTrue(authJs.contains("function canExportCurrentPage"));
+        assertTrue(authJs.contains("[data-requires-export]"));
     }
 }

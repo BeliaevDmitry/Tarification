@@ -1,6 +1,8 @@
 package org.school.personalLoad.dto;
 
 import org.school.personalLoad.model.ProbeOrderStatus;
+import org.school.personalLoad.model.ProbeOrderApprovalMode;
+import org.school.personalLoad.model.ProbeOrderApprovalScope;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -25,6 +27,7 @@ public final class ProbeOrderDtos {
                                   Long studentId,
                                   String fullName,
                                   String className,
+                                  String childPhone,
                                   String representativeName,
                                   String representativePhone,
                                   boolean linkedToStudentCard,
@@ -53,8 +56,16 @@ public final class ProbeOrderDtos {
     public record ParticipantRequest(Long studentId,
                                      String fullName,
                                      String className,
+                                     String childPhone,
                                      String representativeName,
                                      String representativePhone) {
+    }
+
+    public record ContactRefreshResponse(int participantsChecked,
+                                         int participantsUpdated,
+                                         int participantsLinked,
+                                         int participantsStillMissingContacts,
+                                         OrderView order) {
     }
 
     public record EditRequest(String eventName,
@@ -73,6 +84,21 @@ public final class ProbeOrderDtos {
                                   LocalDate orderDate,
                                   Long signerTeacherId,
                                   String signerPosition) {
+    }
+
+    public record SettingsRequest(ProbeOrderApprovalMode approvalMode) {
+    }
+
+    public record SettingsView(ProbeOrderApprovalMode approvalMode,
+                               String approvalModeLabel,
+                               boolean canEdit) {
+    }
+
+    public record ApprovalView(ProbeOrderApprovalScope scopeType,
+                               String scopeCode,
+                               String scopeLabel,
+                               LocalDateTime approvedAt,
+                               String approvedBy) {
     }
 
     public record OrderView(Long id,
@@ -99,6 +125,9 @@ public final class ProbeOrderDtos {
                             StaffOption secondaryCompanion,
                             boolean companionsComplete,
                             ProbeOrderStatus status,
+                            ProbeOrderApprovalMode approvalMode,
+                            List<ApprovalView> approvals,
+                            boolean approvalComplete,
                             LocalDateTime buildingApprovedAt,
                             String buildingApprovedBy,
                             String orderNumber,

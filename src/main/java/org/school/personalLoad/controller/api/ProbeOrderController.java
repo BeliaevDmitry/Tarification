@@ -40,6 +40,17 @@ public class ProbeOrderController {
         return service.references(academicYearService.resolveRequestedOrDefault(academicYear), user(request));
     }
 
+    @GetMapping("/settings")
+    public ProbeOrderDtos.SettingsView settings(HttpServletRequest request) {
+        return service.settings(user(request));
+    }
+
+    @PutMapping("/settings")
+    public ProbeOrderDtos.SettingsView updateSettings(@RequestBody ProbeOrderDtos.SettingsRequest body,
+                                                       HttpServletRequest request) {
+        return service.updateSettings(body, user(request));
+    }
+
     @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ProbeOrderDtos.ImportResponse importRegistration(@RequestParam(required = false) String academicYear,
                                                              @RequestPart("file") MultipartFile file,
@@ -59,6 +70,12 @@ public class ProbeOrderController {
                                                 @RequestBody ProbeOrderDtos.CompanionRequest body,
                                                 HttpServletRequest request) {
         return service.assignCompanions(id, body, user(request));
+    }
+
+    @PostMapping("/{id}/refresh-contacts")
+    public ProbeOrderDtos.ContactRefreshResponse refreshContacts(@PathVariable Long id,
+                                                                  HttpServletRequest request) {
+        return service.refreshContacts(id, user(request));
     }
 
     @PostMapping("/{id}/acknowledge")

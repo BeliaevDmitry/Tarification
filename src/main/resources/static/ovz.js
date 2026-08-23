@@ -6,6 +6,7 @@ const ovzDate = (value) => {
     return parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : value;
 };
 const typeNames = { MSE_CERTIFICATE: 'Справка МСЭ', CPMPC_CONCLUSION: 'Заключение ЦМПК', CPMPC_RECOMMENDATION: 'Рекомендация ЦМПК' };
+const acceptedFormNames = { COPY: 'Копия', ORIGINAL: 'Оригинал', ELECTRONIC_COPY: 'Электронная копия' };
 const stageColors = { NOT_RELEASED: 'red', PRINTED: 'yellow', COMPLETED: 'green' };
 const stageNames = { NOT_RELEASED: 'Не печатали', PRINTED: 'Распечатали, не завершили', COMPLETED: 'Этап завершён' };
 const recommendationPrograms = {
@@ -16,7 +17,8 @@ const recommendationPrograms = {
 };
 
 const ovzUi = Object.fromEntries([
-    'registry-body','registry-head','registry-message','registry-search','registry-refresh','registry-export','certificate-form','certificate-id',
+    'registry-body','registry-head','registry-message','registry-search','registry-refresh','registry-export','registry-stat-mse-only',
+    'registry-stat-conclusion-only','registry-stat-mse-conclusion','registry-stat-recommendation','certificate-form','certificate-id',
     'student-search','student-options','student-id','student-hint','document-type','accepted-form','accepted-form-field','number-field',
     'document-number','valid-from-field','valid-from','valid-to','stage-field','education-stage','program-field','education-program','program-source',
     'program-other-field','education-program-other','nosology-fields','nosology-letter','nosology-major','nosology-minor','ipra-field','ipra',
@@ -38,7 +40,12 @@ let currentDossier = null;
 let ovzEducationPrograms = [];
 let ovzPpkEmployees = [];
 let ovzRegistrySort = [];
+let ovzEducationRequestSequence = 0;
 const ovzRegistryCollator = new Intl.Collator('ru', { numeric: true, sensitivity: 'base' });
+
+function isMseOnly(item) {
+    return Boolean(item?.mse && !item?.conclusion && !item?.recommendation);
+}
 
 function ovzYearPath(path) { return window.withAcademicYear ? window.withAcademicYear(path) : path; }
 async function ovzApi(path, options = {}) {
@@ -156,6 +163,10 @@ function ovzCompareRegistryValues(left, right, direction) {
     else compared = ovzRegistryCollator.compare(String(left), String(right));
     return direction === 'asc' ? compared : -compared;
 }
+function ovzDocumentPeriod(present, validFrom, validTo) {
+    if (!present) return '—';
+    return `${validFrom ? ovzDate(validFrom) : 'не указано'} — ${validTo ? ovzDate(validTo) : 'бессрочно'}`;
+}
 function registryRowsForView() {
     const needle = String(ovzUi.registry_search.value || '').trim().toLocaleLowerCase('ru');
     const indexedRows = ovzRegistry.filter((item) => !needle || String(item.fullName || '').toLocaleLowerCase('ru').includes(needle))
@@ -184,17 +195,30 @@ function toggleRegistrySort(key) {
     else ovzRegistrySort.splice(index, 1);
     renderRegistry();
 }
+function renderRegistryStatistics() {
+    const mseOnly = ovzRegistry.filter((item) => item.mse && !item.conclusion && !item.recommendation).length;
+    const conclusionOnly = ovzRegistry.filter((item) => item.conclusion && !item.mse && !item.recommendation).length;
+    const mseConclusion = ovzRegistry.filter((item) => item.mse && item.conclusion).length;
+    const recommendation = ovzRegistry.filter((item) => item.recommendation).length;
+    ovzUi.registry_stat_mse_only.textContent = mseOnly;
+    ovzUi.registry_stat_conclusion_only.textContent = conclusionOnly;
+    ovzUi.registry_stat_mse_conclusion.textContent = mseConclusion;
+    ovzUi.registry_stat_recommendation.textContent = recommendation;
+}
 function renderRegistry() {
     const rows = registryRowsForView();
+    renderRegistryStatistics();
     updateRegistrySortHeaders();
     ovzUi.registry_body.innerHTML = rows.length ? rows.map((item) => `<tr>
-        <td>${item.studentId}</td><td>${ovzEsc(item.fullName)}</td><td>${ovzEsc(item.className)}</td>
-        <td>${item.mse ? 'Да' : 'Нет'}</td><td>${item.conclusion ? 'Да' : 'Нет'}</td><td>${item.recommendation ? 'Да' : 'Нет'}</td>
-        <td>${ovzDate(item.validTo)}</td><td><button class="secondary" data-correction="${item.studentId}">Подробнее</button></td>
-        <td><div class="ovz-mini-roadmap">${(item.stages || []).map((s) => `<span class="ovz-status-dot ${stageColors[s.status]}" title="${ovzEsc(s.label)}: ${stageNames[s.status]}"></span>`).join('')}</div></td>
+        <td>${ovzEsc(item.fullName)}</td><td>${ovzEsc(item.className)}</td>
+        <td>${ovzDocumentPeriod(item.mse, item.mseValidFrom, item.mseValidTo)}</td>
+        <td>${ovzDocumentPeriod(item.conclusion, item.conclusionValidFrom, item.conclusionValidTo)}</td><td>${item.recommendation ? 'Да' : 'Нет'}</td>
+        <td>${ovzEsc(item.nosologyCode || '—')}</td><td><button class="secondary" data-correction="${item.studentId}">Подробнее</button></td>
+        <td>${isMseOnly(item) ? '<span class="muted" title="Дальнейшие документы не требуются">—</span>'
+            : `<div class="ovz-mini-roadmap">${(item.stages || []).map((s) => `<span class="ovz-status-dot ${stageColors[s.status]}" title="${ovzEsc(s.label)}: ${stageNames[s.status]}"></span>`).join('')}</div>`}</td>
         <td><div class="ovz-actions"><button data-edit-dossier="${item.studentId}">Изменить</button>
             <button class="danger" data-delete-dossier="${item.studentId}">Удалить</button><button class="secondary" data-detail="${item.studentId}">Подробно</button></div></td>
-    </tr>`).join('') : `<tr><td colspan="10" class="muted">${ovzUi.registry_search.value.trim() ? 'По указанному ФИО ничего не найдено.' : 'В реестре пока нет справок.'}</td></tr>`;
+    </tr>`).join('') : `<tr><td colspan="9" class="muted">${ovzUi.registry_search.value.trim() ? 'По указанному ФИО ничего не найдено.' : 'В реестре пока нет справок.'}</td></tr>`;
 }
 
 function openCorrection(studentId) {
@@ -240,11 +264,18 @@ function updateCertificateType() {
     else refreshEducationDefaults();
 }
 async function refreshEducationDefaults() {
+    const requestSequence = ++ovzEducationRequestSequence;
     const studentId = Number(ovzUi.student_id.value || 0); const type = ovzUi.document_type.value;
     if (!studentId || type === 'MSE_CERTIFICATE') return;
     const params = new URLSearchParams({ studentId, documentType: type, prolongationAvailable: ovzUi.prolongation.value, prolongationUsed: ovzUi.prolongation_used.value });
+    if (type === 'CPMPC_CONCLUSION' && ovzUi.nosology_major.value !== '' && ovzUi.nosology_minor.value !== '') {
+        params.set('nosologyCode', `${ovzUi.nosology_letter.value}${ovzUi.nosology_major.value}.${ovzUi.nosology_minor.value}`);
+    }
     try {
         const data = await ovzApi(`/api/contingent/special-support/documents/education-defaults?${params}`);
+        if (requestSequence !== ovzEducationRequestSequence) return;
+        const selectedProgram = ovzUi.education_program.value;
+        const customProgram = ovzUi.education_program_other.value;
         ovzUi.education_stage.value = data.educationStage; ovzUi.valid_to.value = data.validTo || ''; ovzUi.date_hint.textContent = data.message || '';
         if (type === 'CPMPC_RECOMMENDATION') {
             ovzEducationPrograms = [];
@@ -253,8 +284,12 @@ async function refreshEducationDefaults() {
             ovzEducationPrograms = data.educationPrograms || [];
             ovzUi.education_program.innerHTML = ovzEducationPrograms.map((p) => `<option value="${ovzEsc(p.name)}">${ovzEsc(p.name)}</option>`).join('') + '<option value="__OTHER__">Другое</option>';
         }
+        if (selectedProgram && Array.from(ovzUi.education_program.options).some((option) => option.value === selectedProgram)) {
+            ovzUi.education_program.value = selectedProgram;
+            if (selectedProgram === '__OTHER__') ovzUi.education_program_other.value = customProgram;
+        }
         updateProgramOther();
-    } catch (error) { ovzUi.date_hint.textContent = `Не удалось рассчитать: ${error.message}`; }
+    } catch (error) { if (requestSequence === ovzEducationRequestSequence) ovzUi.date_hint.textContent = `Не удалось рассчитать: ${error.message}`; }
 }
 function updateProgramOther() {
     ovzUi.program_other_field.style.display = ovzUi.education_program.value === '__OTHER__' ? '' : 'none';
@@ -287,8 +322,14 @@ function certificatePayload() {
 async function editDocument(id) {
     const doc = ovzDocuments.find((item) => Number(item.id) === Number(id)); if (!doc) return;
     resetCertificate(); ovzUi.certificate_id.value = doc.id; setStudent(ovzStudents.find((s) => Number(s.studentId) === Number(doc.studentId)));
+    const match = String(doc.nosologyCode || '').match(/^([ИО])([0-9])\.([0-9])$/);
+    if (match) { ovzUi.nosology_letter.value = match[1]; ovzUi.nosology_major.value = match[2]; ovzUi.nosology_minor.value = match[3]; }
+    ovzUi.prolongation.value = String(Boolean(doc.prolongationAvailable)); ovzUi.prolongation_used.value = String(Boolean(doc.prolongationUsed));
+    if (doc.prolongedGrade) ovzUi.prolonged_grade.value = doc.prolongedGrade; if (doc.prolongedAcademicYear) ovzUi.prolonged_year.value = doc.prolongedAcademicYear;
     ovzUi.document_type.value = doc.documentType; updateCertificateType(); await refreshEducationDefaults();
-    ovzUi.accepted_form.value = doc.acceptedForm; ovzUi.document_number.value = doc.documentNumber || ''; ovzUi.valid_from.value = doc.validFrom || ''; ovzUi.valid_to.value = doc.validTo || '';
+    const calculatedValidTo = ovzUi.valid_to.value;
+    ovzUi.accepted_form.value = doc.acceptedForm; ovzUi.document_number.value = doc.documentNumber || ''; ovzUi.valid_from.value = doc.validFrom || '';
+    ovzUi.valid_to.value = match?.[2] === '9' ? calculatedValidTo : (doc.validTo || '');
     if (doc.educationStage) ovzUi.education_stage.value = doc.educationStage;
     if (doc.educationProgram) {
         const option = Array.from(ovzUi.education_program.options).find((item) => item.value === doc.educationProgram);
@@ -296,10 +337,7 @@ async function editDocument(id) {
         else { ovzUi.education_program.value = '__OTHER__'; ovzUi.education_program_other.value = doc.educationProgram; }
     }
     updateProgramOther();
-    const match = String(doc.nosologyCode || '').match(/^([ИО])([0-9])\.([0-9])$/);
-    if (match) { ovzUi.nosology_letter.value = match[1]; ovzUi.nosology_major.value = match[2]; ovzUi.nosology_minor.value = match[3]; }
-    ovzUi.ipra.value = String(Boolean(doc.ipraPresent)); ovzUi.prolongation.value = String(Boolean(doc.prolongationAvailable)); ovzUi.prolongation_used.value = String(Boolean(doc.prolongationUsed));
-    if (doc.prolongedGrade) ovzUi.prolonged_grade.value = doc.prolongedGrade; if (doc.prolongedAcademicYear) ovzUi.prolonged_year.value = doc.prolongedAcademicYear;
+    ovzUi.ipra.value = String(Boolean(doc.ipraPresent));
     ovzUi.direction_body.innerHTML = ''; (doc.correctionDirections || []).forEach(addDirection); ovzUi.edit_dialog.close(); showOvzTab('certificates');
 }
 
@@ -312,30 +350,81 @@ function renderSpecialistList() { ovzUi.specialist_list.innerHTML = ovzSpecialis
 async function openDetail(studentId) {
     currentDossier = await ovzApi(`/api/ovz/dossiers/${studentId}`);
     ovzUi.detail_title.textContent = currentDossier.fullName; ovzUi.detail_subtitle.textContent = `${currentDossier.className} — ФК ${currentDossier.studentId}`;
-    renderRoadmap(); ovzUi.detail_dialog.showModal(); openStage(currentDossier.stages[0].stage);
+    renderRoadmap(); ovzUi.detail_dialog.showModal(); openStage('CERTIFICATE');
 }
 function renderRoadmap() {
+    if (isMseOnly(currentDossier)) {
+        ovzUi.roadmap.innerHTML = `<button data-roadmap-stage="CERTIFICATE" class="ovz-roadmap-step active">
+            <span class="ovz-roadmap-number green">1</span><span><strong>Справка МСЭ</strong><small>Получена</small></span></button>
+            <div class="ovz-roadmap-step ovz-roadmap-not-required"><span class="ovz-roadmap-number neutral">—</span>
+                <span><strong>Далее</strong><small>Не требуется</small></span></div>`;
+        return;
+    }
     ovzUi.roadmap.innerHTML = currentDossier.stages.map((stage, index) => `<button data-roadmap-stage="${stage.stage}" class="ovz-roadmap-step">
-        <span class="ovz-roadmap-number ${stageColors[stage.status]}">${index + 1}</span><span><strong>${ovzEsc(stage.label)}</strong><small>${stageNames[stage.status]}</small></span></button>`).join('');
+        <span class="ovz-roadmap-number ${stageColors[stage.status]}">${index + 1}</span><span><strong>${ovzEsc(stage.label)}</strong><small>${stage.stage === 'SPECIALIST_ASSIGNMENT'
+            ? ({NOT_RELEASED:'Нет распределения',PRINTED:'Частично распределено',COMPLETED:'Распределено'}[stage.status])
+            : stageNames[stage.status]}</small></span></button>`).join('');
 }
 function stageSelect(stage) { return `<select data-stage-select="${stage.stage}"><option value="NOT_RELEASED" ${stage.status === 'NOT_RELEASED' ? 'selected' : ''}>Не печатали</option><option value="PRINTED" ${stage.status === 'PRINTED' ? 'selected' : ''}>Распечатали, не завершили</option><option value="COMPLETED" ${stage.status === 'COMPLETED' ? 'selected' : ''}>Этап завершён</option></select>`; }
+function certificateDetail(document) {
+    const mse = document.documentType === 'MSE_CERTIFICATE';
+    return `<article class="ovz-info-card ovz-document-card"><strong>${typeNames[document.documentType]}</strong>
+        <dl class="ovz-document-details"><dt>Принято</dt><dd>${ovzEsc(acceptedFormNames[document.acceptedForm] || '—')}</dd>
+            <dt>Дата установления</dt><dd>${ovzDate(document.validFrom) || '—'}</dd>
+            <dt>Дата окончания</dt><dd>${ovzDate(document.validTo) || '—'}</dd>
+            ${mse ? `<dt>ИПР/ИПРА</dt><dd>${document.ipraPresent ? 'Да' : 'Нет'}</dd>` : ''}</dl></article>`;
+}
 function openStage(name) {
     const stage = currentDossier.stages.find((item) => item.stage === name); if (!stage) return;
     ovzUi.roadmap.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.roadmapStage === name));
     if (name === 'CERTIFICATE') {
-        ovzUi.stage_content.innerHTML = `<h3>Справки</h3>${currentDossier.documents.map((d) => `<article class="ovz-info-card"><strong>${typeNames[d.documentType]}</strong><span>действует до ${ovzDate(d.validTo)}</span></article>`).join('')}`;
+        const mseOnly = isMseOnly(currentDossier);
+        ovzUi.stage_content.innerHTML = `<h3>${mseOnly ? 'Справка МСЭ' : 'Справки'}</h3>${currentDossier.documents.map(certificateDetail).join('')}
+            ${mseOnly ? '<article class="ovz-info-card ovz-not-required"><strong>Далее</strong><span>Не требуется</span></article>' : ''}`;
     } else if (name === 'APPLICATION') {
         ovzUi.stage_content.innerHTML = `<h3>Заявление</h3><p class="muted">Специалисты перенесены из заключения ЦМПК. По умолчанию установлено согласие.</p>
-            <div id="ovz-application-choices">${(currentDossier.applicationChoices || []).map((c) => `<article class="ovz-application-choice"><div><strong>${ovzEsc(c.specialistName)}</strong><p>${ovzEsc(c.tasks)}</p></div><select data-application-agreed data-name="${ovzEsc(c.specialistName)}" data-tasks="${ovzEsc(c.tasks || '')}"><option value="true" ${c.agreed ? 'selected' : ''}>Согласен</option><option value="false" ${!c.agreed ? 'selected' : ''}>Отказ</option></select></article>`).join('') || '<p class="muted">В заключении не указаны специалисты.</p>'}</div><button data-application-received>${stage.status === 'COMPLETED' ? 'Получено ✓' : 'Получено'}</button>`;
+            <div id="ovz-application-choices">${(currentDossier.applicationChoices || []).map((c) => `<article class="ovz-application-choice"><div><strong>${ovzEsc(c.specialistName)}</strong><p>${ovzEsc(c.tasks)}</p></div><select data-application-agreed data-name="${ovzEsc(c.specialistName)}" data-tasks="${ovzEsc(c.tasks || '')}"><option value="true" ${c.agreed ? 'selected' : ''}>Согласен</option><option value="false" ${!c.agreed ? 'selected' : ''}>Отказ</option></select></article>`).join('') || '<p class="muted">В заключении не указаны специалисты.</p>'}</div>
+            <div class="ovz-stage-actions"><button type="button" data-application-received>${stage.status === 'COMPLETED' ? 'Получено ✓' : 'Получено'}</button></div>`;
     } else if (name === 'CONSENT') {
         ovzUi.stage_content.innerHTML = `<h3>Согласие</h3><p class="muted">Шаблон содержит согласие на психолого-педагогическую диагностику и согласие на сопровождение службы СППС.</p>
-            <div class="row controls-row"><button data-download-consent>Скачать шаблон Word</button><button data-consent-received class="secondary">Согласие получено</button></div><p>${stageSelect(stage)}</p>`;
+            <div class="ovz-stage-actions"><button type="button" data-download-consent>Скачать шаблон</button>
+                <button type="button" data-consent-received class="secondary">${stage.status === 'COMPLETED' ? 'Согласие получено ✓' : 'Согласие получено'}</button></div>`;
     } else if (name === 'PPK_APPOINTMENT' || name === 'PPK_IOM') {
         const type = name === 'PPK_IOM' ? 'IOM' : 'APPOINTMENT';
-        const protocols = (currentDossier.ppkProtocols || []).filter((p) => p.protocolType === type);
-        ovzUi.stage_content.innerHTML = `<h3>${ovzEsc(stage.label)}</h3>${protocols.map((p) => `<article class="ovz-info-card"><strong>${ovzEsc(p.protocolNumber)}</strong><span>${ovzDate(p.meetingDate)}</span><button data-download-ppk="${p.id}" class="secondary">Скачать Word</button></article>`).join('') || '<p class="muted">Протокол ещё не создан.</p>'}<button data-create-child-ppk="${type}">Создать ППк</button><p>${stageSelect(stage)}</p>`;
+        const protocols = (currentDossier.ppkProtocols || []).filter((p) => type === 'APPOINTMENT'
+            ? p.protocolType === 'APPOINTMENT' || p.protocolType === 'RECOMMENDATION_SUPPORT'
+            : p.protocolType === type);
+        ovzUi.stage_content.innerHTML = `<h3>${ovzEsc(stage.label)}</h3>${protocols.map((p) => `<article class="ovz-info-card ovz-ppk-stage-card">
+            <div><strong>${ovzEsc(p.protocolNumber)}</strong><span>${ovzDate(p.meetingDate)}</span></div>
+            <div class="ovz-stage-actions"><button type="button" data-download-ppk="${p.id}" class="secondary">Скачать Word</button>
+                <button type="button" data-edit-child-ppk="${p.id}" class="secondary">Изменить ППк</button>
+                <button type="button" data-sign-child-ppk="${p.id}" ${p.status === 'COMPLETED' ? 'disabled' : ''}>${p.status === 'COMPLETED' ? 'ППк подписано ✓' : 'Подписано ППк'}</button></div></article>`).join('') || '<p class="muted">Протокол ещё не создан.</p>'}
+            <div class="ovz-stage-actions"><button type="button" data-create-child-ppk="${type}">Создать ППк</button></div>`;
+    } else if (name === 'SPECIALIST_ASSIGNMENT') {
+        openSpecialistAssignmentStage();
     } else {
         ovzUi.stage_content.innerHTML = `<h3>${ovzEsc(stage.label)}</h3><p class="muted">Фиксируется состояние этапа. Конструктор документа будет подключён отдельным шагом.</p>${stageSelect(stage)}<button data-save-stage="${name}">Сохранить состояние</button>`;
+    }
+}
+async function openSpecialistAssignmentStage() {
+    const studentId = currentDossier.studentId;
+    ovzUi.stage_content.innerHTML = '<h3>Распределение за специалистами</h3><p class="muted">Загрузка…</p>';
+    try {
+        const distribution = await ovzApi(`/api/ovz/specialist-distribution/students/${studentId}`);
+        if (Number(currentDossier?.studentId) !== Number(studentId)) return;
+        const rows = (distribution.directions || []).map((direction) => `<article class="ovz-info-card ovz-assignment-card">
+            <div><strong>${ovzEsc(direction.specialistName)}</strong><small>${direction.assigned
+                ? `Закреплён: ${ovzEsc(direction.employeeName)} · группа ${ovzEsc(direction.groupName)}`
+                : 'Конкретный специалист ещё не назначен'}</small></div>
+            <span class="ovz-assignment-state ${direction.assigned ? 'assigned' : 'unassigned'}">${direction.assigned ? 'Есть закрепление' : 'Нет закрепления'}</span>
+        </article>`).join('');
+        ovzUi.stage_content.innerHTML = `<h3>Распределение за специалистами</h3>
+            ${!distribution.ppkSigned ? '<p class="ovz-stage-warning">Распределение станет доступно после подписания ППк назначения.</p>' : ''}
+            ${rows || '<p class="muted">В справках ЦМПК не указаны направления коррекционной работы.</p>'}
+            <div class="ovz-stage-actions">${distribution.ppkSigned && distribution.neededCount
+                ? `<a class="button-link" href="/ovz-specialist-distribution.html?studentId=${studentId}">Распределить</a>` : ''}</div>`;
+    } catch (error) {
+        ovzUi.stage_content.innerHTML = `<h3>Распределение за специалистами</h3><p class="error-message">Ошибка: ${ovzEsc(error.message)}</p>`;
     }
 }
 async function updateStage(studentId, stage, status) {
@@ -343,7 +432,7 @@ async function updateStage(studentId, stage, status) {
     currentDossier = await ovzApi(`/api/ovz/dossiers/${studentId}`); renderRoadmap(); openStage(stage); await loadRegistry();
 }
 
-async function applyPpkDefaults(studentId = null) {
+async function applyPpkDefaults(studentId = null, requestedType = null) {
     const suffix = studentId ? `?studentId=${encodeURIComponent(studentId)}` : '';
     const defaults = await ovzApi(`/api/ovz/ppk/defaults${suffix}`);
     ovzUi.ppk_chair.value = defaults.chairName || '';
@@ -354,17 +443,24 @@ async function applyPpkDefaults(studentId = null) {
     ovzUi.ppk_agenda.value = defaults.agenda || '';
     ovzUi.ppk_notes.value = defaults.meetingNotes || '';
     ovzUi.ppk_decision.value = defaults.decisionText || '';
+    const activeType = requestedType || ovzUi.ppk_type.value;
+    if (activeType !== 'IOM' && defaults.protocolType) ovzUi.ppk_type.value = defaults.protocolType;
     ovzUi.ppk_message.textContent = defaults.message || '';
 }
 async function resetPpk(studentId = null, type = 'APPOINTMENT') {
     ovzUi.ppk_form.reset(); ovzUi.ppk_id.value = ''; ovzUi.ppk_date.value = new Date().toISOString().slice(0, 10); ovzUi.ppk_type.value = type;
     setStudent(studentId ? ovzStudents.find((s) => Number(s.studentId) === Number(studentId)) : null, 'ppk');
     ovzUi.ppk_form.style.display = ''; ovzUi.ppk_message.textContent = '';
-    await applyPpkDefaults(studentId);
+    await applyPpkDefaults(studentId, type);
+}
+function ppkTypeName(type) {
+    if (type === 'IOM') return 'ИОМ';
+    if (type === 'RECOMMENDATION_SUPPORT') return 'Сопровождение по рекомендации';
+    return 'Специальные условия по заключению';
 }
 async function loadPpk() {
     const rows = await ovzApi('/api/ovz/ppk');
-    ovzUi.ppk_body.innerHTML = rows.length ? rows.map((p) => `<tr><td>${ovzEsc(p.protocolNumber)}</td><td>${ovzDate(p.meetingDate)}</td><td>${p.protocolType === 'IOM' ? 'ИОМ' : 'Назначение'}</td><td>${ovzEsc(p.studentFullName || '')}</td><td>${ovzEsc(p.className || '')}</td><td>${stageNames[p.status]}</td><td><div class="ovz-actions"><button data-ppk-edit="${p.id}">Изменить</button><button class="secondary" data-ppk-download="${p.id}">Word</button><button class="danger" data-ppk-delete="${p.id}">Удалить</button></div></td></tr>`).join('') : '<tr><td colspan="7" class="muted">Протоколов пока нет.</td></tr>';
+    ovzUi.ppk_body.innerHTML = rows.length ? rows.map((p) => `<tr><td>${ovzEsc(p.protocolNumber)}</td><td>${ovzDate(p.meetingDate)}</td><td>${ppkTypeName(p.protocolType)}</td><td>${ovzEsc(p.studentFullName || '')}</td><td>${ovzEsc(p.className || '')}</td><td>${stageNames[p.status]}</td><td><div class="ovz-actions"><button data-ppk-edit="${p.id}">Изменить</button><button class="secondary" data-ppk-download="${p.id}">Word</button><button data-ppk-sign="${p.id}" ${p.status === 'COMPLETED' ? 'disabled' : ''}>${p.status === 'COMPLETED' ? 'ППк подписано ✓' : 'Подписано ППк'}</button><button class="danger" data-ppk-delete="${p.id}">Удалить</button></div></td></tr>`).join('') : '<tr><td colspan="7" class="muted">Протоколов пока нет.</td></tr>';
     ovzUi.ppk_body.dataset.rows = JSON.stringify(rows);
 }
 function ppkPayload() { return { id: Number(ovzUi.ppk_id.value) || null, meetingDate: ovzUi.ppk_date.value || null, protocolType: ovzUi.ppk_type.value,
@@ -372,6 +468,19 @@ function ppkPayload() { return { id: Number(ovzUi.ppk_id.value) || null, meeting
     attendees: ovzUi.ppk_attendees.value, representativeName: ovzUi.ppk_invited.value.trim(),
     representativeSignatureName: ovzUi.ppk_representative_signature.checked ? ovzUi.ppk_invited.value.trim() : '',
     agenda: ovzUi.ppk_agenda.value, meetingNotes: ovzUi.ppk_notes.value, decisionText: ovzUi.ppk_decision.value };
+}
+
+async function editPpkProtocol(protocol) {
+    if (!protocol) return;
+    if (ovzUi.detail_dialog.open) ovzUi.detail_dialog.close();
+    showOvzTab('ppk');
+    await resetPpk(protocol.studentId, protocol.protocolType);
+    ovzUi.ppk_id.value = protocol.id; ovzUi.ppk_date.value = protocol.meetingDate; ovzUi.ppk_status.value = protocol.status;
+    ovzUi.ppk_chair.value = protocol.chairName || ''; ovzUi.ppk_secretary.value = protocol.secretaryName || ''; ovzUi.ppk_attendees.value = protocol.attendees || '';
+    const hasSavedRepresentative = protocol.representativeName != null || protocol.representativeSignatureName != null;
+    if (hasSavedRepresentative) { ovzUi.ppk_invited.value = protocol.representativeName || ''; ovzUi.ppk_representative_signature.checked = Boolean(protocol.representativeSignatureName); }
+    ovzUi.ppk_agenda.value = protocol.agenda || ''; ovzUi.ppk_notes.value = protocol.meetingNotes || ''; ovzUi.ppk_decision.value = protocol.decisionText || '';
+    ovzUi.ppk_message.textContent = `Редактирование ${protocol.protocolNumber}.`;
 }
 
 document.querySelectorAll('[data-ovz-tab]').forEach((button) => button.addEventListener('click', () => showOvzTab(button.dataset.ovzTab)));
@@ -402,9 +511,11 @@ ovzUi.edit_dialog.addEventListener('click', (event) => {
 });
 ovzUi.student_search.addEventListener('change', () => { resolveStudent(); refreshEducationDefaults(); });
 ovzUi.student_search.addEventListener('input', () => { const student = findStudent(ovzUi.student_search.value); if (student) setStudent(student); else ovzUi.student_id.value = ''; });
-ovzUi.ppk_student_search.addEventListener('change', async () => { const student = resolveStudent('ppk'); await applyPpkDefaults(student?.studentId || null); });
+ovzUi.ppk_student_search.addEventListener('change', async () => { const student = resolveStudent('ppk'); await applyPpkDefaults(student?.studentId || null, ovzUi.ppk_type.value); });
 ovzUi.document_type.addEventListener('change', updateCertificateType); ovzUi.education_program.addEventListener('change', updateProgramOther);
 ovzUi.prolongation.addEventListener('change', refreshEducationDefaults); ovzUi.prolongation_used.addEventListener('change', refreshEducationDefaults);
+ovzUi.nosology_letter.addEventListener('change', refreshEducationDefaults);
+ovzUi.nosology_major.addEventListener('change', refreshEducationDefaults); ovzUi.nosology_minor.addEventListener('change', refreshEducationDefaults);
 ovzUi.add_direction.addEventListener('click', () => addDirection()); ovzUi.direction_body.addEventListener('click', (event) => event.target.closest('[data-remove-direction]')?.closest('tr')?.remove());
 ovzUi.certificate_clear.addEventListener('click', resetCertificate); ovzUi.open_specialists.addEventListener('click', () => ovzUi.specialists_dialog.showModal());
 ovzUi.certificate_form.addEventListener('submit', async (event) => { event.preventDefault(); resolveStudent();
@@ -416,19 +527,47 @@ ovzUi.specialist_form.addEventListener('submit', async (event) => { event.preven
 ovzUi.roadmap.addEventListener('click', (event) => { const button = event.target.closest('[data-roadmap-stage]'); if (button) openStage(button.dataset.roadmapStage); });
 ovzUi.stage_content.addEventListener('click', async (event) => {
     const target = event.target; const studentId = currentDossier.studentId;
-    if (target.matches('[data-application-received]')) { const choices = Array.from(document.querySelectorAll('[data-application-agreed]')).map((el)=>({specialistName:el.dataset.name,tasks:el.dataset.tasks,agreed:el.value==='true'})); await ovzApi(`/api/ovz/dossiers/${studentId}/application`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(choices)}); currentDossier=await ovzApi(`/api/ovz/dossiers/${studentId}`);renderRoadmap();openStage('APPLICATION');await loadRegistry(); }
-    if (target.matches('[data-download-consent]')) { await ovzDownload(`/api/ovz/dossiers/${studentId}/consent`,{method:'POST'},'Согласие_на_диагностику_и_сопровождение_СППС.docx'); currentDossier=await ovzApi(`/api/ovz/dossiers/${studentId}`);renderRoadmap();openStage('CONSENT'); }
-    if (target.matches('[data-consent-received]')) await updateStage(studentId,'CONSENT','COMPLETED');
-    if (target.dataset.saveStage) await updateStage(studentId,target.dataset.saveStage,document.querySelector(`[data-stage-select="${target.dataset.saveStage}"]`).value);
-    if (target.dataset.createChildPpk) { ovzUi.detail_dialog.close(); showOvzTab('ppk'); await resetPpk(studentId,target.dataset.createChildPpk); }
-    if (target.dataset.downloadPpk) await ovzDownload(`/api/ovz/ppk/${target.dataset.downloadPpk}/document`,{},'ППк.docx');
+    try {
+        const applicationReceived = target.closest('[data-application-received]');
+        if (applicationReceived) {
+            applicationReceived.disabled = true; applicationReceived.textContent = 'Сохраняем…';
+            const choices = Array.from(ovzUi.stage_content.querySelectorAll('[data-application-agreed]'))
+                .map((el) => ({specialistName:el.dataset.name,tasks:el.dataset.tasks,agreed:el.value==='true'}));
+            await ovzApi(`/api/ovz/dossiers/${studentId}/application`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(choices)});
+            currentDossier = await ovzApi(`/api/ovz/dossiers/${studentId}`); renderRoadmap(); openStage('APPLICATION'); await loadRegistry(); return;
+        }
+        if (target.closest('[data-download-consent]')) {
+            await ovzDownload(`/api/ovz/dossiers/${studentId}/consent`, {method:'POST'}, 'Согласие_на_диагностику_и_сопровождение_СППС.docx');
+            currentDossier = await ovzApi(`/api/ovz/dossiers/${studentId}`); renderRoadmap(); openStage('CONSENT'); await loadRegistry(); return;
+        }
+        if (target.closest('[data-consent-received]')) { await updateStage(studentId, 'CONSENT', 'COMPLETED'); return; }
+        const signPpk = target.closest('[data-sign-child-ppk]');
+        if (signPpk) {
+            signPpk.disabled = true; signPpk.textContent = 'Сохраняем…';
+            const protocol = (currentDossier.ppkProtocols || []).find((p) => Number(p.id) === Number(signPpk.dataset.signChildPpk));
+            const ppkStage = protocol?.protocolType === 'IOM' ? 'PPK_IOM' : 'PPK_APPOINTMENT';
+            await ovzApi(`/api/ovz/ppk/${signPpk.dataset.signChildPpk}/signed`, {method:'PUT'});
+            currentDossier = await ovzApi(`/api/ovz/dossiers/${studentId}`); renderRoadmap(); openStage(ppkStage); await loadRegistry(); return;
+        }
+        const editPpk = target.closest('[data-edit-child-ppk]');
+        if (editPpk) { await editPpkProtocol((currentDossier.ppkProtocols || []).find((p) => Number(p.id) === Number(editPpk.dataset.editChildPpk))); return; }
+        const saveStage = target.closest('[data-save-stage]');
+        if (saveStage) { await updateStage(studentId, saveStage.dataset.saveStage, ovzUi.stage_content.querySelector(`[data-stage-select="${saveStage.dataset.saveStage}"]`).value); return; }
+        const createPpk = target.closest('[data-create-child-ppk]');
+        if (createPpk) { ovzUi.detail_dialog.close(); showOvzTab('ppk'); await resetPpk(studentId, createPpk.dataset.createChildPpk); return; }
+        const downloadPpk = target.closest('[data-download-ppk]');
+        if (downloadPpk) await ovzDownload(`/api/ovz/ppk/${downloadPpk.dataset.downloadPpk}/document`, {}, 'ППк.docx');
+    } catch (error) {
+        ovzUi.stage_content.insertAdjacentHTML('beforeend', `<p class="error-message">Ошибка: ${ovzEsc(error.message)}</p>`);
+    }
 });
 ovzUi.new_ppk.addEventListener('click', async () => resetPpk()); ovzUi.ppk_cancel.addEventListener('click', () => ovzUi.ppk_form.style.display='none');
 ovzUi.ppk_form.addEventListener('submit', async (event) => { event.preventDefault(); resolveStudent('ppk'); try { const saved=await ovzApi('/api/ovz/ppk',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(ppkPayload())}); ovzUi.ppk_message.textContent=`Сохранён ${saved.protocolNumber}`;await loadPpk();ovzUi.ppk_form.style.display='none'; } catch(error){ovzUi.ppk_message.textContent=`Ошибка: ${error.message}`;} });
 ovzUi.ppk_body.addEventListener('click', async (event) => { const rows=JSON.parse(ovzUi.ppk_body.dataset.rows||'[]');
     if(event.target.dataset.ppkDownload) await ovzDownload(`/api/ovz/ppk/${event.target.dataset.ppkDownload}/document`,{},'ППк.docx');
     if(event.target.dataset.ppkDelete&&confirm('Удалить протокол ППк?')){await ovzApi(`/api/ovz/ppk/${event.target.dataset.ppkDelete}`,{method:'DELETE'});await loadPpk();}
-    if(event.target.dataset.ppkEdit){const p=rows.find((x)=>Number(x.id)===Number(event.target.dataset.ppkEdit));await resetPpk(p.studentId,p.protocolType);ovzUi.ppk_id.value=p.id;ovzUi.ppk_date.value=p.meetingDate;ovzUi.ppk_status.value=p.status;ovzUi.ppk_chair.value=p.chairName||'';ovzUi.ppk_secretary.value=p.secretaryName||'';ovzUi.ppk_attendees.value=p.attendees||'';const hasSavedRepresentative=p.representativeName!=null||p.representativeSignatureName!=null;if(hasSavedRepresentative){ovzUi.ppk_invited.value=p.representativeName||'';ovzUi.ppk_representative_signature.checked=Boolean(p.representativeSignatureName);}ovzUi.ppk_agenda.value=p.agenda||'';ovzUi.ppk_notes.value=p.meetingNotes||'';ovzUi.ppk_decision.value=p.decisionText||'';ovzUi.ppk_message.textContent='Редактирование сохранённого протокола.';}
+    if(event.target.dataset.ppkEdit) await editPpkProtocol(rows.find((x)=>Number(x.id)===Number(event.target.dataset.ppkEdit)));
+    if(event.target.dataset.ppkSign){event.target.disabled=true;event.target.textContent='Сохраняем…';await ovzApi(`/api/ovz/ppk/${event.target.dataset.ppkSign}/signed`,{method:'PUT'});await Promise.all([loadPpk(),loadRegistry()]);}
 });
 
 ovzUi.ppk_settings_open.addEventListener('click', async () => {

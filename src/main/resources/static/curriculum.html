@@ -43,13 +43,15 @@
     <section class="card plan-block">
         <h2>Импорт учебного плана из Excel</h2>
         <p class="muted">Загрузите файл УП (листы НОО/ООО/СОО). После импорта предметы автоматически добавляются в справочник «Предметы».</p>
-        <div class="row" data-requires-edit>
-            <input id="curriculum-import-file" type="file" accept=".xlsx,.xls">
-            <button id="import-curriculum-btn" type="button">Импортировать учебный план</button>
-            <button id="export-curriculum-btn" type="button">Экспортировать учебный план (Excel)</button>
-            <button id="export-curriculum-parallels-btn" type="button">Экспорт учебного плана по параллелям</button>
-            <button id="export-curriculum-addresses-btn" type="button">По адресам</button>
-            <button id="export-curriculum-department-btn" type="button">УП для департамента</button>
+        <div class="row">
+            <div class="row" data-requires-edit>
+                <input id="curriculum-import-file" type="file" accept=".xlsx,.xls">
+                <button id="import-curriculum-btn" type="button">Импортировать учебный план</button>
+            </div>
+            <button id="export-curriculum-btn" type="button" data-requires-export data-allow-readonly="true">Экспортировать учебный план (Excel)</button>
+            <button id="export-curriculum-parallels-btn" type="button" data-requires-export data-allow-readonly="true">Экспорт учебного плана по параллелям</button>
+            <button id="export-curriculum-addresses-btn" type="button" data-requires-export data-allow-readonly="true">По адресам</button>
+            <button id="export-curriculum-department-btn" type="button" data-requires-export data-allow-readonly="true">УП для департамента</button>
         </div>
     </section>
 

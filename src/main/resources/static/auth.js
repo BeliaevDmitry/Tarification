@@ -16,6 +16,7 @@ const TAB_PATHS = {
     '/teachers-notification.html': 'HR_NOTIFICATIONS_VIEW',
     '/contingent.html': 'CONTINGENT_STATS',
     '/ovz.html': 'OVZ',
+    '/ovz-specialist-distribution.html': 'OVZ',
     '/educational-work.html': 'EDUCATIONAL_WORK',
     '/documents.html': null,
     '/pedagogical-councils.html': 'DOCUMENTS_PEDAGOGICAL_COUNCILS',
@@ -136,6 +137,12 @@ function isLoadModulePage(pathname) {
 }
 
 function navItemsForPath(pathname) {
+    if (pathname === '/ovz.html' || pathname === '/ovz-specialist-distribution.html') {
+        return [
+            { path: '/ovz.html', tab: 'OVZ', label: 'Реестр ОВЗ' },
+            { path: '/ovz-specialist-distribution.html', tab: 'OVZ', label: 'Распределение по специалистам' }
+        ];
+    }
     if (pathname === '/vsoko-mcko.html' || pathname === '/vsoko-summary.html'
         || pathname === '/vsoko-interview.html' || pathname === '/vsoko-mcko-teachers.html') {
         return [
@@ -281,7 +288,8 @@ function isEducationalWorkPage() {
 }
 
 function isOvzPage() {
-    return window.location.pathname === '/ovz.html';
+    return window.location.pathname === '/ovz.html'
+        || window.location.pathname === '/ovz-specialist-distribution.html';
 }
 
 function isDocumentsHubPage() {
@@ -357,6 +365,13 @@ function canEditCurrentPage(currentUser) {
     const tab = currentTab();
     if (!tab) return currentUser.canEdit;
     return Boolean(tabPermissionMap(currentUser)[tab]?.canEdit);
+}
+
+function canExportCurrentPage(currentUser) {
+    if (currentUser.admin) return true;
+    const tab = currentTab();
+    if (!tab) return false;
+    return Boolean(tabPermissionMap(currentUser)[tab]?.canExport);
 }
 
 function stickyHeader() {
@@ -633,6 +648,15 @@ function enrichMainMenu(currentUser) {
     }
 }
 
+function disableExportAreas(currentUser) {
+    if (canExportCurrentPage(currentUser)) return;
+    document.querySelectorAll('[data-requires-export]').forEach((control) => {
+        control.disabled = true;
+        control.setAttribute('aria-disabled', 'true');
+        control.title = 'Нет права на экспорт этой вкладки';
+    });
+}
+
 (async function initAuth() {
     try {
         const currentUser = await tarificationApi('/api/auth/me');
@@ -665,12 +689,18 @@ function enrichMainMenu(currentUser) {
             showAccessDenied('разделу «Документы»');
             return;
         }
+        if (isOvzPage() && !hasOvzAccess(currentUser)) {
+            mountHeaderUser(currentUser);
+            showAccessDenied('разделу «ОВЗ»');
+            return;
+        }
         enrichNavigation(currentUser);
         enrichMainMenu(currentUser);
         mountHeaderUser(currentUser);
         await mountAcademicYearSelector();
         insertReadonlyNotice(currentUser);
         disableEditAreas(currentUser);
+        disableExportAreas(currentUser);
         updateStickyHeaderMetrics();
         window.withAcademicYear = withAcademicYear;
         window.getStoredAcademicYear = getStoredAcademicYear;

@@ -22,9 +22,11 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class PpkProtocolServiceTest {
@@ -72,6 +74,29 @@ class PpkProtocolServiceTest {
                 "для обучающейся 2 «Е» класса Ивановой Анны Сергеевны"));
         assertTrue(defaults.getDecisionText().contains(
                 "обучающейся с ОВЗ Ивановой Анне Сергеевне"));
+        assertEquals(PpkProtocolType.APPOINTMENT, defaults.getProtocolType());
+    }
+
+    @Test
+    void usesSeparateRecommendationProtocolWithoutSpecialConditionsOrIom() {
+        StudentProfile student = student(14L, "Муравьёва Виктория Денисовна", "Муравьёв Денис Олегович");
+        prepareRecommendationDefaults(student, "2-Е");
+
+        OvzDtos.PpkProtocolDefaults defaults = service.defaults("2026/2027", student.getId());
+
+        assertEquals(PpkProtocolType.RECOMMENDATION_SUPPORT, defaults.getProtocolType());
+        assertEquals("Оказание психолого-педагогического сопровождения и организация коррекционно-развивающих занятий "
+                + "в образовательной организации для обучающейся Муравьёвой Виктории Денисовны в 2026-2027 учебном году.",
+                defaults.getAgenda());
+        assertEquals("Консультирование родителя/законного представителя по вопросам оказания психолого-педагогического "
+                + "сопровождения для обучающейся в 2026-2027 учебном году согласно рекомендации ЦПМПК.",
+                defaults.getMeetingNotes());
+        assertEquals("На основании рекомендации ЦПМПК г. Москвы оказать психолого-педагогическое сопровождение для "
+                + "обучающейся 2 «Е» класса Муравьёвой Виктории Денисовны на 2026-2027 учебный год.",
+                defaults.getDecisionText());
+        assertFalse(defaults.getAgenda().contains("АООП"));
+        assertFalse(defaults.getAgenda().contains("ИОМ"));
+        assertFalse(defaults.getDecisionText().contains("специальные условия"));
     }
 
     @Test
@@ -127,6 +152,25 @@ class PpkProtocolServiceTest {
         assertEquals("№5", saved.getProtocolNumber());
     }
 
+    @Test
+    void marksProtocolSignedAndCompletesItsRoadmapStage() {
+        StudentProfile student = student(15L, "Петров Артём Ильич", null);
+        PpkProtocol protocol = protocol(student);
+        when(protocolRepository.findById(7L)).thenReturn(Optional.of(protocol));
+        when(protocolRepository.save(any(PpkProtocol.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(protocolRepository.findAllByStudent_IdAndAcademicYearOrderByMeetingDateDesc(15L, "2026/2027"))
+                .thenReturn(List.of(protocol));
+        when(studentRepository.getById(15L)).thenReturn(student);
+        when(workflowStageRepository.findByStudent_IdAndAcademicYearAndStage(
+                15L, "2026/2027", org.school.personalLoad.model.OvzRoadmapStage.PPK_APPOINTMENT))
+                .thenReturn(Optional.empty());
+
+        OvzDtos.PpkProtocolView signed = service.markSigned("2026/2027", 7L);
+
+        assertEquals(OvzStageStatus.COMPLETED, signed.getStatus());
+        verify(workflowStageRepository).save(any());
+    }
+
     private void prepareDefaults(StudentProfile student, String className, String nosologyCode) {
         OvzDtos.PpkProtocolSettingsView settings = new OvzDtos.PpkProtocolSettingsView();
         settings.setChairName("Власова Юлия Сергеевна");
@@ -148,6 +192,27 @@ class PpkProtocolServiceTest {
         when(documentRepository.findFirstByStudent_IdAndAcademicYearAndDocumentType(
                 student.getId(), "2026/2027", StudentSupportDocumentType.CPMPC_CONCLUSION))
                 .thenReturn(Optional.of(conclusion));
+    }
+
+    private void prepareRecommendationDefaults(StudentProfile student, String className) {
+        OvzDtos.PpkProtocolSettingsView settings = new OvzDtos.PpkProtocolSettingsView();
+        settings.setChairName("Власова Юлия Сергеевна");
+        settings.setSecretaryName("Рыбкина Людмила Петровна");
+        settings.setAttendeeEmployeeIds(List.of());
+        settings.setAttendeeMembers(List.of());
+        when(settingsService.get()).thenReturn(settings);
+        when(studentRepository.findById(student.getId())).thenReturn(Optional.of(student));
+
+        StudentClassEnrollment enrollment = new StudentClassEnrollment();
+        enrollment.setClassName(className);
+        when(enrollmentRepository.findFirstByStudent_IdAndAcademicYearAndValidToIsNullOrderByValidFromDesc(
+                student.getId(), "2026/2027")).thenReturn(Optional.of(enrollment));
+
+        StudentSupportDocument recommendation = new StudentSupportDocument();
+        recommendation.setDocumentType(StudentSupportDocumentType.CPMPC_RECOMMENDATION);
+        when(documentRepository.findFirstByStudent_IdAndAcademicYearAndDocumentType(
+                student.getId(), "2026/2027", StudentSupportDocumentType.CPMPC_RECOMMENDATION))
+                .thenReturn(Optional.of(recommendation));
     }
 
     private StudentProfile student(Long id, String fullName, String representativeName) {

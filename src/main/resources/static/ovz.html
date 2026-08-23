@@ -21,6 +21,7 @@
             <button class="nav-link" type="button" data-ovz-tab="certificates">Справки</button>
             <button class="nav-link" type="button" data-ovz-tab="nosologies">Справочник нозологий</button>
             <button class="nav-link" type="button" data-ovz-tab="ppk">ППк</button>
+            <a class="nav-link" href="/ovz-specialist-distribution.html">Распределение по специалистам</a>
         </nav>
     </section>
 
@@ -33,17 +34,30 @@
                 <button id="ovz-registry-export" type="button" class="secondary">Экспорт Excel</button>
             </div>
         </div>
+        <div class="ovz-registry-statistics" aria-label="Статистика реестра ОВЗ" aria-live="polite">
+            <article class="ovz-registry-stat ovz-registry-stat-mse">
+                <strong id="ovz-registry-stat-mse-only">0</strong><span>Только МСЭ</span>
+            </article>
+            <article class="ovz-registry-stat ovz-registry-stat-conclusion">
+                <strong id="ovz-registry-stat-conclusion-only">0</strong><span>Только заключение ЦМПК</span>
+            </article>
+            <article class="ovz-registry-stat ovz-registry-stat-combined">
+                <strong id="ovz-registry-stat-mse-conclusion">0</strong><span>МСЭ + заключение ЦМПК</span>
+            </article>
+            <article class="ovz-registry-stat ovz-registry-stat-recommendation">
+                <strong id="ovz-registry-stat-recommendation">0</strong><span>Рекомендация ЦМПК</span><small>включая детей с МСЭ</small>
+            </article>
+        </div>
         <p id="ovz-registry-message" class="muted"></p>
         <p class="muted ovz-sort-help">Для мультисортировки нажимайте заголовки по очереди. Повторный клик меняет направление, третий — убирает колонку из сортировки.</p>
         <div class="sheet-wrap"><table class="sheet-table ovz-registry-table">
             <thead id="ovz-registry-head"><tr>
-                <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="studentId">ФК <span data-ovz-sort-indicator></span></button></th>
                 <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="fullName">ФИО <span data-ovz-sort-indicator></span></button></th>
                 <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="className">Класс <span data-ovz-sort-indicator></span></button></th>
-                <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="mse">МСЭ <span data-ovz-sort-indicator></span></button></th>
-                <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="conclusion">Заключение<br>ЦМПК <span data-ovz-sort-indicator></span></button></th>
+                <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="mseValidFrom">МСЭ<br>действие <span data-ovz-sort-indicator></span></button></th>
+                <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="conclusionValidFrom">Заключение ЦМПК<br>действие <span data-ovz-sort-indicator></span></button></th>
                 <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="recommendation">Рекомендация<br>ЦМПК <span data-ovz-sort-indicator></span></button></th>
-                <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="validTo">Срок <span data-ovz-sort-indicator></span></button></th>
+                <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="nosologyCode">Нозология <span data-ovz-sort-indicator></span></button></th>
                 <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="correctionDirections">Коррекционная<br>работа <span data-ovz-sort-indicator></span></button></th>
                 <th><button type="button" class="ovz-sort-button" data-ovz-registry-sort="stages">Этапы <span data-ovz-sort-indicator></span></button></th>
                 <th>Действия</th>
@@ -126,7 +140,7 @@
             <input id="ovz-ppk-id" type="hidden">
             <div class="certificate-form-grid">
                 <label>Дата заседания<input id="ovz-ppk-date" type="date"></label>
-                <label>Вид протокола<select id="ovz-ppk-type"><option value="APPOINTMENT">Назначение специальных условий</option><option value="IOM">Рассмотрение ИОМ</option></select></label>
+                <label>Вид протокола<select id="ovz-ppk-type"><option value="APPOINTMENT">Назначение специальных условий по заключению ЦМПК</option><option value="RECOMMENDATION_SUPPORT">Сопровождение по рекомендации ЦМПК</option><option value="IOM">Рассмотрение ИОМ</option></select></label>
                 <label>Ребёнок<input id="ovz-ppk-student-search" type="search" list="ovz-student-options" autocomplete="off"><input id="ovz-ppk-student-id" type="hidden"></label>
                 <label>Состояние<select id="ovz-ppk-status"><option value="NOT_RELEASED">Не печатали</option><option value="PRINTED">Распечатали, не завершили</option><option value="COMPLETED">Этап завершён</option></select></label>
                 <label>Председатель<input id="ovz-ppk-chair" type="text" value="Власова Ю.С."></label>

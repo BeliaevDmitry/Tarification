@@ -39,11 +39,12 @@
                 <select id="probe-status-filter">
                     <option value="">Все</option>
                     <option value="DRAFT">Черновики</option>
-                    <option value="BUILDING_APPROVED">Согласованы корпусом</option>
+                    <option value="BUILDING_APPROVED">Согласованы</option>
                     <option value="GENERATED">Word сформирован</option>
                     <option value="RELEASED">Выпущены</option>
                 </select>
             </label>
+            <button id="probe-settings-btn" type="button" class="secondary" hidden>Настройка согласования</button>
         </div>
         <div class="probe-legend">
             <span class="probe-legend-item urgent">На следующей неделе, не согласовано</span>
@@ -68,6 +69,23 @@
             </table>
         </div>
     </section>
+
+    <dialog id="probe-settings-dialog" class="teacher-card-dialog probe-dialog">
+        <div class="dialog-hero"><div><h2>Кто согласовывает приказы</h2>
+            <p class="muted">Организационный корпус — СП, к которому относится класс. Фактическая площадка — адрес, где класс сейчас находится.</p></div>
+            <button type="button" data-probe-close>Закрыть</button></div>
+        <form id="probe-settings-form">
+            <label>Обязательное согласование
+                <select id="probe-approval-mode" required>
+                    <option value="ORGANIZATIONAL_BUILDING">Руководитель организационного корпуса</option>
+                    <option value="PHYSICAL_SITE">Руководитель фактической площадки</option>
+                    <option value="BOTH">Любой из двух руководителей</option>
+                </select>
+            </label>
+            <p class="muted">В режиме «Любой из двух» достаточно одного согласования — руководителя корпуса или площадки. Остальные руководители видят приказ информационно.</p>
+            <div class="dialog-actions"><span id="probe-settings-feedback" class="muted"></span><button type="submit">Сохранить</button></div>
+        </form>
+    </dialog>
 
     <dialog id="probe-companions-dialog" class="teacher-card-dialog probe-dialog">
         <div class="dialog-hero"><div><h2>Сопровождающие</h2><p id="probe-companions-caption" class="muted"></p></div>
@@ -100,9 +118,10 @@
             <div class="probe-add-student-row">
                 <select id="probe-add-student"><option value="">Добавить ребёнка из контингента…</option></select>
                 <button id="probe-add-student-btn" type="button" class="secondary">Добавить</button>
+                <button id="probe-refresh-contacts-btn" type="button" class="secondary">Обновить контакты из контингента</button>
             </div>
             <div class="sheet-wrap"><table class="sheet-table">
-                <thead><tr><th>ФИО</th><th>Класс</th><th>ФИО представителя</th><th>Телефон</th><th></th></tr></thead>
+                <thead><tr><th>ФИО</th><th>Класс</th><th>Телефон ребёнка</th><th>ФИО представителя</th><th>Телефон представителя</th><th></th></tr></thead>
                 <tbody id="probe-edit-participants"></tbody>
             </table></div>
             <div class="dialog-actions"><span id="probe-edit-feedback" class="muted"></span><button type="submit">Сохранить изменения</button></div>

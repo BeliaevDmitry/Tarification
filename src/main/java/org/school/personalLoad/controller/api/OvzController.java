@@ -111,6 +111,12 @@ public class OvzController {
         ppkService.delete(year(academicYear), id); return ResponseEntity.noContent().build();
     }
 
+    @PutMapping("/ppk/{id}/signed")
+    public OvzDtos.PpkProtocolView markPpkSigned(@RequestParam(required = false) String academicYear,
+                                                 @PathVariable Long id) {
+        return ppkService.markSigned(year(academicYear), id);
+    }
+
     @GetMapping("/ppk/{id}/document")
     public ResponseEntity<byte[]> ppkDocument(@RequestParam(required = false) String academicYear, @PathVariable Long id) {
         PpkProtocolService.GeneratedDocument generated = ppkService.generate(year(academicYear), id);

@@ -5,6 +5,7 @@ public enum OvzRoadmapStage {
     APPLICATION,
     CONSENT,
     PPK_APPOINTMENT,
+    SPECIALIST_ASSIGNMENT,
     SPECIAL_CONDITIONS_ORDER,
     IOM,
     PPK_IOM

@@ -16,8 +16,13 @@ public final class OvzDtos {
         private LocalDate birthDate;
         private String className;
         private boolean mse;
+        private LocalDate mseValidFrom;
+        private LocalDate mseValidTo;
         private boolean conclusion;
+        private LocalDate conclusionValidFrom;
+        private LocalDate conclusionValidTo;
         private boolean recommendation;
+        private String nosologyCode;
         private LocalDate validTo;
         private List<StudentSupportDocumentDtos.View> documents;
         private List<StudentSupportDocumentDtos.CorrectionDirectionView> correctionDirections;
@@ -128,6 +133,7 @@ public final class OvzDtos {
     @Data
     public static class PpkProtocolDefaults extends PpkProtocolSettingsView {
         private Long studentId;
+        private PpkProtocolType protocolType;
         private String invitedRepresentative;
         private String representativeName;
         private String representativeSignatureName;

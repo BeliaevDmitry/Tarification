@@ -47,4 +47,7 @@ public class ProbeOrderParticipant {
 
     @Column(name = "representative_phone", length = 100)
     private String representativePhone;
+
+    @Column(name = "child_phone", length = 100)
+    private String childPhone;
 }

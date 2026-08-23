@@ -108,6 +108,7 @@ public class StudentSupportDocumentService {
     private final NosologyCatalogEntryRepository nosologyRepository;
     private final CorrectionSpecialistCatalogEntryRepository specialistRepository;
     private final StudentSupportDocumentCorrectionRepository correctionRepository;
+    private final CorrectionStudentAssignmentRepository assignmentRepository;
 
     @Transactional(readOnly = true)
     public List<StudentSupportDocumentDtos.View> findAll(String academicYear, LocalDate asOfDate) {
@@ -191,6 +192,7 @@ public class StudentSupportDocumentService {
         if (document.getDocumentType() == StudentSupportDocumentType.MSE_CERTIFICATE) {
             synchronizeMseStatus(document);
         }
+        cleanupInvalidAssignments(academicYear, student.getId());
         return toView(document, LocalDate.now());
     }
 
@@ -221,6 +223,8 @@ public class StudentSupportDocumentService {
         correctionRepository.deleteAllByDocument_Id(document.getId());
         attachmentRepository.deleteAllByDocument_Id(document.getId());
         documentRepository.delete(document);
+        documentRepository.flush();
+        cleanupInvalidAssignments(academicYear, document.getStudent().getId());
     }
 
     @Transactional(readOnly = true)
@@ -293,19 +297,35 @@ public class StudentSupportDocumentService {
             boolean prolongationAvailable,
             boolean prolongationUsed
     ) {
+        return educationDefaults(academicYear, studentId, documentType,
+                prolongationAvailable, prolongationUsed, null);
+    }
+
+    @Transactional(readOnly = true)
+    public StudentSupportDocumentDtos.EducationDefaultsView educationDefaults(
+            String academicYear,
+            Long studentId,
+            StudentSupportDocumentType documentType,
+            boolean prolongationAvailable,
+            boolean prolongationUsed,
+            String nosologyCode
+    ) {
         if (documentType != StudentSupportDocumentType.CPMPC_CONCLUSION
                 && documentType != StudentSupportDocumentType.CPMPC_RECOMMENDATION) {
             throw new IllegalArgumentException("Автоматический срок рассчитывается только для документов ЦМПК");
         }
         StudentProfile student = studentRepository.findById(studentId)
                 .orElseThrow(() -> new IllegalArgumentException("Карточка ребёнка не найдена"));
+        boolean throughNinthGrade = documentType == StudentSupportDocumentType.CPMPC_CONCLUSION
+                && isNinthGradeNosology(nosologyCode);
         EducationDeadline deadline = educationDeadline(
                 academicYear,
                 student,
                 documentType == StudentSupportDocumentType.CPMPC_CONCLUSION
                         && prolongationAvailable
                         && !prolongationUsed,
-                true
+                true,
+                throughNinthGrade
         );
         StudentSupportDocumentDtos.EducationDefaultsView view =
                 new StudentSupportDocumentDtos.EducationDefaultsView();
@@ -318,7 +338,12 @@ public class StudentSupportDocumentService {
                 .toList()
                 : List.of());
         String date = deadline.validTo().format(DISPLAY_DATE);
-        if (deadline.stage() == SupportEducationStage.DO) {
+        if (throughNinthGrade) {
+            view.setMessage("Нозология " + normalizeFullNosologyCode(nosologyCode)
+                    + ": дата окончания " + date + " рассчитана до окончания 9 класса"
+                    + (prolongationAvailable && !prolongationUsed
+                    ? " с учётом одного дополнительного года неиспользованной пролонгации." : "."));
+        } else if (deadline.stage() == SupportEducationStage.DO) {
             view.setMessage("ДО: дата окончания " + date
                     + " рассчитана по дате рождения (31.08 года исполнения 7 лет). Проверьте её вручную.");
         } else if (documentType == StudentSupportDocumentType.CPMPC_CONCLUSION
@@ -495,7 +520,9 @@ public class StudentSupportDocumentService {
                 request.getDocumentType() == StudentSupportDocumentType.CPMPC_CONCLUSION
                         && request.isProlongationAvailable()
                         && !request.isProlongationUsed(),
-                false
+                false,
+                request.getDocumentType() == StudentSupportDocumentType.CPMPC_CONCLUSION
+                        && isNinthGradeNosology(request.getNosologyCode())
         );
         if (expected == null) {
             return;
@@ -512,7 +539,8 @@ public class StudentSupportDocumentService {
     private EducationDeadline educationDeadline(String academicYear,
                                                  StudentProfile student,
                                                  boolean addUnusedProlongationYear,
-                                                 boolean requireIdentityData) {
+                                                 boolean requireIdentityData,
+                                                 boolean throughNinthGrade) {
         Integer grade = currentGrade(student.getId(), academicYear, null);
         SupportEducationStage stage;
         int expectedYear;
@@ -539,10 +567,20 @@ public class StudentSupportDocumentService {
         } else {
             throw new IllegalArgumentException("Класс ребёнка не позволяет определить уровень образования");
         }
+        if (throughNinthGrade) {
+            expectedYear = grade == null
+                    ? student.getBirthDate().getYear() + 15
+                    : academicYearEnd(academicYear) + 9 - grade;
+        }
         if (addUnusedProlongationYear) {
             expectedYear++;
         }
         return new EducationDeadline(stage, LocalDate.of(expectedYear, 8, 31));
+    }
+
+    private boolean isNinthGradeNosology(String value) {
+        String normalized = normalizeFullNosologyCode(value);
+        return normalized != null && normalized.matches("^[ИО]9\\.[0-9]$");
     }
 
     private static EducationProgram program(String name, String sourceUrl) {
@@ -644,6 +682,15 @@ public class StudentSupportDocumentService {
         status.setComment("Автоматически по справке МСЭ");
         status.setUpdatedAt(LocalDateTime.now());
         supportStatusRepository.save(status);
+    }
+
+    private void cleanupInvalidAssignments(String academicYear, Long studentId) {
+        assignmentRepository.findAllByAcademicYearAndStudent_Id(academicYear, studentId).stream()
+                .filter(assignment -> !correctionRepository.existsStudentNeed(
+                        academicYear, studentId, assignment.getSpecialist().getId(), List.of(
+                                StudentSupportDocumentType.CPMPC_CONCLUSION,
+                                StudentSupportDocumentType.CPMPC_RECOMMENDATION)))
+                .forEach(assignmentRepository::delete);
     }
 
     private void resynchronizeAllMseStatuses() {
