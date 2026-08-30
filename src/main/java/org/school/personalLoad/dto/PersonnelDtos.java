@@ -51,8 +51,42 @@ public final class PersonnelDtos {
             LocalDate contractEndDate,
             Boolean loadHoursMayBeIncludedInRate,
             Long loadInRateRuleId,
-            NameCases nameCases
+            NameCases nameCases,
+            Long schoolBuildingId
     ) {
+        public AcceptEmployeeRequest(
+                Long vacancyTeacherId,
+                String fioTeacher,
+                String phone,
+                String email,
+                String numberSchoolBuilding,
+                String primaryPosition,
+                String employmentType,
+                LocalDate employmentDate,
+                LocalDate birthDate,
+                String passportSeries,
+                String passportNumber,
+                String passportIssuedBy,
+                LocalDate passportIssueDate,
+                String passportDepartmentCode,
+                String registrationAddress,
+                String actualAddress,
+                String inn,
+                String snils,
+                String contractNumber,
+                LocalDate contractDate,
+                LocalDate contractStartDate,
+                LocalDate contractEndDate,
+                Boolean loadHoursMayBeIncludedInRate,
+                Long loadInRateRuleId,
+                NameCases nameCases
+        ) {
+            this(vacancyTeacherId, fioTeacher, phone, email, numberSchoolBuilding, primaryPosition,
+                    employmentType, employmentDate, birthDate, passportSeries, passportNumber,
+                    passportIssuedBy, passportIssueDate, passportDepartmentCode, registrationAddress,
+                    actualAddress, inn, snils, contractNumber, contractDate, contractStartDate,
+                    contractEndDate, loadHoursMayBeIncludedInRate, loadInRateRuleId, nameCases, null);
+        }
     }
 
     public record AcceptEmployeeResult(
@@ -97,6 +131,8 @@ public final class PersonnelDtos {
             String additionalDuties,
             String additionalDutiesSummary,
             String numberSchoolBuilding,
+            Long schoolBuildingId,
+            String campusAddress,
             String primaryPosition,
             String personnelNumber,
             String employmentType,
@@ -110,7 +146,10 @@ public final class PersonnelDtos {
             LocalDateTime archivedAt,
             LocalDateTime createdAt
     ) {
-        public static PersonnelRow from(TeacherDirectoryEntry teacher, String dutiesSummary, NameCases cases) {
+        public static PersonnelRow from(TeacherDirectoryEntry teacher,
+                                        String dutiesSummary,
+                                        NameCases cases,
+                                        String campusAddress) {
             return new PersonnelRow(
                     teacher.getId(),
                     cases.nominative(),
@@ -130,6 +169,8 @@ public final class PersonnelDtos {
                     teacher.getAdditionalDuties(),
                     dutiesSummary,
                     teacher.getNumberSchoolBuilding(),
+                    teacher.getSchoolBuildingId(),
+                    campusAddress,
                     teacher.getPrimaryPosition(),
                     teacher.getPersonnelNumber(),
                     teacher.getEmploymentType(),

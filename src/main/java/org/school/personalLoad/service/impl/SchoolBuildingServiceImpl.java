@@ -9,6 +9,7 @@ import org.school.personalLoad.repository.BuildingGroupRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.MetaGroupRepository;
+import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.auth.AppUserRepository;
 import org.school.personalLoad.service.SchoolBuildingService;
 import org.apache.poi.ss.usermodel.*;
@@ -33,6 +34,7 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
     private final AppUserRepository appUserRepository;
     private final ClassroomLeadershipRepository classroomLeadershipRepository;
     private final MetaGroupRepository metaGroupRepository;
+    private final TeacherDirectoryRepository teacherDirectoryRepository;
 
     @Override
     public SchoolBuilding upsert(SchoolBuildingRequest request) {
@@ -111,6 +113,9 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
         if (metaGroupRepository.existsBySchoolBuilding_Id(id)) {
             throw new IllegalStateException("Нельзя удалить площадку: к ней привязаны метагруппы");
         }
+        if (teacherDirectoryRepository.existsBySchoolBuildingId(id)) {
+            throw new IllegalStateException("Нельзя удалить площадку: к ней привязаны сотрудники");
+        }
         repository.deleteById(entity.getId());
     }
 
@@ -137,7 +142,7 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
                 .map(SchoolBuilding::getId)
                 .anyMatch(this::isPhysicalSiteReferenced);
         if (hasUsedPhysicalSites) {
-            throw new IllegalStateException("Нельзя очистить список площадок: есть площадки, к которым привязаны классы или метагруппы");
+            throw new IllegalStateException("Нельзя очистить список площадок: есть площадки, к которым привязаны классы, метагруппы или сотрудники");
         }
         repository.deleteAll();
     }
@@ -273,7 +278,8 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
     private boolean isPhysicalSiteReferenced(Long schoolBuildingId) {
         return schoolBuildingId != null
                 && (classroomLeadershipRepository.existsBySchoolBuilding_Id(schoolBuildingId)
-                || metaGroupRepository.existsBySchoolBuilding_Id(schoolBuildingId));
+                || metaGroupRepository.existsBySchoolBuilding_Id(schoolBuildingId)
+                || teacherDirectoryRepository.existsBySchoolBuildingId(schoolBuildingId));
     }
 
 }

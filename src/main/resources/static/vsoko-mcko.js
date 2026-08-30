@@ -23,11 +23,8 @@ function fmt(value, digits = 1) { return value == null || value === '' ? '—' :
 
 function setFiles(files) {
     if (mckoState.uploading) return;
-    const known = new Map(mckoState.files.map(file => [`${file.name}|${file.size}|${file.lastModified}`, file]));
-    [...files].forEach(file => known.set(`${file.name}|${file.size}|${file.lastModified}`, file));
-    mckoState.files = [...known.values()]; renderFiles();
+    mckoState.files = [...mckoState.files, ...files]; renderFiles();
 }
-function fileKey(file) { return `${file.name}|${file.size}|${file.lastModified}`; }
 function splitUploadBatches(files) {
     const batches = [], oversized = []; let batch = [], batchBytes = 0;
     const flush = () => { if (batch.length) batches.push(batch); batch = []; batchBytes = 0; };
@@ -40,7 +37,14 @@ function splitUploadBatches(files) {
     flush(); return { batches, oversized };
 }
 function renderFiles() {
-    document.getElementById('mcko-file-chips').innerHTML = mckoState.files.map(file => `<span class="mcko-file-chip">${esc(file.name)} · ${(file.size/1024/1024).toFixed(2)} МБ</span>`).join('');
+    const previewLimit = 100;
+    const totalMegabytes = mckoState.files.reduce((sum, file) => sum + file.size, 0) / 1024 / 1024;
+    const preview = mckoState.files.slice(0, previewLimit);
+    document.getElementById('mcko-file-summary').textContent = mckoState.files.length
+        ? `Выбрано файлов: ${mckoState.files.length} · общий размер: ${totalMegabytes.toFixed(1)} МБ. Все выбранные файлы будут отправлены.`
+        : 'Файлы ещё не выбраны.';
+    document.getElementById('mcko-file-chips').innerHTML = preview.map(file => `<span class="mcko-file-chip">${esc(file.webkitRelativePath || file.name)} · ${(file.size/1024/1024).toFixed(2)} МБ</span>`).join('')
+        + (mckoState.files.length > previewLimit ? `<span class="mcko-file-chip">И ещё ${mckoState.files.length - previewLimit} файлов — они тоже будут отправлены</span>` : '');
     document.getElementById('mcko-upload-btn').disabled = !mckoState.files.length || mckoState.uploading;
     document.getElementById('mcko-clear-files').disabled = !mckoState.files.length || mckoState.uploading;
     document.getElementById('mcko-choose-files').disabled = mckoState.uploading;
@@ -55,7 +59,7 @@ async function uploadFiles() {
         return;
     }
     const totals = { filesTotal: 0, filesProcessed: 0, filesFailed: 0, rowsImported: 0 };
-    const completedKeys = new Set(), requestErrors = [];
+    const completedFiles = new Set(), requestErrors = [];
     const year = currentYear(); const suffix = year ? `?academicYear=${encodeURIComponent(year)}` : '';
     mckoState.uploading = true; renderFiles();
     try {
@@ -69,25 +73,27 @@ async function uploadFiles() {
                 totals.filesProcessed += Number(result.filesProcessed || 0);
                 totals.filesFailed += Number(result.filesFailed || 0);
                 totals.rowsImported += Number(result.rowsImported || 0);
-                batch.forEach(file => completedKeys.add(fileKey(file)));
+                batch.forEach(file => completedFiles.add(file));
+                feedback.textContent = `Пакет ${index + 1} из ${batches.length} завершён. Передано серверу ${completedFiles.size} из ${selected.length} файлов.`;
             } catch (error) {
                 requestErrors.push(`пакет ${index + 1}: ${error.message}`);
             }
         }
     } finally {
-        mckoState.files = selected.filter(file => !completedKeys.has(fileKey(file)));
+        mckoState.files = selected.filter(file => !completedFiles.has(file));
+        document.getElementById('mcko-files').value = '';
         mckoState.uploading = false; renderFiles(); mckoState.resultsLoaded = false;
     }
     try { await loadHistory(); } catch (error) { requestErrors.push(`история: ${error.message}`); }
     const pending = mckoState.files.length;
     if (requestErrors.length || oversized.length) {
-        feedback.textContent = `Загрузка завершена частично: обработано ${totals.filesProcessed}, ошибок в файлах ${totals.filesFailed}, строк загружено ${totals.rowsImported}. Осталось в списке: ${pending}. ${requestErrors.join('; ')}${oversized.length ? `; файлов больше 30 МБ: ${oversized.length}` : ''}`;
+        feedback.textContent = `Загрузка завершена частично: выбрано ${selected.length}, передано серверу ${completedFiles.size}, обработано ${totals.filesProcessed}, ошибок в файлах ${totals.filesFailed}, строк загружено ${totals.rowsImported}. Осталось в списке: ${pending}. ${requestErrors.join('; ')}${oversized.length ? `; файлов больше 30 МБ: ${oversized.length}` : ''}`;
     } else {
-        feedback.textContent = `Готово: обработано ${totals.filesProcessed}, с ошибкой ${totals.filesFailed}, строк загружено ${totals.rowsImported}. Автоматически отправлено пакетов: ${batches.length}.`;
+        feedback.textContent = `Готово: выбрано и передано серверу ${completedFiles.size} файлов, обработано ${totals.filesProcessed}, с ошибкой ${totals.filesFailed}, строк загружено ${totals.rowsImported}. Автоматически отправлено пакетов: ${batches.length}.`;
     }
 }
 async function loadHistory() {
-    const rows = await mckoApi('/api/vsoko/mcko/imports');
+    const rows = await mckoApi('/api/vsoko/mcko/imports?limit=5000');
     document.getElementById('mcko-history-body').innerHTML = rows.length ? rows.map(row => `<tr>
         <td>${esc(row.fileName)}</td><td>${esc(row.fileKind || '—')}</td><td>${esc(row.detectedAcademicYear || '—')}</td>
         <td>${esc(row.detectedWorkDate || '—')}</td><td>${esc(row.detectedSubject || '—')}</td>
@@ -128,6 +134,6 @@ async function saveStudentLink(studentId) { await mckoApi(`/api/vsoko/mcko/resul
 async function reconcile() { const feedback=document.getElementById('mcko-upload-feedback'); feedback.textContent='Повторно сопоставляем результаты с карточками детей…'; try{const r=await mckoApi('/api/vsoko/mcko/results/reconcile',{method:'POST'});feedback.textContent=`Привязано: ${r.linked}; неоднозначно: ${r.ambiguous}; не найдено: ${r.notFound}.`;if(mckoState.resultsLoaded)await loadResults();}catch(e){feedback.textContent=e.message;} }
 function exportResults() { const params=filterValues(); delete params.limit; window.location.href=`/api/vsoko/mcko/results/export?${q(params)}`; }
 function bindTabs() { document.querySelectorAll('[data-panel]').forEach(button => button.addEventListener('click', async () => { document.querySelectorAll('[data-panel]').forEach(x=>x.classList.toggle('active',x===button)); document.querySelectorAll('.mcko-panel').forEach(panel=>panel.hidden=panel.id!==`panel-${button.dataset.panel}`); if(button.dataset.panel==='results'&&!mckoState.resultsLoaded) await loadResults(); })); }
-function bindUpload() { const zone=document.getElementById('mcko-dropzone'),input=document.getElementById('mcko-files'); document.getElementById('mcko-choose-files').addEventListener('click',()=>input.click()); zone.addEventListener('click',e=>{if(e.target===zone)input.click()}); zone.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();input.click()}}); input.addEventListener('change',()=>setFiles(input.files)); ['dragenter','dragover'].forEach(name=>zone.addEventListener(name,e=>{e.preventDefault();zone.classList.add('drag')})); ['dragleave','drop'].forEach(name=>zone.addEventListener(name,e=>{e.preventDefault();zone.classList.remove('drag')})); zone.addEventListener('drop',e=>setFiles(e.dataTransfer.files)); document.getElementById('mcko-clear-files').addEventListener('click',()=>{mckoState.files=[];input.value='';renderFiles()}); document.getElementById('mcko-upload-btn').addEventListener('click',uploadFiles); }
+function bindUpload() { const zone=document.getElementById('mcko-dropzone'),input=document.getElementById('mcko-files'); document.getElementById('mcko-choose-files').addEventListener('click',()=>input.click()); zone.addEventListener('click',e=>{if(e.target===zone)input.click()}); zone.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();input.click()}}); input.addEventListener('change',()=>{setFiles(input.files);input.value=''}); ['dragenter','dragover'].forEach(name=>zone.addEventListener(name,e=>{e.preventDefault();zone.classList.add('drag')})); ['dragleave','drop'].forEach(name=>zone.addEventListener(name,e=>{e.preventDefault();zone.classList.remove('drag')})); zone.addEventListener('drop',e=>setFiles(e.dataTransfer.files)); document.getElementById('mcko-clear-files').addEventListener('click',()=>{mckoState.files=[];input.value='';renderFiles()}); document.getElementById('mcko-upload-btn').addEventListener('click',uploadFiles); }
 
 (async function init(){ bindTabs();bindUpload();document.getElementById('mcko-apply-filters').addEventListener('click',loadResults);document.getElementById('mcko-reset-filters').addEventListener('click',()=>{['mcko-filter-year','mcko-filter-class','mcko-filter-subject','mcko-filter-link'].forEach(id=>document.getElementById(id).value='');['mcko-filter-student','mcko-filter-teacher'].forEach(id=>document.getElementById(id).value='');loadResults()});document.getElementById('mcko-export-results').addEventListener('click',exportResults);document.getElementById('mcko-reconcile-btn').addEventListener('click',reconcile);document.getElementById('mcko-link-search').addEventListener('input',scheduleStudentSearch);try{await Promise.all([loadHistory(),loadFilters()]);}catch(error){document.getElementById('mcko-upload-feedback').textContent=error.message;}})();

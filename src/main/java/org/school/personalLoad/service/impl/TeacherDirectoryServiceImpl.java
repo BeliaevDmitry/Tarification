@@ -8,8 +8,10 @@ import org.school.personalLoad.dto.TeacherCreateRequest;
 import org.school.personalLoad.dto.TeacherOneCImportDtos;
 import org.school.personalLoad.dto.TeacherUpdateRequest;
 import org.school.personalLoad.dto.PersonnelDtos.NameCases;
+import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.TeacherDirectoryService;
 import org.school.personalLoad.service.RussianNameCases;
@@ -40,8 +42,10 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
 
     private final TeacherDirectoryRepository teacherDirectoryRepository;
     private final ManualLoadEntryRepository manualLoadEntryRepository;
+    private final SchoolBuildingRepository schoolBuildingRepository;
 
     @Override
+    @Transactional
     public Map<String, Object> importFromExcel(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("Файл обязателен");
@@ -51,6 +55,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         int updated = 0;
         int skipped = 0;
         Set<String> seen = new HashSet<>();
+        List<SchoolBuilding> availableSites = schoolBuildingRepository.findAll();
 
         try (InputStream inputStream = file.getInputStream();
              Workbook workbook = WorkbookFactory.create(inputStream)) {
@@ -80,6 +85,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 }
                 String additionalDuties = normalizeOptional(getCellStringValue(row.getCell(5)));
                 String building = normalizeOptional(getCellStringValue(row.getCell(6)));
+                SchoolBuilding selectedSite = resolveSchoolBuilding(building, availableSites);
                 if (fio.isBlank()) {
                     skipped++;
                     continue;
@@ -108,7 +114,11 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                     if (!Objects.equals(phone, teacher.getPhone())) { teacher.setPhone(phone); changed = true; }
                     if (!Objects.equals(email, teacher.getEmail())) { ensureUniqueTeacherEmail(email, teacher.getId()); teacher.setEmail(email); changed = true; }
                     if (!Objects.equals(additionalDuties, teacher.getAdditionalDuties())) { teacher.setAdditionalDuties(additionalDuties); changed = true; }
-                    if (!Objects.equals(building, teacher.getNumberSchoolBuilding())) { teacher.setNumberSchoolBuilding(building); changed = true; }
+                    String previousBuilding = teacher.getNumberSchoolBuilding();
+                    Long previousSiteId = teacher.getSchoolBuildingId();
+                    applyBuildingSelection(teacher, building, selectedSite);
+                    if (!Objects.equals(previousBuilding, teacher.getNumberSchoolBuilding())
+                            || !Objects.equals(previousSiteId, teacher.getSchoolBuildingId())) changed = true;
                     if (changed) { teacherDirectoryRepository.save(teacher); updated++; } else { skipped++; }
                     continue;
                 }
@@ -121,7 +131,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 ensureUniqueTeacherEmail(email, null);
                 entry.setEmail(email);
                 entry.setAdditionalDuties(additionalDuties);
-                entry.setNumberSchoolBuilding(building);
+                applyBuildingSelection(entry, building, selectedSite);
                 teacherDirectoryRepository.save(entry);
                 imported++;
             }
@@ -141,6 +151,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Resource buildImportTemplate() {
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = workbook.createSheet("Педагоги");
@@ -151,7 +162,15 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
             header.createCell(3).setCellValue("Телефон");
             header.createCell(4).setCellValue("Email");
             header.createCell(5).setCellValue("Дополнительные обязанности");
-            header.createCell(6).setCellValue("Корпус");
+            header.createCell(6).setCellValue("Площадка (адрес)");
+
+            Map<Long, String> siteAddressById = schoolBuildingRepository.findAll().stream()
+                    .filter(site -> site.getId() != null)
+                    .collect(java.util.stream.Collectors.toMap(
+                            SchoolBuilding::getId,
+                            site -> Objects.toString(site.getAddress(), "").trim(),
+                            (first, second) -> first
+                    ));
 
             List<TeacherDirectoryEntry> rows = activeTeachers();
             if (rows.isEmpty()) {
@@ -162,7 +181,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                 example.createCell(3).setCellValue("+7 900 000-00-00");
                 example.createCell(4).setCellValue("teacher@example.com");
                 example.createCell(5).setCellValue("Классное руководство");
-                example.createCell(6).setCellValue("СП1");
+                example.createCell(6).setCellValue("ул. Примерная, д. 1");
             } else {
                 int rowIndex = 1;
                 for (TeacherDirectoryEntry entry : rows) {
@@ -173,7 +192,8 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                     row.createCell(3).setCellValue(excelText(entry.getPhone()));
                     row.createCell(4).setCellValue(excelText(entry.getEmail()));
                     row.createCell(5).setCellValue(excelText(entry.getAdditionalDuties()));
-                    row.createCell(6).setCellValue(excelText(entry.getNumberSchoolBuilding()));
+                    row.createCell(6).setCellValue(excelText(siteAddressById.getOrDefault(
+                            entry.getSchoolBuildingId(), entry.getNumberSchoolBuilding())));
                 }
             }
 
@@ -192,6 +212,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
     }
 
     @Override
+    @Transactional
     public TeacherDirectoryEntry create(TeacherCreateRequest request) {
         if (request == null || request.getFioTeacher() == null || request.getFioTeacher().isBlank()) {
             throw new IllegalArgumentException("fioTeacher is required");
@@ -202,7 +223,6 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
         String phone = normalizePhone(request.getPhone());
         String email = normalizeEmail(request.getEmail());
         String additionalDuties = normalizeOptional(request.getAdditionalDuties());
-        String building = normalizeOptional(request.getNumberSchoolBuilding());
         return teacherDirectoryRepository.findByFioTeacherIgnoreCase(normalized)
                 .orElseGet(() -> {
                     TeacherDirectoryEntry entry = new TeacherDirectoryEntry();
@@ -222,7 +242,7 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
                     ensureUniqueTeacherEmail(email, null);
                     entry.setEmail(email);
                     entry.setAdditionalDuties(additionalDuties);
-                    entry.setNumberSchoolBuilding(building);
+                    applyBuildingSelection(entry, request.getNumberSchoolBuilding(), request.getSchoolBuildingId());
                     entry.setPrimaryPosition(normalizeOptional(request.getPrimaryPosition()));
                     entry.setEmploymentType(normalizeOptional(request.getEmploymentType()));
                     entry.setEmploymentDate(request.getEmploymentDate());
@@ -258,7 +278,9 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
             ensureUniqueTeacherEmail(email, teacherId);
             entry.setEmail(email);
             entry.setAdditionalDuties(normalizeOptional(request.getAdditionalDuties()));
-            entry.setNumberSchoolBuilding(normalizeOptional(request.getNumberSchoolBuilding()));
+            if (request.getSchoolBuildingId() != null || request.getNumberSchoolBuilding() != null) {
+                applyBuildingSelection(entry, request.getNumberSchoolBuilding(), request.getSchoolBuildingId());
+            }
             if (request.getPrimaryPosition() != null) entry.setPrimaryPosition(normalizeOptional(request.getPrimaryPosition()));
             if (request.getEmploymentType() != null) entry.setEmploymentType(normalizeOptional(request.getEmploymentType()));
             if (request.getEmploymentDate() != null) entry.setEmploymentDate(request.getEmploymentDate());
@@ -900,6 +922,55 @@ public class TeacherDirectoryServiceImpl implements TeacherDirectoryService {
     private String first(String value, String fallback) {
         String normalized = normalizeOptional(value);
         return normalized == null ? fallback : normalized;
+    }
+
+    private void applyBuildingSelection(TeacherDirectoryEntry teacher,
+                                        String legacyBuilding,
+                                        Long schoolBuildingId) {
+        SchoolBuilding selectedSite = schoolBuildingId == null
+                ? resolveSchoolBuilding(legacyBuilding, schoolBuildingRepository.findAll())
+                : schoolBuildingRepository.findById(schoolBuildingId)
+                .orElseThrow(() -> new IllegalArgumentException("Физическая площадка не найдена: " + schoolBuildingId));
+        applyBuildingSelection(teacher, legacyBuilding, selectedSite);
+    }
+
+    private void applyBuildingSelection(TeacherDirectoryEntry teacher,
+                                        String legacyBuilding,
+                                        SchoolBuilding selectedSite) {
+        if (selectedSite == null) {
+            teacher.setSchoolBuildingId(null);
+            teacher.setNumberSchoolBuilding(normalizeOptional(legacyBuilding));
+            return;
+        }
+        teacher.setSchoolBuildingId(selectedSite.getId());
+        teacher.setNumberSchoolBuilding(organizationalBuildingCode(selectedSite));
+    }
+
+    private SchoolBuilding resolveSchoolBuilding(String value, List<SchoolBuilding> sites) {
+        String token = normalizeBuildingToken(value);
+        if (token.isBlank() || sites == null || sites.isEmpty()) return null;
+        List<SchoolBuilding> directMatches = sites.stream()
+                .filter(site -> token.equals(normalizeBuildingToken(site.getAddress()))
+                        || token.equals(normalizeBuildingToken(site.getCode()))
+                        || token.equals(normalizeBuildingToken(
+                        organizationalBuildingCode(site) + " — " + Objects.toString(site.getAddress(), ""))))
+                .toList();
+        if (directMatches.size() == 1) return directMatches.get(0);
+        List<SchoolBuilding> groupMatches = sites.stream()
+                .filter(site -> token.equals(normalizeBuildingToken(organizationalBuildingCode(site))))
+                .toList();
+        return groupMatches.size() == 1 ? groupMatches.get(0) : null;
+    }
+
+    private String organizationalBuildingCode(SchoolBuilding site) {
+        if (site != null && site.getBuildingGroup() != null && site.getBuildingGroup().getCode() != null) {
+            return site.getBuildingGroup().getCode().trim();
+        }
+        return site == null ? "" : Objects.toString(site.getCode(), "").trim();
+    }
+
+    private String normalizeBuildingToken(String value) {
+        return Objects.toString(value, "").trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     private String normalizeOptional(String value) {

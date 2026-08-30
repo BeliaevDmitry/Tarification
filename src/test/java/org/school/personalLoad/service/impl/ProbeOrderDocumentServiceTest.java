@@ -76,15 +76,18 @@ class ProbeOrderDocumentServiceTest {
             assertEquals("№", participantTable.getRow(0).getCell(0).getText());
             assertEquals("1", participantTable.getRow(1).getCell(0).getText());
             assertEquals("Смирнов Алексей Павлович", participantTable.getRow(1).getCell(1).getText());
-            assertEquals("—", participantTable.getRow(2).getCell(2).getText());
+            assertEquals("+7 900 555-66-77", participantTable.getRow(1).getCell(2).getText());
             assertEquals("—", participantTable.getRow(2).getCell(3).getText());
+            assertEquals("—", participantTable.getRow(2).getCell(4).getText());
             assertEquals(ParagraphAlignment.LEFT, requisites.getAlignment());
             assertEquals(STTabJc.RIGHT,
                     requisites.getCTP().getPPr().getTabs().getTabArray(0).getVal());
             assertEquals(BigInteger.valueOf(9921),
                     requisites.getCTP().getPPr().getTabs().getTabArray(0).getPos());
             assertTrue(requisites.getRuns().stream()
-                    .allMatch(run -> UnderlinePatterns.SINGLE.equals(run.getUnderline())));
+                    .allMatch(run -> UnderlinePatterns.NONE.equals(run.getUnderline())));
+            assertTrue(!requisites.getCTP().getPPr().isSetRPr()
+                    || requisites.getCTP().getPPr().getRPr().sizeOfUArray() == 0);
             assertTrue(participantTable.getRows().stream()
                     .flatMap(row -> row.getTableCells().stream())
                     .flatMap(cell -> cell.getParagraphs().stream())
@@ -93,8 +96,8 @@ class ProbeOrderDocumentServiceTest {
             assertEquals(STTblWidth.DXA, participantTable.getCTTbl().getTblPr().getTblW().getType());
             assertEquals(BigInteger.valueOf(9921), participantTable.getCTTbl().getTblPr().getTblW().getW());
             assertEquals(List.of(
-                            BigInteger.valueOf(497), BigInteger.valueOf(2923),
-                            BigInteger.valueOf(3284), BigInteger.valueOf(3217)),
+                            BigInteger.valueOf(497), BigInteger.valueOf(2500), BigInteger.valueOf(1600),
+                            BigInteger.valueOf(3324), BigInteger.valueOf(2000)),
                     participantTable.getCTTbl().getTblGrid().getGridColList().stream()
                             .map(column -> (BigInteger) column.getW())
                             .collect(Collectors.toList()));
@@ -133,6 +136,20 @@ class ProbeOrderDocumentServiceTest {
             assertTrue(orderItems.stream()
                     .flatMap(paragraph -> paragraph.getRuns().stream())
                     .noneMatch(run -> Boolean.TRUE.equals(run.isBold())));
+            assertTrue(orderItems.stream().allMatch(paragraph -> !paragraph.getCTP().getPPr().isSetRPr()
+                    || (paragraph.getCTP().getPPr().getRPr().sizeOfBArray() == 0
+                    && paragraph.getCTP().getPPr().getRPr().sizeOfBCsArray() == 0)));
+            assertTrue(text.contains("Назначить руководителем группы Петрову М.С."));
+            assertTrue(text.contains("Руководителю группы Петровой М.С."));
+            assertTrue(text.contains("директору школы Ивановой И.И."));
+            XWPFParagraph appendix = document.getParagraphs().stream()
+                    .filter(paragraph -> paragraph.getText().equals("Приложение № 1"))
+                    .findFirst().orElseThrow();
+            assertTrue(appendix.isPageBreak());
+            double borderCount = (double) XPathFactory.newInstance().newXPath().evaluate(
+                    "count(//*[local-name()='tblBorders']/*[@*[local-name()='val']='single'])",
+                    document.getDocument().getDomNode(), XPathConstants.NUMBER);
+            assertEquals(6D, borderCount);
             assertEquals(4, instructionBullets.size());
             assertTrue(instructionBullets.stream().allMatch(paragraph -> paragraph.getNumID() == null));
             assertTrue(instructionBullets.get(1).getText().startsWith("- довести до сведения родителей"));
@@ -176,9 +193,10 @@ class ProbeOrderDocumentServiceTest {
                 signer, signer, primary,
                 List.of(
                         new ProbeOrderDocumentService.ParticipantData(
-                                "Смирнов Алексей Павлович", "Смирнова Ольга Ивановна", "+7 900 111-22-33"),
+                                "Смирнов Алексей Павлович", "+7 900 555-66-77",
+                                "Смирнова Ольга Ивановна", "+7 900 111-22-33"),
                         new ProbeOrderDocumentService.ParticipantData(
-                                "Фёдорова Анна Максимовна", null, null)
+                                "Фёдорова Анна Максимовна", null, null, null)
                 ));
     }
 }

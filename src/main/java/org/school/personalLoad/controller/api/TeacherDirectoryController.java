@@ -181,7 +181,8 @@ public class TeacherDirectoryController {
         AutoBuildingResult result = personnelService.autoAssignBuildings(year);
         log(request, "AUTO_ASSIGN", "TEACHER_BUILDING",
                 "Учебный год " + year + ": назначено " + result.assigned()
-                        + ", без изменений " + result.unchanged() + ", ничьи " + result.skippedTies());
+                        + ", без изменений " + result.unchanged()
+                        + ", одинаковая нагрузка на площадках " + result.skippedTies());
         return ResponseEntity.ok(result);
     }
 

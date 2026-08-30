@@ -8,6 +8,9 @@ import org.school.personalLoad.model.MckoCertificate;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.model.EmploymentContract;
 import org.school.personalLoad.model.LoadInRateRule;
+import org.school.personalLoad.model.BuildingGroup;
+import org.school.personalLoad.model.SchoolBuilding;
+import org.school.personalLoad.model.StudyPeriod;
 import org.school.personalLoad.pa.model.PaSpecification;
 import org.school.personalLoad.repository.*;
 import org.school.personalLoad.pa.repository.PaSpecificationRepository;
@@ -16,6 +19,7 @@ import org.school.personalLoad.pa.analytics.repository.PaReportAnalysisSummaryRe
 import org.school.personalLoad.pa.analytics.repository.PaReportStudentResultRepository;
 
 import java.time.LocalDate;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -40,13 +44,72 @@ class PersonnelServiceTest {
     private final EmploymentContractRepository contracts = mock(EmploymentContractRepository.class);
     private final LoadInRateRuleRepository rules = mock(LoadInRateRuleRepository.class);
     private final LoadSalaryCalculationService salary = mock(LoadSalaryCalculationService.class);
+    private final SchoolBuildingRepository schoolBuildings = mock(SchoolBuildingRepository.class);
     private final PaSpecificationRepository paSpecifications = mock(PaSpecificationRepository.class);
     private final PaReportVersionRepository paVersions = mock(PaReportVersionRepository.class);
     private final PaReportAnalysisSummaryRepository paSummaries = mock(PaReportAnalysisSummaryRepository.class);
     private final PaReportStudentResultRepository paStudents = mock(PaReportStudentResultRepository.class);
     private final PersonnelService service = new PersonnelService(
             teachers, loads, classes, hrMemos, loadMemos, mcko, personal, contracts, rules, salary,
-            paSpecifications, paVersions, paSummaries, paStudents);
+            schoolBuildings, paSpecifications, paVersions, paSummaries, paStudents);
+
+    @Test
+    void autoAssignmentChoosesPhysicalSiteWithMostHoursInsideSameBuildingGroup() {
+        BuildingGroup group = new BuildingGroup();
+        group.setId(1L);
+        group.setCode("СП1");
+        group.setName("СП1");
+        SchoolBuilding firstSite = site(36L, "ул. Первая, 1", group);
+        SchoolBuilding secondSite = site(37L, "ул. Вторая, 2", group);
+        TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
+        teacher.setId(10L);
+        teacher.setFioTeacher("Иванов И.И.");
+
+        ManualLoadEntry annual = load(10L, 36L, 6, StudyPeriod.YEAR);
+        ManualLoadEntry firstHalf = load(10L, 37L, 7, StudyPeriod.H1);
+        when(schoolBuildings.findAll()).thenReturn(List.of(firstSite, secondSite));
+        when(loads.findAllByAcademicYear("2026/2027")).thenReturn(List.of(annual, firstHalf));
+        when(teachers.findAll()).thenReturn(List.of(teacher));
+        when(salary.totalHours(any())).thenAnswer(invocation ->
+                ((ManualLoadEntry) invocation.getArgument(0)).getEffectiveLoadHours());
+
+        var result = service.autoAssignBuildings("2026/2027");
+
+        assertEquals(1, result.assigned());
+        assertEquals(36L, teacher.getSchoolBuildingId());
+        assertEquals("СП1", teacher.getNumberSchoolBuilding());
+        verify(teachers).save(teacher);
+    }
+
+    @Test
+    void autoAssignmentKeepsCurrentSiteWhenPhysicalSitesHaveEqualHours() {
+        BuildingGroup group = new BuildingGroup();
+        group.setId(1L);
+        group.setCode("СП1");
+        group.setName("СП1");
+        SchoolBuilding firstSite = site(36L, "ул. Первая, 1", group);
+        SchoolBuilding secondSite = site(37L, "ул. Вторая, 2", group);
+        TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
+        teacher.setId(10L);
+        teacher.setFioTeacher("Иванов И.И.");
+        teacher.setSchoolBuildingId(36L);
+        teacher.setNumberSchoolBuilding("СП1");
+
+        when(schoolBuildings.findAll()).thenReturn(List.of(firstSite, secondSite));
+        when(loads.findAllByAcademicYear("2026/2027")).thenReturn(List.of(
+                load(10L, 36L, 5, StudyPeriod.H1),
+                load(10L, 37L, 5, StudyPeriod.H1)
+        ));
+        when(teachers.findAll()).thenReturn(List.of(teacher));
+        when(salary.totalHours(any())).thenAnswer(invocation ->
+                ((ManualLoadEntry) invocation.getArgument(0)).getEffectiveLoadHours());
+
+        var result = service.autoAssignBuildings("2026/2027");
+
+        assertEquals(1, result.skippedTies());
+        assertEquals(36L, teacher.getSchoolBuildingId());
+        verify(teachers, never()).save(any());
+    }
 
     @Test
     void personnelUsesStableApiRowsWithoutHibernateInternals() throws Exception {
@@ -211,5 +274,27 @@ class PersonnelServiceTest {
         Path qa = Path.of("target", "docx-qa");
         Files.createDirectories(qa);
         Files.write(qa.resolve("employee-data-sheet.docx"), content);
+    }
+
+    private SchoolBuilding site(Long id, String address, BuildingGroup group) {
+        SchoolBuilding site = new SchoolBuilding();
+        site.setId(id);
+        site.setCode(group.getCode().toLowerCase() + "|" + address.toLowerCase());
+        site.setName(address);
+        site.setAddress(address);
+        site.setManagerFio("");
+        site.setBuildingGroup(group);
+        return site;
+    }
+
+    private ManualLoadEntry load(Long teacherId, Long schoolBuildingId, int hours, StudyPeriod period) {
+        ManualLoadEntry row = new ManualLoadEntry();
+        row.setTeacherId(teacherId);
+        row.setFioTeacher("Иванов И.И.");
+        row.setNumberSchoolBuilding("СП1");
+        row.setSchoolBuildingId(schoolBuildingId);
+        row.setLoad(hours);
+        row.setStudyPeriod(period);
+        return row;
     }
 }

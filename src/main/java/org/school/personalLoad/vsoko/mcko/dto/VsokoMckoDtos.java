@@ -57,6 +57,15 @@ public final class VsokoMckoDtos {
 
     public record ClassSummary(String academicYear, String className, List<ClassSubjectComparison> subjects) {}
 
+    public record ParallelSubjectCell(Integer parallel, int participantCount, int diagnosticCount,
+                                      Double schoolPercent, Double cityPercent, Double difference,
+                                      String comparison) {}
+
+    public record ParallelSubjectRow(String subjectName, List<ParallelSubjectCell> parallels) {}
+
+    public record ParallelSummary(String academicYear, List<Integer> parallels,
+                                  List<ParallelSubjectRow> subjects) {}
+
     public record ReconcileResponse(int linked, int ambiguous, int notFound) {}
 
     public record InterviewRequest(String academicYear, List<Long> teacherIds) {}

@@ -36,8 +36,8 @@ public class VsokoMckoController {
     }
 
     @GetMapping("/imports")
-    public List<VsokoMckoDtos.FileStatusRow> importHistory() {
-        return importService.importHistory();
+    public List<VsokoMckoDtos.FileStatusRow> importHistory(@RequestParam(defaultValue = "5000") int limit) {
+        return importService.importHistory(limit);
     }
 
     @GetMapping("/results")
@@ -96,6 +96,18 @@ public class VsokoMckoController {
         String year = resolveYear(academicYear);
         return excel(queryService.exportClassSummary(year, className),
                 "Свод_МЦКО_ПА_" + className.replaceAll("[^А-Яа-яA-Za-z0-9-]", "_") + "_" + year.replace('/', '-') + ".xlsx");
+    }
+
+    @GetMapping("/parallels/summary")
+    public VsokoMckoDtos.ParallelSummary parallelSummary(@RequestParam(required = false) String academicYear) {
+        return queryService.parallelSummary(resolveYear(academicYear));
+    }
+
+    @GetMapping("/parallels/summary/export")
+    public ResponseEntity<byte[]> exportParallelSummary(@RequestParam(required = false) String academicYear) throws Exception {
+        String year = resolveYear(academicYear);
+        return excel(queryService.exportParallelSummary(year),
+                "Матрица_МЦКО_по_параллелям_" + year.replace('/', '-') + ".xlsx");
     }
 
     @GetMapping("/results/export")

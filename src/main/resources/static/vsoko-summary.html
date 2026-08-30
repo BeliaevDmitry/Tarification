@@ -9,7 +9,7 @@
 <main class="container">
     <header class="card app-shell-header"><h1>ВСОКО / Свод</h1><nav class="page-nav"></nav><p class="muted">Накопительная история ребёнка и сравнение результатов класса.</p></header>
     <section class="card">
-        <div class="mcko-tabs"><button class="mcko-tab active" data-summary-panel="student">По ребёнку</button><button class="mcko-tab" data-summary-panel="class">По классу</button></div>
+        <div class="mcko-tabs"><button class="mcko-tab active" data-summary-panel="student">По ребёнку</button><button class="mcko-tab" data-summary-panel="class">По классу</button><button class="mcko-tab" data-summary-panel="parallel">МЦКО по параллелям</button></div>
         <div id="summary-student-panel">
             <div class="mcko-toolbar"><label style="min-width:320px">ФИО ребёнка<input id="summary-student-query" placeholder="Можно вводить прежнее ФИО"></label><button id="summary-student-search">Найти</button><button id="summary-student-export" disabled>Скачать Excel</button></div>
             <div id="summary-student-results" class="mcko-search-results"></div>
@@ -20,6 +20,22 @@
             <div id="summary-class-kpis" class="mcko-kpis"></div>
             <canvas id="summary-class-chart" class="mcko-chart" width="1200" height="420"></canvas>
             <div class="mcko-table-wrap" style="margin-top:14px"><table><thead><tr><th>Предмет</th><th>МЦКО: детей</th><th>МЦКО: средний %</th><th>МЦКО: средняя оценка</th><th>ПА: детей</th><th>ПА: средний %</th><th>ПА: средняя оценка</th></tr></thead><tbody id="summary-class-body"></tbody></table></div>
+        </div>
+        <div id="summary-parallel-panel" hidden>
+            <div class="mcko-toolbar">
+                <label>Учебный год<input id="summary-parallel-year" placeholder="Например, 2025/2026"></label>
+                <button id="summary-parallel-load">Построить матрицу</button>
+                <button id="summary-parallel-export" disabled>Скачать Excel</button>
+            </div>
+            <p class="muted">В каждой ячейке показан средний процент школы, городской показатель и разница в процентных пунктах. Результаты нескольких классов и работ взвешиваются по числу участников.</p>
+            <div class="mcko-heat-legend" aria-label="Обозначения сравнения с городом">
+                <span class="mcko-heat-legend-item mcko-heat-above">Выше города</span>
+                <span class="mcko-heat-legend-item mcko-heat-at">На уровне города (разница до ±1 п.п.)</span>
+                <span class="mcko-heat-legend-item mcko-heat-below">Ниже города</span>
+                <span class="mcko-heat-legend-item mcko-heat-none">Нет городского показателя</span>
+            </div>
+            <div id="summary-parallel-kpis" class="mcko-kpis"></div>
+            <div id="summary-parallel-matrix" class="mcko-matrix-wrap"><div class="mcko-empty">Нажмите «Построить матрицу»</div></div>
         </div>
     </section>
 </main>

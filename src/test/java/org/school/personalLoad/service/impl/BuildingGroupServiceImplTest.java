@@ -65,7 +65,8 @@ class BuildingGroupServiceImplTest {
                 buildingGroupRepository,
                 appUserRepository,
                 classroomLeadershipRepository,
-                metaGroupRepository
+                metaGroupRepository,
+                teacherDirectoryRepository
         );
         service = new BuildingGroupServiceImpl(
                 buildingGroupRepository,

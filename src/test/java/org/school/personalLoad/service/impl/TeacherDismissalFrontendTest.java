@@ -23,6 +23,8 @@ class TeacherDismissalFrontendTest {
         assertTrue(html.contains("id=\"teacher-card-cancel-plan\""));
         assertTrue(html.contains("id=\"accept-teacher-btn\""));
         assertTrue(html.contains("id=\"auto-assign-buildings-btn\""));
+        assertTrue(html.contains("Распределить по площадкам"));
+        assertTrue(html.contains("Основная площадка"));
         assertTrue(html.contains("id=\"teacher-card-initials\""));
         assertTrue(html.contains("id=\"teacher-card-fio-genitive\""));
         assertTrue(html.contains("id=\"teacher-card-fio-dative\""));
@@ -39,6 +41,8 @@ class TeacherDismissalFrontendTest {
         assertTrue(js.contains("class=\"teacher-row-actions\""));
         assertTrue(js.contains("additionalDutiesSummary"));
         assertTrue(js.contains("/api/teachers/auto-assign-buildings"));
+        assertTrue(js.contains("schoolBuildingId"));
+        assertTrue(js.contains("b.address"));
         assertTrue(js.contains("/api/teachers/accept"));
         assertTrue(js.contains("/api/teachers/name-cases/derive?fio="));
         assertTrue(js.contains("nameCases: acceptNameCasesPayload()"));

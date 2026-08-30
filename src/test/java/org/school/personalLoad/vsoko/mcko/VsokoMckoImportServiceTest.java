@@ -20,12 +20,14 @@ import org.school.personalLoad.vsoko.mcko.service.MckoParticipantRosterParser;
 import org.school.personalLoad.vsoko.mcko.service.MckoLegacyPdfParser;
 import org.school.personalLoad.vsoko.mcko.service.StudentResultLinker;
 import org.school.personalLoad.vsoko.mcko.service.VsokoMckoImportService;
+import org.springframework.data.domain.Pageable;
 import org.springframework.mock.web.MockMultipartFile;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.Charset;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.stream.IntStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -96,6 +98,25 @@ class VsokoMckoImportServiceTest {
         assertFalse(response.files().get(0).reason().contains("malformed input"));
     }
 
+    @Test
+    void historyCanReturnMoreThanFormerTwoHundredFileLimit() {
+        Fixture fixture = fixture(List.of());
+        List<MckoImportFile> files = IntStream.rangeClosed(1, 211).mapToObj(number -> {
+            MckoImportFile file = new MckoImportFile();
+            file.setId((long) number);
+            file.setFileName("список-" + number + ".xlsx");
+            return file;
+        }).toList();
+        when(fixture.fileRepository.findAllByOrderByIdDesc(any(Pageable.class))).thenReturn(files);
+
+        List<VsokoMckoDtos.FileStatusRow> history = fixture.service.importHistory(5000);
+
+        assertEquals(211, history.size());
+        ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+        verify(fixture.fileRepository).findAllByOrderByIdDesc(pageable.capture());
+        assertEquals(5000, pageable.getValue().getPageSize());
+    }
+
     private Fixture fixture(List<StudentProfile> profiles) {
         VsokoMckoImportBatchRepository batchRepository = mock(VsokoMckoImportBatchRepository.class);
         MckoImportFileRepository fileRepository = mock(MckoImportFileRepository.class);
@@ -131,7 +152,7 @@ class VsokoMckoImportServiceTest {
         VsokoMckoImportService service = new VsokoMckoImportService(batchRepository, fileRepository, resultRepository,
                 rosterRepository, classSummaryRepository, assignmentRepository, linker,
                 new MckoParticipantRosterParser(), new MckoLegacyPdfParser(), new ObjectMapper());
-        return new Fixture(service, resultRepository);
+        return new Fixture(service, fileRepository, resultRepository);
     }
 
     private MckoStudentResult savedResult(MckoStudentResultRepository repository) {
@@ -194,5 +215,6 @@ class VsokoMckoImportServiceTest {
         return out.toByteArray();
     }
 
-    private record Fixture(VsokoMckoImportService service, MckoStudentResultRepository resultRepository) {}
+    private record Fixture(VsokoMckoImportService service, MckoImportFileRepository fileRepository,
+                           MckoStudentResultRepository resultRepository) {}
 }

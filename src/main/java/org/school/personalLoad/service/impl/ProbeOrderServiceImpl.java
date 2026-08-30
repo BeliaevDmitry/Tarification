@@ -1076,7 +1076,8 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
                 person(order.getSigner()), order.getSignerPosition(),
                 person(personnel.director()), person(personnel.deputyDirector()), personnel.executor(),
                 order.getParticipants().stream().map(participant -> new ProbeOrderDocumentService.ParticipantData(
-                        participant.getFullNameSnapshot(), participant.getRepresentativeName(), participant.getRepresentativePhone()
+                        participant.getFullNameSnapshot(), participant.getChildPhone(),
+                        participant.getRepresentativeName(), participant.getRepresentativePhone()
                 )).toList()
         );
     }
@@ -1143,8 +1144,6 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
         if (order.getAdditionalCompanions() == null) return List.of();
         return order.getAdditionalCompanions().stream()
                 .filter(Objects::nonNull)
-                .sorted(Comparator.comparing(TeacherDirectoryEntry::getFioTeacher,
-                        Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
                 .toList();
     }
 

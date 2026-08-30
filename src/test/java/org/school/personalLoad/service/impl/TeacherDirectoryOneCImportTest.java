@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.school.personalLoad.dto.TeacherOneCImportDtos;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.springframework.mock.web.MockMultipartFile;
 
@@ -25,13 +26,15 @@ class TeacherDirectoryOneCImportTest {
 
     private TeacherDirectoryRepository teachers;
     private ManualLoadEntryRepository loadEntries;
+    private SchoolBuildingRepository schoolBuildings;
     private TeacherDirectoryServiceImpl service;
 
     @BeforeEach
     void setUp() {
         teachers = mock(TeacherDirectoryRepository.class);
         loadEntries = mock(ManualLoadEntryRepository.class);
-        service = new TeacherDirectoryServiceImpl(teachers, loadEntries);
+        schoolBuildings = mock(SchoolBuildingRepository.class);
+        service = new TeacherDirectoryServiceImpl(teachers, loadEntries, schoolBuildings);
     }
 
     @Test
