@@ -20,6 +20,7 @@ public class TeacherUpdateRequest {
     private String email;
     private String additionalDuties;
     private String numberSchoolBuilding;
+    private Long schoolBuildingId;
     private String primaryPosition;
     private String employmentType;
     private java.time.LocalDate employmentDate;

@@ -285,6 +285,119 @@ public class VsokoMckoQueryService {
     }
 
     @Transactional(readOnly = true)
+    public VsokoMckoDtos.ParallelSummary parallelSummary(String academicYear) {
+        String year = normalizeYear(academicYear);
+        List<MckoClassDiagnosticSummary> summaries = classSummaryRepository.findAllByAcademicYear(year).stream()
+                .filter(row -> row.getAveragePercent() != null)
+                .filter(row -> parallel(row.getClassName()) != null)
+                .toList();
+        List<MckoStudentResult> results = resultRepository
+                .findAllByAcademicYearOrderByClassNameAscSubjectNameAscStudentFioSnapshotAsc(year).stream()
+                .filter(row -> row.getPercent() != null)
+                .filter(row -> resultParallel(row) != null)
+                .toList();
+
+        Map<String, String> subjectNames = new TreeMap<>();
+        summaries.forEach(row -> putSubjectName(subjectNames, row.getSubjectName()));
+        results.forEach(row -> putSubjectName(subjectNames, row.getSubjectName()));
+        TreeSet<Integer> parallelNumbers = new TreeSet<>();
+        summaries.forEach(row -> parallelNumbers.add(parallel(row.getClassName())));
+        results.forEach(row -> parallelNumbers.add(resultParallel(row)));
+
+        List<VsokoMckoDtos.ParallelSubjectRow> subjectRows = new ArrayList<>();
+        for (Map.Entry<String, String> subjectEntry : subjectNames.entrySet()) {
+            List<VsokoMckoDtos.ParallelSubjectCell> cells = new ArrayList<>();
+            for (Integer parallelNumber : parallelNumbers) {
+                List<MckoClassDiagnosticSummary> summaryRows = summaries.stream()
+                        .filter(row -> parallelNumber.equals(parallel(row.getClassName())))
+                        .filter(row -> normalizeSubject(row.getSubjectName()).equals(subjectEntry.getKey()))
+                        .toList();
+                List<MckoStudentResult> resultRows = results.stream()
+                        .filter(row -> parallelNumber.equals(resultParallel(row)))
+                        .filter(row -> normalizeSubject(row.getSubjectName()).equals(subjectEntry.getKey()))
+                        .toList();
+                Double schoolPercent = weightedSummaryAverage(summaryRows, MckoClassDiagnosticSummary::getAveragePercent);
+                if (schoolPercent == null) schoolPercent = average(resultRows, MckoStudentResult::getPercent);
+                if (schoolPercent == null) continue;
+                Double cityPercent = weightedSummaryAverage(summaryRows, MckoClassDiagnosticSummary::getCityPercent);
+                if (cityPercent == null) cityPercent = averagePercentText(resultRows, MckoStudentResult::getCityLevel);
+                int participantCount = summaryRows.stream().map(MckoClassDiagnosticSummary::getParticipantCount)
+                        .filter(Objects::nonNull).filter(count -> count > 0).mapToInt(Integer::intValue).sum();
+                if (participantCount == 0) participantCount = resultRows.size();
+                int diagnosticCount = summaryRows.isEmpty()
+                        ? (int) resultRows.stream().map(this::diagnosticKey).distinct().count()
+                        : summaryRows.size();
+                Double difference = cityPercent == null ? null : roundPercent(schoolPercent - cityPercent);
+                cells.add(new VsokoMckoDtos.ParallelSubjectCell(parallelNumber, participantCount, diagnosticCount,
+                        schoolPercent, cityPercent, difference, cityComparison(difference)));
+            }
+            if (!cells.isEmpty()) {
+                subjectRows.add(new VsokoMckoDtos.ParallelSubjectRow(subjectEntry.getValue(), cells));
+            }
+        }
+        List<Integer> populatedParallels = subjectRows.stream().flatMap(row -> row.parallels().stream())
+                .map(VsokoMckoDtos.ParallelSubjectCell::parallel).distinct().sorted().toList();
+        return new VsokoMckoDtos.ParallelSummary(year, populatedParallels, subjectRows);
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] exportParallelSummary(String academicYear) throws Exception {
+        VsokoMckoDtos.ParallelSummary summary = parallelSummary(academicYear);
+        try (Workbook workbook = new XSSFWorkbook()) {
+            Map<String, CellStyle> heatStyles = Map.of(
+                    "ABOVE_CITY", heatStyle(workbook, IndexedColors.LIGHT_GREEN),
+                    "AT_CITY", heatStyle(workbook, IndexedColors.LIGHT_YELLOW),
+                    "BELOW_CITY", heatStyle(workbook, IndexedColors.ROSE),
+                    "NO_CITY_DATA", heatStyle(workbook, IndexedColors.GREY_25_PERCENT));
+            Sheet matrix = workbook.createSheet("Матрица");
+            String[] matrixHeaders = new String[summary.parallels().size() + 1];
+            matrixHeaders[0] = "Предмет";
+            for (int index = 0; index < summary.parallels().size(); index++) {
+                matrixHeaders[index + 1] = summary.parallels().get(index) + " параллель";
+            }
+            writeHeader(matrix, matrixHeaders);
+            int matrixRowNo = 1;
+            for (VsokoMckoDtos.ParallelSubjectRow subject : summary.subjects()) {
+                Row row = matrix.createRow(matrixRowNo++);
+                row.createCell(0).setCellValue(subject.subjectName());
+                Map<Integer, VsokoMckoDtos.ParallelSubjectCell> cells = subject.parallels().stream()
+                        .collect(Collectors.toMap(VsokoMckoDtos.ParallelSubjectCell::parallel, Function.identity()));
+                for (int column = 0; column < summary.parallels().size(); column++) {
+                    VsokoMckoDtos.ParallelSubjectCell value = cells.get(summary.parallels().get(column));
+                    Cell cell = row.createCell(column + 1);
+                    if (value == null) {
+                        cell.setBlank();
+                    } else {
+                        cell.setCellValue(parallelCellText(value));
+                        cell.setCellStyle(heatStyles.get(value.comparison()));
+                    }
+                }
+            }
+            finishTable(matrix, matrixHeaders.length, matrixRowNo);
+            matrix.createFreezePane(1, 1);
+            matrix.setColumnWidth(0, 8500);
+            for (int column = 1; column < matrixHeaders.length; column++) matrix.setColumnWidth(column, 5000);
+
+            Sheet details = workbook.createSheet("Данные");
+            String[] detailHeaders = {"Учебный год", "Предмет", "Параллель", "Участий", "Диагностик",
+                    "% школы", "% города", "Разница, п.п.", "Сравнение"};
+            writeHeader(details, detailHeaders);
+            int detailRowNo = 1;
+            for (VsokoMckoDtos.ParallelSubjectRow subject : summary.subjects()) {
+                for (VsokoMckoDtos.ParallelSubjectCell value : subject.parallels()) {
+                    Row row = details.createRow(detailRowNo++);
+                    values(row, summary.academicYear(), subject.subjectName(), value.parallel(), value.participantCount(),
+                            value.diagnosticCount(), value.schoolPercent(), value.cityPercent(), value.difference(),
+                            comparisonLabel(value.comparison()));
+                    row.getCell(5).setCellStyle(heatStyles.get(value.comparison()));
+                }
+            }
+            finishTable(details, detailHeaders.length, detailRowNo);
+            return bytes(workbook);
+        }
+    }
+
+    @Transactional(readOnly = true)
     public List<VsokoMckoDtos.TeacherAssignmentRow> assignments(String academicYear) {
         return assignmentRepository.findAllByAcademicYearOrderByClassNameAscSubjectNameAsc(normalizeYear(academicYear)).stream()
                 .map(this::toAssignmentRow).toList();
@@ -743,6 +856,49 @@ public class VsokoMckoQueryService {
         return weightTotal == 0 ? null : Math.round(total / weightTotal * 100.0) / 100.0;
     }
 
+    private void putSubjectName(Map<String, String> subjectNames, String subjectName) {
+        String key = normalizeSubject(subjectName);
+        if (!key.isBlank()) subjectNames.putIfAbsent(key, display(subjectName));
+    }
+
+    private Integer resultParallel(MckoStudentResult row) {
+        return row.getParallel() == null ? parallel(row.getClassName()) : row.getParallel();
+    }
+
+    private String diagnosticKey(MckoStudentResult row) {
+        return normalizeClass(row.getClassName()) + "|" + Objects.toString(row.getDiagnosticDate(), "без даты");
+    }
+
+    private Double roundPercent(double value) {
+        return Math.round(value * 100.0) / 100.0;
+    }
+
+    private String cityComparison(Double difference) {
+        if (difference == null) return "NO_CITY_DATA";
+        if (difference > 1.0) return "ABOVE_CITY";
+        if (difference < -1.0) return "BELOW_CITY";
+        return "AT_CITY";
+    }
+
+    private String comparisonLabel(String comparison) {
+        return switch (comparison) {
+            case "ABOVE_CITY" -> "Выше города";
+            case "AT_CITY" -> "На уровне города";
+            case "BELOW_CITY" -> "Ниже города";
+            default -> "Нет данных города";
+        };
+    }
+
+    private String parallelCellText(VsokoMckoDtos.ParallelSubjectCell value) {
+        if (value.cityPercent() == null) {
+            return String.format(Locale.forLanguageTag("ru-RU"), "%.1f%%\nгород: нет данных\nучастий: %d · работ: %d",
+                    value.schoolPercent(), value.participantCount(), value.diagnosticCount());
+        }
+        return String.format(Locale.forLanguageTag("ru-RU"), "%.1f%%\nгород: %.1f%%\n%+.1f п.п. · участий: %d · работ: %d",
+                value.schoolPercent(), value.cityPercent(), value.difference(), value.participantCount(),
+                value.diagnosticCount());
+    }
+
     private <T> Double averagePercentText(List<T> rows, Function<T, String> getter) {
         return average(rows, row -> parsePercent(getter.apply(row)));
     }
@@ -853,6 +1009,20 @@ public class VsokoMckoQueryService {
     private CellStyle interviewHeaderStyle(Workbook workbook) {
         CellStyle style = headerStyle(workbook);
         style.setFillForegroundColor(IndexedColors.BLUE_GREY.getIndex());
+        return style;
+    }
+
+    private CellStyle heatStyle(Workbook workbook, IndexedColors color) {
+        CellStyle style = workbook.createCellStyle();
+        style.setFillForegroundColor(color.getIndex());
+        style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        style.setAlignment(HorizontalAlignment.CENTER);
+        style.setVerticalAlignment(VerticalAlignment.CENTER);
+        style.setWrapText(true);
+        style.setBorderTop(BorderStyle.THIN);
+        style.setBorderRight(BorderStyle.THIN);
+        style.setBorderBottom(BorderStyle.THIN);
+        style.setBorderLeft(BorderStyle.THIN);
         return style;
     }
 

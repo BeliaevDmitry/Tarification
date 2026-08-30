@@ -1,16 +1,20 @@
 package org.school.personalLoad.service.impl;
 
 import org.apache.poi.xwpf.usermodel.*;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTBorder;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTInd;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTParaRPr;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPPr;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTabStop;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTabs;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblGrid;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblGridCol;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblBorders;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblPr;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblWidth;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTcPr;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STTabJc;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.STBorder;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STTblWidth;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
@@ -42,8 +46,8 @@ public class ProbeOrderDocumentService {
     private static final BigInteger ORDER_FIRST_LINE = BigInteger.valueOf(851);
     private static final BigInteger PARTICIPANT_TABLE_WIDTH = BigInteger.valueOf(9921);
     private static final BigInteger[] PARTICIPANT_COLUMN_WIDTHS = {
-            BigInteger.valueOf(497), BigInteger.valueOf(2923),
-            BigInteger.valueOf(3284), BigInteger.valueOf(3217)
+            BigInteger.valueOf(497), BigInteger.valueOf(2500), BigInteger.valueOf(1600),
+            BigInteger.valueOf(3324), BigInteger.valueOf(2000)
     };
     private static final String TEMPLATE_MARKER_COLOR = "F9FAFB";
 
@@ -122,6 +126,14 @@ public class ProbeOrderDocumentService {
         }
         if (original.trim().startsWith("от") && original.contains("№")) {
             replaceOrderRequisitesParagraph(paragraph, data);
+            return;
+        }
+        if (original.trim().matches("Приложение\\s*(?:№\\s*)?1")) {
+            replaceParagraph(paragraph, "Приложение № 1", 12, false);
+            paragraph.setAlignment(ParagraphAlignment.RIGHT);
+            paragraph.setPageBreak(true);
+            paragraph.setSpacingBefore(0);
+            paragraph.setSpacingAfter(0);
             return;
         }
         if (original.contains("к Приказу №")) {
@@ -246,13 +258,13 @@ public class ProbeOrderDocumentService {
     private String appointmentParagraph(DocumentData data) {
         String secondary = data.secondaryCompanion() == null
                 ? ""
-                : ", заместителем руководителя группы " + data.secondaryCompanion().accusativeOrName();
+                : ", заместителем руководителя группы " + accusativeInitials(data.secondaryCompanion());
         String additional = data.additionalCompanions().isEmpty()
                 ? ""
                 : ", сопровождающими " + data.additionalCompanions().stream()
-                .map(PersonData::accusativeOrName).collect(java.util.stream.Collectors.joining(", "));
+                .map(this::accusativeInitials).collect(java.util.stream.Collectors.joining(", "));
         String pronoun = allCompanions(data).size() == 1 ? "него" : "них";
-        return cleanup("Назначить руководителем группы " + data.primaryCompanion().accusativeOrName()
+        return cleanup("Назначить руководителем группы " + accusativeInitials(data.primaryCompanion())
                 + secondary + additional + " и возложить на " + pronoun
                 + " ответственность за жизнь и здоровье несовершеннолетних участников мероприятия во время "
                 + "выездного мероприятия, а также по всему маршруту следования, от места сбора группы до места "
@@ -265,26 +277,26 @@ public class ProbeOrderDocumentService {
     }
 
     private String leaderTaskHeading(DocumentData data) {
-        return cleanup("Руководителю группы " + data.primaryCompanion().dativeOrName() + ":");
+        return cleanup("Руководителю группы " + dativeInitials(data.primaryCompanion()) + ":");
     }
 
     private String curatorReportParagraph(DocumentData data) {
         String curator = text(data.curator());
         return "- по окончании мероприятия доложить о прибытии куратору корпуса"
-                + (curator.isBlank() ? "." : " " + curator + ".");
+                + (curator.isBlank() ? "." : " " + surnameInitials(curator) + ".");
     }
 
     private String safetyParagraph(DocumentData data) {
         List<String> recipients = new ArrayList<>();
-        if (!dative(data.director()).isBlank()) {
-            recipients.add("директору школы " + dative(data.director()));
+        if (!dativeInitials(data.director()).isBlank()) {
+            recipients.add("директору школы " + dativeInitials(data.director()));
         }
         // Ответственный за безопасность постоянный и закреплён в утверждённом тексте приказа.
         recipients.add("специалисту по безопасности Коваленко А.А.");
-        if (!dative(data.deputyDirector()).isBlank()) {
-            recipients.add("заместителю директора " + dative(data.deputyDirector()));
+        if (!dativeInitials(data.deputyDirector()).isBlank()) {
+            recipients.add("заместителю директора " + dativeInitials(data.deputyDirector()));
         }
-        return cleanup("Руководителю группы " + data.primaryCompanion().dativeOrName()
+        return cleanup("Руководителю группы " + dativeInitials(data.primaryCompanion())
                 + " неукоснительно соблюдать требования мер безопасности при проведении мероприятия. "
                 + "В случае возникновения чрезвычайных ситуаций или других непредвиденных инцидентах "
                 + "немедленно сообщать " + String.join(", ", recipients) + ".");
@@ -293,15 +305,24 @@ public class ProbeOrderDocumentService {
     private void replaceOrderRequisitesParagraph(XWPFParagraph paragraph, DocumentData data) {
         clearRuns(paragraph);
         configureRightTab(paragraph);
+        clearParagraphMarkUnderline(paragraph);
         XWPFRun left = paragraph.createRun();
         styleRun(left, true, 14);
-        left.setUnderline(UnderlinePatterns.SINGLE);
         left.setText("от " + formatDate(data.orderDate()) + " г.");
         left.addTab();
         XWPFRun right = paragraph.createRun();
         styleRun(right, true, 14);
-        right.setUnderline(UnderlinePatterns.SINGLE);
         right.setText("№ " + text(data.orderNumber()));
+    }
+
+    private void clearParagraphMarkUnderline(XWPFParagraph paragraph) {
+        CTPPr properties = paragraph.getCTP().isSetPPr()
+                ? paragraph.getCTP().getPPr() : paragraph.getCTP().addNewPPr();
+        if (!properties.isSetRPr()) return;
+        CTParaRPr runProperties = properties.getRPr();
+        while (runProperties.sizeOfUArray() > 0) {
+            runProperties.removeU(0);
+        }
     }
 
     private void replaceSignatureParagraph(XWPFParagraph paragraph, DocumentData data) {
@@ -326,11 +347,12 @@ public class ProbeOrderDocumentService {
                 .orElseThrow(() -> new IllegalStateException("В шаблоне не найдена таблица участников"));
 
         XWPFTableRow header = target.getRow(0);
-        ensureCells(header, 4);
+        ensureCells(header, 5);
         setCell(header.getCell(0), "№", ParagraphAlignment.LEFT);
         setCell(header.getCell(1), "ФИО", ParagraphAlignment.LEFT);
-        setCell(header.getCell(2), "ФИО представителя", ParagraphAlignment.LEFT);
-        setCell(header.getCell(3), "Телефон представителя", ParagraphAlignment.LEFT);
+        setCell(header.getCell(2), "Телефон ребёнка", ParagraphAlignment.LEFT);
+        setCell(header.getCell(3), "ФИО представителя", ParagraphAlignment.LEFT);
+        setCell(header.getCell(4), "Телефон представителя", ParagraphAlignment.LEFT);
 
         while (target.getNumberOfRows() > 1) {
             target.removeRow(target.getNumberOfRows() - 1);
@@ -338,11 +360,12 @@ public class ProbeOrderDocumentService {
         int index = 1;
         for (ParticipantData participant : participants) {
             XWPFTableRow row = target.createRow();
-            ensureCells(row, 4);
+            ensureCells(row, 5);
             setCell(row.getCell(0), String.valueOf(index), ParagraphAlignment.LEFT);
             setCell(row.getCell(1), text(participant.fullName()), ParagraphAlignment.LEFT);
-            setCell(row.getCell(2), dashIfBlank(participant.representativeName()), ParagraphAlignment.LEFT);
-            setCell(row.getCell(3), dashIfBlank(participant.representativePhone()), ParagraphAlignment.LEFT);
+            setCell(row.getCell(2), dashIfBlank(participant.childPhone()), ParagraphAlignment.LEFT);
+            setCell(row.getCell(3), dashIfBlank(participant.representativeName()), ParagraphAlignment.LEFT);
+            setCell(row.getCell(4), dashIfBlank(participant.representativePhone()), ParagraphAlignment.LEFT);
             index++;
         }
         applyParticipantTableGeometry(target);
@@ -357,6 +380,8 @@ public class ProbeOrderDocumentService {
                 ? tableProperties.getTblW() : tableProperties.addNewTblW();
         tableWidth.setType(STTblWidth.DXA);
         tableWidth.setW(PARTICIPANT_TABLE_WIDTH);
+        table.setCellMargins(80, 100, 80, 100);
+        applyParticipantTableBorders(tableProperties);
 
         CTTblGrid grid = table.getCTTbl().getTblGrid();
         if (grid == null) {
@@ -374,6 +399,7 @@ public class ProbeOrderDocumentService {
             ensureCells(row, PARTICIPANT_COLUMN_WIDTHS.length);
             for (int columnIndex = 0; columnIndex < PARTICIPANT_COLUMN_WIDTHS.length; columnIndex++) {
                 XWPFTableCell cell = row.getCell(columnIndex);
+                cell.setVerticalAlignment(XWPFTableCell.XWPFVertAlign.CENTER);
                 CTTcPr cellProperties = cell.getCTTc().isSetTcPr()
                         ? cell.getCTTc().getTcPr() : cell.getCTTc().addNewTcPr();
                 CTTblWidth cellWidth = cellProperties.isSetTcW()
@@ -382,6 +408,24 @@ public class ProbeOrderDocumentService {
                 cellWidth.setW(PARTICIPANT_COLUMN_WIDTHS[columnIndex]);
             }
         }
+    }
+
+    private void applyParticipantTableBorders(CTTblPr tableProperties) {
+        CTTblBorders borders = tableProperties.isSetTblBorders()
+                ? tableProperties.getTblBorders() : tableProperties.addNewTblBorders();
+        setBorder(borders.isSetTop() ? borders.getTop() : borders.addNewTop());
+        setBorder(borders.isSetLeft() ? borders.getLeft() : borders.addNewLeft());
+        setBorder(borders.isSetBottom() ? borders.getBottom() : borders.addNewBottom());
+        setBorder(borders.isSetRight() ? borders.getRight() : borders.addNewRight());
+        setBorder(borders.isSetInsideH() ? borders.getInsideH() : borders.addNewInsideH());
+        setBorder(borders.isSetInsideV() ? borders.getInsideV() : borders.addNewInsideV());
+    }
+
+    private void setBorder(CTBorder border) {
+        border.setVal(STBorder.SINGLE);
+        border.setSz(BigInteger.valueOf(4));
+        border.setColor("000000");
+        border.setSpace(BigInteger.ZERO);
     }
 
     private void ensureCells(XWPFTableRow row, int count) {
@@ -482,6 +526,7 @@ public class ProbeOrderDocumentService {
         if (properties.isSetSpacing()) {
             properties.unsetSpacing();
         }
+        clearParagraphMarkBold(properties);
         paragraph.setNumID(ORDER_NUMBERING_ID);
         paragraph.setNumILvl(BigInteger.ZERO);
         paragraph.setAlignment(ParagraphAlignment.BOTH);
@@ -490,6 +535,17 @@ public class ProbeOrderDocumentService {
         if (indentation.isSetRight()) indentation.unsetRight();
         if (indentation.isSetHanging()) indentation.unsetHanging();
         indentation.setFirstLine(ORDER_FIRST_LINE);
+    }
+
+    private void clearParagraphMarkBold(CTPPr properties) {
+        if (!properties.isSetRPr()) return;
+        CTParaRPr runProperties = properties.getRPr();
+        while (runProperties.sizeOfBArray() > 0) {
+            runProperties.removeB(0);
+        }
+        while (runProperties.sizeOfBCsArray() > 0) {
+            runProperties.removeBCs(0);
+        }
     }
 
     private void removeTemplateMarkers(XWPFDocument document) {
@@ -637,6 +693,48 @@ public class ProbeOrderDocumentService {
         return person == null ? "" : text(person.dativeOrName());
     }
 
+    private String dativeInitials(PersonData person) {
+        return person == null ? "" : casedSurnameInitials(person.dativeOrName(), person);
+    }
+
+    private String accusativeInitials(PersonData person) {
+        return person == null ? "" : casedSurnameInitials(person.accusativeOrName(), person);
+    }
+
+    private String casedSurnameInitials(String casedName, PersonData person) {
+        String value = text(casedName);
+        if (value.isBlank()) return "";
+        String surname = value.split("\\s+", 2)[0];
+        String compact = text(person.initials());
+        int separator = compact.indexOf(' ');
+        String initials = separator >= 0 ? compact.substring(separator + 1).trim() : "";
+        if (initials.isBlank()) {
+            String[] parts = text(person.fullName()).split("\\s+");
+            StringBuilder generated = new StringBuilder();
+            for (int i = 1; i < Math.min(parts.length, 3); i++) {
+                if (!parts[i].isBlank()) generated.append(parts[i].charAt(0)).append('.');
+            }
+            initials = generated.toString();
+        }
+        return initials.isBlank() ? surname : surname + " " + initials;
+    }
+
+    private String surnameInitials(String fullName) {
+        String value = text(fullName);
+        if (value.isBlank()) return "";
+        String[] parts = value.split("\\s+");
+        if (parts.length < 2) return value;
+        StringBuilder result = new StringBuilder(parts[0]).append(' ');
+        for (int i = 1; i < Math.min(parts.length, 3); i++) {
+            if (parts[i].matches("[А-ЯA-ZЁ]\\.(?:[А-ЯA-ZЁ]\\.)?")) {
+                result.append(parts[i]);
+            } else if (!parts[i].isBlank()) {
+                result.append(parts[i].charAt(0)).append('.');
+            }
+        }
+        return result.toString().trim();
+    }
+
     private String executorName(PersonData person) {
         return person == null ? "исполнитель не указан" : text(person.initialsOrName());
     }
@@ -672,7 +770,8 @@ public class ProbeOrderDocumentService {
         }
     }
 
-    public record ParticipantData(String fullName, String representativeName, String representativePhone) {
+    public record ParticipantData(String fullName, String childPhone,
+                                  String representativeName, String representativePhone) {
     }
 
     public record DocumentData(String academicYear,

@@ -43,6 +43,17 @@ public class TeacherDirectoryEntry {
     @Transient
     private String additionalDutiesSummary;
     private String numberSchoolBuilding;
+
+    @Column(name = "school_building_id")
+    private Long schoolBuildingId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "school_building_id", insertable = false, updatable = false)
+    @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private SchoolBuilding schoolBuilding;
+
     private String primaryPosition;
     private String personnelNumber;
     private String employmentType;

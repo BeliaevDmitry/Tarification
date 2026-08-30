@@ -12,4 +12,5 @@ public interface TeacherDirectoryRepository extends JpaRepository<TeacherDirecto
     Optional<TeacherDirectoryEntry> findByFioTeacherIgnoreCase(String fioTeacher);
     boolean existsByNumberSchoolBuildingIgnoreCase(String numberSchoolBuilding);
     boolean existsByBuildingGroup_Id(Long buildingGroupId);
+    boolean existsBySchoolBuildingId(Long schoolBuildingId);
 }

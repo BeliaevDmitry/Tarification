@@ -42,11 +42,11 @@
         <h2>Кадровые действия</h2>
         <div class="row" data-requires-edit>
             <button id="accept-teacher-btn" type="button">Принять сотрудника</button>
-            <button id="auto-assign-buildings-btn" type="button">Распределить по корпусам</button>
+            <button id="auto-assign-buildings-btn" type="button">Распределить по площадкам</button>
             <button id="refresh-teachers-btn" type="button" data-allow-readonly="true">Обновить список</button>
             <button id="clear-teachers-btn" type="button">Очистить справочник</button>
         </div>
-        <p class="muted">Корпус определяется по наибольшей сумме часов нагрузки за выбранный учебный год. При равенстве часов система ничего не меняет.</p>
+        <p class="muted">Основная площадка определяется по её адресу: выбирается площадка с наибольшей суммой часов за учебный год. При равенстве часов система ничего не меняет.</p>
         <pre id="teachers-result"></pre>
     </section>
 
@@ -61,7 +61,7 @@
                     <th>Телефон</th>
                     <th>Email</th>
                     <th>Дополнительные обязанности</th>
-                    <th>Корпус</th>
+                    <th>Основная площадка</th>
                     <th>Основная должность</th>
                     <th>Вид занятости</th>
                     <th>Статус</th>
@@ -92,7 +92,7 @@
                     <th>ФИО</th>
                     <th>Телефон</th>
                     <th>Email</th>
-                    <th>Корпус</th>
+                    <th>Основная площадка</th>
                     <th>Дата увольнения</th>
                     <th>Дата переноса в архив</th>
                     <th>Действия</th>
@@ -299,7 +299,7 @@
                     <label class="teacher-card-wide">ФИО<input id="teacher-card-fio" required></label>
                     <label>Телефон<input id="teacher-card-phone"></label>
                     <label>Email<input id="teacher-card-email" type="email"></label>
-                    <label>Корпус<select id="teacher-card-building"></select></label>
+                    <label>Основная площадка<select id="teacher-card-building"></select></label>
                     <label>Основная должность<input id="teacher-card-primary-position"></label>
                     <label>Вид занятости<input id="teacher-card-employment-type"></label>
                     <label>Дата приёма<input id="teacher-card-employment-date" type="date"></label>
@@ -458,7 +458,7 @@
                 </details>
                 <label>Телефон<input id="accept-phone"></label>
                 <label>Email<input id="accept-email" type="email"></label>
-                <label>Корпус<select id="accept-building"></select></label>
+                <label>Основная площадка<select id="accept-building"></select></label>
                 <label>Основная должность<select id="accept-position" required></select></label>
                 <label>Вид занятости<input id="accept-employment-type" value="Основное место работы"></label>
                 <label>Дата приёма<input id="accept-employment-date" type="date"></label>

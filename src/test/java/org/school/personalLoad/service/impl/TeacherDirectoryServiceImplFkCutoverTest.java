@@ -6,10 +6,13 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.school.personalLoad.model.EducationLevel;
+import org.school.personalLoad.model.BuildingGroup;
 import org.school.personalLoad.model.ManualLoadEntry;
+import org.school.personalLoad.model.SchoolBuilding;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.dto.TeacherUpdateRequest;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
+import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 
 import java.time.LocalDate;
@@ -32,13 +35,41 @@ class TeacherDirectoryServiceImplFkCutoverTest {
     private TeacherDirectoryRepository teacherDirectoryRepository;
     @Mock
     private ManualLoadEntryRepository manualLoadEntryRepository;
+    @Mock
+    private SchoolBuildingRepository schoolBuildingRepository;
+
+    @Test
+    void updateStoresPhysicalSiteAndKeepsOrganizationalBuildingCode() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Иванов И.И.");
+        BuildingGroup group = new BuildingGroup();
+        group.setId(3L);
+        group.setCode("СП3");
+        group.setName("СП3");
+        SchoolBuilding site = new SchoolBuilding();
+        site.setId(37L);
+        site.setCode("сп3|ломоносовский");
+        site.setAddress("Ломоносовский пр-кт, д. 3А");
+        site.setBuildingGroup(group);
+        TeacherDirectoryServiceImpl service = new TeacherDirectoryServiceImpl(
+                teacherDirectoryRepository, manualLoadEntryRepository, schoolBuildingRepository);
+        when(teacherDirectoryRepository.findById(1L)).thenReturn(Optional.of(teacher));
+        when(schoolBuildingRepository.findById(37L)).thenReturn(Optional.of(site));
+        when(teacherDirectoryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        TeacherUpdateRequest request = new TeacherUpdateRequest();
+        request.setSchoolBuildingId(37L);
+
+        TeacherDirectoryEntry saved = service.update(1L, request);
+
+        assertEquals(37L, saved.getSchoolBuildingId());
+        assertEquals("СП3", saved.getNumberSchoolBuilding());
+    }
 
     @Test
     void dismissalUsesTeacherIdAndCreatesVacancyRowWithVacancyTeacherId() {
         TeacherDirectoryEntry teacher = teacher(1L, "Иванов И.И.");
         TeacherDirectoryEntry vacancy = teacher(99L, "Вакансия");
         ManualLoadEntry load = load(10L, 1L, "Иванов И.И.", LocalDate.of(2025, 9, 1), LocalDate.of(2026, 5, 31));
-        TeacherDirectoryServiceImpl service = new TeacherDirectoryServiceImpl(teacherDirectoryRepository, manualLoadEntryRepository);
+        TeacherDirectoryServiceImpl service = new TeacherDirectoryServiceImpl(teacherDirectoryRepository, manualLoadEntryRepository, schoolBuildingRepository);
         when(teacherDirectoryRepository.findById(1L)).thenReturn(Optional.of(teacher));
         when(teacherDirectoryRepository.findByFioTeacherIgnoreCase("Вакансия")).thenReturn(Optional.of(vacancy));
         when(manualLoadEntryRepository.findByTeacherId(1L)).thenReturn(List.of(load));
@@ -65,7 +96,7 @@ class TeacherDirectoryServiceImplFkCutoverTest {
         teacher.setPlannedDismissalDate(LocalDate.of(2026, 3, 1));
         teacher.setPlannedDismissalComment("Переезд");
         teacher.setPlannedDismissalMarkedBy("admin");
-        TeacherDirectoryServiceImpl service = new TeacherDirectoryServiceImpl(teacherDirectoryRepository, manualLoadEntryRepository);
+        TeacherDirectoryServiceImpl service = new TeacherDirectoryServiceImpl(teacherDirectoryRepository, manualLoadEntryRepository, schoolBuildingRepository);
         when(teacherDirectoryRepository.findById(1L)).thenReturn(Optional.of(teacher));
         when(teacherDirectoryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -83,7 +114,7 @@ class TeacherDirectoryServiceImplFkCutoverTest {
         ManualLoadEntry load = load(10L, 1L, "Старое ФИО", LocalDate.of(2025, 9, 1), LocalDate.of(2026, 1, 10));
         load.setDismissalAdjusted(true);
         load.setBackupLoadToDate(LocalDate.of(2026, 5, 31));
-        TeacherDirectoryServiceImpl service = new TeacherDirectoryServiceImpl(teacherDirectoryRepository, manualLoadEntryRepository);
+        TeacherDirectoryServiceImpl service = new TeacherDirectoryServiceImpl(teacherDirectoryRepository, manualLoadEntryRepository, schoolBuildingRepository);
         when(teacherDirectoryRepository.findById(1L)).thenReturn(Optional.of(teacher));
         when(manualLoadEntryRepository.findByTeacherId(1L)).thenReturn(List.of(load));
         when(teacherDirectoryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -106,7 +137,7 @@ class TeacherDirectoryServiceImplFkCutoverTest {
         load.setDismissalAdjusted(true);
         load.setBackupLoadToDate(LocalDate.of(2026, 5, 31));
         ManualLoadEntry vacancyLoad = load(11L, 99L, vacancyTeacher.getFioTeacher(), LocalDate.of(2026, 1, 11), LocalDate.of(2026, 5, 31));
-        TeacherDirectoryServiceImpl service = new TeacherDirectoryServiceImpl(teacherDirectoryRepository, manualLoadEntryRepository);
+        TeacherDirectoryServiceImpl service = new TeacherDirectoryServiceImpl(teacherDirectoryRepository, manualLoadEntryRepository, schoolBuildingRepository);
         when(teacherDirectoryRepository.findById(1L)).thenReturn(Optional.of(teacher));
         when(teacherDirectoryRepository.findByFioTeacherIgnoreCase("Вакансия")).thenReturn(Optional.of(vacancyTeacher));
         when(manualLoadEntryRepository.findByTeacherId(1L)).thenReturn(List.of(load));
@@ -122,7 +153,7 @@ class TeacherDirectoryServiceImplFkCutoverTest {
     @Test
     void archivePreservesTeacherAndLoadRelations() {
         TeacherDirectoryEntry teacher = teacher(1L, "Иванов И.И.");
-        TeacherDirectoryServiceImpl service = new TeacherDirectoryServiceImpl(teacherDirectoryRepository, manualLoadEntryRepository);
+        TeacherDirectoryServiceImpl service = new TeacherDirectoryServiceImpl(teacherDirectoryRepository, manualLoadEntryRepository, schoolBuildingRepository);
         when(teacherDirectoryRepository.findById(1L)).thenReturn(Optional.of(teacher));
         when(teacherDirectoryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -142,7 +173,7 @@ class TeacherDirectoryServiceImplFkCutoverTest {
         TeacherDirectoryEntry teacher = teacher(1L, "Иванов И.И.");
         teacher.setAdditionalDuties("\u0000".repeat(4) + "x".repeat(40_000));
         TeacherDirectoryEntry nullName = teacher(2L, null);
-        TeacherDirectoryServiceImpl service = new TeacherDirectoryServiceImpl(teacherDirectoryRepository, manualLoadEntryRepository);
+        TeacherDirectoryServiceImpl service = new TeacherDirectoryServiceImpl(teacherDirectoryRepository, manualLoadEntryRepository, schoolBuildingRepository);
         when(teacherDirectoryRepository.findAll()).thenReturn(List.of(teacher, nullName));
 
         assertDoesNotThrow(() -> assertTrue(service.buildImportTemplate().contentLength() > 0));
@@ -152,7 +183,7 @@ class TeacherDirectoryServiceImplFkCutoverTest {
     void editedDocumentNameFormsAreStoredAndNotResetByUnrelatedUpdate() {
         TeacherDirectoryEntry teacher = teacher(1L, "Рысь Виктория Игоревна");
         TeacherDirectoryServiceImpl service = new TeacherDirectoryServiceImpl(
-                teacherDirectoryRepository, manualLoadEntryRepository);
+                teacherDirectoryRepository, manualLoadEntryRepository, schoolBuildingRepository);
         when(teacherDirectoryRepository.findById(1L)).thenReturn(Optional.of(teacher));
         when(teacherDirectoryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 

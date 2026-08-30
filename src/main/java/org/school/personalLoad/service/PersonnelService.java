@@ -36,6 +36,7 @@ public class PersonnelService {
     private final EmploymentContractRepository contracts;
     private final LoadInRateRuleRepository inRateRules;
     private final LoadSalaryCalculationService salaryCalculation;
+    private final SchoolBuildingRepository schoolBuildings;
     private final PaSpecificationRepository paSpecifications;
     private final PaReportVersionRepository paReportVersions;
     private final PaReportAnalysisSummaryRepository paSummaries;
@@ -43,6 +44,13 @@ public class PersonnelService {
 
     @Transactional(readOnly = true)
     public List<PersonnelRow> personnel(String academicYear) {
+        Map<Long, String> campusAddressById = schoolBuildings.findAll().stream()
+                .filter(building -> building.getId() != null)
+                .collect(Collectors.toMap(
+                        SchoolBuilding::getId,
+                        building -> Objects.toString(building.getAddress(), "").trim(),
+                        (first, second) -> first
+                ));
         Map<Long, LinkedHashSet<String>> duties = new HashMap<>();
         classroomLeadership.findAllByAcademicYear(academicYear).forEach(row -> {
             Long teacherId = row.getTeacherId();
@@ -71,19 +79,35 @@ public class PersonnelService {
                 .sorted(Comparator.comparing(TeacherDirectoryEntry::getFioTeacher, String.CASE_INSENSITIVE_ORDER))
                 .map(teacher -> PersonnelRow.from(teacher,
                         String.join("; ", duties.getOrDefault(teacher.getId(), new LinkedHashSet<>())),
-                        storedNameCases(teacher)))
+                        storedNameCases(teacher),
+                        campusAddressById.getOrDefault(teacher.getSchoolBuildingId(), "")))
                 .toList();
     }
 
     @Transactional
     public AutoBuildingResult autoAssignBuildings(String academicYear) {
-        Map<Long, Map<String, BigDecimal>> totals = new HashMap<>();
+        List<SchoolBuilding> sites = schoolBuildings.findAll();
+        Map<Long, SchoolBuilding> siteById = sites.stream()
+                .filter(site -> site.getId() != null)
+                .collect(Collectors.toMap(SchoolBuilding::getId, site -> site, (first, second) -> first));
+        Map<String, List<SchoolBuilding>> sitesByPhysicalCode = sites.stream()
+                .filter(site -> !normalizedBuildingCode(site.getCode()).isBlank())
+                .collect(Collectors.groupingBy(site -> normalizedBuildingCode(site.getCode())));
+        Map<String, List<SchoolBuilding>> sitesByGroupCode = sites.stream()
+                .filter(site -> !normalizedBuildingCode(organizationalBuildingCode(site)).isBlank())
+                .collect(Collectors.groupingBy(site -> normalizedBuildingCode(organizationalBuildingCode(site))));
+
+        Map<Long, Map<Long, BigDecimal>> totals = new HashMap<>();
         loadRows.findAllByAcademicYear(academicYear).stream()
                 .filter(row -> row.getTeacherId() != null)
-                .filter(row -> row.getNumberSchoolBuilding() != null && !row.getNumberSchoolBuilding().isBlank())
-                .forEach(row -> totals.computeIfAbsent(row.getTeacherId(), ignored -> new HashMap<>())
-                        .merge(row.getNumberSchoolBuilding().trim(),
-                                salaryCalculation.totalHours(row), BigDecimal::add));
+                .forEach(row -> {
+                    SchoolBuilding site = resolveLoadSite(row, siteById, sitesByPhysicalCode, sitesByGroupCode);
+                    if (site == null || site.getId() == null) return;
+                    BigDecimal hours = placementHours(row);
+                    if (hours.signum() <= 0) return;
+                    totals.computeIfAbsent(row.getTeacherId(), ignored -> new HashMap<>())
+                            .merge(site.getId(), hours, BigDecimal::add);
+                });
         int assigned = 0;
         int unchanged = 0;
         int skippedWithoutLoad = 0;
@@ -91,30 +115,73 @@ public class PersonnelService {
         List<Long> ties = new ArrayList<>();
         for (TeacherDirectoryEntry teacher : teachers.findAll()) {
             if (teacher.isArchived() || isVacancy(teacher.getFioTeacher())) continue;
-            Map<String, BigDecimal> byBuilding = totals.getOrDefault(teacher.getId(), Map.of());
-            if (byBuilding.isEmpty()) {
+            Map<Long, BigDecimal> bySite = totals.getOrDefault(teacher.getId(), Map.of());
+            if (bySite.isEmpty()) {
                 skippedWithoutLoad++;
                 continue;
             }
-            BigDecimal max = byBuilding.values().stream().max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
-            List<String> leaders = byBuilding.entrySet().stream()
+            BigDecimal max = bySite.values().stream().max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
+            List<Long> leaders = bySite.entrySet().stream()
                     .filter(entry -> entry.getValue().compareTo(max) == 0)
-                    .map(Map.Entry::getKey).sorted(String.CASE_INSENSITIVE_ORDER).toList();
+                    .map(Map.Entry::getKey).sorted().toList();
             if (leaders.size() != 1) {
                 skippedTies++;
                 ties.add(teacher.getId());
                 continue;
             }
-            String target = leaders.get(0);
-            if (target.equalsIgnoreCase(Objects.toString(teacher.getNumberSchoolBuilding(), ""))) {
+            SchoolBuilding target = siteById.get(leaders.get(0));
+            if (target == null) {
+                skippedWithoutLoad++;
+                continue;
+            }
+            String targetGroupCode = organizationalBuildingCode(target);
+            if (Objects.equals(target.getId(), teacher.getSchoolBuildingId())
+                    && targetGroupCode.equalsIgnoreCase(Objects.toString(teacher.getNumberSchoolBuilding(), ""))) {
                 unchanged++;
             } else {
-                teacher.setNumberSchoolBuilding(target);
+                teacher.setSchoolBuildingId(target.getId());
+                teacher.setNumberSchoolBuilding(targetGroupCode);
                 teachers.save(teacher);
                 assigned++;
             }
         }
         return new AutoBuildingResult(assigned, unchanged, skippedWithoutLoad, skippedTies, ties);
+    }
+
+    private SchoolBuilding resolveLoadSite(ManualLoadEntry row,
+                                           Map<Long, SchoolBuilding> siteById,
+                                           Map<String, List<SchoolBuilding>> sitesByPhysicalCode,
+                                           Map<String, List<SchoolBuilding>> sitesByGroupCode) {
+        Long schoolBuildingId = row.getSchoolBuildingId();
+        if (schoolBuildingId != null) {
+            SchoolBuilding direct = siteById.get(schoolBuildingId);
+            if (direct != null) return direct;
+        }
+        String code = normalizedBuildingCode(row.getNumberSchoolBuilding());
+        if (code.isBlank()) return null;
+        List<SchoolBuilding> exactPhysical = sitesByPhysicalCode.getOrDefault(code, List.of());
+        if (exactPhysical.size() == 1) return exactPhysical.get(0);
+        List<SchoolBuilding> groupSites = sitesByGroupCode.getOrDefault(code, List.of());
+        return groupSites.size() == 1 ? groupSites.get(0) : null;
+    }
+
+    private BigDecimal placementHours(ManualLoadEntry row) {
+        BigDecimal hours = salaryCalculation.totalHours(row);
+        if (hours == null || hours.signum() <= 0) return BigDecimal.ZERO;
+        StudyPeriod period = row.getStudyPeriod() == null ? StudyPeriod.YEAR : row.getStudyPeriod();
+        return period == StudyPeriod.YEAR ? hours.multiply(BigDecimal.valueOf(2)) : hours;
+    }
+
+    private String organizationalBuildingCode(SchoolBuilding site) {
+        if (site == null) return "";
+        if (site.getBuildingGroup() != null && site.getBuildingGroup().getCode() != null) {
+            return site.getBuildingGroup().getCode().trim();
+        }
+        return Objects.toString(site.getCode(), "").trim();
+    }
+
+    private String normalizedBuildingCode(String value) {
+        return Objects.toString(value, "").trim().toLowerCase(Locale.ROOT);
     }
 
     @Transactional
@@ -159,7 +226,7 @@ public class PersonnelService {
         applyNameCases(teacher, cases);
         teacher.setPhone(blankToNull(request.phone()));
         teacher.setEmail(email);
-        teacher.setNumberSchoolBuilding(blankToNull(request.numberSchoolBuilding()));
+        applySchoolBuildingSelection(teacher, request.numberSchoolBuilding(), request.schoolBuildingId());
         teacher.setPrimaryPosition(blankToNull(request.primaryPosition()));
         teacher.setEmploymentType(blankToNull(request.employmentType()));
         teacher.setEmploymentDate(request.employmentDate());
@@ -281,7 +348,7 @@ public class PersonnelService {
             addRow(table, "Дата рождения", date(personal == null ? null : personal.getBirthDate()));
             addRow(table, "Телефон", first(teacher.getPhone(), personal == null ? null : personal.getPhone()));
             addRow(table, "Email", teacher.getEmail());
-            addRow(table, "Корпус", teacher.getNumberSchoolBuilding());
+            addRow(table, "Площадка", teacherSiteLabel(teacher));
             addRow(table, "Основная должность", teacher.getPrimaryPosition());
             addRow(table, "Вид занятости", teacher.getEmploymentType());
             addRow(table, "Дата приёма", date(teacher.getEmploymentDate()));
@@ -417,6 +484,34 @@ public class PersonnelService {
     private String normalizeFio(String value) {
         return Objects.toString(value, "").trim().replace('ё', 'е').replace('Ё', 'Е')
                 .replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
+    }
+
+    private void applySchoolBuildingSelection(TeacherDirectoryEntry teacher,
+                                              String legacyBuildingCode,
+                                              Long schoolBuildingId) {
+        if (schoolBuildingId == null) {
+            teacher.setSchoolBuildingId(null);
+            teacher.setNumberSchoolBuilding(blankToNull(legacyBuildingCode));
+            return;
+        }
+        SchoolBuilding site = schoolBuildings.findById(schoolBuildingId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Выбранная физическая площадка не найдена"));
+        teacher.setSchoolBuildingId(site.getId());
+        teacher.setNumberSchoolBuilding(organizationalBuildingCode(site));
+    }
+
+    private String teacherSiteLabel(TeacherDirectoryEntry teacher) {
+        if (teacher.getSchoolBuildingId() == null) {
+            return Objects.toString(teacher.getNumberSchoolBuilding(), "");
+        }
+        return schoolBuildings.findById(teacher.getSchoolBuildingId())
+                .map(site -> {
+                    String code = organizationalBuildingCode(site);
+                    String address = Objects.toString(site.getAddress(), "").trim();
+                    return address.isBlank() ? code : code + " — " + address;
+                })
+                .orElse(Objects.toString(teacher.getNumberSchoolBuilding(), ""));
     }
 
     private boolean present(String value) {

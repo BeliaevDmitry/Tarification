@@ -6,6 +6,7 @@ import org.apache.poi.ss.usermodel.*;
 import org.school.personalLoad.vsoko.mcko.dto.VsokoMckoDtos;
 import org.school.personalLoad.vsoko.mcko.model.*;
 import org.school.personalLoad.vsoko.mcko.repository.*;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -132,8 +133,9 @@ public class VsokoMckoImportService {
     }
 
     @Transactional(readOnly = true)
-    public List<VsokoMckoDtos.FileStatusRow> importHistory() {
-        return fileRepository.findTop200ByOrderByIdDesc().stream().map(this::toFileRow).toList();
+    public List<VsokoMckoDtos.FileStatusRow> importHistory(int limit) {
+        int safeLimit = Math.max(1, Math.min(limit, 20_000));
+        return fileRepository.findAllByOrderByIdDesc(PageRequest.of(0, safeLimit)).stream().map(this::toFileRow).toList();
     }
 
     private ProcessOutcome processBytes(String fileName,

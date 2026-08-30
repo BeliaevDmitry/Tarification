@@ -17,6 +17,7 @@ import org.school.personalLoad.repository.BuildingGroupRepository;
 import org.school.personalLoad.repository.ClassroomLeadershipRepository;
 import org.school.personalLoad.repository.MetaGroupRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
+import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.repository.auth.AppUserRepository;
 import org.springframework.mock.web.MockMultipartFile;
 
@@ -44,6 +45,8 @@ class SchoolBuildingServiceImplFkCutoverTest {
     private ClassroomLeadershipRepository classroomLeadershipRepository;
     @Mock
     private MetaGroupRepository metaGroupRepository;
+    @Mock
+    private TeacherDirectoryRepository teacherDirectoryRepository;
 
     private SchoolBuildingServiceImpl service;
 
@@ -54,7 +57,8 @@ class SchoolBuildingServiceImplFkCutoverTest {
                 buildingGroupRepository,
                 appUserRepository,
                 classroomLeadershipRepository,
-                metaGroupRepository
+                metaGroupRepository,
+                teacherDirectoryRepository
         );
     }
 
@@ -62,6 +66,7 @@ class SchoolBuildingServiceImplFkCutoverTest {
     void directPhysicalSiteFkRepositoryMethodsUseNestedSchoolBuildingIdPath() {
         new PartTree("existsBySchoolBuilding_Id", ClassroomLeadershipEntry.class);
         new PartTree("existsBySchoolBuilding_Id", org.school.personalLoad.model.MetaGroup.class);
+        new PartTree("existsBySchoolBuildingId", org.school.personalLoad.model.TeacherDirectoryEntry.class);
     }
 
     @Test
@@ -259,6 +264,18 @@ class SchoolBuildingServiceImplFkCutoverTest {
         IllegalStateException error = assertThrows(IllegalStateException.class, () -> service.deleteById(47L));
 
         assertEquals("Нельзя удалить площадку: к ней привязаны метагруппы", error.getMessage());
+        verify(schoolBuildingRepository, never()).deleteById(any());
+    }
+
+    @Test
+    void deletePhysicalSiteReferencedByTeacherIsRejected() {
+        SchoolBuilding existing = building(47L, group(3L, "СП3", "СП3"), "сп3|мехмат", "Мехмат", "мехмат");
+        when(schoolBuildingRepository.findById(47L)).thenReturn(Optional.of(existing));
+        when(teacherDirectoryRepository.existsBySchoolBuildingId(47L)).thenReturn(true);
+
+        IllegalStateException error = assertThrows(IllegalStateException.class, () -> service.deleteById(47L));
+
+        assertEquals("Нельзя удалить площадку: к ней привязаны сотрудники", error.getMessage());
         verify(schoolBuildingRepository, never()).deleteById(any());
     }
 

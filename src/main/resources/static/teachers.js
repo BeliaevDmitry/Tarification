@@ -319,14 +319,42 @@ function statusLabel(row) {
     return "Активен";
 }
 
-function renderBuildingOptions(selected = "") {
-    const selectedNorm = String(selected || "").trim().toUpperCase();
-    const options = ['<option value="">Корпус не указан</option>'];
+function buildingGroupCode(building) {
+    return String(building?.buildingGroupCode || building?.code || "").trim();
+}
+
+function selectedBuildingPayload(value) {
+    const site = buildings.find((building) => String(building.id) === String(value || ""));
+    return site
+        ? { numberSchoolBuilding: buildingGroupCode(site), schoolBuildingId: Number(site.id) }
+        : { numberSchoolBuilding: "", schoolBuildingId: null };
+}
+
+function teacherBuildingLabel(teacher) {
+    const site = buildings.find((building) => String(building.id) === String(teacher?.schoolBuildingId ?? ""));
+    if (!site) return String(teacher?.numberSchoolBuilding || "");
+    const code = buildingGroupCode(site);
+    const address = String(site.address || site.name || "").trim();
+    return [code, address].filter(Boolean).join(" — ");
+}
+
+function renderBuildingOptions(selectedSiteId = null, legacyBuildingCode = "") {
+    const selectedId = selectedSiteId == null ? "" : String(selectedSiteId);
+    const legacyCode = String(legacyBuildingCode || "").trim();
+    const legacyMatches = selectedId ? [] : buildings.filter((building) =>
+        buildingGroupCode(building).localeCompare(legacyCode, "ru", { sensitivity: "accent" }) === 0);
+    const resolvedSelectedId = selectedId || (legacyMatches.length === 1 ? String(legacyMatches[0].id) : "");
+    const emptyLabel = legacyCode && !resolvedSelectedId
+        ? `Площадка не определена (${legacyCode})`
+        : "Площадка не указана";
+    const options = [`<option value="">${escapeHtml(emptyLabel)}</option>`];
     buildings.forEach((b) => {
-        const code = String(b.code || "").trim();
-        const label = `${code}${b.name ? ` — ${b.name}` : ""}`;
-        const selectedAttr = code.toUpperCase() === selectedNorm ? "selected" : "";
-        options.push(`<option value="${escapeHtml(code)}" ${selectedAttr}>${escapeHtml(label)}</option>`);
+        const code = buildingGroupCode(b);
+        const address = String(b.address || "").trim();
+        const name = String(b.name || "").trim();
+        const label = [code, address || name].filter(Boolean).join(" — ");
+        const selectedAttr = String(b.id) === resolvedSelectedId ? "selected" : "";
+        options.push(`<option value="${escapeHtml(b.id)}" ${selectedAttr}>${escapeHtml(label)}</option>`);
     });
     return options.join("");
 }
@@ -485,7 +513,7 @@ async function openTeacherCard(teacherId, preferredContractId = null) {
     ui.teacherCardInitialsPrepositional.value = teacher.initialsPrepositional || "";
     ui.teacherCardPhone.value = teacher.phone || "";
     ui.teacherCardEmail.value = teacher.email || "";
-    ui.teacherCardBuilding.innerHTML = renderBuildingOptions(teacher.numberSchoolBuilding);
+    ui.teacherCardBuilding.innerHTML = renderBuildingOptions(teacher.schoolBuildingId, teacher.numberSchoolBuilding);
     ui.teacherCardPrimaryPosition.value = teacher.primaryPosition || "";
     ui.teacherCardEmploymentType.value = teacher.employmentType || "";
     ui.teacherCardEmploymentDate.value = teacher.employmentDate || "";
@@ -570,6 +598,7 @@ async function saveTeacherCardMain(event) {
     event.preventDefault();
     const teacher = selectedTeacherCardRow();
     if (!teacher) return;
+    const buildingSelection = selectedBuildingPayload(ui.teacherCardBuilding.value);
     await api(`/api/teachers/${teacher.id}`, {
         method: "PATCH",
         headers: jsonHeaders,
@@ -588,7 +617,7 @@ async function saveTeacherCardMain(event) {
             initialsPrepositional: ui.teacherCardInitialsPrepositional.value.trim(),
             phone: ui.teacherCardPhone.value.trim(),
             email: ui.teacherCardEmail.value.trim(),
-            numberSchoolBuilding: ui.teacherCardBuilding.value,
+            ...buildingSelection,
             primaryPosition: ui.teacherCardPrimaryPosition.value.trim(),
             employmentType: ui.teacherCardEmploymentType.value.trim(),
             employmentDate: ui.teacherCardEmploymentDate.value || null
@@ -789,7 +818,7 @@ function renderTeachers(rows) {
                 <td>${escapeHtml(row.phone || "—")}</td>
                 <td>${escapeHtml(row.email || "—")}</td>
                 <td class="teacher-duty-summary">${escapeHtml(row.additionalDutiesSummary || "Нет действующих назначений")}</td>
-                <td><select class="teacher-building-input" data-id="${row.id}">${renderBuildingOptions(row.numberSchoolBuilding)}</select></td>
+                <td><select class="teacher-building-input" data-id="${row.id}">${renderBuildingOptions(row.schoolBuildingId, row.numberSchoolBuilding)}</select></td>
                 <td>${escapeHtml(row.primaryPosition || "—")}</td>
                 <td>${escapeHtml(row.employmentType || "—")}</td>
                 <td>${escapeHtml(statusLabel(row))}</td>
@@ -806,6 +835,7 @@ function renderTeachers(rows) {
             const row = teacherRows.find((item) => String(item.id) === String(select.dataset.id));
             if (!row) return;
             try {
+                const buildingSelection = selectedBuildingPayload(select.value);
                 await api(`/api/teachers/${row.id}`, {
                     method: "PATCH",
                     headers: jsonHeaders,
@@ -815,7 +845,7 @@ function renderTeachers(rows) {
                         initials: row.initials,
                         phone: row.phone,
                         email: row.email,
-                        numberSchoolBuilding: select.value
+                        ...buildingSelection
                     })
                 });
                 await loadTeachers();
@@ -1346,7 +1376,7 @@ function renderArchive(rows) {
             <td>${escapeHtml(row.fioTeacher || "")}</td>
             <td>${escapeHtml(row.phone || "")}</td>
             <td>${escapeHtml(row.email || "")}</td>
-            <td>${escapeHtml(row.numberSchoolBuilding || "")}</td>
+            <td>${escapeHtml(teacherBuildingLabel(row))}</td>
             <td>${escapeHtml(row.dismissalDate || "")}</td>
             <td>${escapeHtml(row.archivedAt || "")}</td>
             <td><button type="button" class="unarchive-teacher-btn" data-id="${row.id}" ${canEditTeacherPermission("TEACHERS_ARCHIVE") ? "" : "disabled"}>Вернуть в персонал</button></td>
@@ -1384,8 +1414,20 @@ function renderDismissals(rows) {
 }
 
 async function loadBuildings() {
-    const rows = await api('/api/buildings');
-    buildings = (rows || []).slice().sort((a, b) => String(a.code || "").localeCompare(String(b.code || ""), "ru"));
+    const [rows, groups] = await Promise.all([
+        api('/api/buildings'),
+        api('/api/building-groups').catch(() => [])
+    ]);
+    const groupCodeById = new Map((groups || []).map((group) => [
+        String(group.id), String(group.code || group.name || "").trim()
+    ]));
+    buildings = (rows || []).map((building) => ({
+        ...building,
+        buildingGroupCode: groupCodeById.get(String(building.buildingGroupId)) || String(building.code || "").trim()
+    })).sort((a, b) => {
+        const byGroup = buildingGroupCode(a).localeCompare(buildingGroupCode(b), "ru");
+        return byGroup || String(a.address || "").localeCompare(String(b.address || ""), "ru");
+    });
     if (ui.buildingCreate) {
         ui.buildingCreate.innerHTML = renderBuildingOptions("");
     }
@@ -1519,6 +1561,7 @@ async function acceptTeacher(event) {
     if (!ui.acceptInitials.value.trim()) {
         fillAcceptNameCases(await deriveNameCases(ui.acceptFio.value));
     }
+    const buildingSelection = selectedBuildingPayload(ui.acceptBuilding.value);
     const result = await api("/api/teachers/accept", {
         method: "POST",
         headers: jsonHeaders,
@@ -1527,7 +1570,7 @@ async function acceptTeacher(event) {
             fioTeacher: ui.acceptFio.value.trim(),
             phone: ui.acceptPhone.value.trim(),
             email: ui.acceptEmail.value.trim(),
-            numberSchoolBuilding: ui.acceptBuilding.value,
+            ...buildingSelection,
             primaryPosition: ui.acceptPosition.value,
             employmentType: ui.acceptEmploymentType.value.trim(),
             employmentDate: ui.acceptEmploymentDate.value || null,
@@ -1562,14 +1605,14 @@ async function acceptTeacher(event) {
 }
 
 async function autoAssignBuildings() {
-    if (!window.confirm("Распределить сотрудников по корпусам по наибольшей сумме часов выбранного учебного года?")) return;
+    if (!window.confirm("Привязать сотрудников к площадкам, где у них больше часов за выбранный учебный год?")) return;
     const result = await api(mckoAcademicYearPath("/api/teachers/auto-assign-buildings"), { method: "POST" });
     print({
-        status: "Распределение по корпусам завершено",
+        status: "Привязка к площадкам завершена",
         назначено: result.assigned,
         безИзменений: result.unchanged,
         безНагрузки: result.skippedWithoutLoad,
-        равнаяНагрузкаВКорпусах: result.skippedTies
+        равнаяНагрузкаНаПлощадках: result.skippedTies
     });
     await loadTeachers();
 }
