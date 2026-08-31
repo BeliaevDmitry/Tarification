@@ -29,6 +29,7 @@ class OvzSpecialistsFrontendTest {
     void specialistsWorkspaceContainsIomSupportFieldsAndResponsibleSettings() throws Exception {
         String page = Files.readString(Path.of("src/main/resources/static/ovz-specialists.html"));
         String script = Files.readString(Path.of("src/main/resources/static/ovz-specialists.js"));
+        String styles = Files.readString(Path.of("src/main/resources/static/styles.css"));
 
         assertTrue(page.contains("id=\"specialists-settings-open\""));
         assertTrue(page.contains("Ответственный из кадров"));
@@ -43,9 +44,9 @@ class OvzSpecialistsFrontendTest {
         assertTrue(script.contains("Ресурсы ребёнка"));
         assertTrue(script.contains("Основные задачи развития на год"));
         assertTrue(script.contains("Планируемые результаты"));
-        assertTrue(script.contains("support-status-not-started"));
-        assertTrue(script.contains("support-status-in-progress"));
-        assertTrue(script.contains("support-status-completed"));
+        assertTrue(styles.contains(".support-status-not-started"));
+        assertTrue(styles.contains(".support-status-in-progress"));
+        assertTrue(styles.contains(".support-status-completed"));
         assertTrue(script.contains("/api/ovz/specialist-workspace"));
     }
 }
