@@ -104,6 +104,33 @@ class MckoServiceImplTest {
     }
 
     @Test
+    void ogeDiagnosticIsStoredButDoesNotCountAsActiveMcko() {
+        TeacherDirectoryEntry teacher = teacher(1L, "Иванов Иван Иванович");
+        MckoSubjectMapping mapping = mapping("Русский язык", 20L, "Русский язык", "5-11");
+        MckoCertificate oge = certificate(teacher, "Русский язык", "Высокий",
+                true, LocalDate.now().minusMonths(1), MckoCertificateSource.IMPORT);
+        oge.setId(91L);
+        oge.setExamType("Комплексная диагностика ОГЭ");
+
+        when(manualLoadRepository.findAllByAcademicYear("2026/2027"))
+                .thenReturn(List.of(load(teacher, 20L, "Русский язык", "9-А")));
+        when(mappingRepository.findAll()).thenReturn(List.of(mapping));
+        when(certificateRepository.findAll()).thenReturn(List.of(oge));
+
+        List<MckoDtos.EligibilityRow> eligibility = service.eligibility("2026/2027");
+        List<MckoDtos.OverviewRow> overview = service.overview("2026/2027");
+        List<MckoDtos.CertificateRow> certificates = service.certificates("2026/2027", "all");
+
+        assertThat(eligibility).hasSize(1);
+        assertThat(eligibility.get(0).status()).isEqualTo("MISSING");
+        assertThat(eligibility.get(0).message()).contains("ОГЭ не учитывается");
+        assertThat(overview).hasSize(1);
+        assertThat(overview.get(0).status()).isEqualTo("MISSING");
+        assertThat(certificates).hasSize(1);
+        assertThat(certificates.get(0).status()).isEqualTo("MISSING");
+    }
+
+    @Test
     void eligibilityReportsMissingForConfiguredSubjectWithoutActiveCertificate() {
         TeacherDirectoryEntry teacher = teacher(1L, "Иванов Иван Иванович");
         MckoSubjectMapping mapping = mapping("Математика профильная", 10L, "Алгебра");

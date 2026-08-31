@@ -17,6 +17,7 @@ const TAB_PATHS = {
     '/contingent.html': 'CONTINGENT_STATS',
     '/ovz.html': 'OVZ',
     '/ovz-specialist-distribution.html': 'OVZ',
+    '/ovz-specialists.html': 'OVZ',
     '/educational-work.html': 'EDUCATIONAL_WORK',
     '/documents.html': null,
     '/pedagogical-councils.html': 'DOCUMENTS_PEDAGOGICAL_COUNCILS',
@@ -137,10 +138,14 @@ function isLoadModulePage(pathname) {
 }
 
 function navItemsForPath(pathname) {
-    if (pathname === '/ovz.html' || pathname === '/ovz-specialist-distribution.html') {
+    if (pathname === '/ovz.html' || pathname === '/ovz-specialist-distribution.html' || pathname === '/ovz-specialists.html') {
         return [
-            { path: '/ovz.html', tab: 'OVZ', label: 'Реестр ОВЗ' },
-            { path: '/ovz-specialist-distribution.html', tab: 'OVZ', label: 'Распределение по специалистам' }
+            { path: '/ovz.html', tab: 'OVZ', label: 'Реестр' },
+            { path: '/ovz.html#certificates', tab: 'OVZ', label: 'Справки' },
+            { path: '/ovz.html#nosologies', tab: 'OVZ', label: 'Справочник нозологий' },
+            { path: '/ovz.html#ppk', tab: 'OVZ', label: 'ППк' },
+            { path: '/ovz-specialist-distribution.html', tab: 'OVZ', label: 'Распределение по специалистам' },
+            { path: '/ovz-specialists.html', tab: 'OVZ', label: 'Специалисты' }
         ];
     }
     if (pathname === '/vsoko-mcko.html' || pathname === '/vsoko-summary.html'
@@ -289,7 +294,8 @@ function isEducationalWorkPage() {
 
 function isOvzPage() {
     return window.location.pathname === '/ovz.html'
-        || window.location.pathname === '/ovz-specialist-distribution.html';
+        || window.location.pathname === '/ovz-specialist-distribution.html'
+        || window.location.pathname === '/ovz-specialists.html';
 }
 
 function isDocumentsHubPage() {
@@ -352,6 +358,9 @@ function showAccessDenied(sectionTitle = 'раздела') {
 
 function canEditCurrentPage(currentUser) {
     if (currentUser.admin) return true;
+    // В рабочем месте ОВЗ право записи определяется назначением по ФК:
+    // специалист меняет свою часть, ответственный — все части.
+    if (window.location.pathname === '/ovz-specialists.html') return true;
     if (window.location.pathname === '/vsoko-oge.html') {
         const permissions = tabPermissionMap(currentUser);
         return Boolean(

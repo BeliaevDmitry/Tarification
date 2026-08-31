@@ -49,3 +49,10 @@ mail:
   use-tls: ${SMTP_USE_TLS:true}
   default-recipients: ${SMTP_DEFAULT_RECIPIENTS:recipient1@example.com,recipient2@example.com}
   default-subject: ${SMTP_DEFAULT_SUBJECT:Тарификация - автоматическая отправка}
+
+server:
+  servlet:
+    session:
+      timeout: 24h
+      cookie:
+        max-age: 24h

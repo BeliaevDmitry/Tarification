@@ -479,7 +479,9 @@ public class MckoServiceImpl implements MckoService {
         if (best.isEmpty()) {
             Optional<MckoCertificate> nonPassing = candidates.stream().max(this::compareCertificates);
             String message = nonPassing
-                    .map(cert -> "МЦКО уровень " + nvl(cert.getLevel()))
+                    .map(cert -> isOgeDiagnostic(cert)
+                            ? "Диагностика ОГЭ не учитывается как МЦКО"
+                            : "МЦКО уровень " + nvl(cert.getLevel()))
                     .orElse("НЕТ МЦКО");
             MckoCertificate cert = nonPassing.orElse(null);
             return new MckoDtos.EligibilityRow(teacherId, teacherFio, load.getSubjectId(), subjectGroup.subjectName(),
@@ -586,7 +588,12 @@ public class MckoServiceImpl implements MckoService {
 
     private boolean isActivePassing(MckoCertificate cert) {
         return isActiveCertificate(cert)
+                && !isOgeDiagnostic(cert)
                 && levelRank(cert.getLevel()) > 0;
+    }
+
+    private boolean isOgeDiagnostic(MckoCertificate cert) {
+        return cert != null && normalize(cert.getExamType()).contains("огэ");
     }
 
     private boolean isActiveCertificate(MckoCertificate cert) {

@@ -91,11 +91,14 @@ public final class ProbeOrderDtos {
                                   String signerPosition) {
     }
 
-    public record SettingsRequest(ProbeOrderApprovalMode approvalMode) {
+    public record SettingsRequest(ProbeOrderApprovalMode approvalMode,
+                                  Long deputyDirectorTeacherId) {
     }
 
     public record SettingsView(ProbeOrderApprovalMode approvalMode,
                                String approvalModeLabel,
+                               Long deputyDirectorTeacherId,
+                               String deputyDirectorName,
                                boolean canEdit) {
     }
 

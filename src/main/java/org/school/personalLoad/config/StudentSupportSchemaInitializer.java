@@ -121,7 +121,36 @@ public class StudentSupportSchemaInitializer implements ApplicationRunner {
                 )
                 """);
         jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_support_document_correction_document ON student_support_document_correction(document_id)");
+        migrateSpecialistWorkspace();
         normalizeNinthGradeConclusionDeadlines();
+    }
+
+    private void migrateSpecialistWorkspace() {
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS ovz_specialist_support_entry (
+                    id bigserial PRIMARY KEY,
+                    academic_year varchar(16) NOT NULL,
+                    student_id bigint NOT NULL REFERENCES student_profile(id),
+                    specialist_id bigint NOT NULL REFERENCES correction_specialist_catalog_entry(id),
+                    child_deficits text,
+                    child_resources text,
+                    annual_tasks text,
+                    planned_results text,
+                    updated_by_user_id bigint,
+                    updated_by_name varchar(255),
+                    created_at timestamp NOT NULL DEFAULT now(),
+                    updated_at timestamp NOT NULL DEFAULT now(),
+                    CONSTRAINT uk_ovz_support_entry UNIQUE (academic_year, student_id, specialist_id)
+                )
+                """);
+        jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_ovz_support_entry_student_year ON ovz_specialist_support_entry(student_id, academic_year)");
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS ovz_specialist_workspace_settings (
+                    id bigserial PRIMARY KEY,
+                    responsible_teacher_id bigint REFERENCES teacher_directory_entry(id),
+                    updated_at timestamp NOT NULL DEFAULT now()
+                )
+                """);
     }
 
     private void normalizeNinthGradeConclusionDeadlines() {

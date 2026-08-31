@@ -2,6 +2,7 @@ const ui = {
     form: document.getElementById('login-form'),
     username: document.getElementById('login-username'),
     password: document.getElementById('login-password'),
+    passwordToggle: document.getElementById('login-password-toggle'),
     result: document.getElementById('login-result')
 };
 
@@ -21,6 +22,20 @@ async function api(path, options = {}) {
 function print(value) {
     ui.result.textContent = JSON.stringify(value, null, 2);
 }
+
+function setPasswordVisible(visible) {
+    ui.password.type = visible ? 'text' : 'password';
+    ui.passwordToggle.classList.toggle('is-visible', visible);
+    ui.passwordToggle.setAttribute('aria-pressed', String(visible));
+    const action = visible ? 'Скрыть пароль' : 'Показать пароль';
+    ui.passwordToggle.setAttribute('aria-label', action);
+    ui.passwordToggle.title = action;
+}
+
+ui.passwordToggle.addEventListener('click', () => {
+    setPasswordVisible(ui.password.type === 'password');
+    ui.password.focus({ preventScroll: true });
+});
 
 ui.form.addEventListener('submit', async (event) => {
     event.preventDefault();

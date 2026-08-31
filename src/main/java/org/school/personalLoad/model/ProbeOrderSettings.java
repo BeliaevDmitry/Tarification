@@ -20,6 +20,9 @@ public class ProbeOrderSettings {
     @Column(name = "approval_mode", nullable = false, length = 32)
     private ProbeOrderApprovalMode approvalMode = ProbeOrderApprovalMode.ORGANIZATIONAL_BUILDING;
 
+    @Column(name = "deputy_director_teacher_id")
+    private Long deputyDirectorTeacherId;
+
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt = LocalDateTime.now();
 

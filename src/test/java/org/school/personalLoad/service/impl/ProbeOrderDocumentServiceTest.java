@@ -1,7 +1,9 @@
 package org.school.personalLoad.service.impl;
 
 import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
+import org.apache.poi.xwpf.usermodel.IBodyElement;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFFooter;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.apache.poi.xwpf.usermodel.UnderlinePatterns;
@@ -49,10 +51,14 @@ class ProbeOrderDocumentServiceTest {
             List<XWPFParagraph> instructionBullets = document.getParagraphs().stream()
                     .filter(paragraph -> paragraph.getText().trim().startsWith("- "))
                     .collect(Collectors.toList());
-            XWPFParagraph executor = document.getParagraphs().stream()
-                    .filter(paragraph -> paragraph.getText().startsWith("Исп.:"))
+            XWPFFooter executorFooter = document.getFooterList().stream()
+                    .filter(footer -> footer.getParagraphs().stream()
+                            .anyMatch(paragraph -> paragraph.getText().contains("Исп.:")))
                     .findFirst()
                     .orElseThrow();
+            XWPFParagraph executor = executorFooter.getParagraphs().stream()
+                    .filter(paragraph -> paragraph.getText().contains("Исп.:"))
+                    .findFirst().orElseThrow();
             XWPFParagraph companions = document.getParagraphs().stream()
                     .filter(paragraph -> paragraph.getText().contains("Петрова Мария Сергеевна +7 (999)"))
                     .findFirst()
@@ -62,7 +68,8 @@ class ProbeOrderDocumentServiceTest {
             assertTrue(text.contains("17.09.2026"));
             assertTrue(text.contains("Иванова И.И."));
             assertTrue(text.contains("Московский колледж технологий"));
-            assertTrue(text.contains("Исп.: Петрова М.С."));
+            assertFalse(text.contains("Исп.: Петрова М.С."));
+            assertTrue(executorFooter.getText().contains("Исп.: Петрова М.С."));
             assertTrue(text.contains("Орлова Светлана Викторовна"));
             assertFalse(text.contains("Жданова"));
             assertTrue(text.contains("Коваленко А.А."));
@@ -145,7 +152,18 @@ class ProbeOrderDocumentServiceTest {
             XWPFParagraph appendix = document.getParagraphs().stream()
                     .filter(paragraph -> paragraph.getText().equals("Приложение № 1"))
                     .findFirst().orElseThrow();
-            assertTrue(appendix.isPageBreak());
+            assertFalse(appendix.isPageBreak());
+            List<IBodyElement> bodyElements = document.getBodyElements();
+            int appendixReferenceIndex = java.util.stream.IntStream.range(0, bodyElements.size())
+                    .filter(index -> bodyElements.get(index) instanceof XWPFParagraph paragraph
+                            && paragraph.getText().contains("к Приказу №"))
+                    .findFirst().orElseThrow();
+            assertTrue(bodyElements.get(appendixReferenceIndex + 1) instanceof XWPFTable);
+            assertTrue(executorFooter._getHdrFtr().xmlText().contains("SECTIONPAGES"));
+            assertTrue(document.getParagraphs().stream()
+                    .anyMatch(paragraph -> paragraph.getCTP().isSetPPr()
+                            && paragraph.getCTP().getPPr().isSetSectPr()
+                            && paragraph.getCTP().getPPr().getSectPr().sizeOfFooterReferenceArray() == 1));
             double borderCount = (double) XPathFactory.newInstance().newXPath().evaluate(
                     "count(//*[local-name()='tblBorders']/*[@*[local-name()='val']='single'])",
                     document.getDocument().getDomNode(), XPathConstants.NUMBER);

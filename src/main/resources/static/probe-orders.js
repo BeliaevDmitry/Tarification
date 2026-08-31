@@ -1,7 +1,8 @@
 const probeState = {
     orders: [],
     references: { teachers: [], signers: [], students: [], defaultSignerTeacherId: null },
-    settings: { approvalMode: 'ORGANIZATIONAL_BUILDING', approvalModeLabel: '', canEdit: false },
+    settings: { approvalMode: 'ORGANIZATIONAL_BUILDING', approvalModeLabel: '',
+        deputyDirectorTeacherId: null, deputyDirectorName: 'Власова Юлия Сергеевна', canEdit: false },
     selectedId: null,
     editParticipants: [],
     sortKey: 'eventDate',
@@ -20,6 +21,7 @@ const probeUi = {
     settingsDialog: document.getElementById('probe-settings-dialog'),
     settingsForm: document.getElementById('probe-settings-form'),
     approvalMode: document.getElementById('probe-approval-mode'),
+    deputyDirector: document.getElementById('probe-deputy-director'),
     settingsFeedback: document.getElementById('probe-settings-feedback'),
     summary: document.getElementById('probe-table-summary'),
     body: document.getElementById('probe-orders-body'),
@@ -114,6 +116,14 @@ function staffOptions(selectedId, allowEmpty = false) {
         + rows.map(item => `<option value="${probeEsc(item.id)}" ${String(item.id) === String(selectedId || '') ? 'selected' : ''}>
             ${probeEsc(item.fullName)}${item.position ? ` — ${probeEsc(item.position)}` : ''}${item.buildingCode ? ` (${probeEsc(item.buildingCode)})` : ''}
         </option>`).join('');
+}
+
+function deputyDirectorOptions(selectedId, defaultName) {
+    const rows = probeState.references.teachers || [];
+    const fallback = `<option value="" ${selectedId ? '' : 'selected'}>${probeEsc(defaultName || 'Власова Юлия Сергеевна')} — по умолчанию</option>`;
+    return fallback + rows.map(item => `<option value="${probeEsc(item.id)}" ${String(item.id) === String(selectedId || '') ? 'selected' : ''}>
+        ${probeEsc(item.fullName)}${item.position ? ` — ${probeEsc(item.position)}` : ''}${item.buildingCode ? ` (${probeEsc(item.buildingCode)})` : ''}
+    </option>`).join('');
 }
 
 function signerOptions(selectedId) {
@@ -494,6 +504,8 @@ probeUi.scanForm.addEventListener('submit', async event => {
 
 probeUi.settingsBtn?.addEventListener('click', () => {
     probeUi.approvalMode.value = probeState.settings.approvalMode || 'ORGANIZATIONAL_BUILDING';
+    probeUi.deputyDirector.innerHTML = deputyDirectorOptions(
+        probeState.settings.deputyDirectorTeacherId, probeState.settings.deputyDirectorName);
     probeUi.settingsFeedback.textContent = '';
     probeUi.settingsDialog.showModal();
 });
@@ -504,7 +516,11 @@ probeUi.settingsForm?.addEventListener('submit', async event => {
     try {
         await probeApi('/api/probe-orders/settings', {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ approvalMode: probeUi.approvalMode.value })
+            body: JSON.stringify({
+                approvalMode: probeUi.approvalMode.value,
+                deputyDirectorTeacherId: probeUi.deputyDirector.value
+                    ? Number(probeUi.deputyDirector.value) : null
+            })
         });
         probeUi.settingsDialog.close();
         await loadProbeData();
