@@ -1,10 +1,14 @@
 package org.school.personalLoad.service.impl;
 
 import org.apache.poi.xwpf.usermodel.*;
+import org.apache.poi.xwpf.model.XWPFHeaderFooterPolicy;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTBorder;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTBody;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTFldChar;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTInd;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTParaRPr;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPPr;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTR;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTabStop;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTabs;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblGrid;
@@ -13,6 +17,9 @@ import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblBorders;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblPr;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblWidth;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTcPr;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSectPr;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.STFldCharType;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.STSectionMark;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STTabJc;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STBorder;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STTblWidth;
@@ -73,6 +80,8 @@ public class ProbeOrderDocumentService {
                 }
             }
             replaceParticipantTable(document, data.participants());
+            removeBlankParagraphsBeforeParticipantTable(document);
+            placeExecutorOnLastOrderPage(document, data);
             removeTemplateMarkers(document);
             document.write(out);
             return out.toByteArray();
@@ -369,6 +378,152 @@ public class ProbeOrderDocumentService {
             index++;
         }
         applyParticipantTableGeometry(target);
+    }
+
+    private void removeBlankParagraphsBeforeParticipantTable(XWPFDocument document) {
+        List<IBodyElement> elements = document.getBodyElements();
+        int appendixReference = -1;
+        int participantTable = -1;
+        for (int i = 0; i < elements.size(); i++) {
+            IBodyElement element = elements.get(i);
+            if (element instanceof XWPFParagraph paragraph
+                    && paragraph.getText().contains("к Приказу №")) {
+                appendixReference = i;
+            }
+            if (appendixReference >= 0 && element instanceof XWPFTable table
+                    && isParticipantTable(table)) {
+                participantTable = i;
+                break;
+            }
+        }
+        if (appendixReference < 0 || participantTable < 0) {
+            throw new IllegalStateException("В шаблоне не найдено начало таблицы приложения");
+        }
+        for (int i = participantTable - 1; i > appendixReference; i--) {
+            IBodyElement element = document.getBodyElements().get(i);
+            if (element instanceof XWPFParagraph paragraph && paragraph.getText().isBlank()) {
+                document.removeBodyElement(i);
+            }
+        }
+    }
+
+    private boolean isParticipantTable(XWPFTable table) {
+        return !table.getRows().isEmpty() && table.getRow(0).getTableCells().stream()
+                .map(XWPFTableCell::getText)
+                .anyMatch(value -> value != null && value.contains("ФИО"));
+    }
+
+    private void placeExecutorOnLastOrderPage(XWPFDocument document, DocumentData data) {
+        List<IBodyElement> elements = document.getBodyElements();
+        int signatureIndex = -1;
+        int appendixIndex = -1;
+        XWPFParagraph signature = null;
+        XWPFParagraph appendix = null;
+        for (int i = 0; i < elements.size(); i++) {
+            if (!(elements.get(i) instanceof XWPFParagraph paragraph)) continue;
+            String value = paragraph.getText();
+            if (signatureIndex < 0 && value.contains(text(data.signerPosition()))
+                    && value.contains(surnameInitials(data.signer() == null ? "" : data.signer().fullName()))) {
+                signatureIndex = i;
+                signature = paragraph;
+            }
+            if (value.trim().equals("Приложение № 1")) {
+                appendixIndex = i;
+                appendix = paragraph;
+                break;
+            }
+        }
+        if (signatureIndex < 0 || appendixIndex < 0 || signature == null || appendix == null) {
+            throw new IllegalStateException("В шаблоне не найден блок подписи или приложения");
+        }
+
+        for (int i = appendixIndex - 1; i > signatureIndex; i--) {
+            document.removeBodyElement(i);
+        }
+        appendix.setPageBreak(false);
+
+        CTBody body = document.getDocument().getBody();
+        CTSectPr appendixSection = body.isSetSectPr() ? body.getSectPr() : body.addNewSectPr();
+        CTSectPr orderSection = (CTSectPr) appendixSection.copy();
+        while (orderSection.sizeOfFooterReferenceArray() > 0) orderSection.removeFooterReference(0);
+        if (orderSection.isSetType()) {
+            orderSection.getType().setVal(STSectionMark.NEXT_PAGE);
+        } else {
+            orderSection.addNewType().setVal(STSectionMark.NEXT_PAGE);
+        }
+        CTPPr signatureProperties = signature.getCTP().isSetPPr()
+                ? signature.getCTP().getPPr() : signature.getCTP().addNewPPr();
+        signatureProperties.setSectPr(orderSection);
+        orderSection = signatureProperties.getSectPr();
+
+        XWPFHeaderFooterPolicy orderPolicy = new XWPFHeaderFooterPolicy(document, orderSection);
+        XWPFFooter orderFooter = orderPolicy.createFooter(XWPFHeaderFooterPolicy.DEFAULT);
+        clearFooter(orderFooter);
+        addLastSectionPageFooterLine(orderFooter, "Исп.: " + executorName(data.executor()));
+        String phone = data.executor() == null || text(data.executor().phone()).isBlank()
+                ? "Телефон исполнителя не указан" : data.executor().phone();
+        addLastSectionPageFooterLine(orderFooter, phone);
+
+        while (appendixSection.sizeOfFooterReferenceArray() > 0) appendixSection.removeFooterReference(0);
+        XWPFHeaderFooterPolicy appendixPolicy = new XWPFHeaderFooterPolicy(document, appendixSection);
+        XWPFFooter appendixFooter = appendixPolicy.createFooter(XWPFHeaderFooterPolicy.DEFAULT);
+        clearFooter(appendixFooter);
+        XWPFParagraph empty = appendixFooter.createParagraph();
+        empty.setSpacingBefore(0);
+        empty.setSpacingAfter(0);
+        document.getSettings().setUpdateFields();
+    }
+
+    private void clearFooter(XWPFFooter footer) {
+        while (!footer.getParagraphs().isEmpty()) {
+            footer.removeParagraph(footer.getParagraphs().get(0));
+        }
+        while (!footer.getTables().isEmpty()) {
+            footer.removeTable(footer.getTables().get(0));
+        }
+    }
+
+    private void addLastSectionPageFooterLine(XWPFFooter footer, String value) {
+        XWPFParagraph paragraph = footer.createParagraph();
+        paragraph.setAlignment(ParagraphAlignment.LEFT);
+        paragraph.setSpacingBefore(0);
+        paragraph.setSpacingAfter(0);
+        paragraph.setSpacingBetween(1.0D);
+        appendFieldChar(paragraph, STFldCharType.BEGIN);
+        appendInstruction(paragraph, " IF ");
+        appendSimpleField(paragraph, "PAGE", "1");
+        appendInstruction(paragraph, " = ");
+        appendSimpleField(paragraph, "SECTIONPAGES", "1");
+        appendInstruction(paragraph, " \"" + text(value).replace('"', '\'') + "\" \"\" ");
+        appendFieldChar(paragraph, STFldCharType.SEPARATE);
+        XWPFRun result = paragraph.createRun();
+        styleRun(result, false, 11);
+        result.setText(value);
+        appendFieldChar(paragraph, STFldCharType.END);
+    }
+
+    private void appendSimpleField(XWPFParagraph paragraph, String instruction, String resultText) {
+        appendFieldChar(paragraph, STFldCharType.BEGIN);
+        appendInstruction(paragraph, " " + instruction + " ");
+        appendFieldChar(paragraph, STFldCharType.SEPARATE);
+        XWPFRun result = paragraph.createRun();
+        styleRun(result, false, 11);
+        result.setText(resultText);
+        appendFieldChar(paragraph, STFldCharType.END);
+    }
+
+    private void appendInstruction(XWPFParagraph paragraph, String instruction) {
+        XWPFRun run = paragraph.createRun();
+        styleRun(run, false, 11);
+        run.getCTR().addNewInstrText().setStringValue(instruction);
+    }
+
+    private void appendFieldChar(XWPFParagraph paragraph, STFldCharType.Enum type) {
+        XWPFRun run = paragraph.createRun();
+        styleRun(run, false, 11);
+        CTR ctr = run.getCTR();
+        CTFldChar field = ctr.addNewFldChar();
+        field.setFldCharType(type);
     }
 
     private void applyParticipantTableGeometry(XWPFTable table) {

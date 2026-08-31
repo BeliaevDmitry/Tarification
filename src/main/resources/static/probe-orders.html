@@ -44,7 +44,7 @@
                     <option value="RELEASED">Выпущены</option>
                 </select>
             </label>
-            <button id="probe-settings-btn" type="button" class="secondary" hidden>Настройка согласования</button>
+            <button id="probe-settings-btn" type="button" class="secondary" hidden>Настройки приказов</button>
         </div>
         <div class="probe-legend">
             <span class="probe-legend-item urgent">На следующей неделе, не согласовано</span>
@@ -71,7 +71,7 @@
     </section>
 
     <dialog id="probe-settings-dialog" class="teacher-card-dialog probe-dialog">
-        <div class="dialog-hero"><div><h2>Кто согласовывает приказы</h2>
+        <div class="dialog-hero"><div><h2>Настройки приказов</h2>
             <p class="muted">Организационный корпус — СП, к которому относится класс. Фактическая площадка — адрес, где класс сейчас находится.</p></div>
             <button type="button" data-probe-close>Закрыть</button></div>
         <form id="probe-settings-form">
@@ -82,6 +82,10 @@
                     <option value="BOTH">Любой из двух руководителей</option>
                 </select>
             </label>
+            <label>Заместитель директора в тексте приказа
+                <select id="probe-deputy-director"></select>
+            </label>
+            <p class="muted">По умолчанию используется Власова Юлия Сергеевна. Можно выбрать другого действующего сотрудника.</p>
             <p class="muted">В режиме «Любой из двух» достаточно одного согласования — руководителя корпуса или площадки. Остальные руководители видят приказ информационно.</p>
             <div class="dialog-actions"><span id="probe-settings-feedback" class="muted"></span><button type="submit">Сохранить</button></div>
         </form>

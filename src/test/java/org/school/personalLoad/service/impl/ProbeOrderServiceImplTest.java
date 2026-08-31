@@ -47,6 +47,45 @@ import static org.mockito.Mockito.when;
 class ProbeOrderServiceImplTest {
 
     @Test
+    void usesVlasovaAsDefaultDeputyDirectorSetting() {
+        ProbeOrderSettingsRepository settings = mock(ProbeOrderSettingsRepository.class);
+        TeacherDirectoryRepository teachers = mock(TeacherDirectoryRepository.class);
+        TeacherDirectoryEntry bocharova = teacher(10L, "Бочарова Анна Сергеевна");
+        bocharova.setPrimaryPosition("Заместитель директора");
+        TeacherDirectoryEntry vlasova = teacher(11L, "Власова Юлия Сергеевна");
+        vlasova.setPrimaryPosition("Заместитель директора");
+        when(settings.findById(ProbeOrderSettings.DEFAULT_ID)).thenReturn(Optional.empty());
+        when(teachers.findAll()).thenReturn(List.of(bocharova, vlasova));
+
+        ProbeOrderDtos.SettingsView view = probeOrderService(settings, teachers, mock(ProbeOrderRepository.class))
+                .settings(admin());
+
+        assertEquals(11L, view.deputyDirectorTeacherId());
+        assertEquals("Власова Юлия Сергеевна", view.deputyDirectorName());
+    }
+
+    @Test
+    void savesConfiguredDeputyDirectorForFutureOrders() {
+        ProbeOrderSettingsRepository settings = mock(ProbeOrderSettingsRepository.class);
+        TeacherDirectoryRepository teachers = mock(TeacherDirectoryRepository.class);
+        ProbeOrderRepository orders = mock(ProbeOrderRepository.class);
+        ProbeOrderSettings stored = new ProbeOrderSettings();
+        TeacherDirectoryEntry selected = teacher(12L, "Орлова Светлана Викторовна");
+        selected.setPrimaryPosition("Заместитель директора");
+        when(settings.findById(ProbeOrderSettings.DEFAULT_ID)).thenReturn(Optional.of(stored));
+        when(settings.save(any(ProbeOrderSettings.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(teachers.findById(12L)).thenReturn(Optional.of(selected));
+        when(orders.findAll()).thenReturn(List.of());
+
+        ProbeOrderDtos.SettingsView view = probeOrderService(settings, teachers, orders).updateSettings(
+                new ProbeOrderDtos.SettingsRequest(ProbeOrderApprovalMode.BOTH, 12L), admin());
+
+        assertEquals(12L, stored.getDeputyDirectorTeacherId());
+        assertEquals(12L, view.deputyDirectorTeacherId());
+        assertEquals("Орлова Светлана Викторовна", view.deputyDirectorName());
+    }
+
+    @Test
     void importsCurrentRegistrationUsingSystemBuildingStaffAndStudentCards() throws Exception {
         ProbeOrderRepository orders = mock(ProbeOrderRepository.class);
         ProbeOrderApprovalRepository approvals = mock(ProbeOrderApprovalRepository.class);
@@ -382,6 +421,17 @@ class ProbeOrderServiceImplTest {
         teacher.setFioTeacher(fullName);
         teacher.setPrimaryPosition("Учитель");
         return teacher;
+    }
+
+    private ProbeOrderServiceImpl probeOrderService(ProbeOrderSettingsRepository settings,
+                                                     TeacherDirectoryRepository teachers,
+                                                     ProbeOrderRepository orders) {
+        return new ProbeOrderServiceImpl(
+                orders, mock(ProbeOrderApprovalRepository.class), settings,
+                mock(ProbeOrderGeneratedDocumentRepository.class), mock(ProbeOrderScanRepository.class),
+                mock(ContingentSnapshotRepository.class), mock(ContingentStudentRepository.class),
+                mock(StudentProfileRepository.class), mock(ClassroomLeadershipRepository.class),
+                teachers, mock(AppUserRepository.class), new ProbeOrderDocumentService(), new ObjectMapper());
     }
 
     private MockMultipartFile registrationFile(int children) throws Exception {

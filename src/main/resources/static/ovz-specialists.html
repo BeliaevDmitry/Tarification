@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ГБОУ школа 7 — Специалисты ОВЗ</title>
+    <link rel="icon" type="image/png" href="/school-crest.png">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container ovz-specialists-page">
+    <header class="card">
+        <h1>Специалисты</h1>
+        <p class="muted">Рабочее место для заполнения психолого-педагогического сопровождения детей.</p>
+    </header>
+    <section class="card"><nav class="page-nav"></nav></section>
+
+    <section class="card">
+        <div class="ovz-section-heading">
+            <div>
+                <h2 id="specialists-workspace-title">Мои подопечные</h2>
+                <p id="specialists-access-note" class="muted">Загрузка прав и назначений…</p>
+            </div>
+            <div class="row controls-row">
+                <button id="specialists-settings-open" type="button" class="secondary" style="display:none">Настройки</button>
+                <button id="specialists-refresh" type="button" class="secondary">Обновить</button>
+            </div>
+        </div>
+        <div id="specialists-scope-switch" class="specialists-scope-switch" aria-label="Режим отображения детей">
+            <button id="specialists-show-mine" type="button">Отобразить привязанных</button>
+            <button id="specialists-show-all" type="button" class="secondary" style="display:none">Отобразить всех</button>
+        </div>
+        <div class="specialists-statistics" aria-live="polite">
+            <article><strong id="specialists-count-all">0</strong><span>Детей</span></article>
+            <article class="specialists-stat-complete"><strong id="specialists-count-complete">0</strong><span>Заполнено</span></article>
+            <article class="specialists-stat-incomplete"><strong id="specialists-count-incomplete">0</strong><span>Требует заполнения</span></article>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="specialists-list-toolbar">
+            <label>Поиск по ФИО или классу
+                <input id="specialists-search" type="search" placeholder="Начните вводить ФИО или класс">
+            </label>
+            <div class="specialists-legend" aria-label="Обозначения статусов">
+                <span class="support-status support-status-not-started">Не начато</span>
+                <span class="support-status support-status-in-progress">Частично</span>
+                <span class="support-status support-status-completed">Заполнено</span>
+            </div>
+        </div>
+        <p id="specialists-message" class="muted"></p>
+        <div class="sheet-wrap">
+            <table class="sheet-table specialists-children-table">
+                <thead><tr><th>ФИО ребёнка</th><th>Класс / группа</th><th>Моя часть</th><th>Заполнение специалистами</th><th></th></tr></thead>
+                <tbody id="specialists-children-body"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <dialog id="specialists-child-dialog" class="ovz-dialog specialists-child-dialog">
+        <div class="dialog-hero">
+            <div><h3 id="specialists-child-title">Сопровождение ребёнка</h3><p id="specialists-child-subtitle" class="muted"></p></div>
+            <button type="button" data-specialists-close="child" class="secondary">Закрыть</button>
+        </div>
+        <p class="muted">Все участники сопровождения видят заполненные сведения. Редактировать можно только свою часть; ответственный может редактировать все части.</p>
+        <div id="specialists-child-entries" class="specialists-entry-list"></div>
+        <p id="specialists-child-message" class="muted"></p>
+    </dialog>
+
+    <dialog id="specialists-settings-dialog" class="ovz-dialog specialists-settings-dialog">
+        <div class="dialog-hero">
+            <div><h3>Настройки рабочего места</h3><p class="muted">Ответственный видит всех распределённых детей и может заполнять сведения за любого специалиста.</p></div>
+            <button type="button" data-specialists-close="settings" class="secondary">Закрыть</button>
+        </div>
+        <form id="specialists-settings-form">
+            <label>Ответственный из кадров
+                <select id="specialists-responsible-employee" required></select>
+            </label>
+            <div class="row controls-row"><button type="submit">Сохранить</button></div>
+            <p id="specialists-settings-message" class="muted"></p>
+        </form>
+    </dialog>
+</main>
+<script src="/branding.js"></script>
+<script src="/auth.js"></script>
+<script src="/ovz-specialists.js"></script>
+</body>
+</html>

@@ -27,6 +27,8 @@ class ProbeOrdersFrontendTest {
         assertTrue(page.contains("id=\"probe-generate-dialog\""));
         assertTrue(page.contains("id=\"probe-scan-dialog\""));
         assertTrue(page.contains("id=\"probe-settings-dialog\""));
+        assertTrue(page.contains("id=\"probe-deputy-director\""));
+        assertTrue(page.contains("Власова Юлия Сергеевна"));
         assertTrue(page.contains("id=\"probe-refresh-contacts-btn\""));
         assertTrue(page.contains("Телефон ребёнка"));
         assertTrue(page.contains("value=\"ORGANIZATIONAL_BUILDING\""));
@@ -34,6 +36,7 @@ class ProbeOrdersFrontendTest {
         assertTrue(page.contains("value=\"BOTH\""));
         assertTrue(script.contains("/api/probe-orders/import"));
         assertTrue(script.contains("/api/probe-orders/settings"));
+        assertTrue(script.contains("deputyDirectorTeacherId"));
         assertTrue(script.contains("/refresh-contacts"));
         assertTrue(script.contains("item.childPhone"));
         assertTrue(script.contains("Только информация"));

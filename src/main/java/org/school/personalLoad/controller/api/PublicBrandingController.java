@@ -22,8 +22,8 @@ public class PublicBrandingController {
                 headerOrBlank(request, "Host"),
                 request.getServerName()));
         String crestUrl = "/school-crests/crest-" + schoolCode + ".png";
-        String appTitle = "ГБОУ школа " + schoolCode;
-        String loginTitle = "Вход в систему ГБОУ №" + schoolCode;
+        String appTitle = "ГБОУ школа №" + schoolCode;
+        String loginTitle = "Вход в систему ГБОУ школа №" + schoolCode;
         String welcome = "Выберите рабочий контур системы.";
         return BrandingResponse.builder()
                 .schoolCode(schoolCode)

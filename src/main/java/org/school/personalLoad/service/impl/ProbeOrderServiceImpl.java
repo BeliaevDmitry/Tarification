@@ -43,6 +43,10 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
     );
     private static final Pattern TIME_RANGE = Pattern.compile(
             "(?<!\\d)([01]?\\d|2[0-3])[:.]([0-5]\\d).*?([01]?\\d|2[0-3])[:.]([0-5]\\d)(?!\\d)");
+    private static final String DEFAULT_DEPUTY_DIRECTOR_NAME = "Власова Юлия Сергеевна";
+    private static final String DEFAULT_DEPUTY_DIRECTOR_DATIVE = "Власовой Юлии Сергеевне";
+    private static final String DEFAULT_DEPUTY_DIRECTOR_ACCUSATIVE = "Власову Юлию Сергеевну";
+    private static final String DEFAULT_DEPUTY_DIRECTOR_INITIALS = "Власова Ю.С.";
 
     private final ProbeOrderRepository orderRepository;
     private final ProbeOrderApprovalRepository approvalRepository;
@@ -224,8 +228,11 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
     @Transactional(readOnly = true)
     public ProbeOrderDtos.SettingsView settings(SessionUser user) {
         ensureView(user);
-        ProbeOrderApprovalMode mode = currentApprovalMode();
-        return new ProbeOrderDtos.SettingsView(mode, approvalModeLabel(mode), canEditSettings(user));
+        ProbeOrderSettings stored = settingsRepository.findById(ProbeOrderSettings.DEFAULT_ID).orElse(null);
+        ProbeOrderApprovalMode mode = stored == null
+                ? ProbeOrderApprovalMode.ORGANIZATIONAL_BUILDING : stored.getApprovalMode();
+        TeacherDirectoryEntry deputy = effectiveDeputyDirector(stored, activeStaff());
+        return settingsView(mode, deputy, canEditSettings(user));
     }
 
     @Override
@@ -237,13 +244,17 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
         }
         ProbeOrderSettings settings = settingsRepository.findById(ProbeOrderSettings.DEFAULT_ID)
                 .orElseGet(ProbeOrderSettings::new);
+        TeacherDirectoryEntry deputy = request.deputyDirectorTeacherId() == null ? null
+                : staff(request.deputyDirectorTeacherId(), "Выберите заместителя директора для текста приказа");
         settings.setApprovalMode(request.approvalMode());
+        settings.setDeputyDirectorTeacherId(deputy == null ? null : deputy.getId());
         settings.setUpdatedAt(LocalDateTime.now());
         settings.setUpdatedBy(firstNotBlank(user.getFullName(), user.getUsername(), "SYSTEM"));
         settingsRepository.save(settings);
         refreshPendingApprovalSummaries(request.approvalMode());
-        return new ProbeOrderDtos.SettingsView(request.approvalMode(),
-                approvalModeLabel(request.approvalMode()), true);
+        TeacherDirectoryEntry effectiveDeputy = deputy == null
+                ? effectiveDeputyDirector(settings, activeStaff()) : deputy;
+        return settingsView(request.approvalMode(), effectiveDeputy, true);
     }
 
     @Override
@@ -1074,7 +1085,7 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
                 order.getSchoolBuilding().getManagerFio(), person(order.getPrimaryCompanion()),
                 person(order.getSecondaryCompanion()), additionalCompanions(order).stream().map(this::person).toList(),
                 person(order.getSigner()), order.getSignerPosition(),
-                person(personnel.director()), person(personnel.deputyDirector()), personnel.executor(),
+                person(personnel.director()), personnel.deputyDirector(), personnel.executor(),
                 order.getParticipants().stream().map(participant -> new ProbeOrderDocumentService.ParticipantData(
                         participant.getFullNameSnapshot(), participant.getChildPhone(),
                         participant.getRepresentativeName(), participant.getRepresentativePhone()
@@ -1087,9 +1098,10 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
                 .filter(this::isActiveStaff).toList();
         TeacherDirectoryEntry director = linkedRoleTeacher(UserRole.DIRECTOR, active);
         if (director == null) director = active.stream().filter(teacher -> position(teacher).equals("директор")).findFirst().orElse(null);
-        TeacherDirectoryEntry deputy = active.stream()
-                .filter(teacher -> position(teacher).contains("заместител") && position(teacher).contains("директор"))
-                .findFirst().orElse(null);
+        ProbeOrderSettings settings = settingsRepository.findById(ProbeOrderSettings.DEFAULT_ID).orElse(null);
+        TeacherDirectoryEntry deputyTeacher = effectiveDeputyDirector(settings, active);
+        ProbeOrderDocumentService.PersonData deputy = deputyTeacher == null
+                ? defaultDeputyDirector() : person(deputyTeacher);
         TeacherDirectoryEntry executorTeacher = appUserRepository.findById(user.getId())
                 .map(appUser -> appUser.getTeacherId()).flatMap(teacherRepository::findById)
                 .orElseGet(() -> teacherRepository.findByFioTeacherIgnoreCase(user.getFullName()).orElse(null));
@@ -1098,6 +1110,38 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
                 initials(user.getFullName()), user.getPhone())
                 : person(executorTeacher);
         return new DocumentPersonnel(director, deputy, executor);
+    }
+
+    private ProbeOrderDtos.SettingsView settingsView(ProbeOrderApprovalMode mode,
+                                                      TeacherDirectoryEntry deputy,
+                                                      boolean canEdit) {
+        return new ProbeOrderDtos.SettingsView(mode, approvalModeLabel(mode),
+                deputy == null ? null : deputy.getId(),
+                deputy == null ? DEFAULT_DEPUTY_DIRECTOR_NAME : deputy.getFioTeacher(), canEdit);
+    }
+
+    private List<TeacherDirectoryEntry> activeStaff() {
+        return teacherRepository.findAll().stream().filter(this::isActiveStaff).toList();
+    }
+
+    private TeacherDirectoryEntry effectiveDeputyDirector(ProbeOrderSettings settings,
+                                                           List<TeacherDirectoryEntry> active) {
+        Long configuredId = settings == null ? null : settings.getDeputyDirectorTeacherId();
+        if (configuredId != null) {
+            TeacherDirectoryEntry configured = active.stream()
+                    .filter(teacher -> Objects.equals(teacher.getId(), configuredId))
+                    .findFirst().orElse(null);
+            if (configured != null) return configured;
+        }
+        return active.stream()
+                .filter(teacher -> normalizeName(teacher.getFioTeacher()).startsWith("власова "))
+                .findFirst().orElse(null);
+    }
+
+    private ProbeOrderDocumentService.PersonData defaultDeputyDirector() {
+        return new ProbeOrderDocumentService.PersonData(null, DEFAULT_DEPUTY_DIRECTOR_NAME,
+                DEFAULT_DEPUTY_DIRECTOR_DATIVE, DEFAULT_DEPUTY_DIRECTOR_ACCUSATIVE,
+                DEFAULT_DEPUTY_DIRECTOR_INITIALS, null);
     }
 
     private TeacherDirectoryEntry linkedRoleTeacher(UserRole role, List<TeacherDirectoryEntry> active) {
@@ -1701,7 +1745,7 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
     }
 
     private record DocumentPersonnel(TeacherDirectoryEntry director,
-                                     TeacherDirectoryEntry deputyDirector,
+                                     ProbeOrderDocumentService.PersonData deputyDirector,
                                      ProbeOrderDocumentService.PersonData executor) {
     }
 }

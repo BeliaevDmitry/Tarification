@@ -61,6 +61,8 @@ public class AuthFilter extends OncePerRequestFilter {
             Map.entry("/teachers-notification.html", AppTab.HR_DOCUMENTS),
             Map.entry("/educational-work.html", AppTab.EDUCATIONAL_WORK),
             Map.entry("/ovz.html", AppTab.OVZ),
+            Map.entry("/ovz-specialist-distribution.html", AppTab.OVZ),
+            Map.entry("/ovz-specialists.html", AppTab.OVZ),
             Map.entry("/pedagogical-councils.html", AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS),
             Map.entry("/probe-orders.html", AppTab.DOCUMENTS_PROBE_ORDERS),
             Map.entry("/vsoko.html", AppTab.VSOKO_VIEW),
@@ -265,6 +267,11 @@ public class AuthFilter extends OncePerRequestFilter {
             return false;
         }
         if (path.matches("^/api/pedagogical-councils/\\d+/extract$")) {
+            return false;
+        }
+        // Заполнение личной части специалиста и права ответственного проверяются
+        // внутри рабочего места по кадровой карточке, а не по общему праву редактирования ОВЗ.
+        if (path.startsWith("/api/ovz/specialist-workspace")) {
             return false;
         }
         return !(HttpMethod.GET.matches(request.getMethod())

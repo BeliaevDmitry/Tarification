@@ -422,7 +422,9 @@ async function openSpecialistAssignmentStage() {
             ${!distribution.ppkSigned ? '<p class="ovz-stage-warning">Распределение станет доступно после подписания ППк назначения.</p>' : ''}
             ${rows || '<p class="muted">В справках ЦМПК не указаны направления коррекционной работы.</p>'}
             <div class="ovz-stage-actions">${distribution.ppkSigned && distribution.neededCount
-                ? `<a class="button-link" href="/ovz-specialist-distribution.html?studentId=${studentId}">Распределить</a>` : ''}</div>`;
+                ? `<a class="button-link" href="/ovz-specialist-distribution.html?studentId=${studentId}">Распределить</a>` : ''}
+                ${distribution.assignedCount
+                ? `<a class="button-link secondary" href="/ovz-specialists.html?studentId=${studentId}">Открыть сопровождение</a>` : ''}</div>`;
     } catch (error) {
         ovzUi.stage_content.innerHTML = `<h3>Распределение за специалистами</h3><p class="error-message">Ошибка: ${ovzEsc(error.message)}</p>`;
     }
@@ -484,6 +486,10 @@ async function editPpkProtocol(protocol) {
 }
 
 document.querySelectorAll('[data-ovz-tab]').forEach((button) => button.addEventListener('click', () => showOvzTab(button.dataset.ovzTab)));
+window.addEventListener('hashchange', () => {
+    const requested = String(location.hash || '#registry').slice(1);
+    if (['registry', 'certificates', 'nosologies', 'ppk'].includes(requested)) showOvzTab(requested);
+});
 document.querySelectorAll('[data-dialog-close]').forEach((button) => button.addEventListener('click', () => ovzUi[`${button.dataset.dialogClose}_dialog`]?.close()));
 ovzUi.registry_search.addEventListener('input', renderRegistry); ovzUi.registry_refresh.addEventListener('click', loadRegistry);
 ovzUi.registry_head.addEventListener('click', (event) => {
