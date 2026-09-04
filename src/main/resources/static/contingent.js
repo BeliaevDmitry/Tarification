@@ -358,7 +358,7 @@ async function copyMesExportScript() {
         field.remove();
         if (!copied) throw new Error('Браузер запретил копирование. Используйте кнопку «Скачать скрипт».');
     }
-    ui.mesScriptResult.textContent = 'Скрипт скопирован. Перейдите в Console открытого МЭШ, вставьте его и нажмите Enter.';
+    ui.mesScriptResult.textContent = 'Скрипт скопирован. В нужной школе МЭШ откройте «Контингент», запустите код в Console и после подсказки нажмите страницу 2 (или верните заранее выбранный фильтр в «Все»).';
 }
 
 async function downloadMesExportScript() {
@@ -371,7 +371,7 @@ async function downloadMesExportScript() {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    ui.mesScriptResult.textContent = 'Скрипт скачан. Откройте файл, скопируйте его содержимое и запустите в Console МЭШ.';
+    ui.mesScriptResult.textContent = 'Скрипт скачан. Запустите содержимое файла в Console раздела «Контингент» нужной школы МЭШ. После подсказки нажмите страницу 2 или верните заранее выбранный фильтр в «Все».';
 }
 
 function renderStatsTable(stats) {

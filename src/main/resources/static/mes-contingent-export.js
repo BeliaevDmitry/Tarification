@@ -1,529 +1,825 @@
 (async () => {
     'use strict';
 
-    // ============================================================
-    // НАСТРОЙКИ
-    // ============================================================
-
-    const CONFIG = {
-        schoolId: 936,
-        academicYearId: 14,
-        profileId: 38063975,
-
-        // Сначала попробуем получить по 100 записей.
-        // Если сервер ограничивает размер, скрипт это определит.
-        preferredPerPage: 100,
-
-        // Небольшая пауза между запросами.
-        delayMs: 150,
-
-        // false = не выгружать представителей с hidden=true
-        includeHiddenRepresentatives: false
+    const CFG = {
+        perPage: 100,
+        delay: 150,
+        includeHidden: false
     };
 
-    // Для аварийной остановки можно выполнить в Console:
-    // window.__MES_EXPORT_STOP = true;
+    // Для остановки: window.__MES_EXPORT_STOP = true;
     window.__MES_EXPORT_STOP = false;
 
-    const sleep = ms =>
-        new Promise(resolve => setTimeout(resolve, ms));
+    console.clear();
+    console.log('МЭШ: режим автоматического определения школы.');
+    console.log('Сейчас перехвачу следующий запрос контингента...');
+    console.log('После появления сообщения ниже нажми страницу 2 в таблице.');
 
     // ============================================================
-    // COOKIE / АВТОРИЗАЦИЯ
+    // 1. ПЕРЕХВАТ FETCH + XHR
     // ============================================================
 
-    function getCookie(name) {
-        const prefix = `${name}=`;
+    let captured = null;
+    let resolveCapture;
 
-        const item = document.cookie
-            .split('; ')
-            .find(row => row.startsWith(prefix));
+    const capturedPromise = new Promise(resolve => {
+        resolveCapture = resolve;
+    });
 
-        if (!item) return null;
+    const isStudentProfiles = (url, method = 'GET') => {
+        try {
+            const candidate = new URL(url, location.origin);
+            return String(method).toUpperCase() === 'GET'
+                && candidate.origin === location.origin
+                && /\/student_profiles\/?$/.test(candidate.pathname)
+                && candidate.searchParams.has('school_id')
+                && candidate.searchParams.has('academic_year_id');
+        } catch {
+            return false;
+        }
+    };
 
-        return item.substring(prefix.length);
+    // ---------- FETCH ----------
+
+    const originalFetch = window.fetch;
+
+    window.fetch = async function(input, init = {}) {
+        try {
+            const url =
+                typeof input === 'string'
+                    ? input
+                    : input instanceof URL ? input.href : input?.url;
+
+            if (isStudentProfiles(url, init.method || input?.method) && !captured) {
+
+                const headers = {};
+
+                // headers из Request
+                if (input instanceof Request) {
+                    input.headers.forEach((v, k) => {
+                        headers[k] = v;
+                    });
+                }
+
+                // headers из init
+                if (init.headers) {
+                    new Headers(init.headers).forEach((v, k) => {
+                        headers[k] = v;
+                    });
+                }
+
+                captured = {
+                    type: 'fetch',
+                    url: new URL(url, location.origin).href,
+                    method:
+                        init.method ||
+                        input?.method ||
+                        'GET',
+                    headers
+                };
+
+                resolveCapture(captured);
+            }
+        } catch (e) {
+            console.warn('Ошибка перехвата fetch:', e);
+        }
+
+        return originalFetch.apply(this, arguments);
+    };
+
+    // ---------- XHR ----------
+
+    const origOpen =
+        XMLHttpRequest.prototype.open;
+
+    const origSetHeader =
+        XMLHttpRequest.prototype.setRequestHeader;
+
+    const origSend =
+        XMLHttpRequest.prototype.send;
+
+    XMLHttpRequest.prototype.open =
+        function(method, url) {
+
+            this.__mesMethod = method;
+            this.__mesUrl = url;
+            this.__mesHeaders = {};
+
+            return origOpen.apply(this, arguments);
+        };
+
+    XMLHttpRequest.prototype.setRequestHeader =
+        function(name, value) {
+
+            if (this.__mesHeaders) {
+                this.__mesHeaders[name] = value;
+            }
+
+            return origSetHeader.apply(this, arguments);
+        };
+
+    XMLHttpRequest.prototype.send =
+        function() {
+
+            try {
+                if (
+                    isStudentProfiles(this.__mesUrl, this.__mesMethod) &&
+                    !captured
+                ) {
+                    captured = {
+                        type: 'xhr',
+                        url: new URL(
+                            this.__mesUrl,
+                            location.origin
+                        ).href,
+                        method:
+                            this.__mesMethod || 'GET',
+                        headers:
+                            this.__mesHeaders || {}
+                    };
+
+                    resolveCapture(captured);
+                }
+            } catch (e) {
+                console.warn(
+                    'Ошибка перехвата XHR:',
+                    e
+                );
+            }
+
+            return origSend.apply(this, arguments);
+        };
+
+    console.log('');
+    console.log(
+        '>>> ТЕПЕРЬ нажми страницу 2 внизу списка «Контингент»'
+    );
+    console.log(
+        '>>> если второй страницы нет — верни заранее выбранный фильтр в «Все».'
+    );
+
+    // ============================================================
+    // 2. ЖДЁМ РЕАЛЬНЫЙ ЗАПРОС
+    // ============================================================
+
+    let timeoutId;
+    const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(
+            () => reject(
+                new Error(
+                    'За 60 секунд запрос student_profiles не появился.'
+                )
+            ),
+            60000
+        );
+    });
+
+    let req;
+
+    try {
+        req = await Promise.race([
+            capturedPromise,
+            timeout
+        ]);
+    } finally {
+
+        clearTimeout(timeoutId);
+
+        // возвращаем браузеру оригинальные функции
+
+        window.fetch = originalFetch;
+
+        XMLHttpRequest.prototype.open =
+            origOpen;
+
+        XMLHttpRequest.prototype.setRequestHeader =
+            origSetHeader;
+
+        XMLHttpRequest.prototype.send =
+            origSend;
     }
 
-    function safeDecode(value) {
-        if (!value) return null;
+    // ============================================================
+    // 3. РАЗБИРАЕМ ЗАХВАЧЕННЫЙ URL
+    // ============================================================
 
-        try {
-            return decodeURIComponent(value);
-        } catch {
-            return value;
+    const originalUrl =
+        new URL(req.url);
+
+    const schoolId =
+        originalUrl.searchParams.get(
+            'school_id'
+        );
+
+    const academicYearId =
+        originalUrl.searchParams.get(
+            'academic_year_id'
+        );
+
+    if (!schoolId) {
+        throw new Error(
+            'В запросе не найден school_id.'
+        );
+    }
+
+    if (!academicYearId) {
+        throw new Error(
+            'В запросе не найден academic_year_id.'
+        );
+    }
+
+    console.log('');
+    console.log('Запрос найден.');
+    console.log('Школа ID:', schoolId);
+    console.log(
+        'Учебный год ID:',
+        academicYearId
+    );
+
+    console.log('Сохраняются текущие фильтры таблицы. Для полной выгрузки они должны быть сняты.');
+
+    // НЕ выводим Authorization в консоль.
+
+    // ============================================================
+    // 4. ПОДГОТАВЛИВАЕМ ЗАГОЛОВКИ
+    // ============================================================
+
+    const headers =
+        new Headers();
+
+    for (
+        const [name, value]
+        of Object.entries(req.headers || {})
+    ) {
+
+        /*
+          Эти заголовки браузер выставляет сам,
+          повторно задавать их нельзя/не нужно.
+        */
+
+        const forbidden = [
+            'host',
+            'connection',
+            'content-length',
+            'cookie',
+            'accept-encoding',
+            'origin',
+            'referer',
+            'user-agent'
+        ];
+
+        if (
+            !forbidden.includes(
+                name.toLowerCase()
+            )
+        ) {
+            try {
+                headers.set(name, value);
+            } catch {}
         }
     }
 
-    /*
-      В текущей сессии МЭШ токен обычно присутствует
-      в cookie aupd_token.
-
-      Никакой токен в сам текст скрипта вставлять не надо.
-    */
-    const token = safeDecode(getCookie('aupd_token'));
-
-    const requestHeaders = {
-        'accept': 'application/json',
-        'aid': String(CONFIG.academicYearId),
-        'profile-id': String(CONFIG.profileId),
-        'x-mes-hostid': '22',
-        'x-mes-roleid': '8',
-        'x-mes-subsystem': 'hteacherweb'
-    };
-
-    if (token) {
-        requestHeaders['authorization'] = `Bearer ${token}`;
+    if (!headers.has('accept')) {
+        headers.set(
+            'accept',
+            'application/json'
+        );
     }
 
     // ============================================================
-    // ЗАПРОС ОДНОЙ СТРАНИЦЫ
+    // 5. ФУНКЦИЯ ЗАГРУЗКИ
     // ============================================================
 
-    async function loadPage(page, perPage) {
+    async function loadPage(
+        page,
+        perPage
+    ) {
 
-        const params = new URLSearchParams({
-            page: String(page),
-            per_page: String(perPage),
-            with_deleted: 'false',
-            with_user_info: 'true',
-            school_id: String(CONFIG.schoolId),
-            academic_year_id: String(CONFIG.academicYearId)
-        });
+        if (window.__MES_EXPORT_STOP) {
+            throw new Error('Выгрузка остановлена. Неполный CSV не сохраняется.');
+        }
 
         const url =
-            '/api/ej/core/teacher/v1/student_profiles?' +
-            params.toString();
+            new URL(req.url);
 
-        const response = await fetch(url, {
-            method: 'GET',
-            credentials: 'include',
-            headers: requestHeaders
-        });
+        url.searchParams.set(
+            'page',
+            String(page)
+        );
+
+        url.searchParams.set(
+            'per_page',
+            String(perPage)
+        );
+
+        const response =
+            await originalFetch(
+                url.href,
+                {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers
+                }
+            );
 
         if (!response.ok) {
-            let responseText = '';
 
-            try {
-                responseText = await response.text();
-            } catch {}
-
-            if (response.status === 401 || response.status === 403) {
+            if (
+                response.status === 401 ||
+                response.status === 403
+            ) {
                 throw new Error(
-                    `Ошибка авторизации HTTP ${response.status}. ` +
-                    `Обнови страницу МЭШ и запусти скрипт снова.`
+                    `Ошибка доступа HTTP ${response.status}. ` +
+                    'Обнови МЭШ и повтори запуск.'
                 );
             }
 
             throw new Error(
-                `HTTP ${response.status} на странице ${page}.\n` +
-                responseText.substring(0, 500)
+                `HTTP ${response.status} ` +
+                `при загрузке страницы ${page}`
             );
         }
 
-        const data = await response.json();
+        const data =
+            await response.json();
 
         if (!Array.isArray(data)) {
-            console.error('Неожиданный ответ:', data);
+            console.error(data);
 
             throw new Error(
-                'API вернул не массив учеников.'
+                'Неожиданный формат ответа API.'
             );
         }
 
         return {
             data,
 
+            total:
+                Number(
+                    response.headers.get(
+                        'total-entities'
+                    )
+                ) || 0,
+
             pages:
-                Number(response.headers.get('pages')) || 0,
+                Number(
+                    response.headers.get(
+                        'pages'
+                    )
+                ) || 0,
 
             pageSize:
-                Number(response.headers.get('pagesize')) || 0,
-
-            total:
-                Number(response.headers.get('total-entities')) || 0
+                Number(
+                    response.headers.get(
+                        'pagesize'
+                    )
+                ) || 0
         };
     }
 
     // ============================================================
-    // ПЕРВАЯ СТРАНИЦА
+    // 6. ПРОБУЕМ ЗАПРОСИТЬ ПО 100
     // ============================================================
 
-    console.log('МЭШ: начинаю выгрузку контингента...');
+    console.log('');
+    console.log(
+        'Начинаю загрузку контингента...'
+    );
 
-    let perPage = CONFIG.preferredPerPage;
-    let firstPage;
+    let perPage =
+        CFG.perPage;
+
+    let first;
 
     try {
-        firstPage = await loadPage(1, perPage);
-    } catch (error) {
+
+        first =
+            await loadPage(
+                1,
+                perPage
+            );
+
+    } catch (e) {
 
         console.warn(
-            `Не получилось запросить ${perPage} записей. ` +
-            'Пробую стандартные 10...',
-            error
+            '100 записей за раз не получилось.'
+        );
+
+        console.warn(
+            'Перехожу на 10.'
         );
 
         perPage = 10;
-        firstPage = await loadPage(1, perPage);
+
+        first =
+            await loadPage(
+                1,
+                perPage
+            );
     }
 
     /*
-      Сервер может сам уменьшить per_page.
+      Если сервер самостоятельно изменил размер страницы,
+      учитываем фактический размер.
     */
-    if (firstPage.pageSize > 0) {
-        perPage = firstPage.pageSize;
+
+    if (first.pageSize) {
+        perPage =
+            first.pageSize;
     }
 
-    let totalPages = firstPage.pages;
+    let pages =
+        first.pages;
 
-    if (!totalPages && firstPage.total) {
-        totalPages =
-            Math.ceil(firstPage.total / perPage);
+    if (!pages && first.total) {
+        pages =
+            Math.ceil(
+                first.total /
+                perPage
+            );
     }
 
-    if (!totalPages) {
+    if (!pages) {
         throw new Error(
-            'Не удалось определить количество страниц.'
+            'Сервер не сообщил количество страниц.'
         );
     }
 
     console.log(
-        `Всего записей: ${firstPage.total || 'неизвестно'}`
+        `Всего детей: ${first.total || '?'}`
     );
 
     console.log(
-        `Размер страницы: ${perPage}`
+        `Страниц для загрузки: ${pages}`
     );
 
     console.log(
-        `Количество страниц: ${totalPages}`
+        `По ${perPage} записей на запрос.`
     );
 
     // ============================================================
-    // ЗАГРУЗКА ВСЕХ СТРАНИЦ
+    // 7. ЗАГРУЖАЕМ ВСЁ
     // ============================================================
 
-    const students = [...firstPage.data];
+    const allStudents = [
+        ...first.data
+    ];
 
-    console.log(
-        `Страница 1/${totalPages}: ` +
-        `получено ${firstPage.data.length}, ` +
-        `всего ${students.length}`
-    );
-
-    for (let page = 2; page <= totalPages; page++) {
-
-        if (window.__MES_EXPORT_STOP) {
-            console.warn(
-                'Выгрузка остановлена пользователем.'
-            );
-            break;
-        }
+    for (
+        let page = 2;
+        page <= pages;
+        page++
+    ) {
 
         const result =
-            await loadPage(page, perPage);
+            await loadPage(
+                page,
+                perPage
+            );
 
-        students.push(...result.data);
+        allStudents.push(
+            ...result.data
+        );
+
+        const percent =
+            Math.round(
+                page / pages * 100
+            );
 
         console.log(
-            `Страница ${page}/${totalPages}: ` +
-            `+${result.data.length}, ` +
-            `всего ${students.length}`
+            `[${percent}%] ` +
+            `${page}/${pages} — ` +
+            `собрано ${allStudents.length}`
         );
 
-        if (CONFIG.delayMs > 0) {
-            await sleep(CONFIG.delayMs);
-        }
+        await new Promise(
+            resolve =>
+                setTimeout(
+                    resolve,
+                    CFG.delay
+                )
+        );
     }
 
     // ============================================================
-    // УДАЛЯЕМ ВОЗМОЖНЫЕ ДУБЛИКАТЫ
+    // 8. ДЕДУПЛИКАЦИЯ
     // ============================================================
 
-    const uniqueStudentsMap = new Map();
+    const studentMap =
+        new Map();
 
-    for (const student of students) {
+    for (const s of allStudents) {
 
         const key =
-            student.id ??
-            student.person_id ??
-            student.user_id ??
-            [
-                student.user_name,
-                student.birth_date,
-                student.snils
-            ].join('|');
+            s.id ??
+            s.person_id ??
+            s.user_id ??
+            `${s.user_name}|${s.birth_date}`;
 
-        uniqueStudentsMap.set(key, student);
-    }
-
-    const uniqueStudents =
-        [...uniqueStudentsMap.values()];
-
-    console.log(
-        `После удаления дублей: ${uniqueStudents.length}`
-    );
-
-    if (
-        firstPage.total &&
-        uniqueStudents.length !== firstPage.total &&
-        !window.__MES_EXPORT_STOP
-    ) {
-        console.warn(
-            `API сообщает ${firstPage.total} записей, ` +
-            `а получено ${uniqueStudents.length}.`
+        studentMap.set(
+            String(key),
+            s
         );
     }
 
+    const students =
+        [...studentMap.values()];
+
+    console.log(
+        `Уникальных детей: ${students.length}`
+    );
+
     // ============================================================
-    // ПРЕДСТАВИТЕЛИ
+    // 9. ПРЕДСТАВИТЕЛИ
     // ============================================================
 
-    function getRepresentatives(student) {
+    function representatives(s) {
 
-        let parents =
-            Array.isArray(student.parents)
-                ? student.parents
+        let list =
+            Array.isArray(s.parents)
+                ? s.parents
                 : [];
 
-        if (!CONFIG.includeHiddenRepresentatives) {
-            parents =
-                parents.filter(parent => !parent.hidden);
+        if (!CFG.includeHidden) {
+            list =
+                list.filter(
+                    p => p.hidden !== true
+                );
         }
 
-        return parents;
+        return list;
     }
 
-    const maxRepresentatives =
-        uniqueStudents.reduce(
-            (max, student) =>
+    const maxParents =
+        students.reduce(
+            (max, s) =>
                 Math.max(
                     max,
-                    getRepresentatives(student).length
+                    representatives(s).length
                 ),
             0
         );
 
     console.log(
-        `Максимальное число представителей ` +
-        `у одного ребёнка: ${maxRepresentatives}`
+        `Максимум представителей: ${maxParents}`
     );
 
     // ============================================================
-    // ФОРМИРУЕМ СТРОКИ
+    // 10. ТАБЛИЦА
     // ============================================================
 
-    function sexName(sex) {
-
-        if (sex === 'male') return 'М';
-        if (sex === 'female') return 'Ж';
-
-        return sex || '';
-    }
-
-    function preferredPhone(person) {
+    function phone(x) {
         return (
-            person?.phone_number ||
-            person?.phone_number_ezd ||
+            x?.phone_number ||
+            x?.phone_number_ezd ||
             ''
         );
     }
 
-    function preferredEmail(person) {
+    function email(x) {
         return (
-            person?.email ||
-            person?.email_ezd ||
+            x?.email ||
+            x?.email_ezd ||
             ''
         );
     }
 
-    const rows = uniqueStudents.map(student => {
+    function yesNo(value) {
+        if (value === true) return 'Да';
+        if (value === false) return 'Нет';
+        return '';
+    }
 
-        const representatives =
-            getRepresentatives(student);
+    function sex(value) {
+        if (value === 'male') return 'М';
+        if (value === 'female') return 'Ж';
+        return value || '';
+    }
 
-        const row = {
-            'ФИО ребёнка':
-                student.user_name || '',
+    const rows =
+        students.map(s => {
 
-            'Дата рождения':
-                student.birth_date || '',
+            const row = {
+                'ФИО ребёнка':
+                    s.user_name || '',
 
-            'Возраст':
-                student.age ?? '',
+                'Дата рождения':
+                    s.birth_date || '',
 
-            'Пол':
-                sexName(student.sex),
+                'Возраст':
+                    s.age ?? '',
 
-            'Класс / группа':
-                student.class_unit?.name || '',
+                'Пол':
+                    sex(s.sex),
 
-            'Логин ребёнка':
-                student.gusoev_login || '',
+                'Класс / группа':
+                    s.class_unit?.name || '',
 
-            'Email ребёнка':
-                preferredEmail(student),
+                'Логин ребёнка':
+                    s.gusoev_login || '',
 
-            'Телефон ребёнка':
-                preferredPhone(student),
+                'Телефон ребёнка':
+                    phone(s),
 
-            'СНИЛС ребёнка':
-                student.snils || '',
+                'Email ребёнка':
+                    email(s),
 
-            'Классный руководитель / наставник':
-                Array.isArray(student.mentors)
-                    ? student.mentors
-                        .map(x => x.name)
-                        .filter(Boolean)
-                        .join('; ')
-                    : ''
-        };
+                'СНИЛС ребёнка':
+                    s.snils || '',
 
-        for (
-            let i = 0;
-            i < maxRepresentatives;
-            i++
-        ) {
-            const parent =
-                representatives[i] || {};
+                'Уровень образования':
+                    s.education_level ?? '',
 
-            const n = i + 1;
+                'Уровень класса':
+                    s.class_level ?? '',
 
-            row[`Представитель ${n} — тип`] =
-                parent.type || '';
+                'Study mode ID':
+                    s.study_mode_id ?? '',
 
-            row[`Представитель ${n} — ФИО`] =
-                parent.name || '';
+                'Группа физкультуры ID':
+                    s.physical_training_group_id ?? '',
 
-            row[`Представитель ${n} — логин`] =
-                parent.gusoev_login || '';
+                'Надомный профиль':
+                    yesNo(
+                        s.home_based_profile
+                    ),
 
-            row[`Представитель ${n} — телефон`] =
-                preferredPhone(parent);
+                'Надомный класс':
+                    yesNo(
+                        s.class_unit?.home_based
+                    ),
 
-            row[`Представитель ${n} — email`] =
-                preferredEmail(parent);
+                'Переведён':
+                    yesNo(
+                        s.transferred
+                    ),
 
-            row[`Представитель ${n} — СНИЛС`] =
-                parent.snils || '';
-        }
+                'Наставник / классный руководитель':
+                    Array.isArray(s.mentors)
+                        ? s.mentors
+                            .map(x => x.name)
+                            .filter(Boolean)
+                            .join('; ')
+                        : ''
+            };
 
-        return row;
-    });
+            const reps =
+                representatives(s);
+
+            for (
+                let i = 0;
+                i < maxParents;
+                i++
+            ) {
+
+                const p =
+                    reps[i] || {};
+
+                const n =
+                    i + 1;
+
+                row[
+                    `Представитель ${n} — тип`
+                ] =
+                    p.type || '';
+
+                row[
+                    `Представитель ${n} — ФИО`
+                ] =
+                    p.name || '';
+
+                row[
+                    `Представитель ${n} — логин`
+                ] =
+                    p.gusoev_login || '';
+
+                row[
+                    `Представитель ${n} — телефон`
+                ] =
+                    phone(p);
+
+                row[
+                    `Представитель ${n} — email`
+                ] =
+                    email(p);
+
+                row[
+                    `Представитель ${n} — СНИЛС`
+                ] =
+                    p.snils || '';
+            }
+
+            return row;
+        });
+
+    window.__MES_STUDENTS =
+        students;
+
+    window.__MES_ROWS =
+        rows;
+
+    console.table(
+        rows.slice(0, 20)
+    );
 
     // ============================================================
-    // ПРЕДПРОСМОТР В CONSOLE
-    // ============================================================
-
-    console.table(rows.slice(0, 20));
-
-    /*
-      Сохраним результат ещё и в памяти страницы.
-      Потом можно посмотреть:
-        window.__MES_STUDENTS
-        window.__MES_ROWS
-    */
-    window.__MES_STUDENTS = uniqueStudents;
-    window.__MES_ROWS = rows;
-
-    // ============================================================
-    // CSV ДЛЯ EXCEL
+    // 11. CSV
     // ============================================================
 
     if (!rows.length) {
-        throw new Error(
-            'Нет данных для выгрузки.'
-        );
+        throw new Error('Нет данных для выгрузки. Проверьте школу и фильтры контингента.');
     }
 
-    const columnNames =
+    const columns =
         Object.keys(rows[0]);
 
-    function csvCell(value) {
+    const csvCell =
+        value =>
+            `"${String(value ?? '')
+                .replace(/"/g, '""')}"`;
 
-        const text =
-            String(value ?? '')
-                .replace(/"/g, '""');
-
-        return `"${text}"`;
-    }
-
-    const csvLines = [];
-
-    csvLines.push(
-        columnNames
+    const output = [
+        columns
             .map(csvCell)
-            .join(';')
-    );
+            .join(';'),
 
-    for (const row of rows) {
-
-        csvLines.push(
-            columnNames
-                .map(column =>
-                    csvCell(row[column])
-                )
-                .join(';')
-        );
-    }
-
-    const csv =
-        '\uFEFF' +
-        csvLines.join('\r\n');
+        ...rows.map(
+            row =>
+                columns
+                    .map(
+                        col =>
+                            csvCell(
+                                row[col]
+                            )
+                    )
+                    .join(';')
+        )
+    ].join('\r\n');
 
     const blob =
         new Blob(
-            [csv],
+            ['\uFEFF' + output],
             {
                 type:
                     'text/csv;charset=utf-8'
             }
         );
 
-    const downloadUrl =
+    const objectUrl =
         URL.createObjectURL(blob);
 
-    const link =
+    const a =
         document.createElement('a');
 
-    const today =
+    const date =
         new Date()
             .toISOString()
             .slice(0, 10);
 
-    link.href = downloadUrl;
+    a.href =
+        objectUrl;
 
-    link.download =
-        `MES_контингент_${CONFIG.schoolId}_${today}.csv`;
+    a.download =
+        `MES_контингент_${schoolId}_${date}.csv`;
 
-    document.body.appendChild(link);
+    document.body.appendChild(a);
 
-    link.click();
+    a.click();
 
-    link.remove();
+    a.remove();
 
     setTimeout(
-        () => URL.revokeObjectURL(downloadUrl),
-        1000
+        () =>
+            URL.revokeObjectURL(
+                objectUrl
+            ),
+        2000
+    );
+
+    console.log('');
+    console.log(
+        '==================================='
+    );
+
+    console.log('ГОТОВО');
+
+    console.log(
+        `School ID: ${schoolId}`
     );
 
     console.log(
-        '========================================'
+        `Учебный год: ${academicYearId}`
     );
 
     console.log(
-        `ГОТОВО: выгружено ${rows.length} детей.`
+        `Детей выгружено: ${rows.length}`
     );
 
     console.log(
-        `Представителей максимум: ${maxRepresentatives}.`
+        `Файл: MES_контингент_${schoolId}_${date}.csv`
     );
 
     console.log(
-        'CSV-файл отправлен на скачивание.'
-    );
-
-    console.log(
-        '========================================'
+        '==================================='
     );
 })();
