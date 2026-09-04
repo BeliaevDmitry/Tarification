@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class ContingentImportFrontendTest {
 
@@ -25,9 +26,30 @@ class ContingentImportFrontendTest {
         assertTrue(html.contains("id=\"contingent-mismatch-dialog\""));
         assertTrue(html.contains("<strong>АИС</strong>"));
         assertTrue(pageScript.contains("/api/contingent/import-mismatches/resolve"));
-        assertTrue(exporter.contains("/api/ej/core/teacher/v1/student_profiles"));
+        assertTrue(exporter.contains("student_profiles"));
         assertTrue(exporter.contains("'ФИО ребёнка'"));
         assertTrue(exporter.contains("`Представитель ${n} — телефон`"));
+    }
+
+    @Test
+    void meshScriptDetectsCurrentSchoolAndExplainsRequestCapture() throws Exception {
+        String html = Files.readString(Path.of("src/main/resources/static/contingent.html"));
+        String exporter = Files.readString(Path.of("src/main/resources/static/mes-contingent-export.js"));
+
+        assertTrue(exporter.contains("window.fetch = async function"));
+        assertTrue(exporter.contains("XMLHttpRequest.prototype.send"));
+        assertTrue(exporter.contains("originalUrl.searchParams.get("));
+        assertTrue(exporter.contains("'school_id'"));
+        assertTrue(exporter.contains("'academic_year_id'"));
+        assertTrue(exporter.contains("clearTimeout(timeoutId)"));
+        assertFalse(exporter.contains("schoolId: 936"));
+        assertFalse(exporter.contains("profileId:"));
+        assertFalse(exporter.contains("document.cookie"));
+        assertTrue(html.contains("ТЕПЕРЬ нажми страницу 2"));
+        assertTrue(html.contains("60 секунд"));
+        assertTrue(html.contains("снимите фильтры"));
+        assertTrue(exporter.contains("'Телефон ребёнка'"));
+        assertTrue(exporter.contains("'Уровень образования'"));
     }
 
     @Test
