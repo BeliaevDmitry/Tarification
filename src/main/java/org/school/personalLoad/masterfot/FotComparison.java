@@ -25,10 +25,12 @@ public final class FotComparison {
     private final Map<Assignment, BigDecimal> load = new LinkedHashMap<>();
     private final Map<Assignment, String> blocked = new LinkedHashMap<>();
     private final Map<String, String> mappings = new HashMap<>();
+    private final LocalDate comparisonDate;
 
     public FotComparison(List<CurriculumPlanEntry> curriculum, List<ManualLoadEntry> assignments,
                          Map<Long, MckoDtos.EligibilityRow> eligibility, List<FotMapping> mappings,
                          List<StudyPeriodSetting> periods, LocalDate date) {
+        this.comparisonDate = date;
         mappings.forEach(m -> this.mappings.put(mappingKey(m.getType(), m.getSource()), m.getTarget()));
         Map<Long, String> moduleSubjects = new HashMap<>();
         for (CurriculumPlanEntry p : curriculum) {
@@ -60,7 +62,8 @@ public final class FotComparison {
             load.merge(key, row.getEffectiveLoadHours(), BigDecimal::add);
             MckoDtos.EligibilityRow mcko = eligibility.get(row.getId());
             if (mcko != null && "MISSING".equals(mcko.status()) && !VACANCY.equals(teacher)) {
-                blocked.put(key, mcko.message() + ". На " + date + " нет действующего МЦКО по этому предмету");
+                String message = Objects.toString(mcko.message(), "").trim();
+                blocked.put(key, message.isEmpty() ? "НЕТ МЦКО" : message);
             }
         }
     }
@@ -111,10 +114,8 @@ public final class FotComparison {
             Set<Integer> e = expectedGroups.getOrDefault(base, Set.of()), a = actualGroups.getOrDefault(base, Set.of());
             if (!e.equals(a)) add(findings, "SUBGROUP", base, "", labels(e), labels(a), "Сверяется деление по учебным группам, а не коэффициент оплаты.");
         }
-        Map<Assignment, BigDecimal> expectedLoad = new LinkedHashMap<>();
-        load.forEach((key, value) -> expectedLoad.merge(blocked.containsKey(key) ? new Assignment(key.slot, VACANCY) : key, value, BigDecimal::add));
+        Map<Assignment, BigDecimal> expectedLoad = new LinkedHashMap<>(load);
         // Plan hours without a system assignment must also remain unassigned in FOT.
-        // They are not the named vacancy required for an MCKO exception.
         Map<Slot, BigDecimal> assignedBySlot = new HashMap<>();
         expectedLoad.forEach((key, value) -> assignedBySlot.merge(key.slot, value, BigDecimal::add));
         plan.forEach((slot, hours) -> {
@@ -128,13 +129,10 @@ public final class FotComparison {
                     groupLabel(key.slot.group) + ". " + (VACANCY.equals(key.teacher) ? "Ожидаемая вакансия с учётом МЦКО. " : "Нагрузка педагога. ") + location(sourceRows, key.slot));
         }
         blocked.forEach((key, reason) -> {
-            Assignment vacancy = new Assignment(key.slot, VACANCY);
-            BigDecimal expected = expectedLoad.getOrDefault(vacancy, BigDecimal.ZERO), actual = actualLoad.getOrDefault(vacancy, BigDecimal.ZERO);
-            BigDecimal assignedToTeacher = actualLoad.getOrDefault(key, BigDecimal.ZERO);
-            boolean covered = actual.compareTo(expected) == 0 && assignedToTeacher.signum() == 0;
-            add(findings, covered ? "MCKO_VACANCY" : "MCKO", key.slot, teacherLabel(key.teacher),
-                    "На вакансии: " + hours(load.get(key)), covered ? "Вакансия учтена" : "Вакансия по группе: " + hours(actual) + "; на педагоге: " + hours(assignedToTeacher),
-                    reason + ". Педагог в системе ведёт через замены; назначение в системе сохраняется. " + groupLabel(key.slot.group));
+            add(findings, "MCKO", key.slot, teacherLabel(key.teacher),
+                    "Действующее МЦКО", reason,
+                    reason + ". На " + comparisonDate + " нет действующего МЦКО по этому предмету. "
+                            + "Назначение и часы педагога не заменяются вакансией. " + groupLabel(key.slot.group));
         });
         return new FotDtos.Comparison(new ArrayList<>(findings.values()), complete);
     }
