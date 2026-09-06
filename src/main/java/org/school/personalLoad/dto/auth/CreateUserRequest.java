@@ -7,6 +7,7 @@ import java.util.List;
 
 @Data
 public class CreateUserRequest {
+    private Long teacherId;
     private String username;
     private String fullName;
     private String documentPosition;

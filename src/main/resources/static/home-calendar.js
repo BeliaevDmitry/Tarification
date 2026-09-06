@@ -286,8 +286,9 @@ function calendarEventMarkup(event, detailed = false) {
     const companions = (event.companions || []).join(', ');
     const place = event.place || event.venue || event.address || '';
     const audience = calendarAudienceText(event);
-    const color = calendarSafeColor(event.color || (event.source === 'PROBE_ORDER' ? '#16a34a' : '#2563eb'));
-    const subtitle = event.source === 'PROBE_ORDER'
+    const orderEvent = event.source === 'PROBE_ORDER' || event.source === 'EXIT_ORDER';
+    const color = calendarSafeColor(event.color || (orderEvent ? '#16a34a' : '#2563eb'));
+    const subtitle = orderEvent
         ? [classes || 'Класс не указан', event.buildingCode].filter(Boolean).join(' · ')
         : [event.ownerName, event.visibilityLabel].filter(Boolean).join(' · ');
     return `<button type="button" class="home-calendar-event" data-calendar-event-key="${calendarEsc(calendarEventKey(event))}"
@@ -384,21 +385,29 @@ function renderHomeCalendar() {
     else renderAgenda(from, homeCalendar.view === 'week' ? 7 : 1);
 }
 
-function calendarNormalizeProbeEvent(event) {
+function calendarNormalizeOrderEvent(event, source, color, ownerName) {
     const participants = event.participants || [];
     return {
         ...event,
         id: event.orderId,
-        source: 'PROBE_ORDER',
+        source,
         place: event.venue || event.address || '',
-        color: '#16a34a',
-        ownerName: 'Выпущенный приказ',
+        color,
+        ownerName,
         visibilityLabel: 'Всем сотрудникам',
         buildings: participants.filter(item => item.type === 'BUILDING').map(item => ({
             id: item.id, code: item.code, name: item.label, address: item.details
         })),
         participants
     };
+}
+
+function calendarNormalizeProbeEvent(event) {
+    return calendarNormalizeOrderEvent(event, 'PROBE_ORDER', '#16a34a', 'Выпущенный приказ на пробу');
+}
+
+function calendarNormalizeExitEvent(event) {
+    return calendarNormalizeOrderEvent(event, 'EXIT_ORDER', '#7c3aed', 'Согласованный приказ на выход');
 }
 
 async function loadCalendarReferences(force = false) {
@@ -431,11 +440,13 @@ async function loadHomeCalendar() {
     await loadCalendarReferences();
     const [from, to] = calendarRange();
     homeCalendarUi.grid.innerHTML = '<p class="muted">Загружаем календарь…</p>';
-    const [manual, probe] = await Promise.all([
+    const [manual, probe, exitOrders] = await Promise.all([
         calendarApi(`/api/calendar/events?from=${calendarIso(from)}&to=${calendarIso(to)}`),
-        calendarApi(`/api/probe-orders/calendar?from=${calendarIso(from)}&to=${calendarIso(to)}`)
+        calendarApi(`/api/probe-orders/calendar?from=${calendarIso(from)}&to=${calendarIso(to)}`),
+        calendarApi(`/api/exit-orders/calendar?from=${calendarIso(from)}&to=${calendarIso(to)}`)
     ]);
-    homeCalendar.events = [...manual, ...probe.map(calendarNormalizeProbeEvent)].sort((left, right) =>
+    homeCalendar.events = [...manual, ...probe.map(calendarNormalizeProbeEvent),
+        ...exitOrders.map(calendarNormalizeExitEvent)].sort((left, right) =>
         `${left.date}T${left.startTime || ''}`.localeCompare(`${right.date}T${right.startTime || ''}`, 'ru'));
     renderHomeCalendar();
 }
@@ -622,7 +633,10 @@ function calendarOpenDetails(event) {
     const invitees = calendarInviteesMarkup(event);
     homeCalendarUi.detailsTitle.textContent = event.title;
     homeCalendarUi.detailsOwner.textContent = event.source === 'PROBE_ORDER'
-        ? 'Мероприятие из выпущенного приказа' : `Календарь: ${event.ownerName || 'пользователь'}`;
+        ? 'Мероприятие из выпущенного приказа на пробу'
+        : event.source === 'EXIT_ORDER'
+            ? 'Мероприятие из согласованного приказа на выход'
+            : `Календарь: ${event.ownerName || 'пользователь'}`;
     homeCalendarUi.detailsBody.innerHTML = `
         <dl class="calendar-details-list">
           <div><dt>Дата и время</dt><dd>${calendarEsc(event.date)} · ${calendarEsc(time || 'не указано')}</dd></div>

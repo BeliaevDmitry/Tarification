@@ -447,6 +447,30 @@ public class MckoServiceImpl implements MckoService {
     private MckoDtos.EligibilityRow eligibilityForLoad(ManualLoadEntry load,
                                                    Map<String, List<MckoCertificate>> byTeacherSubject,
                                                    List<MckoSubjectMapping> mappings) {
+        return eligibilityForLoad(load, byTeacherSubject, mappings, LocalDate.now());
+    }
+
+    /** Per-assignment eligibility at an export date; does not collapse grade bands or subjects. */
+    public Map<Long, MckoDtos.EligibilityRow> eligibilityForRows(List<ManualLoadEntry> rows, LocalDate date) {
+        Map<String, List<MckoCertificate>> certificates = certificateRepository.findAll().stream()
+                .collect(Collectors.groupingBy(row -> row.getTeacherId() + "|" + mckoSubjectKey(row.getMckoSubject())));
+        List<MckoSubjectMapping> all = mappingRepository.findAll();
+        Set<String> ignored = all.stream().filter(MckoSubjectMapping::isIgnored)
+                .map(row -> mckoSubjectKey(row.getMckoSubject())).collect(Collectors.toSet());
+        List<MckoSubjectMapping> active = all.stream().filter(row -> !row.isIgnored())
+                .filter(row -> !ignored.contains(mckoSubjectKey(row.getMckoSubject()))).toList();
+        Map<Long, MckoDtos.EligibilityRow> result = new LinkedHashMap<>();
+        for (ManualLoadEntry row : rows) {
+            if (row.getId() == null || row.getTeacherId() == null) continue;
+            MckoDtos.EligibilityRow value = eligibilityForLoad(row, certificates, active, date);
+            if (value != null) result.put(row.getId(), value);
+        }
+        return result;
+    }
+
+    private MckoDtos.EligibilityRow eligibilityForLoad(ManualLoadEntry load,
+                                                   Map<String, List<MckoCertificate>> byTeacherSubject,
+                                                   List<MckoSubjectMapping> mappings, LocalDate date) {
         Long teacherId = load.getTeacherId();
         String teacherFio = load.getFioTeacher();
         SubjectGroup subjectGroup = subjectGroup(load);
@@ -469,26 +493,37 @@ public class MckoServiceImpl implements MckoService {
         if (mckoSubjects.isEmpty()) {
             return null;
         }
-        List<MckoCertificate> candidates = mckoSubjects.stream()
+        List<MckoCertificate> relatedCertificates = mckoSubjects.stream()
                 .flatMap(mcko -> byTeacherSubject.getOrDefault(teacherId + "|" + mckoSubjectKey(mcko), List.of()).stream())
-                .filter(this::isActiveCertificate)
+                .toList();
+        List<MckoCertificate> candidates = relatedCertificates.stream()
+                .filter(cert -> cert.getDiagnosticDate() != null && !cert.getDiagnosticDate().isAfter(date))
+                .filter(cert -> cert.getExpiresAt() != null && !cert.getExpiresAt().isBefore(date))
                 .toList();
         Optional<MckoCertificate> best = candidates.stream()
-                .filter(this::isActivePassing)
+                .filter(cert -> !isOgeDiagnostic(cert) && levelRank(cert.getLevel()) > 0)
                 .max(this::compareCertificates);
         if (best.isEmpty()) {
             Optional<MckoCertificate> nonPassing = candidates.stream().max(this::compareCertificates);
+            Optional<MckoCertificate> expired = relatedCertificates.stream()
+                    .filter(cert -> cert.getExpiresAt() != null && cert.getExpiresAt().isBefore(date))
+                    .max(this::compareCertificates);
+            Optional<MckoCertificate> future = relatedCertificates.stream()
+                    .filter(cert -> cert.getDiagnosticDate() != null && cert.getDiagnosticDate().isAfter(date))
+                    .min(Comparator.comparing(MckoCertificate::getDiagnosticDate));
+            MckoCertificate cert = nonPassing.or(() -> expired).or(() -> future).orElse(null);
             String message = nonPassing
-                    .map(cert -> isOgeDiagnostic(cert)
+                    .map(item -> isOgeDiagnostic(item)
                             ? "Диагностика ОГЭ не учитывается как МЦКО"
-                            : "МЦКО уровень " + nvl(cert.getLevel()))
-                    .orElse("НЕТ МЦКО");
-            MckoCertificate cert = nonPassing.orElse(null);
+                            : "МЦКО уровень " + nvl(item.getLevel()))
+                    .orElseGet(() -> expired.map(row -> "Срок МЦКО истёк " + RU_DATE.format(row.getExpiresAt()))
+                            .orElseGet(() -> future.map(row -> "МЦКО действует только с " + RU_DATE.format(row.getDiagnosticDate()))
+                                    .orElse("НЕТ МЦКО")));
             return new MckoDtos.EligibilityRow(teacherId, teacherFio, load.getSubjectId(), subjectGroup.subjectName(),
                     "MISSING", message, cert == null ? null : cert.getLevel(), cert == null ? null : cert.getDiagnosticDate(), cert == null ? null : cert.getExpiresAt());
         }
         MckoCertificate cert = best.get();
-        String status = certificateStatus(cert);
+        String status = !cert.isPublished() || !cert.getExpiresAt().isAfter(date.plusMonths(3)) ? "WARNING" : "OK";
         String message = eligibilityMessage(cert);
         return new MckoDtos.EligibilityRow(teacherId, teacherFio, load.getSubjectId(), subjectGroup.subjectName(), status, message,
                 cert.getLevel(), cert.getDiagnosticDate(), cert.getExpiresAt());

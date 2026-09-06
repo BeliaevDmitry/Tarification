@@ -13,6 +13,7 @@ public enum AppTab {
     LOAD("Нагрузка по корпусам", "/load.html"),
     PEOPLE_LOAD("Нагрузка по людям", "/people-load.html"),
     LOAD_ISSUES("Возможные ошибки", "/load-issues.html"),
+    LOAD_MASTER_FOT("Мастер ФОТ", "/master-fot.html"),
     LOAD_STATS("Статистика нагрузки", "/load-statistics.html"),
     LOAD_SALARY("Ставки", "/rates.html"),
     SERVICE_NOTES("СЛ. записки на изменение нагрузки", "/service-notes.html"),
@@ -31,6 +32,7 @@ public enum AppTab {
     EDUCATIONAL_WORK("Воспитательная работа", "/educational-work.html"),
     DOCUMENTS_PEDAGOGICAL_COUNCILS("Документы: педагогические советы", "/pedagogical-councils.html"),
     DOCUMENTS_PROBE_ORDERS("Документы: приказы на пробы", "/probe-orders.html"),
+    DOCUMENTS_EXIT_ORDERS("Документы: приказы на выход", "/exit-orders.html"),
     VSOKO_VIEW("ВСОКО: просмотр", "/vsoko.html"),
     VSOKO_EDIT("ВСОКО: редактирование", "/vsoko-oge.html"),
     VSOKO_MCKO("ВСОКО: МЦКО", "/vsoko-mcko.html"),
@@ -61,10 +63,10 @@ public enum AppTab {
     }
 
     public static List<AppTab> navigableTabs() {
-        return Arrays.asList(HR_DOCUMENTS, HR_PERSONAL_DATA, BUILDINGS, CLASSES, SUBJECTS, CURRICULUM, LOAD, PEOPLE_LOAD, LOAD_ISSUES, LOAD_STATS,
+        return Arrays.asList(HR_DOCUMENTS, HR_PERSONAL_DATA, BUILDINGS, CLASSES, SUBJECTS, CURRICULUM, LOAD, PEOPLE_LOAD, LOAD_ISSUES, LOAD_MASTER_FOT, LOAD_STATS,
                 LOAD_SALARY, SETTINGS, SUBJECT_AREAS, TEACHERS, TEACHERS_ARCHIVE, TEACHERS_DISMISSALS,
                 TEACHERS_SETTINGS, TEACHERS_MCKO, SERVICE_NOTES, HR_NOTIFICATIONS_VIEW, CONTINGENT_IMPORT, CONTINGENT_STATS, OVZ,
-                EDUCATIONAL_WORK, DOCUMENTS_PEDAGOGICAL_COUNCILS, DOCUMENTS_PROBE_ORDERS,
+                EDUCATIONAL_WORK, DOCUMENTS_PEDAGOGICAL_COUNCILS, DOCUMENTS_PROBE_ORDERS, DOCUMENTS_EXIT_ORDERS,
                 VSOKO_VIEW, VSOKO_EDIT, VSOKO_MCKO, OGE_UPLOAD_VIEW, OGE_MISMATCH_VIEW,
                 OGE_EXTERNAL_WORKS_VIEW, OGE_TEACHER_BINDING_VIEW, OGE_SCORE_VIEW, OGE_EVALUATION_VIEW,
                 OGE_GIA_UPLOAD, OGE_WORK_UPLOAD, USERS);

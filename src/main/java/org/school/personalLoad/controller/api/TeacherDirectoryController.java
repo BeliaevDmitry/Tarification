@@ -18,8 +18,10 @@ import org.school.personalLoad.model.UserActionLog;
 import org.school.personalLoad.service.TeacherDirectoryService;
 import org.school.personalLoad.service.PersonnelService;
 import org.school.personalLoad.service.ProbeOrderService;
+import org.school.personalLoad.service.ExitOrderService;
 import org.school.personalLoad.service.AcademicYearService;
 import org.school.personalLoad.service.UserActionLogService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -44,6 +46,8 @@ public class TeacherDirectoryController {
     private final AcademicYearService academicYearService;
     private final UserActionLogService audit;
     private final ProbeOrderService probeOrderService;
+    @Autowired(required = false)
+    private ExitOrderService exitOrderService;
 
     @PostMapping("/import")
     public ResponseEntity<Map<String, Object>> importFromExcel(@RequestParam("file") MultipartFile file) {
@@ -193,7 +197,13 @@ public class TeacherDirectoryController {
 
     @GetMapping("/{teacherId}/probe-events")
     public Object probeEvents(@PathVariable Long teacherId) {
-        return probeOrderService.teacherHistory(teacherId);
+        List<org.school.personalLoad.dto.ProbeOrderDtos.HistoryEvent> events = new java.util.ArrayList<>(
+                probeOrderService.teacherHistory(teacherId));
+        if (exitOrderService != null) events.addAll(exitOrderService.teacherHistory(teacherId));
+        events.sort(java.util.Comparator.comparing(
+                org.school.personalLoad.dto.ProbeOrderDtos.HistoryEvent::eventDate,
+                java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())));
+        return events;
     }
 
     @GetMapping("/name-cases/derive")

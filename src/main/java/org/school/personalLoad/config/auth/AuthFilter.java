@@ -51,9 +51,11 @@ public class AuthFilter extends OncePerRequestFilter {
             Map.entry("/subjects.html", AppTab.SUBJECTS),
             Map.entry("/curriculum.html", AppTab.CURRICULUM),
             Map.entry("/load.html", AppTab.LOAD),
+            Map.entry("/load-orders.html", AppTab.LOAD),
             Map.entry("/people-load.html", AppTab.PEOPLE_LOAD),
             Map.entry("/rates.html", AppTab.LOAD_SALARY),
             Map.entry("/load-issues.html", AppTab.LOAD_ISSUES),
+            Map.entry("/master-fot.html", AppTab.LOAD_MASTER_FOT),
             Map.entry("/load-statistics.html", AppTab.LOAD_STATS),
             Map.entry("/service-notes.html", AppTab.SERVICE_NOTES),
             Map.entry("/settings.html", AppTab.SETTINGS),
@@ -65,6 +67,9 @@ public class AuthFilter extends OncePerRequestFilter {
             Map.entry("/ovz-specialists.html", AppTab.OVZ),
             Map.entry("/pedagogical-councils.html", AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS),
             Map.entry("/probe-orders.html", AppTab.DOCUMENTS_PROBE_ORDERS),
+            Map.entry("/exit-orders.html", AppTab.DOCUMENTS_EXIT_ORDERS),
+            Map.entry("/exit-orders-summary.html", AppTab.DOCUMENTS_EXIT_ORDERS),
+            Map.entry("/exit-order-settings.html", AppTab.DOCUMENTS_EXIT_ORDERS),
             Map.entry("/vsoko.html", AppTab.VSOKO_VIEW),
             Map.entry("/vsoko-oge.html", AppTab.VSOKO_VIEW),
             Map.entry("/vsoko-ege.html", AppTab.VSOKO_VIEW),
@@ -193,10 +198,12 @@ public class AuthFilter extends OncePerRequestFilter {
 
     private boolean hasAnyDocumentsPageAccess(SessionUser user) {
         return user.canViewTab(AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS)
-                || user.canViewTab(AppTab.DOCUMENTS_PROBE_ORDERS);
+                || user.canViewTab(AppTab.DOCUMENTS_PROBE_ORDERS)
+                || user.canViewTab(AppTab.DOCUMENTS_EXIT_ORDERS);
     }
 
     private AppTab apiTabForPath(String path) {
+        if (path.equals("/api/master-fot") || path.startsWith("/api/master-fot/")) return AppTab.LOAD_MASTER_FOT;
         if (path.startsWith("/api/building-groups")) return AppTab.BUILDINGS;
         if (path.startsWith("/api/buildings")) return AppTab.BUILDINGS;
         if (path.startsWith("/api/classroom-leadership")) return AppTab.CLASSES;
@@ -209,6 +216,7 @@ public class AuthFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/manual-load/salary-breakdown")) return AppTab.LOAD_SALARY;
         if (path.startsWith("/api/manual-load/export-full") || path.startsWith("/api/manual-load/export-consolidated")) return AppTab.PEOPLE_LOAD;
         if (path.startsWith("/api/manual-load")) return AppTab.LOAD;
+        if (path.startsWith("/api/load-orders")) return AppTab.LOAD;
         if (path.startsWith("/api/primary-subjects")) return AppTab.PEOPLE_LOAD;
         if (path.startsWith("/api/service-memos")) return AppTab.SERVICE_NOTES;
         if (path.startsWith("/api/settings/")) return AppTab.SETTINGS;
@@ -226,6 +234,7 @@ public class AuthFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/ovz")) return AppTab.OVZ;
         if (path.startsWith("/api/pedagogical-councils")) return AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS;
         if (path.startsWith("/api/probe-orders")) return AppTab.DOCUMENTS_PROBE_ORDERS;
+        if (path.startsWith("/api/exit-orders")) return AppTab.DOCUMENTS_EXIT_ORDERS;
         if (path.startsWith("/api/pa")) return AppTab.VSOKO_EDIT;
         return null;
     }
@@ -241,7 +250,16 @@ public class AuthFilter extends OncePerRequestFilter {
     }
 
     private boolean canReadProtectedApi(SessionUser user, String path) {
+        if (path.startsWith("/api/load-orders")) {
+            return user.canViewTab(AppTab.LOAD);
+        }
+        if (path.equals("/api/master-fot") || path.startsWith("/api/master-fot/")) {
+            return user.canViewTab(AppTab.LOAD_MASTER_FOT);
+        }
         if ("/api/probe-orders/calendar".equals(path)) {
+            return true;
+        }
+        if ("/api/exit-orders/calendar".equals(path)) {
             return true;
         }
         if (path.startsWith("/api/mcko")) {
@@ -255,6 +273,9 @@ public class AuthFilter extends OncePerRequestFilter {
         }
         if (path.startsWith("/api/probe-orders")) {
             return user.canViewTab(AppTab.DOCUMENTS_PROBE_ORDERS);
+        }
+        if (path.startsWith("/api/exit-orders")) {
+            return user.canViewTab(AppTab.DOCUMENTS_EXIT_ORDERS);
         }
         return true;
     }

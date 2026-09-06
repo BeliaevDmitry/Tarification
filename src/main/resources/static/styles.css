@@ -1558,6 +1558,187 @@ td.vacancy-row {
     display: block;
 }
 
+/* Конструктор приказов на выход */
+.exit-page-heading,
+.exit-section-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+}
+
+.exit-page-heading h1,
+.exit-section-heading h2,
+.exit-section-heading h3 {
+    margin-top: 0;
+}
+
+.exit-top-actions {
+    justify-content: flex-end;
+}
+
+.exit-constructor-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.exit-constructor-grid label,
+.exit-settings-grid label {
+    display: grid;
+    align-content: start;
+    gap: 5px;
+    min-width: 0;
+    font-weight: 650;
+}
+
+.exit-constructor-grid input,
+.exit-constructor-grid select,
+.exit-settings-grid textarea {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    font-weight: 400;
+}
+
+.exit-wide {
+    grid-column: span 2;
+}
+
+.exit-builder-section {
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.exit-class-picker {
+    display: grid;
+    gap: 10px;
+}
+
+.exit-parallel {
+    border: 1px solid #dbe3ef;
+    border-radius: 10px;
+    background: #f8fafc;
+    overflow: hidden;
+}
+
+.exit-parallel > summary {
+    padding: 11px 14px;
+    cursor: pointer;
+    font-weight: 750;
+}
+
+.exit-parallel-classes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 0 10px 10px;
+}
+
+.exit-class-block {
+    padding: 11px;
+    border: 1px solid #dbe3ef;
+    border-radius: 9px;
+    background: #fff;
+}
+
+.exit-class-block.is-suggested {
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, .12);
+}
+
+.exit-class-all {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e2e8f0;
+    cursor: pointer;
+}
+
+.exit-class-all input,
+.exit-student-list input,
+.exit-attendance-item input {
+    width: auto;
+    margin: 0;
+}
+
+.exit-class-all span {
+    color: #475569;
+    font-size: .86rem;
+}
+
+.exit-student-list {
+    display: grid;
+    gap: 6px;
+    max-height: 280px;
+    padding-top: 8px;
+    overflow: auto;
+}
+
+.exit-student-list label,
+.exit-attendance-item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: 8px;
+    padding: 6px 7px;
+    border-radius: 7px;
+    cursor: pointer;
+}
+
+.exit-student-list label:hover,
+.exit-attendance-item:hover {
+    background: #eff6ff;
+}
+
+.exit-orders-table {
+    min-width: 1200px;
+}
+
+.exit-attendance-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+    max-height: 55vh;
+    overflow: auto;
+    padding: 12px;
+}
+
+.exit-settings-grid,
+.exit-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.exit-settings-grid textarea {
+    resize: vertical;
+}
+
+@media (max-width: 900px) {
+    .exit-page-heading,
+    .exit-section-heading {
+        flex-direction: column;
+    }
+    .exit-top-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+    .exit-constructor-grid,
+    .exit-parallel-classes,
+    .exit-settings-grid,
+    .exit-summary-grid,
+    .exit-attendance-list {
+        grid-template-columns: 1fr;
+    }
+    .exit-wide {
+        grid-column: auto;
+    }
+}
+
 .login-quick-links {
     display: grid;
     grid-template-columns: 1fr;

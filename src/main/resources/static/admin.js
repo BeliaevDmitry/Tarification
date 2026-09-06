@@ -22,6 +22,7 @@ const TAB_GROUPS = [
             { key: 'LOAD', label: 'Нагрузка по корпусам' },
             { key: 'PEOPLE_LOAD', label: 'Нагрузка по людям' },
             { key: 'LOAD_ISSUES', label: 'Возможные ошибки' },
+            { key: 'LOAD_MASTER_FOT', label: 'Мастер ФОТ' },
             { key: 'LOAD_STATS', label: 'Статистика нагрузки' },
             { key: 'SETTINGS', label: 'Настройки' },
             { key: 'SUBJECT_AREAS', label: 'Предметные области' }
@@ -69,7 +70,8 @@ const TAB_GROUPS = [
         label: 'Документы',
         tabs: [
             { key: 'DOCUMENTS_PEDAGOGICAL_COUNCILS', label: 'Педагогические советы' },
-            { key: 'DOCUMENTS_PROBE_ORDERS', label: 'Приказы на пробы' }
+            { key: 'DOCUMENTS_PROBE_ORDERS', label: 'Приказы на пробы' },
+            { key: 'DOCUMENTS_EXIT_ORDERS', label: 'Приказы на выход' }
         ]
     },
     {
@@ -141,9 +143,14 @@ const ui = {
     academicYearCode: document.getElementById('academic-year-code'),
     academicYearFeedback: document.getElementById('academic-year-feedback'),
     academicYearsBody: document.getElementById('academic-years-body'),
+    createTeacher: document.getElementById('create-teacher'),
+    createTeacherHint: document.getElementById('create-teacher-hint'),
+    createUsername: document.getElementById('create-username'),
     createFullName: document.getElementById('create-full-name'),
+    createDocumentPosition: document.getElementById('create-document-position'),
+    createEmail: document.getElementById('create-email'),
+    createPhone: document.getElementById('create-phone'),
     editFullName: document.getElementById('edit-full-name'),
-    createTeacherDatalist: document.getElementById('teacher-fio-options-create'),
     editTeacherDatalist: document.getElementById('teacher-fio-options-edit')
 };
 
@@ -152,6 +159,7 @@ let buildingGroups = [];
 let users = [];
 let editingUserId = null;
 let teacherFioOptions = [];
+let teacherRows = [];
 
 async function api(path, options = {}) {
     const response = await fetch(applyAcademicYearScope(path), options);
@@ -186,6 +194,95 @@ function bindTeacherFioAutocomplete(input, datalist) {
     const render = () => renderTeacherFioDatalist(datalist, filterTeacherFioOptions(input.value));
     input.addEventListener('focus', render);
     input.addEventListener('input', render);
+}
+
+function documentPositionFromPrimary(position) {
+    const value = String(position || '').trim();
+    const lower = value.toLowerCase();
+    const replacements = [
+        [/^заместитель директора/, 'заместителя директора'],
+        [/^директор/, 'директора'],
+        [/^руководитель/, 'руководителя'],
+        [/^учитель/, 'учителя'],
+        [/^преподаватель/, 'преподавателя'],
+        [/^педагог-психолог/, 'педагога-психолога'],
+        [/^социальный педагог/, 'социального педагога'],
+        [/^педагог/, 'педагога'],
+        [/^методист/, 'методиста'],
+        [/^специалист/, 'специалиста'],
+        [/^воспитатель/, 'воспитателя'],
+        [/^тьютор/, 'тьютора'],
+        [/^советник/, 'советника'],
+        [/^секретарь/, 'секретаря'],
+        [/^инженер/, 'инженера']
+    ];
+    for (const [pattern, replacement] of replacements) {
+        if (pattern.test(lower)) return lower.replace(pattern, replacement);
+    }
+    return value;
+}
+
+function roleFromTeacher(teacher) {
+    const position = `${teacher?.primaryPosition || ''} ${teacher?.additionalDutiesSummary || ''}`.toLowerCase();
+    if (/заместител\S*\s+директор/.test(position)) return 'DEPUTY_DIRECTOR';
+    if (/руководител\S*\s+корпус/.test(position)) return 'BUILDING_HEAD';
+    if (/^\s*директор(?:\s|$)/.test(position)) return 'DIRECTOR';
+    if (/кадр|персонал/.test(position)) return 'HR';
+    if (/методист/.test(position)) return 'METHODIST';
+    return 'EMPLOYEE';
+}
+
+function availableTeacherRows() {
+    const linkedIds = new Set(users.map((user) => Number(user.teacherId)).filter(Boolean));
+    const linkedNames = new Set(users.map((user) => String(user.fullName || '').trim().toLowerCase()).filter(Boolean));
+    return teacherRows.filter((teacher) => {
+        const fio = String(teacher.fioTeacher || '').trim();
+        return fio && !teacher.archived && !teacher.dismissalDate && !fio.toLowerCase().startsWith('вакансия')
+            && !linkedIds.has(Number(teacher.id)) && !linkedNames.has(fio.toLowerCase());
+    });
+}
+
+function renderCreateTeacherSelect(selectedId = '') {
+    if (!ui.createTeacher) return;
+    const options = availableTeacherRows();
+    ui.createTeacher.innerHTML = '<option value="">Выберите сотрудника из раздела «Кадры»</option>'
+        + options.map((teacher) => {
+            const details = [teacher.primaryPosition, teacher.numberSchoolBuilding, teacher.email]
+                .map((value) => String(value || '').trim()).filter(Boolean).join(' · ');
+            return `<option value="${teacher.id}" ${String(teacher.id) === String(selectedId) ? 'selected' : ''}>${esc(teacher.fioTeacher)}${details ? ` — ${esc(details)}` : ''}</option>`;
+        }).join('');
+}
+
+function applySelectedTeacher() {
+    const teacher = teacherRows.find((row) => String(row.id) === String(ui.createTeacher?.value || ''));
+    if (!teacher) {
+        ui.createFullName.value = '';
+        ui.createUsername.value = '';
+        ui.createEmail.value = '';
+        ui.createPhone.value = '';
+        ui.createDocumentPosition.value = '';
+        renderBuildingSelect(ui.createManagedBuilding);
+        if (ui.createTeacherHint) {
+            ui.createTeacherHint.textContent = 'После выбора заполнятся логин, ФИО, должность, email, телефон и корпус.';
+        }
+        return;
+    }
+    const email = String(teacher.email || '').trim();
+    ui.createFullName.value = String(teacher.fioTeacher || '').trim();
+    ui.createUsername.value = email;
+    ui.createEmail.value = email;
+    ui.createPhone.value = String(teacher.phone || '').trim();
+    ui.createDocumentPosition.value = documentPositionFromPrimary(teacher.primaryPosition);
+    ui.createRole.value = roleFromTeacher(teacher);
+    renderBuildingSelect(ui.createManagedBuilding, teacher.numberSchoolBuilding || '');
+    setScopeMode('create', ui.createRole.value === 'BUILDING_HEAD' ? LOAD_SCOPE_MODE.PRIMARY : LOAD_SCOPE_MODE.NONE);
+    syncRoleSpecificFields('create');
+    if (ui.createTeacherHint) {
+        const details = [teacher.primaryPosition, teacher.numberSchoolBuilding].filter(Boolean).join(' · ');
+        ui.createTeacherHint.textContent = email
+            ? `Данные подставлены из кадров${details ? `: ${details}` : ''}. Проверьте роль и права перед созданием.`
+            : `Данные подставлены из кадров${details ? `: ${details}` : ''}. У сотрудника не указан email — заполните email и логин вручную.`;
+    }
 }
 
 function setAdminTab(tab) {
@@ -845,8 +942,8 @@ function syncRoleSpecificFields(prefix) {
     const isBuildingHead = roleSelect.value === 'BUILDING_HEAD';
     const currentScopeMode = selectedScopeMode(prefix);
 
-    buildingSelect.disabled = !isBuildingHead;
-    if (!isBuildingHead) {
+    buildingSelect.disabled = isAdmin;
+    if (isAdmin) {
         buildingSelect.value = '';
     }
 
@@ -1012,6 +1109,7 @@ function openEditDialog(userId) {
     ui.editForm.elements.fullName.value = user.fullName || '';
     ui.editForm.elements.documentPosition.value = user.documentPosition || '';
     ui.editForm.elements.email.value = user.email || '';
+    ui.editForm.elements.phone.value = user.phone || '';
     ui.editForm.elements.active.checked = Boolean(user.active);
     ui.editForm.elements.canView.checked = Boolean(user.canView);
     ui.editForm.elements.canEdit.checked = Boolean(user.canEdit);
@@ -1032,10 +1130,14 @@ function resetCreateForm() {
     setScopeMode('create', LOAD_SCOPE_MODE.NONE);
     renderLoadBuildings(ui.createLoadBuildings, [], 'create');
     syncRoleSpecificFields('create');
+    renderCreateTeacherSelect();
+    if (ui.createTeacherHint) {
+        ui.createTeacherHint.textContent = 'После выбора заполнятся логин, ФИО, должность, email, телефон и корпус.';
+    }
 }
 
 async function reload() {
-    const [userRows, buildingRows, buildingGroupRows, teacherRows] = await Promise.all([
+    const [userRows, buildingRows, buildingGroupRows, personnelRows] = await Promise.all([
         api('/api/admin/users'),
         api('/api/buildings'),
         api('/api/building-groups'),
@@ -1044,13 +1146,14 @@ async function reload() {
     users = userRows || [];
     buildings = (buildingRows || []).slice().sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), 'ru'));
     buildingGroups = (buildingGroupRows || []).slice().sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), 'ru'));
-    teacherFioOptions = (teacherRows || [])
+    teacherRows = (personnelRows || []).slice().sort((a, b) => String(a.fioTeacher || '').localeCompare(String(b.fioTeacher || ''), 'ru'));
+    teacherFioOptions = teacherRows
         .map((row) => String(row.fioTeacher || '').trim())
         .filter(Boolean)
         .filter((fio, idx, arr) => arr.findIndex((x) => x.toLowerCase() === fio.toLowerCase()) === idx)
         .sort((a, b) => a.localeCompare(b, 'ru'));
-    renderTeacherFioDatalist(ui.createTeacherDatalist, teacherFioOptions.slice(0, 200));
     renderTeacherFioDatalist(ui.editTeacherDatalist, teacherFioOptions.slice(0, 200));
+    renderCreateTeacherSelect(ui.createTeacher?.value || '');
     renderBuildingSelect(ui.createManagedBuilding, ui.createManagedBuilding.value);
     renderLoadBuildings(ui.createLoadBuildings, selectedLoadBuildings('create'), 'create');
     renderUsers(users);
@@ -1058,6 +1161,7 @@ async function reload() {
 }
 
 ui.createRole.addEventListener('change', () => syncRoleSpecificFields('create'));
+ui.createTeacher?.addEventListener('change', applySelectedTeacher);
 ui.editRole.addEventListener('change', () => syncRoleSpecificFields('edit'));
 ui.createManagedBuilding.addEventListener('change', () => syncRoleSpecificFields('create'));
 ui.editManagedBuilding.addEventListener('change', () => syncRoleSpecificFields('edit'));
@@ -1082,10 +1186,12 @@ ui.form.addEventListener('submit', async (event) => {
             method: 'POST',
             headers: jsonHeaders,
             body: JSON.stringify({
+                teacherId: Number(form.get('teacherId')) || null,
                 username: String(form.get('username') || '').trim(),
                 fullName: String(form.get('fullName') || '').trim(),
                 documentPosition: String(form.get('documentPosition') || '').trim(),
                 email: String(form.get('email') || '').trim(),
+                phone: String(form.get('phone') || '').trim(),
                 managedBuildingCode: String(form.get('managedBuildingCode') || '').trim(),
                 role: String(form.get('role') || ''),
                 canView: form.get('canView') === 'on',
@@ -1116,6 +1222,7 @@ ui.editForm.addEventListener('submit', async (event) => {
                 fullName: String(form.get('fullName') || '').trim(),
                 documentPosition: String(form.get('documentPosition') || '').trim(),
                 email: String(form.get('email') || '').trim(),
+                phone: String(form.get('phone') || '').trim(),
                 managedBuildingCode: String(form.get('managedBuildingCode') || '').trim(),
                 role: String(form.get('role') || ''),
                 active: form.get('active') === 'on',
@@ -1144,7 +1251,6 @@ ui.resetPasswordBtn.addEventListener('click', async () => {
 });
 
 resetCreateForm();
-bindTeacherFioAutocomplete(ui.createFullName, ui.createTeacherDatalist);
 bindTeacherFioAutocomplete(ui.editFullName, ui.editTeacherDatalist);
 reload().then(renderAcademicYears).catch((error) => print({ error: error.message }));
 

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ГБОУ школа — Приказы нагрузки</title>
+    <link rel="icon" type="image/png" href="/school-crest.png">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/load-orders.css">
+</head>
+<body>
+<main class="container load-orders-page">
+    <header class="card">
+        <h1>Приказы нагрузки</h1>
+        <p class="muted">Формирование приказов об утверждении учебных планов и учебной нагрузки. Каждый готовый Word-файл сохраняется в истории.</p>
+        <nav class="page-nav"></nav>
+    </header>
+
+    <section class="card load-order-readiness" aria-labelledby="load-order-readiness-title">
+        <div>
+            <h2 id="load-order-readiness-title">Готовность данных</h2>
+            <p id="load-order-readiness-text" class="muted">Проверяем учебный план и распределение нагрузки…</p>
+        </div>
+        <button id="load-order-refresh" type="button" class="secondary" data-allow-readonly="true">Обновить</button>
+    </section>
+
+    <section class="card" data-requires-edit>
+        <div class="load-order-section-heading">
+            <div>
+                <h2>Новый приказ</h2>
+                <p class="muted">Word-документ будет сформирован на бланке текущей школы и сохранён вместе со снимком данных.</p>
+            </div>
+        </div>
+        <form id="load-order-form" class="load-order-form">
+            <div class="load-order-kind" role="radiogroup" aria-label="Вид приказа">
+                <label>
+                    <input type="radio" name="type" value="CURRICULUM_APPROVAL" checked>
+                    <span><strong>Утверждение учебных планов</strong><small>Приложение с перечнем планов по корпусам и уровням образования</small></span>
+                </label>
+                <label>
+                    <input type="radio" name="type" value="LOAD_APPROVAL">
+                    <span><strong>Утверждение нагрузки</strong><small>Приложение с распределением по педагогам, предметам и классам</small></span>
+                </label>
+            </div>
+
+            <div class="load-order-grid">
+                <label>Номер приказа
+                    <input id="load-order-number" required placeholder="Например, 125/1-ОД">
+                </label>
+                <label>Дата приказа
+                    <input id="load-order-date" type="date" required>
+                </label>
+                <label id="load-order-effective-wrap" hidden>Нагрузка действует с
+                    <input id="load-order-effective-date" type="date">
+                </label>
+                <label id="load-order-protocol-number-wrap">Протокол педсовета №
+                    <input id="load-order-protocol-number" placeholder="Необязательно">
+                </label>
+                <label id="load-order-protocol-date-wrap">Дата протокола педсовета
+                    <input id="load-order-protocol-date" type="date">
+                </label>
+                <label class="load-order-wide">Выбрать подписанта из сотрудников
+                    <select id="load-order-signer-select"><option value="">Заполняется…</option></select>
+                </label>
+                <label>Должность подписанта
+                    <input id="load-order-signer-position" required value="Директор">
+                </label>
+                <label>ФИО подписанта
+                    <input id="load-order-signer-name" required>
+                </label>
+                <label class="load-order-wide">На кого возложен контроль
+                    <input id="load-order-control" placeholder="Оставьте пустым, чтобы директор оставил контроль за собой">
+                </label>
+                <label class="load-order-wide">Основание приказа
+                    <textarea id="load-order-basis" rows="4" placeholder="Оставьте пустым, чтобы использовать стандартную формулировку"></textarea>
+                </label>
+            </div>
+            <div class="load-order-actions">
+                <span id="load-order-feedback" class="muted" role="status"></span>
+                <button id="load-order-submit" type="submit">Сформировать и сохранить приказ</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="card">
+        <div class="load-order-section-heading">
+            <div>
+                <h2>История приказов</h2>
+                <p id="load-order-history-summary" class="muted"></p>
+            </div>
+        </div>
+        <div class="sheet-wrap">
+            <table class="sheet-table load-order-history-table">
+                <thead><tr>
+                    <th>Дата и номер</th>
+                    <th>Вид приказа</th>
+                    <th>Учебный год</th>
+                    <th>Данные приложения</th>
+                    <th>Сформировал</th>
+                    <th>Файл</th>
+                </tr></thead>
+                <tbody id="load-order-history-body"><tr><td colspan="6" class="muted">Загрузка…</td></tr></tbody>
+            </table>
+        </div>
+    </section>
+</main>
+<script src="/auth.js"></script>
+<script src="/load-orders.js"></script>
+<script src="/branding.js"></script>
+</body>
+</html>

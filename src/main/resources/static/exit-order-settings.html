@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ГБОУ школа — Настройки приказов на выход</title>
+  <link rel="icon" type="image/png" href="/school-crest.png"><link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container exit-orders-page">
+  <header class="card"><div class="exit-page-heading"><div><h1>Настройки приказов на выход</h1>
+    <p class="muted">Справочники выпадающих списков и маршрут согласования.</p></div>
+    <a class="button-link secondary" href="/exit-orders.html">← К приказам</a></div><nav class="page-nav"></nav></header>
+  <form id="exit-settings-form" class="card">
+    <section><h2>Согласование и ответственный заместитель</h2>
+      <div class="exit-constructor-grid">
+        <label>Кто согласовывает<select id="exit-settings-approval"><option value="ORGANIZATIONAL_BUILDING">Руководитель организационного корпуса</option>
+          <option value="PHYSICAL_SITE">Руководитель фактической площадки</option><option value="BOTH">Руководитель корпуса или площадки</option></select></label>
+        <label>Заместитель директора<select id="exit-settings-deputy"></select></label>
+      </div>
+    </section>
+    <section class="exit-builder-section"><h2>Справочники конструктора</h2>
+      <p class="muted">Каждый вариант вводится с новой строки. Порядок строк станет порядком вариантов в списке.</p>
+      <div class="exit-settings-grid">
+        <label>Преамбулы<textarea id="exit-settings-preambles" rows="7"></textarea></label>
+        <label>Названия мероприятий<textarea id="exit-settings-event-names" rows="7"></textarea></label>
+        <label>Места проведения<textarea id="exit-settings-venues" rows="7"></textarea></label>
+        <label>Адреса мероприятий<textarea id="exit-settings-addresses" rows="7"></textarea></label>
+        <label>Места сбора<textarea id="exit-settings-gathering" rows="7"></textarea></label>
+      </div>
+    </section>
+    <div class="dialog-actions"><span id="exit-settings-feedback" class="probe-feedback" role="status"></span>
+      <button id="exit-settings-save" type="submit">Сохранить настройки</button></div>
+  </form>
+</main>
+<script src="/auth.js"></script><script src="/exit-order-settings.js"></script><script src="/branding.js"></script>
+</body>
+</html>

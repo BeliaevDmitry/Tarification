@@ -25,33 +25,44 @@
         <div class="section-heading">
             <div>
                 <h2>Создать пользователя</h2>
-                <p class="muted">Сначала задайте роль и базовые права, затем настройте доступ к вкладкам и отдельный scope для редактирования нагрузки.</p>
+                <p class="muted">Выберите сотрудника из кадрового справочника, проверьте автоматически заполненные данные, роль и права доступа.</p>
             </div>
             <span class="admin-section-badge">Новый пользователь</span>
         </div>
 
         <form id="user-create-form" class="grid admin-user-form">
+            <label class="field-stack full-span">
+                <span>Сотрудник</span>
+                <select name="teacherId" id="create-teacher" required>
+                    <option value="">Выберите сотрудника из раздела «Кадры»</option>
+                </select>
+                <small id="create-teacher-hint" class="muted">После выбора заполнятся логин, ФИО, должность, email, телефон и корпус.</small>
+            </label>
             <label class="field-stack">
                 <span>Логин</span>
-                <input name="username" placeholder="Логин" required>
+                <input name="username" id="create-username" placeholder="Логин" required>
             </label>
             <label class="field-stack">
                 <span>ФИО</span>
-                <input name="fullName" id="create-full-name" list="teacher-fio-options-create" placeholder="ФИО" required>
+                <input name="fullName" id="create-full-name" placeholder="Заполнится из кадров" readonly required>
             </label>
-            <datalist id="teacher-fio-options-create"></datalist>
             <label class="field-stack">
                 <span>Должность для документов</span>
-                <input name="documentPosition" placeholder="Например: старшего методиста">
+                <input name="documentPosition" id="create-document-position" placeholder="Например: старшего методиста">
                 <small class="muted">Укажите в форме после слова «от»: старшего методиста, заместителя директора.</small>
             </label>
             <label class="field-stack">
                 <span>Email</span>
-                <input name="email" placeholder="Email (необязательно)">
+                <input name="email" id="create-email" type="email" placeholder="Email (необязательно)">
+            </label>
+            <label class="field-stack">
+                <span>Телефон</span>
+                <input name="phone" id="create-phone" placeholder="+7 999 000-00-00">
             </label>
             <label class="field-stack">
                 <span>Роль</span>
                 <select name="role" id="create-role" required>
+                    <option value="EMPLOYEE">Сотрудник</option>
                     <option value="DIRECTOR">Директор</option>
                     <option value="DEPUTY_DIRECTOR">Зам директора</option>
                     <option value="BUILDING_HEAD">Руководитель корпуса</option>
@@ -214,8 +225,10 @@
         <datalist id="teacher-fio-options-edit"></datalist>
         <label class="field-row"><span>Должность для документов</span><input name="documentPosition" placeholder="Например: старшего методиста"><small class="muted">В форме после слова «от».</small></label>
         <label class="field-row"><span>Email</span><input name="email"></label>
+        <label class="field-row"><span>Телефон</span><input name="phone" placeholder="+7 999 000-00-00"></label>
         <label class="field-row"><span>Роль</span>
             <select name="role" id="edit-role" required>
+                <option value="EMPLOYEE">Сотрудник</option>
                 <option value="DIRECTOR">Директор</option>
                 <option value="DEPUTY_DIRECTOR">Зам директора</option>
                 <option value="BUILDING_HEAD">Руководитель корпуса</option>

@@ -1,0 +1,126 @@
+.load-orders-page {
+    display: grid;
+    gap: 16px;
+}
+
+.load-orders-page h2 {
+    margin: 0 0 6px;
+}
+
+.load-order-readiness,
+.load-order-section-heading,
+.load-order-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.load-order-readiness p,
+.load-order-section-heading p {
+    margin: 0;
+}
+
+.load-order-kind {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin: 18px 0;
+}
+
+.load-order-kind label {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 14px;
+    border: 1px solid #d8e0e8;
+    border-radius: 10px;
+    background: #f8fafc;
+    cursor: pointer;
+}
+
+.load-order-kind label:has(input:checked) {
+    border-color: #2f6fa3;
+    background: #edf6fd;
+    box-shadow: 0 0 0 2px rgba(47, 111, 163, 0.10);
+}
+
+.load-order-kind input {
+    margin-top: 3px;
+}
+
+.load-order-kind span,
+.load-order-kind small {
+    display: block;
+}
+
+.load-order-kind small {
+    margin-top: 4px;
+    color: #607080;
+    line-height: 1.35;
+}
+
+.load-order-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 18px;
+}
+
+.load-order-grid label {
+    display: grid;
+    gap: 6px;
+}
+
+.load-order-grid input,
+.load-order-grid select,
+.load-order-grid textarea {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.load-order-wide {
+    grid-column: 1 / -1;
+}
+
+.load-order-actions {
+    margin-top: 18px;
+}
+
+.load-order-actions #load-order-feedback {
+    min-height: 1.4em;
+}
+
+.load-order-history-table th:last-child,
+.load-order-history-table td:last-child {
+    white-space: nowrap;
+}
+
+.load-order-history-table .button-link {
+    display: inline-block;
+}
+
+.load-order-ready-ok {
+    color: #176b3a;
+}
+
+.load-order-ready-warning {
+    color: #9a5b00;
+}
+
+@media (max-width: 780px) {
+    .load-order-kind,
+    .load-order-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .load-order-wide {
+        grid-column: auto;
+    }
+
+    .load-order-readiness,
+    .load-order-section-heading,
+    .load-order-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}

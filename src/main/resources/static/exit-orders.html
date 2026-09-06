@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ГБОУ школа — Приказы на выход</title>
+  <link rel="icon" type="image/png" href="/school-crest.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container exit-orders-page">
+  <header class="card">
+    <div class="exit-page-heading">
+      <div><h1>Приказы на выход</h1><p class="muted">Конструктор заявок на выездные мероприятия и их согласование.</p></div>
+      <div class="row exit-top-actions">
+        <button id="exit-new-btn" type="button">+ Новый приказ</button>
+        <a class="button-link secondary" href="/exit-orders-summary.html">Свод</a>
+        <a class="button-link secondary" href="/exit-order-settings.html">Настройки приказов</a>
+        <button id="exit-refresh-btn" type="button" class="secondary">Обновить</button>
+      </div>
+    </div>
+    <nav class="page-nav"></nav>
+  </header>
+
+  <section id="exit-constructor-card" class="card" hidden>
+    <div class="exit-section-heading">
+      <div><h2 id="exit-constructor-title">Новая заявка</h2><p class="muted">Поля со стрелкой заполняются из справочников в настройках приказов.</p></div>
+      <button id="exit-constructor-close" type="button" class="secondary">Закрыть</button>
+    </div>
+    <form id="exit-order-form">
+      <div class="exit-constructor-grid">
+        <label class="exit-wide">Преамбула приказа<select id="exit-preamble" required></select></label>
+        <label class="exit-wide">Название мероприятия<input id="exit-event-name" list="exit-event-name-options" required></label>
+        <label>Дата<input id="exit-event-date" type="date" required></label>
+        <label>Начало<input id="exit-start-time" type="time" required></label>
+        <label>Окончание<input id="exit-end-time" type="time" required></label>
+        <label class="exit-wide">Место проведения<input id="exit-venue" list="exit-venue-options" required></label>
+        <label class="exit-wide">Адрес мероприятия<input id="exit-event-address" list="exit-address-options" required></label>
+        <label>Время сбора<input id="exit-gathering-time" type="time" required></label>
+        <label class="exit-wide">Место сбора<input id="exit-gathering-place" list="exit-gathering-options" required></label>
+        <label>Возвращение<input id="exit-return-time" type="time" required></label>
+      </div>
+      <datalist id="exit-event-name-options"></datalist>
+      <datalist id="exit-venue-options"></datalist>
+      <datalist id="exit-address-options"></datalist>
+      <datalist id="exit-gathering-options"></datalist>
+
+      <section class="exit-builder-section">
+        <div class="exit-section-heading"><div><h3>Классы и дети</h3>
+          <p id="exit-class-hint" class="muted">Раскройте параллель и выберите класс целиком или отдельных детей.</p></div>
+          <strong id="exit-selection-summary">Не выбрано</strong></div>
+        <div id="exit-class-picker" class="exit-class-picker"></div>
+        <p id="exit-building-suggestion" class="muted"></p>
+      </section>
+
+      <section class="exit-builder-section">
+        <h3>Сопровождающие</h3>
+        <div class="exit-constructor-grid">
+          <label>Основной сопровождающий<select id="exit-primary-companion" required></select></label>
+          <label>Второй сопровождающий<select id="exit-secondary-companion"><option value="">Не требуется</option></select></label>
+          <label class="exit-wide">Дополнительные сопровождающие<select id="exit-additional-companions" multiple size="5"></select></label>
+        </div>
+        <p id="exit-companion-rule" class="muted">До 10 детей требуется один сопровождающий, свыше 10 — два.</p>
+      </section>
+      <div class="dialog-actions"><span id="exit-form-feedback" class="probe-feedback" role="status"></span>
+        <button id="exit-submit-btn" type="submit">Отправить заявку</button></div>
+    </form>
+  </section>
+
+  <section class="card">
+    <div class="exit-section-heading"><div><h2>Заявки и приказы</h2><p id="exit-list-summary" class="muted"></p></div>
+      <div class="row"><input id="exit-search" placeholder="Поиск по мероприятию, классу или педагогу">
+        <select id="exit-status-filter"><option value="">Все статусы</option><option value="DRAFT">На согласовании</option>
+          <option value="BUILDING_APPROVED">Согласован</option><option value="GENERATED">Word сформирован</option>
+          <option value="RELEASED">Выпущен</option></select></div></div>
+    <div class="sheet-wrap"><table class="sheet-table exit-orders-table">
+      <thead><tr><th>Дата</th><th>Мероприятие</th><th>Классы и дети</th><th>Сопровождающие</th><th>Согласование</th><th>Статус</th><th>Действия</th></tr></thead>
+      <tbody id="exit-orders-body"><tr><td colspan="7" class="muted">Загрузка…</td></tr></tbody>
+    </table></div>
+  </section>
+
+  <dialog id="exit-generate-dialog" class="teacher-card-dialog probe-dialog">
+    <div class="dialog-hero"><div><h2>Сформировать Word-приказ</h2><p id="exit-generate-caption" class="muted"></p></div>
+      <button type="button" data-exit-close>Закрыть</button></div>
+    <form id="exit-generate-form">
+      <div class="teacher-card-grid">
+        <label>Номер приказа<input id="exit-order-number" required></label>
+        <label>Дата приказа<input id="exit-order-date" type="date" required></label>
+        <label class="teacher-card-wide">Кто подписывает<select id="exit-order-signer" required></select></label>
+        <label class="teacher-card-wide">Должность подписанта<input id="exit-order-signer-position" required></label>
+      </div>
+      <div class="dialog-actions"><span id="exit-generate-feedback" class="probe-feedback"></span><button type="submit">Сформировать</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="exit-attendance-dialog" class="teacher-card-dialog probe-dialog">
+    <div class="dialog-hero"><div><h2>Посещаемость после мероприятия</h2><p class="muted">Отметьте только тех детей, которые не явились.</p></div>
+      <button type="button" data-exit-close>Закрыть</button></div>
+    <form id="exit-attendance-form"><div id="exit-attendance-list" class="exit-attendance-list"></div>
+      <div class="dialog-actions"><span id="exit-attendance-feedback" class="probe-feedback"></span><button type="submit">Сохранить посещаемость</button></div></form>
+  </dialog>
+
+  <dialog id="exit-scan-dialog" class="teacher-card-dialog probe-dialog">
+    <div class="dialog-hero"><div><h2>Подписанный приказ</h2><p class="muted">PDF, JPG или PNG, не больше 15 МБ.</p></div>
+      <button type="button" data-exit-close>Закрыть</button></div>
+    <form id="exit-scan-form"><label>Файл<input id="exit-scan-file" type="file" accept=".pdf,.jpg,.jpeg,.png" required></label>
+      <div class="dialog-actions"><span id="exit-scan-feedback" class="probe-feedback"></span><button type="submit">Загрузить скан</button></div></form>
+  </dialog>
+</main>
+<script src="/auth.js"></script>
+<script src="/table-scroll.js"></script>
+<script src="/exit-orders.js"></script>
+<script src="/branding.js"></script>
+</body>
+</html>

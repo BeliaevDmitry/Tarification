@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ГБОУ школа — Свод по выходам</title>
+  <link rel="icon" type="image/png" href="/school-crest.png"><link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="container exit-orders-page">
+  <header class="card"><div class="exit-page-heading"><div><h1>Свод по выходам</h1>
+    <p class="muted">Активность классов и педагогов по состоявшимся мероприятиям.</p></div>
+    <div class="row"><a class="button-link secondary" href="/exit-orders.html">← К приказам</a><button id="exit-summary-refresh" type="button">Обновить</button></div></div>
+    <nav class="page-nav"></nav></header>
+  <section id="exit-summary-kpis" class="mcko-kpis card"></section>
+  <div class="exit-summary-grid">
+    <section class="card"><h2>Самые активные классы</h2><p class="muted">Учитываются только присутствовавшие дети; неявившиеся показаны отдельно.</p>
+      <div class="sheet-wrap"><table class="sheet-table"><thead><tr><th>Место</th><th>Класс</th><th>Корпус</th><th>Мероприятий</th><th>Посещений</th><th>Неявок</th></tr></thead>
+        <tbody id="exit-summary-classes"><tr><td colspan="6" class="muted">Загрузка…</td></tr></tbody></table></div></section>
+    <section class="card"><h2>Активные педагоги</h2><p class="muted">Рейтинг по количеству состоявшихся выходов в качестве сопровождающего.</p>
+      <div class="sheet-wrap"><table class="sheet-table"><thead><tr><th>Место</th><th>Педагог</th><th>Корпус</th><th>Выходов</th><th>Сопровождено детей</th></tr></thead>
+        <tbody id="exit-summary-teachers"><tr><td colspan="5" class="muted">Загрузка…</td></tr></tbody></table></div></section>
+  </div>
+</main>
+<script src="/auth.js"></script><script src="/exit-orders-summary.js"></script><script src="/branding.js"></script>
+</body>
+</html>
