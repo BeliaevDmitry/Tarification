@@ -33,6 +33,6 @@ class LoadInRateSchemaInitializerTest {
         assertTrue(sql.contains("UPDATE mcko_subject_mapping"));
         assertTrue(sql.contains("CREATE TABLE IF NOT EXISTS load_in_rate_rule_subject"));
         assertTrue(sql.contains("ALTER COLUMN ignored SET NOT NULL"));
-        assertTrue(sql.endsWith("COMMIT;\n"));
+        assertTrue(sql.stripTrailing().endsWith("COMMIT;"));
     }
 }
