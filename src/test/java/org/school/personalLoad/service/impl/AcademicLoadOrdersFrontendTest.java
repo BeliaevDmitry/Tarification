@@ -20,6 +20,21 @@ class AcademicLoadOrdersFrontendTest {
         assertThat(auth).contains("'/load-orders.html': 'LOAD'", "label: 'Приказы нагрузки'");
     }
 
+    @Test
+    void loadSectionMenusContainLoadOrdersLinkWithoutWaitingForJavascript() throws Exception {
+        String[] pages = {
+                "buildings.html", "classes.html", "curriculum.html", "load.html",
+                "people-load.html", "load-issues.html", "load-statistics.html", "rates.html",
+                "settings.html", "subjects.html", "mesh.html", "master-fot.html", "load-orders.html"
+        };
+
+        for (String page : pages) {
+            assertThat(resource("/static/" + page))
+                    .as("top menu in %s", page)
+                    .contains("href=\"/load-orders.html\"", ">Приказы нагрузки</a>");
+        }
+    }
+
     private String resource(String path) throws Exception {
         try (var input = AcademicLoadOrdersFrontendTest.class.getResourceAsStream(path)) {
             assertThat(input).as("resource %s", path).isNotNull();
