@@ -7,6 +7,7 @@ import org.school.personalLoad.auth.AuthExceptions.UnauthorizedException;
 import org.school.personalLoad.dto.auth.CreateUserRequest;
 import org.school.personalLoad.dto.auth.UpdateUserRequest;
 import org.school.personalLoad.dto.auth.UserTabPermissionRequest;
+import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.repository.BuildingGroupRepository;
 import org.school.personalLoad.repository.SchoolBuildingRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
@@ -96,7 +97,10 @@ public class AppUserServiceImpl implements AppUserService {
     @Override
     public AppUser createUser(CreateUserRequest request) {
         validateCreateRequest(request);
-        String username = normalizeUsername(request.getUsername());
+        TeacherDirectoryEntry teacher = requestedTeacher(request);
+        String usernameSource = normalizeOptional(request.getUsername()) == null
+                ? teacher.getEmail() : request.getUsername();
+        String username = normalizeUsername(usernameSource);
         if (appUserRepository.existsByUsernameIgnoreCase(username)) {
             throw new IllegalStateException("Пользователь с таким логином уже существует");
         }
@@ -104,19 +108,23 @@ public class AppUserServiceImpl implements AppUserService {
         Set<String> knownBuildingGroupCodes = loadKnownBuildingGroupCodes();
         Set<String> knownBuildingAccessCodes = loadKnownBuildingAccessCodes();
 
-        String normalizedFio = normalizeTeacherFio(request.getFullName());
+        String normalizedFio = teacher.getFioTeacher().trim();
         ensureUniqueTeacherFioUser(normalizedFio, null);
-        Long teacherId = teacherDirectoryRepository.findByFioTeacherIgnoreCase(normalizedFio)
-                .map(org.school.personalLoad.model.TeacherDirectoryEntry::getId)
-                .orElseThrow(() -> new IllegalArgumentException("ФИО должно быть выбрано из справочника «Кадры»"));
         AppUser user = new AppUser();
         user.setUsername(username);
         user.setFullName(normalizedFio);
-        user.setTeacherId(teacherId);
-        user.setDocumentPosition(normalizeOptional(request.getDocumentPosition()));
-        user.setEmail(normalizeOptional(request.getEmail()));
-        user.setPhone(normalizePhone(request.getPhone()));
-        user.setManagedBuildingCode(normalizeKnownBuildingScopeCode(request.getManagedBuildingCode(), knownBuildingGroupCodes, knownBuildingAccessCodes));
+        user.setTeacherId(teacher.getId());
+        user.setDocumentPosition(request.getDocumentPosition() == null
+                ? defaultDocumentPosition(teacher.getPrimaryPosition())
+                : normalizeOptional(request.getDocumentPosition()));
+        user.setEmail(normalizeOptional(request.getEmail() == null ? teacher.getEmail() : request.getEmail()));
+        user.setPhone(normalizePhone(request.getPhone() == null ? teacher.getPhone() : request.getPhone()));
+        String managedBuildingCode = request.getManagedBuildingCode();
+        if (managedBuildingCode == null && request.getRole() != UserRole.ADMIN) {
+            managedBuildingCode = teacher.getNumberSchoolBuilding();
+        }
+        user.setManagedBuildingCode(normalizeKnownBuildingScopeCode(managedBuildingCode,
+                knownBuildingGroupCodes, knownBuildingAccessCodes));
         user.setLoadEditAllBuildings(Boolean.TRUE.equals(request.getLoadEditAllBuildings()));
         user.setLoadEditableBuildingCodes(normalizeBuildingCodes(request.getLoadEditableBuildingCodes(), knownBuildingGroupCodes, knownBuildingAccessCodes));
         user.setRole(Objects.requireNonNull(request.getRole(), "Роль обязательна"));
@@ -249,11 +257,51 @@ public class AppUserServiceImpl implements AppUserService {
         if (request == null) {
             throw new IllegalArgumentException("Тело запроса не передано");
         }
-        normalizeText(request.getUsername(), "Логин пользователя обязателен");
-        normalizeText(request.getFullName(), "ФИО пользователя обязательно");
+        if (request.getTeacherId() == null) {
+            normalizeText(request.getUsername(), "Логин пользователя обязателен");
+            normalizeText(request.getFullName(), "ФИО пользователя обязательно");
+        }
         if (request.getRole() == null) {
             throw new IllegalArgumentException("Роль обязательна");
         }
+    }
+
+    private TeacherDirectoryEntry requestedTeacher(CreateUserRequest request) {
+        TeacherDirectoryEntry teacher = request.getTeacherId() == null
+                ? teacherDirectoryRepository.findByFioTeacherIgnoreCase(
+                        normalizeText(request.getFullName(), "ФИО пользователя обязательно"))
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "ФИО должно быть выбрано из справочника «Кадры»"))
+                : teacherDirectoryRepository.findById(request.getTeacherId())
+                    .orElseThrow(() -> new IllegalArgumentException("Сотрудник из раздела «Кадры» не найден"));
+        String fio = normalizeOptional(teacher.getFioTeacher());
+        if (fio == null || teacher.isArchived() || teacher.getDismissalDate() != null
+                || fio.toLowerCase(Locale.ROOT).startsWith("вакансия")) {
+            throw new IllegalArgumentException("Выбранный сотрудник уволен, находится в архиве или является вакансией");
+        }
+        return teacher;
+    }
+
+    private String defaultDocumentPosition(String primaryPosition) {
+        String value = normalizeOptional(primaryPosition);
+        if (value == null) return null;
+        String lower = value.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("заместитель директора")) return lower.replaceFirst("заместитель", "заместителя");
+        if (lower.startsWith("директор")) return lower.replaceFirst("директор", "директора");
+        if (lower.startsWith("руководитель")) return lower.replaceFirst("руководитель", "руководителя");
+        if (lower.startsWith("учитель")) return lower.replaceFirst("учитель", "учителя");
+        if (lower.startsWith("преподаватель")) return lower.replaceFirst("преподаватель", "преподавателя");
+        if (lower.startsWith("педагог-психолог")) return lower.replaceFirst("педагог-психолог", "педагога-психолога");
+        if (lower.startsWith("социальный педагог")) return lower.replaceFirst("социальный педагог", "социального педагога");
+        if (lower.startsWith("педагог")) return lower.replaceFirst("педагог", "педагога");
+        if (lower.startsWith("методист")) return lower.replaceFirst("методист", "методиста");
+        if (lower.startsWith("специалист")) return lower.replaceFirst("специалист", "специалиста");
+        if (lower.startsWith("воспитатель")) return lower.replaceFirst("воспитатель", "воспитателя");
+        if (lower.startsWith("тьютор")) return lower.replaceFirst("тьютор", "тьютора");
+        if (lower.startsWith("советник")) return lower.replaceFirst("советник", "советника");
+        if (lower.startsWith("секретарь")) return lower.replaceFirst("секретарь", "секретаря");
+        if (lower.startsWith("инженер")) return lower.replaceFirst("инженер", "инженера");
+        return value;
     }
 
     private void saveTabPermissions(AppUser user, List<UserTabPermissionRequest> requestedPermissions) {
@@ -310,7 +358,7 @@ public class AppUserServiceImpl implements AppUserService {
     }
 
     private boolean isSensitivePermission(AppTab tab) {
-        return tab == AppTab.LOAD_SALARY || tab == AppTab.OGE_MISMATCH_VIEW;
+        return tab == AppTab.LOAD_SALARY || tab == AppTab.LOAD_MASTER_FOT || tab == AppTab.OGE_MISMATCH_VIEW;
     }
 
     private AppUserTabPermission buildPermission(AppUser user, AppTab tab, boolean canView, boolean canEdit, boolean canImport, boolean canExport) {
@@ -451,9 +499,6 @@ public class AppUserServiceImpl implements AppUserService {
             user.setLoadEditAllBuildings(true);
             user.setLoadEditableBuildingCodes(new LinkedHashSet<>());
             return;
-        }
-        if (user.getRole() != UserRole.BUILDING_HEAD) {
-            user.setManagedBuildingCode(null);
         }
         if (user.isLoadEditAllBuildings()) {
             user.setLoadEditableBuildingCodes(new LinkedHashSet<>());

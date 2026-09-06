@@ -483,6 +483,35 @@ class MckoServiceImplTest {
         assertThat(rows).hasSize(1);
     }
 
+    @Test
+    void masterFotChecksCertificateOnExportDateIncludingExpiryDay() {
+        var teacher = teacher(1L, "Иванов Иван Иванович");
+        var row = load(teacher, 10L, "Алгебра", "7-А"); row.setId(11L);
+        LocalDate expiry = LocalDate.of(2026, 9, 5);
+        var cert = certificate(teacher, "Математика профильная", "Высокий", true, expiry.minusYears(3), MckoCertificateSource.MANUAL);
+        when(mappingRepository.findAll()).thenReturn(List.of(mapping("Математика профильная",10L,"Алгебра")));
+        when(certificateRepository.findAll()).thenReturn(List.of(cert));
+        assertThat(service.eligibilityForRows(List.of(row),expiry).get(11L).status()).isEqualTo("WARNING");
+        assertThat(service.eligibilityForRows(List.of(row),expiry.plusDays(1)).get(11L).status()).isEqualTo("MISSING");
+        assertThat(service.eligibilityForRows(List.of(row),expiry.plusDays(1)).get(11L).message()).contains("истёк 05.09.2026");
+        assertThat(service.eligibilityForRows(List.of(row),expiry.minusYears(1)).get(11L).status()).isEqualTo("OK");
+        assertThat(service.eligibilityForRows(List.of(row),expiry.minusYears(4)).get(11L).status()).isEqualTo("MISSING");
+    }
+
+    @Test
+    void masterFotKeepsGradeBandsSeparateAndIgnoresUncontrolledSubject() {
+        var teacher = teacher(1L, "Иванов Иван Иванович");
+        var row7 = load(teacher,10L,"Алгебра","3-А"); row7.setId(11L);
+        var row10 = load(teacher,10L,"Алгебра","7-А"); row10.setId(12L);
+        var extra = load(teacher,20L,"Кружок","7-А"); extra.setId(13L);
+        LocalDate date = LocalDate.of(2026,9,5);
+        when(mappingRepository.findAll()).thenReturn(List.of(mapping("Математика профильная",10L,"Алгебра","5-11")));
+        when(certificateRepository.findAll()).thenReturn(List.of());
+        var result = service.eligibilityForRows(List.of(row7,row10,extra),date);
+        assertThat(result).containsOnlyKeys(12L);
+        assertThat(result.get(12L).status()).isEqualTo("MISSING");
+    }
+
     private TeacherDirectoryEntry teacher(Long id, String fio) {
         TeacherDirectoryEntry teacher = new TeacherDirectoryEntry();
         teacher.setId(id);

@@ -6,9 +6,11 @@ const TAB_PATHS = {
     '/subjects.html': 'SUBJECTS',
     '/curriculum.html': 'CURRICULUM',
     '/load.html': 'LOAD',
+    '/load-orders.html': 'LOAD',
     '/people-load.html': 'PEOPLE_LOAD',
     '/rates.html': 'LOAD_SALARY',
     '/load-issues.html': 'LOAD_ISSUES',
+    '/master-fot.html': 'LOAD_MASTER_FOT',
     '/load-statistics.html': 'LOAD_STATS',
     '/service-notes.html': 'SERVICE_NOTES',
     '/settings.html': 'SETTINGS',
@@ -22,6 +24,9 @@ const TAB_PATHS = {
     '/documents.html': null,
     '/pedagogical-councils.html': 'DOCUMENTS_PEDAGOGICAL_COUNCILS',
     '/probe-orders.html': 'DOCUMENTS_PROBE_ORDERS',
+    '/exit-orders.html': 'DOCUMENTS_EXIT_ORDERS',
+    '/exit-orders-summary.html': 'DOCUMENTS_EXIT_ORDERS',
+    '/exit-order-settings.html': 'DOCUMENTS_EXIT_ORDERS',
     '/vsoko.html': 'VSOKO_VIEW',
     '/vsoko-oge.html': 'VSOKO_VIEW',
     '/vsoko-ege.html': 'VSOKO_VIEW',
@@ -89,9 +94,11 @@ const NAV_ORDER = [
     { path: '/subjects.html', tab: 'SUBJECTS', label: 'Предметы' },
     { path: '/curriculum.html', tab: 'CURRICULUM', label: 'Учебный план' },
     { path: '/load.html', tab: 'LOAD', label: 'Нагрузка по корпусам' },
+    { path: '/load-orders.html', tab: 'LOAD', label: 'Приказы нагрузки' },
     { path: '/people-load.html', tab: 'PEOPLE_LOAD', label: 'Нагрузка по людям' },
     { path: '/rates.html', tab: 'LOAD_SALARY', label: 'Ставки' },
     { path: '/load-issues.html', tab: 'LOAD_ISSUES', label: 'Возможные ошибки' },
+    { path: '/master-fot.html', tab: 'LOAD_MASTER_FOT', label: 'Мастер ФОТ' },
     { path: '/load-statistics.html', tab: 'LOAD_STATS', label: 'Статистика нагрузки' },
     { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' },
     { path: '/subject-areas.html', tab: 'SUBJECT_AREAS', label: 'Предметные области' },
@@ -129,9 +136,11 @@ function isLoadModulePage(pathname) {
         || pathname === '/subjects.html'
         || pathname === '/curriculum.html'
         || pathname === '/load.html'
+        || pathname === '/load-orders.html'
         || pathname === '/people-load.html'
         || pathname === '/rates.html'
         || pathname === '/load-issues.html'
+        || pathname === '/master-fot.html'
         || pathname === '/load-statistics.html'
         || pathname === '/settings.html'
         || pathname === '/subject-areas.html';
@@ -158,11 +167,15 @@ function navItemsForPath(pathname) {
             { path: '/vsoko-interview.html', tab: 'VSOKO_MCKO', label: 'Собеседование' }
         ];
     }
-    if (pathname === '/documents.html' || pathname === '/pedagogical-councils.html' || pathname === '/probe-orders.html') {
+    if (pathname === '/documents.html' || pathname === '/pedagogical-councils.html' || pathname === '/probe-orders.html'
+        || pathname === '/exit-orders.html' || pathname === '/exit-orders-summary.html' || pathname === '/exit-order-settings.html') {
         return [
-            { path: '/documents.html', tabs: ['DOCUMENTS_PEDAGOGICAL_COUNCILS', 'DOCUMENTS_PROBE_ORDERS'], label: 'Документы' },
+            { path: '/documents.html', tabs: ['DOCUMENTS_PEDAGOGICAL_COUNCILS', 'DOCUMENTS_PROBE_ORDERS', 'DOCUMENTS_EXIT_ORDERS'], label: 'Документы' },
             { path: '/pedagogical-councils.html', tab: 'DOCUMENTS_PEDAGOGICAL_COUNCILS', label: 'Педагогические советы' },
-            { path: '/probe-orders.html', tab: 'DOCUMENTS_PROBE_ORDERS', label: 'Приказы на пробы' }
+            { path: '/probe-orders.html', tab: 'DOCUMENTS_PROBE_ORDERS', label: 'Приказы на пробы' },
+            { path: '/exit-orders.html', tab: 'DOCUMENTS_EXIT_ORDERS', label: 'Приказы на выход' },
+            { path: '/exit-orders-summary.html', tab: 'DOCUMENTS_EXIT_ORDERS', label: 'Свод по выходам' },
+            { path: '/exit-order-settings.html', tab: 'DOCUMENTS_EXIT_ORDERS', label: 'Настройки приказов' }
         ];
     }
     if (pathname === '/educational-work.html') {
@@ -282,9 +295,11 @@ function isContingentPage() {
 
 function isLoadPage() {
     return window.location.pathname === '/load.html'
+        || window.location.pathname === '/load-orders.html'
         || window.location.pathname === '/people-load.html'
         || window.location.pathname === '/rates.html'
         || window.location.pathname === '/load-issues.html'
+        || window.location.pathname === '/master-fot.html'
         || window.location.pathname === '/load-statistics.html';
 }
 
@@ -320,6 +335,7 @@ function hasLoadAccess(currentUser) {
         || permissions.PEOPLE_LOAD?.canView
         || permissions.LOAD_SALARY?.canView
         || permissions.LOAD_ISSUES?.canView
+        || permissions.LOAD_MASTER_FOT?.canView
         || permissions.LOAD_STATS?.canView
         || permissions.SETTINGS?.canView
         || permissions.SUBJECT_AREAS?.canView
@@ -337,6 +353,7 @@ function hasDocumentsAccess(currentUser) {
     return Boolean(
         permissions.DOCUMENTS_PEDAGOGICAL_COUNCILS?.canView
         || permissions.DOCUMENTS_PROBE_ORDERS?.canView
+        || permissions.DOCUMENTS_EXIT_ORDERS?.canView
     );
 }
 
@@ -655,6 +672,10 @@ function enrichMainMenu(currentUser) {
     if (probeOrdersCard) {
         probeOrdersCard.style.display = currentUser.admin || permissions.DOCUMENTS_PROBE_ORDERS?.canView ? '' : 'none';
     }
+    const exitOrdersCard = document.querySelector('[data-exit-orders-card]');
+    if (exitOrdersCard) {
+        exitOrdersCard.style.display = currentUser.admin || permissions.DOCUMENTS_EXIT_ORDERS?.canView ? '' : 'none';
+    }
 }
 
 function disableExportAreas(currentUser) {
@@ -713,6 +734,7 @@ function disableExportAreas(currentUser) {
         updateStickyHeaderMetrics();
         window.withAcademicYear = withAcademicYear;
         window.getStoredAcademicYear = getStoredAcademicYear;
+        window.tarificationAuthReady = true;
         window.setDebugOutputEnabled = (enabled) => {
             localStorage.setItem(DEBUG_OUTPUT_STORAGE_KEY, enabled ? '1' : '0');
             if (window.tarificationAuth) {

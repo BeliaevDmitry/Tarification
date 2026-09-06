@@ -45,6 +45,53 @@ class AppUserServiceImplTest {
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     @Test
+    void createUserFromSelectedEmployeeUsesPersonnelFieldsAndEmailLogin() {
+        AppUserServiceImpl service = new AppUserServiceImpl(
+                appUserRepository,
+                buildingGroupRepository,
+                schoolBuildingRepository,
+                teacherDirectoryRepository,
+                tabPermissionRepository,
+                passwordEncoder
+        );
+        org.school.personalLoad.model.TeacherDirectoryEntry teacher = new org.school.personalLoad.model.TeacherDirectoryEntry();
+        teacher.setId(77L);
+        teacher.setFioTeacher("Петрова Мария Сергеевна");
+        teacher.setEmail("Petrova.MS@school.ru");
+        teacher.setPhone("+7 999 123-45-67");
+        teacher.setPrimaryPosition("Учитель математики");
+        teacher.setNumberSchoolBuilding("СП3");
+        SchoolBuilding building = new SchoolBuilding();
+        building.setCode("СП3");
+
+        when(teacherDirectoryRepository.findById(77L)).thenReturn(Optional.of(teacher));
+        when(appUserRepository.existsByUsernameIgnoreCase("petrova.ms@school.ru")).thenReturn(false);
+        when(appUserRepository.findAll()).thenReturn(List.of());
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of(building));
+        when(appUserRepository.save(any(AppUser.class))).thenAnswer(invocation -> {
+            AppUser saved = invocation.getArgument(0);
+            saved.setId(30L);
+            return saved;
+        });
+        when(tabPermissionRepository.findAllByUserIdOrderByTabAsc(30L)).thenReturn(List.of());
+
+        CreateUserRequest request = new CreateUserRequest();
+        request.setTeacherId(77L);
+        request.setRole(UserRole.EMPLOYEE);
+        request.setCanView(true);
+
+        AppUser created = service.createUser(request);
+
+        assertEquals(77L, created.getTeacherId());
+        assertEquals("petrova.ms@school.ru", created.getUsername());
+        assertEquals("Петрова Мария Сергеевна", created.getFullName());
+        assertEquals("Petrova.MS@school.ru", created.getEmail());
+        assertEquals("+79991234567", created.getPhone());
+        assertEquals("учителя математики", created.getDocumentPosition());
+        assertEquals("СП3", created.getManagedBuildingCode());
+    }
+
+    @Test
     void updateUserFlushesDeletedTabPermissionsBeforeInsert() {
         AppUserServiceImpl service = new AppUserServiceImpl(
                 appUserRepository,

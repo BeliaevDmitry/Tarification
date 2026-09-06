@@ -155,6 +155,14 @@ public class ProbeOrderDocumentService {
             replaceSignatureParagraph(paragraph, data);
             return;
         }
+        if (original.trim().startsWith("На основании Плана воспитательной работы")) {
+            String preamble = text(data.preamble()).isBlank()
+                    ? original.replace("2025–2026", text(data.academicYear()).replace('/', '–'))
+                    : text(data.preamble());
+            replaceParagraph(paragraph, preamble, 14, false);
+            paragraph.setAlignment(ParagraphAlignment.BOTH);
+            return;
+        }
         if (original.contains("{className}") && original.contains("ГБОУ Школа № 7")) {
             clearParagraph(paragraph);
             return;
@@ -256,11 +264,14 @@ public class ProbeOrderDocumentService {
     }
 
     private String movementParagraph(DocumentData data) {
+        String purpose = text(data.eventPurpose()).isBlank()
+                ? "на мероприятие в рамках проекта «Мастерство начинается здесь»"
+                : text(data.eventPurpose());
         return cleanup("Направить " + formatDate(data.eventDate()) + " года обучающихся "
                 + text(data.formattedClasses()) + " " + text(data.classWord())
                 + " ГБОУ Школа № 7 в количестве " + data.participants().size()
-                + " человек согласно списку (Приложение 1) на мероприятие в рамках проекта "
-                + "«Мастерство начинается здесь» в " + text(data.venue()) + " по адресу: "
+                + " человек согласно списку (Приложение 1) " + purpose + " в "
+                + text(data.venue()) + " по адресу: "
                 + text(data.eventAddress()) + " к " + formatTime(data.startTime()) + ".");
     }
 
@@ -950,9 +961,39 @@ public class ProbeOrderDocumentService {
                                PersonData director,
                                PersonData deputyDirector,
                                PersonData executor,
-                               List<ParticipantData> participants) {
+                               List<ParticipantData> participants,
+                               String preamble,
+                               String eventPurpose) {
         public DocumentData {
             additionalCompanions = additionalCompanions == null ? List.of() : List.copyOf(additionalCompanions);
+        }
+
+        public DocumentData(String academicYear,
+                            String orderNumber,
+                            LocalDate orderDate,
+                            LocalDate eventDate,
+                            LocalTime startTime,
+                            String formattedClasses,
+                            String classWord,
+                            String venue,
+                            String eventAddress,
+                            LocalTime gatheringTime,
+                            String gatheringPlace,
+                            LocalTime returnTime,
+                            String curator,
+                            PersonData primaryCompanion,
+                            PersonData secondaryCompanion,
+                            List<PersonData> additionalCompanions,
+                            PersonData signer,
+                            String signerPosition,
+                            PersonData director,
+                            PersonData deputyDirector,
+                            PersonData executor,
+                            List<ParticipantData> participants) {
+            this(academicYear, orderNumber, orderDate, eventDate, startTime, formattedClasses, classWord, venue,
+                    eventAddress, gatheringTime, gatheringPlace, returnTime, curator, primaryCompanion,
+                    secondaryCompanion, additionalCompanions, signer, signerPosition, director, deputyDirector,
+                    executor, participants, null, null);
         }
 
         public DocumentData(String academicYear,
@@ -979,7 +1020,7 @@ public class ProbeOrderDocumentService {
             this(academicYear, orderNumber, orderDate, eventDate, startTime, formattedClasses, classWord, venue,
                     eventAddress, gatheringTime, gatheringPlace, returnTime, curator, primaryCompanion,
                     secondaryCompanion, List.of(), signer, signerPosition, director, deputyDirector, executor,
-                    participants);
+                    participants, null, null);
         }
     }
 }

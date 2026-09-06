@@ -15,6 +15,7 @@ import org.school.personalLoad.pa.analytics.model.PaReportStudentResult;
 import org.school.personalLoad.pa.analytics.repository.PaReportStudentResultRepository;
 import org.school.personalLoad.repository.*;
 import org.school.personalLoad.service.ProbeOrderService;
+import org.school.personalLoad.service.ExitOrderService;
 import org.school.personalLoad.vsoko.mcko.dto.VsokoMckoDtos;
 import org.school.personalLoad.vsoko.mcko.model.*;
 import org.school.personalLoad.vsoko.mcko.repository.*;
@@ -54,6 +55,8 @@ public class VsokoMckoQueryService {
     private final StudentResultLinker studentResultLinker;
     @Autowired(required = false)
     private ProbeOrderService probeOrderService;
+    @Autowired(required = false)
+    private ExitOrderService exitOrderService;
 
     @Transactional(readOnly = true)
     public List<VsokoMckoDtos.ResultRow> results(String academicYear,
@@ -192,7 +195,16 @@ public class VsokoMckoQueryService {
                 .thenComparing(VsokoMckoDtos.TimelineRow::subjectName, Comparator.nullsLast(String::compareToIgnoreCase)));
         return new VsokoMckoDtos.StudentSummary(profile.getId(), profile.getCurrentFullName(), knownNames(profile, histories),
                 profile.getBirthDate(), profile.getChildPhone(), profile.getRepresentativeName(), profile.getRepresentativePhone(),
-                timeline, probeOrderService == null ? List.of() : probeOrderService.studentHistory(profile.getId()));
+                timeline, studentEventHistory(profile.getId()));
+    }
+
+    private List<org.school.personalLoad.dto.ProbeOrderDtos.HistoryEvent> studentEventHistory(Long studentId) {
+        List<org.school.personalLoad.dto.ProbeOrderDtos.HistoryEvent> events = new ArrayList<>();
+        if (probeOrderService != null) events.addAll(probeOrderService.studentHistory(studentId));
+        if (exitOrderService != null) events.addAll(exitOrderService.studentHistory(studentId));
+        events.sort(Comparator.comparing(org.school.personalLoad.dto.ProbeOrderDtos.HistoryEvent::eventDate,
+                Comparator.nullsLast(Comparator.reverseOrder())));
+        return events;
     }
 
     @Transactional(readOnly = true)

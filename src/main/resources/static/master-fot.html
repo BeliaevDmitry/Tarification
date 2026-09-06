@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Школа — Мастер ФОТ</title>
+    <link rel="icon" href="/school-crest.png">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/master-fot.css">
+</head>
+<body class="master-fot-page">
+<main class="container">
+    <header class="card"><h1>Мастер ФОТ</h1><p class="muted">Сверка учебного плана, нагрузки и подгрупп. Эталон — данные системы; исправления вносятся в Мастер ФОТ.</p></header>
+    <section class="card"><nav class="page-nav">
+        <a class="nav-link" href="/">Главная</a>
+        <a class="nav-link" href="/load.html" data-tab="LOAD">Нагрузка по корпусам</a>
+        <a class="nav-link" href="/people-load.html" data-tab="PEOPLE_LOAD">Нагрузка по людям</a>
+        <a class="nav-link active" href="/master-fot.html" data-tab="LOAD_MASTER_FOT">Мастер ФОТ</a>
+    </nav></section>
+    <section class="card">
+        <h2>Новая сверка</h2>
+        <p>Загрузите полную Excel-выгрузку «Тарификация» с общим итогом. Сверка выполняется на дату «Состояние на» из файла и сохраняется отдельной итерацией.</p>
+        <div class="row controls-row" id="fot-import-controls" hidden>
+            <label>Файл Мастер ФОТ <input id="fot-file" type="file" accept=".xlsx,.xls"></label>
+            <button id="fot-upload" type="button">Загрузить и сверить</button>
+        </div>
+        <p id="fot-message" role="status" aria-live="polite"></p>
+        <p id="fot-completeness" class="fot-warning" hidden></p>
+        <details><summary>Как учитываются решения и МЦКО</summary>
+            <p>«Так и должно быть» сохраняется, пока значения расхождения не изменились. «Исправлено — ждёт проверки» подтверждается следующей выгрузкой: исчезнувшая нестыковка архивируется, оставшаяся снова открывается. Нестыковки в архиве сохраняют комментарии.</p>
+            <p>Для предметов, связанных с МЦКО в кадровом справочнике, проверяется действующий результат на дату файла. Если МЦКО отсутствует или истёк, ожидается вакансия по той же учебной группе, предмету и подгруппе. Часы сверяются полностью. Назначение педагога в системе не меняется.</p>
+            <p>Названия без однозначного соответствия нужно сопоставить. Объединённые группы сопоставляются с метагруппами, часы между классами не размножаются. После сохранения сопоставлений повторно загрузите файл. Пока остаются несопоставленные строки, автоматический перенос в архив приостановлен.</p>
+            <p>ИУП сверкой этого формата не охватываются. Периоды и даты нагрузки учитываются на дату файла. Денежные суммы и коэффициенты оплаты не сравниваются.</p>
+        </details>
+    </section>
+    <section class="card">
+        <div class="row controls-row">
+            <label>Итерация <select id="fot-batch"><option value="">Текущие нестыковки и архив</option></select></label>
+            <button id="fot-refresh" type="button" class="secondary">Обновить список</button>
+            <button id="fot-mappings" type="button" class="secondary" hidden>Сопоставления</button>
+        </div>
+        <p id="fot-summary"></p>
+        <div class="row controls-row">
+            <label>Показать <select id="fot-status">
+                <option value="active">Все текущие</option><option value="OPEN">Открытые</option>
+                <option value="EXPECTED">Так и должно быть</option><option value="FIXED">Исправлено — ждёт проверки</option>
+                <option value="archive">Архив</option><option value="all">Все, включая архив</option>
+            </select></label>
+            <label>Раздел <select id="fot-type"><option value="">Все</option><option value="PLAN">Учебный план</option><option value="LOAD">Нагрузка</option><option value="SUBGROUP">Подгруппы</option><option value="MCKO">Требуется вакансия по МЦКО</option><option value="MCKO_VACANCY">Вакансия по МЦКО учтена</option><option value="MAPPING">Сопоставление</option></select></label>
+            <label>Корпус <select id="fot-building"><option value="">Все</option></select></label>
+            <label>Поиск <input id="fot-search" type="search" placeholder="Учитель, класс, предмет…"></label>
+        </div>
+        <div class="sheet-wrap">
+            <table class="sheet-table fot-table">
+                <thead><tr>
+                    <th><button data-sort="type">Раздел</button></th>
+                    <th><button data-sort="className">Корпус / класс / группа</button></th>
+                    <th><button data-sort="subject">Предмет и педагог</button></th>
+                    <th><button data-sort="expected">Должно быть по системе</button></th>
+                    <th><button data-sort="actual">В Мастер ФОТ</button></th>
+                    <th>Что проверить</th><th>Решение и комментарий</th>
+                </tr></thead>
+                <tbody id="fot-issues"><tr><td colspan="7">Загрузка…</td></tr></tbody>
+            </table>
+        </div>
+        <div class="row controls-row"><button id="fot-prev" type="button" class="secondary">Назад</button><span id="fot-page"></span><button id="fot-next" type="button" class="secondary">Далее</button></div>
+    </section>
+</main>
+<dialog id="fot-dialog">
+    <h2>Сопоставления с системой</h2>
+    <p>Соответствия сохраняются для выбранного учебного года. После изменений повторно загрузите выгрузку для новой сверки. Если записи действительно нет в системе, выберите «Отсутствует в системе»: она будет показана как лишняя в Мастер ФОТ.</p>
+    <label>Название в Мастер ФОТ <select id="fot-map-source"></select></label>
+    <label>Соответствие в системе <select id="fot-map-target"></select></label>
+    <div class="row controls-row"><button id="fot-map-save" type="button">Сохранить соответствие</button><button id="fot-dialog-close" type="button" class="secondary">Закрыть</button></div>
+    <p id="fot-map-message" role="status"></p>
+    <h3>Сохранённые соответствия</h3><div id="fot-saved-mappings"></div>
+</dialog>
+<script src="/auth.js"></script>
+<script src="/master-fot.js"></script>
+<script src="/table-scroll.js"></script>
+<script src="/branding.js"></script>
+</body>
+</html>

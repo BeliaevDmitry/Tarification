@@ -5,6 +5,7 @@ public enum UserRole {
     DIRECTOR("Директор"),
     DEPUTY_DIRECTOR("Заместитель директора"),
     BUILDING_HEAD("Руководитель корпуса"),
+    EMPLOYEE("Сотрудник"),
     METHODIST("Методист"),
     HR("Кадры");
 

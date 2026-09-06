@@ -11,8 +11,10 @@ import java.util.List;
 @Builder
 public class UserResponse {
     Long id;
+    Long teacherId;
     String username;
     String fullName;
+    String documentPosition;
     String email;
     String phone;
     String managedBuildingCode;

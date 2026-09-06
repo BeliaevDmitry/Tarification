@@ -188,6 +188,40 @@ class ProbeOrderDocumentServiceTest {
         }
     }
 
+    @Test
+    void usesConfiguredExitOrderPreambleAndEventPurpose() throws Exception {
+        ProbeOrderDocumentService service = new ProbeOrderDocumentService();
+        ProbeOrderDocumentService.DocumentData source = sampleData();
+        String preamble = "На основании решения педагогического совета ГБОУ Школа № 7";
+        String purpose = "на мероприятие «Экскурсия в Государственный исторический музей»";
+        ProbeOrderDocumentService.DocumentData data = new ProbeOrderDocumentService.DocumentData(
+                source.academicYear(), source.orderNumber(), source.orderDate(), source.eventDate(), source.startTime(),
+                source.formattedClasses(), source.classWord(), source.venue(), source.eventAddress(),
+                source.gatheringTime(), source.gatheringPlace(), source.returnTime(), source.curator(),
+                source.primaryCompanion(), source.secondaryCompanion(), source.additionalCompanions(), source.signer(),
+                source.signerPosition(), source.director(), source.deputyDirector(), source.executor(),
+                source.participants(), preamble, purpose);
+
+        byte[] content = service.generate(data);
+        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(content))) {
+            String bodyText = document.getBodyElements().stream().map(element -> {
+                if (element instanceof XWPFParagraph paragraph) return paragraph.getText();
+                if (element instanceof XWPFTable table) return table.getText();
+                return "";
+            }).collect(Collectors.joining("\n"));
+            assertTrue(bodyText.contains(preamble));
+            assertTrue(bodyText.contains(purpose));
+            assertFalse(bodyText.contains("профориентационного проекта"));
+        }
+
+        String qaOutput = System.getProperty("exit.qa.output");
+        if (qaOutput != null && !qaOutput.isBlank()) {
+            Path output = Path.of(qaOutput).toAbsolutePath().normalize();
+            Files.createDirectories(output.getParent());
+            Files.write(output, content);
+        }
+    }
+
     private ProbeOrderDocumentService.DocumentData sampleData() {
         ProbeOrderDocumentService.PersonData primary = new ProbeOrderDocumentService.PersonData(
                 1L, "Петрова Мария Сергеевна", "Петровой Марии Сергеевне",

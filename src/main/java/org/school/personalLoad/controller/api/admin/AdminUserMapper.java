@@ -16,8 +16,10 @@ public final class AdminUserMapper {
     public static UserResponse fromEntity(AppUser user, List<TabPermissionSnapshot> permissions) {
         return UserResponse.builder()
                 .id(user.getId())
+                .teacherId(user.getTeacherId())
                 .username(user.getUsername())
                 .fullName(user.getFullName())
+                .documentPosition(user.getDocumentPosition())
                 .email(user.getEmail())
                 .phone(user.getPhone())
                 .managedBuildingCode(user.getManagedBuildingCode())
