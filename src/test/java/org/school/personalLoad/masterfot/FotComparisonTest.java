@@ -61,7 +61,9 @@ class FotComparisonTest {
         var engine = new FotComparison(List.of(plan(3)), List.of(l), Map.of(1L,missing), List.of(), List.of(), DATE);
         var assigned = engine.compare(source(row(l.getFioTeacher(), "7-А", 3)));
         assertThat(assigned.findings()).extracting(FotDtos.Finding::type).containsExactly("MCKO");
-        assertThat(assigned.findings().get(0).detail()).contains("НЕТ МЦКО").contains("не заменяются вакансией");
+        assertThat(assigned.findings().get(0).expected()).isEqualTo("3 ч.");
+        assertThat(assigned.findings().get(0).actual()).isEqualTo("3 ч.");
+        assertThat(assigned.findings().get(0).detail()).isEqualTo("НЕТ МЦКО");
         var vacancy = engine.compare(source(row("Вакансия математика", "7-А", 3)));
         assertThat(vacancy.findings()).extracting(FotDtos.Finding::type).contains("MCKO", "LOAD").doesNotContain("MCKO_VACANCY");
         var partial = engine.compare(source(row("Вакансия", "7-А", 2)));
@@ -80,8 +82,11 @@ class FotComparisonTest {
                 .compare(source(sourceRow));
 
         assertThat(result.findings()).extracting(FotDtos.Finding::type).containsExactly("MCKO");
-        assertThat(result.findings().get(0).actual()).isEqualTo("НЕТ МЦКО");
-        assertThat(result.findings().get(0).detail()).contains("НЕТ МЦКО");
+        assertThat(result.findings().get(0).subject()).isEqualTo("Математика");
+        assertThat(result.findings().get(0).teacher()).isEqualTo("Сибилева Александра Николаевна");
+        assertThat(result.findings().get(0).expected()).isEqualTo("4 ч.");
+        assertThat(result.findings().get(0).actual()).isEqualTo("4 ч.");
+        assertThat(result.findings().get(0).detail()).isEqualTo("НЕТ МЦКО");
     }
     @Test void unassignedIsNotVacancyAndPublishedWarningDoesNotBlock() {
         var l = load(3);
