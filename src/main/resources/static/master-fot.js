@@ -1,7 +1,7 @@
 (() => {
     'use strict';
     const $ = id => document.getElementById(`fot-${id}`);
-    const types = { PLAN: 'Учебный план', LOAD: 'Нагрузка', SUBGROUP: 'Подгруппы', MCKO: 'Требуется вакансия по МЦКО', MCKO_VACANCY: 'Вакансия по МЦКО учтена', MAPPING: 'Сопоставление' };
+    const types = { PLAN: 'Учебный план', LOAD: 'Нагрузка', SUBGROUP: 'Подгруппы', MCKO: 'МЦКО', MCKO_VACANCY: 'МЦКО (прежняя сверка)', MAPPING: 'Сопоставление' };
     const statuses = { OPEN: 'Открыто', EXPECTED: 'Так и должно быть', FIXED: 'Исправлено — ждёт проверки' };
     const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
     let overview = { batches: [], issues: [] }, historical = null, options = null, sources = [];

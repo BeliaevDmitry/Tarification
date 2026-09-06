@@ -55,17 +55,33 @@ class FotComparisonTest {
         var b = load(4); b.setId(2L); b.setGroupNameEducationalPlan("Группа 2");
         assertThat(compareWith(List.of(p), List.of(a,b)).compare(source(row(a.getFioTeacher(), "7-А 1гр", 2), row(b.getFioTeacher(), "7-А 2гр", 4))).findings()).isEmpty();
     }
-    @Test void mckoVacancyAcceptedOnlyForSameSlotAndExactHours() {
+    @Test void missingMckoDoesNotReplaceAssignedTeacherWithVacancy() {
         var l = load(3);
         var missing = new MckoDtos.EligibilityRow(1L, l.getFioTeacher(), null, "Алгебра", "MISSING", "НЕТ МЦКО", null, null, null);
         var engine = new FotComparison(List.of(plan(3)), List.of(l), Map.of(1L,missing), List.of(), List.of(), DATE);
-        var expected = engine.compare(source(row("Вакансия математика", "7-А", 3)));
-        assertThat(expected.findings()).extracting(FotDtos.Finding::type).containsExactly("MCKO_VACANCY");
-        var wrong = engine.compare(source(row(l.getFioTeacher(), "7-А", 3)));
-        assertThat(wrong.findings()).extracting(FotDtos.Finding::type).contains("MCKO", "LOAD").doesNotContain("MCKO_VACANCY");
+        var assigned = engine.compare(source(row(l.getFioTeacher(), "7-А", 3)));
+        assertThat(assigned.findings()).extracting(FotDtos.Finding::type).containsExactly("MCKO");
+        assertThat(assigned.findings().get(0).detail()).contains("НЕТ МЦКО").contains("не заменяются вакансией");
+        var vacancy = engine.compare(source(row("Вакансия математика", "7-А", 3)));
+        assertThat(vacancy.findings()).extracting(FotDtos.Finding::type).contains("MCKO", "LOAD").doesNotContain("MCKO_VACANCY");
         var partial = engine.compare(source(row("Вакансия", "7-А", 2)));
         assertThat(partial.findings()).extracting(FotDtos.Finding::type).contains("MCKO", "PLAN", "LOAD");
         assertThat(l.getTeacherId()).isEqualTo(1L); assertThat(l.getLoad()).isEqualTo(3);
+    }
+    @Test void firstIClassKeepsSibilyovaAndReportsOnlyMissingMcko() {
+        var p = plan(4); p.setClassName("1-И"); p.setSubjectName("Математика");
+        var l = load(4); l.setClassName("1-И"); l.setSubjectName("Математика");
+        l.setFioTeacher("Сибилева Александра Николаевна");
+        var missing = new MckoDtos.EligibilityRow(1L, l.getFioTeacher(), null, "Математика", "MISSING", "НЕТ МЦКО", null, null, null);
+        var sourceRow = new FotDtos.SourceRow(18, l.getFioTeacher(), "1-И", "CORE", "Математика",
+                BigDecimal.valueOf(4), BigDecimal.valueOf(4), BigDecimal.ZERO);
+
+        var result = new FotComparison(List.of(p), List.of(l), Map.of(1L, missing), List.of(), List.of(), DATE)
+                .compare(source(sourceRow));
+
+        assertThat(result.findings()).extracting(FotDtos.Finding::type).containsExactly("MCKO");
+        assertThat(result.findings().get(0).actual()).isEqualTo("НЕТ МЦКО");
+        assertThat(result.findings().get(0).detail()).contains("НЕТ МЦКО");
     }
     @Test void unassignedIsNotVacancyAndPublishedWarningDoesNotBlock() {
         var l = load(3);
