@@ -5,15 +5,18 @@ import org.apache.poi.wp.usermodel.HeaderFooterType;
 import org.apache.poi.xwpf.usermodel.*;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.*;
 import org.school.personalLoad.model.AcademicLoadOrderType;
+import org.school.personalLoad.model.CurriculumPart;
+import org.school.personalLoad.model.StudyPeriod;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Component
 public class AcademicLoadOrderDocumentService {
@@ -22,7 +25,13 @@ public class AcademicLoadOrderDocumentService {
     private static final String SCHOOL_1811_HEADER = "/templates/pedagogical-councils/school-1811-header.png";
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd.MM.yyyy");
 
-    public record CurriculumPlanRow(String building, String educationLevel, String classes) {
+    public record CurriculumPlanRow(int parallel,
+                                    String building,
+                                    String className,
+                                    CurriculumPart curriculumPart,
+                                    String subject,
+                                    StudyPeriod studyPeriod,
+                                    BigDecimal hours) {
     }
 
     public record LoadRow(String teacher, String subject, String classes, String hours, String period) {
@@ -55,10 +64,11 @@ public class AcademicLoadOrderDocumentService {
             appendOrderHeader(document, data);
             appendOrderBody(document, data);
             appendSignature(document, data.signerPosition(), data.signerName());
-            document.createParagraph().createRun().addBreak(BreakType.PAGE);
             if (data.type() == AcademicLoadOrderType.CURRICULUM_APPROVAL) {
+                startLandscapeAnnex(document);
                 appendCurriculumAnnex(document, data);
             } else {
+                document.createParagraph().createRun().addBreak(BreakType.PAGE);
                 appendLoadAnnex(document, data);
             }
             document.write(output);
@@ -94,6 +104,31 @@ public class AcademicLoadOrderDocumentService {
         XWPFRun end = pageNumber.createRun();
         end.getCTR().addNewFldChar().setFldCharType(STFldCharType.END);
         document.createHeader(HeaderFooterType.FIRST);
+    }
+
+    private void startLandscapeAnnex(XWPFDocument document) {
+        CTSectPr finalSection = document.getDocument().getBody().isSetSectPr()
+                ? document.getDocument().getBody().getSectPr()
+                : document.getDocument().getBody().addNewSectPr();
+
+        XWPFParagraph sectionBreak = document.createParagraph();
+        CTPPr paragraphProperties = sectionBreak.getCTP().isSetPPr()
+                ? sectionBreak.getCTP().getPPr() : sectionBreak.getCTP().addNewPPr();
+        CTSectPr portraitSection = paragraphProperties.addNewSectPr();
+        portraitSection.set(finalSection);
+        if (portraitSection.isSetType()) portraitSection.getType().setVal(STSectionMark.NEXT_PAGE);
+        else portraitSection.addNewType().setVal(STSectionMark.NEXT_PAGE);
+
+        CTPageSz size = finalSection.isSetPgSz() ? finalSection.getPgSz() : finalSection.addNewPgSz();
+        size.setW(BigInteger.valueOf(16838));
+        size.setH(BigInteger.valueOf(11906));
+        size.setOrient(STPageOrientation.LANDSCAPE);
+        CTPageMar margins = finalSection.isSetPgMar() ? finalSection.getPgMar() : finalSection.addNewPgMar();
+        margins.setTop(BigInteger.valueOf(500));
+        margins.setBottom(BigInteger.valueOf(500));
+        margins.setLeft(BigInteger.valueOf(500));
+        margins.setRight(BigInteger.valueOf(500));
+        if (finalSection.isSetTitlePg()) finalSection.unsetTitlePg();
     }
 
     private void appendLetterhead(XWPFDocument document, String schoolCode, String schoolName) {
@@ -172,27 +207,154 @@ public class AcademicLoadOrderDocumentService {
     }
 
     private void appendCurriculumAnnex(XWPFDocument document, DocumentData data) {
-        annexCaption(document, data);
-        centered(document, "Перечень утверждаемых учебных планов", true, 12);
-        XWPFTable table = document.createTable(1, 4);
+        List<CurriculumPlanRow> allRows = Optional.ofNullable(data.curriculumPlans()).orElseGet(List::of);
+        for (int parallel = 1; parallel <= 11; parallel++) {
+            appendCurriculumParallelPage(document, data, parallel, allRows);
+        }
+    }
+
+    private void appendCurriculumParallelPage(XWPFDocument document,
+                                              DocumentData data,
+                                              int parallel,
+                                              List<CurriculumPlanRow> allRows) {
+        List<CurriculumPlanRow> rows = allRows.stream()
+                .filter(row -> row.parallel() == parallel)
+                .filter(row -> !trim(row.subject()).isBlank())
+                .filter(row -> Optional.ofNullable(row.hours()).orElse(BigDecimal.ZERO).compareTo(BigDecimal.ZERO) > 0)
+                .toList();
+
+        curriculumAnnexCaption(document, data, parallel);
+        SortedSet<String> buildings = rows.stream()
+                .map(CurriculumPlanRow::building)
+                .map(this::trim)
+                .filter(value -> !value.isBlank())
+                .collect(Collectors.toCollection(() -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER)));
+        String subtitle = buildings.isEmpty() ? "" : "\nКорпуса: " + String.join(", ", buildings);
+        XWPFParagraph title = centered(document,
+                "Учебный план " + parallel + " параллели на " + data.academicYear() + " учебный год" + subtitle,
+                true, 10);
+        title.setSpacingAfter(35);
+
+        if (rows.isEmpty()) {
+            centered(document, "Учебный план для параллели не заполнен", false, 9);
+            return;
+        }
+
+        List<CurriculumClass> classes = curriculumClasses(rows);
+        List<Map.Entry<CurriculumSubjectKey, List<CurriculumPlanRow>>> subjects = curriculumSubjects(rows);
+        int fontSize = curriculumFontSize(subjects);
+        int cellMargin = fontSize <= 6 ? 8 : fontSize == 7 ? 14 : 22;
+
+        XWPFTable table = document.createTable(1, 3 + classes.size());
         table.setWidth("100%");
-        headerRow(table, List.of("№", "Корпус", "Уровень образования", "Классы"));
+        List<String> headers = new ArrayList<>(List.of("№", "Часть", "Предмет"));
+        headers.addAll(curriculumClassLabels(classes));
+        curriculumHeaderRow(table, headers, Math.max(7, fontSize));
+
         int index = 1;
-        for (CurriculumPlanRow row : data.curriculumPlans()) {
+        for (Map.Entry<CurriculumSubjectKey, List<CurriculumPlanRow>> subject : subjects) {
             XWPFTableRow target = table.createRow();
-            setCell(target.getCell(0), String.valueOf(index++), false, 9, ParagraphAlignment.CENTER);
-            setCell(target.getCell(1), row.building(), false, 9, ParagraphAlignment.LEFT);
-            setCell(target.getCell(2), row.educationLevel(), false, 9, ParagraphAlignment.LEFT);
-            setCell(target.getCell(3), row.classes(), false, 9, ParagraphAlignment.LEFT);
+            preventRowSplit(target);
+            setCompactCell(target.getCell(0), String.valueOf(index++), false, fontSize, ParagraphAlignment.CENTER);
+            setCompactCell(target.getCell(1), curriculumPartLabel(subject.getKey().curriculumPart()), false,
+                    fontSize, ParagraphAlignment.LEFT);
+            setCompactCell(target.getCell(2), subject.getValue().get(0).subject(), false,
+                    fontSize, ParagraphAlignment.LEFT);
+            for (int classIndex = 0; classIndex < classes.size(); classIndex++) {
+                setCompactCell(target.getCell(classIndex + 3),
+                        curriculumHours(subject.getValue(), classes.get(classIndex)), false,
+                        fontSize, ParagraphAlignment.CENTER);
+            }
         }
-        if (data.curriculumPlans().isEmpty()) {
-            XWPFTableRow empty = table.createRow();
-            setCell(empty.getCell(0), "—", false, 9, ParagraphAlignment.CENTER);
-            setCell(empty.getCell(1), "Учебные планы в системе не заполнены", false, 9, ParagraphAlignment.LEFT);
-            mergeCells(empty, 1, 3);
+
+        setFixedCurriculumWidths(table, classes.size());
+        styleTable(table, cellMargin);
+    }
+
+    private void curriculumAnnexCaption(XWPFDocument document, DocumentData data, int parallel) {
+        XWPFParagraph caption = compact(document, ParagraphAlignment.RIGHT);
+        if (parallel > 1) caption.setPageBreak(true);
+        styledRun(caption, "Приложение 1 к приказу от " + formatDate(data.orderDate())
+                + " г. № " + data.orderNumber() + "\nЛист " + parallel + " из 11", false, 8);
+        caption.setSpacingAfter(20);
+    }
+
+    private List<CurriculumClass> curriculumClasses(List<CurriculumPlanRow> rows) {
+        Map<String, CurriculumClass> values = new LinkedHashMap<>();
+        rows.stream()
+                .sorted(Comparator.comparing((CurriculumPlanRow row) -> trim(row.className()), String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(row -> trim(row.building()), String.CASE_INSENSITIVE_ORDER))
+                .forEach(row -> values.putIfAbsent(curriculumClassKey(row.building(), row.className()),
+                        new CurriculumClass(curriculumClassKey(row.building(), row.className()),
+                                trim(row.building()), trim(row.className()))));
+        return List.copyOf(values.values());
+    }
+
+    private List<String> curriculumClassLabels(List<CurriculumClass> classes) {
+        Map<String, Long> repeatedNames = classes.stream().collect(Collectors.groupingBy(
+                value -> value.className().toLowerCase(Locale.ROOT), Collectors.counting()));
+        return classes.stream()
+                .map(value -> repeatedNames.get(value.className().toLowerCase(Locale.ROOT)) > 1
+                        ? value.className() + "\n" + value.building() : value.className())
+                .toList();
+    }
+
+    private List<Map.Entry<CurriculumSubjectKey, List<CurriculumPlanRow>>> curriculumSubjects(
+            List<CurriculumPlanRow> rows) {
+        Map<CurriculumSubjectKey, List<CurriculumPlanRow>> grouped = rows.stream()
+                .collect(Collectors.groupingBy(row -> new CurriculumSubjectKey(
+                                Optional.ofNullable(row.curriculumPart()).orElse(CurriculumPart.CORE),
+                                trim(row.subject()).toLowerCase(Locale.ROOT)),
+                        LinkedHashMap::new, Collectors.toList()));
+        return grouped.entrySet().stream()
+                .sorted(Comparator.comparingInt((Map.Entry<CurriculumSubjectKey, List<CurriculumPlanRow>> entry)
+                                -> entry.getKey().curriculumPart().ordinal())
+                        .thenComparing(entry -> entry.getKey().normalizedSubject(), String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+    private int curriculumFontSize(List<Map.Entry<CurriculumSubjectKey, List<CurriculumPlanRow>>> subjects) {
+        int estimatedLines = subjects.stream()
+                .mapToInt(entry -> Math.max(1, (trim(entry.getValue().get(0).subject()).length() + 43) / 44))
+                .sum();
+        if (estimatedLines > 48 || subjects.size() > 42) return 6;
+        if (estimatedLines > 38 || subjects.size() > 32) return 7;
+        return 8;
+    }
+
+    private String curriculumHours(List<CurriculumPlanRow> rows, CurriculumClass targetClass) {
+        Map<StudyPeriod, BigDecimal> byPeriod = new EnumMap<>(StudyPeriod.class);
+        rows.stream()
+                .filter(row -> curriculumClassKey(row.building(), row.className()).equals(targetClass.key()))
+                .forEach(row -> byPeriod.merge(
+                        Optional.ofNullable(row.studyPeriod()).orElse(StudyPeriod.YEAR),
+                        Optional.ofNullable(row.hours()).orElse(BigDecimal.ZERO),
+                        BigDecimal::max));
+        BigDecimal year = byPeriod.getOrDefault(StudyPeriod.YEAR, BigDecimal.ZERO);
+        BigDecimal firstHalf = byPeriod.getOrDefault(StudyPeriod.H1, BigDecimal.ZERO);
+        BigDecimal secondHalf = byPeriod.getOrDefault(StudyPeriod.H2, BigDecimal.ZERO);
+        if (year.compareTo(BigDecimal.ZERO) > 0
+                && firstHalf.compareTo(BigDecimal.ZERO) == 0
+                && secondHalf.compareTo(BigDecimal.ZERO) == 0) {
+            return formatHours(year);
         }
-        setTableWidths(table, List.of(550, 1800, 2600, 4050));
-        styleTable(table);
+        firstHalf = firstHalf.add(year);
+        secondHalf = secondHalf.add(year);
+        if (firstHalf.compareTo(BigDecimal.ZERO) == 0 && secondHalf.compareTo(BigDecimal.ZERO) == 0) return "";
+        return formatHours(firstHalf) + "/" + formatHours(secondHalf);
+    }
+
+    private String curriculumPartLabel(CurriculumPart part) {
+        return switch (Optional.ofNullable(part).orElse(CurriculumPart.CORE)) {
+            case CORE -> "Основная";
+            case FORMABLE -> "Формируемая";
+            case EXTRACURRICULAR -> "Внеурочная";
+            case CORRECTIONAL -> "Коррекционная";
+        };
+    }
+
+    private String curriculumClassKey(String building, String className) {
+        return trim(building).toLowerCase(Locale.ROOT) + "|" + trim(className).toLowerCase(Locale.ROOT);
     }
 
     private void appendLoadAnnex(XWPFDocument document, DocumentData data) {
@@ -321,6 +483,19 @@ public class AcademicLoadOrderDocumentService {
         }
     }
 
+    private void curriculumHeaderRow(XWPFTable table, List<String> values, int fontSize) {
+        XWPFTableRow row = table.getRow(0);
+        row.getCtRow().addNewTrPr().addNewTblHeader().setVal(true);
+        preventRowSplit(row);
+        for (int i = 0; i < values.size(); i++) {
+            setCompactCell(row.getCell(i), values.get(i), true, fontSize, ParagraphAlignment.CENTER);
+            CTTcPr properties = row.getCell(i).getCTTc().isSetTcPr()
+                    ? row.getCell(i).getCTTc().getTcPr() : row.getCell(i).getCTTc().addNewTcPr();
+            CTShd shading = properties.isSetShd() ? properties.getShd() : properties.addNewShd();
+            shading.setFill("D9EAF7");
+        }
+    }
+
     private void setCell(XWPFTableCell cell, String value, boolean bold, int size, ParagraphAlignment alignment) {
         XWPFParagraph paragraph = cell.getParagraphs().get(0);
         while (!paragraph.getRuns().isEmpty()) paragraph.removeRun(0);
@@ -331,23 +506,47 @@ public class AcademicLoadOrderDocumentService {
         cell.setVerticalAlignment(XWPFTableCell.XWPFVertAlign.CENTER);
     }
 
+    private void setCompactCell(XWPFTableCell cell,
+                                String value,
+                                boolean bold,
+                                int size,
+                                ParagraphAlignment alignment) {
+        XWPFParagraph paragraph = cell.getParagraphs().get(0);
+        while (!paragraph.getRuns().isEmpty()) paragraph.removeRun(0);
+        paragraph.setAlignment(alignment);
+        paragraph.setSpacingBefore(0);
+        paragraph.setSpacingAfter(0);
+        paragraph.setSpacingBetween(0.85);
+        styledRun(paragraph, Optional.ofNullable(value).orElse(""), bold, size);
+        cell.setVerticalAlignment(XWPFTableCell.XWPFVertAlign.CENTER);
+    }
+
+    private void preventRowSplit(XWPFTableRow row) {
+        CTTrPr properties = row.getCtRow().isSetTrPr() ? row.getCtRow().getTrPr() : row.getCtRow().addNewTrPr();
+        properties.addNewCantSplit().setVal(true);
+    }
+
     private void styleTable(XWPFTable table) {
+        styleTable(table, 70);
+    }
+
+    private void styleTable(XWPFTable table, int cellMargin) {
         CTTblPr props = table.getCTTbl().getTblPr();
         CTTblBorders borders = props.isSetTblBorders() ? props.getTblBorders() : props.addNewTblBorders();
         for (CTBorder border : List.of(borders.addNewTop(), borders.addNewBottom(), borders.addNewLeft(),
                 borders.addNewRight(), borders.addNewInsideH(), borders.addNewInsideV())) {
             border.setVal(STBorder.SINGLE);
-            border.setColor("B7B7B7");
+            border.setColor("D9D9D9");
             border.setSz(BigInteger.valueOf(4));
         }
         for (XWPFTableRow row : table.getRows()) {
             for (XWPFTableCell cell : row.getTableCells()) {
                 CTTcPr tcPr = cell.getCTTc().isSetTcPr() ? cell.getCTTc().getTcPr() : cell.getCTTc().addNewTcPr();
                 CTTcMar mar = tcPr.isSetTcMar() ? tcPr.getTcMar() : tcPr.addNewTcMar();
-                setMargin(mar.addNewTop(), 70);
-                setMargin(mar.addNewBottom(), 70);
-                setMargin(mar.addNewLeft(), 80);
-                setMargin(mar.addNewRight(), 80);
+                setMargin(mar.addNewTop(), cellMargin);
+                setMargin(mar.addNewBottom(), cellMargin);
+                setMargin(mar.addNewLeft(), Math.max(12, cellMargin));
+                setMargin(mar.addNewRight(), Math.max(12, cellMargin));
             }
         }
     }
@@ -361,6 +560,51 @@ public class AcademicLoadOrderDocumentService {
         for (XWPFTableRow row : table.getRows()) {
             for (int i = 0; i < row.getTableCells().size() && i < widths.size(); i++) {
                 row.getCell(i).setWidth(String.valueOf(widths.get(i)));
+            }
+        }
+    }
+
+    private void setFixedCurriculumWidths(XWPFTable table, int classCount) {
+        int totalWidth = 15838;
+        int numberWidth = 380;
+        int partWidth = classCount >= 14 ? 1200 : 1550;
+        int subjectWidth = classCount >= 14 ? 4100 : 5200;
+        int remaining = totalWidth - numberWidth - partWidth - subjectWidth;
+        int classWidth = Math.max(1, remaining / Math.max(1, classCount));
+
+        List<Integer> widths = new ArrayList<>(List.of(numberWidth, partWidth, subjectWidth));
+        for (int index = 0; index < classCount; index++) widths.add(classWidth);
+        if (classCount > 0) {
+            int used = widths.stream().mapToInt(Integer::intValue).sum();
+            widths.set(widths.size() - 1, widths.get(widths.size() - 1) + (totalWidth - used));
+        }
+        setFixedTableWidths(table, widths);
+    }
+
+    private void setFixedTableWidths(XWPFTable table, List<Integer> widths) {
+        int total = widths.stream().mapToInt(Integer::intValue).sum();
+        CTTblPr properties = table.getCTTbl().getTblPr();
+        CTTblWidth tableWidth = properties.isSetTblW() ? properties.getTblW() : properties.addNewTblW();
+        tableWidth.setType(STTblWidth.DXA);
+        tableWidth.setW(BigInteger.valueOf(total));
+        CTTblLayoutType layout = properties.isSetTblLayout()
+                ? properties.getTblLayout() : properties.addNewTblLayout();
+        layout.setType(STTblLayoutType.FIXED);
+
+        CTTblGrid grid = table.getCTTbl().getTblGrid();
+        if (grid == null) grid = table.getCTTbl().addNewTblGrid();
+        while (grid.sizeOfGridColArray() > 0) grid.removeGridCol(0);
+        for (Integer width : widths) grid.addNewGridCol().setW(BigInteger.valueOf(width));
+
+        for (XWPFTableRow row : table.getRows()) {
+            for (int index = 0; index < row.getTableCells().size() && index < widths.size(); index++) {
+                XWPFTableCell cell = row.getCell(index);
+                CTTcPr cellProperties = cell.getCTTc().isSetTcPr()
+                        ? cell.getCTTc().getTcPr() : cell.getCTTc().addNewTcPr();
+                CTTblWidth cellWidth = cellProperties.isSetTcW()
+                        ? cellProperties.getTcW() : cellProperties.addNewTcW();
+                cellWidth.setType(STTblWidth.DXA);
+                cellWidth.setW(BigInteger.valueOf(widths.get(index)));
             }
         }
     }
@@ -384,6 +628,10 @@ public class AcademicLoadOrderDocumentService {
         return date == null ? "" : DATE.format(date);
     }
 
+    private String formatHours(BigDecimal value) {
+        return Optional.ofNullable(value).orElse(BigDecimal.ZERO).stripTrailingZeros().toPlainString();
+    }
+
     private String trim(String value) {
         return Optional.ofNullable(value).orElse("").trim();
     }
@@ -397,5 +645,11 @@ public class AcademicLoadOrderDocumentService {
             if (!parts[i].isBlank()) result.append(' ').append(parts[i].charAt(0)).append('.');
         }
         return result.toString();
+    }
+
+    private record CurriculumClass(String key, String building, String className) {
+    }
+
+    private record CurriculumSubjectKey(CurriculumPart curriculumPart, String normalizedSubject) {
     }
 }

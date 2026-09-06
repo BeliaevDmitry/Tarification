@@ -315,8 +315,8 @@ public class AcademicYearServiceImpl implements AcademicYearService {
         entry.setEducationLevel(module == null ? curriculum.getEducationLevel() : module.getEducationLevel());
         StudyPeriod studyPeriod = curriculum.getStudyPeriod() == null ? StudyPeriod.YEAR : curriculum.getStudyPeriod();
         entry.setStudyPeriod(studyPeriod);
-        entry.setLoadFromDate(defaultFromDate(targetYear, studyPeriod));
-        entry.setLoadToDate(defaultToDate(targetYear, studyPeriod));
+        entry.setLoadFromDate(defaultFromDate(targetYear, curriculum.getClassName(), studyPeriod));
+        entry.setLoadToDate(defaultToDate(targetYear, curriculum.getClassName(), studyPeriod));
         entry.setOrphaned(false);
         entry.setDismissalAdjusted(false);
         entry.setContinuityStatus(ContinuityStatus.OK);
@@ -336,18 +336,24 @@ public class AcademicYearServiceImpl implements AcademicYearService {
                 .orElse(null);
     }
 
-    private LocalDate defaultFromDate(String academicYearCode, StudyPeriod studyPeriod) {
+    private LocalDate defaultFromDate(String academicYearCode, String className, StudyPeriod studyPeriod) {
         int fromYear = Integer.parseInt(academicYearCode.substring(0, 4));
         if (studyPeriod == StudyPeriod.H2) {
-            return LocalDate.of(fromYear + 1, 1, 1);
+            Integer parallel = ClassNameNormalizer.extractParallel(className);
+            return parallel != null && parallel == 11
+                    ? LocalDate.of(fromYear + 1, 2, 1)
+                    : LocalDate.of(fromYear + 1, 1, 11);
         }
         return LocalDate.of(fromYear, 9, 1);
     }
 
-    private LocalDate defaultToDate(String academicYearCode, StudyPeriod studyPeriod) {
+    private LocalDate defaultToDate(String academicYearCode, String className, StudyPeriod studyPeriod) {
         int fromYear = Integer.parseInt(academicYearCode.substring(0, 4));
         if (studyPeriod == StudyPeriod.H1) {
-            return LocalDate.of(fromYear, 12, 31);
+            Integer parallel = ClassNameNormalizer.extractParallel(className);
+            return parallel != null && parallel == 11
+                    ? LocalDate.of(fromYear + 1, 1, 31)
+                    : LocalDate.of(fromYear, 12, 31);
         }
         return LocalDate.of(fromYear + 1, 5, 31);
     }
