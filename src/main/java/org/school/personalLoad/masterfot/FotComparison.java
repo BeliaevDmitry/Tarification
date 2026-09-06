@@ -23,14 +23,12 @@ public final class FotComparison {
     private final Map<String, String> subjects = new LinkedHashMap<>(), teachers = new LinkedHashMap<>();
     private final Map<Slot, BigDecimal> plan = new LinkedHashMap<>();
     private final Map<Assignment, BigDecimal> load = new LinkedHashMap<>();
-    private final Map<Assignment, String> blocked = new LinkedHashMap<>();
+    private final Set<Assignment> blocked = new LinkedHashSet<>();
     private final Map<String, String> mappings = new HashMap<>();
-    private final LocalDate comparisonDate;
 
     public FotComparison(List<CurriculumPlanEntry> curriculum, List<ManualLoadEntry> assignments,
                          Map<Long, MckoDtos.EligibilityRow> eligibility, List<FotMapping> mappings,
                          List<StudyPeriodSetting> periods, LocalDate date) {
-        this.comparisonDate = date;
         mappings.forEach(m -> this.mappings.put(mappingKey(m.getType(), m.getSource()), m.getTarget()));
         Map<Long, String> moduleSubjects = new HashMap<>();
         for (CurriculumPlanEntry p : curriculum) {
@@ -62,8 +60,7 @@ public final class FotComparison {
             load.merge(key, row.getEffectiveLoadHours(), BigDecimal::add);
             MckoDtos.EligibilityRow mcko = eligibility.get(row.getId());
             if (mcko != null && "MISSING".equals(mcko.status()) && !VACANCY.equals(teacher)) {
-                String message = Objects.toString(mcko.message(), "").trim();
-                blocked.put(key, message.isEmpty() ? "НЕТ МЦКО" : message);
+                blocked.add(key);
             }
         }
     }
@@ -128,11 +125,11 @@ public final class FotComparison {
             if (e.compareTo(a) != 0) add(findings, "LOAD", key.slot, teacherLabel(key.teacher), hours(e), hours(a),
                     groupLabel(key.slot.group) + ". " + (VACANCY.equals(key.teacher) ? "Ожидаемая вакансия с учётом МЦКО. " : "Нагрузка педагога. ") + location(sourceRows, key.slot));
         }
-        blocked.forEach((key, reason) -> {
+        blocked.forEach(key -> {
+            BigDecimal expected = load.getOrDefault(key, BigDecimal.ZERO);
+            BigDecimal actual = actualLoad.getOrDefault(key, BigDecimal.ZERO);
             add(findings, "MCKO", key.slot, teacherLabel(key.teacher),
-                    "Действующее МЦКО", reason,
-                    reason + ". На " + comparisonDate + " нет действующего МЦКО по этому предмету. "
-                            + "Назначение и часы педагога не заменяются вакансией. " + groupLabel(key.slot.group));
+                    hours(expected), hours(actual), "НЕТ МЦКО");
         });
         return new FotDtos.Comparison(new ArrayList<>(findings.values()), complete);
     }
@@ -197,8 +194,9 @@ public final class FotComparison {
     private void add(Map<String, FotDtos.Finding> out, String type, Slot slot, String teacher, String expected, String actual, String detail) {
         Scope scope = scopes.get(slot.scope);
         String key = hash(type + "|" + slot + "|" + norm(teacher));
+        String renderedDetail = "MCKO".equals(type) ? detail : partLabel(slot.part) + ". " + detail;
         out.put(key, new FotDtos.Finding(key, type, scope.building, scope.name, subjects.get(slot.subject), teacher,
-                expected, actual, partLabel(slot.part) + ". " + detail, "", ""));
+                expected, actual, renderedDetail, "", ""));
     }
     private Map<Slot, Set<Integer>> groups(Map<Slot, BigDecimal> entries) {
         Map<Slot, Set<Integer>> result = new LinkedHashMap<>();
