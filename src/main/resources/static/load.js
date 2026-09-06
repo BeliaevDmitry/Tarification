@@ -951,7 +951,7 @@ function apiKeyOfRow(row) {
 }
 
 function subjectKeyOfRow(row) {
-    const periodToken = "YEAR";
+    const periodToken = highSchoolUnifiedSubject(row) ? "YEAR" : rowStudyPeriod(row);
     if (row.__moduleId) return `${row.subjectName}|${row.curriculumPart || "CORE"}|${periodToken}|M:${row.__moduleId}${groupSuffix(row)}`;
     return `${row.subjectName}|${row.curriculumPart || "CORE"}|${periodToken}${groupSuffix(row)}`;
 }
@@ -1234,7 +1234,7 @@ function fallbackYearRange() {
     return {
         yearFrom: `${yearFrom}-09-01`,
         h1To: `${yearFrom}-12-31`,
-        h2From: `${yearTo}-01-01`,
+        h2From: `${yearTo}-01-11`,
         yearTo: `${yearTo}-05-31`,
         h1_11_to: `${yearTo}-01-31`,
         h2_11_from: `${yearTo}-02-01`

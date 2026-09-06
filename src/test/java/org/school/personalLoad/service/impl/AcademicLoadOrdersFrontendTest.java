@@ -35,6 +35,16 @@ class AcademicLoadOrdersFrontendTest {
         }
     }
 
+    @Test
+    void semesterLoadRowsKeepIndependentTeacherPeriods() throws Exception {
+        String loadJs = resource("/static/load.js");
+
+        assertThat(loadJs)
+                .contains("const periodToken = highSchoolUnifiedSubject(row) ? \"YEAR\" : rowStudyPeriod(row);")
+                .contains("h2From: `${yearTo}-01-11`")
+                .doesNotContain("h2From: `${yearTo}-01-01`");
+    }
+
     private String resource(String path) throws Exception {
         try (var input = AcademicLoadOrdersFrontendTest.class.getResourceAsStream(path)) {
             assertThat(input).as("resource %s", path).isNotNull();

@@ -11,11 +11,14 @@ import org.school.personalLoad.repository.ManualLoadEntryRepository;
 import org.school.personalLoad.repository.TeacherDirectoryRepository;
 import org.school.personalLoad.service.AcademicLoadOrderService;
 import org.school.personalLoad.service.AcademicYearService;
+import org.school.personalLoad.service.StudyPeriodSettingService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -29,7 +32,10 @@ public class AcademicLoadOrderServiceImpl implements AcademicLoadOrderService {
     private final ManualLoadEntryRepository loadRepository;
     private final TeacherDirectoryRepository teacherRepository;
     private final AcademicYearService academicYearService;
+    private final StudyPeriodSettingService studyPeriodSettingService;
     private final AcademicLoadOrderDocumentService documentService;
+
+    private static final DateTimeFormatter ORDER_DATE = DateTimeFormatter.ofPattern("dd.MM.yyyy");
 
     @Override
     @Transactional(readOnly = true)
@@ -159,20 +165,48 @@ public class AcademicLoadOrderServiceImpl implements AcademicLoadOrderService {
     }
 
     private List<AcademicLoadOrderDocumentService.CurriculumPlanRow> curriculumRows(String year) {
-        Map<CurriculumGroupKey, SortedSet<String>> classes = new TreeMap<>(Comparator
-                .comparing(CurriculumGroupKey::building, naturalTextComparator())
-                .thenComparing(CurriculumGroupKey::stage));
+        Map<CurriculumEntryKey, BigDecimal> hours = new TreeMap<>(Comparator
+                .comparingInt(CurriculumEntryKey::parallel)
+                .thenComparing(CurriculumEntryKey::building, naturalTextComparator())
+                .thenComparing(CurriculumEntryKey::className, naturalTextComparator())
+                .thenComparing(CurriculumEntryKey::curriculumPart)
+                .thenComparing(CurriculumEntryKey::subject, naturalTextComparator())
+                .thenComparing(CurriculumEntryKey::studyPeriod));
         for (CurriculumPlanEntry entry : activeCurriculum(year)) {
-            CurriculumGroupKey key = new CurriculumGroupKey(
+            Integer parallel = curriculumParallel(entry.getClassName());
+            String subject = trim(entry.getSubjectName());
+            BigDecimal plannedHours = Optional.ofNullable(entry.getPlannedHours()).orElse(BigDecimal.ZERO);
+            if (parallel == null || parallel < 1 || parallel > 11 || subject.isBlank()
+                    || plannedHours.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            CurriculumEntryKey key = new CurriculumEntryKey(
+                    parallel,
                     display(entry.getNumberSchoolBuilding(), "Не указан"),
-                    stageLabel(entry.getStage()));
-            classes.computeIfAbsent(key, ignored -> new TreeSet<>(naturalTextComparator()))
-                    .add(display(entry.getClassName(), "—"));
+                    display(ClassNameNormalizer.normalize(entry.getClassName()), "—"),
+                    Optional.ofNullable(entry.getCurriculumPart()).orElse(CurriculumPart.CORE),
+                    subject,
+                    Optional.ofNullable(entry.getStudyPeriod()).orElse(StudyPeriod.YEAR));
+            // Legacy data may contain the same curriculum position at two education levels.
+            // It is one line in the approved plan, so retain the larger value instead of doubling it.
+            hours.merge(key, plannedHours, BigDecimal::max);
         }
-        return classes.entrySet().stream()
+        return hours.entrySet().stream()
                 .map(entry -> new AcademicLoadOrderDocumentService.CurriculumPlanRow(
-                        entry.getKey().building(), entry.getKey().stage(), String.join(", ", entry.getValue())))
+                        entry.getKey().parallel(),
+                        entry.getKey().building(),
+                        entry.getKey().className(),
+                        entry.getKey().curriculumPart(),
+                        entry.getKey().subject(),
+                        entry.getKey().studyPeriod(),
+                        entry.getValue()))
                 .toList();
+    }
+
+    private Integer curriculumParallel(String className) {
+        String normalized = ClassNameNormalizer.normalize(className);
+        if (normalized.startsWith("МГ:")) normalized = normalized.substring(3).trim();
+        return ClassNameNormalizer.extractParallel(normalized);
     }
 
     private List<AcademicLoadOrderDocumentService.LoadRow> loadRows(String year) {
@@ -184,7 +218,7 @@ public class AcademicLoadOrderServiceImpl implements AcademicLoadOrderService {
         for (ManualLoadEntry entry : activeLoad(year)) {
             String teacher = display(entry.getFioTeacher(), "Не назначен");
             String subject = display(entry.getSubjectName(), "—");
-            String period = periodLabel(entry);
+            String period = periodLabel(year, entry);
             String hours = formatHours(entry.getEffectiveLoadHours());
             String className = display(entry.getClassName(), display(entry.getGroupNameEducationalPlan(), "—"));
             classes.computeIfAbsent(new LoadGroupKey(teacher, subject, hours, period), ignored -> new TreeSet<>(naturalTextComparator()))
@@ -230,22 +264,68 @@ public class AcademicLoadOrderServiceImpl implements AcademicLoadOrderService {
                 order.getDocumentFilename());
     }
 
-    private String stageLabel(CurriculumStage stage) {
-        if (stage == CurriculumStage.NOO) return "Начальное общее образование";
-        if (stage == CurriculumStage.SOO) return "Среднее общее образование";
-        return "Основное общее образование";
+    private String periodLabel(String academicYear, ManualLoadEntry entry) {
+        StudyPeriod studyPeriod = Optional.ofNullable(entry.getStudyPeriod()).orElse(StudyPeriod.YEAR);
+        StudyPeriodSettingService.DateRange configured = configuredRange(academicYear, entry.getClassName(), studyPeriod);
+        LocalDate from = entry.getLoadFromDate();
+        LocalDate to = entry.getLoadToDate();
+
+        // A semester row must never inherit dates from the opposite semester. This can happen
+        // when the load editor reuses a teacher row while switching between H1 and H2.
+        if (configured != null && (!validRange(from, to)
+                || from.isBefore(configured.startDate())
+                || to.isAfter(configured.endDate()))) {
+            from = configured.startDate();
+            to = configured.endDate();
+        }
+        if (from == null && configured != null) from = configured.startDate();
+        if (to == null && configured != null) to = configured.endDate();
+
+        if (from != null || to != null) {
+            String fromText = from == null ? "начала года" : ORDER_DATE.format(from);
+            String toText = to == null ? "конца года" : ORDER_DATE.format(to);
+            return fromText + " — " + toText;
+        }
+        if (studyPeriod == StudyPeriod.H1) return "1 полугодие";
+        if (studyPeriod == StudyPeriod.H2) return "2 полугодие";
+        return "Учебный год";
     }
 
-    private String periodLabel(ManualLoadEntry entry) {
-        if (entry.getLoadFromDate() != null || entry.getLoadToDate() != null) {
-            java.time.format.DateTimeFormatter date = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy");
-            String from = entry.getLoadFromDate() == null ? "начала года" : date.format(entry.getLoadFromDate());
-            String to = entry.getLoadToDate() == null ? "конца года" : date.format(entry.getLoadToDate());
-            return from + " — " + to;
+    private StudyPeriodSettingService.DateRange configuredRange(String academicYear,
+                                                                String className,
+                                                                StudyPeriod studyPeriod) {
+        try {
+            StudyPeriodSettingService.DateRange configured = studyPeriodSettingService
+                    .resolveDateRange(academicYear, className, studyPeriod);
+            return configured == null ? defaultRange(academicYear, className, studyPeriod) : configured;
+        } catch (IllegalArgumentException ignored) {
+            return defaultRange(academicYear, className, studyPeriod);
         }
-        if (entry.getStudyPeriod() == StudyPeriod.H1) return "1 полугодие";
-        if (entry.getStudyPeriod() == StudyPeriod.H2) return "2 полугодие";
-        return "Учебный год";
+    }
+
+    private StudyPeriodSettingService.DateRange defaultRange(String academicYear,
+                                                             String className,
+                                                             StudyPeriod studyPeriod) {
+        if (academicYear == null || !academicYear.matches("\\d{4}/\\d{4}")) return null;
+        int startYear = Integer.parseInt(academicYear.substring(0, 4));
+        int endYear = Integer.parseInt(academicYear.substring(5));
+        Integer parallel = ClassNameNormalizer.extractParallel(className);
+        boolean eleventhGrade = parallel != null && parallel == 11;
+        LocalDate yearStart = LocalDate.of(startYear, 9, 1);
+        LocalDate yearEnd = LocalDate.of(endYear, 5, 31);
+        if (studyPeriod == StudyPeriod.H1) {
+            return new StudyPeriodSettingService.DateRange(yearStart,
+                    eleventhGrade ? LocalDate.of(endYear, 1, 31) : LocalDate.of(startYear, 12, 31));
+        }
+        if (studyPeriod == StudyPeriod.H2) {
+            return new StudyPeriodSettingService.DateRange(
+                    eleventhGrade ? LocalDate.of(endYear, 2, 1) : LocalDate.of(endYear, 1, 11), yearEnd);
+        }
+        return new StudyPeriodSettingService.DateRange(yearStart, yearEnd);
+    }
+
+    private boolean validRange(LocalDate from, LocalDate to) {
+        return from != null && to != null && !from.isAfter(to);
     }
 
     private String formatHours(BigDecimal value) {
@@ -293,7 +373,12 @@ public class AcademicLoadOrderServiceImpl implements AcademicLoadOrderService {
                 .thenComparing(value -> value == null ? "" : value);
     }
 
-    private record CurriculumGroupKey(String building, String stage) {
+    private record CurriculumEntryKey(int parallel,
+                                      String building,
+                                      String className,
+                                      CurriculumPart curriculumPart,
+                                      String subject,
+                                      StudyPeriod studyPeriod) {
     }
 
     private record LoadGroupKey(String teacher, String subject, String hours, String period) {

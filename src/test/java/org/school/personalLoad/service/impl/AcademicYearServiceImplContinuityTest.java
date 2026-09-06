@@ -16,6 +16,7 @@ import org.school.personalLoad.repository.CurriculumPlanEntryRepository;
 import org.school.personalLoad.repository.ManualLoadEntryRepository;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -128,6 +129,48 @@ class AcademicYearServiceImplContinuityTest {
         assertEquals(21L, copied.getCurriculumModuleId());
         assertEquals("Труд", copied.getSubjectName());
         verify(curriculumPlanEntryRepository, times(1)).findAll();
+    }
+
+    @Test
+    void secondHalfContinuityStartsOnConfiguredJanuaryBoundary() {
+        AcademicYearConfig targetYear = new AcademicYearConfig();
+        targetYear.setCode("2026/2027");
+
+        CurriculumPlanEntry curriculum = new CurriculumPlanEntry();
+        curriculum.setAcademicYear("2026/2027");
+        curriculum.setNumberSchoolBuilding("B1");
+        curriculum.setClassName("4-К");
+        curriculum.setSubjectName("Занимательная математика юного москвича");
+        curriculum.setEducationLevel(EducationLevel.BASIC);
+        curriculum.setStudyPeriod(StudyPeriod.H2);
+        curriculum.setPlannedHours(BigDecimal.valueOf(2));
+        curriculum.setDeprecated(false);
+
+        ManualLoadEntry source = new ManualLoadEntry();
+        source.setAcademicYear("2025/2026");
+        source.setFioTeacher("Конышева Галина Ибрагимовна");
+        source.setNumberSchoolBuilding("B1");
+        source.setClassName("3-К");
+        source.setSubjectName("Занимательная математика юного москвича");
+        source.setEducationLevel(EducationLevel.BASIC);
+        source.setStudyPeriod(StudyPeriod.H2);
+        source.setLoad(2);
+
+        when(academicYearRepository.findByCode("2026/2027")).thenReturn(Optional.of(targetYear));
+        when(academicYearRepository.existsByCode("2025/2026")).thenReturn(true);
+        when(curriculumPlanEntryRepository.findAll()).thenReturn(List.of(curriculum));
+        when(manualLoadEntryRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(source));
+        when(manualLoadEntryRepository.findAllByAcademicYear("2026/2027")).thenReturn(List.of());
+        when(academicYearRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.markContinuityApplied("2026/2027");
+
+        @SuppressWarnings("unchecked")
+        org.mockito.ArgumentCaptor<List<ManualLoadEntry>> captor = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(manualLoadEntryRepository).saveAll(captor.capture());
+        ManualLoadEntry copied = captor.getValue().get(0);
+        assertEquals(LocalDate.of(2027, 1, 11), copied.getLoadFromDate());
+        assertEquals(LocalDate.of(2027, 5, 31), copied.getLoadToDate());
     }
 
     private CurriculumPlanEntry modularCurriculum(String year, Long moduleId, String moduleName) {
