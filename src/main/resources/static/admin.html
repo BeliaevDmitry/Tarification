@@ -16,6 +16,7 @@
         <div class="row">
             <button type="button" id="admin-tab-users-btn">Создание пользователя</button>
             <button type="button" id="admin-tab-years-btn">Учебные года</button>
+            <button type="button" id="admin-tab-time-btn">Время</button>
             <button type="button" id="admin-tab-options-btn">Опции</button>
             <button type="button" id="admin-audit-link-btn">Журнал действий</button>
         </div>
@@ -209,6 +210,30 @@
             <label><input type="radio" name="admin-debug-mode" value="no"> Нет</label>
         </div>
         <p id="admin-options-feedback" class="muted"></p>
+    </section>
+
+    <section class="card admin-card" data-admin-tab="time" style="display:none;" data-requires-edit>
+        <div class="section-heading">
+            <div>
+                <h2>Дата и время</h2>
+                <p class="muted">Время приложения хранится в базе и не сбрасывается после перезапуска или обновления.</p>
+            </div>
+            <span class="admin-section-badge soft">Москва</span>
+        </div>
+        <div class="admin-time-status">
+            <span class="muted">Сейчас в приложении</span>
+            <strong id="admin-time-current">Загрузка…</strong>
+            <span id="admin-time-adjustment" class="muted"></span>
+        </div>
+        <form id="admin-time-form" class="row controls-row">
+            <label class="field-stack">
+                <span>Текущие дата и время</span>
+                <input id="admin-time-value" type="datetime-local" step="1" required>
+            </label>
+            <button type="button" id="admin-time-from-computer-btn">Подставить время этого компьютера</button>
+            <button type="submit">Сохранить время</button>
+        </form>
+        <p id="admin-time-feedback" class="muted"></p>
     </section>
 </main>
 

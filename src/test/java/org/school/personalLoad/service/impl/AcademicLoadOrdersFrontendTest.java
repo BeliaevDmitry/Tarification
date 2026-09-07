@@ -45,6 +45,15 @@ class AcademicLoadOrdersFrontendTest {
                 .doesNotContain("h2From: `${yearTo}-01-01`");
     }
 
+    @Test
+    void masterFotTreatsEverySuccessfulUploadAsLatestVersion() throws Exception {
+        String html = resource("/static/master-fot.html");
+        String js = resource("/static/master-fot.js");
+
+        assertThat(html).contains("Каждая успешная загрузка становится последней версией");
+        assertThat(js).contains("$('file').value = ''", "сохранена как последняя версия");
+    }
+
     private String resource(String path) throws Exception {
         try (var input = AcademicLoadOrdersFrontendTest.class.getResourceAsStream(path)) {
             assertThat(input).as("resource %s", path).isNotNull();

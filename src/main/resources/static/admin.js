@@ -135,6 +135,7 @@ const ui = {
     applyBaseValuesEditBtn: document.getElementById('apply-base-values-edit-btn'),
     adminTabUsersBtn: document.getElementById('admin-tab-users-btn'),
     adminTabYearsBtn: document.getElementById('admin-tab-years-btn'),
+    adminTabTimeBtn: document.getElementById('admin-tab-time-btn'),
     adminTabOptionsBtn: document.getElementById('admin-tab-options-btn'),
     adminAuditLinkBtn: document.getElementById('admin-audit-link-btn'),
     debugModeInputs: Array.from(document.querySelectorAll('input[name="admin-debug-mode"]')),
@@ -143,6 +144,12 @@ const ui = {
     academicYearCode: document.getElementById('academic-year-code'),
     academicYearFeedback: document.getElementById('academic-year-feedback'),
     academicYearsBody: document.getElementById('academic-years-body'),
+    timeForm: document.getElementById('admin-time-form'),
+    timeValue: document.getElementById('admin-time-value'),
+    timeCurrent: document.getElementById('admin-time-current'),
+    timeAdjustment: document.getElementById('admin-time-adjustment'),
+    timeFeedback: document.getElementById('admin-time-feedback'),
+    timeFromComputerBtn: document.getElementById('admin-time-from-computer-btn'),
     createTeacher: document.getElementById('create-teacher'),
     createTeacherHint: document.getElementById('create-teacher-hint'),
     createUsername: document.getElementById('create-username'),
@@ -289,6 +296,35 @@ function setAdminTab(tab) {
     document.querySelectorAll('[data-admin-tab]').forEach((section) => {
         section.style.display = section.dataset.adminTab === tab ? '' : 'none';
     });
+}
+
+function formatApplicationTime(value) {
+    const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (!match) return '—';
+    return `${match[3]}.${match[2]}.${match[1]} ${match[4]}:${match[5]}:${match[6] || '00'}`;
+}
+
+function moscowComputerTimeValue() {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('ru-RU', {
+        timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+    }).formatToParts(new Date()).filter(part => part.type !== 'literal').map(part => [part.type, part.value]));
+    return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
+async function loadAdminTime() {
+    if (!ui.timeCurrent) return;
+    try {
+        const value = await api('/api/admin/time');
+        ui.timeCurrent.textContent = `${formatApplicationTime(value.currentDateTime)} · Москва`;
+        ui.timeAdjustment.textContent = value.adjusted
+            ? `Введено вручную${value.updatedBy ? ` · ${value.updatedBy}` : ''}`
+            : 'Используется точное московское время';
+        if (ui.timeValue) ui.timeValue.value = String(value.currentDateTime || '').slice(0, 19);
+    } catch (error) {
+        ui.timeCurrent.textContent = 'Не удалось получить время';
+        if (ui.timeFeedback) ui.timeFeedback.textContent = `Ошибка: ${error.message}`;
+    }
 }
 
 function renderDebugModeOptions() {
@@ -1256,6 +1292,10 @@ reload().then(renderAcademicYears).catch((error) => print({ error: error.message
 
 ui.adminTabUsersBtn?.addEventListener('click', () => setAdminTab('users'));
 ui.adminTabYearsBtn?.addEventListener('click', () => setAdminTab('years'));
+ui.adminTabTimeBtn?.addEventListener('click', () => {
+    setAdminTab('time');
+    loadAdminTime();
+});
 ui.adminTabOptionsBtn?.addEventListener('click', () => setAdminTab('options'));
 ui.adminAuditLinkBtn?.addEventListener('click', () => { window.location.href = '/audit-logs.html'; });
 ui.debugModeInputs.forEach((input) => {
@@ -1269,6 +1309,27 @@ ui.debugModeInputs.forEach((input) => {
     });
 });
 renderDebugModeOptions();
+
+ui.timeFromComputerBtn?.addEventListener('click', () => {
+    if (ui.timeValue) ui.timeValue.value = moscowComputerTimeValue();
+});
+
+ui.timeForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+        const value = await api('/api/admin/time', {
+            method: 'PUT',
+            headers: jsonHeaders,
+            body: JSON.stringify({ currentDateTime: ui.timeValue?.value || null })
+        });
+        if (ui.timeFeedback) ui.timeFeedback.textContent = 'Дата и время сохранены. Отсчёт продолжается автоматически.';
+        ui.timeCurrent.textContent = `${formatApplicationTime(value.currentDateTime)} · Москва`;
+        ui.timeAdjustment.textContent = `Введено вручную${value.updatedBy ? ` · ${value.updatedBy}` : ''}`;
+        if (typeof window.refreshApplicationClock === 'function') await window.refreshApplicationClock(value);
+    } catch (error) {
+        if (ui.timeFeedback) ui.timeFeedback.textContent = `Ошибка: ${error.message}`;
+    }
+});
 
 ui.academicYearForm?.addEventListener('submit', async (event) => {
     event.preventDefault();

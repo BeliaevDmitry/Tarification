@@ -86,14 +86,27 @@ class FotServiceTest {
         assertThat(stored.values()).anyMatch(issue -> !issue.isArchived()
                 && issue.getFindingJson().contains("Второй неизвестный"));
     }
-    @Test void oldFileAndWrongYearDecisionRejectedBeforeMutation() throws Exception {
+    @Test void olderSnapshotIsAcceptedAsLatestUploadedVersion() throws Exception {
         upload(2); FotIssue issue = first();
         assertThatThrownBy(() -> service.decision("2025/2026",issue.getId(),new FotDtos.DecisionRequest("FIXED","",0),"Тест")).hasMessageContaining("не найдена");
         var src = FotComparisonTest.source(FotComparisonTest.row("Иванов Иван Иванович","7-А",3));
         when(parser.parse(any(),eq(year))).thenReturn(new FotDtos.Source(year,src.date().minusDays(1),src.organization(),src.rows()));
-        var file = FotParserTest.file(false);
-        assertThatThrownBy(() -> service.upload(year,file,"Тест")).hasMessageContaining("раньше последней");
-        assertThat(history).hasSize(1);
+        FotDtos.BatchRow latest = service.upload(year,FotParserTest.file(false),"Тест");
+
+        assertThat(history).hasSize(2);
+        assertThat(latest.id()).isEqualTo(2L);
+        assertThat(latest.date()).isEqualTo(src.date().minusDays(1));
+        assertThat(service.overview(year).batches().get(0).id()).isEqualTo(2L);
+    }
+    @Test void sameDateAndFilenameCreateAnotherLatestVersion() throws Exception {
+        upload(2);
+        FotDtos.BatchRow latest = service.upload(year,FotParserTest.file(false),"Тест");
+
+        assertThat(history).hasSize(2);
+        assertThat(latest.id()).isEqualTo(2L);
+        assertThat(latest.filename()).isEqualTo(history.get(0).getFilename());
+        assertThat(latest.date()).isEqualTo(history.get(0).getSnapshotDate());
+        assertThat(service.overview(year).batches()).extracting(FotDtos.BatchRow::id).containsExactly(2L,1L);
     }
     @Test void staleDecisionVersionDoesNotOverwrite() throws Exception {
         upload(2); FotIssue issue = first();
