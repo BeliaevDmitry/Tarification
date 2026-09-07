@@ -49,7 +49,7 @@ public final class FotComparison {
         }
         teachers.put(VACANCY, "Вакансия");
         for (ManualLoadEntry row : assignments) {
-            if (row.isIupLoad() || !activeLoad(row, date)) continue;
+            if (row.isIupLoad() || !activeLoad(row, periods, date)) continue;
             String scope = scope(row.getNumberSchoolBuilding(), row.getClassName());
             String subject = moduleSubjects.get(row.getCurriculumModuleId());
             if (subject == null) subject = subject(row.getSubjectId(), row.getSubjectName());
@@ -214,10 +214,19 @@ public final class FotComparison {
         return row.getStudyPeriod() == StudyPeriod.H1 ? date.getMonthValue() >= 9 : date.getMonthValue() < 9;
     }
     public static boolean activeLoad(ManualLoadEntry row, LocalDate date) {
+        return activeLoad(row, List.of(), date);
+    }
+    static boolean activeLoad(ManualLoadEntry row, List<StudyPeriodSetting> periods, LocalDate date) {
         if (!between(date, row.getLoadFromDate(), row.getLoadToDate())) return false;
-        if (row.getLoadFromDate() != null || row.getLoadToDate() != null) return true;
-        return row.getStudyPeriod() == null || row.getStudyPeriod() == StudyPeriod.YEAR
-                || (row.getStudyPeriod() == StudyPeriod.H1 ? date.getMonthValue() >= 9 : date.getMonthValue() < 9);
+        StudyPeriod studyPeriod = row.getStudyPeriod();
+        if (studyPeriod == null || studyPeriod == StudyPeriod.YEAR) return true;
+        int grade = Optional.ofNullable(org.school.personalLoad.util.CurriculumLoadStandard.parallelOf(row.getClassName())).orElse(0);
+        List<StudyPeriodSetting> matches = periods.stream()
+                .filter(p -> p.getStudyPeriod() == studyPeriod)
+                .filter(p -> grade >= p.getParallelFrom() && grade <= p.getParallelTo())
+                .toList();
+        if (!matches.isEmpty()) return matches.stream().anyMatch(p -> between(date, p.getStartDate(), p.getEndDate()));
+        return studyPeriod == StudyPeriod.H1 ? date.getMonthValue() >= 9 : date.getMonthValue() < 9;
     }
     private static boolean between(LocalDate date, LocalDate from, LocalDate to) { return (from == null || !date.isBefore(from)) && (to == null || !date.isAfter(to)); }
     public static String mappingKey(String type, String source) { return type + "|" + norm(source); }

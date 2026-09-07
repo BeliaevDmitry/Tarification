@@ -129,6 +129,23 @@ class FotComparisonTest {
         var result = compareWith(List.of(plan(3),p2),List.of(load(3),iup,expired,second)).compare(source(row("Иванов Иван Иванович","7-А",3)));
         assertThat(result.findings()).isEmpty();
     }
+    @Test void systemHoursUseOnlyTheHalfYearActiveOnComparisonDate() {
+        var firstPlan = plan(4); firstPlan.setStudyPeriod(StudyPeriod.H1);
+        var secondPlan = plan(4); secondPlan.setStudyPeriod(StudyPeriod.H2);
+        var firstLoad = load(4); firstLoad.setStudyPeriod(StudyPeriod.H1);
+        var secondLoad = load(4); secondLoad.setId(2L); secondLoad.setStudyPeriod(StudyPeriod.H2);
+        LocalDate yearStart = LocalDate.of(2026, 9, 1), yearEnd = LocalDate.of(2027, 5, 31);
+        firstLoad.setLoadFromDate(yearStart); firstLoad.setLoadToDate(yearEnd);
+        secondLoad.setLoadFromDate(yearStart); secondLoad.setLoadToDate(yearEnd);
+        var firstPeriod = period(StudyPeriod.H1, yearStart, LocalDate.of(2026, 12, 31));
+        var secondPeriod = period(StudyPeriod.H2, LocalDate.of(2027, 1, 11), yearEnd);
+
+        var result = new FotComparison(List.of(firstPlan, secondPlan), List.of(firstLoad, secondLoad),
+                Map.of(), List.of(), List.of(firstPeriod, secondPeriod), DATE)
+                .compare(source(row(firstLoad.getFioTeacher(), "7-А", 4)));
+
+        assertThat(result.findings()).isEmpty();
+    }
     @Test void oneSlotSplitAcrossRowsIsSummed() {
         var r = row("Иванов Иван Иванович","7-А",3);
         var result = compareWith(List.of(plan(6)),List.of(load(6))).compare(source(r,r));
@@ -139,5 +156,12 @@ class FotComparisonTest {
         assertThat(compareWith(List.of(plan(3)),List.of()).compare(source(unassigned)).findings()).isEmpty();
         var partial = new FotDtos.SourceRow(7,"Иванов Иван Иванович","7-А","CORE","Алгебра",BigDecimal.valueOf(3),BigDecimal.valueOf(2),BigDecimal.ONE);
         assertThat(compareWith(List.of(plan(3)),List.of(load(2))).compare(source(partial)).findings()).isEmpty();
+    }
+
+    static StudyPeriodSetting period(StudyPeriod value, LocalDate from, LocalDate to) {
+        var result = new StudyPeriodSetting();
+        result.setStudyPeriod(value); result.setParallelFrom(1); result.setParallelTo(9);
+        result.setStartDate(from); result.setEndDate(to);
+        return result;
     }
 }
