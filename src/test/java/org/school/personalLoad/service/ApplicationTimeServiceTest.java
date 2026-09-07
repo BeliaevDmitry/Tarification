@@ -3,6 +3,7 @@ package org.school.personalLoad.service;
 import org.junit.jupiter.api.Test;
 import org.school.personalLoad.model.ApplicationTimeSettings;
 import org.school.personalLoad.repository.ApplicationTimeSettingsRepository;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 import java.time.*;
 import java.util.Optional;
@@ -14,6 +15,18 @@ import static org.mockito.Mockito.*;
 
 class ApplicationTimeServiceTest {
     private static final Instant SYSTEM_INSTANT = Instant.parse("2026-09-07T09:00:00Z");
+
+    @Test
+    void springCreatesServiceWithRepositoryConstructor() {
+        ApplicationTimeSettingsRepository repository = mock(ApplicationTimeSettingsRepository.class);
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.registerBean(ApplicationTimeSettingsRepository.class, () -> repository);
+            context.register(ApplicationTimeService.class);
+            context.refresh();
+
+            assertThat(context.getBean(ApplicationTimeService.class)).isNotNull();
+        }
+    }
 
     @Test
     void defaultsToExactMoscowTime() {

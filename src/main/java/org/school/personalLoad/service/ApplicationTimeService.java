@@ -2,6 +2,7 @@ package org.school.personalLoad.service;
 
 import org.school.personalLoad.model.ApplicationTimeSettings;
 import org.school.personalLoad.repository.ApplicationTimeSettingsRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +17,7 @@ public class ApplicationTimeService {
     private final ApplicationTimeSettingsRepository repository;
     private final Clock systemClock;
 
+    @Autowired
     public ApplicationTimeService(ApplicationTimeSettingsRepository repository) {
         this(repository, Clock.systemUTC());
     }
