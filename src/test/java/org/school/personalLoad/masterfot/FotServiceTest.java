@@ -70,6 +70,22 @@ class FotServiceTest {
         assertThat(history.getLast().isComparisonComplete()).isFalse();
         assertThat(stored.values()).noneMatch(FotIssue::isArchived);
     }
+    @Test void incompleteComparisonArchivesOnlyObsoleteMappingPrompts() throws Exception {
+        when(parser.parse(any(),eq(year))).thenReturn(FotComparisonTest.source(FotComparisonTest.row("Первый неизвестный","7-А",3)));
+        service.upload(year,FotParserTest.file(false),"Методист");
+        FotIssue firstMapping = stored.values().stream()
+                .filter(issue -> issue.getFindingJson().contains("\"type\":\"MAPPING\""))
+                .findFirst().orElseThrow();
+
+        when(parser.parse(any(),eq(year))).thenReturn(FotComparisonTest.source(FotComparisonTest.row("Второй неизвестный","7-А",3)));
+        service.upload(year,FotParserTest.file(false),"Методист");
+
+        assertThat(history.getLast().isComparisonComplete()).isFalse();
+        assertThat(firstMapping.isArchived()).isTrue();
+        assertThat(firstMapping.getArchivedBatchId()).isEqualTo(2L);
+        assertThat(stored.values()).anyMatch(issue -> !issue.isArchived()
+                && issue.getFindingJson().contains("Второй неизвестный"));
+    }
     @Test void oldFileAndWrongYearDecisionRejectedBeforeMutation() throws Exception {
         upload(2); FotIssue issue = first();
         assertThatThrownBy(() -> service.decision("2025/2026",issue.getId(),new FotDtos.DecisionRequest("FIXED","",0),"Тест")).hasMessageContaining("не найдена");

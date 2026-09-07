@@ -38,43 +38,67 @@ public class FotParser {
     }
 
     private List<FotDtos.SourceRow> parseGrouped(Sheet sheet, DataFormatter fmt, FormulaEvaluator evaluator) {
-            String[] header = {"Учебная группа", "Должность", "Часть УП", "Предмет"};
-            for (int c = 0; c < header.length; c++) if (!header[c].equals(value(sheet, 3, c, fmt)))
-                throw new IllegalArgumentException("Не распознан столбец " + (c + 1) + ": ожидается «" + header[c] + "»");
-            for (int c = 4; c <= 6; c++) if (!List.of("Всего", "Назначено", "Не назначено").get(c - 4).equals(value(sheet, 4, c, fmt)))
-                throw new IllegalArgumentException("Не распознаны колонки часов Мастер ФОТ");
-            List<FotDtos.SourceRow> rows = new ArrayList<>();
-            String teacher = "";
-            BigDecimal sumTotal = BigDecimal.ZERO, sumAssigned = BigDecimal.ZERO, sumUnassigned = BigDecimal.ZERO;
-            boolean footer = false;
-            for (int i = 5; i <= sheet.getLastRowNum(); i++) {
-                Row row = sheet.getRow(i);
-                String group = value(sheet, i, 0, fmt), subject = value(sheet, i, 3, fmt);
-                if (group.equalsIgnoreCase("ОБЩИЙ ИТОГ")) {
-                    if (footer) throw new IllegalArgumentException("В файле несколько общих итогов");
-                    footer = true;
-                    if (sumTotal.compareTo(number(row, 4, evaluator)) != 0 || sumAssigned.compareTo(number(row, 5, evaluator)) != 0 || sumUnassigned.compareTo(number(row, 6, evaluator)) != 0)
-                        throw new IllegalArgumentException("Сумма часов строк не совпадает с общим итогом. Загрузите полную выгрузку");
-                    continue;
-                }
-                if (group.toUpperCase(Locale.ROOT).startsWith("ИТОГ")) { teacher = ""; continue; }
-                if (group.isBlank() && subject.isBlank()) continue;
-                if (footer) throw new IllegalArgumentException("После общего итога обнаружены данные");
-                if (subject.isBlank()) {
-                    if (!value(sheet, i, 2, fmt).isBlank() || !value(sheet, i, 4, fmt).isBlank())
-                        throw new IllegalArgumentException("Строка " + (i + 1) + ": не указан предмет");
-                    teacher = group;
-                    continue;
-                }
-                if (teacher.isBlank() || group.isBlank()) throw new IllegalArgumentException("Строка " + (i + 1) + ": не найдены педагог или учебная группа");
-                String part = part(value(sheet, i, 2, fmt), i);
-                BigDecimal total = number(row, 4, evaluator), assigned = number(row, 5, evaluator), unassigned = number(row, 6, evaluator);
-                if (total.compareTo(assigned.add(unassigned)) != 0) throw new IllegalArgumentException("Строка " + (i + 1) + ": всего часов не равно назначенным и неназначенным");
-                rows.add(new FotDtos.SourceRow(i + 1, teacher, group, part, subject, total, assigned, unassigned));
-                sumTotal = sumTotal.add(total); sumAssigned = sumAssigned.add(assigned); sumUnassigned = sumUnassigned.add(unassigned);
+        String[] header = {"Учебная группа", "Должность", "Часть УП", "Предмет"};
+        for (int c = 0; c < header.length; c++) if (!header[c].equals(value(sheet, 3, c, fmt)))
+            throw new IllegalArgumentException("Не распознан столбец " + (c + 1) + ": ожидается «" + header[c] + "»");
+        for (int c = 4; c <= 6; c++) if (!List.of("Всего", "Назначено", "Не назначено").get(c - 4).equals(value(sheet, 4, c, fmt)))
+            throw new IllegalArgumentException("Не распознаны колонки часов Мастер ФОТ");
+
+        boolean topSummary = "ВСЕГО ПО ШКОЛЕ".equalsIgnoreCase(value(sheet, 5, 0, fmt));
+        Row summary = topSummary ? sheet.getRow(5) : null;
+        List<FotDtos.SourceRow> rows = new ArrayList<>();
+        String teacher = "";
+        BigDecimal sumTotal = BigDecimal.ZERO, sumAssigned = BigDecimal.ZERO, sumUnassigned = BigDecimal.ZERO;
+        boolean footer = false, expectTeacher = !topSummary;
+        for (int i = topSummary ? 6 : 5; i <= sheet.getLastRowNum(); i++) {
+            Row row = sheet.getRow(i);
+            String group = value(sheet, i, 0, fmt), subject = value(sheet, i, 3, fmt);
+            if (group.equalsIgnoreCase("ОБЩИЙ ИТОГ")) {
+                if (footer) throw new IllegalArgumentException("В файле несколько общих итогов");
+                footer = true;
+                verifyTotals(sumTotal, sumAssigned, sumUnassigned, row, 4, evaluator, "общим итогом");
+                continue;
             }
-            if (rows.isEmpty() || !footer) throw new IllegalArgumentException("Нужна полная выгрузка с данными и строкой «ОБЩИЙ ИТОГ»");
-            return rows;
+            if (group.toUpperCase(Locale.ROOT).startsWith("ИТОГ")) {
+                teacher = "";
+                expectTeacher = true;
+                continue;
+            }
+            if (group.isBlank() && subject.isBlank()) continue;
+            if (footer) throw new IllegalArgumentException("После общего итога обнаружены данные");
+            if (subject.isBlank()) {
+                if (!expectTeacher || group.isBlank() || hasValues(sheet, i, 1, 6, fmt))
+                    throw new IllegalArgumentException("Строка " + (i + 1) + ": после «ИТОГО ПО ГРУППЕ» ожидается только ФИО педагога в столбце A");
+                teacher = group;
+                expectTeacher = false;
+                continue;
+            }
+            if (expectTeacher || teacher.isBlank() || group.isBlank())
+                throw new IllegalArgumentException("Строка " + (i + 1) + ": перед нагрузкой не найден педагог после «ИТОГО ПО ГРУППЕ»");
+            String part = part(value(sheet, i, 2, fmt), i);
+            BigDecimal total = number(row, 4, evaluator), assigned = number(row, 5, evaluator), unassigned = number(row, 6, evaluator);
+            if (total.compareTo(assigned.add(unassigned)) != 0)
+                throw new IllegalArgumentException("Строка " + (i + 1) + ": всего часов не равно назначенным и неназначенным");
+            rows.add(new FotDtos.SourceRow(i + 1, teacher, group, part, subject, total, assigned, unassigned));
+            sumTotal = sumTotal.add(total); sumAssigned = sumAssigned.add(assigned); sumUnassigned = sumUnassigned.add(unassigned);
+        }
+        if (rows.isEmpty()) throw new IllegalArgumentException("В выгрузке нет строк нагрузки");
+        if (topSummary) verifyTotals(sumTotal, sumAssigned, sumUnassigned, summary, 4, evaluator, "итогом по школе");
+        else if (!footer) throw new IllegalArgumentException("Нужна полная выгрузка с данными и строкой «ОБЩИЙ ИТОГ»");
+        return rows;
+    }
+
+    private void verifyTotals(BigDecimal total, BigDecimal assigned, BigDecimal unassigned, Row row,
+                              int firstColumn, FormulaEvaluator evaluator, String label) {
+        if (total.compareTo(number(row, firstColumn, evaluator)) != 0
+                || assigned.compareTo(number(row, firstColumn + 1, evaluator)) != 0
+                || unassigned.compareTo(number(row, firstColumn + 2, evaluator)) != 0)
+            throw new IllegalArgumentException("Сумма часов строк не совпадает с " + label + ". Загрузите полную выгрузку");
+    }
+
+    private boolean hasValues(Sheet sheet, int row, int fromColumn, int toColumn, DataFormatter fmt) {
+        for (int c = fromColumn; c <= toColumn; c++) if (!value(sheet, row, c, fmt).isBlank()) return true;
+        return false;
     }
 
     private List<FotDtos.SourceRow> parseFlat(Sheet sheet, DataFormatter fmt, FormulaEvaluator evaluator) {

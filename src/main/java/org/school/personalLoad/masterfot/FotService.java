@@ -63,14 +63,14 @@ public class FotService {
             issue.setFindingJson(write(finding));
             issues.save(issue);
         }
-        // Unmapped rows can hide real differences. Never archive on an incomplete comparison.
-        if (comparison.complete()) {
-            for (FotIssue issue : old.values()) {
-                if (!present.contains(issue.getId()) && !issue.isArchived()) {
-                    issue.setArchived(true); issue.setArchivedBatchId(batch.getId());
-                    issue.setUpdatedAt(LocalDateTime.now()); issue.setUpdatedBy(user);
-                    issues.save(issue);
-                }
+        // Unmapped rows can hide real differences, so keep old discrepancies until a complete comparison.
+        // Obsolete mapping prompts are safe to archive and must not accumulate after a new upload.
+        for (FotIssue issue : old.values()) {
+            if (!present.contains(issue.getId()) && !issue.isArchived()
+                    && (comparison.complete() || isMappingIssue(issue))) {
+                issue.setArchived(true); issue.setArchivedBatchId(batch.getId());
+                issue.setUpdatedAt(LocalDateTime.now()); issue.setUpdatedBy(user);
+                issues.save(issue);
             }
         }
         return batchRow(batch);
@@ -158,6 +158,10 @@ public class FotService {
             return new FotDtos.IssueRow(issue.getId(), json.readValue(issue.getFindingJson(), FotDtos.Finding.class), issue.getStatus(), issue.getComment(),
                     issue.isArchived(), issue.getFirstBatchId(), issue.getLastBatchId(), issue.getArchivedBatchId(), issue.getUpdatedAt(), issue.getUpdatedBy(), issue.getVersion());
         } catch (Exception ex) { throw new IllegalStateException("Не удалось прочитать нестыковку", ex); }
+    }
+    private boolean isMappingIssue(FotIssue issue) {
+        try { return "MAPPING".equals(json.readValue(issue.getFindingJson(), FotDtos.Finding.class).type()); }
+        catch (Exception ex) { return false; }
     }
     private String write(Object value) { try { return json.writeValueAsString(value); } catch (Exception ex) { throw new IllegalStateException(ex); } }
 }
