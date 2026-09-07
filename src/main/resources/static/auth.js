@@ -442,6 +442,43 @@ function insertReadonlyNotice(currentUser) {
     header.appendChild(note);
 }
 
+let applicationClockBase = null;
+let applicationClockSynchronizedAt = null;
+let applicationClockTimer = null;
+
+function applicationClockMillis(value) {
+    const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (!match) return null;
+    return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]),
+        Number(match[4]), Number(match[5]), Number(match[6] || 0));
+}
+
+function renderApplicationClock() {
+    const node = document.getElementById('header-server-time');
+    if (!node || applicationClockBase === null || applicationClockSynchronizedAt === null) return;
+    const current = new Date(applicationClockBase + (Date.now() - applicationClockSynchronizedAt));
+    const two = value => String(value).padStart(2, '0');
+    node.textContent = `${two(current.getUTCDate())}.${two(current.getUTCMonth() + 1)}.${current.getUTCFullYear()} `
+        + `${two(current.getUTCHours())}:${two(current.getUTCMinutes())}:${two(current.getUTCSeconds())}`;
+}
+
+async function refreshApplicationClock(value) {
+    try {
+        const result = value || await tarificationApi('/api/application-time');
+        const parsed = applicationClockMillis(result?.currentDateTime);
+        if (parsed === null) return;
+        applicationClockBase = parsed;
+        applicationClockSynchronizedAt = Date.now();
+        renderApplicationClock();
+        if (applicationClockTimer === null) applicationClockTimer = window.setInterval(renderApplicationClock, 1000);
+    } catch {
+        const node = document.getElementById('header-server-time');
+        if (node) node.textContent = 'Время недоступно';
+    }
+}
+
+window.refreshApplicationClock = refreshApplicationClock;
+
 function mountHeaderUser(currentUser) {
     const header = stickyHeader();
     if (!header) return;
@@ -465,6 +502,7 @@ function mountHeaderUser(currentUser) {
         controls.className = 'header-user-inline';
         controls.innerHTML = `
             <a class="home-link" href="/index.html" title="Главное меню" aria-label="Главное меню">🏠</a>
+            <span class="header-server-time" id="header-server-time" title="Дата и время приложения · Москва">Загрузка…</span>
             <label class="header-year-select-wrap">
                 <select id="academic-year-select"></select>
             </label>
@@ -472,6 +510,8 @@ function mountHeaderUser(currentUser) {
             <button type="button" id="logout-btn">Выйти</button>`;
         titleRow.appendChild(controls);
     }
+
+    refreshApplicationClock();
 
     const badge = controls.querySelector('#profile-btn');
     if (badge) {

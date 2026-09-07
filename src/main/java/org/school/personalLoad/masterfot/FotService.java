@@ -42,9 +42,6 @@ public class FotService {
     public FotDtos.BatchRow upload(String year, MultipartFile file, String user, String expectedSchoolCode) {
         FotDtos.Source source = parser.parse(file, year);
         verifySchool(source.organization(), expectedSchoolCode);
-        List<FotBatch> previous = batches.findAllByAcademicYearOrderByIdDesc(year);
-        if (!previous.isEmpty() && source.date().isBefore(previous.get(0).getSnapshotDate()))
-            throw new IllegalArgumentException("Дата файла раньше последней выгрузки. Для следующей итерации нужен файл не старше " + previous.get(0).getSnapshotDate());
         FotDtos.Comparison comparison = comparison(year, source.date()).compare(source);
         FotBatch batch = new FotBatch();
         batch.setAcademicYear(year); batch.setFilename(Objects.toString(file.getOriginalFilename(), "Тарификация.xlsx"));

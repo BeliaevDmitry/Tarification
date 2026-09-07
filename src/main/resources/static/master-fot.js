@@ -67,7 +67,8 @@
             const form = new FormData(); form.append('file', file);
             const result = await api('/import', { method: 'POST', body: form });
             await refresh(); options = null;
-            message(`Сверка № ${result.id} сохранена: ${result.rows} строк, ${result.findings} нестыковок. Дата файла: ${result.date}.`);
+            $('file').value = '';
+            message(`Сверка № ${result.id} сохранена как последняя версия: ${result.rows} строк, ${result.findings} нестыковок. Дата внутри файла: ${result.date}.`);
         } catch (e) { message(e.message); }
         finally { busy = false; $('upload').disabled = false; }
     }

@@ -275,6 +275,46 @@ hr {
     background: #dbeafe;
 }
 
+.header-server-time {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 0 10px;
+    border: 1px solid #dbe5f1;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #334155;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.admin-time-status {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+    margin: 14px 0;
+    padding: 16px;
+    border: 1px solid #dbe5f1;
+    border-radius: 12px;
+    background: #f8fafc;
+}
+
+.admin-time-status strong {
+    color: #1d4ed8;
+    font-size: 22px;
+    font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+    .header-server-time {
+        order: 2;
+        font-size: 12px;
+    }
+}
+
 .header-user-badge {
     display: inline-flex;
     align-items: center;
