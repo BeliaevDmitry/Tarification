@@ -20,6 +20,12 @@ public interface ContingentService {
 
     byte[] exportClassStudents(String academicYear, LocalDate snapshotDate, String className);
 
+    byte[] exportStudents(String academicYear,
+                          LocalDate snapshotDate,
+                          String groupBy,
+                          List<Integer> parallels,
+                          List<String> buildingCodes);
+
     byte[] exportStats(String academicYear, LocalDate snapshotDate);
 
     List<ContingentDtos.ImportProblem> getProblems(String academicYear, Long snapshotId);

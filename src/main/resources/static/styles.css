@@ -2792,6 +2792,39 @@ td.vacancy-row {
     cursor: pointer;
 }
 
+.contingent-custom-export {
+    margin: 16px 0;
+}
+
+.contingent-export-fieldset {
+    margin: 12px 0 0;
+    padding: 12px;
+    border: 1px solid #dbe3eb;
+    border-radius: 10px;
+}
+
+.contingent-export-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.contingent-export-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 36px;
+    padding: 7px 11px;
+    border: 1px solid #cbd5e1;
+    border-radius: 9px;
+    background: #f8fafc;
+    cursor: pointer;
+}
+
+.contingent-export-option input {
+    margin: 0;
+}
+
 .contingent-mismatch-dialog {
     width: min(780px, calc(100vw - 24px));
     max-height: calc(100vh - 24px);

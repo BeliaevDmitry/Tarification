@@ -38,6 +38,24 @@ public class ContingentStudent {
     @Column(nullable = false)
     private String fullName;
 
+    @Column(name = "mesh_profile_id", length = 100)
+    private String meshProfileId;
+
+    @Column(name = "mesh_person_id", length = 100)
+    private String meshPersonId;
+
+    @Column(name = "mesh_user_id", length = 100)
+    private String meshUserId;
+
+    @Column(name = "mesh_class_unit_id", length = 100)
+    private String meshClassUnitId;
+
+    @Column(name = "mesh_groups", columnDefinition = "text")
+    private String meshGroups;
+
+    @Column(name = "mesh_ae_groups", columnDefinition = "text")
+    private String meshAeGroups;
+
     @Column(nullable = false)
     private String gender;
 

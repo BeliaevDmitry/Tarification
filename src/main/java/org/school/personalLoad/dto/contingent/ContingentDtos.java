@@ -114,6 +114,7 @@ public final class ContingentDtos {
         private Long studentId;
         private String fullName;
         private LocalDate birthDate;
+        private Integer age;
         private String className;
         private String recordNumber;
         private String snils;

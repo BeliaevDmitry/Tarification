@@ -4,7 +4,7 @@
     const CFG = {
         perPage: 100,
         delay: 150,
-        includeHidden: false
+        includeHiddenRepresentatives: false
     };
 
     // Для остановки: window.__MES_EXPORT_STOP = true;
@@ -540,7 +540,7 @@
                 ? s.parents
                 : [];
 
-        if (!CFG.includeHidden) {
+        if (!CFG.includeHiddenRepresentatives) {
             list =
                 list.filter(
                     p => p.hidden !== true
@@ -596,12 +596,73 @@
         return value || '';
     }
 
+    function groupName(group) {
+        if (group === null || group === undefined) return '';
+        if (typeof group === 'string' || typeof group === 'number') return String(group);
+        return group.name ||
+            group.title ||
+            group.group_name ||
+            group.short_name ||
+            group.display_name ||
+            group.subject_name ||
+            group?.subject?.name ||
+            '';
+    }
+
+    function groupId(group) {
+        if (!group || typeof group !== 'object') return '';
+        return group.id ?? group.group_id ?? group.education_group_id ?? '';
+    }
+
+    function groupsToNames(groups) {
+        if (!Array.isArray(groups) || !groups.length) return '';
+        return groups.map(group => {
+            const name = groupName(group);
+            const id = groupId(group);
+            if (name && id !== '') return `${name} [ID ${id}]`;
+            if (name) return name;
+            if (id !== '') return `ID ${id}`;
+            try {
+                return JSON.stringify(group);
+            } catch {
+                return '';
+            }
+        }).filter(Boolean).join('; ');
+    }
+
+    function groupsToJson(groups) {
+        if (!Array.isArray(groups) || !groups.length) return '';
+        try {
+            return JSON.stringify(groups);
+        } catch {
+            return '';
+        }
+    }
+
     const rows =
         students.map(s => {
 
             const row = {
+                'ID профиля ученика':
+                    s.id ?? '',
+
+                'Person ID':
+                    s.person_id ?? '',
+
+                'User ID':
+                    s.user_id ?? '',
+
                 'ФИО ребёнка':
                     s.user_name || '',
+
+                'Фамилия':
+                    s.last_name || '',
+
+                'Имя':
+                    s.first_name || '',
+
+                'Отчество':
+                    s.middle_name || '',
 
                 'Дата рождения':
                     s.birth_date || '',
@@ -614,6 +675,9 @@
 
                 'Класс / группа':
                     s.class_unit?.name || '',
+
+                'Class Unit ID':
+                    s.class_unit?.id ?? '',
 
                 'Логин ребёнка':
                     s.gusoev_login || '',
@@ -660,7 +724,25 @@
                             .map(x => x.name)
                             .filter(Boolean)
                             .join('; ')
-                        : ''
+                        : '',
+
+                'Группы ребёнка':
+                    groupsToNames(s.groups),
+
+                'Количество groups':
+                    Array.isArray(s.groups) ? s.groups.length : 0,
+
+                'Groups JSON':
+                    groupsToJson(s.groups),
+
+                'AE группы':
+                    groupsToNames(s.ae_groups),
+
+                'Количество ae_groups':
+                    Array.isArray(s.ae_groups) ? s.ae_groups.length : 0,
+
+                'AE Groups JSON':
+                    groupsToJson(s.ae_groups)
             };
 
             const reps =
@@ -707,6 +789,21 @@
                     `Представитель ${n} — СНИЛС`
                 ] =
                     p.snils || '';
+
+                row[
+                    `Представитель ${n} — ID`
+                ] =
+                    p.id ?? '';
+
+                row[
+                    `Представитель ${n} — Person ID`
+                ] =
+                    p.person_id ?? '';
+
+                row[
+                    `Представитель ${n} — User ID`
+                ] =
+                    p.user_id ?? '';
             }
 
             return row;
@@ -717,6 +814,21 @@
 
     window.__MES_ROWS =
         rows;
+
+    window.__MES_GROUP_STUDENTS =
+        students.filter(s => Array.isArray(s.groups) && s.groups.length);
+
+    window.__MES_AE_GROUP_STUDENTS =
+        students.filter(s => Array.isArray(s.ae_groups) && s.ae_groups.length);
+
+    window.__MES_EXPORT_INFO = {
+        schoolId,
+        academicYearId,
+        students: students.length,
+        studentsWithGroups: window.__MES_GROUP_STUDENTS.length,
+        studentsWithAeGroups: window.__MES_AE_GROUP_STUDENTS.length,
+        maxRepresentatives: maxParents
+    };
 
     console.table(
         rows.slice(0, 20)

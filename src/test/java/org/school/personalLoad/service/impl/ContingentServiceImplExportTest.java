@@ -28,6 +28,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import java.io.ByteArrayOutputStream;
 import java.io.ByteArrayInputStream;
 import java.time.LocalDate;
+import java.time.Period;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -146,6 +147,7 @@ class ContingentServiceImplExportTest {
         assertEquals(1, rows.size());
         assertEquals("123-456-789 01", rows.get(0).getSnils());
         assertEquals("+7 900 100-20-30", rows.get(0).getChildPhone());
+        assertEquals(Period.between(LocalDate.of(2011, 2, 1), LocalDate.now()).getYears(), rows.get(0).getAge());
         assertEquals("Петрова Мария Сергеевна\nИванов Пётр Андреевич", rows.get(0).getRepresentativeNames());
         assertEquals("+7 901 111-22-33\n+7 902 444-55-66", rows.get(0).getRepresentativePhones());
 
@@ -153,11 +155,54 @@ class ContingentServiceImplExportTest {
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
             var sheet = workbook.getSheet("Список класса");
             assertNotNull(sheet);
-            assertEquals("СНИЛС", sheet.getRow(1).getCell(3).getStringCellValue());
-            assertEquals("Телефон ребёнка", sheet.getRow(1).getCell(4).getStringCellValue());
+            assertEquals("Возраст", sheet.getRow(1).getCell(3).getStringCellValue());
+            assertEquals("СНИЛС", sheet.getRow(1).getCell(4).getStringCellValue());
+            assertEquals("Телефон ребёнка", sheet.getRow(1).getCell(5).getStringCellValue());
             assertEquals("Иванов Иван Иванович", sheet.getRow(2).getCell(1).getStringCellValue());
+            assertEquals(rows.get(0).getAge().doubleValue(), sheet.getRow(2).getCell(3).getNumericCellValue(), 0.01);
             assertEquals("Петрова Мария Сергеевна\nИванов Пётр Андреевич",
-                    sheet.getRow(2).getCell(5).getStringCellValue());
+                    sheet.getRow(2).getCell(6).getStringCellValue());
+        }
+    }
+
+    @Test
+    void customizableExportFiltersParallelsAndCreatesSheetsByBuilding() throws Exception {
+        LocalDate snapshotDate = LocalDate.of(2025, 9, 1);
+        ContingentSnapshot snapshot = new ContingentSnapshot();
+        snapshot.setId(92L);
+        snapshot.setAcademicYear("2025/2026");
+        snapshot.setSnapshotDate(snapshotDate);
+
+        ContingentStudent first = exportStudent(92L, "Иванов Иван Иванович", "5-А", "01.01.2014");
+        ContingentStudent second = exportStudent(92L, "Петрова Анна Сергеевна", "5-Б", "31.12.2014");
+        ContingentStudent third = exportStudent(92L, "Сидоров Пётр Андреевич", "6-А", "15.05.2013");
+
+        when(snapshotRepository.findFirstByAcademicYearAndSnapshotDateOrderByImportedAtDesc(
+                "2025/2026", snapshotDate)).thenReturn(Optional.of(snapshot));
+        when(studentRepository.findAllBySnapshotId(92L)).thenReturn(List.of(first, second, third));
+        when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(
+                classEntry("СП1", "5-А", "Адрес 1"),
+                classEntry("СП2", "5-Б", "Адрес 2"),
+                classEntry("СП2", "6-А", "Адрес 2")
+        ));
+        when(schoolBuildingRepository.findByCode("СП1")).thenReturn(Optional.empty());
+        when(schoolBuildingRepository.findByCode("СП2")).thenReturn(Optional.empty());
+
+        byte[] body = service.exportStudents(
+                "2025/2026", snapshotDate, "BUILDING", List.of(5), List.of("СП2")
+        );
+
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
+            assertEquals(1, workbook.getNumberOfSheets());
+            var sheet = workbook.getSheet("СП2");
+            assertNotNull(sheet);
+            assertEquals(2, sheet.getLastRowNum());
+            assertEquals("Возраст", sheet.getRow(1).getCell(4).getStringCellValue());
+            assertEquals("5-Б", sheet.getRow(2).getCell(1).getStringCellValue());
+            assertEquals("Петрова Анна Сергеевна", sheet.getRow(2).getCell(2).getStringCellValue());
+            assertEquals(org.apache.poi.ss.usermodel.CellType.NUMERIC, sheet.getRow(2).getCell(3).getCellType());
+            assertEquals(Period.between(LocalDate.of(2014, 12, 31), LocalDate.now()).getYears(),
+                    (int) sheet.getRow(2).getCell(4).getNumericCellValue());
         }
     }
 
@@ -262,13 +307,17 @@ class ContingentServiceImplExportTest {
                 + "\"Логин ребёнка\";\"Email ребёнка\";\"Телефон ребёнка\";\"СНИЛС ребёнка\";"
                 + "\"Классный руководитель / наставник\";\"Представитель 1 — тип\";\"Представитель 1 — ФИО\";"
                 + "\"Представитель 1 — логин\";\"Представитель 1 — телефон\";\"Представитель 1 — email\";"
-                + "\"Представитель 1 — СНИЛС\"\r\n"
+                + "\"Представитель 1 — СНИЛС\";\"ID профиля ученика\";\"Person ID\";\"User ID\";"
+                + "\"Class Unit ID\";\"Groups JSON\";\"AE Groups JSON\"\r\n"
                 + "\"Иванов Иван Иванович\";\"01.02.2018\";\"8\";\"М\";\"3-А\";\"ivanovii\";"
                 + "\"child@example.ru\";\"9001002030\";\"123-456-789 01\";\"Учитель Тестовый\";\"Родитель\";"
                 + "\"Петрова \"\"Мама\"\" Мария Сергеевна\";\"petrovams\";\"9112223344\";\"parent@example.ru\";"
-                + "\"111-222-333 44\"\r\n"
+                + "\"111-222-333 44\";\"501\";\"601\";\"701\";\"801\";"
+                + "\"[{\"\"id\"\":901,\"\"name\"\":\"\"Математика\"\"}]\";"
+                + "\"[{\"\"education_group_id\"\":902,\"\"name\"\":\"\"Робототехника\"\"}]\"\r\n"
                 + "\"Сидорова Анна Игоревна\";\"10.03.2021\";\"5\";\"Ж\";\"Старшая группа 16А\";"
-                + "\"sidorovaai\";\"\";\"\";\"987-654-321 00\";\"Наставник Тестовый\";\"\";\"\";\"\";\"\";\"\";\"\"";
+                + "\"sidorovaai\";\"\";\"\";\"987-654-321 00\";\"Наставник Тестовый\";\"\";\"\";\"\";\"\";\"\";\"\";"
+                + "\"502\";\"602\";\"702\";\"802\";\"\";\"\"";
 
         AtomicReference<ContingentSnapshot> savedSnapshot = new AtomicReference<>();
         AtomicReference<List<ContingentStudent>> savedStudents = new AtomicReference<>(List.of());
@@ -310,6 +359,12 @@ class ContingentServiceImplExportTest {
         assertEquals("123-456-789 01", first.getPensionInsurance());
         assertEquals("Петрова \"Мама\" Мария Сергеевна", first.getRepresentativeName());
         assertEquals("9112223344", first.getRepresentativePhone());
+        assertEquals("501", first.getMeshProfileId());
+        assertEquals("601", first.getMeshPersonId());
+        assertEquals("701", first.getMeshUserId());
+        assertEquals("801", first.getMeshClassUnitId());
+        assertTrue(first.getMeshGroups().contains("Математика"));
+        assertTrue(first.getMeshAeGroups().contains("Робототехника"));
         assertTrue(first.getRawPayload().contains("Петрова \\\"Мама\\\" Мария Сергеевна"));
         assertTrue(first.getRawPayload().contains("Представитель 1 — телефон"));
         assertTrue(first.getRawPayload().contains("9112223344"));
@@ -408,6 +463,20 @@ class ContingentServiceImplExportTest {
         var row = sheet.createRow(index);
         row.createCell(0).setCellValue(fullName);
         row.createCell(1).setCellValue(placement);
+    }
+
+    private ContingentStudent exportStudent(Long snapshotId, String fullName, String className, String birthDate) {
+        ContingentStudent student = new ContingentStudent();
+        student.setSnapshotId(snapshotId);
+        student.setFullName(fullName);
+        student.setClassName(className);
+        student.setBirthDate(birthDate);
+        student.setPensionInsurance("123-456-789 01");
+        student.setPhone("+7 900 000-00-00");
+        student.setRepresentativeName("Представитель " + fullName);
+        student.setRepresentativePhone("+7 901 000-00-00");
+        student.setRawPayload("{}");
+        return student;
     }
 
     private ClassroomLeadershipEntry classEntry(String building, String className, String address) {
