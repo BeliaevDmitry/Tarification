@@ -32,6 +32,12 @@ const ui = {
     statsViewMode: document.getElementById('contingent-stats-view-mode'),
     statsTable: document.getElementById('contingent-stats-table'),
     statsSummary: document.getElementById('contingent-stats-summary'),
+    customExportMode: document.getElementById('contingent-custom-export-mode'),
+    customExportParallels: document.getElementById('contingent-custom-export-parallels'),
+    customExportBuildingsField: document.getElementById('contingent-custom-export-buildings-field'),
+    customExportBuildings: document.getElementById('contingent-custom-export-buildings'),
+    customExportDownload: document.getElementById('contingent-custom-export-download'),
+    customExportResult: document.getElementById('contingent-custom-export-result'),
     kindergartenSummary: document.getElementById('contingent-kindergarten-summary'),
     kindergartenTable: document.getElementById('contingent-kindergarten-table'),
     classStudentsDialog: document.getElementById('contingent-class-students-dialog'),
@@ -483,25 +489,111 @@ function renderKindergartenStats(stats) {
         <tr><th>ИТОГО ДЕТСКИЙ САД</th><th>${esc(total)}</th></tr>${unassignedRow}</tbody>`;
 }
 
+function checkedExportValues(container, attribute) {
+    return new Set(Array.from(container?.querySelectorAll(`input[${attribute}]:checked`) || [])
+        .map((input) => String(input.value)));
+}
+
+function exportOption(value, label, attribute, checked) {
+    return `<label class="contingent-export-option">
+        <input type="checkbox" ${attribute} value="${esc(value)}"${checked ? ' checked' : ''}>
+        <span>${esc(label)}</span>
+    </label>`;
+}
+
+function renderCustomExportOptions(stats) {
+    const previousParallels = checkedExportValues(ui.customExportParallels, 'data-export-parallel');
+    const previousBuildings = checkedExportValues(ui.customExportBuildings, 'data-export-building');
+    const hadParallels = Boolean(ui.customExportParallels?.children.length);
+    const hadBuildings = Boolean(ui.customExportBuildings?.children.length);
+
+    const parallels = Array.from(new Set((stats?.parallels || []).map(Number)))
+        .filter((value) => value >= 1 && value <= 11)
+        .sort((a, b) => a - b);
+    if (ui.customExportParallels) {
+        ui.customExportParallels.innerHTML = parallels.map((parallel) => exportOption(
+            parallel,
+            `${parallel} параллель`,
+            'data-export-parallel',
+            !hadParallels || previousParallels.has(String(parallel))
+        )).join('') || '<span class="muted">Параллели не найдены.</span>';
+    }
+
+    const buildings = (stats?.columns || []).map((building) => ({
+        code: String(building.buildingCode || 'НЕОПР'),
+        label: building.buildingName && building.buildingName !== building.buildingCode
+            ? `${building.buildingCode} — ${building.buildingName}`
+            : (building.buildingCode || building.buildingName || 'Корпус не определён')
+    }));
+    if (ui.customExportBuildings) {
+        ui.customExportBuildings.innerHTML = buildings.map((building) => exportOption(
+            building.code,
+            building.label,
+            'data-export-building',
+            !hadBuildings || previousBuildings.has(building.code)
+        )).join('') || '<span class="muted">Корпуса не найдены.</span>';
+    }
+    updateCustomExportMode();
+}
+
+function updateCustomExportMode() {
+    if (ui.customExportBuildingsField) {
+        ui.customExportBuildingsField.hidden = ui.customExportMode?.value !== 'BUILDING';
+    }
+}
+
+async function downloadCustomContingent() {
+    const parallels = Array.from(checkedExportValues(ui.customExportParallels, 'data-export-parallel'));
+    const groupBy = ui.customExportMode?.value || 'PARALLEL';
+    const buildings = Array.from(checkedExportValues(ui.customExportBuildings, 'data-export-building'));
+    if (!parallels.length) {
+        ui.customExportResult.textContent = 'Отметьте хотя бы одну параллель.';
+        return;
+    }
+    if (groupBy === 'BUILDING' && !buildings.length) {
+        ui.customExportResult.textContent = 'Отметьте хотя бы один корпус.';
+        return;
+    }
+
+    const params = new URLSearchParams({ groupBy });
+    if (ui.snapshotDateSelect?.value) params.set('snapshotDate', ui.snapshotDateSelect.value);
+    parallels.forEach((value) => params.append('parallels', value));
+    if (groupBy === 'BUILDING') buildings.forEach((value) => params.append('buildingCodes', value));
+
+    ui.customExportDownload.disabled = true;
+    ui.customExportResult.textContent = 'Формирую Excel-файл…';
+    try {
+        await downloadWorkbook(
+            `/api/contingent/students/export?${params}`,
+            `Контингент_${ui.snapshotDateSelect?.value || 'последний'}.xlsx`
+        );
+        ui.customExportResult.textContent = 'Файл скачан.';
+    } catch (error) {
+        ui.customExportResult.textContent = `Ошибка: ${error.message}`;
+    } finally {
+        ui.customExportDownload.disabled = false;
+    }
+}
+
 async function openClassStudents(className) {
     const selectedDate = ui.snapshotDateSelect?.value || '';
     const query = new URLSearchParams({ className });
     if (selectedDate) query.set('snapshotDate', selectedDate);
     currentClassStudentsClassName = className;
     ui.classStudentsTitle.textContent = `Класс ${className}`;
-    ui.classStudentsBody.innerHTML = '<tr><td colspan="7" class="muted">Загрузка…</td></tr>';
+    ui.classStudentsBody.innerHTML = '<tr><td colspan="8" class="muted">Загрузка…</td></tr>';
     ui.classStudentsDialog.showModal();
     try {
         const students = await api(`/api/contingent/class-students?${query}`);
         ui.classStudentsBody.innerHTML = students.length ? students.map((student, index) => `<tr>
             <td>${index + 1}</td><td>${esc(student.fullName)}</td>
-            <td>${esc(formatDisplayDate(student.birthDate))}</td><td>${esc(student.snils || '')}</td>
-            <td>${esc(student.childPhone || '')}</td>
+            <td>${esc(formatDisplayDate(student.birthDate))}</td><td>${esc(student.age ?? '')}</td>
+            <td>${esc(student.snils || '')}</td><td>${esc(student.childPhone || '')}</td>
             <td class="multiline-cell">${esc(student.representativeNames || '').replaceAll('\n', '<br>')}</td>
             <td class="multiline-cell">${esc(student.representativePhones || '').replaceAll('\n', '<br>')}</td></tr>`).join('')
-            : '<tr><td colspan="7" class="muted">В выбранной выгрузке детей этого класса нет.</td></tr>';
+            : '<tr><td colspan="8" class="muted">В выбранной выгрузке детей этого класса нет.</td></tr>';
     } catch (error) {
-        ui.classStudentsBody.innerHTML = `<tr><td colspan="7">Ошибка: ${esc(error.message)}</td></tr>`;
+        ui.classStudentsBody.innerHTML = `<tr><td colspan="8">Ошибка: ${esc(error.message)}</td></tr>`;
     }
 }
 
@@ -838,6 +930,7 @@ async function refreshStats() {
     ui.statsSummary.textContent = `Данные по состоянию на ${currentStats.snapshotDate}. В файле: ${Number(currentStats.totalImportedChildren || 0)} детей; в школьных классах: ${Number(currentStats.totalSchoolChildren || 0)}; в детском саду: ${Number(currentStats.totalKindergartenChildren || 0)}. Всего классов: ${totalClasses} (${stageClassSummary(currentStats)}). Для классов без численности применяется значение 30 человек.`;
     renderStatsTable(currentStats);
     renderKindergartenStats(currentStats);
+    renderCustomExportOptions(currentStats);
 }
 
 const supportCategoryLabel = (value) => ({ NORMAL: 'Норма', K2: 'К2', K3: 'К3' }[value] || value || '');
@@ -2089,6 +2182,9 @@ ui.statsViewMode?.addEventListener('change', () => {
         renderStatsTable(currentStats);
     }
 });
+
+ui.customExportMode?.addEventListener('change', updateCustomExportMode);
+ui.customExportDownload?.addEventListener('click', downloadCustomContingent);
 
 
 ui.statsExportBtn?.addEventListener('click', async () => {

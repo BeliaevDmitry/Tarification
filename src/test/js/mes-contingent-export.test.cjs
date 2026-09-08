@@ -7,11 +7,15 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../../main/resources/static/mes-contingent-export.js'), 'utf8');
 const endpoint = '/api/ej/core/teacher/v1/student_profiles';
 const student = (id) => ({
-    id, user_name: `Тестовый Ученик ${id}`, birth_date: '2015-01-02',
-    class_unit: { name: '5-А' }, phone_number: '+7 900 000-00-00',
+    id, person_id: 1000 + id, user_id: 2000 + id,
+    user_name: `Тестовый Ученик ${id}`, last_name: 'Тестовый', first_name: 'Ученик', middle_name: `${id}`,
+    birth_date: '2015-01-02', class_unit: { id: 3000 + id, name: '5-А' }, phone_number: '+7 900 000-00-00',
     education_level: 2, home_based_profile: false,
+    groups: [{ id: 4000 + id, name: 'Математика' }],
+    ae_groups: [{ education_group_id: 5000 + id, subject: { name: 'Робототехника' } }],
     parents: [
-        { name: 'Тестовый Представитель', phone_number_ezd: '+7 900 111-11-11' },
+        { id: 6000 + id, person_id: 7000 + id, user_id: 8000 + id,
+            name: 'Тестовый Представитель', phone_number_ezd: '+7 900 111-11-11' },
         { name: 'Скрытый Представитель', hidden: true }
     ]
 });
@@ -89,6 +93,13 @@ test('fetch uses the currently selected school and exports child/parent contacts
         const csv = await b.blobs[0].text();
         assert.match(csv, /"Телефон ребёнка"/);
         assert.match(csv, /"Уровень образования"/);
+        assert.match(csv, /"ID профиля ученика"/);
+        assert.match(csv, /"Class Unit ID"/);
+        assert.match(csv, /"Groups JSON"/);
+        assert.match(csv, /"AE Groups JSON"/);
+        assert.match(csv, /"Представитель 1 — Person ID"/);
+        assert.match(csv, /Математика \[ID 4001\]/);
+        assert.match(csv, /Робототехника \[ID 5001\]/);
         assert.match(csv, /\+7 900 000-00-00/);
         assert.match(csv, /\+7 900 111-11-11/);
         assert.doesNotMatch(csv, /Скрытый Представитель/);

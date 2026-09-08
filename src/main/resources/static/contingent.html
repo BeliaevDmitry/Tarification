@@ -40,6 +40,7 @@
 
         <details class="card mes-export-script-card" open>
             <summary><strong>Получить расширенную выгрузку из МЭШ</strong></summary>
+            <p class="muted">Один и тот же скрипт подходит для любой школы: выбранная школа и учебный год определяются автоматически.</p>
             <ol>
                 <li>Откройте МЭШ, выберите нужную школу и раздел «Контингент». Для выгрузки всей школы снимите фильтры таблицы.</li>
                 <li>Если второй страницы нет, до запуска скрипта временно выберите фильтр, например «Пол: Девочки».</li>
@@ -81,7 +82,7 @@
             </div>
         </div>
         <div class="sheet-wrap"><table class="sheet-table">
-            <thead><tr><th>№</th><th>ФИО</th><th>Дата рождения</th><th>СНИЛС</th><th>Телефон ребёнка</th><th>ФИО представителей</th><th>Телефоны представителей</th></tr></thead>
+            <thead><tr><th>№</th><th>ФИО</th><th>Дата рождения</th><th>Возраст</th><th>СНИЛС</th><th>Телефон ребёнка</th><th>ФИО представителей</th><th>Телефоны представителей</th></tr></thead>
             <tbody id="contingent-class-students-body"></tbody>
         </table></div>
     </dialog>
@@ -162,6 +163,28 @@
             <button id="contingent-stats-export-btn" type="button" data-allow-readonly="true">Экспорт на дату</button>
         </div>
         <div id="contingent-stats-summary" class="muted"></div>
+        <details class="card contingent-custom-export" open>
+            <summary><strong>Настраиваемое скачивание контингента</strong></summary>
+            <p class="muted">Возраст рассчитывается на день скачивания. Параллели можно ограничить в любом режиме.</p>
+            <div class="row controls-row">
+                <label>Разделить файл:
+                    <select id="contingent-custom-export-mode" data-allow-readonly="true">
+                        <option value="PARALLEL">По параллелям</option>
+                        <option value="BUILDING">По корпусам</option>
+                    </select>
+                </label>
+                <button id="contingent-custom-export-download" type="button" data-allow-readonly="true">Скачать контингент</button>
+            </div>
+            <fieldset class="contingent-export-fieldset">
+                <legend>Параллели</legend>
+                <div id="contingent-custom-export-parallels" class="contingent-export-options"></div>
+            </fieldset>
+            <fieldset id="contingent-custom-export-buildings-field" class="contingent-export-fieldset" hidden>
+                <legend>Корпуса</legend>
+                <div id="contingent-custom-export-buildings" class="contingent-export-options"></div>
+            </fieldset>
+            <p id="contingent-custom-export-result" class="muted" aria-live="polite"></p>
+        </details>
         <div class="sheet-wrap">
             <table class="sheet-table" id="contingent-stats-table"></table>
         </div>

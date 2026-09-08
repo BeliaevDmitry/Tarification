@@ -28,7 +28,11 @@ class ContingentImportFrontendTest {
         assertTrue(pageScript.contains("/api/contingent/import-mismatches/resolve"));
         assertTrue(exporter.contains("student_profiles"));
         assertTrue(exporter.contains("'ФИО ребёнка'"));
+        assertTrue(exporter.contains("'ID профиля ученика'"));
+        assertTrue(exporter.contains("'Groups JSON'"));
+        assertTrue(exporter.contains("'AE Groups JSON'"));
         assertTrue(exporter.contains("`Представитель ${n} — телефон`"));
+        assertTrue(exporter.contains("`Представитель ${n} — Person ID`"));
     }
 
     @Test
@@ -50,6 +54,7 @@ class ContingentImportFrontendTest {
         assertTrue(html.contains("снимите фильтры"));
         assertTrue(exporter.contains("'Телефон ребёнка'"));
         assertTrue(exporter.contains("'Уровень образования'"));
+        assertTrue(html.contains("подходит для любой школы"));
     }
 
     @Test
@@ -68,6 +73,7 @@ class ContingentImportFrontendTest {
         String pageScript = Files.readString(Path.of("src/main/resources/static/contingent.js"));
 
         assertTrue(html.contains("id=\"contingent-class-students-export\""));
+        assertTrue(html.contains("<th>Возраст</th>"));
         assertTrue(html.contains("<th>СНИЛС</th>"));
         assertTrue(html.contains("<th>Телефон ребёнка</th>"));
         assertTrue(html.contains("<th>ФИО представителей</th>"));
@@ -75,6 +81,11 @@ class ContingentImportFrontendTest {
         assertTrue(pageScript.contains("student.representativeNames"));
         assertTrue(pageScript.contains("student.representativePhones"));
         assertTrue(pageScript.contains("/api/contingent/class-students/export"));
+        assertTrue(html.contains("id=\"contingent-custom-export-mode\""));
+        assertTrue(html.contains("id=\"contingent-custom-export-parallels\""));
+        assertTrue(html.contains("id=\"contingent-custom-export-buildings\""));
+        assertTrue(pageScript.contains("/api/contingent/students/export"));
+        assertTrue(pageScript.contains("student.age"));
     }
 
     @Test

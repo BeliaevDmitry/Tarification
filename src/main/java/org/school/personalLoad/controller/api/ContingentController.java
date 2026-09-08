@@ -91,6 +91,22 @@ public class ContingentController {
         return workbookResponse(body, "Список класса " + className + " " + suffix + ".xlsx");
     }
 
+    @GetMapping("/students/export")
+    public ResponseEntity<byte[]> exportStudents(
+            @RequestParam(required = false) String academicYear,
+            @RequestParam(required = false) String snapshotDate,
+            @RequestParam(defaultValue = "PARALLEL") String groupBy,
+            @RequestParam(required = false) List<Integer> parallels,
+            @RequestParam(required = false) List<String> buildingCodes) {
+        String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
+        LocalDate date = (snapshotDate == null || snapshotDate.isBlank()) ? null : LocalDate.parse(snapshotDate);
+        byte[] body = contingentService.exportStudents(
+                effectiveYear, date, groupBy, parallels, buildingCodes
+        );
+        String suffix = date == null ? "последние" : date.toString();
+        return workbookResponse(body, "Контингент выборочно " + suffix + ".xlsx");
+    }
+
     @GetMapping("/import-mismatches")
     public ResponseEntity<ContingentDtos.ImportMismatchResponse> importMismatches(
             @RequestParam(required = false) String academicYear,
