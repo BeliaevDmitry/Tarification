@@ -54,6 +54,26 @@ class PersonnelServiceTest {
             schoolBuildings, paSpecifications, paVersions, paSummaries, paStudents);
 
     @Test
+    void positionsRemainAvailableFromEmployeesContractsAndRateRules() {
+        TeacherDirectoryEntry archivedEmployee = new TeacherDirectoryEntry();
+        archivedEmployee.setPrimaryPosition("  Учитель   математики  ");
+        archivedEmployee.setArchived(true);
+        EmploymentContract contract = new EmploymentContract();
+        contract.setPositionName("Педагог-психолог");
+        LoadInRateRule rule = new LoadInRateRule();
+        rule.setName("Учитель-дефектолог");
+        rule.setActive(true);
+        LoadInRateRule inactiveRule = new LoadInRateRule();
+        inactiveRule.setName("Устаревшая должность");
+        inactiveRule.setActive(false);
+        when(teachers.findAll()).thenReturn(List.of(archivedEmployee));
+        when(contracts.findAll()).thenReturn(List.of(contract));
+        when(rules.findAllByOrderByNameAsc()).thenReturn(List.of(rule, inactiveRule));
+
+        assertEquals(List.of("Педагог-психолог", "Учитель математики", "Учитель-дефектолог"), service.positions());
+    }
+
+    @Test
     void autoAssignmentChoosesPhysicalSiteWithMostHoursInsideSameBuildingGroup() {
         BuildingGroup group = new BuildingGroup();
         group.setId(1L);

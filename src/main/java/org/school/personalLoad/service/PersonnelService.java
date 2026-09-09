@@ -43,6 +43,27 @@ public class PersonnelService {
     private final PaReportStudentResultRepository paStudentResults;
 
     @Transactional(readOnly = true)
+    public List<String> positions() {
+        Set<String> result = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        Optional.ofNullable(teachers.findAll()).orElseGet(List::of).stream()
+                .map(TeacherDirectoryEntry::getPrimaryPosition)
+                .forEach(value -> addPosition(result, value));
+        Optional.ofNullable(contracts.findAll()).orElseGet(List::of).stream()
+                .map(EmploymentContract::getPositionName)
+                .forEach(value -> addPosition(result, value));
+        Optional.ofNullable(inRateRules.findAllByOrderByNameAsc()).orElseGet(List::of).stream()
+                .filter(LoadInRateRule::isActive)
+                .map(LoadInRateRule::getName)
+                .forEach(value -> addPosition(result, value));
+        return List.copyOf(result);
+    }
+
+    private void addPosition(Set<String> target, String value) {
+        String position = Objects.toString(value, "").trim().replaceAll("\\s+", " ");
+        if (!position.isBlank()) target.add(position);
+    }
+
+    @Transactional(readOnly = true)
     public List<PersonnelRow> personnel(String academicYear) {
         Map<Long, String> campusAddressById = schoolBuildings.findAll().stream()
                 .filter(building -> building.getId() != null)
