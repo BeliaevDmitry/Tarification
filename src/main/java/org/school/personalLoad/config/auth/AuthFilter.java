@@ -152,6 +152,11 @@ public class AuthFilter extends OncePerRequestFilter {
             return;
         }
 
+        if ("/class-teacher.html".equals(path) && !hasAnyClassTeacherPageAccess(currentUser)) {
+            rejectForbidden(request, response, "У пользователя нет прав на раздел классного руководителя");
+            return;
+        }
+
         AppTab pageTab = PAGE_TABS.get(path);
         if (pageTab != null && !currentUser.canViewTab(pageTab)) {
             rejectForbidden(request, response, "У пользователя нет прав на просмотр этой вкладки");
@@ -168,7 +173,7 @@ public class AuthFilter extends OncePerRequestFilter {
             rejectForbidden(request, response, "У пользователя нет прав на просмотр этой вкладки");
             return;
         }
-        if (isWriteApiRequest(request, path) && apiTab != null && !currentUser.canEditTab(apiTab)) {
+        if (isWriteApiRequest(request, path) && !canWriteProtectedApi(currentUser, path, apiTab)) {
             rejectForbidden(request, response, "У пользователя нет прав на редактирование этой вкладки");
             return;
         }
@@ -200,6 +205,11 @@ public class AuthFilter extends OncePerRequestFilter {
         return user.canViewTab(AppTab.DOCUMENTS_PEDAGOGICAL_COUNCILS)
                 || user.canViewTab(AppTab.DOCUMENTS_PROBE_ORDERS)
                 || user.canViewTab(AppTab.DOCUMENTS_EXIT_ORDERS);
+    }
+
+    private boolean hasAnyClassTeacherPageAccess(SessionUser user) {
+        return user.canViewTab(AppTab.CLASS_TEACHER_EXIT_ORDER_CREATE)
+                || user.canViewTab(AppTab.CLASS_TEACHER_EXIT_ORDER_SUMMARY);
     }
 
     private AppTab apiTabForPath(String path) {
@@ -275,9 +285,30 @@ public class AuthFilter extends OncePerRequestFilter {
             return user.canViewTab(AppTab.DOCUMENTS_PROBE_ORDERS);
         }
         if (path.startsWith("/api/exit-orders")) {
+            if ("/api/exit-orders/references".equals(path)) {
+                return user.canViewTab(AppTab.CLASS_TEACHER_EXIT_ORDER_CREATE)
+                        || user.canViewTab(AppTab.DOCUMENTS_EXIT_ORDERS);
+            }
+            if ("/api/exit-orders".equals(path)) {
+                return user.canViewTab(AppTab.CLASS_TEACHER_EXIT_ORDER_SUMMARY)
+                        || user.canViewTab(AppTab.DOCUMENTS_EXIT_ORDERS);
+            }
             return user.canViewTab(AppTab.DOCUMENTS_EXIT_ORDERS);
         }
         return true;
+    }
+
+    private boolean canWriteProtectedApi(SessionUser user, String path, AppTab apiTab) {
+        if (path.startsWith("/api/exit-orders")) {
+            boolean requesterWrite = user.canEditTab(AppTab.CLASS_TEACHER_EXIT_ORDER_CREATE);
+            boolean documentsWrite = user.canEditTab(AppTab.DOCUMENTS_EXIT_ORDERS);
+            if ("/api/exit-orders".equals(path) || path.matches("^/api/exit-orders/\\d+$")
+                    || path.matches("^/api/exit-orders/\\d+/attendance$")) {
+                return requesterWrite || documentsWrite;
+            }
+            return documentsWrite;
+        }
+        return apiTab == null || user.canEditTab(apiTab);
     }
 
     private boolean isWriteApiRequest(HttpServletRequest request, String path) {

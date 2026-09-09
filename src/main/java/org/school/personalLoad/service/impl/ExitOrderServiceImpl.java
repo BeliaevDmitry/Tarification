@@ -51,7 +51,7 @@ public class ExitOrderServiceImpl implements ExitOrderService {
     @Override
     @Transactional
     public ExitOrderDtos.ReferenceData references(String academicYear, SessionUser user) {
-        ensureView(user);
+        ensureConstructorView(user);
         ensureDictionaryDefaults(academicYear);
         Long currentTeacherId = teacherId(user);
 
@@ -104,8 +104,10 @@ public class ExitOrderServiceImpl implements ExitOrderService {
     @Override
     @Transactional(readOnly = true)
     public List<ExitOrderDtos.OrderView> list(String academicYear, SessionUser user) {
-        ensureView(user);
-        List<ExitOrder> orders = orderRepository.findAllByAcademicYearOrderByEventDateAscStartTimeAsc(academicYear);
+        ensureOrderListView(user);
+        List<ExitOrder> orders = orderRepository.findAllByAcademicYearOrderByEventDateAscStartTimeAsc(academicYear).stream()
+                .filter(order -> canViewAllOrders(user) || Objects.equals(order.getRequestedByUserId(), user.getId()))
+                .toList();
         Map<Long, Boolean> documents = documentAvailability(orders);
         Map<Long, Boolean> scans = scanAvailability(orders);
         Map<Long, List<ExitOrderApproval>> approvals = approvals(orders);
@@ -122,7 +124,7 @@ public class ExitOrderServiceImpl implements ExitOrderService {
     public ExitOrderDtos.OrderView create(String academicYear,
                                            ExitOrderDtos.CreateRequest request,
                                            SessionUser user) {
-        ensureEdit(user);
+        ensureConstructorEdit(user);
         ExitOrder order = new ExitOrder();
         order.setAcademicYear(academicYear);
         order.setRequestedByUserId(user.getId());
@@ -149,6 +151,7 @@ public class ExitOrderServiceImpl implements ExitOrderService {
     @Override
     @Transactional
     public ExitOrderDtos.OrderView acknowledge(Long id, SessionUser user) {
+        ensureDocumentsEdit(user);
         ExitOrder order = requireOrder(id);
         if (order.getStatus() != ProbeOrderStatus.DRAFT) {
             throw new IllegalStateException("Заявка уже согласована или выпущена");
@@ -245,6 +248,7 @@ public class ExitOrderServiceImpl implements ExitOrderService {
     @Override
     @Transactional
     public ExitOrderDtos.OrderView uploadScan(Long id, MultipartFile file, SessionUser user) throws IOException {
+        ensureDocumentsEdit(user);
         ExitOrder order = requireOrder(id);
         ensureCanManageReleased(user, order);
         if (order.getStatus() != ProbeOrderStatus.RELEASED) {
@@ -300,7 +304,7 @@ public class ExitOrderServiceImpl implements ExitOrderService {
     @Override
     @Transactional
     public ExitOrderDtos.SettingsView settings(String academicYear, SessionUser user) {
-        ensureView(user);
+        ensureDocumentsView(user);
         ensureDictionaryDefaults(academicYear);
         ExitOrderSettings settings = settingsRepository.findById(ExitOrderSettings.DEFAULT_ID).orElse(null);
         ProbeOrderApprovalMode mode = settings == null ? ProbeOrderApprovalMode.ORGANIZATIONAL_BUILDING
@@ -342,7 +346,7 @@ public class ExitOrderServiceImpl implements ExitOrderService {
     @Override
     @Transactional(readOnly = true)
     public ExitOrderDtos.SummaryView summary(String academicYear, SessionUser user) {
-        ensureView(user);
+        ensureDocumentsView(user);
         List<ExitOrder> orders = orderRepository.findAllByAcademicYearOrderByEventDateAscStartTimeAsc(academicYear).stream()
                 .filter(order -> order.getStatus() == ProbeOrderStatus.RELEASED)
                 .filter(order -> !order.getEventDate().isAfter(LocalDate.now()))
@@ -540,8 +544,10 @@ public class ExitOrderServiceImpl implements ExitOrderService {
         ApprovalState approval = approvalState(order, mode, savedApprovals);
         boolean leadership = isLeadership(user);
         boolean requester = user != null && Objects.equals(user.getId(), order.getRequestedByUserId());
-        boolean editable = order.getStatus() == ProbeOrderStatus.DRAFT && (leadership || requester)
-                && user.canEditTab(AppTab.DOCUMENTS_EXIT_ORDERS);
+        boolean documentsEdit = user != null && user.canEditTab(AppTab.DOCUMENTS_EXIT_ORDERS);
+        boolean requesterEdit = user != null && (user.canEditTab(AppTab.CLASS_TEACHER_EXIT_ORDER_CREATE) || documentsEdit);
+        boolean editable = order.getStatus() == ProbeOrderStatus.DRAFT
+                && ((leadership && documentsEdit) || (requester && requesterEdit));
         boolean released = order.getStatus() == ProbeOrderStatus.RELEASED;
         List<ExitOrderDtos.ParticipantView> participants = order.getParticipants().stream().map(item ->
                 new ExitOrderDtos.ParticipantView(item.getId(), item.getStudent().getId(), item.getFullNameSnapshot(),
@@ -558,11 +564,11 @@ public class ExitOrderServiceImpl implements ExitOrderService {
                 hasDocument && user.canExportTab(AppTab.DOCUMENTS_EXIT_ORDERS),
                 hasScan && user.canExportTab(AppTab.DOCUMENTS_EXIT_ORDERS), order.getAttendanceMarkedAt(), participants,
                 editable, canAcknowledge(user, order, mode, savedApprovals),
-                leadership && user.canEditTab(AppTab.DOCUMENTS_EXIT_ORDERS) && approval.complete() && !released,
-                leadership && user.canEditTab(AppTab.DOCUMENTS_EXIT_ORDERS) && order.getStatus() == ProbeOrderStatus.GENERATED,
-                released && (leadership || requester) && user.canEditTab(AppTab.DOCUMENTS_EXIT_ORDERS),
-                released && !order.getEventDate().isAfter(LocalDate.now()) && (leadership || requester)
-                        && user.canEditTab(AppTab.DOCUMENTS_EXIT_ORDERS));
+                leadership && documentsEdit && approval.complete() && !released,
+                leadership && documentsEdit && order.getStatus() == ProbeOrderStatus.GENERATED,
+                released && leadership && documentsEdit,
+                released && !order.getEventDate().isAfter(LocalDate.now())
+                        && ((leadership && documentsEdit) || (requester && requesterEdit)));
     }
 
     private List<ApprovalTarget> approvalTargets(ExitOrder order, ProbeOrderApprovalMode mode) {
@@ -921,42 +927,69 @@ public class ExitOrderServiceImpl implements ExitOrderService {
     }
 
     private void ensureCanEditOrder(SessionUser user, ExitOrder order) {
-        ensureEdit(user);
-        if (order.getStatus() != ProbeOrderStatus.DRAFT
-                || (!isLeadership(user) && !Objects.equals(user.getId(), order.getRequestedByUserId()))) {
+        boolean requester = user != null && Objects.equals(user.getId(), order.getRequestedByUserId());
+        boolean allowed = user != null && ((isLeadership(user) && user.canEditTab(AppTab.DOCUMENTS_EXIT_ORDERS))
+                || (requester && (user.canEditTab(AppTab.CLASS_TEACHER_EXIT_ORDER_CREATE)
+                || user.canEditTab(AppTab.DOCUMENTS_EXIT_ORDERS))));
+        if (order.getStatus() != ProbeOrderStatus.DRAFT || !allowed) {
             throw new AuthExceptions.ForbiddenException("Редактировать можно только свою несогласованную заявку");
         }
     }
 
     private void ensureCanManageReleased(SessionUser user, ExitOrder order) {
-        ensureEdit(user);
-        if (!isLeadership(user) && !Objects.equals(user.getId(), order.getRequestedByUserId())) {
+        boolean requester = user != null && Objects.equals(user.getId(), order.getRequestedByUserId());
+        boolean allowed = user != null && ((isLeadership(user) && user.canEditTab(AppTab.DOCUMENTS_EXIT_ORDERS))
+                || (requester && (user.canEditTab(AppTab.CLASS_TEACHER_EXIT_ORDER_CREATE)
+                || user.canEditTab(AppTab.DOCUMENTS_EXIT_ORDERS))));
+        if (!allowed) {
             throw new AuthExceptions.ForbiddenException("Отмечать посещение и загружать скан может автор заявки или администрация");
         }
     }
 
-    private void ensureView(SessionUser user) {
-        if (user == null || !user.canViewTab(AppTab.DOCUMENTS_EXIT_ORDERS)) {
+    private void ensureConstructorView(SessionUser user) {
+        if (user == null || (!user.canViewTab(AppTab.CLASS_TEACHER_EXIT_ORDER_CREATE)
+                && !user.canViewTab(AppTab.DOCUMENTS_EXIT_ORDERS))) {
+            throw new AuthExceptions.ForbiddenException("Нет права открыть конструктор приказов на выход");
+        }
+    }
+
+    private void ensureOrderListView(SessionUser user) {
+        if (user == null || (!user.canViewTab(AppTab.CLASS_TEACHER_EXIT_ORDER_SUMMARY)
+                && !user.canViewTab(AppTab.DOCUMENTS_EXIT_ORDERS))) {
             throw new AuthExceptions.ForbiddenException("Нет права просматривать приказы на выход");
         }
     }
 
-    private void ensureEdit(SessionUser user) {
-        ensureView(user);
-        if (!user.canEditTab(AppTab.DOCUMENTS_EXIT_ORDERS)) {
+    private void ensureConstructorEdit(SessionUser user) {
+        ensureConstructorView(user);
+        if (!user.canEditTab(AppTab.CLASS_TEACHER_EXIT_ORDER_CREATE)
+                && !user.canEditTab(AppTab.DOCUMENTS_EXIT_ORDERS)) {
             throw new AuthExceptions.ForbiddenException("Нет права создавать и изменять приказы на выход");
         }
     }
 
+    private void ensureDocumentsView(SessionUser user) {
+        if (user == null || !user.canViewTab(AppTab.DOCUMENTS_EXIT_ORDERS)) {
+            throw new AuthExceptions.ForbiddenException("Нет права работать с приказами на выход в разделе документов");
+        }
+    }
+
+    private void ensureDocumentsEdit(SessionUser user) {
+        ensureDocumentsView(user);
+        if (!user.canEditTab(AppTab.DOCUMENTS_EXIT_ORDERS)) {
+            throw new AuthExceptions.ForbiddenException("Нет права обрабатывать приказы на выход");
+        }
+    }
+
     private void ensureLeadershipEdit(SessionUser user) {
-        ensureEdit(user);
+        ensureDocumentsEdit(user);
         if (!isLeadership(user)) {
             throw new AuthExceptions.ForbiddenException("Формировать и выпускать приказ может только администрация");
         }
     }
 
     private void ensureExport(SessionUser user) {
-        ensureView(user);
+        ensureDocumentsView(user);
         if (!user.canExportTab(AppTab.DOCUMENTS_EXIT_ORDERS)) {
             throw new AuthExceptions.ForbiddenException("Нет права скачивать приказы на выход");
         }
@@ -969,6 +1002,13 @@ public class ExitOrderServiceImpl implements ExitOrderService {
     private boolean isLeadership(SessionUser user) {
         return user != null && (user.isAdmin() || user.getRole() == UserRole.DIRECTOR
                 || user.getRole() == UserRole.DEPUTY_DIRECTOR);
+    }
+
+    private boolean canViewAllOrders(SessionUser user) {
+        return user != null && (user.isAdmin() || user.getRole() == UserRole.DIRECTOR
+                || user.getRole() == UserRole.DEPUTY_DIRECTOR
+                || user.getRole() == UserRole.BUILDING_HEAD
+                || user.getRole() == UserRole.METHODIST);
     }
 
     private Map<Long, Boolean> documentAvailability(List<ExitOrder> orders) {

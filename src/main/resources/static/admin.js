@@ -66,6 +66,14 @@ const TAB_GROUPS = [
         ]
     },
     {
+        key: 'CLASS_TEACHER',
+        label: 'Классный руководитель',
+        tabs: [
+            { key: 'CLASS_TEACHER_EXIT_ORDER_CREATE', label: 'Создать приказ на выход' },
+            { key: 'CLASS_TEACHER_EXIT_ORDER_SUMMARY', label: 'Свод приказов' }
+        ]
+    },
+    {
         key: 'DOCUMENTS',
         label: 'Документы',
         tabs: [
@@ -236,6 +244,7 @@ function roleFromTeacher(teacher) {
     if (/^\s*директор(?:\s|$)/.test(position)) return 'DIRECTOR';
     if (/кадр|персонал/.test(position)) return 'HR';
     if (/методист/.test(position)) return 'METHODIST';
+    if (/классн\S*\s+руковод/.test(position)) return 'CLASS_TEACHER';
     return 'EMPLOYEE';
 }
 
@@ -284,6 +293,7 @@ function applySelectedTeacher() {
     renderBuildingSelect(ui.createManagedBuilding, teacher.numberSchoolBuilding || '');
     setScopeMode('create', ui.createRole.value === 'BUILDING_HEAD' ? LOAD_SCOPE_MODE.PRIMARY : LOAD_SCOPE_MODE.NONE);
     syncRoleSpecificFields('create');
+    if (ui.createRole.value === 'CLASS_TEACHER') applyRoleBaseValues('create');
     if (ui.createTeacherHint) {
         const details = [teacher.primaryPosition, teacher.numberSchoolBuilding].filter(Boolean).join(' · ');
         ui.createTeacherHint.textContent = email
@@ -538,6 +548,7 @@ function roleLabel(role) {
         DIRECTOR: 'Директор',
         DEPUTY_DIRECTOR: 'Зам директора',
         BUILDING_HEAD: 'Руководитель корпуса',
+        CLASS_TEACHER: 'Классный руководитель',
         METHODIST: 'Методист',
         HR: 'Кадры',
         ADMIN: 'Администратор'
@@ -1050,13 +1061,16 @@ function applyRoleBaseValues(prefix) {
     const role = prefix === 'create' ? ui.createRole.value : ui.editRole.value;
     const targetBody = prefix === 'create' ? ui.createPermissionsBody : ui.editPermissionsBody;
     const allowEdit = role === 'ADMIN' || role === 'DIRECTOR' || role === 'DEPUTY_DIRECTOR' || role === 'METHODIST';
+    const classTeacherRole = role === 'CLASS_TEACHER';
+    const targetForm = prefix === 'create' ? ui.form : ui.editForm;
+    if (classTeacherRole && targetForm?.elements?.canEdit) targetForm.elements.canEdit.checked = true;
     TABS.forEach((tab) => {
         const view = targetBody.querySelector(`[data-tab-view="${tab.key}"]`);
         const edit = targetBody.querySelector(`[data-tab-edit="${tab.key}"]`);
         const imp = targetBody.querySelector(`[data-tab-import="${tab.key}"]`);
         const exp = targetBody.querySelector(`[data-tab-export="${tab.key}"]`);
         if (!view || !edit || !imp || !exp || view.disabled) return;
-        if (tab.sensitive) {
+        if (tab.sensitive || (classTeacherRole && !tab.key.startsWith('CLASS_TEACHER_EXIT_ORDER_'))) {
             view.checked = false;
             edit.checked = false;
             imp.checked = false;
@@ -1064,9 +1078,9 @@ function applyRoleBaseValues(prefix) {
             return;
         }
         view.checked = true;
-        edit.checked = allowEdit;
-        imp.checked = allowEdit;
-        exp.checked = true;
+        edit.checked = allowEdit || (classTeacherRole && tab.key === 'CLASS_TEACHER_EXIT_ORDER_CREATE');
+        imp.checked = edit.checked;
+        exp.checked = !classTeacherRole;
     });
     syncAllGroupCheckboxes(targetBody);
 }
@@ -1196,7 +1210,10 @@ async function reload() {
     syncRoleSpecificFields('create');
 }
 
-ui.createRole.addEventListener('change', () => syncRoleSpecificFields('create'));
+ui.createRole.addEventListener('change', () => {
+    syncRoleSpecificFields('create');
+    if (ui.createRole.value === 'CLASS_TEACHER') applyRoleBaseValues('create');
+});
 ui.createTeacher?.addEventListener('change', applySelectedTeacher);
 ui.editRole.addEventListener('change', () => syncRoleSpecificFields('edit'));
 ui.createManagedBuilding.addEventListener('change', () => syncRoleSpecificFields('create'));

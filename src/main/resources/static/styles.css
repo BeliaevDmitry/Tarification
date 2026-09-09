@@ -1520,6 +1520,29 @@ td.vacancy-row {
     background: #dbeafe;
 }
 
+.home-menu-class-teacher {
+    grid-column: span 2;
+    background: linear-gradient(135deg, #ffffff 0%, #ecfdf5 100%);
+    border-color: #86efac;
+}
+
+.home-menu-class-teacher .home-menu-sticker {
+    background: #dcfce7;
+}
+
+.class-teacher-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.class-teacher-tabs .button-link.active {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+    color: #fff;
+}
+
 .home-menu-admin .home-menu-sticker {
     background: #fef3c7;
 }
@@ -1759,6 +1782,9 @@ td.vacancy-row {
 }
 
 @media (max-width: 900px) {
+    .home-menu-class-teacher {
+        grid-column: auto;
+    }
     .exit-page-heading,
     .exit-section-heading {
         flex-direction: column;

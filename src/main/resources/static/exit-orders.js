@@ -6,6 +6,8 @@ const exitState = {
     actionId: null,
     autoGatheringPlace: ''
 };
+const exitClassTeacherWorkspace = document.body.dataset.exitWorkspace === 'class-teacher';
+let exitWorkspaceAccess = { create: false, summary: false };
 
 const exitUi = {
     newBtn: document.getElementById('exit-new-btn'), refreshBtn: document.getElementById('exit-refresh-btn'),
@@ -20,7 +22,8 @@ const exitUi = {
     classPicker: document.getElementById('exit-class-picker'), selectionSummary: document.getElementById('exit-selection-summary'),
     buildingSuggestion: document.getElementById('exit-building-suggestion'), primary: document.getElementById('exit-primary-companion'),
     secondary: document.getElementById('exit-secondary-companion'), additional: document.getElementById('exit-additional-companions'),
-    companionRule: document.getElementById('exit-companion-rule'), listSummary: document.getElementById('exit-list-summary'),
+    companionRule: document.getElementById('exit-companion-rule'), listCard: document.getElementById('exit-orders-list-card'),
+    listSummary: document.getElementById('exit-list-summary'),
     search: document.getElementById('exit-search'), status: document.getElementById('exit-status-filter'),
     body: document.getElementById('exit-orders-body'), generateDialog: document.getElementById('exit-generate-dialog'),
     generateForm: document.getElementById('exit-generate-form'), generateCaption: document.getElementById('exit-generate-caption'),
@@ -64,7 +67,8 @@ function putOptions(body) { return { method: 'PATCH', headers: {'Content-Type':'
 
 function dictionary(type) { return exitState.references.dictionaries?.[type] || []; }
 function fillDatalist(id, values) {
-    document.getElementById(id).innerHTML = values.map(value => `<option value="${exitEsc(value)}"></option>`).join('');
+    const target = document.getElementById(id);
+    if (target) target.innerHTML = values.map(value => `<option value="${exitEsc(value)}"></option>`).join('');
 }
 function staffOptions(selected = '', empty = 'Выберите сотрудника') {
     return `<option value="">${exitEsc(empty)}</option>` + (exitState.references.teachers || []).map(item =>
@@ -86,9 +90,11 @@ function prepareReferences() {
     exitUi.secondary.innerHTML = staffOptions('', 'Не требуется');
     exitUi.additional.innerHTML = (exitState.references.teachers || []).map(item =>
         `<option value="${item.id}">${exitEsc(item.fullName)}${item.buildingCode ? ` (${exitEsc(item.buildingCode)})` : ''}</option>`).join('');
-    exitUi.signer.innerHTML = signerOptions(exitState.references.defaultSignerTeacherId);
-    const signer = (exitState.references.signers || []).find(item => String(item.id) === String(exitState.references.defaultSignerTeacherId));
-    exitUi.signerPosition.value = signer?.position || 'Директор';
+    if (exitUi.signer) {
+        exitUi.signer.innerHTML = signerOptions(exitState.references.defaultSignerTeacherId);
+        const signer = (exitState.references.signers || []).find(item => String(item.id) === String(exitState.references.defaultSignerTeacherId));
+        exitUi.signerPosition.value = signer?.position || 'Директор';
+    }
     renderClassPicker();
 }
 
@@ -229,6 +235,7 @@ function openEdit(order) {
     [...exitUi.additional.options].forEach(option => option.selected = additional.has(option.value));
     renderClassPicker();
     exitUi.constructorCard.hidden = false;
+    if (exitClassTeacherWorkspace) activateExitWorkspaceTab('create', true);
     exitUi.constructorCard.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
@@ -272,12 +279,12 @@ function renderOrders() {
                 : `<div class="probe-error">${exitEsc(item.scopeLabel)} · ожидается</div>`).join('') || '<span class="probe-error">Корпус не определён</span>';
         const actions = [];
         if (order.canEdit) actions.push(`<button type="button" class="secondary" data-exit-action="edit" data-id="${order.id}">Редактировать</button>`);
-        if (order.canAcknowledge) actions.push(`<button type="button" data-exit-action="ack" data-id="${order.id}">Согласовать</button>`);
-        if (order.canGenerate) actions.push(`<button type="button" data-exit-action="generate" data-id="${order.id}">Сформировать приказ</button>`);
-        if (order.generatedDocumentAvailable) actions.push(`<a class="button-link secondary" href="/api/exit-orders/${order.id}/document">Скачать Word</a>`);
-        if (order.canRelease) actions.push(`<button type="button" data-exit-action="release" data-id="${order.id}">Выпустить</button>`);
-        if (order.canUploadScan) actions.push(`<button type="button" class="secondary" data-exit-action="scan" data-id="${order.id}">${order.signedScanAvailable ? 'Заменить скан' : 'Загрузить скан'}</button>`);
-        if (order.signedScanAvailable) actions.push(`<a class="button-link secondary" href="/api/exit-orders/${order.id}/scan">Скачать скан</a>`);
+        if (!exitClassTeacherWorkspace && order.canAcknowledge) actions.push(`<button type="button" data-exit-action="ack" data-id="${order.id}">Согласовать</button>`);
+        if (!exitClassTeacherWorkspace && order.canGenerate) actions.push(`<button type="button" data-exit-action="generate" data-id="${order.id}">Сформировать приказ</button>`);
+        if (!exitClassTeacherWorkspace && order.generatedDocumentAvailable) actions.push(`<a class="button-link secondary" href="/api/exit-orders/${order.id}/document">Скачать Word</a>`);
+        if (!exitClassTeacherWorkspace && order.canRelease) actions.push(`<button type="button" data-exit-action="release" data-id="${order.id}">Выпустить</button>`);
+        if (!exitClassTeacherWorkspace && order.canUploadScan) actions.push(`<button type="button" class="secondary" data-exit-action="scan" data-id="${order.id}">${order.signedScanAvailable ? 'Заменить скан' : 'Загрузить скан'}</button>`);
+        if (!exitClassTeacherWorkspace && order.signedScanAvailable) actions.push(`<a class="button-link secondary" href="/api/exit-orders/${order.id}/scan">Скачать скан</a>`);
         if (order.canMarkAttendance) actions.push(`<button type="button" class="secondary" data-exit-action="attendance" data-id="${order.id}">${order.attendanceMarkedAt ? 'Изменить посещаемость' : 'Отметить неявившихся'}</button>`);
         if (!actions.length) actions.push('<span class="muted">Только информация</span>');
         return `<tr><td><strong>${exitDate(order.eventDate)}</strong><br>${exitTime(order.startTime)}–${exitTime(order.endTime)}</td>
@@ -290,15 +297,20 @@ function renderOrders() {
     bindRowActions();
 }
 
-async function loadExitData() {
-    exitUi.body.innerHTML = '<tr><td colspan="7" class="muted">Загрузка…</td></tr>';
+async function loadExitData({ loadOrders = true, loadReferences = true } = {}) {
+    if (loadOrders) exitUi.body.innerHTML = '<tr><td colspan="7" class="muted">Загрузка…</td></tr>';
     const [orders, references] = await Promise.all([
-        exitApi(exitUrl('/api/exit-orders')), exitApi(exitUrl('/api/exit-orders/references'))
+        loadOrders ? exitApi(exitUrl('/api/exit-orders')) : Promise.resolve(null),
+        loadReferences ? exitApi(exitUrl('/api/exit-orders/references')) : Promise.resolve(null)
     ]);
-    exitState.orders = orders || [];
-    exitState.references = references || exitState.references;
-    prepareReferences();
-    renderOrders();
+    if (loadOrders) {
+        exitState.orders = orders || [];
+        renderOrders();
+    }
+    if (loadReferences) {
+        exitState.references = references || exitState.references;
+        prepareReferences();
+    }
 }
 
 function bindRowActions() {
@@ -350,19 +362,59 @@ function openScan(order) {
     exitUi.scanDialog.showModal();
 }
 
-exitUi.form.addEventListener('submit', async event => {
+function activateExitWorkspaceTab(tab, updateHash = false) {
+    if (!exitClassTeacherWorkspace) return;
+    const allowedTab = exitWorkspaceAccess[tab]
+        ? tab
+        : (exitWorkspaceAccess.create ? 'create' : 'summary');
+    document.querySelectorAll('[data-exit-workspace-panel]').forEach(panel => {
+        panel.hidden = panel.dataset.exitWorkspacePanel !== allowedTab;
+    });
+    document.querySelectorAll('[data-exit-workspace-tab]').forEach(link => {
+        const linkTab = link.dataset.exitWorkspaceTab;
+        link.hidden = !exitWorkspaceAccess[linkTab];
+        link.classList.toggle('active', linkTab === allowedTab);
+        link.setAttribute('aria-current', linkTab === allowedTab ? 'page' : 'false');
+    });
+    if (updateHash && window.location.hash !== `#${allowedTab}`) history.replaceState(null, '', `#${allowedTab}`);
+}
+
+async function initializeClassTeacherWorkspace() {
+    const currentUser = await exitApi('/api/auth/me');
+    const permissions = Object.fromEntries((currentUser.tabPermissions || []).map(item => [item.tab, item]));
+    exitWorkspaceAccess = {
+        create: Boolean(currentUser.admin || permissions.CLASS_TEACHER_EXIT_ORDER_CREATE?.canView),
+        summary: Boolean(currentUser.admin || permissions.CLASS_TEACHER_EXIT_ORDER_SUMMARY?.canView)
+    };
+    const requestedTab = String(window.location.hash || '').toLowerCase() === '#summary' ? 'summary' : 'create';
+    activateExitWorkspaceTab(requestedTab, true);
+    await loadExitData({ loadOrders: exitWorkspaceAccess.summary, loadReferences: exitWorkspaceAccess.create });
+    if (exitWorkspaceAccess.create) resetForm();
+}
+
+exitUi.form?.addEventListener('submit', async event => {
     event.preventDefault();
     try {
         if (!exitState.selectedStudents.size) throw new Error('Выберите хотя бы одного ребёнка');
         exitUi.feedback.textContent = exitState.editingId ? 'Сохраняем заявку…' : 'Отправляем заявку…';
         const path = exitState.editingId ? `/api/exit-orders/${exitState.editingId}` : exitUrl('/api/exit-orders');
         await exitApi(path, exitState.editingId ? putOptions(formPayload()) : jsonOptions(formPayload()));
-        exitUi.constructorCard.hidden = true;
-        await loadExitData();
+        if (exitClassTeacherWorkspace) {
+            resetForm();
+            if (exitWorkspaceAccess.summary) {
+                await loadExitData({ loadOrders: true, loadReferences: false });
+                activateExitWorkspaceTab('summary', true);
+            } else {
+                exitUi.feedback.textContent = 'Заявка отправлена на согласование.';
+            }
+        } else {
+            exitUi.constructorCard.hidden = true;
+            await loadExitData();
+        }
     } catch (error) { exitUi.feedback.textContent = error.message; }
 });
 
-exitUi.generateForm.addEventListener('submit', async event => {
+exitUi.generateForm?.addEventListener('submit', async event => {
     event.preventDefault();
     try {
         exitUi.generateFeedback.textContent = 'Формируем документ…';
@@ -375,7 +427,7 @@ exitUi.generateForm.addEventListener('submit', async event => {
     } catch (error) { exitUi.generateFeedback.textContent = error.message; }
 });
 
-exitUi.attendanceForm.addEventListener('submit', async event => {
+exitUi.attendanceForm?.addEventListener('submit', async event => {
     event.preventDefault();
     try {
         exitUi.attendanceFeedback.textContent = 'Сохраняем…';
@@ -386,7 +438,7 @@ exitUi.attendanceForm.addEventListener('submit', async event => {
     } catch (error) { exitUi.attendanceFeedback.textContent = error.message; }
 });
 
-exitUi.scanForm.addEventListener('submit', async event => {
+exitUi.scanForm?.addEventListener('submit', async event => {
     event.preventDefault();
     try {
         const file = exitUi.scanFile.files?.[0];
@@ -399,16 +451,30 @@ exitUi.scanForm.addEventListener('submit', async event => {
     } catch (error) { exitUi.scanFeedback.textContent = error.message; }
 });
 
-exitUi.signer.addEventListener('change', () => {
+exitUi.signer?.addEventListener('change', () => {
     const signer = (exitState.references.signers || []).find(item => String(item.id) === exitUi.signer.value);
     if (signer?.position) exitUi.signerPosition.value = signer.position;
 });
-exitUi.gatheringPlace.addEventListener('input', () => { if (exitUi.gatheringPlace.value !== exitState.autoGatheringPlace) exitState.autoGatheringPlace = ''; });
-exitUi.newBtn.addEventListener('click', openNew);
-exitUi.refreshBtn.addEventListener('click', () => loadExitData().catch(error => window.alert(error.message)));
-exitUi.constructorClose.addEventListener('click', () => { exitUi.constructorCard.hidden = true; });
-exitUi.search.addEventListener('input', renderOrders);
-exitUi.status.addEventListener('change', renderOrders);
+exitUi.gatheringPlace?.addEventListener('input', () => { if (exitUi.gatheringPlace.value !== exitState.autoGatheringPlace) exitState.autoGatheringPlace = ''; });
+exitUi.newBtn?.addEventListener('click', openNew);
+exitUi.refreshBtn?.addEventListener('click', () => {
+    const options = exitClassTeacherWorkspace
+        ? { loadOrders: exitWorkspaceAccess.summary, loadReferences: exitWorkspaceAccess.create }
+        : {};
+    loadExitData(options).catch(error => window.alert(error.message));
+});
+exitUi.constructorClose?.addEventListener('click', () => { exitUi.constructorCard.hidden = true; });
+exitUi.search?.addEventListener('input', renderOrders);
+exitUi.status?.addEventListener('change', renderOrders);
 document.querySelectorAll('[data-exit-close]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
+document.querySelectorAll('[data-exit-workspace-tab]').forEach(link => link.addEventListener('click', event => {
+    event.preventDefault();
+    activateExitWorkspaceTab(link.dataset.exitWorkspaceTab, true);
+}));
+window.addEventListener('hashchange', () => {
+    if (!exitClassTeacherWorkspace) return;
+    activateExitWorkspaceTab(String(window.location.hash).toLowerCase() === '#summary' ? 'summary' : 'create');
+});
 
-loadExitData().catch(error => { exitUi.body.innerHTML = `<tr><td colspan="7" class="probe-error">${exitEsc(error.message)}</td></tr>`; });
+(exitClassTeacherWorkspace ? initializeClassTeacherWorkspace() : loadExitData())
+    .catch(error => { exitUi.body.innerHTML = `<tr><td colspan="7" class="probe-error">${exitEsc(error.message)}</td></tr>`; });
