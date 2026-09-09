@@ -22,6 +22,8 @@ class TeacherDismissalFrontendTest {
         assertTrue(html.contains("Определяются автоматически по должности"));
         assertTrue(html.contains("id=\"teacher-card-cancel-plan\""));
         assertTrue(html.contains("id=\"accept-teacher-btn\""));
+        assertTrue(html.contains("id=\"accept-position\" list=\"accept-position-options\""));
+        assertTrue(html.contains("Можно выбрать должность из справочника или ввести новую вручную."));
         assertTrue(html.contains("id=\"auto-assign-buildings-btn\""));
         assertTrue(html.contains("Распределить по площадкам"));
         assertTrue(html.contains("Основная площадка"));
@@ -44,6 +46,8 @@ class TeacherDismissalFrontendTest {
         assertTrue(js.contains("schoolBuildingId"));
         assertTrue(js.contains("b.address"));
         assertTrue(js.contains("/api/teachers/accept"));
+        assertTrue(js.contains("function positionDatalistOptions()"));
+        assertTrue(js.contains("api('/api/teachers/positions').catch(() => [])"));
         assertTrue(js.contains("/api/teachers/name-cases/derive?fio="));
         assertTrue(js.contains("nameCases: acceptNameCasesPayload()"));
         assertTrue(js.contains("dataset.downloadSheet"));

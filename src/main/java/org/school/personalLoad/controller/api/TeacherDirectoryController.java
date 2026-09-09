@@ -157,13 +157,7 @@ public class TeacherDirectoryController {
 
     @GetMapping("/positions")
     public ResponseEntity<List<String>> positions() {
-        return ResponseEntity.ok(teacherDirectoryService.findAll().stream()
-                .map(TeacherDirectoryEntry::getPrimaryPosition)
-                .filter(value -> value != null && !value.isBlank())
-                .map(String::trim)
-                .distinct()
-                .sorted(String.CASE_INSENSITIVE_ORDER)
-                .toList());
+        return ResponseEntity.ok(personnelService.positions());
     }
 
     @PostMapping("/accept")

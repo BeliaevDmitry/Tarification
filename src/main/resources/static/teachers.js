@@ -156,6 +156,7 @@ const ui = {
     acceptEmail: document.getElementById("accept-email"),
     acceptBuilding: document.getElementById("accept-building"),
     acceptPosition: document.getElementById("accept-position"),
+    acceptPositionOptions: document.getElementById("accept-position-options"),
     acceptEmploymentType: document.getElementById("accept-employment-type"),
     acceptEmploymentDate: document.getElementById("accept-employment-date"),
     acceptBirthDate: document.getElementById("accept-birth-date"),
@@ -594,6 +595,13 @@ function positionOptions(selected = "") {
     ].join("");
 }
 
+function positionDatalistOptions() {
+    return Array.from(new Set((teacherPositions || []).filter(Boolean)))
+        .sort((a, b) => a.localeCompare(b, "ru"))
+        .map((value) => `<option value="${escapeHtml(value)}"></option>`)
+        .join("");
+}
+
 async function saveTeacherCardMain(event) {
     event.preventDefault();
     const teacher = selectedTeacherCardRow();
@@ -972,10 +980,14 @@ async function loadTeachers() {
     const [rows, archivedRows, positions, vacancies] = await Promise.all([
         api(mckoAcademicYearPath('/api/teachers')),
         api('/api/teachers/archive'),
-        api('/api/teachers/positions'),
+        api('/api/teachers/positions').catch(() => []),
         api('/api/teachers/vacancies')
     ]);
-    teacherPositions = positions || [];
+    teacherPositions = Array.from(new Set([
+        ...(positions || []),
+        ...(rows || []).map((row) => row.primaryPosition),
+        ...(archivedRows || []).map((row) => row.primaryPosition)
+    ].filter(Boolean)));
     teacherVacancies = vacancies || [];
     teacherRows = rows || [];
     renderTeachers(rows || []);
@@ -1550,7 +1562,8 @@ function renderAcceptTeacherDialog() {
             .map((row) => `<option value="${escapeHtml(row.id)}">${escapeHtml(row.fioTeacher)} · ID ${escapeHtml(row.id)}</option>`)
     ].join("");
     ui.acceptBuilding.innerHTML = renderBuildingOptions("");
-    ui.acceptPosition.innerHTML = positionOptions("");
+    ui.acceptPosition.value = "";
+    ui.acceptPositionOptions.innerHTML = positionDatalistOptions();
     ui.acceptTeacherDialog.showModal();
 }
 

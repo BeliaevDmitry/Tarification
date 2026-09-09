@@ -459,7 +459,11 @@
                 <label>Телефон<input id="accept-phone"></label>
                 <label>Email<input id="accept-email" type="email"></label>
                 <label>Основная площадка<select id="accept-building"></select></label>
-                <label>Основная должность<select id="accept-position" required></select></label>
+                <label>Основная должность
+                    <input id="accept-position" list="accept-position-options" required autocomplete="off" placeholder="Выберите или введите должность">
+                    <datalist id="accept-position-options"></datalist>
+                    <span class="field-hint">Можно выбрать должность из справочника или ввести новую вручную.</span>
+                </label>
                 <label>Вид занятости<input id="accept-employment-type" value="Основное место работы"></label>
                 <label>Дата приёма<input id="accept-employment-date" type="date"></label>
                 <label>Дата рождения<input id="accept-birth-date" type="date"></label>
