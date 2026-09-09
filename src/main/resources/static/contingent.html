@@ -19,6 +19,7 @@
         <nav class="contingent-tabs">
             <a class="nav-link nav-home-link" href="/" title="Главная" aria-label="Главная">🏠</a>
             <button type="button" class="nav-link active" data-contingent-tab="stats">Численность</button>
+            <button type="button" class="nav-link" data-contingent-tab="admissions">Приём</button>
             <button type="button" class="nav-link" data-contingent-tab="support">Справки</button>
             <button type="button" class="nav-link" data-contingent-tab="nosologies">Справочник нозологий</button>
             <button type="button" class="nav-link" data-contingent-tab="manual">Ручная правка</button>
@@ -194,6 +195,102 @@
             <table class="sheet-table" id="contingent-kindergarten-table"></table>
         </div>
     </section>
+
+    <section class="card" data-contingent-pane="admissions" style="display:none;">
+        <div class="admission-heading">
+            <div>
+                <h2>Приём детей</h2>
+                <p class="muted">Кандидаты на поступление, собеседования и результат работы по каждому обращению.</p>
+            </div>
+            <div class="row controls-row">
+                <button id="admission-refresh-btn" type="button" class="secondary">Обновить</button>
+                <button id="admission-add-btn" type="button" data-requires-edit>Добавить ребёнка</button>
+            </div>
+        </div>
+
+        <div id="admission-totals" class="admission-totals"></div>
+        <h3>В какую параллель хотят поступить</h3>
+        <div class="sheet-wrap">
+            <table class="sheet-table" id="admission-parallel-stats"></table>
+        </div>
+
+        <div class="admission-list-heading">
+            <h3>Заявления</h3>
+            <label>Показывать:
+                <select id="admission-filter">
+                    <option value="ACTIVE">В работе</option>
+                    <option value="ALL">Все</option>
+                    <option value="PROCESSED">Отработанные</option>
+                </select>
+            </label>
+        </div>
+        <p id="admission-message" class="muted" aria-live="polite"></p>
+        <div class="sheet-wrap">
+            <table class="sheet-table admission-table">
+                <thead><tr>
+                    <th>ФИО</th>
+                    <th>Хочет в параллель</th>
+                    <th>Статус документов</th>
+                    <th>Проблемы</th>
+                    <th>Комментарий</th>
+                    <th>Класс зачисления</th>
+                    <th>Результат</th>
+                    <th>Работа завершена</th>
+                    <th>Действия</th>
+                </tr></thead>
+                <tbody id="admission-body"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <dialog id="admission-dialog" class="admission-dialog">
+        <form id="admission-form">
+            <div class="dialog-hero">
+                <div>
+                    <h3 id="admission-dialog-title">Добавить ребёнка</h3>
+                    <p class="muted">Заполните сведения, известные на текущем этапе приёма.</p>
+                </div>
+                <button id="admission-dialog-close" type="button" class="secondary">Закрыть</button>
+            </div>
+            <input id="admission-id" type="hidden">
+            <div class="admission-form-grid">
+                <label>ФИО ребёнка
+                    <input id="admission-full-name" type="text" maxlength="500" required>
+                </label>
+                <label>В какую параллель подаёт
+                    <select id="admission-requested-parallel" required>
+                        <option value="">Выберите</option>
+                        <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                        <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+                        <option value="7">7</option><option value="8">8</option><option value="9">9</option>
+                        <option value="10">10</option><option value="11">11</option>
+                    </select>
+                </label>
+                <label>Статус документов
+                    <select id="admission-document-status" required>
+                        <option value="MOS_RU_SUBMITTED">Подал на mos.ru</option>
+                        <option value="INTERVIEW_INVITED">Приглашён на беседу</option>
+                        <option value="ENROLLMENT">Зачисление</option>
+                    </select>
+                </label>
+                <label>В какой класс зачисляем
+                    <input id="admission-assigned-class" type="text" maxlength="100" list="admission-class-options" placeholder="Например, 5-А">
+                    <datalist id="admission-class-options"></datalist>
+                </label>
+                <label class="admission-form-wide">Проблемы
+                    <textarea id="admission-problems" rows="3" placeholder="Свободный ввод"></textarea>
+                </label>
+                <label class="admission-form-wide">Комментарий
+                    <textarea id="admission-comment" rows="3" placeholder="Свободный ввод"></textarea>
+                </label>
+            </div>
+            <p id="admission-dialog-message" class="muted" aria-live="polite"></p>
+            <div class="row dialog-actions">
+                <button id="admission-save-btn" type="submit">Сохранить</button>
+                <button id="admission-cancel-btn" type="button" class="secondary">Отмена</button>
+            </div>
+        </form>
+    </dialog>
 
     <section class="card" data-contingent-pane="manual" style="display:none;">
         <h2>Ручная правка численности классов</h2>
