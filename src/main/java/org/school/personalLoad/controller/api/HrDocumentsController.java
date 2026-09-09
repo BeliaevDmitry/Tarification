@@ -208,6 +208,7 @@ public class HrDocumentsController {
             case DIRECTOR -> "директора";
             case DEPUTY_DIRECTOR -> "заместителя директора";
             case BUILDING_HEAD -> "руководителя корпуса";
+            case CLASS_TEACHER -> "классного руководителя";
             case EMPLOYEE -> "сотрудника";
             case METHODIST -> "методиста";
             case HR -> "специалиста по кадрам";

@@ -2,7 +2,9 @@ package org.school.personalLoad.service.impl;
 
 import org.junit.jupiter.api.Test;
 import org.school.personalLoad.auth.AppUser;
+import org.school.personalLoad.auth.AppTab;
 import org.school.personalLoad.auth.SessionUser;
+import org.school.personalLoad.auth.TabPermissionSnapshot;
 import org.school.personalLoad.auth.UserRole;
 import org.school.personalLoad.dto.ExitOrderDtos;
 import org.school.personalLoad.model.*;
@@ -135,6 +137,27 @@ class ExitOrderServiceImplTest {
         assertEquals(1, summary.teachers().get(0).childrenAccompanied());
     }
 
+    @Test
+    void classTeacherSeesOnlyOwnOrdersWhileLeadershipRolesSeeAll() {
+        TestContext context = context();
+        SchoolBuilding building = building(10L, "СП1", "Корпус 1", "ул. Первая, д. 1");
+        TeacherDirectoryEntry companion = teacher(20L, "Петрова Мария Сергеевна", "СП1");
+        ExitOrder own = releasedOrder(100L, building, companion);
+        own.setRequestedByUserId(2L);
+        ExitOrder other = releasedOrder(101L, building, companion);
+        other.setRequestedByUserId(3L);
+        when(context.orders.findAllByAcademicYearOrderByEventDateAscStartTimeAsc("2026/2027"))
+                .thenReturn(List.of(own, other));
+
+        List<ExitOrderDtos.OrderView> classTeacherOrders = context.service.list("2026/2027",
+                user(2L, UserRole.CLASS_TEACHER, AppTab.CLASS_TEACHER_EXIT_ORDER_SUMMARY, false));
+        List<ExitOrderDtos.OrderView> methodistOrders = context.service.list("2026/2027",
+                user(9L, UserRole.METHODIST, AppTab.CLASS_TEACHER_EXIT_ORDER_SUMMARY, false));
+
+        assertEquals(List.of(100L), classTeacherOrders.stream().map(ExitOrderDtos.OrderView::id).toList());
+        assertEquals(List.of(100L, 101L), methodistOrders.stream().map(ExitOrderDtos.OrderView::id).toList());
+    }
+
     private TestContext context() {
         ExitOrderRepository orders = mock(ExitOrderRepository.class);
         ExitOrderApprovalRepository approvals = mock(ExitOrderApprovalRepository.class);
@@ -160,6 +183,12 @@ class ExitOrderServiceImplTest {
     private SessionUser admin() {
         return new SessionUser(1L, "admin", "Администратор", null, null, UserRole.ADMIN,
                 true, true, true, null, true, new LinkedHashSet<>(), List.of());
+    }
+
+    private SessionUser user(Long id, UserRole role, AppTab tab, boolean canEdit) {
+        TabPermissionSnapshot permission = new TabPermissionSnapshot(tab, true, canEdit, false, false);
+        return new SessionUser(id, "user" + id, role.getDisplayName(), null, null, role,
+                true, true, canEdit, null, false, new LinkedHashSet<>(), List.of(permission));
     }
 
     private SchoolBuilding building(Long id, String code, String name, String address) {

@@ -439,6 +439,10 @@ public class AppUserServiceImpl implements AppUserService {
         if (tab == AppTab.OVZ) {
             return AppTab.CONTINGENT_STATS;
         }
+        if (tab == AppTab.CLASS_TEACHER_EXIT_ORDER_CREATE
+                || tab == AppTab.CLASS_TEACHER_EXIT_ORDER_SUMMARY) {
+            return AppTab.DOCUMENTS_EXIT_ORDERS;
+        }
         return tab;
     }
 

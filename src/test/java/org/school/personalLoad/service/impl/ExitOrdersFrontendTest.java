@@ -12,6 +12,8 @@ class ExitOrdersFrontendTest {
     @Test
     void exitOrderModuleExposesConstructorSettingsAndApprovalWorkflow() throws Exception {
         String documents = Files.readString(Path.of("src/main/resources/static/documents.html"));
+        String home = Files.readString(Path.of("src/main/resources/static/index.html"));
+        String classTeacherPage = Files.readString(Path.of("src/main/resources/static/class-teacher.html"));
         String page = Files.readString(Path.of("src/main/resources/static/exit-orders.html"));
         String script = Files.readString(Path.of("src/main/resources/static/exit-orders.js"));
         String settingsPage = Files.readString(Path.of("src/main/resources/static/exit-order-settings.html"));
@@ -22,10 +24,15 @@ class ExitOrdersFrontendTest {
         String admin = Files.readString(Path.of("src/main/resources/static/admin.js"));
 
         assertTrue(documents.contains("href=\"/exit-orders.html\""));
+        assertTrue(home.contains("href=\"/class-teacher.html#create\""));
+        assertTrue(home.contains("Классный руководитель"));
+        assertTrue(classTeacherPage.contains("data-exit-workspace-tab=\"create\""));
+        assertTrue(classTeacherPage.contains("data-exit-workspace-tab=\"summary\""));
+        assertTrue(classTeacherPage.contains("id=\"exit-preamble\""));
+        assertTrue(classTeacherPage.contains("id=\"exit-class-picker\""));
+        assertTrue(classTeacherPage.contains("Отправить заявку"));
         assertTrue(page.contains("href=\"/exit-order-settings.html\""));
         assertTrue(page.contains("href=\"/exit-orders-summary.html\""));
-        assertTrue(page.contains("id=\"exit-preamble\""));
-        assertTrue(page.contains("id=\"exit-class-picker\""));
         assertTrue(page.contains("id=\"exit-attendance-dialog\""));
         assertTrue(script.contains("/api/exit-orders/references"));
         assertTrue(script.contains("suggestedClassIds"));
@@ -46,6 +53,9 @@ class ExitOrdersFrontendTest {
         assertTrue(summaryPage.contains("Активные педагоги"));
         assertTrue(summaryScript.contains("/api/exit-orders/summary"));
         assertTrue(auth.contains("'/exit-orders.html': 'DOCUMENTS_EXIT_ORDERS'"));
+        assertTrue(auth.contains("'/class-teacher.html': 'CLASS_TEACHER_EXIT_ORDER_CREATE'"));
+        assertTrue(admin.contains("key: 'CLASS_TEACHER_EXIT_ORDER_CREATE'"));
+        assertTrue(admin.contains("key: 'CLASS_TEACHER_EXIT_ORDER_SUMMARY'"));
         assertTrue(admin.contains("key: 'DOCUMENTS_EXIT_ORDERS'"));
     }
 

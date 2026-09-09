@@ -21,6 +21,7 @@ const TAB_PATHS = {
     '/ovz-specialist-distribution.html': 'OVZ',
     '/ovz-specialists.html': 'OVZ',
     '/educational-work.html': 'EDUCATIONAL_WORK',
+    '/class-teacher.html': 'CLASS_TEACHER_EXIT_ORDER_CREATE',
     '/documents.html': null,
     '/pedagogical-councils.html': 'DOCUMENTS_PEDAGOGICAL_COUNCILS',
     '/probe-orders.html': 'DOCUMENTS_PROBE_ORDERS',
@@ -147,6 +148,12 @@ function isLoadModulePage(pathname) {
 }
 
 function navItemsForPath(pathname) {
+    if (pathname === '/class-teacher.html') {
+        return [
+            { path: '/class-teacher.html#create', tab: 'CLASS_TEACHER_EXIT_ORDER_CREATE', label: 'Создать приказ на выход' },
+            { path: '/class-teacher.html#summary', tab: 'CLASS_TEACHER_EXIT_ORDER_SUMMARY', label: 'Свод приказов' }
+        ];
+    }
     if (pathname === '/ovz.html' || pathname === '/ovz-specialist-distribution.html' || pathname === '/ovz-specialists.html') {
         return [
             { path: '/ovz.html', tab: 'OVZ', label: 'Реестр' },
@@ -268,6 +275,11 @@ function tabPermissionMap(currentUser) {
 }
 
 function currentTab() {
+    if (window.location.pathname === '/class-teacher.html') {
+        return String(window.location.hash || '').toLowerCase() === '#summary'
+            ? 'CLASS_TEACHER_EXIT_ORDER_SUMMARY'
+            : 'CLASS_TEACHER_EXIT_ORDER_CREATE';
+    }
     if (window.location.pathname === '/teachers.html') {
         const hash = String(window.location.hash || '').toLowerCase();
         if (hash === '#archive') return 'TEACHERS_ARCHIVE';
@@ -375,6 +387,9 @@ function showAccessDenied(sectionTitle = 'раздела') {
 
 function canEditCurrentPage(currentUser) {
     if (currentUser.admin) return true;
+    if (window.location.pathname === '/class-teacher.html') {
+        return Boolean(tabPermissionMap(currentUser).CLASS_TEACHER_EXIT_ORDER_CREATE?.canEdit);
+    }
     // В рабочем месте ОВЗ право записи определяется назначением по ФК:
     // специалист меняет свою часть, ответственный — все части.
     if (window.location.pathname === '/ovz-specialists.html') return true;
@@ -440,6 +455,17 @@ function insertReadonlyNotice(currentUser) {
     note.className = 'muted readonly-note';
     note.textContent = 'У вас открыт режим просмотра для текущей вкладки: данные можно смотреть, но не редактировать.';
     header.appendChild(note);
+}
+
+function isClassTeacherPage() {
+    return window.location.pathname === '/class-teacher.html';
+}
+
+function hasClassTeacherAccess(currentUser) {
+    if (currentUser.admin) return true;
+    const permissions = tabPermissionMap(currentUser);
+    return Boolean(permissions.CLASS_TEACHER_EXIT_ORDER_CREATE?.canView
+        || permissions.CLASS_TEACHER_EXIT_ORDER_SUMMARY?.canView);
 }
 
 let applicationClockBase = null;
@@ -698,6 +724,11 @@ function enrichMainMenu(currentUser) {
         documentsCard.style.display = hasDocumentsAccess(currentUser) ? '' : 'none';
     }
 
+    const classTeacherCard = document.querySelector('[data-class-teacher-card]');
+    if (classTeacherCard) {
+        classTeacherCard.style.display = hasClassTeacherAccess(currentUser) ? '' : 'none';
+    }
+
     const ovzCard = document.querySelector('[data-ovz-card]');
     if (ovzCard) {
         ovzCard.style.display = hasOvzAccess(currentUser) ? '' : 'none';
@@ -757,6 +788,11 @@ function disableExportAreas(currentUser) {
         if (isDocumentsHubPage() && !hasDocumentsAccess(currentUser)) {
             mountHeaderUser(currentUser);
             showAccessDenied('разделу «Документы»');
+            return;
+        }
+        if (isClassTeacherPage() && !hasClassTeacherAccess(currentUser)) {
+            mountHeaderUser(currentUser);
+            showAccessDenied('разделу «Классный руководитель»');
             return;
         }
         if (isOvzPage() && !hasOvzAccess(currentUser)) {

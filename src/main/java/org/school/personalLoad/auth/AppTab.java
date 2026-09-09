@@ -30,6 +30,8 @@ public enum AppTab {
     OVZ("ОВЗ", "/ovz.html"),
     SUBJECT_AREAS("Предметные области", "/subject-areas.html"),
     EDUCATIONAL_WORK("Воспитательная работа", "/educational-work.html"),
+    CLASS_TEACHER_EXIT_ORDER_CREATE("Классный руководитель: создание приказа на выход", "/class-teacher.html#create"),
+    CLASS_TEACHER_EXIT_ORDER_SUMMARY("Классный руководитель: свод приказов", "/class-teacher.html#summary"),
     DOCUMENTS_PEDAGOGICAL_COUNCILS("Документы: педагогические советы", "/pedagogical-councils.html"),
     DOCUMENTS_PROBE_ORDERS("Документы: приказы на пробы", "/probe-orders.html"),
     DOCUMENTS_EXIT_ORDERS("Документы: приказы на выход", "/exit-orders.html"),
@@ -66,7 +68,8 @@ public enum AppTab {
         return Arrays.asList(HR_DOCUMENTS, HR_PERSONAL_DATA, BUILDINGS, CLASSES, SUBJECTS, CURRICULUM, LOAD, PEOPLE_LOAD, LOAD_ISSUES, LOAD_MASTER_FOT, LOAD_STATS,
                 LOAD_SALARY, SETTINGS, SUBJECT_AREAS, TEACHERS, TEACHERS_ARCHIVE, TEACHERS_DISMISSALS,
                 TEACHERS_SETTINGS, TEACHERS_MCKO, SERVICE_NOTES, HR_NOTIFICATIONS_VIEW, CONTINGENT_IMPORT, CONTINGENT_STATS, OVZ,
-                EDUCATIONAL_WORK, DOCUMENTS_PEDAGOGICAL_COUNCILS, DOCUMENTS_PROBE_ORDERS, DOCUMENTS_EXIT_ORDERS,
+                EDUCATIONAL_WORK, CLASS_TEACHER_EXIT_ORDER_CREATE, CLASS_TEACHER_EXIT_ORDER_SUMMARY,
+                DOCUMENTS_PEDAGOGICAL_COUNCILS, DOCUMENTS_PROBE_ORDERS, DOCUMENTS_EXIT_ORDERS,
                 VSOKO_VIEW, VSOKO_EDIT, VSOKO_MCKO, OGE_UPLOAD_VIEW, OGE_MISMATCH_VIEW,
                 OGE_EXTERNAL_WORKS_VIEW, OGE_TEACHER_BINDING_VIEW, OGE_SCORE_VIEW, OGE_EVALUATION_VIEW,
                 OGE_GIA_UPLOAD, OGE_WORK_UPLOAD, USERS);
