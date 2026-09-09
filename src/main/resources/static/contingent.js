@@ -45,6 +45,27 @@ const ui = {
     classStudentsBody: document.getElementById('contingent-class-students-body'),
     classStudentsExport: document.getElementById('contingent-class-students-export'),
     classStudentsClose: document.getElementById('contingent-class-students-close'),
+    admissionRefreshBtn: document.getElementById('admission-refresh-btn'),
+    admissionAddBtn: document.getElementById('admission-add-btn'),
+    admissionTotals: document.getElementById('admission-totals'),
+    admissionParallelStats: document.getElementById('admission-parallel-stats'),
+    admissionFilter: document.getElementById('admission-filter'),
+    admissionMessage: document.getElementById('admission-message'),
+    admissionBody: document.getElementById('admission-body'),
+    admissionDialog: document.getElementById('admission-dialog'),
+    admissionForm: document.getElementById('admission-form'),
+    admissionDialogTitle: document.getElementById('admission-dialog-title'),
+    admissionDialogClose: document.getElementById('admission-dialog-close'),
+    admissionCancelBtn: document.getElementById('admission-cancel-btn'),
+    admissionId: document.getElementById('admission-id'),
+    admissionFullName: document.getElementById('admission-full-name'),
+    admissionRequestedParallel: document.getElementById('admission-requested-parallel'),
+    admissionDocumentStatus: document.getElementById('admission-document-status'),
+    admissionProblems: document.getElementById('admission-problems'),
+    admissionComment: document.getElementById('admission-comment'),
+    admissionAssignedClass: document.getElementById('admission-assigned-class'),
+    admissionClassOptions: document.getElementById('admission-class-options'),
+    admissionDialogMessage: document.getElementById('admission-dialog-message'),
     manualSourceSelect: document.getElementById('contingent-class-size-source'),
     manualSourceSaveBtn: document.getElementById('contingent-class-size-source-save-btn'),
     manualFileInput: document.getElementById('contingent-manual-file'),
@@ -137,6 +158,7 @@ const formatDisplayDate = (value) => {
     return parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : String(value);
 };
 let currentStats = null;
+let currentAdmissionData = { candidates: [], parallels: [] };
 let currentManualRows = [];
 let currentSupportSummary = null;
 let currentClassStudentsClassName = '';
@@ -572,6 +594,166 @@ async function downloadCustomContingent() {
         ui.customExportResult.textContent = `Ошибка: ${error.message}`;
     } finally {
         ui.customExportDownload.disabled = false;
+    }
+}
+
+const admissionDocumentStatusLabel = (value) => ({
+    MOS_RU_SUBMITTED: 'Подал на mos.ru',
+    INTERVIEW_INVITED: 'Приглашён на беседу',
+    ENROLLMENT: 'Зачисление'
+}[value] || value || 'Не указан');
+
+const admissionDecisionLabel = (value) => ({
+    PENDING: 'Решение не принято',
+    AGREED: 'Согласован',
+    ENROLLED: 'Зачислен',
+    REFUSED: 'Отказ'
+}[value] || value || 'Решение не принято');
+
+function admissionText(value) {
+    const text = esc(value || '');
+    return text ? text.replaceAll('\n', '<br>') : '<span class="muted">—</span>';
+}
+
+function renderAdmissionOverview(data) {
+    currentAdmissionData = data || { candidates: [], parallels: [] };
+    const totals = [
+        ['Всего обращений', currentAdmissionData.total || 0, 'total'],
+        ['В работе', currentAdmissionData.active || 0, 'active'],
+        ['Согласовано', currentAdmissionData.agreed || 0, 'agreed'],
+        ['Зачислено', currentAdmissionData.enrolled || 0, 'enrolled'],
+        ['Отказов', currentAdmissionData.refused || 0, 'refused'],
+        ['Отработано', currentAdmissionData.processed || 0, 'processed']
+    ];
+    ui.admissionTotals.innerHTML = totals.map(([label, value, type]) => `
+        <article class="admission-total admission-total-${type}"><strong>${esc(value)}</strong><span>${esc(label)}</span></article>
+    `).join('');
+
+    const parallelRows = (currentAdmissionData.parallels || []).map((row) => `<tr>
+        <th>${esc(row.requestedParallel)} параллель</th>
+        <td>${esc(row.total || 0)}</td><td>${esc(row.active || 0)}</td>
+        <td>${esc(row.agreed || 0)}</td><td>${esc(row.enrolled || 0)}</td><td>${esc(row.refused || 0)}</td>
+    </tr>`).join('');
+    ui.admissionParallelStats.innerHTML = `
+        <thead><tr><th>Желаемая параллель</th><th>Всего</th><th>В работе</th><th>Согласовано</th><th>Зачислено</th><th>Отказ</th></tr></thead>
+        <tbody>${parallelRows || '<tr><td colspan="6" class="muted">Заявлений пока нет.</td></tr>'}</tbody>`;
+    renderAdmissionCandidates();
+}
+
+function admissionActionButtons(row) {
+    if (!contingentPermissions().canImportEdit) return '<span class="muted">Только просмотр</span>';
+    const decision = row.decisionStatus || 'PENDING';
+    const buttons = [`<button type="button" class="secondary" data-admission-edit="${esc(row.id)}">Изменить</button>`];
+    if (decision !== 'AGREED' && decision !== 'ENROLLED') {
+        buttons.push(`<button type="button" class="admission-action-agree" data-admission-action="AGREE" data-admission-id="${esc(row.id)}">Согласован</button>`);
+    }
+    if (decision !== 'ENROLLED') {
+        buttons.push(`<button type="button" class="admission-action-enroll" data-admission-action="ENROLL" data-admission-id="${esc(row.id)}">Зачислен</button>`);
+    }
+    if (decision !== 'REFUSED') {
+        buttons.push(`<button type="button" class="danger admission-action-refuse" data-admission-action="REFUSE" data-admission-id="${esc(row.id)}">Отказ</button>`);
+    }
+    buttons.push(row.processed
+        ? `<button type="button" class="secondary" data-admission-action="REOPEN" data-admission-id="${esc(row.id)}">Вернуть в работу</button>`
+        : `<button type="button" class="admission-action-processed" data-admission-action="PROCESSED" data-admission-id="${esc(row.id)}">Отработано</button>`);
+    return `<div class="admission-actions">${buttons.join('')}</div>`;
+}
+
+function renderAdmissionCandidates() {
+    const filter = ui.admissionFilter?.value || 'ACTIVE';
+    const candidates = (currentAdmissionData.candidates || []).filter((row) =>
+        filter === 'ALL' || (filter === 'PROCESSED' ? row.processed : !row.processed)
+    );
+    ui.admissionBody.innerHTML = candidates.length ? candidates.map((row) => `<tr class="admission-row admission-decision-${esc(String(row.decisionStatus || 'PENDING').toLowerCase())}${row.processed ? ' admission-row-processed' : ''}">
+        <td><strong>${esc(row.fullName)}</strong></td>
+        <td>${esc(row.requestedParallel)} параллель</td>
+        <td><span class="admission-document-status">${esc(admissionDocumentStatusLabel(row.documentStatus))}</span></td>
+        <td class="multiline-cell">${admissionText(row.problems)}</td>
+        <td class="multiline-cell">${admissionText(row.comment)}</td>
+        <td>${row.assignedClass ? `<strong>${esc(row.assignedClass)}</strong>` : '<span class="muted">Не указан</span>'}</td>
+        <td><span class="admission-decision">${esc(admissionDecisionLabel(row.decisionStatus))}</span></td>
+        <td>${row.processed ? '<span class="admission-work-done">Да</span>' : '<span class="admission-work-active">Нет</span>'}</td>
+        <td>${admissionActionButtons(row)}</td>
+    </tr>`).join('') : '<tr><td colspan="9" class="muted">В выбранном списке записей нет.</td></tr>';
+}
+
+async function refreshAdmissions() {
+    ui.admissionMessage.textContent = 'Загружаю данные…';
+    try {
+        const data = await api('/api/contingent/admissions');
+        renderAdmissionOverview(data);
+        ui.admissionMessage.textContent = `Учебный год: ${data.academicYear}.`;
+    } catch (error) {
+        ui.admissionMessage.textContent = `Ошибка: ${error.message}`;
+        throw error;
+    }
+}
+
+function admissionClassNames() {
+    return Array.from(new Set((currentStats?.columns || []).flatMap((building) =>
+        (building.addresses || []).flatMap((address) => (address.classes || []).map((item) => item.className))
+    ).filter(Boolean))).sort((a, b) => String(a).localeCompare(String(b), 'ru', { numeric: true }));
+}
+
+function openAdmissionDialog(row = null) {
+    ui.admissionId.value = row?.id || '';
+    ui.admissionDialogTitle.textContent = row ? 'Изменить данные ребёнка' : 'Добавить ребёнка';
+    ui.admissionFullName.value = row?.fullName || '';
+    ui.admissionRequestedParallel.value = row?.requestedParallel || '';
+    ui.admissionDocumentStatus.value = row?.documentStatus || 'MOS_RU_SUBMITTED';
+    ui.admissionProblems.value = row?.problems || '';
+    ui.admissionComment.value = row?.comment || '';
+    ui.admissionAssignedClass.value = row?.assignedClass || '';
+    ui.admissionClassOptions.innerHTML = admissionClassNames()
+        .map((className) => `<option value="${esc(className)}"></option>`).join('');
+    ui.admissionDialogMessage.textContent = '';
+    ui.admissionDialog.showModal();
+    ui.admissionFullName.focus();
+}
+
+async function saveAdmission(event) {
+    event.preventDefault();
+    const id = ui.admissionId.value;
+    ui.admissionDialogMessage.textContent = 'Сохраняю…';
+    try {
+        const data = await api(id ? `/api/contingent/admissions/${encodeURIComponent(id)}` : '/api/contingent/admissions', {
+            method: id ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                fullName: ui.admissionFullName.value,
+                requestedParallel: Number(ui.admissionRequestedParallel.value || 0),
+                documentStatus: ui.admissionDocumentStatus.value,
+                problems: ui.admissionProblems.value,
+                comment: ui.admissionComment.value,
+                assignedClass: ui.admissionAssignedClass.value
+            })
+        });
+        ui.admissionDialog.close();
+        renderAdmissionOverview(data);
+        ui.admissionMessage.textContent = id ? 'Данные ребёнка обновлены.' : 'Ребёнок добавлен в приём.';
+    } catch (error) {
+        ui.admissionDialogMessage.textContent = `Ошибка: ${error.message}`;
+    }
+}
+
+async function runAdmissionAction(id, action) {
+    const row = (currentAdmissionData.candidates || []).find((item) => Number(item.id) === Number(id));
+    if (action === 'ENROLL' && row && !String(row.assignedClass || '').trim()) {
+        openAdmissionDialog(row);
+        ui.admissionDialogMessage.textContent = 'Перед зачислением укажите конкретный класс и сохраните запись.';
+        return;
+    }
+    ui.admissionMessage.textContent = 'Сохраняю действие…';
+    try {
+        const data = await api(`/api/contingent/admissions/${encodeURIComponent(id)}/action`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action })
+        });
+        renderAdmissionOverview(data);
+        ui.admissionMessage.textContent = 'Статус обновлён.';
+    } catch (error) {
+        ui.admissionMessage.textContent = `Ошибка: ${error.message}`;
     }
 }
 
@@ -2108,7 +2290,31 @@ ui.tabs.forEach((tab) => tab.addEventListener('click', () => {
             ui.mismatchSummary.textContent = `Ошибка: ${error.message}`;
         });
     }
+    if (tabName === 'admissions') {
+        refreshAdmissions().catch(() => { });
+    }
 }));
+
+ui.admissionRefreshBtn?.addEventListener('click', () => refreshAdmissions().catch(() => { }));
+ui.admissionAddBtn?.addEventListener('click', () => openAdmissionDialog());
+ui.admissionFilter?.addEventListener('change', renderAdmissionCandidates);
+ui.admissionForm?.addEventListener('submit', saveAdmission);
+ui.admissionDialogClose?.addEventListener('click', () => ui.admissionDialog.close());
+ui.admissionCancelBtn?.addEventListener('click', () => ui.admissionDialog.close());
+ui.admissionBody?.addEventListener('click', (event) => {
+    const editButton = event.target.closest('[data-admission-edit]');
+    if (editButton) {
+        const row = (currentAdmissionData.candidates || []).find((item) =>
+            Number(item.id) === Number(editButton.dataset.admissionEdit)
+        );
+        if (row) openAdmissionDialog(row);
+        return;
+    }
+    const actionButton = event.target.closest('[data-admission-action]');
+    if (actionButton) {
+        runAdmissionAction(actionButton.dataset.admissionId, actionButton.dataset.admissionAction);
+    }
+});
 
 ui.openMismatchesBtn?.addEventListener('click', () => {
     const snapshotId = ui.openMismatchesBtn.dataset.snapshotId || '';
@@ -2386,13 +2592,14 @@ ui.supportRegisterTable?.addEventListener('click', (event) => {
         }
 
         const hash = String(window.location.hash || '').toLowerCase();
-        const requestedTab = ['#import', '#mismatches', '#manual', '#support', '#nosologies', '#stats'].includes(hash)
+        const requestedTab = ['#import', '#mismatches', '#manual', '#support', '#nosologies', '#stats', '#admissions'].includes(hash)
             ? hash.slice(1)
             : defaultTab;
         const permissions = contingentPermissions();
         const finalTab = ((requestedTab === 'import' || requestedTab === 'mismatches') && permissions.canImportView)
             || (requestedTab === 'manual' && permissions.canManualView)
             || ((requestedTab === 'support' || requestedTab === 'nosologies') && permissions.canSupportView)
+            || (requestedTab === 'admissions' && permissions.canStatsView)
             || (requestedTab === 'stats' && permissions.canStatsView)
             ? requestedTab
             : defaultTab;
@@ -2420,6 +2627,9 @@ ui.supportRegisterTable?.addEventListener('click', (event) => {
         }
         if (finalTab === 'nosologies') {
             await loadCertificateReferences();
+        }
+        if (finalTab === 'admissions') {
+            await refreshAdmissions();
         }
     } catch (error) {
         printImportResult({ error: error.message });

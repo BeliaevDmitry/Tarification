@@ -98,4 +98,24 @@ class ContingentImportFrontendTest {
         assertTrue(pageScript.contains("ui.supportReconcileBtn.textContent = 'Сопоставляю…';"));
         assertTrue(pageScript.contains("supportReconcileInProgress = false;"));
     }
+
+    @Test
+    void admissionsTabProvidesStatisticsEditorAndWorkflowActions() throws Exception {
+        String html = Files.readString(Path.of("src/main/resources/static/contingent.html"));
+        String pageScript = Files.readString(Path.of("src/main/resources/static/contingent.js"));
+
+        assertTrue(html.contains("data-contingent-tab=\"admissions\""));
+        assertTrue(html.contains("id=\"admission-parallel-stats\""));
+        assertTrue(html.contains("id=\"admission-add-btn\""));
+        assertTrue(html.contains("id=\"admission-full-name\""));
+        assertTrue(html.contains("id=\"admission-requested-parallel\""));
+        assertTrue(html.contains("value=\"MOS_RU_SUBMITTED\""));
+        assertTrue(html.contains("value=\"INTERVIEW_INVITED\""));
+        assertTrue(html.contains("value=\"ENROLLMENT\""));
+        assertTrue(pageScript.contains("/api/contingent/admissions"));
+        assertTrue(pageScript.contains("data-admission-action=\"AGREE\""));
+        assertTrue(pageScript.contains("data-admission-action=\"ENROLL\""));
+        assertTrue(pageScript.contains("data-admission-action=\"REFUSE\""));
+        assertTrue(pageScript.contains("data-admission-action=\"PROCESSED\""));
+    }
 }
