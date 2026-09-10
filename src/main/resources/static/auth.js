@@ -291,6 +291,8 @@ function currentTab() {
     if (window.location.pathname === '/contingent.html') {
         const hash = String(window.location.hash || '').toLowerCase();
         if (hash === '#import') return 'CONTINGENT_IMPORT';
+        if (hash === '#admissions') return 'CONTINGENT_ADMISSION';
+        if (hash === '#roles') return 'CONTINGENT_ADMISSION_ROLES';
         if (hash === '#manual') return 'CONTINGENT_STATS';
         return 'CONTINGENT_STATS';
     }
@@ -332,7 +334,25 @@ function isDocumentsHubPage() {
 function hasContingentAccess(currentUser) {
     if (currentUser.admin) return true;
     const permissions = tabPermissionMap(currentUser);
-    return Boolean(permissions.CONTINGENT_IMPORT?.canView || permissions.CONTINGENT_STATS?.canView);
+    return Boolean(
+        currentUser.role === 'SECRETARY'
+        || currentUser.admissionAccess?.canView
+        || currentUser.admissionAccess?.canManageRoles
+        || permissions.CONTINGENT_IMPORT?.canView
+        || permissions.CONTINGENT_STATS?.canView
+        || permissions.CONTINGENT_ADMISSION?.canView
+        || permissions.CONTINGENT_ADMISSION_ROLES?.canView
+    );
+}
+
+async function loadAdmissionAccessForNavigation(currentUser) {
+    if (currentUser.admin || hasContingentAccess(currentUser)) return;
+    if (!['/', '/index.html', '/contingent.html'].includes(window.location.pathname)) return;
+    try {
+        currentUser.admissionAccess = await tarificationApi('/api/contingent/admissions/access');
+    } catch {
+        currentUser.admissionAccess = null;
+    }
 }
 
 function hasLoadAccess(currentUser) {
@@ -761,6 +781,7 @@ function disableExportAreas(currentUser) {
 (async function initAuth() {
     try {
         const currentUser = await tarificationApi('/api/auth/me');
+        await loadAdmissionAccessForNavigation(currentUser);
         const branding = await loadBranding();
         applyBrandingToDocument(branding);
         window.tarificationAuth = currentUser;

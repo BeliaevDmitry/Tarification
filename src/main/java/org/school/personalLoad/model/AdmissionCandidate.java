@@ -47,6 +47,9 @@ public class AdmissionCandidate {
     @Column(name = "processed", nullable = false)
     private boolean processed;
 
+    @Column(name = "testing", nullable = false, columnDefinition = "boolean default false")
+    private boolean testing;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 

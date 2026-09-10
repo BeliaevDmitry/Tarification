@@ -103,19 +103,31 @@ class ContingentImportFrontendTest {
     void admissionsTabProvidesStatisticsEditorAndWorkflowActions() throws Exception {
         String html = Files.readString(Path.of("src/main/resources/static/contingent.html"));
         String pageScript = Files.readString(Path.of("src/main/resources/static/contingent.js"));
+        String authScript = Files.readString(Path.of("src/main/resources/static/auth.js"));
+        String adminScript = Files.readString(Path.of("src/main/resources/static/admin.js"));
 
         assertTrue(html.contains("data-contingent-tab=\"admissions\""));
         assertTrue(html.contains("id=\"admission-parallel-stats\""));
         assertTrue(html.contains("id=\"admission-add-btn\""));
         assertTrue(html.contains("id=\"admission-full-name\""));
         assertTrue(html.contains("id=\"admission-requested-parallel\""));
-        assertTrue(html.contains("value=\"MOS_RU_SUBMITTED\""));
-        assertTrue(html.contains("value=\"INTERVIEW_INVITED\""));
-        assertTrue(html.contains("value=\"ENROLLMENT\""));
+        assertTrue(html.contains("id=\"admission-action-dialog\""));
+        assertTrue(html.contains("<th>Доп. информация</th>"));
+        assertTrue(html.contains("data-contingent-tab=\"roles\""));
+        assertTrue(html.contains("id=\"admission-roles-body\""));
         assertTrue(pageScript.contains("/api/contingent/admissions"));
-        assertTrue(pageScript.contains("data-admission-action=\"AGREE\""));
-        assertTrue(pageScript.contains("data-admission-action=\"ENROLL\""));
-        assertTrue(pageScript.contains("data-admission-action=\"REFUSE\""));
+        assertTrue(pageScript.contains("PRELIMINARY_INVITATION"));
+        assertTrue(pageScript.contains("PLACE_OFFERED"));
+        assertTrue(pageScript.contains("DOCUMENTS_WITHDRAWN"));
+        assertTrue(pageScript.contains("data-admission-modal=\"AGREE\""));
+        assertTrue(pageScript.contains("data-admission-modal=\"REFUSE\""));
+        assertTrue(pageScript.contains("data-admission-action=\"TESTING\""));
         assertTrue(pageScript.contains("data-admission-action=\"PROCESSED\""));
+        assertTrue(pageScript.contains("admission-row-testing"));
+        assertTrue(pageScript.contains("row.additionalInfo"));
+        assertTrue(pageScript.contains("currentAdmissionData?.classOptions"));
+        assertTrue(authScript.contains("currentUser.admissionAccess?.canView"));
+        assertTrue(authScript.contains("#roles') return 'CONTINGENT_ADMISSION_ROLES'"));
+        assertTrue(adminScript.contains("CONTINGENT_ADMISSION_ROLES', label: 'Контингент: роли приёма', sensitive: true"));
     }
 }

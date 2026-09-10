@@ -358,7 +358,10 @@ public class AppUserServiceImpl implements AppUserService {
     }
 
     private boolean isSensitivePermission(AppTab tab) {
-        return tab == AppTab.LOAD_SALARY || tab == AppTab.LOAD_MASTER_FOT || tab == AppTab.OGE_MISMATCH_VIEW;
+        return tab == AppTab.LOAD_SALARY
+                || tab == AppTab.LOAD_MASTER_FOT
+                || tab == AppTab.OGE_MISMATCH_VIEW
+                || tab == AppTab.CONTINGENT_ADMISSION_ROLES;
     }
 
     private AppUserTabPermission buildPermission(AppUser user, AppTab tab, boolean canView, boolean canEdit, boolean canImport, boolean canExport) {
@@ -437,6 +440,9 @@ public class AppUserServiceImpl implements AppUserService {
             return AppTab.TEACHERS;
         }
         if (tab == AppTab.OVZ) {
+            return AppTab.CONTINGENT_STATS;
+        }
+        if (tab == AppTab.CONTINGENT_ADMISSION) {
             return AppTab.CONTINGENT_STATS;
         }
         if (tab == AppTab.CLASS_TEACHER_EXIT_ORDER_CREATE

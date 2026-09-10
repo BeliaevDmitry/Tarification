@@ -27,6 +27,8 @@ public enum AppTab {
     TEACHERS_MCKO("МЦКО", "/teachers.html#mcko"),
     CONTINGENT_IMPORT("Контингент: импорт", "/contingent.html#import"),
     CONTINGENT_STATS("Контингент: численность", "/contingent.html#stats"),
+    CONTINGENT_ADMISSION("Контингент: приём", "/contingent.html#admissions"),
+    CONTINGENT_ADMISSION_ROLES("Контингент: роли приёма", "/contingent.html#roles"),
     OVZ("ОВЗ", "/ovz.html"),
     SUBJECT_AREAS("Предметные области", "/subject-areas.html"),
     EDUCATIONAL_WORK("Воспитательная работа", "/educational-work.html"),
@@ -67,7 +69,8 @@ public enum AppTab {
     public static List<AppTab> navigableTabs() {
         return Arrays.asList(HR_DOCUMENTS, HR_PERSONAL_DATA, BUILDINGS, CLASSES, SUBJECTS, CURRICULUM, LOAD, PEOPLE_LOAD, LOAD_ISSUES, LOAD_MASTER_FOT, LOAD_STATS,
                 LOAD_SALARY, SETTINGS, SUBJECT_AREAS, TEACHERS, TEACHERS_ARCHIVE, TEACHERS_DISMISSALS,
-                TEACHERS_SETTINGS, TEACHERS_MCKO, SERVICE_NOTES, HR_NOTIFICATIONS_VIEW, CONTINGENT_IMPORT, CONTINGENT_STATS, OVZ,
+                TEACHERS_SETTINGS, TEACHERS_MCKO, SERVICE_NOTES, HR_NOTIFICATIONS_VIEW, CONTINGENT_IMPORT, CONTINGENT_STATS,
+                CONTINGENT_ADMISSION, CONTINGENT_ADMISSION_ROLES, OVZ,
                 EDUCATIONAL_WORK, CLASS_TEACHER_EXIT_ORDER_CREATE, CLASS_TEACHER_EXIT_ORDER_SUMMARY,
                 DOCUMENTS_PEDAGOGICAL_COUNCILS, DOCUMENTS_PROBE_ORDERS, DOCUMENTS_EXIT_ORDERS,
                 VSOKO_VIEW, VSOKO_EDIT, VSOKO_MCKO, OGE_UPLOAD_VIEW, OGE_MISMATCH_VIEW,

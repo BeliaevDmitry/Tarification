@@ -1,7 +1,6 @@
 package org.school.personalLoad.controller.api;
 
 import lombok.RequiredArgsConstructor;
-import org.school.personalLoad.auth.AppTab;
 import org.school.personalLoad.auth.AuthExceptions;
 import org.school.personalLoad.auth.AuthSessionUtils;
 import org.school.personalLoad.auth.SessionUser;
@@ -24,8 +23,35 @@ public class ContingentAdmissionController {
     @GetMapping
     public ResponseEntity<AdmissionDtos.Overview> overview(@RequestParam(required = false) String academicYear,
                                                           HttpServletRequest request) {
-        requireView(AuthSessionUtils.requiredUser(request));
-        return ResponseEntity.ok(service.overview(academicYearService.resolveRequestedOrDefault(academicYear)));
+        SessionUser user = AuthSessionUtils.requiredUser(request);
+        AdmissionDtos.Access access = requireView(user);
+        return ResponseEntity.ok(withAccess(
+                service.overview(academicYearService.resolveRequestedOrDefault(academicYear)), access));
+    }
+
+    @GetMapping("/access")
+    public ResponseEntity<AdmissionDtos.Access> access(HttpServletRequest request) {
+        return ResponseEntity.ok(service.access(AuthSessionUtils.requiredUser(request)));
+    }
+
+    @GetMapping("/roles")
+    public ResponseEntity<AdmissionDtos.RolesOverview> roles(HttpServletRequest request) {
+        AdmissionDtos.Access access = service.access(AuthSessionUtils.requiredUser(request));
+        if (!access.isCanManageRoles()) {
+            throw new AuthExceptions.ForbiddenException("Нет прав на просмотр ролей приёма");
+        }
+        return ResponseEntity.ok(service.rolesOverview(access.isCanEditRoles()));
+    }
+
+    @PutMapping("/roles")
+    public ResponseEntity<AdmissionDtos.RolesOverview> updateRoles(@RequestBody AdmissionDtos.RolesUpdateRequest body,
+                                                                  HttpServletRequest request) {
+        SessionUser user = AuthSessionUtils.requiredUser(request);
+        AdmissionDtos.Access access = service.access(user);
+        if (!access.isCanEditRoles()) {
+            throw new AuthExceptions.ForbiddenException("Нет прав на изменение ролей приёма");
+        }
+        return ResponseEntity.ok(service.updateRoles(body, user.getFullName(), true));
     }
 
     @PostMapping
@@ -33,10 +59,9 @@ public class ContingentAdmissionController {
                                                         @RequestBody AdmissionDtos.SaveRequest body,
                                                         HttpServletRequest request) {
         SessionUser user = AuthSessionUtils.requiredUser(request);
-        requireEdit(user);
-        return ResponseEntity.ok(service.create(
-                academicYearService.resolveRequestedOrDefault(academicYear), body, user.getFullName()
-        ));
+        AdmissionDtos.Access access = requireEdit(user);
+        return ResponseEntity.ok(withAccess(service.create(
+                academicYearService.resolveRequestedOrDefault(academicYear), body, user.getFullName()), access));
     }
 
     @PutMapping("/{id}")
@@ -45,10 +70,9 @@ public class ContingentAdmissionController {
                                                         @RequestBody AdmissionDtos.SaveRequest body,
                                                         HttpServletRequest request) {
         SessionUser user = AuthSessionUtils.requiredUser(request);
-        requireEdit(user);
-        return ResponseEntity.ok(service.update(
-                academicYearService.resolveRequestedOrDefault(academicYear), id, body, user.getFullName()
-        ));
+        AdmissionDtos.Access access = requireEdit(user);
+        return ResponseEntity.ok(withAccess(service.update(
+                academicYearService.resolveRequestedOrDefault(academicYear), id, body, user.getFullName()), access));
     }
 
     @PatchMapping("/{id}/action")
@@ -57,21 +81,35 @@ public class ContingentAdmissionController {
                                                         @RequestBody AdmissionDtos.ActionRequest body,
                                                         HttpServletRequest request) {
         SessionUser user = AuthSessionUtils.requiredUser(request);
-        requireEdit(user);
-        return ResponseEntity.ok(service.action(
-                academicYearService.resolveRequestedOrDefault(academicYear), id, body, user.getFullName()
-        ));
-    }
-
-    private void requireView(SessionUser user) {
-        if (!user.canViewTab(AppTab.CONTINGENT_STATS) && !user.canViewTab(AppTab.CONTINGENT_IMPORT)) {
-            throw new AuthExceptions.ForbiddenException("Нет прав на просмотр приёма детей");
-        }
-    }
-
-    private void requireEdit(SessionUser user) {
-        if (!user.canEditTab(AppTab.CONTINGENT_STATS) && !user.canEditTab(AppTab.CONTINGENT_IMPORT)) {
+        AdmissionDtos.Access access = service.access(user);
+        String action = body == null || body.getAction() == null ? "" : body.getAction().trim().toUpperCase();
+        if ("AGREE".equals(action) || "REFUSE".equals(action)) {
+            if (!access.isCanDecide()) throw new AuthExceptions.ForbiddenException("Нет права согласовывать или отклонять приём");
+        } else if (!access.isCanEdit()) {
             throw new AuthExceptions.ForbiddenException("Нет прав на изменение приёма детей");
         }
+        return ResponseEntity.ok(withAccess(service.action(
+                academicYearService.resolveRequestedOrDefault(academicYear), id, body, user.getFullName()), access));
+    }
+
+    private AdmissionDtos.Access requireView(SessionUser user) {
+        AdmissionDtos.Access access = service.access(user);
+        if (!access.isCanView()) {
+            throw new AuthExceptions.ForbiddenException("Нет прав на просмотр приёма детей");
+        }
+        return access;
+    }
+
+    private AdmissionDtos.Access requireEdit(SessionUser user) {
+        AdmissionDtos.Access access = service.access(user);
+        if (!access.isCanEdit()) {
+            throw new AuthExceptions.ForbiddenException("Нет прав на изменение приёма детей");
+        }
+        return access;
+    }
+
+    private AdmissionDtos.Overview withAccess(AdmissionDtos.Overview overview, AdmissionDtos.Access access) {
+        overview.setAccess(access);
+        return overview;
     }
 }
