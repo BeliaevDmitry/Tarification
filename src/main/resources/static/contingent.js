@@ -60,12 +60,26 @@ const ui = {
     admissionId: document.getElementById('admission-id'),
     admissionFullName: document.getElementById('admission-full-name'),
     admissionRequestedParallel: document.getElementById('admission-requested-parallel'),
-    admissionDocumentStatus: document.getElementById('admission-document-status'),
-    admissionProblems: document.getElementById('admission-problems'),
-    admissionComment: document.getElementById('admission-comment'),
-    admissionAssignedClass: document.getElementById('admission-assigned-class'),
-    admissionClassOptions: document.getElementById('admission-class-options'),
     admissionDialogMessage: document.getElementById('admission-dialog-message'),
+    admissionActionDialog: document.getElementById('admission-action-dialog'),
+    admissionActionForm: document.getElementById('admission-action-form'),
+    admissionActionTitle: document.getElementById('admission-action-title'),
+    admissionActionChild: document.getElementById('admission-action-child'),
+    admissionActionClose: document.getElementById('admission-action-close'),
+    admissionActionCancel: document.getElementById('admission-action-cancel'),
+    admissionActionId: document.getElementById('admission-action-id'),
+    admissionActionType: document.getElementById('admission-action-type'),
+    admissionActionClassField: document.getElementById('admission-action-class-field'),
+    admissionActionClass: document.getElementById('admission-action-class'),
+    admissionActionCommentField: document.getElementById('admission-action-comment-field'),
+    admissionActionComment: document.getElementById('admission-action-comment'),
+    admissionActionProblemField: document.getElementById('admission-action-problem-field'),
+    admissionActionProblem: document.getElementById('admission-action-problem'),
+    admissionActionMessage: document.getElementById('admission-action-message'),
+    admissionActionSave: document.getElementById('admission-action-save'),
+    admissionRolesBody: document.getElementById('admission-roles-body'),
+    admissionRolesSave: document.getElementById('admission-roles-save'),
+    admissionRolesMessage: document.getElementById('admission-roles-message'),
     manualSourceSelect: document.getElementById('contingent-class-size-source'),
     manualSourceSaveBtn: document.getElementById('contingent-class-size-source-save-btn'),
     manualFileInput: document.getElementById('contingent-manual-file'),
@@ -159,6 +173,8 @@ const formatDisplayDate = (value) => {
 };
 let currentStats = null;
 let currentAdmissionData = { candidates: [], parallels: [] };
+let currentAdmissionRoles = { users: [], canEdit: false };
+let admissionAccess = null;
 let currentManualRows = [];
 let currentSupportSummary = null;
 let currentClassStudentsClassName = '';
@@ -242,14 +258,21 @@ function stageClassSummary(stats) {
 function contingentPermissions() {
     const permissions = window.tarificationTabPermissions || {};
     if (window.tarificationAuth?.admin) {
-        return { canImportView: true, canImportEdit: true, canStatsView: true, canManualView: true, canSupportView: true };
+        return { canImportView: true, canImportEdit: true, canStatsView: true, canManualView: true, canSupportView: true,
+            canAdmissionView: true, canAdmissionEdit: true, canAdmissionDecide: true, canAdmissionRolesView: true, canAdmissionRolesEdit: true };
     }
+    const secretaryRole = window.tarificationAuth?.role === 'SECRETARY';
     return {
         canImportView: Boolean(permissions.CONTINGENT_IMPORT?.canView),
         canImportEdit: Boolean(permissions.CONTINGENT_IMPORT?.canEdit || permissions.CONTINGENT_STATS?.canEdit),
         canStatsView: Boolean(permissions.CONTINGENT_STATS?.canView),
         canManualView: Boolean(permissions.CONTINGENT_STATS?.canView),
-        canSupportView: Boolean(permissions.CONTINGENT_STATS?.canView)
+        canSupportView: Boolean(permissions.CONTINGENT_STATS?.canView),
+        canAdmissionView: Boolean(admissionAccess?.canView || secretaryRole || permissions.CONTINGENT_ADMISSION?.canView || permissions.CONTINGENT_STATS?.canView),
+        canAdmissionEdit: Boolean(admissionAccess?.canEdit || secretaryRole || permissions.CONTINGENT_ADMISSION?.canEdit),
+        canAdmissionDecide: Boolean(admissionAccess?.canDecide),
+        canAdmissionRolesView: Boolean(admissionAccess?.canManageRoles || permissions.CONTINGENT_ADMISSION_ROLES?.canView),
+        canAdmissionRolesEdit: Boolean(admissionAccess?.canEditRoles || permissions.CONTINGENT_ADMISSION_ROLES?.canEdit)
     };
 }
 
@@ -262,22 +285,35 @@ async function waitForAuthContext() {
 }
 
 function applyTabAccess() {
-    const { canImportView, canStatsView, canManualView, canSupportView } = contingentPermissions();
+    const { canImportView, canStatsView, canManualView, canSupportView, canAdmissionView, canAdmissionRolesView } = contingentPermissions();
     ui.tabs.forEach((tab) => {
         const tabName = tab.dataset.contingentTab;
         const allowed = (tabName === 'import' || tabName === 'mismatches')
             ? canImportView
+            : (tabName === 'admissions' ? canAdmissionView
+                : (tabName === 'roles' ? canAdmissionRolesView
             : (tabName === 'manual'
                 ? canManualView
-                : ((tabName === 'support' || tabName === 'nosologies') ? canSupportView : canStatsView));
+                : ((tabName === 'support' || tabName === 'nosologies') ? canSupportView : canStatsView))));
         tab.style.display = allowed ? '' : 'none';
     });
 
     if (canStatsView) return 'stats';
+    if (canAdmissionView) return 'admissions';
+    if (canAdmissionRolesView) return 'roles';
     if (canSupportView) return 'support';
     if (canManualView) return 'manual';
     if (canImportView) return 'import';
     return null;
+}
+
+async function loadAdmissionAccess() {
+    try {
+        admissionAccess = await api('/api/contingent/admissions/access');
+    } catch {
+        admissionAccess = {};
+    }
+    return admissionAccess;
 }
 
 async function api(path, options = {}) {
@@ -599,9 +635,20 @@ async function downloadCustomContingent() {
 
 const admissionDocumentStatusLabel = (value) => ({
     MOS_RU_SUBMITTED: 'Подал на mos.ru',
-    INTERVIEW_INVITED: 'Приглашён на беседу',
-    ENROLLMENT: 'Зачисление'
+    PRELIMINARY_INVITATION: 'Предварительное приглашение',
+    PLACE_OFFERED: 'Предложили место',
+    SIGNED: 'Подписали',
+    INVITATION: 'Приглашение',
+    ENROLLED: 'Зачислен',
+    DOCUMENTS_WITHDRAWN: 'Отозвал документы',
+    INTERVIEW_INVITED: 'Приглашение',
+    ENROLLMENT: 'Зачислен'
 }[value] || value || 'Не указан');
+
+const admissionDocumentStatuses = [
+    'MOS_RU_SUBMITTED', 'PRELIMINARY_INVITATION', 'PLACE_OFFERED', 'SIGNED',
+    'INVITATION', 'ENROLLED', 'DOCUMENTS_WITHDRAWN'
+];
 
 const admissionDecisionLabel = (value) => ({
     PENDING: 'Решение не принято',
@@ -617,6 +664,8 @@ function admissionText(value) {
 
 function renderAdmissionOverview(data) {
     currentAdmissionData = data || { candidates: [], parallels: [] };
+    if (data?.access) admissionAccess = data.access;
+    ui.admissionAddBtn.hidden = !currentAdmissionData.access?.canEdit;
     const totals = [
         ['Всего обращений', currentAdmissionData.total || 0, 'total'],
         ['В работе', currentAdmissionData.active || 0, 'active'],
@@ -640,22 +689,37 @@ function renderAdmissionOverview(data) {
     renderAdmissionCandidates();
 }
 
+function admissionStatusButtons(row) {
+    const current = row.documentStatus === 'INTERVIEW_INVITED' ? 'INVITATION'
+        : row.documentStatus === 'ENROLLMENT' ? 'ENROLLED' : row.documentStatus;
+    if (!currentAdmissionData.access?.canEdit) {
+        return `<span class="admission-document-status">${esc(admissionDocumentStatusLabel(current))}</span>`;
+    }
+    return `<div class="admission-status-actions">${admissionDocumentStatuses.map((status) => `
+        <button type="button" class="${status === current ? 'admission-status-current' : 'secondary'}"
+                data-admission-status="${esc(status)}" data-admission-id="${esc(row.id)}">
+            ${esc(admissionDocumentStatusLabel(status))}
+        </button>`).join('')}</div>`;
+}
+
 function admissionActionButtons(row) {
-    if (!contingentPermissions().canImportEdit) return '<span class="muted">Только просмотр</span>';
-    const decision = row.decisionStatus || 'PENDING';
-    const buttons = [`<button type="button" class="secondary" data-admission-edit="${esc(row.id)}">Изменить</button>`];
-    if (decision !== 'AGREED' && decision !== 'ENROLLED') {
-        buttons.push(`<button type="button" class="admission-action-agree" data-admission-action="AGREE" data-admission-id="${esc(row.id)}">Согласован</button>`);
+    const access = currentAdmissionData.access || {};
+    if (!access.canEdit && !access.canDecide) return '<span class="muted">Только просмотр</span>';
+    const buttons = [];
+    if (access.canEdit) {
+        buttons.push(`<button type="button" class="secondary" data-admission-edit="${esc(row.id)}">Изменить</button>`);
+        buttons.push(`<button type="button" class="${row.testing ? 'admission-testing-active' : 'secondary'}" data-admission-action="TESTING" data-admission-id="${esc(row.id)}">${row.testing ? 'Снять тестирование' : 'Тестирование'}</button>`);
+        buttons.push(`<button type="button" class="${row.problems ? 'admission-problem-active' : 'secondary'}" data-admission-modal="PROBLEM" data-admission-id="${esc(row.id)}">Проблема</button>`);
     }
-    if (decision !== 'ENROLLED') {
-        buttons.push(`<button type="button" class="admission-action-enroll" data-admission-action="ENROLL" data-admission-id="${esc(row.id)}">Зачислен</button>`);
+    if (access.canDecide) {
+        buttons.push(`<button type="button" class="admission-action-agree" data-admission-modal="AGREE" data-admission-id="${esc(row.id)}">Согласован</button>`);
+        buttons.push(`<button type="button" class="danger admission-action-refuse" data-admission-modal="REFUSE" data-admission-id="${esc(row.id)}">Отказ</button>`);
     }
-    if (decision !== 'REFUSED') {
-        buttons.push(`<button type="button" class="danger admission-action-refuse" data-admission-action="REFUSE" data-admission-id="${esc(row.id)}">Отказ</button>`);
+    if (access.canEdit) {
+        buttons.push(row.processed
+            ? `<button type="button" class="secondary" data-admission-action="REOPEN" data-admission-id="${esc(row.id)}">Вернуть в работу</button>`
+            : `<button type="button" class="admission-action-processed" data-admission-action="PROCESSED" data-admission-id="${esc(row.id)}">Отработано</button>`);
     }
-    buttons.push(row.processed
-        ? `<button type="button" class="secondary" data-admission-action="REOPEN" data-admission-id="${esc(row.id)}">Вернуть в работу</button>`
-        : `<button type="button" class="admission-action-processed" data-admission-action="PROCESSED" data-admission-id="${esc(row.id)}">Отработано</button>`);
     return `<div class="admission-actions">${buttons.join('')}</div>`;
 }
 
@@ -664,17 +728,18 @@ function renderAdmissionCandidates() {
     const candidates = (currentAdmissionData.candidates || []).filter((row) =>
         filter === 'ALL' || (filter === 'PROCESSED' ? row.processed : !row.processed)
     );
-    ui.admissionBody.innerHTML = candidates.length ? candidates.map((row) => `<tr class="admission-row admission-decision-${esc(String(row.decisionStatus || 'PENDING').toLowerCase())}${row.processed ? ' admission-row-processed' : ''}">
+    ui.admissionBody.innerHTML = candidates.length ? candidates.map((row) => `<tr class="admission-row admission-decision-${esc(String(row.decisionStatus || 'PENDING').toLowerCase())}${row.testing ? ' admission-row-testing' : ''}${row.processed ? ' admission-row-processed' : ''}">
         <td><strong>${esc(row.fullName)}</strong></td>
         <td>${esc(row.requestedParallel)} параллель</td>
-        <td><span class="admission-document-status">${esc(admissionDocumentStatusLabel(row.documentStatus))}</span></td>
+        <td>${admissionStatusButtons(row)}</td>
         <td class="multiline-cell">${admissionText(row.problems)}</td>
         <td class="multiline-cell">${admissionText(row.comment)}</td>
         <td>${row.assignedClass ? `<strong>${esc(row.assignedClass)}</strong>` : '<span class="muted">Не указан</span>'}</td>
         <td><span class="admission-decision">${esc(admissionDecisionLabel(row.decisionStatus))}</span></td>
+        <td class="multiline-cell admission-additional-info">${admissionText(row.additionalInfo)}</td>
         <td>${row.processed ? '<span class="admission-work-done">Да</span>' : '<span class="admission-work-active">Нет</span>'}</td>
         <td>${admissionActionButtons(row)}</td>
-    </tr>`).join('') : '<tr><td colspan="9" class="muted">В выбранном списке записей нет.</td></tr>';
+    </tr>`).join('') : '<tr><td colspan="10" class="muted">В выбранном списке записей нет.</td></tr>';
 }
 
 async function refreshAdmissions() {
@@ -689,10 +754,21 @@ async function refreshAdmissions() {
     }
 }
 
-function admissionClassNames() {
-    return Array.from(new Set((currentStats?.columns || []).flatMap((building) =>
-        (building.addresses || []).flatMap((address) => (address.classes || []).map((item) => item.className))
-    ).filter(Boolean))).sort((a, b) => String(a).localeCompare(String(b), 'ru', { numeric: true }));
+function admissionClassRows(parallel) {
+    const byName = new Map();
+    (currentAdmissionData?.classOptions || []).forEach((item) => {
+        if (Number(item.parallel) !== Number(parallel) || !item.className) return;
+        byName.set(item.className, { className: item.className, students: Number(item.students || 0) });
+    });
+    (currentStats?.columns || []).forEach((building) => (building.addresses || []).forEach((address) =>
+        (address.classes || []).forEach((item) => {
+            if (Number(item.parallel) !== Number(parallel) || !item.className) return;
+            const previous = byName.get(item.className);
+            if (!previous || Number(item.students || 0) > Number(previous.students || 0)) {
+                byName.set(item.className, { className: item.className, students: Number(item.students || 0) });
+            }
+        })));
+    return Array.from(byName.values()).sort((a, b) => String(a.className).localeCompare(String(b.className), 'ru', { numeric: true }));
 }
 
 function openAdmissionDialog(row = null) {
@@ -700,12 +776,6 @@ function openAdmissionDialog(row = null) {
     ui.admissionDialogTitle.textContent = row ? 'Изменить данные ребёнка' : 'Добавить ребёнка';
     ui.admissionFullName.value = row?.fullName || '';
     ui.admissionRequestedParallel.value = row?.requestedParallel || '';
-    ui.admissionDocumentStatus.value = row?.documentStatus || 'MOS_RU_SUBMITTED';
-    ui.admissionProblems.value = row?.problems || '';
-    ui.admissionComment.value = row?.comment || '';
-    ui.admissionAssignedClass.value = row?.assignedClass || '';
-    ui.admissionClassOptions.innerHTML = admissionClassNames()
-        .map((className) => `<option value="${esc(className)}"></option>`).join('');
     ui.admissionDialogMessage.textContent = '';
     ui.admissionDialog.showModal();
     ui.admissionFullName.focus();
@@ -721,11 +791,7 @@ async function saveAdmission(event) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 fullName: ui.admissionFullName.value,
-                requestedParallel: Number(ui.admissionRequestedParallel.value || 0),
-                documentStatus: ui.admissionDocumentStatus.value,
-                problems: ui.admissionProblems.value,
-                comment: ui.admissionComment.value,
-                assignedClass: ui.admissionAssignedClass.value
+                requestedParallel: Number(ui.admissionRequestedParallel.value || 0)
             })
         });
         ui.admissionDialog.close();
@@ -736,24 +802,122 @@ async function saveAdmission(event) {
     }
 }
 
-async function runAdmissionAction(id, action) {
+function openAdmissionActionDialog(id, action) {
     const row = (currentAdmissionData.candidates || []).find((item) => Number(item.id) === Number(id));
-    if (action === 'ENROLL' && row && !String(row.assignedClass || '').trim()) {
-        openAdmissionDialog(row);
-        ui.admissionDialogMessage.textContent = 'Перед зачислением укажите конкретный класс и сохраните запись.';
-        return;
+    if (!row) return;
+    const isAgree = action === 'AGREE';
+    const isRefuse = action === 'REFUSE';
+    const isProblem = action === 'PROBLEM';
+    ui.admissionActionId.value = row.id;
+    ui.admissionActionType.value = action;
+    ui.admissionActionTitle.textContent = isAgree ? 'Согласовать приём' : isRefuse ? 'Зафиксировать отказ' : 'Проблема по заявлению';
+    ui.admissionActionChild.textContent = `${row.fullName} · ${row.requestedParallel} параллель`;
+    ui.admissionActionClassField.hidden = !isAgree;
+    ui.admissionActionCommentField.hidden = isProblem;
+    ui.admissionActionProblemField.hidden = !isProblem;
+    ui.admissionActionComment.required = isRefuse;
+    ui.admissionActionComment.value = isProblem ? '' : (row.comment || '');
+    ui.admissionActionProblem.value = row.problems || '';
+    ui.admissionActionMessage.textContent = '';
+    ui.admissionActionSave.disabled = false;
+    if (isAgree) {
+        const classes = admissionClassRows(row.requestedParallel);
+        ui.admissionActionClass.innerHTML = '<option value="">Выберите класс</option>' + classes.map((item) =>
+            `<option value="${esc(item.className)}" ${item.className === row.assignedClass ? 'selected' : ''}>${esc(item.className)} — ${esc(item.students)} чел.</option>`
+        ).join('');
+        ui.admissionActionClass.required = true;
+        if (!classes.length) {
+            ui.admissionActionMessage.textContent = `В текущей численности не найдено классов ${row.requestedParallel} параллели.`;
+            ui.admissionActionSave.disabled = true;
+        }
+    } else {
+        ui.admissionActionClass.required = false;
     }
+    ui.admissionActionDialog.showModal();
+}
+
+async function saveAdmissionAction(event) {
+    event.preventDefault();
+    const action = ui.admissionActionType.value;
+    const payload = { action };
+    if (action === 'AGREE') {
+        payload.assignedClass = ui.admissionActionClass.value;
+        payload.comment = ui.admissionActionComment.value;
+    } else if (action === 'REFUSE') {
+        payload.comment = ui.admissionActionComment.value;
+    } else if (action === 'PROBLEM') {
+        payload.problems = ui.admissionActionProblem.value;
+    }
+    ui.admissionActionMessage.textContent = 'Сохраняю…';
+    try {
+        const data = await api(`/api/contingent/admissions/${encodeURIComponent(ui.admissionActionId.value)}/action`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        });
+        ui.admissionActionDialog.close();
+        renderAdmissionOverview(data);
+        ui.admissionMessage.textContent = 'Данные заявления обновлены.';
+    } catch (error) {
+        ui.admissionActionMessage.textContent = `Ошибка: ${error.message}`;
+    }
+}
+
+async function runAdmissionAction(id, action, extra = {}) {
     ui.admissionMessage.textContent = 'Сохраняю действие…';
     try {
         const data = await api(`/api/contingent/admissions/${encodeURIComponent(id)}/action`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action })
+            body: JSON.stringify({ action, ...extra })
         });
         renderAdmissionOverview(data);
         ui.admissionMessage.textContent = 'Статус обновлён.';
     } catch (error) {
         ui.admissionMessage.textContent = `Ошибка: ${error.message}`;
+    }
+}
+
+function renderAdmissionRoles(data) {
+    currentAdmissionRoles = data || { users: [], canEdit: false };
+    ui.admissionRolesSave.hidden = !currentAdmissionRoles.canEdit;
+    ui.admissionRolesBody.innerHTML = (currentAdmissionRoles.users || []).map((row) => `<tr class="${row.active ? '' : 'admission-role-inactive'}">
+        <td><strong>${esc(row.fullName)}</strong><br><span class="muted">${esc(row.username)}</span></td>
+        <td>${esc(row.systemRoleName || row.systemRole || '—')}</td>
+        <td>${row.active ? 'Активен' : 'Отключён'}</td>
+        <td><label><input type="checkbox" data-admission-role-secretary="${esc(row.userId)}" ${row.secretary ? 'checked' : ''} ${!currentAdmissionRoles.canEdit || row.secretaryFromSystemRole ? 'disabled' : ''}> Ведение приёма</label>${row.secretaryFromSystemRole ? '<br><span class="muted">Задано системной ролью «Секретарь»</span>' : ''}</td>
+        <td><label><input type="checkbox" data-admission-role-decision="${esc(row.userId)}" ${row.decisionMaker ? 'checked' : ''} ${!currentAdmissionRoles.canEdit ? 'disabled' : ''}> Может согласовать или отказать</label></td>
+    </tr>`).join('') || '<tr><td colspan="5" class="muted">Пользователи не найдены.</td></tr>';
+}
+
+async function refreshAdmissionRoles() {
+    ui.admissionRolesMessage.textContent = 'Загружаю роли…';
+    try {
+        const data = await api('/api/contingent/admissions/roles');
+        renderAdmissionRoles(data);
+        ui.admissionRolesMessage.textContent = data.canEdit ? 'Назначьте ответственных и сохраните.' : 'Доступен только просмотр назначений.';
+    } catch (error) {
+        ui.admissionRolesMessage.textContent = `Ошибка: ${error.message}`;
+        throw error;
+    }
+}
+
+async function saveAdmissionRoles() {
+    const assignments = (currentAdmissionRoles.users || []).map((row) => ({
+        userId: row.userId,
+        secretary: !row.secretaryFromSystemRole && Boolean(ui.admissionRolesBody.querySelector(`[data-admission-role-secretary="${row.userId}"]`)?.checked),
+        decisionMaker: Boolean(ui.admissionRolesBody.querySelector(`[data-admission-role-decision="${row.userId}"]`)?.checked)
+    }));
+    ui.admissionRolesSave.disabled = true;
+    ui.admissionRolesMessage.textContent = 'Сохраняю роли…';
+    try {
+        const data = await api('/api/contingent/admissions/roles', {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assignments })
+        });
+        renderAdmissionRoles(data);
+        ui.admissionRolesMessage.textContent = 'Роли приёма сохранены.';
+    } catch (error) {
+        ui.admissionRolesMessage.textContent = `Ошибка: ${error.message}`;
+    } finally {
+        ui.admissionRolesSave.disabled = false;
     }
 }
 
@@ -2293,6 +2457,9 @@ ui.tabs.forEach((tab) => tab.addEventListener('click', () => {
     if (tabName === 'admissions') {
         refreshAdmissions().catch(() => { });
     }
+    if (tabName === 'roles') {
+        refreshAdmissionRoles().catch(() => { });
+    }
 }));
 
 ui.admissionRefreshBtn?.addEventListener('click', () => refreshAdmissions().catch(() => { }));
@@ -2301,6 +2468,10 @@ ui.admissionFilter?.addEventListener('change', renderAdmissionCandidates);
 ui.admissionForm?.addEventListener('submit', saveAdmission);
 ui.admissionDialogClose?.addEventListener('click', () => ui.admissionDialog.close());
 ui.admissionCancelBtn?.addEventListener('click', () => ui.admissionDialog.close());
+ui.admissionActionForm?.addEventListener('submit', saveAdmissionAction);
+ui.admissionActionClose?.addEventListener('click', () => ui.admissionActionDialog.close());
+ui.admissionActionCancel?.addEventListener('click', () => ui.admissionActionDialog.close());
+ui.admissionRolesSave?.addEventListener('click', saveAdmissionRoles);
 ui.admissionBody?.addEventListener('click', (event) => {
     const editButton = event.target.closest('[data-admission-edit]');
     if (editButton) {
@@ -2310,9 +2481,21 @@ ui.admissionBody?.addEventListener('click', (event) => {
         if (row) openAdmissionDialog(row);
         return;
     }
+    const modalButton = event.target.closest('[data-admission-modal]');
+    if (modalButton) {
+        openAdmissionActionDialog(modalButton.dataset.admissionId, modalButton.dataset.admissionModal);
+        return;
+    }
+    const statusButton = event.target.closest('[data-admission-status]');
+    if (statusButton) {
+        runAdmissionAction(statusButton.dataset.admissionId, 'SET_STATUS', { documentStatus: statusButton.dataset.admissionStatus });
+        return;
+    }
     const actionButton = event.target.closest('[data-admission-action]');
     if (actionButton) {
-        runAdmissionAction(actionButton.dataset.admissionId, actionButton.dataset.admissionAction);
+        const row = (currentAdmissionData.candidates || []).find((item) => Number(item.id) === Number(actionButton.dataset.admissionId));
+        const extra = actionButton.dataset.admissionAction === 'TESTING' ? { testing: !row?.testing } : {};
+        runAdmissionAction(actionButton.dataset.admissionId, actionButton.dataset.admissionAction, extra);
     }
 });
 
@@ -2585,6 +2768,7 @@ ui.supportRegisterTable?.addEventListener('click', (event) => {
 (async function init() {
     try {
         await waitForAuthContext();
+        await loadAdmissionAccess();
         const defaultTab = applyTabAccess();
         if (!defaultTab) {
             ui.statsSummary.textContent = 'Нет доступа к вкладкам контингента.';
@@ -2592,20 +2776,23 @@ ui.supportRegisterTable?.addEventListener('click', (event) => {
         }
 
         const hash = String(window.location.hash || '').toLowerCase();
-        const requestedTab = ['#import', '#mismatches', '#manual', '#support', '#nosologies', '#stats', '#admissions'].includes(hash)
+        const requestedTab = ['#import', '#mismatches', '#manual', '#support', '#nosologies', '#stats', '#admissions', '#roles'].includes(hash)
             ? hash.slice(1)
             : defaultTab;
         const permissions = contingentPermissions();
         const finalTab = ((requestedTab === 'import' || requestedTab === 'mismatches') && permissions.canImportView)
             || (requestedTab === 'manual' && permissions.canManualView)
             || ((requestedTab === 'support' || requestedTab === 'nosologies') && permissions.canSupportView)
-            || (requestedTab === 'admissions' && permissions.canStatsView)
+            || (requestedTab === 'admissions' && permissions.canAdmissionView)
+            || (requestedTab === 'roles' && permissions.canAdmissionRolesView)
             || (requestedTab === 'stats' && permissions.canStatsView)
             ? requestedTab
             : defaultTab;
         showTab(finalTab);
 
-        await loadSnapshots();
+        if (permissions.canImportView || permissions.canStatsView || permissions.canManualView || permissions.canSupportView) {
+            await loadSnapshots();
+        }
         if (contingentPermissions().canImportView) {
             await refreshMismatches();
         }
@@ -2630,6 +2817,9 @@ ui.supportRegisterTable?.addEventListener('click', (event) => {
         }
         if (finalTab === 'admissions') {
             await refreshAdmissions();
+        }
+        if (finalTab === 'roles') {
+            await refreshAdmissionRoles();
         }
     } catch (error) {
         printImportResult({ error: error.message });

@@ -8,11 +8,14 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Collection;
 
 public interface StudentClassEnrollmentRepository extends JpaRepository<StudentClassEnrollment, Long> {
     List<StudentClassEnrollment> findAllByAcademicYear(String academicYear);
 
     List<StudentClassEnrollment> findAllByStudent_IdAndAcademicYearOrderByValidFromDesc(Long studentId, String academicYear);
+
+    List<StudentClassEnrollment> findAllByStudent_IdIn(Collection<Long> studentIds);
 
     Optional<StudentClassEnrollment> findFirstByStudent_IdAndAcademicYearAndValidToIsNullOrderByValidFromDesc(
             Long studentId,

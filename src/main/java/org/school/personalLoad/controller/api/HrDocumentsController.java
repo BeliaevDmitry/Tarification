@@ -212,6 +212,7 @@ public class HrDocumentsController {
             case EMPLOYEE -> "сотрудника";
             case METHODIST -> "методиста";
             case HR -> "специалиста по кадрам";
+            case SECRETARY -> "секретаря";
         };
     }
     private String str(Row r,int i){Cell c=r.getCell(i);return c==null?null:new DataFormatter().formatCellValue(c).trim();}

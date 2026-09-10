@@ -8,7 +8,8 @@ public enum UserRole {
     CLASS_TEACHER("Классный руководитель"),
     EMPLOYEE("Сотрудник"),
     METHODIST("Методист"),
-    HR("Кадры");
+    HR("Кадры"),
+    SECRETARY("Секретарь");
 
     private final String displayName;
 

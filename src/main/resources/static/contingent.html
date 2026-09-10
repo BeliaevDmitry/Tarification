@@ -20,6 +20,7 @@
             <a class="nav-link nav-home-link" href="/" title="Главная" aria-label="Главная">🏠</a>
             <button type="button" class="nav-link active" data-contingent-tab="stats">Численность</button>
             <button type="button" class="nav-link" data-contingent-tab="admissions">Приём</button>
+            <button type="button" class="nav-link" data-contingent-tab="roles">Роли приёма</button>
             <button type="button" class="nav-link" data-contingent-tab="support">Справки</button>
             <button type="button" class="nav-link" data-contingent-tab="nosologies">Справочник нозологий</button>
             <button type="button" class="nav-link" data-contingent-tab="manual">Ручная правка</button>
@@ -204,7 +205,7 @@
             </div>
             <div class="row controls-row">
                 <button id="admission-refresh-btn" type="button" class="secondary">Обновить</button>
-                <button id="admission-add-btn" type="button" data-requires-edit>Добавить ребёнка</button>
+                <button id="admission-add-btn" type="button">Добавить ребёнка</button>
             </div>
         </div>
 
@@ -235,6 +236,7 @@
                     <th>Комментарий</th>
                     <th>Класс зачисления</th>
                     <th>Результат</th>
+                    <th>Доп. информация</th>
                     <th>Работа завершена</th>
                     <th>Действия</th>
                 </tr></thead>
@@ -266,23 +268,6 @@
                         <option value="10">10</option><option value="11">11</option>
                     </select>
                 </label>
-                <label>Статус документов
-                    <select id="admission-document-status" required>
-                        <option value="MOS_RU_SUBMITTED">Подал на mos.ru</option>
-                        <option value="INTERVIEW_INVITED">Приглашён на беседу</option>
-                        <option value="ENROLLMENT">Зачисление</option>
-                    </select>
-                </label>
-                <label>В какой класс зачисляем
-                    <input id="admission-assigned-class" type="text" maxlength="100" list="admission-class-options" placeholder="Например, 5-А">
-                    <datalist id="admission-class-options"></datalist>
-                </label>
-                <label class="admission-form-wide">Проблемы
-                    <textarea id="admission-problems" rows="3" placeholder="Свободный ввод"></textarea>
-                </label>
-                <label class="admission-form-wide">Комментарий
-                    <textarea id="admission-comment" rows="3" placeholder="Свободный ввод"></textarea>
-                </label>
             </div>
             <p id="admission-dialog-message" class="muted" aria-live="polite"></p>
             <div class="row dialog-actions">
@@ -291,6 +276,53 @@
             </div>
         </form>
     </dialog>
+
+    <dialog id="admission-action-dialog" class="admission-dialog admission-action-dialog">
+        <form id="admission-action-form">
+            <div class="dialog-hero">
+                <div>
+                    <h3 id="admission-action-title">Действие по заявлению</h3>
+                    <p id="admission-action-child" class="muted"></p>
+                </div>
+                <button id="admission-action-close" type="button" class="secondary">Закрыть</button>
+            </div>
+            <input id="admission-action-id" type="hidden">
+            <input id="admission-action-type" type="hidden">
+            <label id="admission-action-class-field">Класс для зачисления
+                <select id="admission-action-class"></select>
+                <span class="field-hint">Показываются только классы параллели из заявления и их текущая численность.</span>
+            </label>
+            <label id="admission-action-comment-field">Комментарий
+                <textarea id="admission-action-comment" rows="4"></textarea>
+            </label>
+            <label id="admission-action-problem-field">Проблема
+                <textarea id="admission-action-problem" rows="4"></textarea>
+                <span class="field-hint">Оставьте поле пустым, чтобы снять отметку о проблеме.</span>
+            </label>
+            <p id="admission-action-message" class="muted" aria-live="polite"></p>
+            <div class="row dialog-actions">
+                <button id="admission-action-save" type="submit">Сохранить</button>
+                <button id="admission-action-cancel" type="button" class="secondary">Отмена</button>
+            </div>
+        </form>
+    </dialog>
+
+    <section class="card" data-contingent-pane="roles" style="display:none;">
+        <div class="admission-heading">
+            <div>
+                <h2>Роли приёма</h2>
+                <p class="muted">Секретари ведут заявления и этапы. Принимающие решение могут согласовывать класс или фиксировать отказ.</p>
+            </div>
+            <button id="admission-roles-save" type="button">Сохранить роли</button>
+        </div>
+        <p id="admission-roles-message" class="muted" aria-live="polite"></p>
+        <div class="sheet-wrap">
+            <table class="sheet-table admission-roles-table">
+                <thead><tr><th>Пользователь</th><th>Роль в системе</th><th>Доступ</th><th>Секретарь</th><th>Согласование и отказ</th></tr></thead>
+                <tbody id="admission-roles-body"></tbody>
+            </table>
+        </div>
+    </section>
 
     <section class="card" data-contingent-pane="manual" style="display:none;">
         <h2>Ручная правка численности классов</h2>
