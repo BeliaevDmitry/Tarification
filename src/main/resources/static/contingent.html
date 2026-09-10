@@ -313,16 +313,41 @@
                 <h2>Роли приёма</h2>
                 <p class="muted">Секретари ведут заявления и этапы. Принимающие решение могут согласовывать класс или фиксировать отказ.</p>
             </div>
-            <button id="admission-roles-save" type="button">Сохранить роли</button>
+            <button id="admission-role-add" type="button">Добавить человека</button>
         </div>
         <p id="admission-roles-message" class="muted" aria-live="polite"></p>
         <div class="sheet-wrap">
             <table class="sheet-table admission-roles-table">
-                <thead><tr><th>Пользователь</th><th>Роль в системе</th><th>Доступ</th><th>Секретарь</th><th>Согласование и отказ</th></tr></thead>
+                <thead><tr><th>Пользователь</th><th>Роль в системе</th><th>Выданные права</th><th>Доступ</th><th>Действия</th></tr></thead>
                 <tbody id="admission-roles-body"></tbody>
             </table>
         </div>
     </section>
+
+    <dialog id="admission-role-dialog" class="admission-dialog admission-action-dialog">
+        <form id="admission-role-form">
+            <div class="dialog-hero">
+                <div>
+                    <h3 id="admission-role-dialog-title">Добавить человека</h3>
+                    <p class="muted">Выберите сотрудника и определите его права в разделе приёма.</p>
+                </div>
+                <button id="admission-role-dialog-close" type="button" class="secondary">Закрыть</button>
+            </div>
+            <label>Сотрудник
+                <select id="admission-role-user" required></select>
+            </label>
+            <fieldset class="admission-role-rights">
+                <legend>Права</legend>
+                <label><input id="admission-role-secretary" type="checkbox"> Ведение приёма и изменение этапов</label>
+                <label><input id="admission-role-decision" type="checkbox"> Согласование приёма и отказ</label>
+            </fieldset>
+            <p id="admission-role-dialog-message" class="muted" aria-live="polite"></p>
+            <div class="row dialog-actions">
+                <button id="admission-role-save" type="submit">Сохранить</button>
+                <button id="admission-role-cancel" type="button" class="secondary">Отмена</button>
+            </div>
+        </form>
+    </dialog>
 
     <section class="card" data-contingent-pane="manual" style="display:none;">
         <h2>Ручная правка численности классов</h2>

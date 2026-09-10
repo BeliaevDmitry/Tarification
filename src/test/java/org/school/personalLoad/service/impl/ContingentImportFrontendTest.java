@@ -115,6 +115,8 @@ class ContingentImportFrontendTest {
         assertTrue(html.contains("<th>Доп. информация</th>"));
         assertTrue(html.contains("data-contingent-tab=\"roles\""));
         assertTrue(html.contains("id=\"admission-roles-body\""));
+        assertTrue(html.contains("id=\"admission-role-add\""));
+        assertTrue(html.contains("id=\"admission-role-dialog\""));
         assertTrue(pageScript.contains("/api/contingent/admissions"));
         assertTrue(pageScript.contains("PRELIMINARY_INVITATION"));
         assertTrue(pageScript.contains("PLACE_OFFERED"));
@@ -125,6 +127,8 @@ class ContingentImportFrontendTest {
         assertTrue(pageScript.contains("data-admission-action=\"PROCESSED\""));
         assertTrue(pageScript.contains("admission-row-testing"));
         assertTrue(pageScript.contains("row.additionalInfo"));
+        assertTrue(pageScript.contains("Назначенных сотрудников пока нет"));
+        assertTrue(pageScript.contains("function openAdmissionRoleDialog"));
         assertTrue(pageScript.contains("currentAdmissionData?.classOptions"));
         assertTrue(authScript.contains("currentUser.admissionAccess?.canView"));
         assertTrue(authScript.contains("#roles') return 'CONTINGENT_ADMISSION_ROLES'"));

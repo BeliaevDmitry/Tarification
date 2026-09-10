@@ -78,8 +78,18 @@ const ui = {
     admissionActionMessage: document.getElementById('admission-action-message'),
     admissionActionSave: document.getElementById('admission-action-save'),
     admissionRolesBody: document.getElementById('admission-roles-body'),
-    admissionRolesSave: document.getElementById('admission-roles-save'),
+    admissionRoleAdd: document.getElementById('admission-role-add'),
     admissionRolesMessage: document.getElementById('admission-roles-message'),
+    admissionRoleDialog: document.getElementById('admission-role-dialog'),
+    admissionRoleForm: document.getElementById('admission-role-form'),
+    admissionRoleDialogTitle: document.getElementById('admission-role-dialog-title'),
+    admissionRoleDialogClose: document.getElementById('admission-role-dialog-close'),
+    admissionRoleCancel: document.getElementById('admission-role-cancel'),
+    admissionRoleUser: document.getElementById('admission-role-user'),
+    admissionRoleSecretary: document.getElementById('admission-role-secretary'),
+    admissionRoleDecision: document.getElementById('admission-role-decision'),
+    admissionRoleDialogMessage: document.getElementById('admission-role-dialog-message'),
+    admissionRoleSave: document.getElementById('admission-role-save'),
     manualSourceSelect: document.getElementById('contingent-class-size-source'),
     manualSourceSaveBtn: document.getElementById('contingent-class-size-source-save-btn'),
     manualFileInput: document.getElementById('contingent-manual-file'),
@@ -878,14 +888,22 @@ async function runAdmissionAction(id, action, extra = {}) {
 
 function renderAdmissionRoles(data) {
     currentAdmissionRoles = data || { users: [], canEdit: false };
-    ui.admissionRolesSave.hidden = !currentAdmissionRoles.canEdit;
-    ui.admissionRolesBody.innerHTML = (currentAdmissionRoles.users || []).map((row) => `<tr class="${row.active ? '' : 'admission-role-inactive'}">
+    ui.admissionRoleAdd.hidden = !currentAdmissionRoles.canEdit;
+    const assigned = (currentAdmissionRoles.users || []).filter((row) => row.secretary || row.decisionMaker);
+    ui.admissionRolesBody.innerHTML = assigned.map((row) => `<tr class="${row.active ? '' : 'admission-role-inactive'}">
         <td><strong>${esc(row.fullName)}</strong><br><span class="muted">${esc(row.username)}</span></td>
         <td>${esc(row.systemRoleName || row.systemRole || '—')}</td>
+        <td><div class="admission-role-badges">
+            ${row.secretary ? '<span class="table-badge">Ведение приёма</span>' : ''}
+            ${row.decisionMaker ? '<span class="table-badge">Согласование и отказ</span>' : ''}
+            ${row.secretaryFromSystemRole ? '<span class="muted">Ведение задано ролью «Секретарь»</span>' : ''}
+        </div></td>
         <td>${row.active ? 'Активен' : 'Отключён'}</td>
-        <td><label><input type="checkbox" data-admission-role-secretary="${esc(row.userId)}" ${row.secretary ? 'checked' : ''} ${!currentAdmissionRoles.canEdit || row.secretaryFromSystemRole ? 'disabled' : ''}> Ведение приёма</label>${row.secretaryFromSystemRole ? '<br><span class="muted">Задано системной ролью «Секретарь»</span>' : ''}</td>
-        <td><label><input type="checkbox" data-admission-role-decision="${esc(row.userId)}" ${row.decisionMaker ? 'checked' : ''} ${!currentAdmissionRoles.canEdit ? 'disabled' : ''}> Может согласовать или отказать</label></td>
-    </tr>`).join('') || '<tr><td colspan="5" class="muted">Пользователи не найдены.</td></tr>';
+        <td>${currentAdmissionRoles.canEdit ? `<div class="admission-actions">
+            <button type="button" class="secondary" data-admission-role-edit="${esc(row.userId)}">Изменить</button>
+            ${(!row.secretaryFromSystemRole || row.decisionMaker) ? `<button type="button" class="danger" data-admission-role-remove="${esc(row.userId)}">${row.secretaryFromSystemRole ? 'Снять доп. права' : 'Снять права'}</button>` : ''}
+        </div>` : '<span class="muted">Только просмотр</span>'}</td>
+    </tr>`).join('') || '<tr><td colspan="5" class="muted">Назначенных сотрудников пока нет.</td></tr>';
 }
 
 async function refreshAdmissionRoles() {
@@ -893,32 +911,100 @@ async function refreshAdmissionRoles() {
     try {
         const data = await api('/api/contingent/admissions/roles');
         renderAdmissionRoles(data);
-        ui.admissionRolesMessage.textContent = data.canEdit ? 'Назначьте ответственных и сохраните.' : 'Доступен только просмотр назначений.';
+        ui.admissionRolesMessage.textContent = data.canEdit
+            ? 'В таблице показаны только сотрудники, которым уже выданы права.'
+            : 'Доступен только просмотр назначений.';
     } catch (error) {
         ui.admissionRolesMessage.textContent = `Ошибка: ${error.message}`;
         throw error;
     }
 }
 
-async function saveAdmissionRoles() {
-    const assignments = (currentAdmissionRoles.users || []).map((row) => ({
+function admissionRoleAssignments(users) {
+    return (users || []).map((row) => ({
         userId: row.userId,
-        secretary: !row.secretaryFromSystemRole && Boolean(ui.admissionRolesBody.querySelector(`[data-admission-role-secretary="${row.userId}"]`)?.checked),
-        decisionMaker: Boolean(ui.admissionRolesBody.querySelector(`[data-admission-role-decision="${row.userId}"]`)?.checked)
+        secretary: !row.secretaryFromSystemRole && Boolean(row.secretary),
+        decisionMaker: Boolean(row.decisionMaker)
     }));
-    ui.admissionRolesSave.disabled = true;
+}
+
+async function persistAdmissionRoles(users, successMessage) {
+    ui.admissionRoleAdd.disabled = true;
     ui.admissionRolesMessage.textContent = 'Сохраняю роли…';
     try {
         const data = await api('/api/contingent/admissions/roles', {
-            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assignments })
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ assignments: admissionRoleAssignments(users) })
         });
         renderAdmissionRoles(data);
-        ui.admissionRolesMessage.textContent = 'Роли приёма сохранены.';
+        ui.admissionRolesMessage.textContent = successMessage;
+        return true;
     } catch (error) {
         ui.admissionRolesMessage.textContent = `Ошибка: ${error.message}`;
+        return false;
     } finally {
-        ui.admissionRolesSave.disabled = false;
+        ui.admissionRoleAdd.disabled = false;
     }
+}
+
+function openAdmissionRoleDialog(userId = null) {
+    const editing = userId != null;
+    const current = editing
+        ? (currentAdmissionRoles.users || []).find((row) => Number(row.userId) === Number(userId))
+        : null;
+    const available = (currentAdmissionRoles.users || []).filter((row) => row.active && (
+        editing ? Number(row.userId) === Number(userId) : !row.secretary && !row.decisionMaker
+    ));
+    ui.admissionRoleDialogTitle.textContent = editing ? 'Изменить права' : 'Добавить человека';
+    ui.admissionRoleUser.innerHTML = '<option value="">Выберите сотрудника</option>' + available.map((row) =>
+        `<option value="${esc(row.userId)}">${esc(row.fullName)} — ${esc(row.systemRoleName || row.systemRole || 'сотрудник')}</option>`
+    ).join('');
+    ui.admissionRoleUser.value = current?.userId || '';
+    ui.admissionRoleUser.disabled = editing;
+    ui.admissionRoleSecretary.checked = Boolean(current?.secretary);
+    ui.admissionRoleSecretary.disabled = Boolean(current?.secretaryFromSystemRole);
+    ui.admissionRoleDecision.checked = Boolean(current?.decisionMaker);
+    ui.admissionRoleDialogMessage.textContent = available.length
+        ? (current?.secretaryFromSystemRole ? 'Право ведения приёма задано системной ролью и не снимается здесь.' : '')
+        : 'Все активные сотрудники уже добавлены.';
+    ui.admissionRoleSave.disabled = !available.length;
+    ui.admissionRoleDialog.showModal();
+}
+
+async function saveAdmissionRole(event) {
+    event.preventDefault();
+    const userId = Number(ui.admissionRoleUser.value || 0);
+    const row = (currentAdmissionRoles.users || []).find((item) => Number(item.userId) === userId);
+    if (!row) {
+        ui.admissionRoleDialogMessage.textContent = 'Выберите сотрудника.';
+        return;
+    }
+    const secretary = row.secretaryFromSystemRole || ui.admissionRoleSecretary.checked;
+    const decisionMaker = ui.admissionRoleDecision.checked;
+    if (!secretary && !decisionMaker) {
+        ui.admissionRoleDialogMessage.textContent = 'Отметьте хотя бы одно право.';
+        return;
+    }
+    const proposed = (currentAdmissionRoles.users || []).map((item) => Number(item.userId) === userId
+        ? { ...item, secretary, decisionMaker }
+        : item);
+    ui.admissionRoleSave.disabled = true;
+    ui.admissionRoleDialogMessage.textContent = 'Сохраняю…';
+    const saved = await persistAdmissionRoles(proposed, 'Права сотрудника сохранены.');
+    ui.admissionRoleSave.disabled = false;
+    if (saved) ui.admissionRoleDialog.close();
+    else ui.admissionRoleDialogMessage.textContent = ui.admissionRolesMessage.textContent;
+}
+
+async function removeAdmissionRole(userId) {
+    const row = (currentAdmissionRoles.users || []).find((item) => Number(item.userId) === Number(userId));
+    if (!row) return;
+    if (!window.confirm(`Снять права приёма у сотрудника «${row.fullName}»?`)) return;
+    const proposed = (currentAdmissionRoles.users || []).map((item) => Number(item.userId) === Number(userId)
+        ? { ...item, secretary: Boolean(item.secretaryFromSystemRole), decisionMaker: false }
+        : item);
+    await persistAdmissionRoles(proposed, row.secretaryFromSystemRole
+        ? 'Дополнительные права сотрудника сняты.' : 'Права сотрудника сняты.');
 }
 
 async function openClassStudents(className) {
@@ -2471,7 +2557,19 @@ ui.admissionCancelBtn?.addEventListener('click', () => ui.admissionDialog.close(
 ui.admissionActionForm?.addEventListener('submit', saveAdmissionAction);
 ui.admissionActionClose?.addEventListener('click', () => ui.admissionActionDialog.close());
 ui.admissionActionCancel?.addEventListener('click', () => ui.admissionActionDialog.close());
-ui.admissionRolesSave?.addEventListener('click', saveAdmissionRoles);
+ui.admissionRoleAdd?.addEventListener('click', () => openAdmissionRoleDialog());
+ui.admissionRoleForm?.addEventListener('submit', saveAdmissionRole);
+ui.admissionRoleDialogClose?.addEventListener('click', () => ui.admissionRoleDialog.close());
+ui.admissionRoleCancel?.addEventListener('click', () => ui.admissionRoleDialog.close());
+ui.admissionRolesBody?.addEventListener('click', (event) => {
+    const edit = event.target.closest('[data-admission-role-edit]');
+    if (edit) {
+        openAdmissionRoleDialog(edit.dataset.admissionRoleEdit);
+        return;
+    }
+    const remove = event.target.closest('[data-admission-role-remove]');
+    if (remove) removeAdmissionRole(remove.dataset.admissionRoleRemove);
+});
 ui.admissionBody?.addEventListener('click', (event) => {
     const editButton = event.target.closest('[data-admission-edit]');
     if (editButton) {

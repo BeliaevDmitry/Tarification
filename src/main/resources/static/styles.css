@@ -3028,6 +3028,29 @@ td.vacancy-row {
     opacity: .58;
 }
 
+.admission-role-badges,
+.admission-role-rights {
+    display: grid;
+    gap: 8px;
+}
+
+.admission-role-badges .table-badge {
+    width: fit-content;
+}
+
+.admission-role-rights {
+    margin: 16px 0;
+    padding: 14px;
+    border: 1px solid #d7deea;
+    border-radius: 10px;
+}
+
+.admission-role-rights label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .admission-additional-info {
     min-width: 260px;
     max-width: 420px;
