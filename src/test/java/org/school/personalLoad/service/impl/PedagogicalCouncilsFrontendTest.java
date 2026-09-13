@@ -17,9 +17,9 @@ class PedagogicalCouncilsFrontendTest {
         String admin = Files.readString(Path.of("src/main/resources/static/admin.js"));
 
         assertTrue(index.contains("href=\"/documents.html\""));
-        assertTrue(index.contains("data-documents-card"));
+        assertTrue(index.contains("data-section-card=\"documents\""));
         assertTrue(auth.contains("DOCUMENTS_PEDAGOGICAL_COUNCILS"));
-        assertTrue(admin.contains("key: 'DOCUMENTS'"));
+        assertTrue(admin.contains("key: 'DOCUMENTS_EVENTS'"));
         assertTrue(admin.contains("key: 'DOCUMENTS_PEDAGOGICAL_COUNCILS'"));
     }
 
@@ -32,6 +32,7 @@ class PedagogicalCouncilsFrontendTest {
         assertTrue(html.contains("Загрузить старый Word"));
         assertTrue(html.contains("<select id=\"archive-academic-year\" name=\"academicYear\" required>"));
         assertTrue(html.contains("id=\"archive-year-date-hint\""));
+        assertTrue(html.contains("id=\"protocol-year-date-hint\""));
         assertTrue(html.contains("id=\"protocol-chair-position\""));
         assertTrue(html.contains("<select id=\"protocol-chair-fio\" name=\"chairFio\">"));
         assertTrue(html.contains("id=\"protocol-secretary-position\""));
@@ -96,8 +97,9 @@ class PedagogicalCouncilsFrontendTest {
         assertTrue(js.contains("Осталось: ${remaining}"));
         assertTrue(js.contains("Превышение: ${exceeded}"));
         assertTrue(js.contains("updateArchiveYearBounds"));
-        assertTrue(js.contains("pedUi.archiveDate.min = from"));
-        assertTrue(js.contains("pedUi.archiveDate.max = to"));
+        assertTrue(js.contains("updateEditorYearBounds"));
+        assertTrue(js.contains("from: `${start}-08-01`"));
+        assertTrue(js.contains("to: `${start + 1}-07-31`"));
         assertTrue(js.contains("/extract"));
         assertTrue(js.contains("async function uploadPendingAttachments"));
         assertTrue(js.contains("includeSourceSigners"));

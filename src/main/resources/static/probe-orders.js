@@ -589,7 +589,8 @@ probeUi.orderSigner.addEventListener('change', () => {
 (async function initProbeOrders() {
     try {
         const currentUser = await probeApi('/api/auth/me');
-        const leadership = currentUser.admin || currentUser.role === 'DIRECTOR' || currentUser.role === 'DEPUTY_DIRECTOR';
+        const roles = (currentUser.roles || [currentUser.role]).filter(Boolean);
+        const leadership = currentUser.admin || roles.includes('DIRECTOR') || roles.includes('DEPUTY_DIRECTOR');
         if (!leadership && probeUi.importCard) probeUi.importCard.style.display = 'none';
         await loadProbeData();
         document.querySelector('[data-probe-sort="eventDate"]')?.classList.add('sort-asc');

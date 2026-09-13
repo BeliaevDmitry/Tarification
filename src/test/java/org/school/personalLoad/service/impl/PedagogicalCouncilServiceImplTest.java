@@ -106,6 +106,27 @@ class PedagogicalCouncilServiceImplTest {
     }
 
     @Test
+    void protocolAcademicYearRunsFromFirstOfAugustThroughNextJuly() {
+        AcademicYearConfig year = new AcademicYearConfig();
+        year.setCode("2026/2027");
+        when(academicYears.findAll()).thenReturn(List.of(year));
+        when(protocols.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        PedagogicalCouncilDtos.ProtocolDetails firstDay = service.create(protocolRequest(
+                "2026/2027", LocalDate.of(2026, 8, 1)), user());
+        PedagogicalCouncilDtos.ProtocolDetails lastDay = service.create(protocolRequest(
+                "2026/2027", LocalDate.of(2027, 7, 31)), user());
+
+        assertEquals("2026/2027", firstDay.academicYear());
+        assertEquals(LocalDate.of(2026, 8, 1), firstDay.meetingDate());
+        assertEquals(LocalDate.of(2027, 7, 31), lastDay.meetingDate());
+        assertThrows(IllegalArgumentException.class, () -> service.create(protocolRequest(
+                "2026/2027", LocalDate.of(2026, 7, 31)), user()));
+        assertThrows(IllegalArgumentException.class, () -> service.create(protocolRequest(
+                "2026/2027", LocalDate.of(2027, 8, 1)), user()));
+    }
+
+    @Test
     void releasedProtocolCanBeEditedAndReissuedWithoutCorrectedStatus() {
         PedagogicalCouncilProtocol protocol = baseProtocol();
         protocol.setStatus(PedagogicalCouncilProtocol.Status.REGISTERED);
@@ -658,6 +679,21 @@ class PedagogicalCouncilServiceImplTest {
         protocol.setCreatedByUsername("secretary");
         protocol.setCreatedByFio("Секретарь");
         return protocol;
+    }
+
+    private PedagogicalCouncilDtos.CreateProtocolRequest protocolRequest(String academicYear, LocalDate meetingDate) {
+        return new PedagogicalCouncilDtos.CreateProtocolRequest(
+                academicYear,
+                "1",
+                meetingDate,
+                null,
+                0,
+                null,
+                null,
+                null,
+                null,
+                List.of()
+        );
     }
 
     private PedagogicalCouncilItem item(PedagogicalCouncilProtocol protocol, Long id, int order) {

@@ -251,7 +251,8 @@ function canEditTeachers() {
     const permissionKey = tab === "archive" ? "TEACHERS_ARCHIVE"
         : tab === "dismissals" ? "TEACHERS_DISMISSALS"
             : isSettingsLikeTab(tab) ? "TEACHERS_SETTINGS"
-                : isMckoTab(tab) ? "TEACHERS_MCKO" : "TEACHERS";
+                : isMckoTab(tab) ? "TEACHERS_MCKO"
+                    : isTimeOffTab(tab) ? "TEACHERS_TIME_OFF" : "TEACHERS";
     return canEditTeacherPermission(permissionKey);
 }
 
@@ -269,6 +270,10 @@ function isMckoTab(tab) {
     return tab === "mcko" || tab === "mcko-subjects";
 }
 
+function isTimeOffTab(tab) {
+    return tab === "time-off" || tab === "time-off-add";
+}
+
 function canViewTeachersTab(tab) {
     const user = currentAuthUser() || {};
     if (user.admin) return true;
@@ -276,7 +281,8 @@ function canViewTeachersTab(tab) {
     const permissionKey = tab === "archive" ? "TEACHERS_ARCHIVE"
         : tab === "dismissals" ? "TEACHERS_DISMISSALS"
             : isSettingsLikeTab(tab) ? "TEACHERS_SETTINGS"
-                : isMckoTab(tab) ? "TEACHERS_MCKO" : "TEACHERS";
+                : isMckoTab(tab) ? "TEACHERS_MCKO"
+                    : isTimeOffTab(tab) ? "TEACHERS_TIME_OFF" : "TEACHERS";
     return Boolean(permissions[permissionKey]?.canView);
 }
 
@@ -369,6 +375,8 @@ function teachersTabFromHash() {
     if (hash === "#group-coefficients") return "group-coefficients";
     if (hash === "#mcko") return "mcko";
     if (hash === "#mcko-subjects") return "mcko-subjects";
+    if (hash === "#time-off") return "time-off";
+    if (hash === "#time-off-add") return "time-off-add";
     return "main";
 }
 
@@ -382,7 +390,8 @@ function updateHeaderNavActive(tab) {
             || (tab === "coefficients" && href === "/teachers.html#coefficients")
             || (tab === "group-coefficients" && href === "/teachers.html#group-coefficients")
             || (tab === "mcko" && href === "/teachers.html#mcko")
-            || (tab === "mcko-subjects" && href === "/teachers.html#mcko-subjects");
+            || (tab === "mcko-subjects" && href === "/teachers.html#mcko-subjects")
+            || (isTimeOffTab(tab) && href === "/teachers.html#time-off");
         if (active) {
             link.classList.add('active');
         } else if (href.startsWith('/teachers.html')) {
@@ -394,7 +403,7 @@ function updateHeaderNavActive(tab) {
 function showTeachersTab(tab = teachersTabFromHash()) {
     const safeTab = canViewTeachersTab(tab)
         ? tab
-        : ["main", "archive", "dismissals", "settings", "coefficients", "group-coefficients", "mcko", "mcko-subjects"].find(canViewTeachersTab) || "main";
+        : ["main", "archive", "dismissals", "settings", "coefficients", "group-coefficients", "mcko", "mcko-subjects", "time-off", "time-off-add"].find(canViewTeachersTab) || "main";
     if (safeTab !== tab) {
         history.replaceState(null, '', '/teachers.html');
     }
@@ -408,8 +417,10 @@ function showTeachersTab(tab = teachersTabFromHash()) {
     if (ui.mckoPanel) ui.mckoPanel.style.display = isMckoTab(safeTab) ? "" : "none";
     if (ui.mckoCertificatesPanel) ui.mckoCertificatesPanel.style.display = safeTab === "mcko" ? "" : "none";
     if (ui.mckoSubjectsPanel) ui.mckoSubjectsPanel.style.display = safeTab === "mcko-subjects" ? "" : "none";
+    const timeOffPanel = document.getElementById("teachers-time-off-panel");
+    if (timeOffPanel) timeOffPanel.style.display = isTimeOffTab(safeTab) ? "" : "none";
     if (ui.sectionTitle) {
-        ui.sectionTitle.textContent = safeTab === "archive" ? "Архив" : safeTab === "dismissals" ? "Увольнения" : isSettingsLikeTab(safeTab) ? "Настройки расчёта ЗП" : isMckoTab(safeTab) ? "МЦКО" : "Кадры";
+        ui.sectionTitle.textContent = safeTab === "archive" ? "Архив" : safeTab === "dismissals" ? "Увольнения" : isSettingsLikeTab(safeTab) ? "Настройки расчёта ЗП" : isMckoTab(safeTab) ? "МЦКО" : isTimeOffTab(safeTab) ? "Отгулы" : "Кадры";
     }
     updateHeaderNavActive(safeTab);
 }

@@ -4675,3 +4675,179 @@ td.vacancy-row {
     .specialists-statistics, .specialists-entry-grid { grid-template-columns: 1fr; }
     .specialists-list-toolbar, .specialists-entry-heading, .specialists-entry-footer { align-items: flex-start; flex-direction: column; }
 }
+.teacher-time-off-form {
+    display: grid;
+    gap: 14px;
+    max-width: 760px;
+}
+
+.teacher-time-off-form label,
+.teacher-time-off-form fieldset {
+    display: grid;
+    gap: 6px;
+}
+
+.teacher-time-off-duration {
+    display: grid;
+    grid-template-columns: minmax(160px, 1fr) minmax(120px, 180px);
+    gap: 12px;
+}
+
+.teacher-time-off-form fieldset label {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 20px;
+}
+
+.time-off-earned {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.time-off-used {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
+.time-off-zero-balance {
+    color: #64748b;
+    background: #f8fafc;
+}
+
+@media (max-width: 680px) {
+    .teacher-time-off-duration {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Единая двухуровневая навигация: крупные разделы на главной, подразделы слева. */
+.app-workspace-layout {
+    display: grid;
+    grid-template-columns: minmax(230px, 270px) minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+}
+
+.app-workspace-content {
+    min-width: 0;
+    display: grid;
+    gap: 16px;
+}
+
+.app-section-sidebar {
+    position: sticky;
+    top: calc(var(--sticky-header-height, 0px) + 12px);
+    max-height: calc(100vh - var(--sticky-header-height, 0px) - 24px);
+    overflow: auto;
+    padding: 16px;
+}
+
+.app-section-sidebar h2 {
+    margin: 10px 0 18px;
+    font-size: 1.1rem;
+}
+
+.app-sidebar-home {
+    display: inline-flex;
+    color: #475569;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.app-sidebar-group {
+    display: grid;
+    gap: 4px;
+    margin-top: 16px;
+}
+
+.app-sidebar-group h3 {
+    margin: 0 0 5px;
+    color: #64748b;
+    font-size: .76rem;
+    font-weight: 800;
+    letter-spacing: .055em;
+    text-transform: uppercase;
+}
+
+.app-sidebar-link {
+    display: block;
+    padding: 8px 10px;
+    border-radius: 9px;
+    color: #334155;
+    font-size: .92rem;
+    line-height: 1.25;
+    text-decoration: none;
+}
+
+.app-sidebar-link:hover {
+    background: #f1f5f9;
+    color: #1d4ed8;
+}
+
+.app-sidebar-link.active {
+    background: #dbeafe;
+    color: #1d4ed8;
+    font-weight: 800;
+}
+
+/* Эти пункты перенесены в единый раздел «ОВЗ и сопровождение». */
+.app-has-sidebar .contingent-tabs {
+    display: none;
+}
+
+.role-picker {
+    min-width: 0;
+    margin: 0;
+    padding: 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+}
+
+.role-picker legend {
+    padding: 0 6px;
+    font-weight: 800;
+}
+
+.role-choice-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.role-choice-grid label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 9px;
+    background: #f8fafc;
+    cursor: pointer;
+}
+
+.role-choice-grid label:has(input:checked) {
+    border-color: #93c5fd;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-weight: 700;
+}
+
+@media (max-width: 900px) {
+    .app-workspace-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .app-section-sidebar {
+        position: static;
+        max-height: none;
+    }
+
+    .app-sidebar-group {
+        grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+    }
+
+    .app-sidebar-group h3 {
+        grid-column: 1 / -1;
+    }
+}

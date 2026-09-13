@@ -1147,7 +1147,7 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
     private TeacherDirectoryEntry linkedRoleTeacher(UserRole role, List<TeacherDirectoryEntry> active) {
         Set<Long> activeIds = active.stream().map(TeacherDirectoryEntry::getId).filter(Objects::nonNull).collect(Collectors.toSet());
         return appUserRepository.findAll().stream()
-                .filter(account -> account.isActive() && account.getRole() == role && account.getTeacherId() != null)
+                .filter(account -> account.isActive() && account.hasRole(role) && account.getTeacherId() != null)
                 .filter(account -> activeIds.contains(account.getTeacherId()))
                 .map(account -> teacherRepository.findById(account.getTeacherId()).orElse(null))
                 .filter(Objects::nonNull).findFirst().orElse(null);
@@ -1244,7 +1244,7 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
     }
 
     private boolean canViewOrderDetails(SessionUser user, List<ApprovalTarget> approvalTargets) {
-        return isLeadership(user) || (user != null && user.getRole() == UserRole.BUILDING_HEAD
+        return isLeadership(user) || (user != null && user.hasRole(UserRole.BUILDING_HEAD)
                 && approvalTargets.stream().anyMatch(target -> targetMatchesUser(user, target)));
     }
 
@@ -1265,7 +1265,7 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
                                    List<ProbeOrderApproval> approvals) {
         return user != null
                 && user.canEditTab(AppTab.DOCUMENTS_PROBE_ORDERS)
-                && (isLeadership(user) || user.getRole() == UserRole.BUILDING_HEAD)
+                && (isLeadership(user) || user.hasRole(UserRole.BUILDING_HEAD))
                 && !approvalState(order, approvalTargets, approvals).complete()
                 && !pendingApprovalTargets(user, order, approvalTargets, approvals).isEmpty();
     }
@@ -1273,7 +1273,7 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
     private boolean targetMatchesUser(SessionUser user, ApprovalTarget target) {
         if (user == null || target == null) return false;
         if (isLeadership(user)) return true;
-        return user.getRole() == UserRole.BUILDING_HEAD
+        return user.hasRole(UserRole.BUILDING_HEAD)
                 && !scopeCode(user.getManagedBuildingCode()).isBlank()
                 && scopeCode(user.getManagedBuildingCode()).equals(scopeCode(target.scopeCode()));
     }
@@ -1436,8 +1436,8 @@ public class ProbeOrderServiceImpl implements ProbeOrderService {
     }
 
     private boolean isLeadership(SessionUser user) {
-        return user != null && (user.isAdmin() || user.getRole() == UserRole.DIRECTOR
-                || user.getRole() == UserRole.DEPUTY_DIRECTOR);
+        return user != null && (user.isAdmin() || user.hasRole(UserRole.DIRECTOR)
+                || user.hasRole(UserRole.DEPUTY_DIRECTOR));
     }
 
     private void ensureView(SessionUser user) {

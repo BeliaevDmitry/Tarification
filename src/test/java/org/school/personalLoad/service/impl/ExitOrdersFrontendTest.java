@@ -24,8 +24,8 @@ class ExitOrdersFrontendTest {
         String admin = Files.readString(Path.of("src/main/resources/static/admin.js"));
 
         assertTrue(documents.contains("href=\"/exit-orders.html\""));
-        assertTrue(home.contains("href=\"/class-teacher.html#create\""));
-        assertTrue(home.contains("Классный руководитель"));
+        assertTrue(home.contains("data-section-card=\"documents\""));
+        assertTrue(home.contains("Документы и мероприятия"));
         assertTrue(classTeacherPage.contains("data-exit-workspace-tab=\"create\""));
         assertTrue(classTeacherPage.contains("data-exit-workspace-tab=\"summary\""));
         assertTrue(classTeacherPage.contains("id=\"exit-preamble\""));
@@ -54,6 +54,7 @@ class ExitOrdersFrontendTest {
         assertTrue(summaryScript.contains("/api/exit-orders/summary"));
         assertTrue(auth.contains("'/exit-orders.html': 'DOCUMENTS_EXIT_ORDERS'"));
         assertTrue(auth.contains("'/class-teacher.html': 'CLASS_TEACHER_EXIT_ORDER_CREATE'"));
+        assertTrue(auth.contains("path: '/class-teacher.html#create'"));
         assertTrue(admin.contains("key: 'CLASS_TEACHER_EXIT_ORDER_CREATE'"));
         assertTrue(admin.contains("key: 'CLASS_TEACHER_EXIT_ORDER_SUMMARY'"));
         assertTrue(admin.contains("key: 'DOCUMENTS_EXIT_ORDERS'"));

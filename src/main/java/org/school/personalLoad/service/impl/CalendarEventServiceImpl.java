@@ -268,7 +268,7 @@ public class CalendarEventServiceImpl implements CalendarEventService {
                             Set<CalendarAudienceGroup> viewerGroups) {
         if (event.getOwner() == null) return false;
         if (Objects.equals(event.getOwner().getId(), viewer.getId())) return true;
-        if (session.isAdmin() || session.getRole() == UserRole.DIRECTOR) return true;
+        if (session.isAdmin() || session.hasRole(UserRole.DIRECTOR)) return true;
         Long teacherId = viewer.getTeacherId();
         if (teacherId != null && ownerSettings != null && ownerSettings.getSharedWith().stream()
                 .anyMatch(person -> Objects.equals(person.getId(), teacherId))) return true;
@@ -277,9 +277,9 @@ public class CalendarEventServiceImpl implements CalendarEventService {
                 .anyMatch(person -> Objects.equals(person.getId(), teacherId))) return true;
         return switch (event.getVisibility()) {
             case PRIVATE, PARTICIPANTS -> false;
-            case DEPUTIES -> session.getRole() == UserRole.DEPUTY_DIRECTOR
+            case DEPUTIES -> session.hasRole(UserRole.DEPUTY_DIRECTOR)
                     || viewerGroups.contains(CalendarAudienceGroup.DEPUTIES);
-            case ADMINISTRATION -> session.getRole() == UserRole.DEPUTY_DIRECTOR
+            case ADMINISTRATION -> session.hasRole(UserRole.DEPUTY_DIRECTOR)
                     || viewerGroups.contains(CalendarAudienceGroup.ADMINISTRATION)
                     || viewerGroups.contains(CalendarAudienceGroup.FULL_ADMINISTRATION);
             case EVERYONE -> true;
@@ -456,7 +456,7 @@ public class CalendarEventServiceImpl implements CalendarEventService {
 
     private boolean canEdit(CalendarEvent event, AppUser user, SessionUser session) {
         return event.getOwner() != null && (Objects.equals(event.getOwner().getId(), user.getId())
-                || session.isAdmin() || session.getRole() == UserRole.DIRECTOR);
+                || session.isAdmin() || session.hasRole(UserRole.DIRECTOR));
     }
 
     private void ensureCanEdit(CalendarEvent event, AppUser user, SessionUser session) {

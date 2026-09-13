@@ -14,6 +14,7 @@ const pedUi = {
     academicYear: document.getElementById('protocol-academic-year'),
     number: document.getElementById('protocol-number'),
     date: document.getElementById('protocol-date'),
+    yearDateHint: document.getElementById('protocol-year-date-hint'),
     time: document.getElementById('protocol-time'),
     attendeeCount: document.getElementById('protocol-attendee-count'),
     status: document.getElementById('protocol-status'),
@@ -116,21 +117,38 @@ function fillAcademicYearSelect(select, selectedYear) {
     select.value = codes.includes(selectedYear) ? selectedYear : (codes.at(-1) || '');
 }
 
-function updateArchiveYearBounds() {
-    const match = /^(\d{4})\/(\d{4})$/.exec(pedUi.archiveYear.value);
+function academicYearBounds(year) {
+    const match = /^(\d{4})\/(\d{4})$/.exec(year);
     if (!match || Number(match[2]) !== Number(match[1]) + 1) {
-        pedUi.archiveDate.removeAttribute('min');
-        pedUi.archiveDate.removeAttribute('max');
-        pedUi.archiveYearDateHint.textContent = '';
-        return;
+        return null;
     }
     const start = Number(match[1]);
-    const from = `${start}-08-01`;
-    const to = `${start + 1}-07-31`;
-    pedUi.archiveDate.min = from;
-    pedUi.archiveDate.max = to;
-    pedUi.archiveYearDateHint.textContent =
-        `Для учебного года ${pedUi.archiveYear.value} допустимы даты с 01.08.${start} по 31.07.${start + 1}.`;
+    return {
+        from: `${start}-08-01`,
+        to: `${start + 1}-07-31`,
+        hint: `Учебный год ${year}: с 01.08.${start} по 31.07.${start + 1}.`
+    };
+}
+
+function applyAcademicYearBounds(dateInput, hint, year) {
+    const bounds = academicYearBounds(year);
+    if (!bounds) {
+        dateInput.removeAttribute('min');
+        dateInput.removeAttribute('max');
+        hint.textContent = '';
+        return;
+    }
+    dateInput.min = bounds.from;
+    dateInput.max = bounds.to;
+    hint.textContent = bounds.hint;
+}
+
+function updateEditorYearBounds() {
+    applyAcademicYearBounds(pedUi.date, pedUi.yearDateHint, pedUi.academicYear.value);
+}
+
+function updateArchiveYearBounds() {
+    applyAcademicYearBounds(pedUi.archiveDate, pedUi.archiveYearDateHint, pedUi.archiveYear.value);
 }
 
 function statusClass(status) {
@@ -452,6 +470,7 @@ function setEditorHeader(protocol) {
         : 'Новый протокол';
     pedUi.academicYear.value = protocol?.academicYear || selectedAcademicYear();
     pedUi.academicYear.readOnly = Boolean(protocol?.id);
+    updateEditorYearBounds();
     pedUi.number.value = protocol?.protocolNumber || '';
     pedUi.date.value = protocol?.meetingDate || '';
     pedUi.time.value = protocol?.agendaTime || '';
@@ -1126,6 +1145,8 @@ pedUi.editor.addEventListener('click', (event) => {
 });
 pedUi.archiveForm.addEventListener('submit', uploadArchive);
 pedUi.archiveYear.addEventListener('change', updateArchiveYearBounds);
+pedUi.academicYear.addEventListener('input', updateEditorYearBounds);
+pedUi.academicYear.addEventListener('change', updateEditorYearBounds);
 pedUi.extractForm.addEventListener('submit', downloadExtract);
 pedUi.editorClose.addEventListener('click', () => pedUi.editor.close());
 pedUi.editorCancel.addEventListener('click', () => pedUi.editor.close());

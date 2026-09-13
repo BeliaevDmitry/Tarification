@@ -97,11 +97,12 @@ public class ContingentController {
             @RequestParam(required = false) String snapshotDate,
             @RequestParam(defaultValue = "PARALLEL") String groupBy,
             @RequestParam(required = false) List<Integer> parallels,
-            @RequestParam(required = false) List<String> buildingCodes) {
+            @RequestParam(required = false) List<String> buildingCodes,
+            @RequestParam(required = false) List<String> addresses) {
         String effectiveYear = academicYearService.resolveRequestedOrDefault(academicYear);
         LocalDate date = (snapshotDate == null || snapshotDate.isBlank()) ? null : LocalDate.parse(snapshotDate);
         byte[] body = contingentService.exportStudents(
-                effectiveYear, date, groupBy, parallels, buildingCodes
+                effectiveYear, date, groupBy, parallels, buildingCodes, addresses
         );
         String suffix = date == null ? "последние" : date.toString();
         return workbookResponse(body, "Контингент выборочно " + suffix + ".xlsx");

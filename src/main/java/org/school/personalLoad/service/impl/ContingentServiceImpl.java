@@ -949,10 +949,11 @@ public class ContingentServiceImpl implements ContingentService {
                                  LocalDate snapshotDate,
                                  String groupBy,
                                  List<Integer> parallels,
-                                 List<String> buildingCodes) {
+                                 List<String> buildingCodes,
+                                 List<String> addresses) {
         String mode = normalize(groupBy).toUpperCase(Locale.ROOT);
-        if (!Set.of("PARALLEL", "BUILDING").contains(mode)) {
-            throw new IllegalArgumentException("Выберите группировку по параллелям или корпусам");
+        if (!Set.of("PARALLEL", "BUILDING", "ADDRESS").contains(mode)) {
+            throw new IllegalArgumentException("Выберите группировку по параллелям, корпусам или адресам");
         }
 
         ContingentSnapshot snapshot = resolveSnapshot(academicYear, snapshotDate);
@@ -963,6 +964,10 @@ public class ContingentServiceImpl implements ContingentService {
                 .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
         Set<String> selectedBuildings = (buildingCodes == null ? List.<String>of() : buildingCodes).stream()
                 .map(this::normalizeBuildingCode)
+                .filter(value -> !value.isBlank())
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Set<String> selectedAddresses = (addresses == null ? List.<String>of() : addresses).stream()
+                .map(this::normalizeAddress)
                 .filter(value -> !value.isBlank())
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         Map<String, ExportPlacement> placements = exportPlacementsByClass(academicYear);
@@ -981,19 +986,23 @@ public class ContingentServiceImpl implements ContingentService {
                 .filter(row -> selectedParallels.isEmpty() || selectedParallels.contains(row.parallel()))
                 .filter(row -> !mode.equals("BUILDING") || selectedBuildings.isEmpty()
                         || selectedBuildings.contains(normalizeBuildingCode(row.placement().buildingCode())))
+                .filter(row -> !mode.equals("ADDRESS") || selectedAddresses.isEmpty()
+                        || selectedAddresses.contains(normalizeAddress(row.placement().address())))
                 .sorted(Comparator.comparingInt(ExportStudentRow::parallel)
                         .thenComparing(ExportStudentRow::className, this::compareClassNames)
                         .thenComparing(row -> row.student().getFullName(), String.CASE_INSENSITIVE_ORDER))
                 .toList();
         if (rows.isEmpty()) {
-            throw new IllegalArgumentException("По выбранным параллелям и корпусам детей не найдено");
+            throw new IllegalArgumentException("По выбранным параллелям, корпусам или адресам детей не найдено");
         }
 
         Map<String, List<ExportStudentRow>> groups = new LinkedHashMap<>();
         for (ExportStudentRow row : rows) {
-            String key = mode.equals("PARALLEL")
-                    ? String.valueOf(row.parallel())
-                    : normalizeBuildingCode(row.placement().buildingCode());
+            String key = switch (mode) {
+                case "PARALLEL" -> String.valueOf(row.parallel());
+                case "BUILDING" -> normalizeBuildingCode(row.placement().buildingCode());
+                default -> normalizeAddress(row.placement().address());
+            };
             groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(row);
         }
 
@@ -1001,9 +1010,11 @@ public class ContingentServiceImpl implements ContingentService {
             ContingentWorkbookStyles styles = createContingentStyles(workbook);
             for (Map.Entry<String, List<ExportStudentRow>> group : groups.entrySet()) {
                 ExportStudentRow first = group.getValue().get(0);
-                String label = mode.equals("PARALLEL")
-                        ? group.getKey() + " параллель"
-                        : buildingLabel(first.placement());
+                String label = switch (mode) {
+                    case "PARALLEL" -> group.getKey() + " параллель";
+                    case "BUILDING" -> buildingLabel(first.placement());
+                    default -> normalize(first.placement().address());
+                };
                 writeStudentExportSheet(
                         workbook,
                         uniqueSheetName(workbook, label),
@@ -1118,6 +1129,10 @@ public class ContingentServiceImpl implements ContingentService {
 
     private String normalizeBuildingCode(String value) {
         return normalize(value).toUpperCase(Locale.ROOT);
+    }
+
+    private String normalizeAddress(String value) {
+        return normalize(value).toLowerCase(Locale.ROOT);
     }
 
     private String uniqueSheetName(Workbook workbook, String value) {

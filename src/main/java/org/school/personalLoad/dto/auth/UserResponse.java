@@ -22,6 +22,8 @@ public class UserResponse {
     List<String> loadEditableBuildingCodes;
     UserRole role;
     String roleDisplayName;
+    List<UserRole> roles;
+    List<String> roleDisplayNames;
     boolean active;
     boolean canView;
     boolean canEdit;

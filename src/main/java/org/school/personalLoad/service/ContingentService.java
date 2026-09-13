@@ -24,7 +24,8 @@ public interface ContingentService {
                           LocalDate snapshotDate,
                           String groupBy,
                           List<Integer> parallels,
-                          List<String> buildingCodes);
+                          List<String> buildingCodes,
+                          List<String> addresses);
 
     byte[] exportStats(String academicYear, LocalDate snapshotDate);
 

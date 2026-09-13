@@ -12,52 +12,53 @@ function applyAcademicYearScope(path) {
 }
 const TAB_GROUPS = [
     {
-        key: 'LOAD_MODULE',
-        label: 'Нагрузка',
+        key: 'EMPLOYEES',
+        label: 'Сотрудники',
+        tabs: [
+            { key: 'TEACHERS', label: 'Реестр сотрудников' },
+            { key: 'TEACHERS_ARCHIVE', label: 'Архив сотрудников' },
+            { key: 'TEACHERS_DISMISSALS', label: 'Увольнения' },
+            { key: 'TEACHERS_TIME_OFF', label: 'Отгулы' },
+            { key: 'HR_DOCUMENTS', label: 'Кадровые документы' },
+            { key: 'HR_PERSONAL_DATA', label: 'Персональные данные и договоры', sensitive: true },
+            { key: 'HR_NOTIFICATIONS_VIEW', label: 'Предварительная нагрузка и уведомления' }
+        ]
+    },
+    {
+        key: 'LOAD_DIRECTORIES',
+        label: 'Учебный план и нагрузка · справочники и планирование',
         tabs: [
             { key: 'BUILDINGS', label: 'Корпуса' },
             { key: 'CLASSES', label: 'Классы' },
             { key: 'SUBJECTS', label: 'Предметы' },
+            { key: 'SUBJECT_AREAS', label: 'Предметные области' },
             { key: 'CURRICULUM', label: 'Учебный план' },
             { key: 'LOAD', label: 'Нагрузка по корпусам' },
-            { key: 'PEOPLE_LOAD', label: 'Нагрузка по людям' },
-            { key: 'LOAD_ISSUES', label: 'Возможные ошибки' },
-            { key: 'LOAD_MASTER_FOT', label: 'Мастер ФОТ' },
-            { key: 'LOAD_STATS', label: 'Статистика нагрузки' },
-            { key: 'SETTINGS', label: 'Настройки' },
-            { key: 'SUBJECT_AREAS', label: 'Предметные области' }
+            { key: 'PEOPLE_LOAD', label: 'Нагрузка по педагогам и ИУП' }
         ]
     },
     {
-        key: 'HR',
-        label: 'Кадры',
+        key: 'LOAD_OPERATIONS',
+        label: 'Учебный план и нагрузка · изменения, расчёт и контроль',
         tabs: [
-            { key: 'TEACHERS', label: 'Персонал' },
-            { key: 'TEACHERS_ARCHIVE', label: 'Архив' },
-            { key: 'TEACHERS_DISMISSALS', label: 'Увольнения' },
-            { key: 'TEACHERS_SETTINGS', label: 'Настройки расчёта ЗП' },
-            { key: 'TEACHERS_MCKO', label: 'МЦКО' },
-            { key: 'SERVICE_NOTES', label: 'Служебные записки' },
-            { key: 'HR_NOTIFICATIONS_VIEW', label: 'Уведомления' }
-        ]
-    },
-    {
-        key: 'SENSITIVE',
-        label: 'Чувствительные данные',
-        tabs: [
+            { key: 'SERVICE_NOTES', label: 'Служебные записки на изменение нагрузки' },
+            { key: 'TEACHERS_SETTINGS', label: 'Правила и коэффициенты расчёта ЗП' },
             { key: 'LOAD_SALARY', label: 'Ставки и расчёт денег', sensitive: true },
-            { key: 'OGE_MISMATCH_VIEW', label: 'ОГЭ: Нестыковки (просмотр)', sensitive: true }
+            { key: 'LOAD_MASTER_FOT', label: 'Мастер ФОТ', sensitive: true },
+            { key: 'LOAD_ISSUES', label: 'Возможные ошибки' },
+            { key: 'LOAD_STATS', label: 'Статистика нагрузки' },
+            { key: 'SETTINGS', label: 'Настройки нагрузки' }
         ]
     },
     {
-        key: 'CONTINGENT',
-        label: 'Контингент',
+        key: 'STUDENTS',
+        label: 'Обучающиеся',
         tabs: [
-            { key: 'CONTINGENT_IMPORT', label: 'Контингент: импорт' },
-            { key: 'CONTINGENT_STATS', label: 'Контингент: численность' },
-            { key: 'CONTINGENT_ADMISSION', label: 'Контингент: приём' },
-            { key: 'CONTINGENT_ADMISSION_ROLES', label: 'Контингент: роли приёма', sensitive: true },
-            { key: 'OVZ', label: 'ОВЗ' }
+            { key: 'CONTINGENT_STATS', label: 'Численность и списки' },
+            { key: 'CONTINGENT_ADMISSION', label: 'Приём обучающихся' },
+            { key: 'CONTINGENT_ADMISSION_ROLES', label: 'Роли приёма', sensitive: true },
+            { key: 'CONTINGENT_IMPORT', label: 'Импорт и сверка контингента' },
+            { key: 'OVZ', label: 'ОВЗ и сопровождение' }
         ]
     },
     {
@@ -68,36 +69,32 @@ const TAB_GROUPS = [
         ]
     },
     {
-        key: 'CLASS_TEACHER',
-        label: 'Классный руководитель',
+        key: 'QUALITY',
+        label: 'Качество образования',
         tabs: [
-            { key: 'CLASS_TEACHER_EXIT_ORDER_CREATE', label: 'Создать приказ на выход' },
-            { key: 'CLASS_TEACHER_EXIT_ORDER_SUMMARY', label: 'Свод приказов' }
+            { key: 'TEACHERS_MCKO', label: 'МЦКО педагогов: сертификаты и предметы' },
+            { key: 'VSOKO_VIEW', label: 'ОГЭ, ЕГЭ и ПА: просмотр' },
+            { key: 'VSOKO_EDIT', label: 'ОГЭ, ЕГЭ и ПА: редактирование' },
+            { key: 'VSOKO_MCKO', label: 'МЦКО обучающихся: результаты и своды' },
+            { key: 'OGE_UPLOAD_VIEW', label: 'ОГЭ: выгрузка (просмотр)' },
+            { key: 'OGE_MISMATCH_VIEW', label: 'ОГЭ: нестыковки (просмотр)', sensitive: true },
+            { key: 'OGE_EXTERNAL_WORKS_VIEW', label: 'ОГЭ: внешние работы (просмотр)' },
+            { key: 'OGE_TEACHER_BINDING_VIEW', label: 'ОГЭ: привязка к педагогу (просмотр)' },
+            { key: 'OGE_SCORE_VIEW', label: 'ОГЭ: баллы за задания (просмотр)' },
+            { key: 'OGE_EVALUATION_VIEW', label: 'ОГЭ: оценивание (просмотр)' },
+            { key: 'OGE_GIA_UPLOAD', label: 'ОГЭ: загрузка выгрузок ГИА' },
+            { key: 'OGE_WORK_UPLOAD', label: 'ОГЭ: загрузка работ' }
         ]
     },
     {
-        key: 'DOCUMENTS',
-        label: 'Документы',
+        key: 'DOCUMENTS_EVENTS',
+        label: 'Документы и мероприятия',
         tabs: [
+            { key: 'CLASS_TEACHER_EXIT_ORDER_CREATE', label: 'Выходы и экскурсии: подача заявки' },
+            { key: 'CLASS_TEACHER_EXIT_ORDER_SUMMARY', label: 'Выходы и экскурсии: свои заявки' },
             { key: 'DOCUMENTS_PEDAGOGICAL_COUNCILS', label: 'Педагогические советы' },
             { key: 'DOCUMENTS_PROBE_ORDERS', label: 'Приказы на пробы' },
-            { key: 'DOCUMENTS_EXIT_ORDERS', label: 'Приказы на выход' }
-        ]
-    },
-    {
-        key: 'VSOKO',
-        label: 'ВСОКО / ОГЭ / ПА',
-        tabs: [
-            { key: 'VSOKO_VIEW', label: 'ВСОКО/ПА: просмотр' },
-            { key: 'VSOKO_EDIT', label: 'ВСОКО/ПА: редактирование' },
-            { key: 'VSOKO_MCKO', label: 'ВСОКО/МЦКО: результаты и своды' },
-            { key: 'OGE_UPLOAD_VIEW', label: 'ОГЭ: Выгрузка (просмотр)' },
-            { key: 'OGE_EXTERNAL_WORKS_VIEW', label: 'ОГЭ: Внешние работы пробники (просмотр)' },
-            { key: 'OGE_TEACHER_BINDING_VIEW', label: 'ОГЭ: Привязка к педагогу (просмотр)' },
-            { key: 'OGE_SCORE_VIEW', label: 'ОГЭ: Баллы за задания (просмотр)' },
-            { key: 'OGE_EVALUATION_VIEW', label: 'ОГЭ: Оценивание (просмотр)' },
-            { key: 'OGE_GIA_UPLOAD', label: 'ОГЭ: Загрузка выгрузок ГИА' },
-            { key: 'OGE_WORK_UPLOAD', label: 'ОГЭ: Загрузка работ ОГЭ' }
+            { key: 'DOCUMENTS_EXIT_ORDERS', label: 'Согласование и выпуск приказов на выход' }
         ]
     },
     {
@@ -122,7 +119,7 @@ const ui = {
     form: document.getElementById('user-create-form'),
     result: document.getElementById('admin-result'),
     tbody: document.getElementById('users-table-body'),
-    createRole: document.getElementById('create-role'),
+    createRoles: document.getElementById('create-roles'),
     createManagedBuilding: document.getElementById('create-managed-building'),
     createPermissionsBody: document.getElementById('create-permissions-body'),
     createLoadBuildings: document.getElementById('create-load-buildings'),
@@ -131,7 +128,7 @@ const ui = {
     createLoadClear: document.getElementById('create-load-clear'),
     editDialog: document.getElementById('user-edit-dialog'),
     editForm: document.getElementById('user-edit-form'),
-    editRole: document.getElementById('edit-role'),
+    editRoles: document.getElementById('edit-roles'),
     editManagedBuilding: document.getElementById('edit-managed-building'),
     editPermissionsBody: document.getElementById('edit-permissions-body'),
     editLoadBuildings: document.getElementById('edit-load-buildings'),
@@ -239,16 +236,17 @@ function documentPositionFromPrimary(position) {
     return value;
 }
 
-function roleFromTeacher(teacher) {
+function rolesFromTeacher(teacher) {
     const position = `${teacher?.primaryPosition || ''} ${teacher?.additionalDutiesSummary || ''}`.toLowerCase();
-    if (/заместител\S*\s+директор/.test(position)) return 'DEPUTY_DIRECTOR';
-    if (/руководител\S*\s+корпус/.test(position)) return 'BUILDING_HEAD';
-    if (/^\s*директор(?:\s|$)/.test(position)) return 'DIRECTOR';
-    if (/кадр|персонал/.test(position)) return 'HR';
-    if (/секретар/.test(position)) return 'SECRETARY';
-    if (/методист/.test(position)) return 'METHODIST';
-    if (/классн\S*\s+руковод/.test(position)) return 'CLASS_TEACHER';
-    return 'EMPLOYEE';
+    const roles = [];
+    if (/^\s*директор(?:\s|$)/.test(position)) roles.push('DIRECTOR');
+    if (/заместител\S*\s+директор/.test(position)) roles.push('DEPUTY_DIRECTOR');
+    if (/руководител\S*\s+корпус/.test(position)) roles.push('BUILDING_HEAD');
+    if (/классн\S*\s+руковод/.test(position)) roles.push('CLASS_TEACHER');
+    if (/методист/.test(position)) roles.push('METHODIST');
+    if (/кадр|персонал/.test(position)) roles.push('HR');
+    if (/секретар/.test(position)) roles.push('SECRETARY');
+    return Array.from(new Set(roles.length ? roles : ['EMPLOYEE']));
 }
 
 function availableTeacherRows() {
@@ -292,11 +290,12 @@ function applySelectedTeacher() {
     ui.createEmail.value = email;
     ui.createPhone.value = String(teacher.phone || '').trim();
     ui.createDocumentPosition.value = documentPositionFromPrimary(teacher.primaryPosition);
-    ui.createRole.value = roleFromTeacher(teacher);
+    const detectedRoles = rolesFromTeacher(teacher);
+    setSelectedRoles('create', detectedRoles);
     renderBuildingSelect(ui.createManagedBuilding, teacher.numberSchoolBuilding || '');
-    setScopeMode('create', ui.createRole.value === 'BUILDING_HEAD' ? LOAD_SCOPE_MODE.PRIMARY : LOAD_SCOPE_MODE.NONE);
+    setScopeMode('create', detectedRoles.includes('BUILDING_HEAD') ? LOAD_SCOPE_MODE.PRIMARY : LOAD_SCOPE_MODE.NONE);
     syncRoleSpecificFields('create');
-    if (ui.createRole.value === 'CLASS_TEACHER' || ui.createRole.value === 'SECRETARY') applyRoleBaseValues('create');
+    applyRoleBaseValues('create');
     if (ui.createTeacherHint) {
         const details = [teacher.primaryPosition, teacher.numberSchoolBuilding].filter(Boolean).join(' · ');
         ui.createTeacherHint.textContent = email
@@ -559,6 +558,57 @@ function roleLabel(role) {
     })[role] || role;
 }
 
+function roleContainer(prefix) {
+    return prefix === 'create' ? ui.createRoles : ui.editRoles;
+}
+
+function roleInputs(prefix) {
+    return Array.from(roleContainer(prefix)?.querySelectorAll('input[name="roles"]') || []);
+}
+
+function selectedRoles(prefix) {
+    return roleInputs(prefix).filter((input) => input.checked).map((input) => input.value);
+}
+
+function hasSelectedRole(prefix, role) {
+    return selectedRoles(prefix).includes(role);
+}
+
+function setSelectedRoles(prefix, roles) {
+    const selected = new Set((roles || []).filter(Boolean));
+    if (selected.size > 1) selected.delete('EMPLOYEE');
+    if (!selected.size) selected.add('EMPLOYEE');
+    roleInputs(prefix).forEach((input) => {
+        input.checked = selected.has(input.value);
+    });
+}
+
+function normalizeRoleCheckboxes(prefix, changedInput) {
+    if (!changedInput?.checked) return;
+    roleInputs(prefix).forEach((input) => {
+        if (changedInput.value === 'EMPLOYEE') {
+            if (input !== changedInput) input.checked = false;
+        } else if (input.value === 'EMPLOYEE') {
+            input.checked = false;
+        }
+    });
+}
+
+function requireSelectedRoles(prefix) {
+    const roles = selectedRoles(prefix);
+    if (!roles.length) throw new Error('Выберите хотя бы одну роль пользователя.');
+    return roles;
+}
+
+function primarySelectedRole(prefix) {
+    const roles = selectedRoles(prefix);
+    return roles.includes('ADMIN') ? 'ADMIN' : (roles[0] || 'EMPLOYEE');
+}
+
+function userHasRole(user, role) {
+    return (user?.roles || [user?.role]).filter(Boolean).includes(role);
+}
+
 function permissionMap(permissionList = []) {
     return Object.fromEntries(permissionList.map((permission) => [permission.tab, permission]));
 }
@@ -657,7 +707,7 @@ function loadScopeLabel(user) {
             ? `1 зона: ${labels[0]}`
             : `${labels.length} зон: ${labels.join(', ')}`;
     }
-    if (user.role === 'BUILDING_HEAD' && user.managedBuildingCode) {
+    if (userHasRole(user, 'BUILDING_HEAD') && user.managedBuildingCode) {
         return `Основной корпус: ${formatBuilding(user.managedBuildingCode)}`;
     }
     return 'Только просмотр';
@@ -746,7 +796,6 @@ function selectedLoadBuildings(prefix) {
 
 function loadScopeSummary(prefix) {
     const mode = selectedScopeMode(prefix);
-    const roleSelect = prefix === 'create' ? ui.createRole : ui.editRole;
     const managedBuilding = prefix === 'create' ? ui.createManagedBuilding.value : ui.editManagedBuilding.value;
     const selectedCodes = selectedLoadBuildings(prefix);
 
@@ -762,7 +811,7 @@ function loadScopeSummary(prefix) {
             : `Редактирование разрешено для ${selectedCodes.length} зон: ${selectedCodes.map(formatBuilding).join(', ')}.`;
     }
     if (mode === LOAD_SCOPE_MODE.PRIMARY) {
-        if (roleSelect.value !== 'BUILDING_HEAD') {
+        if (!hasSelectedRole(prefix, 'BUILDING_HEAD')) {
             return 'Режим «Основной корпус» доступен только для роли «Руководитель корпуса».';
         }
         if (!managedBuilding) {
@@ -986,11 +1035,10 @@ function bindMatrixInteractions(targetBody) {
 }
 
 function syncRoleSpecificFields(prefix) {
-    const roleSelect = prefix === 'create' ? ui.createRole : ui.editRole;
     const buildingSelect = prefix === 'create' ? ui.createManagedBuilding : ui.editManagedBuilding;
     const targetBody = prefix === 'create' ? ui.createPermissionsBody : ui.editPermissionsBody;
-    const isAdmin = roleSelect.value === 'ADMIN';
-    const isBuildingHead = roleSelect.value === 'BUILDING_HEAD';
+    const isAdmin = hasSelectedRole(prefix, 'ADMIN');
+    const isBuildingHead = hasSelectedRole(prefix, 'BUILDING_HEAD');
     const currentScopeMode = selectedScopeMode(prefix);
 
     buildingSelect.disabled = isAdmin;
@@ -1062,39 +1110,50 @@ function collectPermissions(targetBody) {
 }
 
 function applyRoleBaseValues(prefix) {
-    const role = prefix === 'create' ? ui.createRole.value : ui.editRole.value;
+    const roles = new Set(requireSelectedRoles(prefix));
     const targetBody = prefix === 'create' ? ui.createPermissionsBody : ui.editPermissionsBody;
-    const allowEdit = role === 'ADMIN' || role === 'DIRECTOR' || role === 'DEPUTY_DIRECTOR' || role === 'METHODIST';
-    const classTeacherRole = role === 'CLASS_TEACHER';
-    const secretaryRole = role === 'SECRETARY';
+    const isAdmin = roles.has('ADMIN');
+    const allowEdit = isAdmin || roles.has('DIRECTOR') || roles.has('DEPUTY_DIRECTOR') || roles.has('METHODIST');
+    const broadRole = allowEdit || roles.has('BUILDING_HEAD') || roles.has('HR');
+    const classTeacherRole = roles.has('CLASS_TEACHER');
+    const secretaryRole = roles.has('SECRETARY');
     const targetForm = prefix === 'create' ? ui.form : ui.editForm;
-    if ((classTeacherRole || secretaryRole) && targetForm?.elements?.canEdit) targetForm.elements.canEdit.checked = true;
+    if (targetForm?.elements?.canEdit) {
+        targetForm.elements.canEdit.checked = allowEdit || classTeacherRole || secretaryRole;
+    }
+    syncRoleSpecificFields(prefix);
     TABS.forEach((tab) => {
         const view = targetBody.querySelector(`[data-tab-view="${tab.key}"]`);
         const edit = targetBody.querySelector(`[data-tab-edit="${tab.key}"]`);
         const imp = targetBody.querySelector(`[data-tab-import="${tab.key}"]`);
         const exp = targetBody.querySelector(`[data-tab-export="${tab.key}"]`);
         if (!view || !edit || !imp || !exp || view.disabled) return;
-        if (secretaryRole) {
-            const canViewContingent = tab.key === 'CONTINGENT_STATS' || tab.key === 'CONTINGENT_ADMISSION';
-            view.checked = canViewContingent;
-            edit.checked = tab.key === 'CONTINGENT_ADMISSION';
-            imp.checked = false;
-            exp.checked = canViewContingent;
+        if (isAdmin) {
+            view.checked = true;
+            edit.checked = true;
+            imp.checked = true;
+            exp.checked = true;
             return;
         }
-        if (tab.sensitive || (classTeacherRole && !tab.key.startsWith('CLASS_TEACHER_EXIT_ORDER_'))) {
+        if (tab.sensitive) {
             view.checked = false;
             edit.checked = false;
             imp.checked = false;
             exp.checked = false;
             return;
         }
-        view.checked = true;
-        edit.checked = allowEdit || (classTeacherRole && tab.key === 'CLASS_TEACHER_EXIT_ORDER_CREATE');
+        const classTeacherView = classTeacherRole && (tab.key === 'CLASS_TEACHER_EXIT_ORDER_CREATE'
+            || tab.key === 'CLASS_TEACHER_EXIT_ORDER_SUMMARY' || tab.key === 'EDUCATIONAL_WORK');
+        const classTeacherEdit = classTeacherRole && (tab.key === 'CLASS_TEACHER_EXIT_ORDER_CREATE'
+            || tab.key === 'EDUCATIONAL_WORK');
+        const secretaryView = secretaryRole && (tab.key === 'CONTINGENT_STATS' || tab.key === 'CONTINGENT_ADMISSION');
+        const secretaryEdit = secretaryRole && tab.key === 'CONTINGENT_ADMISSION';
+        view.checked = broadRole || classTeacherView || secretaryView;
+        edit.checked = (broadRole && allowEdit) || classTeacherEdit || secretaryEdit;
         imp.checked = edit.checked;
-        exp.checked = !classTeacherRole;
+        exp.checked = (broadRole && view.checked) || secretaryView;
     });
+    syncRoleSpecificFields(prefix);
     syncAllGroupCheckboxes(targetBody);
 }
 
@@ -1125,7 +1184,7 @@ function validateLoadScopeSelection(prefix) {
 function scopeModeFromUser(user) {
     if (user.loadEditAllBuildings) return LOAD_SCOPE_MODE.ALL;
     if ((user.loadEditableBuildingCodes || []).length) return LOAD_SCOPE_MODE.SELECTED;
-    if (user.role === 'BUILDING_HEAD' && user.managedBuildingCode) return LOAD_SCOPE_MODE.PRIMARY;
+    if (userHasRole(user, 'BUILDING_HEAD') && user.managedBuildingCode) return LOAD_SCOPE_MODE.PRIMARY;
     return LOAD_SCOPE_MODE.NONE;
 }
 
@@ -1136,7 +1195,7 @@ function renderUsers(rows) {
             <td>${esc(user.username)}</td>
             <td>${esc(user.fullName)}</td>
             <td>${esc(user.documentPosition || '—')}</td>
-            <td>${esc(roleLabel(user.role))}</td>
+            <td>${esc((user.roleDisplayNames || (user.roles || [user.role]).map(roleLabel)).join(', '))}</td>
             <td>${esc(user.managedBuildingCode || '—')}</td>
             <td><span class="table-badge load-scope-badge">${esc(loadScopeLabel(user))}</span></td>
             <td>${esc(user.email || '—')}</td>
@@ -1176,7 +1235,7 @@ function openEditDialog(userId) {
     ui.editForm.elements.active.checked = Boolean(user.active);
     ui.editForm.elements.canView.checked = Boolean(user.canView);
     ui.editForm.elements.canEdit.checked = Boolean(user.canEdit);
-    ui.editRole.value = user.role;
+    setSelectedRoles('edit', user.roles || [user.role]);
     renderBuildingSelect(ui.editManagedBuilding, user.managedBuildingCode || '');
     renderPermissionMatrix(ui.editPermissionsBody, user.tabPermissions || [], 'edit');
     setScopeMode('edit', scopeModeFromUser(user));
@@ -1223,12 +1282,17 @@ async function reload() {
     syncRoleSpecificFields('create');
 }
 
-ui.createRole.addEventListener('change', () => {
+roleInputs('create').forEach((input) => input.addEventListener('change', () => {
+    normalizeRoleCheckboxes('create', input);
     syncRoleSpecificFields('create');
-    if (ui.createRole.value === 'CLASS_TEACHER' || ui.createRole.value === 'SECRETARY') applyRoleBaseValues('create');
-});
+    if (selectedRoles('create').length) applyRoleBaseValues('create');
+}));
 ui.createTeacher?.addEventListener('change', applySelectedTeacher);
-ui.editRole.addEventListener('change', () => syncRoleSpecificFields('edit'));
+roleInputs('edit').forEach((input) => input.addEventListener('change', () => {
+    normalizeRoleCheckboxes('edit', input);
+    syncRoleSpecificFields('edit');
+    if (selectedRoles('edit').length) applyRoleBaseValues('edit');
+}));
 ui.createManagedBuilding.addEventListener('change', () => syncRoleSpecificFields('create'));
 ui.editManagedBuilding.addEventListener('change', () => syncRoleSpecificFields('edit'));
 ui.editCloseBtn.addEventListener('click', () => ui.editDialog.close());
@@ -1246,6 +1310,7 @@ ui.form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = new FormData(ui.form);
     try {
+        const roles = requireSelectedRoles('create');
         validateLoadScopeSelection('create');
         const loadScope = loadScopeState('create');
         const result = await api('/api/admin/users', {
@@ -1259,7 +1324,8 @@ ui.form.addEventListener('submit', async (event) => {
                 email: String(form.get('email') || '').trim(),
                 phone: String(form.get('phone') || '').trim(),
                 managedBuildingCode: String(form.get('managedBuildingCode') || '').trim(),
-                role: String(form.get('role') || ''),
+                role: primarySelectedRole('create'),
+                roles,
                 canView: form.get('canView') === 'on',
                 canEdit: form.get('canEdit') === 'on',
                 ...loadScope,
@@ -1279,6 +1345,7 @@ ui.editForm.addEventListener('submit', async (event) => {
     if (!editingUserId) return;
     const form = new FormData(ui.editForm);
     try {
+        const roles = requireSelectedRoles('edit');
         validateLoadScopeSelection('edit');
         const loadScope = loadScopeState('edit');
         const result = await api(`/api/admin/users/${editingUserId}`, {
@@ -1290,7 +1357,8 @@ ui.editForm.addEventListener('submit', async (event) => {
                 email: String(form.get('email') || '').trim(),
                 phone: String(form.get('phone') || '').trim(),
                 managedBuildingCode: String(form.get('managedBuildingCode') || '').trim(),
-                role: String(form.get('role') || ''),
+                role: primarySelectedRole('edit'),
+                roles,
                 active: form.get('active') === 'on',
                 canView: form.get('canView') === 'on',
                 canEdit: form.get('canEdit') === 'on',

@@ -30,9 +30,31 @@ public class SessionUser implements Serializable {
     private boolean loadEditAllBuildings;
     private Set<String> loadEditableBuildingCodes = new LinkedHashSet<>();
     private List<TabPermissionSnapshot> tabPermissions = new ArrayList<>();
+    private Set<UserRole> roles = new LinkedHashSet<>();
+
+    /** Backwards-compatible constructor for tests and serialized integrations using one role. */
+    public SessionUser(Long id, String username, String fullName, String email, String phone,
+                       UserRole role, boolean active, boolean canView, boolean canEdit,
+                       String managedBuildingCode, boolean loadEditAllBuildings,
+                       Set<String> loadEditableBuildingCodes, List<TabPermissionSnapshot> tabPermissions) {
+        this(id, username, fullName, email, phone, role, active, canView, canEdit,
+                managedBuildingCode, loadEditAllBuildings, loadEditableBuildingCodes, tabPermissions,
+                role == null ? new LinkedHashSet<>() : new LinkedHashSet<>(Set.of(role)));
+    }
+
+    public Set<UserRole> getEffectiveRoles() {
+        LinkedHashSet<UserRole> effective = new LinkedHashSet<>();
+        if (role != null) effective.add(role);
+        if (roles != null) effective.addAll(roles);
+        return effective;
+    }
+
+    public boolean hasRole(UserRole expectedRole) {
+        return expectedRole != null && getEffectiveRoles().contains(expectedRole);
+    }
 
     public boolean isAdmin() {
-        return role == UserRole.ADMIN;
+        return hasRole(UserRole.ADMIN);
     }
 
     public boolean canViewTab(AppTab tab) {
@@ -95,7 +117,7 @@ public class SessionUser implements Serializable {
                 return groupWidePermission && normalizeBuildingGroupCode(normalizedPermission).equals(requestedGroupCode);
             });
         }
-        if (role == UserRole.BUILDING_HEAD) {
+        if (hasRole(UserRole.BUILDING_HEAD)) {
             return normalizeBuildingGroupCode(managedBuildingCode).equals(requestedGroupCode);
         }
         return false;

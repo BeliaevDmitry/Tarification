@@ -36,6 +36,8 @@ const ui = {
     customExportParallels: document.getElementById('contingent-custom-export-parallels'),
     customExportBuildingsField: document.getElementById('contingent-custom-export-buildings-field'),
     customExportBuildings: document.getElementById('contingent-custom-export-buildings'),
+    customExportAddressesField: document.getElementById('contingent-custom-export-addresses-field'),
+    customExportAddresses: document.getElementById('contingent-custom-export-addresses'),
     customExportDownload: document.getElementById('contingent-custom-export-download'),
     customExportResult: document.getElementById('contingent-custom-export-result'),
     kindergartenSummary: document.getElementById('contingent-kindergarten-summary'),
@@ -271,7 +273,8 @@ function contingentPermissions() {
         return { canImportView: true, canImportEdit: true, canStatsView: true, canManualView: true, canSupportView: true,
             canAdmissionView: true, canAdmissionEdit: true, canAdmissionDecide: true, canAdmissionRolesView: true, canAdmissionRolesEdit: true };
     }
-    const secretaryRole = window.tarificationAuth?.role === 'SECRETARY';
+    const secretaryRole = (window.tarificationAuth?.roles || [window.tarificationAuth?.role])
+        .filter(Boolean).includes('SECRETARY');
     return {
         canImportView: Boolean(permissions.CONTINGENT_IMPORT?.canView),
         canImportEdit: Boolean(permissions.CONTINGENT_IMPORT?.canEdit || permissions.CONTINGENT_STATS?.canEdit),
@@ -572,8 +575,10 @@ function exportOption(value, label, attribute, checked) {
 function renderCustomExportOptions(stats) {
     const previousParallels = checkedExportValues(ui.customExportParallels, 'data-export-parallel');
     const previousBuildings = checkedExportValues(ui.customExportBuildings, 'data-export-building');
+    const previousAddresses = checkedExportValues(ui.customExportAddresses, 'data-export-address');
     const hadParallels = Boolean(ui.customExportParallels?.children.length);
     const hadBuildings = Boolean(ui.customExportBuildings?.children.length);
+    const hadAddresses = Boolean(ui.customExportAddresses?.children.length);
 
     const parallels = Array.from(new Set((stats?.parallels || []).map(Number)))
         .filter((value) => value >= 1 && value <= 11)
@@ -601,6 +606,29 @@ function renderCustomExportOptions(stats) {
             !hadBuildings || previousBuildings.has(building.code)
         )).join('') || '<span class="muted">Корпуса не найдены.</span>';
     }
+
+    const addressBuildings = new Map();
+    (stats?.columns || []).forEach((building) => {
+        (building.addresses || []).forEach((item) => {
+            const address = String(item.address || 'Адрес не указан').trim() || 'Адрес не указан';
+            if (!addressBuildings.has(address)) addressBuildings.set(address, new Set());
+            addressBuildings.get(address).add(String(building.buildingCode || 'НЕОПР'));
+        });
+    });
+    const addresses = Array.from(addressBuildings.entries())
+        .map(([address, codes]) => ({
+            address,
+            label: `${address} (${Array.from(codes).join(', ')})`
+        }))
+        .sort((left, right) => left.address.localeCompare(right.address, 'ru'));
+    if (ui.customExportAddresses) {
+        ui.customExportAddresses.innerHTML = addresses.map((item) => exportOption(
+            item.address,
+            item.label,
+            'data-export-address',
+            !hadAddresses || previousAddresses.has(item.address)
+        )).join('') || '<span class="muted">Адреса не найдены.</span>';
+    }
     updateCustomExportMode();
 }
 
@@ -608,12 +636,16 @@ function updateCustomExportMode() {
     if (ui.customExportBuildingsField) {
         ui.customExportBuildingsField.hidden = ui.customExportMode?.value !== 'BUILDING';
     }
+    if (ui.customExportAddressesField) {
+        ui.customExportAddressesField.hidden = ui.customExportMode?.value !== 'ADDRESS';
+    }
 }
 
 async function downloadCustomContingent() {
     const parallels = Array.from(checkedExportValues(ui.customExportParallels, 'data-export-parallel'));
     const groupBy = ui.customExportMode?.value || 'PARALLEL';
     const buildings = Array.from(checkedExportValues(ui.customExportBuildings, 'data-export-building'));
+    const addresses = Array.from(checkedExportValues(ui.customExportAddresses, 'data-export-address'));
     if (!parallels.length) {
         ui.customExportResult.textContent = 'Отметьте хотя бы одну параллель.';
         return;
@@ -622,11 +654,16 @@ async function downloadCustomContingent() {
         ui.customExportResult.textContent = 'Отметьте хотя бы один корпус.';
         return;
     }
+    if (groupBy === 'ADDRESS' && !addresses.length) {
+        ui.customExportResult.textContent = 'Отметьте хотя бы один адрес.';
+        return;
+    }
 
     const params = new URLSearchParams({ groupBy });
     if (ui.snapshotDateSelect?.value) params.set('snapshotDate', ui.snapshotDateSelect.value);
     parallels.forEach((value) => params.append('parallels', value));
     if (groupBy === 'BUILDING') buildings.forEach((value) => params.append('buildingCodes', value));
+    if (groupBy === 'ADDRESS') addresses.forEach((value) => params.append('addresses', value));
 
     ui.customExportDownload.disabled = true;
     ui.customExportResult.textContent = 'Формирую Excel-файл…';
@@ -2547,6 +2584,12 @@ ui.tabs.forEach((tab) => tab.addEventListener('click', () => {
         refreshAdmissionRoles().catch(() => { });
     }
 }));
+
+window.addEventListener('hashchange', () => {
+    const requestedTab = String(window.location.hash || '').toLowerCase().replace(/^#/, '');
+    const tab = [...ui.tabs].find((item) => item.dataset.contingentTab === requestedTab && !item.hidden);
+    tab?.click();
+});
 
 ui.admissionRefreshBtn?.addEventListener('click', () => refreshAdmissions().catch(() => { }));
 ui.admissionAddBtn?.addEventListener('click', () => openAdmissionDialog());

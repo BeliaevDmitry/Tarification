@@ -12,59 +12,47 @@
 <main class="container">
   <header class="card">
     <h1>Главное меню</h1>
-    <p class="muted" data-branding-welcome>Выберите рабочий контур системы.</p>
+    <p class="muted" data-branding-welcome>Доступные разделы собраны по вашим ролям и правам.</p>
   </header>
 
   <section class="home-menu-grid">
-    <a class="card home-menu-card home-menu-class-teacher" href="/class-teacher.html#create" data-class-teacher-card>
-      <div class="home-menu-sticker">🎒</div>
-      <h2>Классный руководитель</h2>
-      <p class="muted">Создание заявки на приказ о выходе и свод своих приказов.</p>
-    </a>
-
-    <a class="card home-menu-card home-menu-load" href="/load.html">
-      <div class="home-menu-sticker">📊</div>
-      <h2>Нагрузка</h2>
-      <p class="muted">Полный рабочий контур: корпуса, классы, предметы, учебный план, нагрузка, служебные записки и настройки.</p>
-    </a>
-
-    <a class="card home-menu-card" href="/teachers.html">
+    <a class="card home-menu-card" href="/teachers.html" data-section-card="employees">
       <div class="home-menu-sticker">🧑‍🏫</div>
-      <h2>Кадры</h2>
-      <p class="muted">Справочник сотрудников: импорт, ручное добавление и кадровые статусы.</p>
+      <h2>Сотрудники</h2>
+      <p class="muted">Реестр, приём и увольнение, кадровые документы, персональные данные и отгулы.</p>
     </a>
 
-    <a class="card home-menu-card" href="/contingent.html" data-contingent-card>
+    <a class="card home-menu-card home-menu-load" href="/load.html" data-section-card="load">
+      <div class="home-menu-sticker">📊</div>
+      <h2>Учебный план и нагрузка</h2>
+      <p class="muted">Справочники, учебный план, распределение нагрузки, изменения, ставки, ФОТ и контроль.</p>
+    </a>
+
+    <a class="card home-menu-card" href="/contingent.html" data-section-card="students">
       <div class="home-menu-sticker">👥</div>
-      <h2>Контингент</h2>
-      <p class="muted">Импорт выгрузок контингента и аналитика численности по корпусам/классам.</p>
+      <h2>Обучающиеся</h2>
+      <p class="muted">Контингент, приём, импорт данных, ОВЗ, справки, ППк и сопровождение специалистами.</p>
     </a>
 
-    <a class="card home-menu-card" href="/ovz.html" data-ovz-card>
-      <div class="home-menu-sticker">🧩</div>
-      <h2>ОВЗ</h2>
-      <p class="muted">Реестр справок, личные дела, дорожные карты и протоколы ППк.</p>
+    <a class="card home-menu-card" href="/vsoko.html" data-section-card="quality">
+      <div class="home-menu-sticker">✅</div>
+      <h2>Качество образования</h2>
+      <p class="muted">ОГЭ, ЕГЭ, промежуточная аттестация, МЦКО обучающихся и сертификаты МЦКО педагогов.</p>
     </a>
 
-    <a class="card home-menu-card" href="/educational-work.html" data-educational-work-card>
+    <a class="card home-menu-card" href="/educational-work.html" data-section-card="educational">
       <div class="home-menu-sticker">🌱</div>
       <h2>Воспитательная работа</h2>
       <p class="muted">Приём отчётов классных руководителей и сводные таблицы распарсенных данных по классам.</p>
     </a>
 
-    <a class="card home-menu-card" href="/documents.html" data-documents-card>
+    <a class="card home-menu-card" href="/documents.html" data-section-card="documents">
       <div class="home-menu-sticker">📄</div>
-      <h2>Документы</h2>
-      <p class="muted">Педагогические советы, приказы на пробы и выходы: согласование, выпуск Word-файлов и подписанные сканы.</p>
+      <h2>Документы и мероприятия</h2>
+      <p class="muted">Заявки классных руководителей, выходы и экскурсии, приказы на пробы и педагогические советы.</p>
     </a>
 
-    <a class="card home-menu-card home-menu-placeholder" href="/vsoko.html">
-      <div class="home-menu-sticker">✅</div>
-      <h2>ВСОКО</h2>
-      <p class="muted">ОГЭ: выгрузки ГИА, результаты пробников, изменения и статистика.</p>
-    </a>
-
-    <a class="card home-menu-card home-menu-admin" href="/admin.html" data-admin-card>
+    <a class="card home-menu-card home-menu-admin" href="/admin.html" data-section-card="administration">
       <div class="home-menu-sticker">🛡️</div>
       <h2>Администрирование</h2>
       <p class="muted">Управление пользователями системы (только для администратора).</p>

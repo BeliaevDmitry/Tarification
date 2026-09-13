@@ -172,7 +172,7 @@ public class CalendarAudienceServiceImpl implements CalendarAudienceService {
     }
 
     private boolean canEdit(SessionUser user) {
-        return user != null && (user.isAdmin() || user.getRole() == UserRole.DIRECTOR);
+        return user != null && (user.isAdmin() || user.hasRole(UserRole.DIRECTOR));
     }
 
     private String text(String value) {

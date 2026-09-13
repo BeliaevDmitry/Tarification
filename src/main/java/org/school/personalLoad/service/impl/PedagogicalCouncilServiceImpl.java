@@ -349,7 +349,7 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
                                 .stream()
                                 .map(permission -> permission.getUser()),
                         appUserRepository.findAll().stream()
-                                .filter(user -> user.getRole() == org.school.personalLoad.auth.UserRole.ADMIN)
+                                .filter(user -> user.hasRole(org.school.personalLoad.auth.UserRole.ADMIN))
                 )
                 .filter(AppUser::isActive)
                 .filter(AppUser::isCanView)
@@ -944,7 +944,7 @@ public class PedagogicalCouncilServiceImpl implements PedagogicalCouncilService 
             AppUser user = requiredActiveUser(requested.getKey());
             boolean currentUser = Objects.equals(user.getId(), currentUserId);
             if (!currentUser
-                    && user.getRole() != org.school.personalLoad.auth.UserRole.ADMIN
+                    && !user.hasRole(org.school.personalLoad.auth.UserRole.ADMIN)
                     && !allowedIds.contains(user.getId())) {
                 throw new IllegalStateException("У сотрудника " + user.getFullName() + " нет права заверять выписки");
             }
