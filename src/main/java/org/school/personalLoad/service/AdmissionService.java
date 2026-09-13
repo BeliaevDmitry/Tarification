@@ -59,7 +59,7 @@ public class AdmissionService {
         AdmissionDtos.Access access = new AdmissionDtos.Access();
         if (user == null) return access;
         boolean admin = user.isAdmin();
-        boolean secretary = user.getRole() == UserRole.SECRETARY
+        boolean secretary = user.hasRole(UserRole.SECRETARY)
                 || roleRepository.existsByUserIdAndRole(user.getId(), AdmissionAccessRole.SECRETARY);
         boolean decisionMaker = roleRepository.existsByUserIdAndRole(user.getId(), AdmissionAccessRole.DECISION_MAKER);
         boolean canEdit = admin || secretary || user.canEditTab(AppTab.CONTINGENT_ADMISSION);
@@ -233,7 +233,7 @@ public class AdmissionService {
         row.setSystemRole(user.getRole());
         row.setSystemRoleName(user.getRole() == null ? "" : user.getRole().getDisplayName());
         row.setActive(user.isActive());
-        boolean systemSecretary = user.getRole() == UserRole.SECRETARY;
+        boolean systemSecretary = user.hasRole(UserRole.SECRETARY);
         row.setSecretaryFromSystemRole(systemSecretary);
         row.setSecretary(systemSecretary || assignments.contains(roleKey(user.getId(), AdmissionAccessRole.SECRETARY)));
         row.setDecisionMaker(assignments.contains(roleKey(user.getId(), AdmissionAccessRole.DECISION_MAKER)));

@@ -120,14 +120,17 @@ public class AppUserServiceImpl implements AppUserService {
         user.setEmail(normalizeOptional(request.getEmail() == null ? teacher.getEmail() : request.getEmail()));
         user.setPhone(normalizePhone(request.getPhone() == null ? teacher.getPhone() : request.getPhone()));
         String managedBuildingCode = request.getManagedBuildingCode();
-        if (managedBuildingCode == null && request.getRole() != UserRole.ADMIN) {
+        LinkedHashSet<UserRole> roles = normalizeRoles(request.getRoles(), request.getRole(), null);
+        UserRole primaryRole = primaryRole(roles, request.getRole());
+        if (managedBuildingCode == null && !roles.contains(UserRole.ADMIN)) {
             managedBuildingCode = teacher.getNumberSchoolBuilding();
         }
         user.setManagedBuildingCode(normalizeKnownBuildingScopeCode(managedBuildingCode,
                 knownBuildingGroupCodes, knownBuildingAccessCodes));
         user.setLoadEditAllBuildings(Boolean.TRUE.equals(request.getLoadEditAllBuildings()));
         user.setLoadEditableBuildingCodes(normalizeBuildingCodes(request.getLoadEditableBuildingCodes(), knownBuildingGroupCodes, knownBuildingAccessCodes));
-        user.setRole(Objects.requireNonNull(request.getRole(), "Роль обязательна"));
+        user.setRole(primaryRole);
+        user.setRoles(roles);
         user.setActive(true);
         user.setCanView(request.getCanView() == null || request.getCanView());
         user.setCanEdit(Boolean.TRUE.equals(request.getCanEdit()));
@@ -174,8 +177,10 @@ public class AppUserServiceImpl implements AppUserService {
         if (request.getLoadEditableBuildingCodes() != null) {
             user.setLoadEditableBuildingCodes(normalizeBuildingCodes(request.getLoadEditableBuildingCodes(), knownBuildingGroupCodes, knownBuildingAccessCodes));
         }
-        if (request.getRole() != null) {
-            user.setRole(request.getRole());
+        if (request.getRoles() != null || request.getRole() != null) {
+            LinkedHashSet<UserRole> roles = normalizeRoles(request.getRoles(), request.getRole(), user.getRole());
+            user.setRole(primaryRole(roles, request.getRole() == null ? user.getRole() : request.getRole()));
+            user.setRoles(roles);
         }
         if (request.getActive() != null) {
             user.setActive(request.getActive());
@@ -239,6 +244,7 @@ public class AppUserServiceImpl implements AppUserService {
         admin.setUsername(normalizeUsername(defaultAdminUsername));
         admin.setFullName(defaultAdminFullName);
         admin.setRole(UserRole.ADMIN);
+        admin.setRoles(new LinkedHashSet<>(Set.of(UserRole.ADMIN)));
         admin.setEmail(null);
         admin.setPhone(null);
         admin.setManagedBuildingCode(null);
@@ -261,7 +267,7 @@ public class AppUserServiceImpl implements AppUserService {
             normalizeText(request.getUsername(), "Логин пользователя обязателен");
             normalizeText(request.getFullName(), "ФИО пользователя обязательно");
         }
-        if (request.getRole() == null) {
+        if ((request.getRoles() == null || request.getRoles().isEmpty()) && request.getRole() == null) {
             throw new IllegalArgumentException("Роль обязательна");
         }
     }
@@ -307,7 +313,7 @@ public class AppUserServiceImpl implements AppUserService {
     private void saveTabPermissions(AppUser user, List<UserTabPermissionRequest> requestedPermissions) {
         tabPermissionRepository.deleteAllByUserId(user.getId());
         tabPermissionRepository.flush();
-        if (user.getRole() == UserRole.ADMIN) {
+        if (user.hasRole(UserRole.ADMIN)) {
             saveDefaultPermissions(user, true, true);
             return;
         }
@@ -322,9 +328,9 @@ public class AppUserServiceImpl implements AppUserService {
         for (AppTab tab : AppTab.navigableTabs()) {
             UserTabPermissionRequest requested = requestedByTab.get(tab);
             boolean sensitive = isSensitivePermission(tab);
-            boolean defaultCanView = sensitive ? false : user.isCanView();
-            boolean defaultCanEdit = sensitive ? false : user.isCanView() && user.isCanEdit();
-            boolean defaultCanExport = sensitive ? false : defaultCanView;
+            boolean defaultCanView = defaultCanView(user, tab, sensitive);
+            boolean defaultCanEdit = defaultCanEdit(user, tab, sensitive);
+            boolean defaultCanExport = defaultCanExport(user, tab, sensitive);
             boolean canView = requested != null ? Boolean.TRUE.equals(requested.getCanView()) : defaultCanView;
             boolean canEdit = requested != null ? Boolean.TRUE.equals(requested.getCanEdit()) : defaultCanEdit;
             boolean canImport = requested != null ? Boolean.TRUE.equals(requested.getCanImport()) : defaultCanEdit;
@@ -348,8 +354,14 @@ public class AppUserServiceImpl implements AppUserService {
     private void saveDefaultPermissions(AppUser user, boolean canView, boolean canEdit) {
         List<AppUserTabPermission> permissions = AppTab.navigableTabs().stream()
                 .map(tab -> {
-                    if (isSensitivePermission(tab) && user.getRole() != UserRole.ADMIN) {
+                    if (isSensitivePermission(tab) && !user.hasRole(UserRole.ADMIN)) {
                         return buildPermission(user, tab, false, false, false, false);
+                    }
+                    if (usesRestrictedRoleProfile(user)) {
+                        boolean roleView = defaultCanView(user, tab, false);
+                        boolean roleEdit = defaultCanEdit(user, tab, false);
+                        return buildPermission(user, tab, roleView, roleEdit, roleEdit,
+                                defaultCanExport(user, tab, false));
                     }
                     return buildPermission(user, tab, canView, canEdit, canEdit, canView);
                 })
@@ -365,7 +377,7 @@ public class AppUserServiceImpl implements AppUserService {
     }
 
     private AppUserTabPermission buildPermission(AppUser user, AppTab tab, boolean canView, boolean canEdit, boolean canImport, boolean canExport) {
-        if (user.getRole() != UserRole.ADMIN && tab == AppTab.USERS) {
+        if (!user.hasRole(UserRole.ADMIN) && tab == AppTab.USERS) {
             canView = false;
             canEdit = false;
             canImport = false;
@@ -395,6 +407,7 @@ public class AppUserServiceImpl implements AppUserService {
                 .collect(Collectors.toMap(AppUserTabPermission::getTab, Function.identity(), (left, right) -> left,
                         () -> new EnumMap<>(AppTab.class)));
         mergeLegacyNotificationPermission(existingByTab);
+        ensureClassTeacherRolePermissions(user, existingByTab);
 
         List<AppUserTabPermission> missing = new ArrayList<>();
         for (AppTab tab : AppTab.navigableTabs()) {
@@ -402,13 +415,22 @@ public class AppUserServiceImpl implements AppUserService {
                 continue;
             }
             AppUserTabPermission legacy = existingByTab.get(legacySourceTab(tab));
-            boolean canView = user.getRole() == UserRole.ADMIN || (legacy != null ? legacy.isCanView() : user.isCanView());
-            boolean canEdit = user.getRole() == UserRole.ADMIN || (legacy != null
+            boolean canView = user.hasRole(UserRole.ADMIN) || (legacy != null ? legacy.isCanView() : defaultCanView(user, tab, isSensitivePermission(tab)));
+            boolean canEdit = user.hasRole(UserRole.ADMIN) || (legacy != null
                     ? legacy.isCanEdit()
-                    : user.isCanView() && user.isCanEdit());
-            boolean canImport = user.getRole() == UserRole.ADMIN || (legacy != null ? legacy.isCanImport() : canEdit);
-            boolean canExport = user.getRole() == UserRole.ADMIN || (legacy != null ? legacy.isCanExport() : canView);
-            if (isSensitivePermission(tab) && user.getRole() != UserRole.ADMIN) {
+                    : defaultCanEdit(user, tab, isSensitivePermission(tab)));
+            boolean canImport = user.hasRole(UserRole.ADMIN) || (legacy != null ? legacy.isCanImport() : canEdit);
+            boolean canExport = user.hasRole(UserRole.ADMIN) || (legacy != null ? legacy.isCanExport() : defaultCanExport(user, tab, isSensitivePermission(tab)));
+            if (user.hasRole(UserRole.CLASS_TEACHER) && user.isCanView()
+                    && (tab == AppTab.CLASS_TEACHER_EXIT_ORDER_CREATE
+                    || tab == AppTab.CLASS_TEACHER_EXIT_ORDER_SUMMARY
+                    || tab == AppTab.EDUCATIONAL_WORK)) {
+                canView = true;
+                canEdit = user.isCanEdit() && tab != AppTab.CLASS_TEACHER_EXIT_ORDER_SUMMARY;
+                canImport = canEdit && tab == AppTab.EDUCATIONAL_WORK;
+                canExport = false;
+            }
+            if (isSensitivePermission(tab) && !user.hasRole(UserRole.ADMIN)) {
                 missing.add(buildPermission(user, tab, false, false, false, false));
             } else {
                 missing.add(buildPermission(user, tab, canView, canEdit, canImport, canExport));
@@ -432,11 +454,31 @@ public class AppUserServiceImpl implements AppUserService {
         tabPermissionRepository.save(view);
     }
 
+    private void ensureClassTeacherRolePermissions(AppUser user, Map<AppTab, AppUserTabPermission> existingByTab) {
+        if (!user.hasRole(UserRole.CLASS_TEACHER) || !user.isCanView()) return;
+        grantRolePermission(existingByTab.get(AppTab.CLASS_TEACHER_EXIT_ORDER_CREATE), true, false);
+        grantRolePermission(existingByTab.get(AppTab.CLASS_TEACHER_EXIT_ORDER_SUMMARY), false, false);
+        grantRolePermission(existingByTab.get(AppTab.EDUCATIONAL_WORK), true, true);
+    }
+
+    private void grantRolePermission(AppUserTabPermission permission, boolean canEdit, boolean canImport) {
+        if (permission == null) return;
+        boolean changed = !permission.isCanView()
+                || (canEdit && !permission.isCanEdit())
+                || (canImport && !permission.isCanImport());
+        if (!changed) return;
+        permission.setCanView(true);
+        if (canEdit) permission.setCanEdit(true);
+        if (canImport) permission.setCanImport(true);
+        tabPermissionRepository.save(permission);
+    }
+
     private AppTab legacySourceTab(AppTab tab) {
         if (tab == AppTab.PEOPLE_LOAD || tab == AppTab.LOAD_ISSUES || tab == AppTab.LOAD_STATS) {
             return AppTab.LOAD;
         }
-        if (tab == AppTab.TEACHERS_ARCHIVE || tab == AppTab.TEACHERS_DISMISSALS || tab == AppTab.TEACHERS_SETTINGS || tab == AppTab.TEACHERS_MCKO) {
+        if (tab == AppTab.TEACHERS_ARCHIVE || tab == AppTab.TEACHERS_DISMISSALS || tab == AppTab.TEACHERS_SETTINGS
+                || tab == AppTab.TEACHERS_MCKO || tab == AppTab.TEACHERS_TIME_OFF) {
             return AppTab.TEACHERS;
         }
         if (tab == AppTab.OVZ) {
@@ -467,7 +509,7 @@ public class AppUserServiceImpl implements AppUserService {
     }
 
     private void recalculateGlobalEditFlag(AppUser user) {
-        if (user.getRole() == UserRole.ADMIN) {
+        if (user.hasRole(UserRole.ADMIN)) {
             user.setCanView(true);
             user.setCanEdit(true);
             appUserRepository.save(user);
@@ -481,7 +523,7 @@ public class AppUserServiceImpl implements AppUserService {
     }
 
     private void validateBuildingHeadAssignment(AppUser user) {
-        if (user.getRole() != UserRole.BUILDING_HEAD || user.getManagedBuildingCode() == null) {
+        if (!user.hasRole(UserRole.BUILDING_HEAD) || user.getManagedBuildingCode() == null) {
             return;
         }
         String normalizedManagedBuildingCode = normalizeBuildingGroupCode(user.getManagedBuildingCode());
@@ -489,7 +531,7 @@ public class AppUserServiceImpl implements AppUserService {
             return;
         }
         appUserRepository.findAll().stream()
-                .filter(existing -> existing.getRole() == UserRole.BUILDING_HEAD)
+                .filter(existing -> existing.hasRole(UserRole.BUILDING_HEAD))
                 .filter(existing -> !Objects.equals(existing.getId(), user.getId()))
                 .filter(existing -> Objects.equals(normalizeBuildingGroupCode(existing.getManagedBuildingCode()), normalizedManagedBuildingCode))
                 .findFirst()
@@ -501,7 +543,7 @@ public class AppUserServiceImpl implements AppUserService {
     }
 
     private void enforceAdminFlags(AppUser user) {
-        if (user.getRole() == UserRole.ADMIN) {
+        if (user.hasRole(UserRole.ADMIN)) {
             user.setCanView(true);
             user.setCanEdit(true);
             user.setActive(true);
@@ -670,7 +712,13 @@ public class AppUserServiceImpl implements AppUserService {
     }
 
     private AppUser syncUserWithTeacherDirectory(AppUser user) {
-        if (user == null || user.getRole() == UserRole.ADMIN) return user;
+        if (user == null) return null;
+        boolean rolesChanged = user.getRole() != null && (user.getRoles() == null || !user.getRoles().contains(user.getRole()));
+        if (rolesChanged) {
+            user.setRoles(new LinkedHashSet<>(user.getEffectiveRoles()));
+            user = appUserRepository.save(user);
+        }
+        if (user.hasRole(UserRole.ADMIN)) return user;
         String fio = normalizeOptional(user.getFullName());
         if (fio == null) return user;
         org.school.personalLoad.model.TeacherDirectoryEntry teacher = user.getTeacherId() == null
@@ -700,11 +748,67 @@ public class AppUserServiceImpl implements AppUserService {
                 user.getRole(),
                 user.isActive(),
                 user.isCanView(),
-                user.isCanEdit() || user.getRole() == UserRole.ADMIN,
+                user.isCanEdit() || user.hasRole(UserRole.ADMIN),
                 user.getManagedBuildingCode(),
-                user.isLoadEditAllBuildings() || user.getRole() == UserRole.ADMIN,
+                user.isLoadEditAllBuildings() || user.hasRole(UserRole.ADMIN),
                 new LinkedHashSet<>(user.getLoadEditableBuildingCodes()),
-                loadPermissionSnapshots(user)
+                loadPermissionSnapshots(user),
+                new LinkedHashSet<>(user.getEffectiveRoles())
         );
+    }
+
+    private LinkedHashSet<UserRole> normalizeRoles(Collection<UserRole> requestedRoles,
+                                                    UserRole requestedPrimaryRole,
+                                                    UserRole fallbackRole) {
+        LinkedHashSet<UserRole> roles = new LinkedHashSet<>();
+        if (requestedRoles != null) {
+            requestedRoles.stream().filter(Objects::nonNull).forEach(roles::add);
+        }
+        if (roles.size() > 1) roles.remove(UserRole.EMPLOYEE);
+        if (roles.isEmpty() && requestedPrimaryRole != null) roles.add(requestedPrimaryRole);
+        if (roles.isEmpty() && fallbackRole != null) roles.add(fallbackRole);
+        if (roles.isEmpty()) throw new IllegalArgumentException("Выберите хотя бы одну роль");
+        return roles;
+    }
+
+    private UserRole primaryRole(LinkedHashSet<UserRole> roles, UserRole preferredRole) {
+        if (roles.contains(UserRole.ADMIN)) return UserRole.ADMIN;
+        if (preferredRole != null && roles.contains(preferredRole)) return preferredRole;
+        return roles.iterator().next();
+    }
+
+    private boolean usesRestrictedRoleProfile(AppUser user) {
+        Set<UserRole> roles = user.getEffectiveRoles();
+        return !roles.isEmpty() && roles.stream().allMatch(role -> role == UserRole.EMPLOYEE
+                || role == UserRole.CLASS_TEACHER || role == UserRole.SECRETARY);
+    }
+
+    private boolean defaultCanView(AppUser user, AppTab tab, boolean sensitive) {
+        if (user.hasRole(UserRole.ADMIN)) return true;
+        if (sensitive || !user.isCanView()) return false;
+        if (!usesRestrictedRoleProfile(user)) return true;
+        boolean classTeacher = user.hasRole(UserRole.CLASS_TEACHER)
+                && (tab == AppTab.CLASS_TEACHER_EXIT_ORDER_CREATE
+                || tab == AppTab.CLASS_TEACHER_EXIT_ORDER_SUMMARY
+                || tab == AppTab.EDUCATIONAL_WORK);
+        boolean secretary = user.hasRole(UserRole.SECRETARY)
+                && (tab == AppTab.CONTINGENT_STATS || tab == AppTab.CONTINGENT_ADMISSION);
+        return classTeacher || secretary;
+    }
+
+    private boolean defaultCanEdit(AppUser user, AppTab tab, boolean sensitive) {
+        if (user.hasRole(UserRole.ADMIN)) return true;
+        if (sensitive || !user.isCanView() || !user.isCanEdit()) return false;
+        if (!usesRestrictedRoleProfile(user)) return true;
+        boolean classTeacher = user.hasRole(UserRole.CLASS_TEACHER)
+                && (tab == AppTab.CLASS_TEACHER_EXIT_ORDER_CREATE || tab == AppTab.EDUCATIONAL_WORK);
+        boolean secretary = user.hasRole(UserRole.SECRETARY) && tab == AppTab.CONTINGENT_ADMISSION;
+        return classTeacher || secretary;
+    }
+
+    private boolean defaultCanExport(AppUser user, AppTab tab, boolean sensitive) {
+        if (!defaultCanView(user, tab, sensitive)) return false;
+        return !user.hasRole(UserRole.CLASS_TEACHER) || user.getEffectiveRoles().stream()
+                .anyMatch(role -> role != UserRole.CLASS_TEACHER && role != UserRole.EMPLOYEE);
     }
 }

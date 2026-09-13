@@ -89,126 +89,122 @@ function applyBrandingToDocument(branding) {
     }
 }
 
-const NAV_ORDER = [
-    { path: '/buildings.html', tab: 'BUILDINGS', label: 'Корпуса' },
-    { path: '/classes.html', tab: 'CLASSES', label: 'Классы' },
-    { path: '/subjects.html', tab: 'SUBJECTS', label: 'Предметы' },
-    { path: '/curriculum.html', tab: 'CURRICULUM', label: 'Учебный план' },
-    { path: '/load.html', tab: 'LOAD', label: 'Нагрузка по корпусам' },
-    { path: '/load-orders.html', tab: 'LOAD', label: 'Приказы нагрузки' },
-    { path: '/people-load.html', tab: 'PEOPLE_LOAD', label: 'Нагрузка по людям' },
-    { path: '/rates.html', tab: 'LOAD_SALARY', label: 'Ставки' },
-    { path: '/load-issues.html', tab: 'LOAD_ISSUES', label: 'Возможные ошибки' },
-    { path: '/master-fot.html', tab: 'LOAD_MASTER_FOT', label: 'Мастер ФОТ' },
-    { path: '/load-statistics.html', tab: 'LOAD_STATS', label: 'Статистика нагрузки' },
-    { path: '/settings.html', tab: 'SETTINGS', label: 'Настройки' },
-    { path: '/subject-areas.html', tab: 'SUBJECT_AREAS', label: 'Предметные области' },
-    { path: '/educational-work.html', tab: 'EDUCATIONAL_WORK', label: 'Воспитательная работа' },
-    { path: '/vsoko.html', tab: 'VSOKO_VIEW', label: 'ВСОКО' }
-];
+const NAV_SECTIONS = {
+    employees: {
+        title: 'Сотрудники',
+        items: [
+            { group: 'Реестр', path: '/teachers.html', tab: 'TEACHERS', label: 'Сотрудники' },
+            { group: 'Реестр', path: '/teachers.html#archive', tab: 'TEACHERS_ARCHIVE', label: 'Архив' },
+            { group: 'Реестр', path: '/teachers.html#dismissals', tab: 'TEACHERS_DISMISSALS', label: 'Увольнения' },
+            { group: 'Кадровые процессы', path: '/teachers.html#time-off', tab: 'TEACHERS_TIME_OFF', label: 'Отгулы' },
+            { group: 'Кадровые процессы', path: '/teachers-notification.html', tabs: ['HR_DOCUMENTS', 'HR_PERSONAL_DATA', 'HR_NOTIFICATIONS_VIEW'], label: 'Кадровые документы' }
+        ]
+    },
+    load: {
+        title: 'Учебный план и нагрузка',
+        items: [
+            { group: 'Справочники', path: '/buildings.html', tab: 'BUILDINGS', label: 'Корпуса' },
+            { group: 'Справочники', path: '/classes.html', tab: 'CLASSES', label: 'Классы' },
+            { group: 'Справочники', path: '/subjects.html', tab: 'SUBJECTS', label: 'Предметы' },
+            { group: 'Справочники', path: '/subject-areas.html', tab: 'SUBJECT_AREAS', label: 'Предметные области' },
+            { group: 'Планирование', path: '/curriculum.html', tab: 'CURRICULUM', label: 'Учебный план' },
+            { group: 'Планирование', path: '/load.html', tab: 'LOAD', label: 'Нагрузка по корпусам' },
+            { group: 'Планирование', path: '/people-load.html', tab: 'PEOPLE_LOAD', label: 'Нагрузка по педагогам' },
+            { group: 'Изменения нагрузки', path: '/load-orders.html', tab: 'LOAD', label: 'Приказы нагрузки' },
+            { group: 'Изменения нагрузки', path: '/service-notes.html', tab: 'SERVICE_NOTES', label: 'Служебные записки' },
+            { group: 'Расчёт и ФОТ', path: '/teachers.html#settings', tab: 'TEACHERS_SETTINGS', label: 'Правила расчёта ЗП' },
+            { group: 'Расчёт и ФОТ', path: '/rates.html', tab: 'LOAD_SALARY', label: 'Ставки' },
+            { group: 'Расчёт и ФОТ', path: '/master-fot.html', tab: 'LOAD_MASTER_FOT', label: 'Мастер ФОТ' },
+            { group: 'Контроль', path: '/load-issues.html', tab: 'LOAD_ISSUES', label: 'Возможные ошибки' },
+            { group: 'Контроль', path: '/load-statistics.html', tab: 'LOAD_STATS', label: 'Статистика' },
+            { group: 'Контроль', path: '/settings.html', tab: 'SETTINGS', label: 'Настройки нагрузки' }
+        ]
+    },
+    students: {
+        title: 'Обучающиеся',
+        items: [
+            { group: 'Контингент', path: '/contingent.html#stats', tab: 'CONTINGENT_STATS', label: 'Численность и списки' },
+            { group: 'Контингент', path: '/contingent.html#admissions', tab: 'CONTINGENT_ADMISSION', label: 'Приём' },
+            { group: 'Контингент', path: '/contingent.html#roles', tab: 'CONTINGENT_ADMISSION_ROLES', label: 'Роли приёма' },
+            { group: 'Обмен данными', path: '/contingent.html#import', tab: 'CONTINGENT_IMPORT', label: 'Импорт' },
+            { group: 'Обмен данными', path: '/contingent.html#manual', tab: 'CONTINGENT_STATS', label: 'Ручная правка' },
+            { group: 'Обмен данными', path: '/contingent.html#mismatches', tab: 'CONTINGENT_IMPORT', label: 'Нестыковки импорта' },
+            { group: 'ОВЗ и сопровождение', path: '/ovz.html', tab: 'OVZ', label: 'Реестр' },
+            { group: 'ОВЗ и сопровождение', path: '/ovz.html#certificates', tab: 'OVZ', label: 'Справки МСЭ и ЦМПК' },
+            { group: 'ОВЗ и сопровождение', path: '/ovz.html#nosologies', tab: 'OVZ', label: 'Нозологии' },
+            { group: 'ОВЗ и сопровождение', path: '/ovz.html#ppk', tab: 'OVZ', label: 'ППк' },
+            { group: 'ОВЗ и сопровождение', path: '/ovz-specialist-distribution.html', tab: 'OVZ', label: 'Распределение' },
+            { group: 'ОВЗ и сопровождение', path: '/ovz-specialists.html', tab: 'OVZ', label: 'Специалисты' }
+        ]
+    },
+    quality: {
+        title: 'Качество образования',
+        items: [
+            { group: 'Аттестация', path: '/vsoko-oge.html', tabs: ['VSOKO_VIEW', 'VSOKO_EDIT'], label: 'ОГЭ' },
+            { group: 'Аттестация', path: '/vsoko-ege.html', tab: 'VSOKO_VIEW', label: 'ЕГЭ' },
+            { group: 'Промежуточная аттестация', path: '/vsoko-pa.html', tab: 'VSOKO_VIEW', label: 'Обзор ПА' },
+            { group: 'Промежуточная аттестация', path: '/vsoko-pa-spec.html', tab: 'VSOKO_VIEW', label: 'Спецификации' },
+            { group: 'Промежуточная аттестация', path: '/vsoko-pa-entry.html', tab: 'VSOKO_VIEW', label: 'Входные работы' },
+            { group: 'Промежуточная аттестация', path: '/vsoko-pa-exit.html', tab: 'VSOKO_VIEW', label: 'Выходные работы' },
+            { group: 'Промежуточная аттестация', path: '/vsoko-pa-upload.html', tab: 'VSOKO_VIEW', label: 'Сдача ПА' },
+            { group: 'Промежуточная аттестация', path: '/vsoko-pa-folders.html', tab: 'VSOKO_VIEW', label: 'Отчёты по папкам' },
+            { group: 'Промежуточная аттестация', path: '/vsoko-pa-analysis.html', tab: 'VSOKO_VIEW', label: 'Анализ работ' },
+            { group: 'МЦКО обучающихся', path: '/vsoko-mcko.html', tab: 'VSOKO_MCKO', label: 'Результаты' },
+            { group: 'МЦКО обучающихся', path: '/vsoko-summary.html', tab: 'VSOKO_MCKO', label: 'Свод' },
+            { group: 'МЦКО обучающихся', path: '/vsoko-mcko-teachers.html', tab: 'VSOKO_MCKO', label: 'Педагоги по классам' },
+            { group: 'МЦКО обучающихся', path: '/vsoko-interview.html', tab: 'VSOKO_MCKO', label: 'Собеседование' },
+            { group: 'МЦКО педагогов', path: '/teachers.html#mcko', tab: 'TEACHERS_MCKO', label: 'Сертификаты' },
+            { group: 'МЦКО педагогов', path: '/teachers.html#mcko-subjects', tab: 'TEACHERS_MCKO', label: 'Сопоставление предметов' }
+        ]
+    },
+    educational: {
+        title: 'Воспитательная работа',
+        items: [
+            { group: 'Работа с классами', path: '/educational-work.html', tab: 'EDUCATIONAL_WORK', label: 'Отчёты и показатели' }
+        ]
+    },
+    documents: {
+        title: 'Документы и мероприятия',
+        items: [
+            { group: 'Выходы и экскурсии', path: '/class-teacher.html#create', tab: 'CLASS_TEACHER_EXIT_ORDER_CREATE', label: 'Подать заявку' },
+            { group: 'Выходы и экскурсии', path: '/class-teacher.html#summary', tab: 'CLASS_TEACHER_EXIT_ORDER_SUMMARY', label: 'Мои заявки' },
+            { group: 'Выходы и экскурсии', path: '/exit-orders.html', tab: 'DOCUMENTS_EXIT_ORDERS', label: 'Согласование и приказы' },
+            { group: 'Выходы и экскурсии', path: '/exit-orders-summary.html', tab: 'DOCUMENTS_EXIT_ORDERS', label: 'Общий свод' },
+            { group: 'Выходы и экскурсии', path: '/exit-order-settings.html', tab: 'DOCUMENTS_EXIT_ORDERS', label: 'Настройки' },
+            { group: 'Другие документы', path: '/probe-orders.html', tab: 'DOCUMENTS_PROBE_ORDERS', label: 'Приказы на пробы' },
+            { group: 'Другие документы', path: '/pedagogical-councils.html', tab: 'DOCUMENTS_PEDAGOGICAL_COUNCILS', label: 'Педагогические советы' }
+        ]
+    },
+    administration: {
+        title: 'Администрирование',
+        items: [{ group: 'Система', path: '/admin.html', tab: 'USERS', label: 'Пользователи и настройки' }]
+    }
+};
 
-const PA_NAV_ORDER = [
-    { path: '/vsoko-pa.html', tab: 'VSOKO_VIEW', label: '← Вернуться к ПА' },
-    { path: '/vsoko-pa-spec.html', tab: 'VSOKO_VIEW', label: 'Спецификации работ' },
-    { path: '/vsoko-pa-entry.html', tab: 'VSOKO_VIEW', label: 'Входные работы' },
-    { path: '/vsoko-pa-exit.html', tab: 'VSOKO_VIEW', label: 'Выходные работы' },
-    { path: '/vsoko-pa-folders.html', tab: 'VSOKO_VIEW', label: 'Отчёты по папкам' },
-    { path: '/vsoko-pa-analysis.html', tab: 'VSOKO_VIEW', label: 'Анализ работ' },
-    { path: '/vsoko-pa-teachers.html', tab: 'VSOKO_VIEW', label: 'Педагоги ВСОКО' },
-    { path: '/vsoko-pa-upload.html', tab: 'VSOKO_VIEW', label: 'Сдача ПА' }
-];
-const PA_HUB_NAV_ORDER = [
-    { path: '/vsoko.html', tab: 'VSOKO_VIEW', label: '← Вернуться к ВСОКО' }
-];
-
-function isPaSubPage(pathname) {
-    return pathname === '/vsoko-pa-spec.html'
-        || pathname === '/vsoko-pa-entry.html'
-        || pathname === '/vsoko-pa-exit.html'
-        || pathname === '/vsoko-pa-folders.html'
-        || pathname === '/vsoko-pa-analysis.html'
-        || pathname === '/vsoko-pa-teachers.html'
-        || pathname === '/vsoko-pa-upload.html';
+function sectionKeyForLocation(pathname, hash = '') {
+    if (pathname === '/teachers.html') {
+        if (hash === '#settings' || hash === '#coefficients' || hash === '#group-coefficients') return 'load';
+        if (hash === '#mcko' || hash === '#mcko-subjects') return 'quality';
+        return 'employees';
+    }
+    if (pathname === '/teachers-notification.html') return 'employees';
+    if (pathname === '/service-notes.html' || ['/buildings.html', '/classes.html', '/subjects.html', '/subject-areas.html',
+        '/curriculum.html', '/load.html', '/load-orders.html', '/people-load.html', '/rates.html', '/load-issues.html',
+        '/master-fot.html', '/load-statistics.html', '/settings.html'].includes(pathname)) return 'load';
+    if (pathname === '/contingent.html' || pathname === '/ovz.html'
+        || pathname === '/ovz-specialist-distribution.html' || pathname === '/ovz-specialists.html') return 'students';
+    if (pathname === '/educational-work.html') return 'educational';
+    if (pathname.startsWith('/vsoko')) return 'quality';
+    if (pathname === '/class-teacher.html' || pathname === '/documents.html' || pathname === '/pedagogical-councils.html'
+        || pathname === '/probe-orders.html' || pathname === '/exit-orders.html'
+        || pathname === '/exit-orders-summary.html' || pathname === '/exit-order-settings.html') return 'documents';
+    if (pathname === '/admin.html') return 'administration';
+    return null;
 }
 
-function isLoadModulePage(pathname) {
-    return pathname === '/buildings.html'
-        || pathname === '/classes.html'
-        || pathname === '/subjects.html'
-        || pathname === '/curriculum.html'
-        || pathname === '/load.html'
-        || pathname === '/load-orders.html'
-        || pathname === '/people-load.html'
-        || pathname === '/rates.html'
-        || pathname === '/load-issues.html'
-        || pathname === '/master-fot.html'
-        || pathname === '/load-statistics.html'
-        || pathname === '/settings.html'
-        || pathname === '/subject-areas.html';
-}
-
-function navItemsForPath(pathname) {
-    if (pathname === '/class-teacher.html') {
-        return [
-            { path: '/class-teacher.html#create', tab: 'CLASS_TEACHER_EXIT_ORDER_CREATE', label: 'Создать приказ на выход' },
-            { path: '/class-teacher.html#summary', tab: 'CLASS_TEACHER_EXIT_ORDER_SUMMARY', label: 'Свод приказов' }
-        ];
-    }
-    if (pathname === '/ovz.html' || pathname === '/ovz-specialist-distribution.html' || pathname === '/ovz-specialists.html') {
-        return [
-            { path: '/ovz.html', tab: 'OVZ', label: 'Реестр' },
-            { path: '/ovz.html#certificates', tab: 'OVZ', label: 'Справки' },
-            { path: '/ovz.html#nosologies', tab: 'OVZ', label: 'Справочник нозологий' },
-            { path: '/ovz.html#ppk', tab: 'OVZ', label: 'ППк' },
-            { path: '/ovz-specialist-distribution.html', tab: 'OVZ', label: 'Распределение по специалистам' },
-            { path: '/ovz-specialists.html', tab: 'OVZ', label: 'Специалисты' }
-        ];
-    }
-    if (pathname === '/vsoko-mcko.html' || pathname === '/vsoko-summary.html'
-        || pathname === '/vsoko-interview.html' || pathname === '/vsoko-mcko-teachers.html') {
-        return [
-            { path: '/vsoko.html', tab: 'VSOKO_VIEW', label: '← ВСОКО' },
-            { path: '/vsoko-mcko.html', tab: 'VSOKO_MCKO', label: 'МЦКО' },
-            { path: '/vsoko-summary.html', tab: 'VSOKO_MCKO', label: 'Свод' },
-            { path: '/vsoko-mcko-teachers.html', tab: 'VSOKO_MCKO', label: 'Педагоги по классам' },
-            { path: '/vsoko-interview.html', tab: 'VSOKO_MCKO', label: 'Собеседование' }
-        ];
-    }
-    if (pathname === '/documents.html' || pathname === '/pedagogical-councils.html' || pathname === '/probe-orders.html'
-        || pathname === '/exit-orders.html' || pathname === '/exit-orders-summary.html' || pathname === '/exit-order-settings.html') {
-        return [
-            { path: '/documents.html', tabs: ['DOCUMENTS_PEDAGOGICAL_COUNCILS', 'DOCUMENTS_PROBE_ORDERS', 'DOCUMENTS_EXIT_ORDERS'], label: 'Документы' },
-            { path: '/pedagogical-councils.html', tab: 'DOCUMENTS_PEDAGOGICAL_COUNCILS', label: 'Педагогические советы' },
-            { path: '/probe-orders.html', tab: 'DOCUMENTS_PROBE_ORDERS', label: 'Приказы на пробы' },
-            { path: '/exit-orders.html', tab: 'DOCUMENTS_EXIT_ORDERS', label: 'Приказы на выход' },
-            { path: '/exit-orders-summary.html', tab: 'DOCUMENTS_EXIT_ORDERS', label: 'Свод по выходам' },
-            { path: '/exit-order-settings.html', tab: 'DOCUMENTS_EXIT_ORDERS', label: 'Настройки приказов' }
-        ];
-    }
-    if (pathname === '/educational-work.html') {
-        return [];
-    }
-    if (pathname === '/vsoko-pa.html') {
-        return PA_HUB_NAV_ORDER;
-    }
-    if (isPaSubPage(pathname)) {
-        return PA_NAV_ORDER;
-    }
-    if (pathname === '/teachers.html' || pathname === '/teachers-notification.html' || pathname === '/service-notes.html') {
-        return [
-            { path: '/teachers.html', tab: 'TEACHERS', label: 'Персонал' },
-            { path: '/teachers.html#archive', tab: 'TEACHERS_ARCHIVE', label: 'Архив' },
-            { path: '/teachers.html#dismissals', tab: 'TEACHERS_DISMISSALS', label: 'Увольнения' },
-            { path: '/teachers.html#settings', tab: 'TEACHERS_SETTINGS', label: 'Настройки расчёта ЗП' },
-            { path: '/teachers.html#mcko', tab: 'TEACHERS_MCKO', label: 'МЦКО' },
-            { path: '/service-notes.html', tab: 'SERVICE_NOTES', label: 'СЛ. записки на изменение нагрузки' },
-            { path: '/teachers-notification.html', tab: 'HR_NOTIFICATIONS_VIEW', label: 'Кадровые документы' }
-        ];
-    }
-    if (isLoadModulePage(pathname)) {
-        return NAV_ORDER.filter((tabDef) => tabDef.tab !== 'VSOKO_VIEW' && tabDef.tab !== 'EDUCATIONAL_WORK');
-    }
-    return NAV_ORDER;
+function navItemsForPath(pathname, hash = window.location.hash || '') {
+    const key = sectionKeyForLocation(pathname, String(hash).toLowerCase());
+    return key ? NAV_SECTIONS[key].items : [];
 }
 
 async function tarificationApi(path, options = {}) {
@@ -274,6 +270,21 @@ function tabPermissionMap(currentUser) {
     return Object.fromEntries((currentUser.tabPermissions || []).map((permission) => [permission.tab, permission]));
 }
 
+function currentUserHasRole(currentUser, role) {
+    return Boolean(currentUser?.admin || (currentUser?.roles || [currentUser?.role]).filter(Boolean).includes(role));
+}
+
+function canViewNavigationItem(currentUser, item) {
+    if (currentUser.admin) return true;
+    const permissions = tabPermissionMap(currentUser);
+    return Boolean(permissions[item.tab]?.canView
+        || (item.tabs || []).some((tab) => permissions[tab]?.canView));
+}
+
+function firstAccessibleNavigationItem(currentUser, sectionKey) {
+    return NAV_SECTIONS[sectionKey]?.items.find((item) => canViewNavigationItem(currentUser, item)) || null;
+}
+
 function currentTab() {
     if (window.location.pathname === '/class-teacher.html') {
         return String(window.location.hash || '').toLowerCase() === '#summary'
@@ -284,8 +295,9 @@ function currentTab() {
         const hash = String(window.location.hash || '').toLowerCase();
         if (hash === '#archive') return 'TEACHERS_ARCHIVE';
         if (hash === '#dismissals') return 'TEACHERS_DISMISSALS';
-        if (hash === '#settings') return 'TEACHERS_SETTINGS';
+        if (hash === '#settings' || hash === '#coefficients' || hash === '#group-coefficients') return 'TEACHERS_SETTINGS';
         if (hash === '#mcko' || hash === '#mcko-subjects') return 'TEACHERS_MCKO';
+        if (hash === '#time-off' || hash === '#time-off-add') return 'TEACHERS_TIME_OFF';
         return 'TEACHERS';
     }
     if (window.location.pathname === '/contingent.html') {
@@ -294,6 +306,7 @@ function currentTab() {
         if (hash === '#admissions') return 'CONTINGENT_ADMISSION';
         if (hash === '#roles') return 'CONTINGENT_ADMISSION_ROLES';
         if (hash === '#manual') return 'CONTINGENT_STATS';
+        if (hash === '#mismatches') return 'CONTINGENT_IMPORT';
         return 'CONTINGENT_STATS';
     }
     return TAB_PATHS[window.location.pathname] || null;
@@ -335,7 +348,7 @@ function hasContingentAccess(currentUser) {
     if (currentUser.admin) return true;
     const permissions = tabPermissionMap(currentUser);
     return Boolean(
-        currentUser.role === 'SECRETARY'
+        currentUserHasRole(currentUser, 'SECRETARY')
         || currentUser.admissionAccess?.canView
         || currentUser.admissionAccess?.canManageRoles
         || permissions.CONTINGENT_IMPORT?.canView
@@ -371,7 +384,31 @@ function hasLoadAccess(currentUser) {
         || permissions.LOAD_STATS?.canView
         || permissions.SETTINGS?.canView
         || permissions.SUBJECT_AREAS?.canView
+        || permissions.SERVICE_NOTES?.canView
+        || permissions.TEACHERS_SETTINGS?.canView
     );
+}
+
+function hasEmployeesAccess(currentUser) {
+    if (currentUser.admin) return true;
+    const permissions = tabPermissionMap(currentUser);
+    return Boolean(permissions.TEACHERS?.canView
+        || permissions.TEACHERS_ARCHIVE?.canView
+        || permissions.TEACHERS_DISMISSALS?.canView
+        || permissions.TEACHERS_TIME_OFF?.canView
+        || permissions.HR_DOCUMENTS?.canView
+        || permissions.HR_PERSONAL_DATA?.canView
+        || permissions.HR_NOTIFICATIONS_VIEW?.canView);
+}
+
+function hasQualityAccess(currentUser) {
+    if (currentUser.admin) return true;
+    const permissions = tabPermissionMap(currentUser);
+    return Boolean(permissions.TEACHERS_MCKO?.canView
+        || permissions.VSOKO_VIEW?.canView
+        || permissions.VSOKO_EDIT?.canView
+        || permissions.VSOKO_MCKO?.canView
+        || Object.entries(permissions).some(([tab, permission]) => tab.startsWith('OGE_') && permission?.canView));
 }
 
 function hasEducationalWorkAccess(currentUser) {
@@ -386,6 +423,8 @@ function hasDocumentsAccess(currentUser) {
         permissions.DOCUMENTS_PEDAGOGICAL_COUNCILS?.canView
         || permissions.DOCUMENTS_PROBE_ORDERS?.canView
         || permissions.DOCUMENTS_EXIT_ORDERS?.canView
+        || permissions.CLASS_TEACHER_EXIT_ORDER_CREATE?.canView
+        || permissions.CLASS_TEACHER_EXIT_ORDER_SUMMARY?.canView
     );
 }
 
@@ -619,13 +658,14 @@ function openProfileModal(currentUser) {
     const buildingAccess = currentUser.loadEditAllBuildings
         ? 'Все корпуса'
         : (currentUser.loadEditableBuildingCodes || []).join(', ') || '—';
+    const roleNames = (currentUser.roleDisplayNames || [currentUser.roleDisplayName || currentUser.role]).filter(Boolean).join(', ') || '—';
     overlay.innerHTML = `
         <div class="password-modal card profile-modal-card">
             <h3>Личный кабинет</h3>
             <div class="profile-grid">
                 <div><span class="muted">ФИО:</span> ${currentUser.fullName || '—'}</div>
                 <div><span class="muted">Логин:</span> ${currentUser.username || '—'}</div>
-                <div><span class="muted">Роль:</span> ${currentUser.roleDisplayName || currentUser.role || '—'}</div>
+                <div><span class="muted">Роли:</span> ${roleNames}</div>
                 <div><span class="muted">Email:</span> ${currentUser.email || '—'}</div>
                 <div><span class="muted">Доступ к просмотру:</span> ${currentUser.canView ? 'Да' : 'Нет'}</div>
                 <div><span class="muted">Доступ к редактированию:</span> ${currentUser.canEdit ? 'Да' : 'Нет'}</div>
@@ -685,74 +725,109 @@ function openProfileModal(currentUser) {
 }
 
 function enrichNavigation(currentUser) {
-    const permissions = tabPermissionMap(currentUser);
-    const navItems = navItemsForPath(window.location.pathname);
-    document.querySelectorAll('.page-nav').forEach((nav) => {
-        nav.innerHTML = '';
-        const homeLink = document.createElement('a');
-        homeLink.className = 'nav-link nav-home-link';
-        homeLink.href = '/';
-        homeLink.title = 'Главная';
-        homeLink.setAttribute('aria-label', 'Главная');
-        homeLink.textContent = '🏠';
-        if (window.location.pathname === '/' || window.location.pathname === '/index.html') {
-            homeLink.classList.add('active');
-        }
-        nav.appendChild(homeLink);
+    const sectionKey = sectionKeyForLocation(window.location.pathname, String(window.location.hash || '').toLowerCase());
+    if (!sectionKey) return;
+    const section = NAV_SECTIONS[sectionKey];
+    const navItems = navItemsForPath(window.location.pathname)
+        .filter((item) => canViewNavigationItem(currentUser, item));
 
-        navItems.forEach((tabDef) => {
-            const canView = currentUser.admin
-                || permissions[tabDef.tab]?.canView
-                || (tabDef.tabs || []).some((tab) => permissions[tab]?.canView);
-            if (!canView) return;
+    document.querySelectorAll('.page-nav').forEach((nav) => {
+        nav.hidden = true;
+        nav.setAttribute('aria-hidden', 'true');
+    });
+
+    const main = document.querySelector('main.container');
+    const header = main?.querySelector(':scope > header.card');
+    if (!main || !header || !navItems.length) return;
+
+    let layout = main.querySelector(':scope > .app-workspace-layout');
+    let sidebar;
+    if (!layout) {
+        layout = document.createElement('div');
+        layout.className = 'app-workspace-layout';
+        sidebar = document.createElement('aside');
+        sidebar.className = 'app-section-sidebar card';
+        const content = document.createElement('div');
+        content.className = 'app-workspace-content';
+        Array.from(main.children)
+            .filter((child) => child !== header && child !== layout)
+            .forEach((child) => content.appendChild(child));
+        layout.append(sidebar, content);
+        main.appendChild(layout);
+    } else {
+        sidebar = layout.querySelector('.app-section-sidebar');
+    }
+
+    document.body.classList.add('app-has-sidebar');
+    sidebar.innerHTML = '';
+    const homeLink = document.createElement('a');
+    homeLink.className = 'app-sidebar-home';
+    homeLink.href = '/';
+    homeLink.textContent = '← Рабочий стол';
+    sidebar.appendChild(homeLink);
+
+    const title = document.createElement('h2');
+    title.textContent = section.title;
+    sidebar.appendChild(title);
+
+    const grouped = new Map();
+    navItems.forEach((item) => {
+        const group = item.group || section.title;
+        if (!grouped.has(group)) grouped.set(group, []);
+        grouped.get(group).push(item);
+    });
+
+    const currentPathWithHash = `${window.location.pathname}${String(window.location.hash || '').toLowerCase()}`;
+    const hasExactHashItem = navItems.some((item) => item.path.toLowerCase() === currentPathWithHash);
+    grouped.forEach((items, groupName) => {
+        const group = document.createElement('section');
+        group.className = 'app-sidebar-group';
+        const heading = document.createElement('h3');
+        heading.textContent = groupName;
+        group.appendChild(heading);
+        items.forEach((tabDef) => {
             const link = document.createElement('a');
-            link.className = 'nav-link';
+            link.className = 'app-sidebar-link';
             link.href = tabDef.path;
             if (tabDef.tab) link.dataset.tab = tabDef.tab;
             link.textContent = tabDef.label;
-            const currentPathWithHash = `${window.location.pathname}${window.location.hash || ''}`;
-            const tabPath = tabDef.path;
+            const tabPath = tabDef.path.toLowerCase();
             const active = tabPath.includes('#')
                 ? currentPathWithHash === tabPath
-                : window.location.pathname === tabPath && (!window.location.hash || window.location.hash === '#main');
+                : window.location.pathname.toLowerCase() === tabPath && !hasExactHashItem;
             if (active) {
                 link.classList.add('active');
+                link.setAttribute('aria-current', 'page');
             }
-            nav.appendChild(link);
+            group.appendChild(link);
         });
+        sidebar.appendChild(group);
     });
+
+    if (!window.tarificationSidebarHashBound) {
+        window.tarificationSidebarHashBound = true;
+        window.addEventListener('hashchange', () => enrichNavigation(window.tarificationAuth || currentUser));
+    }
 }
 
 function enrichMainMenu(currentUser) {
-    const adminCard = document.querySelector('[data-admin-card]');
-    if (adminCard) {
-        adminCard.style.display = currentUser.admin ? '' : 'none';
-    }
-
-    const contingentCard = document.querySelector('[data-contingent-card]');
-    if (contingentCard) {
-        contingentCard.style.display = hasContingentAccess(currentUser) ? '' : 'none';
-    }
-
-    const educationalWorkCard = document.querySelector('[data-educational-work-card]');
-    if (educationalWorkCard) {
-        educationalWorkCard.style.display = hasEducationalWorkAccess(currentUser) ? '' : 'none';
-    }
-
-    const documentsCard = document.querySelector('[data-documents-card]');
-    if (documentsCard) {
-        documentsCard.style.display = hasDocumentsAccess(currentUser) ? '' : 'none';
-    }
-
-    const classTeacherCard = document.querySelector('[data-class-teacher-card]');
-    if (classTeacherCard) {
-        classTeacherCard.style.display = hasClassTeacherAccess(currentUser) ? '' : 'none';
-    }
-
-    const ovzCard = document.querySelector('[data-ovz-card]');
-    if (ovzCard) {
-        ovzCard.style.display = hasOvzAccess(currentUser) ? '' : 'none';
-    }
+    const sectionAccess = {
+        employees: hasEmployeesAccess(currentUser),
+        load: hasLoadAccess(currentUser),
+        students: hasContingentAccess(currentUser) || hasOvzAccess(currentUser),
+        quality: hasQualityAccess(currentUser),
+        educational: hasEducationalWorkAccess(currentUser),
+        documents: hasDocumentsAccess(currentUser),
+        administration: currentUser.admin
+    };
+    document.querySelectorAll('[data-section-card]').forEach((card) => {
+        const key = card.dataset.sectionCard;
+        const visible = Boolean(sectionAccess[key]);
+        card.style.display = visible ? '' : 'none';
+        if (!visible) return;
+        const entry = firstAccessibleNavigationItem(currentUser, key);
+        if (entry) card.href = entry.path;
+    });
 
     const permissions = tabPermissionMap(currentUser);
     const pedagogicalCouncilsCard = document.querySelector('[data-pedagogical-councils-card]');

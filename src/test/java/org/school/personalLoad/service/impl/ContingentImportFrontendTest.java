@@ -84,7 +84,10 @@ class ContingentImportFrontendTest {
         assertTrue(html.contains("id=\"contingent-custom-export-mode\""));
         assertTrue(html.contains("id=\"contingent-custom-export-parallels\""));
         assertTrue(html.contains("id=\"contingent-custom-export-buildings\""));
+        assertTrue(html.contains("id=\"contingent-custom-export-addresses\""));
+        assertTrue(html.contains("<option value=\"ADDRESS\">По адресам</option>"));
         assertTrue(pageScript.contains("/api/contingent/students/export"));
+        assertTrue(pageScript.contains("params.append('addresses', value)"));
         assertTrue(pageScript.contains("student.age"));
     }
 
@@ -132,6 +135,6 @@ class ContingentImportFrontendTest {
         assertTrue(pageScript.contains("currentAdmissionData?.classOptions"));
         assertTrue(authScript.contains("currentUser.admissionAccess?.canView"));
         assertTrue(authScript.contains("#roles') return 'CONTINGENT_ADMISSION_ROLES'"));
-        assertTrue(adminScript.contains("CONTINGENT_ADMISSION_ROLES', label: 'Контингент: роли приёма', sensitive: true"));
+        assertTrue(adminScript.contains("CONTINGENT_ADMISSION_ROLES', label: 'Роли приёма', sensitive: true"));
     }
 }

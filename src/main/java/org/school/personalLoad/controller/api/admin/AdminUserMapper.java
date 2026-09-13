@@ -14,6 +14,7 @@ public final class AdminUserMapper {
     }
 
     public static UserResponse fromEntity(AppUser user, List<TabPermissionSnapshot> permissions) {
+        List<UserRole> roles = List.copyOf(user.getEffectiveRoles());
         return UserResponse.builder()
                 .id(user.getId())
                 .teacherId(user.getTeacherId())
@@ -27,10 +28,12 @@ public final class AdminUserMapper {
                 .loadEditableBuildingCodes(new java.util.ArrayList<>(user.getLoadEditableBuildingCodes()))
                 .role(user.getRole())
                 .roleDisplayName(user.getRole().getDisplayName())
+                .roles(roles)
+                .roleDisplayNames(roles.stream().map(UserRole::getDisplayName).toList())
                 .active(user.isActive())
-                .canView(user.isCanView() || user.getRole() == UserRole.ADMIN)
-                .canEdit(user.isCanEdit() || user.getRole() == UserRole.ADMIN)
-                .admin(user.getRole() == UserRole.ADMIN)
+                .canView(user.isCanView() || user.hasRole(UserRole.ADMIN))
+                .canEdit(user.isCanEdit() || user.hasRole(UserRole.ADMIN))
+                .admin(user.hasRole(UserRole.ADMIN))
                 .tabPermissions(toResponses(permissions))
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
@@ -38,6 +41,7 @@ public final class AdminUserMapper {
     }
 
     public static UserResponse fromSession(SessionUser user) {
+        List<UserRole> roles = List.copyOf(user.getEffectiveRoles());
         return UserResponse.builder()
                 .id(user.getId())
                 .username(user.getUsername())
@@ -49,6 +53,8 @@ public final class AdminUserMapper {
                 .loadEditableBuildingCodes(new java.util.ArrayList<>(user.getLoadEditableBuildingCodes()))
                 .role(user.getRole())
                 .roleDisplayName(user.getRole().getDisplayName())
+                .roles(roles)
+                .roleDisplayNames(roles.stream().map(UserRole::getDisplayName).toList())
                 .active(user.isActive())
                 .canView(user.isCanView() || user.isAdmin())
                 .canEdit(user.isCanEdit() || user.isAdmin())

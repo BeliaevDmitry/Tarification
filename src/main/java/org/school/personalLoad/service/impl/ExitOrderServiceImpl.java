@@ -634,7 +634,7 @@ public class ExitOrderServiceImpl implements ExitOrderService {
 
     private boolean targetMatchesUser(SessionUser user, ApprovalTarget target) {
         if (isLeadership(user)) return true;
-        return user != null && user.getRole() == UserRole.BUILDING_HEAD
+        return user != null && user.hasRole(UserRole.BUILDING_HEAD)
                 && scopeCode(user.getManagedBuildingCode()).equals(scopeCode(target.scopeCode()));
     }
 
@@ -789,7 +789,7 @@ public class ExitOrderServiceImpl implements ExitOrderService {
     private TeacherDirectoryEntry linkedRoleTeacher(UserRole role, List<TeacherDirectoryEntry> active) {
         Set<Long> ids = active.stream().map(TeacherDirectoryEntry::getId).collect(Collectors.toSet());
         return appUserRepository.findAll().stream()
-                .filter(account -> account.isActive() && account.getRole() == role && account.getTeacherId() != null)
+                .filter(account -> account.isActive() && account.hasRole(role) && account.getTeacherId() != null)
                 .filter(account -> ids.contains(account.getTeacherId()))
                 .map(account -> teacherRepository.findById(account.getTeacherId()).orElse(null))
                 .filter(Objects::nonNull).findFirst().orElse(null);
@@ -1000,15 +1000,15 @@ public class ExitOrderServiceImpl implements ExitOrderService {
     }
 
     private boolean isLeadership(SessionUser user) {
-        return user != null && (user.isAdmin() || user.getRole() == UserRole.DIRECTOR
-                || user.getRole() == UserRole.DEPUTY_DIRECTOR);
+        return user != null && (user.isAdmin() || user.hasRole(UserRole.DIRECTOR)
+                || user.hasRole(UserRole.DEPUTY_DIRECTOR));
     }
 
     private boolean canViewAllOrders(SessionUser user) {
-        return user != null && (user.isAdmin() || user.getRole() == UserRole.DIRECTOR
-                || user.getRole() == UserRole.DEPUTY_DIRECTOR
-                || user.getRole() == UserRole.BUILDING_HEAD
-                || user.getRole() == UserRole.METHODIST);
+        return user != null && (user.isAdmin() || user.hasRole(UserRole.DIRECTOR)
+                || user.hasRole(UserRole.DEPUTY_DIRECTOR)
+                || user.hasRole(UserRole.BUILDING_HEAD)
+                || user.hasRole(UserRole.METHODIST));
     }
 
     private Map<Long, Boolean> documentAvailability(List<ExitOrder> orders) {

@@ -60,20 +60,21 @@
                 <span>Телефон</span>
                 <input name="phone" id="create-phone" placeholder="+7 999 000-00-00">
             </label>
-            <label class="field-stack">
-                <span>Роль</span>
-                <select name="role" id="create-role" required>
-                    <option value="EMPLOYEE">Сотрудник</option>
-                    <option value="DIRECTOR">Директор</option>
-                    <option value="DEPUTY_DIRECTOR">Зам директора</option>
-                    <option value="BUILDING_HEAD">Руководитель корпуса</option>
-                    <option value="CLASS_TEACHER">Классный руководитель</option>
-                    <option value="METHODIST">Методист</option>
-                    <option value="HR">Кадры</option>
-                    <option value="SECRETARY">Секретарь</option>
-                    <option value="ADMIN">Администратор</option>
-                </select>
-            </label>
+            <fieldset class="role-picker full-span" id="create-roles">
+                <legend>Роли</legend>
+                <div class="role-choice-grid">
+                    <label><input type="checkbox" name="roles" value="EMPLOYEE" checked> Сотрудник</label>
+                    <label><input type="checkbox" name="roles" value="CLASS_TEACHER"> Классный руководитель</label>
+                    <label><input type="checkbox" name="roles" value="DIRECTOR"> Директор</label>
+                    <label><input type="checkbox" name="roles" value="DEPUTY_DIRECTOR"> Заместитель директора</label>
+                    <label><input type="checkbox" name="roles" value="BUILDING_HEAD"> Руководитель корпуса</label>
+                    <label><input type="checkbox" name="roles" value="METHODIST"> Методист</label>
+                    <label><input type="checkbox" name="roles" value="HR"> Кадры</label>
+                    <label><input type="checkbox" name="roles" value="SECRETARY"> Секретарь</label>
+                    <label><input type="checkbox" name="roles" value="ADMIN"> Администратор</label>
+                </div>
+                <small class="muted">Можно выбрать несколько ролей. Права и разделы складываются.</small>
+            </fieldset>
             <label class="field-stack">
                 <span>Основной корпус</span>
                 <select name="managedBuildingCode" id="create-managed-building">
@@ -244,7 +245,7 @@
         <div class="dialog-hero full-span">
             <div>
                 <h3>Настройки пользователя</h3>
-                <p class="muted">Редактируйте роль, доступ к вкладкам и точный scope корпусов для нагрузки в одном широком окне без лишней прокрутки.</p>
+                <p class="muted">Назначайте несколько ролей, доступ к функциям и точный набор корпусов для нагрузки в одном окне.</p>
             </div>
         </div>
 
@@ -253,19 +254,21 @@
         <label class="field-row"><span>Должность для документов</span><input name="documentPosition" placeholder="Например: старшего методиста"><small class="muted">В форме после слова «от».</small></label>
         <label class="field-row"><span>Email</span><input name="email"></label>
         <label class="field-row"><span>Телефон</span><input name="phone" placeholder="+7 999 000-00-00"></label>
-        <label class="field-row"><span>Роль</span>
-            <select name="role" id="edit-role" required>
-                <option value="EMPLOYEE">Сотрудник</option>
-                <option value="DIRECTOR">Директор</option>
-                <option value="DEPUTY_DIRECTOR">Зам директора</option>
-                <option value="BUILDING_HEAD">Руководитель корпуса</option>
-                <option value="CLASS_TEACHER">Классный руководитель</option>
-                <option value="METHODIST">Методист</option>
-                <option value="HR">Кадры</option>
-                <option value="SECRETARY">Секретарь</option>
-                <option value="ADMIN">Администратор</option>
-            </select>
-        </label>
+        <fieldset class="role-picker full-span" id="edit-roles">
+            <legend>Роли</legend>
+            <div class="role-choice-grid">
+                <label><input type="checkbox" name="roles" value="EMPLOYEE"> Сотрудник</label>
+                <label><input type="checkbox" name="roles" value="CLASS_TEACHER"> Классный руководитель</label>
+                <label><input type="checkbox" name="roles" value="DIRECTOR"> Директор</label>
+                <label><input type="checkbox" name="roles" value="DEPUTY_DIRECTOR"> Заместитель директора</label>
+                <label><input type="checkbox" name="roles" value="BUILDING_HEAD"> Руководитель корпуса</label>
+                <label><input type="checkbox" name="roles" value="METHODIST"> Методист</label>
+                <label><input type="checkbox" name="roles" value="HR"> Кадры</label>
+                <label><input type="checkbox" name="roles" value="SECRETARY"> Секретарь</label>
+                <label><input type="checkbox" name="roles" value="ADMIN"> Администратор</label>
+            </div>
+            <small class="muted">Главное меню покажет объединение разделов, доступных всем выбранным ролям.</small>
+        </fieldset>
         <label class="field-row"><span>Основной корпус</span>
             <select name="managedBuildingCode" id="edit-managed-building">
                 <option value="">Основной корпус не указан</option>

@@ -189,7 +189,7 @@ class ContingentServiceImplExportTest {
         when(schoolBuildingRepository.findByCode("СП2")).thenReturn(Optional.empty());
 
         byte[] body = service.exportStudents(
-                "2025/2026", snapshotDate, "BUILDING", List.of(5), List.of("СП2")
+                "2025/2026", snapshotDate, "BUILDING", List.of(5), List.of("СП2"), List.of()
         );
 
         try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
@@ -203,6 +203,43 @@ class ContingentServiceImplExportTest {
             assertEquals(org.apache.poi.ss.usermodel.CellType.NUMERIC, sheet.getRow(2).getCell(3).getCellType());
             assertEquals(Period.between(LocalDate.of(2014, 12, 31), LocalDate.now()).getYears(),
                     (int) sheet.getRow(2).getCell(4).getNumericCellValue());
+        }
+    }
+
+    @Test
+    void customizableExportFiltersAndGroupsStudentsByPhysicalAddress() throws Exception {
+        LocalDate snapshotDate = LocalDate.of(2025, 9, 1);
+        ContingentSnapshot snapshot = new ContingentSnapshot();
+        snapshot.setId(93L);
+        snapshot.setAcademicYear("2025/2026");
+        snapshot.setSnapshotDate(snapshotDate);
+
+        ContingentStudent first = exportStudent(93L, "Иванов Иван Иванович", "5-А", "01.01.2014");
+        ContingentStudent second = exportStudent(93L, "Петрова Анна Сергеевна", "6-А", "31.12.2013");
+        ContingentStudent third = exportStudent(93L, "Сидоров Пётр Андреевич", "7-А", "15.05.2012");
+
+        when(snapshotRepository.findFirstByAcademicYearAndSnapshotDateOrderByImportedAtDesc(
+                "2025/2026", snapshotDate)).thenReturn(Optional.of(snapshot));
+        when(studentRepository.findAllBySnapshotId(93L)).thenReturn(List.of(first, second, third));
+        when(classroomLeadershipRepository.findAllByAcademicYear("2025/2026")).thenReturn(List.of(
+                classEntry("СП1", "5-А", "ул. Общая, 1"),
+                classEntry("СП2", "6-А", "ул. Общая, 1"),
+                classEntry("СП2", "7-А", "ул. Другая, 2")
+        ));
+        when(schoolBuildingRepository.findByCode("СП1")).thenReturn(Optional.empty());
+        when(schoolBuildingRepository.findByCode("СП2")).thenReturn(Optional.empty());
+
+        byte[] body = service.exportStudents(
+                "2025/2026", snapshotDate, "ADDRESS", List.of(5, 6, 7), List.of(), List.of("ул. Общая, 1")
+        );
+
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(body))) {
+            assertEquals(1, workbook.getNumberOfSheets());
+            var sheet = workbook.getSheet("ул. Общая, 1");
+            assertNotNull(sheet);
+            assertEquals(3, sheet.getLastRowNum());
+            assertEquals("5-А", sheet.getRow(2).getCell(1).getStringCellValue());
+            assertEquals("6-А", sheet.getRow(3).getCell(1).getStringCellValue());
         }
     }
 

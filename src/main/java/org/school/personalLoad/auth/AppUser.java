@@ -6,6 +6,8 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import javax.persistence.*;
 import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Data
 @Entity
@@ -51,6 +53,16 @@ public class AppUser {
     @Column(nullable = false, length = 32)
     private UserRole role;
 
+    /**
+     * Дополнительные роли аккаунта. Поле {@code role} оставлено как основная роль
+     * для совместимости со старыми данными, отчётами и интеграциями.
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "app_user_role", joinColumns = @JoinColumn(name = "user_id"))
+    @Enumerated(EnumType.STRING)
+    @Column(name = "role_name", nullable = false, length = 32)
+    private Set<UserRole> roles = new LinkedHashSet<>();
+
     @Column(nullable = false, length = 255)
     private String passwordHash;
 
@@ -70,4 +82,19 @@ public class AppUser {
     @UpdateTimestamp
     @Column(nullable = false)
     private LocalDateTime updatedAt;
+
+    public Set<UserRole> getEffectiveRoles() {
+        LinkedHashSet<UserRole> effective = new LinkedHashSet<>();
+        if (role != null) {
+            effective.add(role);
+        }
+        if (roles != null) {
+            effective.addAll(roles);
+        }
+        return effective;
+    }
+
+    public boolean hasRole(UserRole expectedRole) {
+        return expectedRole != null && getEffectiveRoles().contains(expectedRole);
+    }
 }

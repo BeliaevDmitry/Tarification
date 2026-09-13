@@ -184,7 +184,7 @@ public class BuildingGroupServiceImpl implements BuildingGroupService {
     private Map<String, String> buildingHeadByGroupCode() {
         Map<String, String> managerByGroupCode = new LinkedHashMap<>();
         appUserRepository.findAll().stream()
-                .filter(user -> user.getRole() == UserRole.BUILDING_HEAD)
+                .filter(user -> user.hasRole(UserRole.BUILDING_HEAD))
                 .filter(user -> !normalize(user.getManagedBuildingCode()).isBlank())
                 .forEach(user -> managerByGroupCode.put(
                         normalizeOrganizationalCode(user.getManagedBuildingCode()),
@@ -200,7 +200,7 @@ public class BuildingGroupServiceImpl implements BuildingGroupService {
             return false;
         }
         return appUserRepository.findAll().stream()
-                .filter(user -> user.getRole() == UserRole.BUILDING_HEAD)
+                .filter(user -> user.hasRole(UserRole.BUILDING_HEAD))
                 .map(user -> normalizeOrganizationalCode(user.getManagedBuildingCode()))
                 .anyMatch(groupCode::equals);
     }

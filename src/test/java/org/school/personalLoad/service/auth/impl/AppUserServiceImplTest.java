@@ -92,6 +92,43 @@ class AppUserServiceImplTest {
     }
 
     @Test
+    void createUserPersistsSeveralEffectiveRoles() {
+        AppUserServiceImpl service = new AppUserServiceImpl(
+                appUserRepository, buildingGroupRepository, schoolBuildingRepository,
+                teacherDirectoryRepository, tabPermissionRepository, passwordEncoder);
+        org.school.personalLoad.model.TeacherDirectoryEntry teacher = new org.school.personalLoad.model.TeacherDirectoryEntry();
+        teacher.setId(78L);
+        teacher.setFioTeacher("Смирнова Анна Петровна");
+        teacher.setEmail("smirnova@school.ru");
+
+        when(teacherDirectoryRepository.findById(78L)).thenReturn(Optional.of(teacher));
+        when(appUserRepository.existsByUsernameIgnoreCase("smirnova@school.ru")).thenReturn(false);
+        when(appUserRepository.findAll()).thenReturn(List.of());
+        when(buildingGroupRepository.findAll()).thenReturn(List.of());
+        when(schoolBuildingRepository.findAll()).thenReturn(List.of());
+        when(appUserRepository.save(any(AppUser.class))).thenAnswer(invocation -> {
+            AppUser saved = invocation.getArgument(0);
+            saved.setId(31L);
+            return saved;
+        });
+        when(tabPermissionRepository.findAllByUserIdOrderByTabAsc(31L)).thenReturn(List.of());
+
+        CreateUserRequest request = new CreateUserRequest();
+        request.setTeacherId(78L);
+        request.setRole(UserRole.METHODIST);
+        request.setRoles(List.of(UserRole.METHODIST, UserRole.CLASS_TEACHER));
+        request.setCanView(true);
+        request.setCanEdit(true);
+
+        AppUser created = service.createUser(request);
+
+        assertEquals(UserRole.METHODIST, created.getRole());
+        assertTrue(created.hasRole(UserRole.METHODIST));
+        assertTrue(created.hasRole(UserRole.CLASS_TEACHER));
+        assertEquals(2, created.getEffectiveRoles().size());
+    }
+
+    @Test
     void updateUserFlushesDeletedTabPermissionsBeforeInsert() {
         AppUserServiceImpl service = new AppUserServiceImpl(
                 appUserRepository,

@@ -17,10 +17,10 @@ class OvzSpecialistsFrontendTest {
 
         assertTrue(ovz.contains("href=\"/ovz-specialists.html\""));
         assertTrue(auth.contains("label: 'Реестр'"));
-        assertTrue(auth.contains("label: 'Справки'"));
-        assertTrue(auth.contains("label: 'Справочник нозологий'"));
+        assertTrue(auth.contains("label: 'Справки МСЭ и ЦМПК'"));
+        assertTrue(auth.contains("label: 'Нозологии'"));
         assertTrue(auth.contains("label: 'ППк'"));
-        assertTrue(auth.contains("label: 'Распределение по специалистам'"));
+        assertTrue(auth.contains("label: 'Распределение'"));
         assertTrue(auth.contains("label: 'Специалисты'"));
         assertTrue(distribution.contains("class=\"page-nav\""));
     }

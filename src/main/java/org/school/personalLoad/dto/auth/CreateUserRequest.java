@@ -17,6 +17,7 @@ public class CreateUserRequest {
     private Boolean loadEditAllBuildings;
     private List<String> loadEditableBuildingCodes;
     private UserRole role;
+    private List<UserRole> roles;
     private Boolean canView;
     private Boolean canEdit;
     private List<UserTabPermissionRequest> tabPermissions;

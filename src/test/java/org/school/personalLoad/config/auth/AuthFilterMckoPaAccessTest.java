@@ -30,6 +30,19 @@ class AuthFilterMckoPaAccessTest {
     }
 
     @Test
+    void teacherTimeOffHasDedicatedViewAndEditPermission() throws Exception {
+        TabPermissionSnapshot view = new TabPermissionSnapshot(
+                AppTab.TEACHERS_TIME_OFF, true, false, false, false);
+        TabPermissionSnapshot edit = new TabPermissionSnapshot(
+                AppTab.TEACHERS_TIME_OFF, true, true, false, false);
+
+        assertReadAccess("/api/teacher-time-off", List.of(), false);
+        assertReadAccess("/api/teacher-time-off", List.of(view), true);
+        assertAccess(new MockHttpServletRequest("POST", "/api/teacher-time-off/accruals"), List.of(view), false);
+        assertAccess(new MockHttpServletRequest("POST", "/api/teacher-time-off/accruals"), List.of(edit), true);
+    }
+
+    @Test
     void paReadRequiresVsokoViewOrEditPermission() throws Exception {
         assertReadAccess("/api/pa/specifications", List.of(), false);
         assertReadAccess("/api/pa/specifications",

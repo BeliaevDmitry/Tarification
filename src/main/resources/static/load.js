@@ -1375,7 +1375,7 @@ function canEditSelectedBuildingLoad() {
     if (allowedBuildings.length) {
         return allowedBuildings.some((code) => buildingPermissionMatchesOption(code, selectedBuilding));
     }
-    if (user.role !== "BUILDING_HEAD") return false;
+    if (!(user.roles || [user.role]).filter(Boolean).includes("BUILDING_HEAD")) return false;
     return buildingGroupCode(user.managedBuildingCode) === buildingGroupCode(selectedBuilding);
 }
 
@@ -1393,7 +1393,8 @@ function loadReadOnlyReason() {
     if (allowedBuildings.length && !allowedBuildings.some((code) => buildingPermissionMatchesOption(code, selectedBuilding))) {
         return `Редактирование разрешено только для зон: ${allowedBuildings.join(", ")}.`;
     }
-    if (user.role === "BUILDING_HEAD" && buildingGroupCode(user.managedBuildingCode) !== buildingGroupCode(selectedBuilding)) {
+    if ((user.roles || [user.role]).filter(Boolean).includes("BUILDING_HEAD")
+        && buildingGroupCode(user.managedBuildingCode) !== buildingGroupCode(selectedBuilding)) {
         return `Руководитель корпуса может редактировать только корпус ${user.managedBuildingCode || "—"}.`;
     }
     return "Администратор ещё не назначил вам корпуса для редактирования нагрузки.";

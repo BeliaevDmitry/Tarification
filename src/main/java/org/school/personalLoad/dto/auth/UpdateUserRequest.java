@@ -15,6 +15,7 @@ public class UpdateUserRequest {
     private Boolean loadEditAllBuildings;
     private List<String> loadEditableBuildingCodes;
     private UserRole role;
+    private List<UserRole> roles;
     private Boolean active;
     private Boolean canView;
     private Boolean canEdit;

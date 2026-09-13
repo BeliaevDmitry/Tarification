@@ -11,7 +11,7 @@
 <body>
 <main class="container">
     <header class="card">
-        <h1>Контингент</h1>
+        <h1>Обучающиеся / Контингент</h1>
         <p class="muted">Импорт выгрузки и анализ численности по корпусам, классам и параллелям.</p>
     </header>
 
@@ -173,6 +173,7 @@
                     <select id="contingent-custom-export-mode" data-allow-readonly="true">
                         <option value="PARALLEL">По параллелям</option>
                         <option value="BUILDING">По корпусам</option>
+                        <option value="ADDRESS">По адресам</option>
                     </select>
                 </label>
                 <button id="contingent-custom-export-download" type="button" data-allow-readonly="true">Скачать контингент</button>
@@ -184,6 +185,10 @@
             <fieldset id="contingent-custom-export-buildings-field" class="contingent-export-fieldset" hidden>
                 <legend>Корпуса</legend>
                 <div id="contingent-custom-export-buildings" class="contingent-export-options"></div>
+            </fieldset>
+            <fieldset id="contingent-custom-export-addresses-field" class="contingent-export-fieldset" hidden>
+                <legend>Адреса</legend>
+                <div id="contingent-custom-export-addresses" class="contingent-export-options"></div>
             </fieldset>
             <p id="contingent-custom-export-result" class="muted" aria-live="polite"></p>
         </details>

@@ -85,7 +85,7 @@ public class SchoolBuildingServiceImpl implements SchoolBuildingService {
     public List<SchoolBuilding> findAll() {
         Map<String, String> buildingHeadByGroupCode = new LinkedHashMap<>();
         appUserRepository.findAll().stream()
-                .filter(user -> user.getRole() == UserRole.BUILDING_HEAD)
+                .filter(user -> user.hasRole(UserRole.BUILDING_HEAD))
                 .filter(user -> !normalize(user.getManagedBuildingCode()).isBlank())
                 .forEach(user -> buildingHeadByGroupCode.put(
                         normalizeOrganizationalCode(user.getManagedBuildingCode()),
